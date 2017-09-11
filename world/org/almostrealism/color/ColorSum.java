@@ -1,0 +1,49 @@
+/*
+ * Copyright 2017 Michael Murray
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.almostrealism.color;
+
+import java.util.Arrays;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
+
+import org.almostrealism.uml.Function;
+
+/**
+ * @author  Michael Murray
+ */
+@Function
+public class ColorSum extends ColorFutureAdapter {
+	public ColorSum() { }
+	
+	public ColorSum(Future<ColorProducer>... producers) { addAll(Arrays.asList(producers)); }
+	
+	@Override
+	public RGB evaluate(Object[] args) {
+		RGB rgb = new RGB();
+		
+		for (Future<ColorProducer> c : this) {
+			try {
+				rgb.addTo(c.get().evaluate(args));
+			} catch (InterruptedException | ExecutionException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		}
+		
+		return rgb;
+	}
+}
