@@ -9,4 +9,4 @@ pipelines:
           - mvn --version
           - mvn dependency:copy-dependencies
           - mvn install
-	  - mvn deploy
+          - mvn deploy
