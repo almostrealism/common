@@ -7,5 +7,10 @@ pipelines:
         script:
           # Maven details
           - mvn --version
+
+          - rm /usr/share/maven/conf/settings.xml
+          - cp ./settings.xml /usr/share/maven/conf/settings.xml
+
           - mvn dependency:copy-dependencies
           - mvn install
+          - mvn deploy

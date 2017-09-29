@@ -1,5 +1,5 @@
 package org.almostrealism.util;
 
-public interface ParameterizedFactory<T> extends Factory<T> {
-	void setParameter(Class<T> param, T value);
+public interface ParameterizedFactory<T, V> extends Factory<V> {
+	<A extends T> void setParameter(Class<A> param, A value);
 }
