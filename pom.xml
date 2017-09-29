@@ -12,8 +12,6 @@
 	<packaging>jar</packaging>
 
     <build>
-		<sourceDirectory>src, world, ui, math</sourceDirectory>
-		<testSourceDirectory>test</testSourceDirectory>
 		<plugins>
 			<plugin>
 				<artifactId>maven-compiler-plugin</artifactId>
@@ -22,6 +20,26 @@
 					<source>1.8</source>
 					<target>1.8</target>
 				</configuration>
+			</plugin>
+			<plugin>
+				<groupId>org.codehaus.mojo</groupId>
+				<artifactId>build-helper-maven-plugin</artifactId>
+				<executions>
+					<execution>
+						<phase>generate-sources</phase>
+						<goals>
+							<goal>add-source</goal>
+						</goals>
+						<configuration>
+							<sources>
+								<source>math</source>
+								<source>src</source>
+								<source>ui</source>
+								<source>world</source>
+							</sources>
+						</configuration>
+					</execution>
+				</executions>
 			</plugin>
 		</plugins>
 	</build>
@@ -56,4 +74,15 @@
 		    <scope>provided</scope>
 		</dependency>
     </dependencies>
+
+	<distributionManagement>
+		<repository>
+			<id>internal</id>
+			<url>http://13.59.14.87:8080/repository/internal/</url>
+		</repository>
+		<snapshotRepository>
+			<id>internal</id>
+			<url>http://13.59.14.87:8080/repository/internal/</url>
+		</snapshotRepository>
+	</distributionManagement>
 </project>
