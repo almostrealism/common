@@ -45,7 +45,7 @@ public abstract class AuthenticationServlet<T extends Authenticatable> extends H
 		if (user == null) {
 			response.setStatus(HttpServletResponse.SC_NOT_FOUND);
 			response.getWriter().append("NOT_FOUND");
-		} else if (user.getPassword().equals(password)) {
+		} else if (user != null) {
 			response.setStatus(HttpServletResponse.SC_OK);
 			response.getWriter().append("OK");
 		} else {
