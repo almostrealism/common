@@ -40,7 +40,7 @@ public abstract class AuthenticationServlet<T extends Authenticatable> extends H
 		String identifier = request.getParameter("identifier");
 		String password = request.getParameter("password");
 		
-		T user = factory.getAuthenticatable(identifier);
+		T user = factory.getAuthenticatable(identifier, password);
 		
 		if (user == null) {
 			response.setStatus(HttpServletResponse.SC_NOT_FOUND);
