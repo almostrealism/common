@@ -2,7 +2,6 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="">
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/world/org/almostrealism/color/Transparent.java" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
     </list>
     <ignored path="$PROJECT_DIR$/target/" />
@@ -25,7 +24,7 @@
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="ColorFutureAdapter.java" pinned="false" current-in-tab="true">
+      <file leaf-file-name="ColorFutureAdapter.java" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/world/org/almostrealism/color/ColorFutureAdapter.java">
           <provider selected="true" editor-type-id="text-editor">
             <state relative-caret-position="118">
@@ -33,6 +32,16 @@
               <folding>
                 <element signature="e#1543#1566#0" expanded="true" />
               </folding>
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="ProbabilityDistribution.java" pinned="false" current-in-tab="true">
+        <entry file="file://$PROJECT_DIR$/src/org/almostrealism/stats/ProbabilityDistribution.java">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="135">
+              <caret line="30" column="13" lean-forward="false" selection-start-line="30" selection-start-column="13" selection-end-line="30" selection-end-column="13" />
+              <folding />
             </state>
           </provider>
         </entry>
@@ -119,6 +128,13 @@
             <path>
               <item name="common" type="b2602c69:ProjectViewProjectNode" />
               <item name="common" type="462c0819:PsiDirectoryNode" />
+              <item name="src" type="462c0819:PsiDirectoryNode" />
+              <item name="almostrealism" type="462c0819:PsiDirectoryNode" />
+              <item name="stats" type="462c0819:PsiDirectoryNode" />
+            </path>
+            <path>
+              <item name="common" type="b2602c69:ProjectViewProjectNode" />
+              <item name="common" type="462c0819:PsiDirectoryNode" />
               <item name="world" type="462c0819:PsiDirectoryNode" />
             </path>
             <path>
@@ -132,7 +148,7 @@
               <item name="common" type="462c0819:PsiDirectoryNode" />
               <item name="world" type="462c0819:PsiDirectoryNode" />
               <item name="almostrealism" type="462c0819:PsiDirectoryNode" />
-              <item name="color" type="462c0819:PsiDirectoryNode" />
+              <item name="space" type="462c0819:PsiDirectoryNode" />
             </path>
           </expand>
           <select />
@@ -148,6 +164,7 @@
   </component>
   <component name="RecentsManager">
     <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/src/org/almostrealism/stats" />
       <recent name="$PROJECT_DIR$/world/org/almostrealism/color" />
     </key>
     <key name="CopyFile.RECENT_KEYS">
@@ -319,7 +336,7 @@
       <workItem from="1506656639181" duration="1138000" />
       <workItem from="1506902952447" duration="139000" />
       <workItem from="1507943009741" duration="581000" />
-      <workItem from="1508131184575" duration="374000" />
+      <workItem from="1508131184575" duration="1608000" />
     </task>
     <task id="LOCAL-00001" summary="Deployment.">
       <created>1506657014443</created>
@@ -342,11 +359,25 @@
       <option name="project" value="LOCAL" />
       <updated>1506903021173</updated>
     </task>
-    <option name="localTasksCounter" value="4" />
+    <task id="LOCAL-00004" summary="Transparent interface migrated over from photon field.">
+      <created>1508131739121</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1508131739121</updated>
+    </task>
+    <task id="LOCAL-00005" summary="Migrated SphericalProbabilityDistribution over from photon field into Common.">
+      <created>1508132348866</created>
+      <option name="number" value="00005" />
+      <option name="presentableId" value="LOCAL-00005" />
+      <option name="project" value="LOCAL" />
+      <updated>1508132348866</updated>
+    </task>
+    <option name="localTasksCounter" value="6" />
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="3929000" />
+    <option name="totallyTimeSpent" value="5163000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="0" y="0" width="1280" height="800" extended-state="0" />
@@ -391,7 +422,9 @@
   <component name="VcsManagerConfiguration">
     <MESSAGE value="Deployment." />
     <MESSAGE value="Minor changes to the authentication system." />
-    <option name="LAST_COMMIT_MESSAGE" value="Minor changes to the authentication system." />
+    <MESSAGE value="Transparent interface migrated over from photon field." />
+    <MESSAGE value="Migrated SphericalProbabilityDistribution over from photon field into Common." />
+    <option name="LAST_COMMIT_MESSAGE" value="Migrated SphericalProbabilityDistribution over from photon field into Common." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager />
@@ -575,6 +608,14 @@
           <folding>
             <element signature="e#1543#1566#0" expanded="true" />
           </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/src/org/almostrealism/stats/ProbabilityDistribution.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="135">
+          <caret line="30" column="13" lean-forward="false" selection-start-line="30" selection-start-column="13" selection-end-line="30" selection-end-column="13" />
+          <folding />
         </state>
       </provider>
     </entry>
