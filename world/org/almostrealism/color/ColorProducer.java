@@ -21,7 +21,7 @@ import org.almostrealism.uml.Function;
 import org.almostrealism.util.Producer;
 
 /**
- * ColorProducer is implemented by any class that can produce an RGB object
+ * ColorProducer is implemented by any class that can produce an {@link RGB} object
  * given some array of input objects.
  * 
  * @author Mike Murray

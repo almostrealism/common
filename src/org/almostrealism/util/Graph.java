@@ -41,7 +41,7 @@ import java.util.List;
 /**
  * @author Mike Murray
  */
-public class Graph extends ArrayList {
+public class Graph extends ArrayList<String> {
 	private static final String header = "[--------]:";
 	private DateFormat format = new SimpleDateFormat("hh:mm a");
 	private static NumberFormat dformat = new DecimalFormat("#.000");
@@ -53,11 +53,11 @@ public class Graph extends ArrayList {
 	private int sinceLastMin = 0, sinceLastMax = 0;
 	private double minValue = Double.MAX_VALUE, maxValue;
 	private double lastValue, currentValue;
-	private List values;
+	private List<Double> values;
 	
-	public Graph() { this.values = new ArrayList(); }
+	public Graph() { this.values = new ArrayList<Double>(); }
 	
-	public Graph(int max) { this.values = new ArrayList(); this.max = max; }
+	public Graph(int max) { this.values = new ArrayList<Double>(); this.max = max; }
 	
 	public void addEntry(double a) {
 		this.values.add(new Double(a));
@@ -71,7 +71,7 @@ public class Graph extends ArrayList {
 		
 		for (int i = 0; i < this.div; i++) if (a > i * this.scale) b.append("#");
 		
-		if (a < this.scale || a > this.scale * this.div) b.append(" " + this.dformat.format(a));
+		if (a < this.scale || a > this.scale * this.div) b.append(" " + dformat.format(a));
 		
 		if (super.size() > 2 && this.sinceLastMin > this.minMaxOffset &&
 				lastValue <= currentValue && a < currentValue) {
@@ -124,11 +124,11 @@ public class Graph extends ArrayList {
 		buf.append("Range: (");
 		
 		if (this.minValue < this.maxValue) {
-			buf.append(this.dformat.format(this.minValue));
+			buf.append(dformat.format(this.minValue));
 			buf.append(", ");
 		}
 		
-		buf.append(this.dformat.format(this.maxValue));
+		buf.append(dformat.format(this.maxValue));
 		buf.append(")\n");
 		buf.append(Graph.header);
 		
@@ -144,7 +144,7 @@ public class Graph extends ArrayList {
 		
 		buf.append("\n\n");
 		
-		Iterator itr = super.iterator();
+		Iterator<String> itr = super.iterator();
 		while (itr.hasNext()) buf.append(itr.next() + "\n");
 	}
 	
@@ -156,7 +156,7 @@ public class Graph extends ArrayList {
 	
 	public void storeValues(File f) throws IOException {
 		try (PrintStream p = new PrintStream(new FileOutputStream(f))) {
-			Iterator itr = this.values.iterator();
+			Iterator<Double> itr = this.values.iterator();
 			while(itr.hasNext()) p.println(itr.next());
 			
 			p.flush();

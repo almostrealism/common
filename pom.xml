@@ -6,7 +6,7 @@
 
     <groupId>org.almostrealism</groupId>
     <artifactId>Common</artifactId>
-    <version>0.1-rc</version>
+    <version>0.2-rc</version>
 
 	<!-- Output to jar format -->
 	<packaging>jar</packaging>
@@ -78,11 +78,11 @@
 	<distributionManagement>
 		<repository>
 			<id>internal</id>
-			<url>http://13.59.14.87:8080/repository/internal/</url>
+			<url>http://mvn.almostrealism.org:8080/repository/internal/</url>
 		</repository>
 		<snapshotRepository>
 			<id>internal</id>
-			<url>http://13.59.14.87:8080/repository/internal/</url>
+			<url>http://mvn.almostrealism.org:8080/repository/internal/</url>
 		</snapshotRepository>
 	</distributionManagement>
 </project>
