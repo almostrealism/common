@@ -18,6 +18,8 @@ package org.almostrealism.space;
 
 import java.util.ArrayList;
 
+import org.almostrealism.algebra.Intersection;
+
 /**
  * @author  Michael Murray
  */
