@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 Michael Murray
+ * Copyright 2017 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,12 +14,10 @@
  * limitations under the License.
  */
 
-package org.almostrealism.space;
+package org.almostrealism.algebra;
 
 import java.util.ArrayList;
 
-import org.almostrealism.algebra.Ray;
-import org.almostrealism.algebra.Vector;
 import org.almostrealism.graph.PathElement;
 
 /**

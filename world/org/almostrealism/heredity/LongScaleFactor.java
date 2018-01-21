@@ -14,23 +14,18 @@
  * limitations under the License.
  */
 
-package org.almostrealism.space;
+package org.almostrealism.heredity;
 
-import org.almostrealism.algebra.Ray;
-import org.almostrealism.uml.Function;
-
-/**
- * @author  Michael Murray
- */
-@Function
-public interface Intersectable<T extends Intersection> {
-	/** Returns true if the ray intersects the 3d surface in real space. */
-	public boolean intersect(Ray ray);
+public class LongScaleFactor implements Factor<Long> {
+	private double scale;
 	
-	/**
-	 * Returns an Intersection object that represents the values for t that solve
-	 * the vector equation p = o + t * d where p is a point of intersection of
-	 * the specified ray and the surface.
-	 */
-	public T intersectAt(Ray ray);
+	public LongScaleFactor() { }
+	
+	public LongScaleFactor(double scale) { this.scale = scale; }
+	
+	public Long getResultant(Long value) { return (long) (value * scale); }
+	
+	public void setScale(double s) { this.scale = s; }
+	
+	public double getScale() { return scale; }
 }
