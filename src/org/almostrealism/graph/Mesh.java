@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 Michael Murray
+ * Copyright 2017 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,11 +14,6 @@
  * limitations under the License.
  */
 
-/*
- * Copyright (C) 2005-16  Mike Murray
- * All rights reserved.
- */
-
 package org.almostrealism.graph;
 
 import java.io.File;
@@ -26,8 +21,10 @@ import java.io.IOException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
+import java.util.ListIterator;
 
 import org.almostrealism.algebra.Intersection;
 import org.almostrealism.algebra.Ray;
@@ -49,9 +46,9 @@ import org.almostrealism.space.SpacePartition;
  * A {@link Mesh} object stores a set of points (Vector objects)
  * and allows triangles to be specified using those points.
  * 
- * @author Mike Murray
+ * @author  Michael Murray
  */
-public class Mesh<C> extends SpacePartition<Triangle> implements Automata<C, Vector> {
+public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, Triangle> {
 	private static RGB white = new RGB(1.0, 1.0, 1.0);
 	
 	public static class MeshFile implements ShadableSurfaceWrapper, ShadableSurface {
@@ -762,5 +759,137 @@ public class Mesh<C> extends SpacePartition<Triangle> implements Automata<C, Vec
 		} else {
 			return this;
 		}
+	}
+
+	@Override
+	public int size() {
+		// TODO Auto-generated method stub
+		return 0;
+	}
+
+	@Override
+	public boolean isEmpty() {
+		// TODO Auto-generated method stub
+		return false;
+	}
+
+	@Override
+	public boolean contains(Object o) {
+		// TODO Auto-generated method stub
+		return false;
+	}
+
+	@Override
+	public Object[] toArray() {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public <T> T[] toArray(T[] a) {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public boolean add(Triangle e) {
+		// TODO Auto-generated method stub
+		return false;
+	}
+
+	@Override
+	public boolean remove(Object o) {
+		// TODO Auto-generated method stub
+		return false;
+	}
+
+	@Override
+	public boolean containsAll(Collection<?> c) {
+		// TODO Auto-generated method stub
+		return false;
+	}
+
+	@Override
+	public boolean addAll(Collection<? extends Triangle> c) {
+		// TODO Auto-generated method stub
+		return false;
+	}
+
+	@Override
+	public boolean addAll(int index, Collection<? extends Triangle> c) {
+		// TODO Auto-generated method stub
+		return false;
+	}
+
+	@Override
+	public boolean removeAll(Collection<?> c) {
+		// TODO Auto-generated method stub
+		return false;
+	}
+
+	@Override
+	public boolean retainAll(Collection<?> c) {
+		// TODO Auto-generated method stub
+		return false;
+	}
+
+	@Override
+	public void clear() {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public Triangle get(int index) {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public Triangle set(int index, Triangle element) {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public void add(int index, Triangle element) {
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public Triangle remove(int index) {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public int indexOf(Object o) {
+		// TODO Auto-generated method stub
+		return 0;
+	}
+
+	@Override
+	public int lastIndexOf(Object o) {
+		// TODO Auto-generated method stub
+		return 0;
+	}
+
+	@Override
+	public ListIterator<Triangle> listIterator() {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public ListIterator<Triangle> listIterator(int index) {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public List<Triangle> subList(int fromIndex, int toIndex) {
+		// TODO Auto-generated method stub
+		return null;
 	}
 }

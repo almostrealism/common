@@ -27,7 +27,7 @@ public class Hydrocarbon implements Molecule {
 	}
 
 	@Override
-	public Iterator<Callable<Element>> iterator() {
+	public Iterator<Element> iterator() {
 		// TODO Auto-generated method stub
 		return null;
 	}
@@ -45,7 +45,7 @@ public class Hydrocarbon implements Molecule {
 	}
 
 	@Override
-	public boolean add(Callable<Element> e) {
+	public boolean add(Element e) {
 		// TODO Auto-generated method stub
 		return false;
 	}
@@ -63,13 +63,13 @@ public class Hydrocarbon implements Molecule {
 	}
 
 	@Override
-	public boolean addAll(Collection<? extends Callable<Element>> c) {
+	public boolean addAll(Collection<? extends Element> c) {
 		// TODO Auto-generated method stub
 		return false;
 	}
 
 	@Override
-	public boolean addAll(int index, Collection<? extends Callable<Element>> c) {
+	public boolean addAll(int index, Collection<? extends Element> c) {
 		// TODO Auto-generated method stub
 		return false;
 	}
@@ -89,29 +89,29 @@ public class Hydrocarbon implements Molecule {
 	@Override
 	public void clear() {
 		// TODO Auto-generated method stub
-
+		
 	}
 
 	@Override
-	public Callable<Element> get(int index) {
+	public Element get(int index) {
 		// TODO Auto-generated method stub
 		return null;
 	}
 
 	@Override
-	public Callable<Element> set(int index, Callable<Element> element) {
+	public Element set(int index, Element element) {
 		// TODO Auto-generated method stub
 		return null;
 	}
 
 	@Override
-	public void add(int index, Callable<Element> element) {
+	public void add(int index, Element element) {
 		// TODO Auto-generated method stub
-
+		
 	}
 
 	@Override
-	public Callable<Element> remove(int index) {
+	public Element remove(int index) {
 		// TODO Auto-generated method stub
 		return null;
 	}
@@ -129,21 +129,20 @@ public class Hydrocarbon implements Molecule {
 	}
 
 	@Override
-	public ListIterator<Callable<Element>> listIterator() {
+	public ListIterator<Element> listIterator() {
 		// TODO Auto-generated method stub
 		return null;
 	}
 
 	@Override
-	public ListIterator<Callable<Element>> listIterator(int index) {
+	public ListIterator<Element> listIterator(int index) {
 		// TODO Auto-generated method stub
 		return null;
 	}
 
 	@Override
-	public List<Callable<Element>> subList(int fromIndex, int toIndex) {
+	public List<Element> subList(int fromIndex, int toIndex) {
 		// TODO Auto-generated method stub
 		return null;
 	}
-
 }

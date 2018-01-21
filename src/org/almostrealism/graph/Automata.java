@@ -1,5 +1,5 @@
 package org.almostrealism.graph;
 
-public interface Automata<C, V> extends ParameterizedGraph<Cell<C>, V>{
+public interface Automata<C, V> extends ParameterizedGraph<V, Cell<C>>{
 
 }

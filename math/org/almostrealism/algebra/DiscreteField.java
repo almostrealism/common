@@ -1,6 +1,5 @@
 package org.almostrealism.algebra;
 
-import java.util.List;
 import java.util.concurrent.Callable;
 
 import org.almostrealism.graph.NodeList;
@@ -12,6 +11,6 @@ import org.almostrealism.space.Gradient;
  * 
  * @author  Michael Murray
  */
-public interface DiscreteField extends NodeList<Ray> {
+public interface DiscreteField extends NodeList<Callable<Ray>> {
 
 }
