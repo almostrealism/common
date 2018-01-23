@@ -5,7 +5,9 @@ package org.almostrealism.util;
  */
 public class BoundingSolid {
 
-    private final double minX, maxX, minY, maxY, minZ, maxZ;
+    public final double minX, maxX, minY, maxY, minZ, maxZ;
+    public final double dx, dy, dz;
+    public final double volume;
 
     public BoundingSolid(double minX, double maxX, double minY, double maxY, double minZ, double maxZ) {
         this.minX = minX;
@@ -14,12 +16,11 @@ public class BoundingSolid {
         this.maxY = maxY;
         this.minZ = minZ;
         this.maxZ = maxZ;
-    }
 
-    public double getMinX() { return minX; }
-    public double getMaxX() { return maxX; }
-    public double getMinY() { return minY; }
-    public double getMaxY() { return maxY; }
-    public double getMinZ() { return minZ; }
-    public double getMaxZ() { return maxZ; }
+        dx = maxX - minX;
+        dy = maxY - minY;
+        dz = maxZ - minZ;
+
+        volume = dx * dy * dz;
+    }
 }
