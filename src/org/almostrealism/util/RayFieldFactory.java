@@ -38,11 +38,11 @@ public class RayFieldFactory {
         Set<Ray> rays;
 
         switch (distribution) {
-            case PSEUDOUNIFORM:
+            case UNIFORM:
                 rays = generateUniform(totalRays);
                 break;
-            case GUASSIAN:
-                rays = generateGuassian(totalRays);
+            case PSEUDOUNIFORM:
+                rays = generatePseudouniform(totalRays);
                 break;
             case RANDOM:
                 rays = generateRandom(totalRays);
@@ -61,6 +61,55 @@ public class RayFieldFactory {
     }
 
     /**
+     * A fast method to produce a uniform distribution of vertices within the bounding solid by repeated subdivision.
+     *
+     * Drawbacks to this approach are:
+     * - Each subdivision adds multiple vertices. Subdivision stops once we equal or exceed the requested value,
+     *   but this method can produce more vertices than requested.
+     * - The distance between vertices on any given axis is constant, but can vary between axes. Subdivision
+     *   is performed on the axis with the largest face, so the solution will converge on producing cubes if
+     *   enough vertices are requested.
+     */
+    private Set<Ray> generateUniform(int totalRays) {
+        int xPlanes = 2, yPlanes = 2, zPlanes = 2;
+        double xFaceWidth = bounds.dx / (xPlanes - 1);
+        double yFaceWidth = bounds.dy / (yPlanes - 1);
+        double zFaceWidth = bounds.dz / (zPlanes - 1);
+
+        while (xPlanes * yPlanes * zPlanes < totalRays) {
+            if (xFaceWidth >= yFaceWidth && xFaceWidth >= zFaceWidth) {
+                xPlanes++;
+                xFaceWidth = bounds.dx / (xPlanes - 1);
+            }
+            else if (yFaceWidth >= xFaceWidth && yFaceWidth >= zFaceWidth) {
+                yPlanes++;
+                yFaceWidth = bounds.dy / (yPlanes - 1);
+            }
+            else {
+                zPlanes++;
+                zFaceWidth = bounds.dz / (zPlanes - 1);
+            }
+        }
+
+        Set<Ray> rays = new HashSet<>();
+        for (int x=0 ; x<xPlanes ; ++x) {
+            for (int y=0 ; y<yPlanes ; ++y) {
+                for (int z=0 ; z<zPlanes ; ++z) {
+                    double ox = x * xFaceWidth + bounds.minX;
+                    double oy = y * yFaceWidth + bounds.minY;
+                    double oz = z * zFaceWidth + bounds.minZ;
+                    Vector origin = new Vector(ox, oy, oz);
+                    Ray ray = new Ray();
+                    ray.setOrigin(origin);
+                    rays.add(ray);
+                }
+            }
+        }
+
+        return rays;
+    }
+
+    /**
      * Uses Lloyd's algorithm for adjusting ray positions to achieve a more
      * uniform distribution.
      * Will achieve visibly superior results to a random distribution with
@@ -69,7 +118,7 @@ public class RayFieldFactory {
      * optimisation of the code itself or a careful approach to selecting the
      * number of density points / iterations.
      */
-    private Set<Ray> generateUniform(int totalRays) {
+    private Set<Ray> generatePseudouniform(int totalRays) {
         final int DENSITY_POINTS = totalRays * 10;
         final int ITERATIONS = 30;
 
@@ -144,12 +193,6 @@ public class RayFieldFactory {
                        + Math.pow(a.getZ() - b.getZ(), 2));
     }
 
-    private Set<Ray> generateGuassian(int totalRays) {
-        Set<Ray> rays = new HashSet<>();
-        // TODO
-        return rays;
-    }
-
     private Set<Ray> generateRandom(int totalRays) {
         Random rand = new Random();
         Set<Ray> rays = new HashSet<>();
@@ -168,6 +211,6 @@ public class RayFieldFactory {
     }
 
     public enum RayDistribution {
-        PSEUDOUNIFORM, GUASSIAN, RANDOM
+        UNIFORM, PSEUDOUNIFORM, RANDOM
     }
 }
