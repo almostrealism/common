@@ -10,73 +10,63 @@ import java.util.concurrent.Callable;
 /**
  * Used to construct a RayField from the given bounding solid.
  */
-public class RayFieldFactory {
+public class RayFieldFactory
+{
+    public enum RayDistribution { UNIFORM, RANDOM }
 
-    private final BoundingSolid bounds;
-    private final int rayCount;
+    private static RayFieldFactory INSTANCE;
 
-    private double scale = 1d;
-    private RayDistribution distribution = RayDistribution.PSEUDOUNIFORM;
+    private RayFieldFactory() {}
 
-    public RayFieldFactory(BoundingSolid bounds, int rayCount) {
-        this.bounds = bounds;
-        this.rayCount = rayCount < 0 ? 0 :rayCount;
+    public static RayFieldFactory getFactory()
+    {
+        if (INSTANCE == null) {
+            INSTANCE = new RayFieldFactory();
+        }
+        return INSTANCE;
     }
 
-    public RayFieldFactory setScale(double scale) {
-        this.scale = scale < 0 ? 0 : scale;
-        return this;
-    }
+    public RayField buildRayField(BoundingSolid bounds, int rayCount, RayDistribution distribution) {
+        rayCount = rayCount < 0 ? 0 : rayCount;
 
-    public RayFieldFactory setDistribution(RayDistribution distribution) {
-        this.distribution = distribution;
-        return this;
-    }
-
-    public RayField build() {
-        int totalRays = (int) (rayCount * scale);
         Set<Ray> rays;
-
         switch (distribution) {
             case UNIFORM:
-                rays = generateUniform(totalRays);
-                break;
-            case PSEUDOUNIFORM:
-                rays = generatePseudouniform(totalRays);
+                rays = generateUniform(bounds, rayCount);
                 break;
             case RANDOM:
-                rays = generateRandom(totalRays);
+                rays = generateRandom(bounds, rayCount);
                 break;
             default:
                 return null;
         }
 
-        RayField rf = new RayField();
+        RayField rayField = new RayField();
         for (Ray ray : rays) {
             Callable<Ray> r = () -> ray;
-            rf.add(r);
+            rayField.add(r);
         }
 
-        return rf;
+        return rayField;
     }
 
     /**
      * A fast method to produce a uniform distribution of vertices within the bounding solid by repeated subdivision.
      *
-     * Drawbacks to this approach are:
+     * Limitations to this approach are:
      * - Each subdivision adds multiple vertices. Subdivision stops once we equal or exceed the requested value,
      *   but this method can produce more vertices than requested.
      * - The distance between vertices on any given axis is constant, but can vary between axes. Subdivision
      *   is performed on the axis with the largest face, so the solution will converge on producing cubes if
      *   enough vertices are requested.
      */
-    private Set<Ray> generateUniform(int totalRays) {
+    private Set<Ray> generateUniform(BoundingSolid bounds, int rayCount) {
         int xPlanes = 2, yPlanes = 2, zPlanes = 2;
         double xFaceWidth = bounds.dx / (xPlanes - 1);
         double yFaceWidth = bounds.dy / (yPlanes - 1);
         double zFaceWidth = bounds.dz / (zPlanes - 1);
 
-        while (xPlanes * yPlanes * zPlanes < totalRays) {
+        while (xPlanes * yPlanes * zPlanes < rayCount) {
             if (xFaceWidth >= yFaceWidth && xFaceWidth >= zFaceWidth) {
                 xPlanes++;
                 xFaceWidth = bounds.dx / (xPlanes - 1);
@@ -92,9 +82,9 @@ public class RayFieldFactory {
         }
 
         Set<Ray> rays = new HashSet<>();
-        for (int x=0 ; x<xPlanes ; ++x) {
-            for (int y=0 ; y<yPlanes ; ++y) {
-                for (int z=0 ; z<zPlanes ; ++z) {
+        for (int x=0; x < xPlanes; ++x) {
+            for (int y = 0; y < yPlanes; ++y) {
+                for (int z = 0; z < zPlanes; ++z) {
                     double ox = x * xFaceWidth + bounds.minX;
                     double oy = y * yFaceWidth + bounds.minY;
                     double oz = z * zFaceWidth + bounds.minZ;
@@ -110,107 +100,22 @@ public class RayFieldFactory {
     }
 
     /**
-     * Uses Lloyd's algorithm for adjusting ray positions to achieve a more
-     * uniform distribution.
-     * Will achieve visibly superior results to a random distribution with
-     * a performance trade-off.
-     * TODO: The algorithm performance can potentially be improved either by
-     * optimisation of the code itself or a careful approach to selecting the
-     * number of density points / iterations.
+     * Generates a random distribution of Rays.
      */
-    private Set<Ray> generatePseudouniform(int totalRays) {
-        final int DENSITY_POINTS = totalRays * 10;
-        final int ITERATIONS = 30;
-
-        Set<Vector> densityPoints = new HashSet<>();
-        Set<Ray> sites = new HashSet<>();
-
-        // Generate random density points.
+    private Set<Ray> generateRandom(BoundingSolid bounds, int rayCount) {
         Random r = new Random();
-        for (int i=0 ; i<DENSITY_POINTS ; ++i) {
-            double x = r.nextDouble() * bounds.dx + bounds.minX;
-            double y = r.nextDouble() * bounds.dy + bounds.minY;
-            double z = r.nextDouble() * bounds.dz + bounds.minZ;
-            densityPoints.add(new Vector(x, y, z));
-        }
-
-        // Generate N random sites.
-        for (int i=0 ; i<totalRays ; ++i) {
-            double x = r.nextDouble() * bounds.dx + bounds.minX;
-            double y = r.nextDouble() * bounds.dy + bounds.minY;
-            double z = r.nextDouble() * bounds.dz + bounds.minZ;
-            Ray newRay = new Ray();
-            newRay.setOrigin(new Vector(x, y, z));
-            sites.add(newRay);
-        }
-
-        for (int i=0 ; i<ITERATIONS ; ++i) {
-            // Assign density points to nearest sites.
-            // Map (site > density point).
-            Map<Ray, Set<Vector>> nearestDensityPointsMap = new HashMap<>();
-
-            for (Vector densityPoint : densityPoints) {
-                Ray closestSite = null;
-                double dist = Double.MAX_VALUE;
-                for (Ray site : sites) {
-                    double d = dist(densityPoint, site.getOrigin());
-                    if (closestSite == null || d < dist) {
-                        closestSite = site;
-                        dist = d;
-                    }
-                }
-                Set<Vector> nearestDensityPoints = nearestDensityPointsMap.computeIfAbsent(closestSite, k -> new HashSet<>());
-                nearestDensityPoints.add(densityPoint);
-            }
-
-            // Move each site to the barycenter of it's density points.
-            for (Map.Entry<Ray, Set<Vector>> entry : nearestDensityPointsMap.entrySet()) {
-                Ray site = entry.getKey();
-                Set<Vector> closestDensityPoints = entry.getValue();
-                double bx = 0, by = 0, bz = 0;
-
-                for (Vector densityPoint : closestDensityPoints) {
-                    bx += densityPoint.getX();
-                    by += densityPoint.getY();
-                    bz += densityPoint.getZ();
-                }
-
-                bx /= closestDensityPoints.size();
-                by /= closestDensityPoints.size();
-                bz /= closestDensityPoints.size();
-
-                Vector newOrigin = new Vector(bx, by, bz);
-                site.setOrigin(newOrigin);
-            }
-        }
-
-        return sites;
-    }
-
-    private double dist(Vector a, Vector b) {
-        return Math.sqrt(Math.pow(a.getX() - b.getX(), 2)
-                       + Math.pow(a.getY() - b.getY(), 2)
-                       + Math.pow(a.getZ() - b.getZ(), 2));
-    }
-
-    private Set<Ray> generateRandom(int totalRays) {
-        Random rand = new Random();
         Set<Ray> rays = new HashSet<>();
 
-        for(int i = 0; i<totalRays; ++i) {
+        for(int i = 0; i < rayCount; ++i) {
             Ray ray = new Ray();
-            double x = rand.nextDouble() * bounds.dx + bounds.minX;
-            double y = rand.nextDouble() * bounds.dy + bounds.minY;
-            double z = rand.nextDouble() * bounds.dz + bounds.minZ;
+            double x = r.nextDouble() * bounds.dx + bounds.minX;
+            double y = r.nextDouble() * bounds.dy + bounds.minY;
+            double z = r.nextDouble() * bounds.dz + bounds.minZ;
 
             ray.setOrigin(new Vector(x, y, z));
             rays.add(ray);
         }
 
         return rays;
-    }
-
-    public enum RayDistribution {
-        UNIFORM, PSEUDOUNIFORM, RANDOM
     }
 }
