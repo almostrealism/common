@@ -22,5 +22,5 @@ package org.almostrealism.util;
  * @author  Michael Murray
  */
 public interface Factory<V> {
-	public V construct();
+	V construct();
 }

@@ -7,7 +7,7 @@ import java.util.List;
 public class Terbium implements Element {
 	public int getAtomicNumber() { return 65; }
 	
-	public Atom getAtom() { return new Atom(getShells()); }
+	public Atom construct() { return new Atom(getShells()); }
 	
 	private List<Shell> getShells() {
 		ArrayList<Shell> s = new ArrayList<Shell>();

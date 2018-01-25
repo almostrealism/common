@@ -7,7 +7,7 @@ import java.util.List;
 public class Krypton implements Element {
 	public int getAtomicNumber() { return 36; }
 
-	public Atom getAtom() { return new Atom(getShells()); }
+	public Atom construct() { return new Atom(getShells()); }
 	
 	protected List<Shell> getShells() {
 		ArrayList<Shell> s = new ArrayList<Shell>();

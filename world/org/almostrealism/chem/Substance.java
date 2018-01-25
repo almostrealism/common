@@ -1,5 +1,7 @@
 package org.almostrealism.chem;
 
-public interface Substance {
+import org.almostrealism.util.Factory;
+
+public interface Substance extends Factory<Atom> {
 
 }

@@ -7,7 +7,7 @@ import java.util.List;
 public class Silver implements Element {
 	public int getAtomicNumber() { return 47; }
 	
-	public Atom getAtom() { return new Atom(getShells()); }
+	public Atom construct() { return new Atom(getShells()); }
 	
 	private List<Shell> getShells() {
 		ArrayList<Shell> s = new ArrayList<Shell>();

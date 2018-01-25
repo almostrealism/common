@@ -54,7 +54,7 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 	private double porosity;
 
 	private Texture textures[];
-	private ShaderSet shaders;
+	private ShaderSet shaders = new ShaderSet();
 
 	private AbstractSurface parent;
 	
