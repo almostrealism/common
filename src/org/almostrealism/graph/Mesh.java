@@ -39,6 +39,7 @@ import org.almostrealism.space.ShadableIntersection;
 import org.almostrealism.space.ShadableSurface;
 import org.almostrealism.space.ShadableSurfaceWrapper;
 import org.almostrealism.space.SpacePartition;
+import org.almostrealism.util.BoundingSolid;
 
 // TODO  Add bounding solid to make intersection calc faster.
 
@@ -601,6 +602,36 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 		this.addTriangle(p3, a, c);
 		
 		return this.addTriangle(a, b, c);
+	}
+
+	public BoundingSolid calculateBoundingSolid() {
+		double minX = Double.MAX_VALUE;
+		double maxX = Double.MIN_VALUE;
+		double minY = Double.MAX_VALUE;
+		double maxY = Double.MIN_VALUE;
+		double minZ = Double.MAX_VALUE;
+		double maxZ = Double.MIN_VALUE;
+
+		Mesh.Vertex[] vectors = getVectors();
+
+		if (vectors == null || vectors.length == 0) {
+			return new BoundingSolid(0, 0, 0, 0, 0, 0);
+		}
+
+		for (Mesh.Vertex v : vectors) {
+			double x = v.getX();
+			double y = v.getY();
+			double z = v.getZ();
+
+			minX = x < minX ? x : minX;
+			maxX = x > maxX ? x : maxX;
+			minY = y < minY ? y : minY;
+			maxY = y > maxY ? y : maxY;
+			minZ = z < minZ ? z : minZ;
+			maxZ = z > maxZ ? z : maxZ;
+		}
+
+		return new BoundingSolid(minX, maxX, minY, maxY, minZ, maxZ);
 	}
 	
 	/**
