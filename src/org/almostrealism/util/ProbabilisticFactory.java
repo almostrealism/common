@@ -17,7 +17,7 @@ public class ProbabilisticFactory<V> extends HashMap<Factory<V>, Double> impleme
 	 * {@link Gene}. The value 1.0 is used as an argument, making it convenient to use
 	 * the {@link DoubleScaleFactor} to specify scalar probability values.
 	 */
-	public ProbabilisticFactory(List<Factory<V>> factories, Gene<Double> probabilities) {
+	public ProbabilisticFactory(List<? extends Factory<V>> factories, Gene<Double> probabilities) {
 		for (int i = 0; i < factories.size(); i++) {
 			put(factories.get(i), probabilities.getFactor(i).getResultant(1.0));
 		}

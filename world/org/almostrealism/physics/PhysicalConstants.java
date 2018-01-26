@@ -30,6 +30,12 @@ public interface PhysicalConstants {
 	
 	/** The product of the speed of light and Planck's constant. */
 	double HC = H * C;
+
+	/** Rydberg constant per micrometer. */
+	double R = 10.9737316;
+
+	/** The product of {@link #HC} and {@link #R}. */
+	double HCR = HC * R;
 	
 	double evMsecToWatts = 1.60217646 * Math.pow(10.0, -13.0);
 	double wattsToEvMsec = 1 / evMsecToWatts;

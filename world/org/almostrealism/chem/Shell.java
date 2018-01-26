@@ -27,6 +27,8 @@ public class Shell {
 		l.addAll(Arrays.asList(s.s));
 		return new Shell(l.toArray(new SubShell[0]));
 	}
+
+	public Iterable<SubShell> subShells() { return Arrays.asList(s); }
 	
 	public static Shell first(int s) {
 		return s1(s);

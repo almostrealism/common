@@ -1,9 +1,9 @@
 package org.almostrealism.chem;
 
 public class Material {
-	private Substance s;
+	private Atomic s;
 	
-	public Material(Substance s) {
+	public Material(Atomic s) {
 		this.s = s;
 	}
 }

@@ -7,7 +7,7 @@ import java.util.List;
 public class Tennessine implements Element {
 	public int getAtomicNumber() { return 117; }
 	
-	public Atom construct() { return new Atom(getShells()); }
+	public Atom construct() { return new Atom(getAtomicNumber(), getShells()); }
 	
 	private List<Shell> getShells() {
 		ArrayList<Shell> s = new ArrayList<Shell>();

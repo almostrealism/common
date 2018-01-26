@@ -1,6 +1,8 @@
 package org.almostrealism.chem;
 
-public class Orbital {
+import org.almostrealism.physics.PhysicalConstants;
+
+public class Orbital implements PhysicalConstants {
 	private int principal, angular, magnetic;
 	
 	public Orbital(int principal, int angular, int magnetic) {
@@ -14,6 +16,10 @@ public class Orbital {
 	public int getMagnetic() { return magnetic; }
 	
 	public SubShell populate(int electrons) { return new SubShell(this, electrons); }
+
+	public double getEnergy(int protons) {
+		return HCR * protons * protons * principal * principal;
+	}
 	
 	public boolean equals(Object o) {
 		if (o instanceof Orbital == false) return false;

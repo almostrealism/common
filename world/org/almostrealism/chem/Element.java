@@ -1,5 +1,5 @@
 package org.almostrealism.chem;
 
-public interface Element extends Substance {
+public interface Element extends Atomic {
 	int getAtomicNumber();
 }

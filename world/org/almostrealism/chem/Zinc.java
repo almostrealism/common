@@ -7,7 +7,7 @@ import java.util.List;
 public class Zinc implements Element {
 	public int getAtomicNumber() { return 30; }
 	
-	public Atom construct() { return new Atom(getShells()); }
+	public Atom construct() { return new Atom(getAtomicNumber(), getShells()); }
 	
 	private List<Shell> getShells() {
 		ArrayList<Shell> s = new ArrayList<Shell>();
