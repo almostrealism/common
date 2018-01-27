@@ -28,6 +28,9 @@ import org.almostrealism.color.Light;
 
 /**
  * {@link Scene} extends {@link SurfaceList} to store {@link Light}s and a {@link Camera}.
+ *
+ * TODO  Since the ray tracing engine now accepts a camera separately, this field should
+ *       probably be removed (or only stored by a subclass, projectable scene).
  */
 public class Scene<T extends ShadableSurface> extends SurfaceList<T> {
 	private Camera camera;
