@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 Michael Murray
+ * Copyright 2018 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,17 +19,22 @@ package org.almostrealism.io;
 import java.io.IOException;
 import java.io.InputStream;
 
+/**
+ * @author  Michael Murray
+ */
 public interface Resource {
-	public void load(IOStreams io) throws IOException;
-	public void loadFromURI() throws IOException;
+	void load(IOStreams io) throws IOException;
+	void loadFromURI() throws IOException;
 	
-	public void send(IOStreams io) throws IOException;
+	void send(IOStreams io) throws IOException;
 	
-	public void saveLocal(String file) throws IOException;
+	void saveLocal(String file) throws IOException;
 	
-	public String getURI();
-	public void setURI(String uri);
+	String getURI();
+	void setURI(String uri);
 	
-	public Object getData();
-	public InputStream getInputStream();
+	Object getData();
+	InputStream getInputStream();
+
+	Permissions getPermissions();
 }

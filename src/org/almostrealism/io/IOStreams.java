@@ -16,9 +16,8 @@
 
 package org.almostrealism.io;
 
-import java.io.DataInputStream;
-import java.io.DataOutputStream;
-import java.io.IOException;
+import javax.xml.crypto.Data;
+import java.io.*;
 import java.net.Socket;
 
 public class IOStreams {
@@ -27,6 +26,11 @@ public class IOStreams {
 	public String host;
 	
 	public IOStreams() { }
+
+	public IOStreams(InputStream in) {
+		this.in = in instanceof DataInputStream ? (DataInputStream) in : new DataInputStream(in);
+		this.host = "localhost";
+	}
 	
 	public IOStreams(Socket s) throws IOException {
 		this.in = new DataInputStream(s.getInputStream());
