@@ -1,26 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="Migrated SphericalProbabilityDistribution over from photon field into Common.">
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/src/org/almostrealism/graph/MeshResource.java" />
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/src/org/almostrealism/graph/io/GtsResource.java" />
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/src/org/almostrealism/graph/io/ObjResource.java" />
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/src/org/almostrealism/graph/io/PlyResource.java" />
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/src/org/almostrealism/io/Permissions.java" />
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/src/org/almostrealism/io/ResourceTranscoder.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/codeStyleSettings.xml" afterPath="$PROJECT_DIR$/.idea/codeStyleSettings.xml" />
+    <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="">
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/org/almostrealism/io/IOStreams.java" afterPath="$PROJECT_DIR$/src/org/almostrealism/io/IOStreams.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/org/almostrealism/io/JobOutput.java" afterPath="$PROJECT_DIR$/src/org/almostrealism/io/JobOutput.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/org/almostrealism/io/Resource.java" afterPath="$PROJECT_DIR$/src/org/almostrealism/io/Resource.java" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/org/almostrealism/graph/io/PlyResource.java" afterPath="$PROJECT_DIR$/src/org/almostrealism/graph/io/PlyResource.java" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/org/almostrealism/io/SpatialData.java" afterPath="$PROJECT_DIR$/src/org/almostrealism/io/SpatialData.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/org/almostrealism/util/ProbabilisticFactory.java" afterPath="$PROJECT_DIR$/src/org/almostrealism/util/ProbabilisticFactory.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Alloy.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Alloy.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Atom.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Atom.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Orbital.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Orbital.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Shell.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Shell.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/physics/PhysicalConstants.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/physics/PhysicalConstants.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/space/ShadableSurfaceWrapper.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/space/ShadableSurfaceWrapper.java" />
     </list>
     <ignored path="$PROJECT_DIR$/target/" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -39,28 +23,6 @@
               <caret line="15" column="0" lean-forward="false" selection-start-line="15" selection-start-column="0" selection-end-line="15" selection-end-column="0" />
               <folding>
                 <element signature="e#0#6402#0" expanded="true" />
-              </folding>
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file leaf-file-name="Resource.java" pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/src/org/almostrealism/io/Resource.java">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="0">
-              <caret line="0" column="1" lean-forward="false" selection-start-line="0" selection-start-column="1" selection-end-line="15" selection-end-column="0" />
-              <folding />
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file leaf-file-name="ResourceTranscoder.java" pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/src/org/almostrealism/io/ResourceTranscoder.java">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="330">
-              <caret line="22" column="1" lean-forward="true" selection-start-line="21" selection-start-column="43" selection-end-line="22" selection-end-column="1" />
-              <folding>
-                <element signature="e#0#782#0" expanded="true" />
               </folding>
             </state>
           </provider>
@@ -91,20 +53,20 @@
       <file leaf-file-name="PlyResource.java" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/src/org/almostrealism/graph/io/PlyResource.java">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="560">
-              <caret line="64" column="5" lean-forward="false" selection-start-line="64" selection-start-column="5" selection-end-line="64" selection-end-column="5" />
+            <state relative-caret-position="-1120">
+              <caret line="14" column="0" lean-forward="true" selection-start-line="14" selection-start-column="0" selection-end-line="14" selection-end-column="0" />
               <folding>
                 <element signature="imports" expanded="true" />
-                <element signature="e#665#666#0" expanded="true" />
-                <element signature="e#683#684#0" expanded="true" />
-                <element signature="e#772#773#0" expanded="true" />
-                <element signature="e#790#791#0" expanded="true" />
-                <element signature="e#841#842#0" expanded="true" />
-                <element signature="e#859#860#0" expanded="true" />
-                <element signature="e#910#911#0" expanded="true" />
-                <element signature="e#928#929#0" expanded="true" />
-                <element signature="e#1085#1086#0" expanded="true" />
-                <element signature="e#1105#1106#0" expanded="true" />
+                <element signature="e#673#674#0" expanded="true" />
+                <element signature="e#691#692#0" expanded="true" />
+                <element signature="e#780#781#0" expanded="true" />
+                <element signature="e#798#799#0" expanded="true" />
+                <element signature="e#849#850#0" expanded="true" />
+                <element signature="e#867#868#0" expanded="true" />
+                <element signature="e#918#919#0" expanded="true" />
+                <element signature="e#936#937#0" expanded="true" />
+                <element signature="e#1093#1094#0" expanded="true" />
+                <element signature="e#1113#1114#0" expanded="true" />
               </folding>
             </state>
           </provider>
@@ -113,8 +75,8 @@
       <file leaf-file-name="GtsResource.java" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/src/org/almostrealism/graph/io/GtsResource.java">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="490">
-              <caret line="79" column="0" lean-forward="true" selection-start-line="79" selection-start-column="0" selection-end-line="79" selection-end-column="0" />
+            <state relative-caret-position="313">
+              <caret line="70" column="0" lean-forward="true" selection-start-line="70" selection-start-column="0" selection-end-line="155" selection-end-column="5" />
               <folding>
                 <element signature="imports" expanded="true" />
                 <element signature="e#783#784#0" expanded="true" />
@@ -135,8 +97,8 @@
       <file leaf-file-name="SpatialData.java" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/src/org/almostrealism/io/SpatialData.java">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="-177">
-              <caret line="283" column="13" lean-forward="true" selection-start-line="283" selection-start-column="13" selection-end-line="283" selection-end-column="13" />
+            <state relative-caret-position="572">
+              <caret line="298" column="0" lean-forward="true" selection-start-line="298" selection-start-column="0" selection-end-line="298" selection-end-column="0" />
               <folding />
             </state>
           </provider>
@@ -233,11 +195,11 @@
         <option value="$PROJECT_DIR$/src/org/almostrealism/io/Permissions.java" />
         <option value="$PROJECT_DIR$/src/org/almostrealism/graph/ObjResource.java" />
         <option value="$PROJECT_DIR$/src/org/almostrealism/graph/io/ObjResource.java" />
-        <option value="$PROJECT_DIR$/src/org/almostrealism/graph/io/PlyResource.java" />
         <option value="$PROJECT_DIR$/src/org/almostrealism/graph/MeshResource.java" />
         <option value="$PROJECT_DIR$/src/org/almostrealism/io/IOStreams.java" />
         <option value="$PROJECT_DIR$/src/org/almostrealism/io/ResourceTranscoder.java" />
         <option value="$PROJECT_DIR$/src/org/almostrealism/graph/io/GtsResource.java" />
+        <option value="$PROJECT_DIR$/src/org/almostrealism/graph/io/PlyResource.java" />
         <option value="$PROJECT_DIR$/src/org/almostrealism/io/SpatialData.java" />
       </list>
     </option>
@@ -306,12 +268,6 @@
               <item name="common" type="462c0819:PsiDirectoryNode" />
               <item name="src" type="462c0819:PsiDirectoryNode" />
               <item name="almostrealism" type="462c0819:PsiDirectoryNode" />
-            </path>
-            <path>
-              <item name="common" type="b2602c69:ProjectViewProjectNode" />
-              <item name="common" type="462c0819:PsiDirectoryNode" />
-              <item name="src" type="462c0819:PsiDirectoryNode" />
-              <item name="almostrealism" type="462c0819:PsiDirectoryNode" />
               <item name="graph" type="462c0819:PsiDirectoryNode" />
             </path>
             <path>
@@ -321,24 +277,6 @@
               <item name="almostrealism" type="462c0819:PsiDirectoryNode" />
               <item name="graph" type="462c0819:PsiDirectoryNode" />
               <item name="io" type="462c0819:PsiDirectoryNode" />
-            </path>
-            <path>
-              <item name="common" type="b2602c69:ProjectViewProjectNode" />
-              <item name="common" type="462c0819:PsiDirectoryNode" />
-              <item name="src" type="462c0819:PsiDirectoryNode" />
-              <item name="almostrealism" type="462c0819:PsiDirectoryNode" />
-              <item name="io" type="462c0819:PsiDirectoryNode" />
-            </path>
-            <path>
-              <item name="common" type="b2602c69:ProjectViewProjectNode" />
-              <item name="common" type="462c0819:PsiDirectoryNode" />
-              <item name="world" type="462c0819:PsiDirectoryNode" />
-            </path>
-            <path>
-              <item name="common" type="b2602c69:ProjectViewProjectNode" />
-              <item name="common" type="462c0819:PsiDirectoryNode" />
-              <item name="world" type="462c0819:PsiDirectoryNode" />
-              <item name="almostrealism" type="462c0819:PsiDirectoryNode" />
             </path>
           </expand>
           <select />
@@ -353,6 +291,7 @@
     <property name="last_opened_file_path" value="$PROJECT_DIR$" />
     <property name="SearchEverywhereHistoryKey" value="&#9;FILE&#9;file:///Users/michael/Documents/common/world/org/almostrealism/color/ColorFutureAdapter.java&#10;ColorFut&#9;PSI&#9;JAVA://org.almostrealism.color.ColorFutureAdapter" />
     <property name="settings.editor.selected.configurable" value="preferences.sourceCode.Java" />
+    <property name="TF_FMT" value="false" />
   </component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
@@ -535,7 +474,7 @@
       <workItem from="1516909679633" duration="1857000" />
       <workItem from="1516919760535" duration="1589000" />
       <workItem from="1516923715250" duration="2223000" />
-      <workItem from="1517010781468" duration="8175000" />
+      <workItem from="1517010781468" duration="9267000" />
     </task>
     <task id="LOCAL-00001" summary="Deployment.">
       <created>1506657014443</created>
@@ -579,11 +518,18 @@
       <option name="project" value="LOCAL" />
       <updated>1508135962511</updated>
     </task>
-    <option name="localTasksCounter" value="7" />
+    <task id="LOCAL-00007" summary="Some improvements to chem package (towards spectrogram support). Introduced ResourceTranscoder and migrated some file decoding from SpatialData to individual transcoders.">
+      <created>1517038350905</created>
+      <option name="number" value="00007" />
+      <option name="presentableId" value="LOCAL-00007" />
+      <option name="project" value="LOCAL" />
+      <updated>1517038350905</updated>
+    </task>
+    <option name="localTasksCounter" value="8" />
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="23961000" />
+    <option name="totallyTimeSpent" value="25053000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="0" y="0" width="1280" height="800" extended-state="0" />
@@ -630,7 +576,8 @@
     <MESSAGE value="Minor changes to the authentication system." />
     <MESSAGE value="Transparent interface migrated over from photon field." />
     <MESSAGE value="Migrated SphericalProbabilityDistribution over from photon field into Common." />
-    <option name="LAST_COMMIT_MESSAGE" value="Migrated SphericalProbabilityDistribution over from photon field into Common." />
+    <MESSAGE value="Some improvements to chem package (towards spectrogram support). Introduced ResourceTranscoder and migrated some file decoding from SpatialData to individual transcoders." />
+    <option name="LAST_COMMIT_MESSAGE" value="Some improvements to chem package (towards spectrogram support). Introduced ResourceTranscoder and migrated some file decoding from SpatialData to individual transcoders." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager />
@@ -1068,7 +1015,7 @@
         <state relative-caret-position="240">
           <caret line="16" column="0" lean-forward="false" selection-start-line="16" selection-start-column="0" selection-end-line="16" selection-end-column="0" />
           <folding>
-            <element signature="e#0#1115#0" expanded="true" />
+            <element signature="e#0#1115#0" expanded="false" />
           </folding>
         </state>
       </provider>
@@ -1078,13 +1025,13 @@
         <state relative-caret-position="603">
           <caret line="49" column="0" lean-forward="true" selection-start-line="49" selection-start-column="0" selection-end-line="49" selection-end-column="0" />
           <folding>
-            <element signature="e#0#1769#0" expanded="true" />
-            <element signature="e#880#881#0" expanded="true" />
-            <element signature="e#908#909#0" expanded="true" />
-            <element signature="e#948#949#0" expanded="true" />
-            <element signature="e#1017#1018#0" expanded="true" />
-            <element signature="e#1086#1087#0" expanded="true" />
-            <element signature="e#1141#1142#0" expanded="true" />
+            <element signature="e#0#1769#0" expanded="false" />
+            <element signature="e#880#881#0" expanded="false" />
+            <element signature="e#908#909#0" expanded="false" />
+            <element signature="e#948#949#0" expanded="false" />
+            <element signature="e#1017#1018#0" expanded="false" />
+            <element signature="e#1086#1087#0" expanded="false" />
+            <element signature="e#1141#1142#0" expanded="false" />
           </folding>
         </state>
       </provider>
@@ -1112,46 +1059,6 @@
         <state relative-caret-position="0">
           <caret line="0" column="1" lean-forward="false" selection-start-line="0" selection-start-column="1" selection-end-line="15" selection-end-column="0" />
           <folding />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/src/org/almostrealism/graph/io/ObjResource.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="560">
-          <caret line="64" column="5" lean-forward="true" selection-start-line="11" selection-start-column="24" selection-end-line="64" selection-end-column="5" />
-          <folding>
-            <element signature="imports" expanded="true" />
-            <element signature="e#665#666#0" expanded="true" />
-            <element signature="e#683#684#0" expanded="true" />
-            <element signature="e#772#773#0" expanded="true" />
-            <element signature="e#790#791#0" expanded="true" />
-            <element signature="e#841#842#0" expanded="true" />
-            <element signature="e#859#860#0" expanded="true" />
-            <element signature="e#910#911#0" expanded="true" />
-            <element signature="e#928#929#0" expanded="true" />
-            <element signature="e#1085#1086#0" expanded="true" />
-            <element signature="e#1105#1106#0" expanded="true" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/src/org/almostrealism/graph/io/PlyResource.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="560">
-          <caret line="64" column="5" lean-forward="false" selection-start-line="64" selection-start-column="5" selection-end-line="64" selection-end-column="5" />
-          <folding>
-            <element signature="imports" expanded="true" />
-            <element signature="e#665#666#0" expanded="true" />
-            <element signature="e#683#684#0" expanded="true" />
-            <element signature="e#772#773#0" expanded="true" />
-            <element signature="e#790#791#0" expanded="true" />
-            <element signature="e#841#842#0" expanded="true" />
-            <element signature="e#859#860#0" expanded="true" />
-            <element signature="e#910#911#0" expanded="true" />
-            <element signature="e#928#929#0" expanded="true" />
-            <element signature="e#1085#1086#0" expanded="true" />
-            <element signature="e#1105#1106#0" expanded="true" />
-          </folding>
         </state>
       </provider>
     </entry>
@@ -1186,7 +1093,7 @@
         <state relative-caret-position="330">
           <caret line="22" column="1" lean-forward="true" selection-start-line="21" selection-start-column="43" selection-end-line="22" selection-end-column="1" />
           <folding>
-            <element signature="e#0#782#0" expanded="true" />
+            <element signature="e#0#782#0" expanded="false" />
           </folding>
         </state>
       </provider>
@@ -1207,10 +1114,30 @@
         </state>
       </provider>
     </entry>
+    <entry file="file://$PROJECT_DIR$/src/org/almostrealism/graph/io/ObjResource.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="560">
+          <caret line="64" column="5" lean-forward="true" selection-start-line="11" selection-start-column="24" selection-end-line="64" selection-end-column="5" />
+          <folding>
+            <element signature="imports" expanded="true" />
+            <element signature="e#665#666#0" expanded="true" />
+            <element signature="e#683#684#0" expanded="true" />
+            <element signature="e#772#773#0" expanded="true" />
+            <element signature="e#790#791#0" expanded="true" />
+            <element signature="e#841#842#0" expanded="true" />
+            <element signature="e#859#860#0" expanded="true" />
+            <element signature="e#910#911#0" expanded="true" />
+            <element signature="e#928#929#0" expanded="true" />
+            <element signature="e#1085#1086#0" expanded="true" />
+            <element signature="e#1105#1106#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
     <entry file="file://$PROJECT_DIR$/src/org/almostrealism/graph/io/GtsResource.java">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="490">
-          <caret line="79" column="0" lean-forward="true" selection-start-line="79" selection-start-column="0" selection-end-line="79" selection-end-column="0" />
+        <state relative-caret-position="313">
+          <caret line="70" column="0" lean-forward="true" selection-start-line="70" selection-start-column="0" selection-end-line="155" selection-end-column="5" />
           <folding>
             <element signature="imports" expanded="true" />
             <element signature="e#783#784#0" expanded="true" />
@@ -1227,10 +1154,30 @@
         </state>
       </provider>
     </entry>
+    <entry file="file://$PROJECT_DIR$/src/org/almostrealism/graph/io/PlyResource.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="-1120">
+          <caret line="14" column="0" lean-forward="true" selection-start-line="14" selection-start-column="0" selection-end-line="14" selection-end-column="0" />
+          <folding>
+            <element signature="imports" expanded="true" />
+            <element signature="e#673#674#0" expanded="true" />
+            <element signature="e#691#692#0" expanded="true" />
+            <element signature="e#780#781#0" expanded="true" />
+            <element signature="e#798#799#0" expanded="true" />
+            <element signature="e#849#850#0" expanded="true" />
+            <element signature="e#867#868#0" expanded="true" />
+            <element signature="e#918#919#0" expanded="true" />
+            <element signature="e#936#937#0" expanded="true" />
+            <element signature="e#1093#1094#0" expanded="true" />
+            <element signature="e#1113#1114#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
     <entry file="file://$PROJECT_DIR$/src/org/almostrealism/io/SpatialData.java">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="-177">
-          <caret line="283" column="13" lean-forward="true" selection-start-line="283" selection-start-column="13" selection-end-line="283" selection-end-column="13" />
+        <state relative-caret-position="572">
+          <caret line="298" column="0" lean-forward="true" selection-start-line="298" selection-start-column="0" selection-end-line="298" selection-end-column="0" />
           <folding />
         </state>
       </provider>

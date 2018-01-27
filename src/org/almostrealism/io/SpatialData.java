@@ -33,6 +33,7 @@ import org.almostrealism.color.ShaderContext;
 import org.almostrealism.graph.Mesh;
 import org.almostrealism.graph.Triangle;
 import org.almostrealism.graph.io.GtsResource;
+import org.almostrealism.graph.io.PlyResource;
 import org.almostrealism.space.AbstractSurface;
 import org.almostrealism.space.Gradient;
 import org.almostrealism.space.Scene;
@@ -289,59 +290,6 @@ public class SpatialData {
 			if (s instanceof Mesh) reader.setInitialMesh((Mesh) s);
 			return new Scene(new ShadableSurface[] { reader.transcode(r).getMesh() });
 		} else if (encoding == PLYEncoding) {
-			Mesh m = new Mesh();
-			if (s != null && s instanceof Mesh) {
-				System.out.println(m);
-				m = (Mesh) s;
-			}
-
-			BufferedReader in = new BufferedReader(new InputStreamReader(fileIn));
-
-			int lineCount = 0;
-			String line = null;
-
-			int pointCount = 0, triangleCount = 0;
-
-			w: while (true) {
-				line = in.readLine();
-				lineCount++;
-				if (line == null) return null;
-
-				if (line.startsWith("element")) {
-					if (line.indexOf("vertex") > 0)
-						pointCount = Integer.parseInt(line.substring(line.lastIndexOf(" ") + 1));
-					if (line.indexOf("face") > 0)
-						triangleCount = Integer.parseInt(line.substring(line.lastIndexOf(" ") + 1));
-				} else if (line.startsWith("end_header")) {
-					break w;
-				}
-			}
-
-			i: for (int i = 0; i < pointCount; ) {
-				line = in.readLine();
-				lineCount++;
-				if (line == null) return null;
-				if (line.startsWith("#")) continue i;
-
-				double d[] = FileDecoder.parseDoubles(line);
-				m.addVector(new Vector(d[0], d[1], d[2]));
-
-				i++;
-			}
-
-			i: for (int i = 0; i < triangleCount; ) {
-				line = in.readLine();
-				lineCount++;
-				if (line == null) return null;
-				if (line.startsWith("#")) continue i;
-
-				double d[] = FileDecoder.parseDoubles(line);
-
-				m.addTriangle((int) d[1], (int) d[2], (int) d[3]);
-
-				i++;
-			}
-
 			if (ui == true) {
 				System.out.println("FileDecoder: UI mode no longer supported.");
 				//				AbstractSurfaceUI sr[] = {SurfaceUIFactory.createSurfaceUI(m)};
@@ -349,7 +297,11 @@ public class SpatialData {
 				//				return new Scene(sr);
 			}
 
-			return new Scene(new ShadableSurface[] {m});
+			PlyResource r = new PlyResource();
+			r.load(new IOStreams(fileIn));
+			PlyResource.MeshReader reader = new PlyResource.MeshReader();
+			if (s instanceof Mesh) reader.setInitialMesh((Mesh) s);
+			return new Scene(new ShadableSurface[] { reader.transcode(r).getMesh() });
 		} else {
 			return null;
 		}
