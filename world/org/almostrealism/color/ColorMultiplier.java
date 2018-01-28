@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 Michael Murray
+ * Copyright 2018 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,14 +16,14 @@
 
 package org.almostrealism.color;
 
-import org.almostrealism.algebra.Triple;
 import org.almostrealism.uml.Function;
 
 /**
  * {@link ColorMultiplier} is a {@link ColorProducer} which evaluates another.
- * 
+ *
  * @author  Michael Murray
  */
+@Deprecated // Replaced with ColorProduct
 @Function
 public class ColorMultiplier extends ColorProducerAdapter {
 	private ColorProducer color;
@@ -44,5 +44,11 @@ public class ColorMultiplier extends ColorProducerAdapter {
 		return new RGB(color.evaluate(args).getRed() * multiplier.evaluate(args).getRed(),
 				color.evaluate(args).getGreen() * multiplier.evaluate(args).getGreen(),
 				color.evaluate(args).getBlue() * multiplier.evaluate(args).getBlue());
+	}
+
+	@Override
+	public void compact() {
+		color.compact();
+		multiplier.compact();
 	}
 }

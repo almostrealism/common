@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 Michael Murray
+ * Copyright 2018 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -186,7 +186,7 @@ public class RGB implements Externalizable, Cloneable, ColorProducer, Triple {
 		this.colorDepth = model;
 	}
 	
-	private double adjust(double c, double f){
+	private double adjust(double c, double f) {
 		return c * f;
 //		if (c == 0.0)
 //			return 0;
@@ -429,11 +429,18 @@ public class RGB implements Externalizable, Cloneable, ColorProducer, Triple {
 	/**
 	 * @return  this.
 	 */
-	public RGB evaluate(Object args[]) { return (RGB)this.clone(); }
+	public RGB evaluate(Object args[]) { return (RGB) this.clone(); }
+
+	public void compact() {
+		// TODO  RGB should optionally accept any triple producer.
+		//       If this is the source of data, this compact method
+		//       should delegate to it.
+	}
 	
 	/**
-	 * Returns true if the color represented by this RGB object is the same as the color represented by the specified RGB object,
-	 * false otherwise. If o is not an RGB object, false is returned.
+	 * Returns true if the color represented by this RGB object is the same as the color
+	 * represented by the specified RGB object, false otherwise. If o is not an RGB object,
+	 * false is returned.
 	 */
 	public boolean equals(Object o) {
 		if (o instanceof RGB)
@@ -443,23 +450,20 @@ public class RGB implements Externalizable, Cloneable, ColorProducer, Triple {
 	}
 	
 	/**
-	 * Returns true if the color represented by this RGB object is the same as the color represented by the specified RGB object,
-	 * false otherwise.
+	 * Returns true if the color represented by this RGB object is the same as the color
+	 * represented by the specified RGB object, false otherwise.
 	 */
 	public boolean equals(RGB rgb) {
-		if (this.getRed() != rgb.getRed())
-			return false;
-		else if (this.getGreen() != rgb.getGreen())
-			return false;
-		else if (this.getBlue() != rgb.getBlue())
-			return false;
-		else
-			return true;
+		// TODO  An error threshold should be used to account for the
+		//       fact that floating point values are often not identical
+		//       but may produce indistinguishable colors
+		if (this.getRed() != rgb.getRed()) return false;
+		if (this.getGreen() != rgb.getGreen()) return false;
+		if (this.getBlue() != rgb.getBlue()) return false;
+		return true;
 	}
 	
-	/**
-	  Returns an integer hash code for this RGB object.
-	*/
+	/** Returns an integer hash code for this RGB object. */
 	public int hashCode() {
 		double d = this.data.length() * 1000;
 		return (int)d;

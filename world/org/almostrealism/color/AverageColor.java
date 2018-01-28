@@ -58,4 +58,9 @@ public class AverageColor extends ColorProducerAdapter {
 		
 		return c;
 	}
+
+	public void compact() {
+		// TODO  AverageColor should be modified to accept ColorProducers instead
+		//       of RGB values and this method should delegate to them
+	}
 }

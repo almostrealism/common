@@ -29,6 +29,7 @@ import org.almostrealism.util.Producer;
  * 
  * @author Mike Murray
  */
+// TODO  ColorProducers should be allowed to be specified in place of RGB values.
 public class StripeTexture implements Texture, Editable {
   private static final String propNames[] = {"Stripe Width", "Smooth", "Axis",
   											"First Color", "Second Color",
@@ -57,21 +58,25 @@ public class StripeTexture implements Texture, Editable {
 		this.setPropertyValues(props);
 	}
 	
-	/**
-	 * Constructs a StripeTexture object using the specified properties.
-	 */
+	/** Constructs a StripeTexture object using the specified properties. */
 	public StripeTexture(Object props[]) {
 		this.setPropertyValues(props);
 	}
+
+	/**
+	 * This method does nothing, as {@link StripeTexture} depends on static {@link RGB} values.
+	 */
+	// TODO  When ColorProducers are accepted in place of RGB values,
+	//       this method will need to be implemented so that it delegates
+	//       to the dependent producers
+	public void compact() { }
 	
 	/**
-	 * @return  The color of the texture represented by this StripeTexture object at the specified point as an RGB object.
+	 * @return  The color of the texture represented by this {@link StripeTexture}
+	 *          object at the specified point as an RGB object.
 	 */
 	public RGB getColorAt(Vector point) {
-		if (this.props == null)
-			return null;
-		else
-			return this.getColorAt(point, this.props);
+		return this.props == null ? null : this.getColorAt(point, this.props);
 	}
 	
 	/**
@@ -117,7 +122,7 @@ public class StripeTexture implements Texture, Editable {
 	}
 	
 	/**
-	 * @param args[] {point, arg0, arg1, ...}
+	 * @param args {point, arg0, arg1, ...}
 	 * @throws IllegalArgumentException  If args does not contain the correct object types.
 	 * 
 	 * @see org.almostrealism.color.ColorProducer#evaluate(java.lang.Object[])

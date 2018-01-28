@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 Michael Murray
+ * Copyright 2018 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.almostrealism.color;
 
 import java.util.concurrent.ExecutionException;
@@ -44,5 +45,20 @@ public class RealizableImage implements Producer<ColorProducer[][]> {
 		}
 		
 		return p;
+	}
+
+	/**
+	 * If this {@link RealizableImage} is backed by actual {@link ColorProducer}s,
+	 * {@link Producer#compact()} is called on each of them. If {@link Future}s
+	 * are being used instead, this method does nothing.
+	 */
+	public void compact() {
+		if (data == null) return;
+
+		for (int i = 0; i < data.length; i++) {
+			for (int j = 0; j < data[i].length; j++) {
+				data[i][j].compact();
+			}
+		}
 	}
 }

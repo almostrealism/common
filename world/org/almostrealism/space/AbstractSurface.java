@@ -567,6 +567,8 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 				
 				return colorAt;
 			}
+
+			public void compact() { }
 		};
 	}
 	

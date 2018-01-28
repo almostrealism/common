@@ -20,5 +20,5 @@ package org.almostrealism.graph;
  * @author  Michael Murray
  */
 public interface PathElement<V> {
-	public Iterable<PathElement<V>> next();
+	Iterable<PathElement<V>> next();
 }

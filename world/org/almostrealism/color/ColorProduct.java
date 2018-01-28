@@ -1,6 +1,8 @@
 package org.almostrealism.color;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 
@@ -25,5 +27,30 @@ public class ColorProduct extends ColorFutureAdapter {
 		}
 		
 		return rgb;
+	}
+
+	// TODO  Combine ColorProducts that are equal by converting to ColorPow
+	@Override
+	public void compact() {
+		super.compact();
+
+		List<Future<ColorProducer>> p = new ArrayList<>();
+		List<StaticColorProducer> replaced = new ArrayList<>();
+
+		for (ColorProducer c : getStaticColorProducers()) {
+			if (c instanceof ColorProduct) {
+				replaced.add(new StaticColorProducer(c));
+
+				for (Future<ColorProducer> cp : ((ColorProduct) c)) {
+					p.add(cp);
+				}
+			}
+		}
+
+		for (StaticColorProducer s : replaced) {
+			remove(replaced);
+		}
+
+		addAll(p);
 	}
 }

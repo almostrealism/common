@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 Michael Murray
+ * Copyright 2018 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -148,6 +148,12 @@ public class ImageTexture implements Texture, Editable {
   			System.err.println("ImageTexture: Pixel grabbing interrupted.");
   		}
   	}
+
+	/**
+	 * This method does nothing, as an {@link ImageTexture} depends only on
+	 * static pixel data.
+	 */
+	public void compact() { }
   	
   	/**
   	 * Returns the an RGB object representing the color of this ImageTexture object
@@ -214,7 +220,7 @@ public class ImageTexture implements Texture, Editable {
 	}
 	
 	/**
-	 * @param args[] {Double, Double, Double, Double}  X scale factor, Y scale factor, X offset, Y offset.
+	 * @param args {Double, Double, Double, Double}  X scale factor, Y scale factor, X offset, Y offset.
 	 * @throws IllegalArgumentException  If args does not contain the correct object types.
 	 * @throws NullPointerException  If pixel data is not loaded.
 	 * 
@@ -256,7 +262,7 @@ public class ImageTexture implements Texture, Editable {
 	}
 	
 	/**
-	 * @param args[] {Vector, Double, Double, Double, Double}  Point, X scale factor, Y scale factor, X offset, Y offset.
+	 * @param args {Vector, Double, Double, Double, Double}  Point, X scale factor, Y scale factor, X offset, Y offset.
 	 * @throws IllegalArgumentException  If args does not contain the correct object types.
 	 * 
 	 * @see org.almostrealism.color.ColorProducer#evaluate(java.lang.Object[])

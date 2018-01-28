@@ -52,4 +52,13 @@ public class RandomColorGenerator extends ColorProducerAdapter {
 		
 		return base;
 	}
+
+	/**
+	 * Delegates to {@link org.almostrealism.color.ColorProducer#compact()}
+	 * on the base color and offset color.
+	 */
+	public void compact() {
+		baseRGB.compact();
+		offsetRGB.compact();
+	}
 }
