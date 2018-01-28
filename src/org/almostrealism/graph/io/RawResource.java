@@ -3,68 +3,16 @@ package org.almostrealism.graph.io;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.Shader;
-import org.almostrealism.graph.Mesh;
-import org.almostrealism.graph.MeshResource;
 import org.almostrealism.space.SceneResource;
 import org.almostrealism.graph.Triangle;
 import org.almostrealism.io.*;
-import org.almostrealism.space.AbstractSurface;
 import org.almostrealism.space.Scene;
-import org.almostrealism.space.ShadableSurface;
 
 import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.InputStreamReader;
 
-public class RawResource implements Resource {
-
-
-	@Override
-	public void load(IOStreams io) throws IOException {
-
-	}
-
-	@Override
-	public void loadFromURI() throws IOException {
-
-	}
-
-	@Override
-	public void send(IOStreams io) throws IOException {
-
-	}
-
-	@Override
-	public void saveLocal(String file) throws IOException {
-
-	}
-
-	@Override
-	public String getURI() {
-		return null;
-	}
-
-	@Override
-	public void setURI(String uri) {
-
-	}
-
-	@Override
-	public Object getData() {
-		return null;
-	}
-
-	@Override
-	public InputStream getInputStream() {
-		return null;
-	}
-
-	@Override
-	public Permissions getPermissions() {
-		return null;
-	}
-
+public class RawResource extends UnicodeResource {
 	public static class SceneTranscoder implements ResourceTranscoder<SceneResource<Triangle>, RawResource> {
 		@Override
 		public RawResource transcode(SceneResource<Triangle> r) {
