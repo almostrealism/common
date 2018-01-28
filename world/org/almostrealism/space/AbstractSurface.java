@@ -463,7 +463,12 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 		if (this.shaders == null) this.shaders = new ShaderSet();
 		return this.shaders.add(shader);
 	}
-	
+
+	/**
+	 * @param set  New ShaderSet object to use for shading.
+	 */
+	public void setShaderSet(ShaderSet set) { setShaders(set); }
+
 	/**
 	 * Returns a {@link Set} that maintains the {@link Shader} objects stored by this AbstractSurface.
 	 */

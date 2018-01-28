@@ -131,6 +131,10 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 		this.k = this.p1.getY();
 		this.l = this.p1.getZ();
 	}
+
+	public void setVertices(Vector v[]) {
+		setVertices(v[0], v[1], v[2]);
+	}
 	
 	/**
 	 * @return  An array of Vector objects representing the vertices of this Triangle object.
