@@ -2,131 +2,10 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="">
+      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/world/org/almostrealism/physics/Electron.java" />
+      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/world/org/almostrealism/physics/Electrons.java" />
+      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/world/org/almostrealism/physics/Spin.java" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Actinium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Actinium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Alloy.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Alloy.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Aluminium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Aluminium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Americium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Americium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Antimony.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Antimony.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Argon.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Argon.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Arsenic.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Arsenic.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Astatine.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Astatine.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Atomic.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Atomic.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Barium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Barium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Berkelium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Berkelium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Beryllium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Beryllium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Bismuth.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Bismuth.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Bohrium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Bohrium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Boron.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Boron.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Bromine.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Bromine.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Cadmium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Cadmium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Calcium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Calcium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Californium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Californium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Carbon.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Carbon.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Cerium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Cerium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Cesium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Cesium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Chlorine.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Chlorine.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Chromium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Chromium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Cobalt.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Cobalt.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Copernicium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Copernicium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Copper.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Copper.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Curium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Curium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Darmstadtium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Darmstadtium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Dubnium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Dubnium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Dysprosium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Dysprosium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Einsteinium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Einsteinium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Erbium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Erbium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Europium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Europium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Fermium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Fermium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Flerovium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Flerovium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Fluorine.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Fluorine.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Francium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Francium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Gadolinium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Gadolinium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Gallium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Gallium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Germanium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Germanium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Gold.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Gold.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Hafnium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Hafnium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Hassium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Hassium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Helium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Helium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Holmium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Holmium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Hydrogen.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Hydrogen.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Indium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Indium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Iodine.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Iodine.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Iridium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Iridium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Iron.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Iron.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Krypton.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Krypton.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Lanthanum.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Lanthanum.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Lawrencium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Lawrencium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Lead.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Lead.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Lithium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Lithium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Livermorium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Livermorium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Lutetium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Lutetium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Magnesium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Magnesium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Manganese.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Manganese.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Meitnerium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Meitnerium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Mendelevium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Mendelevium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Mercury.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Mercury.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Molybdenum.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Molybdenum.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Moscovium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Moscovium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Neodymium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Neodymium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Neon.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Neon.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Neptunium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Neptunium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Nickel.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Nickel.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Nihonium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Nihonium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Niobium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Niobium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Nitrogen.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Nitrogen.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Nobelium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Nobelium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Oganesson.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Oganesson.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Osmium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Osmium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Oxygen.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Oxygen.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Palladium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Palladium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Phosphorus.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Phosphorus.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Platinum.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Platinum.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Plutonium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Plutonium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Polonium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Polonium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Potassium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Potassium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Praseodymium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Praseodymium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Promethium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Promethium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Protactinium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Protactinium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Radium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Radium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Radon.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Radon.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Rhenium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Rhenium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Rhodium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Rhodium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Roentgenium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Roentgenium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Rubidium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Rubidium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Ruthenium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Ruthenium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Rutherfordium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Rutherfordium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Samarium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Samarium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Scandium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Scandium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Seaborgium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Seaborgium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Selenium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Selenium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Silicon.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Silicon.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Silver.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Silver.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Sodium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Sodium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Strontium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Strontium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Sulfur.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Sulfur.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Tantalum.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Tantalum.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Technetium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Technetium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Tellurium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Tellurium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Tennessine.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Tennessine.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Terbium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Terbium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Thallium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Thallium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Thorium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Thorium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Thulium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Thulium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Tin.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Tin.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Titanium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Titanium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Tungsten.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Tungsten.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Uranium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Uranium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Vanadium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Vanadium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Xenon.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Xenon.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Ytterbium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Ytterbium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Yttrium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Yttrium.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Zinc.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Zinc.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Zirconium.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Zirconium.java" />
-      <change type="MOVED" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Orbital.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/physics/Orbital.java" />
-      <change type="MOVED" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Shell.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/physics/Shell.java" />
-      <change type="MOVED" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/SubShell.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/physics/SubShell.java" />
-      <change type="MOVED" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Atom.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/physics/Atom.java" />
     </list>
     <ignored path="$PROJECT_DIR$/target/" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -137,13 +16,36 @@
     <option name="LAST_RESOLUTION" value="IGNORE" />
   </component>
   <component name="FileEditorManager">
-    <leaf SIDE_TABS_SIZE_LIMIT_KEY="300" />
+    <leaf SIDE_TABS_SIZE_LIMIT_KEY="300">
+      <file leaf-file-name="Electron.java" pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/world/org/almostrealism/physics/Electron.java">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="120">
+              <caret line="8" column="0" lean-forward="false" selection-start-line="8" selection-start-column="0" selection-end-line="8" selection-end-column="0" />
+              <folding />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="Electrons.java" pinned="false" current-in-tab="true">
+        <entry file="file://$PROJECT_DIR$/world/org/almostrealism/physics/Electrons.java">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="195">
+              <caret line="13" column="39" lean-forward="true" selection-start-line="13" selection-start-column="39" selection-end-line="13" selection-end-column="39" />
+              <folding>
+                <element signature="e#554#555#0" expanded="true" />
+              </folding>
+            </state>
+          </provider>
+        </entry>
+      </file>
+    </leaf>
   </component>
   <component name="FileTemplateManagerImpl">
     <option name="RECENT_TEMPLATES">
       <list>
-        <option value="Enum" />
         <option value="Interface" />
+        <option value="Enum" />
         <option value="Class" />
       </list>
     </option>
@@ -204,6 +106,9 @@
         <option value="$PROJECT_DIR$/world/org/almostrealism/physics/SubShell.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/physics/Atom.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/chem/Actinium.java" />
+        <option value="$PROJECT_DIR$/world/org/almostrealism/physics/Spin.java" />
+        <option value="$PROJECT_DIR$/world/org/almostrealism/physics/Electron.java" />
+        <option value="$PROJECT_DIR$/world/org/almostrealism/physics/Electrons.java" />
       </list>
     </option>
   </component>
@@ -474,7 +379,7 @@
       <workItem from="1516909679633" duration="1857000" />
       <workItem from="1516919760535" duration="1589000" />
       <workItem from="1516923715250" duration="2223000" />
-      <workItem from="1517010781468" duration="16153000" />
+      <workItem from="1517010781468" duration="17566000" />
     </task>
     <task id="LOCAL-00001" summary="Deployment.">
       <created>1506657014443</created>
@@ -546,11 +451,18 @@
       <option name="project" value="LOCAL" />
       <updated>1517105011920</updated>
     </task>
-    <option name="localTasksCounter" value="11" />
+    <task id="LOCAL-00011" summary="Migrated electrodynamics classes and interfaces out of chem and into physics.">
+      <created>1517119303190</created>
+      <option name="number" value="00011" />
+      <option name="presentableId" value="LOCAL-00011" />
+      <option name="project" value="LOCAL" />
+      <updated>1517119303190</updated>
+    </task>
+    <option name="localTasksCounter" value="12" />
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="31939000" />
+    <option name="totallyTimeSpent" value="33352000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="0" y="0" width="1280" height="800" extended-state="0" />
@@ -601,7 +513,8 @@
     <MESSAGE value="Migrated Ply parsing to PlyResource.MeshReader." />
     <MESSAGE value="Migrated Raw file decoding into RawResource.SceneReader." />
     <MESSAGE value="Eliminated the need for persistence delegates when using XML encoding by establishing setters which did not previously exist." />
-    <option name="LAST_COMMIT_MESSAGE" value="Eliminated the need for persistence delegates when using XML encoding by establishing setters which did not previously exist." />
+    <MESSAGE value="Migrated electrodynamics classes and interfaces out of chem and into physics." />
+    <option name="LAST_COMMIT_MESSAGE" value="Migrated electrodynamics classes and interfaces out of chem and into physics." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -617,28 +530,6 @@
     </option>
   </component>
   <component name="editorHistoryManager">
-    <entry file="file://$PROJECT_DIR$/src/io/almostrealism/auth/AuthenticationServlet.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="98">
-          <caret line="23" column="7" lean-forward="true" selection-start-line="23" selection-start-column="7" selection-end-line="23" selection-end-column="7" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/pom.xml">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="203">
-          <caret line="76" column="0" lean-forward="false" selection-start-line="76" selection-start-column="0" selection-end-line="76" selection-end-column="0" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/src/org/almostrealism/util/EditableFactory.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="255">
-          <caret line="31" column="44" lean-forward="false" selection-start-line="31" selection-start-column="44" selection-end-line="31" selection-end-column="44" />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/src/org/almostrealism/stats/ProbabilityDistribution.java" />
     <entry file="file://$PROJECT_DIR$/src/org/almostrealism/stats/SphericalProbabilityDistribution.java" />
     <entry file="file://$PROJECT_DIR$/src/org/almostrealism/util/Factory.java">
@@ -1205,6 +1096,32 @@
         <state relative-caret-position="120">
           <caret line="27" column="56" lean-forward="false" selection-start-line="27" selection-start-column="56" selection-end-line="27" selection-end-column="56" />
           <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/physics/Spin.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="45">
+          <caret line="3" column="12" lean-forward="true" selection-start-line="3" selection-start-column="12" selection-end-line="3" selection-end-column="12" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/physics/Electron.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="120">
+          <caret line="8" column="0" lean-forward="false" selection-start-line="8" selection-start-column="0" selection-end-line="8" selection-end-column="0" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/physics/Electrons.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="195">
+          <caret line="13" column="39" lean-forward="true" selection-start-line="13" selection-start-column="39" selection-end-line="13" selection-end-column="39" />
+          <folding>
+            <element signature="e#554#555#0" expanded="true" />
+          </folding>
         </state>
       </provider>
     </entry>
