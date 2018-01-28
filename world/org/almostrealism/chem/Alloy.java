@@ -17,6 +17,7 @@
 package org.almostrealism.chem;
 
 import org.almostrealism.heredity.Gene;
+import org.almostrealism.physics.Atom;
 import org.almostrealism.util.ProbabilisticFactory;
 
 import java.util.List;

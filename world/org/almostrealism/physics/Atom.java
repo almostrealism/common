@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package org.almostrealism.chem;
+package org.almostrealism.physics;
 
 import java.util.List;
 
@@ -22,9 +22,10 @@ public class Atom {
 	private int protons;
 	private List<Shell> shells;
 	
-	protected Atom(int protons, List<Shell> shells) {
+	public Atom(int protons, List<Shell> shells) {
 		this.protons = protons;
 		this.shells = shells;
+		// TODO  Merge shells with the same energy level
 	}
 
 	public int getProtons() { return protons; }

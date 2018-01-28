@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package org.almostrealism.chem;
+package org.almostrealism.physics;
 
 import java.util.Arrays;
 import java.util.List;

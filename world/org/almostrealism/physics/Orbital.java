@@ -14,9 +14,7 @@
  * limitations under the License.
  */
 
-package org.almostrealism.chem;
-
-import org.almostrealism.physics.PhysicalConstants;
+package org.almostrealism.physics;
 
 public class Orbital implements PhysicalConstants {
 	private int principal, angular, magnetic;

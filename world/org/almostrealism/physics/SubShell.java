@@ -1,4 +1,4 @@
-package org.almostrealism.chem;
+package org.almostrealism.physics;
 
 public class SubShell {
 	private Orbital o;
