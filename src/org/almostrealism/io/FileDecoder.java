@@ -65,11 +65,6 @@ public class FileDecoder extends SpatialData {
 		return SpatialData.decodeScene(new FileInputStream(file), encoding, ui, listener, null);
 	}
 	
-	public static Scene decodeScene(Resource res, int encoding,
-									ExceptionListener listener) throws IOException {
-		return SpatialData.decodeScene(res.getInputStream(), encoding, false, listener, null);
-	}
-	
 	public static ShadableSurface decodeSurfaceFile(File file, int encoding,
 								boolean ui, ExceptionListener listener)
 								throws IOException {
@@ -119,6 +114,8 @@ public class FileDecoder extends SpatialData {
 	 * Parses a series of double values separated by spaces and returnes an array containing the values.
 	 * 
 	 * @throws NumberFormatException  If a number is not correctly formatted.
+	 * 
+	 * TODO  Move this method to the graph.io package
 	 */
 	public static double[] parseDoubles(String s) {
 		java.util.Vector values = new java.util.Vector();
