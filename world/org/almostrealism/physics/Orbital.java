@@ -16,7 +16,33 @@
 
 package org.almostrealism.physics;
 
-public class Orbital implements PhysicalConstants {
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.TreeSet;
+
+public class Orbital implements Comparable<Orbital>, PhysicalConstants {
+	private static TreeSet<Orbital> all = new TreeSet<>();
+
+	static {
+		all.addAll(Arrays.asList(s1(), s2(), s3(), s4(), s5(), s6(), s7()));
+		all.addAll(Arrays.asList(p2x(), p2y(), p2z()));
+		all.addAll(Arrays.asList(p3x(), p3y(), p3z()));
+		all.addAll(Arrays.asList(p4x(), p4y(), p4z()));
+		all.addAll(Arrays.asList(p5x(), p5y(), p5z()));
+		all.addAll(Arrays.asList(p6x(), p6y(), p6z()));
+		all.addAll(Arrays.asList(p7x(), p7y(), p7z()));
+		all.addAll(Arrays.asList(d3a(), d3b(), d3c(), d3d(), d3e()));
+		all.addAll(Arrays.asList(d4a(), d4b(), d4c(), d4d(), d4e()));
+		all.addAll(Arrays.asList(d5a(), d5b(), d5c(), d5d(), d5e()));
+		all.addAll(Arrays.asList(d6a(), d6b(), d6c(), d6d(), d6e()));
+		all.addAll(Arrays.asList(d7a(), d7b(), d7c(), d7d(), d7e()));
+		all.addAll(Arrays.asList(f4a(), f4b(), f4c(), f4d(), f4e(), f4f(), f4g()));
+		all.addAll(Arrays.asList(f5a(), f5b(), f5c(), f5d(), f5e(), f5f(), f5g()));
+		all.addAll(Arrays.asList(f6a(), f6b(), f6c(), f6d(), f6e(), f6f(), f6g()));
+		all.addAll(Arrays.asList(f7a(), f7b(), f7c(), f7d(), f7e(), f7f(), f7g()));
+	}
+
 	private int principal, angular, magnetic;
 	
 	public Orbital(int principal, int angular, int magnetic) {
@@ -34,7 +60,20 @@ public class Orbital implements PhysicalConstants {
 	public double getEnergy(int protons) {
 		return HCR * protons * protons * principal * principal;
 	}
-	
+
+	protected List<Orbital> getHigherOrbitals() {
+		double energy = this.getEnergy(1);
+		List<Orbital> l = new ArrayList<>();
+
+		for (Orbital o : all) {
+			if (o.getEnergy(1) > energy) {
+				l.add(o);
+			}
+		}
+
+		return l;
+	}
+
 	public boolean equals(Object o) {
 		if (o instanceof Orbital == false) return false;
 		Orbital or = (Orbital) o;
@@ -42,6 +81,11 @@ public class Orbital implements PhysicalConstants {
 	}
 	
 	public int hashCode() { return principal; }
+
+	@Override
+	public int compareTo(Orbital o) {
+		return (int) (10000 * (this.getEnergy(1) - o.getEnergy(1)));
+	}
 	
 	public static Orbital s1() { return new Orbital(1, 0, 0); }
 	public static Orbital s2() { return new Orbital(2, 0, 0); }

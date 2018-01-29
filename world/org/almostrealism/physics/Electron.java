@@ -16,13 +16,39 @@
 
 package org.almostrealism.physics;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class Electron {
 	private Spin s;
 	private int excitation;
 	private double excitationEnergyLevels[];
 
-	protected Electron(Spin s, Iterable<Orbital> excitationOptions) {
+	/** Create a free electron, not a member of any Atom. */
+	public Electron(Spin s) {
+		this(s, null, 0);
+	}
 
+	/**
+	 * Construct an electron that is a member of an atom with the
+	 * specified number of protons.
+	 */
+	protected Electron(Spin s, Iterable<Orbital> excitationOptions, int protons) {
+		this.s = s;
+
+		if (excitationOptions !=  null && protons > 0) {
+			List<Double> e = new ArrayList<>();
+			for (Orbital o : excitationOptions) {
+				e.add(o.getEnergy(protons));
+			}
+
+			excitationEnergyLevels = new double[e.size()];
+			int i = 0;
+			excitationEnergyLevels[i++] = 0; // Ground state
+			for (Double d : e) excitationEnergyLevels[i++] = d;
+		} else {
+			// Include one excitation energy?
+		}
 	}
 
 	public int getExcitation() { return excitation; }

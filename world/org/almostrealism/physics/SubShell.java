@@ -11,4 +11,16 @@ public class SubShell {
 	}
 	
 	public Orbital getOrbital() { return o; }
+
+	public Electron getElectron(Spin s, int protons) {
+		switch (s) {
+			case Up:
+				return e >= 1 ? new Electron(s, o.getHigherOrbitals(), protons) : null;
+
+			case Down:
+				return e >= 2 ? new Electron(s, o.getHigherOrbitals(), protons) : null;
+		}
+
+		return null;
+	}
 }

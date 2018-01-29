@@ -16,6 +16,7 @@
 
 package org.almostrealism.physics;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -45,6 +46,22 @@ public class Shell {
 	}
 
 	public Iterable<SubShell> subShells() { return Arrays.asList(s); }
+
+	/**
+	 * A new {@link Electrons} instance is returned every time.
+	 */
+	public Electrons getElectrons(int protons) {
+		List<Electron> e = new ArrayList<>();
+
+		for (SubShell s : subShells()) {
+			Electron up = s.getElectron(Spin.Up, protons);
+			Electron down = s.getElectron(Spin.Down, protons);
+			if (up != null) e.add(up);
+			if (down != null) e.add(down);
+		}
+
+		return new Electrons(e.toArray(new Electron[0]));
+	}
 	
 	public static Shell first(int s) {
 		return s1(s);

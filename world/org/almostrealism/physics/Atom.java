@@ -16,6 +16,9 @@
 
 package org.almostrealism.physics;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
 
 public class Atom {
@@ -24,8 +27,31 @@ public class Atom {
 	
 	public Atom(int protons, List<Shell> shells) {
 		this.protons = protons;
-		this.shells = shells;
-		// TODO  Merge shells with the same energy level
+
+		List<Shell> unmerged = new ArrayList<>();
+		unmerged.addAll(shells);
+		List<Shell> merged = new ArrayList<>();
+
+		while (unmerged.size() > 0) {
+			Shell s = unmerged.get(0);
+
+			Iterator<Shell> itr = unmerged.iterator();
+
+			s: while (itr.hasNext()) {
+				Shell sh = itr.next();
+
+				if (s == sh) {
+					itr.remove();
+				} else if (s.getEnergyLevel() == sh.getEnergyLevel()) {
+					s.merge(sh);
+					itr.remove();
+				}
+			}
+
+			merged.add(s);
+		}
+
+		this.shells = Collections.unmodifiableList(merged);
 	}
 
 	public int getProtons() { return protons; }

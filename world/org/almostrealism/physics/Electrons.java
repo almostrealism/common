@@ -17,8 +17,12 @@
 package org.almostrealism.physics;
 
 import org.almostrealism.algebra.Tensor;
+import org.almostrealism.bean.Validity;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Hashtable;
+import java.util.List;
 
 public class Electrons {
 	/**
@@ -32,20 +36,78 @@ public class Electrons {
 	private Electron e[];
 
 	private Tensor<Double> absorptionEnergies;
+	private Hashtable<ExcitationConfiguration, Double> configurationMap;
+
+	private List<ExcitationConfiguration> configurations[];
+	private double energies[];
+
+	private ExcitationConfiguration excited;
 
 	protected Electrons(Electron e[]) {
 		this.e = e;
 
 		this.absorptionEnergies = new Tensor<>();
+		this.configurationMap = new Hashtable<>();
 		refreshAbsorptionEnergies();
+
+		// TODO  If any pair of absorption energy categories
+		//       is separated by less than the spectralBandwidth
+		//       an exception should be thrown or a special
+		//       case should be introduced
 	}
 
-	public synchronized boolean absorb(double eV) { return false; }
+	public synchronized boolean absorb(double eV) {
+		if (excited != null)
+			throw new IllegalStateException("This set of electrons is already excited and cannot absorb another photon");
 
-	public synchronized double emit() { return 0.0; }
+		ExcitationConfiguration c = random(eV);
+		if (c == null) return false;
+
+		this.excited = c;
+		c.apply(e);
+		return true;
+	}
+
+	// TODO  This needs to support the possibility of multiple emissions
+	//       where the sum of them is equal to the total excitation energy
+	public synchronized double emit() {
+		if (excited == null) return 0.0;
+
+		double d = this.configurationMap.get(excited);
+		this.ground();
+		return d;
+	}
+
+	protected ExcitationConfiguration random(double eV) {
+		List<ExcitationConfiguration> c = restrict(eV);
+		if (c == null) return null;
+		if (c.size() == 1) return c.get(0);
+		return c.get((int) (StrictMath.random() * (c.size() - 1)));
+	}
+
+	protected List<ExcitationConfiguration> restrict(double eV) {
+		for (int i = 0; i < configurations.length; i++) {
+			if (Math.abs(energies[i] - eV) < spectralBandwidth) {
+				return configurations[i];
+			}
+		}
+
+		return null;
+	}
+
+	protected void ground() {
+		for (Electron el : e) {
+			el.setExcitation(0);
+		}
+
+		this.excited = null;
+	}
 
 	protected synchronized void refreshAbsorptionEnergies() {
 		int cursor[] = new int[e.length];
+
+		List<List<ExcitationConfiguration>> cl = new ArrayList<>();
+		List<Double> el = new ArrayList<>();
 
 		w: while (true) {
 			double energy = 0;
@@ -56,8 +118,23 @@ public class Electrons {
 			}
 
 			this.absorptionEnergies.insert(energy, cursor);
+			ExcitationConfiguration c = new ExcitationConfiguration(clone(cursor));
 
-			System.out.println(Arrays.toString(cursor) + ": " + energy);
+			if (c.isValid()) {
+				System.out.println(c + ": " + energy);
+
+				this.configurationMap.put(c, energy);
+
+				int l = el.indexOf(energy);
+				if (l < 0) {
+					el.add(energy);
+					List<ExcitationConfiguration> al = new ArrayList<>();
+					al.add(c);
+					cl.add(al);
+				} else {
+					cl.get(l).add(c);
+				}
+			}
 
 			// Move to the next permutation of excitation levels
 			boolean addOne = true;
@@ -82,8 +159,40 @@ public class Electrons {
 		}
 
 		// Restore ground state
-		for (int i = 0; i < e.length; i++) {
-			e[i].setExcitation(0);
+		ground();
+
+		this.configurations = cl.toArray(new List[0]);
+		this.energies = new double[el.size()];
+		for (int i = 0; i < el.size(); i++) energies[i] = el.get(i);
+	}
+
+	private int[] clone(int c[]) {
+		int d[] = new int[c.length];
+		System.arraycopy(c, 0, d, 0, c.length);
+		return d;
+	}
+
+	protected class ExcitationConfiguration implements Validity {
+		private int cursor[];
+
+		public ExcitationConfiguration(int cursor[]) {
+			this.cursor = cursor;
+		}
+
+		public void apply(Electron e[]) {
+			for (int i = 0; i < cursor.length; i++) {
+				e[i].setExcitation(cursor[i]);
+			}
+		}
+
+		public boolean isValid() {
+			// TODO  If two electrons of the same spin occupy the same orbital
+			//       in this configuration, return false
+			return true;
+		}
+
+		public String toString() {
+			return "ExcitationConfiguration" + Arrays.toString(cursor);
 		}
 	}
 }
