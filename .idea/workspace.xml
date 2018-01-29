@@ -3,12 +3,7 @@
   <component name="ChangeListManager">
     <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="">
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/physics/Atom.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/physics/Atom.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/physics/Electron.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/physics/Electron.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/physics/Electrons.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/physics/Electrons.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/physics/Orbital.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/physics/Orbital.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/physics/Shell.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/physics/Shell.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/physics/SubShell.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/physics/SubShell.java" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/pom.xml" afterPath="$PROJECT_DIR$/pom.xml" />
     </list>
     <ignored path="$PROJECT_DIR$/target/" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -32,11 +27,11 @@
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="Electrons.java" pinned="false" current-in-tab="true">
+      <file leaf-file-name="Electrons.java" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/world/org/almostrealism/physics/Electrons.java">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="849">
-              <caret line="71" column="74" lean-forward="false" selection-start-line="71" selection-start-column="74" selection-end-line="71" selection-end-column="74" />
+            <state relative-caret-position="564">
+              <caret line="52" column="46" lean-forward="false" selection-start-line="52" selection-start-column="46" selection-end-line="52" selection-end-column="46" />
               <folding>
                 <element signature="e#0#5329#0" expanded="true" />
                 <element signature="imports" expanded="true" />
@@ -45,6 +40,16 @@
                 <element signature="e#5255#5256#0" expanded="true" />
                 <element signature="e#5322#5323#0" expanded="true" />
               </folding>
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="pom.xml" pinned="false" current-in-tab="true">
+        <entry file="file://$PROJECT_DIR$/pom.xml">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="120">
+              <caret line="8" column="19" lean-forward="false" selection-start-line="8" selection-start-column="19" selection-end-line="8" selection-end-column="19" />
+              <folding />
             </state>
           </provider>
         </entry>
@@ -88,7 +93,6 @@
   <component name="IdeDocumentHistory">
     <option name="CHANGED_PATHS">
       <list>
-        <option value="$PROJECT_DIR$/world/org/almostrealism/chem/Antimony.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/chem/Substance.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/chem/Molecule.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/chem/Atomic.java" />
@@ -139,6 +143,7 @@
         <option value="$PROJECT_DIR$/world/org/almostrealism/physics/Shell.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/physics/Atom.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/physics/Electrons.java" />
+        <option value="$PROJECT_DIR$/pom.xml" />
       </list>
     </option>
   </component>
@@ -407,7 +412,7 @@
       <workItem from="1516909679633" duration="1857000" />
       <workItem from="1516919760535" duration="1589000" />
       <workItem from="1516923715250" duration="2223000" />
-      <workItem from="1517010781468" duration="35147000" />
+      <workItem from="1517010781468" duration="35323000" />
     </task>
     <task id="LOCAL-00001" summary="Deployment.">
       <created>1506657014443</created>
@@ -507,11 +512,18 @@
       <option name="project" value="LOCAL" />
       <updated>1517142556719</updated>
     </task>
-    <option name="localTasksCounter" value="15" />
+    <task id="LOCAL-00015" summary="This is version 0.3.">
+      <created>1517187267809</created>
+      <option name="number" value="00015" />
+      <option name="presentableId" value="LOCAL-00015" />
+      <option name="project" value="LOCAL" />
+      <updated>1517187267809</updated>
+    </task>
+    <option name="localTasksCounter" value="16" />
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="50933000" />
+    <option name="totallyTimeSpent" value="51109000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="0" y="0" width="1280" height="800" extended-state="0" />
@@ -525,7 +537,7 @@
       <window_info id="Maven Projects" active="false" anchor="right" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.32956383" sideWeight="0.5" order="4" side_tool="false" content_ui="tabs" />
       <window_info id="Version Control" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.3287483" sideWeight="0.5" order="11" side_tool="false" content_ui="tabs" />
       <window_info id="Run" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="2" side_tool="false" content_ui="tabs" />
-      <window_info id="Terminal" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.32462174" sideWeight="0.5" order="10" side_tool="false" content_ui="tabs" />
+      <window_info id="Terminal" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.32462174" sideWeight="0.5" order="10" side_tool="false" content_ui="tabs" />
       <window_info id="Capture Tool" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="2" side_tool="false" content_ui="tabs" />
       <window_info id="Designer" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="3" side_tool="false" content_ui="tabs" />
       <window_info id="Project" active="true" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.2625202" sideWeight="0.5" order="0" side_tool="false" content_ui="combo" />
@@ -566,7 +578,8 @@
     <MESSAGE value="Introduced Electron and Spin which together describe an electron and all potential excitation energy levels. Electrons allows Electron instances to be grouped together so that excitation energy levels for a whole valence group can be calculated together." />
     <MESSAGE value="Compute a Tensor of potential absorption energies for a set of electrons. Not all of these are valid, as some combinations may result in two electrons of the same spin occupying the same subshell." />
     <MESSAGE value="Introduced compaction for producers. This allows the depth of a producer tree to be reduced by merging together producers, especially those that are associative or distributive." />
-    <option name="LAST_COMMIT_MESSAGE" value="Introduced compaction for producers. This allows the depth of a producer tree to be reduced by merging together producers, especially those that are associative or distributive." />
+    <MESSAGE value="This is version 0.3." />
+    <option name="LAST_COMMIT_MESSAGE" value="This is version 0.3." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -582,22 +595,6 @@
     </option>
   </component>
   <component name="editorHistoryManager">
-    <entry file="file://$PROJECT_DIR$/src/org/almostrealism/io/Permissions.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="603">
-          <caret line="49" column="0" lean-forward="true" selection-start-line="49" selection-start-column="0" selection-end-line="49" selection-end-column="0" />
-          <folding>
-            <element signature="e#0#1769#0" expanded="false" />
-            <element signature="e#880#881#0" expanded="false" />
-            <element signature="e#908#909#0" expanded="false" />
-            <element signature="e#948#949#0" expanded="false" />
-            <element signature="e#1017#1018#0" expanded="false" />
-            <element signature="e#1086#1087#0" expanded="false" />
-            <element signature="e#1141#1142#0" expanded="false" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/src/org/almostrealism/io/Console.java">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="590">
@@ -1073,8 +1070,8 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/world/org/almostrealism/physics/Electrons.java">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="849">
-          <caret line="71" column="74" lean-forward="false" selection-start-line="71" selection-start-column="74" selection-end-line="71" selection-end-column="74" />
+        <state relative-caret-position="564">
+          <caret line="52" column="46" lean-forward="false" selection-start-line="52" selection-start-column="46" selection-end-line="52" selection-end-column="46" />
           <folding>
             <element signature="e#0#5329#0" expanded="true" />
             <element signature="imports" expanded="true" />
@@ -1083,6 +1080,14 @@
             <element signature="e#5255#5256#0" expanded="true" />
             <element signature="e#5322#5323#0" expanded="true" />
           </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/pom.xml">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="120">
+          <caret line="8" column="19" lean-forward="false" selection-start-line="8" selection-start-column="19" selection-end-line="8" selection-end-column="19" />
+          <folding />
         </state>
       </provider>
     </entry>
