@@ -1,6 +1,7 @@
 package org.almostrealism.econ;
 
 public interface Expense {
-	public Unit getUnit();
-	public Currency getCost();
+	Unit getUnit();
+	Currency getCost();
+	Expense multiply(double amount);
 }
