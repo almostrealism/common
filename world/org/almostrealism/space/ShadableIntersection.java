@@ -42,7 +42,7 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 	private Vector viewerDirection;
 	private List<Callable<Ray>> normals;
 	
-	public ShadableIntersection(Ray ray, Intersectable<ShadableIntersection> surface, double intersections[]) {
+	public ShadableIntersection(Ray ray, Intersectable<ShadableIntersection, ?> surface, double intersections[]) {
 		super(ray, surface, intersections);
 		
 		Vector rayDirection = ray.getDirection();

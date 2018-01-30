@@ -16,14 +16,17 @@
 
 package org.almostrealism.graph;
 
-import org.almostrealism.algebra.Intersection;
-import org.almostrealism.algebra.ParticleGroup;
-import org.almostrealism.algebra.Ray;
-import org.almostrealism.algebra.Vector;
+import org.almostrealism.algebra.*;
 import org.almostrealism.color.ColorProducer;
 import org.almostrealism.color.RGB;
+import org.almostrealism.relation.Constant;
+import org.almostrealism.relation.Operator;
 import org.almostrealism.space.AbstractSurface;
 import org.almostrealism.space.ShadableIntersection;
+
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * A Triangle object represents a triangle in 3d space.
@@ -389,7 +392,22 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 		
 		return new ShadableIntersection(ray, this, new double[] {t});
 	}
-	
+
+	@Override
+	public Operator<Scalar> get() {
+		return null;
+	}
+
+	@Override
+	public Operator<Scalar> get(long timeout, TimeUnit unit) throws InterruptedException, ExecutionException, TimeoutException {
+		return get();
+	}
+
+	@Override
+	public Operator<Scalar> expect() {
+		return new Constant<>(new Scalar(0));
+	}
+
 	public String toString() {
 		return "Triangle: " + this.p1 + " " + this.p2 + " " + this.p3;
 	}

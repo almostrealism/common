@@ -16,10 +16,7 @@
 
 package org.almostrealism.space;
 
-import java.util.Collection;
-import java.util.Iterator;
-import java.util.NoSuchElementException;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.Future;
 
 import org.almostrealism.algebra.DiscreteField;
@@ -34,7 +31,10 @@ import org.almostrealism.color.Shader;
 import org.almostrealism.color.ShaderContext;
 import org.almostrealism.color.ShaderSet;
 import org.almostrealism.graph.Mesh;
+import org.almostrealism.graph.PathElement;
 import org.almostrealism.physics.Porous;
+import org.almostrealism.relation.Constant;
+import org.almostrealism.relation.Operator;
 import org.almostrealism.texture.Texture;
 
 /**
@@ -45,7 +45,7 @@ import org.almostrealism.texture.Texture;
  * 
  * @author  Michael Murray
  */
-public abstract class AbstractSurface extends TriangulatableGeometry implements ShadableSurface, Porous {
+public abstract class AbstractSurface<IN> extends TriangulatableGeometry implements ShadableSurface, Porous, PathElement<IN> {
 	private boolean shadeFront, shadeBack;
 
 	private RGB color;
@@ -57,6 +57,8 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 	private ShaderSet shaders = new ShaderSet();
 
 	private AbstractSurface parent;
+
+	private Operator<Vector> in;
 	
 	/**
 	 * Sets all values of this AbstractSurface to the defaults specified above.
@@ -169,7 +171,16 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 	
 	public void setPorosity(double p) { this.porosity = p; }
 	public double getPorosity() { return porosity; }
-	
+
+	public void setInput(Vector v) { this.in = new Constant<>(v); }
+	public void setInput(Operator<Vector> in) { this.in = in; }
+	public Operator<Vector> getInput() { return this.in; }
+
+	@Override
+	public Iterable<PathElement<IN>> next() {
+		return Arrays.asList((PathElement<IN>) in);
+	}
+
 	/**
 	 * Sets the Texture object (used to color this AbstractSurface) at the specified index
 	 * to the specified Texture object.
@@ -576,4 +587,13 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 	 * Delegates to  {#getNormalAt(Vector)}
 	 */
 	public Vector operate(Triple p) { return getNormalAt(new Vector(p.getA(), p.getB(), p.getC())); }
+
+	@Override
+	public boolean cancel(boolean mayInterruptIfRunning) { return false; }
+
+	@Override
+	public boolean isCancelled() { return false; }
+
+	@Override
+	public boolean isDone() { return true; }
 }

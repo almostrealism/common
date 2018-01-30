@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 Michael Murray
+ * Copyright 2018 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,20 +16,30 @@
 
 package org.almostrealism.algebra;
 
+import org.almostrealism.relation.Operator;
 import org.almostrealism.uml.Function;
+
+import java.util.concurrent.Future;
 
 /**
  * @author  Michael Murray
  */
 @Function
-public interface Intersectable<T extends Intersection> {
+public interface Intersectable<I extends Intersection, T> extends Future<Operator<T>> {
 	/** Returns true if the ray intersects the 3d surface in real space. */
-	public boolean intersect(Ray ray);
+	boolean intersect(Ray ray);
 	
 	/**
 	 * Returns an Intersection object that represents the values for t that solve
 	 * the vector equation p = o + t * d where p is a point of intersection of
 	 * the specified ray and the surface.
 	 */
-	public T intersectAt(Ray ray);
+	I intersectAt(Ray ray);
+
+	/**
+	 * If the evaluation of the {@link Operator} returned by {@link #get()}
+	 * is equal to the evaluation of this {@link Operator}, the {@link Vector}
+	 * is an intersection point for this {@link Intersectable}.
+	 */
+	Operator<T> expect();
 }

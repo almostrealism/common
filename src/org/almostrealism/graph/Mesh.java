@@ -25,16 +25,17 @@ import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 import java.util.ListIterator;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
-import org.almostrealism.algebra.Intersection;
-import org.almostrealism.algebra.Ray;
-import org.almostrealism.algebra.Triple;
-import org.almostrealism.algebra.Vector;
+import org.almostrealism.algebra.*;
 import org.almostrealism.color.ColorProducer;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.ShaderContext;
 import org.almostrealism.io.FileDecoder;
 import org.almostrealism.io.SpatialData;
+import org.almostrealism.relation.Operator;
 import org.almostrealism.space.ShadableIntersection;
 import org.almostrealism.space.ShadableSurface;
 import org.almostrealism.space.ShadableSurfaceWrapper;
@@ -103,6 +104,23 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 		@Override public Vector getNormalAt(Vector point) { return this.getSurface().getNormalAt(point); }
 		@Override public boolean intersect(Ray ray) { return this.getSurface().intersect(ray); }
 		@Override public ShadableIntersection intersectAt(Ray ray) { return this.getSurface().intersectAt(ray); }
+
+		@Override
+		public boolean cancel(boolean mayInterruptIfRunning) { return getSurface().cancel(mayInterruptIfRunning); }
+
+		@Override public boolean isCancelled() { return getSurface().isCancelled(); }
+		@Override public boolean isDone() { return getSurface().isDone(); }
+
+		@Override public Operator<Scalar> get() throws ExecutionException, InterruptedException { return getSurface().get(); }
+
+		@Override
+		public Operator<Scalar> get(long timeout, TimeUnit unit) throws InterruptedException, ExecutionException, TimeoutException {
+			return getSurface().get(timeout, unit);
+		}
+
+		@Override
+		public Operator<Scalar> expect() { return getSurface().expect(); }
+
 		@Override public ColorProducer shade(ShaderContext p) { return this.getSurface().shade(p); }
 		@Override
 		public Vector operate(Triple in) { return getSurface().operate(in); }
@@ -156,22 +174,13 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 		// public boolean equals(Object obj) { return (obj instanceof Vertex && super.equals(obj)); }
 	}
 	
-	public static interface VertexData {
-		public double getRed(int index);
-		public double getGreen(int index);
-		public double getBlue(int index);
+	public interface VertexData {
+		double getRed(int index); double getGreen(int index); double getBlue(int index);
+		double getX(int index); double getY(int index); double getZ(int index);
+		double getTextureU(int index); double getTextureV(int index);
 		
-		public double getX(int index);
-		public double getY(int index);
-		public double getZ(int index);
-		
-		public double getTextureU(int index);
-		public double getTextureV(int index);
-		
-		public int[] getTriangle(int index);
-		public int getTriangleCount();
-		
-		public int getVertexCount();
+		int[] getTriangle(int index); int getTriangleCount();
+		int getVertexCount();
 	}
 	
   private List points, triangles;
@@ -640,7 +649,7 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 	public Mesh triangulate() { return this; }
 	
 	/**
-	 * @see com.almostrealism.raytracer.engine.ShadableSurface#intersect(org.almostrealism.algebra.Ray)
+	 * @see ShadableSurface#intersect(org.almostrealism.algebra.Ray)
 	 */
 	public synchronized boolean intersect(Ray ray) {
 		if (this.isTreeLoaded()) return super.intersect(ray);
@@ -667,7 +676,7 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 	}
 
 	/**
-	 * @see com.almostrealism.raytracer.engine.ShadableSurface#intersectAt(org.almostrealism.algebra.Ray)
+	 * @see ShadableSurface#intersectAt(org.almostrealism.algebra.Ray)
 	 */
 	public synchronized ShadableIntersection intersectAt(Ray ray) {
 		if (this.isTreeLoaded()) return super.intersectAt(ray);

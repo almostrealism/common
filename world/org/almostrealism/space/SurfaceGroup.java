@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 Michael Murray
+ * Copyright 2018 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,24 +18,25 @@ package org.almostrealism.space;
 
 import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
-import org.almostrealism.algebra.Intersectable;
-import org.almostrealism.algebra.Intersection;
-import org.almostrealism.algebra.Intersections;
-import org.almostrealism.algebra.Ray;
-import org.almostrealism.algebra.Vector;
+import org.almostrealism.algebra.*;
 import org.almostrealism.color.ColorSum;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.ShaderContext;
 import org.almostrealism.graph.Mesh;
 import org.almostrealism.graph.Triangle;
+import org.almostrealism.relation.Constant;
+import org.almostrealism.relation.Operator;
 
 /**
  * A {@link SurfaceGroup} object allows {@link ShadableSurface} objects to be grouped together.
  * The properties of the {@link SurfaceGroup} object are applied to each of its children.
  * 
- * @author Mike Murray
+ * @author  Michael Murray
  */
 public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface implements Iterable<T> {
 	private ArrayList<T> surfaces;
@@ -182,5 +183,21 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 		ray.transform(this.getTransform(true).getInverse());
 		
 		return Intersections.closestIntersection(ray, this);
+	}
+
+	@Override
+	public Operator<Scalar> get() throws InterruptedException, ExecutionException {
+		// TODO  Aggregate the operators for each surface somehow
+		return null;
+	}
+
+	@Override
+	public Operator<Scalar> get(long timeout, TimeUnit unit) throws InterruptedException, ExecutionException, TimeoutException {
+		return get();
+	}
+
+	public Operator<Scalar> expect() {
+		// TODO  This isn't right
+		return new Constant<>(new Scalar(0));
 	}
 }

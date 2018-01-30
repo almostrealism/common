@@ -17,6 +17,7 @@
 package org.almostrealism.space;
 
 import org.almostrealism.algebra.Intersectable;
+import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.color.ColorProducer;
 import org.almostrealism.color.ShadableCurve;
@@ -28,7 +29,7 @@ import org.almostrealism.uml.ModelEntity;
  * ray-surface intersections.
  */
 @ModelEntity
-public interface ShadableSurface extends ShadableCurve, Intersectable<ShadableIntersection> {
+public interface ShadableSurface extends ShadableCurve, Intersectable<ShadableIntersection, Scalar> {
 	/**
 	 * Returns true if the front side of this Surface object should be shaded.
 	 * The "front side" is the side that the Vector object returned by the

@@ -17,24 +17,29 @@
 package org.almostrealism.algebra;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
+import org.almostrealism.graph.PathElement;
+import org.almostrealism.relation.Constant;
+import org.almostrealism.relation.Operator;
 import org.almostrealism.space.AbstractSurface;
 import org.almostrealism.space.ShadableIntersection;
 
-/**
- * A Polynomial object represents a 3d polynomial surface.
- */
-public class Polynomial extends AbstractSurface {
-  private static double maxIntersectionDistance = 100.0;
-  private static double defaultZerosInterval = 0.5;
-  private static int defaultZerosRecursions = 4;
+/** A {@link Polynomial} represents a 3d polynomial surface. */
+public class Polynomial<IN> extends AbstractSurface<IN> implements Operator<Scalar> {
+	private static double maxIntersectionDistance = 100.0;
+	private static double defaultZerosInterval = 0.5;
+	private static int defaultZerosRecursions = 4;
   
-  private PolynomialTerm terms[];
-  
-  private Polynomial dx;
-  private Polynomial dy;
-  private Polynomial dz;
+	private PolynomialTerm terms[];
+
+	private Polynomial dx;
+	private Polynomial dy;
+	private Polynomial dz;
 
 	/** Constructs a new Polynomial object with no terms. */
 	public Polynomial() {
@@ -115,10 +120,9 @@ public class Polynomial extends AbstractSurface {
 	}
 	
 	/**
-	  Calculates the product of the polynomial function represented by this Polynomial object
-	  and that of the specified Polynomial object and returns the result as a Polynomial object.
-	*/
-	
+	 * Calculates the product of the polynomial function represented by this Polynomial object
+	 * and that of the specified Polynomial object and returns the result as a Polynomial object.
+	 */
 	public Polynomial multiply(Polynomial polynomial) {
 		Polynomial productPolynomials[] = new Polynomial[polynomial.getTerms().length];
 		
@@ -136,10 +140,9 @@ public class Polynomial extends AbstractSurface {
 	}
 	
 	/**
-	  Calculates the product of the polynomial function represented by this Polynomial object
-	  and that of the specified PolynomialTerm object and returns the result as a Polynomial object.
-	*/
-	
+	 * Calculates the product of the polynomial function represented by this Polynomial object
+	 * and that of the specified PolynomialTerm object and returns the result as a Polynomial object.
+	 */
 	public Polynomial multiply(PolynomialTerm term) {
 		PolynomialTerm productTerms[] = new PolynomialTerm[this.terms.length];
 		
@@ -151,10 +154,9 @@ public class Polynomial extends AbstractSurface {
 	}
 	
 	/**
-	  Multiplies this Polynomial object with itself as many times as indicated by the specified integer value.
-	  If power is less than 0, null is returned. The polynomial is simplified after each step.
-	*/
-	
+	 * Multiplies this Polynomial object with itself as many times as indicated by the specified integer value.
+	 * If power is less than 0, null is returned. The polynomial is simplified after each step.
+	 */
 	public Polynomial expand(int power) {
 		if (power < 0) {
 			return null;
@@ -174,13 +176,13 @@ public class Polynomial extends AbstractSurface {
 	}
 	
 	/**
-	  Evaluates the polynomial function represented by this Polynomial object for the specified values.
-	*/
-	
+	 * Evaluates the polynomial function represented by this Polynomial object for
+	 * the specified values.
+	 */
 	public double evaluate(double x, double y, double z) {
 		double value = 0;
 		
-		for(int i = 0; i < this.terms.length; i++) {
+		for (int i = 0; i < this.terms.length; i++) {
 			if (this.terms[i] != null)
 				value += this.terms[i].evaluate(x, y, z);
 		}
@@ -189,9 +191,9 @@ public class Polynomial extends AbstractSurface {
 	}
 	
 	/**
-	  Evaluates the gradient of the polynomial funtion represented by this Polynomial object for the specified values.
-	*/
-	
+	 * Evaluates the gradient of the polynomial function represented by this {@link Polynomial}
+	 * for the specified values.
+	 */
 	public Vector evaluateGradient(double x, double y, double z) {
 		Vector gradient = new Vector(this.getDx().evaluate(x, y, z),
 						this.getDy().evaluate(x, y, z),
@@ -201,11 +203,11 @@ public class Polynomial extends AbstractSurface {
 	}
 	
 	/**
-	  Calculates a series of zeros found by the calculateZero method in the interval from the double value start to the double value end
-	  choosing guesses at every interval of the length specified by the double value increment. The Y and Z values and the number of recursions
-	  must also be specified.
-	*/
-	
+	 * Calculates a series of zeros found by the calculateZero method in the interval from the double
+	 * value start to the double value end choosing guesses at every interval of the length specified
+	 * by the double value increment. The Y and Z values and the number of recursions
+	 * must also be specified.
+	 */
 	public double[] calculateZeros(double start, double end, double increment, double yValue, double zValue, int recursions) {
 		java.util.Vector zerosVector = new java.util.Vector();
 		
@@ -323,22 +325,19 @@ public class Polynomial extends AbstractSurface {
 	}
 	
 	/**
-	  Returns a Vector object that represents the vector normal to this polynomial surface at the point represented by the specified Vector object.
-	*/
-	
+	 * Returns a {@link Vector} that represents the vector normal to this polynomial
+	 * surface at the point represented by the specified {@link Vector}.
+	 */
 	public Vector getNormalAt(Vector point) {
 		return this.evaluateGradient(point.getX(), point.getY(), point.getZ());
 	}
 	
 	/**
-	  Returns true if the ray represented by the specified Ray object intersects the polynomial surface represented by this Polynomial object in real space.
-	*/
-	
+	 * Returns true if the ray represented by the specified Ray object intersects the
+	 * polynomial surface represented by this Polynomial object in real space.
+	 */
 	public boolean intersect(Ray ray) {
-		if (this.intersectAt(ray).getIntersections().length > 0)
-			return true;
-		else
-			return false;
+		return this.intersectAt(ray).getIntersections().length > 0;
 	}
 	
 	/**
@@ -353,9 +352,9 @@ public class Polynomial extends AbstractSurface {
 		
 		PolynomialTerm pxTerms[] = {new PolynomialTerm(ray.getDirection().getX(), 1, 0, 0),
 						new PolynomialTerm(o.getX(), 0, 0, 0)};
-		PolynomialTerm pyTerms[] = {new PolynomialTerm(ray.getDirection().getY(), 1, 0, 0),
+		PolynomialTerm pyTerms[] = {new PolynomialTerm(ray.getDirection().getY(), 0, 1, 0),
 						new PolynomialTerm(o.getY(), 0, 0, 0)};
-		PolynomialTerm pzTerms[] = {new PolynomialTerm(ray.getDirection().getZ(), 1, 0, 0),
+		PolynomialTerm pzTerms[] = {new PolynomialTerm(ray.getDirection().getZ(), 0, 0, 1),
 						new PolynomialTerm(o.getZ(), 0, 0, 0)};
 		
 		Polynomial px = new Polynomial(pxTerms);
@@ -428,36 +427,33 @@ public class Polynomial extends AbstractSurface {
 			
 			for(int j = 0; j < pBottomVector.size(); j++) {
 				if (j != i)
-					newP = newP.multiply((Polynomial)pBottomVector.elementAt(j));
+					newP = newP.multiply((Polynomial) pBottomVector.elementAt(j));
 			}
 			
 			p = p.add(newP);
 		}
 		
 		p.simplify();
-		
-//		System.out.println("Polynomial = " + p.toString());
-		
+
 		double zeros[] = p.calculateZeros(0, Polynomial.maxIntersectionDistance, Polynomial.defaultZerosInterval, 0.0, 0.0, Polynomial.defaultZerosRecursions);
-		
-//		System.out.print("Zeros = {");
-//		
-//		for(int i = 0; i < zeros.length; i++) {
-//			System.out.print(zeros[i]);
-//			
-//			if (i < zeros.length - 1)
-//				System.out.print(", ");
-//		}
-//		
-//		System.out.println("}");
 		
 		return new ShadableIntersection(ray, this, zeros);
 	}
+
+	@Override
+	public Operator<Scalar> expect() {
+		return new Constant<>(new Scalar(0));
+	}
+
+	@Override
+	public Operator<Scalar> get() { return this; }
+
+	@Override
+	public Operator<Scalar> get(long timeout, TimeUnit unit) throws InterruptedException, ExecutionException, TimeoutException {
+		return get();
+	}
 	
-	/**
-	  Returns a String representation of this Polynomial object.
-	*/
-	
+	/** Returns a String representation of this {@link Polynomial}. */
 	public String toString() {
 		String output = null;
 		
@@ -473,4 +469,15 @@ public class Polynomial extends AbstractSurface {
 		
 		return output == null ? "" : output;
 	}
+
+	@Override
+	public Scalar evaluate(Object[] args) {
+		// TODO  Preserve uncertainty in the Vector so that the scalar is as uncertain or more
+		Vector v = getInput().evaluate(args);
+		return new Scalar(this.evaluate(v.getX(), v.getY(), v.getZ()));
+	}
+
+	/** Delegates to {@link #simplify()}. */
+	@Override
+	public void compact() { simplify(); }
 }

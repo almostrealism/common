@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 Michael Murray
+ * Copyright 2018 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,17 +16,17 @@
 
 package org.almostrealism.space;
 
-import org.almostrealism.algebra.Intersection;
-import org.almostrealism.algebra.ParticleGroup;
-import org.almostrealism.algebra.Ray;
-import org.almostrealism.algebra.TransformMatrix;
-import org.almostrealism.algebra.Vector;
+import org.almostrealism.algebra.*;
 import org.almostrealism.color.RGB;
+import org.almostrealism.relation.Constant;
+import org.almostrealism.relation.Operator;
+
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 
-/**
- * A Plane object represents an plane in 3d space.
- */
+/** A {@link Plane} represents an plane in 3d space. */
 public class Plane extends AbstractSurface implements ParticleGroup {
   /** Integer code for XY plane. **/
   public static final int XY = 2;
@@ -145,9 +145,36 @@ public class Plane extends AbstractSurface implements ParticleGroup {
 		return new ShadableIntersection(ray, this, t);
 	}
 
-    /**
-     * @see com.almostrealism.raytracer.engine.ParticleGroup#getParticleVertices()
-     */
+	@Override
+	public Operator<Scalar> expect() {
+		return new Constant<>(new Scalar(0));
+	}
+
+	@Override
+	public Operator<Scalar> get() {
+		return new Operator<Scalar>() {
+			@Override
+			public Scalar evaluate(Object[] args) {
+				if (type == Plane.XY)
+					return new Scalar(((Operator<Vector>) getInput()).evaluate(args).getZ());
+				else if (type == Plane.XZ)
+					return new Scalar(((Operator<Vector>) getInput()).evaluate(args).getY());
+				else if (type == Plane.YZ)
+					return new Scalar(((Operator<Vector>) getInput()).evaluate(args).getX());
+				else
+					return null;
+			}
+
+			@Override public void compact() { }
+		};
+	}
+
+	@Override
+	public Operator<Scalar> get(long timeout, TimeUnit unit) throws InterruptedException, ExecutionException, TimeoutException {
+		return get();
+	}
+
+	/** @see ParticleGroup#getParticleVertices() */
     public double[][] getParticleVertices() {
         if (this.type == Plane.XY) {
             return new double[][] {{10.0, 10.0, 0.0}, {10.0, -10.0, 0.0}, {-10.0, 10.0, 0.0}, {-10.0, -10.0, 0.0}};
