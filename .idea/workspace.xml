@@ -2,13 +2,18 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="">
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/world/org/almostrealism/econ/Commodity.java" />
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/world/org/almostrealism/econ/ExpenseData.java" />
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/world/org/almostrealism/econ/Security.java" />
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/world/org/almostrealism/econ/SecurityAdapter.java" />
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/world/org/almostrealism/econ/Time.java" />
+      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/world/org/almostrealism/currency/BTC.java" />
+      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/world/org/almostrealism/currency/LTC.java" />
+      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/world/org/almostrealism/econ/FloatingPointUnit.java" />
+      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/world/org/almostrealism/econ/Share.java" />
+      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/world/org/almostrealism/econ/StandardExpense.java" />
+      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/world/org/almostrealism/time/ClockSynchronizer.java" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/econ/Currency.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/econ/Currency.java" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/econ/Expense.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/econ/Expense.java" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/econ/Security.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/econ/Security.java" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/econ/SecurityAdapter.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/econ/SecurityAdapter.java" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/econ/Unit.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/econ/Unit.java" />
     </list>
     <ignored path="$PROJECT_DIR$/target/" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -20,50 +25,6 @@
   </component>
   <component name="FileEditorManager">
     <leaf SIDE_TABS_SIZE_LIMIT_KEY="300">
-      <file leaf-file-name="AbstractSurface.java" pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/world/org/almostrealism/space/AbstractSurface.java">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="148">
-              <caret line="60" column="29" lean-forward="false" selection-start-line="60" selection-start-column="29" selection-end-line="60" selection-end-column="29" />
-              <folding />
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file leaf-file-name="Operator.java" pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/math/org/almostrealism/relation/Operator.java">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="60">
-              <caret line="4" column="51" lean-forward="false" selection-start-line="4" selection-start-column="51" selection-end-line="4" selection-end-column="51" />
-              <folding />
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file leaf-file-name="Plane.java" pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/world/org/almostrealism/space/Plane.java">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="185">
-              <caret line="158" column="61" lean-forward="false" selection-start-line="158" selection-start-column="61" selection-end-line="158" selection-end-column="61" />
-              <folding>
-                <element signature="e#0#5653#0" expanded="true" />
-                <element signature="e#4282#4283#0" expanded="true" />
-                <element signature="e#4325#4326#0" expanded="true" />
-              </folding>
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file leaf-file-name="SurfaceGroup.java" pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/world/org/almostrealism/space/SurfaceGroup.java">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="399">
-              <caret line="201" column="5" lean-forward="false" selection-start-line="201" selection-start-column="5" selection-end-line="201" selection-end-column="5" />
-              <folding />
-            </state>
-          </provider>
-        </entry>
-      </file>
       <file leaf-file-name="Intersections.java" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Intersections.java">
           <provider selected="true" editor-type-id="text-editor">
@@ -76,11 +37,38 @@
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="Security.java" pinned="false" current-in-tab="true">
-        <entry file="file://$PROJECT_DIR$/world/org/almostrealism/econ/Security.java">
+      <file leaf-file-name="LTC.java" pinned="false" current-in-tab="true">
+        <entry file="file://$PROJECT_DIR$/world/org/almostrealism/currency/LTC.java">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="60">
-              <caret line="4" column="40" lean-forward="true" selection-start-line="4" selection-start-column="40" selection-end-line="4" selection-end-column="40" />
+            <state relative-caret-position="75">
+              <caret line="5" column="13" lean-forward="false" selection-start-line="5" selection-start-column="13" selection-end-line="5" selection-end-column="13" />
+              <folding>
+                <element signature="imports" expanded="true" />
+              </folding>
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="StandardExpense.java" pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/world/org/almostrealism/econ/StandardExpense.java">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="210">
+              <caret line="14" column="5" lean-forward="false" selection-start-line="14" selection-start-column="5" selection-end-line="14" selection-end-column="5" />
+              <folding>
+                <element signature="e#234#235#0" expanded="true" />
+                <element signature="e#249#250#0" expanded="true" />
+                <element signature="e#290#291#0" expanded="true" />
+                <element signature="e#305#306#0" expanded="true" />
+              </folding>
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="BTC.java" pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/world/org/almostrealism/currency/BTC.java">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="30">
+              <caret line="5" column="13" lean-forward="false" selection-start-line="5" selection-start-column="13" selection-end-line="5" selection-end-column="13" />
               <folding />
             </state>
           </provider>
@@ -120,16 +108,6 @@
   <component name="IdeDocumentHistory">
     <option name="CHANGED_PATHS">
       <list>
-        <option value="$PROJECT_DIR$/src/org/almostrealism/io/ResourceTranscoder.java" />
-        <option value="$PROJECT_DIR$/src/org/almostrealism/graph/io/PlyResource.java" />
-        <option value="$PROJECT_DIR$/src/org/almostrealism/graph/SceneResource.java" />
-        <option value="$PROJECT_DIR$/src/org/almostrealism/io/SpatialData.java" />
-        <option value="$PROJECT_DIR$/world/org/almostrealism/space/SceneResource.java" />
-        <option value="$PROJECT_DIR$/world/org/almostrealism/space/Scene.java" />
-        <option value="$PROJECT_DIR$/src/org/almostrealism/graph/io/GtsResource.java" />
-        <option value="$PROJECT_DIR$/src/org/almostrealism/graph/io/SurfacePersistenceDelegate.java" />
-        <option value="$PROJECT_DIR$/src/org/almostrealism/graph/io/FileEncoder.java" />
-        <option value="$PROJECT_DIR$/src/org/almostrealism/graph/io/RawResource.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/chem/Actinium.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/physics/Spin.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/color/RealizableImage.java" />
@@ -167,10 +145,20 @@
         <option value="$PROJECT_DIR$/world/org/almostrealism/space/ShadableIntersection.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/econ/Time.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/econ/ExpenseData.java" />
-        <option value="$PROJECT_DIR$/world/org/almostrealism/econ/Security.java" />
-        <option value="$PROJECT_DIR$/world/org/almostrealism/econ/Expense.java" />
-        <option value="$PROJECT_DIR$/world/org/almostrealism/econ/SecurityAdapter.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/econ/Commodity.java" />
+        <option value="$PROJECT_DIR$/world/org/almostrealism/time/ClockSynchronizer.java" />
+        <option value="$PROJECT_DIR$/world/org/almostrealism/econ/Unit.java" />
+        <option value="$PROJECT_DIR$/world/org/almostrealism/econ/FloatingPointUnit.java" />
+        <option value="$PROJECT_DIR$/world/org/almostrealism/econ/CurrencyExpense.java" />
+        <option value="$PROJECT_DIR$/world/org/almostrealism/econ/Expense.java" />
+        <option value="$PROJECT_DIR$/world/org/almostrealism/econ/Share.java" />
+        <option value="$PROJECT_DIR$/world/org/almostrealism/econ/BTC.java" />
+        <option value="$PROJECT_DIR$/world/org/almostrealism/econ/Currency.java" />
+        <option value="$PROJECT_DIR$/world/org/almostrealism/econ/Security.java" />
+        <option value="$PROJECT_DIR$/world/org/almostrealism/econ/SecurityAdapter.java" />
+        <option value="$PROJECT_DIR$/world/org/almostrealism/econ/LTC.java" />
+        <option value="$PROJECT_DIR$/world/org/almostrealism/econ/StandardExpense.java" />
+        <option value="$PROJECT_DIR$/world/org/almostrealism/currency/LTC.java" />
       </list>
     </option>
   </component>
@@ -257,6 +245,13 @@
               <item name="common" type="462c0819:PsiDirectoryNode" />
               <item name="world" type="462c0819:PsiDirectoryNode" />
               <item name="almostrealism" type="462c0819:PsiDirectoryNode" />
+              <item name="currency" type="462c0819:PsiDirectoryNode" />
+            </path>
+            <path>
+              <item name="common" type="b2602c69:ProjectViewProjectNode" />
+              <item name="common" type="462c0819:PsiDirectoryNode" />
+              <item name="world" type="462c0819:PsiDirectoryNode" />
+              <item name="almostrealism" type="462c0819:PsiDirectoryNode" />
               <item name="econ" type="462c0819:PsiDirectoryNode" />
             </path>
             <path>
@@ -265,6 +260,13 @@
               <item name="world" type="462c0819:PsiDirectoryNode" />
               <item name="almostrealism" type="462c0819:PsiDirectoryNode" />
               <item name="space" type="462c0819:PsiDirectoryNode" />
+            </path>
+            <path>
+              <item name="common" type="b2602c69:ProjectViewProjectNode" />
+              <item name="common" type="462c0819:PsiDirectoryNode" />
+              <item name="world" type="462c0819:PsiDirectoryNode" />
+              <item name="almostrealism" type="462c0819:PsiDirectoryNode" />
+              <item name="time" type="462c0819:PsiDirectoryNode" />
             </path>
           </expand>
           <select />
@@ -466,7 +468,7 @@
       <workItem from="1516919760535" duration="1589000" />
       <workItem from="1516923715250" duration="2223000" />
       <workItem from="1517010781468" duration="36000000" />
-      <workItem from="1517204987108" duration="11285000" />
+      <workItem from="1517204987108" duration="15672000" />
     </task>
     <task id="LOCAL-00001" summary="Deployment.">
       <created>1506657014443</created>
@@ -587,11 +589,18 @@
       <option name="project" value="LOCAL" />
       <updated>1517292185369</updated>
     </task>
-    <option name="localTasksCounter" value="18" />
+    <task id="LOCAL-00018" summary="Expanding the econ package.">
+      <created>1517343312069</created>
+      <option name="number" value="00018" />
+      <option name="presentableId" value="LOCAL-00018" />
+      <option name="project" value="LOCAL" />
+      <updated>1517343312069</updated>
+    </task>
+    <option name="localTasksCounter" value="19" />
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="63071000" />
+    <option name="totallyTimeSpent" value="67458000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="0" y="0" width="1280" height="800" extended-state="6" />
@@ -649,7 +658,8 @@
     <MESSAGE value="This is version 0.3." />
     <MESSAGE value="Starting version 0.4." />
     <MESSAGE value="Introduced expect, which is used to determine whether a vector is an intersection point. The value returned by get() and the value returned by expect() for a given Intersectable are placed into a Relation and then the distance parameter for a Ray is solved for to perform intersection calculations." />
-    <option name="LAST_COMMIT_MESSAGE" value="Introduced expect, which is used to determine whether a vector is an intersection point. The value returned by get() and the value returned by expect() for a given Intersectable are placed into a Relation and then the distance parameter for a Ray is solved for to perform intersection calculations." />
+    <MESSAGE value="Expanding the econ package." />
+    <option name="LAST_COMMIT_MESSAGE" value="Expanding the econ package." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -665,70 +675,6 @@
     </option>
   </component>
   <component name="editorHistoryManager">
-    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/VectorProducer.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="195">
-          <caret line="29" column="17" lean-forward="false" selection-start-line="29" selection-start-column="17" selection-end-line="29" selection-end-column="17" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/color/ColorProducer.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="195">
-          <caret line="29" column="43" lean-forward="true" selection-start-line="29" selection-start-column="43" selection-end-line="29" selection-end-column="43" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/texture/StripeTexture.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="38">
-          <caret line="57" column="38" lean-forward="true" selection-start-line="57" selection-start-column="38" selection-end-line="57" selection-end-column="38" />
-          <folding>
-            <element signature="e#2988#2989#0" expanded="false" />
-            <element signature="e#3064#3065#0" expanded="false" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/texture/ImageTexture.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="0">
-          <caret line="0" column="0" lean-forward="false" selection-start-line="0" selection-start-column="0" selection-end-line="15" selection-end-column="0" />
-          <folding>
-            <element signature="e#0#13253#0" expanded="false" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/color/RealizableImage.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="765">
-          <caret line="54" column="27" lean-forward="true" selection-start-line="54" selection-start-column="27" selection-end-line="54" selection-end-column="27" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/color/ColorSum.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="765">
-          <caret line="57" column="20" lean-forward="false" selection-start-line="57" selection-start-column="20" selection-end-line="57" selection-end-column="20" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/color/AverageColor.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="650">
-          <caret line="63" column="70" lean-forward="false" selection-start-line="63" selection-start-column="70" selection-end-line="63" selection-end-column="70" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/color/RandomColorGenerator.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="615">
-          <caret line="57" column="42" lean-forward="false" selection-start-line="57" selection-start-column="42" selection-end-line="57" selection-end-column="42" />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/world/org/almostrealism/color/ColorProduct.java">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="215">
@@ -830,6 +776,10 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="285">
           <caret line="42" column="11" lean-forward="false" selection-start-line="42" selection-start-column="11" selection-end-line="42" selection-end-column="11" />
+          <folding>
+            <element signature="e#757#758#0" expanded="false" />
+            <element signature="e#780#781#0" expanded="false" />
+          </folding>
         </state>
       </provider>
     </entry>
@@ -895,8 +845,8 @@
         <state relative-caret-position="99">
           <caret line="27" column="30" lean-forward="false" selection-start-line="27" selection-start-column="17" selection-end-line="27" selection-end-column="30" />
           <folding>
-            <element signature="e#0#1467#0" expanded="true" />
-            <element signature="imports" expanded="true" />
+            <element signature="e#0#1467#0" expanded="false" />
+            <element signature="imports" expanded="false" />
           </folding>
         </state>
       </provider>
@@ -1037,10 +987,10 @@
         <state relative-caret-position="382">
           <caret line="407" column="45" lean-forward="false" selection-start-line="407" selection-start-column="45" selection-end-line="407" selection-end-column="45" />
           <folding>
-            <element signature="e#12432#12433#0" expanded="true" />
-            <element signature="e#12450#12451#0" expanded="true" />
-            <element signature="e#12655#12656#0" expanded="true" />
-            <element signature="e#12698#12699#0" expanded="true" />
+            <element signature="e#12432#12433#0" expanded="false" />
+            <element signature="e#12450#12451#0" expanded="false" />
+            <element signature="e#12655#12656#0" expanded="false" />
+            <element signature="e#12698#12699#0" expanded="false" />
           </folding>
         </state>
       </provider>
@@ -1058,8 +1008,8 @@
         <state relative-caret-position="210">
           <caret line="14" column="37" lean-forward="false" selection-start-line="14" selection-start-column="37" selection-end-line="14" selection-end-column="37" />
           <folding>
-            <element signature="e#104#105#0" expanded="true" />
-            <element signature="e#133#134#0" expanded="true" />
+            <element signature="e#104#105#0" expanded="false" />
+            <element signature="e#133#134#0" expanded="false" />
           </folding>
         </state>
       </provider>
@@ -1072,29 +1022,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/econ/Expense.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="60">
-          <caret line="4" column="23" lean-forward="true" selection-start-line="4" selection-start-column="23" selection-end-line="4" selection-end-column="23" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/econ/SecurityAdapter.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="105">
-          <caret line="7" column="5" lean-forward="true" selection-start-line="7" selection-start-column="5" selection-end-line="7" selection-end-column="5" />
-          <folding>
-            <element signature="e#158#159#0" expanded="true" />
-            <element signature="e#176#177#0" expanded="true" />
-            <element signature="e#222#223#0" expanded="true" />
-            <element signature="e#262#263#0" expanded="true" />
-            <element signature="e#309#310#0" expanded="true" />
-            <element signature="e#349#350#0" expanded="true" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/world/org/almostrealism/econ/Commodity.java">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="45">
@@ -1103,11 +1030,108 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/econ/Security.java">
+    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/time/ClockSynchronizer.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="383">
+          <caret line="42" column="13" lean-forward="false" selection-start-line="42" selection-start-column="13" selection-end-line="42" selection-end-column="13" />
+          <folding>
+            <element signature="imports" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/econ/FloatingPointUnit.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="30">
+          <caret line="2" column="18" lean-forward="false" selection-start-line="2" selection-start-column="18" selection-end-line="2" selection-end-column="18" />
+          <folding>
+            <element signature="e#241#242#0" expanded="true" />
+            <element signature="e#262#263#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/econ/Unit.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="75">
+          <caret line="5" column="18" lean-forward="false" selection-start-line="5" selection-start-column="18" selection-end-line="5" selection-end-column="18" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/econ/Expense.java">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="60">
-          <caret line="4" column="40" lean-forward="true" selection-start-line="4" selection-start-column="40" selection-end-line="4" selection-end-column="40" />
+          <caret line="4" column="7" lean-forward="false" selection-start-line="4" selection-start-column="7" selection-end-line="4" selection-end-column="7" />
           <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/econ/Share.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="30">
+          <caret line="2" column="18" lean-forward="true" selection-start-line="2" selection-start-column="18" selection-end-line="2" selection-end-column="18" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/econ/Security.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="30">
+          <caret line="2" column="49" lean-forward="true" selection-start-line="2" selection-start-column="49" selection-end-line="2" selection-end-column="49" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/econ/SecurityAdapter.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="180">
+          <caret line="14" column="52" lean-forward="true" selection-start-line="14" selection-start-column="52" selection-end-line="14" selection-end-column="52" />
+          <folding>
+            <element signature="e#223#224#0" expanded="true" />
+            <element signature="e#273#274#0" expanded="true" />
+            <element signature="e#321#322#0" expanded="true" />
+            <element signature="e#371#372#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/econ/Currency.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="75">
+          <caret line="5" column="0" lean-forward="true" selection-start-line="5" selection-start-column="0" selection-end-line="5" selection-end-column="0" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/econ/StandardExpense.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="210">
+          <caret line="14" column="5" lean-forward="false" selection-start-line="14" selection-start-column="5" selection-end-line="14" selection-end-column="5" />
+          <folding>
+            <element signature="e#234#235#0" expanded="true" />
+            <element signature="e#249#250#0" expanded="true" />
+            <element signature="e#290#291#0" expanded="true" />
+            <element signature="e#305#306#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/currency/BTC.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="30">
+          <caret line="5" column="13" lean-forward="false" selection-start-line="5" selection-start-column="13" selection-end-line="5" selection-end-column="13" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/currency/LTC.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="75">
+          <caret line="5" column="13" lean-forward="false" selection-start-line="5" selection-start-column="13" selection-end-line="5" selection-end-column="13" />
+          <folding>
+            <element signature="imports" expanded="true" />
+          </folding>
         </state>
       </provider>
     </entry>

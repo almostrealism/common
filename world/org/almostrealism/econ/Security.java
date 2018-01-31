@@ -1,6 +1,6 @@
 package org.almostrealism.econ;
 
 public interface Security extends MonetaryValue {
-	Expense buy(Time t, double amount);
-	Expense sell(Time t, double amount);
+	Currency buy(Time t, double amount);
+	Currency sell(Time t, double amount);
 }

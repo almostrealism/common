@@ -7,11 +7,11 @@ public abstract class SecurityAdapter implements Security {
 		this.ed = d;
 	}
 
-	public Expense buy(Time t, double amount) {
-		return ed.get(t).multiply(amount);
+	public Currency buy(Time t, double amount) {
+		return ed.get(t).getCost().multiply(amount);
 	}
 
-	public Expense sell(Time t, double amount) {
-		return ed.get(t).multiply(amount);
+	public Currency sell(Time t, double amount) {
+		return ed.get(t).getCost().multiply(amount);
 	}
 }
