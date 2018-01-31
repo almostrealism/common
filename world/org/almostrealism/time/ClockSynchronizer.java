@@ -24,7 +24,15 @@ public abstract class ClockSynchronizer implements Runnable {
 	public void run() {
 		w: while (!stopped) {
 			long t1 = System.currentTimeMillis();
-			long t2 = getTime();
+			long t2;
+
+			try {
+				t2 = getTime();
+			} catch (Throwable t) {
+				t.printStackTrace();
+				continue w;
+			}
+
 			long t3 = System.currentTimeMillis();
 
 			if (t2 < 0) {
