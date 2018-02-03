@@ -192,6 +192,8 @@ public class GraphicsConverter {
 	 * The array locations map to pixels in the image. The image produced
 	 * uses the RGB color model with no alpha channel.
 	 */
+	// TODO  Add support for stopping this in the middle, returning
+	//       a partially rendered image
 	public static Image convertToAWTImage(ColorProducer image[][]) {
 		int data[] = new int[image.length * image[0].length];
 		

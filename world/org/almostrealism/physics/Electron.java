@@ -42,7 +42,7 @@ public class Electron {
 				e.add(o.getEnergy(protons));
 			}
 
-			excitationEnergyLevels = new double[e.size()];
+			excitationEnergyLevels = new double[e.size() + 1];
 			int i = 0;
 			excitationEnergyLevels[i++] = 0; // Ground state
 			for (Double d : e) excitationEnergyLevels[i++] = d;

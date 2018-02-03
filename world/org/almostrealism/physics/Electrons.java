@@ -68,31 +68,42 @@ public class Electrons {
 		return true;
 	}
 
-	// TODO  This needs to support the possibility of multiple emissions
-	//       where the sum of them is equal to the total excitation energy
 	public synchronized double emit() {
 		if (excited == null) return 0.0;
 
 		double d = this.configurationMap.get(excited);
-		this.ground();
-		return d;
+		int index = restrict(d);
+
+		// There should always be a lower
+		// energy level to transition to
+		assert index > 0;
+
+		// Pick a new configuration with less energy than this one
+		ExcitationConfiguration c = random(energies[(int) (StrictMath.random() * index)]);
+		double eV = d - this.configurationMap.get(excited);
+		c.apply(e);
+
+		return eV;
 	}
 
 	protected ExcitationConfiguration random(double eV) {
-		List<ExcitationConfiguration> c = restrict(eV);
+		int index = restrict(eV);
+		if (index < 0) return null;
+
+		List<ExcitationConfiguration> c = configurations[index];
 		if (c == null) return null;
 		if (c.size() == 1) return c.get(0);
-		return c.get((int) (StrictMath.random() * (c.size() - 1)));
+		return c.get((int) (StrictMath.random() * c.size()));
 	}
 
-	protected List<ExcitationConfiguration> restrict(double eV) {
+	protected int restrict(double eV) {
 		for (int i = 0; i < configurations.length; i++) {
 			if (Math.abs(energies[i] - eV) < spectralBandwidth) {
-				return configurations[i];
+				return i;
 			}
 		}
 
-		return null;
+		return -1;
 	}
 
 	protected void ground() {
@@ -160,6 +171,8 @@ public class Electrons {
 
 		// Restore ground state
 		ground();
+
+		// TODO  Sort configurations by energy level
 
 		this.configurations = cl.toArray(new List[0]);
 		this.energies = new double[el.size()];

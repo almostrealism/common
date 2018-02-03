@@ -19,9 +19,7 @@ package org.almostrealism.space;
 import java.util.*;
 import java.util.concurrent.Future;
 
-import org.almostrealism.algebra.DiscreteField;
-import org.almostrealism.algebra.Ray;
-import org.almostrealism.algebra.Triple;
+import org.almostrealism.algebra.*;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.color.ColorProducer;
 import org.almostrealism.color.ColorProducerAdapter;
@@ -524,9 +522,26 @@ public abstract class AbstractSurface<IN> extends TriangulatableGeometry impleme
 	public RGB getColor() { return this.color; }
 	
 	/**
-	 * @return  The color of this AbstractSurface at the specified point as an RGB object.
+	 * @return  The color of this AbstractSurface at the specified point.
 	 */
-	public ColorProducer getColorAt(Vector p) { return this.getColorAt(p, true); }
+	public ColorProducer getColorAt(Vector p) {
+		return new ColorProducer() {
+			@Override
+			public RGB evaluate(Object[] objects) {
+				return operate(p);
+			}
+
+			@Override
+			public RGB operate(Triple triple) {
+				return getColorAt((Vector) triple, true);
+			}
+
+			@Override
+			public void compact() {
+				// TODO  Should this compact the underlying colors?
+			}
+		};
+	}
 	
 	/**
 	 * @return  The color of this AbstractSurface at the specified point as an RGB object.
@@ -545,8 +560,7 @@ public abstract class AbstractSurface<IN> extends TriangulatableGeometry impleme
 	    } else {
 	        colorAt = (RGB)this.color.clone();
 	    }
-	    
-	    // TODO  Return color multiplier
+
 	    if (this.parent != null)
 	        colorAt.multiplyBy(this.parent.getColorAt(point).evaluate(null));
 		
@@ -557,26 +571,7 @@ public abstract class AbstractSurface<IN> extends TriangulatableGeometry impleme
 		return new ColorProducerAdapter() {
 			@Override
 			public RGB evaluate(Object[] args) {
-				Vector point =  (Vector) args[0];
-			    point = getTransform(true).getInverse().transformAsLocation(point);
-			    
-			    RGB colorAt = new RGB(0.0, 0.0, 0.0);
-			    
-			    if (textures.length > 0) {
-			        for (int i = 0; i < textures.length; i++) {
-			            colorAt.addTo(textures[i].getColorAt(point));
-			        }
-			        
-			        colorAt.multiplyBy(color);
-			    } else {
-			        colorAt = (RGB) color.clone();
-			    }
-			    
-			    // TODO  Return color multiplier
-			    if (parent != null)
-			        colorAt.multiplyBy(parent.getColorAt(point).evaluate(null));
-				
-				return colorAt;
+				return getColorAt((Vector) args[0], true);
 			}
 
 			public void compact() { }

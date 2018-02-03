@@ -14,14 +14,7 @@
  * limitations under the License.
  */
 
-package org.almostrealism.time;
+package org.almostrealism.physics;
 
-/**
- * Any operation that is performed as a sequence of steps can implement {@link Temporal}
- * to allow for easy synchronization between groups of operations.
- * 
- * @author  Michael Murray
- */
-public interface Temporal {
-	void tick();
+public class Pressure {
 }

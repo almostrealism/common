@@ -19,6 +19,14 @@ package org.almostrealism.heredity;
 import java.util.ArrayList;
 
 public class ArrayListGene<T> extends ArrayList<Factor<T>> implements Gene<T> {
+	public ArrayListGene() { }
+
+	public ArrayListGene(double... f) {
+		for (double d : f) {
+			add((Factor<T>) new DoubleScaleFactor(d));
+		}
+	}
+
 	public Factor<T> getFactor(int index) { return get(index); }
 	public int length() { return size(); }
 }

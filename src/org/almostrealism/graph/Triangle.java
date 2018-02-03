@@ -209,7 +209,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 	public boolean getSmooth() { return this.smooth; }
 	
 	/**
-	 * @see com.almostrealism.raytracer.engine.ParticleGroup#getParticleVertices()
+	 * @see  ParticleGroup#getParticleVertices()
 	 */
 	public double[][] getParticleVertices() {
 		if (this.vertexData == null) {
@@ -271,51 +271,66 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 	}
 	
 	public ColorProducer getColorAt(Vector p) {
-		RGB dc = super.getColorAt(p, this.useT);
-		if (dc.length() < (Intersection.e * 100)) return new RGB(0.0, 0.0, 0.0);
-		
-		if (this.intcolor) {
-			double g = p.getX();
-			double h = p.getY();
-			double i = p.getZ();
-			
-			double m = a * (e * i - h * f) + b * (g * f - d * i) + c * (d * h - e * g);
-
-			double u = j * (e * i - h * f) + k * (g * f - d * i) + l * (d * h - e * g);
-			u = u / m;
-			
-			double v = i * (a * k - j * b) + h * (j * c - a * l) + g * (b * l - k * c);
-			v = v / m;
-			
-			double w = 1.0 - u - v;
-			
-			RGB color = null;
-			
-			if (this.vertexData == null) {
-				color = new RGB(0.0, 0.0, 0.0);
-				color.addTo(((Mesh.Vertex)this.p1).getColor(w));
-				color.addTo(((Mesh.Vertex)this.p2).getColor(u));
-				color.addTo(((Mesh.Vertex)this.p3).getColor(v));
-			} else {
-				double cr = this.vertexData.getRed(this.ind1) +
-							this.vertexData.getRed(this.ind2) +
-							this.vertexData.getRed(this.ind3);
-				double cg = this.vertexData.getGreen(this.ind1) +
-							this.vertexData.getGreen(this.ind2) +
-							this.vertexData.getGreen(this.ind3);
-				double cb = this.vertexData.getBlue(this.ind1) +
-							this.vertexData.getBlue(this.ind2) +
-							this.vertexData.getBlue(this.ind3);
-				
-				color = new RGB(cr, cg, cb);
+		return new ColorProducer() {
+			@Override
+			public RGB evaluate(Object[] objects) {
+				return operate(p);
 			}
-			
-			color.multiplyBy(dc);
-			
-			return color;
-		} else {
-			return dc;
-		}
+
+			@Override
+			public RGB operate(Triple triple) {
+				RGB dc = getColorAt((Vector) triple, useT);
+				if (dc.length() < (Intersection.e * 100)) return new RGB(0.0, 0.0, 0.0);
+
+				if (intcolor) {
+					double g = triple.getA();
+					double h = triple.getB();
+					double i = triple.getC();
+
+					double m = a * (e * i - h * f) + b * (g * f - d * i) + c * (d * h - e * g);
+
+					double u = j * (e * i - h * f) + k * (g * f - d * i) + l * (d * h - e * g);
+					u = u / m;
+
+					double v = i * (a * k - j * b) + h * (j * c - a * l) + g * (b * l - k * c);
+					v = v / m;
+
+					double w = 1.0 - u - v;
+
+					RGB color = null;
+
+					if (vertexData == null) {
+						color = new RGB(0.0, 0.0, 0.0);
+						color.addTo(((Mesh.Vertex) p1).getColor(w));
+						color.addTo(((Mesh.Vertex) p2).getColor(u));
+						color.addTo(((Mesh.Vertex) p3).getColor(v));
+					} else {
+						double cr = vertexData.getRed(ind1) +
+								vertexData.getRed(ind2) +
+								vertexData.getRed(ind3);
+						double cg = vertexData.getGreen(ind1) +
+								vertexData.getGreen(ind2) +
+								vertexData.getGreen(ind3);
+						double cb = vertexData.getBlue(ind1) +
+								vertexData.getBlue(ind2) +
+								vertexData.getBlue(ind3);
+
+						color = new RGB(cr, cg, cb);
+					}
+
+					color.multiplyBy(dc);
+
+					return color;
+				} else {
+					return dc;
+				}
+			}
+
+			@Override
+			public void compact() {
+				// TODO  Should this compact the underlying colors?
+			}
+		};
 	}
 	
 	/**

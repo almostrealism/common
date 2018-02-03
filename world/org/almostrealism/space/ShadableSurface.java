@@ -36,17 +36,20 @@ public interface ShadableSurface extends ShadableCurve, Intersectable<ShadableIn
 	 * {@link #getNormalAt(Vector)} method for this Surface object points
 	 * outward from.
 	 */
-	public boolean getShadeFront();
+	boolean getShadeFront();
 	
 	/**
 	 * Returns true if the back side of this Surface object should be shaded.
 	 * The "back side" is the side that the vector opposite the Vector object
 	 * returned by the getNormalAt() method for this Surface object points outward from.
 	 */
-	public boolean getShadeBack();
+	boolean getShadeBack();
 	
 	/**
 	 * Returns the color of this Surface object at the specified point as an RGB object.
 	 */
-	public ColorProducer getColorAt(Vector point);
+	// TODO  This method does not need to accept a point, because
+	//       ColorProducer provides an operate method which accepts
+	//       a point
+	ColorProducer getColorAt(Vector point);
 }

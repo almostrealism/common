@@ -8,6 +8,8 @@ public class FloatingPointUnit implements Unit {
 		this.value = d;
 	}
 
+	protected void setValue(double v) { this.value = v; }
+
 	public double asDouble() { return value; }
 
 	public int asInteger() { return (int) value; }

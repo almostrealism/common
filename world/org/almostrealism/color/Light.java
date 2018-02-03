@@ -23,24 +23,24 @@ import org.almostrealism.texture.Texture;
  * A {@link Light} implementation provides lighting information used for rendering.
  * The intensity and color of the {@link Light} may by specified.
  * 
- * @author Michael Murray.
+ * @author  Michael Murray.
  */
 public interface Light {
-	public boolean castShadows = true;
+	boolean castShadows = true;
 	
 	/** Sets the intensity of this {@link Light}. */
-	public void setIntensity(double intensity);
+	void setIntensity(double intensity);
 	
 	/**
 	 * Sets the color of this Light object to the color represented by the specified {@link RGB} object.
 	 */
-	public void setColor(RGB color);
+	void setColor(RGB color);
 	
 	/** Returns the intensity of this {@link Light} as a double value. */
-	public double getIntensity();
+	double getIntensity();
 	
 	/** Returns the color of this Light object as an {@link RGB} object. */
-	public RGB getColor();
+	RGB getColor();
 	
 	/**
 	 * Returns the color of this {@link Light} at the specified point
@@ -49,5 +49,5 @@ public interface Light {
 	 * TODO  This is unnecessary. Some methods {@link Light}s may implement {@link Texture}
 	 *       if they want to provide this kind of function.
 	 */
-	public ColorProducer getColorAt(Vector point);
+	ColorProducer getColorAt(Vector point);
 }

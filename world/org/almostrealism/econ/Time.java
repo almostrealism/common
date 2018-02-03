@@ -3,9 +3,15 @@ package org.almostrealism.econ;
 public class Time {
 	private long sysTime;
 
+	public Time() { this.sysTime = -1; }
+
 	public Time(long sysTime) {
 		this.sysTime = sysTime;
 	}
+
+	public void setTime(long sysTime) { this.sysTime = sysTime; }
+
+	public long getTime() { return sysTime; }
 
 	public int hashCode() {
 		// TODO  This probably doesn't perform well, as all of the times are near-neighbors (recent past)

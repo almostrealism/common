@@ -50,7 +50,7 @@ public class Intersections {
 	 * no intersections >= RayTracingEngine.e then null is returned.
 	 */
 	public static <T extends Intersection> T closestIntersection(Ray ray, Iterable<? extends Intersectable<T, ?>> surfaces) {
-		List<T> intersections = new ArrayList<T>();
+		List<T> intersections = new ArrayList<>();
 		
 		for (Intersectable<T, ?> s : surfaces) {
 			intersections.add(s.intersectAt((Ray) ray.clone()));
