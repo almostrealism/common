@@ -1,4 +1,4 @@
-package org.almostrealism.util;
+package org.almostrealism.space;
 
 /**
  * Represents a 3D bounding solid.

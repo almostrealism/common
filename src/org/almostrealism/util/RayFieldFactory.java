@@ -3,6 +3,7 @@ package org.almostrealism.util;
 import org.almostrealism.algebra.Ray;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.graph.RayField;
+import org.almostrealism.space.BoundingSolid;
 
 import java.util.*;
 import java.util.concurrent.Callable;

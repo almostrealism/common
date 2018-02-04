@@ -40,7 +40,7 @@ import org.almostrealism.space.ShadableIntersection;
 import org.almostrealism.space.ShadableSurface;
 import org.almostrealism.space.ShadableSurfaceWrapper;
 import org.almostrealism.space.SpacePartition;
-import org.almostrealism.util.BoundingSolid;
+import org.almostrealism.space.BoundingSolid;
 
 // TODO  Add bounding solid to make intersection calc faster.
 
