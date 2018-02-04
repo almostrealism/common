@@ -57,6 +57,9 @@ public abstract class AbstractSurface<IN> extends TriangulatableGeometry impleme
 	private AbstractSurface parent;
 
 	private Operator<Vector> in;
+
+	protected ColorProducer colorProducer =
+				ColorProducerAdapter.fromFunction((Triple t) -> getColorAt((Vector) t, true));
 	
 	/**
 	 * Sets all values of this AbstractSurface to the defaults specified above.
@@ -522,26 +525,10 @@ public abstract class AbstractSurface<IN> extends TriangulatableGeometry impleme
 	public RGB getColor() { return this.color; }
 	
 	/**
-	 * @return  The color of this AbstractSurface at the specified point.
+	 * @return  The color of this AbstractSurface, which can be evaluated at a particular point.
 	 */
-	public ColorProducer getColorAt(Vector p) {
-		return new ColorProducer() {
-			@Override
-			public RGB evaluate(Object[] objects) {
-				return operate(p);
-			}
-
-			@Override
-			public RGB operate(Triple triple) {
-				return getColorAt((Vector) triple, true);
-			}
-
-			@Override
-			public void compact() {
-				// TODO  Should this compact the underlying colors?
-			}
-		};
-	}
+	@Override
+	public ColorProducer getColorAt() { return call(); }
 	
 	/**
 	 * @return  The color of this AbstractSurface at the specified point as an RGB object.
@@ -558,25 +545,16 @@ public abstract class AbstractSurface<IN> extends TriangulatableGeometry impleme
 	        
 	        colorAt.multiplyBy(this.color);
 	    } else {
-	        colorAt = (RGB)this.color.clone();
+	        colorAt = (RGB) this.color.clone();
 	    }
 
 	    if (this.parent != null)
-	        colorAt.multiplyBy(this.parent.getColorAt(point).evaluate(null));
+	        colorAt.multiplyBy(this.parent.getColorAt().operate(point));
 		
 		return colorAt;
 	}
 	
-	public ColorProducer call() {
-		return new ColorProducerAdapter() {
-			@Override
-			public RGB evaluate(Object[] args) {
-				return getColorAt((Vector) args[0], true);
-			}
-
-			public void compact() { }
-		};
-	}
+	public ColorProducer call() { return colorProducer; }
 	
 	/**
 	 * Delegates to  {#getNormalAt(Vector)}

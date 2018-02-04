@@ -100,7 +100,7 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 		
 		@Override public boolean getShadeFront() { return this.getSurface().getShadeFront(); }
 		@Override public boolean getShadeBack() { return this.getSurface().getShadeBack(); }
-		@Override public ColorProducer getColorAt(Vector point) { return this.getSurface().getColorAt(point); }
+		@Override public ColorProducer getColorAt() { return this.getSurface().getColorAt(); }
 		@Override public Vector getNormalAt(Vector point) { return this.getSurface().getNormalAt(point); }
 		@Override public boolean intersect(Ray ray) { return this.getSurface().intersect(ray); }
 		@Override public ShadableIntersection intersectAt(Ray ray) { return this.getSurface().intersectAt(ray); }

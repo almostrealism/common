@@ -18,6 +18,7 @@ package org.almostrealism.graph;
 
 import org.almostrealism.algebra.*;
 import org.almostrealism.color.ColorProducer;
+import org.almostrealism.color.ColorProducerAdapter;
 import org.almostrealism.color.RGB;
 import org.almostrealism.relation.Constant;
 import org.almostrealism.relation.Operator;
@@ -47,6 +48,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 	 */	
 	public Triangle() {
 		super(null, 1.0, new RGB(0.0, 0.0, 0.0), false);
+		initColorProducer();
 		this.setVertices(new Vector(0.0, 0.0, 0.0), new Vector(0.0, 0.0, 0.0), new Vector(0.0, 0.0, 0.0));
 	}
 	
@@ -55,6 +57,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 	 */
 	public Triangle(Vector p1, Vector p2, Vector p3) {
 		super(null, 1.0, new RGB(0.0, 0.0, 0.0), false);
+		initColorProducer();
 		this.setVertices(p1, p2, p3);
 	}
 	
@@ -64,11 +67,13 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 	 */
 	public Triangle(Vector p1, Vector p2, Vector p3, RGB color) {
 		super(null, 1.0, color, false);
+		initColorProducer();
 		this.setVertices(p1, p2, p3);
 	}
 	
 	public Triangle(int p1, int p2, int p3, RGB color, Mesh.VertexData data) {
 		super(null, 1.0, color, false);
+		initColorProducer();
 		
 		this.ind1 = p1;
 		this.ind2 = p2;
@@ -76,6 +81,56 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 		this.vertexData = data;
 		
 		this.loadVertexData();
+	}
+
+	private void initColorProducer() {
+		colorProducer = ColorProducerAdapter.fromFunction((Triple triple) -> {
+			RGB dc = getColorAt((Vector) triple, useT);
+			if (dc.length() < (Intersection.e * 100)) return new RGB(0.0, 0.0, 0.0);
+
+			if (intcolor) {
+				double g = triple.getA();
+				double h = triple.getB();
+				double i = triple.getC();
+
+				double m = a * (e * i - h * f) + b * (g * f - d * i) + c * (d * h - e * g);
+
+				double u = j * (e * i - h * f) + k * (g * f - d * i) + l * (d * h - e * g);
+				u = u / m;
+
+				double v = i * (a * k - j * b) + h * (j * c - a * l) + g * (b * l - k * c);
+				v = v / m;
+
+				double w = 1.0 - u - v;
+
+				RGB color = null;
+
+				if (vertexData == null) {
+					color = new RGB(0.0, 0.0, 0.0);
+					color.addTo(((Mesh.Vertex) p1).getColor(w));
+					color.addTo(((Mesh.Vertex) p2).getColor(u));
+					color.addTo(((Mesh.Vertex) p3).getColor(v));
+				} else {
+					double cr = vertexData.getRed(ind1) +
+							vertexData.getRed(ind2) +
+							vertexData.getRed(ind3);
+					double cg = vertexData.getGreen(ind1) +
+							vertexData.getGreen(ind2) +
+							vertexData.getGreen(ind3);
+					double cb = vertexData.getBlue(ind1) +
+							vertexData.getBlue(ind2) +
+							vertexData.getBlue(ind3);
+
+					color = new RGB(cr, cg, cb);
+				}
+
+				color.multiplyBy(dc);
+
+				return color;
+			} else {
+				return dc;
+			}
+		});
 	}
 	
 	private void loadVertexData() {
@@ -269,70 +324,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 			}
 		}
 	}
-	
-	public ColorProducer getColorAt(Vector p) {
-		return new ColorProducer() {
-			@Override
-			public RGB evaluate(Object[] objects) {
-				return operate(p);
-			}
 
-			@Override
-			public RGB operate(Triple triple) {
-				RGB dc = getColorAt((Vector) triple, useT);
-				if (dc.length() < (Intersection.e * 100)) return new RGB(0.0, 0.0, 0.0);
-
-				if (intcolor) {
-					double g = triple.getA();
-					double h = triple.getB();
-					double i = triple.getC();
-
-					double m = a * (e * i - h * f) + b * (g * f - d * i) + c * (d * h - e * g);
-
-					double u = j * (e * i - h * f) + k * (g * f - d * i) + l * (d * h - e * g);
-					u = u / m;
-
-					double v = i * (a * k - j * b) + h * (j * c - a * l) + g * (b * l - k * c);
-					v = v / m;
-
-					double w = 1.0 - u - v;
-
-					RGB color = null;
-
-					if (vertexData == null) {
-						color = new RGB(0.0, 0.0, 0.0);
-						color.addTo(((Mesh.Vertex) p1).getColor(w));
-						color.addTo(((Mesh.Vertex) p2).getColor(u));
-						color.addTo(((Mesh.Vertex) p3).getColor(v));
-					} else {
-						double cr = vertexData.getRed(ind1) +
-								vertexData.getRed(ind2) +
-								vertexData.getRed(ind3);
-						double cg = vertexData.getGreen(ind1) +
-								vertexData.getGreen(ind2) +
-								vertexData.getGreen(ind3);
-						double cb = vertexData.getBlue(ind1) +
-								vertexData.getBlue(ind2) +
-								vertexData.getBlue(ind3);
-
-						color = new RGB(cr, cg, cb);
-					}
-
-					color.multiplyBy(dc);
-
-					return color;
-				} else {
-					return dc;
-				}
-			}
-
-			@Override
-			public void compact() {
-				// TODO  Should this compact the underlying colors?
-			}
-		};
-	}
-	
 	/**
 	 * @return  True if the ray represented by the specified Ray object intersects the triangle
 	 *          represented by this Triangle object.
