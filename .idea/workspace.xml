@@ -3,12 +3,7 @@
   <component name="ChangeListManager">
     <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="">
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/math/org/almostrealism/algebra/TripleFunction.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/algebra/TripleFunction.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/org/almostrealism/graph/Mesh.java" afterPath="$PROJECT_DIR$/src/org/almostrealism/graph/Mesh.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/org/almostrealism/graph/Triangle.java" afterPath="$PROJECT_DIR$/src/org/almostrealism/graph/Triangle.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/color/ColorProducerAdapter.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/color/ColorProducerAdapter.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/space/AbstractSurface.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/space/AbstractSurface.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/space/ShadableSurface.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/space/ShadableSurface.java" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/pom.xml" afterPath="$PROJECT_DIR$/pom.xml" />
     </list>
     <ignored path="$PROJECT_DIR$/target/" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -30,11 +25,21 @@
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="Electrons.java" pinned="false" current-in-tab="true">
+      <file leaf-file-name="Electrons.java" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/world/org/almostrealism/physics/Electrons.java">
           <provider selected="true" editor-type-id="text-editor">
             <state relative-caret-position="105">
-              <caret line="27" column="7" lean-forward="true" selection-start-line="27" selection-start-column="7" selection-end-line="27" selection-end-column="7" />
+              <caret line="27" column="7" lean-forward="false" selection-start-line="27" selection-start-column="7" selection-end-line="27" selection-end-column="7" />
+              <folding />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="pom.xml" pinned="false" current-in-tab="true">
+        <entry file="file://$PROJECT_DIR$/pom.xml">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="120">
+              <caret line="8" column="19" lean-forward="false" selection-start-line="8" selection-start-column="19" selection-end-line="8" selection-end-column="19" />
               <folding />
             </state>
           </provider>
@@ -93,7 +98,6 @@
         <option value="$PROJECT_DIR$/world/org/almostrealism/physics/Orbital.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/physics/Shell.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/physics/Atom.java" />
-        <option value="$PROJECT_DIR$/pom.xml" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Intersection.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Intersectable.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/relation/Constant.java" />
@@ -137,6 +141,7 @@
         <option value="$PROJECT_DIR$/world/org/almostrealism/space/AbstractSurface.java" />
         <option value="$PROJECT_DIR$/src/org/almostrealism/graph/Triangle.java" />
         <option value="$PROJECT_DIR$/src/org/almostrealism/graph/Mesh.java" />
+        <option value="$PROJECT_DIR$/pom.xml" />
       </list>
     </option>
   </component>
@@ -426,7 +431,7 @@
       <workItem from="1517619389900" duration="248000" />
       <workItem from="1517645455145" duration="696000" />
       <workItem from="1517689073413" duration="2864000" />
-      <workItem from="1517768996959" duration="1283000" />
+      <workItem from="1517768996959" duration="1512000" />
     </task>
     <task id="LOCAL-00001" summary="Deployment.">
       <created>1506657014443</created>
@@ -575,11 +580,25 @@
       <option name="project" value="LOCAL" />
       <updated>1517696708505</updated>
     </task>
-    <option name="localTasksCounter" value="22" />
+    <task id="LOCAL-00022" summary="Working towards the elimination of getColorAt, starting by removing the Vector location parameter. ColorProducers (being TripleFunctions) can accept a Vector via the operate method.">
+      <created>1517770371283</created>
+      <option name="number" value="00022" />
+      <option name="presentableId" value="LOCAL-00022" />
+      <option name="project" value="LOCAL" />
+      <updated>1517770371283</updated>
+    </task>
+    <task id="LOCAL-00023" summary="This is version 0.4.">
+      <created>1517770440423</created>
+      <option name="number" value="00023" />
+      <option name="presentableId" value="LOCAL-00023" />
+      <option name="project" value="LOCAL" />
+      <updated>1517770440423</updated>
+    </task>
+    <option name="localTasksCounter" value="24" />
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="84412000" />
+    <option name="totallyTimeSpent" value="84641000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="0" y="0" width="1280" height="800" extended-state="6" />
@@ -641,7 +660,9 @@
     <MESSAGE value="More expansion of economics functionality." />
     <MESSAGE value="Read and Write operations for ExpenseData. ClockSynchronizer now sleeps after synchronization rather than before." />
     <MESSAGE value="Some improvements to physics data structures used in rendering and some new data structures for economics." />
-    <option name="LAST_COMMIT_MESSAGE" value="Some improvements to physics data structures used in rendering and some new data structures for economics." />
+    <MESSAGE value="Working towards the elimination of getColorAt, starting by removing the Vector location parameter. ColorProducers (being TripleFunctions) can accept a Vector via the operate method." />
+    <MESSAGE value="This is version 0.4." />
+    <option name="LAST_COMMIT_MESSAGE" value="This is version 0.4." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -657,13 +678,6 @@
     </option>
   </component>
   <component name="editorHistoryManager">
-    <entry file="jar:///Library/Java/JavaVirtualMachines/jdk1.8.0_144.jdk/Contents/Home/src.zip!/java/util/concurrent/Future.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="192">
-          <caret line="118" column="12" lean-forward="false" selection-start-line="118" selection-start-column="12" selection-end-line="118" selection-end-column="12" />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Intersectable.java">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="99">
@@ -926,6 +940,9 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="300">
           <caret line="20" column="0" lean-forward="true" selection-start-line="20" selection-start-column="0" selection-end-line="20" selection-end-column="0" />
+          <folding>
+            <element signature="e#0#660#0" expanded="true" />
+          </folding>
         </state>
       </provider>
     </entry>
@@ -1032,7 +1049,15 @@
     <entry file="file://$PROJECT_DIR$/world/org/almostrealism/physics/Electrons.java">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="105">
-          <caret line="27" column="7" lean-forward="true" selection-start-line="27" selection-start-column="7" selection-end-line="27" selection-end-column="7" />
+          <caret line="27" column="7" lean-forward="false" selection-start-line="27" selection-start-column="7" selection-end-line="27" selection-end-column="7" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/pom.xml">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="120">
+          <caret line="8" column="19" lean-forward="false" selection-start-line="8" selection-start-column="19" selection-end-line="8" selection-end-column="19" />
           <folding />
         </state>
       </provider>
