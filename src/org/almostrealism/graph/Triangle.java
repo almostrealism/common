@@ -19,6 +19,7 @@ package org.almostrealism.graph;
 import org.almostrealism.algebra.*;
 import org.almostrealism.color.ColorProducer;
 import org.almostrealism.color.ColorProducerAdapter;
+import org.almostrealism.color.GeneratedColorProducer;
 import org.almostrealism.color.RGB;
 import org.almostrealism.relation.Constant;
 import org.almostrealism.relation.Operator;
@@ -84,7 +85,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 	}
 
 	private void initColorProducer() {
-		colorProducer = ColorProducerAdapter.fromFunction((Triple triple) -> {
+		colorProducer = GeneratedColorProducer.fromFunction(this, (Triple triple) -> {
 			RGB dc = getColorAt((Vector) triple, useT);
 			if (dc.length() < (Intersection.e * 100)) return new RGB(0.0, 0.0, 0.0);
 

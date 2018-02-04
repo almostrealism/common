@@ -21,13 +21,7 @@ import java.util.concurrent.Future;
 
 import org.almostrealism.algebra.*;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.color.ColorProducer;
-import org.almostrealism.color.ColorProducerAdapter;
-import org.almostrealism.color.ColorSum;
-import org.almostrealism.color.RGB;
-import org.almostrealism.color.Shader;
-import org.almostrealism.color.ShaderContext;
-import org.almostrealism.color.ShaderSet;
+import org.almostrealism.color.*;
 import org.almostrealism.graph.Mesh;
 import org.almostrealism.graph.PathElement;
 import org.almostrealism.physics.Porous;
@@ -59,7 +53,7 @@ public abstract class AbstractSurface<IN> extends TriangulatableGeometry impleme
 	private Operator<Vector> in;
 
 	protected ColorProducer colorProducer =
-				ColorProducerAdapter.fromFunction((Triple t) -> getColorAt((Vector) t, true));
+				GeneratedColorProducer.fromFunction(this, (Triple t) -> getColorAt((Vector) t, true));
 	
 	/**
 	 * Sets all values of this AbstractSurface to the defaults specified above.
