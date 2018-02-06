@@ -7,6 +7,12 @@ import java.io.OutputStream;
 import java.util.HashMap;
 
 public class ExpenseData extends HashMap<Time, Expense> {
+	public ExpenseRange range(Time latest, Time interval) {
+		ExpenseRange top = new ExpenseRange(latest.subtract(interval), latest);
+		top.addAll(this);
+		return top;
+	}
+
 	public void write(OutputStream out) {
 		try (XMLEncoder e = new XMLEncoder(out)) {
 			e.writeObject(this);

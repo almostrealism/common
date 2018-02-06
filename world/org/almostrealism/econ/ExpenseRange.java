@@ -16,6 +16,7 @@
 
 package org.almostrealism.econ;
 
+import java.util.Map;
 import java.util.TreeSet;
 
 public class ExpenseRange {
@@ -77,6 +78,20 @@ public class ExpenseRange {
 		if (empty || t.equals(getLatest())) this.close = v;
 
 		return true;
+	}
+
+	public boolean add(Map.Entry<Time, Expense> ent) {
+		return add(ent.getKey(), ent.getValue());
+	}
+
+	public boolean addAll(Map<Time, Expense> m) {
+		boolean added = true;
+
+		for (Map.Entry<Time, Expense> e : m.entrySet()) {
+			added = add(e) & added;
+		}
+
+		return added;
 	}
 
 	protected TreeSet<Time> sortedTimes() { return sortedTimes; }
