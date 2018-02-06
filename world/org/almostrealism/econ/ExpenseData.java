@@ -6,7 +6,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.HashMap;
 
-public abstract class ExpenseData extends HashMap<Time, Expense> {
+public class ExpenseData extends HashMap<Time, Expense> {
 	public void write(OutputStream out) {
 		try (XMLEncoder e = new XMLEncoder(out)) {
 			e.writeObject(this);
