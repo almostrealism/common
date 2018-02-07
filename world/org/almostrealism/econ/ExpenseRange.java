@@ -57,7 +57,7 @@ public class ExpenseRange {
 	 */
 	public boolean add(Time t, Expense e) {
 		if (this.start != null && t.isBefore(start, false)) {
-			return this.before.add(t, e);
+			return this.before().add(t, e);
 		} else if (this.end != null && t.isAfter(end, true)) {
 			return false;
 		}
@@ -69,6 +69,8 @@ public class ExpenseRange {
 			System.out.println("Warning: " + prev + " was replaced in " + this);
 			System.out.println("Warning: Replacing expense data may damage the accuracy of OHLC metrics");
 		}
+
+		sortedTimes.add(t);
 
 		FloatingPointUnit c = (FloatingPointUnit) e.getCost();
 		double v = c.asDouble();
@@ -96,8 +98,8 @@ public class ExpenseRange {
 
 	protected TreeSet<Time> sortedTimes() { return sortedTimes; }
 
-	public Time getEarliest() { return sortedTimes().first(); }
-	public Time getLatest() { return sortedTimes().last(); }
+	public Time getEarliest() { return sortedTimes.isEmpty() ? null : sortedTimes().first(); }
+	public Time getLatest() { return sortedTimes.isEmpty() ? null : sortedTimes().last(); }
 
 	public Time getStart() { return start; }
 	public Time getEnd() { return end; }
