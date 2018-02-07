@@ -16,6 +16,8 @@
 
 package org.almostrealism.econ;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.TreeSet;
 
@@ -110,6 +112,18 @@ public class ExpenseRange {
 	public double getHigh() { return high; }
 	public double getLow() { return low; }
 	public double getClose() { return close; }
+
+	public List<ExpenseRange> flatten() {
+		if (before == null) {
+			ArrayList<ExpenseRange> l = new ArrayList<>();
+			l.add(this);
+			return l;
+		} else {
+			List<ExpenseRange> l = before.flatten();
+			l.add(this);
+			return l;
+		}
+	}
 
 	public ExpenseRange before() {
 		if (before == null) {
