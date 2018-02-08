@@ -2,11 +2,10 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="">
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/world/org/almostrealism/currency/ETH.java" />
-      <change type="DELETED" beforePath="$PROJECT_DIR$/world/org/almostrealism/physics/UpdateListener.java" afterPath="" />
+      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/world/org/almostrealism/physics/RigidBody.java" />
+      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/world/org/almostrealism/time/Animation.java" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/chem/Atomic.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/chem/Atomic.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/econ/ExpenseRange.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/econ/ExpenseRange.java" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/physics/PhysicalConstants.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/physics/PhysicalConstants.java" />
     </list>
     <ignored path="$PROJECT_DIR$/target/" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -32,7 +31,7 @@
         <entry file="file://$PROJECT_DIR$/world/org/almostrealism/physics/Electrons.java">
           <provider selected="true" editor-type-id="text-editor">
             <state relative-caret-position="-33">
-              <caret line="15" column="0" lean-forward="true" selection-start-line="15" selection-start-column="0" selection-end-line="15" selection-end-column="0" />
+              <caret line="15" column="0" lean-forward="false" selection-start-line="15" selection-start-column="0" selection-end-line="15" selection-end-column="0" />
               <folding>
                 <element signature="e#0#5572#0" expanded="true" />
               </folding>
@@ -40,22 +39,16 @@
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="Atomic.java" pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/world/org/almostrealism/chem/Atomic.java">
+      <file leaf-file-name="Animation.java" pinned="false" current-in-tab="true">
+        <entry file="file://$PROJECT_DIR$/world/org/almostrealism/time/Animation.java">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="135">
-              <caret line="9" column="41" lean-forward="true" selection-start-line="9" selection-start-column="41" selection-end-line="9" selection-end-column="41" />
-              <folding />
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file leaf-file-name="Material.java" pinned="false" current-in-tab="true">
-        <entry file="file://$PROJECT_DIR$/world/org/almostrealism/chem/Material.java">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="75">
-              <caret line="5" column="28" lean-forward="false" selection-start-line="5" selection-start-column="27" selection-end-line="5" selection-end-column="28" />
-              <folding />
+            <state relative-caret-position="249">
+              <caret line="251" column="0" lean-forward="true" selection-start-line="251" selection-start-column="0" selection-end-line="251" selection-end-column="0" />
+              <folding>
+                <element signature="imports" expanded="true" />
+                <element signature="e#1314#1315#0" expanded="true" />
+                <element signature="e#1350#1351#0" expanded="true" />
+              </folding>
             </state>
           </provider>
         </entry>
@@ -109,9 +102,6 @@
   <component name="IdeDocumentHistory">
     <option name="CHANGED_PATHS">
       <list>
-        <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Intersection.java" />
-        <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Intersectable.java" />
-        <option value="$PROJECT_DIR$/math/org/almostrealism/relation/Constant.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Polynomial.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/space/Plane.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/space/SurfaceGroup.java" />
@@ -160,6 +150,9 @@
         <option value="$PROJECT_DIR$/world/org/almostrealism/econ/ExpenseRange.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/currency/ETH.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/chem/Atomic.java" />
+        <option value="$PROJECT_DIR$/world/org/almostrealism/physics/PhysicalConstants.java" />
+        <option value="$PROJECT_DIR$/world/org/almostrealism/physics/RigidBody.java" />
+        <option value="$PROJECT_DIR$/world/org/almostrealism/time/Animation.java" />
       </list>
     </option>
   </component>
@@ -228,7 +221,7 @@
               <item name="common" type="462c0819:PsiDirectoryNode" />
               <item name="world" type="462c0819:PsiDirectoryNode" />
               <item name="almostrealism" type="462c0819:PsiDirectoryNode" />
-              <item name="physics" type="462c0819:PsiDirectoryNode" />
+              <item name="time" type="462c0819:PsiDirectoryNode" />
             </path>
           </expand>
           <select />
@@ -438,7 +431,7 @@
       <workItem from="1517768996959" duration="3241000" />
       <workItem from="1517955330340" duration="2300000" />
       <workItem from="1517958659044" duration="4721000" />
-      <workItem from="1518030980963" duration="2106000" />
+      <workItem from="1518030980963" duration="4367000" />
     </task>
     <task id="LOCAL-00001" summary="Deployment.">
       <created>1506657014443</created>
@@ -650,11 +643,18 @@
       <option name="project" value="LOCAL" />
       <updated>1517964479246</updated>
     </task>
-    <option name="localTasksCounter" value="31" />
+    <task id="LOCAL-00031" summary="Introduced ETH currency type, minor changes to ExpenseRange and Atomic, and removed UpdateListener (Temporal should be used in its place).">
+      <created>1518071759608</created>
+      <option name="number" value="00031" />
+      <option name="presentableId" value="LOCAL-00031" />
+      <option name="project" value="LOCAL" />
+      <updated>1518071759608</updated>
+    </task>
+    <option name="localTasksCounter" value="32" />
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="95497000" />
+    <option name="totallyTimeSpent" value="97758000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="0" y="0" width="1280" height="800" extended-state="6" />
@@ -697,7 +697,6 @@
     <option name="myLimit" value="2678400000" />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="Migrated SphericalProbabilityDistribution over from photon field into Common." />
     <MESSAGE value="Some improvements to chem package (towards spectrogram support). Introduced ResourceTranscoder and migrated some file decoding from SpatialData to individual transcoders." />
     <MESSAGE value="Migrated Ply parsing to PlyResource.MeshReader." />
     <MESSAGE value="Migrated Raw file decoding into RawResource.SceneReader." />
@@ -722,11 +721,12 @@
     <MESSAGE value="ExpenseData can now produce an ExpenseRange of a specific interval." />
     <MESSAGE value="Scalar implements Comparable. Fixed a bug in ExpenseRange add method." />
     <MESSAGE value="Added flatten method to ExpenseRange." />
-    <option name="LAST_COMMIT_MESSAGE" value="Added flatten method to ExpenseRange." />
+    <MESSAGE value="Introduced ETH currency type, minor changes to ExpenseRange and Atomic, and removed UpdateListener (Temporal should be used in its place)." />
+    <option name="LAST_COMMIT_MESSAGE" value="Introduced ETH currency type, minor changes to ExpenseRange and Atomic, and removed UpdateListener (Temporal should be used in its place)." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
-      <option name="time" value="5" />
+      <option name="time" value="6" />
     </breakpoint-manager>
     <watches-manager />
   </component>
@@ -738,27 +738,6 @@
     </option>
   </component>
   <component name="editorHistoryManager">
-    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/space/ShadableIntersection.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="245">
-          <caret line="44" column="77" lean-forward="false" selection-start-line="44" selection-start-column="77" selection-end-line="44" selection-end-column="77" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/econ/Commodity.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="45">
-          <caret line="3" column="49" lean-forward="false" selection-start-line="3" selection-start-column="49" selection-end-line="3" selection-end-column="49" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/econ/Unit.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="75">
-          <caret line="5" column="18" lean-forward="false" selection-start-line="5" selection-start-column="18" selection-end-line="5" selection-end-column="18" />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/world/org/almostrealism/econ/Expense.java">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="60">
@@ -1093,13 +1072,19 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/physics/Electrons.java">
+    <entry file="file://$PROJECT_DIR$/src/org/almostrealism/graph/Mesh.java">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="-33">
-          <caret line="15" column="0" lean-forward="true" selection-start-line="15" selection-start-column="0" selection-end-line="15" selection-end-column="0" />
-          <folding>
-            <element signature="e#0#5572#0" expanded="true" />
-          </folding>
+        <state relative-caret-position="110">
+          <caret line="503" column="68" lean-forward="true" selection-start-line="503" selection-start-column="68" selection-end-line="503" selection-end-column="68" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/chem/Material.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="45">
+          <caret line="3" column="21" lean-forward="true" selection-start-line="3" selection-start-column="21" selection-end-line="3" selection-end-column="21" />
+          <folding />
         </state>
       </provider>
     </entry>
@@ -1111,19 +1096,43 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/src/org/almostrealism/graph/Mesh.java">
+    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/physics/RigidBody.java">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="110">
-          <caret line="503" column="68" lean-forward="true" selection-start-line="503" selection-start-column="68" selection-end-line="503" selection-end-column="68" />
+        <state relative-caret-position="60">
+          <caret line="18" column="0" lean-forward="false" selection-start-line="18" selection-start-column="0" selection-end-line="18" selection-end-column="0" />
+          <folding>
+            <element signature="imports" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/physics/PhysicalConstants.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="264">
+          <caret line="39" column="44" lean-forward="false" selection-start-line="39" selection-start-column="44" selection-end-line="39" selection-end-column="44" />
           <folding />
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/chem/Material.java">
+    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/physics/Electrons.java">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="75">
-          <caret line="5" column="28" lean-forward="false" selection-start-line="5" selection-start-column="27" selection-end-line="5" selection-end-column="28" />
-          <folding />
+        <state relative-caret-position="-33">
+          <caret line="15" column="0" lean-forward="false" selection-start-line="15" selection-start-column="0" selection-end-line="15" selection-end-column="0" />
+          <folding>
+            <element signature="e#0#5572#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/time/Animation.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="249">
+          <caret line="251" column="0" lean-forward="true" selection-start-line="251" selection-start-column="0" selection-end-line="251" selection-end-column="0" />
+          <folding>
+            <element signature="imports" expanded="true" />
+            <element signature="e#1314#1315#0" expanded="true" />
+            <element signature="e#1350#1351#0" expanded="true" />
+          </folding>
         </state>
       </provider>
     </entry>

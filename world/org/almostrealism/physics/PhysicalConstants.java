@@ -36,7 +36,9 @@ public interface PhysicalConstants {
 
 	/** The product of {@link #HC} and {@link #R}. */
 	double HCR = HC * R;
-	
+
+	double G = 6.67 * Math.pow(10.0, -11.0);
+
 	double evMsecToWatts = 1.60217646 * Math.pow(10.0, -13.0);
 	double wattsToEvMsec = 1 / evMsecToWatts;
 
