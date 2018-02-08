@@ -28,6 +28,8 @@ public class ExpenseRange {
 	private ExpenseRange before;
 	// TODO  Add ExpenseRange after (?)
 
+
+	// TODO  Change these to Currency types
 	private double open, close;
 	private double high, low;
 
