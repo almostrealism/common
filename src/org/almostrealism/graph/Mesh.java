@@ -49,6 +49,7 @@ import org.almostrealism.space.BoundingSolid;
  * and allows triangles to be specified using those points.
  * 
  * @author  Michael Murray
+ * @author  Dan Chivers
  */
 public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, Triangle> {
 	private static RGB white = new RGB(1.0, 1.0, 1.0);
@@ -249,7 +250,7 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
   	
   	/**
   	 * Adds the triangle described by the specified points to the mesh
-  	 * represented by this Mesh object.
+  	 * represented by this Mesh object and clears the cache.
   	 * 
   	 * @param p1  Index of first point.
   	 * @param p2  Index of second point.
@@ -258,30 +259,50 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
   	 * @return  The unique index of the triangle added or -1 if it is not added (if any point indicies are the same).
   	 */
   	public int addTriangle(int p1, int p2, int p3) {
-  		if (p1 == p2 || p2 == p3 || p3 == p1) return -1;
-  		
-  		Vertex v1 = (Vertex) this.points.get(p1);
-  		Vertex v2 = (Vertex) this.points.get(p2);
-  		Vertex v3 = (Vertex) this.points.get(p3);
-  		
-  		Triangle t = new Triangle(v1, v2, v3);
-  		
-  		Vector tn = t.getNormalAt(new Vector());
-  		
-  		if (this.triangles.add(new int[] {p1, p2, p3})) {
-  	  		v1.addNormal(tn);
-  			v2.addNormal(tn);
-  			v3.addNormal(tn);
-  			
-  			this.clearIgnoreCache();
-  			this.clearTriangleCache();
-  			this.clearIntersectionCache();
-  			
-  			return (this.triangles.size() - 1);
-  		} else {
-  			return -1;
-  		}
+  		return addTriangle(p1, p2, p3, true);
   	}
+
+	/**
+	 * Adds the triangle described by the specified points to the mesh
+	 * represented by this Mesh object. Allows manual control over whether the
+	 * cache will be cleared after triangle addition.
+	 * Cache clearance is expensive when a large mesh is concerned, so you may want
+	 * to invalidate the cache only after adding multiple triangles.
+	 *
+	 * @param p1  Index of first point.
+	 * @param p2  Index of second point.
+	 * @param p3  Index of third point.
+	 * @param clearcache Whether to clear the cache after triangle addition.
+	 * @throws IllegalArgumentException if any of the indicies specified are not valid.
+	 * @return  The unique index of the triangle added or -1 if it is not added (if any point indicies are the same).
+	 */
+  	public int addTriangle(int p1, int p2, int p3, boolean clearcache) {
+		if (p1 == p2 || p2 == p3 || p3 == p1) return -1;
+
+		Vertex v1 = (Vertex) this.points.get(p1);
+		Vertex v2 = (Vertex) this.points.get(p2);
+		Vertex v3 = (Vertex) this.points.get(p3);
+
+		Triangle t = new Triangle(v1, v2, v3);
+
+		Vector tn = t.getNormalAt(new Vector());
+
+		if (this.triangles.add(new int[] {p1, p2, p3})) {
+			v1.addNormal(tn);
+			v2.addNormal(tn);
+			v3.addNormal(tn);
+
+			if (clearcache) {
+				this.clearIgnoreCache();
+				this.clearTriangleCache();
+				this.clearIntersectionCache();
+			}
+
+			return (this.triangles.size() - 1);
+		} else {
+			return -1;
+		}
+	}
 	
 	public void clearIgnoreCache() {
 		if (this.vertexData == null)
