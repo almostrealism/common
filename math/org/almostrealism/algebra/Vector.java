@@ -16,15 +16,16 @@
 
 package org.almostrealism.algebra;
 
+import org.almostrealism.geometry.Positioned;
 import org.almostrealism.util.Defaults;
 
 /**
  * A Vector object represents a 3d vector. It stores three coordinates, x, y, z.
  */
-public class Vector implements Triple, Cloneable {
+public class Vector implements Positioned, Triple, Cloneable {
   public static final int CARTESIAN_COORDINATES = 0;
   public static final int SPHERICAL_COORDINATES = 1;
-  
+
   private double x, y, z;
 
 	/**
@@ -71,7 +72,7 @@ public class Vector implements Triple, Cloneable {
 	public static Vector uniformSphericalRandom() {
 		return new Vector(1.0, 2 * Math.PI * Math.random(), 2 * Math.PI * Math.random());
 	}
-	
+
 	public double[] getData() { return new double[] {this.x, this.y, this.z}; }
 	
 	/**
@@ -121,7 +122,19 @@ public class Vector implements Triple, Cloneable {
 
 	@Override
 	public void setC(double c) { setZ(c); }
-	
+
+	@Override
+	public void setPosition(float x, float y, float z) {
+		this.x = x;
+		this.y = y;
+		this.z = z;
+	}
+
+	@Override
+	public float[] getPosition() {
+		return new float[]{(float) x, (float) y, (float) z};
+	}
+
 	/**
 	 * Returns the opposite of the vector represented by this Vector object.
 	 */
@@ -247,7 +260,7 @@ public class Vector implements Triple, Cloneable {
 		
 		return lengthSq;
 	}
-	
+
 	/**
 	 * Returns an integer hash code value for this Vector object obtained by adding all 3
 	 * components and casting to an int.
