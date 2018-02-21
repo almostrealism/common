@@ -11,7 +11,7 @@ public class MeshResource implements Resource {
 	private Mesh mesh;
 
 	public MeshResource(Mesh m) {
-
+		this.mesh = m;
 	}
 
 	@Override

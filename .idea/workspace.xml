@@ -2,22 +2,8 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="">
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/math/org/almostrealism/geometry/Locatable.java" />
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/src/org/almostrealism/util/PriorityQueue.java" />
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/world/org/almostrealism/color/Colorable.java" />
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/world/org/almostrealism/physics/Fast.java" />
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/world/org/almostrealism/space/Volume.java" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/org/almostrealism/io/FileDecoder.java" afterPath="$PROJECT_DIR$/src/org/almostrealism/io/FileDecoder.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/org/almostrealism/io/SpatialData.java" afterPath="$PROJECT_DIR$/src/org/almostrealism/io/SpatialData.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/color/Light.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/color/Light.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/physics/RigidBody.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/physics/RigidBody.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/space/AbstractSurface.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/space/AbstractSurface.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/texture/ImageTexture.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/texture/ImageTexture.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/texture/StripeTexture.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/texture/StripeTexture.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/texture/Texture.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/texture/Texture.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/time/Animation.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/time/Animation.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/time/Clock.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/time/Clock.java" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/org/almostrealism/graph/MeshResource.java" afterPath="$PROJECT_DIR$/src/org/almostrealism/graph/MeshResource.java" />
     </list>
     <ignored path="$PROJECT_DIR$/target/" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -42,7 +28,7 @@
       <file leaf-file-name="Electrons.java" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/world/org/almostrealism/physics/Electrons.java">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="225">
+            <state relative-caret-position="15">
               <caret line="15" column="0" lean-forward="false" selection-start-line="15" selection-start-column="0" selection-end-line="15" selection-end-column="0" />
               <folding>
                 <element signature="e#0#5572#0" expanded="true" />
@@ -51,14 +37,34 @@
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="Animation.java" pinned="false" current-in-tab="true">
+      <file leaf-file-name="Animation.java" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/world/org/almostrealism/time/Animation.java">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="414">
-              <caret line="230" column="73" lean-forward="false" selection-start-line="230" selection-start-column="73" selection-end-line="230" selection-end-column="73" />
+            <state relative-caret-position="39">
+              <caret line="205" column="8" lean-forward="true" selection-start-line="205" selection-start-column="8" selection-end-line="205" selection-end-column="8" />
               <folding>
                 <element signature="imports" expanded="true" />
               </folding>
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="GtsResource.java" pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/src/org/almostrealism/graph/io/GtsResource.java">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="195">
+              <caret line="21" column="40" lean-forward="true" selection-start-line="21" selection-start-column="40" selection-end-line="21" selection-end-column="40" />
+              <folding />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="PlyResource.java" pinned="false" current-in-tab="true">
+        <entry file="file://$PROJECT_DIR$/src/org/almostrealism/graph/io/PlyResource.java">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="60">
+              <caret line="4" column="40" lean-forward="true" selection-start-line="4" selection-start-column="40" selection-end-line="4" selection-end-column="40" />
+              <folding />
             </state>
           </provider>
         </entry>
@@ -99,6 +105,8 @@
       <find>samples</find>
       <find>sample</find>
       <find>getColorAt</find>
+      <find>GtsResource</find>
+      <find>MeshResource</find>
     </findStrings>
     <dirStrings>
       <dir>$PROJECT_DIR$</dir>
@@ -112,7 +120,6 @@
   <component name="IdeDocumentHistory">
     <option name="CHANGED_PATHS">
       <list>
-        <option value="$PROJECT_DIR$/world/org/almostrealism/econ/Currency.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/econ/Security.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/econ/SecurityAdapter.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/econ/LTC.java" />
@@ -157,12 +164,13 @@
         <option value="$PROJECT_DIR$/world/org/almostrealism/texture/ImageTexture.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/space/AbstractSurface.java" />
         <option value="$PROJECT_DIR$/src/org/almostrealism/io/FileDecoder.java" />
-        <option value="$PROJECT_DIR$/src/org/almostrealism/io/SpatialData.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/color/Colorable.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/geometry/Locatable.java" />
         <option value="$PROJECT_DIR$/src/org/almostrealism/util/PriorityQueue.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/space/Volume.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/physics/Fast.java" />
+        <option value="$PROJECT_DIR$/src/org/almostrealism/io/SpatialData.java" />
+        <option value="$PROJECT_DIR$/src/org/almostrealism/graph/MeshResource.java" />
       </list>
     </option>
   </component>
@@ -205,9 +213,6 @@
     </navigator>
     <panes>
       <pane id="AndroidView" />
-      <pane id="PackagesPane" />
-      <pane id="Scratches" />
-      <pane id="Scope" />
       <pane id="ProjectPane">
         <subPane>
           <expand>
@@ -253,6 +258,9 @@
           <select />
         </subPane>
       </pane>
+      <pane id="Scratches" />
+      <pane id="Scope" />
+      <pane id="PackagesPane" />
     </panes>
   </component>
   <component name="PropertiesComponent">
@@ -462,7 +470,8 @@
       <workItem from="1518496562116" duration="1803000" />
       <workItem from="1518572735836" duration="1060000" />
       <workItem from="1519188243096" duration="265000" />
-      <workItem from="1519191481954" duration="450000" />
+      <workItem from="1519191481954" duration="558000" />
+      <workItem from="1519196261980" duration="124000" />
     </task>
     <task id="LOCAL-00001" summary="Deployment.">
       <created>1506657014443</created>
@@ -688,11 +697,25 @@
       <option name="project" value="LOCAL" />
       <updated>1518079840760</updated>
     </task>
-    <option name="localTasksCounter" value="33" />
+    <task id="LOCAL-00033" summary="Migrated a lot of functionality from PhotonField into Common.">
+      <created>1519191971309</created>
+      <option name="number" value="00033" />
+      <option name="presentableId" value="LOCAL-00033" />
+      <option name="project" value="LOCAL" />
+      <updated>1519191971309</updated>
+    </task>
+    <task id="LOCAL-00034" summary="Removed unused imports.">
+      <created>1519196296495</created>
+      <option name="number" value="00034" />
+      <option name="presentableId" value="LOCAL-00034" />
+      <option name="project" value="LOCAL" />
+      <updated>1519196296495</updated>
+    </task>
+    <option name="localTasksCounter" value="35" />
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="106649000" />
+    <option name="totallyTimeSpent" value="106881000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="0" y="0" width="1280" height="800" extended-state="6" />
@@ -709,8 +732,9 @@
       <window_info id="Terminal" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.32462174" sideWeight="0.5" order="10" side_tool="false" content_ui="tabs" />
       <window_info id="Capture Tool" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="2" side_tool="false" content_ui="tabs" />
       <window_info id="Designer" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="3" side_tool="false" content_ui="tabs" />
-      <window_info id="Project" active="true" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.2746365" sideWeight="0.5" order="0" side_tool="false" content_ui="combo" />
+      <window_info id="Project" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.2746365" sideWeight="0.5" order="0" side_tool="false" content_ui="combo" />
       <window_info id="Database" active="false" anchor="right" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="5" side_tool="false" content_ui="tabs" />
+      <window_info id="Find" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.3287483" sideWeight="0.5" order="1" side_tool="false" content_ui="tabs" />
       <window_info id="Structure" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.25" sideWeight="0.5" order="1" side_tool="false" content_ui="tabs" />
       <window_info id="Ant Build" active="false" anchor="right" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.25" sideWeight="0.5" order="1" side_tool="false" content_ui="tabs" />
       <window_info id="UI Designer" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="4" side_tool="false" content_ui="tabs" />
@@ -725,7 +749,6 @@
       <window_info id="Atlassian " active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="8" side_tool="false" content_ui="tabs" />
       <window_info id="Messages" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="9" side_tool="false" content_ui="tabs" />
       <window_info id="Inspection" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.4" sideWeight="0.5" order="5" side_tool="false" content_ui="tabs" />
-      <window_info id="Find" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.3287483" sideWeight="0.5" order="1" side_tool="false" content_ui="tabs" />
     </layout>
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -735,8 +758,6 @@
     <option name="myLimit" value="2678400000" />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="Migrated Ply parsing to PlyResource.MeshReader." />
-    <MESSAGE value="Migrated Raw file decoding into RawResource.SceneReader." />
     <MESSAGE value="Eliminated the need for persistence delegates when using XML encoding by establishing setters which did not previously exist." />
     <MESSAGE value="Migrated electrodynamics classes and interfaces out of chem and into physics." />
     <MESSAGE value="Introduced Electron and Spin which together describe an electron and all potential excitation energy levels. Electrons allows Electron instances to be grouped together so that excitation energy levels for a whole valence group can be calculated together." />
@@ -760,7 +781,9 @@
     <MESSAGE value="Added flatten method to ExpenseRange." />
     <MESSAGE value="Introduced ETH currency type, minor changes to ExpenseRange and Atomic, and removed UpdateListener (Temporal should be used in its place)." />
     <MESSAGE value="Migrated some animation functionality from the Explorer Simulation to Common Animation. Simulation is now a subclass of Animation." />
-    <option name="LAST_COMMIT_MESSAGE" value="Migrated some animation functionality from the Explorer Simulation to Common Animation. Simulation is now a subclass of Animation." />
+    <MESSAGE value="Migrated a lot of functionality from PhotonField into Common." />
+    <MESSAGE value="Removed unused imports." />
+    <option name="LAST_COMMIT_MESSAGE" value="Removed unused imports." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -776,27 +799,6 @@
     </option>
   </component>
   <component name="editorHistoryManager">
-    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/time/Frequency.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="30">
-          <caret line="2" column="22" lean-forward="false" selection-start-line="2" selection-start-column="22" selection-end-line="2" selection-end-column="22" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/src/org/almostrealism/util/Producer.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="155">
-          <caret line="28" column="17" lean-forward="false" selection-start-line="28" selection-start-column="17" selection-end-line="28" selection-end-column="17" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/TripleFunction.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="30">
-          <caret line="2" column="17" lean-forward="false" selection-start-line="2" selection-start-column="17" selection-end-line="2" selection-end-column="17" />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/world/org/almostrealism/space/ShadableSurface.java">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="136">
@@ -931,14 +933,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/src/org/almostrealism/graph/Mesh.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="110">
-          <caret line="503" column="68" lean-forward="true" selection-start-line="503" selection-start-column="68" selection-end-line="503" selection-end-column="68" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/world/org/almostrealism/chem/Material.java">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="45">
@@ -969,7 +963,7 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/world/org/almostrealism/physics/Electrons.java">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="225">
+        <state relative-caret-position="15">
           <caret line="15" column="0" lean-forward="false" selection-start-line="15" selection-start-column="0" selection-end-line="15" selection-end-column="0" />
           <folding>
             <element signature="e#0#5572#0" expanded="true" />
@@ -1055,14 +1049,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/src/org/almostrealism/io/SpatialData.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="305">
-          <caret line="127" column="86" lean-forward="false" selection-start-line="127" selection-start-column="86" selection-end-line="127" selection-end-column="86" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/src/org/almostrealism/io/FileDecoder.java">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="198">
@@ -1125,7 +1111,7 @@
         <state relative-caret-position="392">
           <caret line="72" column="4" lean-forward="false" selection-start-line="72" selection-start-column="4" selection-end-line="72" selection-end-column="4" />
           <folding>
-            <element signature="e#0#2535#0" expanded="true" />
+            <element signature="e#0#2535#0" expanded="false" />
           </folding>
         </state>
       </provider>
@@ -1135,18 +1121,60 @@
         <state relative-caret-position="480">
           <caret line="32" column="4" lean-forward="false" selection-start-line="32" selection-start-column="4" selection-end-line="32" selection-end-column="4" />
           <folding>
-            <element signature="e#0#1115#0" expanded="true" />
+            <element signature="e#0#1115#0" expanded="false" />
           </folding>
         </state>
       </provider>
     </entry>
     <entry file="file://$PROJECT_DIR$/world/org/almostrealism/time/Animation.java">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="414">
-          <caret line="230" column="73" lean-forward="false" selection-start-line="230" selection-start-column="73" selection-end-line="230" selection-end-column="73" />
+        <state relative-caret-position="39">
+          <caret line="205" column="8" lean-forward="true" selection-start-line="205" selection-start-column="8" selection-end-line="205" selection-end-column="8" />
           <folding>
             <element signature="imports" expanded="true" />
           </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/src/org/almostrealism/io/SpatialData.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="150">
+          <caret line="24" column="37" lean-forward="true" selection-start-line="24" selection-start-column="37" selection-end-line="24" selection-end-column="37" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/src/org/almostrealism/graph/Mesh.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="155">
+          <caret line="352" column="20" lean-forward="false" selection-start-line="352" selection-start-column="20" selection-end-line="352" selection-end-column="20" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/src/org/almostrealism/graph/io/GtsResource.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="195">
+          <caret line="21" column="40" lean-forward="true" selection-start-line="21" selection-start-column="40" selection-end-line="21" selection-end-column="40" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/src/org/almostrealism/graph/MeshResource.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="105">
+          <caret line="12" column="33" lean-forward="true" selection-start-line="12" selection-start-column="33" selection-end-line="12" selection-end-column="33" />
+          <folding>
+            <element signature="e#328#329#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/src/org/almostrealism/graph/io/PlyResource.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="60">
+          <caret line="4" column="40" lean-forward="true" selection-start-line="4" selection-start-column="40" selection-end-line="4" selection-end-column="40" />
+          <folding />
         </state>
       </provider>
     </entry>
