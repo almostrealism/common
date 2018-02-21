@@ -51,16 +51,16 @@ public interface RigidBody {
 		
 		protected ArrayList<Temporal> listeners;
 		
-		protected double e;
-		
-		protected double mass;        // mass value
-		protected TransformMatrix in; // moment of inertia matrix
-		
-		protected Vector x, r; // location and rotation
-		protected Vector p, l; // linear and angular momentum
-		
-		protected Vector v, w; // linear and angular velocity
-		protected Vector f, t; // force and torque
+		public double e;
+
+		public double mass;        // mass value
+		public TransformMatrix in; // moment of inertia matrix
+
+		public Vector x, r; // location and rotation
+		public Vector p, l; // linear and angular momentum
+
+		public Vector v, w; // linear and angular velocity
+		public Vector f, t; // force and torque
 		
 		/**
 		 * Initializes this RigidBody object with the specified location, rotation,

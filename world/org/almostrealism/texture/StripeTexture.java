@@ -18,9 +18,13 @@ package org.almostrealism.texture;
 
 import org.almostrealism.algebra.Triple;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.color.ColorProducer;
+import org.almostrealism.color.GeneratedColorProducer;
 import org.almostrealism.color.RGB;
 import org.almostrealism.util.Editable;
 import org.almostrealism.util.Producer;
+
+import java.awt.*;
 
 // TODO  Add vector direction in place of axis selection.
 
@@ -75,50 +79,54 @@ public class StripeTexture implements Texture, Editable {
 	 * @return  The color of the texture represented by this {@link StripeTexture}
 	 *          object at the specified point as an RGB object.
 	 */
-	public RGB getColorAt(Vector point) {
-		return this.props == null ? null : this.getColorAt(point, this.props);
+	public RGB operate(Triple t) {
+		return this.props == null ? null : this.getColorAt(this.props).operate(t);
 	}
 	
 	/**
 	 * @throws IllegalArgumentException  If one of the objects specified is not of the correct type.
 	 * @return  The color of the texture represented by this StripeTexture object at the specified point as an RGB object.
 	 */
-	public RGB getColorAt(Vector point, Object props[]) {
-		for (int i = 0; i < StripeTexture.propTypes.length; i++) {
-			if (StripeTexture.propTypes[i].isInstance(props[i]) == false)
-				throw new IllegalArgumentException("Illegal argument: " + props[i].toString());
-		}
-		
-		double width = ((Double)props[0]).doubleValue();
-		boolean smooth = ((Boolean)props[1]).booleanValue();
-		int axis = ((Editable.Selection)props[2]).getSelected();
-		
-		double offset = ((Double)props[5]).doubleValue();
-		
-		double value;
-		
-		if (axis == 0)
-			value = point.getX();
-		else if (axis == 1)
-			value = point.getY();
-		else if (axis == 2)
-			value = point.getZ();
-		else
-			return null;
-		
-		RGB c1 = (RGB)props[3];
-		RGB c2 = (RGB)props[4];
-		
-		if (smooth == true) {
-			double t = (1 + Math.sin(Math.PI * ((value / width) + offset))) / 2.0;
-			
-			return (c1.multiply(1.0 - t)).add(c2.multiply(t));
-		} else {
-			if (Math.sin(Math.PI * ((value / width) + offset)) > 0)
-				return c1;
+	public ColorProducer getColorAt(Object props[]) {
+		return GeneratedColorProducer.fromFunction(this, (l) -> {
+			Vector point = new Vector(l.getA(), l.getB(), l.getC());
+
+			for (int i = 0; i < StripeTexture.propTypes.length; i++) {
+				if (StripeTexture.propTypes[i].isInstance(props[i]) == false)
+					throw new IllegalArgumentException("Illegal argument: " + props[i].toString());
+			}
+
+			double width = ((Double) props[0]).doubleValue();
+			boolean smooth = ((Boolean) props[1]).booleanValue();
+			int axis = ((Editable.Selection) props[2]).getSelected();
+
+			double offset = ((Double) props[5]).doubleValue();
+
+			double value;
+
+			if (axis == 0)
+				value = point.getX();
+			else if (axis == 1)
+				value = point.getY();
+			else if (axis == 2)
+				value = point.getZ();
 			else
-				return c2;
-		}
+				return null;
+
+			RGB c1 = (RGB) props[3];
+			RGB c2 = (RGB) props[4];
+
+			if (smooth == true) {
+				double t = (1 + Math.sin(Math.PI * ((value / width) + offset))) / 2.0;
+
+				return (c1.multiply(1.0 - t)).add(c2.multiply(t));
+			} else {
+				if (Math.sin(Math.PI * ((value / width) + offset)) > 0)
+					return c1;
+				else
+					return c2;
+			}
+		});
 	}
 	
 	/**
@@ -134,14 +142,7 @@ public class StripeTexture implements Texture, Editable {
 	    
 	    for (int i = 0; i < o.length; i++) o[i] = args[i + 1];
 	    
-	    return this.getColorAt((Vector)args[0], o);
-	}
-	
-	@Override
-	public RGB operate(Triple location) {
-		return getColorAt(new Vector(location.getA(),
-									location.getB(),
-									location.getC()));
+	    return this.getColorAt(o).evaluate(args);
 	}
 	
 	/**

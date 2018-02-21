@@ -41,36 +41,7 @@ public class FileDecoder extends SpatialData {
   
   /** The integer code for a RAW encoding. */
   public static final int RAWEncoding = 4;
-  
-  /** The integer code for a RGB list encoding. */
-  public static final int RGBListEncoding = 7;
-  
-  /**
-	 * Decodes the scene data stored in the file represented by the specified File object
-	 * using the encoding specified by the integer encoding code and returns the new Scene object.
-	 * If ui is true only SurfaceUI objects will be used. The specified ExceptionListener is notified
-	 * if an exception occurs when using an XMLDecoder.
-	 * This method returns null if the encoding is not supported.
-	 * 
-	 * @throws IOException  If an IO error occurs.
-	 * @throws FileNotFoundException  If the file is not found.
-	 */
-	public static Scene decodeSceneFile(File file, int encoding, boolean ui, ExceptionListener listener, ShadableSurface s) throws IOException {
-		return SpatialData.decodeScene(new FileInputStream(file), encoding, ui, listener, s);
-	}
-	
-	public static Scene decodeSceneFile(File file, int encoding, boolean ui,
-									ExceptionListener listener)
-									throws IOException {
-		return SpatialData.decodeScene(new FileInputStream(file), encoding, ui, listener, null);
-	}
-	
-	public static ShadableSurface decodeSurfaceFile(File file, int encoding,
-								boolean ui, ExceptionListener listener)
-								throws IOException {
-		return FileDecoder.decodeSurfaceFile(file, encoding, ui, listener, null);
-	}
-	
+
 	/**
 	 * Decodes the surface data stored in the file represented by the specified File object
 	 * using the encoding specified by the integer encoding code and returns the new Surface object.
@@ -82,31 +53,32 @@ public class FileDecoder extends SpatialData {
 	 * @throws FileNotFoundException  If the file is not found.
 	 */
 	public static ShadableSurface decodeSurfaceFile(File file, int encoding, boolean ui, ExceptionListener listener, ShadableSurface s) throws IOException {
-		FileInputStream fileIn = new FileInputStream(file);
-		
-		if (encoding == FileDecoder.XMLEncoding) {
-			XMLDecoder decoder = new XMLDecoder(fileIn);
-			decoder.setExceptionListener(listener);
-			
-			return ((ShadableSurface)decoder.readObject());
-		} else if (encoding == FileDecoder.RAWEncoding) {
-			Scene scene = FileDecoder.decodeSceneFile(file, FileDecoder.RAWEncoding, ui, listener, s);
-			
-			ShadableSurface group = new SurfaceGroup(scene.getSurfaces());
-			
-			if (ui == true) {
-				System.out.println("FileDecoder: UI mode no longer supported.");
+		try (FileInputStream fileIn = new FileInputStream(file)) {
+			if (encoding == FileDecoder.XMLEncoding) {
+				XMLDecoder decoder = new XMLDecoder(fileIn);
+				decoder.setExceptionListener(listener);
+
+				return ((ShadableSurface) decoder.readObject());
+			} else if (encoding == FileDecoder.RAWEncoding) {
+				Scene scene = SpatialData.decodeScene(fileIn, FileDecoder.RAWEncoding, ui, listener, s);
+
+				ShadableSurface group = new SurfaceGroup(scene.getSurfaces());
+
+				if (ui == true) {
+					System.out.println("FileDecoder: UI mode no longer supported.");
 //				group = SurfaceUIFactory.createSurfaceUI((AbstractSurface)group);
 //				((AbstractSurfaceUI)group).setName("Surface (Triangles)");
+				}
+
+				return group;
+			} else if (encoding == SpatialData.GTSEncoding ||
+					encoding == SpatialData.PLYEncoding ||
+					encoding == SpatialData.OBJEncoding) {
+				Scene<ShadableSurface> scene = SpatialData.decodeScene(fileIn, encoding, ui, listener, s);
+				return scene.get(0);
+			} else {
+				return null;
 			}
-			
-			return group;
-		} else if (encoding == SpatialData.GTSEncoding ||
-				encoding == SpatialData.PLYEncoding) {
-			Scene<ShadableSurface> scene = FileDecoder.decodeSceneFile(file, encoding, ui, listener, s);
-			return scene.get(0);
-		} else {
-			return null;
 		}
 	}
 	

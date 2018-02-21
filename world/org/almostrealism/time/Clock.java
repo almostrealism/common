@@ -29,9 +29,9 @@ import java.util.HashSet;
  * The clock keeps track of a set of photon fields that will be notified
  * when a clock tick occurs.
  * 
- * @author Mike Murray
+ * @author  Michael Murray
  */
-public class Clock {
+public class Clock implements Temporal {
 	private Set<PhotonField> fields;
 	private long ticks;
 	private double interval = Math.pow(10.0, -9.0);
@@ -117,15 +117,11 @@ public class Clock {
 	/**
 	 * Increments the time of this clock by one tick and notifies all photon fields
 	 * of the tick event.
-	 * 
-	 * @return  The total time on the clock after the tick.
 	 */
-	public double tick() {
+	public void tick() {
 		this.ticks++;
 		
 		Iterator itr = this.fields.iterator();
 		while (itr.hasNext()) ((PhotonField)itr.next()).tick(this.interval);
-		
-		return this.getTime();
 	}
 }

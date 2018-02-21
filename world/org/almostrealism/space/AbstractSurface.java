@@ -534,7 +534,7 @@ public abstract class AbstractSurface<IN> extends TriangulatableGeometry impleme
 	    
 	    if (textures.length > 0) {
 	        for (int i = 0; i < this.textures.length; i++) {
-	            colorAt.addTo(this.textures[i].getColorAt(point));
+	            colorAt.addTo(this.textures[i].operate(point));
 	        }
 	        
 	        colorAt.multiplyBy(this.color);

@@ -38,10 +38,12 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 
 	private String dir;
 
+	private Clock clock;
 	private Temporal listener;
 
 	public Animation() {
-		this.forces = new ArrayList();
+		this.forces = new ArrayList<>();
+		this.clock = new Clock();
 	}
 
 	/**
@@ -52,6 +54,8 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 	public void addForce(Gradient f) { this.forces.add(f); }
 
 	public void setIterations(int itr) { this.itr = itr; }
+
+	public int getIterations() { return this.itr; }
 
 	protected void setTickDuration(double dt) { this.dt = dt; }
 
@@ -64,6 +68,8 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 	 */
 	public void setFPS(double fps) { this.fdt = 1.0 / fps; }
 
+	public double getFrameDuration() { return this.fdt; }
+
 	/**
 	 * If the value of vdt is set to anything greater than 0.0, the time interval for each
 	 * iteration will be set so that it is the value of vdt divided by the average velocity
@@ -73,6 +79,9 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 
 	/** @return  The total time in seconds since the start of the simulation. */
 	public double getTime() { return this.totalTime; }
+
+	public void setClock(Clock c) { this.clock = c; }
+	public Clock getClock() { return this.clock; }
 
 	/** @return  A clone of the superclass of this Simulation object. */
 	public Scene getScene() { return (Scene) super.clone(); }
@@ -109,6 +118,8 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 	}
 
 	public void setOutputDirectory(String dir) { this.dir = dir; }
+
+	public String getOutputDirectory() { return this.dir; }
 
 	/**
 	 * @return  True if the simulation will output a properties file for each frame, false otherwise.
@@ -215,6 +226,13 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 
 			this.totalTime = this.totalTime + this.dt;
 
+			double microseconds = totalTime * 1000 * 1000;
+
+			// Move clock forward until it reaches the total time elapsed
+			while (clock.getTime() < microseconds) {
+				clock.tick();
+			}
+
 			if (this.totalTime % this.fdt == 0 || this.vdt > 0.0) {
 				if (this.listener != null) this.listener.tick();
 
@@ -259,6 +277,15 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 		p.setProperty("simulation.vdt", String.valueOf(this.vdt));
 
 		return p;
+	}
+
+	public void loadProperties(Properties p) {
+		this.fdt = Double.parseDouble(p.getProperty("simulation.fdt", "1.0"));
+		this.vdt = Double.parseDouble(p.getProperty("simulation.vdt", "-1.0"));
+		this.totalTime = Double.parseDouble(p.getProperty("simulation.time", "0.0"));
+
+		dt = Double.parseDouble(p.getProperty("simulation.dt", "1"));
+
 	}
 
 	public void writeImage(int i, String instance) { }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 Michael Murray
+ * Copyright 2018 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,25 +16,18 @@
 
 package org.almostrealism.texture;
 
-import org.almostrealism.algebra.Vector;
 import org.almostrealism.color.ColorProducer;
-import org.almostrealism.color.RGB;
 
 /**
- * The Texture interface is implemented by classes that can be used to texture a surface.
+ * The {@link Texture} interface is implemented by classes that can be used to texture a surface.
  * 
- * @author Mike Murray
+ * @author  Michael Murray
  */
 public interface Texture extends ColorProducer {
 	/**
 	 * Returns the color of the texture represented by this Texture object at the specified point as an RGB object
-	 * using the arguments stored by this Texture object.
-	 */
-	RGB getColorAt(Vector point);
-	
-	/**
-	 * Returns the color of the texture represented by this Texture object at the specified point as an RGB object
 	 * using the specified arguments.
 	 */
-	RGB getColorAt(Vector point, Object args[]);
+	@Deprecated
+	ColorProducer getColorAt(Object args[]);
 }

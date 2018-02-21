@@ -28,6 +28,7 @@ import java.net.URL;
 import org.almostrealism.algebra.Triple;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.color.ColorProducer;
+import org.almostrealism.color.GeneratedColorProducer;
 import org.almostrealism.color.RGB;
 import org.almostrealism.util.Editable;
 import org.almostrealism.util.Producer;
@@ -193,11 +194,13 @@ public class ImageTexture implements Texture, Editable {
   	}
   	
 	/**
-	 * @see org.almostrealism.texture.Texture#getColorAt(org.almostrealism.algebra.Vector)
+	 * @see org.almostrealism.texture.Texture#operate(Triple)
 	 * 
 	 * @throws NullPointerException  If pixel data is not loaded.
 	 */
-	public RGB getColorAt(Vector point) {
+	public RGB operate(Triple t) {
+		Vector point = new Vector(t.getA(), t.getB(), t.getC());
+
 		if (this.type == ImageTexture.SPHERICAL_PROJECTION) {
 			Vector p = point.divide(point.length());
 			
@@ -224,41 +227,48 @@ public class ImageTexture implements Texture, Editable {
 	 * @throws IllegalArgumentException  If args does not contain the correct object types.
 	 * @throws NullPointerException  If pixel data is not loaded.
 	 * 
-	 * @see org.almostrealism.texture.Texture#getColorAt(org.almostrealism.algebra.Vector, java.lang.Object[])
+	 * @see org.almostrealism.texture.Texture#getColorAt(java.lang.Object[])
 	 */
-	public RGB getColorAt(Vector point, Object args[]) {
-	    if (args[0] instanceof Double == false) throw new IllegalArgumentException("Illegal argument: " + args[0]);
-	    if (args[1] instanceof Double == false) throw new IllegalArgumentException("Illegal argument: " + args[1]);
-	    if (args[2] instanceof Double == false) throw new IllegalArgumentException("Illegal argument: " + args[2]);
-	    if (args[3] instanceof Double == false) throw new IllegalArgumentException("Illegal argument: " + args[3]);
-	    
-	    
-		if (this.type == ImageTexture.SPHERICAL_PROJECTION) {
-			Vector p = point.divide(point.length());
-			
-			double north = Math.acos(-this.northP.dotProduct(p));
-			double equator = Math.acos(p.dotProduct(this.equatorP) / Math.sin(north)) / (2 * Math.PI);
-			
-			double u = (this.crossP.dotProduct(p) < 0) ? equator : 1 - equator;
-			double v = north / Math.PI;
-			
-			return this.getColorAt(u, v, ((Double)args[0]).doubleValue(), ((Double)args[1]).doubleValue(),
-										((Double)args[2]).doubleValue(), ((Double)args[3]).doubleValue());
-		} else if (this.type == ImageTexture.XY_PLANAR_PROJECTION) {
-		    return this.getColorAt(point.getX(), point.getY(),
-		    		((Double)args[0]).doubleValue(), ((Double)args[1]).doubleValue(),
-				((Double)args[2]).doubleValue(), ((Double)args[3]).doubleValue());
-		} else if (this.type == ImageTexture.XZ_PLANAR_PROJECTION) {
-		    return this.getColorAt(point.getX(), point.getZ(),
-		    		((Double)args[0]).doubleValue(), ((Double)args[1]).doubleValue(),
-				((Double)args[2]).doubleValue(), ((Double)args[3]).doubleValue());
-		} else if (this.type == ImageTexture.YZ_PLANAR_PROJECTION) {
-		    return this.getColorAt(point.getY(), point.getZ(),
-		    		((Double)args[0]).doubleValue(), ((Double)args[1]).doubleValue(),
-				((Double)args[2]).doubleValue(), ((Double)args[3]).doubleValue());
-		} else {
-			return null;
-		}
+	public ColorProducer getColorAt(Object args[]) {
+		return GeneratedColorProducer.fromFunction(this, (l) ->
+				{
+					Vector point = new Vector(l.getA(), l.getB(), l.getC());
+
+					if (args[0] instanceof Double == false) throw new IllegalArgumentException("Illegal argument: " + args[0]);
+					if (args[1] instanceof Double == false) throw new IllegalArgumentException("Illegal argument: " + args[1]);
+					if (args[2] instanceof Double == false) throw new IllegalArgumentException("Illegal argument: " + args[2]);
+					if (args[3] instanceof Double == false) throw new IllegalArgumentException("Illegal argument: " + args[3]);
+
+
+					if (this.type == ImageTexture.SPHERICAL_PROJECTION) {
+						Vector p = point.divide(point.length());
+
+						double north = Math.acos(-this.northP.dotProduct(p));
+						double equator = Math.acos(p.dotProduct(this.equatorP) / Math.sin(north)) / (2 * Math.PI);
+
+						double u = (this.crossP.dotProduct(p) < 0) ? equator : 1 - equator;
+						double v = north / Math.PI;
+
+						return this.getColorAt(u, v, ((Double)args[0]).doubleValue(), ((Double)args[1]).doubleValue(),
+								((Double)args[2]).doubleValue(), ((Double)args[3]).doubleValue());
+					} else if (this.type == ImageTexture.XY_PLANAR_PROJECTION) {
+						return this.getColorAt(point.getX(), point.getY(),
+								((Double)args[0]).doubleValue(), ((Double)args[1]).doubleValue(),
+								((Double)args[2]).doubleValue(), ((Double)args[3]).doubleValue());
+					} else if (this.type == ImageTexture.XZ_PLANAR_PROJECTION) {
+						return this.getColorAt(point.getX(), point.getZ(),
+								((Double)args[0]).doubleValue(), ((Double)args[1]).doubleValue(),
+								((Double)args[2]).doubleValue(), ((Double)args[3]).doubleValue());
+					} else if (this.type == ImageTexture.YZ_PLANAR_PROJECTION) {
+						return this.getColorAt(point.getY(), point.getZ(),
+								((Double)args[0]).doubleValue(), ((Double)args[1]).doubleValue(),
+								((Double)args[2]).doubleValue(), ((Double)args[3]).doubleValue());
+					} else {
+						return null;
+					}
+				}
+
+		);
 	}
 	
 	/**
@@ -278,38 +288,22 @@ public class ImageTexture implements Texture, Editable {
 	    
 	    for (int i = 0; i < o.length; i++) o[i] = args[i + 1];
 	    
-	    return this.getColorAt((Vector) args[0], o);
-	}
-	
-	public RGB operate(Triple location) {
-		return getColorAt(new Vector(location.getA(),
-									location.getB(),
-									location.getC()));
+	    return this.getColorAt(o).evaluate(args);
 	}
 
-    /**
-     * @see org.almostrealism.util.Editable#getPropertyNames()
-     */
+    /** @see org.almostrealism.util.Editable#getPropertyNames() */
     public String[] getPropertyNames() { return ImageTexture.propNames; }
 
-    /**
-     * @see org.almostrealism.util.Editable#getPropertyDescriptions()
-     */
+    /** @see org.almostrealism.util.Editable#getPropertyDescriptions() */
     public String[] getPropertyDescriptions() { return ImageTexture.propDesc; }
 
-    /**
-     * @see org.almostrealism.util.Editable#getPropertyTypes()
-     */
+    /** @see org.almostrealism.util.Editable#getPropertyTypes() */
     public Class[] getPropertyTypes() { return ImageTexture.propTypes; }
 
-    /**
-     * @see org.almostrealism.util.Editable#getPropertyValues()
-     */
+    /** @see org.almostrealism.util.Editable#getPropertyValues() */
     public Object[] getPropertyValues() { return new Object[] {this.url, new Double(this.xScale), new Double(this.yScale)}; }
 
-    /**
-     * @see org.almostrealism.util.Editable#setPropertyValue(java.lang.Object, int)
-     */
+    /** @see org.almostrealism.util.Editable#setPropertyValue(java.lang.Object, int) */
     public void setPropertyValue(Object value, int index) {
     		if (index >= ImageTexture.propTypes.length) {
     			throw new IndexOutOfBoundsException("Index out of bounds: " + index);

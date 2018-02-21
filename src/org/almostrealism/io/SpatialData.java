@@ -33,6 +33,7 @@ import org.almostrealism.color.ShaderContext;
 import org.almostrealism.graph.Mesh;
 import org.almostrealism.graph.Triangle;
 import org.almostrealism.graph.io.GtsResource;
+import org.almostrealism.graph.io.ObjResource;
 import org.almostrealism.graph.io.PlyResource;
 import org.almostrealism.graph.io.RawResource;
 import org.almostrealism.space.*;
@@ -46,6 +47,9 @@ public class SpatialData {
 
 	/** The integer code for a ply encoding. */
 	public static final int PLYEncoding = 16;
+
+	/** The integer code for an obj encoding. */
+	public static final int OBJEncoding = 32;
 
 	public static Scene decodeScene(InputStream fileIn, int encoding,
 			boolean ui, ExceptionListener listener) throws IOException {
@@ -101,7 +105,7 @@ public class SpatialData {
 			return new Scene(new ShadableSurface[] { reader.transcode(r).getMesh() });
 		} else if (encoding == PLYEncoding) {
 			if (ui == true) {
-				System.out.println("FileDecoder: UI mode no longer supported.");
+				System.out.println("SpatialData: UI mode no longer supported.");
 				//				AbstractSurfaceUI sr[] = {SurfaceUIFactory.createSurfaceUI(m)};
 				//				sr[0].setName("Mesh (" + m.getTriangles().length + " Triangles)");
 				//				return new Scene(sr);
@@ -111,6 +115,16 @@ public class SpatialData {
 			r.load(new IOStreams(fileIn));
 			PlyResource.MeshReader reader = new PlyResource.MeshReader();
 			if (s instanceof Mesh) reader.setInitialMesh((Mesh) s);
+			return new Scene(new ShadableSurface[] { reader.transcode(r).getMesh() });
+		} else if (encoding == OBJEncoding) {
+			ObjResource r = new ObjResource();
+			r.load(new IOStreams(fileIn));
+			ObjResource.MeshReader reader = new ObjResource.MeshReader();
+
+			if (s instanceof Mesh) {
+				System.out.println("SpatialData: Initial Mesh is not used by ObjResource");
+			}
+
 			return new Scene(new ShadableSurface[] { reader.transcode(r).getMesh() });
 		} else {
 			return null;

@@ -16,7 +16,6 @@
 
 package org.almostrealism.color;
 
-import org.almostrealism.algebra.Vector;
 import org.almostrealism.texture.Texture;
 
 /**
@@ -31,9 +30,7 @@ public interface Light {
 	/** Sets the intensity of this {@link Light}. */
 	void setIntensity(double intensity);
 	
-	/**
-	 * Sets the color of this Light object to the color represented by the specified {@link RGB} object.
-	 */
+	/** Sets the color of this {@link Light} to the color represented by the specified {@link RGB}. */
 	void setColor(RGB color);
 	
 	/** Returns the intensity of this {@link Light} as a double value. */
@@ -49,5 +46,5 @@ public interface Light {
 	 * TODO  This is unnecessary. Some methods {@link Light}s may implement {@link Texture}
 	 *       if they want to provide this kind of function.
 	 */
-	ColorProducer getColorAt(Vector point);
+	ColorProducer getColorAt();
 }
