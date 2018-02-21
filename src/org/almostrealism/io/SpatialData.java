@@ -18,20 +18,10 @@ package org.almostrealism.io;
 
 import java.beans.ExceptionListener;
 import java.beans.XMLDecoder;
-import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.util.Stack;
 
-import org.almostrealism.algebra.DiscreteField;
-import org.almostrealism.algebra.Vector;
-import org.almostrealism.color.ColorProducer;
-import org.almostrealism.color.RGB;
-import org.almostrealism.color.Shader;
-import org.almostrealism.color.ShaderContext;
 import org.almostrealism.graph.Mesh;
-import org.almostrealism.graph.Triangle;
 import org.almostrealism.graph.io.GtsResource;
 import org.almostrealism.graph.io.ObjResource;
 import org.almostrealism.graph.io.PlyResource;
