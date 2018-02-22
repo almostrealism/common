@@ -177,6 +177,29 @@ public class Mat3f {
 	}
 
 	/**
+	 * Sets the value of this matrix to the transpose of the argument matrix.
+	 *
+	 * @param m1 the matrix to be transposed
+	 */
+	public void transpose(Mat3f m1) {
+		if (this != m1) {
+			this.set(0, 0, m1.get(0, 0));
+			this.set(0, 1, m1.get(1, 0));
+			this.set(0, 2, m1.get(2, 0));
+
+			this.set(1, 0, m1.get(0, 1));
+			this.set(1, 1, m1.get(1, 1));
+			this.set(1, 2, m1.get(2, 1));
+
+			this.set(2, 0, m1.get(0, 2));
+			this.set(2, 1, m1.get(1, 2));
+			this.set(2, 2, m1.get(2, 2));
+		} else {
+			this.transpose();
+		}
+	}
+
+	/**
 	 * Return the determinant. Computed across the zeroth row.
 	 */
 	public float determinant() {
