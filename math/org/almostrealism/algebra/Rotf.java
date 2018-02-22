@@ -217,6 +217,25 @@ public class Rotf {
 	}
 
 	/**
+	 * Sets the value of this quaternion to the quaternion product of
+	 * itself and q1 (this = this * q1).
+	 *
+	 * @param q1 the other quaternion
+	 */
+	public void mul(Rotf q1) {
+		float x, y, w;
+
+		w = this.w() * q1.w() - this.x() * q1.x() - this.y() * q1.y() - this.z() * q1.z();
+		x = this.w() * q1.x() + q1.w() * this.x() + this.y() * q1.z() - this.z() * q1.y();
+		y = this.w() * q1.y() + q1.w() * this.y() - this.x() * q1.z() + this.z() * q1.x();
+
+		this.q0 = w;
+		this.q1 = x;
+		this.q2 = y;
+		this.q3 = this.w() * q1.z() + q1.w() * this.z() + this.x() * q1.y() - this.y() * q1.x();
+	}
+
+	/**
 	 * Turns this rotation into a 3x3 rotation matrix. NOTE: only
 	 * mutates the upper-left 3x3 of the passed Mat4f. Implementation
 	 * from B. K. P. Horn's _Robot Vision_ textbook.

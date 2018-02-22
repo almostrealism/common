@@ -118,6 +118,25 @@ public class Mat3f {
 	}
 
 	/**
+	 * Sets the value of this matrix to the matrix conversion of the
+	 * (single precision) quaternion argument.
+	 * @param q1 the quaternion to be converted
+	 */
+	public void set(Rotf q1) {
+		this.set(0, 0, 1.0f - 2.0f * q1.y() * q1.y() - 2.0f * q1.z() * q1.z());
+		this.set(1, 0, 2.0f * (q1.x() * q1.y() + q1.w() * q1.z()));
+		this.set(2, 0, 2.0f * (q1.x() * q1.z() - q1.w() * q1.y()));
+
+		this.set(0, 1, 2.0f * (q1.x() * q1.y() - q1.w() * q1.z()));
+		this.set(1, 1, 1.0f - 2.0f * q1.x() * q1.x() - 2.0f * q1.z() * q1.z());
+		this.set(2, 1, 2.0f * (q1.y() * q1.z() + q1.w() * q1.x()));
+
+		this.set(0, 2, 2.0f * (q1.x() * q1.z() + q1.w() * q1.y()));
+		this.set(1, 2, 2.0f * (q1.y() * q1.z() - q1.w() * q1.x()));
+		this.set(2, 2, 1.0f - 2.0f * q1.x() * q1.x() - 2.0f * q1.y() * q1.y());
+	}
+
+	/**
 	 * Sets this Mat3f to identity.
 	 */
 	public void setIdentity() {
