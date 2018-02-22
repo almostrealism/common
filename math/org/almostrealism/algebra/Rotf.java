@@ -36,6 +36,13 @@ public class Rotf {
 		init();
 	}
 
+	public Rotf(float w, float x, float y, float z) {
+		q0 = w;
+		q1 = x;
+		q2 = y;
+		q3 = z;
+	}
+
 	public Rotf(Rotf arg) {
 		set(arg);
 	}
