@@ -144,6 +144,15 @@ public class Vec3f {
 	}
 
 	/**
+	 * Sets each component of this vector to its absolute value.
+	 */
+	public void absolute() {
+		x = Math.abs(x);
+		y = Math.abs(y);
+		z = Math.abs(z);
+	}
+
+	/**
 	 * Returns this * val; creates new vector
 	 */
 	public Vec3f times(float val) {
