@@ -2,6 +2,13 @@ package org.almostrealism.algebra;
 
 public class Pair {
 	double x, y;
+
+	public Pair() { }
+
+	public Pair(double x, double y) {
+		this.x = x;
+		this.y = y;
+	}
 	
 	public Pair setX(double x) { this.x = x; return this; }
 	public Pair setY(double y) { this.y = y; return this; }
