@@ -126,6 +126,16 @@ public class Rotf {
 		return tmp;
 	}
 
+	public void inverse(Rotf q1) {
+		float norm;
+
+		norm = 1.0f/(q1.w() * q1.w() + q1.x() * q1.x() + q1.y() * q1.y() + q1.z() * q1.z());
+		this.q0 =  norm * q1.w();
+		this.q1 = -norm * q1.x();
+		this.q2 = -norm * q1.y();
+		this.q3 = -norm * q1.z();
+	}
+
 	/**
 	 * Mutate this quaternion to be its inverse. This is equivalent to
 	 * the conjugate of the quaternion.
@@ -143,19 +153,16 @@ public class Rotf {
 		return (float) Math.sqrt(lengthSquared());
 	}
 
-	public float x() {
+	public float w() {
 		return q0;
 	}
-
-	public float y() {
+	public float x() {
 		return q1;
 	}
-
-	public float z() {
+	public float y() {
 		return q2;
 	}
-
-	public float w() {
+	public float z() {
 		return q3;
 	}
 
