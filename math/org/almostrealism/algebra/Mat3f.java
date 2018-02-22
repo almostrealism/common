@@ -87,6 +87,12 @@ public class Mat3f {
 		set(i, 2, v.z());
 	}
 
+	public void setRow(int i, float x, float y, float z) {
+		set(i, 0, x);
+		set(i, 1, y);
+		set(i, 2, z);
+	}
+
 	/**
 	 * Transpose this matrix in place.
 	 */

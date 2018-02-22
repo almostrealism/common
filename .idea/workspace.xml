@@ -77,8 +77,8 @@
       <file leaf-file-name="Mat3f.java" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Mat3f.java">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="349">
-              <caret line="193" column="22" lean-forward="false" selection-start-line="193" selection-start-column="22" selection-end-line="193" selection-end-column="22" />
+            <state relative-caret-position="213">
+              <caret line="92" column="21" lean-forward="true" selection-start-line="92" selection-start-column="21" selection-end-line="92" selection-end-column="21" />
               <folding />
             </state>
           </provider>
@@ -497,7 +497,7 @@
       <workItem from="1519196261980" duration="847000" />
       <workItem from="1519242352596" duration="259000" />
       <workItem from="1519243800139" duration="836000" />
-      <workItem from="1519255857889" duration="1650000" />
+      <workItem from="1519255857889" duration="2075000" />
     </task>
     <task id="LOCAL-00001" summary="Deployment.">
       <created>1506657014443</created>
@@ -758,11 +758,25 @@
       <option name="project" value="LOCAL" />
       <updated>1519293203579</updated>
     </task>
-    <option name="localTasksCounter" value="38" />
+    <task id="LOCAL-00038" summary="Introduced transform method.">
+      <created>1519293582634</created>
+      <option name="number" value="00038" />
+      <option name="presentableId" value="LOCAL-00038" />
+      <option name="project" value="LOCAL" />
+      <updated>1519293582634</updated>
+    </task>
+    <task id="LOCAL-00039" summary="Added set method.">
+      <created>1519293785626</created>
+      <option name="number" value="00039" />
+      <option name="presentableId" value="LOCAL-00039" />
+      <option name="project" value="LOCAL" />
+      <updated>1519293785626</updated>
+    </task>
+    <option name="localTasksCounter" value="40" />
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="110349000" />
+    <option name="totallyTimeSpent" value="110774000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="0" y="0" width="1280" height="800" extended-state="6" />
@@ -805,8 +819,6 @@
     <option name="myLimit" value="2678400000" />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="Compute a Tensor of potential absorption energies for a set of electrons. Not all of these are valid, as some combinations may result in two electrons of the same spin occupying the same subshell." />
-    <MESSAGE value="Introduced compaction for producers. This allows the depth of a producer tree to be reduced by merging together producers, especially those that are associative or distributive." />
     <MESSAGE value="This is version 0.3." />
     <MESSAGE value="Starting version 0.4." />
     <MESSAGE value="Introduced expect, which is used to determine whether a vector is an intersection point. The value returned by get() and the value returned by expect() for a given Intersectable are placed into a Relation and then the distance parameter for a Ray is solved for to perform intersection calculations." />
@@ -830,7 +842,9 @@
     <MESSAGE value="Fixed constructor." />
     <MESSAGE value="Migrated Matrix3D and Matrix3DSolutionOutput into Common." />
     <MESSAGE value="Working with legacy jogl data structures until we migrate everything in Explorer to our own structures." />
-    <option name="LAST_COMMIT_MESSAGE" value="Working with legacy jogl data structures until we migrate everything in Explorer to our own structures." />
+    <MESSAGE value="Introduced transform method." />
+    <MESSAGE value="Added set method." />
+    <option name="LAST_COMMIT_MESSAGE" value="Added set method." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -1233,8 +1247,8 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Mat3f.java">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="349">
-          <caret line="193" column="22" lean-forward="false" selection-start-line="193" selection-start-column="22" selection-end-line="193" selection-end-column="22" />
+        <state relative-caret-position="213">
+          <caret line="92" column="21" lean-forward="true" selection-start-line="92" selection-start-column="21" selection-end-line="92" selection-end-column="21" />
           <folding />
         </state>
       </provider>
