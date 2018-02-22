@@ -240,6 +240,27 @@ public class Vec3f {
 	}
 
 	/**
+	 * Sets the value of this Vec3f to the negation of Vec3f v.
+	 *
+	 * @param v  The source Vec3f
+	 */
+	public void negate(Vec3f v) {
+		this.x = -v.x;
+		this.y = -v.y;
+		this.z = -v.z;
+	}
+
+
+	/**
+	 * Negates the value of this Vec3f in place.
+	 */
+	public void negate() {
+		this.x = -this.x;
+		this.y = -this.y;
+		this.z = -this.z;
+	}
+
+	/**
 	 * Returns this cross arg; creates new vector
 	 */
 	public Vec3f cross(Vec3f arg) {
