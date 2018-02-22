@@ -101,29 +101,17 @@ public class Vec3f {
 		}
 	}
 
-	public float x() {
-		return x;
-	}
+	public float x() { return x; }
 
-	public float y() {
-		return y;
-	}
+	public float y() { return y; }
 
-	public float z() {
-		return z;
-	}
+	public float z() { return z; }
 
-	public void setX(float x) {
-		this.x = x;
-	}
+	public void setX(float x) { this.x = x; }
 
-	public void setY(float y) {
-		this.y = y;
-	}
+	public void setY(float y) { this.y = y; }
 
-	public void setZ(float z) {
-		this.z = z;
-	}
+	public void setZ(float z) { this.z = z; }
 
 	public float dot(Vec3f arg) {
 		return x * arg.x + y * arg.y + z * arg.z;
@@ -141,6 +129,18 @@ public class Vec3f {
 		float len = length();
 		if (len == 0.0f) return;
 		scale(1.0f / len);
+	}
+
+	/**
+	 * Sets the value of this vector to the normalization of vector v1.
+	 *
+	 * @param v1 the un-normalized vector
+	 */
+	public final void normalize(Vec3f v1) {
+		float norm = (float) (1.0 / Math.sqrt(v1.x * v1.x + v1.y * v1.y + v1.z * v1.z));
+		this.x = v1.x * norm;
+		this.y = v1.y * norm;
+		this.z = v1.z * norm;
 	}
 
 	/**

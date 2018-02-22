@@ -3,7 +3,8 @@
   <component name="ChangeListManager">
     <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="">
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/math/org/almostrealism/algebra/Mat3f.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/algebra/Mat3f.java" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/math/org/almostrealism/algebra/Vec2f.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/algebra/Vec2f.java" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/math/org/almostrealism/algebra/Vec3f.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/algebra/Vec3f.java" />
     </list>
     <ignored path="$PROJECT_DIR$/target/" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -52,33 +53,42 @@
       <file leaf-file-name="Vec3f.java" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Vec3f.java">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="2">
-              <caret line="29" column="60" lean-forward="false" selection-start-line="29" selection-start-column="60" selection-end-line="29" selection-end-column="60" />
+            <state relative-caret-position="430">
+              <caret line="160" column="17" lean-forward="false" selection-start-line="160" selection-start-column="17" selection-end-line="160" selection-end-column="17" />
               <folding>
-                <element signature="e#2116#2117#0" expanded="true" />
-                <element signature="e#2131#2132#0" expanded="true" />
-                <element signature="e#2152#2153#0" expanded="true" />
-                <element signature="e#2167#2168#0" expanded="true" />
-                <element signature="e#2188#2189#0" expanded="true" />
-                <element signature="e#2203#2204#0" expanded="true" />
-                <element signature="e#2233#2234#0" expanded="true" />
-                <element signature="e#2250#2251#0" expanded="true" />
-                <element signature="e#2280#2281#0" expanded="true" />
-                <element signature="e#2297#2298#0" expanded="true" />
-                <element signature="e#2327#2328#0" expanded="true" />
-                <element signature="e#2344#2345#0" expanded="true" />
-                <element signature="e#3648#3649#0" expanded="true" />
-                <element signature="e#3673#3674#0" expanded="true" />
+                <element signature="e#3952#3953#0" expanded="true" />
+                <element signature="e#3977#3978#0" expanded="true" />
               </folding>
             </state>
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="Mat3f.java" pinned="false" current-in-tab="true">
+      <file leaf-file-name="Vec2f.java" pinned="false" current-in-tab="true">
+        <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Vec2f.java">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="435">
+              <caret line="49" column="22" lean-forward="false" selection-start-line="49" selection-start-column="22" selection-end-line="49" selection-end-column="22" />
+              <folding>
+                <element signature="e#1065#1066#0" expanded="true" />
+                <element signature="e#1085#1086#0" expanded="true" />
+                <element signature="e#1544#1545#0" expanded="true" />
+                <element signature="e#1559#1560#0" expanded="true" />
+                <element signature="e#1580#1581#0" expanded="true" />
+                <element signature="e#1595#1596#0" expanded="true" />
+                <element signature="e#1625#1626#0" expanded="true" />
+                <element signature="e#1642#1643#0" expanded="true" />
+                <element signature="e#1672#1673#0" expanded="true" />
+                <element signature="e#1689#1690#0" expanded="true" />
+              </folding>
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="Mat3f.java" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Mat3f.java">
           <provider selected="true" editor-type-id="text-editor">
             <state relative-caret-position="177">
-              <caret line="69" column="30" lean-forward="true" selection-start-line="69" selection-start-column="30" selection-end-line="69" selection-end-column="30" />
+              <caret line="189" column="41" lean-forward="false" selection-start-line="189" selection-start-column="41" selection-end-line="189" selection-end-column="41" />
               <folding />
             </state>
           </provider>
@@ -133,6 +143,7 @@
       <find>GtsResource</find>
       <find>MeshResource</find>
       <find>get</find>
+      <find>transpo</find>
     </findStrings>
     <dirStrings>
       <dir>$PROJECT_DIR$</dir>
@@ -192,11 +203,11 @@
         <option value="$PROJECT_DIR$/math/org/almostrealism/math/Matrix3D.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/math/Matrix3DSolutionOutput.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Mat4f.java" />
-        <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Vec2f.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Vec3d.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/IntersectionPoint.java" />
-        <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Vec3f.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Mat3f.java" />
+        <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Vec3f.java" />
+        <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Vec2f.java" />
       </list>
     </option>
   </component>
@@ -498,7 +509,7 @@
       <workItem from="1519196261980" duration="847000" />
       <workItem from="1519242352596" duration="259000" />
       <workItem from="1519243800139" duration="836000" />
-      <workItem from="1519255857889" duration="3380000" />
+      <workItem from="1519255857889" duration="4827000" />
     </task>
     <task id="LOCAL-00001" summary="Deployment.">
       <created>1506657014443</created>
@@ -801,11 +812,25 @@
       <option name="project" value="LOCAL" />
       <updated>1519294948943</updated>
     </task>
-    <option name="localTasksCounter" value="44" />
+    <task id="LOCAL-00044" summary="Introduced getRow method.">
+      <created>1519295322648</created>
+      <option name="number" value="00044" />
+      <option name="presentableId" value="LOCAL-00044" />
+      <option name="project" value="LOCAL" />
+      <updated>1519295322648</updated>
+    </task>
+    <task id="LOCAL-00045" summary="Introduced transpose method.">
+      <created>1519296056151</created>
+      <option name="number" value="00045" />
+      <option name="presentableId" value="LOCAL-00045" />
+      <option name="project" value="LOCAL" />
+      <updated>1519296056151</updated>
+    </task>
+    <option name="localTasksCounter" value="46" />
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="112079000" />
+    <option name="totallyTimeSpent" value="113526000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="0" y="0" width="1280" height="800" extended-state="6" />
@@ -822,7 +847,7 @@
       <window_info id="Terminal" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.32462174" sideWeight="0.5" order="10" side_tool="false" content_ui="tabs" />
       <window_info id="Capture Tool" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="2" side_tool="false" content_ui="tabs" />
       <window_info id="Designer" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="3" side_tool="false" content_ui="tabs" />
-      <window_info id="Project" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.2746365" sideWeight="0.5" order="0" side_tool="false" content_ui="combo" />
+      <window_info id="Project" active="true" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.2746365" sideWeight="0.5" order="0" side_tool="false" content_ui="combo" />
       <window_info id="Database" active="false" anchor="right" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="5" side_tool="false" content_ui="tabs" />
       <window_info id="Structure" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.25" sideWeight="0.5" order="1" side_tool="false" content_ui="tabs" />
       <window_info id="Ant Build" active="false" anchor="right" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.25" sideWeight="0.5" order="1" side_tool="false" content_ui="tabs" />
@@ -848,8 +873,6 @@
     <option name="myLimit" value="2678400000" />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="More expansion of economics functionality." />
-    <MESSAGE value="Read and Write operations for ExpenseData. ClockSynchronizer now sleeps after synchronization rather than before." />
     <MESSAGE value="Some improvements to physics data structures used in rendering and some new data structures for economics." />
     <MESSAGE value="Working towards the elimination of getColorAt, starting by removing the Vector location parameter. ColorProducers (being TripleFunctions) can accept a Vector via the operate method." />
     <MESSAGE value="This is version 0.4." />
@@ -873,7 +896,9 @@
     <MESSAGE value="Added getColumn method." />
     <MESSAGE value="Added setIdentity method." />
     <MESSAGE value="Introduced negate methods." />
-    <option name="LAST_COMMIT_MESSAGE" value="Introduced negate methods." />
+    <MESSAGE value="Introduced getRow method." />
+    <MESSAGE value="Introduced transpose method." />
+    <option name="LAST_COMMIT_MESSAGE" value="Introduced transpose method." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -1209,14 +1234,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Vec2f.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="90">
-          <caret line="20" column="31" lean-forward="false" selection-start-line="20" selection-start-column="31" selection-end-line="20" selection-end-column="31" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Vec3d.java">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="15">
@@ -1251,34 +1268,41 @@
         </state>
       </provider>
     </entry>
+    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Mat3f.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="177">
+          <caret line="189" column="41" lean-forward="false" selection-start-line="189" selection-start-column="41" selection-end-line="189" selection-end-column="41" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
     <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Vec3f.java">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="2">
-          <caret line="29" column="60" lean-forward="false" selection-start-line="29" selection-start-column="60" selection-end-line="29" selection-end-column="60" />
+        <state relative-caret-position="430">
+          <caret line="160" column="17" lean-forward="false" selection-start-line="160" selection-start-column="17" selection-end-line="160" selection-end-column="17" />
           <folding>
-            <element signature="e#2116#2117#0" expanded="true" />
-            <element signature="e#2131#2132#0" expanded="true" />
-            <element signature="e#2152#2153#0" expanded="true" />
-            <element signature="e#2167#2168#0" expanded="true" />
-            <element signature="e#2188#2189#0" expanded="true" />
-            <element signature="e#2203#2204#0" expanded="true" />
-            <element signature="e#2233#2234#0" expanded="true" />
-            <element signature="e#2250#2251#0" expanded="true" />
-            <element signature="e#2280#2281#0" expanded="true" />
-            <element signature="e#2297#2298#0" expanded="true" />
-            <element signature="e#2327#2328#0" expanded="true" />
-            <element signature="e#2344#2345#0" expanded="true" />
-            <element signature="e#3648#3649#0" expanded="true" />
-            <element signature="e#3673#3674#0" expanded="true" />
+            <element signature="e#3952#3953#0" expanded="true" />
+            <element signature="e#3977#3978#0" expanded="true" />
           </folding>
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Mat3f.java">
+    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Vec2f.java">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="177">
-          <caret line="69" column="30" lean-forward="true" selection-start-line="69" selection-start-column="30" selection-end-line="69" selection-end-column="30" />
-          <folding />
+        <state relative-caret-position="435">
+          <caret line="49" column="22" lean-forward="false" selection-start-line="49" selection-start-column="22" selection-end-line="49" selection-end-column="22" />
+          <folding>
+            <element signature="e#1065#1066#0" expanded="true" />
+            <element signature="e#1085#1086#0" expanded="true" />
+            <element signature="e#1544#1545#0" expanded="true" />
+            <element signature="e#1559#1560#0" expanded="true" />
+            <element signature="e#1580#1581#0" expanded="true" />
+            <element signature="e#1595#1596#0" expanded="true" />
+            <element signature="e#1625#1626#0" expanded="true" />
+            <element signature="e#1642#1643#0" expanded="true" />
+            <element signature="e#1672#1673#0" expanded="true" />
+            <element signature="e#1689#1690#0" expanded="true" />
+          </folding>
         </state>
       </provider>
     </entry>
