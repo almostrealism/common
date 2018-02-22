@@ -3,7 +3,7 @@
   <component name="ChangeListManager">
     <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="">
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/math/org/almostrealism/algebra/Vec3f.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/algebra/Vec3f.java" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/math/org/almostrealism/algebra/Vec4f.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/algebra/Vec4f.java" />
     </list>
     <ignored path="$PROJECT_DIR$/target/" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -49,14 +49,41 @@
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="Vec3f.java" pinned="false" current-in-tab="true">
+      <file leaf-file-name="Vec3f.java" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Vec3f.java">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="94">
-              <caret line="142" column="29" lean-forward="true" selection-start-line="142" selection-start-column="29" selection-end-line="142" selection-end-column="29" />
+            <state relative-caret-position="139">
+              <caret line="145" column="0" lean-forward="false" selection-start-line="145" selection-start-column="0" selection-end-line="152" selection-end-column="5" />
               <folding>
                 <element signature="e#4111#4112#0" expanded="true" />
                 <element signature="e#4136#4137#0" expanded="true" />
+              </folding>
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="Vec4f.java" pinned="false" current-in-tab="true">
+        <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Vec4f.java">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="349">
+              <caret line="151" column="24" lean-forward="false" selection-start-line="151" selection-start-column="24" selection-end-line="151" selection-end-column="24" />
+              <folding>
+                <element signature="e#1736#1737#0" expanded="true" />
+                <element signature="e#1751#1752#0" expanded="true" />
+                <element signature="e#1772#1773#0" expanded="true" />
+                <element signature="e#1787#1788#0" expanded="true" />
+                <element signature="e#1808#1809#0" expanded="true" />
+                <element signature="e#1823#1824#0" expanded="true" />
+                <element signature="e#1844#1845#0" expanded="true" />
+                <element signature="e#1859#1860#0" expanded="true" />
+                <element signature="e#1889#1890#0" expanded="true" />
+                <element signature="e#1906#1907#0" expanded="true" />
+                <element signature="e#1936#1937#0" expanded="true" />
+                <element signature="e#1953#1954#0" expanded="true" />
+                <element signature="e#1983#1984#0" expanded="true" />
+                <element signature="e#2000#2001#0" expanded="true" />
+                <element signature="e#2030#2031#0" expanded="true" />
+                <element signature="e#2047#2048#0" expanded="true" />
               </folding>
             </state>
           </provider>
@@ -115,7 +142,6 @@
   <component name="IdeDocumentHistory">
     <option name="CHANGED_PATHS">
       <list>
-        <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Intersections.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/physics/Electrons.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/chem/Alloy.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/heredity/ArrayListGene.java" />
@@ -166,6 +192,7 @@
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Vec2f.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Rotf.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Vec3f.java" />
+        <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Vec4f.java" />
       </list>
     </option>
   </component>
@@ -467,7 +494,7 @@
       <workItem from="1519196261980" duration="847000" />
       <workItem from="1519242352596" duration="259000" />
       <workItem from="1519243800139" duration="836000" />
-      <workItem from="1519255857889" duration="7480000" />
+      <workItem from="1519255857889" duration="7686000" />
     </task>
     <task id="LOCAL-00001" summary="Deployment.">
       <created>1506657014443</created>
@@ -805,11 +832,18 @@
       <option name="project" value="LOCAL" />
       <updated>1519299374635</updated>
     </task>
-    <option name="localTasksCounter" value="49" />
+    <task id="LOCAL-00049" summary="Introduced absolute method.">
+      <created>1519301876712</created>
+      <option name="number" value="00049" />
+      <option name="presentableId" value="LOCAL-00049" />
+      <option name="project" value="LOCAL" />
+      <updated>1519301876712</updated>
+    </task>
+    <option name="localTasksCounter" value="50" />
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="116179000" />
+    <option name="totallyTimeSpent" value="116385000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="0" y="0" width="1280" height="800" extended-state="6" />
@@ -852,7 +886,6 @@
     <option name="myLimit" value="2678400000" />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="Starting release candidate for 0.5." />
     <MESSAGE value="Moved bounding solid to space package." />
     <MESSAGE value="Introduced GeneratedColorProducer, to track what object is responsible for an element of the color pipeline. This might be a shader, a surface, a texture, etc." />
     <MESSAGE value="More expansion of the economics package, including support for grouping Expenses into an ExpenseRange." />
@@ -877,7 +910,8 @@
     <MESSAGE value="Introduced normalize method and set method." />
     <MESSAGE value="Introduced getters for x,y,z,w in Rotf." />
     <MESSAGE value="Set method for Rotf." />
-    <option name="LAST_COMMIT_MESSAGE" value="Set method for Rotf." />
+    <MESSAGE value="Introduced absolute method." />
+    <option name="LAST_COMMIT_MESSAGE" value="Introduced absolute method." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -893,13 +927,6 @@
     </option>
   </component>
   <component name="editorHistoryManager">
-    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Scalar.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="105">
-          <caret line="7" column="63" lean-forward="false" selection-start-line="7" selection-start-column="63" selection-end-line="7" selection-end-column="63" />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/world/org/almostrealism/econ/Time.java">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="155">
@@ -1286,11 +1313,36 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Vec3f.java">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="94">
-          <caret line="142" column="29" lean-forward="true" selection-start-line="142" selection-start-column="29" selection-end-line="142" selection-end-column="29" />
+        <state relative-caret-position="139">
+          <caret line="145" column="0" lean-forward="false" selection-start-line="145" selection-start-column="0" selection-end-line="152" selection-end-column="5" />
           <folding>
             <element signature="e#4111#4112#0" expanded="true" />
             <element signature="e#4136#4137#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Vec4f.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="349">
+          <caret line="151" column="24" lean-forward="false" selection-start-line="151" selection-start-column="24" selection-end-line="151" selection-end-column="24" />
+          <folding>
+            <element signature="e#1736#1737#0" expanded="true" />
+            <element signature="e#1751#1752#0" expanded="true" />
+            <element signature="e#1772#1773#0" expanded="true" />
+            <element signature="e#1787#1788#0" expanded="true" />
+            <element signature="e#1808#1809#0" expanded="true" />
+            <element signature="e#1823#1824#0" expanded="true" />
+            <element signature="e#1844#1845#0" expanded="true" />
+            <element signature="e#1859#1860#0" expanded="true" />
+            <element signature="e#1889#1890#0" expanded="true" />
+            <element signature="e#1906#1907#0" expanded="true" />
+            <element signature="e#1936#1937#0" expanded="true" />
+            <element signature="e#1953#1954#0" expanded="true" />
+            <element signature="e#1983#1984#0" expanded="true" />
+            <element signature="e#2000#2001#0" expanded="true" />
+            <element signature="e#2030#2031#0" expanded="true" />
+            <element signature="e#2047#2048#0" expanded="true" />
           </folding>
         </state>
       </provider>
