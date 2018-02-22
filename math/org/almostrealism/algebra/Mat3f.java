@@ -63,6 +63,12 @@ public class Mat3f {
 		data[3 * i + j] = val;
 	}
 
+	public void set(Mat3f m) {
+		for (int i = 0; i < m.data.length; i++) {
+			this.data[i] = m.data[i];
+		}
+	}
+
 	/**
 	 * Set column i (i=[0..2]) to vector v.
 	 */
