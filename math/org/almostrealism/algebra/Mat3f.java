@@ -78,7 +78,6 @@ public class Mat3f {
 		} else {
 			throw new ArrayIndexOutOfBoundsException(column);
 		}
-
 	}
 
 	/**
@@ -93,6 +92,23 @@ public class Mat3f {
 		for (int i = 0; i < m.data.length; i++) {
 			this.data[i] = m.data[i];
 		}
+	}
+
+	/**
+	 * Sets this Mat3f to identity.
+	 */
+	public void setIdentity() {
+		this.set(0, 0, 1.0f);
+		this.set(0, 1, 0.0f);
+		this.set(0, 2, 0.0f);
+
+		this.set(1, 0, 0.0f);
+		this.set(1, 1, 1.0f);
+		this.set(1, 2, 0.0f);
+
+		this.set(2, 0, 0.0f);
+		this.set(2, 1, 0.0f);
+		this.set(2, 2, 1.0f);
 	}
 
 	/**
