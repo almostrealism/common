@@ -102,15 +102,11 @@ public class Vec3f {
 	}
 
 	public float x() { return x; }
-
 	public float y() { return y; }
-
 	public float z() { return z; }
 
 	public void setX(float x) { this.x = x; }
-
 	public void setY(float y) { this.y = y; }
-
 	public void setZ(float z) { this.z = z; }
 
 	public float dot(Vec3f arg) {
@@ -246,6 +242,12 @@ public class Vec3f {
 		x = a.x - b.x;
 		y = a.y - b.y;
 		z = a.z - b.z;
+	}
+
+	public void sub(Vector a, Vector b) {
+		this.x = (float) (a.getX() - b.getX());
+		this.y = (float) (a.getY() - b.getY());
+		this.z = (float) (a.getZ() - b.getZ());
 	}
 
 	/**
