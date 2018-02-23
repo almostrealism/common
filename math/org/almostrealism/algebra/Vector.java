@@ -253,7 +253,8 @@ public class Vector implements Positioned, Triple, Cloneable {
 	public double length() { return Math.sqrt(this.lengthSq()); }
 	
 	/**
-	 * Returns the squared length of the vector represented by this Vector object as a double value.
+	 * Returns the squared length of the vector represented by this
+	 * {@link Vector} as a double value.
 	 */
 	public double lengthSq() {
 		double lengthSq = this.x * this.x + this.y * this.y + this.z * this.z;
@@ -261,9 +262,14 @@ public class Vector implements Positioned, Triple, Cloneable {
 		return lengthSq;
 	}
 
+	public void normalize() {
+		double len = this.length();
+		if (len != 0.0 && len != 1.0) this.divideBy(len);
+	}
+
 	/**
-	 * Returns an integer hash code value for this Vector object obtained by adding all 3
-	 * components and casting to an int.
+	 * Returns an integer hash code value for this Vector object obtained
+	 * by adding all 3 components and casting to an int.
 	 */
 	public int hashCode() {
 		double value = this.getX() + this.getY() + this.getZ();
@@ -272,8 +278,9 @@ public class Vector implements Positioned, Triple, Cloneable {
 	}
 	
 	/**
-	 * Returns true if and only if the object specified represents a 3d vector that is geometrically equal
-	 * to the vector represented by this Vector object.
+	 * Returns true if and only if the object specified represents a 3d
+	 * vector that is geometrically equal to the vector represented by
+	 * this {@link Vector}.
 	 */
 	public boolean equals(Object obj) {
 		if (obj instanceof Vector == false)
@@ -287,7 +294,7 @@ public class Vector implements Positioned, Triple, Cloneable {
 			return false;
 	}
 	
-	/** @see java.lang.Object.clone() */
+	/** @see java.lang.Object#clone() */
 	public Object clone() {
 		try {
 			Vector v = (Vector) super.clone();
