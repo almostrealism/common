@@ -15,24 +15,19 @@ public class MeshResource implements Resource {
 	}
 
 	@Override
-	public void load(IOStreams io) throws IOException {
-
-	}
+	public void load(IOStreams io) throws IOException { }
 
 	@Override
-	public void loadFromURI() throws IOException {
-
-	}
+	public void load(byte data[], int offset, int len) { }
 
 	@Override
-	public void send(IOStreams io) throws IOException {
-
-	}
+	public void loadFromURI() throws IOException { }
 
 	@Override
-	public void saveLocal(String file) throws IOException {
+	public void send(IOStreams io) throws IOException { }
 
-	}
+	@Override
+	public void saveLocal(String file) throws IOException { }
 
 	@Override
 	public String getURI() {
@@ -40,9 +35,7 @@ public class MeshResource implements Resource {
 	}
 
 	@Override
-	public void setURI(String uri) {
-
-	}
+	public void setURI(String uri) { }
 
 	@Override
 	public Object getData() {

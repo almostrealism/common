@@ -12,7 +12,11 @@ public class UnicodeResource extends ResourceAdapter {
 	public UnicodeResource() { }
 	
 	public UnicodeResource(String data) { this.data = data; }
-	
+
+	public synchronized void load(byte data[], int offset, int len) {
+		this.data = new String(data, offset, len);
+	}
+
 	@Override
 	public synchronized void load(IOStreams io) throws IOException { read(io.in); }
 

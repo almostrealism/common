@@ -24,6 +24,7 @@ import java.io.InputStream;
  */
 public interface Resource {
 	void load(IOStreams io) throws IOException;
+	void load(byte data[], int offset, int len);
 	void loadFromURI() throws IOException;
 	
 	void send(IOStreams io) throws IOException;
