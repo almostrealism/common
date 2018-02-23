@@ -17,10 +17,13 @@
 package org.almostrealism.swing;
 
 
+import java.awt.*;
 import java.util.Enumeration;
 import java.util.Vector;
 
 import org.almostrealism.swing.dialogs.DialogCloseEvent;
+
+import javax.swing.*;
 
 /**
   An EventHandler object provides an interface for comunication between EventGenerators and EventListeners.
@@ -92,7 +95,13 @@ public class EventHandler {
 		}
 		
 		for(int i = 0; i < this.getTotalListeners(); i++) {
-			this.getListener(i).eventFired(event);
+			final EventListener l = getListener(i);
+
+			if (l instanceof Component && !SwingUtilities.isEventDispatchThread()) {
+				SwingUtilities.invokeLater(() -> l.eventFired(event));
+			} else {
+				this.getListener(i).eventFired(event);
+			}
 		}
 	}
 }
