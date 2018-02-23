@@ -163,7 +163,17 @@ public class Vector implements Positioned, Triple, Cloneable {
 		this.y = this.y + vector.y;
 		this.z = this.z + vector.z;
 	}
-	
+
+	/**
+	 * this = a + s * b
+	 */
+	@Deprecated
+	public void addScaled(Vector a, double s, Vector b) {
+		x = a.x + s * b.x;
+		y = a.y + s * b.y;
+		z = a.z + s * b.z;
+	}
+
 	/**
 	 * Returns the difference of the vector represented by this Vector object and that of the specified Vector object.
 	 * The specified vector is subtracted from this one.
