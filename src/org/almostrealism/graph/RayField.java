@@ -1,141 +1,178 @@
+/*
+ * Copyright 2018 Michael Murray
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.almostrealism.graph;
 
 import org.almostrealism.algebra.DiscreteField;
 import org.almostrealism.algebra.Ray;
+import org.almostrealism.algebra.Vector;
+import org.almostrealism.space.KdTree;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Iterator;
-import java.util.List;
-import java.util.ListIterator;
+import java.util.*;
 import java.util.concurrent.Callable;
 
 /**
  * Represents a field of Rays within 3D space.
+ *
+ * @author Dan Chivers
  */
 public class RayField implements DiscreteField {
+    private final HashSet<Ray> raysSet = new HashSet<>();
+    private final KdTree<Ray> rays = new KdTree.SqrEuclid<>(3, null);
 
-    /*
-     TODO:
-        This is just a skeletal implementation of a RayField forwarding all methods to an internal List.
-        We'll need to implement a proper data structure (octree?) for spatial operations.
-      */
+    public KdTree.Entry<Ray> getClosestRay(Vector vertex) {
+        return getClosestRays(vertex, 1, false).get(0);
+    }
 
-    private List<Callable<Ray>> rays = new ArrayList<>();
+    public List<KdTree.Entry<Ray>> getClosestRays(Vector vertex, int numberOfResults, boolean sorted) {
+        return rays.nearestNeighbor(vertex.getData(), numberOfResults, sorted);
+    }
+
+    public Set<Ray> getRaySet() {
+        return Collections.unmodifiableSet(raysSet);
+    }
 
     @Override
-    public int size() {
-        return rays.size();
+    public boolean add(Callable<Ray> rayCallable) {
+        try {
+            Ray ray = rayCallable.call();
+            raysSet.add(ray);
+            rays.addPoint(ray.getOrigin().getData(), ray);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    @Override
+    public boolean addAll(Collection<? extends Callable<Ray>> c) {
+        boolean allOk = true;
+        for (Callable<Ray> r : c) {
+            allOk &= add(r);
+        }
+        return allOk;
     }
 
     @Override
     public boolean isEmpty()
     {
-        return rays.isEmpty();
+        return raysSet.isEmpty();
     }
 
     @Override
-    public boolean add(Callable<Ray> rayCallable) {
-        return rays.add(rayCallable);
+    public int size() {
+        return raysSet.size();
     }
 
     @Override
     public boolean contains(Object o) {
-        return rays.contains(o);
-    }
-
-    @Override
-    public Iterator<Callable<Ray>> iterator() {
-        return rays.iterator();
-    }
-
-    @Override
-    public Object[] toArray() {
-        return rays.toArray();
-    }
-
-    @Override
-    public <T> T[] toArray(T[] a) {
-        return (T[]) rays.toArray();
-    }
-
-    @Override
-    public boolean remove(Object o) {
-        return rays.remove(o);
+        return raysSet.contains(o);
     }
 
     @Override
     public boolean containsAll(Collection<?> c) {
-        return rays.containsAll(c);
+        return raysSet.containsAll(c);
     }
 
     @Override
-    public boolean addAll(Collection<? extends Callable<Ray>> c) {
-        return rays.addAll(c);
+    public Object[] toArray() {
+        return raysSet.toArray();
+    }
+
+    /*******************************
+     * End of supported operations *
+     *******************************/
+
+    @Override
+    public void clear() {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public Iterator<Callable<Ray>> iterator() {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public <T> T[] toArray(T[] a) {
+        throw new UnsupportedOperationException();
+    }
+
+    @Override
+    public boolean remove(Object o) {
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public boolean addAll(int index, Collection<? extends Callable<Ray>> c) {
-        return rays.addAll(index, c);
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public boolean removeAll(Collection<?> c) {
-        return rays.removeAll(c);
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public boolean retainAll(Collection<?> c) {
-        return rays.retainAll(c);
-    }
-
-    @Override
-    public void clear() {
-        rays.clear();
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public Callable<Ray> get(int index) {
-        return rays.get(index);
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public Callable<Ray> set(int index, Callable<Ray> element) {
-        return rays.set(index, element);
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public void add(int index, Callable<Ray> element) {
-        rays.add(index, element);
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public Callable<Ray> remove(int index) {
-        return rays.remove(index);
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public int indexOf(Object o) {
-        return rays.indexOf(o);
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public int lastIndexOf(Object o) {
-        return rays.lastIndexOf(o);
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public ListIterator<Callable<Ray>> listIterator() {
-        return rays.listIterator();
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public ListIterator<Callable<Ray>> listIterator(int index) {
-        return rays.listIterator(index);
+        throw new UnsupportedOperationException();
     }
 
     @Override
     public List<Callable<Ray>> subList(int fromIndex, int toIndex) {
-        return rays.subList(fromIndex, toIndex);
+        throw new UnsupportedOperationException();
     }
 }
