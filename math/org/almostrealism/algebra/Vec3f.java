@@ -192,6 +192,15 @@ public class Vec3f {
 	}
 
 	/**
+	 * this = a + b
+	 */
+	public void add(Vector a, Vector b) {
+		x = (float) (a.getX() + b.getX());
+		y = (float) (a.getY() + b.getY());
+		z = (float) (a.getZ() + b.getZ());
+	}
+
+	/**
 	 * Returns this + s * arg; creates new vector
 	 */
 	public Vec3f addScaled(float s, Vec3f arg) {
