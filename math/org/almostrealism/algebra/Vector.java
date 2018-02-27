@@ -194,7 +194,18 @@ public class Vector implements Positioned, Triple, Cloneable {
 		this.y = this.y - vector.y;
 		this.z = this.z - vector.z;
 	}
-	
+
+	/**
+	 * Sets the value of this {@link Vector} to the negation of {@link Vector} v.
+	 *
+	 * @param v  The source Vector
+	 */
+	public void negate(Vector v) {
+		this.x = -v.x;
+		this.y = -v.y;
+		this.z = -v.z;
+	}
+
 	/**
 	 * Returns the product of the vector represented by this Vector object and the specified value.
 	 */
