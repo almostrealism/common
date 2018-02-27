@@ -136,11 +136,22 @@ public class Vector implements Positioned, Triple, Cloneable {
 	}
 
 	/**
-	 * Returns the opposite of the vector represented by this Vector object.
+	 * Sets the coordinates of this {@link Vector} to the coordinates of the
+	 * specified {@link Vector}.
+	 *
+	 * @param v  The Vector to set coordinates from.
+	 * @return  This Vector.
 	 */
+	public Vector setTo(Vector v) {
+		this.x = v.x;
+		this.y = v.y;
+		this.z = v.z;
+		return this;
+	}
+
+	/** Returns the opposite of the vector represented by this {@link Vector}. */
 	public Vector minus() {
 		Vector newVector = new Vector(-this.getX(), -this.getY(), -this.getZ());
-		
 		return newVector;
 	}
 	

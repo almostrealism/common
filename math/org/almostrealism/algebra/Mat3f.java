@@ -63,7 +63,32 @@ public class Mat3f {
 	 * @param row  The matrix row
 	 * @param v  The vector into which the matrix row values will be copied
 	 */
-	public final void getRow(int row, Vec3f v) {
+	@Deprecated
+	public void getRow(int row, Vec3f v) {
+		if (row == 0) {
+			v.setX(get(0, 0));
+			v.setY(get(0, 1));
+			v.setZ(get(0, 2));
+		} else if (row == 1) {
+			v.setX(get(1, 0));
+			v.setY(get(1, 1));
+			v.setZ(get(1, 2));
+		} else if (row == 2) {
+			v.setX(get(2, 0));
+			v.setY(get(2, 1));
+			v.setZ(get(2, 2));
+		} else {
+			throw new ArrayIndexOutOfBoundsException(row);
+		}
+	}
+
+	/**
+	 * Copies the matrix values in the specified row into the vector parameter.
+	 *
+	 * @param row  The matrix row
+	 * @param v  The vector into which the matrix row values will be copied
+	 */
+	public void getRow(int row, Vector v) {
 		if (row == 0) {
 			v.setX(get(0, 0));
 			v.setY(get(0, 1));
