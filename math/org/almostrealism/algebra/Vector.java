@@ -314,7 +314,17 @@ public class Vector implements Positioned, Triple, Cloneable {
 		
 		return product;
 	}
-	
+
+	/**
+	 * this = a cross b. NOTE: "this" must be a different vector than
+	 * both a and b.
+	 */
+	public void cross(Vector a, Vector b) {
+		x = a.y * b.z - a.z * b.y;
+		y = a.z * b.x - a.x * b.z;
+		z = a.x * b.y - a.y * b.x;
+	}
+
 	public float[] toFloat() { return new float[] { (float) getX(), (float) getY(), (float) getZ() }; }
 	
 	/**
