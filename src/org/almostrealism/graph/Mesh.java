@@ -33,9 +33,11 @@ import org.almostrealism.algebra.*;
 import org.almostrealism.color.ColorProducer;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.ShaderContext;
+import org.almostrealism.geometry.Positioned;
 import org.almostrealism.io.FileDecoder;
 import org.almostrealism.io.SpatialData;
 import org.almostrealism.relation.Operator;
+import org.almostrealism.space.KdTree;
 import org.almostrealism.space.ShadableIntersection;
 import org.almostrealism.space.ShadableSurface;
 import org.almostrealism.space.ShadableSurfaceWrapper;
@@ -193,6 +195,8 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
   private MeshFile file;
   private VertexData vertexData;
 
+  private KdTree<Positioned> spatialVertexTree;
+
   	/**
   	 * Constructs a new Mesh object.
   	 */
@@ -310,7 +314,34 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 		else
 			this.ignore = new boolean[this.vertexData.getTriangleCount()];
 	}
-	
+
+	/**
+	 * Instructs the Mesh to build and return spatial representation of the current vertex
+	 * data. Will clear any existing built representation. Use getSpatialVertexTree() to
+	 * retrieve a previously built tree.
+	 *
+	 * @return The newly built tree.
+	 */
+	public KdTree<Positioned> buildSpatialVertexTree() {
+		spatialVertexTree = new KdTree.SqrEuclid<>(3, points.size());
+		for (Object vector : points) {
+			Vertex v = (Vertex) vector;
+			spatialVertexTree.addPoint(v.getData(), v);
+		}
+		return spatialVertexTree;
+	}
+
+	/**
+	 * Returns the currently built spatial representation of the mesh vertices. The
+	 * representation is built on demand via buildSpatialVertexTree(). Returns null if
+	 * no representation has yet been built.
+	 *
+	 * @return The previously built tree.
+	 */
+	public KdTree<Positioned> getSpatialVertexTree() {
+		return spatialVertexTree;
+	}
+
 	public void loadTree() {
 		this.loadTriangles();
 		super.loadTree(this.tcache.length);
