@@ -3,6 +3,7 @@
   <component name="ChangeListManager">
     <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="">
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/math/org/almostrealism/algebra/Vec3f.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/algebra/Vec3f.java" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/math/org/almostrealism/algebra/Vector.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/algebra/Vector.java" />
     </list>
     <ignored path="$PROJECT_DIR$/target/" />
@@ -47,25 +48,15 @@
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="Vec3f.java" pinned="false" current-in-tab="false">
+      <file leaf-file-name="Vec3f.java" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Vec3f.java">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="64">
-              <caret line="276" column="0" lean-forward="false" selection-start-line="276" selection-start-column="0" selection-end-line="285" selection-end-column="5" />
+            <state relative-caret-position="139">
+              <caret line="273" column="19" lean-forward="false" selection-start-line="273" selection-start-column="16" selection-end-line="273" selection-end-column="19" />
               <folding>
                 <element signature="e#1252#1253#0" expanded="true" />
                 <element signature="e#1317#1318#0" expanded="true" />
               </folding>
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file leaf-file-name="Vector.java" pinned="false" current-in-tab="true">
-        <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Vector.java">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="326">
-              <caret line="204" column="22" lean-forward="true" selection-start-line="204" selection-start-column="22" selection-end-line="204" selection-end-column="22" />
-              <folding />
             </state>
           </provider>
         </entry>
@@ -83,7 +74,6 @@
   </component>
   <component name="FindInProjectRecents">
     <findStrings>
-      <find>getAtom(</find>
       <find>PhysicalC</find>
       <find>Producer</find>
       <find>cance</find>
@@ -113,6 +103,7 @@
       <find>mul</find>
       <find>addScaled</find>
       <find>negate</find>
+      <find>sub</find>
     </findStrings>
     <dirStrings>
       <dir>$PROJECT_DIR$</dir>
@@ -481,21 +472,7 @@
       <workItem from="1519255857889" duration="11828000" />
       <workItem from="1519371354237" duration="1652000" />
       <workItem from="1519379184525" duration="651000" />
-      <workItem from="1519389702987" duration="4870000" />
-    </task>
-    <task id="LOCAL-00014" summary="Introduced compaction for producers. This allows the depth of a producer tree to be reduced by merging together producers, especially those that are associative or distributive.">
-      <created>1517142556719</created>
-      <option name="number" value="00014" />
-      <option name="presentableId" value="LOCAL-00014" />
-      <option name="project" value="LOCAL" />
-      <updated>1517142556719</updated>
-    </task>
-    <task id="LOCAL-00015" summary="This is version 0.3.">
-      <created>1517187267809</created>
-      <option name="number" value="00015" />
-      <option name="presentableId" value="LOCAL-00015" />
-      <option name="project" value="LOCAL" />
-      <updated>1517187267809</updated>
+      <workItem from="1519389702987" duration="5756000" />
     </task>
     <task id="LOCAL-00016" summary="Starting version 0.4.">
       <created>1517187353221</created>
@@ -826,11 +803,25 @@
       <option name="project" value="LOCAL" />
       <updated>1519757536542</updated>
     </task>
-    <option name="localTasksCounter" value="63" />
+    <task id="LOCAL-00063" summary="Added negate method.">
+      <created>1519760955050</created>
+      <option name="number" value="00063" />
+      <option name="presentableId" value="LOCAL-00063" />
+      <option name="project" value="LOCAL" />
+      <updated>1519760955050</updated>
+    </task>
+    <task id="LOCAL-00064" summary="Added add method.">
+      <created>1519761241801</created>
+      <option name="number" value="00064" />
+      <option name="presentableId" value="LOCAL-00064" />
+      <option name="project" value="LOCAL" />
+      <updated>1519761241801</updated>
+    </task>
+    <option name="localTasksCounter" value="65" />
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="127700000" />
+    <option name="totallyTimeSpent" value="128586000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="0" y="0" width="1280" height="800" extended-state="6" />
@@ -847,7 +838,7 @@
       <window_info id="Terminal" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.32462174" sideWeight="0.5" order="10" side_tool="false" content_ui="tabs" />
       <window_info id="Capture Tool" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="2" side_tool="false" content_ui="tabs" />
       <window_info id="Designer" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="3" side_tool="false" content_ui="tabs" />
-      <window_info id="Project" active="true" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.2746365" sideWeight="0.5" order="0" side_tool="false" content_ui="combo" />
+      <window_info id="Project" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.2746365" sideWeight="0.5" order="0" side_tool="false" content_ui="combo" />
       <window_info id="Database" active="false" anchor="right" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="5" side_tool="false" content_ui="tabs" />
       <window_info id="Structure" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.25" sideWeight="0.5" order="1" side_tool="false" content_ui="tabs" />
       <window_info id="Ant Build" active="false" anchor="right" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.25" sideWeight="0.5" order="1" side_tool="false" content_ui="tabs" />
@@ -873,8 +864,6 @@
     <option name="myLimit" value="2678400000" />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="Migrated Matrix3D and Matrix3DSolutionOutput into Common." />
-    <MESSAGE value="Working with legacy jogl data structures until we migrate everything in Explorer to our own structures." />
     <MESSAGE value="Added set method." />
     <MESSAGE value="Added setRow." />
     <MESSAGE value="Added getColumn method." />
@@ -898,7 +887,9 @@
     <MESSAGE value="Introduced addScaled method." />
     <MESSAGE value="Introduced transform method." />
     <MESSAGE value="More add methods." />
-    <option name="LAST_COMMIT_MESSAGE" value="More add methods." />
+    <MESSAGE value="Added negate method." />
+    <MESSAGE value="Added add method." />
+    <option name="LAST_COMMIT_MESSAGE" value="Added add method." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -1263,22 +1254,22 @@
         </state>
       </provider>
     </entry>
+    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Vector.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="332">
+          <caret line="209" column="7" lean-forward="true" selection-start-line="209" selection-start-column="7" selection-end-line="209" selection-end-column="7" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
     <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Vec3f.java">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="64">
-          <caret line="276" column="0" lean-forward="false" selection-start-line="276" selection-start-column="0" selection-end-line="285" selection-end-column="5" />
+        <state relative-caret-position="139">
+          <caret line="273" column="19" lean-forward="false" selection-start-line="273" selection-start-column="16" selection-end-line="273" selection-end-column="19" />
           <folding>
             <element signature="e#1252#1253#0" expanded="true" />
             <element signature="e#1317#1318#0" expanded="true" />
           </folding>
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Vector.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="326">
-          <caret line="204" column="22" lean-forward="true" selection-start-line="204" selection-start-column="22" selection-end-line="204" selection-end-column="22" />
-          <folding />
         </state>
       </provider>
     </entry>

@@ -206,6 +206,15 @@ public class Vector implements Positioned, Triple, Cloneable {
 	}
 
 	/**
+	 * this = a - b
+	 */
+	public void subtract(Vector a, Vector b) {
+		this.x = a.getX() - b.getX();
+		this.y = a.getY() - b.getY();
+		this.z = a.getZ() - b.getZ();
+	}
+
+	/**
 	 * Sets the value of this {@link Vector} to the negation of {@link Vector} v.
 	 *
 	 * @param v  The source Vector

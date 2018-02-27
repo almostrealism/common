@@ -268,6 +268,9 @@ public class Vec3f {
 		z = a.z - b.z;
 	}
 
+	/**
+	 * this = a - b
+	 */
 	public void sub(Vector a, Vector b) {
 		this.x = (float) (a.getX() - b.getX());
 		this.y = (float) (a.getY() - b.getY());
