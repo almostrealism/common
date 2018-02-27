@@ -245,7 +245,16 @@ public class Vector implements Positioned, Triple, Cloneable {
 		this.y = this.y * value;
 		this.z = this.z * value;
 	}
-	
+
+	/**
+	 * this = s * t
+	 */
+	public void scale(double s, Vector t) {
+		this.x = s * t.x;
+		this.y = s * t.y;
+		this.z = s * t.z;
+	}
+
 	/**
 	 * Returns the quotient of the division of the vector represented by this Vector object by the specified value.
 	 */
