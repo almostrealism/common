@@ -186,6 +186,8 @@ public class Vec3f {
 		add(this, b);
 	}
 
+	public void add(Vector v) { add(this, v); }
+
 	/**
 	 * this = a + b
 	 */
@@ -202,6 +204,15 @@ public class Vec3f {
 		x = (float) (a.getX() + b.getX());
 		y = (float) (a.getY() + b.getY());
 		z = (float) (a.getZ() + b.getZ());
+	}
+
+	/**
+	 * this = a + b
+	 */
+	public void add(Vec3f a, Vector b) {
+		x = (float) (a.x() + b.getX());
+		y = (float) (a.y() + b.getY());
+		z = (float) (a.z() + b.getZ());
 	}
 
 	/**
