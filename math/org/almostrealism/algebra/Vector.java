@@ -175,6 +175,16 @@ public class Vector implements Positioned, Triple, Cloneable {
 	}
 
 	/**
+	 * this = a + b
+	 */
+	@Deprecated
+	public void add(Vector a, Vector b) {
+		x = a.getX() + b.getX();
+		y = a.getY() + b.getY();
+		z = a.getZ() + b.getZ();
+	}
+
+	/**
 	 * Returns the difference of the vector represented by this Vector object and that of the specified Vector object.
 	 * The specified vector is subtracted from this one.
 	 */
@@ -200,6 +210,7 @@ public class Vector implements Positioned, Triple, Cloneable {
 	 *
 	 * @param v  The source Vector
 	 */
+	@Deprecated
 	public void negate(Vector v) {
 		this.x = -v.x;
 		this.y = -v.y;

@@ -285,7 +285,6 @@ public class Vec3f {
 		this.z = -v.z;
 	}
 
-
 	/**
 	 * Negates the value of this Vec3f in place.
 	 */
