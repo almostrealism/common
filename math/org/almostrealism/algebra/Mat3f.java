@@ -198,10 +198,10 @@ public class Mat3f {
 		set(i, 2, v.z());
 	}
 
-	public void setRow(int i, float x, float y, float z) {
-		set(i, 0, x);
-		set(i, 1, y);
-		set(i, 2, z);
+	public void setRow(int i, double x, double y, double z) {
+		set(i, 0, (float) x);
+		set(i, 1, (float) y);
+		set(i, 2, (float) z);
 	}
 
 	/**
