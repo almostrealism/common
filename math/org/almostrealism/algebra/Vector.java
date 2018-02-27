@@ -179,10 +179,19 @@ public class Vector implements Positioned, Triple, Cloneable {
 	 * this = a + s * b
 	 */
 	@Deprecated
-	public void addScaled(Vector a, double s, Vector b) {
+	public Vector addScaled(Vector a, double s, Vector b) {
 		x = a.x + s * b.x;
 		y = a.y + s * b.y;
 		z = a.z + s * b.z;
+		return this;
+	}
+
+	/**
+	 * this = a + s * b
+	 */
+	@Deprecated
+	public Vector scaleAdd(float s, Vector a, Vector b) {
+		return addScaled(a, s, b);
 	}
 
 	/**

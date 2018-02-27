@@ -237,7 +237,7 @@ public class Vec3f {
 		addScaled(a, s, b);
 	}
 
-	public final void scale(float s, Vec3f t) {
+	public void scale(float s, Vec3f t) {
 		this.x = s * t.x;
 		this.y = s * t.y;
 		this.z = s * t.z;
