@@ -20,8 +20,10 @@ package org.almostrealism.algebra;
  * 3x3 matrix class useful for simple linear algebra. Representation
  * is (as Mat4f) in row major order and assumes multiplication by
  * column vectors on the right.
+ *
+ * TODO  Replace uses with {@link TransformMatrix}.
  */
-
+@Deprecated
 public class Mat3f {
 	private float[] data;
 
@@ -308,6 +310,15 @@ public class Mat3f {
 
 	public void transform(Vec3f v) {
 		Vec3f r = toMatf().mul(v.toVecf()).toVec3f();
+		v.setX(r.x());
+		v.setY(r.y());
+		v.setZ(r.z());
+	}
+
+	// TODO  Performance can be greatly improved here
+	@Deprecated
+	public void transform(Vector v) {
+		Vec3f r = toMatf().mul(new Vec3f(v).toVecf()).toVec3f();
 		v.setX(r.x());
 		v.setY(r.y());
 		v.setZ(r.z());

@@ -41,6 +41,10 @@ public class Vec3f {
 		set(arg);
 	}
 
+	public Vec3f(Vector v) {
+		this((float) v.getX(), (float) v.getY(), (float) v.getZ());
+	}
+
 	public Vec3f(float x, float y, float z) {
 		set(x, y, z);
 	}
