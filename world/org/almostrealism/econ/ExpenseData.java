@@ -13,6 +13,17 @@ public class ExpenseData extends HashMap<Time, Expense> {
 		return top;
 	}
 
+	/** This method should be avoided. */
+	protected double sum() {
+		double d = 0.0;
+
+		for (Expense e : values()) {
+			d += ((FloatingPointUnit) e.getCost()).asDouble();
+		}
+
+		return d;
+	}
+
 	public void write(OutputStream out) {
 		try (XMLEncoder e = new XMLEncoder(out)) {
 			e.writeObject(this);

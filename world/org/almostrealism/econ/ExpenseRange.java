@@ -32,6 +32,7 @@ public class ExpenseRange {
 	// TODO  Change these to Currency types
 	private double open, close;
 	private double high, low;
+	private double average;
 
 	private TreeSet<Time> sortedTimes;
 
@@ -82,6 +83,7 @@ public class ExpenseRange {
 		if (empty || v < low) this.low = v;
 		if (empty || t.equals(getEarliest())) this.open = v;
 		if (empty || t.equals(getLatest())) this.close = v;
+		this.average = data.sum() / data.size();
 
 		return true;
 	}
@@ -114,6 +116,7 @@ public class ExpenseRange {
 	public double getHigh() { return high; }
 	public double getLow() { return low; }
 	public double getClose() { return close; }
+	public double getAverage() { return average; }
 
 	public List<ExpenseRange> flatten() {
 		if (before == null) {
