@@ -20,6 +20,7 @@ package org.almostrealism.algebra;
     is (as Mat4f) in row major order and assumes multiplication by
     column vectors on the right. */
 
+@Deprecated
 public class Mat2f {
   private float[] data;
 

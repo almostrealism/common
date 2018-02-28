@@ -25,7 +25,7 @@ package org.almostrealism.algebra;
  */
 @Deprecated
 public class Mat3f {
-	private float[] data;
+	private float[] data; // TODO  Change to double
 
 	/**
 	 * Creates new matrix initialized to the zero matrix
@@ -134,8 +134,8 @@ public class Mat3f {
 	 * Sets the (i,j)th element of this matrix, where i is the row
 	 * index and j is the column index
 	 */
-	public void set(int i, int j, float val) {
-		data[3 * i + j] = val;
+	public void set(int i, int j, double val) {
+		data[3 * i + j] = (float) val;
 	}
 
 	public void set(Mat3f m) {
