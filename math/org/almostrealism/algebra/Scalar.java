@@ -27,7 +27,7 @@ public class Scalar extends Pair implements Comparable<Scalar> {
 		return Math.abs(x) < EPSILON;
 	}
 
-	public static Scalar atan2Fast(double y, double x) {
+	public static Scalar atan2(double y, double x) {
 		double coeff_1 = PI / 4.0;
 		double coeff_2 = 3.0 * coeff_1;
 		double abs_y = Math.abs(y);

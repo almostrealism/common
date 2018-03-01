@@ -363,4 +363,41 @@ public class Rotf {
 				throw new IndexOutOfBoundsException();
 		}
 	}
+
+	public static float getAngle(Rotf q) {
+		float s = 2f * (float) Math.acos(q.w());
+		return s;
+	}
+
+	public static void setRotation(Rotf q, Vec3f axis, float angle) {
+		float d = axis.length();
+		assert (d != 0f);
+		float s = (float)Math.sin(angle * 0.5f) / d;
+		q.set(axis.x() * s, axis.y() * s, axis.z() * s, (float) Math.cos(angle * 0.5f));
+	}
+
+	public static void setRotation(Rotf q, Vector axis, float angle) {
+		double d = axis.length();
+		assert (d != 0f);
+		double s = Math.sin(angle * 0.5f) / d;
+		q.set((float) (axis.getX() * s), (float) (axis.getY() * s), (float) (axis.getZ() * s),
+				(float) Math.cos(angle * 0.5f));
+	}
+
+	@Deprecated
+	public static void mul(Rotf q, Vec3f w) {
+		float rx = q.w() * w.x() + q.y() * w.z() - q.z() * w.y();
+		float ry = q.w() * w.y() + q.z() * w.x() - q.x() * w.z();
+		float rz = q.w() * w.z() + q.x() * w.y() - q.y() * w.x();
+		float rw = -q.x() * w.x() - q.y() * w.y() - q.z() * w.z();
+		q.set(rx, ry, rz, rw);
+	}
+
+	public static void mul(Rotf q, Vector w) {
+		double rx = q.w() * w.getX() + q.y() * w.getZ() - q.z() * w.getY();
+		double ry = q.w() * w.getY() + q.z() * w.getX() - q.x() * w.getZ();
+		double rz = q.w() * w.getZ() + q.x() * w.getY() - q.y() * w.getX();
+		double rw = -q.x() * w.getX() - q.y() * w.getY() - q.z() * w.getZ();
+		q.set(rx, ry, rz, rw);
+	}
 }
