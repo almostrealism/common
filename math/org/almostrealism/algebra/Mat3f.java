@@ -112,7 +112,33 @@ public class Mat3f {
 	 * @param column  The matrix column
 	 * @param v  The vector into which the matrix row values will be copied
 	 */
+	@Deprecated
 	public void getColumn(int column, Vec3f v) {
+		if (column == 0) {
+			v.setX(get(0, 0));
+			v.setY(get(1, 0));
+			v.setZ(get(2, 0));
+		} else if (column == 1) {
+			v.setX(get(0, 1));
+			v.setY(get(1, 1));
+			v.setZ(get(2, 1));
+		} else if (column == 2) {
+			v.setX(get(0, 2));
+			v.setY(get(1, 2));
+			v.setZ(get(2, 2));
+		} else {
+			throw new ArrayIndexOutOfBoundsException(column);
+		}
+	}
+
+
+	/**
+	 * Copies the matrix values in the specified column into the vector parameter.
+	 *
+	 * @param column  The matrix column
+	 * @param v  The vector into which the matrix row values will be copied
+	 */
+	public void getColumn(int column, Vector v) {
 		if (column == 0) {
 			v.setX(get(0, 0));
 			v.setY(get(1, 0));
