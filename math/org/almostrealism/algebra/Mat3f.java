@@ -382,4 +382,182 @@ public class Mat3f {
 				get(1, 0) + ", " + get(1, 1) + ", " + get(1, 2) + endl +
 				get(2, 0) + ", " + get(2, 1) + ", " + get(2, 2) + ")";
 	}
+
+	@Deprecated
+	public static void scale(Mat3f dest, Mat3f mat, Vec3f s) {
+		dest.set(0, 0, mat.get(0, 0) * s.x());
+		dest.set(0, 1, mat.get(0, 1) * s.y());
+		dest.set(0, 2, mat.get(0, 2) * s.z());
+		dest.set(1, 0, mat.get(1, 0) * s.x());
+		dest.set(1, 1, mat.get(1, 1) * s.y());
+		dest.set(1, 2, mat.get(1, 2) * s.z());
+		dest.set(2, 0, mat.get(2, 0) * s.x());
+		dest.set(2, 1, mat.get(2, 1) * s.y());
+		dest.set(2, 2, mat.get(2, 2) * s.z());
+	}
+
+	public static void scale(Mat3f dest, Mat3f mat, Vector s) {
+		dest.set(0, 0, mat.get(0, 0) * s.getX());
+		dest.set(0, 1, mat.get(0, 1) * s.getY());
+		dest.set(0, 2, mat.get(0, 2) * s.getZ());
+		dest.set(1, 0, mat.get(1, 0) * s.getX());
+		dest.set(1, 1, mat.get(1, 1) * s.getY());
+		dest.set(1, 2, mat.get(1, 2) * s.getZ());
+		dest.set(2, 0, mat.get(2, 0) * s.getX());
+		dest.set(2, 1, mat.get(2, 1) * s.getY());
+		dest.set(2, 2, mat.get(2, 2) * s.getZ());
+	}
+
+	public static void absolute(Mat3f mat) {
+		mat.set(0, 0, Math.abs(mat.get(0, 0)));
+		mat.set(0, 1, Math.abs(mat.get(0, 1)));
+		mat.set(0, 2, Math.abs(mat.get(0, 2)));
+		mat.set(1, 0, Math.abs(mat.get(1, 0)));
+		mat.set(1, 1, Math.abs(mat.get(1, 1)));
+		mat.set(1, 2, Math.abs(mat.get(1, 2)));
+		mat.set(2, 0, Math.abs(mat.get(2, 0)));
+		mat.set(2, 1, Math.abs(mat.get(2, 1)));
+		mat.set(2, 2, Math.abs(mat.get(2, 2)));
+	}
+
+	public static void setFromOpenGLSubMatrix(Mat3f mat, float[] m) {
+		mat.set(0, 0, m[0]);
+		mat.set(0, 1, m[4]);
+		mat.set(0, 2, m[8]);
+		mat.set(1, 0, m[1]);
+		mat.set(1, 1, m[5]);
+		mat.set(1, 2, m[9]);
+		mat.set(2, 0, m[2]);
+		mat.set(2, 1, m[6]);
+		mat.set(2, 2, m[10]);
+	}
+
+	public static void getOpenGLSubMatrix(Mat3f mat, float[] m) {
+		m[0] = mat.get(0, 0);
+		m[1] = mat.get(1, 0);
+		m[2] = mat.get(2, 0);
+		m[3] = 0f;
+		m[4] = mat.get(0, 1);
+		m[5] = mat.get(1, 1);
+		m[6] = mat.get(2, 1);
+		m[7] = 0f;
+		m[8] = mat.get(0, 2);
+		m[9] = mat.get(1, 2);
+		m[10] = mat.get(2, 2);
+		m[11] = 0f;
+	}
+
+	/**
+	 * setEulerZYX
+	 *
+	 * @param eulerX a const reference to a btVector3 of euler angles
+	 * These angles are used to produce a rotation matrix. The euler
+	 * angles are applied in ZYX order. I.e a vector is first rotated
+	 * about X then Y and then Z
+	 */
+	public static void setEulerZYX(Mat3f mat, float eulerX, float eulerY, float eulerZ) {
+		float ci = (float) Math.cos(eulerX);
+		float cj = (float) Math.cos(eulerY);
+		float ch = (float) Math.cos(eulerZ);
+		float si = (float) Math.sin(eulerX);
+		float sj = (float) Math.sin(eulerY);
+		float sh = (float) Math.sin(eulerZ);
+		float cc = ci * ch;
+		float cs = ci * sh;
+		float sc = si * ch;
+		float ss = si * sh;
+
+		mat.setRow(0, cj * ch, sj * sc - cs, sj * cc + ss);
+		mat.setRow(1, cj * sh, sj * ss + cc, sj * cs - sc);
+		mat.setRow(2, -sj, cj * si, cj * ci);
+	}
+
+	@Deprecated
+	private static float tdotx(Mat3f mat, Vec3f vec) {
+		return mat.get(0, 0) * vec.x() + mat.get(1, 0) * vec.y() + mat.get(2, 0) * vec.z();
+	}
+
+	private static double tdotx(Mat3f mat, Vector vec) {
+		return mat.get(0, 0) * vec.getX() + mat.get(1, 0) * vec.getY() + mat.get(2, 0) * vec.getZ();
+	}
+
+	@Deprecated
+	private static float tdoty(Mat3f mat, Vec3f vec) {
+		return mat.get(0, 1) * vec.x() + mat.get(1, 1) * vec.y() + mat.get(2, 1) * vec.z();
+	}
+
+	private static double tdoty(Mat3f mat, Vector vec) {
+		return mat.get(0, 1) * vec.getX() + mat.get(1, 1) * vec.getY() + mat.get(2, 1) * vec.getZ();
+	}
+
+	@Deprecated
+	private static float tdotz(Mat3f mat, Vec3f vec) {
+		return mat.get(0, 2) * vec.x() + mat.get(1, 2) * vec.y() + mat.get(2, 2) * vec.z();
+	}
+
+	private static double tdotz(Mat3f mat, Vector vec) {
+		return mat.get(0, 2) * vec.getX() + mat.get(1, 2) * vec.getY() + mat.get(2, 2) * vec.getZ();
+	}
+
+	public static void transposeTransform(Vector dest, Vector vec, Mat3f mat) {
+		double x = tdotx(mat, vec);
+		double y = tdoty(mat, vec);
+		double z = tdotz(mat, vec);
+		dest.setX(x);
+		dest.setY(y);
+		dest.setZ(z);
+	}
+
+	public static void setRotation(Mat3f dest, Rotf q) {
+		float d = q.x() * q.x() + q.y() * q.y() + q.z() * q.z() + q.w() * q.w();
+		assert (d != 0f);
+		float s = 2f / d;
+		float xs = q.x() * s, ys = q.y() * s, zs = q.z() * s;
+		float wx = q.w() * xs, wy = q.w() * ys, wz = q.w() * zs;
+		float xx = q.x() * xs, xy = q.x() * ys, xz = q.x() * zs;
+		float yy = q.y() * ys, yz = q.y() * zs, zz = q.z() * zs;
+		dest.set(0, 0, 1f - (yy + zz));
+		dest.set(0, 1, xy - wz);
+		dest.set(0, 2, xz + wy);
+		dest.set(1, 0, xy + wz);
+		dest.set(1, 1, 1f - (xx + zz));
+		dest.set(1, 2, yz - wx);
+		dest.set(2, 0, xz - wy);
+		dest.set(2, 1, yz + wx);
+		dest.set(2, 2, 1f - (xx + yy));
+	}
+
+	private static float cofac(Mat3f mat, int r1, int c1, int r2, int c2) {
+		return mat.get(r1, c1) * mat.get(r2, c2) - mat.get(r1, c2) * mat.get(r2, c1);
+	}
+
+	public static void invert(Mat3f mat) {
+		float co_x = cofac(mat, 1, 1, 2, 2);
+		float co_y = cofac(mat, 1, 2, 2, 0);
+		float co_z = cofac(mat, 1, 0, 2, 1);
+
+		float det = mat.get(0, 0) * co_x + mat.get(0, 1) * co_y + mat.get(0, 2) * co_z;
+		assert (det != 0f);
+
+		float s = 1f / det;
+		float m00 = co_x * s;
+		float m01 = cofac(mat, 0, 2, 2, 1) * s;
+		float m02 = cofac(mat, 0, 1, 1, 2) * s;
+		float m10 = co_y * s;
+		float m11 = cofac(mat, 0, 0, 2, 2) * s;
+		float m12 = cofac(mat, 0, 2, 1, 0) * s;
+		float m20 = co_z * s;
+		float m21 = cofac(mat, 0, 1, 2, 0) * s;
+		float m22 = cofac(mat, 0, 0, 1, 1) * s;
+
+		mat.set(0, 0, m00);
+		mat.set(0, 1, m01);
+		mat.set(0, 2, m02);
+		mat.set(1, 0, m10);
+		mat.set(1, 1, m11);
+		mat.set(1, 2, m12);
+		mat.set(2, 0, m20);
+		mat.set(2, 1, m21);
+		mat.set(2, 2, m22);
+	}
 }
