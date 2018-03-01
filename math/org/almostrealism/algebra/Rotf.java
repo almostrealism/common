@@ -98,11 +98,11 @@ public class Rotf {
 		q3 = arg.q3;
 	}
 
-	public void set(float q0, float q1, float q2, float q3) {
-		this.q0 = q0;
-		this.q1 = q1;
-		this.q2 = q2;
-		this.q3 = q3;
+	public void set(double q0, double q1, double q2, double q3) {
+		this.q0 = (float) q0;
+		this.q1 = (float) q1;
+		this.q2 = (float) q2;
+		this.q3 = (float) q3;
 	}
 
 	/**
