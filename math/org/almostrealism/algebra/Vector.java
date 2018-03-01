@@ -348,6 +348,19 @@ public class Vector implements Positioned, Triple, Cloneable {
 	}
 
 	/**
+	 * Sets the value of this {@link Vector} to the
+	 * normalization of {@link Vector} v1.
+	 *
+	 * @param v1 the un-normalized vector
+	 */
+	public void normalize(Vector v1) {
+		double norm = Math.sqrt(v1.x * v1.x + v1.y * v1.y + v1.z * v1.z);
+		this.x = v1.x / norm;
+		this.y = v1.y / norm;
+		this.z = v1.z / norm;
+	}
+
+	/**
 	 * Returns an integer hash code value for this Vector object obtained
 	 * by adding all 3 components and casting to an int.
 	 */

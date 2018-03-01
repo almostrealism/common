@@ -136,7 +136,7 @@ public class Vec3f {
 	 *
 	 * @param v1 the un-normalized vector
 	 */
-	public final void normalize(Vec3f v1) {
+	public void normalize(Vec3f v1) {
 		float norm = (float) (1.0 / Math.sqrt(v1.x * v1.x + v1.y * v1.y + v1.z * v1.z));
 		this.x = v1.x * norm;
 		this.y = v1.y * norm;
