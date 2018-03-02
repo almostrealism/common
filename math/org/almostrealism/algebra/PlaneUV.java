@@ -16,165 +16,198 @@
 
 package org.almostrealism.algebra;
 
-/** This differs from the Plane class in that it maintains an origin
-    and orthonormal U, V axes in the plane so that it can project a 3D
-    point to a 2D one. U cross V = normal. U and V coordinates are
-    computed with respect to the origin. */
-
+/**
+ * This differs from the Plane class in that it maintains an origin
+ * and orthonormal U, V axes in the plane so that it can project a 3D
+ * point to a 2D one. U cross V = normal. U and V coordinates are
+ * computed with respect to the origin.
+ */
 public class PlaneUV {
-  private Vec3f origin = new Vec3f();
-  /** Normalized */
-  private Vec3f normal = new Vec3f();
-  private Vec3f uAxis  = new Vec3f();
-  private Vec3f vAxis  = new Vec3f();
+	private Vector origin = new Vector();
+	/**
+	 * Normalized
+	 */
+	private Vector normal = new Vector();
+	private Vector uAxis = new Vector();
+	private Vector vAxis = new Vector();
 
-  /** Default constructor initializes normal to (0, 1, 0), origin to
-      (0, 0, 0), U axis to (1, 0, 0) and V axis to (0, 0, -1). */
-  public PlaneUV() {
-    setEverything(new Vec3f(0, 1, 0),
-                  new Vec3f(0, 0, 0),
-                  new Vec3f(1, 0, 0),
-                  new Vec3f(0, 0, -1));
-  }
+	/**
+	 * Default constructor initializes normal to (0, 1, 0), origin to
+	 * (0, 0, 0), U axis to (1, 0, 0) and V axis to (0, 0, -1).
+	 */
+	public PlaneUV() {
+		setEverything(new Vector(0, 1, 0),
+				new Vector(0, 0, 0),
+				new Vector(1, 0, 0),
+				new Vector(0, 0, -1));
+	}
 
-  /** Takes normal vector and a point which the plane goes through
-      (which becomes the plane's "origin"). Normal does NOT have to be
-      normalized, but may not be zero vector. U and V axes are
-      initialized to arbitrary values. */
-  public PlaneUV(Vec3f normal, Vec3f origin) {
-    setOrigin(origin);
-    setNormal(normal);
-  }
+	/**
+	 * Takes normal vector and a point which the plane goes through
+	 * (which becomes the plane's "origin"). Normal does NOT have to be
+	 * normalized, but may not be zero vector. U and V axes are
+	 * initialized to arbitrary values.
+	 */
+	public PlaneUV(Vector normal, Vector origin) {
+		setOrigin(origin);
+		setNormal(normal);
+	}
 
-  /** Takes normal vector, point which plane goes through, and the "u"
-    axis in the plane. Computes the "v" axis by taking the cross
-    product of the normal and the u axis. Axis must be perpendicular
-    to normal. Normal and uAxis do NOT have to be normalized, but
-    neither may be the zero vector. */
-  public PlaneUV(Vec3f normal,
-                 Vec3f origin,
-                 Vec3f uAxis) {
-    setOrigin(origin);
-    setNormalAndU(normal, uAxis);
-  }
+	/**
+	 * Takes normal vector, point which plane goes through, and the "u"
+	 * axis in the plane. Computes the "v" axis by taking the cross
+	 * product of the normal and the u axis. Axis must be perpendicular
+	 * to normal. Normal and uAxis do NOT have to be normalized, but
+	 * neither may be the zero vector.
+	 */
+	public PlaneUV(Vector normal,
+				   Vector origin,
+				   Vector uAxis) {
+		setOrigin(origin);
+		setNormalAndU(normal, uAxis);
+	}
 
-  /** Takes normal vector, point which plane goes through, and both
-    the u and v axes. u axis cross v axis = normal. Normal, uAxis, and
-    vAxis do NOT have to be normalized, but none may be the zero
-    vector. */
-  public PlaneUV(Vec3f normal,
-                 Vec3f origin,
-                 Vec3f uAxis,
-                 Vec3f vAxis) {
-    setEverything(normal, origin, uAxis, vAxis);
-  }
+	/**
+	 * Takes normal vector, point which plane goes through, and both
+	 * the u and v axes. u axis cross v axis = normal. Normal, uAxis, and
+	 * vAxis do NOT have to be normalized, but none may be the zero
+	 * vector.
+	 */
+	public PlaneUV(Vector normal,
+				   Vector origin,
+				   Vector uAxis,
+				   Vector vAxis) {
+		setEverything(normal, origin, uAxis, vAxis);
+	}
 
-  /** Set the origin, through which this plane goes and with respect
-      to which U and V coordinates are computed */
-  public void setOrigin(Vec3f origin) {
-    this.origin.set(origin);
-  }
+	/**
+	 * Set the origin, through which this plane goes and with respect
+	 * to which U and V coordinates are computed
+	 */
+	public void setOrigin(Vector origin) {
+		this.origin.setTo(origin);
+	}
 
-  public Vec3f getOrigin() {
-    return new Vec3f(origin);
-  }
+	public Vector getOrigin() {
+		return (Vector) origin.clone();
+	}
 
-  /** Normal, U and V axes must be orthogonal and satisfy U cross V =
-      normal, do not need to be unit length but must not be the zero
-      vector. */
-  public void setNormalAndUV(Vec3f normal,
-                             Vec3f uAxis,
-                             Vec3f vAxis) {
-    setEverything(normal, origin, uAxis, vAxis);
-  }
+	/**
+	 * Normal, U and V axes must be orthogonal and satisfy U cross V =
+	 * normal, do not need to be unit length but must not be the zero
+	 * vector.
+	 */
+	public void setNormalAndUV(Vector normal,
+							   Vector uAxis,
+							   Vector vAxis) {
+		setEverything(normal, origin, uAxis, vAxis);
+	}
 
-  /** This version sets the normal vector and generates new U and V
-      axes. */
-  public void setNormal(Vec3f normal) {
-    Vec3f uAxis = new Vec3f();
-    MathUtil.makePerpendicular(normal, uAxis);
-    Vec3f vAxis = normal.cross(uAxis);
-    setEverything(normal, origin, uAxis, vAxis);
-  }
+	/**
+	 * This version sets the normal vector and generates new U and V
+	 * axes.
+	 */
+	public void setNormal(Vector normal) {
+		Vector uAxis = new Vector();
+		Vector.makePerpendicular(normal, uAxis);
+		Vector vAxis = normal.crossProduct(uAxis);
+		setEverything(normal, origin, uAxis, vAxis);
+	}
 
-  /** This version computes the V axis from (normal cross U). */
-  public void setNormalAndU(Vec3f normal,
-                            Vec3f uAxis) {
-    Vec3f vAxis = normal.cross(uAxis);
-    setEverything(normal, origin, uAxis, vAxis);
-  }
+	/**
+	 * This version computes the V axis from (normal cross U).
+	 */
+	public void setNormalAndU(Vector normal,
+							  Vector uAxis) {
+		Vector vAxis = normal.crossProduct(uAxis);
+		setEverything(normal, origin, uAxis, vAxis);
+	}
 
-  /** Normal, U and V axes are normalized internally, so, for example,
-      <b>normal</b> is not necessarily equal to
-      <code>plane.setNormal(normal); plane.getNormal();</code> */
-  public Vec3f getNormal() {
-    return normal;
-  }
+	/**
+	 * Normal, U and V axes are normalized internally, so, for example,
+	 * <b>normal</b> is not necessarily equal to
+	 * <code>plane.setNormal(normal); plane.getNormal();</code>
+	 */
+	public Vector getNormal() {
+		return normal;
+	}
 
-  public Vec3f getUAxis() {
-    return uAxis;
-  }
+	public Vector getUAxis() {
+		return uAxis;
+	}
 
-  public Vec3f getVAxis() {
-    return vAxis;
-  }
+	public Vector getVAxis() {
+		return vAxis;
+	}
 
-  /** Project a point onto the plane */
-  public void projectPoint(Vec3f point,
-                           Vec3f projPt,
-                           Vec2f uvCoords) {
-    // Using projPt as a temporary
-    projPt.sub(point, origin);
-    float dotp = normal.dot(projPt);
-    // Component perpendicular to plane
-    Vec3f tmpDir = new Vec3f();
-    tmpDir.set(normal);
-    tmpDir.scale(dotp);
-    projPt.sub(projPt, tmpDir);
-    // Take dot products with basis vectors
-    uvCoords.set(projPt.dot(uAxis),
-                 projPt.dot(vAxis));
-    // Add on center to intersection point
-    projPt.add(origin);
-  }
+	/** Project a point onto the plane */
+	public void projectPoint(Vector point,
+							 Vector projPt,
+							 Pair uvCoords) {
+		// Using projPt as a temporary
+		projPt.subtract(point, origin);
+		double dotp = normal.dotProduct(projPt);
 
-  /** Intersect a ray with this plane, outputting not only the 3D
-      intersection point but also the U, V coordinates of the
-      intersection. Returns true if intersection occurred, false
-      otherwise. This is a two-sided ray cast. */
-  public boolean intersectRay(Vec3f rayStart,
-                              Vec3f rayDirection,
-                              IntersectionPoint intPt,
-                              Vec2f uvCoords) {
-    float denom = rayDirection.dot(normal);
-    if (denom == 0.0f)
-      return false;
-    Vec3f tmpDir = new Vec3f();
-    tmpDir.sub(origin, rayStart);
-    float t = tmpDir.dot(normal) / denom;
-    // Find intersection point
-    Vec3f tmpPt = new Vec3f();
-    tmpPt.set(rayDirection);
-    tmpPt.scale(t);
-    tmpPt.add(rayStart);
-    intPt.setIntersectionPoint(tmpPt);
-    intPt.setT(t);
-    // Find UV coords
-    tmpDir.sub(intPt.getIntersectionPoint(), origin);
-    uvCoords.set(tmpDir.dot(uAxis), tmpDir.dot(vAxis));
-    return true;
-  }
+		// Component perpendicular to plane
+		Vector tmpDir = new Vector();
+		tmpDir.setTo(normal);
+		tmpDir.multiplyBy(dotp);
+		projPt.subtract(projPt, tmpDir);
 
-  private void setEverything(Vec3f normal,
-                             Vec3f origin,
-                             Vec3f uAxis,
-                             Vec3f vAxis) {
-    this.normal.set(normal);
-    this.origin.set(origin);
-    this.uAxis.set(uAxis);
-    this.vAxis.set(vAxis);
-    this.normal.normalize();
-    this.uAxis.normalize();
-    this.vAxis.normalize();
-  }
+		// Take dot products with basis vectors
+		uvCoords.setX(projPt.dotProduct(uAxis));
+		uvCoords.setY(projPt.dotProduct(vAxis));
+
+		// Add on center to intersection point
+		projPt.add(origin);
+	}
+
+	/**
+	 * Intersect a ray with this plane, outputting not only the 3D
+	 * intersection point but also the U, V coordinates of the
+	 * intersection. Returns true if intersection occurred, false
+	 * otherwise. This is a two-sided ray cast.
+	 */
+	public boolean intersectRay(Vector rayStart,
+								Vector rayDirection,
+								IntersectionPoint intPt,
+								Pair uvCoords) {
+		double denom = rayDirection.dotProduct(normal);
+
+		if (denom == 0.0f)
+			return false;
+
+		Vector tmpDir = new Vector();
+		tmpDir.subtract(origin, rayStart);
+
+		double t = tmpDir.dotProduct(normal) / denom;
+
+		// Find intersection point
+		Vector tmpPt = new Vector();
+		tmpPt.setTo(rayDirection);
+		tmpPt.multiplyBy(t);
+		tmpPt.add(rayStart);
+		intPt.setIntersectionPoint(tmpPt);
+		intPt.setT(t);
+
+		// Find UV coords
+		tmpDir.subtract(intPt.getIntersectionPoint(), origin);
+		uvCoords.setX(tmpDir.dotProduct(uAxis));
+		uvCoords.setY(tmpDir.dotProduct(vAxis));
+
+		return true;
+	}
+
+	private void setEverything(Vector normal,
+							   Vector origin,
+							   Vector uAxis,
+							   Vector vAxis) {
+		this.normal.setTo(normal);
+		this.origin.setTo(origin);
+		this.uAxis.setTo(uAxis);
+		this.vAxis.setTo(vAxis);
+		this.normal.normalize();
+		this.uAxis.normalize();
+		this.vAxis.normalize();
+	}
 }

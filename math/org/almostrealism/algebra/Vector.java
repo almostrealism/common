@@ -417,4 +417,33 @@ public class Vector implements Positioned, Triple, Cloneable {
 		
 		return value.toString();
 	}
+
+	// TODO  This should be an instance method on the dest vector, not a static method
+	/**
+	 * Makes an arbitrary vector perpendicular to <B>src</B> and
+	 * inserts it into <B>dest</B>. Returns false if the source vector
+	 * was equal to (0, 0, 0).
+	 */
+	public static boolean makePerpendicular(Vector src,
+											Vector dest) {
+		if ((src.getX() == 0.0) && (src.getY() == 0.0) && (src.getZ() == 0.0)) {
+			return false;
+		}
+
+		if (src.getX() != 0.0) {
+			if (src.getY() != 0.0) {
+				dest.setX(-src.getY());
+				dest.setY(src.getX());
+				dest.setZ(0.0);
+			} else {
+				dest.setX(-src.getZ());
+				dest.setY(0.0);
+				dest.setZ(src.getX());
+			}
+		} else {
+			dest.setPosition(1.0f, 0.0f, 0.0f);
+		}
+
+		return true;
+	}
 }

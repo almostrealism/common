@@ -209,10 +209,10 @@ public class Mat3f {
 	/**
 	 * Set column i (i=[0..2]) to vector v.
 	 */
-	public void setCol(int i, Vec3f v) {
-		set(0, i, v.x());
-		set(1, i, v.y());
-		set(2, i, v.z());
+	public void setCol(int i, Vector v) {
+		set(0, i, v.getX());
+		set(1, i, v.getY());
+		set(2, i, v.getZ());
 	}
 
 	/**
