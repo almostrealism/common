@@ -2,8 +2,8 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="">
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/math/org/almostrealism/algebra/FloatList.java" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/math/org/almostrealism/algebra/IntersectionPoint.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/algebra/IntersectionPoint.java" />
     </list>
     <ignored path="$PROJECT_DIR$/target/" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -102,7 +102,6 @@
         <option value="$PROJECT_DIR$/math/org/almostrealism/math/Matrix3DSolutionOutput.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Mat4f.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Vec3d.java" />
-        <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/IntersectionPoint.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Vec2f.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Vec4f.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Pair.java" />
@@ -121,6 +120,7 @@
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Rotf.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Mat3f.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/FloatList.java" />
+        <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/IntersectionPoint.java" />
       </list>
     </option>
   </component>
@@ -180,6 +180,12 @@
               <item name="Common" type="616d4139:PackageViewModuleNode" />
               <item name="org.almostrealism" type="1f31426a:PackageElementNode" />
               <item name="algebra" type="1f31426a:PackageElementNode" />
+            </path>
+            <path>
+              <item name="common" type="58d84e3e:PackageViewProjectNode" />
+              <item name="Common" type="616d4139:PackageViewModuleNode" />
+              <item name="org.almostrealism" type="1f31426a:PackageElementNode" />
+              <item name="bean" type="1f31426a:PackageElementNode" />
             </path>
           </expand>
           <select />
@@ -421,14 +427,7 @@
       <workItem from="1519371354237" duration="1652000" />
       <workItem from="1519379184525" duration="651000" />
       <workItem from="1519389702987" duration="15054000" />
-      <workItem from="1519940365242" duration="1479000" />
-    </task>
-    <task id="LOCAL-00030" summary="Added flatten method to ExpenseRange.">
-      <created>1517964479245</created>
-      <option name="number" value="00030" />
-      <option name="presentableId" value="LOCAL-00030" />
-      <option name="project" value="LOCAL" />
-      <updated>1517964479246</updated>
+      <workItem from="1519940365242" duration="2825000" />
     </task>
     <task id="LOCAL-00031" summary="Introduced ETH currency type, minor changes to ExpenseRange and Atomic, and removed UpdateListener (Temporal should be used in its place).">
       <created>1518071759608</created>
@@ -766,11 +765,18 @@
       <option name="project" value="LOCAL" />
       <updated>1519940759987</updated>
     </task>
-    <option name="localTasksCounter" value="79" />
+    <task id="LOCAL-00079" summary="Added FloatList.">
+      <created>1519972175475</created>
+      <option name="number" value="00079" />
+      <option name="presentableId" value="LOCAL-00079" />
+      <option name="project" value="LOCAL" />
+      <updated>1519972175476</updated>
+    </task>
+    <option name="localTasksCounter" value="80" />
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="139363000" />
+    <option name="totallyTimeSpent" value="140709000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="0" y="0" width="1280" height="800" extended-state="6" />
@@ -813,7 +819,6 @@
     <option name="myLimit" value="2678400000" />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="Added constructor." />
     <MESSAGE value="Added constructor to Pair." />
     <MESSAGE value="Introduced load method for Resource that reads from a byte array." />
     <MESSAGE value="Use Swing Event Thread for events listeners that are AWT components." />
@@ -838,7 +843,8 @@
     <MESSAGE value="Added some convenient Scalar functions." />
     <MESSAGE value="Added some utility functions for Rotf." />
     <MESSAGE value="Added some matrix utilities to Mat3f." />
-    <option name="LAST_COMMIT_MESSAGE" value="Added some matrix utilities to Mat3f." />
+    <MESSAGE value="Added FloatList." />
+    <option name="LAST_COMMIT_MESSAGE" value="Added FloatList." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -1043,13 +1049,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/IntersectionPoint.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="60">
-          <caret line="18" column="50" lean-forward="false" selection-start-line="18" selection-start-column="50" selection-end-line="18" selection-end-column="50" />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Matf.java">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="105">
@@ -1165,6 +1164,7 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="-1461">
           <caret line="29" column="0" lean-forward="true" selection-start-line="29" selection-start-column="0" selection-end-line="29" selection-end-column="0" />
+          <folding />
         </state>
       </provider>
     </entry>
@@ -1223,6 +1223,17 @@
         <state relative-caret-position="15">
           <caret line="19" column="13" lean-forward="false" selection-start-line="19" selection-start-column="13" selection-end-line="19" selection-end-column="13" />
           <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/IntersectionPoint.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="144">
+          <caret line="24" column="32" lean-forward="true" selection-start-line="24" selection-start-column="32" selection-end-line="24" selection-end-column="32" />
+          <folding>
+            <element signature="e#953#954#0" expanded="true" />
+            <element signature="e#978#979#0" expanded="true" />
+          </folding>
         </state>
       </provider>
     </entry>

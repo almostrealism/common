@@ -16,24 +16,29 @@
 
 package org.almostrealism.algebra;
 
-/** Wraps a 3D point and parametric time value. */
+// TODO  Replace with ShadableIntersection
+
+/**
+ * Wraps a 3D point and parametric time value.
+ */
+@Deprecated
 public class IntersectionPoint {
-  private Vec3f intPt = new Vec3f();
-  private float t;
+	private Vector intPt = new Vector();
+	private double t;
 
-  public Vec3f getIntersectionPoint() {
-    return intPt;
-  }
+	public Vector getIntersectionPoint() {
+		return intPt;
+	}
 
-  public void setIntersectionPoint(Vec3f newPt) {
-    intPt.set(newPt);
-  }
+	public void setIntersectionPoint(Vector newPt) {
+		intPt.setTo(newPt);
+	}
 
-  public float getT() {
-    return t;
-  }
+	public double getT() {
+		return t;
+	}
 
-  public void setT(float t) {
-    this.t = t;
-  }
+	public void setT(double t) {
+		this.t = t;
+	}
 }
