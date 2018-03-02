@@ -223,12 +223,31 @@ public class Mat4f {
 	 * transformations; i.e., is not a full transformation. NOTE: src
 	 * and dest must be different vectors.
 	 */
+	@Deprecated
 	public void xformPt(Vec3f src, Vec3f dest) {
 		for (int rc = 0; rc < 3; rc++) {
 			float tmp = 0.0f;
 			for (int cc = 0; cc < 3; cc++) {
 				tmp += get(rc, cc) * src.get(cc);
 			}
+			tmp += get(rc, 3);
+			dest.set(rc, tmp);
+		}
+	}
+
+	/**
+	 * Transforms a 3D vector as though it had a homogeneous coordinate
+	 * and assuming that this matrix represents only rigid
+	 * transformations; i.e., is not a full transformation. NOTE: src
+	 * and dest must be different vectors.
+	 */
+	public void xformPt(Vector src, Vector dest) {
+		for (int rc = 0; rc < 3; rc++) {
+			float tmp = 0.0f;
+			for (int cc = 0; cc < 3; cc++) {
+				tmp += get(rc, cc) * src.get(cc);
+			}
+
 			tmp += get(rc, 3);
 			dest.set(rc, tmp);
 		}
