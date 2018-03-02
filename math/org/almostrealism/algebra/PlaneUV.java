@@ -168,25 +168,22 @@ public class PlaneUV {
 	 * intersection. Returns true if intersection occurred, false
 	 * otherwise. This is a two-sided ray cast.
 	 */
-	public boolean intersectRay(Vector rayStart,
-								Vector rayDirection,
-								IntersectionPoint intPt,
-								Pair uvCoords) {
-		double denom = rayDirection.dotProduct(normal);
+	public boolean intersectRay(Ray ray, IntersectionPoint intPt, Pair uvCoords) {
+		double denom = ray.getDirection().dotProduct(normal);
 
 		if (denom == 0.0f)
 			return false;
 
 		Vector tmpDir = new Vector();
-		tmpDir.subtract(origin, rayStart);
+		tmpDir.subtract(origin, ray.getOrigin());
 
 		double t = tmpDir.dotProduct(normal) / denom;
 
 		// Find intersection point
 		Vector tmpPt = new Vector();
-		tmpPt.setTo(rayDirection);
+		tmpPt.setTo(ray.getDirection());
 		tmpPt.multiplyBy(t);
-		tmpPt.add(rayStart);
+		tmpPt.add(ray.getOrigin());
 		intPt.setIntersectionPoint(tmpPt);
 		intPt.setT(t);
 

@@ -3,8 +3,7 @@
   <component name="ChangeListManager">
     <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="">
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/math/org/almostrealism/algebra/Mat2f.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/algebra/Mat2f.java" />
-      <change type="MOVED" beforePath="$PROJECT_DIR$/math/org/almostrealism/algebra/Line.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/space/Line.java" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/math/org/almostrealism/algebra/PlaneUV.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/algebra/PlaneUV.java" />
     </list>
     <ignored path="$PROJECT_DIR$/target/" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -113,7 +112,6 @@
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/FloatList.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/IntersectionPoint.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/MathUtil.java" />
-        <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/PlaneUV.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Vecf.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Mat3f.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Mat4f.java" />
@@ -122,6 +120,7 @@
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Mat2f.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Line.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/space/Line.java" />
+        <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/PlaneUV.java" />
       </list>
     </option>
   </component>
@@ -429,14 +428,7 @@
       <workItem from="1519371354237" duration="1652000" />
       <workItem from="1519379184525" duration="651000" />
       <workItem from="1519389702987" duration="15054000" />
-      <workItem from="1519940365242" duration="6112000" />
-    </task>
-    <task id="LOCAL-00036" summary="Migrated Matrix3D and Matrix3DSolutionOutput into Common.">
-      <created>1519242559822</created>
-      <option name="number" value="00036" />
-      <option name="presentableId" value="LOCAL-00036" />
-      <option name="project" value="LOCAL" />
-      <updated>1519242559822</updated>
+      <workItem from="1519940365242" duration="6709000" />
     </task>
     <task id="LOCAL-00037" summary="Working with legacy jogl data structures until we migrate everything in Explorer to our own structures.">
       <created>1519293203579</created>
@@ -774,11 +766,18 @@
       <option name="project" value="LOCAL" />
       <updated>1520021295676</updated>
     </task>
-    <option name="localTasksCounter" value="85" />
+    <task id="LOCAL-00085" summary="Some improvements to Line and Mat2f. Line has been moved to the space package.">
+      <created>1520022070520</created>
+      <option name="number" value="00085" />
+      <option name="presentableId" value="LOCAL-00085" />
+      <option name="project" value="LOCAL" />
+      <updated>1520022070520</updated>
+    </task>
+    <option name="localTasksCounter" value="86" />
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="143996000" />
+    <option name="totallyTimeSpent" value="144593000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="0" y="0" width="1280" height="800" extended-state="6" />
@@ -821,7 +820,6 @@
     <option name="myLimit" value="2678400000" />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="Introduced addScaled method." />
     <MESSAGE value="Introduced transform method." />
     <MESSAGE value="More add methods." />
     <MESSAGE value="Added negate method." />
@@ -846,7 +844,8 @@
     <MESSAGE value="Migrated some MathUtil functionality to Vector, deprecated some code in algebra package, and modified getCol in Mat3f to accept Vector instead of Vec3f." />
     <MESSAGE value="Added get and set methods to Vector. They are used in Mat4f." />
     <MESSAGE value="Migrated Functions and SpanCalculator from Rings to Common." />
-    <option name="LAST_COMMIT_MESSAGE" value="Migrated Functions and SpanCalculator from Rings to Common." />
+    <MESSAGE value="Some improvements to Line and Mat2f. Line has been moved to the space package." />
+    <option name="LAST_COMMIT_MESSAGE" value="Some improvements to Line and Mat2f. Line has been moved to the space package." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -1160,17 +1159,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/PlaneUV.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="135">
-          <caret line="23" column="3" lean-forward="false" selection-start-line="23" selection-start-column="3" selection-end-line="23" selection-end-column="3" />
-          <folding>
-            <element signature="e#2691#2692#0" expanded="false" />
-            <element signature="e#2723#2724#0" expanded="false" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Vecf.java">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="120">
@@ -1247,6 +1235,14 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="60">
           <caret line="6" column="17" lean-forward="false" selection-start-line="6" selection-start-column="17" selection-end-line="6" selection-end-column="17" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/PlaneUV.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="151">
+          <caret line="185" column="33" lean-forward="false" selection-start-line="185" selection-start-column="33" selection-end-line="185" selection-end-column="33" />
           <folding />
         </state>
       </provider>
