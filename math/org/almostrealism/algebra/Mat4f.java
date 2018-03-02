@@ -22,13 +22,13 @@ package org.almostrealism.algebra;
  */
 
 public class Mat4f {
-	private float[] data;
+	private double[] data;
 
 	/**
 	 * Creates new matrix initialized to the zero matrix
 	 */
 	public Mat4f() {
-		data = new float[16];
+		data = new double[16];
 	}
 
 	/**
@@ -54,12 +54,11 @@ public class Mat4f {
 		}
 	}
 
-	/**
-	 * Sets this matrix to be equivalent to the given one
-	 */
+	/** Sets this matrix to be equivalent to the given one. */
 	public void set(Mat4f arg) {
-		float[] mine = data;
-		float[] yours = arg.data;
+		double[] mine = data;
+		double[] yours = arg.data;
+
 		for (int i = 0; i < mine.length; i++) {
 			mine[i] = yours[i];
 		}
@@ -70,14 +69,14 @@ public class Mat4f {
 	 * index and j is the column index
 	 */
 	public float get(int i, int j) {
-		return data[4 * i + j];
+		return (float) data[4 * i + j];
 	}
 
 	/**
 	 * Sets the (i,j)th element of this matrix, where i is the row
 	 * index and j is the column index
 	 */
-	public void set(int i, int j, float val) {
+	public void set(int i, int j, double val) {
 		data[4 * i + j] = val;
 	}
 
