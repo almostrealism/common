@@ -71,4 +71,10 @@ public class Scalar extends Pair implements Comparable<Scalar> {
 		if (val > max) return max;
 		return val;
 	}
+
+	public static float[] toFloat(double d[]) {
+		float f[] = new float[d.length];
+		for (int i = 0; i < d.length; i++) f[i] = (float) d[i];
+		return f;
+	}
 }
