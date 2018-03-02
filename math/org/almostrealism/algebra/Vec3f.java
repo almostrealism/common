@@ -324,6 +324,10 @@ public class Vec3f {
 		return out;
 	}
 
+	public Vector toVector() {
+		return new Vector(this.x, this.y, this.z);
+	}
+
 	public String toString() {
 		return "(" + x + ", " + y + ", " + z + ")";
 	}
