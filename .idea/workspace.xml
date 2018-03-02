@@ -2,8 +2,8 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="">
+      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/math/org/almostrealism/algebra/FloatList.java" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/math/org/almostrealism/algebra/Mat3f.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/algebra/Mat3f.java" />
     </list>
     <ignored path="$PROJECT_DIR$/target/" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -70,7 +70,6 @@
   <component name="IdeDocumentHistory">
     <option name="CHANGED_PATHS">
       <list>
-        <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/TripleFunction.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/color/ColorProducerAdapter.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/space/ShadableSurface.java" />
         <option value="$PROJECT_DIR$/src/org/almostrealism/graph/Mesh.java" />
@@ -121,6 +120,7 @@
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Scalar.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Rotf.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Mat3f.java" />
+        <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/FloatList.java" />
       </list>
     </option>
   </component>
@@ -169,11 +169,6 @@
             <path>
               <item name="common" type="58d84e3e:PackageViewProjectNode" />
               <item name="Common" type="616d4139:PackageViewModuleNode" />
-            </path>
-            <path>
-              <item name="common" type="58d84e3e:PackageViewProjectNode" />
-              <item name="Common" type="616d4139:PackageViewModuleNode" />
-              <item name="io.almostrealism" type="1f31426a:PackageElementNode" />
             </path>
             <path>
               <item name="common" type="58d84e3e:PackageViewProjectNode" />
@@ -426,14 +421,7 @@
       <workItem from="1519371354237" duration="1652000" />
       <workItem from="1519379184525" duration="651000" />
       <workItem from="1519389702987" duration="15054000" />
-      <workItem from="1519940365242" duration="368000" />
-    </task>
-    <task id="LOCAL-00029" summary="Scalar implements Comparable. Fixed a bug in ExpenseRange add method.">
-      <created>1517964053934</created>
-      <option name="number" value="00029" />
-      <option name="presentableId" value="LOCAL-00029" />
-      <option name="project" value="LOCAL" />
-      <updated>1517964053934</updated>
+      <workItem from="1519940365242" duration="1479000" />
     </task>
     <task id="LOCAL-00030" summary="Added flatten method to ExpenseRange.">
       <created>1517964479245</created>
@@ -771,11 +759,18 @@
       <option name="project" value="LOCAL" />
       <updated>1519940522811</updated>
     </task>
-    <option name="localTasksCounter" value="78" />
+    <task id="LOCAL-00078" summary="Added some matrix utilities to Mat3f.">
+      <created>1519940759987</created>
+      <option name="number" value="00078" />
+      <option name="presentableId" value="LOCAL-00078" />
+      <option name="project" value="LOCAL" />
+      <updated>1519940759987</updated>
+    </task>
+    <option name="localTasksCounter" value="79" />
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="138252000" />
+    <option name="totallyTimeSpent" value="139363000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="0" y="0" width="1280" height="800" extended-state="6" />
@@ -818,7 +813,6 @@
     <option name="myLimit" value="2678400000" />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="Introduced set method for Rotf in Mat3f." />
     <MESSAGE value="Added constructor." />
     <MESSAGE value="Added constructor to Pair." />
     <MESSAGE value="Introduced load method for Resource that reads from a byte array." />
@@ -843,7 +837,8 @@
     <MESSAGE value="set method accepts doubles." />
     <MESSAGE value="Added some convenient Scalar functions." />
     <MESSAGE value="Added some utility functions for Rotf." />
-    <option name="LAST_COMMIT_MESSAGE" value="Added some utility functions for Rotf." />
+    <MESSAGE value="Added some matrix utilities to Mat3f." />
+    <option name="LAST_COMMIT_MESSAGE" value="Added some matrix utilities to Mat3f." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -859,13 +854,6 @@
     </option>
   </component>
   <component name="editorHistoryManager">
-    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/space/Scene.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="155">
-          <caret line="34" column="60" lean-forward="false" selection-start-line="34" selection-start-column="60" selection-end-line="34" selection-end-column="60" />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/world/org/almostrealism/time/Clock.java">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="870">
@@ -1226,6 +1214,14 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="211">
           <caret line="495" column="5" lean-forward="true" selection-start-line="495" selection-start-column="5" selection-end-line="495" selection-end-column="5" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/FloatList.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="15">
+          <caret line="19" column="13" lean-forward="false" selection-start-line="19" selection-start-column="13" selection-end-line="19" selection-end-column="13" />
           <folding />
         </state>
       </provider>
