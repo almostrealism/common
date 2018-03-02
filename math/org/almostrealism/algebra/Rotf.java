@@ -24,10 +24,10 @@ public class Rotf {
 	// Representation is a quaternion. Element 0 is the scalar part (=
 	// cos(theta/2)), elements 1..3 the imaginary/"vector" part (=
 	// sin(theta/2) * axis).
-	private float q0;
-	private float q1;
-	private float q2;
-	private float q3;
+	private double q0;
+	private double q1;
+	private double q2;
+	private double q3;
 
 	/**
 	 * Default constructor initializes to the identity quaternion
@@ -80,6 +80,7 @@ public class Rotf {
 	 * Axis does not need to be normalized but must not be the zero
 	 * vector. Angle is in radians.
 	 */
+	@Deprecated
 	public void set(Vec3f axis, float angle) {
 		float halfTheta = angle / 2.0f;
 		q0 = (float) Math.cos(halfTheta);
@@ -89,6 +90,22 @@ public class Rotf {
 		q1 = realAxis.x() * sinHalfTheta;
 		q2 = realAxis.y() * sinHalfTheta;
 		q3 = realAxis.z() * sinHalfTheta;
+	}
+
+	/**
+	 * Axis does not need to be normalized but must not be the zero
+	 * vector. Angle is in radians.
+	 */
+	public void set(Vector axis, double angle) {
+		double halfTheta = angle / 2.0;
+		q0 = (float) Math.cos(halfTheta);
+		float sinHalfTheta = (float) Math.sin(halfTheta);
+
+		Vector realAxis = (Vector) axis.clone();
+		realAxis.normalize();
+		q1 = realAxis.getX() * sinHalfTheta;
+		q2 = realAxis.getY() * sinHalfTheta;
+		q3 = realAxis.getZ() * sinHalfTheta;
 	}
 
 	public void set(Rotf arg) {
@@ -161,26 +178,19 @@ public class Rotf {
 	}
 
 	public float w() {
-		return q0;
+		return (float) q0;
 	}
 	public float x() {
-		return q1;
+		return (float) q1;
 	}
 	public float y() {
-		return q2;
+		return (float) q2;
 	}
-	public float z() {
-		return q3;
-	}
+	public float z() { return (float) q3; }
 
-	/**
-	 * This dotted with this
-	 */
+	/** This dotted with this. */
 	public float lengthSquared() {
-		return (q0 * q0 +
-				q1 * q1 +
-				q2 * q2 +
-				q3 * q3);
+		return (float) (q0 * q0 + q1 * q1 + q2 * q2 + q3 * q3);
 	}
 
 	/**
@@ -248,27 +258,31 @@ public class Rotf {
 	 * from B. K. P. Horn's _Robot Vision_ textbook.
 	 */
 	public void toMatrix(Mat4f mat) {
-		float q00 = q0 * q0;
-		float q11 = q1 * q1;
-		float q22 = q2 * q2;
-		float q33 = q3 * q3;
+		double q00 = q0 * q0;
+		double q11 = q1 * q1;
+		double q22 = q2 * q2;
+		double q33 = q3 * q3;
+
 		// Diagonal elements
 		mat.set(0, 0, q00 + q11 - q22 - q33);
 		mat.set(1, 1, q00 - q11 + q22 - q33);
 		mat.set(2, 2, q00 - q11 - q22 + q33);
+
 		// 0,1 and 1,0 elements
-		float q03 = q0 * q3;
-		float q12 = q1 * q2;
+		double q03 = q0 * q3;
+		double q12 = q1 * q2;
 		mat.set(0, 1, 2.0f * (q12 - q03));
 		mat.set(1, 0, 2.0f * (q03 + q12));
+
 		// 0,2 and 2,0 elements
-		float q02 = q0 * q2;
-		float q13 = q1 * q3;
+		double q02 = q0 * q2;
+		double q13 = q1 * q3;
 		mat.set(0, 2, 2.0f * (q02 + q13));
 		mat.set(2, 0, 2.0f * (q13 - q02));
+
 		// 1,2 and 2,1 elements
-		float q01 = q0 * q1;
-		float q23 = q2 * q3;
+		double q01 = q0 * q1;
+		double q23 = q2 * q3;
 		mat.set(1, 2, 2.0f * (q23 - q01));
 		mat.set(2, 1, 2.0f * (q01 + q23));
 	}
@@ -318,25 +332,23 @@ public class Rotf {
 	 * Horn's _Robot Vision_. NOTE: src and dest must be different
 	 * vectors.
 	 */
-	public void rotateVector(Vec3f src, Vec3f dest) {
+	public void rotateVector(Vector src, Vector dest) {
 		// NOTE: uncomment these to illustrate compiler bug with line numbers
 		//    Vec3f qCrossX = new Vec3f();
 		//    Vec3f qCrossXCrossQ = new Vec3f();
-		Vec3f qVec = new Vec3f(q1, q2, q3);
+		Vector qVec = new Vector(q1, q2, q3);
 
-		Vec3f qCrossX = qVec.cross(src);
-		Vec3f qCrossXCrossQ = qCrossX.cross(qVec);
-		qCrossX.scale(2.0f * q0);
-		qCrossXCrossQ.scale(-2.0f);
+		Vector qCrossX = qVec.crossProduct(src);
+		Vector qCrossXCrossQ = qCrossX.crossProduct(qVec);
+		qCrossX.multiplyBy(2.0 * q0);
+		qCrossXCrossQ.multiplyBy(-2.0);
 		dest.add(src, qCrossX);
 		dest.add(dest, qCrossXCrossQ);
 	}
 
-	/**
-	 * Rotate a vector by this quaternion, returning newly-allocated result.
-	 */
-	public Vec3f rotateVector(Vec3f src) {
-		Vec3f tmp = new Vec3f();
+	/** Rotate a vector by this quaternion, returning newly-allocated result. */
+	public Vector rotateVector(Vector src) {
+		Vector tmp = new Vector();
 		rotateVector(src, tmp);
 		return tmp;
 	}

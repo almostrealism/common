@@ -20,13 +20,14 @@ package org.almostrealism.algebra;
 public class FloatList {
 	private static final int DEFAULT_SIZE = 10;
 
-	private float[] data = new float[DEFAULT_SIZE];
+	private double[] data = new double[DEFAULT_SIZE];
 	private int numElements;
 
-	public void add(float f) {
+	public void add(double f) {
 		if (numElements == data.length) {
 			resize(1 + numElements);
 		}
+
 		data[numElements++] = f;
 		assert numElements <= data.length;
 	}
@@ -39,7 +40,8 @@ public class FloatList {
 		if (index >= numElements) {
 			throw new ArrayIndexOutOfBoundsException(index);
 		}
-		return data[index];
+
+		return (float) data[index];
 	}
 
 	public void put(int index, float val) {
@@ -51,13 +53,13 @@ public class FloatList {
 
 	public void trim() {
 		if (data.length > numElements) {
-			float[] newData = new float[numElements];
+			double[] newData = new double[numElements];
 			System.arraycopy(data, 0, newData, 0, numElements);
 			data = newData;
 		}
 	}
 
-	public float[] getData() {
+	public double[] getData() {
 		return data;
 	}
 
@@ -66,10 +68,12 @@ public class FloatList {
 		if (newCapacity == 0) {
 			newCapacity = DEFAULT_SIZE;
 		}
+
 		if (newCapacity < minCapacity) {
 			newCapacity = minCapacity;
 		}
-		float[] newData = new float[newCapacity];
+
+		double[] newData = new double[newCapacity];
 		System.arraycopy(data, 0, newData, 0, data.length);
 		data = newData;
 	}
