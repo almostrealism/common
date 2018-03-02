@@ -3,7 +3,7 @@
   <component name="ChangeListManager">
     <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="">
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/math/org/almostrealism/algebra/Scalar.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/algebra/Scalar.java" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/math/org/almostrealism/algebra/Mat3f.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/algebra/Mat3f.java" />
     </list>
     <ignored path="$PROJECT_DIR$/target/" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -25,11 +25,31 @@
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="Scalar.java" pinned="false" current-in-tab="true">
+      <file leaf-file-name="Scalar.java" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Scalar.java">
           <provider selected="true" editor-type-id="text-editor">
             <state relative-caret-position="414">
               <caret line="77" column="17" lean-forward="false" selection-start-line="77" selection-start-column="17" selection-end-line="77" selection-end-column="17" />
+              <folding />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="Mat3f.java" pinned="false" current-in-tab="true">
+        <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Mat3f.java">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="142">
+              <caret line="336" column="92" lean-forward="false" selection-start-line="336" selection-start-column="92" selection-end-line="336" selection-end-column="92" />
+              <folding />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="Mat4f.java" pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Mat4f.java">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="124">
+              <caret line="249" column="0" lean-forward="false" selection-start-line="249" selection-start-column="0" selection-end-line="249" selection-end-column="0" />
               <folding />
             </state>
           </provider>
@@ -48,8 +68,6 @@
   </component>
   <component name="FindInProjectRecents">
     <findStrings>
-      <find>GraphicsCon</find>
-      <find>ShaderSet</find>
       <find>ColorProducer getColorAt</find>
       <find>SpatialData</find>
       <find>useT</find>
@@ -78,6 +96,8 @@
       <find>setCol</find>
       <find>set</find>
       <find>set(</find>
+      <find>xform</find>
+      <find>xformp</find>
     </findStrings>
     <dirStrings>
       <dir>$PROJECT_DIR$</dir>
@@ -128,7 +148,6 @@
         <option value="$PROJECT_DIR$/world/org/almostrealism/time/Frequency.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/IntersectionPoint.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Vecf.java" />
-        <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Mat3f.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Vector.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/math/Functions.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Mat2f.java" />
@@ -136,12 +155,13 @@
         <option value="$PROJECT_DIR$/world/org/almostrealism/space/Line.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/PlaneUV.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Matf.java" />
-        <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Mat4f.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/FloatList.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Rotf.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/MathUtil.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Vec3f.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Scalar.java" />
+        <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Mat4f.java" />
+        <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Mat3f.java" />
       </list>
     </option>
   </component>
@@ -449,21 +469,7 @@
       <workItem from="1519371354237" duration="1652000" />
       <workItem from="1519379184525" duration="651000" />
       <workItem from="1519389702987" duration="15054000" />
-      <workItem from="1519940365242" duration="10220000" />
-    </task>
-    <task id="LOCAL-00042" summary="Added setIdentity method.">
-      <created>1519294646883</created>
-      <option name="number" value="00042" />
-      <option name="presentableId" value="LOCAL-00042" />
-      <option name="project" value="LOCAL" />
-      <updated>1519294646883</updated>
-    </task>
-    <task id="LOCAL-00043" summary="Introduced negate methods.">
-      <created>1519294948943</created>
-      <option name="number" value="00043" />
-      <option name="presentableId" value="LOCAL-00043" />
-      <option name="project" value="LOCAL" />
-      <updated>1519294948943</updated>
+      <workItem from="1519940365242" duration="11587000" />
     </task>
     <task id="LOCAL-00044" summary="Introduced getRow method.">
       <created>1519295322648</created>
@@ -794,11 +800,25 @@
       <option name="project" value="LOCAL" />
       <updated>1520027287915</updated>
     </task>
-    <option name="localTasksCounter" value="91" />
+    <task id="LOCAL-00091" summary="Added toFloat method.">
+      <created>1520028328899</created>
+      <option name="number" value="00091" />
+      <option name="presentableId" value="LOCAL-00091" />
+      <option name="project" value="LOCAL" />
+      <updated>1520028328900</updated>
+    </task>
+    <task id="LOCAL-00092" summary="Added xformPt method.">
+      <created>1520032112483</created>
+      <option name="number" value="00092" />
+      <option name="presentableId" value="LOCAL-00092" />
+      <option name="project" value="LOCAL" />
+      <updated>1520032112483</updated>
+    </task>
+    <option name="localTasksCounter" value="93" />
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="148104000" />
+    <option name="totallyTimeSpent" value="149471000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="0" y="0" width="1280" height="800" extended-state="6" />
@@ -841,8 +861,6 @@
     <option name="myLimit" value="2678400000" />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="Added scale method." />
-    <MESSAGE value="Added getRow method." />
     <MESSAGE value="Introduced scaleAdd method." />
     <MESSAGE value="Added cross method." />
     <MESSAGE value="setRow method accepts double instead of float." />
@@ -866,7 +884,9 @@
     <MESSAGE value="Migrating Rotf to double precision and use of the Vector class instead of Vec3f." />
     <MESSAGE value="Migrated MathUtil functionality into Scalar." />
     <MESSAGE value="Added toVector method." />
-    <option name="LAST_COMMIT_MESSAGE" value="Added toVector method." />
+    <MESSAGE value="Added toFloat method." />
+    <MESSAGE value="Added xformPt method." />
+    <option name="LAST_COMMIT_MESSAGE" value="Added xformPt method." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -1154,14 +1174,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Mat3f.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="143">
-          <caret line="214" column="28" lean-forward="false" selection-start-line="214" selection-start-column="28" selection-end-line="214" selection-end-column="28" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/math/org/almostrealism/math/Functions.java">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="60">
@@ -1226,17 +1238,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Mat4f.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="214">
-          <caret line="82" column="7" lean-forward="false" selection-start-line="82" selection-start-column="7" selection-end-line="82" selection-end-column="7" />
-          <folding>
-            <element signature="e#1643#1644#0" expanded="false" />
-            <element signature="e#1680#1681#0" expanded="false" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Rotf.java">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="274">
@@ -1265,6 +1266,22 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="414">
           <caret line="77" column="17" lean-forward="false" selection-start-line="77" selection-start-column="17" selection-end-line="77" selection-end-column="17" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Mat4f.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="124">
+          <caret line="249" column="0" lean-forward="false" selection-start-line="249" selection-start-column="0" selection-end-line="249" selection-end-column="0" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Mat3f.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="142">
+          <caret line="336" column="92" lean-forward="false" selection-start-line="336" selection-start-column="92" selection-end-line="336" selection-end-column="92" />
           <folding />
         </state>
       </provider>

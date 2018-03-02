@@ -313,6 +313,7 @@ public class Mat3f {
 	 * Multiply a 3D vector by this matrix. NOTE: src and dest must be
 	 * different vectors.
 	 */
+	@Deprecated
 	public void xformVec(Vec3f src, Vec3f dest) {
 		dest.set(get(0, 0) * src.x() +
 						get(0, 1) * src.y() +
@@ -325,6 +326,16 @@ public class Mat3f {
 				get(2, 0) * src.x() +
 						get(2, 1) * src.y() +
 						get(2, 2) * src.z());
+	}
+
+	/**
+	 * Multiply a 3D vector by this matrix. NOTE: src and dest must be
+	 * different vectors.
+	 */
+	public void xformVec(Vector src, Vector dest) {
+		dest.setX(get(0, 0) * src.getX() + get(0, 1) * src.getY() + get(0, 2) * src.getZ());
+		dest.setY(get(1, 0) * src.getX() + get(1, 1) * src.getY() + get(1, 2) * src.getZ());
+		dest.setZ(get(2, 0) * src.getX() + get(2, 1) * src.getY() + get(2, 2) * src.getZ());
 	}
 
 	/**
