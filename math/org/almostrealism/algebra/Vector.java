@@ -136,6 +136,44 @@ public class Vector implements Positioned, Triple, Cloneable {
 	}
 
 	/**
+	 * Gets the ith component, 0 <= i < 3
+	 */
+	@Deprecated
+	public Vector set(int i, double v) {
+		switch (i) {
+			case 0:
+				x = v;
+				break;
+			case 1:
+				y = v;
+				break;
+			case 2:
+				z = v;
+				break;
+			default:
+				throw new IndexOutOfBoundsException();
+		}
+
+		return this;
+	}
+	/**
+	 * Gets the ith component, 0 <= i < 3
+	 */
+	@Deprecated
+	public double get(int i) {
+		switch (i) {
+			case 0:
+				return x;
+			case 1:
+				return y;
+			case 2:
+				return z;
+			default:
+				throw new IndexOutOfBoundsException();
+		}
+	}
+
+	/**
 	 * Sets the coordinates of this {@link Vector} to the coordinates of the
 	 * specified {@link Vector}.
 	 *
