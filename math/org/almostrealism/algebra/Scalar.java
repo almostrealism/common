@@ -43,4 +43,32 @@ public class Scalar extends Pair implements Comparable<Scalar> {
 
 		return new Scalar(((y < 0.0f) ? -angle : angle));
 	}
+
+	/**
+	 * Returns 1 if the sign of the given argument is positive; -1 if
+	 * negative; 0 if 0.
+	 */
+	public static int sgn(double f) {
+		if (f > 0) {
+			return 1;
+		} else if (f < 0) {
+			return -1;
+		}
+
+		return 0;
+	}
+
+	/** Clamps argument between min and max values. */
+	public static float clamp(double val, double min, double max) {
+		if (val < min) return (float) min;
+		if (val > max) return (float) max;
+		return (float) val;
+	}
+
+	/** Clamps argument between min and max values. */
+	public static int clamp(int val, int min, int max) {
+		if (val < min) return min;
+		if (val > max) return max;
+		return val;
+	}
 }

@@ -126,18 +126,23 @@ public class Rotf {
 	 * Returns angle (in radians) and mutates the given vector to be
 	 * the axis.
 	 */
-	public float get(Vec3f axis) {
+	public float get(Vector axis) {
 		// FIXME: Is this numerically stable? Is there a better way to
 		// extract the angle from a quaternion?
 		// NOTE: remove (float) to illustrate compiler bug
 		float retval = (float) (2.0f * Math.acos(q0));
-		axis.set(q1, q2, q3);
-		float len = axis.length();
+		axis.setX(q1);
+		axis.setY(q2);
+		axis.setZ(q3);
+
+		double len = axis.length();
+
 		if (len == 0.0f) {
-			axis.set(0, 0, 1);
+			axis.setPosition(0, 0, 1);
 		} else {
-			axis.scale(1.0f / len);
+			axis.divideBy(len);
 		}
+
 		return retval;
 	}
 
