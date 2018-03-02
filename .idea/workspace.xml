@@ -2,9 +2,9 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="">
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/math/org/almostrealism/math/Functions.java" />
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/math/org/almostrealism/math/SpanCalculator.java" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/math/org/almostrealism/algebra/Mat2f.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/algebra/Mat2f.java" />
+      <change type="MOVED" beforePath="$PROJECT_DIR$/math/org/almostrealism/algebra/Line.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/space/Line.java" />
     </list>
     <ignored path="$PROJECT_DIR$/target/" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -71,8 +71,6 @@
   <component name="IdeDocumentHistory">
     <option name="CHANGED_PATHS">
       <list>
-        <option value="$PROJECT_DIR$/world/org/almostrealism/space/BoundingSolid.java" />
-        <option value="$PROJECT_DIR$/src/org/almostrealism/util/Generated.java" />
         <option value="$PROJECT_DIR$/src/org/almostrealism/graph/Triangle.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/color/GeneratedColorProducer.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/econ/Time.java" />
@@ -106,7 +104,6 @@
         <option value="$PROJECT_DIR$/src/org/almostrealism/graph/MeshResource.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/space/SceneResource.java" />
         <option value="$PROJECT_DIR$/ui/org/almostrealism/swing/EventHandler.java" />
-        <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Mat2f.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/econ/ExpenseRange.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/econ/ExpenseData.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/time/Frequency.java" />
@@ -122,6 +119,9 @@
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Mat4f.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Vector.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/math/Functions.java" />
+        <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Mat2f.java" />
+        <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Line.java" />
+        <option value="$PROJECT_DIR$/world/org/almostrealism/space/Line.java" />
       </list>
     </option>
   </component>
@@ -175,6 +175,12 @@
               <item name="common" type="58d84e3e:PackageViewProjectNode" />
               <item name="Common" type="616d4139:PackageViewModuleNode" />
               <item name="org.almostrealism" type="1f31426a:PackageElementNode" />
+            </path>
+            <path>
+              <item name="common" type="58d84e3e:PackageViewProjectNode" />
+              <item name="Common" type="616d4139:PackageViewModuleNode" />
+              <item name="org.almostrealism" type="1f31426a:PackageElementNode" />
+              <item name="algebra" type="1f31426a:PackageElementNode" />
             </path>
             <path>
               <item name="common" type="58d84e3e:PackageViewProjectNode" />
@@ -423,14 +429,7 @@
       <workItem from="1519371354237" duration="1652000" />
       <workItem from="1519379184525" duration="651000" />
       <workItem from="1519389702987" duration="15054000" />
-      <workItem from="1519940365242" duration="5360000" />
-    </task>
-    <task id="LOCAL-00035" summary="Fixed constructor.">
-      <created>1519196395598</created>
-      <option name="number" value="00035" />
-      <option name="presentableId" value="LOCAL-00035" />
-      <option name="project" value="LOCAL" />
-      <updated>1519196395598</updated>
+      <workItem from="1519940365242" duration="6112000" />
     </task>
     <task id="LOCAL-00036" summary="Migrated Matrix3D and Matrix3DSolutionOutput into Common.">
       <created>1519242559822</created>
@@ -768,11 +767,18 @@
       <option name="project" value="LOCAL" />
       <updated>1520020538190</updated>
     </task>
-    <option name="localTasksCounter" value="84" />
+    <task id="LOCAL-00084" summary="Migrated Functions and SpanCalculator from Rings to Common.">
+      <created>1520021295676</created>
+      <option name="number" value="00084" />
+      <option name="presentableId" value="LOCAL-00084" />
+      <option name="project" value="LOCAL" />
+      <updated>1520021295676</updated>
+    </task>
+    <option name="localTasksCounter" value="85" />
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="143244000" />
+    <option name="totallyTimeSpent" value="143996000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="0" y="0" width="1280" height="800" extended-state="6" />
@@ -815,7 +821,6 @@
     <option name="myLimit" value="2678400000" />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="Introduced add method which accepts Vector." />
     <MESSAGE value="Introduced addScaled method." />
     <MESSAGE value="Introduced transform method." />
     <MESSAGE value="More add methods." />
@@ -840,7 +845,8 @@
     <MESSAGE value="Removed Plane, since there already exists a Plane data structure." />
     <MESSAGE value="Migrated some MathUtil functionality to Vector, deprecated some code in algebra package, and modified getCol in Mat3f to accept Vector instead of Vec3f." />
     <MESSAGE value="Added get and set methods to Vector. They are used in Mat4f." />
-    <option name="LAST_COMMIT_MESSAGE" value="Added get and set methods to Vector. They are used in Mat4f." />
+    <MESSAGE value="Migrated Functions and SpanCalculator from Rings to Common." />
+    <option name="LAST_COMMIT_MESSAGE" value="Migrated Functions and SpanCalculator from Rings to Common." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -856,20 +862,6 @@
     </option>
   </component>
   <component name="editorHistoryManager">
-    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/texture/StripeTexture.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="139">
-          <caret line="144" column="49" lean-forward="false" selection-start-line="144" selection-start-column="49" selection-end-line="144" selection-end-column="49" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/texture/Texture.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="256">
-          <caret line="25" column="24" lean-forward="false" selection-start-line="25" selection-start-column="17" selection-end-line="25" selection-end-column="24" />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/src/org/almostrealism/graph/io/ObjResource.java">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="54">
@@ -1082,14 +1074,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Mat2f.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="120">
-          <caret line="22" column="11" lean-forward="false" selection-start-line="22" selection-start-column="11" selection-end-line="22" selection-end-column="11" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/src/org/almostrealism/io/UnicodeResource.java">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="0">
@@ -1239,6 +1223,30 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="90">
           <caret line="30" column="13" lean-forward="false" selection-start-line="30" selection-start-column="13" selection-end-line="30" selection-end-column="13" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Mat2f.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="182">
+          <caret line="82" column="40" lean-forward="false" selection-start-line="82" selection-start-column="40" selection-end-line="82" selection-end-column="40" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/space/Line.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="75">
+          <caret line="24" column="14" lean-forward="false" selection-start-line="24" selection-start-column="13" selection-end-line="24" selection-end-column="17" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Curve.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="60">
+          <caret line="6" column="17" lean-forward="false" selection-start-line="6" selection-start-column="17" selection-end-line="6" selection-end-column="17" />
           <folding />
         </state>
       </provider>
