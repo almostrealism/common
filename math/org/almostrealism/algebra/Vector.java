@@ -484,4 +484,67 @@ public class Vector implements Positioned, Triple, Cloneable {
 
 		return true;
 	}
+
+	/**
+	 * Returns null upon failure, or a set of Vec3fs and integers
+	 * which represent faceted (non-averaged) normals, but per-vertex.
+	 * Performs bounds checking on indices with respect to vertex list.
+	 * Index list must represent independent triangles; indices are
+	 * taken in groups of three. If index list doesn't represent
+	 * triangles or other error occurred then returns null. ccw flag
+	 * indicates whether triangles are specified counterclockwise when
+	 * viewed from top or not.
+	 */
+	public static Normals computeFacetedNormals(Vector[] vertices,
+												int[] indices,
+												boolean ccw) {
+		if ((indices.length % 3) != 0) {
+			System.err.println("NormalCalc.computeFacetedNormals: numIndices wasn't " +
+					"divisible by 3, so it can't possibly " +
+					"represent a set of triangles");
+			return null;
+		}
+
+		Vector[] outputNormals = new Vector[indices.length / 3];
+		int[] outputNormalIndices = new int[indices.length];
+
+		Vector d1 = new Vector();
+		Vector d2 = new Vector();
+		int curNormalIndex = 0;
+		for (int i = 0; i < indices.length; i += 3) {
+			int i0 = indices[i];
+			int i1 = indices[i + 1];
+			int i2 = indices[i + 2];
+			if ((i0 < 0) || (i0 >= indices.length) ||
+					(i1 < 0) || (i1 >= indices.length) ||
+					(i2 < 0) || (i2 >= indices.length)) {
+				System.err.println("NormalCalc.computeFacetedNormals: ERROR: " +
+						"vertex index out of bounds or no end of triangle " +
+						"index found");
+				return null;
+			}
+
+			Vector v0 = vertices[i0];
+			Vector v1 = vertices[i1];
+			Vector v2 = vertices[i2];
+			d1.subtract(v1, v0);
+			d2.subtract(v2, v0);
+
+			Vector n = new Vector();
+
+			if (ccw) {
+				n.cross(d1, d2);
+			} else {
+				n.cross(d2, d1);
+			}
+			n.normalize();
+			outputNormals[curNormalIndex] = n;
+			outputNormalIndices[i] = curNormalIndex;
+			outputNormalIndices[i + 1] = curNormalIndex;
+			outputNormalIndices[i + 2] = curNormalIndex;
+			curNormalIndex++;
+		}
+
+		return new Normals(outputNormals, outputNormalIndices);
+	}
 }
