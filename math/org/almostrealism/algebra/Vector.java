@@ -547,4 +547,10 @@ public class Vector implements Positioned, Triple, Cloneable {
 
 		return new Normals(outputNormals, outputNormalIndices);
 	}
+
+	public static void vector3Sub(Vector dest, Vector v1, Vector v2) {
+		dest.setX(v1.getX() - v2.getX());
+		dest.setY(v1.getY() - v2.getY());
+		dest.setZ(v1.getZ()- v2.getZ());
+	}
 }
