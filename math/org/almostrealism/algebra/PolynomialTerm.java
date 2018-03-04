@@ -19,6 +19,8 @@ package org.almostrealism.algebra;
 /**
  * A {@link PolynomialTerm} object represents a single term of a polynomial function
  * represented by a {@link Polynomial} object.
+ *
+ * @author  Michael Murray
  */
 public class PolynomialTerm {
 	private double coefficient;
@@ -88,7 +90,7 @@ public class PolynomialTerm {
 	
 	/**
 	 * Returns the partial derivative of the polynomial term represented by this
-	 * PolynomialTerm object with respect to Y as a PolynomialTerm object.
+	 * {@link PolynomialTerm} with respect to Y as a {@link PolynomialTerm}.
 	 */
 	public PolynomialTerm getDy() {
 		if (this.dy == null)
@@ -99,7 +101,7 @@ public class PolynomialTerm {
 	
 	/**
 	 * Returns the partial derivative of the polynomial term represented by this
-	 * PolynomialTerm object with respect to Z as a PolynomialTerm object.
+	 * {@link PolynomialTerm} with respect to Z as a {@link PolynomialTerm}.
 	 */
 	public PolynomialTerm getDz() {
 		if (this.dz == null)
@@ -109,7 +111,7 @@ public class PolynomialTerm {
 	}
 	
 	/**
-	 * Evaluates the polynomial term represented by this PolynomialTerm object for
+	 * Evaluates the polynomial term represented by this {@link PolynomialTerm} for
 	 * the specified x, y, and z values and returns the result as a double value.
 	 */
 	public double evaluate(double x, double y, double z) {

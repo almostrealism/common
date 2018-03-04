@@ -77,4 +77,13 @@ public class Scalar extends Pair implements Comparable<Scalar> {
 		for (int i = 0; i < d.length; i++) f[i] = (float) d[i];
 		return f;
 	}
+
+	public static float ssFunc(final double t, final float p[]) {
+		return ssFunc(t, p, 0);
+	}
+
+	public static float ssFunc(final double t, final float p[], int pOff) {
+		return (float) (Math.pow(Math.pow(Math.abs(Math.cos(p[0 + pOff] * t / 4)) / p[1 + pOff], p[4 + pOff]) +
+				Math.pow(Math.abs(Math.sin(p[0 + pOff] * t / 4)) / p[2 + pOff], p[5 + pOff]), 1 / p[3 + pOff]));
+	}
 }
