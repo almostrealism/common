@@ -55,13 +55,16 @@ public class Vecf {
 		return out;
 	}
 
-	public Vec3f toVec3f() throws DimensionMismatchException {
+	public Vector toVector() throws DimensionMismatchException {
 		if (length() != 3)
 			throw new DimensionMismatchException();
-		Vec3f out = new Vec3f();
+
+		Vector out = new Vector();
+
 		for (int i = 0; i < 3; i++) {
 			out.set(i, get(i));
 		}
+
 		return out;
 	}
 

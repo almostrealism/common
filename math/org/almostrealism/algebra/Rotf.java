@@ -51,7 +51,7 @@ public class Rotf {
 	 * Axis does not need to be normalized but must not be the zero
 	 * vector. Angle is in radians.
 	 */
-	public Rotf(Vec3f axis, float angle) {
+	public Rotf(Vector axis, float angle) {
 		set(axis, angle);
 	}
 
@@ -74,22 +74,6 @@ public class Rotf {
 				(Math.abs(q1 - arg.q1) < epsilon) &&
 				(Math.abs(q2 - arg.q2) < epsilon) &&
 				(Math.abs(q3 - arg.q3) < epsilon));
-	}
-
-	/**
-	 * Axis does not need to be normalized but must not be the zero
-	 * vector. Angle is in radians.
-	 */
-	@Deprecated
-	public void set(Vec3f axis, float angle) {
-		float halfTheta = angle / 2.0f;
-		q0 = (float) Math.cos(halfTheta);
-		float sinHalfTheta = (float) Math.sin(halfTheta);
-		Vec3f realAxis = new Vec3f(axis);
-		realAxis.normalize();
-		q1 = realAxis.x() * sinHalfTheta;
-		q2 = realAxis.y() * sinHalfTheta;
-		q3 = realAxis.z() * sinHalfTheta;
 	}
 
 	/**
@@ -386,28 +370,12 @@ public class Rotf {
 		return s;
 	}
 
-	public static void setRotation(Rotf q, Vec3f axis, float angle) {
-		float d = axis.length();
-		assert (d != 0f);
-		float s = (float)Math.sin(angle * 0.5f) / d;
-		q.set(axis.x() * s, axis.y() * s, axis.z() * s, (float) Math.cos(angle * 0.5f));
-	}
-
 	public static void setRotation(Rotf q, Vector axis, float angle) {
 		double d = axis.length();
 		assert (d != 0f);
 		double s = Math.sin(angle * 0.5f) / d;
 		q.set((float) (axis.getX() * s), (float) (axis.getY() * s), (float) (axis.getZ() * s),
 				(float) Math.cos(angle * 0.5f));
-	}
-
-	@Deprecated
-	public static void mul(Rotf q, Vec3f w) {
-		float rx = q.w() * w.x() + q.y() * w.z() - q.z() * w.y();
-		float ry = q.w() * w.y() + q.z() * w.x() - q.x() * w.z();
-		float rz = q.w() * w.z() + q.x() * w.y() - q.y() * w.x();
-		float rw = -q.x() * w.x() - q.y() * w.y() - q.z() * w.z();
-		q.set(rx, ry, rz, rw);
 	}
 
 	public static void mul(Rotf q, Vector w) {

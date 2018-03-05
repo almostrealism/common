@@ -36,4 +36,16 @@ public class Pair {
 	public double phi() { return y; }
 	public double _1() { return x; }
 	public double _2() { return y; }
+
+	public Pair add(Pair p) {
+		return new Pair(this.x + p.x, this.y + p.y);
+	}
+
+	public Pair multiply(Pair p) {
+		return new Pair(this.x * p.x, this.y * p.y);
+	}
+
+	public Pair multiply(double d) {
+		return new Pair(this.x * d, this.y * d);
+	}
 }

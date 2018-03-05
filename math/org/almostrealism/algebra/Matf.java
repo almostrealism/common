@@ -103,6 +103,7 @@ public class Matf {
 		if (nCol() != v.length()) {
 			throw new DimensionMismatchException();
 		}
+
 		Vecf out = new Vecf(nRow());
 		for (int i = 0; i < nRow(); i++) {
 			float tmp = 0;

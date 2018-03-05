@@ -63,31 +63,6 @@ public class Mat3f {
 	 * @param row  The matrix row
 	 * @param v  The vector into which the matrix row values will be copied
 	 */
-	@Deprecated
-	public void getRow(int row, Vec3f v) {
-		if (row == 0) {
-			v.setX(get(0, 0));
-			v.setY(get(0, 1));
-			v.setZ(get(0, 2));
-		} else if (row == 1) {
-			v.setX(get(1, 0));
-			v.setY(get(1, 1));
-			v.setZ(get(1, 2));
-		} else if (row == 2) {
-			v.setX(get(2, 0));
-			v.setY(get(2, 1));
-			v.setZ(get(2, 2));
-		} else {
-			throw new ArrayIndexOutOfBoundsException(row);
-		}
-	}
-
-	/**
-	 * Copies the matrix values in the specified row into the vector parameter.
-	 *
-	 * @param row  The matrix row
-	 * @param v  The vector into which the matrix row values will be copied
-	 */
 	public void getRow(int row, Vector v) {
 		if (row == 0) {
 			v.setX(get(0, 0));
@@ -105,32 +80,6 @@ public class Mat3f {
 			throw new ArrayIndexOutOfBoundsException(row);
 		}
 	}
-
-	/**
-	 * Copies the matrix values in the specified column into the vector parameter.
-	 *
-	 * @param column  The matrix column
-	 * @param v  The vector into which the matrix row values will be copied
-	 */
-	@Deprecated
-	public void getColumn(int column, Vec3f v) {
-		if (column == 0) {
-			v.setX(get(0, 0));
-			v.setY(get(1, 0));
-			v.setZ(get(2, 0));
-		} else if (column == 1) {
-			v.setX(get(0, 1));
-			v.setY(get(1, 1));
-			v.setZ(get(2, 1));
-		} else if (column == 2) {
-			v.setX(get(0, 2));
-			v.setY(get(1, 2));
-			v.setZ(get(2, 2));
-		} else {
-			throw new ArrayIndexOutOfBoundsException(column);
-		}
-	}
-
 
 	/**
 	 * Copies the matrix values in the specified column into the vector parameter.
@@ -218,10 +167,10 @@ public class Mat3f {
 	/**
 	 * Set row i (i=[0..2]) to vector v.
 	 */
-	public void setRow(int i, Vec3f v) {
-		set(i, 0, v.x());
-		set(i, 1, v.y());
-		set(i, 2, v.z());
+	public void setRow(int i, Vector v) {
+		set(i, 0, v.getX());
+		set(i, 1, v.getY());
+		set(i, 2, v.getZ());
 	}
 
 	public void setRow(int i, double x, double y, double z) {
@@ -313,25 +262,6 @@ public class Mat3f {
 	 * Multiply a 3D vector by this matrix. NOTE: src and dest must be
 	 * different vectors.
 	 */
-	@Deprecated
-	public void xformVec(Vec3f src, Vec3f dest) {
-		dest.set(get(0, 0) * src.x() +
-						get(0, 1) * src.y() +
-						get(0, 2) * src.z(),
-
-				get(1, 0) * src.x() +
-						get(1, 1) * src.y() +
-						get(1, 2) * src.z(),
-
-				get(2, 0) * src.x() +
-						get(2, 1) * src.y() +
-						get(2, 2) * src.z());
-	}
-
-	/**
-	 * Multiply a 3D vector by this matrix. NOTE: src and dest must be
-	 * different vectors.
-	 */
 	public void xformVec(Vector src, Vector dest) {
 		dest.setX(get(0, 0) * src.getX() + get(0, 1) * src.getY() + get(0, 2) * src.getZ());
 		dest.setY(get(1, 0) * src.getX() + get(1, 1) * src.getY() + get(1, 2) * src.getZ());
@@ -370,20 +300,12 @@ public class Mat3f {
 		return out;
 	}
 
-	public void transform(Vec3f v) {
-		Vec3f r = toMatf().mul(v.toVecf()).toVec3f();
-		v.setX(r.x());
-		v.setY(r.y());
-		v.setZ(r.z());
-	}
-
 	// TODO  Performance can be greatly improved here
-	@Deprecated
 	public void transform(Vector v) {
-		Vec3f r = toMatf().mul(new Vec3f(v).toVecf()).toVec3f();
-		v.setX(r.x());
-		v.setY(r.y());
-		v.setZ(r.z());
+		Vecf r = toMatf().mul(v.toVecf());
+		v.setX(r.get(0));
+		v.setY(r.get(1));
+		v.setZ(r.get(2));
 	}
 
 	public String toString() {
@@ -392,19 +314,6 @@ public class Mat3f {
 				get(0, 0) + ", " + get(0, 1) + ", " + get(0, 2) + endl +
 				get(1, 0) + ", " + get(1, 1) + ", " + get(1, 2) + endl +
 				get(2, 0) + ", " + get(2, 1) + ", " + get(2, 2) + ")";
-	}
-
-	@Deprecated
-	public static void scale(Mat3f dest, Mat3f mat, Vec3f s) {
-		dest.set(0, 0, mat.get(0, 0) * s.x());
-		dest.set(0, 1, mat.get(0, 1) * s.y());
-		dest.set(0, 2, mat.get(0, 2) * s.z());
-		dest.set(1, 0, mat.get(1, 0) * s.x());
-		dest.set(1, 1, mat.get(1, 1) * s.y());
-		dest.set(1, 2, mat.get(1, 2) * s.z());
-		dest.set(2, 0, mat.get(2, 0) * s.x());
-		dest.set(2, 1, mat.get(2, 1) * s.y());
-		dest.set(2, 2, mat.get(2, 2) * s.z());
 	}
 
 	public static void scale(Mat3f dest, Mat3f mat, Vector s) {
@@ -483,27 +392,12 @@ public class Mat3f {
 		mat.setRow(2, -sj, cj * si, cj * ci);
 	}
 
-	@Deprecated
-	private static float tdotx(Mat3f mat, Vec3f vec) {
-		return mat.get(0, 0) * vec.x() + mat.get(1, 0) * vec.y() + mat.get(2, 0) * vec.z();
-	}
-
 	private static double tdotx(Mat3f mat, Vector vec) {
 		return mat.get(0, 0) * vec.getX() + mat.get(1, 0) * vec.getY() + mat.get(2, 0) * vec.getZ();
 	}
 
-	@Deprecated
-	private static float tdoty(Mat3f mat, Vec3f vec) {
-		return mat.get(0, 1) * vec.x() + mat.get(1, 1) * vec.y() + mat.get(2, 1) * vec.z();
-	}
-
 	private static double tdoty(Mat3f mat, Vector vec) {
 		return mat.get(0, 1) * vec.getX() + mat.get(1, 1) * vec.getY() + mat.get(2, 1) * vec.getZ();
-	}
-
-	@Deprecated
-	private static float tdotz(Mat3f mat, Vec3f vec) {
-		return mat.get(0, 2) * vec.x() + mat.get(1, 2) * vec.y() + mat.get(2, 2) * vec.z();
 	}
 
 	private static double tdotz(Mat3f mat, Vector vec) {

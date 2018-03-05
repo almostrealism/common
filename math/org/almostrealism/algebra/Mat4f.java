@@ -85,10 +85,10 @@ public class Mat4f {
 	 * top elements of the third column) without touching any of the
 	 * other parts of the matrix
 	 */
-	public void setTranslation(Vec3f trans) {
-		set(0, 3, trans.x());
-		set(1, 3, trans.y());
-		set(2, 3, trans.z());
+	public void setTranslation(Vector trans) {
+		set(0, 3, trans.getX());
+		set(1, 3, trans.getY());
+		set(2, 3, trans.getZ());
 	}
 
 	/**
@@ -103,18 +103,18 @@ public class Mat4f {
 	 * Sets the upper-left 3x3 of this matrix assuming that the given
 	 * x, y, and z vectors form an orthonormal basis
 	 */
-	public void setRotation(Vec3f x, Vec3f y, Vec3f z) {
-		set(0, 0, x.x());
-		set(1, 0, x.y());
-		set(2, 0, x.z());
+	public void setRotation(Vector x, Vector y, Vector z) {
+		set(0, 0, x.getX());
+		set(1, 0, x.getY());
+		set(2, 0, x.getZ());
 
-		set(0, 1, y.x());
-		set(1, 1, y.y());
-		set(2, 1, y.z());
+		set(0, 1, y.getX());
+		set(1, 1, y.getY());
+		set(2, 1, y.getZ());
 
-		set(0, 2, z.x());
-		set(1, 2, z.y());
-		set(2, 2, z.z());
+		set(0, 2, z.getX());
+		set(1, 2, z.getY());
+		set(2, 2, z.getZ());
 	}
 
 	/**
@@ -133,10 +133,10 @@ public class Mat4f {
 	 * 3x3; use this with an identity matrix in conjunction with
 	 * <code>mul</code> for that.
 	 */
-	public void setScale(Vec3f scale) {
-		set(0, 0, scale.x());
-		set(1, 1, scale.y());
-		set(2, 2, scale.z());
+	public void setScale(Vector scale) {
+		set(0, 0, scale.getX());
+		set(1, 1, scale.getY());
+		set(2, 2, scale.getZ());
 	}
 
 	/**
@@ -158,13 +158,14 @@ public class Mat4f {
 		t = get(1, 2);
 		set(1, 2, get(2, 1));
 		set(2, 1, t);
+
 		// Transform negative translation by this
-		Vec3f negTrans = new Vec3f(-get(0, 3), -get(1, 3), -get(2, 3));
-		Vec3f trans = new Vec3f();
+		Vector negTrans = new Vector(-get(0, 3), -get(1, 3), -get(2, 3));
+		Vector trans = new Vector();
 		xformDir(negTrans, trans);
-		set(0, 3, trans.x());
-		set(1, 3, trans.y());
-		set(2, 3, trans.z());
+		set(0, 3, trans.getX());
+		set(1, 3, trans.getY());
+		set(2, 3, trans.getZ());
 	}
 
 	/**
@@ -223,24 +224,6 @@ public class Mat4f {
 	 * transformations; i.e., is not a full transformation. NOTE: src
 	 * and dest must be different vectors.
 	 */
-	@Deprecated
-	public void xformPt(Vec3f src, Vec3f dest) {
-		for (int rc = 0; rc < 3; rc++) {
-			float tmp = 0.0f;
-			for (int cc = 0; cc < 3; cc++) {
-				tmp += get(rc, cc) * src.get(cc);
-			}
-			tmp += get(rc, 3);
-			dest.set(rc, tmp);
-		}
-	}
-
-	/**
-	 * Transforms a 3D vector as though it had a homogeneous coordinate
-	 * and assuming that this matrix represents only rigid
-	 * transformations; i.e., is not a full transformation. NOTE: src
-	 * and dest must be different vectors.
-	 */
 	public void xformPt(Vector src, Vector dest) {
 		for (int rc = 0; rc < 3; rc++) {
 			float tmp = 0.0f;
@@ -249,21 +232,6 @@ public class Mat4f {
 			}
 
 			tmp += get(rc, 3);
-			dest.set(rc, tmp);
-		}
-	}
-
-	/**
-	 * Transforms src using only the upper left 3x3. NOTE: src and dest
-	 * must be different vectors.
-	 */
-	@Deprecated
-	public void xformDir(Vec3f src, Vec3f dest) {
-		for (int rc = 0; rc < 3; rc++) {
-			float tmp = 0.0f;
-			for (int cc = 0; cc < 3; cc++) {
-				tmp += get(rc, cc) * src.get(cc);
-			}
 			dest.set(rc, tmp);
 		}
 	}
