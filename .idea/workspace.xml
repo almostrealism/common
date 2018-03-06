@@ -2,8 +2,8 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="">
-      <change type="DELETED" beforePath="$PROJECT_DIR$/math/org/almostrealism/algebra/Vec3d.java" afterPath="" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
+      <change type="MOVED" beforePath="$PROJECT_DIR$/math/org/almostrealism/algebra/FloatList.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/algebra/FloatingPointList.java" />
     </list>
     <ignored path="$PROJECT_DIR$/target/" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -70,7 +70,6 @@
   <component name="IdeDocumentHistory">
     <option name="CHANGED_PATHS">
       <list>
-        <option value="$PROJECT_DIR$/world/org/almostrealism/chem/Atomic.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/physics/PhysicalConstants.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/physics/RigidBody.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/time/Clock.java" />
@@ -118,9 +117,10 @@
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Vector.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Mat3f.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Vecf.java" />
-        <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Pair.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Veci.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Vec3d.java" />
+        <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Pair.java" />
+        <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/FloatingPointList.java" />
       </list>
     </option>
   </component>
@@ -220,6 +220,9 @@
     <property name="SearchEverywhereHistoryKey" value="&#9;FILE&#9;file:///Users/michael/Documents/common/world/org/almostrealism/color/ColorFutureAdapter.java&#10;ColorFut&#9;PSI&#9;JAVA://org.almostrealism.color.ColorFutureAdapter" />
     <property name="settings.editor.selected.configurable" value="copyright" />
     <property name="TF_FMT" value="false" />
+    <property name="project.structure.last.edited" value="Modules" />
+    <property name="project.structure.proportion" value="0.0" />
+    <property name="project.structure.side.proportion" value="0.0" />
   </component>
   <component name="RecentsManager">
     <key name="MoveFile.RECENT_KEYS">
@@ -433,21 +436,7 @@
       <workItem from="1519940365242" duration="12261000" />
       <workItem from="1520115937832" duration="468000" />
       <workItem from="1520130078661" duration="377000" />
-      <workItem from="1520239425661" duration="5604000" />
-    </task>
-    <task id="LOCAL-00050" summary="Introduced absolute method.">
-      <created>1519302057870</created>
-      <option name="number" value="00050" />
-      <option name="presentableId" value="LOCAL-00050" />
-      <option name="project" value="LOCAL" />
-      <updated>1519302057872</updated>
-    </task>
-    <task id="LOCAL-00051" summary="w is actually q0, not q3. Also, introduced inverse method.">
-      <created>1519303764760</created>
-      <option name="number" value="00051" />
-      <option name="presentableId" value="LOCAL-00051" />
-      <option name="project" value="LOCAL" />
-      <updated>1519303764760</updated>
+      <workItem from="1520239425661" duration="7495000" />
     </task>
     <task id="LOCAL-00052" summary="Introduced set method for Rotf in Mat3f.">
       <created>1519305316873</created>
@@ -778,11 +767,25 @@
       <option name="project" value="LOCAL" />
       <updated>1520326853202</updated>
     </task>
-    <option name="localTasksCounter" value="99" />
+    <task id="LOCAL-00099" summary="Removed Vec3d.">
+      <created>1520326893063</created>
+      <option name="number" value="00099" />
+      <option name="presentableId" value="LOCAL-00099" />
+      <option name="project" value="LOCAL" />
+      <updated>1520326893063</updated>
+    </task>
+    <task id="LOCAL-00100" summary="Added multiplyBy method.">
+      <created>1520327789440</created>
+      <option name="number" value="00100" />
+      <option name="presentableId" value="LOCAL-00100" />
+      <option name="project" value="LOCAL" />
+      <updated>1520327789440</updated>
+    </task>
+    <option name="localTasksCounter" value="101" />
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="156594000" />
+    <option name="totallyTimeSpent" value="158485000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="0" y="0" width="1280" height="800" extended-state="6" />
@@ -826,8 +829,6 @@
     <option name="myLimit" value="2678400000" />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="Added getColumn method." />
-    <MESSAGE value="set method accepts doubles." />
     <MESSAGE value="Added some convenient Scalar functions." />
     <MESSAGE value="Added some utility functions for Rotf." />
     <MESSAGE value="Added some matrix utilities to Mat3f." />
@@ -851,7 +852,9 @@
     <MESSAGE value="Added vector3Sub method." />
     <MESSAGE value="Removed Vec3f. Added operations to Pair." />
     <MESSAGE value="Added toPair method to Veci. Vec3d implements Triple." />
-    <option name="LAST_COMMIT_MESSAGE" value="Added toPair method to Veci. Vec3d implements Triple." />
+    <MESSAGE value="Removed Vec3d." />
+    <MESSAGE value="Added multiplyBy method." />
+    <option name="LAST_COMMIT_MESSAGE" value="Added multiplyBy method." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -1121,14 +1124,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/FloatList.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="810">
-          <caret line="72" column="38" lean-forward="true" selection-start-line="72" selection-start-column="38" selection-end-line="72" selection-end-column="38" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/MathUtil.java" />
     <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Normals.java">
       <provider selected="true" editor-type-id="text-editor">
@@ -1204,20 +1199,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Pair.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="354">
-          <caret line="47" column="36" lean-forward="true" selection-start-line="47" selection-start-column="36" selection-end-line="47" selection-end-column="36" />
-          <folding>
-            <element signature="e#1300#1301#0" expanded="false" />
-            <element signature="e#1350#1351#0" expanded="false" />
-            <element signature="e#1383#1384#0" expanded="false" />
-            <element signature="e#1433#1434#0" expanded="false" />
-            <element signature="e#1514#1515#0" expanded="false" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Veci.java">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="675">
@@ -1242,6 +1223,25 @@
         </state>
       </provider>
     </entry>
+    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Pair.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="384">
+          <caret line="53" column="23" lean-forward="false" selection-start-line="53" selection-start-column="23" selection-end-line="53" selection-end-column="23" />
+          <folding>
+            <element signature="e#1468#1469#0" expanded="true" />
+            <element signature="e#1514#1515#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/FloatingPointList.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="195">
+          <caret line="27" column="31" lean-forward="false" selection-start-line="27" selection-start-column="31" selection-end-line="27" selection-end-column="31" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
   </component>
   <component name="hg4idea.settings">
     <option name="CHECK_INCOMING_OUTGOING" value="true" />
@@ -1249,6 +1249,18 @@
   </component>
   <component name="masterDetails">
     <states>
+      <state key="ArtifactsStructureConfigurable.UI">
+        <settings>
+          <artifact-editor />
+          <splitter-proportions>
+            <option name="proportions">
+              <list>
+                <option value="0.2" />
+              </list>
+            </option>
+          </splitter-proportions>
+        </settings>
+      </state>
       <state key="Copyright.UI">
         <settings>
           <last-edited>Apache License</last-edited>
@@ -1261,9 +1273,69 @@
           </splitter-proportions>
         </settings>
       </state>
+      <state key="FacetStructureConfigurable.UI">
+        <settings>
+          <last-edited>No facets are configured</last-edited>
+          <splitter-proportions>
+            <option name="proportions">
+              <list>
+                <option value="0.2" />
+              </list>
+            </option>
+          </splitter-proportions>
+        </settings>
+      </state>
+      <state key="GlobalLibrariesConfigurable.UI">
+        <settings>
+          <splitter-proportions>
+            <option name="proportions">
+              <list>
+                <option value="0.2" />
+              </list>
+            </option>
+          </splitter-proportions>
+        </settings>
+      </state>
+      <state key="JdkListConfigurable.UI">
+        <settings>
+          <last-edited>1.8</last-edited>
+          <splitter-proportions>
+            <option name="proportions">
+              <list>
+                <option value="0.2" />
+              </list>
+            </option>
+          </splitter-proportions>
+        </settings>
+      </state>
+      <state key="ModuleStructureConfigurable.UI">
+        <settings>
+          <last-edited>Common</last-edited>
+          <splitter-proportions>
+            <option name="proportions">
+              <list>
+                <option value="0.2" />
+                <option value="0.6" />
+              </list>
+            </option>
+          </splitter-proportions>
+        </settings>
+      </state>
       <state key="ProjectJDKs.UI">
         <settings>
           <last-edited>1.8</last-edited>
+          <splitter-proportions>
+            <option name="proportions">
+              <list>
+                <option value="0.2" />
+              </list>
+            </option>
+          </splitter-proportions>
+        </settings>
+      </state>
+      <state key="ProjectLibrariesConfigurable.UI">
+        <settings>
+          <last-edited>Maven: com.fasterxml.jackson.core:jackson-annotations:2.8.0</last-edited>
           <splitter-proportions>
             <option name="proportions">
               <list>

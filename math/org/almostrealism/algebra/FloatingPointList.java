@@ -16,19 +16,25 @@
 
 package org.almostrealism.algebra;
 
-/** Growable array of floats. */
-public class FloatList {
+/** Scalable array of {@link Scalar}s. */
+public class FloatingPointList {
 	private static final int DEFAULT_SIZE = 10;
 
 	private double[] data = new double[DEFAULT_SIZE];
 	private int numElements;
 
-	public void add(double f) {
+	public void add(double... d) {
+		for (double v : d) {
+			add(new Scalar(v));
+		}
+	}
+
+	public void add(Scalar f) {
 		if (numElements == data.length) {
 			resize(1 + numElements);
 		}
 
-		data[numElements++] = f;
+		data[numElements++] = f.getValue();
 		assert numElements <= data.length;
 	}
 
@@ -36,12 +42,12 @@ public class FloatList {
 		return numElements;
 	}
 
-	public float get(int index) {
+	public Scalar get(int index) {
 		if (index >= numElements) {
 			throw new ArrayIndexOutOfBoundsException(index);
 		}
 
-		return (float) data[index];
+		return new Scalar(data[index]);
 	}
 
 	public void put(int index, float val) {
