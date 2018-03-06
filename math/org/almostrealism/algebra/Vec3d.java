@@ -22,7 +22,7 @@ package org.almostrealism.algebra;
  * 3-element double-precision vector
  */
 @Deprecated
-public class Vec3d {
+public class Vec3d implements Triple {
 	private double x;
 	private double y;
 	private double z;
@@ -87,14 +87,20 @@ public class Vec3d {
 		}
 	}
 
+	public void setA(double a) { this.x = a; }
+	public void setB(double b) { this.y = b; }
+	public void setC(double c) { this.z = c; }
+
+	public double getA() { return x; }
+	public double getB() { return y; }
+	public double getC() { return z; }
+
 	public double x() {
 		return x;
 	}
-
 	public double y() {
 		return y;
 	}
-
 	public double z() {
 		return z;
 	}
@@ -102,11 +108,9 @@ public class Vec3d {
 	public void setX(double x) {
 		this.x = x;
 	}
-
 	public void setY(double y) {
 		this.y = y;
 	}
-
 	public void setZ(double z) {
 		this.z = z;
 	}

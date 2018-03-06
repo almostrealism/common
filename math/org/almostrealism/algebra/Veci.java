@@ -44,13 +44,12 @@ public class Veci {
 		data[i] = val;
 	}
 
-	public Vec2f toVec2f() throws DimensionMismatchException {
+	public Pair toPair() throws DimensionMismatchException {
 		if (length() != 2)
 			throw new DimensionMismatchException();
-		Vec2f out = new Vec2f();
-		for (int i = 0; i < 2; i++) {
-			out.set(i, get(i));
-		}
+		Pair out = new Pair();
+		out.setX(get(0));
+		out.setY(get(1));
 		return out;
 	}
 
@@ -66,6 +65,7 @@ public class Veci {
 		return out;
 	}
 
+	@Deprecated
 	public Vecf toVecf() {
 		Vecf out = new Vecf(length());
 		for (int i = 0; i < length(); i++) {
