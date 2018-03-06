@@ -48,4 +48,9 @@ public class Pair {
 	public Pair multiply(double d) {
 		return new Pair(this.x * d, this.y * d);
 	}
+
+	public void multiplyBy(double d) {
+		this.x = x * d;
+		this.y = y * d;
+	}
 }
