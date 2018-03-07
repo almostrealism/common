@@ -7,7 +7,7 @@ import org.almostrealism.io.Resource;
 import java.io.IOException;
 import java.io.InputStream;
 
-public class MeshResource implements Resource {
+public class MeshResource implements Resource<Mesh> {
 	private Mesh mesh;
 
 	public MeshResource(Mesh m) {
@@ -38,7 +38,7 @@ public class MeshResource implements Resource {
 	public void setURI(String uri) { }
 
 	@Override
-	public Object getData() {
+	public Mesh getData() {
 		return getMesh();
 	}
 

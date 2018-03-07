@@ -607,4 +607,168 @@ public class Vector implements Positioned, Triple, Cloneable {
 		dest.setY(v1.getY() - v2.getY());
 		dest.setZ(v1.getZ() - v2.getZ());
 	}
+
+	public static int maxAxis(Vector v) {
+		int maxIndex = -1;
+		double maxVal = -1e30f;
+
+		if (v.getX() > maxVal) {
+			maxIndex = 0;
+			maxVal = v.getX();
+		}
+		if (v.getY() > maxVal) {
+			maxIndex = 1;
+			maxVal = v.getY();
+		}
+		if (v.getZ() > maxVal) {
+			maxIndex = 2;
+			maxVal = v.getZ();
+		}
+
+		return maxIndex;
+	}
+
+	public static int maxAxis4(Vec4f v) {
+		int maxIndex = -1;
+		float maxVal = -1e30f;
+		if (v.x() > maxVal) {
+			maxIndex = 0;
+			maxVal = v.x();
+		}
+
+		if (v.y() > maxVal) {
+			maxIndex = 1;
+			maxVal = v.y();
+		}
+
+		if (v.z() > maxVal) {
+			maxIndex = 2;
+			maxVal = v.z();
+		}
+
+		if (v.w() > maxVal) {
+			maxIndex = 3;
+			maxVal = v.w();
+		}
+
+		return maxIndex;
+	}
+
+	public static int closestAxis4(Vec4f vec) {
+		Vec4f tmp = new Vec4f(vec);
+		tmp.absolute();
+		return maxAxis4(tmp);
+	}
+
+	public static double getCoord(Vector vec, int num) {
+		switch (num) {
+			case 0: return vec.getX();
+			case 1: return vec.getY();
+			case 2: return vec.getZ();
+			default: throw new InternalError();
+		}
+	}
+
+	public static void setCoord(Vector vec, int num, double value) {
+		switch (num) {
+			case 0: vec.setX(value); break;
+			case 1: vec.setY(value); break;
+			case 2: vec.setZ(value); break;
+			default: throw new InternalError();
+		}
+	}
+
+	public static void mulCoord(Vector vec, int num, float value) {
+		switch (num) {
+			case 0: vec.setX(vec.getX() * value); break;
+			case 1: vec.setY(vec.getY() * value); break;
+			case 2: vec.setZ(vec.getZ() * value); break;
+			default: throw new InternalError();
+		}
+	}
+
+	public static void setInterpolate3(Vector dest, Vector v0, Vector v1, double rt) {
+		double s = 1f - rt;
+
+		dest.setX(s * v0.getX() + rt * v1.getX());
+		dest.setY(s * v0.getY() + rt * v1.getY());
+		dest.setZ(s * v0.getZ() + rt * v1.getZ());
+		// don't do the unused w component
+		//		m_co[3] = s * v0[3] + rt * v1[3];
+	}
+
+	public static void add(Vector dest, Vector v1, Vector v2) {
+		dest.setX(v1.getX() + v2.getX());
+		dest.setY(v1.getY() + v2.getY());
+		dest.setZ(v1.getZ() + v2.getZ());
+	}
+
+	public static void add(Vector dest, Vector v1, Vector v2, Vector v3) {
+		dest.setX(v1.getX() + v2.getX() + v3.getX());
+		dest.setY(v1.getY() + v2.getY() + v3.getY());
+		dest.setZ(v1.getZ() + v2.getZ() + v3.getZ());
+	}
+
+	public static void add(Vector dest, Vector v1, Vector v2, Vector v3, Vector v4) {
+		dest.setX(v1.getX() + v2.getX() + v3.getX() + v4.getX());
+		dest.setY(v1.getY() + v2.getY() + v3.getY() + v4.getY());
+		dest.setZ(v1.getZ() + v2.getZ() + v3.getZ() + v4.getZ());
+	}
+
+	public static void mul(Vector dest, Vector v1, Vector v2) {
+		dest.setX(v1.getX() * v2.getX());
+		dest.setY(v1.getY() * v2.getY());
+		dest.setZ(v1.getZ() * v2.getZ());
+	}
+
+	public static void div(Vector dest, Vector v1, Vector v2) {
+		dest.setX(v1.getX() / v2.getX());
+		dest.setY(v1.getY() / v2.getY());
+		dest.setZ(v1.getZ() / v2.getZ());
+	}
+
+	public static void setMin(Vector a, Vector b) {
+		a.setX(Math.min(a.getX(), b.getX()));
+		a.setY(Math.min(a.getY(), b.getY()));
+		a.setZ(Math.min(a.getZ(), b.getZ()));
+	}
+
+	public static void setMax(Vector a, Vector b) {
+		a.setX(Math.max(a.getX(), b.getX()));
+		a.setY(Math.max(a.getY(), b.getY()));
+		a.setZ(Math.max(a.getZ(), b.getZ()));
+	}
+
+	@Deprecated
+	public static float dot3(Vec4f v0, Vector v1) {
+		return (float) ((v0.x() * v1.getX() + v0.y() * v1.getY() + v0.z() * v1.getZ()));
+	}
+
+	public static double dot3(Vector v0, Vector v1) {
+		return (v0.getX() * v1.getX() + v0.getY() * v1.getY() + v0.getZ() * v1.getZ());
+	}
+
+	public static float dot3(Vec4f v0, Vec4f v1) {
+		return (v0.x() * v1.x() + v0.y() * v1.y() + v0.z() * v1.z());
+	}
+
+	public static float lengthSquared3(Vec4f v) {
+		return (v.x() * v.x() + v.y() * v.y() + v.z() * v.z());
+	}
+
+	public static void normalize3(Vec4f v) {
+		float norm = (float)(1.0/Math.sqrt(v.x() * v.x() + v.y() * v.y() + v.z() * v.z()));
+		v.setX(v.x() * norm);
+		v.setY(v.y() * norm);
+		v.setZ(v.z() * norm);
+	}
+
+	public static void cross3(Vector dest, Vec4f v1, Vec4f v2) {
+		float x, y;
+		x = v1.y() * v2.z() - v1.z() * v2.y();
+		y = v2.x() * v1.z() - v2.z() * v1.x();
+		dest.setZ(v1.x() * v2.y() - v1.y() * v2.x());
+		dest.setX(x);
+		dest.setY(y);
+	}
 }

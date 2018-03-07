@@ -6,7 +6,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.URL;
 
-public class UnicodeResource extends ResourceAdapter {
+public class UnicodeResource extends ResourceAdapter<byte[]> {
 	private String data;
 	
 	public UnicodeResource() { }
@@ -41,5 +41,5 @@ public class UnicodeResource extends ResourceAdapter {
 	}
 
 	@Override
-	public Object getData() { return data.getBytes(); }
+	public byte[] getData() { return data.getBytes(); }
 }

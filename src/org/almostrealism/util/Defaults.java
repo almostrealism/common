@@ -23,6 +23,8 @@ import java.util.Random;
  * @author  Michael Murray
  */
 public class Defaults {
+	public static final double FLT_EPSILON = 1.19209290e-07f;
+
 	private static class DefaultIntegerFormat extends DecimalFormat {
 		public DefaultIntegerFormat() {
 			super("#");

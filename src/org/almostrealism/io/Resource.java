@@ -22,7 +22,7 @@ import java.io.InputStream;
 /**
  * @author  Michael Murray
  */
-public interface Resource {
+public interface Resource<T extends Object> {
 	void load(IOStreams io) throws IOException;
 	void load(byte data[], int offset, int len);
 	void loadFromURI() throws IOException;
@@ -34,7 +34,7 @@ public interface Resource {
 	String getURI();
 	void setURI(String uri);
 	
-	Object getData();
+	T getData();
 	InputStream getInputStream();
 
 	Permissions getPermissions();

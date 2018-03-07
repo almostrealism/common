@@ -7,7 +7,7 @@ import org.almostrealism.io.Resource;
 import java.io.IOException;
 import java.io.InputStream;
 
-public class SceneResource<T extends ShadableSurface> implements Resource {
+public class SceneResource<T extends ShadableSurface> implements Resource<Scene<T>> {
 	private Scene<T> scene;
 
 	public SceneResource(Scene<T> s) { this.scene = s; }
@@ -36,7 +36,7 @@ public class SceneResource<T extends ShadableSurface> implements Resource {
 	public void setURI(String uri) { }
 
 	@Override
-	public Object getData() { return getScene(); }
+	public Scene<T> getData() { return getScene(); }
 
 	public Scene<T> getScene() { return scene; }
 

@@ -5,7 +5,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 
-public abstract class ResourceAdapter implements Resource {
+public abstract class ResourceAdapter<T extends Object> implements Resource<T> {
 	private Permissions permissions = new Permissions();
 	
 	protected String uri;
