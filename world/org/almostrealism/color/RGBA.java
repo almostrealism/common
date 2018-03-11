@@ -35,4 +35,6 @@ public class RGBA {
 	public float r() { return (float) rgb.getRed(); }
 	public float g() { return (float) rgb.getGreen(); }
 	public float b() { return (float) rgb.getBlue(); }
+
+	public double[] toArray() { return new double[] { r(), g(), b(), a}; }
 }

@@ -1,9 +1,6 @@
 package org.almostrealism.io;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
+import java.io.*;
 import java.net.URL;
 
 public class UnicodeResource extends ResourceAdapter<byte[]> {
@@ -12,6 +9,10 @@ public class UnicodeResource extends ResourceAdapter<byte[]> {
 	public UnicodeResource() { }
 	
 	public UnicodeResource(String data) { this.data = data; }
+
+	public UnicodeResource(File f) throws IOException {
+		read(new FileInputStream(f));
+	}
 
 	public synchronized void load(byte data[], int offset, int len) {
 		this.data = new String(data, offset, len);
