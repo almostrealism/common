@@ -448,6 +448,8 @@ public class Vector implements Positioned, Triple, Cloneable {
 		return v;
 	}
 
+	public double[] toArray() { return new double[] {x, y, z}; }
+
 	/**
 	 * Returns an integer hash code value for this Vector object obtained
 	 * by adding all 3 components and casting to an int.
