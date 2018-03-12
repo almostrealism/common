@@ -13,7 +13,7 @@ public class SceneResource<T extends ShadableSurface> implements Resource<Scene<
 	public SceneResource(Scene<T> s) { this.scene = s; }
 
 	@Override
-	public void load(byte data[], int offset, int len) { }
+	public void load(byte data[], long offset, int len) { }
 
 	@Override
 	public void load(IOStreams io) throws IOException { }

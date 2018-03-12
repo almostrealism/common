@@ -2,20 +2,22 @@ package org.almostrealism.io;
 
 import java.io.*;
 import java.net.URL;
+import java.util.Hashtable;
+import java.util.TreeSet;
 
 public class UnicodeResource extends ResourceAdapter<byte[]> {
-	private String data;
+	private Hashtable<Long, String> data = new Hashtable<>();
 	
 	public UnicodeResource() { }
 	
-	public UnicodeResource(String data) { this.data = data; }
+	public UnicodeResource(String data) { this.data.put(0l, data); }
 
 	public UnicodeResource(File f) throws IOException {
 		read(new FileInputStream(f));
 	}
 
-	public synchronized void load(byte data[], int offset, int len) {
-		this.data = new String(data, offset, len);
+	public synchronized void load(byte data[], long offset, int len) {
+		this.data.put(offset, new String(data, 0, len));
 	}
 
 	@Override
@@ -37,10 +39,22 @@ public class UnicodeResource extends ResourceAdapter<byte[]> {
 				buf.append("\n");
 			}
 		}
-		
-		data = buf.toString();
+
+		data.clear();
+		data.put(0l, buf.toString());
 	}
 
 	@Override
-	public byte[] getData() { return data.getBytes(); }
+	public byte[] getData() {
+		TreeSet<Long> l = new TreeSet<>();
+		l.addAll(data.keySet());
+
+		StringBuffer buf = new StringBuffer();
+
+		for (long k : l) {
+			buf.append(data.get(k));
+		}
+
+		return buf.toString().getBytes();
+	}
 }

@@ -18,7 +18,7 @@ public class MeshResource implements Resource<Mesh> {
 	public void load(IOStreams io) throws IOException { }
 
 	@Override
-	public void load(byte data[], int offset, int len) { }
+	public void load(byte data[], long offset, int len) { }
 
 	@Override
 	public void loadFromURI() throws IOException { }
