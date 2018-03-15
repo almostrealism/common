@@ -159,4 +159,20 @@ public class Scene<T extends ShadableSurface> extends SurfaceList<T> {
 		allSurfaces.add(surface);
 		return allSurfaces;
 	}
+
+	/**
+	 * Returns the minimum bounding solid that encompases this scene.
+	 * For a scene object to be considered in the bounding calculation it
+	 * must provide an implementation for {@link AbstractSurface#calculateBoundingSolid}.
+	 */
+	public BoundingSolid calculateBoundingSolid() {
+		BoundingSolid boundingSolid = new BoundingSolid(0, 0, 0, 0, 0, 0);
+		for (ShadableSurface surface : this) {
+			BoundingSolid _boundingSolid = surface.calculateBoundingSolid();
+			if (_boundingSolid != null) {
+				boundingSolid = boundingSolid.combine(_boundingSolid);
+			}
+		}
+		return boundingSolid;
+	}
 }

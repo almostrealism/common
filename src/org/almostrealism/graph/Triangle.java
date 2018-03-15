@@ -21,9 +21,11 @@ import org.almostrealism.color.ColorProducer;
 import org.almostrealism.color.ColorProducerAdapter;
 import org.almostrealism.color.GeneratedColorProducer;
 import org.almostrealism.color.RGB;
+import org.almostrealism.geometry.Positioned;
 import org.almostrealism.relation.Constant;
 import org.almostrealism.relation.Operator;
 import org.almostrealism.space.AbstractSurface;
+import org.almostrealism.space.BoundingSolid;
 import org.almostrealism.space.ShadableIntersection;
 
 import java.util.concurrent.ExecutionException;
@@ -418,5 +420,10 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 
 	public String toString() {
 		return "Triangle: " + this.p1 + " " + this.p2 + " " + this.p3;
+	}
+
+	@Override
+	public BoundingSolid calculateBoundingSolid() {
+		return BoundingSolid.getBounds(new Positioned[]{p1,p2,p3});
 	}
 }

@@ -54,4 +54,12 @@ public interface ShadableSurface extends ShadableCurve, Intersectable<ShadableIn
 	 * @deprecated  Replaced by {@link #call()}
 	 */
 	ColorProducer getColorAt();
+
+	/**
+	 * Return a {@link BoundingSolid} that represents the minimum bounded
+	 * solid that contains this {@link ShadableSurface}.
+	 * Returns null for certain types of {@link ShadableSurface} objects
+	 * which do not have measurable bounds. E.g. Plane, Polynomial.
+	 */
+	BoundingSolid calculateBoundingSolid();
 }
