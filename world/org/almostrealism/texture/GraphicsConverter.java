@@ -208,7 +208,7 @@ public class GraphicsConverter {
 					continue i;
 				}
 				
-				RGB c = image[i][j].evaluate(null);
+				RGB c = image[i][j].evaluate(new Object[0]);
 				
 				int r = (int)(Math.min(1.0, Math.abs(c.getRed())) * 255);
 				int g = (int)(Math.min(1.0, Math.abs(c.getGreen())) * 255);
