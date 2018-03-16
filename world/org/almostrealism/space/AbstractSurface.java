@@ -563,4 +563,7 @@ public abstract class AbstractSurface<IN> extends TriangulatableGeometry impleme
 
 	@Override
 	public boolean isDone() { return true; }
+
+	@Override
+	public BoundingSolid calculateBoundingSolid() { return null; }
 }

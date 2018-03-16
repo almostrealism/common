@@ -16,6 +16,7 @@
 
 package org.almostrealism.space;
 
+import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Positioned;
 
 /**
@@ -30,6 +31,7 @@ public class BoundingSolid {
     public final double minX, maxX, minY, maxY, minZ, maxZ;
     public final double dx, dy, dz;
     public final double volume;
+    public final Positioned center;
 
     public BoundingSolid(double minX, double maxX, double minY, double maxY, double minZ, double maxZ) {
         this.minX = minX;
@@ -44,6 +46,8 @@ public class BoundingSolid {
         dz = maxZ - minZ;
 
         volume = dx * dy * dz;
+
+        center = new Vector(minX+dx/2, minY+dy/2, minZ+dz/2);
     }
 
     public static BoundingSolid getBounds(Positioned[] points) {
@@ -72,5 +76,15 @@ public class BoundingSolid {
         }
 
         return new BoundingSolid(minX, maxX, minY, maxY, minZ, maxZ);
+    }
+
+    public BoundingSolid combine(BoundingSolid other) {
+        double _minX = Math.min(minX, other.minX);
+        double _maxX = Math.max(maxX, other.maxX);
+        double _minY = Math.min(minY, other.minY);
+        double _maxY = Math.max(maxY, other.maxY);
+        double _minZ = Math.min(minZ, other.minZ);
+        double _maxZ = Math.max(maxZ, other.maxZ);
+        return new BoundingSolid(_minX, _maxX, _minY, _maxY, _minZ, _maxZ);
     }
 }
