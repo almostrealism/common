@@ -166,10 +166,12 @@ public class Scene<T extends ShadableSurface> extends SurfaceList<T> {
 	 * must provide an implementation for {@link AbstractSurface#calculateBoundingSolid}.
 	 */
 	public BoundingSolid calculateBoundingSolid() {
-		BoundingSolid boundingSolid = new BoundingSolid(0, 0, 0, 0, 0, 0);
+		BoundingSolid boundingSolid = null;
 		for (ShadableSurface surface : this) {
 			BoundingSolid _boundingSolid = surface.calculateBoundingSolid();
-			if (_boundingSolid != null) {
+			if (boundingSolid == null) {
+				boundingSolid = _boundingSolid;
+			} else if (_boundingSolid != null) {
 				boundingSolid = boundingSolid.combine(_boundingSolid);
 			}
 		}
