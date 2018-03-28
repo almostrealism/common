@@ -24,5 +24,5 @@ import java.util.Collection;
  * @author  Michael Murray
  */
 public interface Parent<T> {
-	public Collection<T> getChildren();
+	Collection<T> getChildren();
 }

@@ -41,7 +41,7 @@ import java.util.List;
 /**
  * @author Mike Murray
  */
-public class Graph extends ArrayList<String> {
+public class Chart extends ArrayList<String> {
 	private static final String header = "[--------]:";
 	private DateFormat format = new SimpleDateFormat("hh:mm a");
 	private static NumberFormat dformat = new DecimalFormat("#.000");
@@ -55,9 +55,9 @@ public class Graph extends ArrayList<String> {
 	private double lastValue, currentValue;
 	private List<Double> values;
 	
-	public Graph() { this.values = new ArrayList<Double>(); }
+	public Chart() { this.values = new ArrayList<Double>(); }
 	
-	public Graph(int max) { this.values = new ArrayList<Double>(); this.max = max; }
+	public Chart(int max) { this.values = new ArrayList<Double>(); this.max = max; }
 	
 	public void addEntry(double a) {
 		this.values.add(new Double(a));
@@ -76,7 +76,7 @@ public class Graph extends ArrayList<String> {
 		if (super.size() > 2 && this.sinceLastMin > this.minMaxOffset &&
 				lastValue <= currentValue && a < currentValue) {
 			String s = (String) super.remove(super.size() - 1);
-			super.add(s.concat("]                    " +  Graph.dformat.format(currentValue)));
+			super.add(s.concat("]                    " +  Chart.dformat.format(currentValue)));
 			
 			if (currentValue > this.maxValue) this.maxValue = currentValue;
 			this.sinceLastMax = 0;
@@ -84,7 +84,7 @@ public class Graph extends ArrayList<String> {
 		} else if (super.size() > 2 && this.sinceLastMax > this.minMaxOffset &&
 				lastValue >= currentValue && a > currentValue) {
 			String s = (String) super.remove(super.size() - 1);
-			super.add(s.concat("[                    " + Graph.dformat.format(currentValue)));
+			super.add(s.concat("[                    " + Chart.dformat.format(currentValue)));
 			
 			if (currentValue < this.minValue) this.minValue = currentValue;
 			this.sinceLastMin = 0;
@@ -130,7 +130,7 @@ public class Graph extends ArrayList<String> {
 		
 		buf.append(dformat.format(this.maxValue));
 		buf.append(")\n");
-		buf.append(Graph.header);
+		buf.append(Chart.header);
 		
 		double s;
 		for (int i = 1; i <= this.div; i++) {

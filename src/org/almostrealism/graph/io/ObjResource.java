@@ -7,11 +7,16 @@ import org.almostrealism.io.ResourceTranscoder;
 import org.almostrealism.io.UnicodeResource;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
 
 public class ObjResource extends UnicodeResource {
+	public ObjResource() { }
+
+	public ObjResource(File f) throws IOException { super(f); }
+
 	public static class MeshTranscoder implements ResourceTranscoder<MeshResource, ObjResource> {
 		@Override
 		public ObjResource transcode(MeshResource r) {

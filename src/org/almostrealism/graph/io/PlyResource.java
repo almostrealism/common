@@ -6,10 +6,15 @@ import org.almostrealism.graph.MeshResource;
 import org.almostrealism.io.*;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 
 public class PlyResource extends UnicodeResource {
+	public PlyResource() { }
+
+	public PlyResource(File f) throws IOException { super(f); }
+
 	public static class MeshTranscoder implements ResourceTranscoder<MeshResource, PlyResource> {
 		@Override
 		public PlyResource transcode(MeshResource r) {

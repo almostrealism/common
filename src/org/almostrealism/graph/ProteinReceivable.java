@@ -17,5 +17,5 @@
 package org.almostrealism.graph;
 
 public interface ProteinReceivable<T> {
-	public void setProteinCache(ProteinCache<T> p);
+	void setProteinCache(ProteinCache<T> p);
 }
