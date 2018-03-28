@@ -2,21 +2,8 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="">
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/src/io/almostrealism/code/CodePrintWriter.java" />
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/src/io/almostrealism/code/Method.java" />
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/src/io/almostrealism/code/ResourceVariable.java" />
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/src/io/almostrealism/code/Scope.java" />
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/src/io/almostrealism/code/Variable.java" />
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/src/io/almostrealism/js/JavaScriptPrintWriter.java" />
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/src/io/almostrealism/js/JsonResource.java" />
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/src/org/almostrealism/io/ResourceTranscoderFactory.java" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/org/almostrealism/graph/MeshResource.java" afterPath="$PROJECT_DIR$/src/org/almostrealism/graph/MeshResource.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/org/almostrealism/graph/Parent.java" afterPath="$PROJECT_DIR$/src/org/almostrealism/graph/Parent.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/org/almostrealism/graph/ProteinReceivable.java" afterPath="$PROJECT_DIR$/src/org/almostrealism/graph/ProteinReceivable.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/org/almostrealism/graph/io/ObjResource.java" afterPath="$PROJECT_DIR$/src/org/almostrealism/graph/io/ObjResource.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/org/almostrealism/graph/io/PlyResource.java" afterPath="$PROJECT_DIR$/src/org/almostrealism/graph/io/PlyResource.java" />
-      <change type="MOVED" beforePath="$PROJECT_DIR$/src/org/almostrealism/util/Graph.java" afterPath="$PROJECT_DIR$/src/org/almostrealism/util/Chart.java" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/pom.xml" afterPath="$PROJECT_DIR$/pom.xml" />
     </list>
     <ignored path="$PROJECT_DIR$/target/" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -28,7 +15,7 @@
   </component>
   <component name="FileEditorManager">
     <leaf SIDE_TABS_SIZE_LIMIT_KEY="300">
-      <file leaf-file-name="JavaScriptPrintWriter.java" pinned="false" current-in-tab="true">
+      <file leaf-file-name="JavaScriptPrintWriter.java" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/src/io/almostrealism/js/JavaScriptPrintWriter.java">
           <provider selected="true" editor-type-id="text-editor">
             <state relative-caret-position="390">
@@ -38,6 +25,16 @@
                 <element signature="e#1136#1137#0" expanded="true" />
                 <element signature="e#1153#1154#0" expanded="true" />
               </folding>
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="pom.xml" pinned="false" current-in-tab="true">
+        <entry file="file://$PROJECT_DIR$/pom.xml">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="120">
+              <caret line="8" column="16" lean-forward="false" selection-start-line="8" selection-start-column="16" selection-end-line="8" selection-end-column="16" />
+              <folding />
             </state>
           </provider>
         </entry>
@@ -130,7 +127,6 @@
   <component name="IdeDocumentHistory">
     <option name="CHANGED_PATHS">
       <list>
-        <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/NormalInfo.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Normals.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/PolynomialTerm.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Scalar.java" />
@@ -181,6 +177,7 @@
         <option value="$PROJECT_DIR$/src/io/almostrealism/code/Method.java" />
         <option value="$PROJECT_DIR$/src/io/almostrealism/code/ResourceVariable.java" />
         <option value="$PROJECT_DIR$/src/io/almostrealism/js/JavaScriptPrintWriter.java" />
+        <option value="$PROJECT_DIR$/pom.xml" />
       </list>
     </option>
   </component>
@@ -540,14 +537,7 @@
       <workItem from="1521582485607" duration="6000" />
       <workItem from="1521608568330" duration="512000" />
       <workItem from="1522121677783" duration="955000" />
-      <workItem from="1522176244528" duration="7122000" />
-    </task>
-    <task id="LOCAL-00061" summary="Introduced transform method.">
-      <created>1519756208777</created>
-      <option name="number" value="00061" />
-      <option name="presentableId" value="LOCAL-00061" />
-      <option name="project" value="LOCAL" />
-      <updated>1519756208777</updated>
+      <workItem from="1522176244528" duration="7248000" />
     </task>
     <task id="LOCAL-00062" summary="More add methods.">
       <created>1519757536542</created>
@@ -885,11 +875,18 @@
       <option name="project" value="LOCAL" />
       <updated>1521163791142</updated>
     </task>
-    <option name="localTasksCounter" value="110" />
+    <task id="LOCAL-00110" summary="Working towards code generation support. Renamed Graph to Chart to avoid confusion with org.almostrealism.graph.Graph.">
+      <created>1522207651443</created>
+      <option name="number" value="00110" />
+      <option name="presentableId" value="LOCAL-00110" />
+      <option name="project" value="LOCAL" />
+      <updated>1522207651445</updated>
+    </task>
+    <option name="localTasksCounter" value="111" />
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="179834000" />
+    <option name="totallyTimeSpent" value="179960000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="0" y="0" width="1280" height="800" extended-state="6" />
@@ -933,7 +930,6 @@
     <option name="myLimit" value="2678400000" />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="Some improvements to Line and Mat2f. Line has been moved to the space package." />
     <MESSAGE value="Improved PlaneUV so that intersection accepts a Ray rather than two Vectors." />
     <MESSAGE value="Mat4f stores double precision values now." />
     <MESSAGE value="Migrating Rotf to double precision and use of the Vector class instead of Vec3f." />
@@ -958,7 +954,8 @@
     <MESSAGE value="Changed offset to long." />
     <MESSAGE value="Added toArray method." />
     <MESSAGE value="Fixed a bug in GraphicsConverter." />
-    <option name="LAST_COMMIT_MESSAGE" value="Fixed a bug in GraphicsConverter." />
+    <MESSAGE value="Working towards code generation support. Renamed Graph to Chart to avoid confusion with org.almostrealism.graph.Graph." />
+    <option name="LAST_COMMIT_MESSAGE" value="Working towards code generation support. Renamed Graph to Chart to avoid confusion with org.almostrealism.graph.Graph." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -974,7 +971,6 @@
     </option>
   </component>
   <component name="editorHistoryManager">
-    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Vec3d.java" />
     <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Mat4f.java">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="814">
@@ -1359,6 +1355,14 @@
             <element signature="e#1136#1137#0" expanded="true" />
             <element signature="e#1153#1154#0" expanded="true" />
           </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/pom.xml">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="120">
+          <caret line="8" column="16" lean-forward="false" selection-start-line="8" selection-start-column="16" selection-end-line="8" selection-end-column="16" />
+          <folding />
         </state>
       </provider>
     </entry>
