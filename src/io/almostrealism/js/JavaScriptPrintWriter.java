@@ -28,6 +28,11 @@ import java.io.PrintWriter;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * A {@link CodePrintWriter} implementation for writing JavaScript.
+ *
+ * @author  Michael Murray
+ */
 public class JavaScriptPrintWriter implements CodePrintWriter {
 	private PrintWriter p;
 
@@ -38,15 +43,19 @@ public class JavaScriptPrintWriter implements CodePrintWriter {
 	@Override
 	public void println(Variable v) {
 		if (v instanceof ResourceVariable) {
-			this.p.println("var " + v.getName() + " = " + toJson((ResourceVariable) v));
+			p.println("var " + v.getName() + " = " + toJson((ResourceVariable) v));
 		} else {
-			this.p.println("var " + v.getName() + " = " + v.getData() + ";");
+			p.println("var " + v.getName() + " = " + v.getData() + ";");
 		}
 	}
 
 	@Override
 	public void println(Method m) {
-		this.p.println(m.getName() + "(" + toString(m.getArguments(), m.getArgumentOrder()) + ");");
+		if (m.getMember() == null) {
+			p.println(m.getName() + "(" + toString(m.getArguments(), m.getArgumentOrder()) + ");");
+		} else {
+			p.println(m.getMember() + "." + m.getName() + "(" + toString(m.getArguments(), m.getArgumentOrder()) + ");");
+		}
 	}
 
 	protected static String toJson(ResourceVariable v) {

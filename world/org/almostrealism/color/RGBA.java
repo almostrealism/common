@@ -16,25 +16,33 @@
 
 package org.almostrealism.color;
 
-public class RGBA {
-	private RGB rgb;
-	public double a;
+/**
+ * {@link RGBA} extends {@link RGB} to include an alpha channel.
+ */
+public class RGBA extends RGB {
+	private double a;
 
 	public RGBA() {
-		this.rgb = new RGB(0.0, 0.0,0.0);
-		this.a = 0.0f;
+		super(0.0, 0.0,0.0);
+		this.a = 0.0;
 	}
 
 	public RGBA(double r, double g, double b, double a) {
-		this.rgb = new RGB(r, g, b);
+		super(r, g, b);
 		this.a = a;
 	}
 
-	public RGB getRGB() { return rgb; }
+	public RGBA(double... values) {
+		this(values[0], values[1], values[2], values.length > 3 ? values[3] : 1.0);
+	}
 
-	public float r() { return (float) rgb.getRed(); }
-	public float g() { return (float) rgb.getGreen(); }
-	public float b() { return (float) rgb.getBlue(); }
+	public float r() { return (float) getRed(); }
+	public float g() { return (float) getGreen(); }
+	public float b() { return (float) getBlue(); }
+	public float a() { return (float) getAlpha(); }
 
-	public double[] toArray() { return new double[] { r(), g(), b(), a}; }
+	public void setAlpha(double a) { this.a = a; }
+	public double getAlpha() { return this.a; }
+
+	public double[] toArray() { return new double[] { getRed(), getGreen(), getBlue(), getAlpha() }; }
 }
