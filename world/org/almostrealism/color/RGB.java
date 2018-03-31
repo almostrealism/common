@@ -556,6 +556,8 @@ public class RGB implements Externalizable, Cloneable, ColorProducer, Triple {
 		this.initColorModule(in.readInt());
 		this.data.read(in);
 	}
+
+	public double[] toArray() { return new double[] { getRed(), getGreen(), getBlue() }; }
 	
 	public static RGB gray(double value) { return new RGB(value, value, value); }
 }

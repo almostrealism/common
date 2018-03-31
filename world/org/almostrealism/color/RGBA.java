@@ -44,5 +44,6 @@ public class RGBA extends RGB {
 	public void setAlpha(double a) { this.a = a; }
 	public double getAlpha() { return this.a; }
 
+	@Override
 	public double[] toArray() { return new double[] { getRed(), getGreen(), getBlue(), getAlpha() }; }
 }

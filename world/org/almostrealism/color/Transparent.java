@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 Michael Murray
+ * Copyright 2018 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,9 +17,9 @@
 package org.almostrealism.color;
 
 /**
- * An Absorber implements the Transparent interface to indicate that the absorb method
- * will never return true.
+ * An {@link org.almostrealism.physics.Absorber} implements the {@link Transparent} interface to
+ * indicate that the absorb method will never return true.
  * 
- * @author  Mike Murray
+ * @author  Michael Murray
  */
 public interface Transparent { }

@@ -2,11 +2,9 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="">
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/io/almostrealism/code/Method.java" afterPath="$PROJECT_DIR$/src/io/almostrealism/code/Method.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/io/almostrealism/js/JavaScriptPrintWriter.java" afterPath="$PROJECT_DIR$/src/io/almostrealism/js/JavaScriptPrintWriter.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/io/almostrealism/lambda/Realization.java" afterPath="$PROJECT_DIR$/src/io/almostrealism/lambda/Realization.java" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/color/RGB.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/color/RGB.java" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/color/RGBA.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/color/RGBA.java" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/color/Transparent.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/color/Transparent.java" />
     </list>
     <ignored path="$PROJECT_DIR$/target/" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -17,33 +15,7 @@
     <option name="LAST_RESOLUTION" value="IGNORE" />
   </component>
   <component name="FileEditorManager">
-    <leaf SIDE_TABS_SIZE_LIMIT_KEY="300">
-      <file leaf-file-name="JavaScriptPrintWriter.java" pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/src/io/almostrealism/js/JavaScriptPrintWriter.java">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="225">
-              <caret line="41" column="0" lean-forward="false" selection-start-line="41" selection-start-column="0" selection-end-line="41" selection-end-column="0" />
-              <folding>
-                <element signature="imports" expanded="true" />
-              </folding>
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file leaf-file-name="RGBA.java" pinned="false" current-in-tab="true">
-        <entry file="file://$PROJECT_DIR$/world/org/almostrealism/color/RGBA.java">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="265">
-              <caret line="33" column="0" lean-forward="false" selection-start-line="33" selection-start-column="0" selection-end-line="33" selection-end-column="0" />
-              <folding>
-                <element signature="e#948#949#0" expanded="true" />
-                <element signature="e#1029#1030#0" expanded="true" />
-              </folding>
-            </state>
-          </provider>
-        </entry>
-      </file>
-    </leaf>
+    <leaf SIDE_TABS_SIZE_LIMIT_KEY="300" />
   </component>
   <component name="FileTemplateManagerImpl">
     <option name="RECENT_TEMPLATES">
@@ -99,8 +71,6 @@
   <component name="IdeDocumentHistory">
     <option name="CHANGED_PATHS">
       <list>
-        <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/PolynomialTerm.java" />
-        <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Scalar.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Vec3f.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Rotf.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Mat4f.java" />
@@ -149,7 +119,9 @@
         <option value="$PROJECT_DIR$/src/io/almostrealism/lambda/Realization.java" />
         <option value="$PROJECT_DIR$/src/io/almostrealism/code/Method.java" />
         <option value="$PROJECT_DIR$/src/io/almostrealism/js/JavaScriptPrintWriter.java" />
+        <option value="$PROJECT_DIR$/world/org/almostrealism/color/RGB.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/color/RGBA.java" />
+        <option value="$PROJECT_DIR$/world/org/almostrealism/color/Transparent.java" />
       </list>
     </option>
   </component>
@@ -227,23 +199,6 @@
             <path>
               <item name="common" type="58d84e3e:PackageViewProjectNode" />
               <item name="Common" type="616d4139:PackageViewModuleNode" />
-            </path>
-            <path>
-              <item name="common" type="58d84e3e:PackageViewProjectNode" />
-              <item name="Common" type="616d4139:PackageViewModuleNode" />
-              <item name="io.almostrealism" type="1f31426a:PackageElementNode" />
-            </path>
-            <path>
-              <item name="common" type="58d84e3e:PackageViewProjectNode" />
-              <item name="Common" type="616d4139:PackageViewModuleNode" />
-              <item name="io.almostrealism" type="1f31426a:PackageElementNode" />
-              <item name="code" type="1f31426a:PackageElementNode" />
-            </path>
-            <path>
-              <item name="common" type="58d84e3e:PackageViewProjectNode" />
-              <item name="Common" type="616d4139:PackageViewModuleNode" />
-              <item name="io.almostrealism" type="1f31426a:PackageElementNode" />
-              <item name="js" type="1f31426a:PackageElementNode" />
             </path>
             <path>
               <item name="common" type="58d84e3e:PackageViewProjectNode" />
@@ -498,14 +453,7 @@
       <workItem from="1522121677783" duration="955000" />
       <workItem from="1522176244528" duration="9322000" />
       <workItem from="1522347493021" duration="193000" />
-      <workItem from="1522356691099" duration="665000" />
-    </task>
-    <task id="LOCAL-00064" summary="Added add method.">
-      <created>1519761241801</created>
-      <option name="number" value="00064" />
-      <option name="presentableId" value="LOCAL-00064" />
-      <option name="project" value="LOCAL" />
-      <updated>1519761241801</updated>
+      <workItem from="1522356691099" duration="2550000" />
     </task>
     <task id="LOCAL-00065" summary="Added subtract method.">
       <created>1519763105966</created>
@@ -843,14 +791,22 @@
       <option name="project" value="LOCAL" />
       <updated>1522207809626</updated>
     </task>
-    <option name="localTasksCounter" value="113" />
+    <task id="LOCAL-00113" summary="Some improvements to the code generation features.">
+      <created>1522379353269</created>
+      <option name="number" value="00113" />
+      <option name="presentableId" value="LOCAL-00113" />
+      <option name="project" value="LOCAL" />
+      <updated>1522379353271</updated>
+    </task>
+    <option name="localTasksCounter" value="114" />
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="182892000" />
+    <option name="totallyTimeSpent" value="184777000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="0" y="0" width="1280" height="800" extended-state="6" />
+    <editor active="true" />
     <layout>
       <window_info id="Palette" active="false" anchor="right" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="3" side_tool="false" content_ui="tabs" />
       <window_info id="TODO" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="6" side_tool="false" content_ui="tabs" />
@@ -891,7 +847,6 @@
     <option name="myLimit" value="2678400000" />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="Migrating Rotf to double precision and use of the Vector class instead of Vec3f." />
     <MESSAGE value="Migrated MathUtil functionality into Scalar." />
     <MESSAGE value="Added toVector method." />
     <MESSAGE value="Added toFloat method." />
@@ -916,11 +871,12 @@
     <MESSAGE value="Working towards code generation support. Renamed Graph to Chart to avoid confusion with org.almostrealism.graph.Graph." />
     <MESSAGE value="This is version 0.5." />
     <MESSAGE value="Starting release candidate for version 0.6." />
-    <option name="LAST_COMMIT_MESSAGE" value="Starting release candidate for version 0.6." />
+    <MESSAGE value="Some improvements to the code generation features." />
+    <option name="LAST_COMMIT_MESSAGE" value="Some improvements to the code generation features." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
-      <option name="time" value="8" />
+      <option name="time" value="9" />
     </breakpoint-manager>
     <watches-manager />
   </component>
@@ -932,13 +888,6 @@
     </option>
   </component>
   <component name="editorHistoryManager">
-    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/VectorStackList.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="15">
-          <caret line="25" column="13" lean-forward="false" selection-start-line="25" selection-start-column="13" selection-end-line="25" selection-end-column="13" />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Vector4StackList.java">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="390">
@@ -1034,6 +983,7 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="5925">
           <caret line="450" column="63" lean-forward="false" selection-start-line="450" selection-start-column="63" selection-end-line="450" selection-end-column="63" />
+          <folding />
         </state>
       </provider>
     </entry>
@@ -1278,30 +1228,35 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/src/io/almostrealism/js/JavaScriptPrintWriter.java">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="225">
+        <state relative-caret-position="15">
           <caret line="41" column="0" lean-forward="false" selection-start-line="41" selection-start-column="0" selection-end-line="41" selection-end-column="0" />
           <folding>
-            <element signature="imports" expanded="true" />
+            <element signature="imports" expanded="false" />
           </folding>
         </state>
       </provider>
     </entry>
     <entry file="file://$PROJECT_DIR$/world/org/almostrealism/color/RGB.java">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="139">
-          <caret line="46" column="16" lean-forward="false" selection-start-line="46" selection-start-column="16" selection-end-line="46" selection-end-column="16" />
+        <state relative-caret-position="310">
+          <caret line="558" column="0" lean-forward="true" selection-start-line="558" selection-start-column="0" selection-end-line="560" selection-end-column="4" />
           <folding />
         </state>
       </provider>
     </entry>
     <entry file="file://$PROJECT_DIR$/world/org/almostrealism/color/RGBA.java">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="265">
-          <caret line="33" column="0" lean-forward="false" selection-start-line="33" selection-start-column="0" selection-end-line="33" selection-end-column="0" />
-          <folding>
-            <element signature="e#948#949#0" expanded="true" />
-            <element signature="e#1029#1030#0" expanded="true" />
-          </folding>
+        <state relative-caret-position="280">
+          <caret line="43" column="50" lean-forward="true" selection-start-line="43" selection-start-column="50" selection-end-line="43" selection-end-column="50" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/color/Transparent.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="70">
+          <caret line="6" column="2" lean-forward="true" selection-start-line="6" selection-start-column="2" selection-end-line="6" selection-end-column="2" />
+          <folding />
         </state>
       </provider>
     </entry>
