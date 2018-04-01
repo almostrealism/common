@@ -34,4 +34,15 @@ public interface CodePrintWriter {
 	 * @param m  Method call to print.
 	 */
 	void println(Method m);
+
+	/**
+	 * Begin a named scope. Most {@link CodePrintWriter} implementations support
+	 * null for the name.
+	 */
+	void beginScope(String name);
+
+	/**
+	 * End a scope which was introduced with {@link #beginScope(String)}.
+	 */
+	void endScope();
 }
