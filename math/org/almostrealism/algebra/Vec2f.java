@@ -22,7 +22,7 @@ package org.almostrealism.algebra;
 
 // TODO  Replace uses with Pair
 @Deprecated
-public class Vec2f {
+class Vec2f {
 	private float x;
 	private float y;
 

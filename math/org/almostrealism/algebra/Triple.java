@@ -1,10 +1,10 @@
 package org.almostrealism.algebra;
 
 public interface Triple {
-	public double getA();
-	public double getB();
-	public double getC();
-	public void setA(double a);
-	public void setB(double b);
-	public void setC(double c);
+	double getA();
+	double getB();
+	double getC();
+	void setA(double a);
+	void setB(double b);
+	void setC(double c);
 }
