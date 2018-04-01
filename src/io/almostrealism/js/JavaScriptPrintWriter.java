@@ -58,6 +58,18 @@ public class JavaScriptPrintWriter implements CodePrintWriter {
 		}
 	}
 
+	@Override
+	public void beginScope(String name) {
+		if (name == null) {
+			p.println("{");
+		} else {
+			p.println("function " + name + "() {");
+		}
+	}
+
+	@Override
+	public void endScope() { p.println("}"); }
+
 	protected static String toJson(ResourceVariable v) {
 		JsonResource json;
 		Resource r = ((ResourceVariable) v).getResource();
