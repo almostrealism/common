@@ -433,7 +433,6 @@ public class TransformMatrix implements TripleFunction<Vector> {
 		translate[2][3] = tz;
 		
 		translateTransform.setMatrix(translate);
-		
 		return translateTransform;
 	}
 	
@@ -451,7 +450,6 @@ public class TransformMatrix implements TripleFunction<Vector> {
 		scale[2][2] = sz;
 		
 		scaleTransform.setMatrix(scale);
-		
 		return scaleTransform;
 	}
 	
@@ -472,7 +470,6 @@ public class TransformMatrix implements TripleFunction<Vector> {
 		rotateX[2][2] = cos;
 		
 		rotateTransform.setMatrix(rotateX);
-		
 		return rotateTransform;
 	}
 	
@@ -493,7 +490,6 @@ public class TransformMatrix implements TripleFunction<Vector> {
 		rotateY[2][2] = cos;
 		
 		rotateTransform.setMatrix(rotateY);
-		
 		return rotateTransform;
 	}
 	
@@ -514,7 +510,40 @@ public class TransformMatrix implements TripleFunction<Vector> {
 		rotateZ[1][1] = cos;
 		
 		rotateTransform.setMatrix(rotateZ);
-		
+		return rotateTransform;
+	}
+
+	public static TransformMatrix createRotateMatrix(double angle, Vector v) {
+		v = (Vector) v.clone();
+		v.normalize();
+
+		TransformMatrix rotateTransform = new TransformMatrix();
+		double rotate[][] = rotateTransform.getMatrix();
+		double c = Math.cos(angle);
+		double ci = 1.0 - c;
+		double s = Math.sin(angle);
+
+		rotate[0][0] = v.getX() * v.getX() * ci + c;
+		rotate[0][1] = v.getX() * v.getY() * ci - v.getZ() * s;
+		rotate[0][2] = v.getX() * v.getZ() * ci + v.getY() * s;
+		rotate[0][3] = 0.0;
+
+		rotate[1][0] = v.getY() * v.getX() * ci + v.getZ() * s;
+		rotate[1][1] = v.getY() * v.getY() * ci + c;
+		rotate[1][2] = v.getY() * v.getZ() * ci - v.getX() * s;
+		rotate[1][3] = 0.0;
+
+		rotate[2][0] = v.getX() * v.getZ() * ci - v.getY() * s;
+		rotate[2][1] = v.getY() * v.getZ() * ci + v.getX() * s;
+		rotate[2][2] = v.getZ() * v.getZ() * ci + c;
+		rotate[2][3] = 0.0;
+
+		rotate[3][0] = 0.0;
+		rotate[3][1] = 0.0;
+		rotate[3][2] = 0.0;
+		rotate[3][3] = 1.0;
+
+		rotateTransform.setMatrix(rotate);
 		return rotateTransform;
 	}
 }
