@@ -26,10 +26,7 @@ public class TransformMatrix implements TripleFunction<Vector> {
   public static final int TRANSFORM_AS_LOCATION = 1;
   public static final int TRANSFORM_AS_OFFSET = 2;
   public static final int TRANSFORM_AS_NORMAL = 4;
-  
-  /**
-    The data for the identity matrix.
-  */
+  /** The data for the identity matrix. */
   
   public static final double identity[][] = {{1.0, 0.0, 0.0, 0.0},
 											{0.0, 1.0, 0.0, 0.0},
@@ -47,9 +44,8 @@ public class TransformMatrix implements TripleFunction<Vector> {
   private double df;
 
 	/**
-	  Constructs a TransformMatrix object that by default contains the data for a 4 X 4 identity matrix.
-	*/
-	
+	 * Constructs a {@link TransformMatrix} that by default contains the data for a 4 X 4 identity matrix.
+	 */
 	public TransformMatrix() {
 		this.setMatrix(TransformMatrix.identity);
 		
@@ -63,7 +59,6 @@ public class TransformMatrix implements TripleFunction<Vector> {
 	  Constructs a TransformMatrix object with the specified matrix data. Any extra array entries are removed
 	  and missing array entries are replaced with 0.0.
 	*/
-	
 	public TransformMatrix(double matrix[][]) { 
 		this.setMatrix(matrix);
 		
@@ -286,6 +281,26 @@ public class TransformMatrix implements TripleFunction<Vector> {
 		
 		return this.inverseMatrix;
 	}
+
+	public void rigidInversion() {
+		double t = matrix[0][1];
+		matrix[0][1] = matrix[1][0];
+		matrix[1][0] = t;
+
+		t = matrix[0][2];
+		matrix[0][2] = matrix[2][0];
+		matrix[2][0] = t;
+
+		t = matrix[1][2];
+		matrix[1][2] = matrix[2][1];
+		matrix[2][1] = t;
+
+		Vector negTrans = new Vector(-matrix[0][3], -matrix[1][3], -matrix[2][3]);
+		Vector trans = transformAsOffset(negTrans);
+		matrix[0][3] = trans.getX();
+		matrix[1][3] = trans.getY();
+		matrix[2][3] = trans.getZ();
+	}
 	
 	/**
 	 * Computes the determinant of the matrix represented by this TransformMatrix object and
@@ -399,8 +414,7 @@ public class TransformMatrix implements TripleFunction<Vector> {
 						for (int i = col; i < newMatrix.length; i++) {
 							newMatrix[row][i] = f1 * newMatrix[col][i] + newMatrix[row][i];
 						}
-					} catch(Exception e) {
-					}
+					} catch(Exception e) { }
 				}
 			}
 		}

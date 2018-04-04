@@ -16,15 +16,17 @@
 
 package org.almostrealism.algebra;
 
-/** Thrown to indicate a non-square matrix during an operation
-    requiring one. */
-
+/**
+ * Thrown to indicate a non-square matrix during an operation
+ * requiring one.
+ */
+@Deprecated
 public class NonSquareMatrixException extends RuntimeException {
-  public NonSquareMatrixException() {
-    super();
-  }
+	public NonSquareMatrixException() {
+		super();
+	}
 
-  public NonSquareMatrixException(String msg) {
-    super(msg);
-  }
+	public NonSquareMatrixException(String msg) {
+		super(msg);
+	}
 }

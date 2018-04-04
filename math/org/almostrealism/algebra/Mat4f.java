@@ -20,8 +20,7 @@ package org.almostrealism.algebra;
  * A (very incomplete) 4x4 matrix class. Representation assumes
  * multiplication by column vectors on the right.
  */
-
-public class Mat4f {
+class Mat4f {
 	private double[] data;
 
 	/**
