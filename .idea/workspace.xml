@@ -2,8 +2,7 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="">
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/math/org/almostrealism/algebra/TransformMatrix.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/algebra/TransformMatrix.java" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/io/almostrealism/js/JavaScriptPrintWriter.java" afterPath="$PROJECT_DIR$/src/io/almostrealism/js/JavaScriptPrintWriter.java" />
     </list>
     <ignored path="$PROJECT_DIR$/target/" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -15,17 +14,17 @@
   </component>
   <component name="FileEditorManager">
     <leaf>
-      <file leaf-file-name="JavaScriptPrintWriter.java" pinned="false" current-in-tab="false">
+      <file leaf-file-name="JavaScriptPrintWriter.java" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/src/io/almostrealism/js/JavaScriptPrintWriter.java">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="293">
-              <caret line="101" column="42" lean-forward="false" selection-start-line="101" selection-start-column="42" selection-end-line="101" selection-end-column="42" />
+            <state relative-caret-position="233">
+              <caret line="97" column="43" lean-forward="true" selection-start-line="97" selection-start-column="43" selection-end-line="97" selection-end-column="43" />
               <folding />
             </state>
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="TransformMatrix.java" pinned="false" current-in-tab="true">
+      <file leaf-file-name="TransformMatrix.java" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/TransformMatrix.java">
           <provider selected="true" editor-type-id="text-editor">
             <state relative-caret-position="139">
@@ -60,7 +59,6 @@
       <find>negate</find>
       <find>sub</find>
       <find>getRow</find>
-      <find>scale</find>
       <find>cross</find>
       <find>scaleAdd</find>
       <find>normaliz</find>
@@ -82,6 +80,7 @@
       <find>xformD</find>
       <find>evalu</find>
       <find>operate</find>
+      <find>scale</find>
     </findStrings>
     <dirStrings>
       <dir>$PROJECT_DIR$</dir>
@@ -144,8 +143,8 @@
         <option value="$PROJECT_DIR$/world/org/almostrealism/color/RGB.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/space/ShadableIntersection.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/space/GeometryStack.java" />
-        <option value="$PROJECT_DIR$/src/io/almostrealism/js/JavaScriptPrintWriter.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/TransformMatrix.java" />
+        <option value="$PROJECT_DIR$/src/io/almostrealism/js/JavaScriptPrintWriter.java" />
       </list>
     </option>
   </component>
@@ -487,7 +486,7 @@
       <workItem from="1522562911102" duration="1232000" />
       <workItem from="1522803970221" duration="1802000" />
       <workItem from="1522813261204" duration="5577000" />
-      <workItem from="1522881939215" duration="1510000" />
+      <workItem from="1522881939215" duration="2215000" />
     </task>
     <task id="LOCAL-00066" summary="Added scale method.">
       <created>1519763684609</created>
@@ -836,7 +835,7 @@
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="195511000" />
+    <option name="totallyTimeSpent" value="196216000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="0" y="0" width="1280" height="800" extended-state="6" />
@@ -1141,6 +1140,7 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="60">
           <caret line="8" column="22" lean-forward="false" selection-start-line="8" selection-start-column="22" selection-end-line="8" selection-end-column="22" />
+          <folding />
         </state>
       </provider>
     </entry>
@@ -1266,14 +1266,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/src/io/almostrealism/js/JavaScriptPrintWriter.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="293">
-          <caret line="101" column="42" lean-forward="false" selection-start-line="101" selection-start-column="42" selection-end-line="101" selection-end-column="42" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/TransformMatrix.java">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="139">
@@ -1283,6 +1275,14 @@
             <element signature="e#15692#15693#0" expanded="true" />
             <element signature="e#15753#15754#0" expanded="true" />
           </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/src/io/almostrealism/js/JavaScriptPrintWriter.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="233">
+          <caret line="97" column="43" lean-forward="true" selection-start-line="97" selection-start-column="43" selection-end-line="97" selection-end-column="43" />
+          <folding />
         </state>
       </provider>
     </entry>
