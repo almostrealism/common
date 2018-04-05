@@ -97,6 +97,8 @@ public class JavaScriptPrintWriter implements CodePrintWriter {
 			return String.valueOf(o);
 		} else if (o instanceof Number[]) {
 			return Arrays.toString((Number[]) o);
+		} else if (o instanceof boolean[]) {
+			return Arrays.toString((boolean[]) o);
 		} else if (o instanceof int[]) {
 			return Arrays.toString((int[]) o);
 		} else if (o instanceof float[]) {
