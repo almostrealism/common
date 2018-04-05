@@ -541,8 +541,9 @@ public class Vector implements Positioned, Triple, Cloneable {
 	}
 
 	/**
-	 * Returns null upon failure, or a set of Vec3fs and integers
+	 * Returns null upon failure, or a set of {@link Vector}s and integers
 	 * which represent faceted (non-averaged) normals, but per-vertex.
+	 *
 	 * Performs bounds checking on indices with respect to vertex list.
 	 * Index list must represent independent triangles; indices are
 	 * taken in groups of three. If index list doesn't represent

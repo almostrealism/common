@@ -91,6 +91,8 @@ public class JavaScriptPrintWriter implements CodePrintWriter {
 	protected static String toJson(Object o) {
 		if (o instanceof String) {
 			return "\"" + o + "\"";
+		} else if (o instanceof Boolean[]) {
+			return Arrays.toString((Boolean[]) o);
 		} else if (o instanceof String[]) {
 			return Arrays.toString((String[]) o);
 		} else if (o instanceof Boolean || o instanceof Number) {

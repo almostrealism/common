@@ -16,13 +16,12 @@
 
 package org.almostrealism.algebra;
 
-import org.almostrealism.algebra.Mat3f;
-
 /**
  * Stack-based object pool for {@link org.almostrealism.algebra.Mat3f}.
  * 
  * @author jezek2
  */
+@Deprecated
 public class MatrixStackList extends StackList<Mat3f> {
 	public Mat3f get(Mat3f mat) {
 		Mat3f obj = get();
