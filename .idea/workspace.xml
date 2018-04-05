@@ -2,8 +2,8 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="">
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/src/io/almostrealism/c/CPrintWriter.java" />
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/src/io/almostrealism/code/CodePrintWriterAdapter.java" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/io/almostrealism/c/CPrintWriter.java" afterPath="$PROJECT_DIR$/src/io/almostrealism/c/CPrintWriter.java" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/io/almostrealism/code/CodePrintWriterAdapter.java" afterPath="$PROJECT_DIR$/src/io/almostrealism/code/CodePrintWriterAdapter.java" />
     </list>
     <ignored path="$PROJECT_DIR$/target/" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -25,21 +25,21 @@
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="CodePrintWriterAdapter.java" pinned="false" current-in-tab="false">
+      <file leaf-file-name="CodePrintWriterAdapter.java" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/src/io/almostrealism/code/CodePrintWriterAdapter.java">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="413">
-              <caret line="43" column="28" lean-forward="true" selection-start-line="43" selection-start-column="28" selection-end-line="43" selection-end-column="28" />
+            <state relative-caret-position="353">
+              <caret line="50" column="8" lean-forward="false" selection-start-line="50" selection-start-column="8" selection-end-line="50" selection-end-column="8" />
               <folding />
             </state>
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="CPrintWriter.java" pinned="false" current-in-tab="true">
+      <file leaf-file-name="CPrintWriter.java" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/src/io/almostrealism/c/CPrintWriter.java">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="165">
-              <caret line="25" column="51" lean-forward="false" selection-start-line="25" selection-start-column="51" selection-end-line="25" selection-end-column="51" />
+            <state relative-caret-position="172">
+              <caret line="34" column="0" lean-forward="true" selection-start-line="34" selection-start-column="0" selection-end-line="34" selection-end-column="0" />
               <folding>
                 <element signature="imports" expanded="true" />
               </folding>
@@ -186,8 +186,8 @@
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/MatrixStackList.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Vector.java" />
         <option value="$PROJECT_DIR$/src/io/almostrealism/js/JavaScriptPrintWriter.java" />
-        <option value="$PROJECT_DIR$/src/io/almostrealism/code/CodePrintWriterAdapter.java" />
         <option value="$PROJECT_DIR$/src/io/almostrealism/c/CPrintWriter.java" />
+        <option value="$PROJECT_DIR$/src/io/almostrealism/code/CodePrintWriterAdapter.java" />
       </list>
     </option>
   </component>
@@ -530,7 +530,7 @@
       <workItem from="1522803970221" duration="1802000" />
       <workItem from="1522813261204" duration="5577000" />
       <workItem from="1522881939215" duration="2842000" />
-      <workItem from="1522958164174" duration="1391000" />
+      <workItem from="1522958164174" duration="1745000" />
     </task>
     <task id="LOCAL-00066" summary="Added scale method.">
       <created>1519763684609</created>
@@ -879,7 +879,7 @@
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="198234000" />
+    <option name="totallyTimeSpent" value="198588000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="0" y="0" width="1280" height="800" extended-state="0" />
@@ -1318,21 +1318,21 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/src/io/almostrealism/code/CodePrintWriterAdapter.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="413">
-          <caret line="43" column="28" lean-forward="true" selection-start-line="43" selection-start-column="28" selection-end-line="43" selection-end-column="28" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/src/io/almostrealism/c/CPrintWriter.java">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="165">
-          <caret line="25" column="51" lean-forward="false" selection-start-line="25" selection-start-column="51" selection-end-line="25" selection-end-column="51" />
+        <state relative-caret-position="172">
+          <caret line="34" column="0" lean-forward="true" selection-start-line="34" selection-start-column="0" selection-end-line="34" selection-end-column="0" />
           <folding>
             <element signature="imports" expanded="true" />
           </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/src/io/almostrealism/code/CodePrintWriterAdapter.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="353">
+          <caret line="50" column="8" lean-forward="false" selection-start-line="50" selection-start-column="8" selection-end-line="50" selection-end-column="8" />
+          <folding />
         </state>
       </provider>
     </entry>

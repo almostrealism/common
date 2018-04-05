@@ -19,14 +19,16 @@ package io.almostrealism.code;
 import java.io.PrintWriter;
 
 public abstract class CodePrintWriterAdapter implements CodePrintWriter {
-	private PrintWriter p;
+	protected PrintWriter p;
 
+	private String nameSuffix = "()";
 	private String scopePrefix;
-	private String scopeSuffix = "() {";
+	private String scopeSuffix = "{";
 	private String scopeClose = "}";
 
 	public CodePrintWriterAdapter(PrintWriter p) { this.p = p; }
 
+	protected void setNameSuffix(String suffix) { this.nameSuffix = suffix; }
 	protected void setScopePrefix(String prefix) { this.scopePrefix = prefix; }
 	protected void setScopeSuffix(String suffix) { this.scopeSuffix = suffix; }
 	protected void setScopeClose(String close) { this.scopeClose = close; }
@@ -34,9 +36,19 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 	@Override
 	public void beginScope(String name) {
 		StringBuffer buf = new StringBuffer();
-		if (scopePrefix != null) { buf.append(scopePrefix); buf.append(" "); }
-		buf.append(name);
+
+		if (name != null) {
+			if (scopePrefix != null) { buf.append(scopePrefix); buf.append(" "); }
+
+			buf.append(name);
+
+			if (nameSuffix != null) {
+				buf.append(nameSuffix);
+			}
+		}
+
 		if (scopeSuffix != null) { buf.append(" "); buf.append(scopeSuffix); }
+
 		p.println(buf.toString());
 	}
 

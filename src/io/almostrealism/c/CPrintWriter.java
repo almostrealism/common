@@ -18,20 +18,58 @@ package io.almostrealism.c;
 
 import io.almostrealism.code.CodePrintWriterAdapter;
 import io.almostrealism.code.Method;
+import io.almostrealism.code.ResourceVariable;
 import io.almostrealism.code.Variable;
+import org.almostrealism.algebra.Pair;
+import org.almostrealism.algebra.Vector;
 
 import java.io.PrintWriter;
+import java.util.List;
+import java.util.Map;
 
 public class CPrintWriter extends CodePrintWriterAdapter {
-	public CPrintWriter(PrintWriter p) { super(p); }
-
-	@Override
-	public void println(Variable v) {
-
+	public CPrintWriter(PrintWriter p) {
+		super(p);
+		setScopePrefix("void");
 	}
 
 	@Override
-	public void println(Method m) {
+	public void println(Variable variable) {
+		this.p.println(variable.getName() + " = " + encode(variable.getData()) + ";");
+	}
 
+	@Override
+	public void println(Method method) {
+		this.p.println(method.getName());
+	}
+
+	protected static String encode(Object data) {
+		if (data instanceof Vector) {
+			Vector v = (Vector) data;
+			return "vec3(" + v.getX() + ", " + v.getY() + ", " + v.getZ() + ")";
+		} else if (data instanceof Pair) {
+			Pair v = (Pair) data;
+			return "vec2(" + v.getX() + ", " + v.getY() + ")";
+		} else {
+			throw new IllegalArgumentException("Unable to encode " + data);
+		}
+	}
+
+	protected static String toString(Map<String, Variable> args, List<String> argumentOrder) {
+		StringBuffer buf = new StringBuffer();
+
+		i: for (int i = 0; i < argumentOrder.size(); i++) {
+			Variable v = args.get(argumentOrder.get(i));
+
+			if (v instanceof ResourceVariable) {
+				buf.append(encode(v.getData()));
+			}
+
+			if (i < (argumentOrder.size() - 1)) {
+				buf.append(", ");
+			}
+		}
+
+		return buf.toString();
 	}
 }
