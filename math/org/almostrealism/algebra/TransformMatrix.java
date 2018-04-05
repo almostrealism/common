@@ -465,7 +465,11 @@ public class TransformMatrix implements TripleFunction<Vector> {
 		translateTransform.setMatrix(translate);
 		return translateTransform;
 	}
-	
+
+	public static TransformMatrix createScaleMatrix(Vector s) {
+		return createScaleMatrix(s.getX(), s.getY(), s.getZ());
+	}
+
 	/**
 	 * Generates a TransformMatrix object that can be used to scale vectors using the specified scaling
 	 * coefficients.
