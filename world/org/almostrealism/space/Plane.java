@@ -16,15 +16,17 @@
 
 package org.almostrealism.space;
 
+import io.almostrealism.code.Scope;
+import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.*;
 import org.almostrealism.color.RGB;
+import org.almostrealism.geometry.Ray;
 import org.almostrealism.relation.Constant;
 import org.almostrealism.relation.Operator;
 
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-
 
 /** A {@link Plane} represents an plane in 3d space. */
 public class Plane extends AbstractSurface implements ParticleGroup {
@@ -40,7 +42,9 @@ public class Plane extends AbstractSurface implements ParticleGroup {
   private int type;
 
 	/**
-	 * Constructs a Plane object that represents an XY plane that is black.
+	 * Constructs a {@link Plane} that represents an XY plane that is black.
+	 *
+	 * @see Plane#XY
 	 */
 	public Plane() {
 		super();
@@ -48,7 +52,11 @@ public class Plane extends AbstractSurface implements ParticleGroup {
 	}
 	
 	/**
-	 * Constructs a Plane object that represents a Plane with the orientation specified by an integer code.
+	 * Constructs a {@link Plane} with the orientation specified by an integer code.
+	 *
+	 * @see  Plane#XY
+	 * @see  Plane#XZ
+	 * @see  Plane#YZ
 	 */
 	public Plane(int type) {
 		super();
@@ -56,7 +64,7 @@ public class Plane extends AbstractSurface implements ParticleGroup {
 	}
 	
 	/**
-	 * Constructs a Plane object that represents an XY plane with the specified color.
+	 * Constructs a {@link Plane} with the specified orientation and the specified color.
 	 */
 	public Plane(int type, RGB color) {
 		super(new Vector(0.0, 0.0, 0.0), 1.0, color);
@@ -86,7 +94,7 @@ public class Plane extends AbstractSurface implements ParticleGroup {
 	 * Returns a Vector object that represents the vector normal to this plane at the point represented by the specified Vector object.
 	 */
 	public Vector getNormalAt(Vector point) {
-		Vector normal = null;
+		Vector normal;
 		
 		if (this.type == Plane.XY)
 			normal = new Vector(0.0, 0.0, 1.0);
@@ -166,6 +174,13 @@ public class Plane extends AbstractSurface implements ParticleGroup {
 			}
 
 			@Override public void compact() { }
+
+			@Override public Scope<Variable<Scalar>> getScope(String prefix) {
+				// TODO  Not sure this is correct
+				Scope s = new Scope();
+				s.getVariables().add(new Variable(prefix + "scalar", evaluate(new Object[0])));
+				return s;
+			}
 		};
 	}
 

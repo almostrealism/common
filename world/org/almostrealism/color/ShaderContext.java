@@ -23,8 +23,6 @@ import java.util.List;
 import java.util.concurrent.Callable;
 
 import org.almostrealism.algebra.ContinuousField;
-import org.almostrealism.algebra.DiscreteField;
-import org.almostrealism.algebra.TripleFunction;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.space.LightingContext;
 

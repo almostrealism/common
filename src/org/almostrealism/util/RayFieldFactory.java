@@ -16,7 +16,7 @@
 
 package org.almostrealism.util;
 
-import org.almostrealism.algebra.Ray;
+import org.almostrealism.geometry.Ray;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.graph.RayField;
 import org.almostrealism.space.BoundingSolid;

@@ -29,11 +29,13 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
+import io.almostrealism.code.Scope;
 import org.almostrealism.algebra.*;
 import org.almostrealism.color.ColorProducer;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.ShaderContext;
 import org.almostrealism.geometry.Positioned;
+import org.almostrealism.geometry.Ray;
 import org.almostrealism.io.FileDecoder;
 import org.almostrealism.io.SpatialData;
 import org.almostrealism.relation.Operator;
@@ -129,10 +131,12 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 		public Operator<Scalar> expect() { return getSurface().expect(); }
 
 		@Override public ColorProducer shade(ShaderContext p) { return this.getSurface().shade(p); }
-		@Override
-		public Vector operate(Triple in) { return getSurface().operate(in); }
-		@Override
-		public ColorProducer call() throws Exception { return getSurface().call(); }
+
+		@Override public Vector operate(Triple in) { return getSurface().operate(in); }
+
+		@Override public Scope getScope(String prefix) { return getSurface().getScope(prefix); }
+
+		@Override public ColorProducer call() throws Exception { return getSurface().call(); }
 	}
 	
 	public static class Vertex extends Vector {
@@ -680,7 +684,7 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 	public Mesh triangulate() { return this; }
 	
 	/**
-	 * @see ShadableSurface#intersect(org.almostrealism.algebra.Ray)
+	 * @see ShadableSurface#intersect(Ray)
 	 */
 	public synchronized boolean intersect(Ray ray) {
 		if (this.isTreeLoaded()) return super.intersect(ray);
@@ -707,7 +711,7 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 	}
 
 	/**
-	 * @see ShadableSurface#intersectAt(org.almostrealism.algebra.Ray)
+	 * @see ShadableSurface#intersectAt(Ray)
 	 */
 	public synchronized ShadableIntersection intersectAt(Ray ray) {
 		if (this.isTreeLoaded()) return super.intersectAt(ray);

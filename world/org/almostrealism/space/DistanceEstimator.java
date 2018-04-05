@@ -17,7 +17,7 @@
 package org.almostrealism.space;
 
 import org.almostrealism.algebra.Intersectable;
-import org.almostrealism.algebra.Ray;
+import org.almostrealism.geometry.Ray;
 import org.almostrealism.uml.Function;
 
 /**

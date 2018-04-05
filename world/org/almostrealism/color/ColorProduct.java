@@ -6,6 +6,8 @@ import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 
+import io.almostrealism.code.Scope;
+import io.almostrealism.code.Variable;
 import org.almostrealism.uml.Function;
 
 @Function
@@ -27,6 +29,11 @@ public class ColorProduct extends ColorFutureAdapter {
 		}
 		
 		return rgb;
+	}
+
+	@Override
+	public Scope<? extends Variable> getScope(String prefix) {
+		throw new RuntimeException("getScope is not implemented");
 	}
 
 	// TODO  Combine ColorProducts that are equal by converting to ColorPow

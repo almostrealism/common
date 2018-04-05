@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.concurrent.Callable;
 
 import org.almostrealism.color.ColorProducer;
+import org.almostrealism.geometry.Ray;
 import org.almostrealism.uml.Stateless;
 
 /**

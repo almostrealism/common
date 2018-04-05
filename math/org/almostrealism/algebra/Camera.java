@@ -16,6 +16,7 @@
 
 package org.almostrealism.algebra;
 
+import org.almostrealism.geometry.Ray;
 import org.almostrealism.uml.ModelEntity;
 
 /**

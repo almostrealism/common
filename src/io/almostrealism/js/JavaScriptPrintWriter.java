@@ -21,10 +21,12 @@ import io.almostrealism.code.Method;
 import io.almostrealism.code.ResourceVariable;
 import io.almostrealism.code.Variable;
 import org.almostrealism.io.Resource;
+import org.almostrealism.io.ResourceTranscoder;
 import org.almostrealism.io.ResourceTranscoderFactory;
 
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -72,15 +74,37 @@ public class JavaScriptPrintWriter implements CodePrintWriter {
 
 	protected static String toJson(ResourceVariable v) {
 		JsonResource json;
-		Resource r = ((ResourceVariable) v).getResource();
+		Resource r = v.getResource();
 		ResourceTranscoderFactory f = new ResourceTranscoderFactory(r.getClass(), JsonResource.class);
 
 		try {
-			json = (JsonResource) f.construct().transcode(r);
+			ResourceTranscoder t = f.construct();
+			System.out.println("JavaScriptPrintWriter: Transcoder for " + v + " is " + t);
+			json = (JsonResource) t.transcode(r);
 			return new String(json.getData());
 		} catch (IOException e) {
 			e.printStackTrace();
 			return null;
+		}
+	}
+
+	protected static String toJson(Object o) {
+		if (o instanceof String) {
+			return "\"" + o + "\"";
+		} else if (o instanceof String[]) {
+			return Arrays.toString((String[]) o);
+		} else if (o instanceof Number) {
+			return String.valueOf(o);
+		} else if (o instanceof Number[]) {
+			return Arrays.toString((Number[]) o);
+		} else if (o instanceof int[]) {
+			return Arrays.toString((int[]) o);
+		} else if (o instanceof float[]) {
+			return Arrays.toString((float[]) o);
+		} else if (o instanceof double[]) {
+			return Arrays.toString((double[]) o);
+		} else {
+			throw new IllegalArgumentException("Unable to encode type " + o.getClass().getName());
 		}
 	}
 
@@ -92,6 +116,8 @@ public class JavaScriptPrintWriter implements CodePrintWriter {
 
 			if (v instanceof ResourceVariable) {
 				buf.append(toJson((ResourceVariable) v));
+			} else {
+				buf.append(toJson(v.getData()));
 			}
 
 			if (i < (argumentOrder.size() - 1)) {

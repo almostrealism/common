@@ -16,11 +16,14 @@
 
 package org.almostrealism.texture;
 
+import io.almostrealism.code.Scope;
+import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.Triple;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.color.ColorProducer;
 import org.almostrealism.color.GeneratedColorProducer;
 import org.almostrealism.color.RGB;
+import org.almostrealism.relation.TripleFunction;
 import org.almostrealism.util.Editable;
 import org.almostrealism.util.Producer;
 
@@ -29,9 +32,9 @@ import java.awt.*;
 // TODO  Add vector direction in place of axis selection.
 
 /**
- * The StripeTexture object can be used to stripe a surface.
+ * The {@link StripeTexture} can be used to stripe a surface.
  * 
- * @author Mike Murray
+ * @author  Michael Murray
  */
 // TODO  ColorProducers should be allowed to be specified in place of RGB values.
 public class StripeTexture implements Texture, Editable {
@@ -74,7 +77,12 @@ public class StripeTexture implements Texture, Editable {
 	//       this method will need to be implemented so that it delegates
 	//       to the dependent producers
 	public void compact() { }
-	
+
+	@Override
+	public Scope<? extends Variable> getScope(String prefix) {
+		throw new RuntimeException("getScope is not implemented");
+	}
+
 	/**
 	 * @return  The color of the texture represented by this {@link StripeTexture}
 	 *          object at the specified point as an RGB object.
@@ -82,51 +90,59 @@ public class StripeTexture implements Texture, Editable {
 	public RGB operate(Triple t) {
 		return this.props == null ? null : this.getColorAt(this.props).operate(t);
 	}
-	
+
 	/**
 	 * @throws IllegalArgumentException  If one of the objects specified is not of the correct type.
 	 * @return  The color of the texture represented by this StripeTexture object at the specified point as an RGB object.
 	 */
 	public ColorProducer getColorAt(Object props[]) {
-		return GeneratedColorProducer.fromFunction(this, (l) -> {
-			Vector point = new Vector(l.getA(), l.getB(), l.getC());
+		return GeneratedColorProducer.fromFunction(this, new TripleFunction<RGB>() {
+					@Override
+					public RGB operate(Triple l) {
+						Vector point = new Vector(l.getA(), l.getB(), l.getC());
 
-			for (int i = 0; i < StripeTexture.propTypes.length; i++) {
-				if (StripeTexture.propTypes[i].isInstance(props[i]) == false)
-					throw new IllegalArgumentException("Illegal argument: " + props[i].toString());
-			}
+						for (int i = 0; i < StripeTexture.propTypes.length; i++) {
+							if (StripeTexture.propTypes[i].isInstance(props[i]) == false)
+								throw new IllegalArgumentException("Illegal argument: " + props[i].toString());
+						}
 
-			double width = ((Double) props[0]).doubleValue();
-			boolean smooth = ((Boolean) props[1]).booleanValue();
-			int axis = ((Editable.Selection) props[2]).getSelected();
+						double width = ((Double) props[0]).doubleValue();
+						boolean smooth = ((Boolean) props[1]).booleanValue();
+						int axis = ((Editable.Selection) props[2]).getSelected();
 
-			double offset = ((Double) props[5]).doubleValue();
+						double offset = ((Double) props[5]).doubleValue();
 
-			double value;
+						double value;
 
-			if (axis == 0)
-				value = point.getX();
-			else if (axis == 1)
-				value = point.getY();
-			else if (axis == 2)
-				value = point.getZ();
-			else
-				return null;
+						if (axis == 0)
+							value = point.getX();
+						else if (axis == 1)
+							value = point.getY();
+						else if (axis == 2)
+							value = point.getZ();
+						else
+							return null;
 
-			RGB c1 = (RGB) props[3];
-			RGB c2 = (RGB) props[4];
+						RGB c1 = (RGB) props[3];
+						RGB c2 = (RGB) props[4];
 
-			if (smooth == true) {
-				double t = (1 + Math.sin(Math.PI * ((value / width) + offset))) / 2.0;
+						if (smooth == true) {
+							double t = (1 + Math.sin(Math.PI * ((value / width) + offset))) / 2.0;
 
-				return (c1.multiply(1.0 - t)).add(c2.multiply(t));
-			} else {
-				if (Math.sin(Math.PI * ((value / width) + offset)) > 0)
-					return c1;
-				else
-					return c2;
-			}
-		});
+							return (c1.multiply(1.0 - t)).add(c2.multiply(t));
+						} else {
+							if (Math.sin(Math.PI * ((value / width) + offset)) > 0)
+								return c1;
+							else
+								return c2;
+						}
+					}
+
+					@Override
+					public Scope<? extends Variable> getScope(String prefix) {
+						throw new RuntimeException("getScope is not implemented");
+					}
+				});
 	}
 	
 	/**

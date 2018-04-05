@@ -25,11 +25,14 @@ import java.awt.image.PixelGrabber;
 import java.net.MalformedURLException;
 import java.net.URL;
 
+import io.almostrealism.code.Scope;
+import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.Triple;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.color.ColorProducer;
 import org.almostrealism.color.GeneratedColorProducer;
 import org.almostrealism.color.RGB;
+import org.almostrealism.relation.TripleFunction;
 import org.almostrealism.util.Editable;
 import org.almostrealism.util.Producer;
 
@@ -221,7 +224,12 @@ public class ImageTexture implements Texture, Editable {
 			return null;
 		}
 	}
-	
+
+	@Override
+	public Scope getScope(String prefix) {
+		throw new RuntimeException("getScope is not implemented"); // TODO
+	}
+
 	/**
 	 * @param args {Double, Double, Double, Double}  X scale factor, Y scale factor, X offset, Y offset.
 	 * @throws IllegalArgumentException  If args does not contain the correct object types.
@@ -230,45 +238,50 @@ public class ImageTexture implements Texture, Editable {
 	 * @see org.almostrealism.texture.Texture#getColorAt(java.lang.Object[])
 	 */
 	public ColorProducer getColorAt(Object args[]) {
-		return GeneratedColorProducer.fromFunction(this, (l) ->
-				{
-					Vector point = new Vector(l.getA(), l.getB(), l.getC());
+		return GeneratedColorProducer.fromFunction(this, new TripleFunction<RGB>() {
+			@Override
+			public RGB operate(Triple l) {
+				Vector point = new Vector(l.getA(), l.getB(), l.getC());
 
-					if (args[0] instanceof Double == false) throw new IllegalArgumentException("Illegal argument: " + args[0]);
-					if (args[1] instanceof Double == false) throw new IllegalArgumentException("Illegal argument: " + args[1]);
-					if (args[2] instanceof Double == false) throw new IllegalArgumentException("Illegal argument: " + args[2]);
-					if (args[3] instanceof Double == false) throw new IllegalArgumentException("Illegal argument: " + args[3]);
+				if (args[0] instanceof Double == false) throw new IllegalArgumentException("Illegal argument: " + args[0]);
+				if (args[1] instanceof Double == false) throw new IllegalArgumentException("Illegal argument: " + args[1]);
+				if (args[2] instanceof Double == false) throw new IllegalArgumentException("Illegal argument: " + args[2]);
+				if (args[3] instanceof Double == false) throw new IllegalArgumentException("Illegal argument: " + args[3]);
 
 
-					if (this.type == ImageTexture.SPHERICAL_PROJECTION) {
-						Vector p = point.divide(point.length());
+				if (ImageTexture.this.type == ImageTexture.SPHERICAL_PROJECTION) {
+					Vector p = point.divide(point.length());
 
-						double north = Math.acos(-this.northP.dotProduct(p));
-						double equator = Math.acos(p.dotProduct(this.equatorP) / Math.sin(north)) / (2 * Math.PI);
+					double north = Math.acos(-ImageTexture.this.northP.dotProduct(p));
+					double equator = Math.acos(p.dotProduct(ImageTexture.this.equatorP) / Math.sin(north)) / (2 * Math.PI);
 
-						double u = (this.crossP.dotProduct(p) < 0) ? equator : 1 - equator;
-						double v = north / Math.PI;
+					double u = (ImageTexture.this.crossP.dotProduct(p) < 0) ? equator : 1 - equator;
+					double v = north / Math.PI;
 
-						return this.getColorAt(u, v, ((Double)args[0]).doubleValue(), ((Double)args[1]).doubleValue(),
-								((Double)args[2]).doubleValue(), ((Double)args[3]).doubleValue());
-					} else if (this.type == ImageTexture.XY_PLANAR_PROJECTION) {
-						return this.getColorAt(point.getX(), point.getY(),
-								((Double)args[0]).doubleValue(), ((Double)args[1]).doubleValue(),
-								((Double)args[2]).doubleValue(), ((Double)args[3]).doubleValue());
-					} else if (this.type == ImageTexture.XZ_PLANAR_PROJECTION) {
-						return this.getColorAt(point.getX(), point.getZ(),
-								((Double)args[0]).doubleValue(), ((Double)args[1]).doubleValue(),
-								((Double)args[2]).doubleValue(), ((Double)args[3]).doubleValue());
-					} else if (this.type == ImageTexture.YZ_PLANAR_PROJECTION) {
-						return this.getColorAt(point.getY(), point.getZ(),
-								((Double)args[0]).doubleValue(), ((Double)args[1]).doubleValue(),
-								((Double)args[2]).doubleValue(), ((Double)args[3]).doubleValue());
-					} else {
-						return null;
-					}
+					return ImageTexture.this.getColorAt(u, v, ((Double)args[0]).doubleValue(), ((Double)args[1]).doubleValue(),
+							((Double)args[2]).doubleValue(), ((Double)args[3]).doubleValue());
+				} else if (ImageTexture.this.type == ImageTexture.XY_PLANAR_PROJECTION) {
+					return ImageTexture.this.getColorAt(point.getX(), point.getY(),
+							((Double)args[0]).doubleValue(), ((Double)args[1]).doubleValue(),
+							((Double)args[2]).doubleValue(), ((Double)args[3]).doubleValue());
+				} else if (ImageTexture.this.type == ImageTexture.XZ_PLANAR_PROJECTION) {
+					return ImageTexture.this.getColorAt(point.getX(), point.getZ(),
+							((Double)args[0]).doubleValue(), ((Double)args[1]).doubleValue(),
+							((Double)args[2]).doubleValue(), ((Double)args[3]).doubleValue());
+				} else if (ImageTexture.this.type == ImageTexture.YZ_PLANAR_PROJECTION) {
+					return ImageTexture.this.getColorAt(point.getY(), point.getZ(),
+							((Double)args[0]).doubleValue(), ((Double)args[1]).doubleValue(),
+							((Double)args[2]).doubleValue(), ((Double)args[3]).doubleValue());
+				} else {
+					return null;
 				}
+			}
 
-		);
+			@Override
+			public Scope<? extends Variable> getScope(String prefix) {
+				throw new RuntimeException("getScope is not implemented");
+			}
+		});
 	}
 	
 	/**

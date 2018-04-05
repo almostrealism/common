@@ -17,7 +17,7 @@
 package org.almostrealism.graph;
 
 import org.almostrealism.algebra.DiscreteField;
-import org.almostrealism.algebra.Ray;
+import org.almostrealism.geometry.Ray;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.space.KdTree;
 

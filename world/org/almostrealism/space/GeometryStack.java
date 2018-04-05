@@ -29,7 +29,7 @@ public class GeometryStack extends BasicGeometry {
 	private Stack<BasicGeometry> stack;
 	
 	public GeometryStack() {
-		stack = new Stack<BasicGeometry>();
+		stack = new Stack<>();
 		stack.push(this);
 	}
 	

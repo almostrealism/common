@@ -1,6 +1,6 @@
 package org.almostrealism.color;
 
-import org.almostrealism.algebra.Curve;
+import org.almostrealism.geometry.Curve;
 
 public interface ShadableCurve extends Curve<ColorProducer>, Shadable {
 

@@ -23,11 +23,11 @@ import java.util.List;
 import java.util.ListIterator;
 import java.util.concurrent.Callable;
 
+import io.almostrealism.code.Scope;
 import org.almostrealism.algebra.ContinuousField;
-import org.almostrealism.algebra.DiscreteField;
 import org.almostrealism.algebra.Intersectable;
 import org.almostrealism.algebra.Intersection;
-import org.almostrealism.algebra.Ray;
+import org.almostrealism.geometry.Ray;
 import org.almostrealism.algebra.Triple;
 import org.almostrealism.algebra.Vector;
 
@@ -73,6 +73,11 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 	/** Delegates to {@link #getNormalAt(Vector)}. */
 	@Override
 	public Vector operate(Triple t) { return getNormalAt(new Vector(t.getA(), t.getB(), t.getC())); }
+
+	@Override
+	public Scope getScope(String prefix) {
+		throw new RuntimeException("getScope is not implemented"); // TODO
+	}
 	
 	@Override
 	public Callable<Ray> get(int index) {

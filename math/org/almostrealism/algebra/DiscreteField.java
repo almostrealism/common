@@ -2,6 +2,7 @@ package org.almostrealism.algebra;
 
 import java.util.concurrent.Callable;
 
+import org.almostrealism.geometry.Ray;
 import org.almostrealism.graph.NodeList;
 import org.almostrealism.space.Gradient;
 

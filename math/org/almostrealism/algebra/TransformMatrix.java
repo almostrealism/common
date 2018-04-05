@@ -16,6 +16,9 @@
 
 package org.almostrealism.algebra;
 
+import io.almostrealism.code.Scope;
+import org.almostrealism.relation.TripleFunction;
+
 /**
  * A {@link TransformMatrix} object represents a 4 X 4 matrix used for transforming vectors.
  * A {@link TransformMatrix} object stores 16 double values for the matrix data and provides
@@ -56,9 +59,9 @@ public class TransformMatrix implements TripleFunction<Vector> {
 	}
 	
 	/**
-	  Constructs a TransformMatrix object with the specified matrix data. Any extra array entries are removed
-	  and missing array entries are replaced with 0.0.
-	*/
+	 * Constructs a TransformMatrix object with the specified matrix data. Any extra array entries are removed
+	 * and missing array entries are replaced with 0.0.
+	 */
 	public TransformMatrix(double matrix[][]) { 
 		this.setMatrix(matrix);
 		
@@ -146,7 +149,12 @@ public class TransformMatrix implements TripleFunction<Vector> {
 	public Vector operate(Triple in) {
 		return transformAsOffset(new Vector(in.getA(), in.getB(), in.getC()));
 	}
-	
+
+	@Override
+	public Scope getScope(String prefix) {
+		throw new RuntimeException("getScope is not implemented"); // TODO
+	}
+
 	public void transform(Vector vector, int type) {
 		if (this.isIdentity) return;
 		

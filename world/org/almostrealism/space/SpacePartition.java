@@ -20,7 +20,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.almostrealism.algebra.Intersection;
-import org.almostrealism.algebra.Ray;
+import org.almostrealism.geometry.Ray;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.graph.Triangle;
 

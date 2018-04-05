@@ -119,28 +119,7 @@ public class Mat3f {
 		}
 	}
 
-	/**
-	 * Sets the value of this matrix to the matrix conversion of the
-	 * (single precision) quaternion argument.
-	 * @param q1 the quaternion to be converted
-	 */
-	public void set(Rotf q1) {
-		this.set(0, 0, 1.0f - 2.0f * q1.y() * q1.y() - 2.0f * q1.z() * q1.z());
-		this.set(1, 0, 2.0f * (q1.x() * q1.y() + q1.w() * q1.z()));
-		this.set(2, 0, 2.0f * (q1.x() * q1.z() - q1.w() * q1.y()));
-
-		this.set(0, 1, 2.0f * (q1.x() * q1.y() - q1.w() * q1.z()));
-		this.set(1, 1, 1.0f - 2.0f * q1.x() * q1.x() - 2.0f * q1.z() * q1.z());
-		this.set(2, 1, 2.0f * (q1.y() * q1.z() + q1.w() * q1.x()));
-
-		this.set(0, 2, 2.0f * (q1.x() * q1.z() + q1.w() * q1.y()));
-		this.set(1, 2, 2.0f * (q1.y() * q1.z() - q1.w() * q1.x()));
-		this.set(2, 2, 1.0f - 2.0f * q1.x() * q1.x() - 2.0f * q1.y() * q1.y());
-	}
-
-	/**
-	 * Sets this Mat3f to identity.
-	 */
+	/** Sets this Mat3f to identity. */
 	public void setIdentity() {
 		this.set(0, 0, 1.0f);
 		this.set(0, 1, 0.0f);
@@ -411,25 +390,6 @@ public class Mat3f {
 		dest.setX(x);
 		dest.setY(y);
 		dest.setZ(z);
-	}
-
-	public static void setRotation(Mat3f dest, Rotf q) {
-		float d = q.x() * q.x() + q.y() * q.y() + q.z() * q.z() + q.w() * q.w();
-		assert (d != 0f);
-		float s = 2f / d;
-		float xs = q.x() * s, ys = q.y() * s, zs = q.z() * s;
-		float wx = q.w() * xs, wy = q.w() * ys, wz = q.w() * zs;
-		float xx = q.x() * xs, xy = q.x() * ys, xz = q.x() * zs;
-		float yy = q.y() * ys, yz = q.y() * zs, zz = q.z() * zs;
-		dest.set(0, 0, 1f - (yy + zz));
-		dest.set(0, 1, xy - wz);
-		dest.set(0, 2, xz + wy);
-		dest.set(1, 0, xy + wz);
-		dest.set(1, 1, 1f - (xx + zz));
-		dest.set(1, 2, yz - wx);
-		dest.set(2, 0, xz - wy);
-		dest.set(2, 1, yz + wx);
-		dest.set(2, 2, 1f - (xx + yy));
 	}
 
 	private static float cofac(Mat3f mat, int r1, int c1, int r2, int c2) {

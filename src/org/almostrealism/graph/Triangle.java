@@ -16,14 +16,16 @@
 
 package org.almostrealism.graph;
 
+import io.almostrealism.code.Scope;
+import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.*;
-import org.almostrealism.color.ColorProducer;
-import org.almostrealism.color.ColorProducerAdapter;
 import org.almostrealism.color.GeneratedColorProducer;
 import org.almostrealism.color.RGB;
 import org.almostrealism.geometry.Positioned;
+import org.almostrealism.geometry.Ray;
 import org.almostrealism.relation.Constant;
 import org.almostrealism.relation.Operator;
+import org.almostrealism.relation.TripleFunction;
 import org.almostrealism.space.AbstractSurface;
 import org.almostrealism.space.BoundingSolid;
 import org.almostrealism.space.ShadableIntersection;
@@ -87,53 +89,61 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 	}
 
 	private void initColorProducer() {
-		colorProducer = GeneratedColorProducer.fromFunction(this, (Triple triple) -> {
-			RGB dc = getColorAt((Vector) triple, useT);
-			if (dc.length() < (Intersection.e * 100)) return new RGB(0.0, 0.0, 0.0);
+		colorProducer = GeneratedColorProducer.fromFunction(this, new TripleFunction<RGB>() {
+					@Override
+					public RGB operate(Triple triple) {
+						RGB dc = getColorAt((Vector) triple, useT);
+						if (dc.length() < (Intersection.e * 100)) return new RGB(0.0, 0.0, 0.0);
 
-			if (intcolor) {
-				double g = triple.getA();
-				double h = triple.getB();
-				double i = triple.getC();
+						if (intcolor) {
+							double g = triple.getA();
+							double h = triple.getB();
+							double i = triple.getC();
 
-				double m = a * (e * i - h * f) + b * (g * f - d * i) + c * (d * h - e * g);
+							double m = a * (e * i - h * f) + b * (g * f - d * i) + c * (d * h - e * g);
 
-				double u = j * (e * i - h * f) + k * (g * f - d * i) + l * (d * h - e * g);
-				u = u / m;
+							double u = j * (e * i - h * f) + k * (g * f - d * i) + l * (d * h - e * g);
+							u = u / m;
 
-				double v = i * (a * k - j * b) + h * (j * c - a * l) + g * (b * l - k * c);
-				v = v / m;
+							double v = i * (a * k - j * b) + h * (j * c - a * l) + g * (b * l - k * c);
+							v = v / m;
 
-				double w = 1.0 - u - v;
+							double w = 1.0 - u - v;
 
-				RGB color = null;
+							RGB color = null;
 
-				if (vertexData == null) {
-					color = new RGB(0.0, 0.0, 0.0);
-					color.addTo(((Mesh.Vertex) p1).getColor(w));
-					color.addTo(((Mesh.Vertex) p2).getColor(u));
-					color.addTo(((Mesh.Vertex) p3).getColor(v));
-				} else {
-					double cr = vertexData.getRed(ind1) +
-							vertexData.getRed(ind2) +
-							vertexData.getRed(ind3);
-					double cg = vertexData.getGreen(ind1) +
-							vertexData.getGreen(ind2) +
-							vertexData.getGreen(ind3);
-					double cb = vertexData.getBlue(ind1) +
-							vertexData.getBlue(ind2) +
-							vertexData.getBlue(ind3);
+							if (vertexData == null) {
+								color = new RGB(0.0, 0.0, 0.0);
+								color.addTo(((Mesh.Vertex) p1).getColor(w));
+								color.addTo(((Mesh.Vertex) p2).getColor(u));
+								color.addTo(((Mesh.Vertex) p3).getColor(v));
+							} else {
+								double cr = vertexData.getRed(ind1) +
+										vertexData.getRed(ind2) +
+										vertexData.getRed(ind3);
+								double cg = vertexData.getGreen(ind1) +
+										vertexData.getGreen(ind2) +
+										vertexData.getGreen(ind3);
+								double cb = vertexData.getBlue(ind1) +
+										vertexData.getBlue(ind2) +
+										vertexData.getBlue(ind3);
 
-					color = new RGB(cr, cg, cb);
-				}
+								color = new RGB(cr, cg, cb);
+							}
 
-				color.multiplyBy(dc);
+							color.multiplyBy(dc);
 
-				return color;
-			} else {
-				return dc;
-			}
-		});
+							return color;
+						} else {
+							return dc;
+						}
+					}
+
+					@Override
+					public Scope<? extends Variable> getScope(String prefix) {
+						throw new RuntimeException("getScope is not implemented");
+					}
+				});
 	}
 	
 	private void loadVertexData() {

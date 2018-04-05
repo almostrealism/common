@@ -17,7 +17,6 @@
 package org.almostrealism.space;
 
 import org.almostrealism.algebra.Differentiable;
-import org.almostrealism.algebra.TripleFunction;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.uml.Function;
 

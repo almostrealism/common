@@ -46,10 +46,6 @@ public class BulletStack {
 	public final VectorStackList vectors = new VectorStackList();
 	public final TransformStackList transforms = new TransformStackList();
 	public final MatrixStackList matrices = new MatrixStackList();
-	
-	// others:
-	public final Vector4StackList vectors4 = new Vector4StackList();
-	public final QuatStackList quats = new QuatStackList();
 
 	public final ArrayPool<float[]> floatArrays = new ArrayPool<>(float.class);
 	

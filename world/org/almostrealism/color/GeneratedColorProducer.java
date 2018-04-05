@@ -1,7 +1,7 @@
 package org.almostrealism.color;
 
 import org.almostrealism.algebra.Triple;
-import org.almostrealism.algebra.TripleFunction;
+import org.almostrealism.relation.TripleFunction;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.util.Generated;
 import org.almostrealism.util.Producer;

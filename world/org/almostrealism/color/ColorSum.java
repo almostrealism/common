@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 
+import io.almostrealism.code.Scope;
 import org.almostrealism.uml.Function;
 
 /**
@@ -47,6 +48,11 @@ public class ColorSum extends ColorFutureAdapter {
 		}
 		
 		return rgb;
+	}
+
+	@Override
+	public Scope getScope(String prefix) {
+		throw new RuntimeException("getScope is not implemented"); // TODO
 	}
 
 	// TODO  Combine ColorSums that are equal by converting to ColorProduct

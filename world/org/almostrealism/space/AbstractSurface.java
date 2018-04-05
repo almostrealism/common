@@ -19,6 +19,8 @@ package org.almostrealism.space;
 import java.util.*;
 import java.util.concurrent.Future;
 
+import io.almostrealism.code.Scope;
+import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.*;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.color.*;
@@ -27,7 +29,9 @@ import org.almostrealism.graph.PathElement;
 import org.almostrealism.physics.Porous;
 import org.almostrealism.relation.Constant;
 import org.almostrealism.relation.Operator;
+import org.almostrealism.relation.TripleFunction;
 import org.almostrealism.texture.Texture;
+import sun.reflect.generics.reflectiveObjects.NotImplementedException;
 
 /**
  * {@link AbstractSurface} is an abstract implementation of {@link ShadableSurface} that takes
@@ -53,7 +57,18 @@ public abstract class AbstractSurface<IN> extends TriangulatableGeometry impleme
 	private Operator<Vector> in;
 
 	protected ColorProducer colorProducer =
-				GeneratedColorProducer.fromFunction(this, (Triple t) -> getColorAt((Vector) t, true));
+				GeneratedColorProducer.fromFunction(this,
+						new TripleFunction<RGB>() {
+							@Override
+							public RGB operate(Triple in) {
+								return getColorAt((Vector) in, true);
+							}
+
+							@Override
+							public Scope<? extends Variable> getScope(String prefix) {
+								return AbstractSurface.this.getScope(prefix);
+							}
+						});
 	
 	/**
 	 * Sets all values of this AbstractSurface to the defaults specified above.
@@ -554,6 +569,12 @@ public abstract class AbstractSurface<IN> extends TriangulatableGeometry impleme
 	 * Delegates to  {#getNormalAt(Vector)}
 	 */
 	public Vector operate(Triple p) { return getNormalAt(new Vector(p.getA(), p.getB(), p.getC())); }
+
+	public Scope getScope(String prefix) {
+		Scope s = new Scope();
+		s.getVariables().add(new Variable(prefix + "vector", operate(null))); // TODO Input?
+		return s;
+	}
 
 	@Override
 	public boolean cancel(boolean mayInterruptIfRunning) { return false; }

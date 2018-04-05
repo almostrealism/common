@@ -27,6 +27,7 @@ import org.almostrealism.algebra.*;
 import org.almostrealism.color.ColorSum;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.ShaderContext;
+import org.almostrealism.geometry.Ray;
 import org.almostrealism.graph.Mesh;
 import org.almostrealism.graph.Triangle;
 import org.almostrealism.relation.Constant;

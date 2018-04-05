@@ -16,6 +16,8 @@
 
 package org.almostrealism.algebra;
 
+import org.almostrealism.geometry.Ray;
+
 /**
  * This differs from the Plane class in that it maintains an origin
  * and orthonormal U, V axes in the plane so that it can project a 3D

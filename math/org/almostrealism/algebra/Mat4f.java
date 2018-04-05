@@ -91,14 +91,6 @@ class Mat4f {
 	}
 
 	/**
-	 * Sets the rotation component of this matrix (i.e., the upper left
-	 * 3x3) without touching any of the other parts of the matrix
-	 */
-	public void setRotation(Rotf rot) {
-		rot.toMatrix(this);
-	}
-
-	/**
 	 * Sets the upper-left 3x3 of this matrix assuming that the given
 	 * x, y, and z vectors form an orthonormal basis
 	 */
@@ -114,15 +106,6 @@ class Mat4f {
 		set(0, 2, z.getX());
 		set(1, 2, z.getY());
 		set(2, 2, z.getZ());
-	}
-
-	/**
-	 * Gets the upper left 3x3 of this matrix as a rotation. Currently
-	 * does not work if there are scales. Ignores translation
-	 * component.
-	 */
-	public void getRotation(Rotf rot) {
-		rot.fromMatrix(this);
 	}
 
 	/**

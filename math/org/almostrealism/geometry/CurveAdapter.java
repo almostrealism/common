@@ -14,37 +14,11 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.algebra;
+package org.almostrealism.geometry;
 
-import org.almostrealism.algebra.Rotf;
+import org.almostrealism.algebra.Vector;
 
-/**
- * Stack-based object pool for {@link org.almostrealism.algebra.Rotf}.
- * 
- * @author jezek2
- */
-public class QuatStackList extends StackList<Rotf> {
-
-	public Rotf get(float x, float y, float z, float w) {
-		Rotf v = get();
-		v.set(x, y, z, w);
-		return v;
-	}
-
-	public Rotf get(Rotf quat) {
-		Rotf obj = get();
-		obj.set(quat);
-		return obj;
-	}
-
-	@Override
-	protected Rotf create() {
-		return new Rotf();
-	}
-
-	@Override
-	protected void copy(Rotf dest, Rotf src) {
-		dest.set(src);
-	}
-	
+public abstract class CurveAdapter implements Curve {
+	/** Delegates to {@link #getNormalAt(Vector)}. */
+	public Vector operate(Vector v ) { return getNormalAt(v); }
 }

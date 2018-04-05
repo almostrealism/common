@@ -32,6 +32,7 @@ import org.almostrealism.util.Defaults;
  * 
  * @author jezek2
  */
+@Deprecated
 public class JacobianEntry {
 	protected final BulletStack stack = BulletStack.get();
 	

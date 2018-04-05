@@ -21,6 +21,8 @@ import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 
+import io.almostrealism.code.Scope;
+import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.Triple;
 import org.almostrealism.util.Defaults;
 
@@ -435,6 +437,15 @@ public class RGB implements Externalizable, Cloneable, ColorProducer, Triple {
 		// TODO  RGB should optionally accept any triple producer.
 		//       If this is the source of data, this compact method
 		//       should delegate to it.
+	}
+
+	@Override
+	public Scope getScope(String prefix) {
+		Scope<Variable<Double>> s = new Scope<>();
+		s.getVariables().add(new Variable<>(prefix + "r", getRed()));
+		s.getVariables().add(new Variable<>(prefix + "g", getGreen()));
+		s.getVariables().add(new Variable<>(prefix + "b", getBlue()));
+		return s;
 	}
 	
 	/**

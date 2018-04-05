@@ -16,7 +16,7 @@
 
 package org.almostrealism.algebra;
 
-import org.almostrealism.algebra.TripleFunction;
+import org.almostrealism.relation.TripleFunction;
 import org.almostrealism.uml.Function;
 import org.almostrealism.util.Producer;
 

@@ -18,6 +18,7 @@ package org.almostrealism.algebra;
 
 import java.util.ArrayList;
 
+import org.almostrealism.geometry.Ray;
 import org.almostrealism.graph.PathElement;
 
 /**

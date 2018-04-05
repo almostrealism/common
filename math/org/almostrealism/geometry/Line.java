@@ -14,11 +14,11 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.space;
+package org.almostrealism.geometry;
 
 import org.almostrealism.algebra.Mat2f;
 import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.Ray;
+import org.almostrealism.geometry.Ray;
 import org.almostrealism.algebra.Vector;
 
 /** Represents a line in 3D space. */

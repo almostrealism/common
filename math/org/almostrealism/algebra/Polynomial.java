@@ -17,13 +17,14 @@
 package org.almostrealism.algebra;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
-import org.almostrealism.graph.PathElement;
+import io.almostrealism.code.Scope;
+import io.almostrealism.code.Variable;
+import org.almostrealism.geometry.Ray;
 import org.almostrealism.relation.Constant;
 import org.almostrealism.relation.Operator;
 import org.almostrealism.space.AbstractSurface;
@@ -480,4 +481,12 @@ public class Polynomial<IN> extends AbstractSurface<IN> implements Operator<Scal
 	/** Delegates to {@link #simplify()}. */
 	@Override
 	public void compact() { simplify(); }
+
+	@Override
+	public Scope<Variable<Scalar>> getScope(String prefix) {
+		// TODO  Not sure this is correct
+		Scope s = new Scope();
+		s.getVariables().add(new Variable(prefix + "scalar", evaluate(new Object[0])));
+		return s;
+	}
 }
