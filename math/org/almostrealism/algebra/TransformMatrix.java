@@ -100,6 +100,8 @@ public class TransformMatrix implements TripleFunction<Vector> {
 	 * @return  The 16 values stored by this TransformMatrix as a 4 X 4 double array.
 	 */
 	public double[][] getMatrix() { return this.matrix; }
+
+	public double getValue(int r, int c) { return this.matrix[r][c]; }
 	
 	public double[][] getInverseTransposeMatrix() {
 		if (!this.inverted) this.calculateInverse();

@@ -101,12 +101,16 @@ public class JavaScriptPrintWriter implements CodePrintWriter {
 			return Arrays.toString((Number[]) o);
 		} else if (o instanceof boolean[]) {
 			return Arrays.toString((boolean[]) o);
+		} else if (o instanceof byte[]) {
+			return Arrays.toString((byte[]) o);
 		} else if (o instanceof int[]) {
 			return Arrays.toString((int[]) o);
 		} else if (o instanceof float[]) {
 			return Arrays.toString((float[]) o);
 		} else if (o instanceof double[]) {
 			return Arrays.toString((double[]) o);
+		} else if (o != null && o.getClass().isArray()) {
+			throw new IllegalArgumentException("Unable to encode array of type " + o.getClass().getTypeName());
 		} else {
 			throw new IllegalArgumentException("Unable to encode type " + o.getClass().getName());
 		}
