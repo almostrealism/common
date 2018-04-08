@@ -18,9 +18,6 @@ package org.almostrealism.algebra;
 
 // TODO  Replace with ShadableIntersection
 
-/**
- * Wraps a 3D point and parametric time value.
- */
 @Deprecated
 public class IntersectionPoint {
 	private Vector intPt = new Vector();

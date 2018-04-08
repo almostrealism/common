@@ -16,6 +16,8 @@
 
 package io.almostrealism.code;
 
+import org.almostrealism.relation.Computation;
+
 import java.io.PrintWriter;
 
 public abstract class CodePrintWriterAdapter implements CodePrintWriter {
@@ -32,6 +34,10 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 	protected void setScopePrefix(String prefix) { this.scopePrefix = prefix; }
 	protected void setScopeSuffix(String suffix) { this.scopeSuffix = suffix; }
 	protected void setScopeClose(String close) { this.scopeClose = close; }
+
+	public void println(Computation c) {
+		c.getScope("compute").write(this);
+	}
 
 	@Override
 	public void beginScope(String name) {

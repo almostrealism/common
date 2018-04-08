@@ -156,17 +156,6 @@ public class Mat2f {
 			}
 	}
 
-	@Deprecated
-	public Matf toMatf() {
-		Matf out = new Matf(2, 2);
-		for (int i = 0; i < 2; i++) {
-			for (int j = 0; j < 2; j++) {
-				out.set(i, j, get(i, j));
-			}
-		}
-		return out;
-	}
-
 	public String toString() {
 		String endl = System.getProperty("line.separator");
 		return "(" +

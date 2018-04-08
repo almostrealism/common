@@ -32,10 +32,13 @@ public class ObjResource extends UnicodeResource {
 			ArrayList<float[]> vertices = new ArrayList<>();
 			ArrayList<ObjPolygon> faces = new ArrayList<>();
 			ArrayList<float[]> texCoords = new ArrayList<>();
-			ArrayList<int[]> triangles = new ArrayList<int[]>();
-			
+			ArrayList<int[]> triangles = new ArrayList<>();
+
+			int lineNumber = 0;
+
 			w: while (true) {
 				String line = reader.readLine();
+				lineNumber++;
 				if (line == null) break w;
 				
 				if (line.startsWith("v ")) {
@@ -58,9 +61,19 @@ public class ObjResource extends UnicodeResource {
 					ArrayList faceVerts = new ArrayList();
 					ArrayList faceTexCoords = new ArrayList();
 					
-					for (int i = 1; i < s.length; i++) {
+					i: for (int i = 1; i < s.length; i++) {
+						if (s[i].trim().length() <= 0) continue i;
+
 						String l[] = s[i].split("/");
-						int vertIndex = Integer.parseInt(l[0]) - 1;
+
+						int vertIndex;
+
+						try {
+							vertIndex = Integer.parseInt(l[0]) - 1;
+						} catch (NumberFormatException e) {
+							new IllegalArgumentException("Unable to parse line " + lineNumber + ": \"" + line + "\"", e).printStackTrace();
+							continue w;
+						}
 						
 						if (i > 3) {
 							System.out.println("Non triangular face encountered");
@@ -68,11 +81,11 @@ public class ObjResource extends UnicodeResource {
 							t[i - 1] = vertIndex;
 						}
 						
-						float vertex[] = (float[]) vertices.get(vertIndex);
+						float vertex[] = vertices.get(vertIndex);
 						faceVerts.add(vertex);
 						
 						if (l.length > 1 && l[1].length() > 0) {
-							float texCoord[] = (float[]) texCoords.get(Integer.parseInt(l[1]) - 1);
+							float texCoord[] = texCoords.get(Integer.parseInt(l[1]) - 1);
 							faceTexCoords.add(texCoord);
 						} else {
 							float texCoord[] = new float[] {0.0f, 0.0f};

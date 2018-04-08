@@ -16,10 +16,7 @@
 
 package io.almostrealism.js;
 
-import io.almostrealism.code.CodePrintWriter;
-import io.almostrealism.code.Method;
-import io.almostrealism.code.ResourceVariable;
-import io.almostrealism.code.Variable;
+import io.almostrealism.code.*;
 import org.almostrealism.io.Resource;
 import org.almostrealism.io.ResourceTranscoder;
 import org.almostrealism.io.ResourceTranscoderFactory;
@@ -35,11 +32,9 @@ import java.util.Map;
  *
  * @author  Michael Murray
  */
-public class JavaScriptPrintWriter implements CodePrintWriter {
-	private PrintWriter p;
-
+public class JavaScriptPrintWriter extends CodePrintWriterAdapter {
 	public JavaScriptPrintWriter(PrintWriter p) {
-		this.p = p;
+		super(p);
 	}
 
 	@Override
@@ -124,6 +119,8 @@ public class JavaScriptPrintWriter implements CodePrintWriter {
 
 			if (v instanceof ResourceVariable) {
 				buf.append(toJson((ResourceVariable) v));
+			} else if (v instanceof InstanceReference) {
+				buf.append(((InstanceReference) v).getData());
 			} else {
 				buf.append(toJson(v.getData()));
 			}

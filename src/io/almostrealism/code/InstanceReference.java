@@ -14,28 +14,20 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.algebra;
+package io.almostrealism.code;
 
 /**
- * Stack-based object pool for {@link org.almostrealism.algebra.Mat3f}.
- * 
- * @author jezek2
+ * {@link InstanceReference} is used to reference a previously declared
+ * {@link Variable}. {@link CodePrintWriter} implementations should
+ * encode the data as a {@link String}, but unlike a normal {@link String}
+ * {@link Variable} the text does not appear in quotes.
  */
-@Deprecated
-public class MatrixStackList extends StackList<Mat3f> {
-	public Mat3f get(Mat3f mat) {
-		Mat3f obj = get();
-		obj.set(mat);
-		return obj;
-	}
-	
-	@Override
-	protected Mat3f create() {
-		return new Mat3f();
+public class InstanceReference extends Variable<String> {
+	public InstanceReference(Variable<?> v) {
+		this(v.getName());
 	}
 
-	@Override
-	protected void copy(Mat3f dest, Mat3f src) {
-		dest.set(src);
+	public InstanceReference(String varName) {
+		super(varName, varName);
 	}
 }

@@ -269,22 +269,9 @@ public class Mat3f {
 			}
 	}
 
-	public Matf toMatf() {
-		Matf out = new Matf(3, 3);
-		for (int i = 0; i < 3; i++) {
-			for (int j = 0; j < 3; j++) {
-				out.set(i, j, get(i, j));
-			}
-		}
-		return out;
-	}
-
 	// TODO  Performance can be greatly improved here
 	public void transform(Vector v) {
-		Vecf r = toMatf().mul(v.toVecf());
-		v.setX(r.get(0));
-		v.setY(r.get(1));
-		v.setZ(r.get(2));
+		throw new RuntimeException("transform is not implemented");
 	}
 
 	public String toString() {

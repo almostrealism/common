@@ -22,8 +22,6 @@ package org.almostrealism.algebra;
  * @author jezek2
  */
 public class Transform {
-	protected BulletStack stack;
-
 	public final Mat3f basis = new Mat3f();
 	public final Vector origin = new Vector();
 
@@ -63,44 +61,6 @@ public class Transform {
 	public void inverse(Transform tr) {
 		set(tr);
 		inverse();
-	}
-	
-	public void mul(Transform tr) {
-		if (stack == null) stack = BulletStack.get();
-		
-		stack.vectors.push();
-		try {
-			Vector vec = stack.vectors.get(tr.origin);
-			transform(vec);
-
-			basis.mul(tr.basis);
-			float f[] = vec.getPosition();
-			origin.setPosition(f[0], f[1], f[2]);
-		}
-		finally {
-			stack.vectors.pop();
-		}
-	}
-
-	public void mul(Transform tr1, Transform tr2) {
-		set(tr1);
-		mul(tr2);
-	}
-	
-	public void invXform(Vector inVec, Vector out) {
-		if (stack == null) stack = BulletStack.get();
-
-		stack.matrices.push();
-
-		try {
-			out.subtract(inVec, origin);
-
-			Mat3f mat = stack.matrices.get(basis);
-			mat.transpose();
-			mat.transform(out);
-		} finally {
-			stack.matrices.pop();
-		}
 	}
 
 	public void setFromOpenGLMatrix(float[] m) {
