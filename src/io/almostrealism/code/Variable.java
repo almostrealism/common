@@ -35,6 +35,6 @@ public class Variable<T> implements Nameable {
 	public void setName(String n) { this.name = n; }
 	public String getName() { return this.name; }
 
-	protected void setData(T data) { this.data = data; }
+	public void setData(T data) { this.data = data; }
 	public T getData() { return data; }
 }
