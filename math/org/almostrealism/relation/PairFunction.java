@@ -18,6 +18,6 @@ package org.almostrealism.relation;
 
 import org.almostrealism.algebra.Pair;
 
-public interface PairFunction<T> {
+public interface PairFunction<T> extends Computation {
 	T operate(Pair in);
 }
