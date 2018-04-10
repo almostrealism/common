@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 Michael Murray
+ * Copyright 2018 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,15 +17,16 @@
 package org.almostrealism.algebra;
 
 import org.almostrealism.geometry.Ray;
+import org.almostrealism.relation.Computation;
 import org.almostrealism.uml.ModelEntity;
 
 /**
  * Implementations of the Camera interface provide a method for calculating viewing rays.
  * 
- * @author Mike Murray
+ * @author  Michael Murray
  */
 @ModelEntity
-public interface Camera {
+public interface Camera extends Computation { // TODO  Move to geometry package
 	/**
 	 * @param i  X coordinate of pixel.
 	 * @param j  Y coordinate of pixel.
@@ -33,5 +34,5 @@ public interface Camera {
 	 * @param screenHeight  Height of image.
 	 * @return  A Ray object that represents the viewing ray at (i, j)
 	 */
-	public Ray rayAt(double i, double j, int screenWidth, int screenHeight);
+	Ray rayAt(double i, double j, int screenWidth, int screenHeight);
 }
