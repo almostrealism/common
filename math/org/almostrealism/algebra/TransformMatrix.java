@@ -468,6 +468,14 @@ public class TransformMatrix implements TripleFunction<Vector> {
 		return translateTransform;
 	}
 
+	/**
+	 * Generates a TransformMatrix object that can be used to translate vectors using the specified
+	 * translation coordinates.
+	 */
+	public static TransformMatrix createTranslationMatrix(Vector t) {
+		return createTranslationMatrix(t.getX(), t.getY(), t.getZ());
+	}
+
 	public static TransformMatrix createScaleMatrix(Vector s) {
 		return createScaleMatrix(s.getX(), s.getY(), s.getZ());
 	}

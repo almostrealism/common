@@ -30,4 +30,20 @@ public class InstanceReference extends Variable<String> {
 	public InstanceReference(String varName) {
 		super(varName, varName);
 	}
+
+	/**
+	 * Side-effects value returned by {@link #getData()} to match.
+	 */
+	public void setName(String varName) {
+		super.setName(varName);
+		super.setData(varName);
+	}
+
+	/**
+	 * Side-effects value returned by {@link #getName()} to match.
+	 */
+	public void setData(String varName) {
+		super.setName(varName);
+		super.setData(varName);
+	}
 }
