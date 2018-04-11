@@ -37,13 +37,14 @@ public class Scene<T extends ShadableSurface> extends SurfaceList<T> {
 	
 	private Light lights[];
 	
-	/**
-	 * Constructs a {@link Scene} with no {@link Camera} and no {@link Light}s or {@link ShadableSurface}s.
-	 */
+	/** Constructs a {@link Scene} with no {@link Camera} and no {@link Light}s or {@link ShadableSurface}s. */
 	public Scene() {
 		this.setLights(new Light[0]);
 	}
-	
+
+	/** Constructs a {@link Scene} with the specified camera and no {@link Light}s or {@link ShadableSurface}s. */
+	public Scene(Camera c) { this.setCamera(c); }
+
 	/**
 	 * Constructs a {@link Scene} object with no camera object, no Light objects,
 	 * and the surfaces represented by the specified {@link ShadableSurface} array.
