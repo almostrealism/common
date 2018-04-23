@@ -126,6 +126,8 @@ public class ImageTexture implements Texture, Editable {
   		
   		this.update();
   	}
+
+  	public URL getURL() { return url; }
   	
   	protected void update() {
   		Image image = Toolkit.getDefaultToolkit().getImage(this.url);
