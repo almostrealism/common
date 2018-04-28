@@ -67,5 +67,6 @@ public class Scope<V extends Variable> extends ArrayList<Scope<V>> implements Pa
 		for (V v : getVariables()) { w.println(v); }
 		for (Method m : getMethods()) { w.println(m); }
 		for (Scope s : getChildren()) { s.write(w); }
+		w.flush();
 	}
 }

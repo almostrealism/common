@@ -45,6 +45,11 @@ public interface CodePrintWriter {
 	void println(Computation c);
 
 	/**
+	 * Flush the underlying output mechanism.
+	 */
+	void flush();
+
+	/**
 	 * Begin a named scope. Most {@link CodePrintWriter} implementations support
 	 * null for the name.
 	 */

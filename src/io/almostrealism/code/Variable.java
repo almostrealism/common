@@ -24,16 +24,28 @@ import org.almostrealism.util.Nameable;
  * @param <T>  Type of the underlying data.
  */
 public class Variable<T> implements Nameable {
-	private String name;
+	private String name, annotation;
+	private Class<T> type;
 	private T data;
 
 	public Variable(String name, T data) {
+		this(name, (Class<T>) data.getClass(), data);
+	}
+
+	public Variable(String name, Class<T> type, T data) {
 		setName(name);
+		setType(type);
 		this.data = data;
 	}
 
 	public void setName(String n) { this.name = n; }
 	public String getName() { return this.name; }
+
+	public void setType(Class<T> t) { this.type = t; }
+	public Class<T> getType() { return this.type; }
+
+	public void setAnnotation(String a) { this.annotation = a; }
+	public String getAnnotation() { return this.annotation; }
 
 	public void setData(T data) { this.data = data; }
 	public T getData() { return data; }

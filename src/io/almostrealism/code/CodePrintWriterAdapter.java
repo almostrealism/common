@@ -39,6 +39,8 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 		c.getScope("compute").write(this);
 	}
 
+	public void flush() { p.flush(); }
+
 	@Override
 	public void beginScope(String name) {
 		StringBuffer buf = new StringBuffer();

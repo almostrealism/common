@@ -35,12 +35,25 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 
 	@Override
 	public void println(Variable variable) {
-		this.p.println(variable.getName() + " = " + encode(variable.getData()) + ";");
+		if (variable.getData() == null) {
+			this.p.println(typeString(variable.getType()) + " " + variable.getName());
+		} else {
+			this.p.println(typeString(variable.getType()) + " " + variable.getName() +
+							" = " + encode(variable.getData()) + ";");
+		}
 	}
 
 	@Override
 	public void println(Method method) {
 		this.p.println(method.getName());
+	}
+
+	protected static String typeString(Class type) {
+		if (type == Vector.class) {
+			return "vec3";
+		} else {
+			throw new IllegalArgumentException("Unable to encode " + type);
+		}
 	}
 
 	protected static String encode(Object data) {
