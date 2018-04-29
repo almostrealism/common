@@ -2,8 +2,7 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="">
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/math/org/almostrealism/algebra/Mat2f.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/algebra/Mat2f.java" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/io/almostrealism/c/CPrintWriter.java" afterPath="$PROJECT_DIR$/src/io/almostrealism/c/CPrintWriter.java" />
     </list>
     <ignored path="$PROJECT_DIR$/target/" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -39,11 +38,21 @@
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="Vecf.java" pinned="false" current-in-tab="true">
+      <file leaf-file-name="Vecf.java" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Vecf.java">
           <provider selected="true" editor-type-id="text-editor">
             <state relative-caret-position="183">
-              <caret line="38" column="0" lean-forward="true" selection-start-line="38" selection-start-column="0" selection-end-line="38" selection-end-column="0" />
+              <caret line="38" column="0" lean-forward="false" selection-start-line="38" selection-start-column="0" selection-end-line="38" selection-end-column="0" />
+              <folding />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="CPrintWriter.java" pinned="false" current-in-tab="true">
+        <entry file="file://$PROJECT_DIR$/src/io/almostrealism/c/CPrintWriter.java">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="299">
+              <caret line="56" column="26" lean-forward="false" selection-start-line="56" selection-start-column="26" selection-end-line="56" selection-end-column="26" />
               <folding />
             </state>
           </provider>
@@ -155,7 +164,6 @@
         <option value="$PROJECT_DIR$/world/org/almostrealism/audio/AudioMeter.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/space/Scene.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/texture/ImageTexture.java" />
-        <option value="$PROJECT_DIR$/src/io/almostrealism/c/CPrintWriter.java" />
         <option value="$PROJECT_DIR$/src/io/almostrealism/code/CodePrintWriter.java" />
         <option value="$PROJECT_DIR$/src/io/almostrealism/code/CodePrintWriterAdapter.java" />
         <option value="$PROJECT_DIR$/src/io/almostrealism/code/Scope.java" />
@@ -166,6 +174,7 @@
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/VectorFutureAdapter.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Mat2f.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Vecf.java" />
+        <option value="$PROJECT_DIR$/src/io/almostrealism/c/CPrintWriter.java" />
       </list>
     </option>
   </component>
@@ -217,6 +226,10 @@
       <pane id="PackagesPane">
         <subPane>
           <expand>
+            <path>
+              <item name="common" type="58d84e3e:PackageViewProjectNode" />
+              <item name="io.almostrealism.c" type="1f31426a:PackageElementNode" />
+            </path>
             <path>
               <item name="common" type="58d84e3e:PackageViewProjectNode" />
               <item name="org.almostrealism.algebra" type="1f31426a:PackageElementNode" />
@@ -518,7 +531,7 @@
       <workItem from="1523719935095" duration="206000" />
       <workItem from="1524254512179" duration="110000" />
       <workItem from="1524511901182" duration="620000" />
-      <workItem from="1524934879474" duration="4175000" />
+      <workItem from="1524934879474" duration="5637000" />
     </task>
     <task id="LOCAL-00067" summary="Added getRow method.">
       <created>1519769430284</created>
@@ -867,7 +880,7 @@
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="217736000" />
+    <option name="totallyTimeSpent" value="219198000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="0" y="0" width="1280" height="800" extended-state="6" />
@@ -882,7 +895,7 @@
       <window_info id="Maven Projects" active="false" anchor="right" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.32956383" sideWeight="0.5" order="4" side_tool="false" content_ui="tabs" />
       <window_info id="Run" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="2" side_tool="false" content_ui="tabs" />
       <window_info id="Version Control" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.3287483" sideWeight="0.5" order="11" side_tool="false" content_ui="tabs" />
-      <window_info id="Terminal" active="true" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.3232462" sideWeight="0.49676898" order="10" side_tool="false" content_ui="tabs" />
+      <window_info id="Terminal" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.3232462" sideWeight="0.49676898" order="10" side_tool="false" content_ui="tabs" />
       <window_info id="Capture Tool" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="2" side_tool="false" content_ui="tabs" />
       <window_info id="Designer" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="3" side_tool="false" content_ui="tabs" />
       <window_info id="Project" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.28675282" sideWeight="0.5" order="0" side_tool="false" content_ui="combo" />
@@ -1171,14 +1184,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/src/io/almostrealism/c/CPrintWriter.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="-62">
-          <caret line="29" column="45" lean-forward="true" selection-start-line="29" selection-start-column="45" selection-end-line="29" selection-end-column="45" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/src/io/almostrealism/code/CodePrintWriter.java">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="233">
@@ -1208,8 +1213,8 @@
         <state relative-caret-position="280">
           <caret line="47" column="61" lean-forward="false" selection-start-line="47" selection-start-column="61" selection-end-line="47" selection-end-column="61" />
           <folding>
-            <element signature="e#975#976#0" expanded="true" />
-            <element signature="e#1026#1027#0" expanded="true" />
+            <element signature="e#975#976#0" expanded="false" />
+            <element signature="e#1026#1027#0" expanded="false" />
           </folding>
         </state>
       </provider>
@@ -1301,7 +1306,15 @@
     <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Vecf.java">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="183">
-          <caret line="38" column="0" lean-forward="true" selection-start-line="38" selection-start-column="0" selection-end-line="38" selection-end-column="0" />
+          <caret line="38" column="0" lean-forward="false" selection-start-line="38" selection-start-column="0" selection-end-line="38" selection-end-column="0" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/src/io/almostrealism/c/CPrintWriter.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="299">
+          <caret line="56" column="26" lean-forward="false" selection-start-line="56" selection-start-column="26" selection-end-line="56" selection-end-column="26" />
           <folding />
         </state>
       </provider>

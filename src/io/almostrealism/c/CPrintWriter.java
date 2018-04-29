@@ -49,8 +49,12 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 	}
 
 	protected static String typeString(Class type) {
+		if (type == null) return "";
+
 		if (type == Vector.class) {
 			return "vec3";
+		} else if (type == Pair.class) {
+			return "vec2";
 		} else {
 			throw new IllegalArgumentException("Unable to encode " + type);
 		}
