@@ -64,22 +64,6 @@ public class Mat2f {
 		data[2 * i + j] = val;
 	}
 
-	/**
-	 * Set column i (i=[0..1]) to vector v.
-	 */
-	public void setCol(int i, Vec2f v) {
-		set(0, i, v.x());
-		set(1, i, v.y());
-	}
-
-	/**
-	 * Set row i (i=[0..1]) to vector v.
-	 */
-	public void setRow(int i, Vec2f v) {
-		set(i, 0, v.x());
-		set(i, 1, v.y());
-	}
-
 	/** Transpose this matrix in place. */
 	public void transpose() {
 		float t = get(0, 1);
@@ -116,16 +100,6 @@ public class Mat2f {
 			data[i] /= det;
 		}
 		return true;
-	}
-
-	/**
-	 * Multiply a 2D vector by this matrix. NOTE: src and dest must be
-	 * different vectors.
-	 */
-	@Deprecated
-	public void xformVec(Vec2f src, Vec2f dest) {
-		dest.set(get(0, 0) * src.x() + get(0, 1) * src.y(),
-				get(1, 0) * src.x() + get(1, 1) * src.y());
 	}
 
 	/**

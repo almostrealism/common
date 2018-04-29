@@ -45,16 +45,6 @@ public class Vecf {
 		data[i] = val;
 	}
 
-	public Vec2f toVec2f() throws DimensionMismatchException {
-		if (length() != 2)
-			throw new DimensionMismatchException();
-		Vec2f out = new Vec2f();
-		for (int i = 0; i < 2; i++) {
-			out.set(i, get(i));
-		}
-		return out;
-	}
-
 	public Vector toVector() throws DimensionMismatchException {
 		if (length() != 3)
 			throw new DimensionMismatchException();
