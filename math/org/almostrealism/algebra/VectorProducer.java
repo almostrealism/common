@@ -24,7 +24,7 @@ import org.almostrealism.util.Producer;
  * {@link VectorProducer} is implemented by any class that can produce an {@link Vector} object
  * given some array of input objects.
  * 
- * @author Mike Murray
+ * @author  Michael Murray
  */
 @Function
 public interface VectorProducer extends Producer<Vector>, TripleFunction<Vector> {
