@@ -227,11 +227,19 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 	}
 	
 	public float[][] getTextureCoordinates() {
-		if (vertexData == null) return null;
+		if (vertexData == null) {
+			return new float[][] {
+					{0f, 0f},
+					{0f, 0f},
+					{0f, 0f}
+			};
+		}
 		
-		return new float[][] { { (float) vertexData.getTextureU(ind1), (float) vertexData.getTextureV(ind1) },
-								{ (float) vertexData.getTextureU(ind2), (float) vertexData.getTextureV(ind2) },
-								{ (float) vertexData.getTextureU(ind3), (float) vertexData.getTextureV(ind3) }};
+		return new float[][] {
+				{(float) vertexData.getTextureU(ind1), (float) vertexData.getTextureV(ind1)},
+				{(float) vertexData.getTextureU(ind2), (float) vertexData.getTextureV(ind2)},
+				{(float) vertexData.getTextureU(ind3), (float) vertexData.getTextureV(ind3)}
+		};
 	}
 	
 	/**
