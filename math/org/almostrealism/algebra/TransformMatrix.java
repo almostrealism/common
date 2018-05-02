@@ -333,7 +333,8 @@ public class TransformMatrix implements TripleFunction<Vector> {
 
 	/**
 	 * Computes the transpose of the matrix represented by this TransformMatrix object and
-	 * returns the result as a TransformMatrix object.
+	 * returns the result as a TransformMatrix object. If this method is called after the
+	 * last matrix modification it will return a stored transposition.
 	 */
 	public TransformMatrix transpose() {
 		if (transposeMatrix == null) {
