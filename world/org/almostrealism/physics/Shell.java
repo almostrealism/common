@@ -40,7 +40,7 @@ public class Shell {
 	
 	public Shell merge(Shell sh) {
 		if (sh.getEnergyLevel() != this.getEnergyLevel()) {
-			throw new IllegalArgumentException(s + " is not the same energy level as " + this);
+			throw new IllegalArgumentException(sh + " is not the same energy level as " + this);
 		}
 		
 		List<SubShell> l = new ArrayList<>();
