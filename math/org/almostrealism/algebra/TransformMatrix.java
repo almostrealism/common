@@ -41,6 +41,7 @@ public class TransformMatrix implements TripleFunction<Vector> {
   private double inverseT[][];
   private TransformMatrix inverseMatrix;
   private TransformMatrix inverseTranspose;
+  private TransformMatrix transposeMatrix;
   
   private boolean inverted, isIdentity;
   
@@ -329,21 +330,26 @@ public class TransformMatrix implements TripleFunction<Vector> {
 		
 		return det;
 	}
-	
+
 	/**
 	 * Computes the transpose of the matrix represented by this TransformMatrix object and
-	 * returns the result as a TransformMatrix object.
+	 * returns the result as a TransformMatrix object. If this method is called after the
+	 * last matrix modification it will return a stored transposition.
 	 */
 	public TransformMatrix transpose() {
-		double transpose[][] = new double[this.matrix.length][this.matrix[0].length];
-		
-		for (int i = 0; i < transpose.length; i++) {
-			for (int j = 0; j < transpose.length; j++) {
-				transpose[i][j] = this.matrix[j][i];
+		if (transposeMatrix == null) {
+			double transpose[][] = new double[this.matrix.length][this.matrix[0].length];
+
+			for (int i = 0; i < transpose.length; i++) {
+				for (int j = 0; j < transpose.length; j++) {
+					transpose[i][j] = this.matrix[j][i];
+				}
 			}
+
+			transposeMatrix = new TransformMatrix(transpose);
 		}
-		
-		return new TransformMatrix(transpose);
+
+		return transposeMatrix;
 	}
 	
 	/**
