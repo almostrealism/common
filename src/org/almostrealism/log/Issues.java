@@ -16,15 +16,15 @@
 
 package org.almostrealism.log;
 
-import org.apache.logging.log4j.Logger;
-
 /**
  * TODO  Add slack integration
  * 
  * @author  Michael Murray
  */
-public final class Issues {
-	public static void warn(Logger log, String message, Throwable ex) {
-		log.warn(message, ex);
+public final class Issues<T> {
+	public static void warn(Object log, String message, Throwable ex) {
+//		log.warn(message, ex);
+		System.out.println("WARN: " + message);
+		if (ex != null) ex.printStackTrace();
 	}
 }
