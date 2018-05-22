@@ -20,6 +20,9 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
+/**
+ * @author  Michael Murray
+ */
 public class Shell {
 	private SubShell s[];
 	
@@ -35,13 +38,14 @@ public class Shell {
 	
 	public int getEnergyLevel() { return energyLevel; }
 	
-	public Shell merge(Shell s) {
-		if (s.getEnergyLevel() != this.getEnergyLevel()) {
+	public Shell merge(Shell sh) {
+		if (sh.getEnergyLevel() != this.getEnergyLevel()) {
 			throw new IllegalArgumentException(s + " is not the same energy level as " + this);
 		}
 		
-		List<SubShell> l = Arrays.asList(this.s);
-		l.addAll(Arrays.asList(s.s));
+		List<SubShell> l = new ArrayList<>();
+		for (SubShell ss : s) l.add(ss);
+		for (SubShell ss : sh.s) l.add(ss);
 		return new Shell(l.toArray(new SubShell[0]));
 	}
 
