@@ -187,11 +187,13 @@ public class Shell {
 	}
 	
 	public static Shell d3(int a, int b, int c, int d, int e) {
-		return new Shell(Orbital.d3a().populate(a),
-						Orbital.d3b().populate(b),
-						Orbital.d3c().populate(c),
-						Orbital.d3d().populate(d),
-						Orbital.d3e().populate(e));
+		List<SubShell> s = new ArrayList<>();
+		if (a > 0) s.add(Orbital.d3a().populate(a));
+		if (b > 0) s.add(Orbital.d3b().populate(b));
+		if (c > 0) s.add(Orbital.d3c().populate(c));
+		if (d > 0) s.add(Orbital.d3d().populate(d));
+		if (e > 0) s.add(Orbital.d3e().populate(e));
+		return new Shell(s.toArray(new SubShell[0]));
 	}
 	
 	public static Shell d4(int a, int b, int c, int d, int e) {
