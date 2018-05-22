@@ -23,4 +23,6 @@ public class SubShell {
 
 		return null;
 	}
+
+	public String toString() { return "SubShell[" + o.getPrincipal() + "]"; }
 }

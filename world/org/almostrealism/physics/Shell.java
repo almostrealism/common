@@ -66,7 +66,9 @@ public class Shell {
 
 		return new Electrons(e.toArray(new Electron[0]));
 	}
-	
+
+	public String toString() { return "Shell[" + getEnergyLevel() + "]"; }
+
 	public static Shell first(int s) {
 		return s1(s);
 	}
