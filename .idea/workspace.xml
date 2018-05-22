@@ -3,7 +3,6 @@
   <component name="ChangeListManager">
     <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="">
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/physics/Orbital.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/physics/Orbital.java" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/physics/Shell.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/physics/Shell.java" />
     </list>
     <ignored path="$PROJECT_DIR$/target/" />
@@ -20,9 +19,9 @@
         <entry file="file://$PROJECT_DIR$/world/org/almostrealism/physics/Shell.java">
           <provider selected="true" editor-type-id="text-editor">
             <state relative-caret-position="280">
-              <caret line="94" column="47" lean-forward="false" selection-start-line="94" selection-start-column="47" selection-end-line="94" selection-end-column="47" />
+              <caret line="94" column="20" lean-forward="true" selection-start-line="94" selection-start-column="20" selection-end-line="94" selection-end-column="20" />
               <folding>
-                <element signature="e#0#11505#0" expanded="true" />
+                <element signature="e#0#11704#0" expanded="true" />
               </folding>
             </state>
           </provider>
@@ -528,7 +527,7 @@
       <workItem from="1524934879474" duration="5860000" />
       <workItem from="1527012564253" duration="1187000" />
       <workItem from="1527026263658" duration="250000" />
-      <workItem from="1527026565425" duration="1396000" />
+      <workItem from="1527026565425" duration="1644000" />
     </task>
     <task id="LOCAL-00068" summary="Introduced scaleAdd method.">
       <created>1519774057890</created>
@@ -877,7 +876,7 @@
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="222254000" />
+    <option name="totallyTimeSpent" value="222502000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="0" y="0" width="1280" height="800" extended-state="6" />
@@ -1318,9 +1317,9 @@
     <entry file="file://$PROJECT_DIR$/world/org/almostrealism/physics/Shell.java">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="280">
-          <caret line="94" column="47" lean-forward="false" selection-start-line="94" selection-start-column="47" selection-end-line="94" selection-end-column="47" />
+          <caret line="94" column="20" lean-forward="true" selection-start-line="94" selection-start-column="20" selection-end-line="94" selection-end-column="20" />
           <folding>
-            <element signature="e#0#11505#0" expanded="true" />
+            <element signature="e#0#11704#0" expanded="true" />
           </folding>
         </state>
       </provider>
