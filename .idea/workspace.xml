@@ -3,6 +3,8 @@
   <component name="ChangeListManager">
     <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="">
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/physics/Orbital.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/physics/Orbital.java" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/physics/Shell.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/physics/Shell.java" />
     </list>
     <ignored path="$PROJECT_DIR$/target/" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -17,11 +19,21 @@
       <file leaf-file-name="Shell.java" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/world/org/almostrealism/physics/Shell.java">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="177">
-              <caret line="40" column="34" lean-forward="true" selection-start-line="40" selection-start-column="34" selection-end-line="40" selection-end-column="34" />
+            <state relative-caret-position="280">
+              <caret line="94" column="47" lean-forward="false" selection-start-line="94" selection-start-column="47" selection-end-line="94" selection-end-column="47" />
               <folding>
-                <element signature="e#0#11389#0" expanded="true" />
+                <element signature="e#0#11505#0" expanded="true" />
               </folding>
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="Orbital.java" pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/world/org/almostrealism/physics/Orbital.java">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="215">
+              <caret line="95" column="53" lean-forward="false" selection-start-line="95" selection-start-column="53" selection-end-line="95" selection-end-column="53" />
+              <folding />
             </state>
           </provider>
         </entry>
@@ -92,7 +104,6 @@
   <component name="IdeDocumentHistory">
     <option name="CHANGED_PATHS">
       <list>
-        <option value="$PROJECT_DIR$/world/org/almostrealism/color/ColorSum.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/color/ColorProduct.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/texture/StripeTexture.java" />
         <option value="$PROJECT_DIR$/src/org/almostrealism/graph/Triangle.java" />
@@ -142,6 +153,7 @@
         <option value="$PROJECT_DIR$/pom.xml" />
         <option value="$PROJECT_DIR$/src/org/almostrealism/log/Issues.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/physics/SubShell.java" />
+        <option value="$PROJECT_DIR$/world/org/almostrealism/physics/Orbital.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/physics/Shell.java" />
       </list>
     </option>
@@ -516,7 +528,7 @@
       <workItem from="1524934879474" duration="5860000" />
       <workItem from="1527012564253" duration="1187000" />
       <workItem from="1527026263658" duration="250000" />
-      <workItem from="1527026565425" duration="1014000" />
+      <workItem from="1527026565425" duration="1396000" />
     </task>
     <task id="LOCAL-00068" summary="Introduced scaleAdd method.">
       <created>1519774057890</created>
@@ -865,7 +877,7 @@
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="221872000" />
+    <option name="totallyTimeSpent" value="222254000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="0" y="0" width="1280" height="800" extended-state="6" />
@@ -1237,14 +1249,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/physics/Orbital.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="131">
-          <caret line="57" column="62" lean-forward="true" selection-start-line="57" selection-start-column="62" selection-end-line="57" selection-end-column="62" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/src/org/almostrealism/log/Issues.java">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="240">
@@ -1295,6 +1299,14 @@
         </state>
       </provider>
     </entry>
+    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/physics/Orbital.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="215">
+          <caret line="95" column="53" lean-forward="false" selection-start-line="95" selection-start-column="53" selection-end-line="95" selection-end-column="53" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
     <entry file="file://$PROJECT_DIR$/world/org/almostrealism/physics/SubShell.java">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="390">
@@ -1305,10 +1317,10 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/world/org/almostrealism/physics/Shell.java">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="177">
-          <caret line="40" column="34" lean-forward="true" selection-start-line="40" selection-start-column="34" selection-end-line="40" selection-end-column="34" />
+        <state relative-caret-position="280">
+          <caret line="94" column="47" lean-forward="false" selection-start-line="94" selection-start-column="47" selection-end-line="94" selection-end-column="47" />
           <folding>
-            <element signature="e#0#11389#0" expanded="true" />
+            <element signature="e#0#11505#0" expanded="true" />
           </folding>
         </state>
       </provider>

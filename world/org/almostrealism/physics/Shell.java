@@ -89,7 +89,11 @@ public class Shell {
 	}
 	
 	public static Shell third(int s, int px, int py, int pz, int da, int db, int dc, int dd, int de) {
-		return s3(s).merge(p3(px, py, pz)).merge(d3(da, db, dc, dd, de));
+		if (da != 0 || db != 0 || dc != 0 || dd != 0 || de != 0) {
+			return s3(s).merge(p3(px, py, pz)).merge(d3(da, db, dc, dd, de));
+		} else {
+			return s3(s).merge(p3(px, py, pz));
+		}
 	}
 	
 	public static Shell fourth(int s, int p, int d, int f) {

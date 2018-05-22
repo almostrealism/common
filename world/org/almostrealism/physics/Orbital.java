@@ -93,7 +93,7 @@ public class Orbital implements Comparable<Orbital>, PhysicalConstants {
 	public static Orbital s4() { return new Orbital(4, 0, 0); }
 	public static Orbital s5() { return new Orbital(5, 0, 0); }
 	public static Orbital s6() { return new Orbital(6, 0, 0); }
-	public static Orbital s7() { return new Orbital(6, 0, 0); }
+	public static Orbital s7() { return new Orbital(7, 0, 0); }
 	
 	public static Orbital p2x() { return new Orbital(2, 1, -1); }
 	public static Orbital p2y() { return new Orbital(2, 1, 0); }
