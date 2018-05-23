@@ -90,16 +90,32 @@ public class Shell {
 	
 	public static Shell third(int s, int px, int py, int pz, int da, int db, int dc, int dd, int de) {
 		if (s == 0) {
-			if (da != 0 || db != 0 || dc != 0 || dd != 0 || de != 0) {
-				return p3(px, py, pz).merge(d3(da, db, dc, dd, de));
+			if (px != 0 || py != 0 || pz != 0) {
+				if (da != 0 || db != 0 || dc != 0 || dd != 0 || de != 0) {
+					return p3(px, py, pz).merge(d3(da, db, dc, dd, de));
+				} else {
+					return p3(px, py, pz);
+				}
 			} else {
-				return p3(px, py, pz);
+				if (da != 0 || db != 0 || dc != 0 || dd != 0 || de != 0) {
+					return d3(da, db, dc, dd, de);
+				} else {
+					return null;
+				}
 			}
 		} else {
-			if (da != 0 || db != 0 || dc != 0 || dd != 0 || de != 0) {
-				return s3(s).merge(p3(px, py, pz)).merge(d3(da, db, dc, dd, de));
+			if (px != 0 || py != 0 || pz != 0) {
+				if (da != 0 || db != 0 || dc != 0 || dd != 0 || de != 0) {
+					return s3(s).merge(p3(px, py, pz)).merge(d3(da, db, dc, dd, de));
+				} else {
+					return s3(s).merge(p3(px, py, pz));
+				}
 			} else {
-				return s3(s).merge(p3(px, py, pz));
+				if (da != 0 || db != 0 || dc != 0 || dd != 0 || de != 0) {
+					return s3(s).merge(d3(da, db, dc, dd, de));
+				} else {
+					return s3(s);
+				}
 			}
 		}
 	}
@@ -114,7 +130,12 @@ public class Shell {
 	
 	public static Shell fourth(int s, int px, int py, int pz, int da, int db, int dc, int dd, int de,
 								int fa, int fb, int fc, int fd, int fe, int ff, int fg) {
-		return s4(s).merge(p4(px, py, pz)).merge(d4(da, db, dc, dd, de)).merge(f4(fa, fb, fc, fd, fe, ff, fg));
+		List<Shell> sl = new ArrayList<>();
+		if (s > 0) sl.add(s4(s));
+		if (px != 0 || py != 0 || pz != 0) sl.add(p4(px, py, pz));
+		if (da != 0 || db != 0 || dc != 0 || dd != 0 || de != 0) sl.add(d4(da, db, dc, dd, de));
+		if (fa != 0 || fb != 0 || fc != 0 || fd != 0 || fe != 0 || ff != 0 || fg != 0) sl.add(f4(fa, fb, fc, fd, fe, ff, fg));
+		return merge(sl);
 	}
 	
 	public static Shell fifth(int s, int p, int d, int f) {
@@ -127,7 +148,12 @@ public class Shell {
 	
 	public static Shell fifth(int s, int px, int py, int pz, int da, int db, int dc, int dd, int de,
 								int fa, int fb, int fc, int fd, int fe, int ff, int fg) {
-		return s5(s).merge(p5(px, py, pz)).merge(d5(da, db, dc, dd, de)).merge(f5(fa, fb, fc, fd, fe, ff, fg));
+		List<Shell> sl = new ArrayList<>();
+		if (s > 0) sl.add(s5(s));
+		if (px != 0 || py != 0 || pz != 0) sl.add(p5(px, py, pz));
+		if (da != 0 || db != 0 || dc != 0 || dd != 0 || de != 0) sl.add(d5(da, db, dc, dd, de));
+		if (fa != 0 || fb != 0 || fc != 0 || fd != 0 || fe != 0 || ff != 0 || fg != 0) sl.add(f5(fa, fb, fc, fd, fe, ff, fg));
+		return merge(sl);
 	}
 	
 	public static Shell sixth(int s, int p, int d, int f) {
@@ -140,20 +166,30 @@ public class Shell {
 	
 	public static Shell sixth(int s, int px, int py, int pz, int da, int db, int dc, int dd, int de,
 								int fa, int fb, int fc, int fd, int fe, int ff, int fg) {
-		return s6(s).merge(p6(px, py, pz)).merge(d6(da, db, dc, dd, de)).merge(f6(fa, fb, fc, fd, fe, ff, fg));
+		List<Shell> sl = new ArrayList<>();
+		if (s > 0) sl.add(s6(s));
+		if (px != 0 || py != 0 || pz != 0) sl.add(p6(px, py, pz));
+		if (da != 0 || db != 0 || dc != 0 || dd != 0 || de != 0) sl.add(d6(da, db, dc, dd, de));
+		if (fa != 0 || fb != 0 || fc != 0 || fd != 0 || fe != 0 || ff != 0 || fg != 0) sl.add(f6(fa, fb, fc, fd, fe, ff, fg));
+		return merge(sl);
 	}
 	
 	public static Shell seventh(int s, int p, int d, int f) {
 		int pp[] = p(p);
 		int dd[] = d(d);
 		int ff[] = f(f);
-		return sixth(s, pp[0], pp[1], pp[2], dd[0], dd[1], dd[2], dd[3], dd[4],
+		return seventh(s, pp[0], pp[1], pp[2], dd[0], dd[1], dd[2], dd[3], dd[4],
 						ff[0], ff[1], ff[2], ff[3], ff[4], ff[5], ff[6]);
 	}
 	
 	public static Shell seventh(int s, int px, int py, int pz, int da, int db, int dc, int dd, int de,
 								int fa, int fb, int fc, int fd, int fe, int ff, int fg) {
-		return s7(s).merge(p7(px, py, pz)).merge(d7(da, db, dc, dd, de)).merge(f7(fa, fb, fc, fd, fe, ff, fg));
+		List<Shell> sl = new ArrayList<>();
+		if (s > 0) sl.add(s7(s));
+		if (px != 0 || py != 0 || pz != 0) sl.add(p7(px, py, pz));
+		if (da != 0 || db != 0 || dc != 0 || dd != 0 || de != 0) sl.add(d7(da, db, dc, dd, de));
+		if (fa != 0 || fb != 0 || fc != 0 || fd != 0 || fe != 0 || ff != 0 || fg != 0) sl.add(f7(fa, fb, fc, fd, fe, ff, fg));
+		return merge(sl);
 	}
 	
 	public static Shell s1(int electrons) { return new Shell(Orbital.s1().populate(electrons)); }
@@ -378,5 +414,17 @@ public class Shell {
 		}
 		
 		return new int[] { fa, fb, fc, fd, fe, ff, fg };
+	}
+
+	protected static Shell merge(List<Shell> s) {
+		if (s.size() == 0) return null;
+		if (s.size() == 1) return s.get(0);
+
+		Shell m = s.get(0);
+		for (int i = 1; i < s.size(); i++) {
+			m = m.merge(s.get(i));
+		}
+
+		return m;
 	}
 }
