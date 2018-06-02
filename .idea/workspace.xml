@@ -39,10 +39,10 @@
       <file leaf-file-name="Vector.java" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Vector.java">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="339">
-              <caret line="181" column="4" lean-forward="false" selection-start-line="181" selection-start-column="4" selection-end-line="181" selection-end-column="4" />
+            <state relative-caret-position="211">
+              <caret line="259" column="5" lean-forward="true" selection-start-line="259" selection-start-column="5" selection-end-line="259" selection-end-column="5" />
               <folding>
-                <element signature="e#0#20301#0" expanded="true" />
+                <element signature="e#0#20316#0" expanded="true" />
                 <element signature="imports" expanded="true" />
                 <element signature="e#3367#3368#0" expanded="true" />
                 <element signature="e#3413#3414#0" expanded="true" />
@@ -50,10 +50,10 @@
                 <element signature="e#3556#3557#0" expanded="true" />
                 <element signature="e#3653#3654#0" expanded="true" />
                 <element signature="e#3699#3700#0" expanded="true" />
-                <element signature="e#11792#11793#0" expanded="true" />
-                <element signature="e#11822#11823#0" expanded="true" />
-                <element signature="e#11875#11876#0" expanded="true" />
-                <element signature="e#11910#11911#0" expanded="true" />
+                <element signature="e#11807#11808#0" expanded="true" />
+                <element signature="e#11837#11838#0" expanded="true" />
+                <element signature="e#11890#11891#0" expanded="true" />
+                <element signature="e#11925#11926#0" expanded="true" />
               </folding>
             </state>
           </provider>
@@ -552,7 +552,7 @@
       <workItem from="1527026565425" duration="3098000" />
       <workItem from="1527109762763" duration="2154000" />
       <workItem from="1527939538529" duration="332000" />
-      <workItem from="1527940394000" duration="1877000" />
+      <workItem from="1527940394000" duration="2489000" />
     </task>
     <task id="LOCAL-00068" summary="Introduced scaleAdd method.">
       <created>1519774057890</created>
@@ -901,7 +901,7 @@
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="228319000" />
+    <option name="totallyTimeSpent" value="228931000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="0" y="0" width="1280" height="800" extended-state="6" />
@@ -1350,10 +1350,10 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Vector.java">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="339">
-          <caret line="181" column="4" lean-forward="false" selection-start-line="181" selection-start-column="4" selection-end-line="181" selection-end-column="4" />
+        <state relative-caret-position="211">
+          <caret line="259" column="5" lean-forward="true" selection-start-line="259" selection-start-column="5" selection-end-line="259" selection-end-column="5" />
           <folding>
-            <element signature="e#0#20301#0" expanded="true" />
+            <element signature="e#0#20316#0" expanded="true" />
             <element signature="imports" expanded="true" />
             <element signature="e#3367#3368#0" expanded="true" />
             <element signature="e#3413#3414#0" expanded="true" />
@@ -1361,10 +1361,10 @@
             <element signature="e#3556#3557#0" expanded="true" />
             <element signature="e#3653#3654#0" expanded="true" />
             <element signature="e#3699#3700#0" expanded="true" />
-            <element signature="e#11792#11793#0" expanded="true" />
-            <element signature="e#11822#11823#0" expanded="true" />
-            <element signature="e#11875#11876#0" expanded="true" />
-            <element signature="e#11910#11911#0" expanded="true" />
+            <element signature="e#11807#11808#0" expanded="true" />
+            <element signature="e#11837#11838#0" expanded="true" />
+            <element signature="e#11890#11891#0" expanded="true" />
+            <element signature="e#11925#11926#0" expanded="true" />
           </folding>
         </state>
       </provider>

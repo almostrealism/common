@@ -175,31 +175,29 @@ public class Vector implements Positioned, Triple, Cloneable {
 	@Override
 	@Deprecated
 	public void setPosition(float x, float y, float z) {
-		this.x = x;
-		this.y = y;
-		this.z = z;
+		setX(x);
+		setY(y);
+		setZ(z);
 	}
 
 	@Override
 	@Deprecated
 	public float[] getPosition() {
-		return new float[]{(float) x, (float) y, (float) z};
+		return new float[] { (float) getX(), (float) getY(), (float) getZ() };
 	}
 
-	/**
-	 * Gets the ith component, 0 <= i < 3
-	 */
+	/** Sets the ith component, 0 <= i < 3 */
 	@Deprecated
 	public Vector set(int i, double v) {
 		switch (i) {
 			case 0:
-				x = v;
+				setX(v);
 				break;
 			case 1:
-				y = v;
+				setY(v);
 				break;
 			case 2:
-				z = v;
+				setZ(v);
 				break;
 			default:
 				throw new IndexOutOfBoundsException();
@@ -208,18 +206,16 @@ public class Vector implements Positioned, Triple, Cloneable {
 		return this;
 	}
 
-	/**
-	 * Gets the ith component, 0 <= i < 3
-	 */
+	/** Gets the ith component, 0 <= i < 3 */
 	@Deprecated
 	public double get(int i) {
 		switch (i) {
 			case 0:
-				return x;
+				return getX();
 			case 1:
-				return y;
+				return getY();
 			case 2:
-				return z;
+				return getZ();
 			default:
 				throw new IndexOutOfBoundsException();
 		}
@@ -233,9 +229,7 @@ public class Vector implements Positioned, Triple, Cloneable {
 	 * @return This Vector.
 	 */
 	public Vector setTo(Vector v) {
-		this.x = v.x;
-		this.y = v.y;
-		this.z = v.z;
+		setMem(0, v, 0, 3);
 		return this;
 	}
 
@@ -243,17 +237,16 @@ public class Vector implements Positioned, Triple, Cloneable {
 	 * Returns the opposite of the vector represented by this {@link Vector}.
 	 */
 	public Vector minus() {
-		Vector newVector = new Vector(-this.getX(), -this.getY(), -this.getZ());
-		return newVector;
+		// TODO  Make fast
+		return new Vector(-this.getX(), -this.getY(), -this.getZ());
 	}
 
 	/**
 	 * Returns the sum of the vector represented by this Vector object and that of the specified Vector object.
 	 */
 	public Vector add(Vector vector) {
-		Vector sum = new Vector(this.getX() + vector.getX(), this.getY() + vector.getY(), this.getZ() + vector.getZ());
-
-		return sum;
+		// TODO  Make fast
+		return new Vector(this.getX() + vector.getX(), this.getY() + vector.getY(), this.getZ() + vector.getZ());
 	}
 
 	/**
@@ -262,9 +255,8 @@ public class Vector implements Positioned, Triple, Cloneable {
 	 * @param vector The Vector object to add.
 	 */
 	public void addTo(Vector vector) {
-		this.x = this.x + vector.x;
-		this.y = this.y + vector.y;
-		this.z = this.z + vector.z;
+		// TODO  Make fast
+		this.setMem(0, new Vector(getX() + vector.getX(),getY() + vector.getY(),getZ() + vector.getZ()),0,3);
 	}
 
 	/**
