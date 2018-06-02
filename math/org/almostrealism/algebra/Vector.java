@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 Michael Murray
+ * Copyright 2018 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,10 +17,16 @@
 package org.almostrealism.algebra;
 
 import org.almostrealism.geometry.Positioned;
+import org.almostrealism.math.Hardware;
 import org.almostrealism.util.Defaults;
+import org.jocl.CL;
+import org.jocl.Pointer;
+import org.jocl.Sizeof;
+import org.jocl.cl_mem;
 
 /**
- * A Vector object represents a 3d vector. It stores three coordinates, x, y, z.
+ * A {@link Vector} represents a 3d vector. It stores three coordinates, x, y, z
+ * in a buffer maintained by JOCL.
  */
 public class Vector implements Positioned, Triple, Cloneable {
 	public static final int CARTESIAN_COORDINATES = 0;
@@ -33,10 +39,14 @@ public class Vector implements Positioned, Triple, Cloneable {
 	public static final Vector NEG_Y_AXIS = new Vector(0, -1, 0);
 	public static final Vector NEG_Z_AXIS = new Vector(0, 0, -1);
 
-	private double x, y, z;
+	private cl_mem mem; // TODO  Make final
 
 	/** Constructs a {@link Vector} with coordinates at the origin. */
-	public Vector() { }
+	public Vector() {
+		mem = CL.clCreateBuffer(Hardware.getLocalHardware().getContext(),
+								CL.CL_MEM_READ_WRITE,3 * Sizeof.cl_double,
+								null, null);
+	}
 
 	/**
 	 * Constructs a new Vector object using the specified coordinates.
@@ -47,14 +57,14 @@ public class Vector implements Positioned, Triple, Cloneable {
 	 * @param coordSys Vector.CARTESIAN_COORDINATES or Vector.SPHERICAL_COORDINATES.
 	 */
 	public Vector(double x, double y, double z, int coordSys) {
+		this();
+
 		if (coordSys == Vector.CARTESIAN_COORDINATES) {
-			this.x = x;
-			this.y = y;
-			this.z = z;
+			setMem(new double[] { x, y, z });
 		} else if (coordSys == Vector.SPHERICAL_COORDINATES) {
-			this.x = x * Math.sin(y) * Math.cos(z);
-			this.y = x * Math.sin(y) * Math.sin(z);
-			this.z = x * Math.cos(y);
+			setMem(new double[] { x * Math.sin(y) * Math.cos(z),
+								x * Math.sin(y) * Math.sin(z),
+								x * Math.cos(y) });
 		} else {
 			throw new IllegalArgumentException("Illegal coordinate system type code: " + coordSys);
 		}
@@ -477,9 +487,32 @@ public class Vector implements Positioned, Triple, Cloneable {
 			return false;
 	}
 
+	private void setMem(double[] source) {
+		setMem(0, source, 0, 3);
+	}
+
+	private void setMem(double[] source, int offset) {
+		setMem(0, source, offset, 3);
+	}
+
+	private void setMem(int offset, double[] source, int srcOffset, int length) {
+		Pointer src = Pointer.to(source).withByteOffset(srcOffset*Sizeof.cl_double);
+		CL.clEnqueueWriteBuffer(Hardware.getLocalHardware().getQueue(), mem, CL.CL_TRUE,
+								offset * Sizeof.cl_double, length * Sizeof.cl_double,
+								src, 0, null, null);
+	}
+
+	private void setMem(int offset, Vector src, int srcOffset,int length) {
+		CL.clEnqueueCopyBuffer(Hardware.getLocalHardware().getQueue(), src.mem, this.mem,
+							srcOffset * Sizeof.cl_double,
+							offset * Sizeof.cl_double,length * Sizeof.cl_double,
+							0,null,null);
+	}
+
 	/**
 	 * @see java.lang.Object#clone()
 	 */
+	@Override
 	public Object clone() {
 		try {
 			Vector v = (Vector) super.clone();
@@ -492,9 +525,8 @@ public class Vector implements Positioned, Triple, Cloneable {
 		}
 	}
 
-	/**
-	 * @return A String representation of this Vector object.
-	 */
+	/** @return A String representation of this Vector object. */
+	@Override
 	public String toString() {
 		StringBuffer value = new StringBuffer();
 
