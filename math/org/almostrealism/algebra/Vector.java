@@ -299,21 +299,11 @@ public class Vector implements Positioned, Triple, Cloneable {
 	}
 
 	/**
-	 * this = s * t
-	 */
-	public void scale(double s, Vector t) {
-		this.x = s * t.x;
-		this.y = s * t.y;
-		this.z = s * t.z;
-	}
-
-	/**
 	 * Returns the quotient of the division of the vector represented by this Vector object by the specified value.
 	 */
 	public Vector divide(double value) {
-		Vector quotient = new Vector(this.getX() / value, this.getY() / value, this.getZ() / value);
-
-		return quotient;
+		// TODO  Make fast
+		return new Vector(this.getX() / value, this.getY() / value, this.getZ() / value);
 	}
 
 	/**
@@ -322,9 +312,8 @@ public class Vector implements Positioned, Triple, Cloneable {
 	 * @param value The value to divide by.
 	 */
 	public void divideBy(double value) {
-		this.x = this.x / value;
-		this.y = this.y / value;
-		this.z = this.z / value;
+		// TODO  Make fast
+		setTo(new Vector(getX() / value, getY() / value, getZ() / value));
 	}
 
 	/**

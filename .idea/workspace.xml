@@ -2,7 +2,6 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="">
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/math/org/almostrealism/algebra/Vector.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/algebra/Vector.java" />
     </list>
     <ignored path="$PROJECT_DIR$/target/" />
@@ -40,10 +39,10 @@
       <file leaf-file-name="Vector.java" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Vector.java">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="215">
-              <caret line="297" column="63" lean-forward="false" selection-start-line="297" selection-start-column="63" selection-end-line="297" selection-end-column="63" />
+            <state relative-caret-position="284">
+              <caret line="315" column="74" lean-forward="false" selection-start-line="315" selection-start-column="74" selection-end-line="315" selection-end-column="74" />
               <folding>
-                <element signature="e#0#19464#0" expanded="true" />
+                <element signature="e#0#19331#0" expanded="true" />
                 <element signature="imports" expanded="true" />
               </folding>
             </state>
@@ -544,7 +543,7 @@
       <workItem from="1527109762763" duration="2154000" />
       <workItem from="1527939538529" duration="332000" />
       <workItem from="1527940394000" duration="2810000" />
-      <workItem from="1527943360579" duration="735000" />
+      <workItem from="1527943360579" duration="1383000" />
     </task>
     <task id="LOCAL-00068" summary="Introduced scaleAdd method.">
       <created>1519774057890</created>
@@ -893,7 +892,7 @@
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="229987000" />
+    <option name="totallyTimeSpent" value="230635000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="0" y="0" width="1280" height="800" extended-state="6" />
@@ -1336,10 +1335,10 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Vector.java">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="215">
-          <caret line="297" column="63" lean-forward="false" selection-start-line="297" selection-start-column="63" selection-end-line="297" selection-end-column="63" />
+        <state relative-caret-position="284">
+          <caret line="315" column="74" lean-forward="false" selection-start-line="315" selection-start-column="74" selection-end-line="315" selection-end-column="74" />
           <folding>
-            <element signature="e#0#19464#0" expanded="true" />
+            <element signature="e#0#19331#0" expanded="true" />
             <element signature="imports" expanded="true" />
           </folding>
         </state>
