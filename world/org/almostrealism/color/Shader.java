@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 Michael Murray
+ * Copyright 2018 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,15 +17,16 @@
 package org.almostrealism.color;
 
 import org.almostrealism.algebra.DiscreteField;
+import org.almostrealism.space.LightingContext;
 
 /**
  * The Shader interface is implemented by classes that provide a method for shading a surface.
  */
-public interface Shader {
+public interface Shader<C extends LightingContext> {
 	/**
 	 * Returns a {@link ColorProducer} object that represents the
 	 * shaded color calculated using the values of the specified
 	 * {@link ShaderContext} object.
 	 */
-	public ColorProducer shade(ShaderContext parameters, DiscreteField normals);
+	ColorProducer shade(C parameters, DiscreteField normals);
 }

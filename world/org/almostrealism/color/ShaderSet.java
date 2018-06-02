@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 Michael Murray
+ * Copyright 2018 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,18 +20,20 @@ import java.util.HashSet;
 import java.util.Iterator;
 
 import org.almostrealism.algebra.DiscreteField;
+import org.almostrealism.space.LightingContext;
 
 /**
  * @author  Michael Murray
  */
-public class ShaderSet extends HashSet<Shader> implements Shader {
+public class ShaderSet<C extends LightingContext> extends HashSet<Shader<C>> implements Shader<C> {
     /**
-     * @return  The sum of the values given by the shade method for each Shader object stored by this ShaderSet object.
+     * @return  The sum of the values given by the shade method for each {@link Shader}
+	 *          instance stored by this {@link ShaderSet}.
      */
-    public ColorProducer shade(ShaderContext p, DiscreteField normals) {
+    public ColorProducer shade(C p, DiscreteField normals) {
         ColorSum color = new ColorSum();
         
-        Iterator<Shader> itr = super.iterator();
+        Iterator<Shader<C>> itr = super.iterator();
         while (itr.hasNext()) color.add(itr.next().shade(p, normals));
         
         return color;
@@ -41,5 +43,5 @@ public class ShaderSet extends HashSet<Shader> implements Shader {
 	public boolean equals(Object o) { return false; }
 	
 	/** @return  "ShaderSet". */
-	public String toString() { return "ShaderSet"; }
+	public String toString() { return "ShaderSet[" + size() + "]"; }
 }
