@@ -92,29 +92,27 @@ public class Vector implements Positioned, Triple, Cloneable {
 		return new Vector(1.0, 2 * Math.PI * Math.random(), 2 * Math.PI * Math.random());
 	}
 
+	@Deprecated
 	public double[] getData() {
-		return new double[]{this.x, this.y, this.z};
+		return new double[] { getX(), getY(), getZ() };
 	}
 
-	/**
-	 * Sets the X coordinate of this Vector object.
-	 */
+	/** Sets the X coordinate of this Vector object. */
+	@Deprecated
 	public void setX(double x) {
-		this.x = x;
+		this.setMem(0, new Vector(x, 0, 0),0,1);
 	}
 
-	/**
-	 * Sets the Y coordinate of this Vector object.
-	 */
+	/** Sets the Y coordinate of this Vector object. */
+	@Deprecated
 	public void setY(double y) {
-		this.y = y;
+		this.setMem(1, new Vector(0, y, 0),1,1);
 	}
 
-	/**
-	 * Sets the Z coordinate of this Vector object.
-	 */
+	/** Sets the Z coordinate of this Vector object. */
+	@Deprecated
 	public void setZ(double z) {
-		this.z = z;
+		this.setMem(2, new Vector(0, 0, z),2,1);
 	}
 
 	/**
@@ -139,36 +137,43 @@ public class Vector implements Positioned, Triple, Cloneable {
 	}
 
 	@Override
+	@Deprecated
 	public double getA() {
 		return getX();
 	}
 
 	@Override
+	@Deprecated
 	public double getB() {
 		return getY();
 	}
 
 	@Override
+	@Deprecated
 	public double getC() {
 		return getZ();
 	}
 
 	@Override
+	@Deprecated
 	public void setA(double a) {
 		setX(a);
 	}
 
 	@Override
+	@Deprecated
 	public void setB(double b) {
 		setY(b);
 	}
 
 	@Override
+	@Deprecated
 	public void setC(double c) {
 		setZ(c);
 	}
 
 	@Override
+	@Deprecated
 	public void setPosition(float x, float y, float z) {
 		this.x = x;
 		this.y = y;
@@ -176,6 +181,7 @@ public class Vector implements Positioned, Triple, Cloneable {
 	}
 
 	@Override
+	@Deprecated
 	public float[] getPosition() {
 		return new float[]{(float) x, (float) y, (float) z};
 	}
@@ -502,7 +508,7 @@ public class Vector implements Positioned, Triple, Cloneable {
 								src, 0, null, null);
 	}
 
-	private void setMem(int offset, Vector src, int srcOffset,int length) {
+	private void setMem(int offset, Vector src, int srcOffset, int length) {
 		CL.clEnqueueCopyBuffer(Hardware.getLocalHardware().getQueue(), src.mem, this.mem,
 							srcOffset * Sizeof.cl_double,
 							offset * Sizeof.cl_double,length * Sizeof.cl_double,
