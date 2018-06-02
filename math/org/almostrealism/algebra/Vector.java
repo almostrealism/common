@@ -260,42 +260,12 @@ public class Vector implements Positioned, Triple, Cloneable {
 	}
 
 	/**
-	 * this = a + s * b
-	 */
-	@Deprecated
-	public Vector addScaled(Vector a, double s, Vector b) {
-		x = a.x + s * b.x;
-		y = a.y + s * b.y;
-		z = a.z + s * b.z;
-		return this;
-	}
-
-	/**
-	 * this = a + s * b
-	 */
-	@Deprecated
-	public Vector scaleAdd(double s, Vector a, Vector b) {
-		return addScaled(a, s, b);
-	}
-
-	/**
-	 * this = a + b
-	 */
-	@Deprecated
-	public void add(Vector a, Vector b) {
-		x = a.getX() + b.getX();
-		y = a.getY() + b.getY();
-		z = a.getZ() + b.getZ();
-	}
-
-	/**
 	 * Returns the difference of the vector represented by this Vector object and that of the specified Vector object.
 	 * The specified vector is subtracted from this one.
 	 */
 	public Vector subtract(Vector vector) {
-		Vector difference = new Vector(this.getX() - vector.getX(), this.getY() - vector.getY(), this.getZ() - vector.getZ());
-
-		return difference;
+		// TODO  Make fast
+		return new Vector(this.getX() - vector.getX(), this.getY() - vector.getY(), this.getZ() - vector.getZ());
 	}
 
 	/**
@@ -304,39 +274,18 @@ public class Vector implements Positioned, Triple, Cloneable {
 	 * @param vector The Vector object to be subtracted.
 	 */
 	public void subtractFrom(Vector vector) {
-		this.x = this.x - vector.x;
-		this.y = this.y - vector.y;
-		this.z = this.z - vector.z;
-	}
-
-	/**
-	 * this = a - b
-	 */
-	public void subtract(Vector a, Vector b) {
-		this.x = a.getX() - b.getX();
-		this.y = a.getY() - b.getY();
-		this.z = a.getZ() - b.getZ();
-	}
-
-	/**
-	 * Sets the value of this {@link Vector} to the negation of {@link Vector} v.
-	 *
-	 * @param v The source Vector
-	 */
-	@Deprecated
-	public void negate(Vector v) {
-		this.x = -v.x;
-		this.y = -v.y;
-		this.z = -v.z;
+		// TODO  Make fast
+		setTo(new Vector(getX() - vector.getX(),
+						getY() - vector.getY(),
+						getZ() - vector.getZ()));
 	}
 
 	/**
 	 * Returns the product of the vector represented by this Vector object and the specified value.
 	 */
 	public Vector multiply(double value) {
-		Vector product = new Vector(this.x * value, this.y * value, this.z * value);
-
-		return product;
+		// TODO  Make fast
+		return new Vector(getX() * value, getY() * value, getZ() * value);
 	}
 
 	/**
@@ -345,9 +294,8 @@ public class Vector implements Positioned, Triple, Cloneable {
 	 * @param value The factor to multiply by.
 	 */
 	public void multiplyBy(double value) {
-		this.x = this.x * value;
-		this.y = this.y * value;
-		this.z = this.z * value;
+		// TODO  Make fast
+		setTo(new Vector(getX() * value, getY() * value, getZ() * value));
 	}
 
 	/**
