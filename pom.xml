@@ -12,6 +12,12 @@
 	<packaging>jar</packaging>
 
     <build>
+		<resources>
+			<resource>
+				<directory>resources</directory> <includes><include>local.cl</include></includes>
+			</resource>
+		</resources>
+
 		<plugins>
 			<plugin>
 				<artifactId>maven-compiler-plugin</artifactId>
