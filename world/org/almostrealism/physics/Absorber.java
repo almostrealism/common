@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 Michael Murray
+ * Copyright 2018 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package org.almostrealism.physics;
 
+import org.almostrealism.algebra.Vector;
 import org.almostrealism.time.Clock;
 
 /**
@@ -46,7 +47,7 @@ public interface Absorber {
 	 * @param energy  The energy of the photon to be absorbed.
 	 * @return  True if the photon was absorbed by this absorber, false otherwise.
 	 */
-	public boolean absorb(double x[], double p[], double energy);
+	boolean absorb(Vector x, Vector p, double energy);
 	
 	/**
 	 * Method called when this absorber is to emit a photon.
@@ -54,33 +55,33 @@ public interface Absorber {
 	 * @return  {x, y, z} - The direction of prpagation of the emmited photon.
 	 *          This should be a unit vector, because all photons travel at the speed of light.
 	 */
-	public double[] emit();
+	double[] emit();
 	
 	/**
 	 * @return  The quantity of energy that would be emmited by this absorber if the emit
 	 *          method were invoked right now. (Usually measured in electron volts).
 	 */
-	public double getEmitEnergy();
+	double getEmitEnergy();
 	
 	/**
 	 * @return  The time until this absorber will next emit a photon. (Usually measured in
 	 *          microseconds).
 	 */
-	public double getNextEmit();
+	double getNextEmit();
 	
 	/**
 	 * @return  {x, y, z} - The position of the photon that will next be emitted by this
 	 *          Absorber.
 	 */
-	public double[] getEmitPosition();
+	double[] getEmitPosition();
 	
 	/**
 	 * @param c  The Clock instance for this absorber to use to keep time.
 	 */
-	public void setClock(Clock c);
+	void setClock(Clock c);
 	
 	/**
 	 * @return  The Clock instance used by this absorber to keep time.
 	 */
-	public Clock getClock();
+	Clock getClock();
 }
