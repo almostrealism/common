@@ -16,5 +16,8 @@
 
 package org.almostrealism.math;
 
-public @interface MemWrapper {
+import org.jocl.cl_mem;
+
+public interface MemWrapper {
+	cl_mem getMem();
 }

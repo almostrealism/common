@@ -21,13 +21,13 @@ import io.almostrealism.code.Variable;
 import org.almostrealism.relation.Operator;
 
 import org.almostrealism.util.Factory;
-import org.jocl.CL;
-import org.jocl.cl_kernel;
-import org.jocl.cl_program;
+import org.jocl.*;
 
 public class GPUOperator<T extends MemWrapper> implements Operator<T>, Factory<cl_kernel> {
 	private cl_program prog;
 	private String name;
+
+	private cl_kernel kernel;
 
 	public GPUOperator(cl_program program, String name) {
 		this.prog = program;
@@ -44,12 +44,20 @@ public class GPUOperator<T extends MemWrapper> implements Operator<T>, Factory<c
 	}
 
 	@Override
-	public T evaluate(Object[] args) {
-		return null;
+	public synchronized T evaluate(Object[] args) {
+		if (kernel == null) kernel = construct();
+		CL.clSetKernelArg(kernel, 0, Sizeof.cl_mem, Pointer.to(((MemWrapper) args[0]).getMem()));
+		CL.clSetKernelArg(kernel, 1, Sizeof.cl_mem, Pointer.to(((MemWrapper) args[1]).getMem()));
+		CL.clSetKernelArg(kernel, 2, Sizeof.cl_int, Pointer.to(new int[] { 0 }));
+		CL.clSetKernelArg(kernel, 3, Sizeof.cl_int, Pointer.to(new int[] { 0 }));
+
+		long gws[] = new long[] { 3 };
+
+		CL.clEnqueueNDRangeKernel(Hardware.getLocalHardware().getQueue(), kernel, 1, null,
+									gws, null, 0, null, null);
+		return (T) args[0];
 	}
 
 	@Override
-	public void compact() {
-
-	}
+	public void compact() { }
 }

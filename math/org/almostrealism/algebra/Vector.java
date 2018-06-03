@@ -17,6 +17,7 @@
 package org.almostrealism.algebra;
 
 import org.almostrealism.geometry.Positioned;
+import org.almostrealism.math.GPUOperator;
 import org.almostrealism.math.Hardware;
 import org.almostrealism.math.MemWrapper;
 import org.almostrealism.util.Defaults;
@@ -29,8 +30,7 @@ import org.jocl.cl_mem;
  * A {@link Vector} represents a 3d vector. It stores three coordinates, x, y, z
  * in a buffer maintained by JOCL.
  */
-@MemWrapper
-public class Vector implements Positioned, Triple, Cloneable {
+public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 	public static final int CARTESIAN_COORDINATES = 0;
 	public static final int SPHERICAL_COORDINATES = 1;
 
@@ -42,6 +42,8 @@ public class Vector implements Positioned, Triple, Cloneable {
 	public static final Vector NEG_Z_AXIS = new Vector(0, 0, -1);
 
 	private cl_mem mem; // TODO  Make final
+
+	private ThreadLocal<GPUOperator<Vector>> addOperator = new ThreadLocal<>();
 
 	/** Constructs a {@link Vector} with coordinates at the origin. */
 	public Vector() {
@@ -243,12 +245,11 @@ public class Vector implements Positioned, Triple, Cloneable {
 		return new Vector(-this.getX(), -this.getY(), -this.getZ());
 	}
 
-	/**
-	 * Returns the sum of the vector represented by this Vector object and that of the specified Vector object.
-	 */
-	public Vector add(Vector vector) {
-		// TODO  Make fast
-		return new Vector(this.getX() + vector.getX(), this.getY() + vector.getY(), this.getZ() + vector.getZ());
+	/** Returns the sum of this {@link Vector} and the specified {@link Vector}. */
+	public synchronized Vector add(Vector vector) {
+		Vector v = (Vector) clone();
+		v.addTo(vector);
+		return v;
 	}
 
 	/**
@@ -257,8 +258,11 @@ public class Vector implements Positioned, Triple, Cloneable {
 	 * @param vector The Vector object to add.
 	 */
 	public void addTo(Vector vector) {
-		// TODO  Make fast
-		this.setMem(0, new Vector(getX() + vector.getX(),getY() + vector.getY(),getZ() + vector.getZ()),0,3);
+		if (addOperator.get() == null) {
+			addOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("add"));
+		}
+
+		addOperator.get().evaluate(new Object[] { this, vector });
 	}
 
 	/**
@@ -398,6 +402,8 @@ public class Vector implements Positioned, Triple, Cloneable {
 		getMem(0, d, 0, 3);
 		return d;
 	}
+
+	public cl_mem getMem() { return mem; }
 
 	/**
 	 * Returns an integer hash code value for this Vector object obtained

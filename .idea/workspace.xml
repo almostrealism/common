@@ -2,9 +2,10 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="">
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/resources/local.cl" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/Common.iml" afterPath="$PROJECT_DIR$/Common.iml" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/math/org/almostrealism/algebra/Vector.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/algebra/Vector.java" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/math/org/almostrealism/math/GPUOperator.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/math/GPUOperator.java" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/math/org/almostrealism/math/MemWrapper.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/math/MemWrapper.java" />
     </list>
     <ignored path="$PROJECT_DIR$/target/" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -19,35 +20,21 @@
       <file leaf-file-name="Vector.java" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Vector.java">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="3105">
-              <caret line="235" column="5" lean-forward="false" selection-start-line="235" selection-start-column="5" selection-end-line="235" selection-end-column="5" />
+            <state relative-caret-position="313">
+              <caret line="263" column="0" lean-forward="false" selection-start-line="263" selection-start-column="0" selection-end-line="263" selection-end-column="0" />
               <folding>
-                <element signature="e#0#20066#0" expanded="true" />
+                <element signature="e#0#20202#0" expanded="true" />
                 <element signature="imports" expanded="true" />
-                <element signature="e#11159#11160#0" expanded="true" />
-                <element signature="e#11189#11190#0" expanded="true" />
               </folding>
             </state>
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="PlaneUV.java" pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/PlaneUV.java">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="271">
-              <caret line="156" column="35" lean-forward="false" selection-start-line="156" selection-start-column="35" selection-end-line="156" selection-end-column="35" />
-              <folding>
-                <element signature="e#0#5844#0" expanded="true" />
-              </folding>
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file leaf-file-name="local.cl" pinned="false" current-in-tab="true">
+      <file leaf-file-name="local.cl" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/resources/local.cl">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="30">
-              <caret line="2" column="31" lean-forward="true" selection-start-line="2" selection-start-column="31" selection-end-line="2" selection-end-column="31" />
+            <state relative-caret-position="60">
+              <caret line="4" column="1" lean-forward="true" selection-start-line="4" selection-start-column="1" selection-end-line="4" selection-end-column="1" />
               <folding />
             </state>
           </provider>
@@ -66,11 +53,11 @@
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="GPUOperatorMap.java" pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/math/org/almostrealism/math/GPUOperatorMap.java">
+      <file leaf-file-name="GPUOperator.java" pinned="false" current-in-tab="true">
+        <entry file="file://$PROJECT_DIR$/math/org/almostrealism/math/GPUOperator.java">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="315">
-              <caret line="35" column="0" lean-forward="false" selection-start-line="35" selection-start-column="0" selection-end-line="35" selection-end-column="0" />
+            <state relative-caret-position="337">
+              <caret line="57" column="19" lean-forward="false" selection-start-line="57" selection-start-column="19" selection-end-line="57" selection-end-column="19" />
               <folding>
                 <element signature="imports" expanded="true" />
               </folding>
@@ -78,17 +65,13 @@
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="GPUOperator.java" pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/math/org/almostrealism/math/GPUOperator.java">
+      <file leaf-file-name="GPUOperatorMap.java" pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/math/org/almostrealism/math/GPUOperatorMap.java">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="285">
-              <caret line="33" column="25" lean-forward="false" selection-start-line="33" selection-start-column="25" selection-end-line="33" selection-end-column="25" />
+            <state relative-caret-position="330">
+              <caret line="36" column="57" lean-forward="true" selection-start-line="36" selection-start-column="57" selection-end-line="36" selection-end-column="57" />
               <folding>
                 <element signature="imports" expanded="true" />
-                <element signature="e#1332#1333#0" expanded="true" />
-                <element signature="e#1350#1351#0" expanded="true" />
-                <element signature="e#1398#1399#0" expanded="true" />
-                <element signature="e#1416#1417#0" expanded="true" />
               </folding>
             </state>
           </provider>
@@ -107,8 +90,6 @@
   </component>
   <component name="FindInProjectRecents">
     <findStrings>
-      <find>addScaled</find>
-      <find>negate</find>
       <find>sub</find>
       <find>getRow</find>
       <find>cross</find>
@@ -137,6 +118,8 @@
       <find>Constant</find>
       <find>next</find>
       <find>setMem</find>
+      <find>toArray</find>
+      <find>add</find>
     </findStrings>
     <dirStrings>
       <dir>$PROJECT_DIR$</dir>
@@ -192,15 +175,15 @@
         <option value="$PROJECT_DIR$/world/org/almostrealism/physics/PhotonFieldContext.java" />
         <option value="$PROJECT_DIR$/pom.xml" />
         <option value="$PROJECT_DIR$/src/org/almostrealism/uml/Function.java" />
-        <option value="$PROJECT_DIR$/math/org/almostrealism/math/MemWrapper.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/math/Hardware.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/math/AcceleratedFunctions.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/math/GPUOperatorList.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/math/GPUOperatorMap.java" />
-        <option value="$PROJECT_DIR$/math/org/almostrealism/math/GPUOperator.java" />
-        <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Vector.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/PlaneUV.java" />
         <option value="$PROJECT_DIR$/resources/local.cl" />
+        <option value="$PROJECT_DIR$/math/org/almostrealism/math/MemWrapper.java" />
+        <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Vector.java" />
+        <option value="$PROJECT_DIR$/math/org/almostrealism/math/GPUOperator.java" />
       </list>
     </option>
   </component>
@@ -556,7 +539,7 @@
       <workItem from="1527939538529" duration="332000" />
       <workItem from="1527940394000" duration="2810000" />
       <workItem from="1527943360579" duration="5178000" />
-      <workItem from="1528050723566" duration="93000" />
+      <workItem from="1528050723566" duration="1231000" />
     </task>
     <task id="LOCAL-00069" summary="Added cross method.">
       <created>1519774950411</created>
@@ -905,7 +888,7 @@
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="234523000" />
+    <option name="totallyTimeSpent" value="235661000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="0" y="0" width="1280" height="800" extended-state="6" />
@@ -1277,14 +1260,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/math/MemWrapper.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="45">
-          <caret line="17" column="0" lean-forward="true" selection-start-line="17" selection-start-column="0" selection-end-line="17" selection-end-column="0" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/math/org/almostrealism/math/Hardware.java">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="130">
@@ -1322,40 +1297,11 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/math/GPUOperatorMap.java">
+    <entry file="file://$PROJECT_DIR$/resources/local.cl">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="315">
-          <caret line="35" column="0" lean-forward="false" selection-start-line="35" selection-start-column="0" selection-end-line="35" selection-end-column="0" />
-          <folding>
-            <element signature="imports" expanded="true" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/math/GPUOperator.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="285">
-          <caret line="33" column="25" lean-forward="false" selection-start-line="33" selection-start-column="25" selection-end-line="33" selection-end-column="25" />
-          <folding>
-            <element signature="imports" expanded="true" />
-            <element signature="e#1332#1333#0" expanded="true" />
-            <element signature="e#1350#1351#0" expanded="true" />
-            <element signature="e#1398#1399#0" expanded="true" />
-            <element signature="e#1416#1417#0" expanded="true" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Vector.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="3105">
-          <caret line="235" column="5" lean-forward="false" selection-start-line="235" selection-start-column="5" selection-end-line="235" selection-end-column="5" />
-          <folding>
-            <element signature="e#0#20066#0" expanded="true" />
-            <element signature="imports" expanded="true" />
-            <element signature="e#11159#11160#0" expanded="true" />
-            <element signature="e#11189#11190#0" expanded="true" />
-          </folding>
+        <state relative-caret-position="60">
+          <caret line="4" column="1" lean-forward="true" selection-start-line="4" selection-start-column="1" selection-end-line="4" selection-end-column="1" />
+          <folding />
         </state>
       </provider>
     </entry>
@@ -1369,11 +1315,42 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/resources/local.cl">
+    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/math/GPUOperatorMap.java">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="30">
-          <caret line="2" column="31" lean-forward="true" selection-start-line="2" selection-start-column="31" selection-end-line="2" selection-end-column="31" />
+        <state relative-caret-position="330">
+          <caret line="36" column="57" lean-forward="true" selection-start-line="36" selection-start-column="57" selection-end-line="36" selection-end-column="57" />
+          <folding>
+            <element signature="imports" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/math/MemWrapper.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="60">
+          <caret line="18" column="23" lean-forward="false" selection-start-line="18" selection-start-column="23" selection-end-line="18" selection-end-column="23" />
           <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Vector.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="313">
+          <caret line="263" column="0" lean-forward="false" selection-start-line="263" selection-start-column="0" selection-end-line="263" selection-end-column="0" />
+          <folding>
+            <element signature="e#0#20202#0" expanded="true" />
+            <element signature="imports" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/math/GPUOperator.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="337">
+          <caret line="57" column="19" lean-forward="false" selection-start-line="57" selection-start-column="19" selection-end-line="57" selection-end-column="19" />
+          <folding>
+            <element signature="imports" expanded="true" />
+          </folding>
         </state>
       </provider>
     </entry>
