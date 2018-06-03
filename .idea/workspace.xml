@@ -2,6 +2,7 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="">
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/math/org/almostrealism/algebra/Vector.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/algebra/Vector.java" />
     </list>
     <ignored path="$PROJECT_DIR$/target/" />
@@ -17,13 +18,13 @@
       <file leaf-file-name="Vector.java" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Vector.java">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="114">
-              <caret line="368" column="54" lean-forward="false" selection-start-line="368" selection-start-column="54" selection-end-line="368" selection-end-column="54" />
+            <state relative-caret-position="248">
+              <caret line="574" column="36" lean-forward="false" selection-start-line="574" selection-start-column="36" selection-end-line="574" selection-end-column="36" />
               <folding>
-                <element signature="e#0#20211#0" expanded="true" />
+                <element signature="e#0#20099#0" expanded="true" />
                 <element signature="imports" expanded="true" />
-                <element signature="e#11289#11290#0" expanded="true" />
-                <element signature="e#11319#11320#0" expanded="true" />
+                <element signature="e#11159#11160#0" expanded="true" />
+                <element signature="e#11189#11190#0" expanded="true" />
               </folding>
             </state>
           </provider>
@@ -542,7 +543,7 @@
       <workItem from="1527109762763" duration="2154000" />
       <workItem from="1527939538529" duration="332000" />
       <workItem from="1527940394000" duration="2810000" />
-      <workItem from="1527943360579" duration="4248000" />
+      <workItem from="1527943360579" duration="4447000" />
     </task>
     <task id="LOCAL-00069" summary="Added cross method.">
       <created>1519774950411</created>
@@ -891,7 +892,7 @@
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="233500000" />
+    <option name="totallyTimeSpent" value="233699000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="0" y="0" width="1280" height="800" extended-state="6" />
@@ -1355,13 +1356,13 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Vector.java">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="114">
-          <caret line="368" column="54" lean-forward="false" selection-start-line="368" selection-start-column="54" selection-end-line="368" selection-end-column="54" />
+        <state relative-caret-position="248">
+          <caret line="574" column="36" lean-forward="false" selection-start-line="574" selection-start-column="36" selection-end-line="574" selection-end-column="36" />
           <folding>
-            <element signature="e#0#20211#0" expanded="true" />
+            <element signature="e#0#20099#0" expanded="true" />
             <element signature="imports" expanded="true" />
-            <element signature="e#11289#11290#0" expanded="true" />
-            <element signature="e#11319#11320#0" expanded="true" />
+            <element signature="e#11159#11160#0" expanded="true" />
+            <element signature="e#11189#11190#0" expanded="true" />
           </folding>
         </state>
       </provider>

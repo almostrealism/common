@@ -322,7 +322,11 @@ public class Vector implements Positioned, Triple, Cloneable {
 	 * Returns the dot product of the vector represented by this Vector object and that of the specified Vector object.
 	 */
 	public double dotProduct(Vector vector) {
-		double product = this.x * vector.x + this.y * vector.y + this.z * vector.z;
+		// TODO  Fast version
+
+		double d1[] = toArray();
+		double d2[] = vector.toArray();
+		double product = d1[0] * d2[0] + d1[1] * d2[1] + d1[2] * d2[2];
 
 		return product;
 	}
@@ -338,16 +342,6 @@ public class Vector implements Positioned, Triple, Cloneable {
 		return product;
 	}
 
-	/**
-	 * this = a cross b. NOTE: "this" must be a different vector than
-	 * both a and b.
-	 */
-	public void cross(Vector a, Vector b) {
-		x = a.y * b.z - a.z * b.y;
-		y = a.z * b.x - a.x * b.z;
-		z = a.x * b.y - a.y * b.x;
-	}
-
 	public float[] toFloat() {
 		return new float[]{(float) getX(), (float) getY(), (float) getZ()};
 	}
@@ -355,6 +349,7 @@ public class Vector implements Positioned, Triple, Cloneable {
 	/**
 	 * Returns the length of the vector represented by this Vector object as a double value.
 	 */
+	// TODO  Fast version
 	public double length() {
 		return Math.sqrt(this.lengthSq());
 	}
@@ -470,9 +465,7 @@ public class Vector implements Positioned, Triple, Cloneable {
 	public Object clone() {
 		try {
 			Vector v = (Vector) super.clone();
-			v.x = this.x;
-			v.y = this.y;
-			v.z = this.z;
+			v.setTo(this);
 			return v;
 		} catch (CloneNotSupportedException e) {
 			throw new RuntimeException(e);
@@ -485,11 +478,11 @@ public class Vector implements Positioned, Triple, Cloneable {
 		StringBuffer value = new StringBuffer();
 
 		value.append("[");
-		value.append(Defaults.displayFormat.format(this.x));
+		value.append(Defaults.displayFormat.format(getX()));
 		value.append(", ");
-		value.append(Defaults.displayFormat.format(this.y));
+		value.append(Defaults.displayFormat.format(getY()));
 		value.append(", ");
-		value.append(Defaults.displayFormat.format(this.z));
+		value.append(Defaults.displayFormat.format(getZ()));
 		value.append("]");
 
 
@@ -569,15 +562,15 @@ public class Vector implements Positioned, Triple, Cloneable {
 			Vector v0 = vertices[i0];
 			Vector v1 = vertices[i1];
 			Vector v2 = vertices[i2];
-			d1.subtract(v1, v0);
-			d2.subtract(v2, v0);
+			d1 = v1.subtract(v0);
+			d2 = v2.subtract(v0);
 
 			Vector n = new Vector();
 
 			if (ccw) {
-				n.cross(d1, d2);
+				n = d1.crossProduct(d2);
 			} else {
-				n.cross(d2, d1);
+				n = d2.crossProduct(d1);
 			}
 
 			n.normalize();
