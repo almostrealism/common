@@ -111,8 +111,10 @@ public class Plane extends AbstractSurface implements ParticleGroup {
 	}
 	
 	/**
-	 * Returns true if the ray represented by the specified Ray object intersects the plane represented by this Plane object in real space.
+	 * Returns true if the ray represented by the specified {@link Ray}
+	 * intersects the plane represented by this Plane object in real space.
 	 */
+	@Override
 	public boolean intersect(Ray ray) {
 		ray.transform(this.getTransform(true).getInverse());
 		

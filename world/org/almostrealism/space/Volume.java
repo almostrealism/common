@@ -16,6 +16,8 @@
 
 package org.almostrealism.space;
 
+import org.almostrealism.algebra.Vector;
+
 /**
  * A {@link Volume} represents a region of space in three dimensions.
  * In combination with an {@link org.almostrealism.physics.Absorber}
@@ -45,14 +47,15 @@ public interface Volume {
 	 * Calculates the distance along the line defined by the specified position
 	 * and direction vectors that the line intersects with this Volume. This is
 	 * a maximum distance that the volume can garuentee that intersection does
-	 * not occur. If intersection cannot be caclualated, zero should be returned.
+	 * not occur. If intersection cannot be calculated, zero should be returned.
 	 * 
 	 * @param p  The position.
 	 * @param d  The direction.
+	 *
 	 * @return  The distance before intersection occurs.
 	 */
 	// TODO  Replace with intersectable
-	double intersect(double p[], double d[]);
+	double intersect(Vector p, Vector d);
 	
 	/**
 	 * Returns 2D coordinates on the surface of this volume at the specified point
