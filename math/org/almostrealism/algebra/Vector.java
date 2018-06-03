@@ -18,6 +18,7 @@ package org.almostrealism.algebra;
 
 import org.almostrealism.geometry.Positioned;
 import org.almostrealism.math.Hardware;
+import org.almostrealism.math.MemWrapper;
 import org.almostrealism.util.Defaults;
 import org.jocl.CL;
 import org.jocl.Pointer;
@@ -28,6 +29,7 @@ import org.jocl.cl_mem;
  * A {@link Vector} represents a 3d vector. It stores three coordinates, x, y, z
  * in a buffer maintained by JOCL.
  */
+@MemWrapper
 public class Vector implements Positioned, Triple, Cloneable {
 	public static final int CARTESIAN_COORDINATES = 0;
 	public static final int SPHERICAL_COORDINATES = 1;

@@ -21,16 +21,27 @@ import org.jocl.cl_context;
 
 /** An interface to OpenCL. */
 public final class Hardware {
-	private static Hardware local = new Hardware();
+	private static Hardware local = new Hardware("local");
 
 	private cl_context context;
 	private cl_command_queue queue;
 
-	private Hardware() { }
+	private AcceleratedFunctions functions;
+
+	private Hardware(String name) {
+		functions = new AcceleratedFunctions();
+	}
 
 	public static Hardware getLocalHardware() { return local; }
 
 	public cl_context getContext() { return context; }
 
 	public cl_command_queue getQueue() { return queue; }
+
+	public AcceleratedFunctions getFunctions() { return functions; }
+
+	private static String loadSource(String name) {
+		// TODO
+		throw new RuntimeException("loadSource not implemented");
+	}
 }
