@@ -34,18 +34,24 @@ public final class Hardware {
 
 	private Hardware(String name) {
 		final int platformIndex = 0;
-		final long deviceType = CL.CL_DEVICE_TYPE_ALL;
+		final long deviceType = CL.CL_DEVICE_TYPE_GPU;
 		final int deviceIndex = 0;
 
 		CL.setExceptionsEnabled(true);
+
+		System.out.println("Initializing Hardware...");
 
 		int numPlatformsArray[] = new int[1];
 		CL.clGetPlatformIDs(0, null, numPlatformsArray);
 		int numPlatforms = numPlatformsArray[0];
 
+		System.out.println("Hardware[" + name + "]: " + numPlatforms + " platforms available");
+
 		cl_platform_id platforms[] = new cl_platform_id[numPlatforms];
 		CL.clGetPlatformIDs(platforms.length, platforms, null);
 		cl_platform_id platform = platforms[platformIndex];
+
+		System.out.println("Hardware[" + name + "]: Using platform " + platformIndex + " -- " + platform);
 
 		cl_context_properties contextProperties = new cl_context_properties();
 		contextProperties.addProperty(CL.CL_CONTEXT_PLATFORM, platform);
@@ -54,15 +60,24 @@ public final class Hardware {
 		CL.clGetDeviceIDs(platform, deviceType, 0, null, numDevicesArray);
 		int numDevices = numDevicesArray[0];
 
+		System.out.println("Hardware[" + name + "]: " + numDevices + " GPU(s) available");
+
 		cl_device_id devices[] = new cl_device_id[numDevices];
 		CL.clGetDeviceIDs(platform, deviceType, numDevices, devices, null);
 		cl_device_id device = devices[deviceIndex];
 
-		context = CL.clCreateContext(contextProperties, 1, new cl_device_id[] { device }, null, null, null);
-		queue = CL.clCreateCommandQueue(context, device, 0, null);
+		System.out.println("Hardware[" + name + "]: Using GPU " + deviceIndex);
 
+		context = CL.clCreateContext(contextProperties, 1, new cl_device_id[] { device }, null, null, null);
+		System.out.println("Hardware[" + name + "]: OpenCL context initialized");
+
+		queue = CL.clCreateCommandQueue(context, device, 0, null);
+		System.out.println("Hardware[" + name + "]: OpenCL command queue initialized");
+
+		System.out.println("Hardware[" + name + "]: Loading accelerated functions");
 		functions = new AcceleratedFunctions();
 		functions.init(this, loadSource(name));
+		System.out.println("Hardware[" + name + "]: Accelerated functions loaded for " + name);
 	}
 
 	public static Hardware getLocalHardware() { return local; }
