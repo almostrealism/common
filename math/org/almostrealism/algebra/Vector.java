@@ -117,25 +117,25 @@ public class Vector implements Positioned, Triple, Cloneable {
 		this.setMem(2, new Vector(0, 0, z),2,1);
 	}
 
-	/**
-	 * Returns the X coordinate of this Vector object.
-	 */
+	/** Returns the X coordinate of this Vector object. */
 	public double getX() {
-		return this.x;
+		double d[] = new double[1];
+		getMem(0, d, 0, 1);
+		return d[0];
 	}
 
-	/**
-	 * Returns the Y coordinate of this Vector object.
-	 */
+	/** Returns the Y coordinate of this Vector object. */
 	public double getY() {
-		return this.y;
+		double d[] = new double[1];
+		getMem(1, d, 0, 1);
+		return d[0];
 	}
 
-	/**
-	 * Returns the Z coordinate of this Vector object.
-	 */
+	/** Returns the Z coordinate of this Vector object. */
 	public double getZ() {
-		return this.z;
+		double d[] = new double[1];
+		getMem(2, d, 0, 1);
+		return d[0];
 	}
 
 	@Override
@@ -364,12 +364,13 @@ public class Vector implements Positioned, Triple, Cloneable {
 	 * {@link Vector} as a double value.
 	 */
 	public double lengthSq() {
-		double lengthSq = this.x * this.x + this.y * this.y + this.z * this.z;
-
-		return lengthSq;
+		// TODO  This can be made faster
+		double d[] = toArray();
+		return d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
 	}
 
 	public void normalize() {
+		// TODO  This can be made faster
 		double len = this.length();
 		if (len != 0.0 && len != 1.0) this.divideBy(len);
 	}
@@ -380,22 +381,28 @@ public class Vector implements Positioned, Triple, Cloneable {
 	 *
 	 * @param v1 the un-normalized vector
 	 */
+	@Deprecated
 	public void normalize(Vector v1) {
-		double norm = Math.sqrt(v1.x * v1.x + v1.y * v1.y + v1.z * v1.z);
-		this.x = v1.x / norm;
-		this.y = v1.y / norm;
-		this.z = v1.z / norm;
+		// TODO  This can be made faster
+		double norm = Math.sqrt(v1.getX() * v1.getX() + v1.getY() * v1.getY() + v1.getZ() * v1.getZ());
+		v1.setTo(new Vector(v1.getX() / norm, v1.getY() / norm, v1.getZ() / norm));
 	}
 
+	@Deprecated
 	public Vecf toVecf() {
 		Vecf v = new Vecf(3);
-		v.set(0, (float) x);
-		v.set(1, (float) y);
-		v.set(2, (float) z);
+		v.set(0, (float) getX());
+		v.set(1, (float) getY());
+		v.set(2, (float) getZ());
 		return v;
 	}
 
-	public double[] toArray() { return new double[] {x, y, z}; }
+	/** This is the fastest way to get access to the data in this {@link Vector}. */
+	public double[] toArray() {
+		double d[] = new double[3];
+		getMem(0, d, 0, 3);
+		return d;
+	}
 
 	/**
 	 * Returns an integer hash code value for this Vector object obtained
@@ -445,6 +452,16 @@ public class Vector implements Positioned, Triple, Cloneable {
 							offset * Sizeof.cl_double,length * Sizeof.cl_double,
 							0,null,null);
 	}
+
+	private void getMem(int sOffset, double out[], int oOffset, int length) {
+		Pointer dst = Pointer.to(out).withByteOffset(oOffset * Sizeof.cl_double);
+		CL.clEnqueueReadBuffer(Hardware.getLocalHardware().getQueue(), mem,
+							CL.CL_TRUE, sOffset * Sizeof.cl_double,
+							length * Sizeof.cl_double, dst, 0,
+							null, null);
+	}
+
+	private void getMem(double out[], int offset) { getMem(0, out, offset, 3); }
 
 	/**
 	 * @see java.lang.Object#clone()
