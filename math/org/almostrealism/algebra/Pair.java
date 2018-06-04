@@ -10,9 +10,14 @@ import org.jocl.cl_mem;
 public class Pair implements MemWrapper {
 	private cl_mem mem;
 
-	public Pair() { }
+	public Pair() {
+		mem = CL.clCreateBuffer(Hardware.getLocalHardware().getContext(),
+				CL.CL_MEM_READ_WRITE,2 * Sizeof.cl_double,
+				null, null);
+	}
 
 	public Pair(double x, double y) {
+		this();
 		this.setMem(new double[] { x, y });
 	}
 	
