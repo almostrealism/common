@@ -34,7 +34,7 @@ public class GPUOperatorMap<T extends MemWrapper> {
 		if (r != 0) throw new RuntimeException("Error building GPUOperatorMap:" + r);
 	}
 
-	public GPUOperator<T> get(String key) { return new GPUOperator<>(prog, key); }
+	public GPUOperator<T> get(String key, boolean scalar) { return new GPUOperator<>(prog, key, scalar); }
 
 	@Override
 	public void finalize() { CL.clReleaseProgram(prog); }

@@ -17,15 +17,17 @@
 package org.almostrealism.space;
 
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.geometry.Curve;
 
 /**
- * A {@link Volume} represents a region of space in three dimensions.
- * In combination with an {@link org.almostrealism.physics.Absorber}
- * implementation, a {@link Volume} defines a solid object.
+ * A {@link Volume} represents a region of space in three dimensions
+ * bounded by a {@link Curve}. In combination with an instance of
+ * {@link org.almostrealism.physics.Absorber}, a {@link Volume}
+ * defines a solid object.
  * 
  * @author  Michael Murray
  */
-public interface Volume {
+public interface Volume<T> extends Curve<T> {
 	/**
 	 * Checks if a point is within this volume.
 	 * 
@@ -33,15 +35,6 @@ public interface Volume {
 	 * @return  True if the point is within this volume, false otherwise.
 	 */
 	boolean inside(double x[]);
-	
-	/**
-	 * Calculates the vector normal to the volume at the specfied point.
-	 * 
-	 * @param x  {x, y, z} - The point in space to calculate the normal.
-	 * @return  {x, y, z} - The vector normal to the surface of the volume.
-	 */
-	// TODO  Replace with gradient
-	double[] getNormal(double x[]);
 	
 	/**
 	 * Calculates the distance along the line defined by the specified position

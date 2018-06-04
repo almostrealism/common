@@ -18,6 +18,7 @@ package org.almostrealism.math;
 
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;
+import org.almostrealism.algebra.Scalar;
 import org.almostrealism.relation.Operator;
 
 import org.almostrealism.util.Factory;
@@ -26,12 +27,14 @@ import org.jocl.*;
 public class GPUOperator<T extends MemWrapper> implements Operator<T>, Factory<cl_kernel> {
 	private cl_program prog;
 	private String name;
+	private boolean scalar;
 
 	private cl_kernel kernel;
 
-	public GPUOperator(cl_program program, String name) {
+	public GPUOperator(cl_program program, String name, boolean scalar) {
 		this.prog = program;
 		this.name = name;
+		this.scalar = scalar;
 	}
 
 	// TODO  How do these kernels get released when done?
@@ -46,16 +49,37 @@ public class GPUOperator<T extends MemWrapper> implements Operator<T>, Factory<c
 	@Override
 	public synchronized T evaluate(Object[] args) {
 		if (kernel == null) kernel = construct();
-		CL.clSetKernelArg(kernel, 0, Sizeof.cl_mem, Pointer.to(((MemWrapper) args[0]).getMem()));
-		CL.clSetKernelArg(kernel, 1, Sizeof.cl_mem, Pointer.to(((MemWrapper) args[1]).getMem()));
-		CL.clSetKernelArg(kernel, 2, Sizeof.cl_int, Pointer.to(new int[] { 0 }));
-		CL.clSetKernelArg(kernel, 3, Sizeof.cl_int, Pointer.to(new int[] { 0 }));
 
-		long gws[] = new long[] { 3 };
+		if (scalar) {
+			double[] res = new double[1];
+			CL.clSetKernelArg(kernel, 0, Sizeof.cl_double, Pointer.to(res)); // result
+			CL.clSetKernelArg(kernel, 1, Sizeof.cl_mem, Pointer.to(((MemWrapper) args[0]).getMem())); // this
+			CL.clSetKernelArg(kernel, 2, Sizeof.cl_mem, Pointer.to(((MemWrapper) args[1]).getMem())); // target
+			CL.clSetKernelArg(kernel, 3, Sizeof.cl_int, Pointer.to(new int[] { 0 }));
+			CL.clSetKernelArg(kernel, 4, Sizeof.cl_int, Pointer.to(new int[] { 0 }));
+			CL.clSetKernelArg(kernel, 5, Sizeof.cl_int, Pointer.to(new int[] { 3 }));
+			CL.clSetKernelArg(kernel, 6, Sizeof.cl_int, Pointer.to(new int[] { 1 }));
+			CL.clSetKernelArg(kernel, 7, Sizeof.cl_int, Pointer.to(new int[] { 3 }));
 
-		CL.clEnqueueNDRangeKernel(Hardware.getLocalHardware().getQueue(), kernel, 1, null,
+			long gws[] = new long[] { 1, 1 };
+
+			CL.clEnqueueNDRangeKernel(Hardware.getLocalHardware().getQueue(), kernel, 1, null,
 									gws, null, 0, null, null);
-		return (T) args[0];
+
+			return (T) new Scalar(res[0]);
+		} else {
+			CL.clSetKernelArg(kernel, 0, Sizeof.cl_mem, Pointer.to(((MemWrapper) args[0]).getMem()));
+			CL.clSetKernelArg(kernel, 1, Sizeof.cl_mem, Pointer.to(((MemWrapper) args[1]).getMem()));
+			CL.clSetKernelArg(kernel, 2, Sizeof.cl_int, Pointer.to(new int[]{0}));
+			CL.clSetKernelArg(kernel, 3, Sizeof.cl_int, Pointer.to(new int[]{0}));
+
+			long gws[] = new long[] { 3 };
+
+			CL.clEnqueueNDRangeKernel(Hardware.getLocalHardware().getQueue(), kernel, 1, null,
+									gws, null, 0, null, null);
+
+			return (T) args[0];
+		}
 	}
 
 	@Override

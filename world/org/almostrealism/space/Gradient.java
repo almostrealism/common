@@ -31,5 +31,5 @@ public interface Gradient extends Differentiable<Vector> {
 	 * Returns a Vector object that represents the vector normal to the 3d surface at the point
 	 * represented by the specified Vector object.
 	 */
-	public Vector getNormalAt(Vector point);
+	Vector getNormalAt(Vector point);
 }

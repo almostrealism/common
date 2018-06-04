@@ -34,7 +34,7 @@ import org.almostrealism.time.Clock;
  * implementation maintains reference to a Volume instance, photons should only be absorbed
  * and emitted within the bounds described by the Volume instance.
  * 
- * @author Mike Murray
+ * @author  Michael Murray
  */
 public interface Absorber {
 	/**

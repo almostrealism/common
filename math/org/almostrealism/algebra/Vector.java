@@ -44,6 +44,7 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 	private cl_mem mem; // TODO  Make final
 
 	private ThreadLocal<GPUOperator<Vector>> addOperator = new ThreadLocal<>();
+	private ThreadLocal<GPUOperator<Scalar>> dotOperator = new ThreadLocal<>();
 
 	/** Constructs a {@link Vector} with coordinates at the origin. */
 	public Vector() {
@@ -259,7 +260,7 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 	 */
 	public void addTo(Vector vector) {
 		if (addOperator.get() == null) {
-			addOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("add"));
+			addOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("add", true));
 		}
 
 		addOperator.get().evaluate(new Object[] { this, vector });
@@ -323,16 +324,14 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 	}
 
 	/**
-	 * Returns the dot product of the vector represented by this Vector object and that of the specified Vector object.
+	 * Returns the dot product of this {@link Vector} and the specified {@link Vector}.
 	 */
-	public double dotProduct(Vector vector) {
-		// TODO  Fast version
+	public synchronized double dotProduct(Vector vector) {
+		if (dotOperator.get() == null) {
+			dotOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("dotProduct", false));
+		}
 
-		double d1[] = toArray();
-		double d2[] = vector.toArray();
-		double product = d1[0] * d2[0] + d1[1] * d2[1] + d1[2] * d2[2];
-
-		return product;
+		return dotOperator.get().evaluate(new Object[] { this, vector }).getValue();
 	}
 
 	/**

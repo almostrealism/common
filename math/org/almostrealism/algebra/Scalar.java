@@ -1,5 +1,10 @@
 package org.almostrealism.algebra;
 
+import org.almostrealism.math.Hardware;
+import org.jocl.CL;
+import org.jocl.Pointer;
+import org.jocl.Sizeof;
+
 public class Scalar extends Pair implements Comparable<Scalar> {
 	public static final double EPSILON = 1.19209290e-07;
 	public static final double TWO_PI = 6.283185307179586232;
