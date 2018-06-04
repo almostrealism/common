@@ -260,7 +260,7 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 	 */
 	public void addTo(Vector vector) {
 		if (addOperator.get() == null) {
-			addOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("add", true));
+			addOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("add", false));
 		}
 
 		addOperator.get().evaluate(new Object[] { this, vector });
@@ -328,7 +328,7 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 	 */
 	public synchronized double dotProduct(Vector vector) {
 		if (dotOperator.get() == null) {
-			dotOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("dotProduct", false));
+			dotOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("dotProduct", true));
 		}
 
 		return dotOperator.get().evaluate(new Object[] { this, vector }).getValue();
