@@ -43,8 +43,19 @@ public class Pair implements MemWrapper {
 	public Pair setRight(double r) { this.setY(r); return this; }
 	public Pair setTheta(double t) { this.setX(t); return this; }
 	public Pair setPhi(double p) { this.setY(p); return this; }
-	public double getX() { return getX(); }
-	public double getY() { return getY(); }
+
+	public double getX() {
+		double d1[] = new double[2];
+		getMem(d1, 0);
+		return d1[0];
+	}
+
+	public double getY() {
+		double d1[] = new double[2];
+		getMem(d1, 0);
+		return d1[1];
+	}
+
 	public double getA() { return getX(); }
 	public double getB() { return getY(); }
 	public double getLeft() { return getX(); }
