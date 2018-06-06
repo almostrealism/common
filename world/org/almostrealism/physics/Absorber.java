@@ -73,7 +73,7 @@ public interface Absorber {
 	 * @return  {x, y, z} - The position of the photon that will next be emitted by this
 	 *          Absorber.
 	 */
-	double[] getEmitPosition();
+	Vector getEmitPosition();
 	
 	/**
 	 * @param c  The Clock instance for this absorber to use to keep time.

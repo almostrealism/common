@@ -346,7 +346,7 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 	}
 
 	public float[] toFloat() {
-		return new float[]{(float) getX(), (float) getY(), (float) getZ()};
+		return new float[] { (float) getX(), (float) getY(), (float) getZ() };
 	}
 
 	/**
