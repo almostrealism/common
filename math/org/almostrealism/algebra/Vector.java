@@ -41,10 +41,10 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 	public static final Vector NEG_Y_AXIS = new Vector(0, -1, 0);
 	public static final Vector NEG_Z_AXIS = new Vector(0, 0, -1);
 
-	private cl_mem mem; // TODO  Make final
+	private static ThreadLocal<GPUOperator<Vector>> addOperator = new ThreadLocal<>();
+	private static ThreadLocal<GPUOperator<Scalar>> dotOperator = new ThreadLocal<>();
 
-	private ThreadLocal<GPUOperator<Vector>> addOperator = new ThreadLocal<>();
-	private ThreadLocal<GPUOperator<Scalar>> dotOperator = new ThreadLocal<>();
+	private cl_mem mem; // TODO  Make final
 
 	/** Constructs a {@link Vector} with coordinates at the origin. */
 	public Vector() {
