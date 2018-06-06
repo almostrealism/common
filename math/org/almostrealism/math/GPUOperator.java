@@ -24,10 +24,16 @@ import org.almostrealism.relation.Operator;
 import org.almostrealism.util.Factory;
 import org.jocl.*;
 
+/**
+ * {@link GPUOperator}s are intended to be used with {@link ThreadLocal}.
+ *
+ * @param <T>  Return type. If the scalar flag is true, this must be a subclass of {@link Scalar}.
+ */
 public class GPUOperator<T extends MemWrapper> implements Operator<T>, Factory<cl_kernel> {
 	private cl_program prog;
 	private String name;
 	private boolean scalar;
+	private Scalar result;
 
 	private cl_kernel kernel;
 
@@ -35,6 +41,7 @@ public class GPUOperator<T extends MemWrapper> implements Operator<T>, Factory<c
 		this.prog = program;
 		this.name = name;
 		this.scalar = scalar;
+		if (scalar) result = new Scalar();
 	}
 
 	// TODO  How do these kernels get released when done?
@@ -46,13 +53,17 @@ public class GPUOperator<T extends MemWrapper> implements Operator<T>, Factory<c
 		return null;
 	}
 
+	/**
+	 * Values returned from this method may not be valid if this method is called again
+	 * before the value is used. An easy way around this problem is to always use the
+	 * {@link GPUOperator} with a {@link ThreadLocal}.
+	 */
 	@Override
 	public synchronized T evaluate(Object[] args) {
 		if (kernel == null) kernel = construct();
 
 		if (scalar) {
-			double[] res = new double[1];
-			CL.clSetKernelArg(kernel, 0, Sizeof.cl_double, Pointer.to(res)); // result
+			CL.clSetKernelArg(kernel, 0, Sizeof.cl_double, Pointer.to(result.getMem())); // result
 			CL.clSetKernelArg(kernel, 1, Sizeof.cl_mem, Pointer.to(((MemWrapper) args[0]).getMem())); // this
 			CL.clSetKernelArg(kernel, 2, Sizeof.cl_mem, Pointer.to(((MemWrapper) args[1]).getMem())); // target
 			CL.clSetKernelArg(kernel, 3, Sizeof.cl_int, Pointer.to(new int[] { 0 }));
@@ -66,7 +77,7 @@ public class GPUOperator<T extends MemWrapper> implements Operator<T>, Factory<c
 			CL.clEnqueueNDRangeKernel(Hardware.getLocalHardware().getQueue(), kernel, 1, null,
 									gws, null, 0, null, null);
 
-			return (T) new Scalar(res[0]);
+			return (T) result;
 		} else {
 			CL.clSetKernelArg(kernel, 0, Sizeof.cl_mem, Pointer.to(((MemWrapper) args[0]).getMem()));
 			CL.clSetKernelArg(kernel, 1, Sizeof.cl_mem, Pointer.to(((MemWrapper) args[1]).getMem()));
