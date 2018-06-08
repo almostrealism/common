@@ -18,6 +18,7 @@ package org.almostrealism.algebra;
 
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;
+import org.almostrealism.util.Producer;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -46,6 +47,11 @@ public class VectorProduct extends VectorFutureAdapter {
 		}
 
 		return v;
+	}
+
+	@Override
+	public Producer<Scalar> dotProduct(VectorProducer v) {
+		return null;
 	}
 
 	@Override

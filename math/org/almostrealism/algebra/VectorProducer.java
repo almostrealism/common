@@ -37,4 +37,6 @@ public interface VectorProducer extends Producer<Vector>, TripleFunction<Vector>
      * @return  The Vector produced.
      */
     Vector evaluate(Object args[]);
+
+    Producer<Scalar> dotProduct(VectorProducer v);
 }

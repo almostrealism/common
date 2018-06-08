@@ -431,29 +431,29 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 			return false;
 	}
 
-	private void setMem(double[] source) {
+	protected void setMem(double[] source) {
 		setMem(0, source, 0, 3);
 	}
 
-	private void setMem(double[] source, int offset) {
+	protected void setMem(double[] source, int offset) {
 		setMem(0, source, offset, 3);
 	}
 
-	private void setMem(int offset, double[] source, int srcOffset, int length) {
+	protected void setMem(int offset, double[] source, int srcOffset, int length) {
 		Pointer src = Pointer.to(source).withByteOffset(srcOffset*Sizeof.cl_double);
 		CL.clEnqueueWriteBuffer(Hardware.getLocalHardware().getQueue(), mem, CL.CL_TRUE,
 								offset * Sizeof.cl_double, length * Sizeof.cl_double,
 								src, 0, null, null);
 	}
 
-	private void setMem(int offset, Vector src, int srcOffset, int length) {
+	protected void setMem(int offset, Vector src, int srcOffset, int length) {
 		CL.clEnqueueCopyBuffer(Hardware.getLocalHardware().getQueue(), src.mem, this.mem,
 							srcOffset * Sizeof.cl_double,
 							offset * Sizeof.cl_double,length * Sizeof.cl_double,
 							0,null,null);
 	}
 
-	private void getMem(int sOffset, double out[], int oOffset, int length) {
+	protected void getMem(int sOffset, double out[], int oOffset, int length) {
 		Pointer dst = Pointer.to(out).withByteOffset(oOffset * Sizeof.cl_double);
 		CL.clEnqueueReadBuffer(Hardware.getLocalHardware().getQueue(), mem,
 							CL.CL_TRUE, sOffset * Sizeof.cl_double,
@@ -461,7 +461,7 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 							null, null);
 	}
 
-	private void getMem(double out[], int offset) { getMem(0, out, offset, 3); }
+	protected void getMem(double out[], int offset) { getMem(0, out, offset, 3); }
 
 	/**
 	 * @see java.lang.Object#clone()
