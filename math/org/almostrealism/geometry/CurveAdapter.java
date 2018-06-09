@@ -20,5 +20,5 @@ import org.almostrealism.algebra.Vector;
 
 public abstract class CurveAdapter implements Curve {
 	/** Delegates to {@link #getNormalAt(Vector)}. */
-	public Vector operate(Vector v ) { return getNormalAt(v); }
+	public Vector operate(Vector v) { return getNormalAt(v).evaluate(new Object[0]); }
 }

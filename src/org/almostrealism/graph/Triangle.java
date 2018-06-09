@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 Michael Murray
+ * Copyright 2018 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -309,7 +309,10 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 	 * Returns a Vector object that represents the vector normal to this sphere at the point
 	 * represented by the specified Vector object.
 	 */
-	public Vector getNormalAt(Vector point) {
+	@Override
+	public VectorProducer getNormalAt(Vector point) {
+		// TODO  Perform computation inside VectorProducer
+
 		if (this.smooth && this.vertexData == null) {
 			double g = point.getX();
 			double h = point.getY();
@@ -336,12 +339,12 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 			
 			n.divideBy(n.length());
 			
-			return n;
+			return new ImmutableVector(n);
 		} else {
 			if (this.useT) {
-				return super.getTransform(true).getInverse().transformAsNormal(this.normal);
+				return new ImmutableVector(super.getTransform(true).getInverse().transformAsNormal(this.normal));
 			} else {
-				return (Vector) this.normal.clone();
+				return new ImmutableVector((Vector) this.normal.clone());
 			}
 		}
 	}

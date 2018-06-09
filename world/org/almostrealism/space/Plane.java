@@ -93,7 +93,9 @@ public class Plane extends AbstractSurface implements ParticleGroup {
 	/**
 	 * Returns a Vector object that represents the vector normal to this plane at the point represented by the specified Vector object.
 	 */
-	public Vector getNormalAt(Vector point) {
+	public VectorProducer getNormalAt(Vector point) {
+		// TODO  Do computation within VectorProducer
+
 		Vector normal;
 		
 		if (this.type == Plane.XY)
@@ -107,7 +109,7 @@ public class Plane extends AbstractSurface implements ParticleGroup {
 		
 		super.getTransform(true).transform(normal, TransformMatrix.TRANSFORM_AS_NORMAL);
 		
-		return normal;
+		return new ImmutableVector(normal);
 	}
 	
 	/**

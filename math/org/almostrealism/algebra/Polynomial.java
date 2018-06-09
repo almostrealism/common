@@ -29,6 +29,7 @@ import org.almostrealism.relation.Constant;
 import org.almostrealism.relation.Operator;
 import org.almostrealism.space.AbstractSurface;
 import org.almostrealism.space.ShadableIntersection;
+import org.almostrealism.util.Producer;
 
 /** A {@link Polynomial} represents a 3d polynomial surface. */
 public class Polynomial<IN> extends AbstractSurface<IN> implements Operator<Scalar> {
@@ -329,8 +330,25 @@ public class Polynomial<IN> extends AbstractSurface<IN> implements Operator<Scal
 	 * Returns a {@link Vector} that represents the vector normal to this polynomial
 	 * surface at the point represented by the specified {@link Vector}.
 	 */
-	public Vector getNormalAt(Vector point) {
-		return this.evaluateGradient(point.getX(), point.getY(), point.getZ());
+	public VectorProducer getNormalAt(Vector point) {
+		// TODO  Replace with GeneratedVectorAdapter
+
+		return new VectorFutureAdapter() {
+			@Override
+			public Vector evaluate(Object[] args) {
+				return evaluateGradient(point.getX(), point.getY(), point.getZ());
+			}
+
+			@Override
+			public Producer<Scalar> dotProduct(VectorProducer v) {
+				return null;
+			}
+
+			@Override
+			public Scope<? extends Variable> getScope(String prefix) {
+				return null;
+			}
+		};
 	}
 	
 	/**

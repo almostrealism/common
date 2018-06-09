@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 Michael Murray
+ * Copyright 2018 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -110,7 +110,7 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 		@Override
 		public BoundingSolid calculateBoundingSolid() { return mesh.calculateBoundingSolid(); }
 
-		@Override public Vector getNormalAt(Vector point) { return this.getSurface().getNormalAt(point); }
+		@Override public VectorProducer getNormalAt(Vector point) { return this.getSurface().getNormalAt(point); }
 		@Override public boolean intersect(Ray ray) { return this.getSurface().intersect(ray); }
 		@Override public ShadableIntersection intersectAt(Ray ray) { return this.getSurface().intersectAt(ray); }
 
@@ -297,7 +297,7 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 
 		Triangle t = new Triangle(v1, v2, v3);
 
-		Vector tn = t.getNormalAt(new Vector());
+		Vector tn = t.getNormalAt(new Vector()).evaluate(new Object[0]);
 
 		if (this.triangles.add(new int[] {p1, p2, p3})) {
 			v1.addNormal(tn);
@@ -526,7 +526,7 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 	/**
 	 * @return  null.
 	 */
-	public Vector getNormalAt(Vector point) { return null; }
+	public VectorProducer getNormalAt(Vector point) { return null; }
 	
 	/**
 	 * Sets the smooth flag for this Mesh object. If the flag is true,
@@ -608,7 +608,7 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 	 */
 	public int extrudeFace(int face, double l) {
 		return this.extrudeFace(face,
-				((Triangle) this.triangles.get(face)).getNormalAt(new Vector()).multiply(l));
+				((Triangle) this.triangles.get(face)).getNormalAt(new Vector()).evaluate(new Object[0]).multiply(l));
 	}
 	
 	/**
@@ -736,7 +736,7 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 			}
 			
 			Vector trv = tr.getVertices()[0].subtract(ray.getOrigin());
-			double dt = tr.getNormalAt(new Vector()).dotProduct(trv);
+			double dt = tr.getNormalAt(new Vector()).evaluate(new Object[0]).dotProduct(trv); // TODO  Use VectorProducer.dotProduct
 			
 			if (!this.removeBackFaces) {
 				this.tcache[i] = tr;

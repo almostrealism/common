@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 Michael Murray
+ * Copyright 2018 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,12 +24,8 @@ import java.util.ListIterator;
 import java.util.concurrent.Callable;
 
 import io.almostrealism.code.Scope;
-import org.almostrealism.algebra.ContinuousField;
-import org.almostrealism.algebra.Intersectable;
-import org.almostrealism.algebra.Intersection;
+import org.almostrealism.algebra.*;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.algebra.Triple;
-import org.almostrealism.algebra.Vector;
 
 /**
  * Extends {@link Intersection} to provide metadata that is required for shading.
@@ -56,7 +52,7 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 				
 				normals.add(() -> {
 					Vector p = ray.pointAt(intersections[index]);
-					return new Ray(p, ((Gradient) surface).getNormalAt(p));
+					return new Ray(p, ((Gradient) surface).getNormalAt(p).evaluate(new Object[0]));
 				});
 				
 				if (intersections[i] >= 0 && intersections[i] < intersections[nearestIndex]) {
@@ -68,11 +64,11 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 	
 	/** Returns the viewer direction. */
 	@Override
-	public Vector getNormalAt(Vector point) { return viewerDirection; }
+	public VectorProducer getNormalAt(Vector point) { return new ImmutableVector(viewerDirection); }
 	
 	/** Delegates to {@link #getNormalAt(Vector)}. */
 	@Override
-	public Vector operate(Triple t) { return getNormalAt(new Vector(t.getA(), t.getB(), t.getC())); }
+	public Vector operate(Triple t) { return getNormalAt(new Vector(t.getA(), t.getB(), t.getC())).evaluate(new Object[0]); }
 
 	@Override
 	public Scope getScope(String prefix) {

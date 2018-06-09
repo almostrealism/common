@@ -17,6 +17,7 @@
 package org.almostrealism.physics;
 
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.time.Clock;
 
 /**
@@ -68,12 +69,13 @@ public interface Absorber {
 	 *          microseconds).
 	 */
 	double getNextEmit();
-	
+
+
 	/**
 	 * @return  {x, y, z} - The position of the photon that will next be emitted by this
 	 *          Absorber.
 	 */
-	Vector getEmitPosition();
+	VectorProducer getEmitPosition();
 	
 	/**
 	 * @param c  The Clock instance for this absorber to use to keep time.

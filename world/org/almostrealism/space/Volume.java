@@ -17,6 +17,7 @@
 package org.almostrealism.space;
 
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.geometry.Curve;
 
 /**
@@ -57,7 +58,7 @@ public interface Volume<T> extends Curve<T> {
 	 * @param xyz  {x, y, z} - Position in spatial coordinates.
 	 * @return  {u, v} - Position in surface coordinates (u,v between 0.0 and 1.0).
 	 */
-	double[] getSurfaceCoords(double xyz[]);
+	double[] getSurfaceCoords(VectorProducer xyz);
 	
 	/**
 	 * Returns 3D coordinates on the surface of this volume at the specified point
