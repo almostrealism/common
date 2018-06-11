@@ -736,7 +736,8 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 			}
 			
 			Vector trv = tr.getVertices()[0].subtract(ray.getOrigin());
-			double dt = tr.getNormalAt(new Vector()).evaluate(new Object[0]).dotProduct(trv); // TODO  Use VectorProducer.dotProduct
+			double dt = tr.getNormalAt(ZeroVector.getInstance().evaluate(new Object[0]))
+							.evaluate(new Object[0]).dotProduct(trv); // TODO  Use VectorProducer.dotProduct
 			
 			if (!this.removeBackFaces) {
 				this.tcache[i] = tr;

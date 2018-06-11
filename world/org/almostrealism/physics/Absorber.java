@@ -53,13 +53,14 @@ public interface Absorber {
 	/**
 	 * Method called when this absorber is to emit a photon.
 	 * 
-	 * @return  {x, y, z} - The direction of prpagation of the emmited photon.
-	 *          This should be a unit vector, because all photons travel at the speed of light.
+	 * @return  {x, y, z} - The direction of propagation of the emitted photon.
+	 *          This should be a unit vector, because all photons travel at
+	 *          100 percent of the speed of light.
 	 */
-	double[] emit();
+	VectorProducer emit();
 	
 	/**
-	 * @return  The quantity of energy that would be emmited by this absorber if the emit
+	 * @return  The quantity of energy that would be emitted by this absorber if the emit
 	 *          method were invoked right now. (Usually measured in electron volts).
 	 */
 	double getEmitEnergy();
@@ -77,13 +78,9 @@ public interface Absorber {
 	 */
 	VectorProducer getEmitPosition();
 	
-	/**
-	 * @param c  The Clock instance for this absorber to use to keep time.
-	 */
+	/** @param c  The Clock instance for this absorber to use to keep time. */
 	void setClock(Clock c);
 	
-	/**
-	 * @return  The Clock instance used by this absorber to keep time.
-	 */
+	/** @return  The Clock instance used by this absorber to keep time. */
 	Clock getClock();
 }
