@@ -11,6 +11,18 @@ subtract(__global double *a, __global const double *b, const int aoffset, const 
 }
 
 __kernel void
+mul(__global double *a, __global const double *b, const int aoffset, const int boffset) {
+	int gid = get_global_id(0);
+	a[gid+aoffset] *= b[gid+boffset];
+}
+
+__kernel void
+divide(__global double *a, __global const double *b, const int aoffset, const int boffset) {
+	int gid = get_global_id(0);
+	a[gid+aoffset] /= b[gid+boffset];
+}
+
+__kernel void
 dotProduct(__global double *res, __global const double *a, __global const double *b, const int aoffset, const int boffset, const int n, const int stride, const int step)
 {
 	double acc=0.0;

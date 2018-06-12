@@ -43,6 +43,8 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 
 	private static ThreadLocal<GPUOperator<Vector>> addOperator = new ThreadLocal<>();
 	private static ThreadLocal<GPUOperator<Vector>> subtractOperator = new ThreadLocal<>();
+	private static ThreadLocal<GPUOperator<Vector>> multiplyOperator = new ThreadLocal<>();
+	private static ThreadLocal<GPUOperator<Vector>> divideOperator = new ThreadLocal<>();
 	private static ThreadLocal<GPUOperator<Scalar>> dotOperator = new ThreadLocal<>();
 
 	private cl_mem mem; // TODO  Make final
@@ -294,8 +296,9 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 	 * Returns the product of the vector represented by this Vector object and the specified value.
 	 */
 	public Vector multiply(double value) {
-		// TODO  Make fast
-		return new Vector(getX() * value, getY() * value, getZ() * value);
+		Vector v = (Vector) clone();
+		v.multiplyBy(value);
+		return v;
 	}
 
 	/**
@@ -303,27 +306,32 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 	 *
 	 * @param value The factor to multiply by.
 	 */
-	public void multiplyBy(double value) {
-		// TODO  Make fast
-		setTo(new Vector(getX() * value, getY() * value, getZ() * value));
+	public synchronized void multiplyBy(double value) {
+		if (multiplyOperator.get() == null) {
+			multiplyOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("multiply", false));
+		}
+
+		multiplyOperator.get().evaluate(new Object[] { this, new Vector(value, value, value) });
 	}
 
-	/**
-	 * Returns the quotient of the division of the vector represented by this Vector object by the specified value.
-	 */
+	/** Returns the quotient of the division of this {@link Vector} by the specified value. */
 	public Vector divide(double value) {
-		// TODO  Make fast
-		return new Vector(this.getX() / value, this.getY() / value, this.getZ() / value);
+		Vector v = (Vector) clone();
+		v.divideBy(value);
+		return v;
 	}
 
 	/**
-	 * Divides the vector represented by this Vector object by the specified double value.
+	 * Divides this {@link Vector} by the specified double value.
 	 *
 	 * @param value The value to divide by.
 	 */
-	public void divideBy(double value) {
-		// TODO  Make fast
-		setTo(new Vector(getX() / value, getY() / value, getZ() / value));
+	public synchronized void divideBy(double value) {
+		if (divideOperator.get() == null) {
+			divideOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("divide", false));
+		}
+
+		divideOperator.get().evaluate(new Object[] { this, new Vector(value, value, value) });
 	}
 
 	/**
