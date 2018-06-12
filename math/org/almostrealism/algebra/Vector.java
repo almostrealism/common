@@ -42,6 +42,7 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 	public static final Vector NEG_Z_AXIS = new Vector(0, 0, -1);
 
 	private static ThreadLocal<GPUOperator<Vector>> addOperator = new ThreadLocal<>();
+	private static ThreadLocal<GPUOperator<Vector>> subtractOperator = new ThreadLocal<>();
 	private static ThreadLocal<GPUOperator<Scalar>> dotOperator = new ThreadLocal<>();
 
 	private cl_mem mem; // TODO  Make final
@@ -271,8 +272,9 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 	 * The specified vector is subtracted from this one.
 	 */
 	public Vector subtract(Vector vector) {
-		// TODO  Make fast
-		return new Vector(this.getX() - vector.getX(), this.getY() - vector.getY(), this.getZ() - vector.getZ());
+		Vector v = (Vector) clone();
+		v.subtractFrom(vector);
+		return v;
 	}
 
 	/**
@@ -280,11 +282,12 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 	 *
 	 * @param vector The Vector object to be subtracted.
 	 */
-	public void subtractFrom(Vector vector) {
-		// TODO  Make fast
-		setTo(new Vector(getX() - vector.getX(),
-						getY() - vector.getY(),
-						getZ() - vector.getZ()));
+	public synchronized void subtractFrom(Vector vector) {
+		if (subtractOperator.get() == null) {
+			subtractOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("subtract", false));
+		}
+
+		subtractOperator.get().evaluate(new Object[] { this, vector });
 	}
 
 	/**
@@ -468,13 +471,9 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 	 */
 	@Override
 	public Object clone() {
-		try {
-			Vector v = (Vector) super.clone();
-			v.setTo(this);
-			return v;
-		} catch (CloneNotSupportedException e) {
-			throw new RuntimeException(e);
-		}
+		Vector v = new Vector();
+		v.setTo(this);
+		return v;
 	}
 
 	/** @return A String representation of this Vector object. */
