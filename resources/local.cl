@@ -11,7 +11,7 @@ subtract(__global double *a, __global const double *b, const int aoffset, const 
 }
 
 __kernel void
-mul(__global double *a, __global const double *b, const int aoffset, const int boffset) {
+multiply(__global double *a, __global const double *b, const int aoffset, const int boffset) {
 	int gid = get_global_id(0);
 	a[gid+aoffset] *= b[gid+boffset];
 }

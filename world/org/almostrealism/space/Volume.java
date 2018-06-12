@@ -35,7 +35,7 @@ public interface Volume<T> extends Curve<T> {
 	 * @param x  {x, y, z} - The point in space to test.
 	 * @return  True if the point is within this volume, false otherwise.
 	 */
-	boolean inside(double x[]);
+	boolean inside(VectorProducer x);
 	
 	/**
 	 * Calculates the distance along the line defined by the specified position
