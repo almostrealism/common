@@ -24,7 +24,23 @@ public class ImmutableVector implements VectorProducer {
 	private boolean initialized = false;
 	private Vector value;
 
-	public ImmutableVector() { }
+	public ImmutableVector() {
+		this.value = new Vector() {
+			protected void setMem(int offset, double[] source, int srcOffset, int length) {
+				if (initialized)
+					throw new RuntimeException("Vector is immutable");
+				else
+					super.setMem(offset, source, srcOffset, length);
+			}
+
+			protected void setMem(int offset, Vector src, int srcOffset, int length) {
+				if (initialized)
+					throw new RuntimeException("Vector is immutable");
+				else
+					super.setMem(offset, src, srcOffset, length);
+			}
+		};
+	}
 
 	public ImmutableVector(double x, double y, double z) {
 		this.value = new Vector(x, y, z) {
@@ -103,7 +119,7 @@ public class ImmutableVector implements VectorProducer {
 		return null;
 	}
 
-	public Vector getValue() { return value; }
+	public Vector getValue() { return (Vector) value.clone(); }
 
 	public void setValue(Vector v) { value.setTo(v); initialized = true; }
 }
