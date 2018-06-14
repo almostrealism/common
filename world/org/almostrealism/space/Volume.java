@@ -16,43 +16,40 @@
 
 package org.almostrealism.space;
 
+import org.almostrealism.algebra.Vector;
+import org.almostrealism.algebra.VectorProducer;
+import org.almostrealism.geometry.Curve;
+
 /**
- * A {@link Volume} represents a region of space in three dimensions.
- * In combination with an {@link org.almostrealism.physics.Absorber}
- * implementation, a {@link Volume} defines a solid object.
+ * A {@link Volume} represents a region of space in three dimensions
+ * bounded by a {@link Curve}. In combination with an instance of
+ * {@link org.almostrealism.physics.Absorber}, a {@link Volume}
+ * defines a solid object.
  * 
  * @author  Michael Murray
  */
-public interface Volume {
+public interface Volume<T> extends Curve<T> {
 	/**
 	 * Checks if a point is within this volume.
 	 * 
 	 * @param x  {x, y, z} - The point in space to test.
 	 * @return  True if the point is within this volume, false otherwise.
 	 */
-	boolean inside(double x[]);
-	
-	/**
-	 * Calculates the vector normal to the volume at the specfied point.
-	 * 
-	 * @param x  {x, y, z} - The point in space to calculate the normal.
-	 * @return  {x, y, z} - The vector normal to the surface of the volume.
-	 */
-	// TODO  Replace with gradient
-	double[] getNormal(double x[]);
+	boolean inside(VectorProducer x);
 	
 	/**
 	 * Calculates the distance along the line defined by the specified position
 	 * and direction vectors that the line intersects with this Volume. This is
 	 * a maximum distance that the volume can garuentee that intersection does
-	 * not occur. If intersection cannot be caclualated, zero should be returned.
+	 * not occur. If intersection cannot be calculated, zero should be returned.
 	 * 
 	 * @param p  The position.
 	 * @param d  The direction.
+	 *
 	 * @return  The distance before intersection occurs.
 	 */
 	// TODO  Replace with intersectable
-	double intersect(double p[], double d[]);
+	double intersect(Vector p, Vector d);
 	
 	/**
 	 * Returns 2D coordinates on the surface of this volume at the specified point
@@ -61,7 +58,7 @@ public interface Volume {
 	 * @param xyz  {x, y, z} - Position in spatial coordinates.
 	 * @return  {u, v} - Position in surface coordinates (u,v between 0.0 and 1.0).
 	 */
-	double[] getSurfaceCoords(double xyz[]);
+	double[] getSurfaceCoords(VectorProducer xyz);
 	
 	/**
 	 * Returns 3D coordinates on the surface of this volume at the specified point

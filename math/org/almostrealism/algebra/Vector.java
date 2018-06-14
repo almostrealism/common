@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 Michael Murray
+ * Copyright 2018 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,12 +17,20 @@
 package org.almostrealism.algebra;
 
 import org.almostrealism.geometry.Positioned;
+import org.almostrealism.math.GPUOperator;
+import org.almostrealism.math.Hardware;
+import org.almostrealism.math.MemWrapper;
 import org.almostrealism.util.Defaults;
+import org.jocl.CL;
+import org.jocl.Pointer;
+import org.jocl.Sizeof;
+import org.jocl.cl_mem;
 
 /**
- * A Vector object represents a 3d vector. It stores three coordinates, x, y, z.
+ * A {@link Vector} represents a 3d vector. It stores three coordinates, x, y, z
+ * in a buffer maintained by JOCL.
  */
-public class Vector implements Positioned, Triple, Cloneable {
+public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 	public static final int CARTESIAN_COORDINATES = 0;
 	public static final int SPHERICAL_COORDINATES = 1;
 
@@ -33,10 +41,20 @@ public class Vector implements Positioned, Triple, Cloneable {
 	public static final Vector NEG_Y_AXIS = new Vector(0, -1, 0);
 	public static final Vector NEG_Z_AXIS = new Vector(0, 0, -1);
 
-	private double x, y, z;
+	private static ThreadLocal<GPUOperator<Vector>> addOperator = new ThreadLocal<>();
+	private static ThreadLocal<GPUOperator<Vector>> subtractOperator = new ThreadLocal<>();
+	private static ThreadLocal<GPUOperator<Vector>> multiplyOperator = new ThreadLocal<>();
+	private static ThreadLocal<GPUOperator<Vector>> divideOperator = new ThreadLocal<>();
+	private static ThreadLocal<GPUOperator<Scalar>> dotOperator = new ThreadLocal<>();
+
+	private cl_mem mem; // TODO  Make final
 
 	/** Constructs a {@link Vector} with coordinates at the origin. */
-	public Vector() { }
+	public Vector() {
+		mem = CL.clCreateBuffer(Hardware.getLocalHardware().getContext(),
+								CL.CL_MEM_READ_WRITE,3 * Sizeof.cl_double,
+								null, null);
+	}
 
 	/**
 	 * Constructs a new Vector object using the specified coordinates.
@@ -47,14 +65,14 @@ public class Vector implements Positioned, Triple, Cloneable {
 	 * @param coordSys Vector.CARTESIAN_COORDINATES or Vector.SPHERICAL_COORDINATES.
 	 */
 	public Vector(double x, double y, double z, int coordSys) {
+		this();
+
 		if (coordSys == Vector.CARTESIAN_COORDINATES) {
-			this.x = x;
-			this.y = y;
-			this.z = z;
+			setMem(new double[] { x, y, z });
 		} else if (coordSys == Vector.SPHERICAL_COORDINATES) {
-			this.x = x * Math.sin(y) * Math.cos(z);
-			this.y = x * Math.sin(y) * Math.sin(z);
-			this.z = x * Math.cos(y);
+			setMem(new double[] { x * Math.sin(y) * Math.cos(z),
+								x * Math.sin(y) * Math.sin(z),
+								x * Math.cos(y) });
 		} else {
 			throw new IllegalArgumentException("Illegal coordinate system type code: " + coordSys);
 		}
@@ -82,108 +100,112 @@ public class Vector implements Positioned, Triple, Cloneable {
 		return new Vector(1.0, 2 * Math.PI * Math.random(), 2 * Math.PI * Math.random());
 	}
 
+	@Deprecated
 	public double[] getData() {
-		return new double[]{this.x, this.y, this.z};
+		return new double[] { getX(), getY(), getZ() };
 	}
 
-	/**
-	 * Sets the X coordinate of this Vector object.
-	 */
+	/** Sets the X coordinate of this Vector object. */
+	@Deprecated
 	public void setX(double x) {
-		this.x = x;
+		this.setMem(0, new Vector(x, 0, 0),0,1);
 	}
 
-	/**
-	 * Sets the Y coordinate of this Vector object.
-	 */
+	/** Sets the Y coordinate of this Vector object. */
+	@Deprecated
 	public void setY(double y) {
-		this.y = y;
+		this.setMem(1, new Vector(0, y, 0),1,1);
 	}
 
-	/**
-	 * Sets the Z coordinate of this Vector object.
-	 */
+	/** Sets the Z coordinate of this Vector object. */
+	@Deprecated
 	public void setZ(double z) {
-		this.z = z;
+		this.setMem(2, new Vector(0, 0, z),2,1);
 	}
 
-	/**
-	 * Returns the X coordinate of this Vector object.
-	 */
+	/** Returns the X coordinate of this Vector object. */
 	public double getX() {
-		return this.x;
+		double d[] = new double[1];
+		getMem(0, d, 0, 1);
+		return d[0];
 	}
 
-	/**
-	 * Returns the Y coordinate of this Vector object.
-	 */
+	/** Returns the Y coordinate of this Vector object. */
 	public double getY() {
-		return this.y;
+		double d[] = new double[1];
+		getMem(1, d, 0, 1);
+		return d[0];
 	}
 
-	/**
-	 * Returns the Z coordinate of this Vector object.
-	 */
+	/** Returns the Z coordinate of this Vector object. */
 	public double getZ() {
-		return this.z;
+		double d[] = new double[1];
+		getMem(2, d, 0, 1);
+		return d[0];
 	}
 
 	@Override
+	@Deprecated
 	public double getA() {
 		return getX();
 	}
 
 	@Override
+	@Deprecated
 	public double getB() {
 		return getY();
 	}
 
 	@Override
+	@Deprecated
 	public double getC() {
 		return getZ();
 	}
 
 	@Override
+	@Deprecated
 	public void setA(double a) {
 		setX(a);
 	}
 
 	@Override
+	@Deprecated
 	public void setB(double b) {
 		setY(b);
 	}
 
 	@Override
+	@Deprecated
 	public void setC(double c) {
 		setZ(c);
 	}
 
 	@Override
+	@Deprecated
 	public void setPosition(float x, float y, float z) {
-		this.x = x;
-		this.y = y;
-		this.z = z;
+		setX(x);
+		setY(y);
+		setZ(z);
 	}
 
 	@Override
+	@Deprecated
 	public float[] getPosition() {
-		return new float[]{(float) x, (float) y, (float) z};
+		return new float[] { (float) getX(), (float) getY(), (float) getZ() };
 	}
 
-	/**
-	 * Gets the ith component, 0 <= i < 3
-	 */
+	/** Sets the ith component, 0 <= i < 3 */
 	@Deprecated
 	public Vector set(int i, double v) {
 		switch (i) {
 			case 0:
-				x = v;
+				setX(v);
 				break;
 			case 1:
-				y = v;
+				setY(v);
 				break;
 			case 2:
-				z = v;
+				setZ(v);
 				break;
 			default:
 				throw new IndexOutOfBoundsException();
@@ -192,18 +214,16 @@ public class Vector implements Positioned, Triple, Cloneable {
 		return this;
 	}
 
-	/**
-	 * Gets the ith component, 0 <= i < 3
-	 */
+	/** Gets the ith component, 0 <= i < 3 */
 	@Deprecated
 	public double get(int i) {
 		switch (i) {
 			case 0:
-				return x;
+				return getX();
 			case 1:
-				return y;
+				return getY();
 			case 2:
-				return z;
+				return getZ();
 			default:
 				throw new IndexOutOfBoundsException();
 		}
@@ -217,9 +237,7 @@ public class Vector implements Positioned, Triple, Cloneable {
 	 * @return This Vector.
 	 */
 	public Vector setTo(Vector v) {
-		this.x = v.x;
-		this.y = v.y;
-		this.z = v.z;
+		setMem(0, v, 0, 3);
 		return this;
 	}
 
@@ -227,17 +245,15 @@ public class Vector implements Positioned, Triple, Cloneable {
 	 * Returns the opposite of the vector represented by this {@link Vector}.
 	 */
 	public Vector minus() {
-		Vector newVector = new Vector(-this.getX(), -this.getY(), -this.getZ());
-		return newVector;
+		// TODO  Make fast
+		return new Vector(-this.getX(), -this.getY(), -this.getZ());
 	}
 
-	/**
-	 * Returns the sum of the vector represented by this Vector object and that of the specified Vector object.
-	 */
-	public Vector add(Vector vector) {
-		Vector sum = new Vector(this.getX() + vector.getX(), this.getY() + vector.getY(), this.getZ() + vector.getZ());
-
-		return sum;
+	/** Returns the sum of this {@link Vector} and the specified {@link Vector}. */
+	public synchronized Vector add(Vector vector) {
+		Vector v = (Vector) clone();
+		v.addTo(vector);
+		return v;
 	}
 
 	/**
@@ -246,38 +262,11 @@ public class Vector implements Positioned, Triple, Cloneable {
 	 * @param vector The Vector object to add.
 	 */
 	public void addTo(Vector vector) {
-		this.x = this.x + vector.x;
-		this.y = this.y + vector.y;
-		this.z = this.z + vector.z;
-	}
+		if (addOperator.get() == null) {
+			addOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("add", false));
+		}
 
-	/**
-	 * this = a + s * b
-	 */
-	@Deprecated
-	public Vector addScaled(Vector a, double s, Vector b) {
-		x = a.x + s * b.x;
-		y = a.y + s * b.y;
-		z = a.z + s * b.z;
-		return this;
-	}
-
-	/**
-	 * this = a + s * b
-	 */
-	@Deprecated
-	public Vector scaleAdd(double s, Vector a, Vector b) {
-		return addScaled(a, s, b);
-	}
-
-	/**
-	 * this = a + b
-	 */
-	@Deprecated
-	public void add(Vector a, Vector b) {
-		x = a.getX() + b.getX();
-		y = a.getY() + b.getY();
-		z = a.getZ() + b.getZ();
+		addOperator.get().evaluate(new Object[] { this, vector });
 	}
 
 	/**
@@ -285,9 +274,9 @@ public class Vector implements Positioned, Triple, Cloneable {
 	 * The specified vector is subtracted from this one.
 	 */
 	public Vector subtract(Vector vector) {
-		Vector difference = new Vector(this.getX() - vector.getX(), this.getY() - vector.getY(), this.getZ() - vector.getZ());
-
-		return difference;
+		Vector v = (Vector) clone();
+		v.subtractFrom(vector);
+		return v;
 	}
 
 	/**
@@ -295,40 +284,21 @@ public class Vector implements Positioned, Triple, Cloneable {
 	 *
 	 * @param vector The Vector object to be subtracted.
 	 */
-	public void subtractFrom(Vector vector) {
-		this.x = this.x - vector.x;
-		this.y = this.y - vector.y;
-		this.z = this.z - vector.z;
-	}
+	public synchronized void subtractFrom(Vector vector) {
+		if (subtractOperator.get() == null) {
+			subtractOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("subtract", false));
+		}
 
-	/**
-	 * this = a - b
-	 */
-	public void subtract(Vector a, Vector b) {
-		this.x = a.getX() - b.getX();
-		this.y = a.getY() - b.getY();
-		this.z = a.getZ() - b.getZ();
-	}
-
-	/**
-	 * Sets the value of this {@link Vector} to the negation of {@link Vector} v.
-	 *
-	 * @param v The source Vector
-	 */
-	@Deprecated
-	public void negate(Vector v) {
-		this.x = -v.x;
-		this.y = -v.y;
-		this.z = -v.z;
+		subtractOperator.get().evaluate(new Object[] { this, vector });
 	}
 
 	/**
 	 * Returns the product of the vector represented by this Vector object and the specified value.
 	 */
 	public Vector multiply(double value) {
-		Vector product = new Vector(this.x * value, this.y * value, this.z * value);
-
-		return product;
+		Vector v = (Vector) clone();
+		v.multiplyBy(value);
+		return v;
 	}
 
 	/**
@@ -336,48 +306,43 @@ public class Vector implements Positioned, Triple, Cloneable {
 	 *
 	 * @param value The factor to multiply by.
 	 */
-	public void multiplyBy(double value) {
-		this.x = this.x * value;
-		this.y = this.y * value;
-		this.z = this.z * value;
+	public synchronized void multiplyBy(double value) {
+		if (multiplyOperator.get() == null) {
+			multiplyOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("multiply", false));
+		}
+
+		multiplyOperator.get().evaluate(new Object[] { this, new Vector(value, value, value) });
 	}
 
-	/**
-	 * this = s * t
-	 */
-	public void scale(double s, Vector t) {
-		this.x = s * t.x;
-		this.y = s * t.y;
-		this.z = s * t.z;
-	}
-
-	/**
-	 * Returns the quotient of the division of the vector represented by this Vector object by the specified value.
-	 */
+	/** Returns the quotient of the division of this {@link Vector} by the specified value. */
 	public Vector divide(double value) {
-		Vector quotient = new Vector(this.getX() / value, this.getY() / value, this.getZ() / value);
-
-		return quotient;
+		Vector v = (Vector) clone();
+		v.divideBy(value);
+		return v;
 	}
 
 	/**
-	 * Divides the vector represented by this Vector object by the specified double value.
+	 * Divides this {@link Vector} by the specified double value.
 	 *
 	 * @param value The value to divide by.
 	 */
-	public void divideBy(double value) {
-		this.x = this.x / value;
-		this.y = this.y / value;
-		this.z = this.z / value;
+	public synchronized void divideBy(double value) {
+		if (divideOperator.get() == null) {
+			divideOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("divide", false));
+		}
+
+		divideOperator.get().evaluate(new Object[] { this, new Vector(value, value, value) });
 	}
 
 	/**
-	 * Returns the dot product of the vector represented by this Vector object and that of the specified Vector object.
+	 * Returns the dot product of this {@link Vector} and the specified {@link Vector}.
 	 */
-	public double dotProduct(Vector vector) {
-		double product = this.x * vector.x + this.y * vector.y + this.z * vector.z;
+	public synchronized double dotProduct(Vector vector) {
+		if (dotOperator.get() == null) {
+			dotOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("dotProduct", true));
+		}
 
-		return product;
+		return dotOperator.get().evaluate(new Object[] { this, vector }).getValue();
 	}
 
 	/**
@@ -391,23 +356,14 @@ public class Vector implements Positioned, Triple, Cloneable {
 		return product;
 	}
 
-	/**
-	 * this = a cross b. NOTE: "this" must be a different vector than
-	 * both a and b.
-	 */
-	public void cross(Vector a, Vector b) {
-		x = a.y * b.z - a.z * b.y;
-		y = a.z * b.x - a.x * b.z;
-		z = a.x * b.y - a.y * b.x;
-	}
-
 	public float[] toFloat() {
-		return new float[]{(float) getX(), (float) getY(), (float) getZ()};
+		return new float[] { (float) getX(), (float) getY(), (float) getZ() };
 	}
 
 	/**
 	 * Returns the length of the vector represented by this Vector object as a double value.
 	 */
+	// TODO  Fast version
 	public double length() {
 		return Math.sqrt(this.lengthSq());
 	}
@@ -417,12 +373,13 @@ public class Vector implements Positioned, Triple, Cloneable {
 	 * {@link Vector} as a double value.
 	 */
 	public double lengthSq() {
-		double lengthSq = this.x * this.x + this.y * this.y + this.z * this.z;
-
-		return lengthSq;
+		// TODO  This can be made faster
+		double d[] = toArray();
+		return d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
 	}
 
 	public void normalize() {
+		// TODO  This can be made faster
 		double len = this.length();
 		if (len != 0.0 && len != 1.0) this.divideBy(len);
 	}
@@ -433,22 +390,30 @@ public class Vector implements Positioned, Triple, Cloneable {
 	 *
 	 * @param v1 the un-normalized vector
 	 */
+	@Deprecated
 	public void normalize(Vector v1) {
-		double norm = Math.sqrt(v1.x * v1.x + v1.y * v1.y + v1.z * v1.z);
-		this.x = v1.x / norm;
-		this.y = v1.y / norm;
-		this.z = v1.z / norm;
+		// TODO  This can be made faster
+		double norm = Math.sqrt(v1.getX() * v1.getX() + v1.getY() * v1.getY() + v1.getZ() * v1.getZ());
+		v1.setTo(new Vector(v1.getX() / norm, v1.getY() / norm, v1.getZ() / norm));
 	}
 
+	@Deprecated
 	public Vecf toVecf() {
 		Vecf v = new Vecf(3);
-		v.set(0, (float) x);
-		v.set(1, (float) y);
-		v.set(2, (float) z);
+		v.set(0, (float) getX());
+		v.set(1, (float) getY());
+		v.set(2, (float) getZ());
 		return v;
 	}
 
-	public double[] toArray() { return new double[] {x, y, z}; }
+	/** This is the fastest way to get access to the data in this {@link Vector}. */
+	public double[] toArray() {
+		double d[] = new double[3];
+		getMem(0, d, 0, 3);
+		return d;
+	}
+
+	public cl_mem getMem() { return mem; }
 
 	/**
 	 * Returns an integer hash code value for this Vector object obtained
@@ -477,33 +442,59 @@ public class Vector implements Positioned, Triple, Cloneable {
 			return false;
 	}
 
+	protected void setMem(double[] source) {
+		setMem(0, source, 0, 3);
+	}
+
+	protected void setMem(double[] source, int offset) {
+		setMem(0, source, offset, 3);
+	}
+
+	protected void setMem(int offset, double[] source, int srcOffset, int length) {
+		Pointer src = Pointer.to(source).withByteOffset(srcOffset*Sizeof.cl_double);
+		CL.clEnqueueWriteBuffer(Hardware.getLocalHardware().getQueue(), mem, CL.CL_TRUE,
+								offset * Sizeof.cl_double, length * Sizeof.cl_double,
+								src, 0, null, null);
+	}
+
+	protected void setMem(int offset, Vector src, int srcOffset, int length) {
+		CL.clEnqueueCopyBuffer(Hardware.getLocalHardware().getQueue(), src.mem, this.mem,
+							srcOffset * Sizeof.cl_double,
+							offset * Sizeof.cl_double,length * Sizeof.cl_double,
+							0,null,null);
+	}
+
+	protected void getMem(int sOffset, double out[], int oOffset, int length) {
+		Pointer dst = Pointer.to(out).withByteOffset(oOffset * Sizeof.cl_double);
+		CL.clEnqueueReadBuffer(Hardware.getLocalHardware().getQueue(), mem,
+							CL.CL_TRUE, sOffset * Sizeof.cl_double,
+							length * Sizeof.cl_double, dst, 0,
+							null, null);
+	}
+
+	protected void getMem(double out[], int offset) { getMem(0, out, offset, 3); }
+
 	/**
 	 * @see java.lang.Object#clone()
 	 */
+	@Override
 	public Object clone() {
-		try {
-			Vector v = (Vector) super.clone();
-			v.x = this.x;
-			v.y = this.y;
-			v.z = this.z;
-			return v;
-		} catch (CloneNotSupportedException e) {
-			throw new RuntimeException(e);
-		}
+		Vector v = new Vector();
+		v.setTo(this);
+		return v;
 	}
 
-	/**
-	 * @return A String representation of this Vector object.
-	 */
+	/** @return A String representation of this Vector object. */
+	@Override
 	public String toString() {
 		StringBuffer value = new StringBuffer();
 
 		value.append("[");
-		value.append(Defaults.displayFormat.format(this.x));
+		value.append(Defaults.displayFormat.format(getX()));
 		value.append(", ");
-		value.append(Defaults.displayFormat.format(this.y));
+		value.append(Defaults.displayFormat.format(getY()));
 		value.append(", ");
-		value.append(Defaults.displayFormat.format(this.z));
+		value.append(Defaults.displayFormat.format(getZ()));
 		value.append("]");
 
 
@@ -583,15 +574,15 @@ public class Vector implements Positioned, Triple, Cloneable {
 			Vector v0 = vertices[i0];
 			Vector v1 = vertices[i1];
 			Vector v2 = vertices[i2];
-			d1.subtract(v1, v0);
-			d2.subtract(v2, v0);
+			d1 = v1.subtract(v0);
+			d2 = v2.subtract(v0);
 
 			Vector n = new Vector();
 
 			if (ccw) {
-				n.cross(d1, d2);
+				n = d1.crossProduct(d2);
 			} else {
-				n.cross(d2, d1);
+				n = d2.crossProduct(d1);
 			}
 
 			n.normalize();

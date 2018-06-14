@@ -14,11 +14,17 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.geometry;
+package org.almostrealism.math;
 
-import org.almostrealism.algebra.Vector;
+/**
+ * A wrapper for kernel programs in JOCL.
+ */
+public class AcceleratedFunctions {
+	private GPUOperatorMap prog;
 
-public abstract class CurveAdapter implements Curve {
-	/** Delegates to {@link #getNormalAt(Vector)}. */
-	public Vector operate(Vector v) { return getNormalAt(v).evaluate(new Object[0]); }
+	protected void init(Hardware h, String src) {
+		prog = new GPUOperatorMap(h, src);
+	}
+
+	public GPUOperatorMap getOperators() { return prog; }
 }

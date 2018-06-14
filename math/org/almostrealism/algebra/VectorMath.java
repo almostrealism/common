@@ -98,20 +98,4 @@ public class VectorMath {
 		
 		return Math.sqrt(x[0] * x[0] + x[1] * x[1] + x[2] * x[2]);
 	}
-
-	/**
-	 * @return  A random vector on the unit sphere.
-	 */
-	public static double[] uniformSphericalRandom() {
-		double r[] = new double[3];
-		
-		double y = 2 * Math.PI * Math.random();
-		double z = 2 * Math.PI * Math.random();
-		
-		r[0] = Math.sin(y) * Math.cos(z);
-		r[1] = Math.sin(y) * Math.sin(z);
-		r[2] = Math.cos(y);
-		
-		return r;
-	}
 }

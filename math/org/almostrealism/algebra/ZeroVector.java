@@ -14,11 +14,33 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.geometry;
+package org.almostrealism.algebra;
 
-import org.almostrealism.algebra.Vector;
+import org.almostrealism.util.Producer;
 
-public abstract class CurveAdapter implements Curve {
-	/** Delegates to {@link #getNormalAt(Vector)}. */
-	public Vector operate(Vector v) { return getNormalAt(v).evaluate(new Object[0]); }
+public class ZeroVector extends ImmutableVector {
+	private static ZeroVector local = new ZeroVector();
+
+	private Scalar zero = new Scalar(0.0);
+
+	public ZeroVector() {
+		super(0, 0, 0);
+	}
+
+	@Override
+	public Producer<Scalar> dotProduct(VectorProducer v) {
+		return new Producer<Scalar>() {
+			@Override
+			public Scalar evaluate(Object[] args) {
+				return (Scalar) zero.clone();
+			}
+
+			@Override
+			public void compact() {
+				// TODO
+			}
+		};
+	}
+
+	public static ZeroVector getInstance() { return local; }
 }

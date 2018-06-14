@@ -66,7 +66,9 @@ public class Clock implements Temporal {
 	/**
 	 * @return  The Set used by this clock to store PhotonField objects.
 	 */
-	public Set getPhotonFields() { return this.fields; }
+	public Set<PhotonField> getPhotonFields() { return this.fields; }
+
+	public void setPhotonFields(Set<PhotonField> f) { this.fields = f; }
 	
 	/**
 	 * @param time  The time for this clock (usually in microseconds).

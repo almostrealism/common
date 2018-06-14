@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 Michael Murray
+ * Copyright 2018 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,7 +31,6 @@ import org.almostrealism.relation.Constant;
 import org.almostrealism.relation.Operator;
 import org.almostrealism.relation.TripleFunction;
 import org.almostrealism.texture.Texture;
-import sun.reflect.generics.reflectiveObjects.NotImplementedException;
 
 /**
  * {@link AbstractSurface} is an abstract implementation of {@link ShadableSurface} that takes
@@ -568,7 +567,9 @@ public abstract class AbstractSurface<IN> extends TriangulatableGeometry impleme
 	/**
 	 * Delegates to  {#getNormalAt(Vector)}
 	 */
-	public Vector operate(Triple p) { return getNormalAt(new Vector(p.getA(), p.getB(), p.getC())); }
+	public Vector operate(Triple p) {
+		return getNormalAt(new Vector(p.getA(), p.getB(), p.getC())).evaluate(new Object[0]);
+	}
 
 	public Scope getScope(String prefix) {
 		Scope s = new Scope();

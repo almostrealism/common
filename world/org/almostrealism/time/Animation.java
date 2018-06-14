@@ -168,7 +168,7 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 				Vector g = new Vector(0.0, 0.0, 0.0);
 
 				for (Gradient f : forces)
-					g.addTo(f.getNormalAt(((RigidBody) s).getState().getLocation()));
+					g.addTo(f.getNormalAt(((RigidBody) s).getState().getLocation()).evaluate(new Object[0]));
 
 				((RigidBody) s).getState().setForce(g);
 			}

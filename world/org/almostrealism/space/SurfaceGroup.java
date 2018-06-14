@@ -125,11 +125,11 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 		return color;
 	}
 	
-	/**
-	 * Returns null.
-	 */
-	public Vector getNormalAt(Vector point) { return null; }
-	
+	/** Returns null. */
+	@Override
+	public VectorProducer getNormalAt(Vector point) { return null; } // TODO?
+
+	@Override
 	public Mesh triangulate() {
 		Mesh mesh = super.triangulate();
 		

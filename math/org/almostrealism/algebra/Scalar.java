@@ -7,6 +7,7 @@ public class Scalar extends Pair implements Comparable<Scalar> {
 
 	public Scalar() { setCertainty(1.0); }
 	public Scalar(double v) { setValue(v); setCertainty(1.0); }
+	public Scalar(double v, double c) { setValue(v); setCertainty(c); }
 
 	public Scalar setValue(double v) { setLeft(v); return this; }
 	public Scalar setCertainty(double c) { setRight(c); return this; }
@@ -17,6 +18,11 @@ public class Scalar extends Pair implements Comparable<Scalar> {
 	public int compareTo(Scalar s) {
 		double m = 2 * Math.max(Math.abs(getValue()), Math.abs(s.getValue()));
 		return (int) ((this.getValue() - s.getValue() / m) * Integer.MAX_VALUE);
+	}
+
+	public Object clone() {
+		Scalar s = new Scalar(getValue(), getCertainty());
+		return s;
 	}
 
 	public static Scalar sel(double a, double b, double c) {

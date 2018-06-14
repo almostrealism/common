@@ -26,21 +26,19 @@ import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 
-public class VectorProduct extends VectorFutureAdapter {
-	public VectorProduct() { }
-	public VectorProduct(VectorProducer... producers) { addAll(convertToFutures(producers)); }
-	public VectorProduct(Future<VectorProducer>... producers) { addAll(Arrays.asList(producers)); }
+public class VectorSum extends VectorFutureAdapter {
+	public VectorSum() { }
+	public VectorSum(VectorProducer... producers) { addAll(convertToFutures(producers)); }
+	public VectorSum(Future<VectorProducer>... producers) { addAll(Arrays.asList(producers)); }
 
 	@Override
 	public Vector evaluate(Object[] args) {
-		Vector v = new Vector(1.0, 1.0, 1.0);
+		Vector v = (Vector) ZeroVector.getInstance().evaluate(new Object[0]).clone();
 
 		for (Future<VectorProducer> c : this) {
 			try {
 				Vector v2 = c.get().evaluate(args);
-				v.setX(v.getX() * v2.getX());
-				v.setY(v.getY() * v2.getY());
-				v.setZ(v.getZ() * v2.getZ());
+				v.addTo(v2);
 			} catch (InterruptedException | ExecutionException e) {
 				e.printStackTrace();
 			}
@@ -52,14 +50,14 @@ public class VectorProduct extends VectorFutureAdapter {
 	@Override
 	public Producer<Scalar> dotProduct(VectorProducer v) {
 		return null;
-	}
+	}  // TODO
 
 	@Override
 	public Scope<? extends Variable> getScope(String prefix) {
 		throw new RuntimeException("getScope is not implemented");
 	}
 
-	// TODO  Combine ColorProducts that are equal by converting to ColorPow
+	// TODO  Combine VectorProducts that are equal by converting to VectorProduct
 	@Override
 	public void compact() {
 		super.compact();
@@ -68,10 +66,10 @@ public class VectorProduct extends VectorFutureAdapter {
 		List<VectorFutureAdapter.StaticVectorProducer> replaced = new ArrayList<>();
 
 		for (VectorProducer c : getStaticVectorProducers()) {
-			if (c instanceof VectorProduct) {
+			if (c instanceof VectorSum) {
 				replaced.add(new VectorFutureAdapter.StaticVectorProducer(c));
 
-				for (Future<VectorProducer> cp : ((VectorProduct) c)) {
+				for (Future<VectorProducer> cp : ((VectorSum) c)) {
 					p.add(cp);
 				}
 			}

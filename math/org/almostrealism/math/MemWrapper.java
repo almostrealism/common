@@ -14,11 +14,10 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.geometry;
+package org.almostrealism.math;
 
-import org.almostrealism.algebra.Vector;
+import org.jocl.cl_mem;
 
-public abstract class CurveAdapter implements Curve {
-	/** Delegates to {@link #getNormalAt(Vector)}. */
-	public Vector operate(Vector v) { return getNormalAt(v).evaluate(new Object[0]); }
+public interface MemWrapper {
+	cl_mem getMem();
 }

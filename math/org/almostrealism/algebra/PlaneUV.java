@@ -147,14 +147,14 @@ public class PlaneUV {
 							 Vector projPt,
 							 Pair uvCoords) {
 		// Using projPt as a temporary
-		projPt.subtract(point, origin);
+		projPt.setTo(point.subtract(origin));
 		double dotp = normal.dotProduct(projPt);
 
 		// Component perpendicular to plane
 		Vector tmpDir = new Vector();
 		tmpDir.setTo(normal);
 		tmpDir.multiplyBy(dotp);
-		projPt.subtract(projPt, tmpDir);
+		projPt.subtractFrom(tmpDir);
 
 		// Take dot products with basis vectors
 		uvCoords.setX(projPt.dotProduct(uAxis));
@@ -177,7 +177,7 @@ public class PlaneUV {
 			return false;
 
 		Vector tmpDir = new Vector();
-		tmpDir.subtract(origin, ray.getOrigin());
+		tmpDir.setTo(origin.subtract(ray.getOrigin()));
 
 		double t = tmpDir.dotProduct(normal) / denom;
 
@@ -190,7 +190,7 @@ public class PlaneUV {
 		intPt.setT(t);
 
 		// Find UV coords
-		tmpDir.subtract(intPt.getIntersectionPoint(), origin);
+		tmpDir.setTo(intPt.getIntersectionPoint().subtract(origin));
 		uvCoords.setX(tmpDir.dotProduct(uAxis));
 		uvCoords.setY(tmpDir.dotProduct(vAxis));
 
