@@ -24,6 +24,8 @@ public class ImmutableVector implements VectorProducer {
 	private boolean initialized = false;
 	private Vector value;
 
+	public ImmutableVector() { }
+
 	public ImmutableVector(double x, double y, double z) {
 		this.value = new Vector(x, y, z) {
 			protected void setMem(int offset, double[] source, int srcOffset, int length) {
@@ -100,4 +102,8 @@ public class ImmutableVector implements VectorProducer {
 	public Scope<? extends Variable> getScope(String prefix) {
 		return null;
 	}
+
+	public Vector getValue() { return value; }
+
+	public void setValue(Vector v) { value.setTo(v); initialized = true; }
 }
