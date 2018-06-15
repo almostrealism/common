@@ -24,6 +24,8 @@ public class Electron {
 	private int excitation;
 	private double excitationEnergyLevels[];
 
+	public Electron() { }
+
 	/** Create a free electron, not a member of any Atom. */
 	public Electron(Spin s) {
 		this(s, null, 0);
@@ -53,7 +55,10 @@ public class Electron {
 
 	public int getExcitation() { return excitation; }
 	public void setExcitation(int e) { this.excitation = e; }
+	public Spin getSpin() { return s; }
+	public void setSpin(Spin s) { this.s = s; }
+	public double[] getExcitationEnergyLevels() { return excitationEnergyLevels; }
+	public void setExcitationEnergyLevels(double[] excitationEnergyLevels) { this.excitationEnergyLevels = excitationEnergyLevels; }
 	public int getMaxExcitation() { return excitationEnergyLevels.length - 1; }
-
 	public double getExcitationEnergy() { return this.excitationEnergyLevels[excitation]; }
 }
