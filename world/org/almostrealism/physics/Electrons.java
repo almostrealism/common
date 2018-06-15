@@ -201,12 +201,17 @@ public class Electrons {
 		return d;
 	}
 
-	protected class ExcitationConfiguration implements Validity {
+	public static class ExcitationConfiguration implements Validity {
 		private int cursor[];
+
+		public ExcitationConfiguration() { }
 
 		public ExcitationConfiguration(int cursor[]) {
 			this.cursor = cursor;
 		}
+
+		public int[] getCursor() { return cursor; }
+		public void setCursor(int[] cursor) { this.cursor = cursor; }
 
 		public void apply(Electron e[]) {
 			for (int i = 0; i < cursor.length; i++) {
