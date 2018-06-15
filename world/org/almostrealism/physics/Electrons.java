@@ -43,6 +43,9 @@ public class Electrons {
 
 	private ExcitationConfiguration excited;
 
+	/** Available for bean decoding, do not use. */
+	public Electrons() { }
+
 	protected Electrons(Electron e[]) {
 		this.e = e;
 
@@ -55,6 +58,19 @@ public class Electrons {
 		//       an exception should be thrown or a special
 		//       case should be introduced
 	}
+
+	public Electron[] getElectrons() { return e; }
+	public void setElectrons(Electron[] e) { this.e = e; }
+	public Tensor<Double> getAbsorptionEnergies() { return absorptionEnergies; }
+	public void setAbsorptionEnergies(Tensor<Double> absorptionEnergies) { this.absorptionEnergies = absorptionEnergies; }
+	public Hashtable<ExcitationConfiguration, Double> getConfigurationMap() { return configurationMap; }
+	public void setConfigurationMap(Hashtable<ExcitationConfiguration, Double> configurationMap) { this.configurationMap = configurationMap; }
+	public List<ExcitationConfiguration>[] getConfigurations() { return configurations; }
+	public void setConfigurations(List<ExcitationConfiguration>[] configurations) { this.configurations = configurations; }
+	public double[] getEnergies() { return energies; }
+	public void setEnergies(double[] energies) { this.energies = energies; }
+	public ExcitationConfiguration getExcited() { return excited; }
+	public void setExcited(ExcitationConfiguration excited) { this.excited = excited; }
 
 	public synchronized boolean absorb(double eV) {
 		if (excited != null)
