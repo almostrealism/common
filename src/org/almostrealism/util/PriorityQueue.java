@@ -19,6 +19,7 @@ package org.almostrealism.util;
 import java.util.SortedSet;
 import java.util.TreeSet;
 
+@Deprecated
 public class PriorityQueue {
 	private static double c = Math.pow(10.0, 10.0);
 	private SortedSet data;

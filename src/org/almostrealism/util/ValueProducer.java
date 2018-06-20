@@ -16,6 +16,7 @@
 
 package org.almostrealism.util;
 
+@Deprecated
 public interface ValueProducer {
 	double value();
 }

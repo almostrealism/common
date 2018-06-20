@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 Michael Murray
+ * Copyright 2018 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,12 +28,13 @@ import javax.swing.ImageIcon;
 
 import org.almostrealism.color.ColorProducer;
 import org.almostrealism.color.RGB;
+import org.almostrealism.util.Pipeline;
 
 /**
- * The GraphicsConverter class provides static methods that allow conversion between colors
- * and images stored as RGB objects and those stored as AWT colors.
+ * The {@link GraphicsConverter} provides static methods that allow conversion between colors
+ * and images stored as {@link RGB} instances and arrays with those stored as AWT {@link Color}s.
  * 
- * @author Mike Murray
+ * @author  Michael Murray
  */
 public class GraphicsConverter {
 	public static final int image32Bit = 2;
@@ -186,15 +187,22 @@ public class GraphicsConverter {
 		
 		return rgbArray;
 	}
-	
+
 	/**
 	 * Converts the specified array of RGB objects to an AWT Image object.
 	 * The array locations map to pixels in the image. The image produced
 	 * uses the RGB color model with no alpha channel.
 	 */
-	// TODO  Add support for stopping this in the middle, returning
-	//       a partially rendered image
 	public static Image convertToAWTImage(ColorProducer image[][]) {
+		return convertToAWTImage(image, null);
+	}
+
+	/**
+	 * Converts the specified array of RGB objects to an AWT Image object.
+	 * The array locations map to pixels in the image. The image produced
+	 * uses the RGB color model with no alpha channel.
+	 */
+	public static Image convertToAWTImage(ColorProducer image[][], Pipeline notify) {
 		int data[] = new int[image.length * image[0].length];
 		
 		int index = 0;
@@ -215,6 +223,11 @@ public class GraphicsConverter {
 				int b = (int)(Math.min(1.0, Math.abs(c.getBlue())) * 255);
 				
 				data[index++] = 255 << 24 | r << 16 | g << 8 | b;
+			}
+
+			if (notify != null) {
+				Image img = Toolkit.getDefaultToolkit().createImage(new MemoryImageSource(j + 1, image[0].length, data, 0, image.length));
+				notify.evaluate(new Object[] {img});
 			}
 		}
 		

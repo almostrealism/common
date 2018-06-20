@@ -1,6 +1,6 @@
 package org.almostrealism.relation;
 
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Pipeline;
 
-public interface Operator<T> extends Juncture, Producer<T>, Computation {
+public interface Operator<T> extends Pipeline<T>, Computation {
 }
