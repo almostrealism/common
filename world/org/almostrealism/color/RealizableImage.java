@@ -19,6 +19,7 @@ package org.almostrealism.color;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 
+import org.almostrealism.util.Pipeline;
 import org.almostrealism.util.Producer;
 
 public class RealizableImage implements Producer<ColorProducer[][]> {
@@ -28,20 +29,37 @@ public class RealizableImage implements Producer<ColorProducer[][]> {
 	public RealizableImage(ColorProducer data[][]) { this.data = data; }
 	
 	public RealizableImage(Future<ColorProducer> data[][]) { this.futures = data; }
+
+	public boolean isCompletelySubmitted() {
+		if (futures == null) return true;
+
+		for (int i = 0; i < futures.length; i++) {
+			for (int j = 0; j < futures[i].length; j++) {
+				if (futures[i][j] == null) return false;
+			}
+		}
+
+		return true;
+	}
 	
 	@Override
 	public ColorProducer[][] evaluate(Object[] args) {
 		if (this.futures == null) return data;
-		
+
+		Pipeline pipe = null;
+		if (args.length > 0 && args[0] instanceof Pipeline) pipe = (Pipeline) args[0];
+
 		ColorProducer p[][] = new ColorProducer[futures.length][futures[0].length];
 		for (int i = 0; i < p.length; i++) {
 			for (int j = 0; j < p[i].length; j++) {
 				try {
-					p[i][j] = futures[i][j].get();
+					p[i][j] = (futures[i][j] == null || !futures[i][j].isDone()) ? null : futures[i][j].get();
 				} catch (InterruptedException | ExecutionException e) {
 					e.printStackTrace();
 				}
 			}
+
+			if (pipe != null) pipe.evaluate(new Object[] { p });
 		}
 		
 		return p;
@@ -57,7 +75,7 @@ public class RealizableImage implements Producer<ColorProducer[][]> {
 
 		for (int i = 0; i < data.length; i++) {
 			for (int j = 0; j < data[i].length; j++) {
-				data[i][j].compact();
+				if (data[i][j] != null) data[i][j].compact();
 			}
 		}
 	}
