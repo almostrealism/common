@@ -41,7 +41,34 @@ public class RealizableImage implements Producer<ColorProducer[][]> {
 
 		return true;
 	}
-	
+
+	public boolean isComplete() {
+		if (futures == null) return true;
+
+		for (int i = 0; i < futures.length; i++) {
+			for (int j = 0; j < futures[i].length; j++) {
+				if (futures[i][j] == null || !futures[i][j].isDone()) return false;
+			}
+		}
+
+		return true;
+	}
+
+	public double getCompleted() {
+		if (futures == null) return 1.0;
+
+		int completed = 0, total = 0;
+
+		for (int i = 0; i < futures.length; i++) {
+			for (int j = 0; j < futures[i].length; j++) {
+				if (futures[i][j] != null && futures[i][j].isDone()) completed++;
+				total++;
+			}
+		}
+
+		return ((double) completed) / total;
+	}
+
 	@Override
 	public ColorProducer[][] evaluate(Object[] args) {
 		if (this.futures == null) return data;
@@ -70,6 +97,7 @@ public class RealizableImage implements Producer<ColorProducer[][]> {
 	 * {@link Producer#compact()} is called on each of them. If {@link Future}s
 	 * are being used instead, this method does nothing.
 	 */
+	@Override
 	public void compact() {
 		if (data == null) return;
 
