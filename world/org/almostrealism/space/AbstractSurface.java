@@ -136,6 +136,7 @@ public abstract class AbstractSurface<IN> extends TriangulatableGeometry impleme
 	 * The "front side" is the side that the Vector object returned by the getNormalAt()
 	 * method for this AbstractSurface points outward from.
 	 */
+	@Override
 	public boolean getShadeFront() {
 	    if (this.parent != null && this.parent.getShadeFront())
 	        return true;
@@ -148,6 +149,7 @@ public abstract class AbstractSurface<IN> extends TriangulatableGeometry impleme
 	 * The "back side" is the side that the vector opposite the Vector object
 	 * returned by the getNormalAt() method for this AbstractSurface points outward from.
 	 */
+	@Override
 	public boolean getShadeBack() {
 	    if (this.parent != null && this.parent.getShadeBack())
 	        return true;
@@ -159,10 +161,11 @@ public abstract class AbstractSurface<IN> extends TriangulatableGeometry impleme
 	 * @return  A Mesh object with location, size, color, scale coefficients,
 	 *          rotation coefficients, and transformations as this AbstractSurface.
 	 */
+	@Override
 	public Mesh triangulate() {
-		// TODO  Pass porosity on to the mesh.
 		Mesh m = super.triangulate();
 		m.setColor(this.getColor());
+		m.setPorosity(getPorosity());
 		return m;
 	}
 	
@@ -179,6 +182,8 @@ public abstract class AbstractSurface<IN> extends TriangulatableGeometry impleme
 	public double getRefractedPercentage(Vector p) { return this.refractP; }
 	
 	public void setPorosity(double p) { this.porosity = p; }
+
+	@Override
 	public double getPorosity() { return porosity; }
 
 	public void setInput(Vector v) { this.in = new Constant<>(v); }
@@ -228,28 +233,22 @@ public abstract class AbstractSurface<IN> extends TriangulatableGeometry impleme
 		for (int i = index + 1; i < newTextures.length; i++) { newTextures[i] = this.textures[i]; }
 		
 		this.textures = newTextures;
-        }
+	}
 	
 	/**
 	 * Returns a Set object that maintains the Texture objects stored by this AbstractSurface.
 	 */
 	public Set<Texture> getTextureSet() {
 		Set<Texture> textureSet = new Set<Texture>() {
-			/**
-			 * @return  The number of elements stored by this set.
-			 */
+			/** @return  The number of elements stored by this set. */
 			public int size() { return textures.length; }
 			
-			/**
-			 * @return  True if this set contains no elements, false otherwise.
-			 */
+			/** @return  True if this set contains no elements, false otherwise. */
 			public boolean isEmpty() {
 				return (textures.length <= 0);
 			}
 			
-			/**
-			 * @return  An Iterator object using the elements stored by this set.
-			 */
+			/** @return  An Iterator object using the elements stored by this set. */
 			public Iterator<Texture> iterator() {
 				Iterator<Texture> itr = new Iterator<Texture>() {
 					int index = 0;
@@ -500,6 +499,8 @@ public abstract class AbstractSurface<IN> extends TriangulatableGeometry impleme
 	 * of this {@link AbstractSurface} and returns this value as an {@link RGB}.
 	 */
 	public ColorProducer shade(ShaderContext p) {
+//		System.out.println(this + ".shade(reflections = " + p.getReflectionCount() + ")");
+
 		p.setSurface(this);
 		
 		ColorSum color = new ColorSum();

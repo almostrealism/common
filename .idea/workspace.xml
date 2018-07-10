@@ -3,7 +3,7 @@
   <component name="ChangeListManager">
     <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="">
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/color/RealizableImage.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/color/RealizableImage.java" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/space/AbstractSurface.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/space/AbstractSurface.java" />
     </list>
     <ignored path="$PROJECT_DIR$/target/" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -14,20 +14,7 @@
     <option name="LAST_RESOLUTION" value="IGNORE" />
   </component>
   <component name="FileEditorManager">
-    <leaf>
-      <file leaf-file-name="RealizableImage.java" pinned="false" current-in-tab="true">
-        <entry file="file://$PROJECT_DIR$/world/org/almostrealism/color/RealizableImage.java">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="430">
-              <caret line="57" column="40" lean-forward="true" selection-start-line="57" selection-start-column="40" selection-end-line="57" selection-end-column="40" />
-              <folding>
-                <element signature="e#0#3034#0" expanded="true" />
-              </folding>
-            </state>
-          </provider>
-        </entry>
-      </file>
-    </leaf>
+    <leaf SIDE_TABS_SIZE_LIMIT_KEY="300" />
   </component>
   <component name="FileTemplateManagerImpl">
     <option name="RECENT_TEMPLATES">
@@ -40,8 +27,6 @@
   </component>
   <component name="FindInProjectRecents">
     <findStrings>
-      <find>setCol</find>
-      <find>set</find>
       <find>set(</find>
       <find>xform</find>
       <find>xformp</find>
@@ -70,6 +55,8 @@
       <find>clone</find>
       <find>multiply</find>
       <find>Pipeline</find>
+      <find>shade</find>
+      <find>shade(</find>
     </findStrings>
     <dirStrings>
       <dir>$PROJECT_DIR$/math/org/almostrealism/algebra</dir>
@@ -110,7 +97,6 @@
         <option value="$PROJECT_DIR$/world/org/almostrealism/space/Gradient.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Polynomial.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/geometry/CurveAdapter.java" />
-        <option value="$PROJECT_DIR$/world/org/almostrealism/space/AbstractSurface.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/time/Animation.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/space/SurfaceGroup.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/space/Plane.java" />
@@ -135,6 +121,7 @@
         <option value="$PROJECT_DIR$/world/org/almostrealism/texture/GraphicsConverter.java" />
         <option value="$PROJECT_DIR$/src/io/almostrealism/lambda/Realization.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/color/RealizableImage.java" />
+        <option value="$PROJECT_DIR$/world/org/almostrealism/space/AbstractSurface.java" />
       </list>
     </option>
   </component>
@@ -180,6 +167,9 @@
       <foldersAlwaysOnTop value="true" />
     </navigator>
     <panes>
+      <pane id="Scope" />
+      <pane id="Scratches" />
+      <pane id="AndroidView" />
       <pane id="PackagesPane">
         <subPane>
           <expand>
@@ -203,9 +193,6 @@
           <select />
         </subPane>
       </pane>
-      <pane id="Scratches" />
-      <pane id="Scope" />
-      <pane id="AndroidView" />
       <pane id="ProjectPane">
         <subPane>
           <expand>
@@ -527,14 +514,8 @@
       <workItem from="1529515061804" duration="801000" />
       <workItem from="1530757927388" duration="1200000" />
       <workItem from="1530833418540" duration="1698000" />
-      <workItem from="1530835219381" duration="165000" />
-    </task>
-    <task id="LOCAL-00073" summary="Introduced normalize method.">
-      <created>1519874306270</created>
-      <option name="number" value="00073" />
-      <option name="presentableId" value="LOCAL-00073" />
-      <option name="project" value="LOCAL" />
-      <updated>1519874306271</updated>
+      <workItem from="1530835219381" duration="1237000" />
+      <workItem from="1531239612838" duration="465000" />
     </task>
     <task id="LOCAL-00074" summary="Added getColumn method.">
       <created>1519881590113</created>
@@ -872,11 +853,18 @@
       <option name="project" value="LOCAL" />
       <updated>1530835120361</updated>
     </task>
-    <option name="localTasksCounter" value="122" />
+    <task id="LOCAL-00122" summary="Added isComplete and getCompleted methods to RealizableImage.">
+      <created>1530835434622</created>
+      <option name="number" value="00122" />
+      <option name="presentableId" value="LOCAL-00122" />
+      <option name="project" value="LOCAL" />
+      <updated>1530835434622</updated>
+    </task>
+    <option name="localTasksCounter" value="123" />
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="270239000" />
+    <option name="totallyTimeSpent" value="271776000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="0" y="0" width="1280" height="800" extended-state="0" />
@@ -888,9 +876,9 @@
       <window_info id="Capture Analysis" active="false" anchor="right" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="6" side_tool="false" content_ui="tabs" />
       <window_info id="Event Log" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.3232462" sideWeight="0.503231" order="7" side_tool="true" content_ui="tabs" />
       <window_info id="Maven Projects" active="false" anchor="right" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.32956383" sideWeight="0.5" order="4" side_tool="false" content_ui="tabs" />
-      <window_info id="Version Control" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.3287483" sideWeight="0.5" order="11" side_tool="false" content_ui="tabs" />
       <window_info id="Run" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="2" side_tool="false" content_ui="tabs" />
-      <window_info id="Terminal" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.62723523" sideWeight="0.49676898" order="10" side_tool="false" content_ui="tabs" />
+      <window_info id="Version Control" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.3287483" sideWeight="0.5" order="11" side_tool="false" content_ui="tabs" />
+      <window_info id="Terminal" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.62723523" sideWeight="0.49676898" order="10" side_tool="false" content_ui="tabs" />
       <window_info id="Capture Tool" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="2" side_tool="false" content_ui="tabs" />
       <window_info id="Designer" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="3" side_tool="false" content_ui="tabs" />
       <window_info id="Project" active="true" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.24717286" sideWeight="0.5" order="0" side_tool="false" content_ui="combo" />
@@ -900,8 +888,8 @@
       <window_info id="Ant Build" active="false" anchor="right" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.25" sideWeight="0.5" order="1" side_tool="false" content_ui="tabs" />
       <window_info id="UI Designer" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="4" side_tool="false" content_ui="tabs" />
       <window_info id="Theme Preview" active="false" anchor="right" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="8" side_tool="false" content_ui="tabs" />
-      <window_info id="Favorites" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="5" side_tool="true" content_ui="tabs" />
       <window_info id="Debug" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.4" sideWeight="0.5" order="3" side_tool="false" content_ui="tabs" />
+      <window_info id="Favorites" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="5" side_tool="true" content_ui="tabs" />
       <window_info id="Data View" active="false" anchor="right" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="7" side_tool="false" content_ui="tabs" />
       <window_info id="Cvs" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.25" sideWeight="0.5" order="4" side_tool="false" content_ui="tabs" />
       <window_info id="Message" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="0" side_tool="false" content_ui="tabs" />
@@ -920,7 +908,6 @@
     <option name="myLimit" value="2678400000" />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="Removed Vec3f. Added operations to Pair." />
     <MESSAGE value="Added toPair method to Veci. Vec3d implements Triple." />
     <MESSAGE value="Removed Vec3d." />
     <MESSAGE value="Added multiplyBy method." />
@@ -945,7 +932,8 @@
     <MESSAGE value="Beginning version 0.7." />
     <MESSAGE value="Introduced Pipeline (combination of Juncture and Producer). Updated GraphicsConverter so that each column can optionally notify a Pipeline." />
     <MESSAGE value="Improved RealizableImage so that evaluate returns rapidly with partial image data if the image pixel futures are not complete." />
-    <option name="LAST_COMMIT_MESSAGE" value="Improved RealizableImage so that evaluate returns rapidly with partial image data if the image pixel futures are not complete." />
+    <MESSAGE value="Added isComplete and getCompleted methods to RealizableImage." />
+    <option name="LAST_COMMIT_MESSAGE" value="Added isComplete and getCompleted methods to RealizableImage." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -1107,13 +1095,6 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="108">
           <caret line="337" column="22" lean-forward="false" selection-start-line="337" selection-start-column="22" selection-end-line="337" selection-end-column="22" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/space/AbstractSurface.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="358">
-          <caret line="32" column="41" lean-forward="false" selection-start-line="32" selection-start-column="41" selection-end-line="32" selection-end-column="41" />
         </state>
       </provider>
     </entry>
@@ -1312,14 +1293,23 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="90">
           <caret line="20" column="17" lean-forward="false" selection-start-line="20" selection-start-column="17" selection-end-line="20" selection-end-column="17" />
-          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/space/AbstractSurface.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="110">
+          <caret line="502" column="0" lean-forward="true" selection-start-line="502" selection-start-column="0" selection-end-line="502" selection-end-column="0" />
+          <folding>
+            <element signature="imports" expanded="true" />
+          </folding>
         </state>
       </provider>
     </entry>
     <entry file="file://$PROJECT_DIR$/world/org/almostrealism/color/RealizableImage.java">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="430">
-          <caret line="57" column="40" lean-forward="true" selection-start-line="57" selection-start-column="40" selection-end-line="57" selection-end-column="40" />
+        <state relative-caret-position="446">
+          <caret line="51" column="9" lean-forward="false" selection-start-line="51" selection-start-column="9" selection-end-line="51" selection-end-column="9" />
           <folding>
             <element signature="e#0#3034#0" expanded="true" />
           </folding>
