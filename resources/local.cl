@@ -1,7 +1,7 @@
 __kernel void
 add(__global double *a, __global const double *b, const int aoffset, const int boffset) {
     int gid = get_global_id(0);
-	a[aoffset] += b[boffset];
+	a[gid + aoffset] += b[gid + boffset];
 }
 
 __kernel void
@@ -13,13 +13,13 @@ subtract(__global double *a, __global const double *b, const int aoffset, const 
 __kernel void
 multiply(__global double *a, __global const double *b, const int aoffset, const int boffset) {
     int gid = get_global_id(0);
-	a[aoffset] *= b[boffset];
+	a[gid + aoffset] *= b[gid + boffset];
 }
 
 __kernel void
 divide(__global double *a, __global const double *b, const int aoffset, const int boffset) {
     int gid = get_global_id(0);
-	a[aoffset] /= b[boffset];
+	a[gid + aoffset] /= b[gid + boffset];
 }
 
 __kernel void
@@ -46,8 +46,8 @@ transformAsLocation(__global const double *m, __global double *v, const int moff
 __kernel void
 transformAsOffset(__global const double *m, __global double *v, const int moffset, const int voffset) {
     int gid = get_global_id(0);
-    double x = v[gid+voffset];
-    double y = v[gid+voffset+1];
-    double z = v[gid+voffset+2];
+    double x = v[voffset];
+    double y = v[voffset+1];
+    double z = v[voffset+2];
     v[gid+voffset] = m[4 * gid + moffset] * x + m[4 * gid + moffset + 1] * y + m[4 * gid + moffset + 2] * z;
 }
