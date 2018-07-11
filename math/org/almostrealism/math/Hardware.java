@@ -34,7 +34,7 @@ public final class Hardware {
 
 	private Hardware(String name) {
 		final int platformIndex = 0;
-		final long deviceType = CL.CL_DEVICE_TYPE_GPU;
+		final long deviceType = CL.CL_DEVICE_TYPE_CPU;
 		final int deviceIndex = 0;
 
 		CL.setExceptionsEnabled(true);
@@ -60,15 +60,16 @@ public final class Hardware {
 		CL.clGetDeviceIDs(platform, deviceType, 0, null, numDevicesArray);
 		int numDevices = numDevicesArray[0];
 
-		System.out.println("Hardware[" + name + "]: " + numDevices + " GPU(s) available");
+		System.out.println("Hardware[" + name + "]: " + numDevices + " CPU(s) available");
 
 		cl_device_id devices[] = new cl_device_id[numDevices];
 		CL.clGetDeviceIDs(platform, deviceType, numDevices, devices, null);
 		cl_device_id device = devices[deviceIndex];
 
-		System.out.println("Hardware[" + name + "]: Using GPU " + deviceIndex);
+		System.out.println("Hardware[" + name + "]: Using CPU " + deviceIndex);
 
-		context = CL.clCreateContext(contextProperties, 1, new cl_device_id[] { device }, null, null, null);
+		context = CL.clCreateContext(contextProperties, 1, new cl_device_id[] { device },
+								null, null, null);
 		System.out.println("Hardware[" + name + "]: OpenCL context initialized");
 
 		queue = CL.clCreateCommandQueue(context, device, 0, null);

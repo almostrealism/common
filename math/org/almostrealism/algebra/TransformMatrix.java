@@ -17,7 +17,14 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.code.Scope;
+import org.almostrealism.math.GPUOperator;
+import org.almostrealism.math.Hardware;
+import org.almostrealism.math.MemWrapper;
 import org.almostrealism.relation.TripleFunction;
+import org.jocl.CL;
+import org.jocl.Pointer;
+import org.jocl.Sizeof;
+import org.jocl.cl_mem;
 
 /**
  * A {@link TransformMatrix} object represents a 4 X 4 matrix used for transforming vectors.
@@ -25,37 +32,34 @@ import org.almostrealism.relation.TripleFunction;
  * methods for transforming varius types of vectors. The TransformMatrix class also provides
  * some static methods that generate certain useful matrices.
  */
-public class TransformMatrix implements TripleFunction<Vector> {
-  public static final int TRANSFORM_AS_LOCATION = 1;
-  public static final int TRANSFORM_AS_OFFSET = 2;
-  public static final int TRANSFORM_AS_NORMAL = 4;
+public class TransformMatrix implements TripleFunction<Vector>, MemWrapper {
+	public static final int TRANSFORM_AS_LOCATION = 1;
+	public static final int TRANSFORM_AS_OFFSET = 2;
+	public static final int TRANSFORM_AS_NORMAL = 4;
+
   /** The data for the identity matrix. */
-  
-  public static final double identity[][] = {{1.0, 0.0, 0.0, 0.0},
+	public static final double identity[][] = {{1.0, 0.0, 0.0, 0.0},
 											{0.0, 1.0, 0.0, 0.0},
 											{0.0, 0.0, 1.0, 0.0},
 											{0.0, 0.0, 0.0, 1.0}};
-  
-  private double matrix[][];
-  private double inverse[][];
-  private double inverseT[][];
-  private TransformMatrix inverseMatrix;
-  private TransformMatrix inverseTranspose;
-  private TransformMatrix transposeMatrix;
-  
-  private boolean inverted, isIdentity;
-  
-  private double df;
+	private static ThreadLocal<GPUOperator<Vector>> transformAsLocation = new ThreadLocal<>();
+	private static ThreadLocal<GPUOperator<Vector>> transformAsOffset = new ThreadLocal<>();
+
+	private cl_mem matrix;
+	private TransformMatrix inverseMatrix;
+	private TransformMatrix inverseTranspose;
+	private TransformMatrix transposeMatrix;
+
+	private boolean inverted, isIdentity;
+
+	private double df;
 
 	/**
 	 * Constructs a {@link TransformMatrix} that by default contains the data for a 4 X 4 identity matrix.
 	 */
 	public TransformMatrix() {
+		initMem();
 		this.setMatrix(TransformMatrix.identity);
-		
-		this.inverse = new double[4][4];
-		this.inverted = false;
-		
 		this.df = 0;
 	}
 	
@@ -63,13 +67,16 @@ public class TransformMatrix implements TripleFunction<Vector> {
 	 * Constructs a TransformMatrix object with the specified matrix data. Any extra array entries are removed
 	 * and missing array entries are replaced with 0.0.
 	 */
-	public TransformMatrix(double matrix[][]) { 
+	public TransformMatrix(double matrix[][]) {
+		initMem();
 		this.setMatrix(matrix);
-		
-		this.inverse = new double[4][4];
-		this.inverted = false;
-		
 		this.df = 0;
+	}
+
+	private void initMem() {
+		matrix = CL.clCreateBuffer(Hardware.getLocalHardware().getContext(),
+				CL.CL_MEM_READ_WRITE,16 * Sizeof.cl_double,
+				null, null);
 	}
 	
 	/**
@@ -78,47 +85,68 @@ public class TransformMatrix implements TripleFunction<Vector> {
 	 * replaced with 0.0.
 	 */
 	public void setMatrix(double matrix[][]) {
-		double newMatrix[][] = new double[4][4];
+		double newMatrix[] = new double[16];
 		
 		boolean id = true;
 		
 		for(int i = 0; i < matrix.length && i < 4; i++) {
 			for(int j = 0; j < matrix.length && j < 4; j++) {
-				newMatrix[i][j] = matrix[i][j];
-				if (newMatrix[i][j] != TransformMatrix.identity[i][j]) id = false;
+				int index = i * 4 + j;
+				newMatrix[index] = matrix[i][j];
+				if (newMatrix[index] != TransformMatrix.identity[i][j]) id = false;
 			}
 		}
 		
 		if (matrix.length < 4 || matrix[0].length < 4) id = false;
 		
-		this.matrix = newMatrix;
+		this.setMem(newMatrix);
 		
 		this.inverted = false;
 		this.isIdentity = id;
 	}
 	
 	/**
+	 * This method is slow.
+	 *
 	 * @return  The 16 values stored by this TransformMatrix as a 4 X 4 double array.
 	 */
-	public double[][] getMatrix() { return this.matrix; }
+	@Deprecated
+	public double[][] getMatrix() {
+		double m[] = toArray();
+		return new double[][] { { m[0],  m[1],  m[2],  m[3],
+								  m[4],  m[5],  m[6],  m[7],
+								  m[8],  m[9],  m[10], m[11],
+								  m[12], m[13], m[14], m[15] } };
+	}
 
-	public double getValue(int r, int c) { return this.matrix[r][c]; }
+	/**
+	 * This method is slow.
+	 *
+	 * @param r  Matrix row.
+	 * @param c  Matrix column.
+	 *
+	 * @return  Value from matrix.
+	 */
+	@Deprecated
+	public double getValue(int r, int c) { return this.toArray()[r * r + c]; }
 	
-	public double[][] getInverseTransposeMatrix() {
+	public TransformMatrix getInverseTransposeMatrix() {
 		if (!this.inverted) this.calculateInverse();
-		return this.inverseT;
+		return this.inverseMatrix;
 	}
 	
 	/**
 	 * Multiplys the matrix represented by this TransformMatrix object with the specified
 	 * double value and returns the result as a TransformMatrix object.
 	 */
+	// TODO  Improve the performance of this method using CL
 	public TransformMatrix multiply(double value) {
+		double m[] = toArray();
 		double newMatrix[][] = new double[4][4];
 		
-		for(int i = 0; i < this.matrix.length && i < 4; i++) {
-			for(int j = 0; j < this.matrix.length && j < 4; j++) {
-				newMatrix[i][j] = this.matrix[i][j] * value;
+		for (int i = 0; i < 4; i++) {
+			for (int j = 0; j < 4; j++) {
+				newMatrix[i][j] = m[i * 4 + j] * value;
 			}
 		}
 		
@@ -131,14 +159,16 @@ public class TransformMatrix implements TripleFunction<Vector> {
 	 * TransformMatrix object.
 	 */
 	public TransformMatrix multiply(TransformMatrix matrix) {
+		double m1[] = toArray();
+		double m2[] = matrix.toArray();
 		double product[][] = new double[4][4];
 		
 		for (int i = 0; i < product.length; i++) {
 			for (int j = 0; j < product[i].length; j++) {
-				product[j][i] = this.matrix[j][0] * matrix.getMatrix()[0][i] +
-						this.matrix[j][1] * matrix.getMatrix()[1][i] +
-						this.matrix[j][2] * matrix.getMatrix()[2][i] +
-						this.matrix[j][3] * matrix.getMatrix()[3][i];
+				product[j][i] = m1[j * 4] 		* 	m2[i] +
+								m1[j * 4 + 1] 	* 	m2[4 + i] +
+								m1[j * 4 + 2] 	* 	m2[8 + i] +
+								m1[j * 4 + 3] 	* 	m2[12 + i];
 			}
 		}
 		
@@ -162,13 +192,17 @@ public class TransformMatrix implements TripleFunction<Vector> {
 		if (this.isIdentity) return;
 		
 		if (type == TransformMatrix.TRANSFORM_AS_LOCATION) {
-			vector.setX(this.matrix[0][0] * vector.getX() + this.matrix[0][1] * vector.getY() + this.matrix[0][2] * vector.getZ() + this.matrix[0][3]);
-			vector.setY(this.matrix[1][0] * vector.getX() + this.matrix[1][1] * vector.getY() + this.matrix[1][2] * vector.getZ() + this.matrix[1][3]);
-			vector.setZ(this.matrix[2][0] * vector.getX() + this.matrix[2][1] * vector.getY() + this.matrix[2][2] * vector.getZ() + this.matrix[2][3]);
+			if (transformAsLocation.get() == null) {
+				transformAsLocation.set(Hardware.getLocalHardware().getFunctions().getOperators().get("transformAsLocation", false));
+			}
+
+			transformAsLocation.get().evaluate(new Object[] { this, vector });
 		} else if (type == TransformMatrix.TRANSFORM_AS_OFFSET) {
-			vector.setX(this.matrix[0][0] * vector.getX() + this.matrix[0][1] * vector.getY() + this.matrix[0][2] * vector.getZ());
-			vector.setY(this.matrix[1][0] * vector.getX() + this.matrix[1][1] * vector.getY() + this.matrix[1][2] * vector.getZ());
-			vector.setZ(this.matrix[2][0] * vector.getX() + this.matrix[2][1] * vector.getY() + this.matrix[2][2] * vector.getZ());
+			if (transformAsOffset.get() == null) {
+				transformAsOffset.set(Hardware.getLocalHardware().getFunctions().getOperators().get("transformAsOffset", false));
+			}
+
+			transformAsOffset.get().evaluate(new Object[] { this, vector });
 		} else if (type == TransformMatrix.TRANSFORM_AS_NORMAL) {
 			if (!this.inverted) this.calculateInverse();
 			this.inverseTranspose.transform(vector, TransformMatrix.TRANSFORM_AS_OFFSET);
@@ -179,28 +213,10 @@ public class TransformMatrix implements TripleFunction<Vector> {
 	
 	public double[] transform(double x, double y, double z, int type) {
 		if (this.isIdentity) return new double[] {x, y, z};
-		
-		double d[] = new double[3];
-		
-		if (type == TransformMatrix.TRANSFORM_AS_LOCATION) {
-			d[0] = this.matrix[0][0] * x + this.matrix[0][1] * y + this.matrix[0][2] * z + this.matrix[0][3];
-			d[1] = this.matrix[1][0] * x + this.matrix[1][1] * y + this.matrix[1][2] * z + this.matrix[1][3];
-			d[2] = this.matrix[2][0] * x + this.matrix[2][1] * y + this.matrix[2][2] * z + this.matrix[2][3];
-		} else if (type == TransformMatrix.TRANSFORM_AS_OFFSET) {
-			d[0] = this.matrix[0][0] * x + this.matrix[0][1] * y + this.matrix[0][2] * z;
-			d[1] = this.matrix[1][0] * x + this.matrix[1][1] * y + this.matrix[1][2] * z;
-			d[2] = this.matrix[2][0] * x + this.matrix[2][1] * y + this.matrix[2][2] * z;
-		} else if (type == TransformMatrix.TRANSFORM_AS_NORMAL) {
-			if (!this.inverted) this.calculateInverse();
-			
-			d[0] = this.inverseT[0][0] * x + this.inverseT[0][1] * y + this.inverseT[0][2] * z;
-			d[1] = this.inverseT[1][0] * x + this.inverseT[1][1] * y + this.inverseT[1][2] * z;
-			d[2] = this.inverseT[2][0] * x + this.inverseT[2][1] * y + this.inverseT[2][2] * z;
-		} else {
-			throw new IllegalArgumentException("Illegal type: " + type);
-		}
-		
-		return d;
+
+		Vector v = new Vector(x, y, z);
+		transform(v, type);
+		return v.toArray();
 	}
 	
 	/**
@@ -209,15 +225,11 @@ public class TransformMatrix implements TripleFunction<Vector> {
 	 * the specified vector describes a location on 3d space.
 	 */
 	public Vector transformAsLocation(Vector vector) {
-		if (this.isIdentity) return (Vector) vector.clone();
-		
-		double x, y, z;
-		
-		x = this.matrix[0][0] * vector.getX() + this.matrix[0][1] * vector.getY() + this.matrix[0][2] * vector.getZ() + this.matrix[0][3];
-		y = this.matrix[1][0] * vector.getX() + this.matrix[1][1] * vector.getY() + this.matrix[1][2] * vector.getZ() + this.matrix[1][3];
-		z = this.matrix[2][0] * vector.getX() + this.matrix[2][1] * vector.getY() + this.matrix[2][2] * vector.getZ() + this.matrix[2][3];
-		
-		return new Vector(x, y, z);
+		vector = (Vector) vector.clone();
+		if (this.isIdentity) return vector;
+
+		transform(vector, TRANSFORM_AS_LOCATION);
+		return vector;
 	}
 	
 	/**
@@ -226,15 +238,11 @@ public class TransformMatrix implements TripleFunction<Vector> {
 	 * assuming that the specified vector describes an offset in 3d space.
 	 */
 	public Vector transformAsOffset(Vector vector) {
-		if (this.isIdentity) return (Vector) vector.clone();
-		
-		double x, y, z;
-		
-		x = this.matrix[0][0] * vector.getX() + this.matrix[0][1] * vector.getY() + this.matrix[0][2] * vector.getZ();
-		y = this.matrix[1][0] * vector.getX() + this.matrix[1][1] * vector.getY() + this.matrix[1][2] * vector.getZ();
-		z = this.matrix[2][0] * vector.getX() + this.matrix[2][1] * vector.getY() + this.matrix[2][2] * vector.getZ();
-		
-		return new Vector(x, y, z);
+		vector = (Vector) vector.clone();
+		if (this.isIdentity) return vector;
+
+		transform(vector, TRANSFORM_AS_OFFSET);
+		return vector;
 	}
 	
 	/**
@@ -243,10 +251,11 @@ public class TransformMatrix implements TripleFunction<Vector> {
 	 * assuming that the specified vector describes a surface normal in 3d space.
 	 */
 	public Vector transformAsNormal(Vector vector) {
-		if (this.isIdentity) return (Vector) vector.clone();
-		
-		if (!this.inverted) this.calculateInverse();
-		return this.inverseTranspose.transformAsOffset(vector);
+		vector = (Vector) vector.clone();
+		if (this.isIdentity) return vector;
+
+		transform(vector, TRANSFORM_AS_NORMAL);
+		return vector;
 	}
 	
 	/**
@@ -257,25 +266,20 @@ public class TransformMatrix implements TripleFunction<Vector> {
 		double det = 0.0;
 		
 		if (this.isIdentity) {
-			this.inverse = new double[][]
-		                   {{1, 0, 0, 0},
-							{0, 1, 0, 0},
-							{0, 0, 1, 0},
-							{0, 0, 0, 1}};
+			this.inverseMatrix = new TransformMatrix();
 		} else {
 			det = this.determinant();
 		}
-		
-		if (det != 0.0) {
-			this.inverse = this.adjoint().getMatrix();
-			this.inverseMatrix = (new TransformMatrix(this.inverse)).multiply(1.0 / det);
-		} else {
+
+		if (det == 1.0) {
+			this.inverseMatrix = this.adjoint();
+		} else if (det != 0.0) {
+			this.inverseMatrix = this.adjoint().multiply(1.0 / det);
+		} else if (!isIdentity) {
 			this.inverseMatrix = new TransformMatrix(TransformMatrix.identity);
 		}
-		
-		this.inverse = this.inverseMatrix.getMatrix();
+
 		this.inverseTranspose = this.inverseMatrix.transpose();
-		this.inverseT = this.inverseTranspose.getMatrix();
 		
 		this.inverted = true;
 	}
@@ -294,6 +298,8 @@ public class TransformMatrix implements TripleFunction<Vector> {
 	}
 
 	public void rigidInversion() {
+		throw new RuntimeException("TODO  Implement rigidInversion with CL");
+		/*
 		double t = matrix[0][1];
 		matrix[0][1] = matrix[1][0];
 		matrix[1][0] = t;
@@ -311,6 +317,7 @@ public class TransformMatrix implements TripleFunction<Vector> {
 		matrix[0][3] = trans.getX();
 		matrix[1][3] = trans.getY();
 		matrix[2][3] = trans.getZ();
+		*/
 	}
 	
 	/**
@@ -336,13 +343,15 @@ public class TransformMatrix implements TripleFunction<Vector> {
 	 * returns the result as a TransformMatrix object. If this method is called after the
 	 * last matrix modification it will return a stored transposition.
 	 */
+	// TODO  Implement with CL
 	public TransformMatrix transpose() {
 		if (transposeMatrix == null) {
-			double transpose[][] = new double[this.matrix.length][this.matrix[0].length];
+			double transpose[][] = new double[4][4];
+			double m[] = toArray();
 
 			for (int i = 0; i < transpose.length; i++) {
 				for (int j = 0; j < transpose.length; j++) {
-					transpose[i][j] = this.matrix[j][i];
+					transpose[i][j] = m[j * 4 + i];
 				}
 			}
 
@@ -356,11 +365,14 @@ public class TransformMatrix implements TripleFunction<Vector> {
 	 * Computes the adjoint of the matrix represented by this TransformMatrix object and
 	 * returns the result as a TransformMatrix object.
 	 */
+	// TODO  Implement with CL
 	public TransformMatrix adjoint() {
-		double adjoint[][] = new double[this.matrix.length][this.matrix[0].length];
+		double adjoint[][] = new double[4][4];
 		int ii, jj, ia, ja;
 		double det;
-		
+
+		double m[] = toArray();
+
 		for (int i = 0; i < adjoint.length; i++) {
 			for (int j = 0; j < adjoint[i].length; j++) {
 				ia = ja = 0;
@@ -370,7 +382,7 @@ public class TransformMatrix implements TripleFunction<Vector> {
 				for (ii = 0; ii < adjoint.length; ii++) {
 					for (jj = 0; jj < adjoint[i].length; jj++) {
 						if ((ii != i) && (jj != j)) {
-							ap[ia][ja] = this.matrix[ii][jj];
+							ap[ia][ja] = m[ii * 4 + jj];
 							ja++;
 						}
 					}
@@ -395,7 +407,7 @@ public class TransformMatrix implements TripleFunction<Vector> {
 	 * returns the result as a TransformMatrix object.
 	 */
 	public TransformMatrix toUpperTriangle() {
-		double newMatrix[][] = (new TransformMatrix(this.matrix)).getMatrix();
+		double newMatrix[][] = clone().getMatrix();
 		
 		double f1 = 0;
 		double temp = 0;
@@ -438,22 +450,62 @@ public class TransformMatrix implements TripleFunction<Vector> {
 		return new TransformMatrix(newMatrix);
 	}
 
+	@Override
+	public TransformMatrix clone() {
+		throw new RuntimeException("TODO  Implement clone");
+	}
+
+	@Override
+	public cl_mem getMem() { return matrix; }
+
+	protected void setMem(double[] source) {
+		setMem(0, source, 0, 16);
+	}
+
+	protected void setMem(double[] source, int offset) {
+		setMem(0, source, offset, 16);
+	}
+
+	protected void setMem(int offset, double[] source, int srcOffset, int length) {
+		Pointer src = Pointer.to(source).withByteOffset(srcOffset*Sizeof.cl_double);
+		CL.clEnqueueWriteBuffer(Hardware.getLocalHardware().getQueue(), matrix, CL.CL_TRUE,
+				offset * Sizeof.cl_double, length * Sizeof.cl_double,
+				src, 0, null, null);
+	}
+
+	protected void setMem(int offset, TransformMatrix src, int srcOffset, int length) {
+		CL.clEnqueueCopyBuffer(Hardware.getLocalHardware().getQueue(), src.matrix, matrix,
+				srcOffset * Sizeof.cl_double,
+				offset * Sizeof.cl_double,length * Sizeof.cl_double,
+				0,null,null);
+	}
+
+	protected void getMem(int sOffset, double out[], int oOffset, int length, cl_mem mem) {
+		Pointer dst = Pointer.to(out).withByteOffset(oOffset * Sizeof.cl_double);
+		CL.clEnqueueReadBuffer(Hardware.getLocalHardware().getQueue(), mem,
+				CL.CL_TRUE, sOffset * Sizeof.cl_double,
+				length * Sizeof.cl_double, dst, 0,
+				null, null);
+	}
+
+	protected void getMem(double out[], int offset, cl_mem mem) { getMem(0, out, offset, 3, mem); }
+
 	public double[] toArray() {
-		double m[][] = getMatrix();
-		return new double[] { m[0][0], m[0][1], m[0][2], m[0][3],
-							  m[1][0], m[1][1], m[1][2], m[1][3],
-							  m[2][0], m[2][1], m[2][2], m[2][3],
-							  m[3][0], m[3][1], m[3][2], m[3][3] };
+		double m[] = new double[16];
+		getMem(0, m, 0, 16, matrix);
+		return m;
 	}
 	
 	/**
 	 * @return  A String representation of the data stored by this TransformMatrix object.
 	 */
 	public String toString() {
-		String data = "[ " + this.matrix[0][0] + ", " + this.matrix[0][1] + ", " + this.matrix[0][2] + ", " + this.matrix[0][3] + " ]\n" +
-				"[ " + this.matrix[1][0] + ", " + this.matrix[1][1] + ", " + this.matrix[1][2] + ", " + this.matrix[1][3] + " ]\n" +
-				"[ " + this.matrix[2][0] + ", " + this.matrix[2][1] + ", " + this.matrix[2][2] + ", " + this.matrix[2][3] + " ]\n" +
-				"[ " + this.matrix[3][0] + ", " + this.matrix[3][1] + ", " + this.matrix[3][2] + ", " + this.matrix[3][3] + " ]";
+		double m[][] = getMatrix();
+
+		String data = "[ " + m[0][0] + ", " + m[0][1] + ", " + m[0][2] + ", " + m[0][3] + " ]\n" +
+				"[ " + m[1][0] + ", " + m[1][1] + ", " + m[1][2] + ", " + m[1][3] + " ]\n" +
+				"[ " + m[2][0] + ", " + m[2][1] + ", " + m[2][2] + ", " + m[2][3] + " ]\n" +
+				"[ " + m[3][0] + ", " + m[3][1] + ", " + m[3][2] + ", " + m[3][3] + " ]";
 		
 		return data;
 	}
