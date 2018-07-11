@@ -16,6 +16,8 @@
 
 package org.almostrealism.algebra;
 
+import static org.jocl.CL.clReleaseMemObject;
+
 import org.almostrealism.geometry.Positioned;
 import org.almostrealism.math.GPUOperator;
 import org.almostrealism.math.Hardware;
@@ -473,6 +475,11 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 	}
 
 	protected void getMem(double out[], int offset) { getMem(0, out, offset, 3); }
+
+	public void finalize() throws Throwable {
+		clReleaseMemObject(mem);
+		super.finalize();
+	}
 
 	/**
 	 * @see java.lang.Object#clone()
