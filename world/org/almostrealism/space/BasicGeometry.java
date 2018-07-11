@@ -253,39 +253,45 @@ public class BasicGeometry implements Positioned, Oriented, Scaled {
 	 */
 	public void calculateTransform() {
 		if (this.transformCurrent) return;
-		
-		this.transform = new TransformMatrix();
-		
-		for(int i = 0; i < this.transforms.length; i++) {
-			this.transform = this.transform.multiply(this.transforms[i]);
+
+		try {
+			this.transform = new TransformMatrix();
+
+			for (int i = 0; i < this.transforms.length; i++) {
+				this.transform = this.transform.multiply(this.transforms[i]);
+			}
+
+			this.completeTransform = new TransformMatrix();
+
+			if (this.location != null) {
+				this.completeTransform =
+						this.completeTransform.multiply(TransformMatrix.createTranslationMatrix(
+								this.location.getX(), this.location.getY(), this.location.getZ()));
+			}
+
+			this.completeTransform = this.completeTransform.multiply(TransformMatrix.createScaleMatrix(this.scaleX * this.size, this.scaleY * this.size, this.scaleZ * this.size));
+
+			if (this.rotateX != 0.0) {
+				this.completeTransform = this.completeTransform.multiply(TransformMatrix.createRotateXMatrix(this.rotateX));
+			}
+
+			if (this.rotateY != 0.0) {
+				this.completeTransform = this.completeTransform.multiply(TransformMatrix.createRotateYMatrix(this.rotateY));
+			}
+
+			if (this.rotateZ != 0.0) {
+				this.completeTransform = this.completeTransform.multiply(TransformMatrix.createRotateZMatrix(this.rotateZ));
+			}
+
+			if (this.transform != null) {
+				this.completeTransform = this.completeTransform.multiply(this.transform);
+			}
+
+			this.transformCurrent = true;
+		} catch (Exception e) {
+			// TODO  There is probably a better way to handle this exceptional case
+			e.printStackTrace();
+			System.out.println("BasicGeometry: Transformation will be invalid");
 		}
-		
-		this.completeTransform = new TransformMatrix();
-		
-		if (this.location != null) {
-			this.completeTransform =
-				this.completeTransform.multiply(TransformMatrix.createTranslationMatrix(
-						this.location.getX(), this.location.getY(), this.location.getZ()));
-		}
-		
-		this.completeTransform = this.completeTransform.multiply(TransformMatrix.createScaleMatrix(this.scaleX * this.size, this.scaleY * this.size, this.scaleZ * this.size));
-		
-		if (this.rotateX != 0.0) {
-			this.completeTransform = this.completeTransform.multiply(TransformMatrix.createRotateXMatrix(this.rotateX));
-		}
-		
-		if (this.rotateY != 0.0) {
-			this.completeTransform = this.completeTransform.multiply(TransformMatrix.createRotateYMatrix(this.rotateY));
-		}
-		
-		if (this.rotateZ != 0.0) {
-			this.completeTransform = this.completeTransform.multiply(TransformMatrix.createRotateZMatrix(this.rotateZ));
-		}
-		
-		if (this.transform != null) {
-			this.completeTransform = this.completeTransform.multiply(this.transform);
-		}
-		
-		this.transformCurrent = true;
 	}
 }

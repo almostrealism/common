@@ -1,13 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="Minor changes.">
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/test/org/almostrealism/algebra/test/VectorMathTest.java" />
+    <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="">
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/Common.iml" afterPath="$PROJECT_DIR$/Common.iml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/math/org/almostrealism/algebra/TransformMatrix.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/algebra/TransformMatrix.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/math/org/almostrealism/math/Hardware.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/math/Hardware.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/resources/local.cl" afterPath="$PROJECT_DIR$/resources/local.cl" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/space/BasicGeometry.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/space/BasicGeometry.java" />
     </list>
     <ignored path="$PROJECT_DIR$/target/" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -42,18 +38,30 @@
         <entry file="file://$PROJECT_DIR$/test/org/almostrealism/algebra/test/VectorMathTest.java">
           <provider selected="true" editor-type-id="text-editor">
             <state relative-caret-position="0">
-              <caret line="14" column="3" lean-forward="true" selection-start-line="14" selection-start-column="3" selection-end-line="14" selection-end-column="3" />
+              <caret line="14" column="3" lean-forward="false" selection-start-line="14" selection-start-column="3" selection-end-line="14" selection-end-column="3" />
               <folding />
             </state>
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="local.cl" pinned="false" current-in-tab="true">
+      <file leaf-file-name="local.cl" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/resources/local.cl">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="735">
-              <caret line="49" column="32" lean-forward="true" selection-start-line="49" selection-start-column="32" selection-end-line="49" selection-end-column="32" />
+            <state relative-caret-position="105">
+              <caret line="7" column="48" lean-forward="true" selection-start-line="7" selection-start-column="48" selection-end-line="7" selection-end-column="48" />
               <folding />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="BasicGeometry.java" pinned="false" current-in-tab="true">
+        <entry file="file://$PROJECT_DIR$/world/org/almostrealism/space/BasicGeometry.java">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="635">
+              <caret line="291" column="83" lean-forward="false" selection-start-line="291" selection-start-column="83" selection-end-line="291" selection-end-column="83" />
+              <folding>
+                <element signature="e#0#10054#0" expanded="true" />
+              </folding>
             </state>
           </provider>
         </entry>
@@ -62,7 +70,7 @@
         <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Vector.java">
           <provider selected="true" editor-type-id="text-editor">
             <state relative-caret-position="262">
-              <caret line="288" column="39" lean-forward="true" selection-start-line="288" selection-start-column="39" selection-end-line="288" selection-end-column="39" />
+              <caret line="288" column="39" lean-forward="false" selection-start-line="288" selection-start-column="39" selection-end-line="288" selection-end-column="39" />
               <folding>
                 <element signature="imports" expanded="true" />
                 <element signature="e#11943#11944#0" expanded="true" />
@@ -76,7 +84,7 @@
         <entry file="file://$PROJECT_DIR$/math/org/almostrealism/math/Hardware.java">
           <provider selected="true" editor-type-id="text-editor">
             <state relative-caret-position="-140">
-              <caret line="71" column="50" lean-forward="true" selection-start-line="71" selection-start-column="50" selection-end-line="71" selection-end-column="50" />
+              <caret line="71" column="50" lean-forward="false" selection-start-line="71" selection-start-column="50" selection-end-line="71" selection-end-column="50" />
               <folding />
             </state>
           </provider>
@@ -86,7 +94,7 @@
         <entry file="file://$PROJECT_DIR$/math/org/almostrealism/math/GPUOperator.java">
           <provider selected="true" editor-type-id="text-editor">
             <state relative-caret-position="830">
-              <caret line="85" column="0" lean-forward="true" selection-start-line="85" selection-start-column="0" selection-end-line="85" selection-end-column="0" />
+              <caret line="85" column="0" lean-forward="false" selection-start-line="85" selection-start-column="0" selection-end-line="85" selection-end-column="0" />
               <folding />
             </state>
           </provider>
@@ -149,7 +157,6 @@
   <component name="IdeDocumentHistory">
     <option name="CHANGED_PATHS">
       <list>
-        <option value="$PROJECT_DIR$/world/org/almostrealism/physics/Orbital.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/physics/Shell.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/color/Shader.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/color/ShaderSet.java" />
@@ -200,6 +207,7 @@
         <option value="$PROJECT_DIR$/test/org/almostrealism/algebra/test/VectorMathTest.java" />
         <option value="$PROJECT_DIR$/resources/local.cl" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/math/Hardware.java" />
+        <option value="$PROJECT_DIR$/world/org/almostrealism/space/BasicGeometry.java" />
       </list>
     </option>
   </component>
@@ -623,14 +631,7 @@
       <workItem from="1530833418540" duration="1698000" />
       <workItem from="1530835219381" duration="1237000" />
       <workItem from="1531239612838" duration="485000" />
-      <workItem from="1531243390739" duration="8785000" />
-    </task>
-    <task id="LOCAL-00074" summary="Added getColumn method.">
-      <created>1519881590113</created>
-      <option name="number" value="00074" />
-      <option name="presentableId" value="LOCAL-00074" />
-      <option name="project" value="LOCAL" />
-      <updated>1519881590113</updated>
+      <workItem from="1531243390739" duration="9252000" />
     </task>
     <task id="LOCAL-00075" summary="set method accepts doubles.">
       <created>1519934780326</created>
@@ -968,14 +969,22 @@
       <option name="project" value="LOCAL" />
       <updated>1530835434622</updated>
     </task>
-    <option name="localTasksCounter" value="123" />
+    <task id="LOCAL-00123" summary="Fixed a(n unbelievably challenging to diagnose) problem with hardware acceleration. Introduced hardware acceleration for TransformMatrix.">
+      <created>1531279467090</created>
+      <option name="number" value="00123" />
+      <option name="presentableId" value="LOCAL-00123" />
+      <option name="project" value="LOCAL" />
+      <updated>1531279467091</updated>
+    </task>
+    <option name="localTasksCounter" value="124" />
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="280581000" />
+    <option name="totallyTimeSpent" value="281048000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="0" y="0" width="1280" height="800" extended-state="0" />
+    <editor active="true" />
     <layout>
       <window_info id="Palette" active="false" anchor="right" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="3" side_tool="false" content_ui="tabs" />
       <window_info id="TODO" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="6" side_tool="false" content_ui="tabs" />
@@ -990,7 +999,7 @@
       <window_info id="Terminal" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.62723523" sideWeight="0.49676898" order="10" side_tool="false" content_ui="tabs" />
       <window_info id="Capture Tool" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="2" side_tool="false" content_ui="tabs" />
       <window_info id="Designer" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="3" side_tool="false" content_ui="tabs" />
-      <window_info id="Project" active="true" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.24717286" sideWeight="0.5" order="0" side_tool="false" content_ui="combo" />
+      <window_info id="Project" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.24717286" sideWeight="0.5" order="0" side_tool="false" content_ui="combo" />
       <window_info id="Docker" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="12" side_tool="false" content_ui="tabs" />
       <window_info id="Database" active="false" anchor="right" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="5" side_tool="false" content_ui="tabs" />
       <window_info id="Structure" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.24959612" sideWeight="0.5" order="1" side_tool="false" content_ui="tabs" />
@@ -1016,7 +1025,6 @@
     <option name="myLimit" value="2678400000" />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="Removed Vec3d." />
     <MESSAGE value="Added multiplyBy method." />
     <MESSAGE value="Migrating FloatingPointList so that it uses Scalar." />
     <MESSAGE value="Migrated StackList, VectorStackList, and Vector4StackList to Common." />
@@ -1041,7 +1049,8 @@
     <MESSAGE value="Improved RealizableImage so that evaluate returns rapidly with partial image data if the image pixel futures are not complete." />
     <MESSAGE value="Added isComplete and getCompleted methods to RealizableImage." />
     <MESSAGE value="Minor changes." />
-    <option name="LAST_COMMIT_MESSAGE" value="Minor changes." />
+    <MESSAGE value="Fixed a(n unbelievably challenging to diagnose) problem with hardware acceleration. Introduced hardware acceleration for TransformMatrix." />
+    <option name="LAST_COMMIT_MESSAGE" value="Fixed a(n unbelievably challenging to diagnose) problem with hardware acceleration. Introduced hardware acceleration for TransformMatrix." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -1071,13 +1080,6 @@
     </option>
   </component>
   <component name="editorHistoryManager">
-    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/space/ShadableSurface.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="180">
-          <caret line="31" column="17" lean-forward="false" selection-start-line="31" selection-start-column="17" selection-end-line="31" selection-end-column="17" />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/math/org/almostrealism/math/AcceleratedFunctions.java">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="180">
@@ -1389,7 +1391,7 @@
     <entry file="file://$PROJECT_DIR$/test/org/almostrealism/algebra/test/VectorMathTest.java">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="0">
-          <caret line="14" column="3" lean-forward="true" selection-start-line="14" selection-start-column="3" selection-end-line="14" selection-end-column="3" />
+          <caret line="14" column="3" lean-forward="false" selection-start-line="14" selection-start-column="3" selection-end-line="14" selection-end-column="3" />
           <folding />
         </state>
       </provider>
@@ -1397,7 +1399,7 @@
     <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/Vector.java">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="262">
-          <caret line="288" column="39" lean-forward="true" selection-start-line="288" selection-start-column="39" selection-end-line="288" selection-end-column="39" />
+          <caret line="288" column="39" lean-forward="false" selection-start-line="288" selection-start-column="39" selection-end-line="288" selection-end-column="39" />
           <folding>
             <element signature="imports" expanded="true" />
             <element signature="e#11943#11944#0" expanded="true" />
@@ -1409,7 +1411,7 @@
     <entry file="file://$PROJECT_DIR$/math/org/almostrealism/math/GPUOperator.java">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="830">
-          <caret line="85" column="0" lean-forward="true" selection-start-line="85" selection-start-column="0" selection-end-line="85" selection-end-column="0" />
+          <caret line="85" column="0" lean-forward="false" selection-start-line="85" selection-start-column="0" selection-end-line="85" selection-end-column="0" />
           <folding />
         </state>
       </provider>
@@ -1417,7 +1419,7 @@
     <entry file="file://$PROJECT_DIR$/math/org/almostrealism/math/Hardware.java">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="-140">
-          <caret line="71" column="50" lean-forward="true" selection-start-line="71" selection-start-column="50" selection-end-line="71" selection-end-column="50" />
+          <caret line="71" column="50" lean-forward="false" selection-start-line="71" selection-start-column="50" selection-end-line="71" selection-end-column="50" />
           <folding />
         </state>
       </provider>
@@ -1441,9 +1443,19 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/resources/local.cl">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="735">
-          <caret line="49" column="32" lean-forward="true" selection-start-line="49" selection-start-column="32" selection-end-line="49" selection-end-column="32" />
+        <state relative-caret-position="105">
+          <caret line="7" column="48" lean-forward="true" selection-start-line="7" selection-start-column="48" selection-end-line="7" selection-end-column="48" />
           <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/space/BasicGeometry.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="635">
+          <caret line="291" column="83" lean-forward="false" selection-start-line="291" selection-start-column="83" selection-end-line="291" selection-end-column="83" />
+          <folding>
+            <element signature="e#0#10054#0" expanded="true" />
+          </folding>
         </state>
       </provider>
     </entry>
