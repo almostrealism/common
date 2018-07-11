@@ -452,7 +452,8 @@ public class TransformMatrix implements TripleFunction<Vector>, MemWrapper {
 
 	@Override
 	public TransformMatrix clone() {
-		throw new RuntimeException("TODO  Implement clone");
+		// TODO  Improve performance, transfer inverse matrices, etc.
+		return new TransformMatrix(getMatrix());
 	}
 
 	@Override
