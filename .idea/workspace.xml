@@ -1,14 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="">
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/math/org/almostrealism/algebra/TransformMatrix.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/algebra/TransformMatrix.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/math/org/almostrealism/algebra/Vector.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/algebra/Vector.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/math/org/almostrealism/geometry/Ray.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/geometry/Ray.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/org/almostrealism/graph/Triangle.java" afterPath="$PROJECT_DIR$/src/org/almostrealism/graph/Triangle.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/org/almostrealism/graph/io/PlyResource.java" afterPath="$PROJECT_DIR$/src/org/almostrealism/graph/io/PlyResource.java" />
-    </list>
+    <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="" />
     <ignored path="$PROJECT_DIR$/target/" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
     <option name="TRACKING_ENABLED" value="true" />
@@ -78,7 +71,7 @@
         <entry file="file://$PROJECT_DIR$/pom.xml">
           <provider selected="true" editor-type-id="text-editor">
             <state relative-caret-position="120">
-              <caret line="8" column="26" lean-forward="true" selection-start-line="8" selection-start-column="26" selection-end-line="8" selection-end-column="26" />
+              <caret line="8" column="19" lean-forward="false" selection-start-line="8" selection-start-column="19" selection-end-line="8" selection-end-column="19" />
               <folding />
             </state>
           </provider>
@@ -654,14 +647,7 @@
       <workItem from="1531243390739" duration="10911000" />
       <workItem from="1531338175361" duration="3833000" />
       <workItem from="1531348617891" duration="417000" />
-      <workItem from="1531425859494" duration="2735000" />
-    </task>
-    <task id="LOCAL-00079" summary="Added FloatList.">
-      <created>1519972175475</created>
-      <option name="number" value="00079" />
-      <option name="presentableId" value="LOCAL-00079" />
-      <option name="project" value="LOCAL" />
-      <updated>1519972175476</updated>
+      <workItem from="1531425859494" duration="2867000" />
     </task>
     <task id="LOCAL-00080" summary="Updated IntersectionPoint to use Vector instead of Vec3f.">
       <created>1520017632618</created>
@@ -999,11 +985,18 @@
       <option name="project" value="LOCAL" />
       <updated>1531338320997</updated>
     </task>
-    <option name="localTasksCounter" value="128" />
+    <task id="LOCAL-00128" summary="Store Ray in cl_mem. This is version 0.7.">
+      <created>1531433756931</created>
+      <option name="number" value="00128" />
+      <option name="presentableId" value="LOCAL-00128" />
+      <option name="project" value="LOCAL" />
+      <updated>1531433756931</updated>
+    </task>
+    <option name="localTasksCounter" value="129" />
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="289692000" />
+    <option name="totallyTimeSpent" value="289824000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="0" y="0" width="1280" height="800" extended-state="6" />
@@ -1047,7 +1040,6 @@
     <option name="myLimit" value="2678400000" />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="Migrated JacobianEntry to Common. Added generics to Resource." />
     <MESSAGE value="Added RGBA." />
     <MESSAGE value="Added toArray method to RGBA. Added constructor for UnicodeResource that accepts a File." />
     <MESSAGE value="Changed offset to long." />
@@ -1072,7 +1064,8 @@
     <MESSAGE value="Implemented TransformMatrix.clone." />
     <MESSAGE value="Fixed bug in kernel programs." />
     <MESSAGE value="Release cl_mem in finalizer." />
-    <option name="LAST_COMMIT_MESSAGE" value="Release cl_mem in finalizer." />
+    <MESSAGE value="Store Ray in cl_mem. This is version 0.7." />
+    <option name="LAST_COMMIT_MESSAGE" value="Store Ray in cl_mem. This is version 0.7." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -1473,7 +1466,7 @@
     <entry file="file://$PROJECT_DIR$/pom.xml">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="120">
-          <caret line="8" column="26" lean-forward="true" selection-start-line="8" selection-start-column="26" selection-end-line="8" selection-end-column="26" />
+          <caret line="8" column="19" lean-forward="false" selection-start-line="8" selection-start-column="19" selection-end-line="8" selection-end-column="19" />
           <folding />
         </state>
       </provider>
