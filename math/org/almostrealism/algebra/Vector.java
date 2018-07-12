@@ -16,8 +16,6 @@
 
 package org.almostrealism.algebra;
 
-import static org.jocl.CL.clReleaseMemObject;
-
 import org.almostrealism.geometry.Positioned;
 import org.almostrealism.math.GPUOperator;
 import org.almostrealism.math.Hardware;
@@ -415,12 +413,14 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 		return d;
 	}
 
+	@Override
 	public cl_mem getMem() { return mem; }
 
 	/**
 	 * Returns an integer hash code value for this Vector object obtained
 	 * by adding all 3 components and casting to an int.
 	 */
+	@Override
 	public int hashCode() {
 		double value = this.getX() + this.getY() + this.getZ();
 
@@ -432,6 +432,7 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 	 * vector that is geometrically equal to the vector represented by
 	 * this {@link Vector}.
 	 */
+	@Override
 	public boolean equals(Object obj) {
 		if (obj instanceof Vector == false)
 			return false;
@@ -477,8 +478,9 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 	protected void getMem(double out[], int offset) { getMem(0, out, offset, 3); }
 
 	public void finalize() throws Throwable {
-		clReleaseMemObject(mem);
-		super.finalize();
+		if (mem == null) return;
+		CL.clReleaseMemObject(mem);
+		mem = null;
 	}
 
 	/**

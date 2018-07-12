@@ -64,6 +64,10 @@ public class PlyResource extends UnicodeResource {
 				m.addVector(new Vector(d[0], d[1], d[2]));
 
 				i++;
+
+				if (i % 1000 == 0) {
+					System.out.println("PlyResource: " + i + " of " + pointCount + " points loaded");
+				}
 			}
 
 			i: for (int i = 0; i < triangleCount; ) {
@@ -77,6 +81,10 @@ public class PlyResource extends UnicodeResource {
 				m.addTriangle((int) d[1], (int) d[2], (int) d[3]);
 
 				i++;
+
+				if (i % 1000 == 0) {
+					System.out.println("PlyResource: " + i + " of " + triangleCount + " triangles loaded");
+				}
 			}
 
 			return new MeshResource(m);

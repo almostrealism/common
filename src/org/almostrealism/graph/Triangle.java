@@ -287,6 +287,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 	/**
 	 * @see  ParticleGroup#getParticleVertices()
 	 */
+	@Override
 	public double[][] getParticleVertices() {
 		if (this.vertexData == null) {
 		    return new double[][] {{this.p1.getX(), this.p1.getY(), this.p1.getZ()},
@@ -353,13 +354,14 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 	 * @return  True if the ray represented by the specified Ray object intersects the triangle
 	 *          represented by this Triangle object.
 	 */
+	@Override
 	public boolean intersect(Ray ray) {
 		double r[];
 		
 		if (useT)
-			r = ray.transform(this.getTransform(true).getInverse());
+			r = ray.transform(this.getTransform(true).getInverse()).toArray();
 		else
-			r = ray.getCoords();
+			r = ray.toArray();
 		
 		double j = this.j - r[0];
 		double k = this.k - r[1];
@@ -389,13 +391,14 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 	 * Returns an Intersection object representing the points along the ray represented by the specified Ray object that intersection
 	 * between the ray and the triangle represented by this Triangle object occurs.
 	 */
+	@Override
 	public ShadableIntersection intersectAt(Ray ray) {
 		double r[];
 		
 		if (useT)
-			r = ray.transform(this.getTransform(true).getInverse());
+			r = ray.transform(this.getTransform(true).getInverse()).toArray();
 		else
-			r = ray.getCoords();
+			r = ray.toArray();
 		
 		double j = this.j - r[0];
 		double k = this.k - r[1];

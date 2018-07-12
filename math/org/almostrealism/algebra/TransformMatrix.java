@@ -26,8 +26,6 @@ import org.jocl.Pointer;
 import org.jocl.Sizeof;
 import org.jocl.cl_mem;
 
-import static org.jocl.CL.clReleaseMemObject;
-
 /**
  * A {@link TransformMatrix} object represents a 4 X 4 matrix used for transforming vectors.
  * A {@link TransformMatrix} object stores 16 double values for the matrix data and provides
@@ -500,8 +498,9 @@ public class TransformMatrix implements TripleFunction<Vector>, MemWrapper {
 	}
 
 	public void finalize() throws Throwable {
-		clReleaseMemObject(matrix);
-		super.finalize();
+		if (matrix == null) return;
+		CL.clReleaseMemObject(matrix);
+		matrix = null;
 	}
 
 	/**

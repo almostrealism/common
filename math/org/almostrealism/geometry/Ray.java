@@ -19,6 +19,12 @@ package org.almostrealism.geometry;
 
 import org.almostrealism.algebra.TransformMatrix;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.math.Hardware;
+import org.almostrealism.math.MemWrapper;
+import org.jocl.CL;
+import org.jocl.Pointer;
+import org.jocl.Sizeof;
+import org.jocl.cl_mem;
 
 /**
  * A {@link Ray} represents a 3d ray. It stores the origin and direction of a 3d ray,
@@ -26,17 +32,11 @@ import org.almostrealism.algebra.Vector;
  * 
  * @author  Michael Murray
  */
-public class Ray implements Cloneable {
-  // private double ox, oy, oz, dx, dy, dz;
-  private double coords[] = new double[6];
+public class Ray implements MemWrapper, Cloneable {
+	private cl_mem mem;
 
-	private Ray(double ox, double oy, double oz, double dx, double dy, double dz) {
-		this.coords[0] = ox;
-		this.coords[1] = oy;
-		this.coords[2] = oz;
-		this.coords[3] = dx;
-		this.coords[4] = dy;
-		this.coords[5] = dz;
+	private Ray(double coords[]) {
+		this.setMem(coords);
 	}
 	
 	/**
@@ -56,84 +56,106 @@ public class Ray implements Cloneable {
 	 * Sets the origin of this Ray object to the specified origin vector.
 	 */
 	public void setOrigin(Vector origin) {
-		this.coords[0] = origin.getX();
-		this.coords[1] = origin.getY();
-		this.coords[2] = origin.getZ();
+		// TODO  This can be made faster
+		double coords[] = toArray();
+		double o[] = origin.toArray();
+		coords[0] = o[0];
+		coords[1] = o[1];
+		coords[2] = o[2];
+		setMem(coords);
 	}
 	
 	/**
 	 * Sets the direction of this Ray object to the specified direction vector.
 	 */
 	public void setDirection(Vector direction) {
-		this.coords[3] = direction.getX();
-		this.coords[4] = direction.getY();
-		this.coords[5] = direction.getZ();
+		// TODO  This can be made faster
+		double coords[] = toArray();
+		double d[] = direction.toArray();
+		coords[3] = d[0];
+		coords[4] = d[1];
+		coords[5] = d[2];
+		setMem(coords);
 	}
 	
 	/**
-	 * Transforms the origin and direction of this ray using the specified TransformMatrix.
+	 * Retrusn a transform of the origin and direction of this ray using the specified {@link TransformMatrix}.
 	 * 
 	 * @param tm  TransformMatrix to use.
 	 * @return  {{ox, oy, oz}, {dx, dy, dz}} after transformation.
 	 */
-	public double[] transform(TransformMatrix tm) {
-//		double o[] = m.transform(this.ox, this.oy, this.oz, TransformMatrix.TRANSFORM_AS_LOCATION);
-//		double d[] = m.transform(this.dx, this.dy, this.dz, TransformMatrix.TRANSFORM_AS_OFFSET);
-		
+	public Ray transform(TransformMatrix tm) {
+		// TODO  Hardware accelerate
+
 		double m[][] = tm.getMatrix();
+
+		double inCoords[] = toArray();
+		double outCoords[] = new double[0];
+
+		outCoords[0] = m[0][0] * inCoords[0] + m[0][1] * inCoords[1] + m[0][2] * inCoords[2] + m[0][3];
+		outCoords[1] = m[1][0] * inCoords[0] + m[1][1] * inCoords[1] + m[1][2] * inCoords[2] + m[1][3];
+		outCoords[2] = m[2][0] * inCoords[0] + m[2][1] * inCoords[1] + m[2][2] * inCoords[2] + m[2][3];
+
+		outCoords[3] = m[0][0] * inCoords[3] + m[0][1] * inCoords[4] + m[0][2] * inCoords[5];
+		outCoords[4] = m[1][0] * inCoords[3] + m[1][1] * inCoords[4] + m[1][2] * inCoords[5];
+		outCoords[5] = m[2][0] * inCoords[3] + m[2][1] * inCoords[4] + m[2][2] * inCoords[5];
 		
-		this.coords[0] = m[0][0] * this.coords[0] + m[0][1] * this.coords[1] + m[0][2] * this.coords[2] + m[0][3];
-		this.coords[1] = m[1][0] * this.coords[0] + m[1][1] * this.coords[1] + m[1][2] * this.coords[2] + m[1][3];
-		this.coords[2] = m[2][0] * this.coords[0] + m[2][1] * this.coords[1] + m[2][2] * this.coords[2] + m[2][3];
-		
-		this.coords[3] = m[0][0] * this.coords[3] + m[0][1] * this.coords[4] + m[0][2] * this.coords[5];
-		this.coords[4] = m[1][0] * this.coords[3] + m[1][1] * this.coords[4] + m[1][2] * this.coords[5];
-		this.coords[5] = m[2][0] * this.coords[3] + m[2][1] * this.coords[4] + m[2][2] * this.coords[5];
-		
-		return this.coords;
+		return new Ray(outCoords);
 	}
-	
-	public double[] getCoords() { return this.coords; }
-	
+
 	/**
 	 * @return  The dot product of the origin of this ray with itself.
 	 */
 	public double oDoto() {
-		return this.coords[0] * this.coords[0] +
-				this.coords[1] * this.coords[1] +
-				this.coords[2] * this.coords[2];
+		// TODO  Hardware accelerate
+		// TODO  Cache
+		// TODO  Return Producer<Scalar>
+		double coords[] = toArray();
+		return coords[0] * coords[0] +
+				coords[1] * coords[1] +
+				coords[2] * coords[2];
 	}
 	
 	/**
 	 * @return  The dot product of the direction of this ray with itself.
 	 */
 	public double dDotd() {
-		return this.coords[3] * this.coords[3] +
-				this.coords[4] * this.coords[4] +
-				this.coords[5] * this.coords[5];
+		// TODO  Hardware accelerate
+		// TODO  Cache
+		// TODO  Return Producer<Scalar>
+		double coords[] = toArray();
+		return coords[3] * coords[3] +
+				coords[4] * coords[4] +
+				coords[5] * coords[5];
 	}
 	
 	/**
 	 * @return  The dot product of the origin of this ray with the direction of this ray.
 	 */
 	public double oDotd() {
-		return this.coords[0] * this.coords[3] +
-				this.coords[1] * this.coords[4] +
-				this.coords[2] * this.coords[5];
+		// TODO  Hardware accelerate
+		// TODO  Cache
+		// TODO  Return Producer<Scalar>
+		double coords[] = toArray();
+		return coords[0] * coords[3] +
+				coords[1] * coords[4] +
+				coords[2] * coords[5];
 	}
 	
 	/**
 	 * @return  The origin of this Ray object as a Vector object.
 	 */
 	public Vector getOrigin() {
-		return new Vector(this.coords[0], this.coords[1], this.coords[2], Vector.CARTESIAN_COORDINATES);
+		double coords[] = toArray();
+		return new Vector(coords[0], coords[1], coords[2], Vector.CARTESIAN_COORDINATES);
 	}
 	
 	/**
 	 * @return  The direction of this Ray object as a Vector object.
 	 */
 	public Vector getDirection() {
-		return new Vector(this.coords[3], this.coords[4], this.coords[5], Vector.CARTESIAN_COORDINATES);
+		double coords[] = toArray();
+		return new Vector(coords[3], coords[4], coords[5], Vector.CARTESIAN_COORDINATES);
 	}
 	
 	/**
@@ -141,24 +163,80 @@ public class Ray implements Cloneable {
 	 *          as a Vector object.
 	 */
 	public Vector pointAt(double t) {
-		double px = this.coords[0] + this.coords[3] * t;
-		double py = this.coords[1] + this.coords[4] * t;
-		double pz = this.coords[2] + this.coords[5] * t;
+		// TODO  hardware accelerate
+
+		double coords[] = toArray();
+
+		double px = coords[0] + coords[3] * t;
+		double py = coords[1] + coords[4] * t;
+		double pz = coords[2] + coords[5] * t;
 		
 		return new Vector(px, py, pz, Vector.CARTESIAN_COORDINATES);
 	}
-	
-	public Object clone() {
-		return new Ray(this.coords[0], this.coords[1], this.coords[2],
-						this.coords[3], this.coords[4], this.coords[5]);
+
+	@Override
+	public cl_mem getMem() { return mem; }
+
+	protected void setMem(double[] source) {
+		setMem(0, source, 0, 6);
 	}
-	
+
+	protected void setMem(double[] source, int offset) {
+		setMem(0, source, offset, 6);
+	}
+
+	protected void setMem(int offset, double[] source, int srcOffset, int length) {
+		Pointer src = Pointer.to(source).withByteOffset(srcOffset* Sizeof.cl_double);
+		CL.clEnqueueWriteBuffer(Hardware.getLocalHardware().getQueue(), mem, CL.CL_TRUE,
+				offset * Sizeof.cl_double, length * Sizeof.cl_double,
+				src, 0, null, null);
+	}
+
+	protected void setMem(int offset, Ray src, int srcOffset, int length) {
+		CL.clEnqueueCopyBuffer(Hardware.getLocalHardware().getQueue(), src.mem, this.mem,
+				srcOffset * Sizeof.cl_double,
+				offset * Sizeof.cl_double,length * Sizeof.cl_double,
+				0,null,null);
+	}
+
+	protected void getMem(int sOffset, double out[], int oOffset, int length) {
+		Pointer dst = Pointer.to(out).withByteOffset(oOffset * Sizeof.cl_double);
+		CL.clEnqueueReadBuffer(Hardware.getLocalHardware().getQueue(), mem,
+				CL.CL_TRUE, sOffset * Sizeof.cl_double,
+				length * Sizeof.cl_double, dst, 0,
+				null, null);
+	}
+
+	protected void getMem(double out[], int offset) { getMem(0, out, offset, 6); }
+
+	@Override
+	public Object clone() {
+		// TODO  hardware accelerate
+		double coords[] = toArray();
+		return new Ray(coords);
+	}
+
+	public double[] toArray() {
+		double coords[] = new double[6];
+		getMem(coords, 0);
+		return coords;
+	}
+
+	@Override
+	public void finalize() {
+		if (mem == null) return;
+		CL.clReleaseMemObject(mem);
+		mem = null;
+	}
+
 	/**
 	 * @return  A String representation of this Ray object.
 	 */
+	@Override
 	public String toString() {
-		String value = "Ray: [" + this.coords[0] + ", " + this.coords[1] + ", " + this.coords[2] +
-					"] [" + this.coords[3] + ", " + this.coords[4] + ", " + this.coords[5] + "]";
+		double coords[] = toArray();
+		String value = "Ray: [" + coords[0] + ", " + coords[1] + ", " + coords[2] +
+					"] [" + coords[3] + ", " + coords[4] + ", " + coords[5] + "]";
 		
 		return value;
 	}
