@@ -25,22 +25,35 @@ import org.almostrealism.util.Factory;
 import org.jocl.*;
 
 /**
- * {@link GPUOperator}s are intended to be used with {@link ThreadLocal}.
+ * {@link HardwareOperator}s are intended to be used with {@link ThreadLocal}.
  *
  * @param <T>  Return type. If the scalar flag is true, this must be a subclass of {@link Scalar}.
  */
-public class GPUOperator<T extends MemWrapper> implements Operator<T>, Factory<cl_kernel> {
+public class HardwareOperator<T extends MemWrapper> implements Operator<T>, Factory<cl_kernel> {
 	private cl_program prog;
 	private String name;
-	private boolean scalar;
+
+	private boolean scalar, isKernel;
+	private int argCount;
+
 	private Scalar result;
 
 	private cl_kernel kernel;
 
-	public GPUOperator(cl_program program, String name, boolean scalar) {
+	public HardwareOperator(cl_program program, String name, boolean scalar) {
+		this(program, name, scalar, 2);
+	}
+
+	public HardwareOperator(cl_program program, String name, boolean scalar, int argCount) {
+		this(program, name, scalar, true, argCount);
+	}
+
+	public HardwareOperator(cl_program program, String name, boolean scalar, boolean kernel, int argCount) {
 		this.prog = program;
 		this.name = name;
 		this.scalar = scalar;
+		this.isKernel = kernel;
+		this.argCount = argCount;
 		if (scalar) result = new Scalar();
 	}
 
@@ -56,21 +69,31 @@ public class GPUOperator<T extends MemWrapper> implements Operator<T>, Factory<c
 	/**
 	 * Values returned from this method may not be valid if this method is called again
 	 * before the value is used. An easy way around this problem is to always use the
-	 * {@link GPUOperator} with a {@link ThreadLocal}.
+	 * {@link HardwareOperator} with a {@link ThreadLocal}.
 	 */
 	@Override
 	public synchronized T evaluate(Object[] args) {
 		if (kernel == null) kernel = construct();
 
+		int index = 0;
+
 		if (scalar) {
-			CL.clSetKernelArg(kernel, 0, Sizeof.cl_double, Pointer.to(result.getMem())); // result
-			CL.clSetKernelArg(kernel, 1, Sizeof.cl_mem, Pointer.to(((MemWrapper) args[0]).getMem())); // this
-			CL.clSetKernelArg(kernel, 2, Sizeof.cl_mem, Pointer.to(((MemWrapper) args[1]).getMem())); // target
-			CL.clSetKernelArg(kernel, 3, Sizeof.cl_int, Pointer.to(new int[] { 0 }));
-			CL.clSetKernelArg(kernel, 4, Sizeof.cl_int, Pointer.to(new int[] { 0 }));
-			CL.clSetKernelArg(kernel, 5, Sizeof.cl_int, Pointer.to(new int[] { 3 }));
-			CL.clSetKernelArg(kernel, 6, Sizeof.cl_int, Pointer.to(new int[] { 1 }));
-			CL.clSetKernelArg(kernel, 7, Sizeof.cl_int, Pointer.to(new int[] { 3 }));
+			try {
+				CL.clSetKernelArg(kernel, index, Sizeof.cl_double, Pointer.to(result.getMem())); // Result
+				index++;
+
+				for (int i = 0; i < argCount; i++) {
+					CL.clSetKernelArg(kernel, index, Sizeof.cl_mem, Pointer.to(((MemWrapper) args[i]).getMem()));
+					index++;
+				}
+
+				for (int i = 0; i < argCount; i++) {
+					CL.clSetKernelArg(kernel, index, Sizeof.cl_int, Pointer.to(new int[]{0})); // Offset
+					index++;
+				}
+			} catch (CLException e) {
+				throw new RuntimeException(e.getMessage() + " index = " + index + " argCount = " + argCount);
+			}
 
 			long gws[] = new long[] { 1, 1 };
 
@@ -79,12 +102,15 @@ public class GPUOperator<T extends MemWrapper> implements Operator<T>, Factory<c
 
 			return (T) result;
 		} else {
-			CL.clSetKernelArg(kernel, 0, Sizeof.cl_mem, Pointer.to(((MemWrapper) args[0]).getMem()));
-			CL.clSetKernelArg(kernel, 1, Sizeof.cl_mem, Pointer.to(((MemWrapper) args[1]).getMem()));
-			CL.clSetKernelArg(kernel, 2, Sizeof.cl_int, Pointer.to(new int[]{0}));
-			CL.clSetKernelArg(kernel, 3, Sizeof.cl_int, Pointer.to(new int[]{0}));
+			for (int i = 0; i < argCount; i++) {
+				CL.clSetKernelArg(kernel, index++, Sizeof.cl_mem, Pointer.to(((MemWrapper) args[i]).getMem()));
+			}
 
-			long gws[] = new long[] { 3 };
+			for (int i = 0; i < argCount; i++) {
+				CL.clSetKernelArg(kernel, index++, Sizeof.cl_int, Pointer.to(new int[]{0})); // Offset
+			}
+
+			long gws[] = isKernel ? new long[] { 3 } : new long[] { 1 };
 
 			CL.clEnqueueNDRangeKernel(Hardware.getLocalHardware().getQueue(), kernel, 1, null,
 									gws, null, 0, null, null);

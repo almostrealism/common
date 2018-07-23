@@ -23,6 +23,7 @@ import org.almostrealism.color.RGB;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.relation.Constant;
 import org.almostrealism.relation.Operator;
+import org.almostrealism.util.Producer;
 
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -118,7 +119,7 @@ public class Plane extends AbstractSurface implements ParticleGroup {
 	 */
 	@Override
 	public boolean intersect(Ray ray) {
-		ray.transform(this.getTransform(true).getInverse());
+		ray = ray.transform(this.getTransform(true).getInverse());
 		
 		Vector d = ray.getDirection();
 		
@@ -137,24 +138,38 @@ public class Plane extends AbstractSurface implements ParticleGroup {
 	 * {@link Ray} that intersection between the ray and this {@link Plane} occurs.
 	 */
 	@Override
-	public ShadableIntersection intersectAt(Ray ray) {
-		ray.transform(this.getTransform(true).getInverse());
-		
-		double t[] = new double[1];
-		
-		Vector o = ray.getOrigin();
-		Vector d = ray.getDirection();
-		
-		if (this.type == Plane.XY)
-			t[0] = (this.getLocation().getZ() - o.getZ()) / d.getZ();
-		else if (this.type == Plane.XZ)
-			t[0] = (this.getLocation().getY() - o.getY()) / d.getY();
-		else if (this.type == Plane.YZ)
-			t[0] = (this.getLocation().getX() - o.getX()) / d.getX();
-		else
-			return null;
-		
-		return new ShadableIntersection(ray, this, t);
+	public Producer<ShadableIntersection> intersectAt(Producer r) {
+		return new Producer<ShadableIntersection>() {
+			@Override
+			public ShadableIntersection evaluate(Object[] args) {
+				Ray ray = (Ray) r.evaluate(args);
+				ray = ray.transform(getTransform(true).getInverse());
+
+				double t;
+
+				Vector o = ray.getOrigin();
+				Vector d = ray.getDirection();
+
+				// TODO  Transform already includes location, so this is probably redundant
+				if (type == Plane.XY)
+					t = (getLocation().getZ() - o.getZ()) / d.getZ();
+				else if (type == Plane.XZ)
+					t = (getLocation().getY() - o.getY()) / d.getY();
+				else if (type == Plane.YZ)
+					t = (getLocation().getX() - o.getX()) / d.getX();
+				else
+					return null;
+
+				if (t < 0) return null;
+
+				return new ShadableIntersection(ray, Plane.this, new Scalar(t));
+			}
+
+			@Override
+			public void compact() {
+				r.compact();
+			}
+		};
 	}
 
 	@Override

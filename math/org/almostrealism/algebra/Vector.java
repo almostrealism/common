@@ -17,7 +17,7 @@
 package org.almostrealism.algebra;
 
 import org.almostrealism.geometry.Positioned;
-import org.almostrealism.math.GPUOperator;
+import org.almostrealism.math.HardwareOperator;
 import org.almostrealism.math.Hardware;
 import org.almostrealism.math.MemWrapper;
 import org.almostrealism.util.Defaults;
@@ -41,11 +41,13 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 	public static final Vector NEG_Y_AXIS = new Vector(0, -1, 0);
 	public static final Vector NEG_Z_AXIS = new Vector(0, 0, -1);
 
-	private static ThreadLocal<GPUOperator<Vector>> addOperator = new ThreadLocal<>();
-	private static ThreadLocal<GPUOperator<Vector>> subtractOperator = new ThreadLocal<>();
-	private static ThreadLocal<GPUOperator<Vector>> multiplyOperator = new ThreadLocal<>();
-	private static ThreadLocal<GPUOperator<Vector>> divideOperator = new ThreadLocal<>();
-	private static ThreadLocal<GPUOperator<Scalar>> dotOperator = new ThreadLocal<>();
+	private static ThreadLocal<HardwareOperator<Vector>> addOperator = new ThreadLocal<>();
+	private static ThreadLocal<HardwareOperator<Vector>> subtractOperator = new ThreadLocal<>();
+	private static ThreadLocal<HardwareOperator<Vector>> multiplyOperator = new ThreadLocal<>();
+	private static ThreadLocal<HardwareOperator<Vector>> divideOperator = new ThreadLocal<>();
+	private static ThreadLocal<HardwareOperator<Scalar>> lengthSqOperator = new ThreadLocal<>();
+	private static ThreadLocal<HardwareOperator<Vector>> crossOperator = new ThreadLocal<>();
+	private static ThreadLocal<HardwareOperator<Scalar>> dotOperator = new ThreadLocal<>();
 
 	private cl_mem mem; // TODO  Make final
 
@@ -96,6 +98,7 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 	/**
 	 * @return A random vector uniformly distributed on the unit sphere as a Vector object.
 	 */
+	@Deprecated
 	public static Vector uniformSphericalRandom() {
 		return new Vector(1.0, 2 * Math.PI * Math.random(), 2 * Math.PI * Math.random());
 	}
@@ -345,19 +348,18 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 		return dotOperator.get().evaluate(new Object[] { this, vector }).getValue();
 	}
 
-	/**
-	 * Returns the cross product of the vector represented by this Vector object and that of the specified Vector object.
-	 */
+	/** Returns the cross product of this {@link Vector} and that of the specified {@link Vector}. */
 	public Vector crossProduct(Vector vector) {
-		Vector product = new Vector(this.getY() * vector.getZ() - this.getZ() * vector.getY(),
-				this.getZ() * vector.getX() - this.getX() * vector.getZ(),
-				this.getX() * vector.getY() - this.getY() * vector.getX());
+		if (crossOperator.get() == null) {
+			crossOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("crossProduct", false, false, 3));
+		}
 
-		return product;
+		return crossOperator.get().evaluate(new Object[] { new Vector(), this, vector });
 	}
 
 	public float[] toFloat() {
-		return new float[] { (float) getX(), (float) getY(), (float) getZ() };
+		double d[] = toArray();
+		return new float[] { (float) d[0], (float) d[1], (float) d[2] };
 	}
 
 	/**
@@ -373,9 +375,11 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 	 * {@link Vector} as a double value.
 	 */
 	public double lengthSq() {
-		// TODO  This can be made faster
-		double d[] = toArray();
-		return d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+		if (lengthSqOperator.get() == null) {
+			lengthSqOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("lengthSq", true, false, 1));
+		}
+
+		return lengthSqOperator.get().evaluate(new Object[] { this }).getValue();
 	}
 
 	public void normalize() {

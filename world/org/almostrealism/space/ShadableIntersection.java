@@ -16,15 +16,12 @@
 
 package org.almostrealism.space;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Iterator;
-import java.util.List;
-import java.util.ListIterator;
+import java.util.*;
 import java.util.concurrent.Callable;
 
 import io.almostrealism.code.Scope;
 import org.almostrealism.algebra.*;
+import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
 
 /**
@@ -33,33 +30,19 @@ import org.almostrealism.geometry.Ray;
  * @author  Michael Murray
  */
 public class ShadableIntersection extends Intersection implements ContinuousField {
-	private int nearestIndex = 0;
-	
 	private Vector viewerDirection;
-	private List<Callable<Ray>> normals;
+	private Callable<Ray> normal;
 	
-	public ShadableIntersection(Ray ray, Intersectable<ShadableIntersection, ?> surface, double intersections[]) {
-		super(ray, surface, intersections);
+	public ShadableIntersection(Ray ray, Intersectable<ShadableIntersection, ?> surface, Scalar intersection) {
+		super(ray, surface, intersection);
 		
 		Vector rayDirection = ray.getDirection();
 		viewerDirection = (rayDirection.divide(rayDirection.length())).minus();
 		
-		normals = new ArrayList<Callable<Ray>>();
-		
-		if (surface instanceof Gradient) {
-			for (int i = 0; i < intersections.length; i++) {
-				final int index = i;
-				
-				normals.add(() -> {
-					Vector p = ray.pointAt(intersections[index]);
-					return new Ray(p, ((Gradient) surface).getNormalAt(p).evaluate(new Object[0]));
-				});
-				
-				if (intersections[i] >= 0 && intersections[i] < intersections[nearestIndex]) {
-					nearestIndex = i;
-				}
-			}
-		}
+		normal = () -> {
+			Vector p = ray.pointAt(intersection.getValue());
+			return new Ray(p, ((Gradient) surface).getNormalAt(p).evaluate(new Object[0]));
+		};
 	}
 	
 	/** Returns the viewer direction. */
@@ -76,28 +59,26 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 	}
 	
 	@Override
-	public Callable<Ray> get(int index) {
-		return normals.get(index);
-	}
+	public Callable<Ray> get(int index) { return normal; }
 	
 	public Vector getViewerDirection() { return viewerDirection; }
 	
-	public int size() { return normals.size(); }
+	public int size() { return 1; }
 
 	@Override
-	public boolean isEmpty() { return normals.isEmpty(); }
+	public boolean isEmpty() { return getIntersection() == null; }
 
 	@Override
 	public boolean contains(Object o) { return false; }
 
 	@Override
-	public Iterator<Callable<Ray>> iterator() { return normals.iterator(); }
+	public Iterator<Callable<Ray>> iterator() { return Arrays.asList(normal).iterator(); }
 
 	@Override
-	public Object[] toArray() { return normals.toArray(); }
+	public Object[] toArray() { return new Object[] { normal }; }
 
 	@Override
-	public <T> T[] toArray(T[] a) { return normals.toArray(a); }
+	public <T> T[] toArray(T[] a) { return Arrays.asList(normal).toArray(a); }
 
 	@Override
 	public boolean add(Callable<Ray> e) { return false; }
@@ -140,16 +121,16 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 
 	@Override
 	public ListIterator<Callable<Ray>> listIterator() {
-		return normals.listIterator();
+		return Arrays.asList(normal).listIterator();
 	}
 
 	@Override
 	public ListIterator<Callable<Ray>> listIterator(int index) {
-		return normals.listIterator();
+		return Arrays.asList(normal).listIterator();
 	}
 
 	@Override
 	public List<Callable<Ray>> subList(int fromIndex, int toIndex) {
-		return normals.subList(fromIndex, toIndex);
+		return Arrays.asList(normal).subList(fromIndex, toIndex);
 	}
 }

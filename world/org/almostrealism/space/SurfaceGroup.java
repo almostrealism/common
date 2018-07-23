@@ -32,6 +32,7 @@ import org.almostrealism.graph.Mesh;
 import org.almostrealism.graph.Triangle;
 import org.almostrealism.relation.Constant;
 import org.almostrealism.relation.Operator;
+import org.almostrealism.util.Producer;
 
 /**
  * A {@link SurfaceGroup} object allows {@link ShadableSurface} objects to be grouped together.
@@ -162,10 +163,11 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 	
 	/**
 	 * Returns true if the ray represented by the specified Ray object intersects any of the surfaces
-	 * represented by this SurfaceGroup object.
+	 * represented by this {@link SurfaceGroup}.
 	 */
+	@Override
 	public boolean intersect(Ray ray) {
-		ray.transform(this.getTransform(true).getInverse());
+		ray = ray.transform(this.getTransform(true).getInverse());
 		
 		for (Intersectable s : this) {
 			if (s.intersect(ray) == true)
@@ -174,16 +176,18 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 		
 		return false;
 	}
-	
+
 	/**
 	 * Returns an {@link Intersection} object that represents the ray-surface intersections
 	 * for the AbstractSurface object which is intersected closest to the origin of the ray
 	 * (>= 0). If there is no intersection >= 0 along the ray, null is returned.
 	 */
-	public ShadableIntersection intersectAt(Ray ray) {
-		ray.transform(this.getTransform(true).getInverse());
-		
-		return Intersections.closestIntersection(ray, this);
+	@Override
+	public Producer<ShadableIntersection> intersectAt(Producer ray) {
+		TransformMatrix m = getTransform(true);
+		if (m != null) ray = new RayMatrixTransform(m.getInverse(), ray);
+
+		return new ClosestIntersection<ShadableIntersection>(ray, this);
 	}
 
 	@Override

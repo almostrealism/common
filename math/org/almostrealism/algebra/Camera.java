@@ -19,6 +19,7 @@ package org.almostrealism.algebra;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.relation.Computation;
 import org.almostrealism.uml.ModelEntity;
+import org.almostrealism.util.Producer;
 
 /**
  * Implementations of the Camera interface provide a method for calculating viewing rays.
@@ -27,12 +28,5 @@ import org.almostrealism.uml.ModelEntity;
  */
 @ModelEntity
 public interface Camera extends Computation { // TODO  Move to geometry package
-	/**
-	 * @param i  X coordinate of pixel.
-	 * @param j  Y coordinate of pixel.
-	 * @param screenWidth  Width of image.
-	 * @param screenHeight  Height of image.
-	 * @return  A Ray object that represents the viewing ray at (i, j)
-	 */
-	Ray rayAt(double i, double j, int screenWidth, int screenHeight);
+	Producer<Ray> rayAt(Producer<Pair> screenPosition, Producer<Pair> screenDimensions);
 }

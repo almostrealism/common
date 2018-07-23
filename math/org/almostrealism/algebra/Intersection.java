@@ -30,9 +30,7 @@ public class Intersection implements PathElement<Intersection> {
 
 	private Intersectable surface;
 	private Ray ray;
-
-	private int closest = -1;
-	private double intersections[];
+	private Scalar intersection;
 	
 	private Vector point;
 	
@@ -42,13 +40,13 @@ public class Intersection implements PathElement<Intersection> {
 	 * Constructs a new Intersection object that represents an intersection between the specified
 	 * Ray and Surface objects at the specified points along the ray represented by the Ray object.
 	 */
-	public Intersection(Ray ray, Intersectable surface, double intersections[]) {
+	public Intersection(Ray ray, Intersectable surface, Scalar intersection) {
 		this.ray = ray;
 		this.surface = surface;
 
-		this.intersections = intersections;
+		this.intersection = intersection;
 		
-		this.point = ray.pointAt(getClosestIntersection());
+		this.point = ray.pointAt(intersection.getValue());
 	}
 	
 	/** @return  The Ray object stored by this Intersection object. */
@@ -57,34 +55,10 @@ public class Intersection implements PathElement<Intersection> {
 	/** @return  The Surface object stored by this Intersection object. */
 	public Intersectable getSurface() { return this.surface; }
 	
-	/** @return  The intersections stored by this Intersection object. */
-	public double[] getIntersections() { return this.intersections; }
+	/** @return  The intersection stored by this Intersection object. */
+	public Scalar getIntersection() { return this.intersection; }
 	
 	public Vector getPoint() { return point; }
-
-	public double getClosestIntersection() {
-		if (this.closest >= 0) {
-			return this.intersections[this.closest];
-		} else if (this.intersections.length <= 0) {
-			return -1.0;
-		} else if (this.intersections.length == 1 && this.intersections[0] >= Intersection.e) {
-			this.closest = 0;
-			return this.intersections[0];
-		} else {
-			double closestIntersection = -1.0;
-
-			for(int i = 0; i < intersections.length; i++) {
-				if (intersections[i] >= Intersection.e) {
-					if (closestIntersection == -1.0 || intersections[i] < closestIntersection) {
-						closestIntersection = intersections[i];
-						this.closest = i;
-					}
-				}
-			}
-
-			return closestIntersection;
-		}
-	}
 	
 	public void add(Intersection inter) {
 		if (children == null) children = new ArrayList<PathElement<Intersection>>();
@@ -98,17 +72,6 @@ public class Intersection implements PathElement<Intersection> {
 	 * @return  A String representation of this Intersection object.
 	 */
 	public String toString() {
-		String value = "[";
-
-		for(int i = 0; i < this.intersections.length; i++) {
-			if (i == 0)
-				value = value + intersections[i];
-			else
-				value = value + ", " + intersections[i];
-		}
-
-		value = value + "]";
-
-		return value;
+		return "[" + getIntersection() + "]";
 	}
 }

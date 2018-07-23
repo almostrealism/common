@@ -45,6 +45,7 @@ import org.almostrealism.space.ShadableSurface;
 import org.almostrealism.space.ShadableSurfaceWrapper;
 import org.almostrealism.space.SpacePartition;
 import org.almostrealism.space.BoundingSolid;
+import org.almostrealism.util.Producer;
 
 // TODO  Add bounding solid to make intersection calc faster.
 
@@ -112,7 +113,7 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 
 		@Override public VectorProducer getNormalAt(Vector point) { return this.getSurface().getNormalAt(point); }
 		@Override public boolean intersect(Ray ray) { return this.getSurface().intersect(ray); }
-		@Override public ShadableIntersection intersectAt(Ray ray) { return this.getSurface().intersectAt(ray); }
+		@Override public Producer<ShadableIntersection> intersectAt(Producer<Ray> ray) { return this.getSurface().intersectAt(ray); }
 
 		@Override
 		public boolean cancel(boolean mayInterruptIfRunning) { return getSurface().cancel(mayInterruptIfRunning); }
@@ -140,7 +141,7 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 	}
 	
 	public static class Vertex extends Vector {
-		private double nx, ny, nz;  // Vertex normals
+		private Vector n = new Vector();  // Vertex normals
 		private double r, g, b;  // Vertex color
 		private double tu, tv;  // TODO  Texture coordinates
 		
@@ -148,7 +149,7 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 		
 		public Vertex(Vector p) {
 			super(p.getX(), p.getY(), p.getZ());
-			this.setNormal(0.0, 0.0, 0.0);
+			this.setNormal(ZeroVector.getInstance().evaluate(new Object[0]));
 		}
 		
 		public void setColor(RGB c) {
@@ -160,26 +161,23 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 		public RGB getColor() { return new RGB(this.r, this.g, this.b); }
 		public RGB getColor(double d) { return new RGB(d * this.r, d * this.g, d * this.b); }
 		
-		public void setNormal(double x, double y, double z) {
-			this.nx = x;
-			this.ny = y;
-			this.nz = z;
+		public void setNormal(Vector norm) {
+			this.n.setTo(norm);
+		}
+
+		public Vector getNormal() { return n; }
+		public Vector getNormal(double d) {
+			Vector norm = (Vector) n.clone();
+			norm.multiplyBy(d);
+			return norm;
 		}
 		
-		public void setNormal(Vector n) { this.setNormal(n.getX(), n.getY(), n.getZ()); }
-		public Vector getNormal() { return new Vector(this.nx, this.ny, this.nz); }
-		public Vector getNormal(double d) { return new Vector(d * this.nx, d * this.ny, d * this.nz); }
-		
-		public void addNormal(Vector n) {
-			this.nx += n.getX();
-			this.ny += n.getY();
-			this.nz += n.getZ();
+		public void addNormal(Vector norm) {
+			this.n.addTo(norm);
 		}
 		
-		public void removeNormal(Vector n) {
-			this.nx -= n.getX();
-			this.ny -= n.getY();
-			this.nz -= n.getZ();
+		public void removeNormal(Vector norm) {
+			this.n.subtractFrom(norm);
 		}
 		
 		// public boolean equals(Object obj) { return (obj instanceof Vertex && super.equals(obj)); }
@@ -681,15 +679,17 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 	/**
 	 * @return  this.
 	 */
+	@Override
 	public Mesh triangulate() { return this; }
 	
 	/**
 	 * @see ShadableSurface#intersect(Ray)
 	 */
+	@Override
 	public synchronized boolean intersect(Ray ray) {
 		if (this.isTreeLoaded()) return super.intersect(ray);
 		
-		ray.transform(this.getTransform(true).getInverse());
+		ray = ray.transform(this.getTransform(true).getInverse());
 		
 		Iterator itr = this.triangles.iterator();
 		
@@ -711,71 +711,83 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 	}
 
 	/**
-	 * @see ShadableSurface#intersectAt(Ray)
+	 * @see ShadableSurface#intersectAt(Producer)
 	 */
-	public synchronized ShadableIntersection intersectAt(Ray ray) {
+	@Override
+	public Producer<ShadableIntersection> intersectAt(Producer ray) {
 		if (this.isTreeLoaded()) return super.intersectAt(ray);
-		
-		ray.transform(this.getTransform(true).getInverse());
-		
-		Triangle tr;
-		
-		int b = 0;
-		
-		i: for (int i = 0; i < inter.length; i++) {
-			if (this.ignore[i]) continue i;
-			
-			if (this.tcache[i] != null) {
-				tr = this.tcache[i];
-				this.inter[i] = tr.intersectAt(ray);
-				continue i;
-			} else {
-				tr = this.getTriangle(i);
-				this.inter[i] = tr.intersectAt(ray);
-				// if (inter[i] == null) continue i;
-			}
-			
-			Vector trv = tr.getVertices()[0].subtract(ray.getOrigin());
-			double dt = tr.getNormalAt(ZeroVector.getInstance().evaluate(new Object[0]))
+
+		TransformMatrix t = getTransform(true);
+		boolean ut = t != null;
+		if (ut) ray = new RayMatrixTransform(t.getInverse(), ray);
+
+		final Producer<Ray> fray = ray;
+
+		return new Producer<ShadableIntersection>() {
+			@Override
+			public ShadableIntersection evaluate(Object[] args) {
+				Triangle tr;
+
+				int b = 0;
+
+				i: for (int i = 0; i < inter.length; i++) {
+					if (ignore[i]) continue i;
+
+					if (tcache[i] != null) {
+						tr = tcache[i];
+						inter[i] = tr.intersectAt(fray).evaluate(args);
+						continue i;
+					} else {
+						tr = getTriangle(i);
+						inter[i] = tr.intersectAt(fray).evaluate(args);
+						// if (inter[i] == null) continue i;
+					}
+
+					Ray r = fray.evaluate(args);
+
+					Vector trv = tr.getVertices()[0].subtract(r.getOrigin());
+					double dt = tr.getNormalAt(ZeroVector.getInstance().evaluate(new Object[0]))
 							.evaluate(new Object[0]).dotProduct(trv); // TODO  Use VectorProducer.dotProduct
-			
-			if (!this.removeBackFaces) {
-				this.tcache[i] = tr;
-			} else if ((!this.getShadeFront() && !this.getShadeBack()) ||
-					(!this.getShadeFront() && dt < 0.0) ||
-					(!this.getShadeBack() && dt > 0.0) ||
-					(dt == 0.0)) {
-				b++;
-				this.ignore[i] = true;
-			} else {
-				this.tcache[i] = tr;
-			}
-		}
-		
-		double closestIntersection = -1.0;
-		int closestIntersectionIndex = -1;
-		
-		i: for (int i = 0; i < this.inter.length; i++) {
-			if (this.inter[i] == null) continue i;
-			
-			double intersect[] = this.inter[i].getIntersections();
-			
-			for (int j = 0; j < intersect.length; j++) {
-				if (intersect[j] >= Intersection.e) {
-					if (closestIntersectionIndex == -1 || intersect[j] < closestIntersection) {
-						closestIntersection = intersect[j];
-						closestIntersectionIndex = i;
+
+					if (!removeBackFaces) {
+						tcache[i] = tr;
+					} else if ((!getShadeFront() && !getShadeBack()) ||
+							(!getShadeFront() && dt < 0.0) ||
+							(!getShadeBack() && dt > 0.0) ||
+							(dt == 0.0)) {
+						b++;
+						ignore[i] = true;
+					} else {
+						tcache[i] = tr;
 					}
 				}
+
+				double closestIntersection = -1.0;
+				int closestIntersectionIndex = -1;
+
+				i: for (int i = 0; i < inter.length; i++) {
+					if (inter[i] == null) continue i;
+
+					double intersect = inter[i].getIntersection().getValue();
+
+					if (intersect >= Intersection.e) {
+						if (closestIntersectionIndex == -1 || intersect < closestIntersection) {
+							closestIntersection = intersect;
+							closestIntersectionIndex = i;
+						}
+					}
+				}
+
+				if (b > 0) System.out.println("Mesh: Removed " + b + " back faces.");
+
+				return closestIntersectionIndex < 0 ? null : inter[closestIntersectionIndex];
 			}
-		}
-		
-		if (b > 0) System.out.println("Mesh: Removed " + b + " back faces.");
-		
-		if (closestIntersectionIndex < 0)
-			return null;
-		else
-			return this.inter[closestIntersectionIndex];
+
+			@Override
+			public void compact() {
+				// TODO
+			}
+		};
 	}
 	
 	/**

@@ -14,17 +14,19 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.math;
+package org.almostrealism.util;
 
-/**
- * A wrapper for kernel programs in JOCL.
- */
-public class AcceleratedFunctions {
-	private HardwareOperatorMap prog;
+public class StaticProducer<T> implements Producer<T> {
+	private T value;
 
-	protected void init(Hardware h, String src) {
-		prog = new HardwareOperatorMap(h, src);
+	public StaticProducer(T v) {
+		value = v;
 	}
 
-	public HardwareOperatorMap getOperators() { return prog; }
+	@Override
+	public T evaluate(Object[] args) { return value; }
+
+	/** Does nothing. */
+	@Override
+	public void compact() { }
 }

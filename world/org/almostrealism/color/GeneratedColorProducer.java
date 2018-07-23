@@ -33,4 +33,23 @@ public abstract class GeneratedColorProducer<T> extends ColorProducerAdapter imp
 			}
 		};
 	}
+
+	public static <T> GeneratedColorProducer<T> fromProducer(T generator, Producer<RGB> t) {
+		return new GeneratedColorProducer(generator) {
+			@Override
+			public RGB evaluate(Object args[]) {
+				return t.evaluate(args);
+			}
+
+			@Override
+			public RGB operate(Triple in) {
+				return evaluate(new Object[] { in });
+			}
+
+			@Override
+			public void compact() {
+				t.compact();
+			}
+		};
+	}
 }

@@ -14,17 +14,20 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.math;
+package org.almostrealism.algebra.test;
 
-/**
- * A wrapper for kernel programs in JOCL.
- */
-public class AcceleratedFunctions {
-	private HardwareOperatorMap prog;
+import org.almostrealism.algebra.Vector;
+import org.almostrealism.geometry.Ray;
+import org.almostrealism.graph.Triangle;
+import org.almostrealism.util.StaticProducer;
+import org.junit.Test;
 
-	protected void init(Hardware h, String src) {
-		prog = new HardwareOperatorMap(h, src);
+public class TriangleTest {
+	@Test
+	public void test() {
+		Triangle t = new Triangle(new Vector(1.0, 1.0, -1.0),
+									new Vector(-1.0, 1.0, -1.0),
+									new Vector(0.0, -1.0, -1.0));
+		System.out.println(t.intersectAt(new StaticProducer(new Ray(new Vector(0.0, 0.0, 0.0), new Vector(0.0, 0.0, -1.0)))).evaluate(new Object[0]));
 	}
-
-	public HardwareOperatorMap getOperators() { return prog; }
 }

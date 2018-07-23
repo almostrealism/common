@@ -29,6 +29,7 @@ import java.io.OutputStream;
 import javax.imageio.ImageIO;
 import javax.swing.JPanel;
 
+import org.almostrealism.algebra.Pair;
 import org.almostrealism.color.ColorProducer;
 import org.almostrealism.color.RGB;
 
@@ -189,7 +190,7 @@ public class ImageCanvas extends JPanel {
 					if (image[i][j] == null) {
 						new RGB(0.0, 0.0, 0.0).writeExternal(out);
 					} else {
-						image[i][j].evaluate(null).writeExternal(out);
+						image[i][j].evaluate(new Object[] { new Pair(i, j) }).writeExternal(out);
 					}
 				}
 			}
@@ -207,7 +208,7 @@ public class ImageCanvas extends JPanel {
 					if (image[i][j] == null) {
 						out.println("0 0 0");
 					} else {
-						RGB c = image[i][j].evaluate(null);
+						RGB c = image[i][j].evaluate(new Object[] { new Pair(i, j) });
 						int r = (int)(255 * c.getRed());
 						int g = (int)(255 * c.getGreen());
 						int b = (int)(255 * c.getBlue());
@@ -236,7 +237,7 @@ public class ImageCanvas extends JPanel {
 			
 			for (int j = 0; j < h; j++) {
 				for (int i = 0; i < w; i++) {
-					RGB c = image[i][j].evaluate(null);
+					RGB c = image[i][j].evaluate(new Object[] { new Pair(i, j) });
 					b[index++] = 1;
 					b[index++] = (byte)(255 * c.getBlue());
 					b[index++] = (byte)(255 * c.getGreen());

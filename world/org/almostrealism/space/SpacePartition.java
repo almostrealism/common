@@ -16,13 +16,13 @@
 
 package org.almostrealism.space;
 
-import java.util.ArrayList;
-import java.util.List;
-
 import org.almostrealism.algebra.Intersection;
+import org.almostrealism.algebra.RayMatrixTransform;
+import org.almostrealism.algebra.TransformMatrix;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.graph.Triangle;
+import org.almostrealism.util.Producer;
 
 public class SpacePartition<T extends ShadableSurface> extends SurfaceGroup<T> {
 	public static int l, r, s;
@@ -263,7 +263,9 @@ public class SpacePartition<T extends ShadableSurface> extends SurfaceGroup<T> {
 			return (right || left);
 		}
 		
-		public ShadableIntersection intersectAt(Ray r) {
+		public Producer<ShadableIntersection> intersectAt(Producer r) {
+			return null; // TODO
+			/*
 			List<ShadableIntersection> l = new ArrayList<ShadableIntersection>();
 			
 			if (this.surfaces != null) {
@@ -330,8 +332,10 @@ public class SpacePartition<T extends ShadableSurface> extends SurfaceGroup<T> {
 				return null;
 			else
 				return l.get(closestIntersectionIndex);
+			*/
 		}
-		
+
+		@Override
 		public String toString() {
 			String p = "";
 			
@@ -356,14 +360,18 @@ public class SpacePartition<T extends ShadableSurface> extends SurfaceGroup<T> {
 	}
 	
 	public boolean isTreeLoaded() { return (this.root != null); }
-	
+
+	@Override
 	public boolean intersect(Ray r) {
-		r.transform(this.getTransform(true).getInverse());
+		r = r.transform(this.getTransform(true).getInverse());
 		return this.root.intersect(r);
 	}
-	
-	public ShadableIntersection intersectAt(Ray r) {
-		r.transform(this.getTransform(true).getInverse());
+
+	@Override
+	public Producer<ShadableIntersection> intersectAt(Producer r) {
+		TransformMatrix t = getTransform(true);
+		boolean ut = t != null;
+		if (ut) r = new RayMatrixTransform(t.getInverse(), r);
 		return this.root.intersectAt(r);
 	}
 }

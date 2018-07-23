@@ -18,6 +18,7 @@ package org.almostrealism.space;
 
 import org.almostrealism.algebra.TransformMatrix;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.algebra.ZeroVector;
 import org.almostrealism.geometry.Oriented;
 import org.almostrealism.geometry.Positioned;
 import org.almostrealism.geometry.Scaled;
@@ -43,7 +44,8 @@ public class BasicGeometry implements Positioned, Oriented, Scaled {
 	protected boolean transformCurrent;
 	
 	public BasicGeometry() {
-		this(new Vector(0.0, 0.0, 0.0));
+		this(ZeroVector.getInstance().evaluate(new Object[0]));
+		transformCurrent = true;
 	}
 	
 	public BasicGeometry(Vector location) {

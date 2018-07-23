@@ -78,7 +78,8 @@ public class PlyResource extends UnicodeResource {
 
 				double d[] = FileDecoder.parseDoubles(line);
 
-				m.addTriangle((int) d[1], (int) d[2], (int) d[3]);
+				// Only clear the cache the last time
+				m.addTriangle((int) d[1], (int) d[2], (int) d[3], i == (triangleCount - 1));
 
 				i++;
 

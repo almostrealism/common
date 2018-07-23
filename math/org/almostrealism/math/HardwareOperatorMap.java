@@ -22,19 +22,23 @@ import org.jocl.cl_program;
 /**
  * Wrapper for a cl_program that contains the accelerated functions used in the running application.
  */
-public class GPUOperatorMap<T extends MemWrapper> {
+public class HardwareOperatorMap<T extends MemWrapper> {
 	private final cl_program prog;
 
-	public GPUOperatorMap(Hardware h, String src) {
+	public HardwareOperatorMap(Hardware h, String src) {
 		int[] result = new int[1];
 		prog = CL.clCreateProgramWithSource(h.getContext(), 1, new String[] { src }, null, result);
-		if (result[0] != 0) throw new RuntimeException("Error creating GPUOperatorMap: " + result[0]);
+		if (result[0] != 0) throw new RuntimeException("Error creating HardwareOperatorMap: " + result[0]);
 
 		int r = CL.clBuildProgram(prog, 0, null, null, null, null);
-		if (r != 0) throw new RuntimeException("Error building GPUOperatorMap:" + r);
+		if (r != 0) throw new RuntimeException("Error building HardwareOperatorMap:" + r);
 	}
 
-	public GPUOperator<T> get(String key, boolean scalar) { return new GPUOperator<>(prog, key, scalar); }
+	public HardwareOperator<T> get(String key, boolean scalar) { return new HardwareOperator<>(prog, key, scalar); }
+
+	public HardwareOperator<T> get(String key, boolean scalar, int argCount) { return new HardwareOperator<>(prog, key, scalar, argCount); }
+
+	public HardwareOperator<T> get(String key, boolean scalar, boolean kernel, int argCount) { return new HardwareOperator<>(prog, key, scalar, kernel, argCount); }
 
 	@Override
 	public void finalize() { CL.clReleaseProgram(prog); }

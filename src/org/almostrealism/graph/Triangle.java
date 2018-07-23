@@ -23,12 +23,15 @@ import org.almostrealism.color.GeneratedColorProducer;
 import org.almostrealism.color.RGB;
 import org.almostrealism.geometry.Positioned;
 import org.almostrealism.geometry.Ray;
+import org.almostrealism.math.AcceleratedProducer;
 import org.almostrealism.relation.Constant;
 import org.almostrealism.relation.Operator;
 import org.almostrealism.relation.TripleFunction;
 import org.almostrealism.space.AbstractSurface;
 import org.almostrealism.space.BoundingSolid;
 import org.almostrealism.space.ShadableIntersection;
+import org.almostrealism.space.ShadableIntersectionProducer;
+import org.almostrealism.util.Producer;
 
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -40,16 +43,18 @@ import java.util.concurrent.TimeoutException;
  * @author  Michael Murray
  */
 public class Triangle extends AbstractSurface implements ParticleGroup {
+	public static boolean enableHardwareOperator = true;
+
 	private Mesh.VertexData vertexData;
 	private int ind1, ind2, ind3;
 	
 	private Vector p1, p2, p3;
 	private Vector normal;
 	private boolean smooth, intcolor, useT = true;
-	private double a, b, c, d, e, f, j, k, l;
+	private Vector abc = new Vector(), def = new Vector(), jkl = new Vector();
 
 	/**
-	 * Constructs a new Triangle object with all vertices at the origin that is black.
+	 * Constructs a new {@link Triangle} with all vertices at the origin that is black.
 	 */	
 	public Triangle() {
 		super(null, 1.0, new RGB(0.0, 0.0, 0.0), false);
@@ -100,12 +105,18 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 							double h = triple.getB();
 							double i = triple.getC();
 
-							double m = a * (e * i - h * f) + b * (g * f - d * i) + c * (d * h - e * g);
+							double m = abc.getX() * (def.getY() * i - h * def.getZ()) +
+										abc.getY() * (g * def.getZ() - def.getX() * i) +
+										abc.getZ() * (def.getX() * h - def.getY() * g);
 
-							double u = j * (e * i - h * f) + k * (g * f - d * i) + l * (d * h - e * g);
+							double u = jkl.getX() * (def.getY() * i - h * def.getZ()) +
+										jkl.getY() * (g * def.getZ() - def.getX() * i) +
+										jkl.getZ() * (def.getX() * h - def.getY() * g);
 							u = u / m;
 
-							double v = i * (a * k - j * b) + h * (j * c - a * l) + g * (b * l - k * c);
+							double v = i * (abc.getX() * jkl.getY() - jkl.getX() * abc.getY()) +
+										h * (jkl.getX() * abc.getZ() - abc.getX() * jkl.getZ()) +
+										g * (abc.getY() * jkl.getZ() - jkl.getY() * abc.getZ());
 							v = v / m;
 
 							double w = 1.0 - u - v;
@@ -163,15 +174,15 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 		this.normal = a.crossProduct(b);
 		this.normal.divideBy(this.normal.length());
 		
-		this.a = p1x - p2x;
-		this.b = p1y - p2y;
-		this.c = p1z - p2z;
-		this.d = p1x - p3x;
-		this.e = p1y - p3y;
-		this.f = p1z - p3z;
-		this.j = p1x;
-		this.k = p1y;
-		this.l = p1z;
+		this.abc.setX(p1x - p2x);
+		this.abc.setY(p1y - p2y);
+		this.abc.setZ(p1z - p2z);
+		this.def.setX(p1x - p3x);
+		this.def.setY(p1y - p3y);
+		this.def.setZ(p1z - p3z);
+		this.jkl.setX(p1x);
+		this.jkl.setY(p1y);
+		this.jkl.setZ(p1z);
 	}
 	
 	/**
@@ -190,17 +201,11 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 		Vector b = this.p3.subtract(this.p1);
 		
 		this.normal = a.crossProduct(b);
-		this.normal.divideBy(this.normal.length());
+		this.normal.normalize();
 		
-		this.a = this.p1.getX() - this.p2.getX();
-		this.b = this.p1.getY() - this.p2.getY();
-		this.c = this.p1.getZ() - this.p2.getZ();
-		this.d = this.p1.getX() - this.p3.getX();
-		this.e = this.p1.getY() - this.p3.getY();
-		this.f = this.p1.getZ() - this.p3.getZ();
-		this.j = this.p1.getX();
-		this.k = this.p1.getY();
-		this.l = this.p1.getZ();
+		this.abc = this.p1.subtract(this.p2);
+		this.def = this.p1.subtract(this.p3);
+		this.jkl.setTo(this.p1);
 	}
 
 	public void setVertices(Vector v[]) {
@@ -319,12 +324,18 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 			double h = point.getY();
 			double i = point.getZ();
 			
-			double m = a * (e * i - h * f) + b * (g * f - d * i) + c * (d * h - e * g);
+			double m = abc.getX() * (def.getY() * i - h * def.getZ()) +
+						abc.getY() * (g * def.getZ() - def.getX() * i) +
+						abc.getZ() * (def.getX() * h - def.getY() * g);
 
-			double u = j * (e * i - h * f) + k * (g * f - d * i) + l * (d * h - e * g);
+			double u = jkl.getX() * (def.getY() * i - h * def.getZ()) +
+						jkl.getY() * (g * def.getZ() - def.getX() * i) +
+						jkl.getZ() * (def.getX() * h - def.getY() * g);
 			u = u / m;
 			
-			double v = i * (a * k - j * b) + h * (j * c - a * l) + g * (b * l - k * c);
+			double v = i * (abc.getX() * jkl.getY() - jkl.getX() * abc.getY()) +
+						h * (jkl.getX() * abc.getZ() - abc.getX() * jkl.getZ()) +
+						g * (abc.getY() * jkl.getZ() - jkl.getY() * abc.getZ());
 			v = v / m;
 			
 			double w = 1.0 - u - v;
@@ -356,29 +367,33 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 	 */
 	@Override
 	public boolean intersect(Ray ray) {
-		double r[];
+		Ray r;
 		
 		if (useT)
-			r = ray.transform(this.getTransform(true).getInverse()).toArray();
+			r = ray.transform(this.getTransform(true).getInverse());
 		else
-			r = ray.toArray();
+			r = ray;
 		
-		double j = this.j - r[0];
-		double k = this.k - r[1];
-		double l = this.l - r[2];
+		Vector jkl = this.jkl.subtract(r.getOrigin());
 		
-		double m = a * (e * r[5] - r[4] * f) + b * (r[3] * f - d * r[5]) + c * (d * r[4] - e * r[3]);
+		double m = abc.getX() * (def.getY() * r.getDirection().getZ() - r.getDirection().getY() * def.getZ()) +
+					abc.getY() * (r.getDirection().getX() * def.getZ() - def.getX() * r.getDirection().getZ()) +
+					abc.getZ() * (def.getX() * r.getDirection().getY() - def.getY() * r.getDirection().getX());
 		
 		if (m == 0)
 			return false;
 
-		double u = j * (e * r[5] - r[4] * f) + k * (r[3] * f - d * r[5]) + l * (d * r[4] - e * r[3]);
+		double u = jkl.getX() * (def.getY() * r.getDirection().getZ() - r.getDirection().getY() * def.getZ()) +
+					jkl.getY() * (r.getDirection().getX() * def.getZ() - def.getX() * r.getDirection().getZ()) +
+					jkl.getZ() * (def.getX() * r.getDirection().getY() - def.getY() * r.getDirection().getX());
 		u = u / m;
 		
 		if (u <= 0.0)
 			return false;
 		
-		double v = r[5] * (a * k - j * b) + r[4] * (j * c - a * l) + r[3] * (b * l - k * c);
+		double v = r.getDirection().getZ() * (abc.getX() * jkl.getY() - jkl.getX() * abc.getY()) +
+					r.getDirection().getY() * (jkl.getX() * abc.getZ() - abc.getX() * jkl.getZ()) +
+					r.getDirection().getX() * (abc.getY() * jkl.getZ() - jkl.getY() * abc.getZ());
 		v = v / m;
 		
 		if (v <= 0.0 || u + v >= 1.0)
@@ -388,43 +403,70 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 	}
 	
 	/**
-	 * Returns an Intersection object representing the points along the ray represented by the specified Ray object that intersection
-	 * between the ray and the triangle represented by this Triangle object occurs.
+	 * Returns a {@link ShadableIntersection} representing the points along the specified
+	 * {@link Ray} that intersection between the ray and the triangle represented by this
+	 * {@link Triangle} occurs.
 	 */
 	@Override
-	public ShadableIntersection intersectAt(Ray ray) {
-		double r[];
-		
-		if (useT)
-			r = ray.transform(this.getTransform(true).getInverse()).toArray();
-		else
-			r = ray.toArray();
-		
-		double j = this.j - r[0];
-		double k = this.k - r[1];
-		double l = this.l - r[2];
-		
-		double m = a * (e * r[5] - r[4] * f) + b * (r[3] * f - d * r[5]) + c * (d * r[4] - e * r[3]);
-		
-		if (m == 0)
-			return null;
-		
-		double u = j * (e * r[5] - r[4] * f) + k * (r[3] * f - d * r[5]) + l * (d * r[4] - e * r[3]);
-		u = u / m;
-		
-		if (u <= 0.0)
-			return null;
-		
-		double v = r[5] * (a * k - j * b) + r[4] * (j * c - a * l) + r[3] * (b * l - k * c);
-		v = v / m;
-		
-		if (v <= 0.0 || u + v >= 1.0)
-			return null;
-		
-		double t = f * (a * k - j * b) + e * (j * c - a * l) + d * (b * l - k * c);
-		t = -1.0 * t / m;
-		
-		return new ShadableIntersection(ray, this, new double[] {t});
+	public Producer<ShadableIntersection> intersectAt(Producer ray) {
+		TransformMatrix t = getTransform(true);
+		boolean ut = useT && t != null;
+		if (ut) ray = new RayMatrixTransform(t.getInverse(), ray);
+
+		if (enableHardwareOperator) {
+			return new ShadableIntersectionProducer(ray, this,
+									new AcceleratedProducer<Scalar>(
+											"triangleIntersectAt",
+											true, false,
+											new Producer[] { ray },
+											new Object[] { abc, def, jkl }));
+		} else {
+			final Producer<Ray> fray = ray;
+
+			return new Producer<ShadableIntersection>() {
+				@Override
+				public ShadableIntersection evaluate(Object[] args) {
+					Ray r = fray.evaluate(args);
+
+					Vector jkl = Triangle.this.jkl.subtract(r.getOrigin());
+
+					double m = abc.getX() * (def.getY() * r.getDirection().getZ() - r.getDirection().getY() * def.getZ()) +
+							abc.getY() * (r.getDirection().getX() * def.getZ() - def.getX() * r.getDirection().getZ()) +
+							abc.getZ() * (def.getX() * r.getDirection().getY() - def.getY() * r.getDirection().getX());
+
+					if (m == 0)
+						return null;
+
+					double u = jkl.getX() * (def.getY() * r.getDirection().getZ() - r.getDirection().getY() * def.getZ()) +
+							jkl.getY() * (r.getDirection().getX() * def.getZ() - def.getX() * r.getDirection().getZ()) +
+							jkl.getZ() * (def.getX() * r.getDirection().getY() - def.getY() * r.getDirection().getX());
+					u = u / m;
+
+					if (u <= 0.0)
+						return null;
+
+					double v = r.getDirection().getZ() * (abc.getX() * jkl.getY() - jkl.getX() * abc.getY()) +
+							r.getDirection().getY() * (jkl.getX() * abc.getZ() - abc.getX() * jkl.getZ()) +
+							r.getDirection().getX() * (abc.getY() * jkl.getZ() - jkl.getY() * abc.getZ());
+					v = v / m;
+
+					if (v <= 0.0 || u + v >= 1.0)
+						return null;
+
+					double t = def.getZ() * (abc.getX() * jkl.getY() - jkl.getX() * abc.getY()) +
+							def.getY() * (jkl.getX() * abc.getZ() - abc.getX() * jkl.getZ()) +
+							def.getX() * (abc.getY() * jkl.getZ() - jkl.getY() * abc.getZ());
+					t = -1.0 * t / m;
+
+					return new ShadableIntersection(r, Triangle.this, new Scalar(t));
+				}
+
+				@Override
+				public void compact() {
+					// TODO
+				}
+			};
+		}
 	}
 
 	@Override

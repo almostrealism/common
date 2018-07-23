@@ -17,7 +17,7 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.code.Scope;
-import org.almostrealism.math.GPUOperator;
+import org.almostrealism.math.HardwareOperator;
 import org.almostrealism.math.Hardware;
 import org.almostrealism.math.MemWrapper;
 import org.almostrealism.relation.TripleFunction;
@@ -42,8 +42,8 @@ public class TransformMatrix implements TripleFunction<Vector>, MemWrapper {
 											{0.0, 1.0, 0.0, 0.0},
 											{0.0, 0.0, 1.0, 0.0},
 											{0.0, 0.0, 0.0, 1.0}};
-	private static ThreadLocal<GPUOperator<Vector>> transformAsLocation = new ThreadLocal<>();
-	private static ThreadLocal<GPUOperator<Vector>> transformAsOffset = new ThreadLocal<>();
+	private static ThreadLocal<HardwareOperator<Vector>> transformAsLocation = new ThreadLocal<>();
+	private static ThreadLocal<HardwareOperator<Vector>> transformAsOffset = new ThreadLocal<>();
 
 	private cl_mem matrix;
 	private TransformMatrix inverseMatrix;

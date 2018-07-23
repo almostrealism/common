@@ -36,18 +36,24 @@ public class Ray implements MemWrapper, Cloneable {
 	private cl_mem mem;
 
 	private Ray(double coords[]) {
+		this();
 		this.setMem(coords);
 	}
 	
 	/**
 	 * Constructs a Ray object with origin and direction at the origin.
 	 */
-	public Ray() { }
+	public Ray() {
+		mem = CL.clCreateBuffer(Hardware.getLocalHardware().getContext(),
+				CL.CL_MEM_READ_WRITE,6 * Sizeof.cl_double,
+				null, null);
+	}
 	
 	/**
 	 * Constructs a Ray object using the specified origin and direction vectors.
 	 */
 	public Ray(Vector origin, Vector direction) {
+		this();
 		this.setOrigin(origin);
 		this.setDirection(direction);
 	}
@@ -90,7 +96,7 @@ public class Ray implements MemWrapper, Cloneable {
 		double m[][] = tm.getMatrix();
 
 		double inCoords[] = toArray();
-		double outCoords[] = new double[0];
+		double outCoords[] = new double[6];
 
 		outCoords[0] = m[0][0] * inCoords[0] + m[0][1] * inCoords[1] + m[0][2] * inCoords[2] + m[0][3];
 		outCoords[1] = m[1][0] * inCoords[0] + m[1][1] * inCoords[1] + m[1][2] * inCoords[2] + m[1][3];

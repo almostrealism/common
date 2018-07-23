@@ -14,17 +14,22 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.math;
+package org.almostrealism.util;
 
-/**
- * A wrapper for kernel programs in JOCL.
- */
-public class AcceleratedFunctions {
-	private HardwareOperatorMap prog;
+public class PassThroughProducer<T> implements Producer<T> {
+	private int argIndex = -1;
 
-	protected void init(Hardware h, String src) {
-		prog = new HardwareOperatorMap(h, src);
+	public PassThroughProducer(int argIndex) {
+		this.argIndex = argIndex;
 	}
 
-	public HardwareOperatorMap getOperators() { return prog; }
+	/** Returns the argument at the index specified to the constructor of {@link PassThroughProducer}. */
+	@Override
+	public T evaluate(Object[] args) {
+		return (T) args[argIndex];
+	}
+
+	/** Does nothing. */
+	@Override
+	public void compact() { }
 }
