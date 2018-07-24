@@ -38,8 +38,7 @@ crossProduct(__global double *res, __global const double *a, __global const doub
 }
 
 __kernel void
-dotProduct(__global double *res, __global const double *a, __global const double *b, const int aoffset, const int boffset)
-{
+dotProduct(__global double *res, __global const double *a, __global const double *b, const int aoffset, const int boffset) {
     int n = 3;
     int stride = 1;
     int step = 3;
@@ -54,21 +53,29 @@ dotProduct(__global double *res, __global const double *a, __global const double
 }
 
 __kernel void
-transformAsLocation(__global const double *m, __global double *v, const int moffset, const int voffset) {
-    int gid = get_global_id(0);
-    double x = v[gid+voffset];
-    double y = v[gid+voffset+1];
-    double z = v[gid+voffset+2];
-    v[gid + voffset] = m[4 * gid +moffset] * x + m[4 * gid + moffset + 1] * y + m[4 * gid + moffset + 2] * z + m[4 * gid + moffset + 3];
+transformAsLocation(__global double *v, __global const double *m, const int vOffset, const int mOffset) {
+    double x = v[vOffset];
+    double y = v[vOffset + 1];
+    double z = v[vOffset + 2];
+    v[vOffset]      =     m[mOffset] * x + m[mOffset + 1] * y + m[mOffset + 2]  * z + m[mOffset + 3];
+    v[vOffset + 1]  = m[mOffset + 4] * x + m[mOffset + 5] * y + m[mOffset + 6]  * z + m[mOffset + 7];
+    v[vOffset + 2]  = m[mOffset + 8] * x + m[mOffset + 9] * y + m[mOffset + 10] * z + m[mOffset + 11];
 }
 
 __kernel void
-transformAsOffset(__global const double *m, __global double *v, const int moffset, const int voffset) {
-    int gid = get_global_id(0);
-    double x = v[voffset];
-    double y = v[voffset+1];
-    double z = v[voffset+2];
-    v[gid+voffset] = m[4 * gid + moffset] * x + m[4 * gid + moffset + 1] * y + m[4 * gid + moffset + 2] * z;
+transformAsOffset(__global double *v, __global const double *m, const int vOffset, const int mOffset) {
+    double x = v[vOffset];
+    double y = v[vOffset + 1];
+    double z = v[vOffset + 2];
+    v[vOffset]      =     m[mOffset] * x + m[mOffset + 1] * y + m[mOffset + 2]  * z;
+    v[vOffset + 1]  = m[mOffset + 4] * x + m[mOffset + 5] * y + m[mOffset + 6]  * z;
+    v[vOffset + 2]  = m[mOffset + 8] * x + m[mOffset + 9] * y + m[mOffset + 10] * z;
+}
+
+__kernel void
+rayMatrixTransform(__global double *r, __global const double *m, const int rOffset, const int mOffset) {
+    transformAsLocation(r, m, rOffset, mOffset);
+    transformAsOffset(r, m, rOffset + 3, mOffset);
 }
 
 __kernel void
