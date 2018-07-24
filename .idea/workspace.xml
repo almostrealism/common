@@ -4,7 +4,6 @@
     <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="">
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/math/org/almostrealism/algebra/TransformMatrix.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/algebra/TransformMatrix.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/resources/local.cl" afterPath="$PROJECT_DIR$/resources/local.cl" />
     </list>
     <ignored path="$PROJECT_DIR$/target/" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -29,8 +28,8 @@
       <file leaf-file-name="TransformMatrix.java" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/TransformMatrix.java">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="284">
-              <caret line="203" column="0" lean-forward="true" selection-start-line="203" selection-start-column="0" selection-end-line="203" selection-end-column="0" />
+            <state relative-caret-position="92">
+              <caret line="182" column="8" lean-forward="false" selection-start-line="182" selection-start-column="8" selection-end-line="182" selection-end-column="8" />
               <folding />
             </state>
           </provider>
@@ -606,14 +605,7 @@
       <workItem from="1532104887650" duration="6111000" />
       <workItem from="1532131873023" duration="20583000" />
       <workItem from="1532311160065" duration="3854000" />
-      <workItem from="1532399391171" duration="1796000" />
-    </task>
-    <task id="LOCAL-00083" summary="Added get and set methods to Vector. They are used in Mat4f.">
-      <created>1520020538190</created>
-      <option name="number" value="00083" />
-      <option name="presentableId" value="LOCAL-00083" />
-      <option name="project" value="LOCAL" />
-      <updated>1520020538190</updated>
+      <workItem from="1532399391171" duration="2036000" />
     </task>
     <task id="LOCAL-00084" summary="Migrated Functions and SpanCalculator from Rings to Common.">
       <created>1520021295676</created>
@@ -951,7 +943,14 @@
       <option name="project" value="LOCAL" />
       <updated>1532399713572</updated>
     </task>
-    <option name="localTasksCounter" value="132" />
+    <task id="LOCAL-00132" summary="Some improvements to transformAsLocation and transformAsOffset as well as the introduction of rayMatrixTransform method.">
+      <created>1532401397059</created>
+      <option name="number" value="00132" />
+      <option name="presentableId" value="LOCAL-00132" />
+      <option name="project" value="LOCAL" />
+      <updated>1532401397059</updated>
+    </task>
+    <option name="localTasksCounter" value="133" />
     <servers />
   </component>
   <component name="TestHistory">
@@ -987,7 +986,7 @@
     </history-entry>
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="331893000" />
+    <option name="totallyTimeSpent" value="332133000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="0" y="0" width="1280" height="800" extended-state="6" />
@@ -1031,7 +1030,6 @@
     <option name="myLimit" value="2678400000" />
   </component>
   <component name="VcsManagerConfiguration">
-    <MESSAGE value="Added toArray method." />
     <MESSAGE value="Fixed a bug in GraphicsConverter." />
     <MESSAGE value="Working towards code generation support. Renamed Graph to Chart to avoid confusion with org.almostrealism.graph.Graph." />
     <MESSAGE value="This is version 0.5." />
@@ -1056,7 +1054,8 @@
     <MESSAGE value="Starting version 0.8." />
     <MESSAGE value="Migrating towards use of Producer throughout algebra and geometry packages." />
     <MESSAGE value="Added cl_khr_fp64 extension to local.cl." />
-    <option name="LAST_COMMIT_MESSAGE" value="Added cl_khr_fp64 extension to local.cl." />
+    <MESSAGE value="Some improvements to transformAsLocation and transformAsOffset as well as the introduction of rayMatrixTransform method." />
+    <option name="LAST_COMMIT_MESSAGE" value="Some improvements to transformAsLocation and transformAsOffset as well as the introduction of rayMatrixTransform method." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -1146,6 +1145,7 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="180">
           <caret line="28" column="24" lean-forward="true" selection-start-line="28" selection-start-column="24" selection-end-line="28" selection-end-column="24" />
+          <folding />
         </state>
       </provider>
     </entry>
@@ -1173,13 +1173,6 @@
           <folding>
             <element signature="imports" expanded="false" />
           </folding>
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/math/HardwareOperatorMap.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="345">
-          <caret line="38" column="34" lean-forward="false" selection-start-line="38" selection-start-column="31" selection-end-line="38" selection-end-column="34" />
         </state>
       </provider>
     </entry>
@@ -1493,10 +1486,18 @@
         </state>
       </provider>
     </entry>
+    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/math/HardwareOperatorMap.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="345">
+          <caret line="38" column="31" lean-forward="false" selection-start-line="38" selection-start-column="31" selection-end-line="38" selection-end-column="31" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
     <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/TransformMatrix.java">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="284">
-          <caret line="203" column="0" lean-forward="true" selection-start-line="203" selection-start-column="0" selection-end-line="203" selection-end-column="0" />
+        <state relative-caret-position="92">
+          <caret line="182" column="8" lean-forward="false" selection-start-line="182" selection-start-column="8" selection-end-line="182" selection-end-column="8" />
           <folding />
         </state>
       </provider>

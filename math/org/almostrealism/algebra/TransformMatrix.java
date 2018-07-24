@@ -193,13 +193,13 @@ public class TransformMatrix implements TripleFunction<Vector>, MemWrapper {
 		
 		if (type == TransformMatrix.TRANSFORM_AS_LOCATION) {
 			if (transformAsLocation.get() == null) {
-				transformAsLocation.set(Hardware.getLocalHardware().getFunctions().getOperators().get("transformAsLocation", false));
+				transformAsLocation.set(Hardware.getLocalHardware().getFunctions().getOperators().get("transformAsLocation", false, false, 2));
 			}
 
 			transformAsLocation.get().evaluate(new Object[] { vector, this });
 		} else if (type == TransformMatrix.TRANSFORM_AS_OFFSET) {
 			if (transformAsOffset.get() == null) {
-				transformAsOffset.set(Hardware.getLocalHardware().getFunctions().getOperators().get("transformAsOffset", false));
+				transformAsOffset.set(Hardware.getLocalHardware().getFunctions().getOperators().get("transformAsOffset", false, false, 2));
 			}
 
 			transformAsOffset.get().evaluate(new Object[] { vector, this });
