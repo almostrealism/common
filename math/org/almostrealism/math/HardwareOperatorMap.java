@@ -34,11 +34,11 @@ public class HardwareOperatorMap<T extends MemWrapper> {
 		if (r != 0) throw new RuntimeException("Error building HardwareOperatorMap:" + r);
 	}
 
-	public HardwareOperator<T> get(String key, boolean scalar) { return new HardwareOperator<>(prog, key, scalar); }
+	public HardwareOperator<T> get(String key) { return new HardwareOperator<>(prog, key); }
 
-	public HardwareOperator<T> get(String key, boolean scalar, int argCount) { return new HardwareOperator<>(prog, key, scalar, argCount); }
+	public HardwareOperator<T> get(String key, int argCount) { return new HardwareOperator<>(prog, key, argCount); }
 
-	public HardwareOperator<T> get(String key, boolean scalar, boolean kernel, int argCount) { return new HardwareOperator<>(prog, key, scalar, kernel, argCount); }
+	public HardwareOperator<T> get(String key, boolean kernel, int argCount) { return new HardwareOperator<>(prog, key, kernel, argCount); }
 
 	@Override
 	public void finalize() { CL.clReleaseProgram(prog); }

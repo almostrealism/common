@@ -21,6 +21,7 @@ import org.almostrealism.math.HardwareOperator;
 import org.almostrealism.math.Hardware;
 import org.almostrealism.math.MemWrapper;
 import org.almostrealism.util.Defaults;
+import org.almostrealism.util.StaticProducer;
 import org.jocl.CL;
 import org.jocl.Pointer;
 import org.jocl.Sizeof;
@@ -266,7 +267,7 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 	 */
 	public void addTo(Vector vector) {
 		if (addOperator.get() == null) {
-			addOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("add", false));
+			addOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("add"));
 		}
 
 		addOperator.get().evaluate(new Object[] { this, vector });
@@ -289,7 +290,7 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 	 */
 	public synchronized void subtractFrom(Vector vector) {
 		if (subtractOperator.get() == null) {
-			subtractOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("subtract", false));
+			subtractOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("subtract"));
 		}
 
 		subtractOperator.get().evaluate(new Object[] { this, vector });
@@ -311,7 +312,7 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 	 */
 	public synchronized void multiplyBy(double value) {
 		if (multiplyOperator.get() == null) {
-			multiplyOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("multiply", false));
+			multiplyOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("multiply"));
 		}
 
 		multiplyOperator.get().evaluate(new Object[] { this, new Vector(value, value, value) });
@@ -331,7 +332,7 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 	 */
 	public synchronized void divideBy(double value) {
 		if (divideOperator.get() == null) {
-			divideOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("divide", false));
+			divideOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("divide"));
 		}
 
 		divideOperator.get().evaluate(new Object[] { this, new Vector(value, value, value) });
@@ -342,16 +343,16 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 	 */
 	public synchronized double dotProduct(Vector vector) {
 		if (dotOperator.get() == null) {
-			dotOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("dotProduct", true));
+			dotOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("dotProduct", 3));
 		}
 
-		return dotOperator.get().evaluate(new Object[] { this, vector }).getValue();
+		return dotOperator.get().evaluate(new Object[] { new Scalar(), this, vector }).getValue();
 	}
 
 	/** Returns the cross product of this {@link Vector} and that of the specified {@link Vector}. */
 	public Vector crossProduct(Vector vector) {
 		if (crossOperator.get() == null) {
-			crossOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("crossProduct", false, false, 3));
+			crossOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("crossProduct", false, 3));
 		}
 
 		return crossOperator.get().evaluate(new Object[] { new Vector(), this, vector });
@@ -376,16 +377,14 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 	 */
 	public double lengthSq() {
 		if (lengthSqOperator.get() == null) {
-			lengthSqOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("lengthSq", true, false, 1));
+			lengthSqOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("lengthSq", false, 2));
 		}
 
-		return lengthSqOperator.get().evaluate(new Object[] { this }).getValue();
+		return lengthSqOperator.get().evaluate(new Object[] { Scalar.blank().evaluate(new Object[0]), this }).getValue();
 	}
 
 	public void normalize() {
-		// TODO  This can be made faster
-		double len = this.length();
-		if (len != 0.0 && len != 1.0) this.divideBy(len);
+		new VectorNormalize(new StaticProducer<>(this)).evaluate(new Object[0]);
 	}
 
 	/**

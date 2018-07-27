@@ -17,10 +17,14 @@
 package org.almostrealism.geometry;
 
 
+import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.TransformMatrix;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.math.AcceleratedProducer;
 import org.almostrealism.math.Hardware;
 import org.almostrealism.math.MemWrapper;
+import org.almostrealism.util.Producer;
+import org.almostrealism.util.StaticProducer;
 import org.jocl.CL;
 import org.jocl.Pointer;
 import org.jocl.Sizeof;
@@ -138,14 +142,11 @@ public class Ray implements MemWrapper, Cloneable {
 	/**
 	 * @return  The dot product of the origin of this ray with the direction of this ray.
 	 */
-	public double oDotd() {
-		// TODO  Hardware accelerate
+	public Producer<Scalar> oDotd() {
 		// TODO  Cache
-		// TODO  Return Producer<Scalar>
-		double coords[] = toArray();
-		return coords[0] * coords[3] +
-				coords[1] * coords[4] +
-				coords[2] * coords[5];
+		return new AcceleratedProducer<>("rayODotD", false,
+										new Producer[] { Scalar.blank() },
+										new Object[] { this });
 	}
 	
 	/**

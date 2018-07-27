@@ -32,6 +32,7 @@ import org.almostrealism.space.BoundingSolid;
 import org.almostrealism.space.ShadableIntersection;
 import org.almostrealism.space.ShadableIntersectionProducer;
 import org.almostrealism.util.Producer;
+import org.almostrealism.util.StaticProducer;
 
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -417,8 +418,10 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 			return new ShadableIntersectionProducer(ray, this,
 									new AcceleratedProducer<Scalar>(
 											"triangleIntersectAt",
-											true, false,
-											new Producer[] { ray },
+											false,
+											new Producer[] {
+												new StaticProducer(new Scalar()), ray
+											},
 											new Object[] { abc, def, jkl }));
 		} else {
 			final Producer<Ray> fray = ray;

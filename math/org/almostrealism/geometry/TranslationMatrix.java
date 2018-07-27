@@ -14,14 +14,16 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.algebra;
+package org.almostrealism.geometry;
 
-import org.almostrealism.geometry.Ray;
+import org.almostrealism.algebra.IdentityMatrix;
+import org.almostrealism.algebra.TransformMatrix;
+import org.almostrealism.algebra.Vector;
 import org.almostrealism.math.AcceleratedProducer;
 import org.almostrealism.util.Producer;
 
-public class RayMatrixTransform extends AcceleratedProducer<Ray> {
-	public RayMatrixTransform(TransformMatrix t, Producer<Ray> r) {
-		super("rayMatrixTransform", false, new Producer[] { r }, new Object[] { t });
+public class TranslationMatrix extends AcceleratedProducer<TransformMatrix> {
+	public TranslationMatrix(Producer<Vector> t) {
+		super("translationMatrix", new IdentityMatrix(), t);
 	}
 }

@@ -14,14 +14,17 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.algebra;
+package org.almostrealism.algebra.test;
 
-import org.almostrealism.geometry.Ray;
-import org.almostrealism.math.AcceleratedProducer;
-import org.almostrealism.util.Producer;
+import org.almostrealism.algebra.MatrixAdjoint;
+import org.almostrealism.algebra.TransformMatrix;
+import org.almostrealism.util.StaticProducer;
+import org.junit.Test;
 
-public class RayMatrixTransform extends AcceleratedProducer<Ray> {
-	public RayMatrixTransform(TransformMatrix t, Producer<Ray> r) {
-		super("rayMatrixTransform", false, new Producer[] { r }, new Object[] { t });
+public class MatrixAdjointTest {
+	@Test
+	public void test() {
+//		System.out.println(new TransformMatrix().toString());
+		new MatrixAdjoint(new StaticProducer<>(new TransformMatrix())).evaluate(new Object[0]);
 	}
 }

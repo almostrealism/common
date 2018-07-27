@@ -16,12 +16,11 @@
 
 package org.almostrealism.algebra;
 
-import org.almostrealism.geometry.Ray;
 import org.almostrealism.math.AcceleratedProducer;
 import org.almostrealism.util.Producer;
 
-public class RayMatrixTransform extends AcceleratedProducer<Ray> {
-	public RayMatrixTransform(TransformMatrix t, Producer<Ray> r) {
-		super("rayMatrixTransform", false, new Producer[] { r }, new Object[] { t });
+public class MatrixDeterminant extends AcceleratedProducer<Scalar> {
+	public MatrixDeterminant(Producer<TransformMatrix> m) {
+		super("matrixDeterminant", Scalar.blank(), m);
 	}
 }

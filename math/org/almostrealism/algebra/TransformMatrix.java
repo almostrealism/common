@@ -21,6 +21,8 @@ import org.almostrealism.math.HardwareOperator;
 import org.almostrealism.math.Hardware;
 import org.almostrealism.math.MemWrapper;
 import org.almostrealism.relation.TripleFunction;
+import org.almostrealism.util.Producer;
+import org.almostrealism.util.StaticProducer;
 import org.jocl.CL;
 import org.jocl.Pointer;
 import org.jocl.Sizeof;
@@ -52,15 +54,15 @@ public class TransformMatrix implements TripleFunction<Vector>, MemWrapper {
 
 	private boolean inverted, isIdentity;
 
-	private double df;
-
 	/**
 	 * Constructs a {@link TransformMatrix} that by default contains the data for a 4 X 4 identity matrix.
 	 */
 	public TransformMatrix() {
-		initMem();
-		this.setMatrix(TransformMatrix.identity);
-		this.df = 0;
+		this(true);
+	}
+
+	private TransformMatrix(boolean identity) {
+		initMem(identity);
 	}
 	
 	/**
@@ -68,15 +70,17 @@ public class TransformMatrix implements TripleFunction<Vector>, MemWrapper {
 	 * and missing array entries are replaced with 0.0.
 	 */
 	public TransformMatrix(double matrix[][]) {
-		initMem();
+		initMem(false);
 		this.setMatrix(matrix);
-		this.df = 0;
 	}
 
-	private void initMem() {
+	private void initMem(boolean identity) {
 		matrix = CL.clCreateBuffer(Hardware.getLocalHardware().getContext(),
 				CL.CL_MEM_READ_WRITE,16 * Sizeof.cl_double,
 				null, null);
+		if (identity) {
+			new IdentityMatrix(new StaticProducer<>(this)).evaluate(new Object[0]);
+		}
 	}
 	
 	/**
@@ -193,13 +197,13 @@ public class TransformMatrix implements TripleFunction<Vector>, MemWrapper {
 		
 		if (type == TransformMatrix.TRANSFORM_AS_LOCATION) {
 			if (transformAsLocation.get() == null) {
-				transformAsLocation.set(Hardware.getLocalHardware().getFunctions().getOperators().get("transformAsLocation", false, false, 2));
+				transformAsLocation.set(Hardware.getLocalHardware().getFunctions().getOperators().get("transformAsLocation", false, 2));
 			}
 
 			transformAsLocation.get().evaluate(new Object[] { vector, this });
 		} else if (type == TransformMatrix.TRANSFORM_AS_OFFSET) {
 			if (transformAsOffset.get() == null) {
-				transformAsOffset.set(Hardware.getLocalHardware().getFunctions().getOperators().get("transformAsOffset", false, false, 2));
+				transformAsOffset.set(Hardware.getLocalHardware().getFunctions().getOperators().get("transformAsOffset", false, 2));
 			}
 
 			transformAsOffset.get().evaluate(new Object[] { vector, this });
@@ -325,17 +329,7 @@ public class TransformMatrix implements TripleFunction<Vector>, MemWrapper {
 	 * returns the result as a double value.
 	 */
 	public double determinant() {
-		double det = 1.0;
-		
-		double newMatrix[][] = this.toUpperTriangle().getMatrix();
-		
-		for (int i = 0; i < newMatrix.length; i++) {
-			det = det * newMatrix[i][i];
-		}
-		
-		det = det * this.df;
-		
-		return det;
+		return new MatrixDeterminant(new StaticProducer<>(this)).evaluate(new Object[0]).getValue();
 	}
 
 	/**
@@ -343,19 +337,9 @@ public class TransformMatrix implements TripleFunction<Vector>, MemWrapper {
 	 * returns the result as a TransformMatrix object. If this method is called after the
 	 * last matrix modification it will return a stored transposition.
 	 */
-	// TODO  Implement with CL
 	public TransformMatrix transpose() {
 		if (transposeMatrix == null) {
-			double transpose[][] = new double[4][4];
-			double m[] = toArray();
-
-			for (int i = 0; i < transpose.length; i++) {
-				for (int j = 0; j < transpose.length; j++) {
-					transpose[i][j] = m[j * 4 + i];
-				}
-			}
-
-			transposeMatrix = new TransformMatrix(transpose);
+			transposeMatrix = new MatrixTranspose(new StaticProducer<>(this)).evaluate(new Object[0]);
 		}
 
 		return transposeMatrix;
@@ -365,41 +349,8 @@ public class TransformMatrix implements TripleFunction<Vector>, MemWrapper {
 	 * Computes the adjoint of the matrix represented by this TransformMatrix object and
 	 * returns the result as a TransformMatrix object.
 	 */
-	// TODO  Implement with CL
 	public TransformMatrix adjoint() {
-		double adjoint[][] = new double[4][4];
-		int ii, jj, ia, ja;
-		double det;
-
-		double m[] = toArray();
-
-		for (int i = 0; i < adjoint.length; i++) {
-			for (int j = 0; j < adjoint[i].length; j++) {
-				ia = ja = 0;
-				
-				double ap[][] = (new TransformMatrix(TransformMatrix.identity)).getMatrix();
-				
-				for (ii = 0; ii < adjoint.length; ii++) {
-					for (jj = 0; jj < adjoint[i].length; jj++) {
-						if ((ii != i) && (jj != j)) {
-							ap[ia][ja] = m[ii * 4 + jj];
-							ja++;
-						}
-					}
-					
-					if ((ii != i ) && (jj != j)) { ia++; }
-					ja = 0;
-				}
-				
-				det = (new TransformMatrix(ap)).determinant();
-				adjoint[i][j] = Math.pow(-1, i + j) * det;
-			}
-		}
-		
-		TransformMatrix adjointMatrix = new TransformMatrix(adjoint);
-		adjointMatrix = adjointMatrix.transpose();
-		
-		return adjointMatrix;
+		return new MatrixAdjoint(new StaticProducer<>(this)).evaluate(new Object[0]);
 	}
 	
 	/**
@@ -407,47 +358,7 @@ public class TransformMatrix implements TripleFunction<Vector>, MemWrapper {
 	 * returns the result as a TransformMatrix object.
 	 */
 	public TransformMatrix toUpperTriangle() {
-		double newMatrix[][] = clone().getMatrix();
-		
-		double f1 = 0;
-		double temp = 0;
-		int v = 1;
-		
-		this.df = 1;
-		
-		for (int col = 0; col < newMatrix.length - 1; col++) {
-			for (int row = col + 1; row < newMatrix.length; row++) {
-				v = 1;
-				
-				w: while(newMatrix[col][col] == 0) {
-					if (col + v >= newMatrix.length) {
-						this.df = 0;
-						break w;
-					} else {
-						for(int c = 0; c < newMatrix.length; c++) {
-							temp = newMatrix[col][c];
-							newMatrix[col][c] = newMatrix[col + v][c];
-							newMatrix[col + v][c] = temp;
-						}
-						
-						v++;
-						this.df = df * -1;
-					}
-				}
-				
-				if (newMatrix[col][col] != 0) {
-					try {
-						f1 = (-1) * newMatrix[row][col] / newMatrix[col][col];
-						
-						for (int i = col; i < newMatrix.length; i++) {
-							newMatrix[row][i] = f1 * newMatrix[col][i] + newMatrix[row][i];
-						}
-					} catch(Exception e) { }
-				}
-			}
-		}
-		
-		return new TransformMatrix(newMatrix);
+		return new MatrixToUpperTriangle(new StaticProducer<>(this)).evaluate(new Object[0]);
 	}
 
 	@Override
@@ -516,11 +427,26 @@ public class TransformMatrix implements TripleFunction<Vector>, MemWrapper {
 		
 		return data;
 	}
-	
+
+	public static Producer<TransformMatrix> blank() {
+		return new Producer<TransformMatrix>() {
+			@Override
+			public TransformMatrix evaluate(Object[] args) {
+				return new TransformMatrix(false);
+			}
+
+			@Override
+			public void compact() { }
+		};
+	}
+
 	/**
 	 * Generates a TransformMatrix object that can be used to translate vectors using the specified
 	 * translation coordinates.
+	 *
+	 * USE {@link org.almostrealism.geometry.TranslationMatrix} instead.
 	 */
+	@Deprecated
 	public static TransformMatrix createTranslationMatrix(double tx, double ty, double tz) {
 		TransformMatrix translateTransform = new TransformMatrix();
 		double translate[][] = translateTransform.getMatrix();
@@ -536,7 +462,10 @@ public class TransformMatrix implements TripleFunction<Vector>, MemWrapper {
 	/**
 	 * Generates a TransformMatrix object that can be used to translate vectors using the specified
 	 * translation coordinates.
+	 *
+	 * USE {@link org.almostrealism.geometry.TranslationMatrix} instead.
 	 */
+	@Deprecated
 	public static TransformMatrix createTranslationMatrix(Vector t) {
 		return createTranslationMatrix(t.getX(), t.getY(), t.getZ());
 	}

@@ -21,6 +21,7 @@ import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.*;
 import org.almostrealism.color.RGB;
 import org.almostrealism.geometry.Ray;
+import org.almostrealism.math.AcceleratedProducer;
 import org.almostrealism.relation.Constant;
 import org.almostrealism.relation.Operator;
 import org.almostrealism.util.Producer;
@@ -139,37 +140,23 @@ public class Plane extends AbstractSurface implements ParticleGroup {
 	 */
 	@Override
 	public Producer<ShadableIntersection> intersectAt(Producer r) {
-		return new Producer<ShadableIntersection>() {
-			@Override
-			public ShadableIntersection evaluate(Object[] args) {
-				Ray ray = (Ray) r.evaluate(args);
-				ray = ray.transform(getTransform(true).getInverse());
+		TransformMatrix m = getTransform(true);
+		if (m != null) r = new RayMatrixTransform(m.getInverse(), r);
 
-				double t;
-
-				Vector o = ray.getOrigin();
-				Vector d = ray.getDirection();
-
-				// TODO  Transform already includes location, so this is probably redundant
-				if (type == Plane.XY)
-					t = (getLocation().getZ() - o.getZ()) / d.getZ();
-				else if (type == Plane.XZ)
-					t = (getLocation().getY() - o.getY()) / d.getY();
-				else if (type == Plane.YZ)
-					t = (getLocation().getX() - o.getX()) / d.getX();
-				else
-					return null;
-
-				if (t < 0) return null;
-
-				return new ShadableIntersection(ray, Plane.this, new Scalar(t));
-			}
-
-			@Override
-			public void compact() {
-				r.compact();
-			}
-		};
+		if (type == Plane.XY)
+			return new ShadableIntersectionProducer(r, this,
+					new AcceleratedProducer<Scalar>("planeXYIntersectAt",
+											new Producer[] { Scalar.blank(), r }));
+		else if (type == Plane.XZ)
+			return new ShadableIntersectionProducer(r, this,
+					new AcceleratedProducer<Scalar>("planeXZIntersectAt",
+											new Producer[] { Scalar.blank(), r }));
+		else if (type == Plane.YZ)
+			return new ShadableIntersectionProducer(r, this,
+					new AcceleratedProducer<Scalar>("planeYZIntersectAt",
+											new Producer[] { Scalar.blank(), r }));
+		else
+			return null;
 	}
 
 	@Override

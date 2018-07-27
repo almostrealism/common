@@ -22,7 +22,9 @@ import org.almostrealism.algebra.ZeroVector;
 import org.almostrealism.geometry.Oriented;
 import org.almostrealism.geometry.Positioned;
 import org.almostrealism.geometry.Scaled;
+import org.almostrealism.geometry.TranslationMatrix;
 import org.almostrealism.uml.ModelEntity;
+import org.almostrealism.util.StaticProducer;
 
 /**
  * Provides a simple mechanism to keep track of tranformation
@@ -263,12 +265,12 @@ public class BasicGeometry implements Positioned, Oriented, Scaled {
 				this.transform = this.transform.multiply(this.transforms[i]);
 			}
 
-			this.completeTransform = new TransformMatrix();
+			completeTransform = new TransformMatrix();
 
-			if (this.location != null) {
-				this.completeTransform =
-						this.completeTransform.multiply(TransformMatrix.createTranslationMatrix(
-								this.location.getX(), this.location.getY(), this.location.getZ()));
+			if (getLocation() != null) {
+				completeTransform =
+						completeTransform.multiply(
+								new TranslationMatrix(new StaticProducer<>(getLocation())).evaluate(new Object[0]));
 			}
 
 			this.completeTransform = this.completeTransform.multiply(TransformMatrix.createScaleMatrix(this.scaleX * this.size, this.scaleY * this.size, this.scaleZ * this.size));

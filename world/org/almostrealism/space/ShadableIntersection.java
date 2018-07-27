@@ -35,9 +35,10 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 	
 	public ShadableIntersection(Ray ray, Intersectable<ShadableIntersection, ?> surface, Scalar intersection) {
 		super(ray, surface, intersection);
-		
-		Vector rayDirection = ray.getDirection();
-		viewerDirection = (rayDirection.divide(rayDirection.length())).minus();
+
+		viewerDirection = ray.getDirection();
+		viewerDirection.normalize();
+		viewerDirection.multiplyBy(-1);
 		
 		normal = () -> {
 			Vector p = ray.pointAt(intersection.getValue());

@@ -25,14 +25,21 @@ public class AcceleratedProducer<T extends MemWrapper> implements Producer<T> {
 	private static Map<String, ThreadLocal<HardwareOperator>> operators = new HashMap<>();
 
 	private String function;
-	private boolean scalar, kernel;
+	private boolean  kernel;
 
 	private Object allArgs[];
 	private Producer inputProducers[];
 
-	public AcceleratedProducer(String function, boolean scalar, boolean kernel, Producer<Object> inputArgs[], Object additionalArguments[]) {
+	public AcceleratedProducer(String function, Producer<?>... inputArgs) {
+		this(function, false, inputArgs, new Object[0]);
+	}
+
+	public AcceleratedProducer(String function, Producer<?> inputArgs[], Object additionalArguments[]) {
+		this(function, false, inputArgs, additionalArguments);
+	}
+
+	public AcceleratedProducer(String function, boolean kernel, Producer<?> inputArgs[], Object additionalArguments[]) {
 		this.function = function;
-		this.scalar = scalar;
 		this.kernel = kernel;
 		inputProducers = inputArgs;
 		allArgs = new Object[inputArgs.length + additionalArguments.length];
@@ -50,7 +57,7 @@ public class AcceleratedProducer<T extends MemWrapper> implements Producer<T> {
 			}
 
 			if (operators.get(function).get() == null) {
-				operators.get(function).set(Hardware.getLocalHardware().getFunctions().getOperators().get(function, scalar, kernel, allArgs.length));
+				operators.get(function).set(Hardware.getLocalHardware().getFunctions().getOperators().get(function, kernel, allArgs.length));
 			}
 		}
 

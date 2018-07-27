@@ -1,11 +1,14 @@
 package org.almostrealism.algebra;
 
+import org.almostrealism.util.Producer;
+
 public class Scalar extends Pair implements Comparable<Scalar> {
 	public static final double EPSILON = 1.19209290e-07;
 	public static final double TWO_PI = 6.283185307179586232;
 	public static final double PI = TWO_PI * 0.5;
 
-	public Scalar() { setCertainty(1.0); }
+	public Scalar() { this(true); }
+	public Scalar(boolean certain) { if (certain) setCertainty(1.0); }
 	public Scalar(double v) { setValue(v); setCertainty(1.0); }
 	public Scalar(double v, double c) { setValue(v); setCertainty(c); }
 
@@ -23,6 +26,18 @@ public class Scalar extends Pair implements Comparable<Scalar> {
 	public Object clone() {
 		Scalar s = new Scalar(getValue(), getCertainty());
 		return s;
+	}
+
+	public static Producer<Scalar> blank() {
+		return new Producer<Scalar>() {
+			@Override
+			public Scalar evaluate(Object[] args) {
+				return new Scalar(false);
+			}
+
+			@Override
+			public void compact() { }
+		};
 	}
 
 	public static Scalar sel(double a, double b, double c) {

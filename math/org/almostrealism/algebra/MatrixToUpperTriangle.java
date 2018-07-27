@@ -16,12 +16,11 @@
 
 package org.almostrealism.algebra;
 
-import org.almostrealism.geometry.Ray;
 import org.almostrealism.math.AcceleratedProducer;
 import org.almostrealism.util.Producer;
 
-public class RayMatrixTransform extends AcceleratedProducer<Ray> {
-	public RayMatrixTransform(TransformMatrix t, Producer<Ray> r) {
-		super("rayMatrixTransform", false, new Producer[] { r }, new Object[] { t });
+public class MatrixToUpperTriangle extends AcceleratedProducer<TransformMatrix> {
+	public MatrixToUpperTriangle(Producer<TransformMatrix> m) {
+		super("matrixToUpperTriangle", TransformMatrix.blank(), Scalar.blank(), m);
 	}
 }

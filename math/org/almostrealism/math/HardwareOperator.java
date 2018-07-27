@@ -33,28 +33,24 @@ public class HardwareOperator<T extends MemWrapper> implements Operator<T>, Fact
 	private cl_program prog;
 	private String name;
 
-	private boolean scalar, isKernel;
+	private boolean isKernel;
 	private int argCount;
-
-	private Scalar result;
 
 	private cl_kernel kernel;
 
-	public HardwareOperator(cl_program program, String name, boolean scalar) {
-		this(program, name, scalar, 2);
+	public HardwareOperator(cl_program program, String name) {
+		this(program, name, 2);
 	}
 
-	public HardwareOperator(cl_program program, String name, boolean scalar, int argCount) {
-		this(program, name, scalar, true, argCount);
+	public HardwareOperator(cl_program program, String name, int argCount) {
+		this(program, name, true, argCount);
 	}
 
-	public HardwareOperator(cl_program program, String name, boolean scalar, boolean kernel, int argCount) {
+	public HardwareOperator(cl_program program, String name, boolean kernel, int argCount) {
 		this.prog = program;
 		this.name = name;
-		this.scalar = scalar;
 		this.isKernel = kernel;
 		this.argCount = argCount;
-		if (scalar) result = new Scalar();
 	}
 
 	// TODO  How do these kernels get released when done?
@@ -77,31 +73,33 @@ public class HardwareOperator<T extends MemWrapper> implements Operator<T>, Fact
 
 		int index = 0;
 
-		if (scalar) {
-			try {
-				CL.clSetKernelArg(kernel, index, Sizeof.cl_double, Pointer.to(result.getMem())); // Result
-				index++;
-
-				for (int i = 0; i < argCount; i++) {
-					CL.clSetKernelArg(kernel, index, Sizeof.cl_mem, Pointer.to(((MemWrapper) args[i]).getMem()));
-					index++;
-				}
-
-				for (int i = 0; i < argCount; i++) {
-					CL.clSetKernelArg(kernel, index, Sizeof.cl_int, Pointer.to(new int[]{0})); // Offset
-					index++;
-				}
-			} catch (CLException e) {
-				throw new RuntimeException(e.getMessage() + " index = " + index + " argCount = " + argCount);
-			}
-
-			long gws[] = new long[] { 1, 1 };
-
-			CL.clEnqueueNDRangeKernel(Hardware.getLocalHardware().getQueue(), kernel, 1, null,
-									gws, null, 0, null, null);
-
-			return (T) result;
-		} else {
+//		TODO  Remove legacy custom code for dealing with scalars, which are really just Pairs (and so are already MemWrapper implementors just like Vectors)
+//		if (scalar) {
+//			try {
+//				CL.clSetKernelArg(kernel, index, Sizeof.cl_double, Pointer.to(result.getMem())); // Result
+//				index++;
+//
+//				for (int i = 0; i < argCount; i++) {
+//					CL.clSetKernelArg(kernel, index, Sizeof.cl_mem, Pointer.to(((MemWrapper) args[i]).getMem()));
+//					index++;
+//				}
+//
+//				for (int i = 0; i < argCount; i++) {
+//					CL.clSetKernelArg(kernel, index, Sizeof.cl_int, Pointer.to(new int[]{0})); // Offset
+//					index++;
+//				}
+//			} catch (CLException e) {
+//				throw new RuntimeException(e.getMessage() + " index = " + index + " argCount = " + argCount);
+//			}
+//
+//			long gws[] = new long[] { 1, 1 };
+//
+//			CL.clEnqueueNDRangeKernel(Hardware.getLocalHardware().getQueue(), kernel, 1, null,
+//									gws, null, 0, null, null);
+//
+//			return (T) result;
+//		} else {
+		try {
 			for (int i = 0; i < argCount; i++) {
 				CL.clSetKernelArg(kernel, index++, Sizeof.cl_mem, Pointer.to(((MemWrapper) args[i]).getMem()));
 			}
@@ -110,13 +108,17 @@ public class HardwareOperator<T extends MemWrapper> implements Operator<T>, Fact
 				CL.clSetKernelArg(kernel, index++, Sizeof.cl_int, Pointer.to(new int[]{0})); // Offset
 			}
 
-			long gws[] = isKernel ? new long[] { 3 } : new long[] { 1 };
+			long gws[] = isKernel ? new long[]{3} : new long[]{1};
 
 			CL.clEnqueueNDRangeKernel(Hardware.getLocalHardware().getQueue(), kernel, 1, null,
-									gws, null, 0, null, null);
+					gws, null, 0, null, null);
 
 			return (T) args[0];
+		} catch (CLException e) {
+			throw new RuntimeException(e.getMessage() + " for function " + name +
+							" (index = " + index + " argCount = " + argCount + ")", e);
 		}
+//		}
 	}
 
 	@Override
