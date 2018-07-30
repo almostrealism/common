@@ -17,12 +17,10 @@
 package org.almostrealism.space;
 
 import org.almostrealism.algebra.TransformMatrix;
+import org.almostrealism.algebra.UnityVector;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.ZeroVector;
-import org.almostrealism.geometry.Oriented;
-import org.almostrealism.geometry.Positioned;
-import org.almostrealism.geometry.Scaled;
-import org.almostrealism.geometry.TranslationMatrix;
+import org.almostrealism.geometry.*;
 import org.almostrealism.uml.ModelEntity;
 import org.almostrealism.util.StaticProducer;
 
@@ -38,7 +36,7 @@ public class BasicGeometry implements Positioned, Oriented, Scaled {
 	protected Vector location;
 	protected double size;
 	
-	protected double scaleX, scaleY, scaleZ;
+	protected Vector scale = (Vector) UnityVector.getInstance().evaluate(new Object[0]).clone();
 	protected double rotateX, rotateY, rotateZ;
 
 	private TransformMatrix transforms[];
@@ -55,8 +53,7 @@ public class BasicGeometry implements Positioned, Oriented, Scaled {
 		
 		this.setLocation(location);
 		this.setSize(1.0);
-		
-		this.setScaleCoefficients(1.0, 1.0, 1.0);
+
 		this.setRotationCoefficients(0.0, 0.0, 0.0);
 	}
 	
@@ -68,7 +65,6 @@ public class BasicGeometry implements Positioned, Oriented, Scaled {
 	public void setLocation(Vector location) {
 		this.location = location;
 		this.transformCurrent = false;
-		// this.calculateTransform();
 	}
 	
 	/**
@@ -77,7 +73,6 @@ public class BasicGeometry implements Positioned, Oriented, Scaled {
 	public void setSize(double size) {
 		this.size = size;
 		this.transformCurrent = false;
-		// this.calculateTransform();
 	}
 	
 	/**
@@ -85,12 +80,9 @@ public class BasicGeometry implements Positioned, Oriented, Scaled {
 	 * This method calls calculateTransform() after it is completed.
 	 */
 	public void setScaleCoefficients(double x, double y, double z) {
-		this.scaleX = x;
-		this.scaleY = y;
-		this.scaleZ = z;
+		this.scale.setTo(new Vector(x, y, z));
 		
 		this.transformCurrent = false;
-		// this.calculateTransform();
 	}
 	
 	/**
@@ -118,9 +110,7 @@ public class BasicGeometry implements Positioned, Oriented, Scaled {
 	 * {@link BasicGeometry} on the x, y, and z axes when it is rendered.
 	 */
 	public double[] getScaleCoefficients() {
-		double scale[] = {this.scaleX, this.scaleY, this.scaleZ};
-		
-		return scale;
+		return scale.toArray();
 	}
 	
 	/**
@@ -189,7 +179,7 @@ public class BasicGeometry implements Positioned, Oriented, Scaled {
 	}
 	
 	@Override
-	public float[] getScale() { return new float[] { (float) scaleX, (float) scaleY, (float) scaleZ }; }
+	public float[] getScale() { return scale.toFloat(); }
 	
 	/**
 	 * Sets the TransformMatrix object at the specified index used to transform this Surface object when it is rendered
@@ -273,7 +263,15 @@ public class BasicGeometry implements Positioned, Oriented, Scaled {
 								new TranslationMatrix(new StaticProducer<>(getLocation())).evaluate(new Object[0]));
 			}
 
-			this.completeTransform = this.completeTransform.multiply(TransformMatrix.createScaleMatrix(this.scaleX * this.size, this.scaleY * this.size, this.scaleZ * this.size));
+			ScaleMatrix sm;
+
+			if (size == 1.0) {
+				sm = new ScaleMatrix(new StaticProducer<>(scale));
+			} else {
+				sm = new ScaleMatrix(new StaticProducer<>(scale.multiply(size)));
+			}
+
+			this.completeTransform = this.completeTransform.multiply(sm.evaluate(new Object[0]));
 
 			if (this.rotateX != 0.0) {
 				this.completeTransform = this.completeTransform.multiply(TransformMatrix.createRotateXMatrix(this.rotateX));

@@ -18,6 +18,7 @@ package org.almostrealism.color;
 
 import org.almostrealism.algebra.DiscreteField;
 import org.almostrealism.space.LightingContext;
+import org.almostrealism.util.Producer;
 
 /**
  * The Shader interface is implemented by classes that provide a method for shading a surface.
@@ -28,5 +29,5 @@ public interface Shader<C extends LightingContext> {
 	 * shaded color calculated using the values of the specified
 	 * {@link ShaderContext} object.
 	 */
-	ColorProducer shade(C parameters, DiscreteField normals);
+	Producer<RGB> shade(C parameters, DiscreteField normals);
 }

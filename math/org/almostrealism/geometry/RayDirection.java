@@ -14,12 +14,20 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.math;
+package org.almostrealism.geometry;
 
-import org.jocl.cl_mem;
+import org.almostrealism.algebra.Vector;
+import org.almostrealism.util.Producer;
 
-public interface MemWrapper {
-	cl_mem getMem();
+public class RayDirection implements Producer<Vector> {
+	private Producer<Ray> r;
 
-	void destroy();
+	public RayDirection(Producer<Ray> r) {
+		this.r = r;
+	}
+
+	public Vector evaluate(Object args[]) { return r.evaluate(args).getDirection(); }
+
+	@Override
+	public void compact() { r.compact(); }
 }

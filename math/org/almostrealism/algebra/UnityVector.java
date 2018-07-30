@@ -14,12 +14,16 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.math;
+package org.almostrealism.algebra;
 
-import org.jocl.cl_mem;
+public class UnityVector extends ImmutableVector {
+	private static UnityVector local = new UnityVector();
 
-public interface MemWrapper {
-	cl_mem getMem();
+	private Scalar zero = new Scalar(0.0);
 
-	void destroy();
+	public UnityVector() {
+		super(1, 1, 1);
+	}
+
+	public static UnityVector getInstance() { return local; }
 }

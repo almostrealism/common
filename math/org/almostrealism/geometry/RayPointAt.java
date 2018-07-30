@@ -14,12 +14,15 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.math;
+package org.almostrealism.geometry;
 
-import org.jocl.cl_mem;
+import org.almostrealism.algebra.Scalar;
+import org.almostrealism.algebra.Vector;
+import org.almostrealism.math.AcceleratedProducer;
+import org.almostrealism.util.Producer;
 
-public interface MemWrapper {
-	cl_mem getMem();
-
-	void destroy();
+public class RayPointAt extends AcceleratedProducer<Vector> {
+	public RayPointAt(Producer<Ray> r, Producer<Scalar> t) {
+		super("rayPointAt", Vector.blank(), r, t);
+	}
 }

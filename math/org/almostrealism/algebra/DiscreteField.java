@@ -1,10 +1,9 @@
 package org.almostrealism.algebra;
 
-import java.util.concurrent.Callable;
-
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.graph.NodeList;
 import org.almostrealism.space.Gradient;
+import org.almostrealism.util.Producer;
 
 /**
  * A {@link DiscreteField} is a collection of points in space and corresponding directions.
@@ -12,6 +11,6 @@ import org.almostrealism.space.Gradient;
  * 
  * @author  Michael Murray
  */
-public interface DiscreteField extends NodeList<Callable<Ray>> {
+public interface DiscreteField extends NodeList<Producer<Ray>> {
 
 }

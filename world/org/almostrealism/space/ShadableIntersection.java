@@ -17,12 +17,12 @@
 package org.almostrealism.space;
 
 import java.util.*;
-import java.util.concurrent.Callable;
 
 import io.almostrealism.code.Scope;
 import org.almostrealism.algebra.*;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
+import org.almostrealism.util.Producer;
 
 /**
  * Extends {@link Intersection} to provide metadata that is required for shading.
@@ -30,25 +30,46 @@ import org.almostrealism.geometry.Ray;
  * @author  Michael Murray
  */
 public class ShadableIntersection extends Intersection implements ContinuousField {
-	private Vector viewerDirection;
-	private Callable<Ray> normal;
+	private Producer<Vector> incident;
+	private Producer<Ray> normal; // TODO  Change to Producer<Ray>
 	
-	public ShadableIntersection(Ray ray, Intersectable<ShadableIntersection, ?> surface, Scalar intersection) {
-		super(ray, surface, intersection);
+	public ShadableIntersection(Intersectable<ShadableIntersection, ?> surface,
+								Producer<Vector> point, Producer<Vector> incident, Scalar distance) {
+		super(surface, point, distance);
 
-		viewerDirection = ray.getDirection();
-		viewerDirection.normalize();
-		viewerDirection.multiplyBy(-1);
-		
-		normal = () -> {
-			Vector p = ray.pointAt(intersection.getValue());
-			return new Ray(p, ((Gradient) surface).getNormalAt(p).evaluate(new Object[0]));
+		this.incident = incident;
+
+		normal = new Producer<Ray>() {
+			public Ray evaluate(Object args[]) {
+				Vector p = getPoint().evaluate(args);
+				return new Ray(p, ((Gradient) surface).getNormalAt(p).evaluate(args));
+			}
+
+			public void compact() {
+				// TODO  Compact surface.getNormalAt
+			}
 		};
 	}
 	
 	/** Returns the viewer direction. */
 	@Override
-	public VectorProducer getNormalAt(Vector point) { return new ImmutableVector(viewerDirection); }
+	public Producer<Vector> getNormalAt(Vector point) {
+		return new Producer<Vector>() {
+
+			@Override
+			public Vector evaluate(Object[] args) {
+				Vector v = incident.evaluate(args);
+				v.normalize();
+				v.multiplyBy(-1);
+				return v;
+			}
+
+			@Override
+			public void compact() {
+				incident.compact();
+			}
+		};
+	}
 	
 	/** Delegates to {@link #getNormalAt(Vector)}. */
 	@Override
@@ -60,20 +81,18 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 	}
 	
 	@Override
-	public Callable<Ray> get(int index) { return normal; }
-	
-	public Vector getViewerDirection() { return viewerDirection; }
+	public Producer<Ray> get(int index) { return normal; }
 	
 	public int size() { return 1; }
 
 	@Override
-	public boolean isEmpty() { return getIntersection() == null; }
+	public boolean isEmpty() { return getPoint() == null; } // TODO  This isn't right
 
 	@Override
 	public boolean contains(Object o) { return false; }
 
 	@Override
-	public Iterator<Callable<Ray>> iterator() { return Arrays.asList(normal).iterator(); }
+	public Iterator<Producer<Ray>> iterator() { return Arrays.asList(normal).iterator(); }
 
 	@Override
 	public Object[] toArray() { return new Object[] { normal }; }
@@ -82,7 +101,7 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 	public <T> T[] toArray(T[] a) { return Arrays.asList(normal).toArray(a); }
 
 	@Override
-	public boolean add(Callable<Ray> e) { return false; }
+	public boolean add(Producer<Ray> e) { return false; }
 
 	@Override
 	public boolean remove(Object o) { return false; }
@@ -91,10 +110,10 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 	public boolean containsAll(Collection<?> c) { return false; }
 
 	@Override
-	public boolean addAll(Collection<? extends Callable<Ray>> c) { return false; }
+	public boolean addAll(Collection<? extends Producer<Ray>> c) { return false; }
 
 	@Override
-	public boolean addAll(int index, Collection<? extends Callable<Ray>> c) { return false; }
+	public boolean addAll(int index, Collection<? extends Producer<Ray>> c) { return false; }
 
 	@Override
 	public boolean removeAll(Collection<?> c) { return false; }
@@ -106,13 +125,13 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 	public void clear() { }
 
 	@Override
-	public Callable<Ray> set(int index, Callable<Ray> element) { return null; }
+	public Producer<Ray> set(int index, Producer<Ray> element) { return null; }
 
 	@Override
-	public void add(int index, Callable<Ray> element) { }
+	public void add(int index, Producer<Ray> element) { }
 
 	@Override
-	public Callable<Ray> remove(int index) { return null; }
+	public Producer<Ray> remove(int index) { return null; }
 
 	@Override
 	public int indexOf(Object o) { return 0; }
@@ -121,17 +140,17 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 	public int lastIndexOf(Object o) { return 0; }
 
 	@Override
-	public ListIterator<Callable<Ray>> listIterator() {
+	public ListIterator<Producer<Ray>> listIterator() {
 		return Arrays.asList(normal).listIterator();
 	}
 
 	@Override
-	public ListIterator<Callable<Ray>> listIterator(int index) {
+	public ListIterator<Producer<Ray>> listIterator(int index) {
 		return Arrays.asList(normal).listIterator();
 	}
 
 	@Override
-	public List<Callable<Ray>> subList(int fromIndex, int toIndex) {
+	public List<Producer<Ray>> subList(int fromIndex, int toIndex) {
 		return Arrays.asList(normal).subList(fromIndex, toIndex);
 	}
 }

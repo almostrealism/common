@@ -23,6 +23,8 @@ import org.almostrealism.color.GeneratedColorProducer;
 import org.almostrealism.color.RGB;
 import org.almostrealism.geometry.Positioned;
 import org.almostrealism.geometry.Ray;
+import org.almostrealism.geometry.RayDirection;
+import org.almostrealism.geometry.RayPointAt;
 import org.almostrealism.math.AcceleratedProducer;
 import org.almostrealism.relation.Constant;
 import org.almostrealism.relation.Operator;
@@ -461,7 +463,11 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 							def.getX() * (abc.getY() * jkl.getZ() - jkl.getY() * abc.getZ());
 					t = -1.0 * t / m;
 
-					return new ShadableIntersection(r, Triangle.this, new Scalar(t));
+					Scalar ts = new Scalar(t);
+					StaticProducer tp = new StaticProducer<>(ts);
+
+					return new ShadableIntersection(Triangle.this, new RayPointAt(fray, tp),
+													new RayDirection(fray), ts);
 				}
 
 				@Override

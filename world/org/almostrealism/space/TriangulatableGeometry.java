@@ -35,7 +35,7 @@ public class TriangulatableGeometry extends GeometryStack implements Triangulata
 		
 		m.setLocation(this.getLocation());
 		m.setSize(this.getSize());
-		m.setScaleCoefficients(this.scaleX, this.scaleY, this.scaleZ);
+		m.setScaleCoefficients(scale.getX(), scale.getY(), scale.getZ());
 		m.setRotationCoefficients(this.rotateX, this.rotateY, this.rotateZ);
 		m.setTransforms(this.getTransforms());
 		

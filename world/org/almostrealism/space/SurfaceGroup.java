@@ -19,13 +19,12 @@ package org.almostrealism.space;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 import org.almostrealism.algebra.*;
-import org.almostrealism.color.ColorSum;
 import org.almostrealism.color.RGB;
+import org.almostrealism.color.RGBAdd;
 import org.almostrealism.color.ShaderContext;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.graph.Mesh;
@@ -114,14 +113,20 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 	public Iterator<T> iterator() { return surfaces.iterator(); }
 	
 	/** {@link ShadableSurface#shade(ShaderContext)} */
-	public ColorSum shade(ShaderContext p) {
-		ColorSum color = new ColorSum();
+	public Producer<RGB> shade(ShaderContext p) {
+		Producer<RGB> color = null;
 		
-		if (super.getShaderSet() != null)
-			color.add(super.getShaderSet().shade(p, p.getIntersection()));
+		if (getShaderSet() != null) {
+			color = getShaderSet().shade(p, p.getIntersection());
+		}
 		
-		if (super.getParent() != null)
-			color.add((Future) super.getParent().shade(p));
+		if (getParent() != null) {
+			if (color == null) {
+				color = getParent().shade(p);
+			} else {
+				color = new RGBAdd(color, getParent().shade(p));
+			}
+		}
 		
 		return color;
 	}

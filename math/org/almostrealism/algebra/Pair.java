@@ -110,6 +110,18 @@ public class Pair implements MemWrapper {
 	@Override
 	public cl_mem getMem() { return mem; }
 
+	@Override
+	public void destroy() {
+		if (mem == null) return;
+		CL.clReleaseMemObject(mem);
+		mem = null;
+	}
+
+	@Override
+	public void finalize() throws Throwable {
+		destroy();
+	}
+
 	private void setMem(double[] source) {
 		setMem(0, source, 0, 2);
 	}

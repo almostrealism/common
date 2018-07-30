@@ -111,7 +111,7 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 		@Override
 		public BoundingSolid calculateBoundingSolid() { return mesh.calculateBoundingSolid(); }
 
-		@Override public VectorProducer getNormalAt(Vector point) { return this.getSurface().getNormalAt(point); }
+		@Override public Producer<Vector> getNormalAt(Vector point) { return this.getSurface().getNormalAt(point); }
 		@Override public boolean intersect(Ray ray) { return this.getSurface().intersect(ray); }
 		@Override public Producer<ShadableIntersection> intersectAt(Producer<Ray> ray) { return this.getSurface().intersectAt(ray); }
 
@@ -131,7 +131,7 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 		@Override
 		public Operator<Scalar> expect() { return getSurface().expect(); }
 
-		@Override public ColorProducer shade(ShaderContext p) { return this.getSurface().shade(p); }
+		@Override public Producer<RGB> shade(ShaderContext p) { return this.getSurface().shade(p); }
 
 		@Override public Vector operate(Triple in) { return getSurface().operate(in); }
 
@@ -768,7 +768,7 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 				i: for (int i = 0; i < inter.length; i++) {
 					if (inter[i] == null) continue i;
 
-					double intersect = inter[i].getIntersection().getValue();
+					double intersect = inter[i].getDistance().getValue();
 
 					if (intersect >= Intersection.e) {
 						if (closestIntersectionIndex == -1 || intersect < closestIntersection) {

@@ -41,12 +41,12 @@ public class GeometryStack extends BasicGeometry {
 		
 		this.location = location.subtract(g.location);
 		this.size = size / g.size;
-		this.scaleX = scaleX / g.scaleX;
-		this.scaleY = scaleY / g.scaleY;
-		this.scaleZ = scaleZ / g.scaleZ;
-		this.rotateX = scaleX - g.scaleX;
-		this.rotateY = scaleY - g.scaleY;
-		this.rotateZ = scaleZ - g.scaleZ;
+		scale.setX(scale.getX() / g.scale.getX());
+		scale.setY(scale.getY() / g.scale.getY());
+		scale.setZ(scale.getZ() / g.scale.getZ());
+		rotateX = rotateX - g.rotateX;
+		rotateY = rotateY - g.rotateY;
+		rotateZ = rotateZ - g.rotateZ;
 
 		this.transformCurrent = false;
 	}
@@ -56,12 +56,12 @@ public class GeometryStack extends BasicGeometry {
 		
 		this.location = location.add(g.location);
 		this.size = size * g.size;
-		this.scaleX = scaleX * g.scaleX;
-		this.scaleY = scaleY * g.scaleY;
-		this.scaleZ = scaleZ * g.scaleZ;
-		this.rotateX = scaleX + g.scaleX;
-		this.rotateY = scaleY + g.scaleY;
-		this.rotateZ = scaleZ + g.scaleZ;
+		scale.setX(scale.getX() * g.scale.getX());
+		scale.setY(scale.getY() * g.scale.getY());
+		scale.setZ(scale.getZ() * g.scale.getZ());
+		rotateX = rotateX + g.rotateX;
+		rotateY = rotateY + g.rotateY;
+		rotateZ = rotateZ + g.rotateZ;
 
 		this.transformCurrent = false;
 	}

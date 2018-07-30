@@ -24,15 +24,22 @@ import java.io.ObjectOutput;
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.Triple;
+import org.almostrealism.math.Hardware;
+import org.almostrealism.math.MemWrapper;
 import org.almostrealism.util.Defaults;
+import org.almostrealism.util.Producer;
+import org.jocl.CL;
+import org.jocl.Pointer;
+import org.jocl.Sizeof;
+import org.jocl.cl_mem;
 
 /**
  * An RGB object represents a color defined by three channels: red, green, and blue.
  * An RGB object stores these channels as double values between 0.0 (no color) and
  * 1.0 (strongest color).
  */
-public class RGB implements Externalizable, Cloneable, ColorProducer, Triple {
-	private interface Data {
+public class RGB implements ColorProducer, Triple, MemWrapper, Externalizable, Cloneable {
+	private interface Data extends MemWrapper {
 		void set(int i, double r);
 		void add(int i, double r);
 		void scale(int i, double r);
@@ -41,53 +48,135 @@ public class RGB implements Externalizable, Cloneable, ColorProducer, Triple {
 		double length();
 		void write(ObjectOutput out) throws IOException;
 		void read(ObjectInput in) throws IOException;
+		void setMem(double[] source);
 	}
 	
 	private static class Data192 implements Data {
 		public static final int depth = 192;
-		
-		double rgb[] = new double[3];
-		public void set(int i, double r) { this.rgb[i] = r; }
-		public void add(int i, double r) { this.rgb[i] += r; }
-		public void scale(int i, double r) { this.rgb[i] *= r; }
-		public double get(int i) { return this.rgb[i]; }
-		public double length() { return this.rgb[0] + this.rgb[1] + this.rgb[2]; }
+
+		private cl_mem mem;
+
+		public Data192() {
+			mem = CL.clCreateBuffer(Hardware.getLocalHardware().getContext(),
+					CL.CL_MEM_READ_WRITE,3 * Sizeof.cl_double,
+					null, null);
+		}
+
+		public void set(int i, double r) {
+			setMem(i, new double[] { r }, 0, 1);
+		}
+
+		public void add(int i, double r) {
+			double rgb[] = toArray();
+			rgb[i] += r;
+			setMem(rgb);
+		}
+
+		public void scale(int i, double r) {
+			double rgb[] = toArray();
+			rgb[i] *= r;
+			setMem(rgb);
+		}
+
+		public double get(int i) { return toArray()[i]; }
+
+		/** Returns the sum of the components (not vector length). */
+		public double length() {
+			double rgb[] = toArray();
+			return rgb[0] + rgb[1] + rgb[2];
+		}
 		
 		public void read(ObjectInput in) throws IOException {
-			this.rgb[0] = in.readDouble();
-			this.rgb[1] = in.readDouble();
-			this.rgb[2] = in.readDouble();
+			double rgb[] = new double[3];
+			rgb[0] = in.readDouble();
+			rgb[1] = in.readDouble();
+			rgb[2] = in.readDouble();
+			setMem(rgb);
 		}
 		
 		public void write(ObjectOutput out) throws IOException {
-			out.writeDouble(this.rgb[0]);
-			out.writeDouble(this.rgb[1]);
-			out.writeDouble(this.rgb[2]);
+			double rgb[] = toArray();
+			out.writeDouble(rgb[0]);
+			out.writeDouble(rgb[1]);
+			out.writeDouble(rgb[2]);
+		}
+
+		public cl_mem getMem() { return mem; }
+
+		public double[] toArray() {
+			double d[] = new double[3];
+			getMem(0, d, 0, 3);
+			return d;
+		}
+
+		public void setMem(double[] source) {
+			setMem(0, source, 0, 3);
+		}
+
+		protected void setMem(double[] source, int offset) {
+			setMem(0, source, offset, 3);
+		}
+
+		protected void setMem(int offset, double[] source, int srcOffset, int length) {
+			Pointer src = Pointer.to(source).withByteOffset(srcOffset* Sizeof.cl_double);
+			CL.clEnqueueWriteBuffer(Hardware.getLocalHardware().getQueue(), mem, CL.CL_TRUE,
+					offset * Sizeof.cl_double, length * Sizeof.cl_double,
+					src, 0, null, null);
+		}
+
+		protected void setMem(int offset, RGB src, int srcOffset, int length) {
+			CL.clEnqueueCopyBuffer(Hardware.getLocalHardware().getQueue(), src.getMem(), this.mem,
+					srcOffset * Sizeof.cl_double,
+					offset * Sizeof.cl_double,length * Sizeof.cl_double,
+					0,null,null);
+		}
+
+		protected void getMem(int sOffset, double out[], int oOffset, int length) {
+			Pointer dst = Pointer.to(out).withByteOffset(oOffset * Sizeof.cl_double);
+			CL.clEnqueueReadBuffer(Hardware.getLocalHardware().getQueue(), mem,
+					CL.CL_TRUE, sOffset * Sizeof.cl_double,
+					length * Sizeof.cl_double, dst, 0,
+					null, null);
+		}
+
+		protected void getMem(double out[], int offset) { getMem(0, out, offset, 3); }
+
+		@Override
+		public void destroy() {
+			if (mem == null) return;
+			CL.clReleaseMemObject(mem);
+			mem = null;
+		}
+
+		@Override
+		public void finalize() throws Throwable {
+			destroy();
 		}
 	}
-	private static class Data48 implements Data {
-		public static final int depth = 48;
-		
-		double max = Short.MAX_VALUE;
-		short rgb[] = new short[3];
-		public void set(int i, double r) { this.rgb[i] = (short) (r * max); }
-		public void add(int i, double r) { this.rgb[i] += (short) (r * max); }
-		public void scale(int i, double r) { this.rgb[i] *= r; }
-		public double get(int i) { return ((double) this.rgb[i]) / max; }
-		public double length() { return (this.rgb[0] + this.rgb[1] + this.rgb[2]) / max; }
-		
-		public void read(ObjectInput in) throws IOException {
-			this.rgb[0] = in.readShort();
-			this.rgb[1] = in.readShort();
-			this.rgb[2] = in.readShort();
-		}
-		
-		public void write(ObjectOutput out) throws IOException {
-			out.writeShort(this.rgb[0]);
-			out.writeShort(this.rgb[1]);
-			out.writeShort(this.rgb[2]);
-		}
-	}
+
+//	private static class Data48 implements Data {
+//		public static final int depth = 48;
+//
+//		double max = Short.MAX_VALUE;
+//		short rgb[] = new short[3];
+//		public void set(int i, double r) { this.rgb[i] = (short) (r * max); }
+//		public void add(int i, double r) { this.rgb[i] += (short) (r * max); }
+//		public void scale(int i, double r) { this.rgb[i] *= r; }
+//		public double get(int i) { return ((double) this.rgb[i]) / max; }
+//		public double length() { return (this.rgb[0] + this.rgb[1] + this.rgb[2]) / max; }
+//
+//		public void read(ObjectInput in) throws IOException {
+//			this.rgb[0] = in.readShort();
+//			this.rgb[1] = in.readShort();
+//			this.rgb[2] = in.readShort();
+//		}
+//
+//		public void write(ObjectOutput out) throws IOException {
+//			out.writeShort(this.rgb[0]);
+//			out.writeShort(this.rgb[1]);
+//			out.writeShort(this.rgb[2]);
+//		}
+//	}
 	
   public static final long byteMask = 15;
   public static int defaultDepth = 192;
@@ -95,7 +184,6 @@ public class RGB implements Externalizable, Cloneable, ColorProducer, Triple {
   private int colorDepth = RGB.defaultDepth;
   private double gamma = 0.75;
   private Data data;
-//  private double r, g, b;
 
 	/**
   	 * Constructs an RGB object with all channels set to 0.0.
@@ -106,10 +194,7 @@ public class RGB implements Externalizable, Cloneable, ColorProducer, Triple {
 	  Constructs an RGB object with all channels set to 0.0.
 	*/
 	public RGB(int model) {
-		this.initColorModule(model);
-		this.setRed(0.0);
-		this.setGreen(0.0);
-		this.setBlue(0.0);
+		this(model, 0.0, 0.0, 0.0);
 	}
 	
 	/**
@@ -127,10 +212,12 @@ public class RGB implements Externalizable, Cloneable, ColorProducer, Triple {
 	 * If any value is greater than 1.0, the channel is set 1.0.
 	 */
 	public RGB(int model, double r, double g, double b) {
+		this(model, r, g, b, true);
+	}
+
+	private RGB(int model, double r, double g, double b, boolean init) {
 		this.initColorModule(model);
-		this.setRed(r);
-		this.setGreen(g);
-		this.setBlue(b);
+		if (init) this.data.setMem(new double[] { r, g, b });
 	}
 	
 	public RGB(double nanom) {
@@ -180,7 +267,8 @@ public class RGB implements Externalizable, Cloneable, ColorProducer, Triple {
 		if (model == 192)
 			this.data = new Data192();
 		else if (model == 48)
-			this.data = new Data48();
+//			this.data = new Data48();
+			throw new RuntimeException("48 bit color temporarily disabled");
 		else
 			throw new RuntimeException(new IllegalArgumentException(model +
 										" bit color module not available."));
@@ -569,6 +657,24 @@ public class RGB implements Externalizable, Cloneable, ColorProducer, Triple {
 	}
 
 	public double[] toArray() { return new double[] { getRed(), getGreen(), getBlue() }; }
-	
+
+	@Override
+	public cl_mem getMem() { return data.getMem(); }
+
+	@Override
+	public void destroy() { data.destroy(); }
+
+	public static Producer<RGB> blank() {
+		return new Producer<RGB>() {
+			@Override
+			public RGB evaluate(Object[] args) {
+				return new RGB(defaultDepth, 0, 0, 0, false);
+			}
+
+			@Override
+			public void compact() { }
+		};
+	}
+
 	public static RGB gray(double value) { return new RGB(value, value, value); }
 }

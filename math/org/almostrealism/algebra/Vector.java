@@ -21,6 +21,7 @@ import org.almostrealism.math.HardwareOperator;
 import org.almostrealism.math.Hardware;
 import org.almostrealism.math.MemWrapper;
 import org.almostrealism.util.Defaults;
+import org.almostrealism.util.Producer;
 import org.almostrealism.util.StaticProducer;
 import org.jocl.CL;
 import org.jocl.Pointer;
@@ -416,9 +417,6 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 		return d;
 	}
 
-	@Override
-	public cl_mem getMem() { return mem; }
-
 	/**
 	 * Returns an integer hash code value for this Vector object obtained
 	 * by adding all 3 components and casting to an int.
@@ -447,6 +445,9 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 		else
 			return false;
 	}
+
+	@Override
+	public cl_mem getMem() { return mem; }
 
 	protected void setMem(double[] source) {
 		setMem(0, source, 0, 3);
@@ -480,10 +481,16 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 
 	protected void getMem(double out[], int offset) { getMem(0, out, offset, 3); }
 
-	public void finalize() throws Throwable {
+	@Override
+	public void destroy() {
 		if (mem == null) return;
 		CL.clReleaseMemObject(mem);
 		mem = null;
+	}
+
+	@Override
+	public void finalize() throws Throwable {
+		destroy();
 	}
 
 	/**
@@ -511,6 +518,18 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 
 
 		return value.toString();
+	}
+
+	public static Producer<Vector> blank() {
+		return new Producer<Vector>() {
+			@Override
+			public Vector evaluate(Object[] args) {
+				return new Vector();
+			}
+
+			@Override
+			public void compact() { }
+		};
 	}
 
 	// TODO  This should be an instance method on the dest vector, not a static method

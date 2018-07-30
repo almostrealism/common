@@ -111,7 +111,7 @@ lengthSq(__global double *res, __global const double *v, const int resOffset, co
 }
 
 __kernel void
-normalize(__global double *res, const int resOffset) {
+vectorNormalize(__global double *res, const int resOffset) {
     double len = sqrt(res[resOffset] * res[resOffset] +
                 res[resOffset + 1] * res[resOffset + 1] +
                 res[resOffset + 2] * res[resOffset + 2]);
@@ -150,6 +150,27 @@ rayODotD(__global double *res, __global const double *r, const int resOffset, co
     res[resOffset] = r[rOffset] * r[rOffset + 3] +
 			r[rOffset + 1] * r[rOffset + 4] +
 			r[rOffset + 2] * r[rOffset + 5];
+}
+
+__kernel void
+rayPointAt(__global double *res, __global double *r, __global double *t,
+            const int resOffset, const int rOffset, const int tOffset) {
+    res[resOffset] = r[rOffset] + t[tOffset] * r[rOffset + 3];
+    res[resOffset + 1] = r[rOffset + 1] + t[tOffset] * r[rOffset + 4];
+    res[resOffset + 2] = r[rOffset + 2] + t[tOffset] * r[rOffset + 5];
+}
+
+__kernel void
+matrixProduct(__global double *res, __global const double *a, __global const double *b,
+                const int resOffset, const int aOffset, const int bOffset) {
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 4; j++) {
+            res[resOffset + j * 4 + i] = a[aOffset + j * 4] * 	b[bOffset + i] +
+                             a[aOffset + j * 4 + 1] 	    * 	b[bOffset + 4 + i] +
+    						 a[aOffset + j * 4 + 2] 	    *   b[bOffset + 8 + i] +
+    						 a[aOffset + j * 4 + 3] 	    * 	b[bOffset + 12 + i];
+    	}
+    }
 }
 
 __kernel void
@@ -244,8 +265,8 @@ matrixToUpperTriangle(__local double *res, __local double *df, __local const dou
 				} else {
 					for (int c = 0; c < 4; c++) {
 						temp = res[col * 4 + c];
-						res[col * 4 + c] = res[(col + v) * 4 + c];
-						res[(col + v) * 4 + c] = temp;
+						res[resOffset + col * 4 + c] = res[resOffset + (col + v) * 4 + c];
+						res[resOffset + (col + v) * 4 + c] = temp;
 					}
 
 					v++;
@@ -253,11 +274,11 @@ matrixToUpperTriangle(__local double *res, __local double *df, __local const dou
 			    }
 			}
 
-			if (res[col * 4 + col] != 0) {
-				f1 = (-1) * res[row * 4 + col] / res[col * 4 + col];
+			if (res[resOffset + col * 4 + col] != 0) {
+				f1 = (-1) * res[resOffset + row * 4 + col] / res[resOffset + col * 4 + col];
 
 				for (int i = col; i < 4; i++) {
-					res[row * 4 + i] = f1 * res[col * 4 + i] + res[row * 4 + i];
+					res[resOffset + row * 4 + i] = f1 * res[resOffset + col * 4 + i] + res[resOffset + row * 4 + i];
 				}
 			}
 		}
@@ -274,10 +295,10 @@ matrixDeterminant_local(__local double *res, __local double *df, __local double 
     matrixToUpperTriangle(ut, df, m, 0, dfOffset, mOffset);
 
     for (int i = 0; i < 4; i++) {
-        det = det * ut[i * 4 + i];
+        det = det * ut[utOffset + i * 4 + i];
     }
 
-	res[resOffset] = det * df[0];
+	res[resOffset] = det * df[dfOffset];
 }
 
 __kernel void
@@ -312,7 +333,7 @@ matrixAdjoint_local(__local double *res, __local double *det, __local double *df
             for (ii = 0; ii < 4; ii++) {
                 for (jj = 0; jj < 4; jj++) {
                     if ((ii != i) && (jj != j)) {
-                        ap[ia * 4 + ja] = m[mOffset + ii * 4 + jj];
+                        ap[apOffset + ia * 4 + ja] = m[mOffset + ii * 4 + jj];
                         ja++;
                     }
                 }
@@ -322,7 +343,7 @@ matrixAdjoint_local(__local double *res, __local double *det, __local double *df
             }
 
             matrixDeterminant_local(det, df, ut, ap, detOffset, dfOffset, utOffset, apOffset);
-            adj[i * 4 + j] = pow(-1.0, i + j) * det[0];
+            adj[i * 4 + j] = pow(-1.0, i + j) * det[detOffset];
         }
     }
 
@@ -351,6 +372,13 @@ translationMatrix(__global double *m, __global const double *v, const int mOffse
     m[mOffset + 3]  = v[vOffset];
     m[mOffset + 7]  = v[vOffset + 1];
     m[mOffset + 11] = v[vOffset + 2];
+}
+
+__kernel void
+scaleMatrix(__global double *m, __global const double *v, const int mOffset, const int vOffset) {
+    m[mOffset]  = v[vOffset];
+    m[mOffset + 5]  = v[vOffset + 1];
+    m[mOffset + 10] = v[vOffset + 2];
 }
 
 __kernel void

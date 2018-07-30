@@ -20,9 +20,9 @@ import org.almostrealism.algebra.DiscreteField;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.space.KdTree;
+import org.almostrealism.util.Producer;
 
 import java.util.*;
-import java.util.concurrent.Callable;
 
 /**
  * Represents a field of Rays within 3D space.
@@ -46,9 +46,9 @@ public class RayField implements DiscreteField {
     }
 
     @Override
-    public boolean add(Callable<Ray> rayCallable) {
+    public boolean add(Producer<Ray> rayCallable) {
         try {
-            Ray ray = rayCallable.call();
+            Ray ray = rayCallable.evaluate(new Object[0]);
             raysSet.add(ray);
             rays.addPoint(ray.getOrigin().getData(), ray);
             return true;
@@ -58,9 +58,9 @@ public class RayField implements DiscreteField {
     }
 
     @Override
-    public boolean addAll(Collection<? extends Callable<Ray>> c) {
+    public boolean addAll(Collection<? extends Producer<Ray>> c) {
         boolean allOk = true;
-        for (Callable<Ray> r : c) {
+        for (Producer<Ray> r : c) {
             allOk &= add(r);
         }
         return allOk;
@@ -102,7 +102,7 @@ public class RayField implements DiscreteField {
     }
 
     @Override
-    public Iterator<Callable<Ray>> iterator() {
+    public Iterator<Producer<Ray>> iterator() {
         throw new UnsupportedOperationException();
     }
 
@@ -117,7 +117,7 @@ public class RayField implements DiscreteField {
     }
 
     @Override
-    public boolean addAll(int index, Collection<? extends Callable<Ray>> c) {
+    public boolean addAll(int index, Collection<? extends Producer<Ray>> c) {
         throw new UnsupportedOperationException();
     }
 
@@ -132,22 +132,22 @@ public class RayField implements DiscreteField {
     }
 
     @Override
-    public Callable<Ray> get(int index) {
+    public Producer<Ray> get(int index) {
         throw new UnsupportedOperationException();
     }
 
     @Override
-    public Callable<Ray> set(int index, Callable<Ray> element) {
+    public Producer<Ray> set(int index, Producer<Ray> element) {
         throw new UnsupportedOperationException();
     }
 
     @Override
-    public void add(int index, Callable<Ray> element) {
+    public void add(int index, Producer<Ray> element) {
         throw new UnsupportedOperationException();
     }
 
     @Override
-    public Callable<Ray> remove(int index) {
+    public Producer<Ray> remove(int index) {
         throw new UnsupportedOperationException();
     }
 
@@ -162,17 +162,17 @@ public class RayField implements DiscreteField {
     }
 
     @Override
-    public ListIterator<Callable<Ray>> listIterator() {
+    public ListIterator<Producer<Ray>> listIterator() {
         throw new UnsupportedOperationException();
     }
 
     @Override
-    public ListIterator<Callable<Ray>> listIterator(int index) {
+    public ListIterator<Producer<Ray>> listIterator(int index) {
         throw new UnsupportedOperationException();
     }
 
     @Override
-    public List<Callable<Ray>> subList(int fromIndex, int toIndex) {
+    public List<Producer<Ray>> subList(int fromIndex, int toIndex) {
         throw new UnsupportedOperationException();
     }
 }

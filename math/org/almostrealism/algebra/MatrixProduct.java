@@ -14,12 +14,13 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.math;
+package org.almostrealism.algebra;
 
-import org.jocl.cl_mem;
+import org.almostrealism.math.AcceleratedProducer;
+import org.almostrealism.util.Producer;
 
-public interface MemWrapper {
-	cl_mem getMem();
-
-	void destroy();
+public class MatrixProduct extends AcceleratedProducer<TransformMatrix> {
+	public MatrixProduct(Producer<TransformMatrix> a, Producer<TransformMatrix> b) {
+		super("matrixProduct", TransformMatrix.blank(), a, b);
+	}
 }

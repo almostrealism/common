@@ -14,12 +14,13 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.math;
+package org.almostrealism.color;
 
-import org.jocl.cl_mem;
+import org.almostrealism.math.AcceleratedProducer;
+import org.almostrealism.util.Producer;
 
-public interface MemWrapper {
-	cl_mem getMem();
-
-	void destroy();
+public class RGBAdd extends AcceleratedProducer<RGB> {
+	public RGBAdd(Producer<RGB> a, Producer<RGB> b) {
+		super("add", RGB.blank(), a, b);
+	}
 }

@@ -31,6 +31,7 @@ import org.almostrealism.relation.Constant;
 import org.almostrealism.relation.Operator;
 import org.almostrealism.relation.TripleFunction;
 import org.almostrealism.texture.Texture;
+import org.almostrealism.util.Producer;
 
 /**
  * {@link AbstractSurface} is an abstract implementation of {@link ShadableSurface} that takes
@@ -498,18 +499,24 @@ public abstract class AbstractSurface<IN> extends TriangulatableGeometry impleme
 	 * calculated by the {@link Shader} objects stored by this AbstractSurface and the parent
 	 * of this {@link AbstractSurface} and returns this value as an {@link RGB}.
 	 */
-	public ColorProducer shade(ShaderContext p) {
+	public Producer<RGB> shade(ShaderContext p) {
 //		System.out.println(this + ".shade(reflections = " + p.getReflectionCount() + ")");
 
 		p.setSurface(this);
 		
-		ColorSum color = new ColorSum();
+		Producer<RGB> color = null;
 		
-		if (this.shaders != null)
-			color.add(this.shaders.shade(p, p.getIntersection()));
-		
-		if (this.getParent() != null)
-			color.add((Future) this.getParent().shade(p));
+		if (this.shaders != null) {
+			color = this.shaders.shade(p, p.getIntersection());
+		}
+
+		if (this.getParent() != null) {
+			if (color == null) {
+				color = getParent().shade(p);
+			} else {
+				color = new RGBAdd(color, getParent().shade(p));
+			}
+		}
 		
 		return color;
 	}

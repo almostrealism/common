@@ -21,6 +21,6 @@ import org.almostrealism.util.Producer;
 
 public class VectorNormalize extends AcceleratedProducer<Vector> {
 	public VectorNormalize(Producer<Vector> v) {
-		super("normalize", v);
+		super("vectorNormalize", v);
 	}
 }

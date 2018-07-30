@@ -19,7 +19,10 @@ package org.almostrealism.space;
 import org.almostrealism.algebra.Intersectable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.geometry.Ray;
+import org.almostrealism.geometry.RayDirection;
+import org.almostrealism.geometry.RayPointAt;
 import org.almostrealism.util.Producer;
+import org.almostrealism.util.StaticProducer;
 
 public class ShadableIntersectionProducer implements Producer<ShadableIntersection> {
 	private Producer<Ray> ray;
@@ -34,9 +37,12 @@ public class ShadableIntersectionProducer implements Producer<ShadableIntersecti
 
 	@Override
 	public ShadableIntersection evaluate(Object[] args) {
+		// TODO  Pass intersectionDistance directly to ShadableIntersection
+		//       but this will require that the normal vector there be a producer
 		Scalar s = this.intersectionDistance.evaluate(args);
 		if (s == null || s.getValue() < 0) return null;
-		return new ShadableIntersection(ray.evaluate(args), surface, s);
+		StaticProducer<Scalar> sp = new StaticProducer<>(s);
+		return new ShadableIntersection(surface, new RayPointAt(ray, sp), new RayDirection(ray), s);
 	}
 
 	@Override

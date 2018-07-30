@@ -25,11 +25,14 @@ import java.util.concurrent.TimeoutException;
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;
 import org.almostrealism.geometry.Ray;
+import org.almostrealism.geometry.RayDirection;
+import org.almostrealism.geometry.RayPointAt;
 import org.almostrealism.relation.Constant;
 import org.almostrealism.relation.Operator;
 import org.almostrealism.space.AbstractSurface;
 import org.almostrealism.space.ShadableIntersection;
 import org.almostrealism.util.Producer;
+import org.almostrealism.util.StaticProducer;
 import sun.reflect.generics.reflectiveObjects.NotImplementedException;
 
 /** A {@link Polynomial} represents a 3d polynomial surface. */
@@ -473,7 +476,12 @@ public class Polynomial<IN> extends AbstractSurface<IN> implements Operator<Scal
 					}
 				}
 
-				return new ShadableIntersection(ray, Polynomial.this, new Scalar(closest));
+				Scalar c = new Scalar(closest);
+
+
+				return new ShadableIntersection(Polynomial.this,
+												new RayPointAt(r, new StaticProducer<>(c)),
+												new RayDirection(r), c);
 			}
 
 			@Override

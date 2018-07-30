@@ -169,16 +169,8 @@ public class Ray implements MemWrapper, Cloneable {
 	 * @return  The point on the ray represented by this Ray object at distance t from the origin
 	 *          as a Vector object.
 	 */
-	public Vector pointAt(double t) {
-		// TODO  hardware accelerate
-
-		double coords[] = toArray();
-
-		double px = coords[0] + coords[3] * t;
-		double py = coords[1] + coords[4] * t;
-		double pz = coords[2] + coords[5] * t;
-		
-		return new Vector(px, py, pz, Vector.CARTESIAN_COORDINATES);
+	public Producer<Vector> pointAt(Producer<Scalar> t) {
+		return new RayPointAt(new StaticProducer<>(this), t);
 	}
 
 	@Override
@@ -230,10 +222,15 @@ public class Ray implements MemWrapper, Cloneable {
 	}
 
 	@Override
-	public void finalize() {
+	public void destroy() {
 		if (mem == null) return;
 		CL.clReleaseMemObject(mem);
 		mem = null;
+	}
+
+	@Override
+	public void finalize() throws Throwable {
+		destroy();
 	}
 
 	/**

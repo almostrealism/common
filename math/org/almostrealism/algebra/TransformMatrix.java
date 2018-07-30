@@ -158,25 +158,14 @@ public class TransformMatrix implements TripleFunction<Vector>, MemWrapper {
 	}
 	
 	/**
-	 * Multiplys the matrix represented by this TransformMatrix object with the matrix
-	 * represented by the specified TransformMatrix object and returns the result as a
-	 * TransformMatrix object.
+	 * Multiplies the matrix represented by this {@link TransformMatrix} with the matrix
+	 * represented by the specified {@link TransformMatrix} and returns the result as a
+	 * {@link TransformMatrix}.
+	 *
+	 * @see  MatrixProduct
 	 */
 	public TransformMatrix multiply(TransformMatrix matrix) {
-		double m1[] = toArray();
-		double m2[] = matrix.toArray();
-		double product[][] = new double[4][4];
-		
-		for (int i = 0; i < product.length; i++) {
-			for (int j = 0; j < product[i].length; j++) {
-				product[j][i] = m1[j * 4] 		* 	m2[i] +
-								m1[j * 4 + 1] 	* 	m2[4 + i] +
-								m1[j * 4 + 2] 	* 	m2[8 + i] +
-								m1[j * 4 + 3] 	* 	m2[12 + i];
-			}
-		}
-		
-		return new TransformMatrix(product);
+		return new MatrixProduct(new StaticProducer<>(this), new StaticProducer<>(matrix)).evaluate(new Object[0]);
 	}
 	
 	/**
@@ -370,6 +359,18 @@ public class TransformMatrix implements TripleFunction<Vector>, MemWrapper {
 	@Override
 	public cl_mem getMem() { return matrix; }
 
+	@Override
+	public void destroy() {
+		if (matrix == null) return;
+		CL.clReleaseMemObject(matrix);
+		matrix = null;
+	}
+
+	@Override
+	public void finalize() throws Throwable {
+		destroy();
+	}
+
 	protected void setMem(double[] source) {
 		setMem(0, source, 0, 16);
 	}
@@ -408,12 +409,6 @@ public class TransformMatrix implements TripleFunction<Vector>, MemWrapper {
 		return m;
 	}
 
-	public void finalize() throws Throwable {
-		if (matrix == null) return;
-		CL.clReleaseMemObject(matrix);
-		matrix = null;
-	}
-
 	/**
 	 * @return  A String representation of the data stored by this TransformMatrix object.
 	 */
@@ -444,7 +439,7 @@ public class TransformMatrix implements TripleFunction<Vector>, MemWrapper {
 	 * Generates a TransformMatrix object that can be used to translate vectors using the specified
 	 * translation coordinates.
 	 *
-	 * USE {@link org.almostrealism.geometry.TranslationMatrix} instead.
+	 * Use {@link org.almostrealism.geometry.TranslationMatrix} instead.
 	 */
 	@Deprecated
 	public static TransformMatrix createTranslationMatrix(double tx, double ty, double tz) {
@@ -470,14 +465,21 @@ public class TransformMatrix implements TripleFunction<Vector>, MemWrapper {
 		return createTranslationMatrix(t.getX(), t.getY(), t.getZ());
 	}
 
+	/**
+	 * Use {@link org.almostrealism.geometry.ScaleMatrix} instead.
+	 */
+	@Deprecated
 	public static TransformMatrix createScaleMatrix(Vector s) {
 		return createScaleMatrix(s.getX(), s.getY(), s.getZ());
 	}
 
 	/**
-	 * Generates a TransformMatrix object that can be used to scale vectors using the specified scaling
+	 * Generates a {@link TransformMatrix} that can be used to scale vectors using the specified scaling
 	 * coefficients.
+	 *
+	 * Use {@link org.almostrealism.geometry.ScaleMatrix} instead.
 	 */
+	@Deprecated
 	public static TransformMatrix createScaleMatrix(double sx, double sy, double sz) {
 		TransformMatrix scaleTransform = new TransformMatrix();
 		

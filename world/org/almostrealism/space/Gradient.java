@@ -20,6 +20,7 @@ import org.almostrealism.algebra.Differentiable;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.uml.Function;
+import org.almostrealism.util.Producer;
 
 /**
  * A {@link Gradient} represents any continuously evaluable function returning a {@link Vector}.
@@ -32,5 +33,5 @@ public interface Gradient extends Differentiable<Vector> {
 	 * Returns a {@link Vector} that represents the normal to the surface at the point
 	 * represented by the specified {@link Vector}.
 	 */
-	VectorProducer getNormalAt(Vector point);
+	Producer<Vector> getNormalAt(Vector point);
 }

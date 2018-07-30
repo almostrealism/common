@@ -44,7 +44,7 @@ public class ClosestIntersection<T extends Intersection> implements Producer<T> 
 			T inter = in.evaluate(args);
 			if (inter == null) continue p;
 
-			double v = inter.getIntersection().getValue();
+			double v = inter.getDistance().getValue();
 			if (v >= 0.0 && v < d) {
 				d = v;
 				intersection = inter;

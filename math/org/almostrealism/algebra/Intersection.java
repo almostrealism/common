@@ -18,8 +18,8 @@ package org.almostrealism.algebra;
 
 import java.util.ArrayList;
 
-import org.almostrealism.geometry.Ray;
 import org.almostrealism.graph.PathElement;
+import org.almostrealism.util.Producer;
 
 /**
  * An Intersection object stores data for the intersections between a ray and a surface.
@@ -29,10 +29,9 @@ public class Intersection implements PathElement<Intersection> {
 	public static final double e = 0.00000001;
 
 	private Intersectable surface;
-	private Ray ray;
-	private Scalar intersection;
-	
-	private Vector point;
+
+	private Producer<Vector> point;
+	private Scalar distance;
 	
 	private ArrayList<PathElement<Intersection>> children;
 
@@ -40,25 +39,18 @@ public class Intersection implements PathElement<Intersection> {
 	 * Constructs a new Intersection object that represents an intersection between the specified
 	 * Ray and Surface objects at the specified points along the ray represented by the Ray object.
 	 */
-	public Intersection(Ray ray, Intersectable surface, Scalar intersection) {
-		this.ray = ray;
+	public Intersection(Intersectable surface, Producer<Vector> point, Scalar distance) {
 		this.surface = surface;
-
-		this.intersection = intersection;
-		
-		this.point = ray.pointAt(intersection.getValue());
+		this.point = point;
+		this.distance = distance;
 	}
-	
-	/** @return  The Ray object stored by this Intersection object. */
-	public Ray getRay() { return this.ray; }
 	
 	/** @return  The Surface object stored by this Intersection object. */
 	public Intersectable getSurface() { return this.surface; }
 	
-	/** @return  The intersection stored by this Intersection object. */
-	public Scalar getIntersection() { return this.intersection; }
-	
-	public Vector getPoint() { return point; }
+	public Producer<Vector> getPoint() { return point; }
+
+	public Scalar getDistance() { return distance; }
 	
 	public void add(Intersection inter) {
 		if (children == null) children = new ArrayList<PathElement<Intersection>>();
@@ -72,6 +64,6 @@ public class Intersection implements PathElement<Intersection> {
 	 * @return  A String representation of this Intersection object.
 	 */
 	public String toString() {
-		return "[" + getIntersection() + "]";
+		return "[" + getPoint() + "]";
 	}
 }

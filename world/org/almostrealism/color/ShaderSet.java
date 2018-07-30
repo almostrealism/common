@@ -21,6 +21,7 @@ import java.util.Iterator;
 
 import org.almostrealism.algebra.DiscreteField;
 import org.almostrealism.space.LightingContext;
+import org.almostrealism.util.Producer;
 
 /**
  * @author  Michael Murray
@@ -30,11 +31,18 @@ public class ShaderSet<C extends LightingContext> extends HashSet<Shader<C>> imp
      * @return  The sum of the values given by the shade method for each {@link Shader}
 	 *          instance stored by this {@link ShaderSet}.
      */
-    public ColorProducer shade(C p, DiscreteField normals) {
-        ColorSum color = new ColorSum();
+    public Producer<RGB> shade(C p, DiscreteField normals) {
+        Producer<RGB> color = null;
         
         Iterator<Shader<C>> itr = super.iterator();
-        while (itr.hasNext()) color.add(itr.next().shade(p, normals));
+
+        while (itr.hasNext()) {
+        	if (color == null) {
+        		color = itr.next().shade(p, normals);
+			} else {
+				color = new RGBAdd(color, itr.next().shade(p, normals));
+			}
+		}
         
         return color;
     }

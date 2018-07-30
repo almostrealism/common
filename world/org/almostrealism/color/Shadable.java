@@ -16,6 +16,8 @@
 
 package org.almostrealism.color;
 
+import org.almostrealism.util.Producer;
+
 import java.util.concurrent.Callable;
 
 /**
@@ -28,5 +30,5 @@ public interface Shadable extends Callable<ColorProducer> {
 	 *
 	 * @see Shader
 	 */
-	public ColorProducer shade(ShaderContext parameters);
+	Producer<RGB> shade(ShaderContext parameters);
 }

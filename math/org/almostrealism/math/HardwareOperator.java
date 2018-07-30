@@ -30,6 +30,8 @@ import org.jocl.*;
  * @param <T>  Return type. If the scalar flag is true, this must be a subclass of {@link Scalar}.
  */
 public class HardwareOperator<T extends MemWrapper> implements Operator<T>, Factory<cl_kernel> {
+	private static Pointer zero = Pointer.to(new int[]{0});
+
 	private cl_program prog;
 	private String name;
 
@@ -105,7 +107,7 @@ public class HardwareOperator<T extends MemWrapper> implements Operator<T>, Fact
 			}
 
 			for (int i = 0; i < argCount; i++) {
-				CL.clSetKernelArg(kernel, index++, Sizeof.cl_int, Pointer.to(new int[]{0})); // Offset
+				CL.clSetKernelArg(kernel, index++, Sizeof.cl_int, zero); // Offset
 			}
 
 			long gws[] = isKernel ? new long[]{3} : new long[]{1};

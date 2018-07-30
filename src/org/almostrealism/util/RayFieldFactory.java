@@ -22,7 +22,6 @@ import org.almostrealism.graph.RayField;
 import org.almostrealism.space.BoundingSolid;
 
 import java.util.*;
-import java.util.concurrent.Callable;
 
 /**
  * Used to construct a RayField from the given bounding solid.
@@ -62,7 +61,7 @@ public class RayFieldFactory
 
         RayField rayField = new RayField();
         for (Ray ray : rays) {
-            Callable<Ray> r = () -> ray;
+            Producer<Ray> r = new StaticProducer<>(ray);
             rayField.add(r);
         }
 

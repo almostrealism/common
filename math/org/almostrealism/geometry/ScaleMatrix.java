@@ -14,12 +14,16 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.math;
+package org.almostrealism.geometry;
 
-import org.jocl.cl_mem;
+import org.almostrealism.algebra.IdentityMatrix;
+import org.almostrealism.algebra.TransformMatrix;
+import org.almostrealism.algebra.Vector;
+import org.almostrealism.math.AcceleratedProducer;
+import org.almostrealism.util.Producer;
 
-public interface MemWrapper {
-	cl_mem getMem();
-
-	void destroy();
+public class ScaleMatrix extends AcceleratedProducer<TransformMatrix> {
+	public ScaleMatrix(Producer<Vector> s) {
+		super("scaleMatrix", new IdentityMatrix(), s);
+	}
 }
