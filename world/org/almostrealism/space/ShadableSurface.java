@@ -51,8 +51,9 @@ public interface ShadableSurface extends ShadableCurve, Intersectable<ShadableIn
 	 * indicating the location where color is to be evaluated, returning an
 	 * {@link org.almostrealism.color.RGB}.
 	 *
-	 * @deprecated  Replaced by {@link #call()}
+	 * @deprecated  Replaced by {@link #evaluate(Object[])}
 	 */
+	@Deprecated
 	ColorProducer getColorAt();
 
 	/**

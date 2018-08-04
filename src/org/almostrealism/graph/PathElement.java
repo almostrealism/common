@@ -16,9 +16,11 @@
 
 package org.almostrealism.graph;
 
+import org.almostrealism.util.Producer;
+
 /**
  * @author  Michael Murray
  */
-public interface PathElement<V> {
-	Iterable<PathElement<V>> next();
+public interface PathElement<IN, OUT> { // extends Producer<OUT> { TODO
+	Iterable<Producer<IN>> getDependencies();
 }

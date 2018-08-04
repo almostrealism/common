@@ -25,6 +25,7 @@ import java.util.concurrent.Callable;
 import org.almostrealism.algebra.ContinuousField;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.space.LightingContext;
+import org.almostrealism.util.Producer;
 
 
 /**
@@ -35,8 +36,8 @@ import org.almostrealism.space.LightingContext;
 public class ShaderContext extends LightingContext {
 	private ContinuousField intersection;
 	
-	private Callable<ColorProducer> surface;
-	private Callable<ColorProducer> otherSurfaces[];
+	private Producer<RGB> surface;
+	private Producer<RGB> otherSurfaces[];
 	
 	public RGB fogColor;
 	public double fogRatio, fogDensity;
@@ -44,7 +45,7 @@ public class ShaderContext extends LightingContext {
 	private int refCount;
 	private int exit, enter;
 
-	public ShaderContext(Callable<ColorProducer> surface, Light l) {
+	public ShaderContext(Producer<RGB> surface, Light l) {
 		this.surface = surface;
 		this.setLight(l);
 	}
@@ -59,12 +60,12 @@ public class ShaderContext extends LightingContext {
 	 * @param otherSurfaces  Collection of other Surface objects in the scene.
 	 */
 	public ShaderContext(ContinuousField intersection, Vector lightDirection, Light light,
-							Light otherLights[], Collection<Callable<ColorProducer>> otherSurfaces) {
-		this(intersection, lightDirection, light, otherLights, otherSurfaces.toArray(new Callable[0]));
+							Light otherLights[], Collection<Producer<RGB>> otherSurfaces) {
+		this(intersection, lightDirection, light, otherLights, otherSurfaces.toArray(new Producer[0]));
 	}
 	
 	private ShaderContext(ContinuousField intersection, Vector lightDirection, Light light,
-			Light otherLights[], Callable<ColorProducer> otherSurfaces[]) {
+			Light otherLights[], Producer<RGB> otherSurfaces[]) {
 		this(intersection, lightDirection, light, otherLights, null, otherSurfaces);
 	}
 	
@@ -79,7 +80,7 @@ public class ShaderContext extends LightingContext {
 	 * @param otherSurfaces  Array of other Surface objects in the scene.
 	 */
 	public ShaderContext(ContinuousField intersection, Vector lightDirection, Light light,
-							Light otherLights[], Callable<ColorProducer> surface, Callable<ColorProducer> otherSurfaces[]) {
+							Light otherLights[], Producer<RGB> surface, Producer<RGB> otherSurfaces[]) {
 		this.intersection = intersection;
 		this.setLightDirection(lightDirection);
 		this.setLight(light);
@@ -97,33 +98,33 @@ public class ShaderContext extends LightingContext {
 	/**
 	 * @param surface  The new Surface object.
 	 */
-	public void setSurface(Callable<ColorProducer> surface) { this.surface = surface; }
+	public void setSurface(Producer<RGB> surface) { this.surface = surface; }
 	
-	public Callable<ColorProducer> getSurface() { return this.surface; }
-	
-	/**
-	 * Sets the other Surfaces to those stored in the specified array.
-	 * 
-	 * @param s  Array of Surface objects to use.
-	 */
-	public void setOtherSurfaces(Callable<ColorProducer>... s) { this.otherSurfaces = s; }
+	public Producer<RGB> getSurface() { return this.surface; }
 	
 	/**
 	 * Sets the other Surfaces to those stored in the specified array.
 	 * 
 	 * @param s  Array of Surface objects to use.
 	 */
-	public void setOtherSurfaces(Collection<Callable<ColorProducer>> s) {
-		this.otherSurfaces = (Callable<ColorProducer>[]) s.toArray(new Callable[0]);
+	public void setOtherSurfaces(Producer<RGB>... s) { this.otherSurfaces = s; }
+	
+	/**
+	 * Sets the other Surfaces to those stored in the specified array.
+	 * 
+	 * @param s  Array of Surface objects to use.
+	 */
+	public void setOtherSurfaces(Collection<Producer<RGB>> s) {
+		this.otherSurfaces = (Producer<RGB>[]) s.toArray(new Callable[0]);
 	}
 	
 	/**
 	 * @return  An array of other Surface objects in the scene.
 	 */
-	public Callable<ColorProducer>[] getOtherSurfaces() { return this.otherSurfaces; }
+	public Producer<RGB>[] getOtherSurfaces() { return this.otherSurfaces; }
 
-	public Iterable<? extends Callable<ColorProducer>> getAllSurfaces() {
-		List<Callable<ColorProducer>> l = new ArrayList<>();
+	public Iterable<? extends Producer<RGB>> getAllSurfaces() {
+		List<Producer<RGB>> l = new ArrayList<>();
 		if (getSurface() != null) l.add(getSurface());
 		l.addAll(Arrays.asList(getOtherSurfaces()));
 		return l;
@@ -159,7 +160,24 @@ public class ShaderContext extends LightingContext {
 //			System.out.println(Settings.randomWarningSymbol +
 //					"ShaderParameters: Exit count exceedes entrance count.");
 	}
-	
+
+	@Override
+	public ShaderContext clone() {
+		ShaderContext c = new ShaderContext(surface, getLight());
+		c.setLightDirection(getLightDirection());
+		c.setOtherLights(getOtherLights());
+		c.setIntersection(getIntersection());
+		c.setOtherSurfaces(getOtherSurfaces());
+		c.fogColor = fogColor;
+		c.fogRatio = fogRatio;
+		c.fogDensity = fogDensity;
+		c.refCount = refCount;
+		c.exit = exit;
+		c.enter = enter;
+		return c;
+	}
+
+	@Override
 	public String toString() {
 		return this.intersection + ", " + this.getLightDirection() + ", " +
 				this.getLight() + ", " + Arrays.toString(this.getOtherLights()) + ", " + this.surface;

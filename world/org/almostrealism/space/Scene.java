@@ -23,8 +23,9 @@ import java.util.List;
 import java.util.concurrent.Callable;
 
 import org.almostrealism.algebra.Camera;
-import org.almostrealism.color.ColorProducer;
 import org.almostrealism.color.Light;
+import org.almostrealism.color.RGB;
+import org.almostrealism.util.Producer;
 
 /**
  * {@link Scene} extends {@link SurfaceList} to store {@link Light}s and a {@link Camera}.
@@ -35,11 +36,11 @@ import org.almostrealism.color.Light;
 public class Scene<T extends ShadableSurface> extends SurfaceList<T> {
 	private Camera camera;
 	
-	private Light lights[];
+	private List<Light> lights;
 	
 	/** Constructs a {@link Scene} with no {@link Camera} and no {@link Light}s or {@link ShadableSurface}s. */
 	public Scene() {
-		this.setLights(new Light[0]);
+		this.setLights(new ArrayList<>());
 	}
 
 	/** Constructs a {@link Scene} with the specified camera and no {@link Light}s or {@link ShadableSurface}s. */
@@ -50,7 +51,7 @@ public class Scene<T extends ShadableSurface> extends SurfaceList<T> {
 	 * and the surfaces represented by the specified {@link ShadableSurface} array.
 	 */
 	public Scene(T surfaces[]) {
-		this.setLights(new Light[0]);
+		this();
 		this.setSurfaces(surfaces);
 	}
 	
@@ -58,9 +59,8 @@ public class Scene<T extends ShadableSurface> extends SurfaceList<T> {
 	 * Constructs a {@link Scene} with the specified {@link Camera}, {@link Light}s,
 	 * and {@link Gradient}s.
 	 */
-	public Scene(Camera camera, Light lights[], T surfaces[]) {
+	public Scene(Camera camera, List<Light> lights, T surfaces[]) {
 		this.setCamera(camera);
-		
 		this.setLights(lights);
 		this.setSurfaces(surfaces);
 	}
@@ -76,43 +76,25 @@ public class Scene<T extends ShadableSurface> extends SurfaceList<T> {
 	public void setCamera(Camera camera) { this.camera = camera; }
 	
 	/**
-	 * Replaces all of the lights of this {@link Scene} object with those represented
-	 * by the specified {@link Light} array.
+	 * Replace the {@link List} of {@link Light}s for this {@link Scene} with the specified
+	 * {@link Light} {@link List}.
 	 */
-	public void setLights(Light lights[]) { this.lights = lights; }
+	public void setLights(List<Light> lights) { this.lights = lights; }
 	
-	/** Adds the specified Light object to this Scene object. */
-	public void addLight(Light light) {
-		Light newLights[] = new Light[this.lights.length + 1];
-		
-		System.arraycopy(this.lights, 0, newLights, 0, this.lights.length);
-		newLights[newLights.length - 1] = light;
-		
-		this.setLights(newLights);
-	}
+	/** Adds the specified {@link Light} to this {@link Scene}. */
+	public void addLight(Light light) { lights.add(light); }
 	
-	/**
-	 * Removes the Light object stored at the specified index from this Scene object.
-	 */
-	public void removeLight(int index) {
-		Light newLights[] = new Light[this.lights.length - 1];
-		
-		System.arraycopy(this.lights, 0, newLights, 0, index);
-		if (index != this.lights.length - 1) {
-			System.arraycopy(this.lights, index + 1, newLights, index, this.lights.length - (index + 1));
-		}
-		
-		this.setLights(newLights);
-	}
+	/** Removes the {@link Light} stored at the specified index from this {@link Scene}. */
+	public void removeLight(int index) { lights.remove(index); }
 	
 	/** Returns the Camera object stored by this Scene object. */
 	public Camera getCamera() { return this.camera; }
 	
-	/** Returns the Light objects stored by this Scene object as a Light array. */
-	public Light[] getLights() { return this.lights; }
+	/** Returns {@link Light} {@link List} for this {@link Scene}. */
+	public List<Light> getLights() { return this.lights; }
 	
-	/** Returns the Surface object stored by this Scene object at the specified index. */
-	public Light getLight(int index) { return this.lights[index]; }
+	/** Returns the {@link Light} stored by this {@link Scene} at the specified index. */
+	public Light getLight(int index) { return this.lights.get(index); }
 	
 	/**
 	 * @return  A Scene object that stores the same Camera, Lights, and Surfaces as this Scene object.
@@ -145,18 +127,20 @@ public class Scene<T extends ShadableSurface> extends SurfaceList<T> {
 		
 		return allSurfaces;
 	}
-	
-	public static List<Callable<ColorProducer>> combineSurfaces(ShadableSurface surface,
-										Iterator<Callable<ColorProducer>> otherSurfaces) {
-		List<Callable<ColorProducer>> allSurfaces = new ArrayList<Callable<ColorProducer>>();
+
+	@Deprecated
+	public static List<Callable<Producer<RGB>>> combineSurfaces(ShadableSurface surface,
+										Iterator<Callable<Producer<RGB>>> otherSurfaces) {
+		List<Callable<Producer<RGB>>> allSurfaces = new ArrayList<>();
 		while (otherSurfaces.hasNext()) { allSurfaces.add(otherSurfaces.next()); }
 		allSurfaces.add(surface);
 		return allSurfaces;
 	}
-	
-	public static List<Callable<ColorProducer>> combineSurfaces(Callable<ColorProducer> surface, Iterable<? extends Callable<ColorProducer>> otherSurfaces) {
-		List<Callable<ColorProducer>> allSurfaces = new ArrayList<Callable<ColorProducer>>();
-		for (Callable<ColorProducer> s : otherSurfaces) { allSurfaces.add(s); }
+
+	@Deprecated
+	public static List<Callable<Producer<RGB>>> combineSurfaces(Callable<Producer<RGB>> surface, Iterable<? extends Callable<Producer<RGB>>> otherSurfaces) {
+		List<Callable<Producer<RGB>>> allSurfaces = new ArrayList<>();
+		for (Callable<Producer<RGB>> s : otherSurfaces) { allSurfaces.add(s); }
 		allSurfaces.add(surface);
 		return allSurfaces;
 	}

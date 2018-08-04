@@ -137,7 +137,17 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 
 		@Override public Scope getScope(String prefix) { return getSurface().getScope(prefix); }
 
-		@Override public ColorProducer call() throws Exception { return getSurface().call(); }
+		@Override public Producer<RGB> call() throws Exception { return getSurface().call(); }
+
+		@Override
+		public RGB evaluate(Object[] args) {
+			return getSurface().evaluate(args);
+		}
+
+		@Override
+		public void compact() {
+			getSurface().compact();
+		}
 	}
 	
 	public static class Vertex extends Vector {

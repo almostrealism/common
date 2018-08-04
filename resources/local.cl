@@ -82,27 +82,63 @@ __kernel void matrixCopy_globalToLocal(__local double *res, __global const doubl
 }
 
 __kernel void
-add(__global double *a, __global const double *b, const int aoffset, const int boffset) {
-    int gid = get_global_id(0);
-	a[gid + aoffset] += b[gid + boffset];
+add(__global double *res, __global const double *a, __global const double *b,
+    const int resOffset, const int aOffset, const int bOffset) {
+	res[resOffset] = a[aOffset] + b[bOffset];
+	res[resOffset + 1] = a[aOffset + 1] + b[bOffset + 1];
+	res[resOffset + 2] = a[aOffset + 2] + b[bOffset + 2];
 }
 
 __kernel void
-subtract(__global double *a, __global const double *b, const int aoffset, const int boffset) {
-    int gid = get_global_id(0);
-	a[gid + aoffset] -= b[gid + boffset];
+subtract(__global double *res, __global const double *a, __global const double *b,
+        const int resOffset, const int aOffset, const int bOffset) {
+    res[resOffset] = a[aOffset] - b[bOffset];
+    res[resOffset + 1] = a[aOffset + 1] - b[bOffset + 1];
+    res[resOffset + 2] = a[aOffset + 2] - b[bOffset + 2];
 }
 
 __kernel void
-multiply(__global double *a, __global const double *b, const int aoffset, const int boffset) {
-    int gid = get_global_id(0);
-	a[gid + aoffset] *= b[gid + boffset];
+multiply(__global double *res, __global const double *a, __global const double *b,
+        const int resOffset, const int aOffset, const int bOffset) {
+	res[resOffset] = a[aOffset] * b[bOffset];
+	res[resOffset + 1] = a[aOffset + 1] * b[bOffset + 1];
+	res[resOffset + 2] = a[aOffset + 2] * b[bOffset + 2];
 }
 
 __kernel void
-divide(__global double *a, __global const double *b, const int aoffset, const int boffset) {
-    int gid = get_global_id(0);
-	a[gid + aoffset] /= b[gid + boffset];
+divide(__global double *res, __global const double *a, __global const double *b,
+        const int resOffset, const int aOffset, const int bOffset) {
+	res[resOffset] = a[aOffset] / b[bOffset];
+	res[resOffset + 1] = a[aOffset + 1] / b[bOffset + 1];
+	res[resOffset + 2] = a[aOffset + 2] / b[bOffset + 2];
+}
+
+__kernel void
+addTo(__global double *a, __global const double *b, const int aOffset, const int bOffset) {
+	a[aOffset] += b[bOffset];
+	a[aOffset + 1] += b[bOffset + 1];
+	a[aOffset + 2] += b[bOffset + 2];
+}
+
+__kernel void
+subtractFrom(__global double *a, __global const double *b, const int aOffset, const int bOffset) {
+    a[aOffset] -= b[bOffset];
+    a[aOffset + 1] -= b[bOffset + 1];
+    a[aOffset + 2] -= b[bOffset + 2];
+}
+
+__kernel void
+multiplyBy(__global double *a, __global const double *b, const int aOffset, const int bOffset) {
+	a[aOffset] *= b[bOffset];
+	a[aOffset + 1] *= b[bOffset + 1];
+	a[aOffset + 2] *= b[bOffset + 2];
+}
+
+__kernel void
+divideBy(__global double *a, __global const double *b, const int aOffset, const int bOffset) {
+	a[aOffset] /= b[bOffset];
+	a[aOffset + 1] /= b[bOffset + 1];
+	a[aOffset + 2] /= b[bOffset + 2];
 }
 
 __kernel void

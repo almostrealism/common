@@ -16,13 +16,16 @@
 
 package org.almostrealism.algebra;
 
+import io.almostrealism.code.Scope;
+import io.almostrealism.code.Variable;
 import org.almostrealism.geometry.Ray;
+import org.almostrealism.space.ShadableIntersection;
 import org.almostrealism.util.Producer;
 
 import java.util.ArrayList;
 import java.util.List;
 
-public class ClosestIntersection<T extends Intersection> implements Producer<T> {
+public class ClosestIntersection<T extends ShadableIntersection> extends ArrayList<Producer<Ray>> implements ContinuousField {
 	private Producer<Ray> r;
 	private List<Producer<T>> s;
 
@@ -33,33 +36,50 @@ public class ClosestIntersection<T extends Intersection> implements Producer<T> 
 		for (Intersectable<T, ?> in : surfaces) {
 			s.add(in.intersectAt(ray));
 		}
-	}
 
-	@Override
-	public T evaluate(Object[] args) {
-		double d = Double.MAX_VALUE;
-		T intersection = null;
+		this.add(new Producer<Ray>() {
+			@Override
+			public Ray evaluate(Object[] args) {
+				double d = Double.MAX_VALUE;
+				T intersection = null;
 
-		p: for (Producer<T> in : s) {
-			T inter = in.evaluate(args);
-			if (inter == null) continue p;
+				p: for (Producer<T> in : s) {
+					T inter = in.evaluate(args);
+					if (inter == null) continue p;
 
-			double v = inter.getDistance().getValue();
-			if (v >= 0.0 && v < d) {
-				d = v;
-				intersection = inter;
+					double v = inter.getDistance().getValue();
+					if (v >= 0.0 && v < d) {
+						d = v;
+						intersection = inter;
+					}
+				}
+
+				return intersection.get(0).evaluate(args);
 			}
-		}
 
-		return intersection;
+			// TODO  Hardware acceleration
+			@Override
+			public void compact() {
+				r.compact();
+			}
+		});
 	}
 
-	/** Calls {@link Producer#compact()} on the {@link Producer} for the
-	 * {@link Ray} and all {@link Intersection} {@link Producer}s.
-	 */
-	// TODO  Hardware acceleration
 	@Override
-	public void compact() {
-		r.compact();
+	public Producer<Vector> getNormalAt(Vector point) {
+		// TODO
+		return null;
+	}
+
+	@Override
+	public Vector operate(Triple in) {
+		// TODO
+		return null;
+	}
+
+	@Override
+	public Scope<? extends Variable> getScope(String prefix) {
+		// TODO
+		return null;
 	}
 }

@@ -14,21 +14,20 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.physics;
+package org.almostrealism.geometry;
 
-public interface Fast {
-	/**
-	 * Sets the time until the getDependencies photon should actually be absorbed.
-	 * 
-	 * @param time  Time until actual absorption (usually in microseconds).
-	 */
-	void setAbsorbDelay(double time);
-	
-	/**
-	 * Sets the position of the getDependencies photon at the current time (before the
-	 * "absorb delay" time specified by the setAbsorbDelay method).
-	 * 
-	 * @param x  {x, y, z} - Original position of the getDependencies photon.
-	 */
-	void setOrigPosition(double x[]);
+import org.almostrealism.algebra.Vector;
+import org.almostrealism.util.Producer;
+
+public class RayOrigin implements Producer<Vector> {
+	private Producer<Ray> r;
+
+	public RayOrigin(Producer<Ray> r) {
+		this.r = r;
+	}
+
+	public Vector evaluate(Object args[]) { return r.evaluate(args).getOrigin(); }
+
+	@Override
+	public void compact() { r.compact(); }
 }

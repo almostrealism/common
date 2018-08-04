@@ -23,21 +23,23 @@ import org.almostrealism.algebra.Pair;
 import org.almostrealism.util.Pipeline;
 import org.almostrealism.util.Producer;
 
-public class RealizableImage implements Producer<ColorProducer[][]> {
-	private ColorProducer data[][];
-	private Future<ColorProducer> futures[][];
+public class RealizableImage implements Producer<Producer<RGB>[][]> {
+	private Producer<RGB> data[][];
+	private Future<Producer<RGB>> futures[][];
 
-	private Future<ColorProducer> source;
+	private Producer<RGB> source;
 	private Pair dim;
 	
-	public RealizableImage(ColorProducer data[][]) { this.data = data; }
+	public RealizableImage(Producer<RGB> data[][]) { this.data = data; }
 	
-	public RealizableImage(Future<ColorProducer> data[][]) { this.futures = data; }
+	public RealizableImage(Future<Producer<RGB>> data[][]) { this.futures = data; }
 
-	public RealizableImage(Future<ColorProducer> source, Pair dimensions) {
+	public RealizableImage(Producer<RGB> source, Pair dimensions) {
 		this.source = source;
 		this.dim = dimensions;
 	}
+
+	public Producer<RGB> getSource() { return source; }
 
 	public boolean isCompletelySubmitted() {
 		if (futures == null) return true;
@@ -79,14 +81,14 @@ public class RealizableImage implements Producer<ColorProducer[][]> {
 	}
 
 	@Override
-	public ColorProducer[][] evaluate(Object[] args) {
+	public Producer<RGB>[][] evaluate(Object[] args) {
 		Pipeline pipe = null;
 		if (args.length > 0 && args[0] instanceof Pipeline) pipe = (Pipeline) args[0];
 
 		if (source == null) {
 			if (this.futures == null) return data;
 
-			ColorProducer p[][] = new ColorProducer[futures.length][futures[0].length];
+			Producer<RGB> p[][] = new Producer[futures.length][futures[0].length];
 			for (int i = 0; i < p.length; i++) {
 				for (int j = 0; j < p[i].length; j++) {
 					try {
@@ -101,20 +103,12 @@ public class RealizableImage implements Producer<ColorProducer[][]> {
 
 			return p;
 		} else {
-			ColorProducer p[][] = new ColorProducer[(int) dim.getX()][(int) dim.getY()];
-
-			ColorProducer s;
-
-			try {
-				s = source.get();
-			} catch (InterruptedException | ExecutionException e) {
-				e.printStackTrace();
-				return null;
-			}
+			// TODO  Theres a better way of doing this
+			Producer<RGB> p[][] = new Producer[(int) dim.getX()][(int) dim.getY()];
 
 			for (int i = 0; i < p.length; i++) {
 				for (int j = 0; j < p[i].length; j++) {
-					p[i][j] = s;
+					p[i][j] = source;
 				}
 
 				if (pipe != null) pipe.evaluate(new Object[]{ p });

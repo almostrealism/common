@@ -33,10 +33,9 @@ import org.almostrealism.space.AbstractSurface;
 import org.almostrealism.space.ShadableIntersection;
 import org.almostrealism.util.Producer;
 import org.almostrealism.util.StaticProducer;
-import sun.reflect.generics.reflectiveObjects.NotImplementedException;
 
 /** A {@link Polynomial} represents a 3d polynomial surface. */
-public class Polynomial<IN> extends AbstractSurface<IN> implements Operator<Scalar> {
+public class Polynomial<IN> extends AbstractSurface<IN> {
 	private static double maxIntersectionDistance = 100.0;
 	private static double defaultZerosInterval = 0.5;
 	private static int defaultZerosRecursions = 4;
@@ -361,7 +360,7 @@ public class Polynomial<IN> extends AbstractSurface<IN> implements Operator<Scal
 	 */
 	@Override
 	public boolean intersect(Ray ray) {
-		throw new NotImplementedException();
+		throw new RuntimeException("Not implemented");
 	}
 	
 	/**
@@ -497,7 +496,28 @@ public class Polynomial<IN> extends AbstractSurface<IN> implements Operator<Scal
 	}
 
 	@Override
-	public Operator<Scalar> get() { return this; }
+	public Operator<Scalar> get() {
+		return new Operator<Scalar>() {
+			@Override
+			public Scalar evaluate(Object[] args) {
+				// TODO  Preserve uncertainty in the Vector so that the scalar is as uncertain or more
+				Vector v = getInput().evaluate(args);
+				return new Scalar(Polynomial.this.evaluate(v.getX(), v.getY(), v.getZ()));
+			}
+
+			/** Delegates to {@link Polynomial#simplify()}. */
+			@Override
+			public void compact() { simplify(); }
+
+			@Override
+			public Scope<Variable<Scalar>> getScope(String prefix) {
+				// TODO  Not sure this is correct
+				Scope s = new Scope();
+				s.getVariables().add(new Variable(prefix + "scalar", evaluate(new Object[0])));
+				return s;
+			}
+		};
+	}
 
 	@Override
 	public Operator<Scalar> get(long timeout, TimeUnit unit) throws InterruptedException, ExecutionException, TimeoutException {
@@ -519,24 +539,5 @@ public class Polynomial<IN> extends AbstractSurface<IN> implements Operator<Scal
 		}
 		
 		return output == null ? "" : output;
-	}
-
-	@Override
-	public Scalar evaluate(Object[] args) {
-		// TODO  Preserve uncertainty in the Vector so that the scalar is as uncertain or more
-		Vector v = getInput().evaluate(args);
-		return new Scalar(this.evaluate(v.getX(), v.getY(), v.getZ()));
-	}
-
-	/** Delegates to {@link #simplify()}. */
-	@Override
-	public void compact() { simplify(); }
-
-	@Override
-	public Scope<Variable<Scalar>> getScope(String prefix) {
-		// TODO  Not sure this is correct
-		Scope s = new Scope();
-		s.getVariables().add(new Variable(prefix + "scalar", evaluate(new Object[0])));
-		return s;
 	}
 }

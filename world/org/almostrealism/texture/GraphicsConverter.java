@@ -27,9 +27,9 @@ import java.awt.image.RenderedImage;
 import javax.swing.ImageIcon;
 
 import org.almostrealism.algebra.Pair;
-import org.almostrealism.color.ColorProducer;
 import org.almostrealism.color.RGB;
 import org.almostrealism.util.Pipeline;
+import org.almostrealism.util.Producer;
 
 /**
  * The {@link GraphicsConverter} provides static methods that allow conversion between colors
@@ -194,7 +194,7 @@ public class GraphicsConverter {
 	 * The array locations map to pixels in the image. The image produced
 	 * uses the RGB color model with no alpha channel.
 	 */
-	public static Image convertToAWTImage(ColorProducer image[][]) {
+	public static Image convertToAWTImage(Producer<RGB> image[][]) {
 		return convertToAWTImage(image, null);
 	}
 
@@ -203,7 +203,7 @@ public class GraphicsConverter {
 	 * The array locations map to pixels in the image. The image produced
 	 * uses the RGB color model with no alpha channel.
 	 */
-	public static Image convertToAWTImage(ColorProducer image[][], Pipeline notify) {
+	public static Image convertToAWTImage(Producer<RGB> image[][], Pipeline notify) {
 		int data[] = new int[image.length * image[0].length];
 		
 		int index = 0;

@@ -256,6 +256,7 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 
 	/** Returns the sum of this {@link Vector} and the specified {@link Vector}. */
 	public synchronized Vector add(Vector vector) {
+		// TODO  Use VectorAdd
 		Vector v = (Vector) clone();
 		v.addTo(vector);
 		return v;
@@ -268,7 +269,7 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 	 */
 	public void addTo(Vector vector) {
 		if (addOperator.get() == null) {
-			addOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("add"));
+			addOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("addTo"));
 		}
 
 		addOperator.get().evaluate(new Object[] { this, vector });
@@ -279,6 +280,7 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 	 * The specified vector is subtracted from this one.
 	 */
 	public Vector subtract(Vector vector) {
+		// TODO  Use VectorSubtract
 		Vector v = (Vector) clone();
 		v.subtractFrom(vector);
 		return v;
@@ -291,7 +293,7 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 	 */
 	public synchronized void subtractFrom(Vector vector) {
 		if (subtractOperator.get() == null) {
-			subtractOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("subtract"));
+			subtractOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("subtractFrom"));
 		}
 
 		subtractOperator.get().evaluate(new Object[] { this, vector });
@@ -301,6 +303,7 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 	 * Returns the product of the vector represented by this Vector object and the specified value.
 	 */
 	public Vector multiply(double value) {
+		// TODO  Use VectorMultiply
 		Vector v = (Vector) clone();
 		v.multiplyBy(value);
 		return v;
@@ -313,7 +316,7 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 	 */
 	public synchronized void multiplyBy(double value) {
 		if (multiplyOperator.get() == null) {
-			multiplyOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("multiply"));
+			multiplyOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("multiplyBy"));
 		}
 
 		multiplyOperator.get().evaluate(new Object[] { this, new Vector(value, value, value) });
@@ -321,6 +324,7 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 
 	/** Returns the quotient of the division of this {@link Vector} by the specified value. */
 	public Vector divide(double value) {
+		// TODO  Use VectorDivide
 		Vector v = (Vector) clone();
 		v.divideBy(value);
 		return v;
@@ -333,7 +337,7 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 	 */
 	public synchronized void divideBy(double value) {
 		if (divideOperator.get() == null) {
-			divideOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("divide"));
+			divideOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("divideBy"));
 		}
 
 		divideOperator.get().evaluate(new Object[] { this, new Vector(value, value, value) });

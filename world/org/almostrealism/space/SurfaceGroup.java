@@ -192,7 +192,33 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 		TransformMatrix m = getTransform(true);
 		if (m != null) ray = new RayMatrixTransform(m.getInverse(), ray);
 
-		return new ClosestIntersection<ShadableIntersection>(ray, this);
+		final Producer<Ray> fray = ray;
+
+		return new Producer<ShadableIntersection>() {
+			@Override
+			public ShadableIntersection evaluate(Object[] args) {
+				double d = Double.MAX_VALUE;
+				ShadableIntersection intersection = null;
+
+				p: for (T in : SurfaceGroup.this) {
+					ShadableIntersection inter = in.intersectAt(fray).evaluate(args);
+					if (inter == null) continue p;
+
+					double v = inter.getDistance().getValue();
+					if (v >= 0.0 && v < d) {
+						d = v;
+						intersection = inter;
+					}
+				}
+
+				return intersection;
+			}
+
+			@Override
+			public void compact() {
+				// TODO
+			}
+		};
 	}
 
 	@Override

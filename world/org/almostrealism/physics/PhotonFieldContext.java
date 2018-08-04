@@ -18,30 +18,32 @@ package org.almostrealism.physics;
 
 import org.almostrealism.algebra.ContinuousField;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.color.ColorProducer;
 import org.almostrealism.color.Light;
+import org.almostrealism.color.RGB;
 import org.almostrealism.color.ShaderContext;
+import org.almostrealism.util.Producer;
 
 import java.util.Collection;
-import java.util.concurrent.Callable;
 
 public class PhotonFieldContext<T extends PhotonField, F extends Absorber> extends ShaderContext {
 	private T field;
 	private F film;
 
-	public PhotonFieldContext(Callable<ColorProducer> surface, Light l, T field, F film) {
+	public PhotonFieldContext(Producer<RGB> surface, Light l, T field, F film) {
 		super(surface, l);
 		this.field = field;
 		this.film = film;
 	}
 
-	public PhotonFieldContext(ContinuousField intersection, Vector lightDirection, Light light, Light[] otherLights, Collection<Callable<ColorProducer>> otherSurfaces, T field, F film) {
+	public PhotonFieldContext(ContinuousField intersection, Vector lightDirection, Light light, Light[] otherLights,
+							  Collection<Producer<RGB>> otherSurfaces, T field, F film) {
 		super(intersection, lightDirection, light, otherLights, otherSurfaces);
 		this.field = field;
 		this.film = film;
 	}
 
-	public PhotonFieldContext(ContinuousField intersection, Vector lightDirection, Light light, Light[] otherLights, Callable<ColorProducer> surface, Callable<ColorProducer>[] otherSurfaces, T field, F film) {
+	public PhotonFieldContext(ContinuousField intersection, Vector lightDirection, Light light, Light[] otherLights,
+							  Producer<RGB> surface, Producer<RGB>[] otherSurfaces, T field, F film) {
 		super(intersection, lightDirection, light, otherLights, surface, otherSurfaces);
 		this.field = field;
 		this.film = film;
@@ -50,4 +52,6 @@ public class PhotonFieldContext<T extends PhotonField, F extends Absorber> exten
 	public T getPhotonField() { return field; }
 
 	public F getFilm() { return film; }
+
+	// TODO  Implement clone
 }

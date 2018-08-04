@@ -41,7 +41,7 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 
 		normal = new Producer<Ray>() {
 			public Ray evaluate(Object args[]) {
-				Vector p = getPoint().evaluate(args);
+				Vector p = (Vector) getPoint().evaluate(args);
 				return new Ray(p, ((Gradient) surface).getNormalAt(p).evaluate(args));
 			}
 

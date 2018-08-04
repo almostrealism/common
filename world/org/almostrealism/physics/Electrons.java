@@ -163,7 +163,7 @@ public class Electrons {
 				}
 			}
 
-			// Move to the next permutation of excitation levels
+			// Move to the getDependencies permutation of excitation levels
 			boolean addOne = true;
 			i: for (int i = 0; i < cursor.length; i++) {
 				if (!addOne) break i;
@@ -172,7 +172,7 @@ public class Electrons {
 
 				if (next > e[i].getMaxExcitation()) {
 					// Turn over this cursor index and
-					// add move to the next cursor index
+					// add move to the getDependencies cursor index
 					cursor[i] = 0;
 				} else {
 					// Increment this cursor index

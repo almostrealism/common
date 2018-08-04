@@ -14,21 +14,13 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.physics;
+package org.almostrealism.color;
 
-public interface Fast {
-	/**
-	 * Sets the time until the getDependencies photon should actually be absorbed.
-	 * 
-	 * @param time  Time until actual absorption (usually in microseconds).
-	 */
-	void setAbsorbDelay(double time);
-	
-	/**
-	 * Sets the position of the getDependencies photon at the current time (before the
-	 * "absorb delay" time specified by the setAbsorbDelay method).
-	 * 
-	 * @param x  {x, y, z} - Original position of the getDependencies photon.
-	 */
-	void setOrigPosition(double x[]);
+import org.almostrealism.math.AcceleratedProducer;
+import org.almostrealism.util.Producer;
+
+public class RGBMultiply extends AcceleratedProducer<RGB> {
+	public RGBMultiply(Producer<RGB> a, Producer<RGB> b) {
+		super("multiply", RGB.blank(), a, b);
+	}
 }

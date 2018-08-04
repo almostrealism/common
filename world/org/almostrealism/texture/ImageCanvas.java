@@ -30,15 +30,14 @@ import javax.imageio.ImageIO;
 import javax.swing.JPanel;
 
 import org.almostrealism.algebra.Pair;
-import org.almostrealism.color.ColorProducer;
 import org.almostrealism.color.RGB;
-
+import org.almostrealism.util.Producer;
 
 /**
  * An {@link ImageCanvas} object stores image data and paints the parent
  * {@link JPanel} using the image.
  * 
- * @author Mike Murray
+ * @author  Michael Murray
  */
 public class ImageCanvas extends JPanel {
   private int screenX, screenY;
@@ -180,7 +179,7 @@ public class ImageCanvas extends JPanel {
 		g.drawImage(img, 0, 0, Color.black, this);
 	}
 
-	public static void writeImage(ColorProducer image[][], OutputStream o, int encoding)
+	public static void writeImage(Producer<RGB> image[][], OutputStream o, int encoding)
 						throws IOException {
 		if (encoding == ImageCanvas.RGBListEncoding) {
 			ObjectOutputStream out = new ObjectOutputStream(o);
@@ -262,7 +261,7 @@ public class ImageCanvas extends JPanel {
 	 * file represented by the specified File object. If the encoding code is not
 	 * recognized, the method returns.
 	 */
-	public static void encodeImageFile(ColorProducer image[][], File file, int encoding) throws IOException {
+	public static void encodeImageFile(Producer<RGB> image[][], File file, int encoding) throws IOException {
 		try (OutputStream o = new FileOutputStream(file)) {
 			ImageCanvas.writeImage(image, o, encoding);
 			o.flush();

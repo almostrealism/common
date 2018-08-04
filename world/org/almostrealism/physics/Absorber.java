@@ -66,14 +66,14 @@ public interface Absorber {
 	double getEmitEnergy();
 	
 	/**
-	 * @return  The time until this absorber will next emit a photon. (Usually measured in
+	 * @return  The time until this absorber will getDependencies emit a photon. (Usually measured in
 	 *          microseconds).
 	 */
 	double getNextEmit();
 
 
 	/**
-	 * @return  {x, y, z} - The position of the photon that will next be emitted by this
+	 * @return  {x, y, z} - The position of the photon that will getDependencies be emitted by this
 	 *          Absorber.
 	 */
 	VectorProducer getEmitPosition();

@@ -16,9 +16,8 @@
 
 package org.almostrealism.geometry;
 
-import java.util.concurrent.Callable;
-
 import org.almostrealism.space.Gradient;
+import org.almostrealism.util.Producer;
 
-public interface Curve<T> extends Gradient, Callable<T> {
+public interface Curve<T> extends Gradient, Producer<T> {
 }

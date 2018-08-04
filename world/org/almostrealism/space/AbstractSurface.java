@@ -17,7 +17,6 @@
 package org.almostrealism.space;
 
 import java.util.*;
-import java.util.concurrent.Future;
 
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;
@@ -41,7 +40,7 @@ import org.almostrealism.util.Producer;
  * 
  * @author  Michael Murray
  */
-public abstract class AbstractSurface<IN> extends TriangulatableGeometry implements ShadableSurface, Porous, PathElement<IN> {
+public abstract class AbstractSurface<IN> extends TriangulatableGeometry implements ShadableSurface, Porous, PathElement<IN, Vector> {
 	private boolean shadeFront, shadeBack;
 
 	private RGB color;
@@ -192,8 +191,8 @@ public abstract class AbstractSurface<IN> extends TriangulatableGeometry impleme
 	public Operator<Vector> getInput() { return this.in; }
 
 	@Override
-	public Iterable<PathElement<IN>> next() {
-		return Arrays.asList((PathElement<IN>) in);
+	public Iterable<Producer<IN>> getDependencies() {
+		return Arrays.asList((Producer<IN>) in);
 	}
 
 	/**
@@ -545,6 +544,14 @@ public abstract class AbstractSurface<IN> extends TriangulatableGeometry impleme
 	 */
 	@Override
 	public ColorProducer getColorAt() { return call(); }
+
+	public RGB evaluate(Object args[]) {
+		return getColorAt().evaluate(args);
+	}
+
+	public void compact() {
+		getColorAt().compact();
+	}
 	
 	/**
 	 * @return  The color of this AbstractSurface at the specified point as an RGB object.

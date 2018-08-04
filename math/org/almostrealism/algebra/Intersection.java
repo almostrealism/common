@@ -16,7 +16,7 @@
 
 package org.almostrealism.algebra;
 
-import java.util.ArrayList;
+import java.util.Arrays;
 
 import org.almostrealism.graph.PathElement;
 import org.almostrealism.util.Producer;
@@ -24,7 +24,7 @@ import org.almostrealism.util.Producer;
 /**
  * An Intersection object stores data for the intersections between a ray and a surface.
  */
-public class Intersection implements PathElement<Intersection> {
+public class Intersection<IN, OUT> implements PathElement<IN, OUT> {
 	/** A very small value (0.00000001) that is used in '>=' and '<=' operations to account for computational errors. */
 	public static final double e = 0.00000001;
 
@@ -32,8 +32,6 @@ public class Intersection implements PathElement<Intersection> {
 
 	private Producer<Vector> point;
 	private Scalar distance;
-	
-	private ArrayList<PathElement<Intersection>> children;
 
 	/**
 	 * Constructs a new Intersection object that represents an intersection between the specified
@@ -51,14 +49,11 @@ public class Intersection implements PathElement<Intersection> {
 	public Producer<Vector> getPoint() { return point; }
 
 	public Scalar getDistance() { return distance; }
-	
-	public void add(Intersection inter) {
-		if (children == null) children = new ArrayList<PathElement<Intersection>>();
-		children.add(inter);
-	}
-	
+
 	@Override
-	public Iterable<PathElement<Intersection>> next() { return children; }
+	public Iterable<Producer<IN>> getDependencies() {
+		return Arrays.asList((Producer<IN>) point);
+	}
 
 	/**
 	 * @return  A String representation of this Intersection object.
