@@ -82,7 +82,8 @@ public abstract class AbstractSurface<IN> extends TriangulatableGeometry impleme
 	}
 	
 	/**
-	 * Sets the location and size of this AbstractSurface to those specified, and uses the defaults for the other values.
+	 * Sets the location and size of this {@link AbstractSurface} to those specified, and uses
+	 * the defaults for the other values.
 	 */
 	public AbstractSurface(Vector location, double size) {
 		this();
@@ -92,7 +93,7 @@ public abstract class AbstractSurface<IN> extends TriangulatableGeometry impleme
 	}
 	
 	/**
-	 * Sets the location, size, and color of this AbstractSurface to those specified.
+	 * Sets the location, size, and color of this {@link AbstractSurface} to those specified.
 	 */
 	public AbstractSurface(Vector location, double size, RGB color) {
 		this.setShadeFront(true);
@@ -100,7 +101,9 @@ public abstract class AbstractSurface<IN> extends TriangulatableGeometry impleme
 
 		this.setTextures(new Texture[0]);
 
-		this.setColor(new RGB(0.0, 0.0, 0.0));
+		this.setLocation(location);
+		this.setSize(size);
+		this.setColor(color);
 	}
 	
 	/**

@@ -3,7 +3,7 @@
   <component name="ChangeListManager">
     <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="">
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/space/SurfaceGroup.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/space/SurfaceGroup.java" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/space/AbstractSurface.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/space/AbstractSurface.java" />
     </list>
     <ignored path="$PROJECT_DIR$/target/" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -18,7 +18,7 @@
       <file leaf-file-name="Mesh.java" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/src/org/almostrealism/graph/Mesh.java">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="170">
+            <state relative-caret-position="10170">
               <caret line="741" column="0" lean-forward="false" selection-start-line="741" selection-start-column="0" selection-end-line="741" selection-end-column="0" />
               <folding>
                 <element signature="e#0#28269#0" expanded="true" />
@@ -31,20 +31,30 @@
         <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/ClosestIntersection.java">
           <provider selected="true" editor-type-id="text-editor">
             <state relative-caret-position="120">
-              <caret line="29" column="36" lean-forward="true" selection-start-line="29" selection-start-column="36" selection-end-line="29" selection-end-column="36" />
+              <caret line="29" column="36" lean-forward="false" selection-start-line="29" selection-start-column="36" selection-end-line="29" selection-end-column="36" />
               <folding />
             </state>
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="SurfaceGroup.java" pinned="false" current-in-tab="true">
+      <file leaf-file-name="SurfaceGroup.java" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/world/org/almostrealism/space/SurfaceGroup.java">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="290">
-              <caret line="192" column="73" lean-forward="true" selection-start-line="192" selection-start-column="73" selection-end-line="192" selection-end-column="73" />
+            <state relative-caret-position="136">
+              <caret line="191" column="26" lean-forward="false" selection-start-line="191" selection-start-column="26" selection-end-line="191" selection-end-column="26" />
               <folding>
-                <element signature="e#0#6416#0" expanded="true" />
+                <element signature="e#0#6491#0" expanded="true" />
               </folding>
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="AbstractSurface.java" pinned="false" current-in-tab="true">
+        <entry file="file://$PROJECT_DIR$/world/org/almostrealism/space/AbstractSurface.java">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="82">
+              <caret line="85" column="41" lean-forward="true" selection-start-line="85" selection-start-column="41" selection-end-line="85" selection-end-column="41" />
+              <folding />
             </state>
           </provider>
         </entry>
@@ -153,10 +163,10 @@
         <option value="$PROJECT_DIR$/world/org/almostrealism/space/Plane.java" />
         <option value="$PROJECT_DIR$/test/org/almostrealism/algebra/test/TriangleTest.java" />
         <option value="$PROJECT_DIR$/src/org/almostrealism/graph/Triangle.java" />
-        <option value="$PROJECT_DIR$/world/org/almostrealism/space/AbstractSurface.java" />
         <option value="$PROJECT_DIR$/src/org/almostrealism/graph/Mesh.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/ClosestIntersection.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/space/SurfaceGroup.java" />
+        <option value="$PROJECT_DIR$/world/org/almostrealism/space/AbstractSurface.java" />
       </list>
     </option>
   </component>
@@ -202,6 +212,29 @@
       <foldersAlwaysOnTop value="true" />
     </navigator>
     <panes>
+      <pane id="PackagesPane">
+        <subPane>
+          <expand>
+            <path>
+              <item name="common" type="58d84e3e:PackageViewProjectNode" />
+              <item name="io.almostrealism.c" type="1f31426a:PackageElementNode" />
+            </path>
+            <path>
+              <item name="common" type="58d84e3e:PackageViewProjectNode" />
+              <item name="org.almostrealism.algebra" type="1f31426a:PackageElementNode" />
+            </path>
+            <path>
+              <item name="common" type="58d84e3e:PackageViewProjectNode" />
+              <item name="org.almostrealism.space" type="1f31426a:PackageElementNode" />
+            </path>
+            <path>
+              <item name="common" type="58d84e3e:PackageViewProjectNode" />
+              <item name="org.almostrealism.texture" type="1f31426a:PackageElementNode" />
+            </path>
+          </expand>
+          <select />
+        </subPane>
+      </pane>
       <pane id="ProjectPane">
         <subPane>
           <expand>
@@ -240,32 +273,9 @@
           <select />
         </subPane>
       </pane>
-      <pane id="Scope" />
-      <pane id="PackagesPane">
-        <subPane>
-          <expand>
-            <path>
-              <item name="common" type="58d84e3e:PackageViewProjectNode" />
-              <item name="io.almostrealism.c" type="1f31426a:PackageElementNode" />
-            </path>
-            <path>
-              <item name="common" type="58d84e3e:PackageViewProjectNode" />
-              <item name="org.almostrealism.algebra" type="1f31426a:PackageElementNode" />
-            </path>
-            <path>
-              <item name="common" type="58d84e3e:PackageViewProjectNode" />
-              <item name="org.almostrealism.space" type="1f31426a:PackageElementNode" />
-            </path>
-            <path>
-              <item name="common" type="58d84e3e:PackageViewProjectNode" />
-              <item name="org.almostrealism.texture" type="1f31426a:PackageElementNode" />
-            </path>
-          </expand>
-          <select />
-        </subPane>
-      </pane>
-      <pane id="Scratches" />
       <pane id="AndroidView" />
+      <pane id="Scratches" />
+      <pane id="Scope" />
     </panes>
   </component>
   <component name="PropertiesComponent">
@@ -670,21 +680,8 @@
       <workItem from="1533335324517" duration="12813000" />
       <workItem from="1533683103857" duration="151000" />
       <workItem from="1533690757519" duration="527000" />
-      <workItem from="1535074963400" duration="119000" />
-    </task>
-    <task id="LOCAL-00089" summary="Migrated MathUtil functionality into Scalar.">
-      <created>1520025746426</created>
-      <option name="number" value="00089" />
-      <option name="presentableId" value="LOCAL-00089" />
-      <option name="project" value="LOCAL" />
-      <updated>1520025746426</updated>
-    </task>
-    <task id="LOCAL-00090" summary="Added toVector method.">
-      <created>1520027287915</created>
-      <option name="number" value="00090" />
-      <option name="presentableId" value="LOCAL-00090" />
-      <option name="project" value="LOCAL" />
-      <updated>1520027287915</updated>
+      <workItem from="1535074963400" duration="658000" />
+      <workItem from="1535138815942" duration="70000" />
     </task>
     <task id="LOCAL-00091" summary="Added toFloat method.">
       <created>1520028328899</created>
@@ -1015,7 +1012,21 @@
       <option name="project" value="LOCAL" />
       <updated>1535075044036</updated>
     </task>
-    <option name="localTasksCounter" value="138" />
+    <task id="LOCAL-00138" summary="Added cast.">
+      <created>1535075093227</created>
+      <option name="number" value="00138" />
+      <option name="presentableId" value="LOCAL-00138" />
+      <option name="project" value="LOCAL" />
+      <updated>1535075093227</updated>
+    </task>
+    <task id="LOCAL-00139" summary="Work around for generics issue.">
+      <created>1535075270370</created>
+      <option name="number" value="00139" />
+      <option name="presentableId" value="LOCAL-00139" />
+      <option name="project" value="LOCAL" />
+      <updated>1535075270370</updated>
+    </task>
+    <option name="localTasksCounter" value="140" />
     <servers />
   </component>
   <component name="TestHistory">
@@ -1051,7 +1062,7 @@
     </history-entry>
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="399947000" />
+    <option name="totallyTimeSpent" value="400556000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="0" y="0" width="1280" height="800" extended-state="6" />
@@ -1063,9 +1074,9 @@
       <window_info id="Capture Analysis" active="false" anchor="right" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="6" side_tool="false" content_ui="tabs" />
       <window_info id="Event Log" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.62723523" sideWeight="0.509693" order="7" side_tool="true" content_ui="tabs" />
       <window_info id="Maven Projects" active="false" anchor="right" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.32956383" sideWeight="0.5" order="4" side_tool="false" content_ui="tabs" />
-      <window_info id="Version Control" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.3287483" sideWeight="0.5" order="11" side_tool="false" content_ui="tabs" />
       <window_info id="Run" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.7620358" sideWeight="0.5" order="2" side_tool="false" content_ui="tabs" />
-      <window_info id="Terminal" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.6244842" sideWeight="0.49030694" order="10" side_tool="false" content_ui="tabs" />
+      <window_info id="Version Control" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.3287483" sideWeight="0.5" order="11" side_tool="false" content_ui="tabs" />
+      <window_info id="Terminal" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.6244842" sideWeight="0.49030694" order="10" side_tool="false" content_ui="tabs" />
       <window_info id="Capture Tool" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="2" side_tool="false" content_ui="tabs" />
       <window_info id="Designer" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="3" side_tool="false" content_ui="tabs" />
       <window_info id="Project" active="true" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.25767368" sideWeight="0.5" order="0" side_tool="false" content_ui="combo" />
@@ -1075,8 +1086,8 @@
       <window_info id="Ant Build" active="false" anchor="right" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.24959612" sideWeight="0.5" order="1" side_tool="false" content_ui="tabs" />
       <window_info id="UI Designer" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="4" side_tool="false" content_ui="tabs" />
       <window_info id="Theme Preview" active="false" anchor="right" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="8" side_tool="false" content_ui="tabs" />
-      <window_info id="Favorites" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="5" side_tool="true" content_ui="tabs" />
       <window_info id="Debug" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.39889959" sideWeight="0.5" order="3" side_tool="false" content_ui="tabs" />
+      <window_info id="Favorites" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="5" side_tool="true" content_ui="tabs" />
       <window_info id="Data View" active="false" anchor="right" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="7" side_tool="false" content_ui="tabs" />
       <window_info id="Cvs" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.25" sideWeight="0.5" order="4" side_tool="false" content_ui="tabs" />
       <window_info id="Message" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="0" side_tool="false" content_ui="tabs" />
@@ -1128,8 +1139,6 @@
   </component>
   <component name="VcsManagerConfiguration">
     <option name="CHECK_NEW_TODO" value="false" />
-    <MESSAGE value="Introduced PairFunction. Phasing out Vec2." />
-    <MESSAGE value="Introduced VectorFutureAdapter and VectorProduct." />
     <MESSAGE value="Improved merge in Shell to avoid unmodifiable list." />
     <MESSAGE value="Introduced AcceleratedFunctions and GPUOperator, as well as some other classes involved in maintaining a OpenCL program and the corresponding set of named functions therein." />
     <MESSAGE value="This is version 0.6." />
@@ -1153,7 +1162,9 @@
     <MESSAGE value="Hardware acceleration for a range of other functions, as well as conversion of RGB to use cl_mem." />
     <MESSAGE value="Many minor improvements in further migration to using Producer throughout the API. Introduced RGBMultiply." />
     <MESSAGE value="Many improvements working toward using Producer in place of Scalar." />
-    <option name="LAST_COMMIT_MESSAGE" value="Many improvements working toward using Producer in place of Scalar." />
+    <MESSAGE value="Added cast." />
+    <MESSAGE value="Work around for generics issue." />
+    <option name="LAST_COMMIT_MESSAGE" value="Work around for generics issue." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -1195,25 +1206,7 @@
   <component name="editorHistoryManager">
     <entry file="file://$PROJECT_DIR$/src/org/almostrealism/graph/Mesh.java">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="0">
-          <caret line="0" column="0" lean-forward="false" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
-          <folding>
-            <element signature="e#0#28269#0" expanded="true" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/space/AbstractSurface.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="8565">
-          <caret line="571" column="12" lean-forward="false" selection-start-line="571" selection-start-column="12" selection-end-line="571" selection-end-column="12" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/src/org/almostrealism/graph/Mesh.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="170">
+        <state relative-caret-position="10170">
           <caret line="741" column="0" lean-forward="false" selection-start-line="741" selection-start-column="0" selection-end-line="741" selection-end-column="0" />
           <folding>
             <element signature="e#0#28269#0" expanded="true" />
@@ -1224,18 +1217,64 @@
     <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/ClosestIntersection.java">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="120">
-          <caret line="29" column="36" lean-forward="true" selection-start-line="29" selection-start-column="36" selection-end-line="29" selection-end-column="36" />
+          <caret line="29" column="36" lean-forward="false" selection-start-line="29" selection-start-column="36" selection-end-line="29" selection-end-column="36" />
           <folding />
         </state>
       </provider>
     </entry>
     <entry file="file://$PROJECT_DIR$/world/org/almostrealism/space/SurfaceGroup.java">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="290">
-          <caret line="192" column="73" lean-forward="true" selection-start-line="192" selection-start-column="73" selection-end-line="192" selection-end-column="73" />
+        <state relative-caret-position="2475">
+          <caret line="195" column="27" lean-forward="false" selection-start-line="195" selection-start-column="27" selection-end-line="195" selection-end-column="27" />
           <folding>
-            <element signature="e#0#6416#0" expanded="true" />
+            <element signature="e#0#6491#0" expanded="true" />
           </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/src/org/almostrealism/graph/Mesh.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="0">
+          <caret line="0" column="0" lean-forward="false" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
+          <folding>
+            <element signature="e#0#28269#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/src/org/almostrealism/graph/Mesh.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="10170">
+          <caret line="741" column="0" lean-forward="false" selection-start-line="741" selection-start-column="0" selection-end-line="741" selection-end-column="0" />
+          <folding>
+            <element signature="e#0#28269#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/ClosestIntersection.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="120">
+          <caret line="29" column="36" lean-forward="false" selection-start-line="29" selection-start-column="36" selection-end-line="29" selection-end-column="36" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/space/SurfaceGroup.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="136">
+          <caret line="191" column="26" lean-forward="false" selection-start-line="191" selection-start-column="26" selection-end-line="191" selection-end-column="26" />
+          <folding>
+            <element signature="e#0#6491#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/space/AbstractSurface.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="82">
+          <caret line="85" column="41" lean-forward="true" selection-start-line="85" selection-start-column="41" selection-end-line="85" selection-end-column="41" />
+          <folding />
         </state>
       </provider>
     </entry>
