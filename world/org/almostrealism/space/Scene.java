@@ -20,7 +20,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
-import java.util.concurrent.Callable;
 
 import org.almostrealism.algebra.Camera;
 import org.almostrealism.color.Light;
@@ -108,39 +107,33 @@ public class Scene<T extends ShadableSurface> extends SurfaceList<T> {
 	}
 
 	/**
-	 * Removes the specified Surface object from the specified Surface object array and returns the new array.
-	 * If the specified Surface object is not matched, the whole array is returned.
+	 * Returns a {@link List} with the specified element removed.
 	 */
-	public static ShadableSurface[] separateSurfaces(ShadableSurface surface, ShadableSurface allSurfaces[]) {
-		for(int i = 0; i < allSurfaces.length; i++) {
-			if (surface == allSurfaces[i]) {
-				// See separateSurfaces method.
-				
-				ShadableSurface otherSurfaces[] = new ShadableSurface[allSurfaces.length - 1];
-				
-				for (int j = 0; j < i; j++) { otherSurfaces[j] = allSurfaces[j]; }
-				for (int j = i + 1; j < allSurfaces.length; j++) { otherSurfaces[j - 1] = allSurfaces[j]; }
-				
-				return otherSurfaces;
+	public static <T> List<T> separate(T element, Iterable<T> all) {
+		ArrayList<T> difference = new ArrayList<>();
+
+		for (T o : all) {
+			if (element != o) {
+				difference.add(o);
 			}
 		}
 		
-		return allSurfaces;
+		return difference;
 	}
 
 	@Deprecated
-	public static List<Callable<Producer<RGB>>> combineSurfaces(ShadableSurface surface,
-										Iterator<Callable<Producer<RGB>>> otherSurfaces) {
-		List<Callable<Producer<RGB>>> allSurfaces = new ArrayList<>();
+	public static List<Producer<RGB>> combineSurfaces(ShadableSurface surface,
+										Iterator<Producer<RGB>> otherSurfaces) {
+		List<Producer<RGB>> allSurfaces = new ArrayList<>();
 		while (otherSurfaces.hasNext()) { allSurfaces.add(otherSurfaces.next()); }
 		allSurfaces.add(surface);
 		return allSurfaces;
 	}
 
 	@Deprecated
-	public static List<Callable<Producer<RGB>>> combineSurfaces(Callable<Producer<RGB>> surface, Iterable<? extends Callable<Producer<RGB>>> otherSurfaces) {
-		List<Callable<Producer<RGB>>> allSurfaces = new ArrayList<>();
-		for (Callable<Producer<RGB>> s : otherSurfaces) { allSurfaces.add(s); }
+	public static List<Producer<RGB>> combineSurfaces(Producer<RGB> surface, Iterable<? extends Producer<RGB>> otherSurfaces) {
+		List<Producer<RGB>> allSurfaces = new ArrayList<>();
+		for (Producer<RGB> s : otherSurfaces) { allSurfaces.add(s); }
 		allSurfaces.add(surface);
 		return allSurfaces;
 	}

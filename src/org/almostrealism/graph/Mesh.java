@@ -113,7 +113,7 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 
 		@Override public Producer<Vector> getNormalAt(Vector point) { return this.getSurface().getNormalAt(point); }
 		@Override public boolean intersect(Ray ray) { return this.getSurface().intersect(ray); }
-		@Override public Producer<ShadableIntersection> intersectAt(Producer<Ray> ray) { return this.getSurface().intersectAt(ray); }
+		@Override public ContinuousField intersectAt(Producer<Ray> ray) { return this.getSurface().intersectAt(ray); }
 
 		@Override
 		public boolean cancel(boolean mayInterruptIfRunning) { return getSurface().cancel(mayInterruptIfRunning); }
@@ -477,7 +477,7 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 	 * @param face  Index of face.
 	 * @return  The Triangle requested.
 	 */
-	public Triangle getTriangle(int face) { return this.getTriangle(face, false); }
+	public Triangle getTriangle(int face) { return this.getTriangle(face, true); }
 	
 	/**
 	 * Checks triangle cache for the specified face index, and constructs a Triangle
@@ -509,7 +509,7 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 		}
 		
 		t.setParent(this);
-		t.setColor(new RGB(1.0, 1.0, 1.0));
+		t.setColor((RGB) Mesh.white.clone());
 		t.setSmooth(this.smooth);
 		t.setUseTransform(false);
 		t.setInterpolateVertexColor(this.intcolor);
@@ -724,7 +724,7 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 	 * @see ShadableSurface#intersectAt(Producer)
 	 */
 	@Override
-	public Producer<ShadableIntersection> intersectAt(Producer ray) {
+	public ContinuousField intersectAt(Producer ray) {
 		if (this.isTreeLoaded()) return super.intersectAt(ray);
 
 		TransformMatrix t = getTransform(true);
@@ -733,9 +733,9 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 
 		final Producer<Ray> fray = ray;
 
-		return new Producer<ShadableIntersection>() {
+		Producer<Scalar> s = new Producer<Scalar>() {
 			@Override
-			public ShadableIntersection evaluate(Object[] args) {
+			public Scalar evaluate(Object[] args) {
 				Triangle tr;
 
 				int b = 0;
@@ -745,11 +745,11 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 
 					if (tcache[i] != null) {
 						tr = tcache[i];
-						inter[i] = tr.intersectAt(fray).evaluate(args);
+						inter[i] = (ShadableIntersection) tr.intersectAt(fray);
 						continue i;
 					} else {
 						tr = getTriangle(i);
-						inter[i] = tr.intersectAt(fray).evaluate(args);
+						inter[i] = (ShadableIntersection) tr.intersectAt(fray);
 						// if (inter[i] == null) continue i;
 					}
 
@@ -757,7 +757,7 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 
 					Vector trv = tr.getVertices()[0].subtract(r.getOrigin());
 					double dt = tr.getNormalAt(ZeroVector.getInstance().evaluate(new Object[0]))
-							.evaluate(new Object[0]).dotProduct(trv); // TODO  Use VectorProducer.dotProduct
+							.evaluate(new Object[0]).dotProduct(trv);
 
 					if (!removeBackFaces) {
 						tcache[i] = tr;
@@ -778,7 +778,7 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 				i: for (int i = 0; i < inter.length; i++) {
 					if (inter[i] == null) continue i;
 
-					double intersect = inter[i].getDistance().getValue();
+					double intersect = ((Scalar) inter[i].getDistance().evaluate(args)).getValue();
 
 					if (intersect >= Intersection.e) {
 						if (closestIntersectionIndex == -1 || intersect < closestIntersection) {
@@ -790,7 +790,7 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 
 				if (b > 0) System.out.println("Mesh: Removed " + b + " back faces.");
 
-				return closestIntersectionIndex < 0 ? null : inter[closestIntersectionIndex];
+				return closestIntersectionIndex < 0 ? null : new Scalar(closestIntersection);
 			}
 
 			@Override
@@ -798,6 +798,8 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 				// TODO
 			}
 		};
+
+		return new ShadableIntersection(this, ray, s);
 	}
 	
 	/**

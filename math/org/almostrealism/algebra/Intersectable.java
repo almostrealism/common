@@ -27,7 +27,7 @@ import java.util.concurrent.Future;
  * @author  Michael Murray
  */
 @Function
-public interface Intersectable<I extends Intersection, T> extends Future<Operator<T>> {
+public interface Intersectable<T> extends Future<Operator<T>> {
 	/** Returns true if the ray intersects the 3d surface in real space. */
 	boolean intersect(Ray ray);
 	
@@ -36,7 +36,7 @@ public interface Intersectable<I extends Intersection, T> extends Future<Operato
 	 * the vector equation p = o + t * d where p is a point of intersection of
 	 * the specified ray and the surface.
 	 */
-	Producer<I> intersectAt(Producer<Ray> ray); // TODO  Specify <Ray> as generic argument to producer
+	ContinuousField intersectAt(Producer<Ray> ray);
 
 	/**
 	 * If the evaluation of the {@link Operator} returned by {@link #get()}

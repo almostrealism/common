@@ -32,16 +32,20 @@ import java.util.concurrent.TimeoutException;
 
 /** A {@link Plane} represents an plane in 3d space. */
 public class Plane extends AbstractSurface implements ParticleGroup {
-  /** Integer code for XY plane. **/
-  public static final int XY = 2;
+	// TODO  Move these to an enum
+
+	/** Integer code for XY plane. **/
+	public static final int XY = 2;
   
-  /** Integer code for XZ plane. **/
-  public static final int XZ = 4;
+	/** Integer code for XZ plane. **/
+	public static final int XZ = 4;
   
-  /** Integer code for YZ plane. **/
-  public static final int YZ = 8;
+	/** Integer code for YZ plane. **/
+	public static final int YZ = 8;
   
-  private int type;
+	private int type;
+
+	private ImmutableVector normal;
 
 	/**
 	 * Constructs a {@link Plane} that represents an XY plane that is black.
@@ -93,27 +97,36 @@ public class Plane extends AbstractSurface implements ParticleGroup {
 	}
 	
 	/**
-	 * Returns a Vector object that represents the vector normal to this plane at the point represented by the specified Vector object.
+	 * Returns a Vector object that represents the vector normal to this plane at
+	 * the point represented by the specified Vector object.
 	 */
-	public VectorProducer getNormalAt(Vector point) {
-		// TODO  Do computation within VectorProducer
+	@Override
+	public void calculateTransform() {
+		if (transformCurrent) return;
+		super.calculateTransform();
 
-		Vector normal;
+		Vector n;
 		
 		if (this.type == Plane.XY)
-			normal = new Vector(0.0, 0.0, 1.0);
+			n = new Vector(0.0, 0.0, 1.0);
 		else if (this.type == Plane.XZ)
-			normal = new Vector(0.0, 1.0, 0.0);
+			n = new Vector(0.0, 1.0, 0.0);
 		else if (this.type == Plane.YZ)
-			normal = new Vector(1.0, 0.0, 0.0);
+			n = new Vector(1.0, 0.0, 0.0);
 		else
-			return null;
+			n = null;
 		
-		super.getTransform(true).transform(normal, TransformMatrix.TRANSFORM_AS_NORMAL);
+		super.getTransform(true).transform(n, TransformMatrix.TRANSFORM_AS_NORMAL);
 		
-		return new ImmutableVector(normal);
+		normal = new ImmutableVector(n);
 	}
-	
+
+	@Override
+	public ImmutableVector getNormalAt(Vector p) {
+		if (!transformCurrent) calculateTransform();
+		return normal;
+	}
+
 	/**
 	 * Returns true if the ray represented by the specified {@link Ray}
 	 * intersects the plane represented by this Plane object in real space.
@@ -139,20 +152,20 @@ public class Plane extends AbstractSurface implements ParticleGroup {
 	 * {@link Ray} that intersection between the ray and this {@link Plane} occurs.
 	 */
 	@Override
-	public Producer<ShadableIntersection> intersectAt(Producer r) {
+	public ContinuousField intersectAt(Producer r) {
 		TransformMatrix m = getTransform(true);
 		if (m != null) r = new RayMatrixTransform(m.getInverse(), r);
 
 		if (type == Plane.XY)
-			return new ShadableIntersectionProducer(r, this,
-					new AcceleratedProducer<Scalar>("planeXYIntersectAt",
+			return new ShadableIntersection(this, r,
+					new AcceleratedProducer<>("planeXYIntersectAt",
 											new Producer[] { Scalar.blank(), r }));
 		else if (type == Plane.XZ)
-			return new ShadableIntersectionProducer(r, this,
+			return new ShadableIntersection(this, r,
 					new AcceleratedProducer<Scalar>("planeXZIntersectAt",
 											new Producer[] { Scalar.blank(), r }));
 		else if (type == Plane.YZ)
-			return new ShadableIntersectionProducer(r, this,
+			return new ShadableIntersection(this, r,
 					new AcceleratedProducer<Scalar>("planeYZIntersectAt",
 											new Producer[] { Scalar.blank(), r }));
 		else

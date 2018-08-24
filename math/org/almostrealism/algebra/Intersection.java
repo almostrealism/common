@@ -31,13 +31,13 @@ public class Intersection<IN, OUT> implements PathElement<IN, OUT> {
 	private Intersectable surface;
 
 	private Producer<Vector> point;
-	private Scalar distance;
+	private Producer<Scalar> distance;
 
 	/**
 	 * Constructs a new Intersection object that represents an intersection between the specified
 	 * Ray and Surface objects at the specified points along the ray represented by the Ray object.
 	 */
-	public Intersection(Intersectable surface, Producer<Vector> point, Scalar distance) {
+	public Intersection(Intersectable surface, Producer<Vector> point, Producer<Scalar> distance) {
 		this.surface = surface;
 		this.point = point;
 		this.distance = distance;
@@ -48,7 +48,7 @@ public class Intersection<IN, OUT> implements PathElement<IN, OUT> {
 	
 	public Producer<Vector> getPoint() { return point; }
 
-	public Scalar getDistance() { return distance; }
+	public Producer<Scalar> getDistance() { return distance; }
 
 	@Override
 	public Iterable<Producer<IN>> getDependencies() {

@@ -19,13 +19,16 @@ package org.almostrealism.space;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.color.Light;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * @author  Michael Murray
  */
 public class LightingContext {
 	private Vector lightDirection;
 	private Light light;
-	private Light otherLights[];
+	private Iterable<Light> otherLights;
 	
 	/**
 	 * Sets the direction toward the light to the specified Vector object.
@@ -54,18 +57,18 @@ public class LightingContext {
 	 * 
 	 * @param l  Array of Light objects to use.
 	 */
-	public void setOtherLights(Light l[]) { this.otherLights = l; }
+	public void setOtherLights(Iterable<Light> l) { this.otherLights = l; }
 	
 	/** @return  An array of Light objects representing the other lights in the scene. */
-	public Light[] getOtherLights() { return this.otherLights; }
+	public Iterable<Light> getOtherLights() { return this.otherLights; }
 	
 	/**
 	 * TOOO  This should cache all lights, so that a new array is not created every time.
 	 */
-	public Light[] getAllLights() {
-		Light l[] = new Light[this.otherLights.length + 1];
-		for (int i = 0; i < this.otherLights.length; i++) l[i] = this.otherLights[i];
-		l[l.length - 1] = this.light;
-		return l;
+	public List<Light> getAllLights() {
+		List<Light> li = new ArrayList<>();
+		li.add(light);
+		for (Light l : otherLights) li.add(l);
+		return li;
 	}
 }

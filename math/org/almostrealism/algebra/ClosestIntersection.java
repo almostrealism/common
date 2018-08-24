@@ -25,15 +25,15 @@ import org.almostrealism.util.Producer;
 import java.util.ArrayList;
 import java.util.List;
 
-public class ClosestIntersection<T extends ShadableIntersection> extends ArrayList<Producer<Ray>> implements ContinuousField {
+public class ClosestIntersection extends ArrayList<Producer<Ray>> implements ContinuousField {
 	private Producer<Ray> r;
-	private List<Producer<T>> s;
+	private List<ContinuousField> s;
 
-	public ClosestIntersection(Producer<Ray> ray, Iterable<? extends Intersectable<T, ?>> surfaces) {
+	public ClosestIntersection(Producer<Ray> ray, Iterable<Intersectable> surfaces) {
 		r = ray;
 		s = new ArrayList<>();
 
-		for (Intersectable<T, ?> in : surfaces) {
+		for (Intersectable<?> in : surfaces) {
 			s.add(in.intersectAt(ray));
 		}
 
@@ -41,20 +41,22 @@ public class ClosestIntersection<T extends ShadableIntersection> extends ArrayLi
 			@Override
 			public Ray evaluate(Object[] args) {
 				double d = Double.MAX_VALUE;
-				T intersection = null;
+				ContinuousField intersection = null;
 
-				p: for (Producer<T> in : s) {
-					T inter = in.evaluate(args);
-					if (inter == null) continue p;
+				p: for (ContinuousField in : s) {
+					if (in == null) continue p;
 
-					double v = inter.getDistance().getValue();
+					Scalar s = (Scalar) ((ShadableIntersection) in).getDistance().evaluate(args);
+					if (s == null) continue p;
+
+					double v = s.getValue();
 					if (v >= 0.0 && v < d) {
 						d = v;
-						intersection = inter;
+						intersection = in;
 					}
 				}
 
-				return intersection.get(0).evaluate(args);
+				return intersection == null ? null : intersection.get(0).evaluate(args);
 			}
 
 			// TODO  Hardware acceleration
@@ -67,8 +69,34 @@ public class ClosestIntersection<T extends ShadableIntersection> extends ArrayLi
 
 	@Override
 	public Producer<Vector> getNormalAt(Vector point) {
-		// TODO
-		return null;
+		return new Producer<Vector>() {
+			@Override
+			public Vector evaluate(Object[] args) {
+				double d = Double.MAX_VALUE;
+				Vector normal = null;
+
+				p: for (ContinuousField in : s) {
+					if (in == null) continue p;
+
+					Scalar s = (Scalar) ((ShadableIntersection) in).getDistance().evaluate(args);
+					if (s == null) continue p;
+
+					double v = s.getValue();
+					if (v >= 0.0 && v < d) {
+						d = v;
+						normal = in.getNormalAt(point).evaluate(args);
+					}
+				}
+
+				return normal;
+			}
+
+			// TODO  Hardware acceleration
+			@Override
+			public void compact() {
+				r.compact();
+			}
+		};
 	}
 
 	@Override

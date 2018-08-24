@@ -23,8 +23,6 @@ import org.almostrealism.color.GeneratedColorProducer;
 import org.almostrealism.color.RGB;
 import org.almostrealism.geometry.Positioned;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.geometry.RayDirection;
-import org.almostrealism.geometry.RayPointAt;
 import org.almostrealism.math.AcceleratedProducer;
 import org.almostrealism.relation.Constant;
 import org.almostrealism.relation.Operator;
@@ -32,7 +30,6 @@ import org.almostrealism.relation.TripleFunction;
 import org.almostrealism.space.AbstractSurface;
 import org.almostrealism.space.BoundingSolid;
 import org.almostrealism.space.ShadableIntersection;
-import org.almostrealism.space.ShadableIntersectionProducer;
 import org.almostrealism.util.Producer;
 import org.almostrealism.util.StaticProducer;
 
@@ -356,8 +353,8 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 			
 			return new ImmutableVector(n);
 		} else {
-			if (this.useT) {
-				return new ImmutableVector(super.getTransform(true).getInverse().transformAsNormal(this.normal));
+			if (this.useT && getTransform(true) != null) {
+				return new ImmutableVector(getTransform(true).getInverse().transformAsNormal(this.normal));
 			} else {
 				return new ImmutableVector((Vector) this.normal.clone());
 			}
@@ -411,14 +408,14 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 	 * {@link Triangle} occurs.
 	 */
 	@Override
-	public Producer<ShadableIntersection> intersectAt(Producer ray) {
+	public ContinuousField intersectAt(Producer ray) {
 		TransformMatrix t = getTransform(true);
 		boolean ut = useT && t != null;
 		if (ut) ray = new RayMatrixTransform(t.getInverse(), ray);
 
 		if (enableHardwareOperator) {
-			return new ShadableIntersectionProducer(ray, this,
-									new AcceleratedProducer<Scalar>(
+			return new ShadableIntersection(this, ray,
+									new AcceleratedProducer<>(
 											"triangleIntersectAt",
 											false,
 											new Producer[] {
@@ -428,9 +425,9 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 		} else {
 			final Producer<Ray> fray = ray;
 
-			return new Producer<ShadableIntersection>() {
+			Producer<Scalar> s = new Producer<Scalar>() {
 				@Override
-				public ShadableIntersection evaluate(Object[] args) {
+				public Scalar evaluate(Object[] args) {
 					Ray r = fray.evaluate(args);
 
 					Vector jkl = Triangle.this.jkl.subtract(r.getOrigin());
@@ -463,11 +460,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 							def.getX() * (abc.getY() * jkl.getZ() - jkl.getY() * abc.getZ());
 					t = -1.0 * t / m;
 
-					Scalar ts = new Scalar(t);
-					StaticProducer tp = new StaticProducer<>(ts);
-
-					return new ShadableIntersection(Triangle.this, new RayPointAt(fray, tp),
-													new RayDirection(fray), ts);
+					return new Scalar(t);
 				}
 
 				@Override
@@ -475,6 +468,8 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 					// TODO
 				}
 			};
+
+			return new ShadableIntersection(this, ray, s);
 		}
 	}
 

@@ -28,6 +28,6 @@ public class TriangleTest {
 		Triangle t = new Triangle(new Vector(1.0, 1.0, -1.0),
 									new Vector(-1.0, 1.0, -1.0),
 									new Vector(0.0, -1.0, -1.0));
-		System.out.println(t.intersectAt(new StaticProducer(new Ray(new Vector(0.0, 0.0, 0.0), new Vector(0.0, 0.0, -1.0)))).evaluate(new Object[0]));
+		System.out.println(t.intersectAt(new StaticProducer(new Ray(new Vector(0.0, 0.0, 0.0), new Vector(0.0, 0.0, -1.0)))).get(0).evaluate(new Object[0]));
 	}
 }

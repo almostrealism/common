@@ -16,11 +16,8 @@
 
 package org.almostrealism.space;
 
-import org.almostrealism.algebra.Intersection;
-import org.almostrealism.algebra.RayMatrixTransform;
-import org.almostrealism.algebra.TransformMatrix;
+import org.almostrealism.algebra.*;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.algebra.Vector;
 import org.almostrealism.graph.Triangle;
 import org.almostrealism.util.Producer;
 
@@ -263,7 +260,7 @@ public class SpacePartition<T extends ShadableSurface> extends SurfaceGroup<T> {
 			return (right || left);
 		}
 		
-		public Producer<ShadableIntersection> intersectAt(Producer r) {
+		public ShadableIntersection intersectAt(Producer r) {
 			return null; // TODO
 			/*
 			List<ShadableIntersection> l = new ArrayList<ShadableIntersection>();
@@ -368,7 +365,7 @@ public class SpacePartition<T extends ShadableSurface> extends SurfaceGroup<T> {
 	}
 
 	@Override
-	public Producer<ShadableIntersection> intersectAt(Producer r) {
+	public ContinuousField intersectAt(Producer r) {
 		TransformMatrix t = getTransform(true);
 		boolean ut = t != null;
 		if (ut) r = new RayMatrixTransform(t.getInverse(), r);

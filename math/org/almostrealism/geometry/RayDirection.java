@@ -26,7 +26,10 @@ public class RayDirection implements Producer<Vector> {
 		this.r = r;
 	}
 
-	public Vector evaluate(Object args[]) { return r.evaluate(args).getDirection(); }
+	public Vector evaluate(Object args[]) {
+		Ray ray = r.evaluate(args);
+		return ray == null ? null : ray.getDirection();
+	}
 
 	@Override
 	public void compact() { r.compact(); }

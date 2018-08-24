@@ -25,14 +25,11 @@ import java.util.concurrent.TimeoutException;
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.geometry.RayDirection;
-import org.almostrealism.geometry.RayPointAt;
 import org.almostrealism.relation.Constant;
 import org.almostrealism.relation.Operator;
 import org.almostrealism.space.AbstractSurface;
 import org.almostrealism.space.ShadableIntersection;
 import org.almostrealism.util.Producer;
-import org.almostrealism.util.StaticProducer;
 
 /** A {@link Polynomial} represents a 3d polynomial surface. */
 public class Polynomial<IN> extends AbstractSurface<IN> {
@@ -369,10 +366,10 @@ public class Polynomial<IN> extends AbstractSurface<IN> {
 	 * represented by this {@link Polynomial} object occurs.
 	 */
 	@Override
-	public Producer<ShadableIntersection> intersectAt(Producer<Ray> r) {
-		return new Producer<ShadableIntersection>() {
+	public ShadableIntersection intersectAt(Producer<Ray> r) {
+		Producer <Scalar> s = new Producer<Scalar>() {
 			@Override
-			public ShadableIntersection evaluate(Object[] args) {
+			public Scalar evaluate(Object[] args) {
 				Ray ray = r.evaluate(args);
 				ray = ray.transform(getTransform(true).getInverse());
 
@@ -475,12 +472,7 @@ public class Polynomial<IN> extends AbstractSurface<IN> {
 					}
 				}
 
-				Scalar c = new Scalar(closest);
-
-
-				return new ShadableIntersection(Polynomial.this,
-												new RayPointAt(r, new StaticProducer<>(c)),
-												new RayDirection(r), c);
+				return new Scalar(closest);
 			}
 
 			@Override
@@ -488,6 +480,8 @@ public class Polynomial<IN> extends AbstractSurface<IN> {
 				r.compact();
 			}
 		};
+
+		return new ShadableIntersection(Polynomial.this, r, s);
 	}
 
 	@Override

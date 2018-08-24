@@ -25,5 +25,7 @@ public class VectorMathTest {
 		v.subtractFrom(new Vector(2, 2, 2));
 //		System.out.println(v.dotProduct(new Vector(1, 1, 1)));
 		System.out.println(v);
+
+		System.out.println(new Vector(2.0, 2.0, 2.0).divide(2.0));
 	}
 }

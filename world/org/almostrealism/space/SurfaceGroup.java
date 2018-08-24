@@ -188,37 +188,10 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 	 * (>= 0). If there is no intersection >= 0 along the ray, null is returned.
 	 */
 	@Override
-	public Producer<ShadableIntersection> intersectAt(Producer ray) {
+	public ContinuousField intersectAt(Producer ray) {
 		TransformMatrix m = getTransform(true);
 		if (m != null) ray = new RayMatrixTransform(m.getInverse(), ray);
-
-		final Producer<Ray> fray = ray;
-
-		return new Producer<ShadableIntersection>() {
-			@Override
-			public ShadableIntersection evaluate(Object[] args) {
-				double d = Double.MAX_VALUE;
-				ShadableIntersection intersection = null;
-
-				p: for (T in : SurfaceGroup.this) {
-					ShadableIntersection inter = in.intersectAt(fray).evaluate(args);
-					if (inter == null) continue p;
-
-					double v = inter.getDistance().getValue();
-					if (v >= 0.0 && v < d) {
-						d = v;
-						intersection = inter;
-					}
-				}
-
-				return intersection;
-			}
-
-			@Override
-			public void compact() {
-				// TODO
-			}
-		};
+		return new ClosestIntersection(ray, surfaces);
 	}
 
 	@Override

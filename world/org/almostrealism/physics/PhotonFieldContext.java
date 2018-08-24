@@ -35,15 +35,19 @@ public class PhotonFieldContext<T extends PhotonField, F extends Absorber> exten
 		this.film = film;
 	}
 
-	public PhotonFieldContext(ContinuousField intersection, Vector lightDirection, Light light, Light[] otherLights,
-							  Collection<Producer<RGB>> otherSurfaces, T field, F film) {
+	public PhotonFieldContext(ContinuousField intersection, Vector lightDirection,
+							  Light light, Iterable<Light> otherLights,
+							  Collection<Producer<RGB>> otherSurfaces,
+							  T field, F film) {
 		super(intersection, lightDirection, light, otherLights, otherSurfaces);
 		this.field = field;
 		this.film = film;
 	}
 
-	public PhotonFieldContext(ContinuousField intersection, Vector lightDirection, Light light, Light[] otherLights,
-							  Producer<RGB> surface, Producer<RGB>[] otherSurfaces, T field, F film) {
+	public PhotonFieldContext(ContinuousField intersection, Vector lightDirection,
+							  Light light, Iterable<Light> otherLights,
+							  Producer<RGB> surface, Producer<RGB>[] otherSurfaces,
+							  T field, F film) {
 		super(intersection, lightDirection, light, otherLights, surface, otherSurfaces);
 		this.field = field;
 		this.film = film;

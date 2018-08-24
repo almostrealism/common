@@ -22,6 +22,8 @@ import io.almostrealism.code.Scope;
 import org.almostrealism.algebra.*;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
+import org.almostrealism.geometry.RayDirection;
+import org.almostrealism.geometry.RayPointAt;
 import org.almostrealism.util.Producer;
 
 /**
@@ -32,9 +34,13 @@ import org.almostrealism.util.Producer;
 public class ShadableIntersection extends Intersection implements ContinuousField {
 	private Producer<Vector> incident;
 	private Producer<Ray> normal; // TODO  Change to Producer<Ray>
-	
-	public ShadableIntersection(Intersectable<ShadableIntersection, ?> surface,
-								Producer<Vector> point, Producer<Vector> incident, Scalar distance) {
+
+	public ShadableIntersection(Intersectable<?> surface, Producer<Ray> r, Producer<Scalar> distance) {
+		this(surface, new RayPointAt(r, distance), new RayDirection(r), distance);
+	}
+
+	public ShadableIntersection(Intersectable<?> surface,
+								Producer<Vector> point, Producer<Vector> incident, Producer<Scalar> distance) {
 		super(surface, point, distance);
 
 		this.incident = incident;

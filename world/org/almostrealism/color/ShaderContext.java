@@ -20,16 +20,15 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
-import java.util.concurrent.Callable;
 
 import org.almostrealism.algebra.ContinuousField;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.space.LightingContext;
 import org.almostrealism.util.Producer;
 
-
 /**
- * A {@link ShaderContext} object provides access to the set of {@link ColorProducer}s in a scene.
+ * A {@link ShaderContext} provides access to the set of {@link Producer}s
+ * in a {@link org.almostrealism.space.Scene}.
  * 
  * @author  Michael Murray
  */
@@ -60,12 +59,12 @@ public class ShaderContext extends LightingContext {
 	 * @param otherSurfaces  Collection of other Surface objects in the scene.
 	 */
 	public ShaderContext(ContinuousField intersection, Vector lightDirection, Light light,
-							Light otherLights[], Collection<Producer<RGB>> otherSurfaces) {
+							Iterable<Light> otherLights, Collection<Producer<RGB>> otherSurfaces) {
 		this(intersection, lightDirection, light, otherLights, otherSurfaces.toArray(new Producer[0]));
 	}
 	
 	private ShaderContext(ContinuousField intersection, Vector lightDirection, Light light,
-			Light otherLights[], Producer<RGB> otherSurfaces[]) {
+			Iterable<Light> otherLights, Producer<RGB> otherSurfaces[]) {
 		this(intersection, lightDirection, light, otherLights, null, otherSurfaces);
 	}
 	
@@ -80,7 +79,7 @@ public class ShaderContext extends LightingContext {
 	 * @param otherSurfaces  Array of other Surface objects in the scene.
 	 */
 	public ShaderContext(ContinuousField intersection, Vector lightDirection, Light light,
-							Light otherLights[], Producer<RGB> surface, Producer<RGB> otherSurfaces[]) {
+							Iterable<Light> otherLights, Producer<RGB> surface, Producer<RGB> otherSurfaces[]) {
 		this.intersection = intersection;
 		this.setLightDirection(lightDirection);
 		this.setLight(light);
@@ -115,7 +114,7 @@ public class ShaderContext extends LightingContext {
 	 * @param s  Array of Surface objects to use.
 	 */
 	public void setOtherSurfaces(Collection<Producer<RGB>> s) {
-		this.otherSurfaces = (Producer<RGB>[]) s.toArray(new Callable[0]);
+		this.otherSurfaces = (Producer<RGB>[]) s.toArray(new Producer[0]);
 	}
 	
 	/**
@@ -180,6 +179,6 @@ public class ShaderContext extends LightingContext {
 	@Override
 	public String toString() {
 		return this.intersection + ", " + this.getLightDirection() + ", " +
-				this.getLight() + ", " + Arrays.toString(this.getOtherLights()) + ", " + this.surface;
+				this.getLight() + ", " + this.getOtherLights() + ", " + this.surface;
 	}
 }

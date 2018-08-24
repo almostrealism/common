@@ -26,7 +26,10 @@ public class RayOrigin implements Producer<Vector> {
 		this.r = r;
 	}
 
-	public Vector evaluate(Object args[]) { return r.evaluate(args).getOrigin(); }
+	public Vector evaluate(Object args[]) {
+		Ray ray = r.evaluate(args);
+		return ray == null ? null : ray.getOrigin();
+	}
 
 	@Override
 	public void compact() { r.compact(); }

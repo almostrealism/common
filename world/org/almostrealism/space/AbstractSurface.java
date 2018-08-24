@@ -95,8 +95,12 @@ public abstract class AbstractSurface<IN> extends TriangulatableGeometry impleme
 	 * Sets the location, size, and color of this AbstractSurface to those specified.
 	 */
 	public AbstractSurface(Vector location, double size, RGB color) {
-		this(location, size);
-		this.setColor(color);
+		this.setShadeFront(true);
+		this.setShadeBack(false);
+
+		this.setTextures(new Texture[0]);
+
+		this.setColor(new RGB(0.0, 0.0, 0.0));
 	}
 	
 	/**
@@ -557,7 +561,7 @@ public abstract class AbstractSurface<IN> extends TriangulatableGeometry impleme
 	 * @return  The color of this AbstractSurface at the specified point as an RGB object.
 	 */
 	public RGB getColorAt(Vector point, boolean transform) {
-	    if (transform) point = getTransform(true).getInverse().transformAsLocation(point);
+	    if (transform && getTransform(true) != null) point = getTransform(true).getInverse().transformAsLocation(point);
 	    
 	    RGB colorAt = new RGB(0.0, 0.0, 0.0);
 	    
