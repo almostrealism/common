@@ -18,6 +18,7 @@ package org.almostrealism.space;
 
 import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -107,7 +108,7 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 	@Deprecated
 	public ShadableSurface getSurface(int index) {
 		System.out.println("Call to deprecated getSurface method");
-		return this.surfaces.get(index);
+		return (ShadableSurface) this.surfaces.get(index);
 	}
 	
 	public Iterator<T> iterator() { return surfaces.iterator(); }
@@ -191,7 +192,9 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 	public ContinuousField intersectAt(Producer ray) {
 		TransformMatrix m = getTransform(true);
 		if (m != null) ray = new RayMatrixTransform(m.getInverse(), ray);
-		return new ClosestIntersection(ray, (Iterable<Intersectable>) surfaces);
+		List<Intersectable> l = new ArrayList<>();
+		l.addAll(surfaces);
+		return new ClosestIntersection(ray, l);
 	}
 
 	@Override
