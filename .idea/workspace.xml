@@ -2,28 +2,7 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="">
-      <change type="DELETED" beforePath="$PROJECT_DIR$/world/org/almostrealism/space/ShadableIntersectionProducer.java" afterPath="" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/math/org/almostrealism/algebra/ClosestIntersection.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/algebra/ClosestIntersection.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/math/org/almostrealism/algebra/Intersectable.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/algebra/Intersectable.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/math/org/almostrealism/algebra/Intersection.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/algebra/Intersection.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/math/org/almostrealism/algebra/Polynomial.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/algebra/Polynomial.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/math/org/almostrealism/algebra/Vector.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/algebra/Vector.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/math/org/almostrealism/geometry/RayDirection.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/geometry/RayDirection.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/math/org/almostrealism/geometry/RayOrigin.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/geometry/RayOrigin.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/org/almostrealism/graph/Mesh.java" afterPath="$PROJECT_DIR$/src/org/almostrealism/graph/Mesh.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/org/almostrealism/graph/Triangle.java" afterPath="$PROJECT_DIR$/src/org/almostrealism/graph/Triangle.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/test/org/almostrealism/algebra/test/TriangleTest.java" afterPath="$PROJECT_DIR$/test/org/almostrealism/algebra/test/TriangleTest.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/test/org/almostrealism/algebra/test/VectorMathTest.java" afterPath="$PROJECT_DIR$/test/org/almostrealism/algebra/test/VectorMathTest.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/color/ShaderContext.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/color/ShaderContext.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/physics/PhotonFieldContext.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/physics/PhotonFieldContext.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/space/AbstractSurface.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/space/AbstractSurface.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/space/LightingContext.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/space/LightingContext.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/space/Plane.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/space/Plane.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/space/Scene.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/space/Scene.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/space/ShadableIntersection.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/space/ShadableIntersection.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/space/ShadableSurface.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/space/ShadableSurface.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/space/SpacePartition.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/space/SpacePartition.java" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/world/org/almostrealism/space/SurfaceGroup.java" afterPath="$PROJECT_DIR$/world/org/almostrealism/space/SurfaceGroup.java" />
     </list>
     <ignored path="$PROJECT_DIR$/target/" />
@@ -48,12 +27,24 @@
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="ClosestIntersection.java" pinned="false" current-in-tab="true">
+      <file leaf-file-name="ClosestIntersection.java" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/math/org/almostrealism/algebra/ClosestIntersection.java">
           <provider selected="true" editor-type-id="text-editor">
             <state relative-caret-position="120">
               <caret line="29" column="36" lean-forward="true" selection-start-line="29" selection-start-column="36" selection-end-line="29" selection-end-column="36" />
               <folding />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="SurfaceGroup.java" pinned="false" current-in-tab="true">
+        <entry file="file://$PROJECT_DIR$/world/org/almostrealism/space/SurfaceGroup.java">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="290">
+              <caret line="192" column="73" lean-forward="true" selection-start-line="192" selection-start-column="73" selection-end-line="192" selection-end-column="73" />
+              <folding>
+                <element signature="e#0#6416#0" expanded="true" />
+              </folding>
             </state>
           </provider>
         </entry>
@@ -158,7 +149,6 @@
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Intersectable.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/space/ShadableSurface.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/space/ShadableIntersection.java" />
-        <option value="$PROJECT_DIR$/world/org/almostrealism/space/SurfaceGroup.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/space/SpacePartition.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/space/Plane.java" />
         <option value="$PROJECT_DIR$/test/org/almostrealism/algebra/test/TriangleTest.java" />
@@ -166,6 +156,7 @@
         <option value="$PROJECT_DIR$/world/org/almostrealism/space/AbstractSurface.java" />
         <option value="$PROJECT_DIR$/src/org/almostrealism/graph/Mesh.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/ClosestIntersection.java" />
+        <option value="$PROJECT_DIR$/world/org/almostrealism/space/SurfaceGroup.java" />
       </list>
     </option>
   </component>
@@ -679,14 +670,7 @@
       <workItem from="1533335324517" duration="12813000" />
       <workItem from="1533683103857" duration="151000" />
       <workItem from="1533690757519" duration="527000" />
-      <workItem from="1535074963400" duration="26000" />
-    </task>
-    <task id="LOCAL-00088" summary="Migrating Rotf to double precision and use of the Vector class instead of Vec3f.">
-      <created>1520024369100</created>
-      <option name="number" value="00088" />
-      <option name="presentableId" value="LOCAL-00088" />
-      <option name="project" value="LOCAL" />
-      <updated>1520024369100</updated>
+      <workItem from="1535074963400" duration="119000" />
     </task>
     <task id="LOCAL-00089" summary="Migrated MathUtil functionality into Scalar.">
       <created>1520025746426</created>
@@ -1024,7 +1008,14 @@
       <option name="project" value="LOCAL" />
       <updated>1533405156609</updated>
     </task>
-    <option name="localTasksCounter" value="137" />
+    <task id="LOCAL-00137" summary="Many improvements working toward using Producer in place of Scalar.">
+      <created>1535075044036</created>
+      <option name="number" value="00137" />
+      <option name="presentableId" value="LOCAL-00137" />
+      <option name="project" value="LOCAL" />
+      <updated>1535075044036</updated>
+    </task>
+    <option name="localTasksCounter" value="138" />
     <servers />
   </component>
   <component name="TestHistory">
@@ -1060,7 +1051,7 @@
     </history-entry>
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="399854000" />
+    <option name="totallyTimeSpent" value="399947000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="0" y="0" width="1280" height="800" extended-state="6" />
@@ -1074,7 +1065,7 @@
       <window_info id="Maven Projects" active="false" anchor="right" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.32956383" sideWeight="0.5" order="4" side_tool="false" content_ui="tabs" />
       <window_info id="Version Control" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.3287483" sideWeight="0.5" order="11" side_tool="false" content_ui="tabs" />
       <window_info id="Run" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.7620358" sideWeight="0.5" order="2" side_tool="false" content_ui="tabs" />
-      <window_info id="Terminal" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.6244842" sideWeight="0.49030694" order="10" side_tool="false" content_ui="tabs" />
+      <window_info id="Terminal" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.6244842" sideWeight="0.49030694" order="10" side_tool="false" content_ui="tabs" />
       <window_info id="Capture Tool" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="2" side_tool="false" content_ui="tabs" />
       <window_info id="Designer" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="3" side_tool="false" content_ui="tabs" />
       <window_info id="Project" active="true" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.25767368" sideWeight="0.5" order="0" side_tool="false" content_ui="combo" />
@@ -1137,7 +1128,6 @@
   </component>
   <component name="VcsManagerConfiguration">
     <option name="CHECK_NEW_TODO" value="false" />
-    <MESSAGE value="Some improvements to the code generation features." />
     <MESSAGE value="Introduced PairFunction. Phasing out Vec2." />
     <MESSAGE value="Introduced VectorFutureAdapter and VectorProduct." />
     <MESSAGE value="Improved merge in Shell to avoid unmodifiable list." />
@@ -1162,7 +1152,8 @@
     <MESSAGE value="Many matrix operations and vector normalize converted to accelerated producers." />
     <MESSAGE value="Hardware acceleration for a range of other functions, as well as conversion of RGB to use cl_mem." />
     <MESSAGE value="Many minor improvements in further migration to using Producer throughout the API. Introduced RGBMultiply." />
-    <option name="LAST_COMMIT_MESSAGE" value="Many minor improvements in further migration to using Producer throughout the API. Introduced RGBMultiply." />
+    <MESSAGE value="Many improvements working toward using Producer in place of Scalar." />
+    <option name="LAST_COMMIT_MESSAGE" value="Many improvements working toward using Producer in place of Scalar." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -1235,6 +1226,16 @@
         <state relative-caret-position="120">
           <caret line="29" column="36" lean-forward="true" selection-start-line="29" selection-start-column="36" selection-end-line="29" selection-end-column="36" />
           <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/space/SurfaceGroup.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="290">
+          <caret line="192" column="73" lean-forward="true" selection-start-line="192" selection-start-column="73" selection-end-line="192" selection-end-column="73" />
+          <folding>
+            <element signature="e#0#6416#0" expanded="true" />
+          </folding>
         </state>
       </provider>
     </entry>
