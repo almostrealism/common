@@ -103,6 +103,10 @@ public class HardwareOperator<T extends MemWrapper> implements Operator<T>, Fact
 //		} else {
 		try {
 			for (int i = 0; i < argCount; i++) {
+				if (args[i] == null) {
+					throw new NullPointerException("argument " + i + " to function " + name);
+				}
+
 				CL.clSetKernelArg(kernel, index++, Sizeof.cl_mem, Pointer.to(((MemWrapper) args[i]).getMem()));
 			}
 
