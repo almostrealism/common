@@ -69,6 +69,10 @@ public class AcceleratedProducer<T extends MemWrapper> implements Producer<T> {
 			}
 		}
 
+		for (int i = 0; i < allArgs.length; i++) {
+			if (allArgs[i] == null) handleNull(i);
+		}
+
 		try {
 			return (T) operators.get(function).get().evaluate(allArgs);
 		} finally {
@@ -76,6 +80,15 @@ public class AcceleratedProducer<T extends MemWrapper> implements Producer<T> {
 				allArgs[i] = null;
 			}
 		}
+	}
+
+	/**
+	 * Override this method to provide a value to return from the function
+	 * should one of the parameters be null. The default implementation
+	 * throws a {@link NullPointerException}.
+	 */
+	protected T handleNull(int argIndex) {
+		throw new NullPointerException("argument " + argIndex + " to function " + function);
 	}
 
 	@Override

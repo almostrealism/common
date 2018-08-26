@@ -25,4 +25,17 @@ public class RayPointAt extends AcceleratedProducer<Vector> {
 	public RayPointAt(Producer<Ray> r, Producer<Scalar> t) {
 		super("rayPointAt", Vector.blank(), r, t);
 	}
+
+	/**
+	 * This implementation allows the {@link Scalar} argument to be null,
+	 * resulting in the function returning null.
+	 */
+	@Override
+	public Vector handleNull(int argIndex) {
+		if (argIndex == 2) {
+			return null;
+		}
+
+		return super.handleNull(argIndex);
+	}
 }
