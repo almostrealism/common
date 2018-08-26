@@ -3,7 +3,7 @@
   <component name="ChangeListManager">
     <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="">
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/math/org/almostrealism/math/HardwareOperator.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/math/HardwareOperator.java" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/math/org/almostrealism/math/AcceleratedProducer.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/math/AcceleratedProducer.java" />
     </list>
     <ignored path="$PROJECT_DIR$/target/" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -53,20 +53,42 @@
         <entry file="file://$PROJECT_DIR$/world/org/almostrealism/space/AbstractSurface.java">
           <provider selected="true" editor-type-id="text-editor">
             <state relative-caret-position="157">
-              <caret line="90" column="33" lean-forward="true" selection-start-line="90" selection-start-column="33" selection-end-line="90" selection-end-column="33" />
+              <caret line="90" column="33" lean-forward="false" selection-start-line="90" selection-start-column="33" selection-end-line="90" selection-end-column="33" />
               <folding />
             </state>
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="HardwareOperator.java" pinned="false" current-in-tab="true">
+      <file leaf-file-name="HardwareOperator.java" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/math/org/almostrealism/math/HardwareOperator.java">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="201">
-              <caret line="106" column="93" lean-forward="false" selection-start-line="106" selection-start-column="93" selection-end-line="106" selection-end-column="93" />
+            <state relative-caret-position="82">
+              <caret line="68" column="61" lean-forward="false" selection-start-line="68" selection-start-column="61" selection-end-line="68" selection-end-column="61" />
               <folding>
                 <element signature="e#0#4106#0" expanded="true" />
               </folding>
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="RayPointAt.java" pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/math/org/almostrealism/geometry/RayPointAt.java">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="330">
+              <caret line="27" column="0" lean-forward="false" selection-start-line="27" selection-start-column="0" selection-end-line="27" selection-end-column="0" />
+              <folding>
+                <element signature="e#0#1253#0" expanded="true" />
+              </folding>
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="AcceleratedProducer.java" pinned="false" current-in-tab="true">
+        <entry file="file://$PROJECT_DIR$/math/org/almostrealism/math/AcceleratedProducer.java">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="245">
+              <caret line="72" column="43" lean-forward="false" selection-start-line="72" selection-start-column="43" selection-end-line="72" selection-end-column="43" />
+              <folding />
             </state>
           </provider>
         </entry>
@@ -128,13 +150,11 @@
   <component name="IdeDocumentHistory">
     <option name="CHANGED_PATHS">
       <list>
-        <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/VectorNormalize.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/space/GeometryStack.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/space/TriangulatableGeometry.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/UnityVector.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/space/BasicGeometry.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/MatrixProduct.java" />
-        <option value="$PROJECT_DIR$/math/org/almostrealism/geometry/RayPointAt.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/math/MemWrapper.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/Pair.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/geometry/Ray.java" />
@@ -179,6 +199,8 @@
         <option value="$PROJECT_DIR$/world/org/almostrealism/space/SurfaceGroup.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/space/AbstractSurface.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/math/HardwareOperator.java" />
+        <option value="$PROJECT_DIR$/math/org/almostrealism/geometry/RayPointAt.java" />
+        <option value="$PROJECT_DIR$/math/org/almostrealism/math/AcceleratedProducer.java" />
       </list>
     </option>
   </component>
@@ -233,33 +255,6 @@
             <path>
               <item name="common" type="b2602c69:ProjectViewProjectNode" />
               <item name="common" type="462c0819:PsiDirectoryNode" />
-            </path>
-            <path>
-              <item name="common" type="b2602c69:ProjectViewProjectNode" />
-              <item name="common" type="462c0819:PsiDirectoryNode" />
-              <item name="resources" type="462c0819:PsiDirectoryNode" />
-            </path>
-            <path>
-              <item name="common" type="b2602c69:ProjectViewProjectNode" />
-              <item name="common" type="462c0819:PsiDirectoryNode" />
-              <item name="test" type="462c0819:PsiDirectoryNode" />
-            </path>
-            <path>
-              <item name="common" type="b2602c69:ProjectViewProjectNode" />
-              <item name="common" type="462c0819:PsiDirectoryNode" />
-              <item name="test" type="462c0819:PsiDirectoryNode" />
-              <item name="test" type="462c0819:PsiDirectoryNode" />
-            </path>
-            <path>
-              <item name="common" type="b2602c69:ProjectViewProjectNode" />
-              <item name="common" type="462c0819:PsiDirectoryNode" />
-              <item name="world" type="462c0819:PsiDirectoryNode" />
-            </path>
-            <path>
-              <item name="common" type="b2602c69:ProjectViewProjectNode" />
-              <item name="common" type="462c0819:PsiDirectoryNode" />
-              <item name="world" type="462c0819:PsiDirectoryNode" />
-              <item name="space" type="462c0819:PsiDirectoryNode" />
             </path>
           </expand>
           <select />
@@ -694,21 +689,7 @@
       <workItem from="1533690757519" duration="527000" />
       <workItem from="1535074963400" duration="658000" />
       <workItem from="1535138815942" duration="201000" />
-      <workItem from="1535303667317" duration="200000" />
-    </task>
-    <task id="LOCAL-00092" summary="Added xformPt method.">
-      <created>1520032112483</created>
-      <option name="number" value="00092" />
-      <option name="presentableId" value="LOCAL-00092" />
-      <option name="project" value="LOCAL" />
-      <updated>1520032112483</updated>
-    </task>
-    <task id="LOCAL-00093" summary="Added xformVec method.">
-      <created>1520032975124</created>
-      <option name="number" value="00093" />
-      <option name="presentableId" value="LOCAL-00093" />
-      <option name="project" value="LOCAL" />
-      <updated>1520032975124</updated>
+      <workItem from="1535303667317" duration="1427000" />
     </task>
     <task id="LOCAL-00094" summary="Normal calc.">
       <created>1520116103489</created>
@@ -1039,7 +1020,21 @@
       <option name="project" value="LOCAL" />
       <updated>1535138898534</updated>
     </task>
-    <option name="localTasksCounter" value="141" />
+    <task id="LOCAL-00141" summary="Improved error message when arguments to a HardwareOperator are null.">
+      <created>1535303892147</created>
+      <option name="number" value="00141" />
+      <option name="presentableId" value="LOCAL-00141" />
+      <option name="project" value="LOCAL" />
+      <updated>1535303892147</updated>
+    </task>
+    <task id="LOCAL-00142" summary="Introduced support for custom handling of null arguments by AcceleratedProducers. RayPointAt is the first to allow null values.">
+      <created>1535304957625</created>
+      <option name="number" value="00142" />
+      <option name="presentableId" value="LOCAL-00142" />
+      <option name="project" value="LOCAL" />
+      <updated>1535304957625</updated>
+    </task>
+    <option name="localTasksCounter" value="143" />
     <servers />
   </component>
   <component name="TestHistory">
@@ -1075,7 +1070,7 @@
     </history-entry>
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="400887000" />
+    <option name="totallyTimeSpent" value="402114000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="0" y="0" width="1280" height="800" extended-state="6" />
@@ -1152,8 +1147,6 @@
   </component>
   <component name="VcsManagerConfiguration">
     <option name="CHECK_NEW_TODO" value="false" />
-    <MESSAGE value="Introduced AcceleratedFunctions and GPUOperator, as well as some other classes involved in maintaining a OpenCL program and the corresponding set of named functions therein." />
-    <MESSAGE value="This is version 0.6." />
     <MESSAGE value="Beginning version 0.7." />
     <MESSAGE value="Introduced Pipeline (combination of Juncture and Producer). Updated GraphicsConverter so that each column can optionally notify a Pipeline." />
     <MESSAGE value="Improved RealizableImage so that evaluate returns rapidly with partial image data if the image pixel futures are not complete." />
@@ -1177,7 +1170,9 @@
     <MESSAGE value="Added cast." />
     <MESSAGE value="Work around for generics issue." />
     <MESSAGE value="Corrected AbstractSurface constructor." />
-    <option name="LAST_COMMIT_MESSAGE" value="Corrected AbstractSurface constructor." />
+    <MESSAGE value="Improved error message when arguments to a HardwareOperator are null." />
+    <MESSAGE value="Introduced support for custom handling of null arguments by AcceleratedProducers. RayPointAt is the first to allow null values." />
+    <option name="LAST_COMMIT_MESSAGE" value="Introduced support for custom handling of null arguments by AcceleratedProducers. RayPointAt is the first to allow null values." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -1322,18 +1317,36 @@
     <entry file="file://$PROJECT_DIR$/world/org/almostrealism/space/AbstractSurface.java">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="157">
-          <caret line="90" column="33" lean-forward="true" selection-start-line="90" selection-start-column="33" selection-end-line="90" selection-end-column="33" />
+          <caret line="90" column="33" lean-forward="false" selection-start-line="90" selection-start-column="33" selection-end-line="90" selection-end-column="33" />
           <folding />
         </state>
       </provider>
     </entry>
     <entry file="file://$PROJECT_DIR$/math/org/almostrealism/math/HardwareOperator.java">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="201">
-          <caret line="106" column="93" lean-forward="false" selection-start-line="106" selection-start-column="93" selection-end-line="106" selection-end-column="93" />
+        <state relative-caret-position="82">
+          <caret line="68" column="61" lean-forward="false" selection-start-line="68" selection-start-column="61" selection-end-line="68" selection-end-column="61" />
           <folding>
             <element signature="e#0#4106#0" expanded="true" />
           </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/geometry/RayPointAt.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="330">
+          <caret line="27" column="0" lean-forward="false" selection-start-line="27" selection-start-column="0" selection-end-line="27" selection-end-column="0" />
+          <folding>
+            <element signature="e#0#1253#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/math/AcceleratedProducer.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="245">
+          <caret line="72" column="43" lean-forward="false" selection-start-line="72" selection-start-column="43" selection-end-line="72" selection-end-column="43" />
+          <folding />
         </state>
       </provider>
     </entry>

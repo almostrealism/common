@@ -70,7 +70,7 @@ public class AcceleratedProducer<T extends MemWrapper> implements Producer<T> {
 		}
 
 		for (int i = 0; i < allArgs.length; i++) {
-			if (allArgs[i] == null) handleNull(i);
+			if (allArgs[i] == null) return handleNull(i);
 		}
 
 		try {
