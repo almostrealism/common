@@ -25,6 +25,7 @@ import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayDirection;
 import org.almostrealism.geometry.RayPointAt;
 import org.almostrealism.util.Producer;
+import org.almostrealism.util.ProducerWithRank;
 
 /**
  * Extends {@link Intersection} to provide metadata that is required for shading.
@@ -45,7 +46,7 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 
 		this.incident = incident;
 
-		normal = new Producer<Ray>() {
+		Producer p = new Producer<Ray>() {
 			public Ray evaluate(Object args[]) {
 				Vector p = (Vector) getPoint().evaluate(args);
 				if (p == null) return null;
@@ -56,6 +57,8 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 				// TODO  Compact surface.getNormalAt
 			}
 		};
+
+		normal = new ProducerWithRank<>(p, distance);
 	}
 	
 	/** Returns the viewer direction. */
