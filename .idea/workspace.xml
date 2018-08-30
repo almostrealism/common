@@ -5,11 +5,6 @@
       <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/src/org/almostrealism/util/ProducerWithRank.java" />
       <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/src/org/almostrealism/util/RankedChoiceProducer.java" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/math/org/almostrealism/geometry/Ray.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/geometry/Ray.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/math/org/almostrealism/math/AcceleratedFunctions.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/math/AcceleratedFunctions.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/math/org/almostrealism/math/AcceleratedProducer.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/math/AcceleratedProducer.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/math/org/almostrealism/math/Hardware.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/math/Hardware.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/resources/local.cl" afterPath="$PROJECT_DIR$/resources/local.cl" />
     </list>
     <ignored path="$PROJECT_DIR$/target/" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -24,7 +19,7 @@
       <file leaf-file-name="HardwareOperator.java" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/math/org/almostrealism/math/HardwareOperator.java">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="630">
+            <state relative-caret-position="0">
               <caret line="68" column="61" lean-forward="false" selection-start-line="68" selection-start-column="61" selection-end-line="68" selection-end-column="61" />
               <folding>
                 <element signature="e#0#4106#0" expanded="true" />
@@ -46,21 +41,8 @@
       <file leaf-file-name="RankedChoiceProducer.java" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/src/org/almostrealism/util/RankedChoiceProducer.java">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="240">
-              <caret line="30" column="38" lean-forward="false" selection-start-line="30" selection-start-column="38" selection-end-line="30" selection-end-column="38" />
-              <folding>
-                <element signature="e#812#813#0" expanded="true" />
-                <element signature="e#830#831#0" expanded="true" />
-              </folding>
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file leaf-file-name="ProducerWithRank.java" pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/src/org/almostrealism/util/ProducerWithRank.java">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="60">
-              <caret line="18" column="29" lean-forward="false" selection-start-line="18" selection-start-column="29" selection-end-line="18" selection-end-column="29" />
+            <state relative-caret-position="390">
+              <caret line="40" column="37" lean-forward="false" selection-start-line="40" selection-start-column="37" selection-end-line="40" selection-end-column="37" />
               <folding />
             </state>
           </provider>
@@ -687,14 +669,7 @@
       <workItem from="1535303667317" duration="2165000" />
       <workItem from="1535320697373" duration="389000" />
       <workItem from="1535418751084" duration="5428000" />
-      <workItem from="1535647705655" duration="594000" />
-    </task>
-    <task id="LOCAL-00096" summary="Added vector3Sub method.">
-      <created>1520130421652</created>
-      <option name="number" value="00096" />
-      <option name="presentableId" value="LOCAL-00096" />
-      <option name="project" value="LOCAL" />
-      <updated>1520130421652</updated>
+      <workItem from="1535647705655" duration="961000" />
     </task>
     <task id="LOCAL-00097" summary="Removed Vec3f. Added operations to Pair.">
       <created>1520241892165</created>
@@ -1032,7 +1007,14 @@
       <option name="project" value="LOCAL" />
       <updated>1535305251757</updated>
     </task>
-    <option name="localTasksCounter" value="145" />
+    <task id="LOCAL-00145" summary="Added support for OpenCL operations stored alongside subclasses of AcceleratedProducer. Moved some functionality of Ray into local.cl.">
+      <created>1535649155890</created>
+      <option name="number" value="00145" />
+      <option name="presentableId" value="LOCAL-00145" />
+      <option name="project" value="LOCAL" />
+      <updated>1535649155891</updated>
+    </task>
+    <option name="localTasksCounter" value="146" />
     <servers />
   </component>
   <component name="TestHistory">
@@ -1068,7 +1050,7 @@
     </history-entry>
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="409263000" />
+    <option name="totallyTimeSpent" value="409630000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="0" y="0" width="1280" height="800" extended-state="6" />
@@ -1145,7 +1127,6 @@
   </component>
   <component name="VcsManagerConfiguration">
     <option name="CHECK_NEW_TODO" value="false" />
-    <MESSAGE value="Improved RealizableImage so that evaluate returns rapidly with partial image data if the image pixel futures are not complete." />
     <MESSAGE value="Added isComplete and getCompleted methods to RealizableImage." />
     <MESSAGE value="Minor changes." />
     <MESSAGE value="Fixed a(n unbelievably challenging to diagnose) problem with hardware acceleration. Introduced hardware acceleration for TransformMatrix." />
@@ -1170,7 +1151,8 @@
     <MESSAGE value="Introduced support for custom handling of null arguments by AcceleratedProducers. RayPointAt is the first to allow null values." />
     <MESSAGE value="Corrected null handling in AcceleratedProducer." />
     <MESSAGE value="Handle null in ShadableIntersection." />
-    <option name="LAST_COMMIT_MESSAGE" value="Handle null in ShadableIntersection." />
+    <MESSAGE value="Added support for OpenCL operations stored alongside subclasses of AcceleratedProducer. Moved some functionality of Ray into local.cl." />
+    <option name="LAST_COMMIT_MESSAGE" value="Added support for OpenCL operations stored alongside subclasses of AcceleratedProducer. Moved some functionality of Ray into local.cl." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -1502,6 +1484,7 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="234">
           <caret line="2215" column="24" lean-forward="false" selection-start-line="2215" selection-start-column="24" selection-end-line="2215" selection-end-column="24" />
+          <folding />
         </state>
       </provider>
     </entry>
@@ -1509,6 +1492,7 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="180">
           <caret line="27" column="53" lean-forward="false" selection-start-line="27" selection-start-column="50" selection-end-line="27" selection-end-column="53" />
+          <folding />
         </state>
       </provider>
     </entry>
@@ -1522,7 +1506,7 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/math/org/almostrealism/math/HardwareOperator.java">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="630">
+        <state relative-caret-position="0">
           <caret line="68" column="61" lean-forward="false" selection-start-line="68" selection-start-column="61" selection-end-line="68" selection-end-column="61" />
           <folding>
             <element signature="e#0#4106#0" expanded="true" />
@@ -1567,20 +1551,17 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/src/org/almostrealism/util/ProducerWithRank.java">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="60">
-          <caret line="18" column="29" lean-forward="false" selection-start-line="18" selection-start-column="29" selection-end-line="18" selection-end-column="29" />
+        <state relative-caret-position="75">
+          <caret line="19" column="0" lean-forward="true" selection-start-line="19" selection-start-column="0" selection-end-line="19" selection-end-column="0" />
           <folding />
         </state>
       </provider>
     </entry>
     <entry file="file://$PROJECT_DIR$/src/org/almostrealism/util/RankedChoiceProducer.java">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="240">
-          <caret line="30" column="38" lean-forward="false" selection-start-line="30" selection-start-column="38" selection-end-line="30" selection-end-column="38" />
-          <folding>
-            <element signature="e#812#813#0" expanded="true" />
-            <element signature="e#830#831#0" expanded="true" />
-          </folding>
+        <state relative-caret-position="390">
+          <caret line="40" column="37" lean-forward="false" selection-start-line="40" selection-start-column="37" selection-end-line="40" selection-end-column="37" />
+          <folding />
         </state>
       </provider>
     </entry>
