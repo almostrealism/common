@@ -28,7 +28,8 @@ public class ProducerWithRank<T> implements Producer<T> {
 	 * {@link #evaluate(Object[])} method be overridden.
 	 */
 	protected ProducerWithRank(Producer<Scalar> rank) {
-		p = this;
+		this.p = this;
+		this.rank = rank;
 	}
 
 	public ProducerWithRank(Producer<T> p, Producer<Scalar> rank) {
