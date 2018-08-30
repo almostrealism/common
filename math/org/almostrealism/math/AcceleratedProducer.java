@@ -57,7 +57,7 @@ public class AcceleratedProducer<T extends MemWrapper> implements Producer<T> {
 			}
 
 			if (operators.get(function).get() == null) {
-				operators.get(function).set(Hardware.getLocalHardware().getFunctions().getOperators().get(function, kernel, allArgs.length));
+				operators.get(function).set(Hardware.getLocalHardware().getFunctions().getOperators(getClass()).get(function, kernel, allArgs.length));
 			}
 		}
 

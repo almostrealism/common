@@ -63,29 +63,19 @@ public class Ray implements MemWrapper, Cloneable {
 	}
 	
 	/**
-	 * Sets the origin of this Ray object to the specified origin vector.
+	 * Sets the origin of this {@link Ray} to the specified origin {@link Vector}.
 	 */
 	public void setOrigin(Vector origin) {
-		// TODO  This can be made faster
-		double coords[] = toArray();
 		double o[] = origin.toArray();
-		coords[0] = o[0];
-		coords[1] = o[1];
-		coords[2] = o[2];
-		setMem(coords);
+		setMem(0, o, 0, 3);
 	}
 	
 	/**
-	 * Sets the direction of this Ray object to the specified direction vector.
+	 * Sets the direction of this {@link Ray} to the specified direction {@link Vector}.
 	 */
 	public void setDirection(Vector direction) {
-		// TODO  This can be made faster
-		double coords[] = toArray();
 		double d[] = direction.toArray();
-		coords[3] = d[0];
-		coords[4] = d[1];
-		coords[5] = d[2];
-		setMem(coords);
+		setMem(3, d, 0, 3);
 	}
 	
 	/**
@@ -116,27 +106,21 @@ public class Ray implements MemWrapper, Cloneable {
 	/**
 	 * @return  The dot product of the origin of this ray with itself.
 	 */
-	public double oDoto() {
-		// TODO  Hardware accelerate
+	public Producer<Scalar> oDoto() {
 		// TODO  Cache
-		// TODO  Return Producer<Scalar>
-		double coords[] = toArray();
-		return coords[0] * coords[0] +
-				coords[1] * coords[1] +
-				coords[2] * coords[2];
+		return new AcceleratedProducer<>("rayODotO", false,
+										new Producer[] { Scalar.blank() },
+										new Object[] { this });
 	}
 	
 	/**
 	 * @return  The dot product of the direction of this ray with itself.
 	 */
-	public double dDotd() {
-		// TODO  Hardware accelerate
+	public Producer<Scalar> dDotd() {
 		// TODO  Cache
-		// TODO  Return Producer<Scalar>
-		double coords[] = toArray();
-		return coords[3] * coords[3] +
-				coords[4] * coords[4] +
-				coords[5] * coords[5];
+		return new AcceleratedProducer<>("rayDDotD", false,
+										new Producer[] { Scalar.blank() },
+										new Object[] { this });
 	}
 	
 	/**
@@ -185,7 +169,7 @@ public class Ray implements MemWrapper, Cloneable {
 	}
 
 	protected void setMem(int offset, double[] source, int srcOffset, int length) {
-		Pointer src = Pointer.to(source).withByteOffset(srcOffset* Sizeof.cl_double);
+		Pointer src = Pointer.to(source).withByteOffset(srcOffset * Sizeof.cl_double);
 		CL.clEnqueueWriteBuffer(Hardware.getLocalHardware().getQueue(), mem, CL.CL_TRUE,
 				offset * Sizeof.cl_double, length * Sizeof.cl_double,
 				src, 0, null, null);

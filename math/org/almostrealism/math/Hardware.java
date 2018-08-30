@@ -21,6 +21,7 @@ import org.jocl.*;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 
 /** An interface to OpenCL. */
@@ -90,11 +91,23 @@ public final class Hardware {
 	public AcceleratedFunctions getFunctions() { return functions; }
 
 	private static String loadSource(String name) {
+		return loadSource(Hardware.class.getClassLoader().getResourceAsStream(name + ".cl"), false);
+	}
+
+	protected static String loadSource(InputStream is) {
+		return loadSource(is, true);
+	}
+
+	protected static String loadSource(InputStream is, boolean includeLocal) {
 		StringBuffer buf = new StringBuffer();
 
+		if (includeLocal) {
+			buf.append(loadSource("local"));
+			buf.append("\n");
+		}
+
 		try (BufferedReader in =
-					 new BufferedReader(new InputStreamReader(
-					 		Hardware.class.getClassLoader().getResourceAsStream(name + ".cl")))) {
+					 new BufferedReader(new InputStreamReader(is))) {
 			String line;
 
 			while ((line = in.readLine()) != null) {

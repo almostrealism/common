@@ -15,6 +15,33 @@ __kernel void scalarCopy_globalToLocal(__local double *res, __global const doubl
     res[resOffset + 1] = m[mOffset + 1];
 }
 
+__kernel void rayCopy_local(__local double *res, __local const double *m, const int resOffset, const int mOffset) {
+    res[resOffset]     = m[mOffset];
+    res[resOffset + 1] = m[mOffset + 1];
+    res[resOffset + 2] = m[mOffset + 2];
+    res[resOffset + 3] = m[mOffset + 3];
+    res[resOffset + 4] = m[mOffset + 4];
+    res[resOffset + 5] = m[mOffset + 5];
+}
+
+__kernel void rayCopy_localToGlobal(__global double *res, __local const double *m, const int resOffset, const int mOffset) {
+    res[resOffset]     = m[mOffset];
+    res[resOffset + 1] = m[mOffset + 1];
+    res[resOffset + 2] = m[mOffset + 2];
+    res[resOffset + 3] = m[mOffset + 3];
+    res[resOffset + 4] = m[mOffset + 4];
+    res[resOffset + 5] = m[mOffset + 5];
+}
+
+__kernel void rayCopy_globalToLocal(__local double *res, __global const double *m, const int resOffset, const int mOffset) {
+    res[resOffset]     = m[mOffset];
+    res[resOffset + 1] = m[mOffset + 1];
+    res[resOffset + 2] = m[mOffset + 2];
+    res[resOffset + 3] = m[mOffset + 3];
+    res[resOffset + 4] = m[mOffset + 4];
+    res[resOffset + 5] = m[mOffset + 5];
+}
+
 __kernel void matrixCopy_local(__local double *res, __local const double *m, const int resOffset, const int mOffset) {
     res[resOffset]     = m[mOffset];
     res[resOffset + 1] = m[mOffset + 1];
@@ -182,10 +209,45 @@ dotProduct(__global double *res, __global const double *a, __global const double
 }
 
 __kernel void
+rayODotO_local(__local double *res, __local const double *r, const int resOffset, const int rOffset) {
+	res[resOffset] = r[rOffset] * r[rOffset] +
+	                r[rOffset + 1] * r[rOffset + 1] +
+	                r[rOffset + 2] * r[rOffset + 2];
+}
+
+__kernel void
+rayODotO(__global double *res, __global const double *r, const int resOffset, const int rOffset) {
+	res[resOffset] = r[rOffset] * r[rOffset] +
+	                r[rOffset + 1] * r[rOffset + 1] +
+	                r[rOffset + 2] * r[rOffset + 2];
+}
+
+__kernel void
+rayDDotD_local(__local double *res, __local const double *r, const int resOffset, const int rOffset) {
+	res[resOffset] = r[rOffset + 3] * r[rOffset + 3] +
+	                r[rOffset + 4] * r[rOffset + 4] +
+	                r[rOffset + 5] * r[rOffset + 5];
+}
+
+__kernel void
+rayDDotD(__global double *res, __global const double *r, const int resOffset, const int rOffset) {
+	res[resOffset] = r[rOffset + 3] * r[rOffset + 3] +
+	                r[rOffset + 4] * r[rOffset + 4] +
+	                r[rOffset + 5] * r[rOffset + 5];
+}
+
+__kernel void
+rayODotD_local(__local double *res, __local const double *r, const int resOffset, const int rOffset) {
+    res[resOffset] = r[rOffset] * r[rOffset + 3] +
+			        r[rOffset + 1] * r[rOffset + 4] +
+			        r[rOffset + 2] * r[rOffset + 5];
+}
+
+__kernel void
 rayODotD(__global double *res, __global const double *r, const int resOffset, const int rOffset) {
     res[resOffset] = r[rOffset] * r[rOffset + 3] +
-			r[rOffset + 1] * r[rOffset + 4] +
-			r[rOffset + 2] * r[rOffset + 5];
+			        r[rOffset + 1] * r[rOffset + 4] +
+			        r[rOffset + 2] * r[rOffset + 5];
 }
 
 __kernel void
@@ -525,10 +587,6 @@ triangleIntersectAt(__global double *res,
                     __global const double *abc, __global const double *def, __global const double *jkl,
                     const int resOffset, const int rOffset,
                     const int abcOffset, const int defOffset, const int jklOffset) {
-    double j = jkl[jklOffset] - r[rOffset];
-    double k = jkl[jklOffset + 1] - r[rOffset + 1];
-    double l = jkl[jklOffset + 2] - r[rOffset + 2];
-
     double m = abc[abcOffset]       * (def[defOffset + 1] * r[rOffset + 5]  - r[rOffset + 4] * def[defOffset + 2]) +
                abc[abcOffset + 1]   * (r[rOffset + 3] * def[defOffset + 2]  - def[defOffset] * r[rOffset + 5]) +
                abc[abcOffset + 2]   * (def[defOffset] * r[rOffset + 4]      - def[defOffset + 1] * r[rOffset + 3]);

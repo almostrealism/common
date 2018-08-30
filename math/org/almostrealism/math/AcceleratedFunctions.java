@@ -16,15 +16,36 @@
 
 package org.almostrealism.math;
 
+import java.io.InputStream;
+import java.util.HashMap;
+import java.util.Map;
+
 /**
  * A wrapper for kernel programs in JOCL.
  */
 public class AcceleratedFunctions {
-	private HardwareOperatorMap prog;
+	private Hardware hardware;
+	private HardwareOperatorMap base;
+	private Map<Class, HardwareOperatorMap> extensions;
 
-	protected void init(Hardware h, String src) {
-		prog = new HardwareOperatorMap(h, src);
+	protected synchronized void init(Hardware h, String src) {
+		hardware = h;
+		base = new HardwareOperatorMap(h, src);
+		extensions = new HashMap<>();
 	}
 
-	public HardwareOperatorMap getOperators() { return prog; }
+	public synchronized HardwareOperatorMap getOperators() { return base; }
+
+	public synchronized HardwareOperatorMap getOperators(Class c) {
+		if (!extensions.containsKey(c)) {
+			InputStream in = c.getResourceAsStream(c.getSimpleName() + ".cl");
+			if (in == null) {
+				extensions.put(c, base);
+			} else {
+				extensions.put(c, new HardwareOperatorMap(hardware, Hardware.loadSource(in)));
+			}
+		}
+
+		return extensions.get(c);
+	}
 }
