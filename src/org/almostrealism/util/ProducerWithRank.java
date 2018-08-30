@@ -22,6 +22,15 @@ public class ProducerWithRank<T> implements Producer<T> {
 	private Producer<T> p;
 	private Producer<Scalar> rank;
 
+	/**
+	 * This constructor uses this {@link Producer} as the
+	 * {@link Producer} argument, which requires that the
+	 * {@link #evaluate(Object[])} method be overridden.
+	 */
+	protected ProducerWithRank(Producer<Scalar> rank) {
+		p = this;
+	}
+
 	public ProducerWithRank(Producer<T> p, Producer<Scalar> rank) {
 		this.p = p;
 		this.rank = rank;
@@ -32,11 +41,14 @@ public class ProducerWithRank<T> implements Producer<T> {
 	public Producer<Scalar> getRank() { return rank; }
 
 	@Override
-	public T evaluate(Object[] args) { return p.evaluate(args); }
+	public T evaluate(Object[] args) {
+		if (p == this) return null;
+		return p.evaluate(args);
+	}
 
 	@Override
 	public void compact() {
-		p.compact();
+		if (p != this) p.compact();
 		rank.compact();
 	}
 }

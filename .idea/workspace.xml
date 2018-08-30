@@ -37,11 +37,21 @@
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="RankedChoiceProducer.java" pinned="false" current-in-tab="true">
+      <file leaf-file-name="RankedChoiceProducer.java" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/src/org/almostrealism/util/RankedChoiceProducer.java">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="390">
-              <caret line="40" column="37" lean-forward="false" selection-start-line="40" selection-start-column="37" selection-end-line="40" selection-end-column="37" />
+            <state relative-caret-position="30">
+              <caret line="16" column="31" lean-forward="false" selection-start-line="16" selection-start-column="31" selection-end-line="16" selection-end-column="31" />
+              <folding />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="ShadableIntersection.java" pinned="false" current-in-tab="true">
+        <entry file="file://$PROJECT_DIR$/world/org/almostrealism/space/ShadableIntersection.java">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="89">
+              <caret line="34" column="53" lean-forward="true" selection-start-line="34" selection-start-column="53" selection-end-line="34" selection-end-column="53" />
               <folding />
             </state>
           </provider>
@@ -147,13 +157,13 @@
         <option value="$PROJECT_DIR$/world/org/almostrealism/space/AbstractSurface.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/math/HardwareOperator.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/geometry/RayPointAt.java" />
-        <option value="$PROJECT_DIR$/world/org/almostrealism/space/ShadableIntersection.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/math/AcceleratedProducer.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/math/AcceleratedFunctions.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/math/Hardware.java" />
         <option value="$PROJECT_DIR$/resources/local.cl" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/geometry/Ray.java" />
         <option value="$PROJECT_DIR$/src/org/almostrealism/util/RankedChoiceProducer.java" />
+        <option value="$PROJECT_DIR$/world/org/almostrealism/space/ShadableIntersection.java" />
         <option value="$PROJECT_DIR$/src/org/almostrealism/util/ProducerWithRank.java" />
       </list>
     </option>
@@ -668,21 +678,7 @@
       <workItem from="1535303667317" duration="2165000" />
       <workItem from="1535320697373" duration="389000" />
       <workItem from="1535418751084" duration="5428000" />
-      <workItem from="1535647705655" duration="1269000" />
-    </task>
-    <task id="LOCAL-00098" summary="Added toPair method to Veci. Vec3d implements Triple.">
-      <created>1520326853202</created>
-      <option name="number" value="00098" />
-      <option name="presentableId" value="LOCAL-00098" />
-      <option name="project" value="LOCAL" />
-      <updated>1520326853202</updated>
-    </task>
-    <task id="LOCAL-00099" summary="Removed Vec3d.">
-      <created>1520326893063</created>
-      <option name="number" value="00099" />
-      <option name="presentableId" value="LOCAL-00099" />
-      <option name="project" value="LOCAL" />
-      <updated>1520326893063</updated>
+      <workItem from="1535647705655" duration="2128000" />
     </task>
     <task id="LOCAL-00100" summary="Added multiplyBy method.">
       <created>1520327789440</created>
@@ -1013,7 +1009,21 @@
       <option name="project" value="LOCAL" />
       <updated>1535649530310</updated>
     </task>
-    <option name="localTasksCounter" value="147" />
+    <task id="LOCAL-00147" summary="ProducerWithRank is a Producer.">
+      <created>1535649788887</created>
+      <option name="number" value="00147" />
+      <option name="presentableId" value="LOCAL-00147" />
+      <option name="project" value="LOCAL" />
+      <updated>1535649788888</updated>
+    </task>
+    <task id="LOCAL-00148" summary="ShadableIntersection uses ProducerWithRank so that RankedChoiceProducer can be used in ray tracing.">
+      <created>1535649949773</created>
+      <option name="number" value="00148" />
+      <option name="presentableId" value="LOCAL-00148" />
+      <option name="project" value="LOCAL" />
+      <updated>1535649949773</updated>
+    </task>
+    <option name="localTasksCounter" value="149" />
     <servers />
   </component>
   <component name="TestHistory">
@@ -1049,7 +1059,7 @@
     </history-entry>
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="409938000" />
+    <option name="totallyTimeSpent" value="410797000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="0" y="0" width="1280" height="800" extended-state="6" />
@@ -1126,8 +1136,6 @@
   </component>
   <component name="VcsManagerConfiguration">
     <option name="CHECK_NEW_TODO" value="false" />
-    <MESSAGE value="Minor changes." />
-    <MESSAGE value="Fixed a(n unbelievably challenging to diagnose) problem with hardware acceleration. Introduced hardware acceleration for TransformMatrix." />
     <MESSAGE value="Corrected TransformMatrix.getMatrix method." />
     <MESSAGE value="Implemented TransformMatrix.clone." />
     <MESSAGE value="Fixed bug in kernel programs." />
@@ -1151,7 +1159,9 @@
     <MESSAGE value="Handle null in ShadableIntersection." />
     <MESSAGE value="Added support for OpenCL operations stored alongside subclasses of AcceleratedProducer. Moved some functionality of Ray into local.cl." />
     <MESSAGE value="Introduced RankedChoiceProducer, which selects a Producer from a collection of ProducerWithRank based on the best rank (closest to zero without being negative)." />
-    <option name="LAST_COMMIT_MESSAGE" value="Introduced RankedChoiceProducer, which selects a Producer from a collection of ProducerWithRank based on the best rank (closest to zero without being negative)." />
+    <MESSAGE value="ProducerWithRank is a Producer." />
+    <MESSAGE value="ShadableIntersection uses ProducerWithRank so that RankedChoiceProducer can be used in ray tracing." />
+    <option name="LAST_COMMIT_MESSAGE" value="ShadableIntersection uses ProducerWithRank so that RankedChoiceProducer can be used in ray tracing." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -1248,6 +1258,9 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="10170">
           <caret line="741" column="0" lean-forward="false" selection-start-line="741" selection-start-column="0" selection-end-line="741" selection-end-column="0" />
+          <folding>
+            <element signature="e#0#28269#0" expanded="false" />
+          </folding>
         </state>
       </provider>
     </entry>
@@ -1255,6 +1268,7 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="120">
           <caret line="29" column="36" lean-forward="false" selection-start-line="29" selection-start-column="36" selection-end-line="29" selection-end-column="36" />
+          <folding />
         </state>
       </provider>
     </entry>
@@ -1269,6 +1283,7 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="870">
           <caret line="90" column="33" lean-forward="false" selection-start-line="90" selection-start-column="33" selection-end-line="90" selection-end-column="33" />
+          <folding />
         </state>
       </provider>
     </entry>
@@ -1304,6 +1319,7 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="420">
           <caret line="50" column="43" lean-forward="false" selection-start-line="50" selection-start-column="43" selection-end-line="50" selection-end-column="43" />
+          <folding />
         </state>
       </provider>
     </entry>
@@ -1319,6 +1335,9 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="10170">
           <caret line="741" column="0" lean-forward="false" selection-start-line="741" selection-start-column="0" selection-end-line="741" selection-end-column="0" />
+          <folding>
+            <element signature="e#0#28269#0" expanded="false" />
+          </folding>
         </state>
       </provider>
     </entry>
@@ -1326,6 +1345,7 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="120">
           <caret line="29" column="36" lean-forward="false" selection-start-line="29" selection-start-column="36" selection-end-line="29" selection-end-column="36" />
+          <folding />
         </state>
       </provider>
     </entry>
@@ -1340,6 +1360,7 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="870">
           <caret line="90" column="33" lean-forward="false" selection-start-line="90" selection-start-column="33" selection-end-line="90" selection-end-column="33" />
+          <folding />
         </state>
       </provider>
     </entry>
@@ -1375,6 +1396,7 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="420">
           <caret line="50" column="43" lean-forward="false" selection-start-line="50" selection-start-column="43" selection-end-line="50" selection-end-column="43" />
+          <folding />
         </state>
       </provider>
     </entry>
@@ -1382,6 +1404,9 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="10170">
           <caret line="741" column="0" lean-forward="false" selection-start-line="741" selection-start-column="0" selection-end-line="741" selection-end-column="0" />
+          <folding>
+            <element signature="e#0#28269#0" expanded="false" />
+          </folding>
         </state>
       </provider>
     </entry>
@@ -1389,6 +1414,7 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="120">
           <caret line="29" column="36" lean-forward="false" selection-start-line="29" selection-start-column="36" selection-end-line="29" selection-end-column="36" />
+          <folding />
         </state>
       </provider>
     </entry>
@@ -1403,6 +1429,7 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="795">
           <caret line="85" column="41" lean-forward="false" selection-start-line="85" selection-start-column="41" selection-end-line="85" selection-end-column="41" />
+          <folding />
         </state>
       </provider>
     </entry>
@@ -1410,6 +1437,9 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="10170">
           <caret line="741" column="0" lean-forward="false" selection-start-line="741" selection-start-column="0" selection-end-line="741" selection-end-column="0" />
+          <folding>
+            <element signature="e#0#28269#0" expanded="false" />
+          </folding>
         </state>
       </provider>
     </entry>
@@ -1417,6 +1447,7 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="120">
           <caret line="29" column="36" lean-forward="false" selection-start-line="29" selection-start-column="36" selection-end-line="29" selection-end-column="36" />
+          <folding />
         </state>
       </provider>
     </entry>
@@ -1431,6 +1462,9 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="0">
           <caret line="0" column="0" lean-forward="false" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
+          <folding>
+            <element signature="e#0#28269#0" expanded="false" />
+          </folding>
         </state>
       </provider>
     </entry>
@@ -1438,6 +1472,9 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="10170">
           <caret line="741" column="0" lean-forward="false" selection-start-line="741" selection-start-column="0" selection-end-line="741" selection-end-column="0" />
+          <folding>
+            <element signature="e#0#28269#0" expanded="false" />
+          </folding>
         </state>
       </provider>
     </entry>
@@ -1445,6 +1482,7 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="120">
           <caret line="29" column="36" lean-forward="false" selection-start-line="29" selection-start-column="36" selection-end-line="29" selection-end-column="36" />
+          <folding />
         </state>
       </provider>
     </entry>
@@ -1459,6 +1497,7 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="870">
           <caret line="90" column="33" lean-forward="false" selection-start-line="90" selection-start-column="33" selection-end-line="90" selection-end-column="33" />
+          <folding />
         </state>
       </provider>
     </entry>
@@ -1469,13 +1508,6 @@
           <folding>
             <element signature="e#0#1253#0" expanded="false" />
           </folding>
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/space/ShadableIntersection.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="420">
-          <caret line="50" column="43" lean-forward="false" selection-start-line="50" selection-start-column="43" selection-end-line="50" selection-end-column="43" />
         </state>
       </provider>
     </entry>
@@ -1548,18 +1580,29 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/src/org/almostrealism/util/ProducerWithRank.java">
+    <entry file="file://$PROJECT_DIR$/src/org/almostrealism/util/RankedChoiceProducer.java">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="360">
-          <caret line="38" column="20" lean-forward="true" selection-start-line="38" selection-start-column="20" selection-end-line="38" selection-end-column="20" />
+        <state relative-caret-position="30">
+          <caret line="16" column="31" lean-forward="false" selection-start-line="16" selection-start-column="31" selection-end-line="16" selection-end-column="31" />
           <folding />
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/src/org/almostrealism/util/RankedChoiceProducer.java">
+    <entry file="file://$PROJECT_DIR$/src/org/almostrealism/util/ProducerWithRank.java">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="390">
-          <caret line="40" column="37" lean-forward="false" selection-start-line="40" selection-start-column="37" selection-end-line="40" selection-end-column="37" />
+        <state relative-caret-position="195">
+          <caret line="27" column="56" lean-forward="true" selection-start-line="27" selection-start-column="56" selection-end-line="27" selection-end-column="56" />
+          <folding>
+            <element signature="e#1022#1023#0" expanded="true" />
+            <element signature="e#1037#1038#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/space/ShadableIntersection.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="89">
+          <caret line="34" column="53" lean-forward="true" selection-start-line="34" selection-start-column="53" selection-end-line="34" selection-end-column="53" />
           <folding />
         </state>
       </provider>
