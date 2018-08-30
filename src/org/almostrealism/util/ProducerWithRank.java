@@ -18,7 +18,7 @@ package org.almostrealism.util;
 
 import org.almostrealism.algebra.Scalar;
 
-public class ProducerWithRank<T> {
+public class ProducerWithRank<T> implements Producer<T> {
 	private Producer<T> p;
 	private Producer<Scalar> rank;
 
@@ -30,4 +30,13 @@ public class ProducerWithRank<T> {
 	public Producer<T> getProducer() { return p; }
 
 	public Producer<Scalar> getRank() { return rank; }
+
+	@Override
+	public T evaluate(Object[] args) { return p.evaluate(args); }
+
+	@Override
+	public void compact() {
+		p.compact();
+		rank.compact();
+	}
 }

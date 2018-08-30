@@ -2,9 +2,8 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="">
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/src/org/almostrealism/util/ProducerWithRank.java" />
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/src/org/almostrealism/util/RankedChoiceProducer.java" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/org/almostrealism/util/ProducerWithRank.java" afterPath="$PROJECT_DIR$/src/org/almostrealism/util/ProducerWithRank.java" />
     </list>
     <ignored path="$PROJECT_DIR$/target/" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -154,8 +153,8 @@
         <option value="$PROJECT_DIR$/math/org/almostrealism/math/Hardware.java" />
         <option value="$PROJECT_DIR$/resources/local.cl" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/geometry/Ray.java" />
-        <option value="$PROJECT_DIR$/src/org/almostrealism/util/ProducerWithRank.java" />
         <option value="$PROJECT_DIR$/src/org/almostrealism/util/RankedChoiceProducer.java" />
+        <option value="$PROJECT_DIR$/src/org/almostrealism/util/ProducerWithRank.java" />
       </list>
     </option>
   </component>
@@ -669,14 +668,7 @@
       <workItem from="1535303667317" duration="2165000" />
       <workItem from="1535320697373" duration="389000" />
       <workItem from="1535418751084" duration="5428000" />
-      <workItem from="1535647705655" duration="961000" />
-    </task>
-    <task id="LOCAL-00097" summary="Removed Vec3f. Added operations to Pair.">
-      <created>1520241892165</created>
-      <option name="number" value="00097" />
-      <option name="presentableId" value="LOCAL-00097" />
-      <option name="project" value="LOCAL" />
-      <updated>1520241892169</updated>
+      <workItem from="1535647705655" duration="1269000" />
     </task>
     <task id="LOCAL-00098" summary="Added toPair method to Veci. Vec3d implements Triple.">
       <created>1520326853202</created>
@@ -1014,7 +1006,14 @@
       <option name="project" value="LOCAL" />
       <updated>1535649155891</updated>
     </task>
-    <option name="localTasksCounter" value="146" />
+    <task id="LOCAL-00146" summary="Introduced RankedChoiceProducer, which selects a Producer from a collection of ProducerWithRank based on the best rank (closest to zero without being negative).">
+      <created>1535649530310</created>
+      <option name="number" value="00146" />
+      <option name="presentableId" value="LOCAL-00146" />
+      <option name="project" value="LOCAL" />
+      <updated>1535649530310</updated>
+    </task>
+    <option name="localTasksCounter" value="147" />
     <servers />
   </component>
   <component name="TestHistory">
@@ -1050,7 +1049,7 @@
     </history-entry>
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="409630000" />
+    <option name="totallyTimeSpent" value="409938000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="0" y="0" width="1280" height="800" extended-state="6" />
@@ -1127,7 +1126,6 @@
   </component>
   <component name="VcsManagerConfiguration">
     <option name="CHECK_NEW_TODO" value="false" />
-    <MESSAGE value="Added isComplete and getCompleted methods to RealizableImage." />
     <MESSAGE value="Minor changes." />
     <MESSAGE value="Fixed a(n unbelievably challenging to diagnose) problem with hardware acceleration. Introduced hardware acceleration for TransformMatrix." />
     <MESSAGE value="Corrected TransformMatrix.getMatrix method." />
@@ -1152,7 +1150,8 @@
     <MESSAGE value="Corrected null handling in AcceleratedProducer." />
     <MESSAGE value="Handle null in ShadableIntersection." />
     <MESSAGE value="Added support for OpenCL operations stored alongside subclasses of AcceleratedProducer. Moved some functionality of Ray into local.cl." />
-    <option name="LAST_COMMIT_MESSAGE" value="Added support for OpenCL operations stored alongside subclasses of AcceleratedProducer. Moved some functionality of Ray into local.cl." />
+    <MESSAGE value="Introduced RankedChoiceProducer, which selects a Producer from a collection of ProducerWithRank based on the best rank (closest to zero without being negative)." />
+    <option name="LAST_COMMIT_MESSAGE" value="Introduced RankedChoiceProducer, which selects a Producer from a collection of ProducerWithRank based on the best rank (closest to zero without being negative)." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -1551,8 +1550,8 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/src/org/almostrealism/util/ProducerWithRank.java">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="75">
-          <caret line="19" column="0" lean-forward="true" selection-start-line="19" selection-start-column="0" selection-end-line="19" selection-end-column="0" />
+        <state relative-caret-position="360">
+          <caret line="38" column="20" lean-forward="true" selection-start-line="38" selection-start-column="20" selection-end-line="38" selection-end-column="20" />
           <folding />
         </state>
       </provider>
