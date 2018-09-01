@@ -14,15 +14,25 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.algebra;
+package org.almostrealism.geometry;
 
-import org.almostrealism.geometry.Ray;
-import org.almostrealism.geometry.RayCopy;
-import org.almostrealism.math.AcceleratedProducer;
 import org.almostrealism.util.Producer;
 
-public class RayMatrixTransform extends AcceleratedProducer<Ray> {
-	public RayMatrixTransform(TransformMatrix t, Producer<Ray> r) {
-		super("rayMatrixTransform", false, new Producer[] { new RayCopy(r) }, new Object[] { t });
+// TODO  Convert to accelerated producer
+public class RayCopy implements Producer<Ray> {
+	private Producer<Ray> r;
+
+	public RayCopy(Producer<Ray> r) {
+		this.r = r;
+	}
+
+	@Override
+	public Ray evaluate(Object args[]) {
+		return (Ray) r.evaluate(args).clone();
+	}
+
+	@Override
+	public void compact() {
+		// TODO
 	}
 }

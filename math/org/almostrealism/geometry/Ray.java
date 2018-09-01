@@ -193,6 +193,22 @@ public class Ray implements MemWrapper, Cloneable {
 	protected void getMem(double out[], int offset) { getMem(0, out, offset, 6); }
 
 	@Override
+	public boolean equals(Object o) {
+		if (o instanceof Ray == false) return false;
+		double r1[] = this.toArray();
+		double r2[] = ((Ray) o).toArray();
+
+		for (int i = 0; i < 6; i++) {
+			if (r1[i] != r2[i]) return false;
+		}
+
+		return true;
+	}
+
+	@Override
+	public int hashCode() { return getOrigin().hashCode(); }
+
+	@Override
 	public Object clone() {
 		// TODO  hardware accelerate
 		double coords[] = toArray();

@@ -102,28 +102,36 @@ public class Plane extends AbstractSurface implements ParticleGroup {
 	 */
 	@Override
 	public void calculateTransform() {
-		if (transformCurrent) return;
-		super.calculateTransform();
+		boolean recalculateNormal = normal == null || !transformCurrent;
 
-		Vector n;
-		
-		if (this.type == Plane.XY)
-			n = new Vector(0.0, 0.0, 1.0);
-		else if (this.type == Plane.XZ)
-			n = new Vector(0.0, 1.0, 0.0);
-		else if (this.type == Plane.YZ)
-			n = new Vector(1.0, 0.0, 0.0);
-		else
-			n = null;
-		
-		super.getTransform(true).transform(n, TransformMatrix.TRANSFORM_AS_NORMAL);
-		
-		normal = new ImmutableVector(n);
+		if (!transformCurrent) super.calculateTransform();
+
+		if (recalculateNormal) {
+			Vector n;
+
+			if (this.type == Plane.XY)
+				n = new Vector(0.0, 0.0, 1.0);
+			else if (this.type == Plane.XZ)
+				n = new Vector(0.0, 1.0, 0.0);
+			else if (this.type == Plane.YZ)
+				n = new Vector(1.0, 0.0, 0.0);
+			else
+				n = null;
+
+			normal = new ImmutableVector(n); // This causes us to avoid infinite regress
+
+			TransformMatrix m = getTransform(true);
+
+			if (m != null) {
+				m.transform(n, TransformMatrix.TRANSFORM_AS_NORMAL);
+				normal = new ImmutableVector(n);
+			}
+		}
 	}
 
 	@Override
 	public ImmutableVector getNormalAt(Vector p) {
-		if (!transformCurrent) calculateTransform();
+		calculateTransform();
 		return normal;
 	}
 
@@ -154,20 +162,21 @@ public class Plane extends AbstractSurface implements ParticleGroup {
 	@Override
 	public ContinuousField intersectAt(Producer r) {
 		TransformMatrix m = getTransform(true);
-		if (m != null) r = new RayMatrixTransform(m.getInverse(), r);
+		Producer<Ray> tr = r;
+		if (m != null) tr = new RayMatrixTransform(m.getInverse(), tr);
 
 		if (type == Plane.XY)
 			return new ShadableIntersection(this, r,
 					new AcceleratedProducer<>("planeXYIntersectAt",
-											new Producer[] { Scalar.blank(), r }));
+											new Producer[] { Scalar.blank(), tr }));
 		else if (type == Plane.XZ)
 			return new ShadableIntersection(this, r,
-					new AcceleratedProducer<Scalar>("planeXZIntersectAt",
-											new Producer[] { Scalar.blank(), r }));
+					new AcceleratedProducer<>("planeXZIntersectAt",
+											new Producer[] { Scalar.blank(), tr }));
 		else if (type == Plane.YZ)
 			return new ShadableIntersection(this, r,
-					new AcceleratedProducer<Scalar>("planeYZIntersectAt",
-											new Producer[] { Scalar.blank(), r }));
+					new AcceleratedProducer<>("planeYZIntersectAt",
+											new Producer[] { Scalar.blank(), tr }));
 		else
 			return null;
 	}
