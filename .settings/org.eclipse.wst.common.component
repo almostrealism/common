@@ -4,5 +4,6 @@
         <wb-resource deploy-path="/" source-path="/ui"/>
         <wb-resource deploy-path="/" source-path="/world"/>
         <wb-resource deploy-path="/" source-path="/math"/>
+        <wb-resource deploy-path="/" source-path="/test"/>
     </wb-module>
 </project-modules>
