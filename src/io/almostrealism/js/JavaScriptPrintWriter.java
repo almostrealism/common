@@ -39,11 +39,7 @@ public class JavaScriptPrintWriter extends CodePrintWriterAdapter {
 
 	@Override
 	public void println(Variable v) {
-		if (v instanceof ResourceVariable) {
-			p.println("var " + v.getName() + " = " + toJson((ResourceVariable) v));
-		} else {
-			p.println("var " + v.getName() + " = " + v.getData() + ";");
-		}
+		p.println("var " + v.getName() + " = " + toString(v) + ";");
 	}
 
 	@Override
@@ -66,7 +62,28 @@ public class JavaScriptPrintWriter extends CodePrintWriterAdapter {
 
 	@Override
 	public void endScope() { p.println("}"); }
-
+	
+	protected static String toString(Variable v) {
+		if (v instanceof ResourceVariable) {
+			return toJson((ResourceVariable) v);
+		} else if (v.getGenerator() != null) {
+			Method m = v.getGenerator();
+			
+			StringBuffer b = new StringBuffer();
+			if (m.getMember() != null)
+				b.append(m.getMember() + ".");
+			
+			b.append(m.getName());
+			b.append("(");
+			b.append(toString(m.getArguments(), m.getArgumentOrder()));
+			b.append(")");
+			
+			return b.toString();
+		} else {
+			return v.getData().toString();
+		}
+	}
+	
 	protected static String toJson(ResourceVariable v) {
 		JsonResource json;
 		Resource r = v.getResource();
@@ -114,11 +131,13 @@ public class JavaScriptPrintWriter extends CodePrintWriterAdapter {
 	protected static String toString(Map<String, Variable> args, List<String> argumentOrder) {
 		StringBuffer buf = new StringBuffer();
 
-		i: for (int i = 0; i < argumentOrder.size(); i++) {
+		for (int i = 0; i < argumentOrder.size(); i++) {
 			Variable v = args.get(argumentOrder.get(i));
 
 			if (v instanceof ResourceVariable) {
 				buf.append(toJson((ResourceVariable) v));
+			} else if (v.getGenerator() != null) {
+				buf.append(toString(v));
 			} else if (v instanceof InstanceReference) {
 				buf.append(((InstanceReference) v).getData());
 			} else {
