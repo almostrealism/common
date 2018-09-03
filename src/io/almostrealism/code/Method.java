@@ -24,8 +24,10 @@ import java.util.Map;
 /**
  * A {@link Method} is included in a {@link Scope} to indicate that a function should
  * be called in whatever language that the {@link Scope} is being exported to.
+ * 
+ * T is the type of the return value of the method.
  */
-public class Method implements Nameable {
+public class Method<T> implements Nameable {
 	private String member, name;
 	private List<String> argOrder;
 	private Map<String, Variable> arguments;
