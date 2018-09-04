@@ -49,8 +49,7 @@ public class AcceleratedProducer<T extends MemWrapper> implements Producer<T> {
 		}
 	}
 
-	@Override
-	public synchronized T evaluate(Object[] args) {
+	public synchronized HardwareOperator getOperator() {
 		synchronized (AcceleratedProducer.class) {
 			if (operators.get(function) == null) {
 				operators.put(function, new ThreadLocal<>());
@@ -61,6 +60,11 @@ public class AcceleratedProducer<T extends MemWrapper> implements Producer<T> {
 			}
 		}
 
+		return operators.get(function).get();
+	}
+
+	@Override
+	public synchronized T evaluate(Object[] args) {
 		for (int i = 0; i < inputProducers.length; i++) {
 			try {
 				allArgs[i] = inputProducers[i].evaluate(args);
@@ -74,7 +78,7 @@ public class AcceleratedProducer<T extends MemWrapper> implements Producer<T> {
 		}
 
 		try {
-			return (T) operators.get(function).get().evaluate(allArgs);
+			return (T) getOperator().evaluate(allArgs);
 		} finally {
 			for (int i = 0; i < inputProducers.length; i++) {
 				allArgs[i] = null;

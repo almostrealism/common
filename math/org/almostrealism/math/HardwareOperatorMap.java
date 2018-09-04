@@ -23,9 +23,15 @@ import org.jocl.cl_program;
  * Wrapper for a cl_program that contains the accelerated functions used in the running application.
  */
 public class HardwareOperatorMap<T extends MemWrapper> {
-	private final cl_program prog;
+	private cl_program prog;
+
+	protected HardwareOperatorMap() { }
 
 	public HardwareOperatorMap(Hardware h, String src) {
+		init(h, src);
+	}
+
+	protected void init(Hardware h, String src) {
 		int[] result = new int[1];
 		prog = CL.clCreateProgramWithSource(h.getContext(), 1, new String[] { src }, null, result);
 		if (result[0] != 0) throw new RuntimeException("Error creating HardwareOperatorMap: " + result[0]);
