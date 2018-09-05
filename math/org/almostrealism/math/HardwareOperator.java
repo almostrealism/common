@@ -16,6 +16,7 @@
 
 package org.almostrealism.math;
 
+import io.almostrealism.code.Method;
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.Scalar;
@@ -24,10 +25,13 @@ import org.almostrealism.relation.Operator;
 import org.almostrealism.util.Factory;
 import org.jocl.*;
 
+import java.util.Arrays;
+import java.util.HashMap;
+
 /**
  * {@link HardwareOperator}s are intended to be used with {@link ThreadLocal}.
  *
- * @param <T>  Return type. If the scalar flag is true, this must be a subclass of {@link Scalar}.
+ * @param <T> Return type
  */
 public class HardwareOperator<T extends MemWrapper> implements Operator<T>, Factory<cl_kernel> {
 	private static Pointer zero = Pointer.to(new int[]{0});
@@ -61,7 +65,9 @@ public class HardwareOperator<T extends MemWrapper> implements Operator<T>, Fact
 
 	@Override
 	public Scope<? extends Variable> getScope(String prefix) {
-		return null;
+		Scope s = new Scope();
+		s.getMethods().add(new Method(name, Arrays.asList(), new HashMap<>()));
+		return s;
 	}
 
 	/**

@@ -2,11 +2,9 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="">
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/math/org/almostrealism/relation/GeneratedOperatorMap.java" />
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/test/org/almostrealism/relation/test/GeneratedOperatorMapTest.java" />
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/math/org/almostrealism/math/AcceleratedProducer.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/math/AcceleratedProducer.java" />
-      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/math/org/almostrealism/math/HardwareOperatorMap.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/math/HardwareOperatorMap.java" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/math/org/almostrealism/math/HardwareOperator.java" afterPath="$PROJECT_DIR$/math/org/almostrealism/math/HardwareOperator.java" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/io/almostrealism/code/Method.java" afterPath="$PROJECT_DIR$/src/io/almostrealism/code/Method.java" />
     </list>
     <ignored path="$PROJECT_DIR$/target/" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -18,11 +16,21 @@
   </component>
   <component name="FileEditorManager">
     <leaf SIDE_TABS_SIZE_LIMIT_KEY="300">
-      <file leaf-file-name="HardwareOperator.java" pinned="false" current-in-tab="false">
+      <file leaf-file-name="HardwareOperator.java" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/math/org/almostrealism/math/HardwareOperator.java">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="390">
-              <caret line="50" column="27" lean-forward="false" selection-start-line="50" selection-start-column="11" selection-end-line="50" selection-end-column="27" />
+            <state relative-caret-position="232">
+              <caret line="67" column="30" lean-forward="true" selection-start-line="67" selection-start-column="30" selection-end-line="67" selection-end-column="30" />
+              <folding />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="Method.java" pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/src/io/almostrealism/code/Method.java">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="240">
+              <caret line="33" column="46" lean-forward="false" selection-start-line="33" selection-start-column="46" selection-end-line="33" selection-end-column="46" />
               <folding />
             </state>
           </provider>
@@ -31,8 +39,8 @@
       <file leaf-file-name="AcceleratedProducer.java" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/math/org/almostrealism/math/AcceleratedProducer.java">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="292">
-              <caret line="66" column="51" lean-forward="false" selection-start-line="66" selection-start-column="51" selection-end-line="66" selection-end-column="51" />
+            <state relative-caret-position="-7">
+              <caret line="35" column="0" lean-forward="true" selection-start-line="35" selection-start-column="0" selection-end-line="35" selection-end-column="0" />
               <folding />
             </state>
           </provider>
@@ -42,7 +50,7 @@
         <entry file="file://$PROJECT_DIR$/math/org/almostrealism/relation/Computation.java">
           <provider selected="true" editor-type-id="text-editor">
             <state relative-caret-position="90">
-              <caret line="21" column="17" lean-forward="false" selection-start-line="21" selection-start-column="17" selection-end-line="21" selection-end-column="17" />
+              <caret line="21" column="28" lean-forward="false" selection-start-line="21" selection-start-column="17" selection-end-line="21" selection-end-column="28" />
               <folding />
             </state>
           </provider>
@@ -73,14 +81,12 @@
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="GeneratedOperatorMapTest.java" pinned="false" current-in-tab="true">
+      <file leaf-file-name="GeneratedOperatorMapTest.java" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/test/org/almostrealism/relation/test/GeneratedOperatorMapTest.java">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="225">
-              <caret line="29" column="9" lean-forward="false" selection-start-line="29" selection-start-column="9" selection-end-line="29" selection-end-column="9" />
-              <folding>
-                <element signature="imports" expanded="true" />
-              </folding>
+            <state relative-caret-position="165">
+              <caret line="25" column="45" lean-forward="true" selection-start-line="25" selection-start-column="45" selection-end-line="25" selection-end-column="45" />
+              <folding />
             </state>
           </provider>
         </entry>
@@ -142,7 +148,6 @@
   <component name="IdeDocumentHistory">
     <option name="CHANGED_PATHS">
       <list>
-        <option value="$PROJECT_DIR$/src/org/almostrealism/graph/RayField.java" />
         <option value="$PROJECT_DIR$/src/org/almostrealism/util/RayFieldFactory.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/color/Shader.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/color/RGBAdd.java" />
@@ -174,7 +179,6 @@
         <option value="$PROJECT_DIR$/math/org/almostrealism/algebra/ClosestIntersection.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/space/SurfaceGroup.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/space/AbstractSurface.java" />
-        <option value="$PROJECT_DIR$/math/org/almostrealism/math/HardwareOperator.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/geometry/RayPointAt.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/math/AcceleratedFunctions.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/math/Hardware.java" />
@@ -193,6 +197,8 @@
         <option value="$PROJECT_DIR$/math/org/almostrealism/relation/GeneratedOperatorMap.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/math/AcceleratedProducer.java" />
         <option value="$PROJECT_DIR$/test/org/almostrealism/relation/test/GeneratedOperatorMapTest.java" />
+        <option value="$PROJECT_DIR$/src/io/almostrealism/code/Method.java" />
+        <option value="$PROJECT_DIR$/math/org/almostrealism/math/HardwareOperator.java" />
       </list>
     </option>
   </component>
@@ -795,14 +801,7 @@
       <workItem from="1535320697373" duration="389000" />
       <workItem from="1535418751084" duration="5428000" />
       <workItem from="1535647705655" duration="9175000" />
-      <workItem from="1536103858643" duration="1174000" />
-    </task>
-    <task id="LOCAL-00103" summary="Migrated ArrayPool, BulletStack, MatrixStackList, QuatStackList, Transform, and TransformStackList to Common.">
-      <created>1520410431826</created>
-      <option name="number" value="00103" />
-      <option name="presentableId" value="LOCAL-00103" />
-      <option name="project" value="LOCAL" />
-      <updated>1520410431826</updated>
+      <workItem from="1536103858643" duration="1672000" />
     </task>
     <task id="LOCAL-00104" summary="Migrated JacobianEntry to Common. Added generics to Resource.">
       <created>1520411184833</created>
@@ -1140,15 +1139,22 @@
       <option name="project" value="LOCAL" />
       <updated>1535769986399</updated>
     </task>
-    <option name="localTasksCounter" value="152" />
+    <task id="LOCAL-00152" summary="Introduced GeneratedOperatorMap, and a correspond test, to explore a way to generate OpenCL functions on the fly.">
+      <created>1536105085286</created>
+      <option name="number" value="00152" />
+      <option name="presentableId" value="LOCAL-00152" />
+      <option name="project" value="LOCAL" />
+      <updated>1536105085286</updated>
+    </task>
+    <option name="localTasksCounter" value="153" />
     <servers />
   </component>
   <component name="TestHistory">
     <history-entry file="GeneratedOperatorMapTest_rayMatrixTransformTest - 2018.09.04 at 16h 50m 27s.xml">
       <configuration name="GeneratedOperatorMapTest.rayMatrixTransformTest" configurationId="JUnit" />
     </history-entry>
-    <history-entry file="PlaneTest_intersectionTest - 2018.08.31 at 19h 30m 37s.xml">
-      <configuration name="PlaneTest.intersectionTest" configurationId="JUnit" />
+    <history-entry file="GeneratedOperatorMapTest_rayMatrixTransformTest - 2018.09.04 at 17h 15m 33s.xml">
+      <configuration name="GeneratedOperatorMapTest.rayMatrixTransformTest" configurationId="JUnit" />
     </history-entry>
     <history-entry file="PlaneTest_intersectionTest - 2018.08.31 at 19h 39m 57s.xml">
       <configuration name="PlaneTest.intersectionTest" configurationId="JUnit" />
@@ -1176,7 +1182,7 @@
     </history-entry>
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="419018000" />
+    <option name="totallyTimeSpent" value="419516000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="0" y="0" width="1280" height="800" extended-state="6" />
@@ -1253,7 +1259,6 @@
   </component>
   <component name="VcsManagerConfiguration">
     <option name="CHECK_NEW_TODO" value="false" />
-    <MESSAGE value="Release cl_mem in finalizer." />
     <MESSAGE value="Store Ray in cl_mem. This is version 0.7." />
     <MESSAGE value="Starting version 0.8." />
     <MESSAGE value="Migrating towards use of Producer throughout algebra and geometry packages." />
@@ -1278,7 +1283,8 @@
     <MESSAGE value="Improved ProducerWithRank to deal with subclasses that implement evaluation directly." />
     <MESSAGE value="Fixed a bug with ProducerWithRank constructor." />
     <MESSAGE value="Fixed a bug involving Plane intersection that resulted in the RayPointAt operation produced during intersection to be against the transformed ray rather than the original ray (this issue exists elsewhere and will have to be resolved). This required changing the function of RayMatrixTransform so that it uses a new operation, RayCopy, to avoid side-effecting the original ray. This pattern should be exported to other areas of the code, with the Copy operations eventually being hardware accelerated with OpenCL. This commit also includes a significant expansion of the test suite(s)." />
-    <option name="LAST_COMMIT_MESSAGE" value="Fixed a bug involving Plane intersection that resulted in the RayPointAt operation produced during intersection to be against the transformed ray rather than the original ray (this issue exists elsewhere and will have to be resolved). This required changing the function of RayMatrixTransform so that it uses a new operation, RayCopy, to avoid side-effecting the original ray. This pattern should be exported to other areas of the code, with the Copy operations eventually being hardware accelerated with OpenCL. This commit also includes a significant expansion of the test suite(s)." />
+    <MESSAGE value="Introduced GeneratedOperatorMap, and a correspond test, to explore a way to generate OpenCL functions on the fly." />
+    <option name="LAST_COMMIT_MESSAGE" value="Introduced GeneratedOperatorMap, and a correspond test, to explore a way to generate OpenCL functions on the fly." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -1336,30 +1342,6 @@
     </option>
   </component>
   <component name="editorHistoryManager">
-    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/math/AcceleratedProducer.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="720">
-          <caret line="65" column="62" lean-forward="false" selection-start-line="65" selection-start-column="62" selection-end-line="65" selection-end-column="62" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/world/org/almostrealism/space/ShadableIntersection.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="420">
-          <caret line="50" column="43" lean-forward="false" selection-start-line="50" selection-start-column="43" selection-end-line="50" selection-end-column="43" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/resources/local.cl">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="0">
-          <caret line="0" column="0" lean-forward="false" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/src/org/almostrealism/graph/Mesh.java">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="10170">
@@ -1702,10 +1684,26 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/math/HardwareOperator.java">
+    <entry file="file://$PROJECT_DIR$/test/org/almostrealism/relation/test/GeneratedOperatorMapTest.java">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="390">
-          <caret line="50" column="27" lean-forward="false" selection-start-line="50" selection-start-column="11" selection-end-line="50" selection-end-column="27" />
+        <state relative-caret-position="165">
+          <caret line="25" column="45" lean-forward="true" selection-start-line="25" selection-start-column="45" selection-end-line="25" selection-end-column="45" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/src/org/almostrealism/util/Pipeline.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="90">
+          <caret line="20" column="17" lean-forward="false" selection-start-line="20" selection-start-column="17" selection-end-line="20" selection-end-column="17" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/relation/Operator.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="60">
+          <caret line="4" column="40" lean-forward="false" selection-start-line="4" selection-start-column="40" selection-end-line="4" selection-end-column="40" />
           <folding />
         </state>
       </provider>
@@ -1713,16 +1711,26 @@
     <entry file="file://$PROJECT_DIR$/math/org/almostrealism/relation/Computation.java">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="90">
-          <caret line="21" column="17" lean-forward="false" selection-start-line="21" selection-start-column="17" selection-end-line="21" selection-end-column="17" />
+          <caret line="21" column="28" lean-forward="false" selection-start-line="21" selection-start-column="17" selection-end-line="21" selection-end-column="28" />
           <folding />
         </state>
       </provider>
     </entry>
     <entry file="file://$PROJECT_DIR$/math/org/almostrealism/math/AcceleratedProducer.java">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="292">
-          <caret line="66" column="51" lean-forward="false" selection-start-line="66" selection-start-column="51" selection-end-line="66" selection-end-column="51" />
+        <state relative-caret-position="-7">
+          <caret line="35" column="0" lean-forward="true" selection-start-line="35" selection-start-column="0" selection-end-line="35" selection-end-column="0" />
           <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/relation/GeneratedOperatorMap.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="225">
+          <caret line="29" column="44" lean-forward="true" selection-start-line="29" selection-start-column="44" selection-end-line="29" selection-end-column="44" />
+          <folding>
+            <element signature="imports" expanded="true" />
+          </folding>
         </state>
       </provider>
     </entry>
@@ -1737,23 +1745,19 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/relation/GeneratedOperatorMap.java">
+    <entry file="file://$PROJECT_DIR$/src/io/almostrealism/code/Method.java">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="225">
-          <caret line="29" column="44" lean-forward="true" selection-start-line="29" selection-start-column="44" selection-end-line="29" selection-end-column="44" />
-          <folding>
-            <element signature="imports" expanded="true" />
-          </folding>
+        <state relative-caret-position="240">
+          <caret line="33" column="46" lean-forward="false" selection-start-line="33" selection-start-column="46" selection-end-line="33" selection-end-column="46" />
+          <folding />
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/test/org/almostrealism/relation/test/GeneratedOperatorMapTest.java">
+    <entry file="file://$PROJECT_DIR$/math/org/almostrealism/math/HardwareOperator.java">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="225">
-          <caret line="29" column="9" lean-forward="false" selection-start-line="29" selection-start-column="9" selection-end-line="29" selection-end-column="9" />
-          <folding>
-            <element signature="imports" expanded="true" />
-          </folding>
+        <state relative-caret-position="232">
+          <caret line="67" column="30" lean-forward="true" selection-start-line="67" selection-start-column="30" selection-end-line="67" selection-end-column="30" />
+          <folding />
         </state>
       </provider>
     </entry>

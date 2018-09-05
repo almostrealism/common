@@ -30,6 +30,10 @@ public class Method implements Nameable {
 	private List<String> argOrder;
 	private Map<String, Variable> arguments;
 
+	public Method(String name, List<String> argOrder, Map<String, Variable> arguments) {
+		this(null, name, argOrder, arguments);
+	}
+
 	public Method(String member, String name, List<String> argOrder, Map<String, Variable> arguments) {
 		this.member = member;
 		this.name = name;
