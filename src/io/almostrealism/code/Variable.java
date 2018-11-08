@@ -27,6 +27,7 @@ public class Variable<T> implements Nameable {
 	private String name, annotation;
 	private Class<T> type;
 	private T data;
+	private Method<T> generator;
 
 	public Variable(String name, T data) {
 		this(name, (Class<T>) data.getClass(), data);
@@ -36,6 +37,12 @@ public class Variable<T> implements Nameable {
 		setName(name);
 		setType(type);
 		this.data = data;
+	}
+	
+	public Variable(String name, Class<T> type, Method<T> generator) {
+		setName(name);
+		setType(type);
+		this.generator = generator;
 	}
 
 	public void setName(String n) { this.name = n; }
@@ -49,4 +56,7 @@ public class Variable<T> implements Nameable {
 
 	public void setData(T data) { this.data = data; }
 	public T getData() { return data; }
+	
+	public void setGenerator(Method<T> generator) { this.generator = generator; }
+	public Method<T> getGenerator() { return this.generator; }
 }
