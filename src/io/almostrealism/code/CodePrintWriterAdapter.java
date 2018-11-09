@@ -35,6 +35,8 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 	protected void setScopeSuffix(String suffix) { this.scopeSuffix = suffix; }
 	protected void setScopeClose(String close) { this.scopeClose = close; }
 
+	public void println(Variable v) { println(v, true); };
+
 	public void println(Computation c) {
 		c.getScope("compute").write(this);
 	}

@@ -38,8 +38,12 @@ public class JavaScriptPrintWriter extends CodePrintWriterAdapter {
 	}
 
 	@Override
-	public void println(Variable v) {
-		p.println("var " + v.getName() + " = " + toString(v) + ";");
+	public void println(Variable v, boolean create) {
+		if (create) {
+			p.println("var " + v.getName() + " = " + toString(v) + ";");
+		} else {
+			p.println(v.getName() + " = " + toString(v) + ";");
+		}
 	}
 
 	@Override

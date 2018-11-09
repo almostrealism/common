@@ -34,12 +34,21 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 	}
 
 	@Override
-	public void println(Variable variable) {
-		if (variable.getData() == null) {
-			this.p.println(typeString(variable.getType()) + " " + variable.getName());
+	public void println(Variable variable, boolean create) {
+		if (create) {
+			if (variable.getData() == null) {
+				this.p.println(typeString(variable.getType()) + " " + variable.getName());
+			} else {
+				this.p.println(typeString(variable.getType()) + " " + variable.getName() +
+								" = " + encode(variable.getData()) + ";");
+			}
 		} else {
-			this.p.println(typeString(variable.getType()) + " " + variable.getName() +
-							" = " + encode(variable.getData()) + ";");
+			if (variable.getData() == null) {
+				this.p.println(variable.getName() + " = null");
+			} else {
+				this.p.println(variable.getName() + " = " +
+								encode(variable.getData()) + ";");
+			}
 		}
 	}
 

@@ -25,10 +25,19 @@ import org.almostrealism.relation.Computation;
 public interface CodePrintWriter {
 	/**
 	 * Write the specified {@link Variable} (name of the variable and the data).
+	 * This method should assume that the variable is to be created.
 	 *
 	 * @param v  Variable to print.
 	 */
 	void println(Variable v);
+
+	/**
+	 * Write the specified {@link Variable} (name of the variable and the data).
+	 *
+	 * @param v  Variable to print.
+	 * @param create  True if the variable has not been mentioned before in this scope.
+	 */
+	void println(Variable v, boolean create);
 
 	/**
 	 * Write a call to the function represented by the specified {@link Method}.
