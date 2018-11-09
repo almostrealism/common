@@ -18,6 +18,8 @@ package io.almostrealism.code;
 
 import org.almostrealism.util.Nameable;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -43,6 +45,14 @@ public class Method<T> implements Nameable {
 		this.arguments = arguments;
 	}
 
+	public Method(String name, Variable... v) {
+		this(null, name, v);
+	}
+
+	public Method(String member, String name, Variable... v) {
+		this(member, name, generateArgNames(v), generateArgValues(v));
+	}
+
 	public void setName(String n) { this.name = n; }
 	public String getName() { return name; }
 	public void setMember(String m) { this.member = m; }
@@ -50,4 +60,24 @@ public class Method<T> implements Nameable {
 
 	public Map<String, Variable> getArguments() { return arguments; }
 	public List<String> getArgumentOrder() { return argOrder; }
+
+	private static List<String> generateArgNames(Variable v[]) {
+		List<String> l = new ArrayList<>();
+
+		for (int i = 0; i < v.length; i++) {
+			l.add(String.valueOf(i));
+		}
+
+		return l;
+	}
+
+	private static Map<String, Variable> generateArgValues(Variable v[]) {
+		Map<String, Variable> m = new HashMap<>();
+
+		for (int i = 0; i < v.length; i++) {
+			m.put(String.valueOf(i), v[i]);
+		}
+
+		return m;
+	}
 }

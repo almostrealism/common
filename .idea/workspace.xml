@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="ChangeListManager">
-    <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="">
-      <change type="NEW" beforePath="" afterPath="$PROJECT_DIR$/src/io/almostrealism/code/Function.java" />
+    <list default="true" id="0fb321fe-377e-40bc-b3c1-7cb08a4e8de1" name="Default" comment="Added">
       <change type="MODIFICATION" beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
+      <change type="MODIFICATION" beforePath="$PROJECT_DIR$/src/io/almostrealism/code/Method.java" afterPath="$PROJECT_DIR$/src/io/almostrealism/code/Method.java" />
     </list>
     <ignored path="$PROJECT_DIR$/target/" />
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -28,7 +28,7 @@
       <file leaf-file-name="Function.java" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/src/io/almostrealism/code/Function.java">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="150">
+            <state relative-caret-position="135">
               <caret line="24" column="23" lean-forward="false" selection-start-line="24" selection-start-column="23" selection-end-line="24" selection-end-column="23" />
               <folding>
                 <element signature="imports" expanded="true" />
@@ -38,24 +38,30 @@
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="JavaScriptPrintWriter.java" pinned="false" current-in-tab="true">
+      <file leaf-file-name="JavaScriptPrintWriter.java" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/src/io/almostrealism/js/JavaScriptPrintWriter.java">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="398">
-              <caret line="61" column="16" lean-forward="false" selection-start-line="61" selection-start-column="16" selection-end-line="61" selection-end-column="16" />
+            <state relative-caret-position="143">
+              <caret line="44" column="13" lean-forward="false" selection-start-line="44" selection-start-column="13" selection-end-line="44" selection-end-column="13" />
               <folding>
-                <element signature="e#0#4073#0" expanded="true" />
+                <element signature="e#0#4532#0" expanded="true" />
+                <element signature="e#1219#1220#0" expanded="true" />
+                <element signature="e#1285#1286#0" expanded="true" />
               </folding>
             </state>
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="Method.java" pinned="false" current-in-tab="false">
+      <file leaf-file-name="Method.java" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/src/io/almostrealism/code/Method.java">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="240">
-              <caret line="33" column="46" lean-forward="false" selection-start-line="33" selection-start-column="46" selection-end-line="33" selection-end-column="46" />
-              <folding />
+            <state relative-caret-position="705">
+              <caret line="66" column="42" lean-forward="false" selection-start-line="66" selection-start-column="42" selection-end-line="66" selection-end-column="42" />
+              <folding>
+                <element signature="e#1540#1541#0" expanded="true" />
+                <element signature="e#1566#1567#0" expanded="true" />
+                <marker date="1541796341871" expanded="true" signature="780:951" ph="/**...*/" />
+              </folding>
             </state>
           </provider>
         </entry>
@@ -172,7 +178,6 @@
   <component name="IdeDocumentHistory">
     <option name="CHANGED_PATHS">
       <list>
-        <option value="$PROJECT_DIR$/world/org/almostrealism/color/Shader.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/color/RGBAdd.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/color/ShaderSet.java" />
         <option value="$PROJECT_DIR$/world/org/almostrealism/color/RGB.java" />
@@ -220,9 +225,10 @@
         <option value="$PROJECT_DIR$/math/org/almostrealism/relation/GeneratedOperatorMap.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/math/AcceleratedProducer.java" />
         <option value="$PROJECT_DIR$/test/org/almostrealism/relation/test/GeneratedOperatorMapTest.java" />
-        <option value="$PROJECT_DIR$/src/io/almostrealism/code/Method.java" />
         <option value="$PROJECT_DIR$/math/org/almostrealism/math/HardwareOperator.java" />
         <option value="$PROJECT_DIR$/src/io/almostrealism/code/Function.java" />
+        <option value="$PROJECT_DIR$/src/io/almostrealism/js/JavaScriptPrintWriter.java" />
+        <option value="$PROJECT_DIR$/src/io/almostrealism/code/Method.java" />
       </list>
     </option>
   </component>
@@ -249,7 +255,7 @@
     <servers />
   </component>
   <component name="PhpWorkspaceProjectConfiguration" backward_compatibility_performed="true" />
-  <component name="ProjectFrameBounds" extendedState="6" fullScreen="true">
+  <component name="ProjectFrameBounds" fullScreen="true">
     <option name="width" value="636" />
     <option name="height" value="800" />
   </component>
@@ -269,7 +275,6 @@
     </navigator>
     <panes>
       <pane id="AndroidView" />
-      <pane id="Scratches" />
       <pane id="ProjectPane">
         <subPane>
           <expand>
@@ -331,6 +336,7 @@
           <select />
         </subPane>
       </pane>
+      <pane id="Scratches" />
       <pane id="Scope" />
       <pane id="PackagesPane">
         <subPane>
@@ -826,7 +832,8 @@
       <workItem from="1535418751084" duration="5428000" />
       <workItem from="1535647705655" duration="9175000" />
       <workItem from="1536103858643" duration="2311000" />
-      <workItem from="1541633461499" duration="1266000" />
+      <workItem from="1541633461499" duration="2026000" />
+      <workItem from="1541796135944" duration="211000" />
     </task>
     <task id="LOCAL-00105" summary="Added RGBA.">
       <created>1520478102161</created>
@@ -1207,7 +1214,7 @@
     </history-entry>
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="421421000" />
+    <option name="totallyTimeSpent" value="422392000" />
   </component>
   <component name="ToolWindowManager">
     <frame x="0" y="0" width="1280" height="800" extended-state="6" />
@@ -1221,10 +1228,10 @@
       <window_info id="Maven Projects" active="false" anchor="right" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.32956383" sideWeight="0.5" order="4" side_tool="false" content_ui="tabs" />
       <window_info id="Run" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.7620358" sideWeight="0.49676898" order="2" side_tool="false" content_ui="tabs" />
       <window_info id="Version Control" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.3287483" sideWeight="0.5" order="11" side_tool="false" content_ui="tabs" />
-      <window_info id="Terminal" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.6244842" sideWeight="0.49030694" order="10" side_tool="false" content_ui="tabs" />
+      <window_info id="Terminal" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.6244842" sideWeight="0.49030694" order="10" side_tool="false" content_ui="tabs" />
       <window_info id="Capture Tool" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="2" side_tool="false" content_ui="tabs" />
       <window_info id="Designer" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="3" side_tool="false" content_ui="tabs" />
-      <window_info id="Project" active="true" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.2657512" sideWeight="0.5" order="0" side_tool="false" content_ui="combo" />
+      <window_info id="Project" active="true" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.26979" sideWeight="0.5" order="0" side_tool="false" content_ui="combo" />
       <window_info id="Docker" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="12" side_tool="false" content_ui="tabs" />
       <window_info id="Database" active="false" anchor="right" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="5" side_tool="false" content_ui="tabs" />
       <window_info id="Structure" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.24959612" sideWeight="0.5" order="1" side_tool="false" content_ui="tabs" />
@@ -1309,7 +1316,7 @@
     <MESSAGE value="Fixed a bug involving Plane intersection that resulted in the RayPointAt operation produced during intersection to be against the transformed ray rather than the original ray (this issue exists elsewhere and will have to be resolved). This required changing the function of RayMatrixTransform so that it uses a new operation, RayCopy, to avoid side-effecting the original ray. This pattern should be exported to other areas of the code, with the Copy operations eventually being hardware accelerated with OpenCL. This commit also includes a significant expansion of the test suite(s)." />
     <MESSAGE value="Introduced GeneratedOperatorMap, and a correspond test, to explore a way to generate OpenCL functions on the fly." />
     <MESSAGE value="Basic implementation of getScope for HardwareOperator. This will likely move to AcceleratedProducer." />
-    <option name="LAST_COMMIT_MESSAGE" value="Basic implementation of getScope for HardwareOperator. This will likely move to AcceleratedProducer." />
+    <option name="LAST_COMMIT_MESSAGE" value="" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -1667,7 +1674,6 @@
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="180">
           <caret line="12" column="62" lean-forward="false" selection-start-line="12" selection-start-column="62" selection-end-line="12" selection-end-column="62" />
-          <folding />
         </state>
       </provider>
     </entry>
@@ -1732,14 +1738,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/src/io/almostrealism/code/Method.java">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="240">
-          <caret line="33" column="46" lean-forward="false" selection-start-line="33" selection-start-column="46" selection-end-line="33" selection-end-column="46" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/src/io/almostrealism/code/Scope.java">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="195">
@@ -1758,7 +1756,7 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/src/io/almostrealism/code/Function.java">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="150">
+        <state relative-caret-position="135">
           <caret line="24" column="23" lean-forward="false" selection-start-line="24" selection-start-column="23" selection-end-line="24" selection-end-column="23" />
           <folding>
             <element signature="imports" expanded="true" />
@@ -1769,10 +1767,24 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/src/io/almostrealism/js/JavaScriptPrintWriter.java">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="398">
-          <caret line="61" column="16" lean-forward="false" selection-start-line="61" selection-start-column="16" selection-end-line="61" selection-end-column="16" />
+        <state relative-caret-position="143">
+          <caret line="44" column="13" lean-forward="false" selection-start-line="44" selection-start-column="13" selection-end-line="44" selection-end-column="13" />
           <folding>
-            <element signature="e#0#4073#0" expanded="true" />
+            <element signature="e#0#4532#0" expanded="true" />
+            <element signature="e#1219#1220#0" expanded="true" />
+            <element signature="e#1285#1286#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/src/io/almostrealism/code/Method.java">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="705">
+          <caret line="66" column="42" lean-forward="false" selection-start-line="66" selection-start-column="42" selection-end-line="66" selection-end-column="42" />
+          <folding>
+            <element signature="e#1540#1541#0" expanded="true" />
+            <element signature="e#1566#1567#0" expanded="true" />
+            <marker date="1541796341871" expanded="true" signature="780:951" ph="/**...*/" />
           </folding>
         </state>
       </provider>
