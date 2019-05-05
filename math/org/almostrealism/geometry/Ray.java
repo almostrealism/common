@@ -61,21 +61,24 @@ public class Ray implements MemWrapper, Cloneable {
 		this.setOrigin(origin);
 		this.setDirection(direction);
 	}
+
+	public Ray(Ray source) {
+		this();
+		this.setMem(0, source, 0, 6);
+	}
 	
 	/**
 	 * Sets the origin of this {@link Ray} to the specified origin {@link Vector}.
 	 */
 	public void setOrigin(Vector origin) {
-		double o[] = origin.toArray();
-		setMem(0, o, 0, 3);
+		setMem(0, origin, 0, 3);
 	}
 	
 	/**
 	 * Sets the direction of this {@link Ray} to the specified direction {@link Vector}.
 	 */
 	public void setDirection(Vector direction) {
-		double d[] = direction.toArray();
-		setMem(3, d, 0, 3);
+		setMem(3, direction, 0, 3);
 	}
 	
 	/**
@@ -177,6 +180,13 @@ public class Ray implements MemWrapper, Cloneable {
 
 	protected void setMem(int offset, Ray src, int srcOffset, int length) {
 		CL.clEnqueueCopyBuffer(Hardware.getLocalHardware().getQueue(), src.mem, this.mem,
+				srcOffset * Sizeof.cl_double,
+				offset * Sizeof.cl_double,length * Sizeof.cl_double,
+				0,null,null);
+	}
+
+	protected void setMem(int offset, Vector src, int srcOffset, int length) {
+		CL.clEnqueueCopyBuffer(Hardware.getLocalHardware().getQueue(), src.getMem(), this.mem,
 				srcOffset * Sizeof.cl_double,
 				offset * Sizeof.cl_double,length * Sizeof.cl_double,
 				0,null,null);

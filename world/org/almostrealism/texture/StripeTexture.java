@@ -152,6 +152,7 @@ public class StripeTexture implements Texture, Editable {
 	 * @see org.almostrealism.color.ColorProducer#evaluate(java.lang.Object[])
 	 */
 	public RGB evaluate(Object args[]) {
+		System.out.println("StripeTexture.evaluate");
 	    if (!(args[0] instanceof Vector)) throw new IllegalArgumentException("Illegal argument: " + args[0]);
 	    
 	    Object o[] = new Object[args.length - 1];

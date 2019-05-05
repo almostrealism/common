@@ -29,6 +29,7 @@ import java.util.concurrent.Future;
 @Function
 public interface Intersectable<T> extends Future<Operator<T>> {
 	/** Returns true if the ray intersects the 3d surface in real space. */
+	@Deprecated
 	boolean intersect(Ray ray);
 	
 	/**

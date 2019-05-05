@@ -25,10 +25,12 @@ public class RankedChoiceProducer<T> extends ArrayList<ProducerWithRank<T>> impl
 		double rank = Double.MAX_VALUE;
 
 		r: for (ProducerWithRank<T> p : this) {
+			double r = p.getRank().evaluate(args).getValue();
+			if (r < 0) continue r;
+
 			if (best == null) {
 				best = p.getProducer();
 			} else {
-				double r = p.getRank().evaluate(args).getValue();
 				if (r >= 0 && r < rank) {
 					best = p.getProducer();
 					rank = r;

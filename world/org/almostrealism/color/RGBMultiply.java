@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2019 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,5 +22,15 @@ import org.almostrealism.util.Producer;
 public class RGBMultiply extends AcceleratedProducer<RGB> {
 	public RGBMultiply(Producer<RGB> a, Producer<RGB> b) {
 		super("multiply", RGB.blank(), a, b);
+	}
+
+
+	/**
+	 * This implementation allows an {@link RGB} argument to be null,
+	 * resulting in the function returning null.
+	 */
+	@Override
+	public RGB handleNull(int argIndex) {
+		return null;
 	}
 }

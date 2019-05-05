@@ -21,7 +21,6 @@ import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.*;
 import org.almostrealism.color.RGB;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.math.AcceleratedProducer;
 import org.almostrealism.relation.Constant;
 import org.almostrealism.relation.Operator;
 import org.almostrealism.util.Producer;
@@ -165,20 +164,44 @@ public class Plane extends AbstractSurface implements ParticleGroup {
 		Producer<Ray> tr = r;
 		if (m != null) tr = new RayMatrixTransform(m.getInverse(), tr);
 
-		if (type == Plane.XY)
-			return new ShadableIntersection(this, r,
-					new AcceleratedProducer<>("planeXYIntersectAt",
-											new Producer[] { Scalar.blank(), tr }));
-		else if (type == Plane.XZ)
-			return new ShadableIntersection(this, r,
-					new AcceleratedProducer<>("planeXZIntersectAt",
-											new Producer[] { Scalar.blank(), tr }));
-		else if (type == Plane.YZ)
-			return new ShadableIntersection(this, r,
-					new AcceleratedProducer<>("planeYZIntersectAt",
-											new Producer[] { Scalar.blank(), tr }));
-		else
-			return null;
+		Producer<Ray> ftr = tr;
+
+//		if (type == Plane.XY)
+//			return new ShadableIntersection(this, r,
+//					new AcceleratedProducer<>("planeXYIntersectAt",
+//											new Producer[] { Scalar.blank(), tr }));
+//		else if (type == Plane.XZ)
+//			return new ShadableIntersection(this, r,
+//					new AcceleratedProducer<>("planeXZIntersectAt",
+//											new Producer[] { Scalar.blank(), tr }));
+//		else if (type == Plane.YZ)
+//			return new ShadableIntersection(this, r,
+//					new AcceleratedProducer<>("planeYZIntersectAt",
+//											new Producer[] { Scalar.blank(), tr }));
+//		else
+//			return null;
+
+		return new ShadableIntersection(this, r, new Producer<Scalar>() {
+			@Override
+			public Scalar evaluate(Object[] args) {
+				Ray r = ftr.evaluate(args);
+
+				if (type == Plane.XY) {
+					return new Scalar(-r.getOrigin().getZ() / r.getDirection().getZ());
+				} else if (type == Plane.XZ) {
+					return new Scalar(-r.getOrigin().getY() / r.getDirection().getY());
+				} else if (type == Plane.YZ) {
+					return new Scalar(-r.getOrigin().getX() / r.getDirection().getX());
+				}
+
+				return null;
+			}
+
+			@Override
+			public void compact() {
+				ftr.compact();
+			}
+		});
 	}
 
 	@Override

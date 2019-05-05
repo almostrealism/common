@@ -189,7 +189,7 @@ public class ImageCanvas extends JPanel {
 					if (image[i][j] == null) {
 						new RGB(0.0, 0.0, 0.0).writeExternal(out);
 					} else {
-						image[i][j].evaluate(new Object[] { new Pair(i, j) }).writeExternal(out);
+						image[i][j].evaluate(new Object[] { new Pair(i, image[i].length - 1 - j) }).writeExternal(out);
 					}
 				}
 			}
