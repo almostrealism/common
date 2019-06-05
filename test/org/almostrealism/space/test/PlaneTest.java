@@ -20,7 +20,6 @@ import org.almostrealism.algebra.RayMatrixTransform;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.geometry.RayPointAt;
 import org.almostrealism.space.Plane;
 import org.almostrealism.space.ShadableIntersection;
 import org.almostrealism.util.StaticProducer;
@@ -29,7 +28,7 @@ import org.junit.Test;
 
 public class PlaneTest {
 	@Test
-	public void intersectionTest() {
+	public void intersectionTest1() {
 		StaticProducer<Ray> r = new StaticProducer<>(new Ray(new Vector(0.0, 0.0, 1.0),
 															new Vector(0.0, 0.5, -1.0)));
 
@@ -42,6 +41,18 @@ public class PlaneTest {
 		Assert.assertTrue(intersection.get(0).evaluate(new Object[0]).equals(
 								new Ray(new Vector(0.0, -10.0, 21.0),
 										new Vector(0.0, 1.0, 0.0))));
+	}
+
+	@Test
+	public void intersectionTest2() {
+		StaticProducer<Ray> r = new StaticProducer<>(new Ray(new Vector(0.0, 1.0, 1.0),
+														new Vector(0.0, 0.0, -1.0)));
+
+		Plane p = new Plane(Plane.XZ);
+		p.setLocation(new Vector(0.0, 0, 0.0));
+
+		ShadableIntersection intersection = (ShadableIntersection) p.intersectAt(r);
+		Assert.assertTrue(((Scalar) intersection.getDistance().evaluate(new Object[0])).getValue() == -1);
 	}
 
 	@Test

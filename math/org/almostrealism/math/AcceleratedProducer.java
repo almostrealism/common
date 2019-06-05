@@ -67,7 +67,8 @@ public class AcceleratedProducer<T extends MemWrapper> implements Producer<T> {
 	public synchronized T evaluate(Object[] args) {
 		for (int i = 0; i < inputProducers.length; i++) {
 			try {
-				allArgs[i] = inputProducers[i].evaluate(args);
+				allArgs[i] = inputProducers[i] == null ? replaceNull(i) : inputProducers[i].evaluate(args);
+				if (allArgs[i] == null) allArgs[i] = replaceNull(i);
 			} catch (Exception e) {
 				throw new RuntimeException("Function \"" + function + "\" could not complete due to exception evaluating argument " + i, e);
 			}
@@ -87,9 +88,22 @@ public class AcceleratedProducer<T extends MemWrapper> implements Producer<T> {
 	}
 
 	/**
+	 * Override this method to provide a value to use in place of null
+	 * when a null parameter is encountered.
+	 *
+	 * @param argIndex  The index of the argument that is null.
+	 * @return  null
+	 */
+	protected T replaceNull(int argIndex) {
+		return null;
+	}
+
+	/**
 	 * Override this method to provide a value to return from the function
 	 * should one of the parameters be null. The default implementation
 	 * throws a {@link NullPointerException}.
+	 *
+	 * @param argIndex  The index of the argument that is null.
 	 */
 	protected T handleNull(int argIndex) {
 		throw new NullPointerException("argument " + argIndex + " to function " + function);

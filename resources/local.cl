@@ -566,19 +566,31 @@ pinholeCameraRayAt(__global double *res, __global const double *pos, __global co
 __kernel void
 planeXYIntersectAt(__global double *res, __global const double *r,
                     const int resOffset, const int rOffset) {
-    res[resOffset] = -r[rOffset + 2] / r[rOffset + 5];
+    if (r[rOffset + 5] == 0) {
+        res[resOffset] = -1;
+    } else {
+        res[resOffset] = -r[rOffset + 2] / r[rOffset + 5];
+    }
 }
 
 __kernel void
 planeXZIntersectAt(__global double *res, __global const double *r,
                     const int resOffset, const int rOffset) {
-    res[resOffset] = -r[rOffset + 1] / r[rOffset + 4];
+    if (r[rOffset + 4] == 0) {
+        res[resOffset] = -1;
+    } else {
+        res[resOffset] = -r[rOffset + 1] / r[rOffset + 4];
+    }
 }
 
 __kernel void
 planeYZIntersectAt(__global double *res, __global const double *r,
                     const int resOffset, const int rOffset) {
-    res[resOffset] = -r[rOffset] / r[rOffset + 3];
+    if (r[rOffset + 3] == 0) {
+        res[resOffset] = -1;
+    } else {
+        res[resOffset] = -r[rOffset] / r[rOffset + 3];
+    }
 }
 
 __kernel void

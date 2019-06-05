@@ -572,6 +572,7 @@ public class RGB implements ColorProducer, Triple, MemWrapper, Externalizable, C
 	 * @return  An RGB object that represents the same color as this RGB object.
 	 */
 	public Object clone() {
+		// TODO  Clone mem
 		return new RGB(this.colorDepth, this.getRed(), this.getGreen(), this.getBlue());
 	}
 	

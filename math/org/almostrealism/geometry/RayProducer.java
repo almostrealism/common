@@ -14,18 +14,28 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.color;
+package org.almostrealism.geometry;
 
-import org.almostrealism.math.AcceleratedProducer;
+import org.almostrealism.algebra.Vector;
 import org.almostrealism.util.Producer;
 
-public class RGBAdd extends AcceleratedProducer<RGB> {
-	public RGBAdd(Producer<RGB> a, Producer<RGB> b) {
-		super("add", RGB.blank(), a, b);
+public class RayProducer implements Producer<Ray> {
+	private Producer<Vector> origin;
+	private Producer<Vector> direction;
+
+	public RayProducer(Producer<Vector> origin, Producer<Vector> direction) {
+		this.origin = origin;
+		this.direction = direction;
 	}
 
 	@Override
-	public RGB replaceNull(int argIndex) {
-		return RGBBlack.getInstance().evaluate(null);
+	public Ray evaluate(Object[] args) {
+		return new Ray(origin.evaluate(args), direction.evaluate(args));
+	}
+
+	@Override
+	public void compact() {
+		origin.compact();
+		direction.compact();
 	}
 }

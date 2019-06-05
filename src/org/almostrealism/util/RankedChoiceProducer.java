@@ -19,19 +19,33 @@ package org.almostrealism.util;
 import java.util.ArrayList;
 
 public class RankedChoiceProducer<T> extends ArrayList<ProducerWithRank<T>> implements Producer<T> {
+	public RankedChoiceProducer() {
+
+	}
+
 	@Override
 	public T evaluate(Object[] args) {
 		Producer<T> best = null;
 		double rank = Double.MAX_VALUE;
 
+		boolean printLog = Math.random() < 0.04;
+
+		if (printLog) {
+			System.out.println("RankedChoiceProducer: There are " + size() + " Producers to choose from");
+		}
+
 		r: for (ProducerWithRank<T> p : this) {
 			double r = p.getRank().evaluate(args).getValue();
+			if (r < 0 && printLog) System.out.println(p + " was skipped due to being less than zero");
 			if (r < 0) continue r;
 
 			if (best == null) {
+				if (printLog) System.out.println(p + " was assigned (rank = " + r + ")");
 				best = p.getProducer();
+				rank = r;
 			} else {
 				if (r >= 0 && r < rank) {
+					if (printLog) System.out.println(p + " was assigned (rank = " + r + ")");
 					best = p.getProducer();
 					rank = r;
 				}
@@ -39,6 +53,8 @@ public class RankedChoiceProducer<T> extends ArrayList<ProducerWithRank<T>> impl
 
 			if (rank == 0) break r;
 		}
+
+		if (printLog) System.out.println(best + " was chosen\n----------");
 
 		return best == null ? null : best.evaluate(args);
 	}
