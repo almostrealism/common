@@ -35,7 +35,7 @@ import java.util.concurrent.TimeoutException;
 
 /** A {@link Plane} represents an plane in 3d space. */
 public class Plane extends AbstractSurface implements ParticleGroup {
-	public static final boolean enableHardwareAcceleration = false;
+	public static final boolean enableHardwareAcceleration = true;
 
 	// TODO  Move these to an enum
 
