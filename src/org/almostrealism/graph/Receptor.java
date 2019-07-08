@@ -17,5 +17,5 @@
 package org.almostrealism.graph;
 
 public interface Receptor<T> extends ProteinReceivable<T> {
-	public void push(long proteinIndex);
+	void push(long proteinIndex);
 }

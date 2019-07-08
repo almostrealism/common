@@ -16,10 +16,6 @@
 
 package org.almostrealism.graph;
 
-import org.almostrealism.graph.Cell;
-import org.almostrealism.graph.ProteinCache;
-import org.almostrealism.graph.Receptor;
-
 public abstract class CellAdapter<T> implements Cell<T> {
 	private ProteinCache<T> o;
 	private Receptor<T> r;
@@ -42,6 +38,8 @@ public abstract class CellAdapter<T> implements Cell<T> {
 	public T getProtein(long index) { return o.getProtein(index); }
 	
 	public void setMeter(Receptor<T> m) { this.meter = m; }
+
+	protected void pushToMeter(long proteinIndex) { this.meter.push(proteinIndex); }
 	
 	/** Push to the {@link Receptor}. */
 	public void push(long proteinIndex) {

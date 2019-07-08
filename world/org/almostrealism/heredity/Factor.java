@@ -17,5 +17,5 @@
 package org.almostrealism.heredity;
 
 public interface Factor<T> {
-	public T getResultant(T value);
+	T getResultant(T value);
 }

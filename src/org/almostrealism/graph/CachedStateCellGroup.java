@@ -16,10 +16,13 @@
 
 package org.almostrealism.graph;
 
+import org.almostrealism.time.Temporal;
+
 import java.util.ArrayList;
 import java.util.Iterator;
 
-public class CachedStateCellGroup<T> extends ArrayList<CachedStateCell<T>> {
+public class CachedStateCellGroup<T> extends ArrayList<CachedStateCell<T>> implements Temporal {
+	@Override
 	public void tick() {
 		Iterator<CachedStateCell<T>> itr = iterator();
 		while (itr.hasNext()) itr.next().tick();

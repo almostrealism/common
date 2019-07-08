@@ -27,12 +27,13 @@ public class AudioMeter implements Receptor<Long> {
 	private int count = 0;
 	
 	private long clipCount;
-	private long clipValue = Long.MAX_VALUE;
+	private long clipMax = Long.MAX_VALUE / 2;
+	private long clipMin = Long.MIN_VALUE / 2;
 	
 	private long silenceValue = 0;
 	private long silenceDuration;
 	
-	private boolean outEnabled = true;
+	private boolean outEnabled = false;
 	
 	public AudioMeter(ProteinCache<Long> cache) { setProteinCache(cache); }
 	
@@ -52,7 +53,9 @@ public class AudioMeter implements Receptor<Long> {
 	
 	public long getSilenceDuration() { return this.silenceDuration; }
 	
-	public void setClipValue(long value) { this.clipValue = value; }
+	public void setClipMaxValue(long value) { this.clipMax = value; }
+
+	public void setClipMinValue(long value) { this.clipMin = value; }
 	
 	public long getClipCount() { return clipCount; }
 	
@@ -68,7 +71,7 @@ public class AudioMeter implements Receptor<Long> {
 		count++;
 		count = count % freq;
 		
-		if (cache.getProtein(l) >= clipValue) clipCount++;
+		if (cache.getProtein(l) >= clipMax || cache.getProtein(l) <= clipMin) clipCount++;
 		if (cache.getProtein(l) > silenceValue) silenceDuration = 0;
 		if (cache.getProtein(l) <= silenceValue) silenceDuration++;
 		

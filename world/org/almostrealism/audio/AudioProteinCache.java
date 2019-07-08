@@ -24,7 +24,7 @@ public class AudioProteinCache implements ProteinCache<Long> {
 	public static int sampleRate = 24 * 1024; // 44100
 	public static int bufferDuration = 100;
 	
-	public static int depth = Integer.MAX_VALUE;
+	public static long depth = Long.MAX_VALUE;
 	public static long convertToByte = depth / Byte.MAX_VALUE;
 	
 	private long data[] = new long[sampleRate * bufferDuration];
