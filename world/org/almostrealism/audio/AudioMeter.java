@@ -16,7 +16,6 @@
 
 package org.almostrealism.audio;
 
-import org.almostrealism.audio.AudioProteinCache;
 import org.almostrealism.graph.ProteinCache;
 import org.almostrealism.graph.Receptor;
 

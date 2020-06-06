@@ -17,5 +17,16 @@
 package org.almostrealism.audio;
 
 public interface OutputLine {
+	/**
+	 * Write the specified bytes. Using this method, the caller must
+	 * be aware of the number of bytes in a sample to write a valid
+	 * set of samples.
+	 */
 	void write(byte b[]);
+
+	/**
+	 * Write one sample, coercing the long value into whatever
+	 * necessary to get one sample worth of bytes.
+	 */
+	void write(long sample);
 }

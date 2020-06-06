@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@ package org.almostrealism.graph;
 import org.almostrealism.heredity.Factor;
 import org.almostrealism.time.Temporal;
 
-public class CachedStateCell<T> extends FilteredCell<T> implements Factor<T>, Temporal {
+public class CachedStateCell<T> extends FilteredCell<T> implements Factor<T>, Source<T>, Temporal {
 	public static boolean enableWarning = true;
 	
 	private T cachedValue;
@@ -31,11 +31,19 @@ public class CachedStateCell<T> extends FilteredCell<T> implements Factor<T>, Te
 	}
 	
 	public void setCachedValue(T v) { this.cachedValue = v; }
-	
+
 	protected T getCachedValue() { return cachedValue; }
-	
+
+	@Override
 	public T getResultant(T value) { return outValue; }
-	
+
+	@Override
+	public T next() { return getResultant(null); }
+
+	@Override
+	public boolean isDone() { return false; }
+
+	@Override
 	public void push(long index) {
 		if (cachedValue == null) {
 			cachedValue = getProtein(index);
@@ -44,6 +52,7 @@ public class CachedStateCell<T> extends FilteredCell<T> implements Factor<T>, Te
 			System.out.println("Warning: Cached cell is pushed when full");
 		}
 	}
-	
+
+	@Override
 	public void tick() { outValue = cachedValue; cachedValue = null; super.push(0); }
 }
