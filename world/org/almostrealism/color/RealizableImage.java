@@ -83,7 +83,7 @@ public class RealizableImage implements Producer<Producer<RGB>[][]> {
 	@Override
 	public Producer<RGB>[][] evaluate(Object[] args) {
 		Pipeline pipe = null;
-		if (args.length > 0 && args[0] instanceof Pipeline) pipe = (Pipeline) args[0];
+		if (args != null && args.length > 0 && args[0] instanceof Pipeline) pipe = (Pipeline) args[0];
 
 		if (source == null) {
 			if (this.futures == null) return data;

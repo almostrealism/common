@@ -21,6 +21,7 @@ import org.almostrealism.algebra.UnityVector;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.ZeroVector;
 import org.almostrealism.geometry.*;
+import org.almostrealism.io.DecodePostProcessing;
 import org.almostrealism.uml.ModelEntity;
 import org.almostrealism.util.StaticProducer;
 
@@ -32,7 +33,7 @@ import org.almostrealism.util.StaticProducer;
  * @author  Michael Murray
  */
 @ModelEntity
-public class BasicGeometry implements Positioned, Oriented, Scaled {
+public class BasicGeometry implements Positioned, Oriented, Scaled, DecodePostProcessing {
 	protected Vector location;
 	protected double size;
 	
@@ -296,4 +297,7 @@ public class BasicGeometry implements Positioned, Oriented, Scaled {
 			System.out.println("BasicGeometry: Transformation will be invalid");
 		}
 	}
+
+	@Override
+	public void afterDecoding() { calculateTransform(); }
 }

@@ -166,22 +166,6 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 		
 		return mesh;
 	}
-	
-	/**
-	 * Returns true if the ray represented by the specified Ray object intersects any of the surfaces
-	 * represented by this {@link SurfaceGroup}.
-	 */
-	@Override
-	public boolean intersect(Ray ray) {
-		ray = ray.transform(this.getTransform(true).getInverse());
-		
-		for (Intersectable s : this) {
-			if (s.intersect(ray) == true)
-				return true;
-		}
-		
-		return false;
-	}
 
 	/**
 	 * Returns an {@link Intersection} object that represents the ray-surface intersections

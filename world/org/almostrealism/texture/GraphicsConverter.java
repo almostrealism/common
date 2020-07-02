@@ -23,6 +23,7 @@ import java.awt.Toolkit;
 import java.awt.image.BufferedImage;
 import java.awt.image.MemoryImageSource;
 import java.awt.image.RenderedImage;
+import java.util.function.Function;
 
 import javax.swing.ImageIcon;
 
@@ -190,6 +191,56 @@ public class GraphicsConverter {
 	}
 
 	/**
+	 * Evaluates the specified array of {@link Producer}s, producing {@link RGB}s.
+	 */
+	public static RGB[][] convertToRGBArray(Producer<RGB> image[][]) {
+		return convertToRGBArray(image, (Pipeline) null);
+	}
+
+	/**
+	 * Evaluates the specified array of {@link Producer}s, producing {@link RGB}s.
+	 */
+	public static RGB[][] convertToRGBArray(Producer<RGB> image[][], Pipeline notify) {
+		return convertToRGBArray(image, p -> new Pair(p.getX(), image[(int) p.getX()].length - 1 - p.getY()), notify);
+	}
+
+	/**
+	 * Evaluates the specified array of {@link Producer}s, producing {@link RGB}s.
+	 */
+	public static RGB[][] convertToRGBArray(Producer<RGB> image[][], Function<Pair, Pair> positionForImageIndices) {
+		return convertToRGBArray(image, positionForImageIndices, null);
+	}
+
+	/**
+	 * Evaluates the specified array of {@link Producer}s, producing {@link RGB}s.
+	 */
+	public static RGB[][] convertToRGBArray(Producer<RGB> image[][], Function<Pair, Pair> positionForImageIndices, Pipeline notify) {
+		RGB evaluated[][] = new RGB[image.length][image[0].length];
+
+		boolean wasNull = false;
+
+		for (int j = 0; j < image[0].length; j++) {
+			i: for (int i = 0; i < image.length; i++) {
+				if (image[i][j] == null) {
+					wasNull = true;
+					continue i;
+				}
+
+				evaluated[i][j] = image[i][j].evaluate(new Object[] { positionForImageIndices.apply(new Pair(i, j)) });
+			}
+
+			if (notify != null) {
+				notify.evaluate(new Object[] { evaluated });
+			}
+		}
+
+		if (wasNull)
+			System.out.println("GraphicsConverter: Some image data was null.");
+
+		return evaluated;
+	}
+
+	/**
 	 * Converts the specified array of RGB objects to an AWT Image object.
 	 * The array locations map to pixels in the image. The image produced
 	 * uses the RGB color model with no alpha channel.
@@ -199,11 +250,20 @@ public class GraphicsConverter {
 	}
 
 	/**
-	 * Converts the specified array of RGB objects to an AWT Image object.
+	 * Evaluates the specified array of {@link Producer}s as an AWT Image object.
 	 * The array locations map to pixels in the image. The image produced
 	 * uses the RGB color model with no alpha channel.
 	 */
 	public static Image convertToAWTImage(Producer<RGB> image[][], Pipeline notify) {
+		return convertToAWTImage(image,  p -> new Pair(p.getX(), image[(int) p.getX()].length - 1 - p.getY()), notify);
+	}
+
+	/**
+	 * Evaluates the specified array of {@link Producer}s as an AWT Image object.
+	 * The array locations map to pixels in the image. The image produced
+	 * uses the RGB color model with no alpha channel.
+	 */
+	public static Image convertToAWTImage(Producer<RGB> image[][], Function<Pair, Pair> positionForImageIndices, Pipeline notify) {
 		int data[] = new int[image.length * image[0].length];
 		
 		int index = 0;
@@ -217,7 +277,7 @@ public class GraphicsConverter {
 					continue i;
 				}
 				
-				RGB c = image[i][j].evaluate(new Object[] { new Pair(i, image[i].length - 1 - j) });
+				RGB c = image[i][j].evaluate(new Object[] { positionForImageIndices.apply(new Pair(i, j)) });
 				
 				int r = (int)(Math.min(1.0, Math.abs(c.getRed())) * 255);
 				int g = (int)(Math.min(1.0, Math.abs(c.getGreen())) * 255);

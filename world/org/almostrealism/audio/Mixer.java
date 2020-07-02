@@ -19,28 +19,39 @@ package org.almostrealism.audio;
 import java.util.ArrayList;
 import java.util.Iterator;
 
+import org.almostrealism.graph.CachedStateCell;
 import org.almostrealism.graph.Source;
 import org.almostrealism.graph.SummationCell;
 import org.almostrealism.time.Temporal;
 
-public class Mixer extends ArrayList<Source> implements Temporal {
+public class Mixer extends ArrayList<Source<Long>> implements Temporal {
 	private AudioProteinCache cache;
-	private SummationCell c;
+	private SummationCell sum;
+
+	private CachedStateCell<Long> channels[] = new CachedStateCell[24];
 	
 	public Mixer(AudioProteinCache cache, SummationCell receptor) {
 		this.cache = cache;
-		this.c = receptor;
+		this.sum = receptor;
+
+		for (int i = 0; i < channels.length; i++) {
+			channels[i] = new CachedStateCell<>();
+		}
+	}
+
+	public CachedStateCell<Long> getChannel(int i) {
+		return channels[i];
 	}
 	
 	@Override
 	public void tick() {
-		for (Source s : this) {
-			c.push(cache.addProtein(s.next()));
+		for (Source<Long> s : this) {
+			sum.push(cache.addProtein(s.next()));
 		}
 		
-		Iterator<Source> itr = iterator();
+		Iterator<Source<Long>> itr = iterator();
 		while (itr.hasNext()) if (itr.next().isDone()) itr.remove();
 		
-		this.c.tick();
+		this.sum.tick();
 	}
 }

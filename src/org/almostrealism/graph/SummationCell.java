@@ -17,6 +17,14 @@
 package org.almostrealism.graph;
 
 public class SummationCell extends CachedStateCell<Long> {
+	public SummationCell() {
+		this(null);
+	}
+
+	public SummationCell(ProteinCache<Long> proteinCache) {
+		super(proteinCache);
+	}
+
 	@Override
 	public void push(long index) {
 		long value = getProtein(index);

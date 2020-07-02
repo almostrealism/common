@@ -16,8 +16,8 @@
 
 package org.almostrealism.graph;
 
-public interface Source {
-	long next();
-	
+public interface Source<T> {
+	T next();
+
 	boolean isDone();
 }

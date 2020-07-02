@@ -360,47 +360,6 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 			}
 		}
 	}
-
-	/**
-	 * @return  True if the ray represented by the specified Ray object intersects the triangle
-	 *          represented by this Triangle object.
-	 */
-	@Override
-	public boolean intersect(Ray ray) {
-		Ray r;
-		
-		if (useT)
-			r = ray.transform(this.getTransform(true).getInverse());
-		else
-			r = ray;
-		
-		Vector jkl = this.jkl.subtract(r.getOrigin());
-		
-		double m = abc.getX() * (def.getY() * r.getDirection().getZ() - r.getDirection().getY() * def.getZ()) +
-					abc.getY() * (r.getDirection().getX() * def.getZ() - def.getX() * r.getDirection().getZ()) +
-					abc.getZ() * (def.getX() * r.getDirection().getY() - def.getY() * r.getDirection().getX());
-		
-		if (m == 0)
-			return false;
-
-		double u = jkl.getX() * (def.getY() * r.getDirection().getZ() - r.getDirection().getY() * def.getZ()) +
-					jkl.getY() * (r.getDirection().getX() * def.getZ() - def.getX() * r.getDirection().getZ()) +
-					jkl.getZ() * (def.getX() * r.getDirection().getY() - def.getY() * r.getDirection().getX());
-		u = u / m;
-		
-		if (u <= 0.0)
-			return false;
-		
-		double v = r.getDirection().getZ() * (abc.getX() * jkl.getY() - jkl.getX() * abc.getY()) +
-					r.getDirection().getY() * (jkl.getX() * abc.getZ() - abc.getX() * jkl.getZ()) +
-					r.getDirection().getX() * (abc.getY() * jkl.getZ() - jkl.getY() * abc.getZ());
-		v = v / m;
-		
-		if (v <= 0.0 || u + v >= 1.0)
-			return false;
-		
-		return true;
-	}
 	
 	/**
 	 * Returns a {@link ShadableIntersection} representing the points along the specified

@@ -112,7 +112,6 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 		public BoundingSolid calculateBoundingSolid() { return mesh.calculateBoundingSolid(); }
 
 		@Override public Producer<Vector> getNormalAt(Vector point) { return this.getSurface().getNormalAt(point); }
-		@Override public boolean intersect(Ray ray) { return this.getSurface().intersect(ray); }
 		@Override public ContinuousField intersectAt(Producer<Ray> ray) { return this.getSurface().intersectAt(ray); }
 
 		@Override
@@ -691,34 +690,6 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 	 */
 	@Override
 	public Mesh triangulate() { return this; }
-	
-	/**
-	 * @see ShadableSurface#intersect(Ray)
-	 */
-	@Override
-	public synchronized boolean intersect(Ray ray) {
-		if (this.isTreeLoaded()) return super.intersect(ray);
-		
-		ray = ray.transform(this.getTransform(true).getInverse());
-		
-		Iterator itr = this.triangles.iterator();
-		
-		Triangle tr = new Triangle();
-		
-		while (itr.hasNext()) {
-			int v[] = (int[]) itr.next();
-			
-	  		Vertex v1 = (Vertex)this.points.get(v[0]);
-	  		Vertex v2 = (Vertex)this.points.get(v[1]);
-	  		Vertex v3 = (Vertex)this.points.get(v[2]);
-	  		
-			tr.setVertices(v1, v2, v3);
-			
-			if (tr.intersect(ray)) return true;
-		}
-		
-		return false;
-	}
 
 	/**
 	 * @see ShadableSurface#intersectAt(Producer)

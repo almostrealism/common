@@ -17,9 +17,9 @@
 package org.almostrealism.io;
 
 /**
- * The OutputHandler interface is implemented by classes that wish to be notified when job output
- * is sent to a DatabaseConnection object to be stored.
+ * The {@link OutputHandler} interface is implemented by classes that wish to be notified
+ * when job output is sent to be stored.
  */
 public interface OutputHandler {
-	public void storeOutput(long time, int uid, JobOutput output);
+	void storeOutput(long time, int uid, JobOutput output);
 }

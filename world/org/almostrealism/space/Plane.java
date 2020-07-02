@@ -139,26 +139,6 @@ public class Plane extends AbstractSurface implements ParticleGroup {
 		calculateTransform();
 		return normal;
 	}
-
-	/**
-	 * Returns true if the ray represented by the specified {@link Ray}
-	 * intersects the plane represented by this Plane object in real space.
-	 */
-	@Override
-	public boolean intersect(Ray ray) {
-		ray = ray.transform(this.getTransform(true).getInverse());
-		
-		Vector d = ray.getDirection();
-		
-		if (this.type == Plane.XY && d.getZ() == this.getLocation().getZ())
-			return false;
-		else if (this.type == Plane.XZ && d.getY() == this.getLocation().getY())
-			return false;
-		else if (this.type == Plane.YZ && d.getX() == this.getLocation().getX())
-			return false;
-		else
-			return true;
-	}
 	
 	/**
 	 * Returns an {@link Intersection} representing the points along the specified

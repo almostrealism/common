@@ -350,16 +350,7 @@ public class Polynomial<IN> extends AbstractSurface<IN> {
 			}
 		};
 	}
-	
-	/**
-	 * Returns true if the ray represented by the specified Ray object intersects the
-	 * polynomial surface represented by this Polynomial object in real space.
-	 */
-	@Override
-	public boolean intersect(Ray ray) {
-		throw new RuntimeException("Not implemented");
-	}
-	
+
 	/**
 	 * Returns an array of double values representing the distance along the specified
 	 * {@link Ray} object that intersection between the ray and the polynomial surface

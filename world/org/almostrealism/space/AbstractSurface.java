@@ -107,7 +107,7 @@ public abstract class AbstractSurface<IN> extends TriangulatableGeometry impleme
 	}
 	
 	/**
-	 * Sets the location, size, and color of this AbstractSurface to those specified.
+	 * Sets the location, size, and color of this {@link AbstractSurface} to those specified.
 	 */
 	public AbstractSurface(Vector location, double size, RGB color, boolean addDefaultDiffuseShader) {
 		this(location, size, color);
@@ -117,7 +117,7 @@ public abstract class AbstractSurface<IN> extends TriangulatableGeometry impleme
 	}
 	
 	/**
-	 * Sets the parent surface group of this AbstractSurface to the specified SurfaceGroup object.
+	 * Sets the parent surface group of this {@link AbstractSurface} to the specified {@link SurfaceGroup}.
 	 */
 	public void setParent(SurfaceGroup parent) { this.parent = parent; }
 	
@@ -505,6 +505,7 @@ public abstract class AbstractSurface<IN> extends TriangulatableGeometry impleme
 	 * calculated by the {@link Shader} objects stored by this AbstractSurface and the parent
 	 * of this {@link AbstractSurface} and returns this value as an {@link RGB}.
 	 */
+	@Override
 	public Producer<RGB> shade(ShaderContext p) {
 //		System.out.println(this + ".shade(reflections = " + p.getReflectionCount() + ")");
 
@@ -541,6 +542,7 @@ public abstract class AbstractSurface<IN> extends TriangulatableGeometry impleme
 	/**
 	 * Returns the list of Texture objects used to color this AbstractSurface as an array of Texture objects.
 	 */
+	// TODO  Change to List
 	public Texture[] getTextures() { return this.textures; }
 	
 	/** Returns the color of this {@link AbstractSurface} as an {@link RGB} object. */
@@ -552,10 +554,12 @@ public abstract class AbstractSurface<IN> extends TriangulatableGeometry impleme
 	@Override
 	public ColorProducer getColorAt() { return call(); }
 
+	@Override
 	public RGB evaluate(Object args[]) {
 		return getColorAt().evaluate(args);
 	}
 
+	@Override
 	public void compact() {
 		getColorAt().compact();
 	}
@@ -583,16 +587,19 @@ public abstract class AbstractSurface<IN> extends TriangulatableGeometry impleme
 		
 		return colorAt;
 	}
-	
+
+	@Override
 	public ColorProducer call() { return colorProducer; }
 	
 	/**
 	 * Delegates to  {#getNormalAt(Vector)}
 	 */
+	@Override
 	public Vector operate(Triple p) {
 		return getNormalAt(new Vector(p.getA(), p.getB(), p.getC())).evaluate(new Object[0]);
 	}
 
+	@Override
 	public Scope getScope(String prefix) {
 		Scope s = new Scope();
 		s.getVariables().add(new Variable(prefix + "vector", operate(null))); // TODO Input?

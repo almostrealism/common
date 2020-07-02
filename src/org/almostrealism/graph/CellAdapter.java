@@ -26,11 +26,13 @@ public abstract class CellAdapter<T> implements Cell<T> {
 	public void setName(String n) { this.name = n; }
 	
 	public String getName() { return this.name; }
-	
+
+	@Override
 	public void setReceptor(Receptor<T> r) { this.r = r; }
 	
 	public Receptor<T> getReceptor() { return this.r; }
-	
+
+	@Override
 	public void setProteinCache(ProteinCache<T> p) { this.o = p; }
 	
 	public long addProtein(T p) { return o.addProtein(p); }
@@ -42,11 +44,13 @@ public abstract class CellAdapter<T> implements Cell<T> {
 	protected void pushToMeter(long proteinIndex) { this.meter.push(proteinIndex); }
 	
 	/** Push to the {@link Receptor}. */
+	@Override
 	public void push(long proteinIndex) {
 		if (meter != null) meter.push(proteinIndex);
 		if (r != null) r.push(proteinIndex);
 	}
-	
+
+	@Override
 	public String toString() {
 		String className = getClass().getSimpleName();
 		return name == null ? className : (name + " (" + className + ")");

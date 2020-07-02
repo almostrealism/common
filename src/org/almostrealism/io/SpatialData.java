@@ -67,8 +67,21 @@ public class SpatialData {
 						sr[i] = ((ShadableSurfaceWrapper) sr[i]).getSurface();
 			}
 
-			// TODO  After the scene is loaded, the camera needs the UVW computation
-			//       performed and all surfaces need their transform matrix computed
+			if (scene.getCamera() instanceof DecodePostProcessing) {
+				((DecodePostProcessing) scene.getCamera()).afterDecoding();
+			}
+
+			for (int i = 0; i < scene.getSurfaces().length; i++) {
+				if (scene.getSurfaces()[i] instanceof DecodePostProcessing) {
+					((DecodePostProcessing) scene.getSurfaces()[i]).afterDecoding();
+				}
+			}
+
+			scene.getLights().forEach(l -> {
+				if (l instanceof DecodePostProcessing) {
+					((DecodePostProcessing) l).afterDecoding();
+				}
+			});
 
 			return scene;
 		} else if (encoding == FileDecoder.RAWEncoding) {
