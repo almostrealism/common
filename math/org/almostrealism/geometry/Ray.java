@@ -82,7 +82,7 @@ public class Ray implements MemWrapper, Cloneable {
 	}
 	
 	/**
-	 * Retrusn a transform of the origin and direction of this ray using the specified {@link TransformMatrix}.
+	 * Returns a transform of the origin and direction of this ray using the specified {@link TransformMatrix}.
 	 * 
 	 * @param tm  TransformMatrix to use.
 	 * @return  {{ox, oy, oz}, {dx, dy, dz}} after transformation.

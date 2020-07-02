@@ -27,6 +27,7 @@ import java.io.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
+import java.util.function.Function;
 
 public class Animation<T extends ShadableSurface> extends Scene<T> implements Runnable {
 	private int itr;
@@ -34,7 +35,7 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 	private boolean sleep, render;
 	private boolean logState;
 
-	private List<Gradient> forces;
+	private List<Function<RigidBody, Gradient>> forces;
 
 	private String dir;
 
@@ -51,7 +52,15 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 	 *
 	 * @param f  The Force object to add.
 	 */
-	public void addForce(Gradient f) { this.forces.add(f); }
+	public void addForce(Gradient f) { addForce(rb -> f); }
+
+	/**
+	 * Adds a {@link Function} that produces a gradient force to the set of forces that
+	 * will be evaluated each iteration.
+	 *
+	 * @param f  The force {@link Function} to add.
+	 */
+	public void addForce(Function<RigidBody, Gradient> f) { forces.add(f); }
 
 	public void setIterations(int itr) { this.itr = itr; }
 
@@ -134,6 +143,7 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 	public void setListener(Temporal l) { this.listener = l; }
 
 	/** Runs the animation. */
+	@Override
 	public void run() {
 		System.out.println("Starting simulation (" + this.itr + "): dt = " + this.dt + "  fdt = " + this.fdt);
 
@@ -141,13 +151,15 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 
 		try {
 			Properties pr = new Properties();
-			pr.load(new FileInputStream(this.dir + "instance"));
+			pr.load(new FileInputStream(this.dir == null ? "instance" : (this.dir + "instance")));
 			instance = pr.getProperty("instance");
 		} catch (FileNotFoundException fnf) {
 			System.out.println("Instance file not found. Zero will be used.");
 		} catch (IOException ioe) {
 			System.out.println("Error reading instance file. Zero will be used.");
 		}
+
+		int iterationsPerFrame = (int) (this.fdt / this.dt);
 
 		for (int i = 0; i < this.itr; i++) {
 			try {
@@ -167,8 +179,14 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 
 				Vector g = new Vector(0.0, 0.0, 0.0);
 
-				for (Gradient f : forces)
-					g.addTo(f.getNormalAt(((RigidBody) s).getState().getLocation()).evaluate(new Object[0]));
+				for (Function<RigidBody, Gradient> f : forces) {
+					Gradient grad = f.apply((RigidBody) s);
+
+					if (grad != null) {
+						g.addTo(grad.getNormalAt(((RigidBody) s).getState().getLocation())
+								.evaluate(new Object[]{((RigidBody) s).getState()}));
+					}
+				}
 
 				((RigidBody) s).getState().setForce(g);
 			}
@@ -193,8 +211,8 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 						Vector p = intersect[0];
 						Vector n = intersect[1];
 
-						System.out.println(this.totalTime + ": Intersection (" + a + " / " +
-											b + "): " + p.toString() + " / " + n.toString());
+						// System.out.println(this.totalTime + ": Intersection (" + a + " / " +
+						//					b + "): " + p.toString() + " / " + n.toString());
 
 						Vector pa = a.getState().getLinearVelocity().add(a.getState().getAngularVelocity().crossProduct(p.subtract(a.getState().getLocation())));
 						Vector pb = b.getState().getLinearVelocity().add(b.getState().getAngularVelocity().crossProduct(p.subtract(b.getState().getLocation())));
@@ -229,11 +247,11 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 			double microseconds = totalTime * 1000 * 1000;
 
 			// Move clock forward until it reaches the total time elapsed
-			while (clock.getTime() < microseconds) {
-				clock.tick();
-			}
+//			while (clock.getTime() < microseconds) {
+//				clock.tick();
+//			}
 
-			if (this.totalTime % this.fdt == 0 || this.vdt > 0.0) {
+			if ((i + 1) % iterationsPerFrame == 0 || this.vdt > 0.0) {
 				if (this.listener != null) this.listener.tick();
 
 				try {
@@ -244,8 +262,9 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 
 					String head = "Simulation state for instance " + instance + ": " + this.totalTime;
 
-					if (this.logState) p.store(new FileOutputStream(this.dir + time + ".state"), head);
-					p.store(new FileOutputStream(this.dir + "latest.state"), head);
+					if (this.logState)
+						p.store(new FileOutputStream(dir == null ? (time + ".state") : (dir + time + ".state")), head);
+					p.store(new FileOutputStream(dir == null ? "latest.state" : (dir + "latest.state")), head);
 				} catch (IOException ioe) {
 					System.out.println("IO error writing state " + i * this.dt);
 				}
@@ -285,7 +304,6 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 		this.totalTime = Double.parseDouble(p.getProperty("simulation.time", "0.0"));
 
 		dt = Double.parseDouble(p.getProperty("simulation.dt", "1"));
-
 	}
 
 	public void writeImage(int i, String instance) { }

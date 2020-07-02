@@ -28,21 +28,27 @@ import java.io.ObjectOutput;
  * @author  Michael Murray
  */
 public class JobOutput implements Externalizable {
-  private String user, passwd, output;
-  private long time;
+	private String taskId;
+  	private String user, passwd, output;
+  	private long time;
   
 	public JobOutput() {
+		this.taskId = "";
 		this.user = "";
 		this.passwd = "";
 		this.output = "";
 	}
 	
-    public JobOutput(String user, String passwd, String output) {
+    public JobOutput(String taskId, String user, String passwd, String output) {
+		this.taskId = taskId;
         this.user = user;
         this.passwd = passwd;
-        this.output = output;
+        setOutput(output);
     }
-    
+
+    public void setTaskId(String taskId) { this.taskId = taskId; }
+    public String getTaskId() { return this.taskId; }
+
     public void setUser(String user) { this.user = user; }
     public void setPassword(String passwd) { this.passwd = passwd; }
     public void setOutput(String output) { this.output = output; }
@@ -56,6 +62,7 @@ public class JobOutput implements Externalizable {
     public String encode() {
     		StringBuffer b = new StringBuffer();
     		b.append(this.getClass().getName() + ":");
+    		b.append(this.taskId + ":");
     		b.append(this.user + ":");
     		b.append(this.passwd + ":");
     		b.append(this.time + ":");
@@ -65,17 +72,17 @@ public class JobOutput implements Externalizable {
     }
     
     public static JobOutput decode(String data) {
-    		int index = data.indexOf(":");
+		int index = data.indexOf(":");
 		String className = data.substring(0, index);
 		
 		JobOutput j = null;
 		
 		try {
-			j = (JobOutput)Class.forName(className).newInstance();
+			j = (JobOutput) Class.forName(className).newInstance();
 			
 			boolean end = false;
 			
-			i: for (int i = 0; !end && i < 3; i++) {
+			i: for (int i = 0; !end && i <= 4; i++) {
 				data = data.substring(index + 1);
 				index = data.indexOf(":");
 				
@@ -83,7 +90,7 @@ public class JobOutput implements Externalizable {
 				
 				String s = null;
 				
-				if (index <= 0) {
+				if (index < 0) {
 					s = data;
 					end = true;
 				} else {
@@ -91,12 +98,14 @@ public class JobOutput implements Externalizable {
 				}
 				
 				if (i == 0)
-					j.setUser(s);
+					j.setTaskId(s);
 				else if (i == 1)
-					j.setPassword(s);
+					j.setUser(s);
 				else if (i == 2)
-					j.setTime(Long.parseLong(s));
+					j.setPassword(s);
 				else if (i == 3)
+					j.setTime(Long.parseLong(s));
+				else if (i == 4)
 					j.setOutput(data);
 				else
 					break i;
@@ -116,7 +125,9 @@ public class JobOutput implements Externalizable {
 	 * 
 	 * @see java.io.Externalizable#writeExternal(java.io.ObjectOutput)
 	 */
+	@Override
 	public void writeExternal(ObjectOutput out) throws IOException {
+		out.writeUTF(this.taskId);
 		out.writeUTF(this.user);
 		out.writeUTF(this.passwd);
 		out.writeUTF(this.output);
@@ -127,7 +138,9 @@ public class JobOutput implements Externalizable {
 	/**
 	 * @see java.io.Externalizable#readExternal(java.io.ObjectInput)
 	 */
+	@Override
 	public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+		this.taskId = in.readUTF();
 		this.user = in.readUTF();
 		this.passwd = in.readUTF();
 		this.output = in.readUTF();
@@ -136,8 +149,9 @@ public class JobOutput implements Externalizable {
 		Object o = in.readObject();
 		
 		if (o != null)
-			System.out.println("JobOutput: Recieved " + o + " during external read.");
+			System.out.println("JobOutput: Received " + o + " during external read.");
 	}
-	
+
+	@Override
 	public String toString() { return this.getOutput(); }
 }

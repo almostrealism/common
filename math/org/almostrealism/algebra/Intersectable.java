@@ -28,12 +28,8 @@ import java.util.concurrent.Future;
  */
 @Function
 public interface Intersectable<T> extends Future<Operator<T>> {
-	/** Returns true if the ray intersects the 3d surface in real space. */
-	@Deprecated
-	boolean intersect(Ray ray);
-	
 	/**
-	 * Returns an Intersection object that represents the values for t that solve
+	 * Returns a {@link ContinuousField} that represents the values for t that solve
 	 * the vector equation p = o + t * d where p is a point of intersection of
 	 * the specified ray and the surface.
 	 */

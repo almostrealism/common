@@ -26,8 +26,13 @@ public class CachedStateCell<T> extends FilteredCell<T> implements Factor<T>, So
 	private T outValue;
 	
 	public CachedStateCell() {
+		this(null);
+	}
+
+	public CachedStateCell(ProteinCache<T> proteinCache) {
 		super(null);
 		setFilter(this);
+		setProteinCache(proteinCache);
 	}
 	
 	public void setCachedValue(T v) { this.cachedValue = v; }

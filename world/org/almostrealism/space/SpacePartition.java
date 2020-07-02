@@ -213,53 +213,6 @@ public class SpacePartition<T extends ShadableSurface> extends SurfaceGroup<T> {
 		public boolean isRight(Vector v) { return this.isRight(v, this.offset); }
 		public boolean isLeft(Vector v) { return this.isLeft(v, this.offset); }
 		
-		public boolean intersect(Ray r) {
-			if (this.surfaces != null) {
-				for (int i = 0; i < this.surfaces.length; i++) {
-					if (this.scache[i] == null)
-						this.scache[i] = SpacePartition.this.getSurface(surfaces[i]);
-					
-					if (this.scache[i].intersect(r))
-						return true;
-				}
-			}
-			
-			if (this.left == null && this.right == null) return false;
-			
-			int side = this.checkRay(r);
-			boolean left, right;
-			
-			if (side == Node.LEFT) {
-				left = true;
-				right = false;
-				SpacePartition.l++;
-			} else if (side == Node.RIGHT) {
-				left = false;
-				right = true;
-				SpacePartition.r++;
-			} else {
-				left = true;
-				right = true;
-				SpacePartition.s++;
-			}
-			
-			if (this.left != null) {
-				if (left) left = this.left.intersect(r);
-			} else {
-				left = false;
-				right = this.right.intersect(r);
-			}
-			
-			if (this.right != null) {
-				if (right) right = this.right.intersect(r);
-			} else {
-				right = false;
-				left = this.left.intersect(r);
-			}
-			
-			return (right || left);
-		}
-		
 		public ShadableIntersection intersectAt(Producer r) {
 			return null; // TODO
 			/*
@@ -357,12 +310,6 @@ public class SpacePartition<T extends ShadableSurface> extends SurfaceGroup<T> {
 	}
 	
 	public boolean isTreeLoaded() { return (this.root != null); }
-
-	@Override
-	public boolean intersect(Ray r) {
-		r = r.transform(this.getTransform(true).getInverse());
-		return this.root.intersect(r);
-	}
 
 	@Override
 	public ContinuousField intersectAt(Producer r) {

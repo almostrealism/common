@@ -16,6 +16,16 @@
 
 package org.almostrealism.graph;
 
+/**
+ * Implementors of {@link Triangulatable} are able to produce a
+ * {@link Mesh}. The {@link Mesh} should be an approximation of
+ * whatever geometry the implementor represents in other contexts.
+ *
+ * @author  Michael Murray
+ */
 public interface Triangulatable {
-	public Mesh triangulate();
+	/**
+	 * Produce a {@link Mesh} from this {@link Triangulatable}.
+	 */
+	Mesh triangulate();
 }
