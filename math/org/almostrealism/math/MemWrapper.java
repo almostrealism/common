@@ -19,6 +19,8 @@ package org.almostrealism.math;
 import org.jocl.cl_mem;
 
 public interface MemWrapper {
+	int getMemLength();
+
 	cl_mem getMem();
 
 	void destroy();

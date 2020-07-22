@@ -14,13 +14,14 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.algebra;
+package org.almostrealism.algebra.computations;
 
+import org.almostrealism.algebra.TransformMatrix;
 import org.almostrealism.math.AcceleratedProducer;
 import org.almostrealism.util.Producer;
 
-public class MatrixTranspose extends AcceleratedProducer<TransformMatrix> {
-	public MatrixTranspose(Producer<TransformMatrix> m) {
-		super("matrixTranspose", TransformMatrix.blank(), m);
+public class MatrixAdjoint extends AcceleratedProducer<TransformMatrix> {
+	public MatrixAdjoint(Producer<TransformMatrix> m) {
+		super("matrixAdjoint", TransformMatrix.blank(), m);
 	}
 }

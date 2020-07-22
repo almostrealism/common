@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package org.almostrealism.algebra;
+package org.almostrealism.algebra.computations;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -24,10 +24,13 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 import org.almostrealism.algebra.Triple;
+import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorProducer;
+import org.almostrealism.relation.TripleFunction;
+import org.almostrealism.util.Producer;
 
-public abstract class VectorFutureAdapter extends ArrayList<Future<VectorProducer>>
-		implements VectorProducer, Future<VectorProducer> {
+public abstract class VectorFutureAdapter extends ArrayList<Future<Producer<Vector>>>
+		implements VectorProducer, Future<Producer<Vector>>, TripleFunction<Vector> {
 
 	public void add(VectorProducer p) {
 		addAll(convertToFutures(new VectorProducer[] { p }));
@@ -42,7 +45,7 @@ public abstract class VectorFutureAdapter extends ArrayList<Future<VectorProduce
 	public boolean cancel(boolean mayInterruptIfRunning) {
 		boolean cancelled = true;
 
-		for (Future<VectorProducer> p : this) {
+		for (Future<Producer<Vector>> p : this) {
 			cancelled &= p.cancel(mayInterruptIfRunning);
 		}
 
@@ -51,7 +54,7 @@ public abstract class VectorFutureAdapter extends ArrayList<Future<VectorProduce
 
 	@Override
 	public boolean isCancelled() {
-		for (Future<VectorProducer> p : this) {
+		for (Future<Producer<Vector>> p : this) {
 			if (!p.isCancelled()) return false;
 		}
 
@@ -60,7 +63,7 @@ public abstract class VectorFutureAdapter extends ArrayList<Future<VectorProduce
 
 	@Override
 	public boolean isDone() {
-		for (Future<VectorProducer> p : this) {
+		for (Future<Producer<Vector>> p : this) {
 			if (!p.isDone()) return false;
 		}
 
@@ -85,17 +88,17 @@ public abstract class VectorFutureAdapter extends ArrayList<Future<VectorProduce
 	 */
 	@Override
 	public void compact() {
-		for (Future<VectorProducer> f : this) {
+		for (Future<Producer<Vector>> f : this) {
 			if (f instanceof StaticVectorProducer) {
 				((StaticVectorProducer) f).compact();
 			}
 		}
 	}
 
-	protected Iterable<VectorProducer> getStaticVectorProducers() {
-		List<VectorProducer> l = new ArrayList<>();
+	protected Iterable<Producer<Vector>> getStaticVectorProducers() {
+		List<Producer<Vector>> l = new ArrayList<>();
 
-		for (Future<VectorProducer> f : this) {
+		for (Future<Producer<Vector>> f : this) {
 			if (f instanceof StaticVectorProducer) {
 				l.add(((StaticVectorProducer) f).p);
 			}
@@ -104,10 +107,10 @@ public abstract class VectorFutureAdapter extends ArrayList<Future<VectorProduce
 		return l;
 	}
 
-	public static List<Future<VectorProducer>> convertToFutures(VectorProducer... producers) {
-		ArrayList<Future<VectorProducer>> pr = new ArrayList<Future<VectorProducer>>();
+	public static List<Future<Producer<Vector>>> convertToFutures(Producer<Vector>... producers) {
+		ArrayList<Future<Producer<Vector>>> pr = new ArrayList<Future<Producer<Vector>>>();
 
-		for (VectorProducer p : producers) {
+		for (Producer<Vector> p : producers) {
 			pr.add(new StaticVectorProducer(p));
 		}
 
@@ -116,10 +119,10 @@ public abstract class VectorFutureAdapter extends ArrayList<Future<VectorProduce
 
 	// TODO  When ColorProducer implements PathElement, this should be changed to
 	//       implement PathElement as well
-	protected static class StaticVectorProducer implements Future<VectorProducer> {
-		private VectorProducer p;
+	protected static class StaticVectorProducer implements Future<Producer<Vector>> {
+		protected Producer<Vector> p;
 
-		protected StaticVectorProducer(VectorProducer p) { this.p = p; }
+		protected StaticVectorProducer(Producer<Vector> p) { this.p = p; }
 
 		@Override
 		public boolean cancel(boolean mayInterruptIfRunning) { return false; }
@@ -131,12 +134,12 @@ public abstract class VectorFutureAdapter extends ArrayList<Future<VectorProduce
 		public boolean isDone() { return false; }
 
 		@Override
-		public VectorProducer get() throws InterruptedException, ExecutionException {
+		public Producer<Vector> get() throws InterruptedException, ExecutionException {
 			return p;
 		}
 
 		@Override
-		public VectorProducer get(long timeout, TimeUnit unit)
+		public Producer<Vector> get(long timeout, TimeUnit unit)
 				throws InterruptedException, ExecutionException, TimeoutException {
 			return get();
 		}

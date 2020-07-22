@@ -21,6 +21,7 @@ package org.almostrealism.algebra;
  * 
  * @author jezek2
  */
+@Deprecated
 public class Transform {
 	public final Mat3f basis = new Mat3f();
 	public final Vector origin = new Vector();

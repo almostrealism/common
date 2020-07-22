@@ -17,6 +17,8 @@
 package org.almostrealism.math;
 
 import org.almostrealism.util.Producer;
+import org.almostrealism.util.ProducerCache;
+import org.almostrealism.util.StaticProducer;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -27,8 +29,7 @@ public class AcceleratedProducer<T extends MemWrapper> implements Producer<T> {
 	private String function;
 	private boolean  kernel;
 
-	private Object allArgs[];
-	private Producer inputProducers[];
+	protected Argument inputProducers[];
 
 	public AcceleratedProducer(String function, Producer<?>... inputArgs) {
 		this(function, false, inputArgs, new Object[0]);
@@ -39,15 +40,22 @@ public class AcceleratedProducer<T extends MemWrapper> implements Producer<T> {
 	}
 
 	public AcceleratedProducer(String function, boolean kernel, Producer<?> inputArgs[], Object additionalArguments[]) {
+		this(function, kernel, producers(inputArgs, additionalArguments));
+	}
+
+	public AcceleratedProducer(String function, boolean kernel, Producer<?> inputArgs[]) {
 		this.function = function;
 		this.kernel = kernel;
-		inputProducers = inputArgs;
-		allArgs = new Object[inputArgs.length + additionalArguments.length];
-
-		for (int i = inputArgs.length; i < allArgs.length; i++) {
-			allArgs[i] = additionalArguments[i - inputArgs.length];
-		}
+		this.inputProducers = arguments(inputArgs);
 	}
+
+	public void setFunctionName(String name) { function = name; }
+
+	public String getFunctionName() { return function; }
+
+	public int getArgsCount() { return inputProducers.length; }
+
+	public Argument[] getInputProducers() { return inputProducers; }
 
 	public synchronized HardwareOperator getOperator() {
 		synchronized (AcceleratedProducer.class) {
@@ -56,7 +64,8 @@ public class AcceleratedProducer<T extends MemWrapper> implements Producer<T> {
 			}
 
 			if (operators.get(function).get() == null) {
-				operators.get(function).set(Hardware.getLocalHardware().getFunctions().getOperators(getClass()).get(function, kernel, allArgs.length));
+				operators.get(function).set(Hardware.getLocalHardware()
+						.getFunctions().getOperators(getClass()).get(function, kernel, getArgsCount()));
 			}
 		}
 
@@ -65,12 +74,16 @@ public class AcceleratedProducer<T extends MemWrapper> implements Producer<T> {
 
 	@Override
 	public synchronized T evaluate(Object[] args) {
+		Object allArgs[] = new Object[inputProducers.length];
+
 		for (int i = 0; i < inputProducers.length; i++) {
 			try {
-				allArgs[i] = inputProducers[i] == null ? replaceNull(i) : inputProducers[i].evaluate(args);
+				allArgs[i] = inputProducers[i] == null ? replaceNull(i) : ProducerCache.evaluate(inputProducers[i].getProducer(), args);
 				if (allArgs[i] == null) allArgs[i] = replaceNull(i);
 			} catch (Exception e) {
-				throw new RuntimeException("Function \"" + function + "\" could not complete due to exception evaluating argument " + i, e);
+				throw new RuntimeException("Function \"" + function +
+										"\" could not complete due to exception evaluating argument " + i +
+										" (" + inputProducers[i].getProducer().getClass() + ")", e);
 			}
 		}
 
@@ -112,7 +125,45 @@ public class AcceleratedProducer<T extends MemWrapper> implements Producer<T> {
 	@Override
 	public synchronized void compact() {
 		for (int i = 0; i < inputProducers.length; i++) {
-			inputProducers[i].compact();
+			if (inputProducers[i] != null && inputProducers[i].getProducer() != null)
+				inputProducers[i].getProducer().compact();
 		}
+	}
+
+	protected static Argument[] arguments(Producer... producers) {
+		Argument args[] = new Argument[producers.length];
+		for (int i = 0; i < args.length; i++) {
+			args[i] = producers[i] == null ? null : new Argument(producers[i]);
+		}
+
+		return args;
+	}
+
+	protected static Producer[] producers(Producer inputs[], Object fixedValues[]) {
+		Producer p[] = new Producer[inputs.length + fixedValues.length];
+
+		for (int i = 0; i < inputs.length; i++) {
+			p[i] = inputs[i];
+		}
+
+		for (int i = 0; i < fixedValues.length; i++) {
+			p[inputs.length + i] = fixedValues == null ? null : StaticProducer.of(fixedValues[i]);
+		}
+
+		return p;
+	}
+
+	public static class Argument {
+		private String name;
+		private Producer producer;
+
+		public Argument(Producer p) { setProducer(p); }
+		public Argument(String name, Producer p) { setName(name); setProducer(p);}
+
+		public String getName() { return name; }
+		public void setName(String name) { this.name = name; }
+
+		public Producer getProducer() { return producer; }
+		public void setProducer(Producer producer) { this.producer = producer; }
 	}
 }

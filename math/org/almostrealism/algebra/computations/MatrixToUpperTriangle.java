@@ -14,23 +14,15 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.geometry;
+package org.almostrealism.algebra.computations;
 
-import org.almostrealism.algebra.Vector;
+import org.almostrealism.algebra.Scalar;
+import org.almostrealism.algebra.TransformMatrix;
+import org.almostrealism.math.AcceleratedProducer;
 import org.almostrealism.util.Producer;
 
-public class RayOrigin implements Producer<Vector> {
-	private Producer<Ray> r;
-
-	public RayOrigin(Producer<Ray> r) {
-		this.r = r;
+public class MatrixToUpperTriangle extends AcceleratedProducer<TransformMatrix> {
+	public MatrixToUpperTriangle(Producer<TransformMatrix> m) {
+		super("matrixToUpperTriangle", TransformMatrix.blank(), Scalar.blank(), m);
 	}
-
-	public Vector evaluate(Object args[]) {
-		Ray ray = r.evaluate(args);
-		return ray == null ? null : ray.getOrigin();
-	}
-
-	@Override
-	public void compact() { r.compact(); }
 }

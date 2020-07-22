@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 Michael Murray
+ * Copyright 2018 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,22 +14,25 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.geometry;
+package org.almostrealism.algebra.computations;
 
+import org.almostrealism.algebra.Vector;
+import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.util.Producer;
 
-public class RayCopy implements Producer<Ray> {
-	private Producer<Ray> r;
-
-	public RayCopy(Producer<Ray> r) {
-		this.r = r;
+public class VectorSum extends NAryDynamicAcceleratedProducer<Vector> implements VectorProducer {
+	public VectorSum(Producer<Vector>... producers) {
+		super("+", 3, Vector.blank(), producers);
 	}
 
 	@Override
-	public Ray evaluate(Object args[]) { return new Ray(r.evaluate(args)); }
+	public double getIdentity() { return 0; }
 
 	@Override
-	public void compact() {
-		// TODO
-	}
+	public double combine(double a, double b) { return a + b; }
+
+	/**
+	 * Returns true if the specified value is 0.0, false otherwise.
+	 */
+	public boolean isRemove(double value) { return value == 0.0; }
 }

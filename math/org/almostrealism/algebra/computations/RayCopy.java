@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2019 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,28 +14,24 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.geometry;
+package org.almostrealism.algebra.computations;
 
-import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.Vector;
-import org.almostrealism.math.AcceleratedProducer;
+import org.almostrealism.geometry.Ray;
 import org.almostrealism.util.Producer;
 
-public class RayPointAt extends AcceleratedProducer<Vector> {
-	public RayPointAt(Producer<Ray> r, Producer<Scalar> t) {
-		super("rayPointAt", Vector.blank(), r, t);
+public class RayCopy implements Producer<Ray> {
+	private Producer<Ray> r;
+
+	public RayCopy(Producer<Ray> r) {
+		this.r = r;
 	}
 
-	/**
-	 * This implementation allows the {@link Scalar} argument to be null,
-	 * resulting in the function returning null.
-	 */
 	@Override
-	public Vector handleNull(int argIndex) {
-		if (argIndex == 2) {
-			return null;
-		}
+	public Ray evaluate(Object args[]) { return new Ray(r.evaluate(args)); }
 
-		return super.handleNull(argIndex);
+	@Override
+	public void compact() {
+		r.compact();
+		// TODO
 	}
 }

@@ -16,7 +16,7 @@
 
 package org.almostrealism.algebra.test;
 
-import org.almostrealism.algebra.MatrixAdjoint;
+import org.almostrealism.algebra.computations.MatrixAdjoint;
 import org.almostrealism.algebra.TransformMatrix;
 import org.almostrealism.util.StaticProducer;
 import org.junit.Test;

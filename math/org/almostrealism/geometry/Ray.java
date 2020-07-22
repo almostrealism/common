@@ -20,9 +20,11 @@ package org.almostrealism.geometry;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.TransformMatrix;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.algebra.computations.RayPointAt;
 import org.almostrealism.math.AcceleratedProducer;
 import org.almostrealism.math.Hardware;
 import org.almostrealism.math.MemWrapper;
+import org.almostrealism.util.DynamicProducer;
 import org.almostrealism.util.Producer;
 import org.almostrealism.util.StaticProducer;
 import org.jocl.CL;
@@ -161,6 +163,9 @@ public class Ray implements MemWrapper, Cloneable {
 	}
 
 	@Override
+	public int getMemLength() { return 6; }
+
+	@Override
 	public cl_mem getMem() { return mem; }
 
 	protected void setMem(double[] source) {
@@ -253,5 +258,9 @@ public class Ray implements MemWrapper, Cloneable {
 					"] [" + coords[3] + ", " + coords[4] + ", " + coords[5] + "]";
 		
 		return value;
+	}
+
+	public static Producer<Ray> blank() {
+		return new DynamicProducer<>(args -> new Ray());
 	}
 }

@@ -90,7 +90,7 @@ public final class Hardware {
 
 	public AcceleratedFunctions getFunctions() { return functions; }
 
-	private static String loadSource(String name) {
+	protected static String loadSource(String name) {
 		return loadSource(Hardware.class.getClassLoader().getResourceAsStream(name + ".cl"), false);
 	}
 

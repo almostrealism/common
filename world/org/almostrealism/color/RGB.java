@@ -101,6 +101,11 @@ public class RGB implements ColorProducer, Triple, MemWrapper, Externalizable, C
 			out.writeDouble(rgb[2]);
 		}
 
+		@Override
+		public int getMemLength() {
+			return 3;
+		}
+
 		public cl_mem getMem() { return mem; }
 
 		public double[] toArray() {
@@ -658,6 +663,9 @@ public class RGB implements ColorProducer, Triple, MemWrapper, Externalizable, C
 	}
 
 	public double[] toArray() { return new double[] { getRed(), getGreen(), getBlue() }; }
+
+	@Override
+	public int getMemLength() { return data.getMemLength(); }
 
 	@Override
 	public cl_mem getMem() { return data.getMem(); }

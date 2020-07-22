@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -58,6 +58,12 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 		mem = CL.clCreateBuffer(Hardware.getLocalHardware().getContext(),
 								CL.CL_MEM_READ_WRITE,3 * Sizeof.cl_double,
 								null, null);
+	}
+
+	/** Constructs a {@link Vector} with the same coordinates as the specified {@link Vector}. */
+	public Vector(Vector v) {
+		this();
+		setMem(v.toArray(), 0); // TODO  Directly copy mem (offset needs to be known though)
 	}
 
 	/**
@@ -449,6 +455,9 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 		else
 			return false;
 	}
+
+	@Override
+	public int getMemLength() { return 3; }
 
 	@Override
 	public cl_mem getMem() { return mem; }

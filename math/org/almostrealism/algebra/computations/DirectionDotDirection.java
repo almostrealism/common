@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,13 +14,13 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.algebra;
+package org.almostrealism.algebra.computations;
 
-import org.almostrealism.math.AcceleratedProducer;
+import org.almostrealism.geometry.Ray;
 import org.almostrealism.util.Producer;
 
-public class MatrixDeterminant extends AcceleratedProducer<Scalar> {
-	public MatrixDeterminant(Producer<TransformMatrix> m) {
-		super("matrixDeterminant", Scalar.blank(), m);
+public class DirectionDotDirection extends DotProduct {
+	public DirectionDotDirection(Producer<Ray> r) {
+		super(new RayDirection(r), new RayDirection(r));
 	}
 }

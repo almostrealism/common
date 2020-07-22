@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,9 +16,16 @@
 
 package org.almostrealism.algebra;
 
+import org.almostrealism.algebra.computations.DotProduct;
+import org.almostrealism.algebra.computations.ScalarFromVector;
+import org.almostrealism.algebra.computations.ScalarPow;
+import org.almostrealism.algebra.computations.VectorFromScalars;
+import org.almostrealism.algebra.computations.VectorProduct;
+import org.almostrealism.algebra.computations.VectorSum;
 import org.almostrealism.relation.TripleFunction;
 import org.almostrealism.uml.Function;
 import org.almostrealism.util.Producer;
+import org.almostrealism.util.StaticProducer;
 
 /**
  * {@link VectorProducer} is implemented by any class that can produce an {@link Vector} object
@@ -27,16 +34,51 @@ import org.almostrealism.util.Producer;
  * @author  Michael Murray
  */
 @Function
-public interface VectorProducer extends Producer<Vector>, TripleFunction<Vector> {
-    /**
-     * Produces a {@link Vector} using the specified arguments.
-     * 
-     * TODO  Uses generics for the type of arguments.
-     * 
-     * @param args  Arguments.
-     * @return  The Vector produced.
-     */
-    Vector evaluate(Object args[]);
+public interface VectorProducer extends Producer<Vector> {
+    default ScalarProducer x() {
+        return new ScalarFromVector(this, ScalarFromVector.X);
+    }
 
-    Producer<Scalar> dotProduct(VectorProducer v);
+    default ScalarProducer y() {
+        return new ScalarFromVector(this, ScalarFromVector.Y);
+    }
+
+    default ScalarProducer z() {
+        return new ScalarFromVector(this, ScalarFromVector.Z);
+    }
+
+    default ScalarProducer dotProduct(Producer<Vector> operand) {
+        return new DotProduct(this, operand);
+    }
+
+    default VectorSum add(Producer<Vector> operand) {
+        return new VectorSum(this, operand);
+    }
+
+    default VectorProduct multiply(Producer<Vector> operand) {
+        return new VectorProduct(this, operand);
+    }
+
+    default VectorProduct scalarMultiply(Producer<Scalar> operand) {
+        return new VectorProduct(this, new VectorFromScalars(operand, operand, operand));
+    }
+
+    default VectorProduct scalarMultiply(Scalar operand) {
+        return scalarMultiply(new StaticProducer<>(operand));
+    }
+
+    default VectorProduct scalarMultiply(double operand) {
+        return scalarMultiply(new Scalar(operand));
+    }
+
+    default ScalarProducer length() {
+        return x().pow(2.0).add(y().pow(2.0)).add(z().pow(2.0)).pow(0.5);
+    }
+
+    default VectorProducer normalize() {
+        ScalarProducer oneOverLength = length().pow(-1.0);
+        return new VectorFromScalars(x().multiply(oneOverLength),
+                                    y().multiply(oneOverLength),
+                                    z().multiply(oneOverLength));
+    }
 }

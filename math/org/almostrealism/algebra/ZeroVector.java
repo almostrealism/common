@@ -27,20 +27,5 @@ public class ZeroVector extends ImmutableVector {
 		super(0, 0, 0);
 	}
 
-	@Override
-	public Producer<Scalar> dotProduct(VectorProducer v) {
-		return new Producer<Scalar>() {
-			@Override
-			public Scalar evaluate(Object[] args) {
-				return (Scalar) zero.clone();
-			}
-
-			@Override
-			public void compact() {
-				// TODO
-			}
-		};
-	}
-
 	public static ZeroVector getInstance() { return local; }
 }

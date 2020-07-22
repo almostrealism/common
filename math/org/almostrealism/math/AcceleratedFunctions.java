@@ -16,6 +16,7 @@
 
 package org.almostrealism.math;
 
+import java.io.BufferedReader;
 import java.io.InputStream;
 import java.util.HashMap;
 import java.util.Map;
@@ -47,5 +48,14 @@ public class AcceleratedFunctions {
 		}
 
 		return extensions.get(c);
+	}
+
+	public synchronized HardwareOperatorMap getOperators(String source) {
+		StringBuffer buf = new StringBuffer();
+		buf.append(Hardware.loadSource("local"));
+		buf.append("\n");
+		buf.append(source);
+
+		return new HardwareOperatorMap(hardware, buf.toString());
 	}
 }

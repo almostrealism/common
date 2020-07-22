@@ -6,7 +6,7 @@
 
     <groupId>org.almostrealism</groupId>
     <artifactId>Common</artifactId>
-    <version>0.12</version>
+    <version>0.13</version>
 
 	<!-- Output to jar format -->
 	<packaging>jar</packaging>

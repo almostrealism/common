@@ -24,6 +24,7 @@ import java.util.concurrent.TimeoutException;
 
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;
+import org.almostrealism.algebra.computations.VectorFutureAdapter;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.relation.Constant;
 import org.almostrealism.relation.Operator;
@@ -337,11 +338,6 @@ public class Polynomial<IN> extends AbstractSurface<IN> {
 			@Override
 			public Vector evaluate(Object[] args) {
 				return evaluateGradient(point.getX(), point.getY(), point.getZ());
-			}
-
-			@Override
-			public Producer<Scalar> dotProduct(VectorProducer v) {
-				return null;
 			}
 
 			@Override

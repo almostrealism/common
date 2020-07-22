@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,13 +14,24 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.algebra;
+package org.almostrealism.algebra.computations;
 
-import org.almostrealism.math.AcceleratedProducer;
+import org.almostrealism.algebra.Vector;
 import org.almostrealism.util.Producer;
 
-public class MatrixToUpperTriangle extends AcceleratedProducer<TransformMatrix> {
-	public MatrixToUpperTriangle(Producer<TransformMatrix> m) {
-		super("matrixToUpperTriangle", TransformMatrix.blank(), Scalar.blank(), m);
+public class VectorCopy implements Producer<Vector> {
+	private Producer<Vector> v;
+
+	public VectorCopy(Producer<Vector> v) {
+		this.v = v;
+	}
+
+	@Override
+	public Vector evaluate(Object args[]) { return new Vector(v.evaluate(args)); }
+
+	@Override
+	public void compact() {
+		v.compact();
+		// TODO
 	}
 }

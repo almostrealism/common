@@ -23,7 +23,7 @@ public interface Computation<T> {
 	/**
 	 * Return a {@link io.almostrealism.code.Scope} containing the {@link Variable}s
 	 * and {@link io.almostrealism.code.Method}s necessary to compute the output of
-	 * this {@link Operator}. {@link Variable}s and {@link io.almostrealism.code.Method}s
+	 * this {@link Computation}. {@link Variable}s and {@link io.almostrealism.code.Method}s
 	 * introduced should be prefixed with the specified {@link String}.
 	 */
 	Scope<? extends Variable<T>> getScope(String prefix);

@@ -14,15 +14,14 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.algebra;
+package org.almostrealism.algebra.computations;
 
-import org.almostrealism.geometry.Ray;
-import org.almostrealism.geometry.RayCopy;
+import org.almostrealism.algebra.TransformMatrix;
 import org.almostrealism.math.AcceleratedProducer;
 import org.almostrealism.util.Producer;
 
-public class RayMatrixTransform extends AcceleratedProducer<Ray> {
-	public RayMatrixTransform(TransformMatrix t, Producer<Ray> r) {
-		super("rayMatrixTransform", false, new Producer[] { new RayCopy(r) }, new Object[] { t });
+public class MatrixProduct extends AcceleratedProducer<TransformMatrix> {
+	public MatrixProduct(Producer<TransformMatrix> a, Producer<TransformMatrix> b) {
+		super("matrixProduct", TransformMatrix.blank(), a, b);
 	}
 }

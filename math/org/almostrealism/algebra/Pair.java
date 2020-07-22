@@ -2,6 +2,7 @@ package org.almostrealism.algebra;
 
 import org.almostrealism.math.Hardware;
 import org.almostrealism.math.MemWrapper;
+import org.almostrealism.util.Producer;
 import org.jocl.CL;
 import org.jocl.Pointer;
 import org.jocl.Sizeof;
@@ -108,6 +109,11 @@ public class Pair implements MemWrapper {
 	}
 
 	@Override
+	public int getMemLength() {
+		return 2;
+	}
+
+	@Override
 	public cl_mem getMem() { return mem; }
 
 	@Override
@@ -122,7 +128,7 @@ public class Pair implements MemWrapper {
 		destroy();
 	}
 
-	private void setMem(double[] source) {
+	public void setMem(double[] source) {
 		setMem(0, source, 0, 2);
 	}
 
@@ -153,4 +159,35 @@ public class Pair implements MemWrapper {
 	}
 
 	private void getMem(double out[], int offset) { getMem(0, out, offset, 2); }
+
+	// TODO  This could be faster by moving directly between cl_mems
+	public static Pair fromMem(cl_mem mem, int sOffset, int length) {
+		if (length != 1 && length != 2) {
+			throw new IllegalArgumentException(String.valueOf(length));
+		}
+
+		double out[] = new double[length];
+		Pointer dst = Pointer.to(out).withByteOffset(0);
+		CL.clEnqueueReadBuffer(Hardware.getLocalHardware().getQueue(), mem,
+				CL.CL_TRUE, sOffset * Sizeof.cl_double,
+				length * Sizeof.cl_double, dst, 0,
+				null, null);
+		if (length == 1) {
+			return new Pair(out[0], 0);
+		} else {
+			return new Pair(out[0], out[1]);
+		}
+	}
+
+	public static Producer<Pair> empty() {
+		return new Producer<Pair>() {
+			@Override
+			public Pair evaluate(Object[] args) {
+				return new Pair();
+			}
+
+			@Override
+			public void compact() { }
+		};
+	}
 }

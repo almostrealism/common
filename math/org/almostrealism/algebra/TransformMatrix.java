@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,11 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.code.Scope;
+import org.almostrealism.algebra.computations.MatrixAdjoint;
+import org.almostrealism.algebra.computations.MatrixDeterminant;
+import org.almostrealism.algebra.computations.MatrixProduct;
+import org.almostrealism.algebra.computations.MatrixToUpperTriangle;
+import org.almostrealism.algebra.computations.MatrixTranspose;
 import org.almostrealism.math.HardwareOperator;
 import org.almostrealism.math.Hardware;
 import org.almostrealism.math.MemWrapper;
@@ -355,6 +360,9 @@ public class TransformMatrix implements TripleFunction<Vector>, MemWrapper {
 		// TODO  Improve performance, transfer inverse matrices, etc.
 		return new TransformMatrix(getMatrix());
 	}
+
+	@Override
+	public int getMemLength() { return 16; }
 
 	@Override
 	public cl_mem getMem() { return matrix; }

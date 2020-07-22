@@ -19,6 +19,7 @@ package org.almostrealism.graph;
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.*;
+import org.almostrealism.algebra.computations.RayMatrixTransform;
 import org.almostrealism.color.GeneratedColorProducer;
 import org.almostrealism.color.RGB;
 import org.almostrealism.geometry.Positioned;

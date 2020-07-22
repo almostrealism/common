@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,23 +14,10 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.geometry;
+package org.almostrealism.math.bool;
 
-import org.almostrealism.algebra.Vector;
 import org.almostrealism.util.Producer;
 
-public class RayDirection implements Producer<Vector> {
-	private Producer<Ray> r;
-
-	public RayDirection(Producer<Ray> r) {
-		this.r = r;
-	}
-
-	public Vector evaluate(Object args[]) {
-		Ray ray = r.evaluate(args);
-		return ray == null ? null : ray.getDirection();
-	}
-
-	@Override
-	public void compact() { r.compact(); }
+public interface UnaryCondition<T> extends Condition {
+	Producer<T> getOperand();
 }

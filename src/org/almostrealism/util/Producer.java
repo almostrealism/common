@@ -39,5 +39,13 @@ public interface Producer<T> {
 	 * meaning that if a similar operation is available on the producer
 	 * dependencies that should be performed as well.
 	 */
-	void compact(); // TODO  Perhaps this should return a number to indicate how much compaction was achieved
+	void compact(); // TODO  Perhaps this should return a number to indicate how much compaction was achieved (later comment: WTF does that mean?)
+
+	/**
+	 * This method should return true if the value of this {@link Producer}
+	 * does not depend on any argument passed to the evaluate method. This
+	 * can be useful knowledge for optimizations. The default implementation
+	 * returns false.
+	 */
+	default boolean isStatic() { return false; }
 }

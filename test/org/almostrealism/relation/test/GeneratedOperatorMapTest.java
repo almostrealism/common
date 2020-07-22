@@ -16,7 +16,7 @@
 
 package org.almostrealism.relation.test;
 
-import org.almostrealism.algebra.RayMatrixTransform;
+import org.almostrealism.algebra.computations.RayMatrixTransform;
 import org.almostrealism.algebra.TransformMatrix;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;

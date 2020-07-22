@@ -22,8 +22,8 @@ import io.almostrealism.code.Scope;
 import org.almostrealism.algebra.*;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.geometry.RayDirection;
-import org.almostrealism.geometry.RayPointAt;
+import org.almostrealism.algebra.computations.RayDirection;
+import org.almostrealism.algebra.computations.RayPointAt;
 import org.almostrealism.util.Producer;
 import org.almostrealism.util.ProducerWithRank;
 

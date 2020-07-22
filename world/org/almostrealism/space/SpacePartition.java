@@ -17,6 +17,7 @@
 package org.almostrealism.space;
 
 import org.almostrealism.algebra.*;
+import org.almostrealism.algebra.computations.RayMatrixTransform;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.graph.Triangle;
 import org.almostrealism.util.Producer;

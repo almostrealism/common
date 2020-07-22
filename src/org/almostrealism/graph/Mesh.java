@@ -31,6 +31,7 @@ import java.util.concurrent.TimeoutException;
 
 import io.almostrealism.code.Scope;
 import org.almostrealism.algebra.*;
+import org.almostrealism.algebra.computations.RayMatrixTransform;
 import org.almostrealism.color.ColorProducer;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.ShaderContext;

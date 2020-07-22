@@ -18,9 +18,10 @@ package org.almostrealism.algebra;
 
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;
+import org.almostrealism.relation.TripleFunction;
 import org.almostrealism.util.Producer;
 
-public class ImmutableVector implements VectorProducer {
+public class ImmutableVector implements VectorProducer, TripleFunction<Vector> {
 	private boolean initialized = false;
 	private Vector value;
 
@@ -92,21 +93,6 @@ public class ImmutableVector implements VectorProducer {
 	@Override
 	public void compact() {
 
-	}
-
-	@Override
-	public Producer<Scalar> dotProduct(VectorProducer v) {
-		return new Producer<Scalar>() {
-			@Override
-			public Scalar evaluate(Object[] args) {
-				return new Scalar(value.dotProduct(v.evaluate(args)));
-			}
-
-			@Override
-			public void compact() {
-				// TODO
-			}
-		};
 	}
 
 	@Override

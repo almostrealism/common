@@ -22,9 +22,10 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Triple;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorProducer;
+import org.almostrealism.relation.TripleFunction;
 import org.almostrealism.util.Producer;
 
-public class UniformSphericalRandom implements VectorProducer {
+public class UniformSphericalRandom implements VectorProducer, TripleFunction<Vector> {
 	private static UniformSphericalRandom local = new UniformSphericalRandom();
 
 	@Override
@@ -43,11 +44,6 @@ public class UniformSphericalRandom implements VectorProducer {
 
 	@Override
 	public void compact() { }
-
-	@Override
-	public Producer<Scalar> dotProduct(VectorProducer v) {
-		return null;
-	}
 
 	@Override
 	public Vector operate(Triple in) { return evaluate(new Object[0]); }
