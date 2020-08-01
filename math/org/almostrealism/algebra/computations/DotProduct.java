@@ -36,13 +36,10 @@ public class DotProduct extends DynamicAcceleratedProducerAdapter<Scalar> implem
 	@Override
 	public String getValue(int pos) {
 		if (value == null) {
-			String v1 = getArgumentName(1);
-			String v2 = getArgumentName(2);
-
 			if (pos == 0) {
-				return v1 + "[" + v1 + "Offset] * " + v2 + "[" + v2 + "Offset] + " +
-						v1 + "[" + v1 + "Offset + 1] * " + v2 + "[" + v2 + "Offset + 1] + " +
-						v1 + "[" + v1 + "Offset + 2] * " + v2 + "[" + v2 + "Offset + 2]";
+				return getArgumentValueName(1, 0) + " * " + getArgumentValueName(2, 0) + " + " +
+						getArgumentValueName(1, 1) + " * " + getArgumentValueName(2, 1) + " + " +
+						getArgumentValueName(1, 2) + " * " + getArgumentValueName(2, 2);
 			} else if (pos == 1) {
 				return "1.0";
 			} else {
@@ -71,8 +68,8 @@ public class DotProduct extends DynamicAcceleratedProducerAdapter<Scalar> implem
 
 			List<Argument> newArgs = new ArrayList<>();
 			newArgs.add(inputProducers[0]);
-			newArgs.addAll(Arrays.asList(a.getInputProducers()));
-			newArgs.addAll(Arrays.asList(b.getInputProducers()));
+			newArgs.addAll(Arrays.asList(excludeResult(a.getInputProducers())));
+			newArgs.addAll(Arrays.asList(excludeResult(b.getInputProducers())));
 			inputProducers = newArgs.toArray(new Argument[0]);
 			removeDuplicateArguments();
 		}

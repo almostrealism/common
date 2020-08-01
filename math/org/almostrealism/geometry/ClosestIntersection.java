@@ -14,10 +14,15 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.algebra;
+package org.almostrealism.geometry;
 
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;
+import org.almostrealism.algebra.ContinuousField;
+import org.almostrealism.algebra.Intersectable;
+import org.almostrealism.algebra.Scalar;
+import org.almostrealism.algebra.Triple;
+import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.space.ShadableIntersection;
 import org.almostrealism.util.Producer;

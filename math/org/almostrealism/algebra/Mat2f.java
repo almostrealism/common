@@ -22,6 +22,7 @@ package org.almostrealism.algebra;
  * column vectors on the right.
  */
 
+// TODO  Replace with Tensor
 @Deprecated
 public class Mat2f {
 	private double[] data;

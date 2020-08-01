@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,13 +24,11 @@ import java.io.ObjectOutput;
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.Triple;
-import org.almostrealism.math.Hardware;
 import org.almostrealism.math.MemWrapper;
+import org.almostrealism.math.MemWrapperAdapter;
 import org.almostrealism.util.Defaults;
+import org.almostrealism.util.DynamicProducer;
 import org.almostrealism.util.Producer;
-import org.jocl.CL;
-import org.jocl.Pointer;
-import org.jocl.Sizeof;
 import org.jocl.cl_mem;
 
 /**
@@ -51,15 +49,11 @@ public class RGB implements ColorProducer, Triple, MemWrapper, Externalizable, C
 		void setMem(double[] source);
 	}
 	
-	private static class Data192 implements Data {
+	private static class Data192 extends MemWrapperAdapter implements Data {
 		public static final int depth = 192;
 
-		private cl_mem mem;
-
 		public Data192() {
-			mem = CL.clCreateBuffer(Hardware.getLocalHardware().getContext(),
-					CL.CL_MEM_READ_WRITE,3 * Sizeof.cl_double,
-					null, null);
+			init();
 		}
 
 		public void set(int i, double r) {
@@ -106,56 +100,10 @@ public class RGB implements ColorProducer, Triple, MemWrapper, Externalizable, C
 			return 3;
 		}
 
-		public cl_mem getMem() { return mem; }
-
 		public double[] toArray() {
 			double d[] = new double[3];
 			getMem(0, d, 0, 3);
 			return d;
-		}
-
-		public void setMem(double[] source) {
-			setMem(0, source, 0, 3);
-		}
-
-		protected void setMem(double[] source, int offset) {
-			setMem(0, source, offset, 3);
-		}
-
-		protected void setMem(int offset, double[] source, int srcOffset, int length) {
-			Pointer src = Pointer.to(source).withByteOffset(srcOffset* Sizeof.cl_double);
-			CL.clEnqueueWriteBuffer(Hardware.getLocalHardware().getQueue(), mem, CL.CL_TRUE,
-					offset * Sizeof.cl_double, length * Sizeof.cl_double,
-					src, 0, null, null);
-		}
-
-		protected void setMem(int offset, RGB src, int srcOffset, int length) {
-			CL.clEnqueueCopyBuffer(Hardware.getLocalHardware().getQueue(), src.getMem(), this.mem,
-					srcOffset * Sizeof.cl_double,
-					offset * Sizeof.cl_double,length * Sizeof.cl_double,
-					0,null,null);
-		}
-
-		protected void getMem(int sOffset, double out[], int oOffset, int length) {
-			Pointer dst = Pointer.to(out).withByteOffset(oOffset * Sizeof.cl_double);
-			CL.clEnqueueReadBuffer(Hardware.getLocalHardware().getQueue(), mem,
-					CL.CL_TRUE, sOffset * Sizeof.cl_double,
-					length * Sizeof.cl_double, dst, 0,
-					null, null);
-		}
-
-		protected void getMem(double out[], int offset) { getMem(0, out, offset, 3); }
-
-		@Override
-		public void destroy() {
-			if (mem == null) return;
-			CL.clReleaseMemObject(mem);
-			mem = null;
-		}
-
-		@Override
-		public void finalize() throws Throwable {
-			destroy();
 		}
 	}
 
@@ -665,24 +613,22 @@ public class RGB implements ColorProducer, Triple, MemWrapper, Externalizable, C
 	public double[] toArray() { return new double[] { getRed(), getGreen(), getBlue() }; }
 
 	@Override
+	public cl_mem getMem() { return data.getMem(); }
+
+	@Override
+	public int getOffset() { return data.getOffset(); }
+
+	@Override
 	public int getMemLength() { return data.getMemLength(); }
 
 	@Override
-	public cl_mem getMem() { return data.getMem(); }
+	public void setDelegate(MemWrapper m, int offset) { data.setDelegate(m, offset); }
 
 	@Override
 	public void destroy() { data.destroy(); }
 
 	public static Producer<RGB> blank() {
-		return new Producer<RGB>() {
-			@Override
-			public RGB evaluate(Object[] args) {
-				return new RGB(defaultDepth, 0, 0, 0, false);
-			}
-
-			@Override
-			public void compact() { }
-		};
+		return new DynamicProducer<>(args -> new RGB(defaultDepth, 0, 0, 0, false));
 	}
 
 	public static RGB gray(double value) { return new RGB(value, value, value); }

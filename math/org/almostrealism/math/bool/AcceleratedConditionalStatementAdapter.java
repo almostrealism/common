@@ -52,13 +52,8 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrappe
 				buf.append("\t");
 				buf.append(outputVariable.apply(i));
 				buf.append(" = ");
-				buf.append(getTrueValue().getName());
-				buf.append("[");
-				buf.append(getTrueValue().getName());
-				buf.append("Offset");
-				buf.append("+");
-				buf.append(i);
-				buf.append("];\n");
+				buf.append(getArgumentValueName(getTrueValue(), i));
+				buf.append(";\n");
 			}
 
 			buf.append("} else {\n");
@@ -67,13 +62,8 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrappe
 				buf.append("\t");
 				buf.append(outputVariable.apply(i));
 				buf.append(" = ");
-				buf.append(getFalseValue().getName());
-				buf.append("[");
-				buf.append(getFalseValue().getName());
-				buf.append("Offset");
-				buf.append("+");
-				buf.append(i);
-				buf.append("];\n");
+				buf.append(getArgumentValueName(getFalseValue(), i));
+				buf.append(";\n");
 			}
 
 			buf.append("}\n");

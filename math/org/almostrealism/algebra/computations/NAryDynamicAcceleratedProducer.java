@@ -43,7 +43,7 @@ public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> exten
 			StringBuffer buf = new StringBuffer();
 
 			for (int i = 1; i < getArgsCount(); i++) {
-				buf.append(v + i + "[" + v + i + "Offset + " + pos + "]");
+				buf.append(getArgumentValueName(i, pos));
 				if (i < (getArgsCount() - 1)) buf.append(" " + operator + " ");
 			}
 
@@ -135,8 +135,14 @@ public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> exten
 	 */
 	public boolean isStatic() { return isStatic; }
 
+	/**
+	 * Returns the identity value for this n-ary operator.
+	 */
 	public abstract double getIdentity();
 
+	/**
+	 * Combines the two values as if they are arguments to this n-ary operator.
+	 */
 	public abstract double combine(double a, double b);
 
 	/**

@@ -35,10 +35,8 @@ public class PairFromScalars extends DynamicAcceleratedProducerAdapter<Pair> imp
 
 	@Override
 	public String getValue(int pos) {
-		String v = getFunctionName() + "_v";
-
 		if (value == null) {
-			return v + (pos + 1) + "[" + v + (pos + 1) + "Offset]";
+			return getArgumentValueName(pos + 1, 0);
 		} else {
 			return value[pos];
 		}

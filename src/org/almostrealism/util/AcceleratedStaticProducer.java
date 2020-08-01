@@ -14,7 +14,7 @@ public class AcceleratedStaticProducer<T extends MemWrapper> extends DynamicAcce
 
 	@Override
 	public String getValue(int pos) {
-		Pair p = Pair.fromMem(value.getMem(), pos, 1);
+		Pair p = MemWrapper.fromMem(value.getMem(), value.getOffset() + pos, 1);
 		return String.valueOf(p.getA());
 	}
 

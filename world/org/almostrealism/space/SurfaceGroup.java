@@ -28,6 +28,7 @@ import org.almostrealism.algebra.computations.RayMatrixTransform;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBAdd;
 import org.almostrealism.color.ShaderContext;
+import org.almostrealism.geometry.ClosestIntersection;
 import org.almostrealism.graph.Mesh;
 import org.almostrealism.graph.Triangle;
 import org.almostrealism.relation.Constant;

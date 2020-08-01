@@ -33,6 +33,7 @@ public class ScalarFromPair extends DynamicAcceleratedProducerAdapter<Scalar> im
 	private int coordinate;
 
 	private String value;
+	private boolean isStatic;
 
 	public ScalarFromPair(Producer<Pair> pair, int coordinate) {
 		super(2, Scalar.blank(), pair);
@@ -42,11 +43,9 @@ public class ScalarFromPair extends DynamicAcceleratedProducerAdapter<Scalar> im
 
 	@Override
 	public String getValue(int pos) {
-		String v1 = getFunctionName() + "_v1";
-
 		if (value == null) {
 			if (pos == 0) {
-				return v1 + "[" + v1 + "Offset + " + coordinate + "]";
+				return getArgumentValueName(1, coordinate);
 			} else if (pos == 1) {
 				return "1.0";
 			} else {
@@ -67,8 +66,15 @@ public class ScalarFromPair extends DynamicAcceleratedProducerAdapter<Scalar> im
 
 			value = ((DynamicAcceleratedProducerAdapter) getInputProducers()[1].getProducer()).getValue(coordinate);
 
+			if (getInputProducers()[1].getProducer().isStatic()) {
+				isStatic = true;
+			}
+
 			inputProducers = newArgs.toArray(new Argument[0]);
 			removeDuplicateArguments();
 		}
 	}
+
+	@Override
+	public boolean isStatic() { return isStatic; }
 }

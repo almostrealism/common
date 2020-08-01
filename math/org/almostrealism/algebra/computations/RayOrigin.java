@@ -36,8 +36,7 @@ public class RayOrigin extends DynamicAcceleratedProducerAdapter<Vector> impleme
 	@Override
 	public String getValue(int pos) {
 		if (value == null) {
-			String v = getArgumentName(1);
-			return v + "[" + v + "Offset + " + pos + "]";
+			return getArgumentValueName(1, pos);
 		} else {
 			return value[pos];
 		}
@@ -66,7 +65,7 @@ public class RayOrigin extends DynamicAcceleratedProducerAdapter<Vector> impleme
 
 			List<Argument> newArgs = new ArrayList<>();
 			newArgs.add(inputProducers[0]);
-			newArgs.addAll(Arrays.asList(r.getInputProducers()));
+			newArgs.addAll(Arrays.asList(excludeResult(r.getInputProducers())));
 			inputProducers = newArgs.toArray(new Argument[0]);
 			removeDuplicateArguments();
 		}

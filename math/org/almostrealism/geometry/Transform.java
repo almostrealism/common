@@ -120,23 +120,19 @@ public class Transform extends DynamicAcceleratedProducerAdapter<Vector> {
 
 			List<Argument> newArgs = new ArrayList<>();
 			newArgs.add(inputProducers[0]);
-			if (!v.isStatic()) newArgs.addAll(Arrays.asList(v.getInputProducers()));
-			if (!t.isStatic()) newArgs.addAll(Arrays.asList(t.getInputProducers()));
+			if (!v.isStatic()) newArgs.addAll(Arrays.asList(excludeResult(v.getInputProducers())));
+			if (!t.isStatic()) newArgs.addAll(Arrays.asList(excludeResult(t.getInputProducers())));
 			inputProducers = newArgs.toArray(new Argument[0]);
 			removeDuplicateArguments();
 		}
 	}
 
 	private String t(int pos, int index) {
-		String tPrefix = getArgumentName(2);
-		tPrefix = tPrefix + "[" + tPrefix + "Offset + ";
-		return tPrefix + (pos * 4 + index) + "]";
+		return getArgumentValueName(2, pos * 4 + index);
 	}
 
 	private String v(int index) {
-		String vPrefix = getArgumentName(1);
-		vPrefix = vPrefix + "[" + vPrefix + "Offset + ";
-		return vPrefix + index + "]";
+		return getArgumentValueName(1, index);
 	}
 
 	private static class Product {

@@ -16,6 +16,7 @@
 
 package org.almostrealism.algebra;
 
+// TODO  Replace with ScalarBank
 /** Scalable array of {@link Scalar}s. */
 public class FloatingPointList {
 	private static final int DEFAULT_SIZE = 10;

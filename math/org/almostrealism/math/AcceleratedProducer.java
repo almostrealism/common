@@ -16,14 +16,17 @@
 
 package org.almostrealism.math;
 
+import org.almostrealism.util.CollectionUtils;
 import org.almostrealism.util.Producer;
 import org.almostrealism.util.ProducerCache;
 import org.almostrealism.util.StaticProducer;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
-public class AcceleratedProducer<T extends MemWrapper> implements Producer<T> {
+public class AcceleratedProducer<T extends MemWrapper> implements KernelizedProducer<T> {
 	private static Map<String, ThreadLocal<HardwareOperator>> operators = new HashMap<>();
 
 	private String function;
@@ -74,6 +77,16 @@ public class AcceleratedProducer<T extends MemWrapper> implements Producer<T> {
 
 	@Override
 	public synchronized T evaluate(Object[] args) {
+		Object allArgs[] = getAllArgs(args);
+
+		for (int i = 0; i < allArgs.length; i++) {
+			if (allArgs[i] == null) return handleNull(i);
+		}
+
+		return (T) getOperator().evaluate(allArgs);
+	}
+
+	protected Object[] getAllArgs(Object args[]) {
 		Object allArgs[] = new Object[inputProducers.length];
 
 		for (int i = 0; i < inputProducers.length; i++) {
@@ -82,20 +95,38 @@ public class AcceleratedProducer<T extends MemWrapper> implements Producer<T> {
 				if (allArgs[i] == null) allArgs[i] = replaceNull(i);
 			} catch (Exception e) {
 				throw new RuntimeException("Function \"" + function +
-										"\" could not complete due to exception evaluating argument " + i +
-										" (" + inputProducers[i].getProducer().getClass() + ")", e);
+						"\" could not complete due to exception evaluating argument " + i +
+						" (" + inputProducers[i].getProducer().getClass() + ")", e);
 			}
 		}
 
-		for (int i = 0; i < allArgs.length; i++) {
-			if (allArgs[i] == null) return handleNull(i);
-		}
+		return allArgs;
+	}
 
-		try {
-			return (T) getOperator().evaluate(allArgs);
-		} finally {
-			for (int i = 0; i < inputProducers.length; i++) {
-				allArgs[i] = null;
+	/**
+	 * If {@link #isKernel()} returns true, this method will pass the
+	 * destination and the argument {@link MemoryBank}s to the
+	 * {@link HardwareOperator}. Otherwise, {@link #evaluate(Object[])}
+	 * will be called sequentially and the result will be added to the
+	 * destination.
+	 */
+	@Override
+	public void kernelEvaluate(MemoryBank destination, MemoryBank args[], int offset, int length) {
+		if (kernel) {
+			Object allArgs[] = CollectionUtils.include(new Object[0], destination, args);
+
+			HardwareOperator operator = getOperator();
+			operator.setGlobalWorkOffset(offset);
+			operator.setGlobalWorkSize(length);
+
+			operator.evaluate(allArgs);
+		} else {
+			for (int i = 0; i < length; i++) {
+				final int fi = i;
+				destination.set(offset + i,
+						evaluate(Stream.of(args)
+								.map(arg -> arg.get(offset + fi))
+								.collect(Collectors.toList()).toArray()));
 			}
 		}
 	}
@@ -128,6 +159,27 @@ public class AcceleratedProducer<T extends MemWrapper> implements Producer<T> {
 			if (inputProducers[i] != null && inputProducers[i].getProducer() != null)
 				inputProducers[i].getProducer().compact();
 		}
+	}
+
+	public boolean isKernel() { return kernel; }
+
+	public boolean isInputKernel() {
+		for (Argument arg : inputProducers) {
+			if (arg.getProducer() instanceof AcceleratedProducer == false) return false;
+			if (!((AcceleratedProducer) arg.getProducer()).isKernel()) return false;
+		}
+
+		return false;
+	}
+
+	protected static Producer[] includeResult(Producer res, Producer... p) {
+		return CollectionUtils.include(new Producer[0], res, p);
+	}
+
+	protected static Argument[] excludeResult(Argument... p) {
+		Argument q[] = new Argument[p.length - 1];
+		for (int i = 1; i < p.length; i++) q[i - 1] = p[i];
+		return q;
 	}
 
 	protected static Argument[] arguments(Producer... producers) {

@@ -84,16 +84,11 @@ public abstract class AcceleratedBinaryConditionAdapter<T extends MemWrapper> ex
 		if (condition == null) {
 			String v = getFunctionName() + "_v";
 			StringBuffer buf = new StringBuffer();
-			buf.append(v);
-			buf.append("1[");
-			buf.append(v);
-			buf.append("1Offset] ");
+			buf.append(getArgumentValueName(1, 0));
+			buf.append(" ");
 			buf.append(operator);
 			buf.append(" ");
-			buf.append(v);
-			buf.append("2[");
-			buf.append(v);
-			buf.append("2Offset]");
+			buf.append(getArgumentValueName(2, 0));
 			return buf.toString();
 		} else {
 			return condition;

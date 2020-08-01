@@ -27,12 +27,12 @@ public abstract class DynamicAcceleratedProducerAdapter<T extends MemWrapper> ex
 	private int memLength;
 
 	public DynamicAcceleratedProducerAdapter(int memLength, Producer<?>... inputArgs) {
-		super(inputArgs);
+		super(true, inputArgs, new Producer[0]);
 		this.memLength = memLength;
 	}
 
 	public DynamicAcceleratedProducerAdapter(int memLength, Producer<?>[] inputArgs, Object[] additionalArguments) {
-		super(inputArgs, additionalArguments);
+		super(true, inputArgs, additionalArguments);
 		this.memLength = memLength;
 	}
 

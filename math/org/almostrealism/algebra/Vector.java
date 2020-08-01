@@ -16,23 +16,21 @@
 
 package org.almostrealism.algebra;
 
+import org.almostrealism.algebra.computations.DotProduct;
 import org.almostrealism.geometry.Positioned;
 import org.almostrealism.math.HardwareOperator;
 import org.almostrealism.math.Hardware;
-import org.almostrealism.math.MemWrapper;
+import org.almostrealism.math.MemWrapperAdapter;
 import org.almostrealism.util.Defaults;
+import org.almostrealism.util.DynamicProducer;
 import org.almostrealism.util.Producer;
 import org.almostrealism.util.StaticProducer;
-import org.jocl.CL;
-import org.jocl.Pointer;
-import org.jocl.Sizeof;
-import org.jocl.cl_mem;
 
 /**
  * A {@link Vector} represents a 3d vector. It stores three coordinates, x, y, z
  * in a buffer maintained by JOCL.
  */
-public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
+public class Vector extends MemWrapperAdapter implements Positioned, Triple, Cloneable {
 	public static final int CARTESIAN_COORDINATES = 0;
 	public static final int SPHERICAL_COORDINATES = 1;
 
@@ -51,13 +49,9 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 	private static ThreadLocal<HardwareOperator<Vector>> crossOperator = new ThreadLocal<>();
 	private static ThreadLocal<HardwareOperator<Scalar>> dotOperator = new ThreadLocal<>();
 
-	private cl_mem mem; // TODO  Make final
-
 	/** Constructs a {@link Vector} with coordinates at the origin. */
 	public Vector() {
-		mem = CL.clCreateBuffer(Hardware.getLocalHardware().getContext(),
-								CL.CL_MEM_READ_WRITE,3 * Sizeof.cl_double,
-								null, null);
+		init();
 	}
 
 	/** Constructs a {@link Vector} with the same coordinates as the specified {@link Vector}. */
@@ -353,11 +347,8 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 	 * Returns the dot product of this {@link Vector} and the specified {@link Vector}.
 	 */
 	public synchronized double dotProduct(Vector vector) {
-		if (dotOperator.get() == null) {
-			dotOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("dotProduct", false,3));
-		}
-
-		return dotOperator.get().evaluate(new Object[] { new Scalar(), this, vector }).getValue();
+		return new DotProduct(StaticProducer.of(this),
+				StaticProducer.of(vector)).evaluate(new Object[0]).getValue();
 	}
 
 	/** Returns the cross product of this {@link Vector} and that of the specified {@link Vector}. */
@@ -459,53 +450,6 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 	@Override
 	public int getMemLength() { return 3; }
 
-	@Override
-	public cl_mem getMem() { return mem; }
-
-	protected void setMem(double[] source) {
-		setMem(0, source, 0, 3);
-	}
-
-	protected void setMem(double[] source, int offset) {
-		setMem(0, source, offset, 3);
-	}
-
-	protected void setMem(int offset, double[] source, int srcOffset, int length) {
-		Pointer src = Pointer.to(source).withByteOffset(srcOffset*Sizeof.cl_double);
-		CL.clEnqueueWriteBuffer(Hardware.getLocalHardware().getQueue(), mem, CL.CL_TRUE,
-								offset * Sizeof.cl_double, length * Sizeof.cl_double,
-								src, 0, null, null);
-	}
-
-	protected void setMem(int offset, Vector src, int srcOffset, int length) {
-		CL.clEnqueueCopyBuffer(Hardware.getLocalHardware().getQueue(), src.mem, this.mem,
-							srcOffset * Sizeof.cl_double,
-							offset * Sizeof.cl_double,length * Sizeof.cl_double,
-							0,null,null);
-	}
-
-	protected void getMem(int sOffset, double out[], int oOffset, int length) {
-		Pointer dst = Pointer.to(out).withByteOffset(oOffset * Sizeof.cl_double);
-		CL.clEnqueueReadBuffer(Hardware.getLocalHardware().getQueue(), mem,
-							CL.CL_TRUE, sOffset * Sizeof.cl_double,
-							length * Sizeof.cl_double, dst, 0,
-							null, null);
-	}
-
-	protected void getMem(double out[], int offset) { getMem(0, out, offset, 3); }
-
-	@Override
-	public void destroy() {
-		if (mem == null) return;
-		CL.clReleaseMemObject(mem);
-		mem = null;
-	}
-
-	@Override
-	public void finalize() throws Throwable {
-		destroy();
-	}
-
 	/**
 	 * @see java.lang.Object#clone()
 	 */
@@ -534,15 +478,7 @@ public class Vector implements Positioned, Triple, Cloneable, MemWrapper {
 	}
 
 	public static Producer<Vector> blank() {
-		return new Producer<Vector>() {
-			@Override
-			public Vector evaluate(Object[] args) {
-				return new Vector();
-			}
-
-			@Override
-			public void compact() { }
-		};
+		return new DynamicProducer<>(args -> new Vector());
 	}
 
 	// TODO  This should be an instance method on the dest vector, not a static method

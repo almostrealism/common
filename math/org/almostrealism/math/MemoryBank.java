@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,19 +14,16 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.algebra;
+package org.almostrealism.math;
 
 /**
- * Thrown to indicate a non-square matrix during an operation
- * requiring one.
+ * A {@link MemoryBank} tracks a section of RAM that is used to
+ * store a collection of {@link MemWrapper}s in a single
+ * {@link org.jocl.cl_mem}.
+ *
+ * @author  Michael Murray
  */
-@Deprecated
-public class NonSquareMatrixException extends RuntimeException {
-	public NonSquareMatrixException() {
-		super();
-	}
-
-	public NonSquareMatrixException(String msg) {
-		super(msg);
-	}
+public interface MemoryBank<T extends MemWrapper> extends MemWrapper {
+	T get(int index);
+	void set(int index, T value);
 }

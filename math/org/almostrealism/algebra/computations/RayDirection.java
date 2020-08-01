@@ -36,8 +36,7 @@ public class RayDirection extends DynamicAcceleratedProducerAdapter<Vector> impl
 	@Override
 	public String getValue(int pos) {
 		if (value == null) {
-			String v = getArgumentName(1);
-			return v + "[" + v + "Offset + " + (pos + 3) + "]";
+			return getArgumentValueName(1, pos + 3);
 		} else {
 			return value[pos];
 		}
@@ -59,7 +58,7 @@ public class RayDirection extends DynamicAcceleratedProducerAdapter<Vector> impl
 
 			List<Argument> newArgs = new ArrayList<>();
 			newArgs.add(inputProducers[0]);
-			newArgs.addAll(Arrays.asList(r.getInputProducers()));
+			newArgs.addAll(Arrays.asList(excludeResult(r.getInputProducers())));
 			inputProducers = newArgs.toArray(new Argument[0]);
 			removeDuplicateArguments();
 		}

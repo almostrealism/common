@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,12 +16,44 @@
 
 package org.almostrealism.math;
 
+import org.almostrealism.algebra.Pair;
+import org.jocl.CL;
+import org.jocl.Pointer;
+import org.jocl.Sizeof;
 import org.jocl.cl_mem;
 
 public interface MemWrapper {
+	cl_mem getMem();
+	default int getOffset() { return 0; }
 	int getMemLength();
 
-	cl_mem getMem();
-
 	void destroy();
+
+	/**
+	 * If a delegate is set using this method, then the {@link cl_mem} for the delegate
+	 * should be used to store and retrieve data, with the specified offset. The offset
+	 * size is based on the size of a double, it indicates the number of double values
+	 * to skip over to get to the location in the {@link cl_mem} where data should be
+	 * kept.
+	 */
+	void setDelegate(MemWrapper m, int offset);
+
+	// TODO  This could be faster by moving directly between cl_mems
+	static Pair fromMem(cl_mem mem, int sOffset, int length) {
+		if (length != 1 && length != 2) {
+			throw new IllegalArgumentException(String.valueOf(length));
+		}
+
+		double out[] = new double[length];
+		Pointer dst = Pointer.to(out).withByteOffset(0);
+		CL.clEnqueueReadBuffer(Hardware.getLocalHardware().getQueue(), mem,
+				CL.CL_TRUE, sOffset * Sizeof.cl_double,
+				length * Sizeof.cl_double, dst, 0,
+				null, null);
+		if (length == 1) {
+			return new Pair(out[0], 0);
+		} else {
+			return new Pair(out[0], out[1]);
+		}
+	}
 }

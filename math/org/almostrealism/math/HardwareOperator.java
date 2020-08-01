@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -42,6 +42,9 @@ public class HardwareOperator<T extends MemWrapper> implements Operator<T>, Fact
 	private boolean isKernel;
 	private int argCount;
 
+	private long globalWorkSize = 1;
+	private long globalWorkOffset;
+
 	private cl_kernel kernel;
 
 	public HardwareOperator(cl_program program, String name) {
@@ -61,7 +64,17 @@ public class HardwareOperator<T extends MemWrapper> implements Operator<T>, Fact
 
 	// TODO  How do these kernels get released when done?
 	@Override
-	public cl_kernel construct() { return CL.clCreateKernel(prog, name, null); }
+	public cl_kernel construct() {
+		try {
+			return CL.clCreateKernel(prog, name, null);
+		} catch (CLException e) {
+			if ("CL_INVALID_KERNEL_NAME".equals(e.getMessage())) {
+				throw new IllegalArgumentException("\"" + name + "\" is not a valid kernel name", e);
+			} else {
+				throw e;
+			}
+		}
+	}
 
 	@Override
 	public Scope<? extends Variable> getScope(String prefix) {
@@ -69,6 +82,14 @@ public class HardwareOperator<T extends MemWrapper> implements Operator<T>, Fact
 		s.getMethods().add(new Method(name, Arrays.asList(), new HashMap<>()));
 		return s;
 	}
+
+	public long getGlobalWorkSize() { return globalWorkSize; }
+
+	public void setGlobalWorkSize(long globalWorkSize) { this.globalWorkSize = globalWorkSize; }
+
+	public long getGlobalWorkOffset() { return globalWorkOffset; }
+
+	public void setGlobalWorkOffset(long globalWorkOffset) { this.globalWorkOffset = globalWorkOffset; }
 
 	/**
 	 * Values returned from this method may not be valid if this method is called again
@@ -121,13 +142,18 @@ public class HardwareOperator<T extends MemWrapper> implements Operator<T>, Fact
 			}
 
 			for (int i = 0; i < argCount; i++) {
-				CL.clSetKernelArg(kernel, index++, Sizeof.cl_int, zero); // Offset
+				CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
+						Pointer.to(new int[] { ((MemWrapper) args[i]).getOffset() })); // Offset
 			}
 
-			long gws[] = isKernel ? new long[]{3} : new long[]{1};
+			for (int i = 0; i < argCount; i++) {
+				CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
+						Pointer.to(new int[] { ((MemWrapper) args[i]).getMemLength() })); // Size
+			}
 
-			CL.clEnqueueNDRangeKernel(Hardware.getLocalHardware().getQueue(), kernel, 1, null,
-					gws, null, 0, null, null);
+			CL.clEnqueueNDRangeKernel(Hardware.getLocalHardware().getQueue(), kernel, 1,
+					new long[] { globalWorkOffset }, new long[] { globalWorkSize },
+					null, 0, null, null);
 
 			return (T) args[0];
 		} catch (CLException e) {

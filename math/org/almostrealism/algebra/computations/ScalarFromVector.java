@@ -43,11 +43,9 @@ public class ScalarFromVector extends DynamicAcceleratedProducerAdapter<Scalar> 
 
 	@Override
 	public String getValue(int pos) {
-		String v1 = getFunctionName() + "_v1";
-
 		if (value == null) {
 			if (pos == 0) {
-				return v1 + "[" + v1 + "Offset + " + coordinate + "]";
+				return getArgumentValueName(1, coordinate);
 			} else if (pos == 1) {
 				return "1.0";
 			} else {

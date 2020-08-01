@@ -64,6 +64,30 @@ public abstract class DynamicAcceleratedProducer<T extends MemWrapper> extends A
 		return getFunctionName() + "_l" + index;
 	}
 
+	protected String getArgumentValueName(int index, int pos) {
+		return getArgumentValueName(getArgumentName(index), pos);
+	}
+
+	protected String getArgumentValueName(Argument arg, int pos) {
+		return getArgumentValueName(arg.getName(), pos);
+	}
+
+	private String getArgumentValueName(String v, int pos) {
+		if (isKernel()) {
+			if (pos == 0) {
+				return v + "[get_global_id(0) * " + v + "Size + " + v + "Offset]";
+			} else {
+				return v + "[get_global_id(0) * " + v + "Size + " + v + "Offset + " + pos + "]";
+			}
+		} else {
+			if (pos == 0) {
+				return v + "[" + v + "Offset]";
+			} else {
+				return v + "[" + v + "Offset + " + pos + "]";
+			}
+		}
+	}
+
 	public synchronized HardwareOperator getOperator() {
 		if (operators == null) {
 			operators = Hardware.getLocalHardware().getFunctions().getOperators(getFunctionDefinition());
@@ -77,8 +101,7 @@ public abstract class DynamicAcceleratedProducer<T extends MemWrapper> extends A
 		buf.append("__kernel void " + getFunctionName() + "(");
 		buf.append(getFunctionArgsDefinition());
 		buf.append(") {\n");
-		buf.append(getBody(i -> getArgumentName(0) + "[" +
-					getArgumentName(0) + "Offset + " + i + "]"));
+		buf.append(getBody(i -> getArgumentValueName(0, i)));
 		buf.append("}");
 		return buf.toString();
 	}
@@ -98,6 +121,13 @@ public abstract class DynamicAcceleratedProducer<T extends MemWrapper> extends A
 			buf.append("const int ");
 			buf.append(getInputProducers()[i].getName());
 			buf.append("Offset");
+			buf.append(", ");
+		}
+
+		for (int i = 0; i < getInputProducers().length; i++) {
+			buf.append("const int ");
+			buf.append(getInputProducers()[i].getName());
+			buf.append("Size");
 			if (i < (getArgsCount() - 1)) buf.append(", ");
 		}
 
@@ -125,21 +155,12 @@ public abstract class DynamicAcceleratedProducer<T extends MemWrapper> extends A
 		inputProducers = args.toArray(new Argument[0]);
 	}
 
-	protected static Producer[] includeResult(Producer res, Producer... p) {
-		return CollectionUtils.include(new Producer[0], res, p);
-	}
-
-	protected static Argument[] excludeResult(Argument... p) {
-		Argument q[] = new Argument[p.length - 1];
-		for (int i = 1; i < p.length; i++) q[i - 1] = p[i];
-		return q;
-	}
-
 	protected static String functionName(Class c) {
 		String s = c.getSimpleName();
 		if (s.length() < 2) {
 			throw new IllegalArgumentException(c.getName() + " has too short of a simple name to use for a function");
 		}
+
 		return "f_" + s.substring(0, 1).toLowerCase() + s.substring(1) + "_" + functionId++;
 	}
 }

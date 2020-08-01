@@ -35,17 +35,17 @@ public class RayProducer extends DynamicAcceleratedProducerAdapter<Ray> {
 	public String getValue(int pos) {
 		if (value == null) {
 			if (pos == 0) {
-				return getArgumentName(1) + "[" + getArgumentName(1) + "Offset]";
+				return getArgumentValueName(1, 0);
 			} else if (pos == 1) {
-				return getArgumentName(1) + "[" + getArgumentName(1) + "Offset + 1]";
+				return getArgumentValueName(1, 1);
 			} else if (pos == 2) {
-				return getArgumentName(1) + "[" + getArgumentName(1) + "Offset + 2]";
+				return getArgumentValueName(1, 2);
 			} else if (pos == 3) {
-				return getArgumentName(2) + "[" + getArgumentName(1) + "Offset]";
+				return getArgumentValueName(2, 0);
 			} else if (pos == 4) {
-				return getArgumentName(2) + "[" + getArgumentName(1) + "Offset + 1]";
+				return getArgumentValueName(2, 1);
 			} else if (pos == 5) {
-				return getArgumentName(2) + "[" + getArgumentName(1) + "Offset + 2]";
+				return getArgumentValueName(2, 2);
 			} else {
 				throw new IllegalArgumentException("Position " + pos + " is not valid");
 			}
@@ -66,8 +66,8 @@ public class RayProducer extends DynamicAcceleratedProducerAdapter<Ray> {
 
 			List<Argument> newArgs = new ArrayList<>();
 			newArgs.add(inputProducers[0]);
-			newArgs.addAll(Arrays.asList(origin.getInputProducers()));
-			newArgs.addAll(Arrays.asList(direction.getInputProducers()));
+			newArgs.addAll(Arrays.asList(excludeResult(origin.getInputProducers())));
+			newArgs.addAll(Arrays.asList(excludeResult(direction.getInputProducers())));
 
 			value = new String[6];
 

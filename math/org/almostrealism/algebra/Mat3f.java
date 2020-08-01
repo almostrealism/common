@@ -23,6 +23,8 @@ package org.almostrealism.algebra;
  *
  * TODO  Replace uses with {@link TransformMatrix}.
  */
+
+// TODO  Replace with Tensor
 @Deprecated
 public class Mat3f {
 	private float[] data; // TODO  Change to double

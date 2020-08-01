@@ -22,16 +22,15 @@ import org.almostrealism.algebra.computations.MatrixDeterminant;
 import org.almostrealism.algebra.computations.MatrixProduct;
 import org.almostrealism.algebra.computations.MatrixToUpperTriangle;
 import org.almostrealism.algebra.computations.MatrixTranspose;
+import org.almostrealism.geometry.TransformAsLocation;
+import org.almostrealism.geometry.TransformAsOffset;
 import org.almostrealism.math.HardwareOperator;
 import org.almostrealism.math.Hardware;
 import org.almostrealism.math.MemWrapper;
+import org.almostrealism.math.MemWrapperAdapter;
 import org.almostrealism.relation.TripleFunction;
 import org.almostrealism.util.Producer;
 import org.almostrealism.util.StaticProducer;
-import org.jocl.CL;
-import org.jocl.Pointer;
-import org.jocl.Sizeof;
-import org.jocl.cl_mem;
 
 /**
  * A {@link TransformMatrix} object represents a 4 X 4 matrix used for transforming vectors.
@@ -39,7 +38,7 @@ import org.jocl.cl_mem;
  * methods for transforming varius types of vectors. The TransformMatrix class also provides
  * some static methods that generate certain useful matrices.
  */
-public class TransformMatrix implements TripleFunction<Vector>, MemWrapper {
+public class TransformMatrix extends MemWrapperAdapter implements TripleFunction<Vector> {
 	public static final int TRANSFORM_AS_LOCATION = 1;
 	public static final int TRANSFORM_AS_OFFSET = 2;
 	public static final int TRANSFORM_AS_NORMAL = 4;
@@ -52,7 +51,6 @@ public class TransformMatrix implements TripleFunction<Vector>, MemWrapper {
 	private static ThreadLocal<HardwareOperator<Vector>> transformAsLocation = new ThreadLocal<>();
 	private static ThreadLocal<HardwareOperator<Vector>> transformAsOffset = new ThreadLocal<>();
 
-	private cl_mem matrix;
 	private TransformMatrix inverseMatrix;
 	private TransformMatrix inverseTranspose;
 	private TransformMatrix transposeMatrix;
@@ -80,9 +78,7 @@ public class TransformMatrix implements TripleFunction<Vector>, MemWrapper {
 	}
 
 	private void initMem(boolean identity) {
-		matrix = CL.clCreateBuffer(Hardware.getLocalHardware().getContext(),
-				CL.CL_MEM_READ_WRITE,16 * Sizeof.cl_double,
-				null, null);
+		init();
 		if (identity) {
 			new IdentityMatrix(new StaticProducer<>(this)).evaluate(new Object[0]);
 		}
@@ -186,21 +182,14 @@ public class TransformMatrix implements TripleFunction<Vector>, MemWrapper {
 		throw new RuntimeException("getScope is not implemented"); // TODO
 	}
 
+	// TODO  This should return a Producer
 	public void transform(Vector vector, int type) {
 		if (this.isIdentity) return;
 		
 		if (type == TransformMatrix.TRANSFORM_AS_LOCATION) {
-			if (transformAsLocation.get() == null) {
-				transformAsLocation.set(Hardware.getLocalHardware().getFunctions().getOperators().get("transformAsLocation", false, 2));
-			}
-
-			transformAsLocation.get().evaluate(new Object[] { vector, this });
+			new TransformAsLocation(this, StaticProducer.of(vector)).evaluate(new Object[0]);
 		} else if (type == TransformMatrix.TRANSFORM_AS_OFFSET) {
-			if (transformAsOffset.get() == null) {
-				transformAsOffset.set(Hardware.getLocalHardware().getFunctions().getOperators().get("transformAsOffset", false, 2));
-			}
-
-			transformAsOffset.get().evaluate(new Object[] { vector, this });
+			new TransformAsOffset(this, StaticProducer.of(vector)).evaluate(new Object[0]);
 		} else if (type == TransformMatrix.TRANSFORM_AS_NORMAL) {
 			if (!this.inverted) this.calculateInverse();
 			this.inverseTranspose.transform(vector, TransformMatrix.TRANSFORM_AS_OFFSET);
@@ -364,56 +353,9 @@ public class TransformMatrix implements TripleFunction<Vector>, MemWrapper {
 	@Override
 	public int getMemLength() { return 16; }
 
-	@Override
-	public cl_mem getMem() { return matrix; }
-
-	@Override
-	public void destroy() {
-		if (matrix == null) return;
-		CL.clReleaseMemObject(matrix);
-		matrix = null;
-	}
-
-	@Override
-	public void finalize() throws Throwable {
-		destroy();
-	}
-
-	protected void setMem(double[] source) {
-		setMem(0, source, 0, 16);
-	}
-
-	protected void setMem(double[] source, int offset) {
-		setMem(0, source, offset, 16);
-	}
-
-	protected void setMem(int offset, double[] source, int srcOffset, int length) {
-		Pointer src = Pointer.to(source).withByteOffset(srcOffset*Sizeof.cl_double);
-		CL.clEnqueueWriteBuffer(Hardware.getLocalHardware().getQueue(), matrix, CL.CL_TRUE,
-				offset * Sizeof.cl_double, length * Sizeof.cl_double,
-				src, 0, null, null);
-	}
-
-	protected void setMem(int offset, TransformMatrix src, int srcOffset, int length) {
-		CL.clEnqueueCopyBuffer(Hardware.getLocalHardware().getQueue(), src.matrix, matrix,
-				srcOffset * Sizeof.cl_double,
-				offset * Sizeof.cl_double,length * Sizeof.cl_double,
-				0,null,null);
-	}
-
-	protected void getMem(int sOffset, double out[], int oOffset, int length, cl_mem mem) {
-		Pointer dst = Pointer.to(out).withByteOffset(oOffset * Sizeof.cl_double);
-		CL.clEnqueueReadBuffer(Hardware.getLocalHardware().getQueue(), mem,
-				CL.CL_TRUE, sOffset * Sizeof.cl_double,
-				length * Sizeof.cl_double, dst, 0,
-				null, null);
-	}
-
-	protected void getMem(double out[], int offset, cl_mem mem) { getMem(0, out, offset, 3, mem); }
-
 	public double[] toArray() {
 		double m[] = new double[16];
-		getMem(0, m, 0, 16, matrix);
+		getMem(0, m, 0, 16);
 		return m;
 	}
 

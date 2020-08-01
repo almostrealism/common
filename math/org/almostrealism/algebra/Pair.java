@@ -1,20 +1,38 @@
+/*
+ * Copyright 2020 Michael Murray
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
 package org.almostrealism.algebra;
 
 import org.almostrealism.math.Hardware;
 import org.almostrealism.math.MemWrapper;
+import org.almostrealism.math.MemWrapperAdapter;
+import org.almostrealism.util.DynamicProducer;
 import org.almostrealism.util.Producer;
 import org.jocl.CL;
 import org.jocl.Pointer;
 import org.jocl.Sizeof;
 import org.jocl.cl_mem;
 
-public class Pair implements MemWrapper {
-	private cl_mem mem;
-
+public class Pair extends MemWrapperAdapter {
 	public Pair() {
-		mem = CL.clCreateBuffer(Hardware.getLocalHardware().getContext(),
-				CL.CL_MEM_READ_WRITE,2 * Sizeof.cl_double,
-				null, null);
+		init();
+	}
+
+	protected Pair(MemWrapper delegate, int delegateOffset) {
+		setDelegate(delegate, delegateOffset);
 	}
 
 	public Pair(double x, double y) {
@@ -113,81 +131,7 @@ public class Pair implements MemWrapper {
 		return 2;
 	}
 
-	@Override
-	public cl_mem getMem() { return mem; }
-
-	@Override
-	public void destroy() {
-		if (mem == null) return;
-		CL.clReleaseMemObject(mem);
-		mem = null;
-	}
-
-	@Override
-	public void finalize() throws Throwable {
-		destroy();
-	}
-
-	public void setMem(double[] source) {
-		setMem(0, source, 0, 2);
-	}
-
-	private void setMem(double[] source, int offset) {
-		setMem(0, source, offset, 2);
-	}
-
-	private void setMem(int offset, double[] source, int srcOffset, int length) {
-		Pointer src = Pointer.to(source).withByteOffset(srcOffset* Sizeof.cl_double);
-		CL.clEnqueueWriteBuffer(Hardware.getLocalHardware().getQueue(), mem, CL.CL_TRUE,
-				offset * Sizeof.cl_double, length * Sizeof.cl_double,
-				src, 0, null, null);
-	}
-
-	private void setMem(int offset, Pair src, int srcOffset, int length) {
-		CL.clEnqueueCopyBuffer(Hardware.getLocalHardware().getQueue(), src.mem, this.mem,
-				srcOffset * Sizeof.cl_double,
-				offset * Sizeof.cl_double,length * Sizeof.cl_double,
-				0,null,null);
-	}
-
-	private void getMem(int sOffset, double out[], int oOffset, int length) {
-		Pointer dst = Pointer.to(out).withByteOffset(oOffset * Sizeof.cl_double);
-		CL.clEnqueueReadBuffer(Hardware.getLocalHardware().getQueue(), mem,
-				CL.CL_TRUE, sOffset * Sizeof.cl_double,
-				length * Sizeof.cl_double, dst, 0,
-				null, null);
-	}
-
-	private void getMem(double out[], int offset) { getMem(0, out, offset, 2); }
-
-	// TODO  This could be faster by moving directly between cl_mems
-	public static Pair fromMem(cl_mem mem, int sOffset, int length) {
-		if (length != 1 && length != 2) {
-			throw new IllegalArgumentException(String.valueOf(length));
-		}
-
-		double out[] = new double[length];
-		Pointer dst = Pointer.to(out).withByteOffset(0);
-		CL.clEnqueueReadBuffer(Hardware.getLocalHardware().getQueue(), mem,
-				CL.CL_TRUE, sOffset * Sizeof.cl_double,
-				length * Sizeof.cl_double, dst, 0,
-				null, null);
-		if (length == 1) {
-			return new Pair(out[0], 0);
-		} else {
-			return new Pair(out[0], out[1]);
-		}
-	}
-
 	public static Producer<Pair> empty() {
-		return new Producer<Pair>() {
-			@Override
-			public Pair evaluate(Object[] args) {
-				return new Pair();
-			}
-
-			@Override
-			public void compact() { }
-		};
+		return new DynamicProducer<>(args -> new Pair());
 	}
 }

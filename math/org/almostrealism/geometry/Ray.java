@@ -24,6 +24,7 @@ import org.almostrealism.algebra.computations.RayPointAt;
 import org.almostrealism.math.AcceleratedProducer;
 import org.almostrealism.math.Hardware;
 import org.almostrealism.math.MemWrapper;
+import org.almostrealism.math.MemWrapperAdapter;
 import org.almostrealism.util.DynamicProducer;
 import org.almostrealism.util.Producer;
 import org.almostrealism.util.StaticProducer;
@@ -38,9 +39,7 @@ import org.jocl.cl_mem;
  * 
  * @author  Michael Murray
  */
-public class Ray implements MemWrapper, Cloneable {
-	private cl_mem mem;
-
+public class Ray extends MemWrapperAdapter implements Cloneable {
 	private Ray(double coords[]) {
 		this();
 		this.setMem(coords);
@@ -50,9 +49,7 @@ public class Ray implements MemWrapper, Cloneable {
 	 * Constructs a Ray object with origin and direction at the origin.
 	 */
 	public Ray() {
-		mem = CL.clCreateBuffer(Hardware.getLocalHardware().getContext(),
-				CL.CL_MEM_READ_WRITE,6 * Sizeof.cl_double,
-				null, null);
+		init();
 	}
 	
 	/**
@@ -166,48 +163,6 @@ public class Ray implements MemWrapper, Cloneable {
 	public int getMemLength() { return 6; }
 
 	@Override
-	public cl_mem getMem() { return mem; }
-
-	protected void setMem(double[] source) {
-		setMem(0, source, 0, 6);
-	}
-
-	protected void setMem(double[] source, int offset) {
-		setMem(0, source, offset, 6);
-	}
-
-	protected void setMem(int offset, double[] source, int srcOffset, int length) {
-		Pointer src = Pointer.to(source).withByteOffset(srcOffset * Sizeof.cl_double);
-		CL.clEnqueueWriteBuffer(Hardware.getLocalHardware().getQueue(), mem, CL.CL_TRUE,
-				offset * Sizeof.cl_double, length * Sizeof.cl_double,
-				src, 0, null, null);
-	}
-
-	protected void setMem(int offset, Ray src, int srcOffset, int length) {
-		CL.clEnqueueCopyBuffer(Hardware.getLocalHardware().getQueue(), src.mem, this.mem,
-				srcOffset * Sizeof.cl_double,
-				offset * Sizeof.cl_double,length * Sizeof.cl_double,
-				0,null,null);
-	}
-
-	protected void setMem(int offset, Vector src, int srcOffset, int length) {
-		CL.clEnqueueCopyBuffer(Hardware.getLocalHardware().getQueue(), src.getMem(), this.mem,
-				srcOffset * Sizeof.cl_double,
-				offset * Sizeof.cl_double,length * Sizeof.cl_double,
-				0,null,null);
-	}
-
-	protected void getMem(int sOffset, double out[], int oOffset, int length) {
-		Pointer dst = Pointer.to(out).withByteOffset(oOffset * Sizeof.cl_double);
-		CL.clEnqueueReadBuffer(Hardware.getLocalHardware().getQueue(), mem,
-				CL.CL_TRUE, sOffset * Sizeof.cl_double,
-				length * Sizeof.cl_double, dst, 0,
-				null, null);
-	}
-
-	protected void getMem(double out[], int offset) { getMem(0, out, offset, 6); }
-
-	@Override
 	public boolean equals(Object o) {
 		if (o instanceof Ray == false) return false;
 		double r1[] = this.toArray();
@@ -234,18 +189,6 @@ public class Ray implements MemWrapper, Cloneable {
 		double coords[] = new double[6];
 		getMem(coords, 0);
 		return coords;
-	}
-
-	@Override
-	public void destroy() {
-		if (mem == null) return;
-		CL.clReleaseMemObject(mem);
-		mem = null;
-	}
-
-	@Override
-	public void finalize() throws Throwable {
-		destroy();
 	}
 
 	/**
