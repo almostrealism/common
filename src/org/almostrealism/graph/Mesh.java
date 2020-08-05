@@ -34,6 +34,7 @@ import org.almostrealism.algebra.*;
 import org.almostrealism.algebra.computations.RayMatrixTransform;
 import org.almostrealism.color.ColorProducer;
 import org.almostrealism.color.RGB;
+import org.almostrealism.color.RGBProducer;
 import org.almostrealism.color.ShaderContext;
 import org.almostrealism.geometry.Positioned;
 import org.almostrealism.geometry.Ray;
@@ -107,7 +108,7 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 		
 		@Override public boolean getShadeFront() { return this.getSurface().getShadeFront(); }
 		@Override public boolean getShadeBack() { return this.getSurface().getShadeBack(); }
-		@Override public ColorProducer getColorAt() { return this.getSurface().getColorAt(); }
+		@Override public RGBProducer getColorAt() { return this.getSurface().getColorAt(); }
 
 		@Override
 		public BoundingSolid calculateBoundingSolid() { return mesh.calculateBoundingSolid(); }

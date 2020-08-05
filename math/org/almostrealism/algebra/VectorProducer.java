@@ -75,6 +75,10 @@ public interface VectorProducer extends Producer<Vector> {
         return x().pow(2.0).add(y().pow(2.0)).add(z().pow(2.0)).pow(0.5);
     }
 
+    default ScalarProducer lengthSq() {
+        return x().pow(2.0).add(y().pow(2.0)).add(z().pow(2.0));
+    }
+
     default VectorProducer normalize() {
         ScalarProducer oneOverLength = length().pow(-1.0);
         return new VectorFromScalars(x().multiply(oneOverLength),

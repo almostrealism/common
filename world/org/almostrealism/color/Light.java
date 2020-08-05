@@ -16,7 +16,9 @@
 
 package org.almostrealism.color;
 
+import org.almostrealism.algebra.Vector;
 import org.almostrealism.texture.Texture;
+import org.almostrealism.util.Producer;
 
 /**
  * A {@link Light} implementation provides lighting information used for rendering.
@@ -43,8 +45,11 @@ public interface Light {
 	 * Returns the color of this {@link Light} at the specified point
 	 * as an {@link RGB} object.
 	 * 
-	 * TODO  This is unnecessary. Some methods {@link Light}s may implement {@link Texture}
+	 * TODO  This is unnecessary. Some {@link Light}s may implement {@link Texture}
 	 *       if they want to provide this kind of function.
+	 *       Follow up: actually, this is not possible since a Texture is a producer directly
+	 *       where as this method needs to accept input as a producer. Perhaps texture is wrong
+	 *       to be a producer directly, if it changes then we can use this strategy.
 	 */
-	ColorProducer getColorAt();
+	Producer<RGB> getColorAt(Producer<Vector> point);
 }

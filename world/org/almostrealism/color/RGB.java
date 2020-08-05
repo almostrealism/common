@@ -36,7 +36,7 @@ import org.jocl.cl_mem;
  * An RGB object stores these channels as double values between 0.0 (no color) and
  * 1.0 (strongest color).
  */
-public class RGB implements ColorProducer, Triple, MemWrapper, Externalizable, Cloneable {
+public class RGB implements RGBProducer, Triple, MemWrapper, Externalizable, Cloneable {
 	private interface Data extends MemWrapper {
 		void set(int i, double r);
 		void add(int i, double r);
@@ -301,9 +301,6 @@ public class RGB implements ColorProducer, Triple, MemWrapper, Externalizable, C
 	  Returns the value of the blue channel of this RGB object as a double value.
 	*/
 	public double getBlue() { return this.data.get(2); }
-	
-	@Override
-	public RGB operate(Triple in) { return this; }
 
 	@Override
 	public double getA() { return getRed(); }
@@ -474,13 +471,15 @@ public class RGB implements ColorProducer, Triple, MemWrapper, Externalizable, C
 	 */
 	public RGB evaluate(Object args[]) { return (RGB) this.clone(); }
 
+	@Override
 	public void compact() {
 		// TODO  RGB should optionally accept any triple producer.
 		//       If this is the source of data, this compact method
 		//       should delegate to it.
 	}
 
-	@Override
+	// @Override
+	// TODO
 	public Scope getScope(String prefix) {
 		Scope<Variable<Double>> s = new Scope<>();
 		s.getVariables().add(new Variable<>(prefix + "r", getRed()));

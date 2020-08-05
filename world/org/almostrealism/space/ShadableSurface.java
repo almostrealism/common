@@ -20,6 +20,7 @@ import org.almostrealism.algebra.Intersectable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.color.ColorProducer;
+import org.almostrealism.color.RGBProducer;
 import org.almostrealism.color.ShadableCurve;
 import org.almostrealism.uml.ModelEntity;
 
@@ -54,7 +55,7 @@ public interface ShadableSurface extends ShadableCurve, Intersectable<Scalar> {
 	 * @deprecated  Replaced by {@link #evaluate(Object[])}
 	 */
 	@Deprecated
-	ColorProducer getColorAt();
+	RGBProducer getColorAt();
 
 	/**
 	 * Return a {@link BoundingSolid} that represents the minimum bounded

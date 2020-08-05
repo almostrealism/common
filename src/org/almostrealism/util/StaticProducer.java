@@ -23,6 +23,9 @@ import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.algebra.TransformMatrix;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorProducer;
+import org.almostrealism.color.ColorProducer;
+import org.almostrealism.color.RGB;
+import org.almostrealism.color.RGBProducer;
 
 public class StaticProducer<T> implements Producer<T> {
 	private T value;
@@ -59,6 +62,8 @@ public class StaticProducer<T> implements Producer<T> {
 		}
 	}
 
+	public static ScalarProducer of(double value) { return of(new Scalar(value)); }
+
 	public static ScalarProducer of(Scalar value) {
 		return new AcceleratedStaticScalarProducer(value, Scalar.blank());
 	}
@@ -70,4 +75,6 @@ public class StaticProducer<T> implements Producer<T> {
 	public static VectorProducer of(Vector value) {
 		return new AcceleratedStaticVectorProducer(value, Vector.blank());
 	}
+
+	public static RGBProducer of(RGB value) { return new AcceleratedStaticRGBProducer(value, RGB.blank()); }
 }

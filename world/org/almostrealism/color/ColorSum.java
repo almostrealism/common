@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,73 +16,34 @@
 
 package org.almostrealism.color;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
+import org.almostrealism.algebra.computations.NAryDynamicAcceleratedProducer;
+import org.almostrealism.util.Producer;
 
-import io.almostrealism.code.Scope;
-import org.almostrealism.uml.Function;
+
+// TODO  Combine ColorSums that are equal by converting to ColorProduct
+// TODO  If all the members of a ColorSum are ColorProducts, and those
+//       ColorProducts contain matching terms, the matching terms can
+//       be extracted and a the multiplication can be performed after
+//       the sum. In a simple example this could take 3 products and
+//       two sums and convert it into two sums and two sums and one
+//       product
 
 /**
  * @author  Michael Murray
  */
-@Function
-public class ColorSum extends ColorFutureAdapter {
-	public ColorSum() { }
-	
-	public ColorSum(Future<ColorProducer>... producers) { addAll(Arrays.asList(producers)); }
-	
-	@Override
-	public RGB evaluate(Object[] args) {
-		RGB rgb = new RGB();
-		
-		for (Future<ColorProducer> c : this) {
-			try {
-				rgb.addTo(c.get().evaluate(args));
-			} catch (InterruptedException | ExecutionException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
-		}
-		
-		return rgb;
+public class ColorSum extends NAryDynamicAcceleratedProducer<RGB> implements RGBProducer {
+	public ColorSum(Producer<RGB>... producers) {
+		super("+", 3, RGB.blank(), producers);
 	}
 
 	@Override
-	public Scope getScope(String prefix) {
-		throw new RuntimeException("getScope is not implemented"); // TODO
-	}
+	public double getIdentity() { return 0; }
 
-	// TODO  Combine ColorSums that are equal by converting to ColorProduct
-	// TODO  If all the members of a ColorSum are ColorProducts, and those
-	//       ColorProducts contain matching terms, the matching terms can
-	//       be extracted and a the multiplication can be performed after
-	//       the sum. In a simple example this could take 3 products and
-	//       two sums and convert it into two sums and two sums and one
-	//       product
 	@Override
-	public void compact() {
-		super.compact();
+	public double combine(double a, double b) { return a + b; }
 
-		List<Future<ColorProducer>> p = new ArrayList<>();
-		List<StaticColorProducer> replaced = new ArrayList<>();
-
-		for (ColorProducer c : getStaticColorProducers()) {
-			if (c instanceof ColorSum) {
-				replaced.add(new StaticColorProducer(c));
-
-				for (Future<ColorProducer> cp : ((ColorSum) c)) {
-					p.add(cp);
-				}
-			}
-		}
-
-		for (StaticColorProducer s : replaced) {
-			remove(replaced);
-		}
-
-		addAll(p);
-	}
+	/**
+	 * Returns true if the specified value is 0.0, false otherwise.
+	 */
+	public boolean isRemove(double value) { return value == 0.0; }
 }

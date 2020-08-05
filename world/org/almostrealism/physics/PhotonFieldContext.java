@@ -35,7 +35,7 @@ public class PhotonFieldContext<T extends PhotonField, F extends Absorber> exten
 		this.film = film;
 	}
 
-	public PhotonFieldContext(ContinuousField intersection, Vector lightDirection,
+	public PhotonFieldContext(ContinuousField intersection, Producer<Vector> lightDirection,
 							  Light light, Iterable<Light> otherLights,
 							  Collection<Producer<RGB>> otherSurfaces,
 							  T field, F film) {
@@ -44,7 +44,7 @@ public class PhotonFieldContext<T extends PhotonField, F extends Absorber> exten
 		this.film = film;
 	}
 
-	public PhotonFieldContext(ContinuousField intersection, Vector lightDirection,
+	public PhotonFieldContext(ContinuousField intersection, Producer<Vector> lightDirection,
 							  Light light, Iterable<Light> otherLights,
 							  Producer<RGB> surface, Producer<RGB>[] otherSurfaces,
 							  T field, F film) {

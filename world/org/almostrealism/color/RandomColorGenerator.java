@@ -24,13 +24,13 @@ import org.almostrealism.heredity.Gene;
  * @author Michael Murray
  */
 public class RandomColorGenerator extends ColorProducerAdapter {
- private ColorProducer baseRGB, offsetRGB;
+ 	private RGBProducer baseRGB, offsetRGB;
  
 	public RandomColorGenerator() {
 		this(new RGB(0.0, 0.0, 0.0), new RGB(1.0, 1.0, 1.0));
 	}
 	
-	public RandomColorGenerator(ColorProducer baseRGB, ColorProducer offsetRGB) {
+	public RandomColorGenerator(RGBProducer baseRGB, RGBProducer offsetRGB) {
 		this.baseRGB = baseRGB;
 		this.offsetRGB = offsetRGB;
 	}
@@ -38,8 +38,8 @@ public class RandomColorGenerator extends ColorProducerAdapter {
 	public void setBaseRGB(ColorProducer base) { this.baseRGB = base; }
 	public void setOffsetRGB(ColorProducer offset) { this.offsetRGB = offset; }
 	
-	public ColorProducer getBaseRGB() { return this.baseRGB; }
-	public ColorProducer getOffsetRGB() { return this.offsetRGB; }
+	public RGBProducer getBaseRGB() { return this.baseRGB; }
+	public RGBProducer getOffsetRGB() { return this.offsetRGB; }
 	
 	/** @see org.almostrealism.color.ColorProducer#evaluate(java.lang.Object[]) */
 	public RGB evaluate(Object args[]) {

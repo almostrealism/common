@@ -550,9 +550,14 @@ public abstract class AbstractSurface<IN> extends TriangulatableGeometry impleme
 	
 	/**
 	 * @return  The color of this AbstractSurface, which can be evaluated at a particular point.
+	 *
+	 * @deprecated The surface can now be directly evaluated as a producer.
+	 *             Whether this is a good idea or not remains to be seen,
+	 *             but for now this is deprecated.
 	 */
+	@Deprecated
 	@Override
-	public ColorProducer getColorAt() { return call(); }
+	public RGBProducer getColorAt() { return call(); }
 
 	@Override
 	public RGB evaluate(Object args[]) {
@@ -567,7 +572,7 @@ public abstract class AbstractSurface<IN> extends TriangulatableGeometry impleme
 	/**
 	 * @return  The color of this AbstractSurface at the specified point as an RGB object.
 	 */
-	public RGB getColorAt(Vector point, boolean transform) {
+	public RGBProducer getColorAt(Producer<Vector> point, boolean transform) {
 	    if (transform && getTransform(true) != null) point = getTransform(true).getInverse().transformAsLocation(point);
 	    
 	    RGB colorAt = new RGB(0.0, 0.0, 0.0);
@@ -583,7 +588,7 @@ public abstract class AbstractSurface<IN> extends TriangulatableGeometry impleme
 	    }
 
 	    if (this.parent != null)
-	        colorAt.multiplyBy(this.parent.getColorAt().operate(point));
+	        colorAt.multiplyBy(this.parent.getColorAt().evaluate(new Object[] { point }));
 		
 		return colorAt;
 	}

@@ -26,15 +26,15 @@ import org.almostrealism.uml.Function;
 @Deprecated // Replaced with ColorProduct
 @Function
 public class ColorMultiplier extends ColorProducerAdapter {
-	private ColorProducer color;
-	private ColorProducer multiplier;
+	private RGBProducer color;
+	private RGBProducer multiplier;
 	
-	public ColorMultiplier(ColorProducer color, double multiplier) {
+	public ColorMultiplier(RGBProducer color, double multiplier) {
 		this.color = color;
 		this.multiplier = new RGB(multiplier, multiplier, multiplier);
 	}
 	
-	public ColorMultiplier(ColorProducer color, ColorProducer multiplier) {
+	public ColorMultiplier(RGBProducer color, RGBProducer multiplier) {
 		this.color = color;
 		this.multiplier = multiplier;
 	}

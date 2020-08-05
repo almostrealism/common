@@ -33,5 +33,6 @@ public interface Gradient extends Differentiable<Vector> {
 	 * Returns a {@link Vector} that represents the normal to the surface at the point
 	 * represented by the specified {@link Vector}.
 	 */
+	// TODO  Accept a Producer?
 	Producer<Vector> getNormalAt(Vector point);
 }

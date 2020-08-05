@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -53,17 +53,17 @@ public class ShaderContext extends LightingContext {
 	 * Constructs a new ShaderParameters object using the specified arguments.
 	 * 
 	 * @param intersection  The details about the surface/ray intersection.
-	 * @param lightDirection  Vector object representing the direction toward the light (should be unit length).
+	 * @param lightDirection  {@link Vector} {@link Producer} representing the direction toward the light (should be unit length).
 	 * @param light  Light object representing the light.
 	 * @param otherLights  Array of Light objects representing other lights in the scene.
 	 * @param otherSurfaces  Collection of other Surface objects in the scene.
 	 */
-	public ShaderContext(ContinuousField intersection, Vector lightDirection, Light light,
+	public ShaderContext(ContinuousField intersection, Producer<Vector> lightDirection, Light light,
 							Iterable<Light> otherLights, Collection<Producer<RGB>> otherSurfaces) {
 		this(intersection, lightDirection, light, otherLights, otherSurfaces.toArray(new Producer[0]));
 	}
 	
-	private ShaderContext(ContinuousField intersection, Vector lightDirection, Light light,
+	private ShaderContext(ContinuousField intersection, Producer<Vector> lightDirection, Light light,
 			Iterable<Light> otherLights, Producer<RGB> otherSurfaces[]) {
 		this(intersection, lightDirection, light, otherLights, null, otherSurfaces);
 	}
@@ -78,7 +78,7 @@ public class ShaderContext extends LightingContext {
 	 * @param surface  Surface object to be shaded.
 	 * @param otherSurfaces  Array of other Surface objects in the scene.
 	 */
-	public ShaderContext(ContinuousField intersection, Vector lightDirection, Light light,
+	public ShaderContext(ContinuousField intersection, Producer<Vector> lightDirection, Light light,
 							Iterable<Light> otherLights, Producer<RGB> surface, Producer<RGB> otherSurfaces[]) {
 		this.intersection = intersection;
 		this.setLightDirection(lightDirection);

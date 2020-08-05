@@ -1,63 +1,42 @@
+/*
+ * Copyright 2020 Michael Murray
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
 package org.almostrealism.color;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
+import org.almostrealism.algebra.computations.NAryDynamicAcceleratedProducer;
+import org.almostrealism.util.Producer;
 
-import io.almostrealism.code.Scope;
-import io.almostrealism.code.Variable;
-import org.almostrealism.uml.Function;
-
-@Function
-public class ColorProduct extends ColorFutureAdapter {
-	public ColorProduct() { }
-	public ColorProduct(ColorProducer... producers) { addAll(convertToFutures(producers)); }
-	public ColorProduct(Future<ColorProducer>... producers) { addAll(Arrays.asList(producers)); }
-	
-	@Override
-	public RGB evaluate(Object[] args) {
-		RGB rgb = new RGB(1.0, 1.0, 1.0);
-		
-		for (Future<ColorProducer> c : this) {
-			try {
-				rgb.multiplyBy(c.get().evaluate(args));
-			} catch (InterruptedException | ExecutionException e) {
-				e.printStackTrace();
-			}
-		}
-		
-		return rgb;
+public class ColorProduct extends NAryDynamicAcceleratedProducer<RGB> implements RGBProducer {
+	public ColorProduct(Producer<RGB>... producers) {
+		super("*", 3, RGB.blank(), producers);
 	}
 
 	@Override
-	public Scope<? extends Variable> getScope(String prefix) {
-		throw new RuntimeException("getScope is not implemented");
-	}
+	public double getIdentity() { return 1.0; }
 
-	// TODO  Combine ColorProducts that are equal by converting to ColorPow
 	@Override
-	public void compact() {
-		super.compact();
+	public double combine(double a, double b) { return a * b; }
 
-		List<Future<ColorProducer>> p = new ArrayList<>();
-		List<StaticColorProducer> replaced = new ArrayList<>();
+	/**
+	 * Returns 0.0 if the specified value is zero, false otherwise.
+	 */
+	public Double isReplaceAll(double value) { return value == 0.0 ? 0.0 : null; }
 
-		for (ColorProducer c : getStaticColorProducers()) {
-			if (c instanceof ColorProduct) {
-				replaced.add(new StaticColorProducer(c));
-
-				for (Future<ColorProducer> cp : ((ColorProduct) c)) {
-					p.add(cp);
-				}
-			}
-		}
-
-		for (StaticColorProducer s : replaced) {
-			remove(replaced);
-		}
-
-		addAll(p);
-	}
+	/**
+	 * Returns true if the specified value is 1.0, false otherwise.
+	 */
+	public boolean isRemove(double value) { return value == 1.0; }
 }

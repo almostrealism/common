@@ -6,7 +6,7 @@ import org.almostrealism.algebra.Triple;
 import org.almostrealism.relation.TripleFunction;
 import org.almostrealism.util.Producer;
 
-public abstract class ColorProducerAdapter implements ColorProducer {
+public abstract class ColorProducerAdapter implements ColorProducer, TripleFunction<RGB> {
 	@Override
 	public RGB operate(Triple in) { return evaluate(new Triple[] { in }); }
 

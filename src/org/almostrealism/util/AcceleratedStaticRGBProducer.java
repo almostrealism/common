@@ -14,16 +14,13 @@
  * limitations under the License.
  */
 
-package org.almostrealism.color;
+package org.almostrealism.util;
 
-import org.almostrealism.relation.TripleFunction;
-import org.almostrealism.util.StaticProducer;
+import org.almostrealism.color.RGB;
+import org.almostrealism.color.RGBProducer;
 
-/**
- * ColorProducer is implemented by any class that can produce an {@link RGB} object
- * given some array of input objects.
- * 
- * @author Michael Murray
- */
-public interface ColorProducer extends RGBProducer, TripleFunction<RGB> {
+public class AcceleratedStaticRGBProducer extends AcceleratedStaticProducer<RGB> implements RGBProducer {
+	public AcceleratedStaticRGBProducer(RGB value, Producer<RGB> output) {
+		super(value, output);
+	}
 }

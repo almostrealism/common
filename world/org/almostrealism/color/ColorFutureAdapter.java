@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,25 +23,35 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
+import io.almostrealism.code.Scope;
+import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.Triple;
+import org.almostrealism.relation.TripleFunction;
+import org.almostrealism.util.Producer;
 
-public abstract class ColorFutureAdapter extends ArrayList<Future<ColorProducer>>
-										implements ColorProducer, Future<ColorProducer> {
+public abstract class ColorFutureAdapter extends ArrayList<Future<Producer<RGB>>>
+										implements ColorProducer, Future<ColorProducer>,
+										TripleFunction<RGB> {
 
 	public void add(ColorProducer p) {
-		addAll(convertToFutures(new ColorProducer[] { p }));
+		addAll(convertToFutures(new RGBProducer[] { p }));
 	}
 	
 	@Override
 	public RGB operate(Triple in) {
 		return evaluate(new Triple[] { in });
 	}
-	
+
+	@Override
+	public Scope<? extends Variable> getScope(String prefix) {
+		throw new RuntimeException("Not implemented");
+	}
+
 	@Override
 	public boolean cancel(boolean mayInterruptIfRunning) {
 		boolean cancelled = true;
 		
-		for (Future<ColorProducer> p : this) {
+		for (Future<Producer<RGB>> p : this) {
 			cancelled &= p.cancel(mayInterruptIfRunning);
 		}
 		
@@ -50,7 +60,7 @@ public abstract class ColorFutureAdapter extends ArrayList<Future<ColorProducer>
 	
 	@Override
 	public boolean isCancelled() {
-		for (Future<ColorProducer> p : this) {
+		for (Future<Producer<RGB>> p : this) {
 			if (!p.isCancelled()) return false;
 		}
 		
@@ -59,7 +69,7 @@ public abstract class ColorFutureAdapter extends ArrayList<Future<ColorProducer>
 	
 	@Override
 	public boolean isDone() {
-		for (Future<ColorProducer> p : this) {
+		for (Future<Producer<RGB>> p : this) {
 			if (!p.isDone()) return false;
 		}
 		
@@ -84,17 +94,17 @@ public abstract class ColorFutureAdapter extends ArrayList<Future<ColorProducer>
 	 */
 	@Override
 	public void compact() {
-		for (Future<ColorProducer> f : this) {
+		for (Future<Producer<RGB>> f : this) {
 			if (f instanceof StaticColorProducer) {
 				((StaticColorProducer) f).compact();
 			}
 		}
 	}
 
-	protected Iterable<ColorProducer> getStaticColorProducers() {
-		List<ColorProducer> l = new ArrayList<>();
+	protected Iterable<Producer<RGB>> getStaticColorProducers() {
+		List<Producer<RGB>> l = new ArrayList<>();
 
-		for (Future<ColorProducer> f : this) {
+		for (Future<Producer<RGB>> f : this) {
 			if (f instanceof StaticColorProducer) {
 				l.add(((StaticColorProducer) f).p);
 			}
@@ -103,10 +113,10 @@ public abstract class ColorFutureAdapter extends ArrayList<Future<ColorProducer>
 		return l;
 	}
 
-	public static List<Future<ColorProducer>> convertToFutures(ColorProducer... producers) {
-		ArrayList<Future<ColorProducer>> pr = new ArrayList<Future<ColorProducer>>();
+	public static List<Future<Producer<RGB>>> convertToFutures(Producer<RGB>... producers) {
+		ArrayList<Future<Producer<RGB>>> pr = new ArrayList<>();
 		
-		for (ColorProducer p : producers) {
+		for (Producer<RGB> p : producers) {
 			pr.add(new StaticColorProducer(p));
 		}
 		
@@ -115,10 +125,10 @@ public abstract class ColorFutureAdapter extends ArrayList<Future<ColorProducer>
 
 	// TODO  When ColorProducer implements PathElement, this should be changed to
 	//       implement PathElement as well
-	protected static class StaticColorProducer implements Future<ColorProducer> {
-		private ColorProducer p;
+	protected static class StaticColorProducer implements Future<Producer<RGB>> {
+		private Producer<RGB> p;
 
-		protected StaticColorProducer(ColorProducer p) { this.p = p; }
+		protected StaticColorProducer(Producer<RGB> p) { this.p = p; }
 
 		@Override
 		public boolean cancel(boolean mayInterruptIfRunning) { return false; }
@@ -130,12 +140,12 @@ public abstract class ColorFutureAdapter extends ArrayList<Future<ColorProducer>
 		public boolean isDone() { return false; }
 
 		@Override
-		public ColorProducer get() throws InterruptedException, ExecutionException {
+		public Producer<RGB> get() throws InterruptedException, ExecutionException {
 			return p;
 		}
 
 		@Override
-		public ColorProducer get(long timeout, TimeUnit unit)
+		public Producer<RGB> get(long timeout, TimeUnit unit)
 				throws InterruptedException, ExecutionException, TimeoutException {
 			return get();
 		}
