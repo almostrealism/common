@@ -108,7 +108,7 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 		
 		@Override public boolean getShadeFront() { return this.getSurface().getShadeFront(); }
 		@Override public boolean getShadeBack() { return this.getSurface().getShadeBack(); }
-		@Override public RGBProducer getColorAt() { return this.getSurface().getColorAt(); }
+		@Override public Producer<RGB> getValueAt(Producer<Vector> point) { return this.getSurface().getValueAt(point); }
 
 		@Override
 		public BoundingSolid calculateBoundingSolid() { return mesh.calculateBoundingSolid(); }
@@ -137,18 +137,6 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 		@Override public Vector operate(Triple in) { return getSurface().operate(in); }
 
 		@Override public Scope getScope(String prefix) { return getSurface().getScope(prefix); }
-
-		@Override public Producer<RGB> call() throws Exception { return getSurface().call(); }
-
-		@Override
-		public RGB evaluate(Object[] args) {
-			return getSurface().evaluate(args);
-		}
-
-		@Override
-		public void compact() {
-			getSurface().compact();
-		}
 	}
 	
 	public static class Vertex extends Vector {

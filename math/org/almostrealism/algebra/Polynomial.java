@@ -33,7 +33,7 @@ import org.almostrealism.space.ShadableIntersection;
 import org.almostrealism.util.Producer;
 
 /** A {@link Polynomial} represents a 3d polynomial surface. */
-public class Polynomial<IN> extends AbstractSurface<IN> {
+public class Polynomial extends AbstractSurface {
 	private static double maxIntersectionDistance = 100.0;
 	private static double defaultZerosInterval = 0.5;
 	private static int defaultZerosRecursions = 4;

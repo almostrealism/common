@@ -14,4 +14,19 @@ public class CollectionUtils {
 
 		return res.toArray(empty);
 	}
+
+	/**
+	 * Returns a {@link List} with the specified element removed.
+	 */
+	public static <T> List<T> separate(T element, Iterable<T> all) {
+		ArrayList<T> difference = new ArrayList<>();
+
+		for (T o : all) {
+			if (element != o) {
+				difference.add(o);
+			}
+		}
+
+		return difference;
+	}
 }

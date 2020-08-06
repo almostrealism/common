@@ -23,10 +23,10 @@ import java.util.concurrent.Callable;
 /**
  * @author  Michael Murray
  */
-public interface Shadable extends Callable<Producer<RGB>> {
+public interface Shadable {
 	/**
-	 * Returns a {@link ColorProducer} representing the color of this surface at the specified
-	 * point based on the specified parameters.
+	 * Returns an {@link RGB} {@link Producer} representing the color of this {@link Shadable}
+	 * based on the specified parameters.
 	 *
 	 * @see Shader
 	 */

@@ -16,6 +16,9 @@
 
 package org.almostrealism.util;
 
+import org.almostrealism.algebra.Triple;
+import org.almostrealism.relation.TripleFunction;
+
 /**
  * The {@link AdaptProducer} provides a way for a {@link Producer}
  * to accept {@link Producer}s of its arguments instead of the arguments
@@ -49,5 +52,9 @@ public class AdaptProducer<T> implements Producer<T> {
 	public void compact() {
 		this.p.compact();
 		for (Producer arg : args) arg.compact();
+	}
+
+	public static <T extends Triple> AdaptProducer<T> fromFunction(TripleFunction<T> f, Producer<? extends Triple> in) {
+		return new AdaptProducer<>(new DynamicProducer<>(args -> f.operate((Triple) args[0])), in);
 	}
 }

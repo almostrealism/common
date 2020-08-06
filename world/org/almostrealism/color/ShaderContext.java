@@ -23,6 +23,7 @@ import java.util.List;
 
 import org.almostrealism.algebra.ContinuousField;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.geometry.Curve;
 import org.almostrealism.space.LightingContext;
 import org.almostrealism.util.Producer;
 
@@ -35,8 +36,8 @@ import org.almostrealism.util.Producer;
 public class ShaderContext extends LightingContext {
 	private ContinuousField intersection;
 	
-	private Producer<RGB> surface;
-	private Producer<RGB> otherSurfaces[];
+	private Curve<RGB> surface;
+	private Curve<RGB> otherSurfaces[];
 	
 	public RGB fogColor;
 	public double fogRatio, fogDensity;
@@ -44,7 +45,7 @@ public class ShaderContext extends LightingContext {
 	private int refCount;
 	private int exit, enter;
 
-	public ShaderContext(Producer<RGB> surface, Light l) {
+	public ShaderContext(Curve<RGB> surface, Light l) {
 		this.surface = surface;
 		this.setLight(l);
 	}
@@ -59,12 +60,12 @@ public class ShaderContext extends LightingContext {
 	 * @param otherSurfaces  Collection of other Surface objects in the scene.
 	 */
 	public ShaderContext(ContinuousField intersection, Producer<Vector> lightDirection, Light light,
-							Iterable<Light> otherLights, Collection<Producer<RGB>> otherSurfaces) {
-		this(intersection, lightDirection, light, otherLights, otherSurfaces.toArray(new Producer[0]));
+							Iterable<Light> otherLights, Collection<Curve<RGB>> otherSurfaces) {
+		this(intersection, lightDirection, light, otherLights, otherSurfaces.toArray(new Curve[0]));
 	}
 	
 	private ShaderContext(ContinuousField intersection, Producer<Vector> lightDirection, Light light,
-			Iterable<Light> otherLights, Producer<RGB> otherSurfaces[]) {
+			Iterable<Light> otherLights, Curve<RGB> otherSurfaces[]) {
 		this(intersection, lightDirection, light, otherLights, null, otherSurfaces);
 	}
 	
@@ -79,7 +80,7 @@ public class ShaderContext extends LightingContext {
 	 * @param otherSurfaces  Array of other Surface objects in the scene.
 	 */
 	public ShaderContext(ContinuousField intersection, Producer<Vector> lightDirection, Light light,
-							Iterable<Light> otherLights, Producer<RGB> surface, Producer<RGB> otherSurfaces[]) {
+							Iterable<Light> otherLights, Curve<RGB> surface, Curve<RGB> otherSurfaces[]) {
 		this.intersection = intersection;
 		this.setLightDirection(lightDirection);
 		this.setLight(light);
@@ -97,33 +98,33 @@ public class ShaderContext extends LightingContext {
 	/**
 	 * @param surface  The new Surface object.
 	 */
-	public void setSurface(Producer<RGB> surface) { this.surface = surface; }
+	public void setSurface(Curve<RGB> surface) { this.surface = surface; }
 	
-	public Producer<RGB> getSurface() { return this.surface; }
-	
-	/**
-	 * Sets the other Surfaces to those stored in the specified array.
-	 * 
-	 * @param s  Array of Surface objects to use.
-	 */
-	public void setOtherSurfaces(Producer<RGB>... s) { this.otherSurfaces = s; }
+	public Curve<RGB> getSurface() { return this.surface; }
 	
 	/**
 	 * Sets the other Surfaces to those stored in the specified array.
 	 * 
 	 * @param s  Array of Surface objects to use.
 	 */
-	public void setOtherSurfaces(Collection<Producer<RGB>> s) {
-		this.otherSurfaces = (Producer<RGB>[]) s.toArray(new Producer[0]);
+	public void setOtherSurfaces(Curve<RGB>... s) { this.otherSurfaces = s; }
+	
+	/**
+	 * Sets the other {@link Curve}s to those stored in the specified array.
+	 * 
+	 * @param s  Array of Surface objects to use.
+	 */
+	public void setOtherSurfaces(Collection<Curve<RGB>> s) {
+		this.otherSurfaces = (Curve<RGB>[]) s.toArray(new Curve[0]);
 	}
 	
 	/**
-	 * @return  An array of other Surface objects in the scene.
+	 * @return  An array of other {@link Curve}s in the scene.
 	 */
-	public Producer<RGB>[] getOtherSurfaces() { return this.otherSurfaces; }
+	public Curve<RGB>[] getOtherSurfaces() { return this.otherSurfaces; }
 
-	public Iterable<? extends Producer<RGB>> getAllSurfaces() {
-		List<Producer<RGB>> l = new ArrayList<>();
+	public Iterable<? extends Curve<RGB>> getAllSurfaces() {
+		List<Curve<RGB>> l = new ArrayList<>();
 		if (getSurface() != null) l.add(getSurface());
 		l.addAll(Arrays.asList(getOtherSurfaces()));
 		return l;

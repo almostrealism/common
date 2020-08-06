@@ -21,6 +21,7 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.color.Light;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.ShaderContext;
+import org.almostrealism.geometry.Curve;
 import org.almostrealism.util.Producer;
 
 import java.util.Collection;
@@ -29,7 +30,7 @@ public class PhotonFieldContext<T extends PhotonField, F extends Absorber> exten
 	private T field;
 	private F film;
 
-	public PhotonFieldContext(Producer<RGB> surface, Light l, T field, F film) {
+	public PhotonFieldContext(Curve<RGB> surface, Light l, T field, F film) {
 		super(surface, l);
 		this.field = field;
 		this.film = film;
@@ -37,7 +38,7 @@ public class PhotonFieldContext<T extends PhotonField, F extends Absorber> exten
 
 	public PhotonFieldContext(ContinuousField intersection, Producer<Vector> lightDirection,
 							  Light light, Iterable<Light> otherLights,
-							  Collection<Producer<RGB>> otherSurfaces,
+							  Collection<Curve<RGB>> otherSurfaces,
 							  T field, F film) {
 		super(intersection, lightDirection, light, otherLights, otherSurfaces);
 		this.field = field;
@@ -46,7 +47,7 @@ public class PhotonFieldContext<T extends PhotonField, F extends Absorber> exten
 
 	public PhotonFieldContext(ContinuousField intersection, Producer<Vector> lightDirection,
 							  Light light, Iterable<Light> otherLights,
-							  Producer<RGB> surface, Producer<RGB>[] otherSurfaces,
+							  Curve<RGB> surface, Curve<RGB>[] otherSurfaces,
 							  T field, F film) {
 		super(intersection, lightDirection, light, otherLights, surface, otherSurfaces);
 		this.field = field;

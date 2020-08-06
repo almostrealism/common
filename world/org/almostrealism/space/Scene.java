@@ -24,6 +24,7 @@ import java.util.List;
 import org.almostrealism.algebra.Camera;
 import org.almostrealism.color.Light;
 import org.almostrealism.color.RGB;
+import org.almostrealism.geometry.Curve;
 import org.almostrealism.util.Producer;
 
 /**
@@ -106,34 +107,19 @@ public class Scene<T extends ShadableSurface> extends SurfaceList<T> {
 		return l;
 	}
 
-	/**
-	 * Returns a {@link List} with the specified element removed.
-	 */
-	public static <T> List<T> separate(T element, Iterable<T> all) {
-		ArrayList<T> difference = new ArrayList<>();
-
-		for (T o : all) {
-			if (element != o) {
-				difference.add(o);
-			}
-		}
-		
-		return difference;
-	}
-
 	@Deprecated
-	public static List<Producer<RGB>> combineSurfaces(ShadableSurface surface,
-										Iterator<Producer<RGB>> otherSurfaces) {
-		List<Producer<RGB>> allSurfaces = new ArrayList<>();
+	public static List<Curve<RGB>> combineSurfaces(Curve<RGB> surface,
+										Iterator<Curve<RGB>> otherSurfaces) {
+		List<Curve<RGB>> allSurfaces = new ArrayList<>();
 		while (otherSurfaces.hasNext()) { allSurfaces.add(otherSurfaces.next()); }
 		allSurfaces.add(surface);
 		return allSurfaces;
 	}
 
 	@Deprecated
-	public static List<Producer<RGB>> combineSurfaces(Producer<RGB> surface, Iterable<? extends Producer<RGB>> otherSurfaces) {
-		List<Producer<RGB>> allSurfaces = new ArrayList<>();
-		for (Producer<RGB> s : otherSurfaces) { allSurfaces.add(s); }
+	public static List<Curve<RGB>> combineSurfaces(Curve<RGB> surface, Iterable<? extends Curve<RGB>> otherSurfaces) {
+		List<Curve<RGB>> allSurfaces = new ArrayList<>();
+		for (Curve<RGB> s : otherSurfaces) { allSurfaces.add(s); }
 		allSurfaces.add(surface);
 		return allSurfaces;
 	}

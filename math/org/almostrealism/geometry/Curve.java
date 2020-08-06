@@ -16,8 +16,16 @@
 
 package org.almostrealism.geometry;
 
+import org.almostrealism.algebra.Vector;
 import org.almostrealism.space.Gradient;
 import org.almostrealism.util.Producer;
 
-public interface Curve<T> extends Gradient, Producer<T> {
+/**
+ * Like a {@link Gradient}, which has a normal vector for points in space,
+ * a {@link Curve} has an arbitrary type of value for every point in space.
+ *
+ * @author  Michael Murray
+ */
+public interface Curve<T> extends Gradient {
+	Producer<T> getValueAt(Producer<Vector> point);
 }

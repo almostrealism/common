@@ -23,6 +23,7 @@ import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.*;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.color.*;
+import org.almostrealism.geometry.TransformAsLocation;
 import org.almostrealism.graph.Mesh;
 import org.almostrealism.graph.PathElement;
 import org.almostrealism.physics.Porous;
@@ -30,7 +31,10 @@ import org.almostrealism.relation.Constant;
 import org.almostrealism.relation.Operator;
 import org.almostrealism.relation.TripleFunction;
 import org.almostrealism.texture.Texture;
+import org.almostrealism.util.AdaptProducer;
+import org.almostrealism.util.CollectionUtils;
 import org.almostrealism.util.Producer;
+import org.almostrealism.util.StaticProducer;
 
 /**
  * {@link AbstractSurface} is an abstract implementation of {@link ShadableSurface} that takes
@@ -40,7 +44,7 @@ import org.almostrealism.util.Producer;
  * 
  * @author  Michael Murray
  */
-public abstract class AbstractSurface<IN> extends TriangulatableGeometry implements ShadableSurface, Porous, PathElement<IN, Vector> {
+public abstract class AbstractSurface extends TriangulatableGeometry implements ShadableSurface, Porous {
 	private boolean shadeFront, shadeBack;
 
 	private RGB color;
@@ -54,20 +58,6 @@ public abstract class AbstractSurface<IN> extends TriangulatableGeometry impleme
 	private AbstractSurface parent;
 
 	private Operator<Vector> in;
-
-	protected ColorProducer colorProducer =
-				GeneratedColorProducer.fromFunction(this,
-						new TripleFunction<RGB>() {
-							@Override
-							public RGB operate(Triple in) {
-								return getColorAt((Vector) in, true);
-							}
-
-							@Override
-							public Scope<? extends Variable> getScope(String prefix) {
-								return AbstractSurface.this.getScope(prefix);
-							}
-						});
 	
 	/**
 	 * Sets all values of this AbstractSurface to the defaults specified above.
@@ -196,11 +186,6 @@ public abstract class AbstractSurface<IN> extends TriangulatableGeometry impleme
 	public void setInput(Vector v) { this.in = new Constant<>(v); }
 	public void setInput(Operator<Vector> in) { this.in = in; }
 	public Operator<Vector> getInput() { return this.in; }
-
-	@Override
-	public Iterable<Producer<IN>> getDependencies() {
-		return Arrays.asList((Producer<IN>) in);
-	}
 
 	/**
 	 * Sets the Texture object (used to color this AbstractSurface) at the specified index
@@ -547,54 +532,35 @@ public abstract class AbstractSurface<IN> extends TriangulatableGeometry impleme
 	
 	/** Returns the color of this {@link AbstractSurface} as an {@link RGB} object. */
 	public RGB getColor() { return this.color; }
-	
-	/**
-	 * @return  The color of this AbstractSurface, which can be evaluated at a particular point.
-	 *
-	 * @deprecated The surface can now be directly evaluated as a producer.
-	 *             Whether this is a good idea or not remains to be seen,
-	 *             but for now this is deprecated.
-	 */
-	@Deprecated
-	@Override
-	public RGBProducer getColorAt() { return call(); }
 
 	@Override
-	public RGB evaluate(Object args[]) {
-		return getColorAt().evaluate(args);
-	}
-
-	@Override
-	public void compact() {
-		getColorAt().compact();
-	}
+	public Producer<RGB> getValueAt(Producer<Vector> point) { return getColorAt(point, true); }
 	
 	/**
 	 * @return  The color of this AbstractSurface at the specified point as an RGB object.
 	 */
 	public RGBProducer getColorAt(Producer<Vector> point, boolean transform) {
-	    if (transform && getTransform(true) != null) point = getTransform(true).getInverse().transformAsLocation(point);
+	    if (transform && getTransform(true) != null)
+	    	point = new TransformAsLocation(getTransform(true).getInverse(), point);
 	    
-	    RGB colorAt = new RGB(0.0, 0.0, 0.0);
+	    Producer<RGB> colorAt = StaticProducer.of(getColor());
 	    
 	    if (textures.length > 0) {
+	    	List<Producer<RGB>> texColors = new ArrayList<>();
+
 	        for (int i = 0; i < this.textures.length; i++) {
-	            colorAt.addTo(this.textures[i].operate(point));
+	            texColors.add(AdaptProducer.fromFunction(this.textures[i], point));
 	        }
 	        
-	        colorAt.multiplyBy(this.color);
-	    } else {
-	        colorAt = (RGB) this.color.clone();
+	        colorAt = new ColorProduct(
+	        		CollectionUtils.include(new Producer[0], colorAt, texColors.toArray(new Producer[0])));
 	    }
 
 	    if (this.parent != null)
-	        colorAt.multiplyBy(this.parent.getColorAt().evaluate(new Object[] { point }));
+	        colorAt = new ColorProduct(colorAt, this.parent.getColorAt(point, transform));
 		
-		return colorAt;
+		return GeneratedColorProducer.fromProducer(this, colorAt);
 	}
-
-	@Override
-	public ColorProducer call() { return colorProducer; }
 	
 	/**
 	 * Delegates to  {#getNormalAt(Vector)}

@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -46,16 +46,6 @@ public interface ShadableSurface extends ShadableCurve, Intersectable<Scalar> {
 	 * points outward from.
 	 */
 	boolean getShadeBack();
-	
-	/**
-	 * Returns a {@link ColorProducer} that operates on a {@link Vector},
-	 * indicating the location where color is to be evaluated, returning an
-	 * {@link org.almostrealism.color.RGB}.
-	 *
-	 * @deprecated  Replaced by {@link #evaluate(Object[])}
-	 */
-	@Deprecated
-	RGBProducer getColorAt();
 
 	/**
 	 * Return a {@link BoundingSolid} that represents the minimum bounded
