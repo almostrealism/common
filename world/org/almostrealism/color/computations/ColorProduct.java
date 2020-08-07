@@ -14,9 +14,10 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.color;
+package org.almostrealism.color.computations;
 
 import org.almostrealism.algebra.computations.NAryDynamicAcceleratedProducer;
+import org.almostrealism.color.RGB;
 import org.almostrealism.util.Producer;
 
 public class ColorProduct extends NAryDynamicAcceleratedProducer<RGB> implements RGBProducer {

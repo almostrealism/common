@@ -23,9 +23,8 @@ import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.algebra.TransformMatrix;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorProducer;
-import org.almostrealism.color.ColorProducer;
 import org.almostrealism.color.RGB;
-import org.almostrealism.color.RGBProducer;
+import org.almostrealism.color.computations.RGBProducer;
 
 public class StaticProducer<T> implements Producer<T> {
 	private T value;

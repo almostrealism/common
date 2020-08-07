@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -23,7 +23,6 @@ import org.almostrealism.algebra.Intersectable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Triple;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.geometry.Ray;
 import org.almostrealism.space.ShadableIntersection;
 import org.almostrealism.util.Producer;
 
@@ -73,7 +72,7 @@ public class ClosestIntersection extends ArrayList<Producer<Ray>> implements Con
 	}
 
 	@Override
-	public Producer<Vector> getNormalAt(Vector point) {
+	public Producer<Vector> getNormalAt(Producer<Vector> point) {
 		return new Producer<Vector>() {
 			@Override
 			public Vector evaluate(Object[] args) {
@@ -99,6 +98,7 @@ public class ClosestIntersection extends ArrayList<Producer<Ray>> implements Con
 			// TODO  Hardware acceleration
 			@Override
 			public void compact() {
+				point.compact();
 				r.compact();
 			}
 		};

@@ -16,9 +16,11 @@
 
 package org.almostrealism.math;
 
+import org.almostrealism.color.computations.GeneratedColorProducer;
 import org.almostrealism.util.CollectionUtils;
 import org.almostrealism.util.Producer;
 import org.almostrealism.util.ProducerCache;
+import org.almostrealism.util.ProducerWithRank;
 import org.almostrealism.util.StaticProducer;
 
 import java.util.HashMap;
@@ -205,6 +207,14 @@ public class AcceleratedProducer<T extends MemWrapper> implements KernelizedProd
 		return p;
 	}
 
+	/**
+	 * A parameter for the {@link AcceleratedProducer}. Note that this
+	 * type will extract the internal {@link Producer} from instances
+	 * of {@link ProducerWithRank} and the rank will not be available,
+	 * and will extract the internal {@link Producer} from instances
+	 * of {@link GeneratedColorProducer} and the generator will not be
+	 * available.
+	 */
 	public static class Argument {
 		private String name;
 		private Producer producer;
@@ -216,6 +226,18 @@ public class AcceleratedProducer<T extends MemWrapper> implements KernelizedProd
 		public void setName(String name) { this.name = name; }
 
 		public Producer getProducer() { return producer; }
-		public void setProducer(Producer producer) { this.producer = producer; }
+		public void setProducer(Producer producer) {
+			this.producer = producer;
+
+			while (this.producer instanceof ProducerWithRank || this.producer instanceof GeneratedColorProducer) {
+				if (this.producer instanceof ProducerWithRank) {
+					this.producer = ((ProducerWithRank) this.producer).getProducer();
+				}
+
+				if (this.producer instanceof GeneratedColorProducer) {
+					this.producer = ((GeneratedColorProducer) this.producer).getProducer();
+				}
+			}
+		}
 	}
 }

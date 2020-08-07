@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package org.almostrealism.color;
+package org.almostrealism.color.computations;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -26,6 +26,7 @@ import java.util.concurrent.TimeoutException;
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.Triple;
+import org.almostrealism.color.RGB;
 import org.almostrealism.relation.TripleFunction;
 import org.almostrealism.util.Producer;
 

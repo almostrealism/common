@@ -19,8 +19,6 @@ package org.almostrealism.space;
 import org.almostrealism.algebra.Intersectable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.color.ColorProducer;
-import org.almostrealism.color.RGBProducer;
 import org.almostrealism.color.ShadableCurve;
 import org.almostrealism.uml.ModelEntity;
 

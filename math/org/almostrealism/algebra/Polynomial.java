@@ -109,10 +109,9 @@ public class Polynomial extends AbstractSurface {
 	}
 	
 	/**
-	  Combines the terms of this Polynomial object and the specified Polynomial object
-	  and returns the sum as a Polynomial object.
-	*/
-	
+	 * Combines the terms of this Polynomial object and the specified Polynomial object
+	 * and returns the sum as a Polynomial object.
+	 */
 	public Polynomial add(Polynomial polynomial) {
 		PolynomialTerm sumTerms[] = new PolynomialTerm[this.terms.length + polynomial.getTerms().length];
 		
@@ -328,21 +327,22 @@ public class Polynomial extends AbstractSurface {
 	}
 	
 	/**
-	 * Returns a {@link Vector} that represents the vector normal to this polynomial
-	 * surface at the point represented by the specified {@link Vector}.
+	 * Returns a {@link Vector} {@link Producer} that represents the vector normal to
+	 * this polynomial surface at the point represented by the specified {@link Vector}
+	 * {@link Producer}.
 	 */
-	public VectorProducer getNormalAt(Vector point) {
-		// TODO  Replace with GeneratedVectorAdapter
-
-		return new VectorFutureAdapter() {
+	@Override
+	public VectorProducer getNormalAt(Producer<Vector> p) {
+		return new VectorProducer() {
 			@Override
 			public Vector evaluate(Object[] args) {
+				Vector point = p.evaluate(args);
 				return evaluateGradient(point.getX(), point.getY(), point.getZ());
 			}
 
 			@Override
-			public Scope<? extends Variable> getScope(String prefix) {
-				return null;
+			public void compact() {
+				p.compact();
 			}
 		};
 	}

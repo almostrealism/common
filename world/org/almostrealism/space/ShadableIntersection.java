@@ -24,8 +24,10 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.algebra.computations.RayDirection;
 import org.almostrealism.algebra.computations.RayPointAt;
+import org.almostrealism.geometry.RayProducer;
 import org.almostrealism.util.Producer;
 import org.almostrealism.util.ProducerWithRank;
+import org.almostrealism.util.StaticProducer;
 
 /**
  * Extends {@link Intersection} to provide metadata that is required for shading.
@@ -46,24 +48,13 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 
 		this.incident = incident;
 
-		Producer p = new Producer<Ray>() {
-			public Ray evaluate(Object args[]) {
-				Vector p = (Vector) getPoint().evaluate(args);
-				if (p == null) return null;
-				return new Ray(p, ((Gradient) surface).getNormalAt(p).evaluate(args));
-			}
-
-			public void compact() {
-				// TODO  Compact surface.getNormalAt
-			}
-		};
-
+		Producer p = new RayProducer(getPoint(), ((Gradient) surface).getNormalAt(point));
 		normal = new ProducerWithRank<>(p, distance);
 	}
 	
 	/** Returns the viewer direction. */
 	@Override
-	public Producer<Vector> getNormalAt(Vector point) {
+	public Producer<Vector> getNormalAt(Producer<Vector> point) {
 		return new Producer<Vector>() {
 
 			@Override
@@ -81,9 +72,9 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 		};
 	}
 	
-	/** Delegates to {@link #getNormalAt(Vector)}. */
+	/** Delegates to {@link #getNormalAt(Producer)}. */
 	@Override
-	public Vector operate(Triple t) { return getNormalAt(new Vector(t.getA(), t.getB(), t.getC())).evaluate(new Object[0]); }
+	public Vector operate(Triple t) { return getNormalAt(StaticProducer.of(new Vector(t.getA(), t.getB(), t.getC()))).evaluate(new Object[0]); }
 
 	@Override
 	public Scope getScope(String prefix) {

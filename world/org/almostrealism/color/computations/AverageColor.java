@@ -14,7 +14,9 @@
  * limitations under the License.
  */
 
-package org.almostrealism.color;
+package org.almostrealism.color.computations;
+
+import org.almostrealism.color.RGB;
 
 import java.util.ArrayList;
 import java.util.Iterator;

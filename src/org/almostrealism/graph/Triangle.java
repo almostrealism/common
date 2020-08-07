@@ -16,19 +16,16 @@
 
 package org.almostrealism.graph;
 
-import io.almostrealism.code.Scope;
-import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.*;
 import org.almostrealism.algebra.computations.RayMatrixTransform;
-import org.almostrealism.color.GeneratedColorProducer;
+import org.almostrealism.color.computations.GeneratedColorProducer;
 import org.almostrealism.color.RGB;
-import org.almostrealism.color.RGBProducer;
+import org.almostrealism.color.computations.RGBProducer;
 import org.almostrealism.geometry.Positioned;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.math.AcceleratedProducer;
 import org.almostrealism.relation.Constant;
 import org.almostrealism.relation.Operator;
-import org.almostrealism.relation.TripleFunction;
 import org.almostrealism.space.AbstractSurface;
 import org.almostrealism.space.BoundingSolid;
 import org.almostrealism.space.ShadableIntersection;
@@ -315,53 +312,63 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 	}
 	
 	/**
-	 * Returns a Vector object that represents the vector normal to this sphere at the point
-	 * represented by the specified Vector object.
+	 * Returns a {@link Vector} {@link Producer} that represents the vector normal to this sphere
+	 * at the point represented by the specified Vector object.
 	 */
 	@Override
-	public VectorProducer getNormalAt(Vector point) {
-		// TODO  Perform computation inside VectorProducer
+	public VectorProducer getNormalAt(Producer<Vector> p) {
+		return new VectorProducer() {
+			@Override
+			public Vector evaluate(Object[] args) {
+				Vector point = p.evaluate(args);
 
-		if (this.smooth && this.vertexData == null) {
-			double g = point.getX();
-			double h = point.getY();
-			double i = point.getZ();
-			
-			double m = abc.getX() * (def.getY() * i - h * def.getZ()) +
-						abc.getY() * (g * def.getZ() - def.getX() * i) +
-						abc.getZ() * (def.getX() * h - def.getY() * g);
+				if (smooth && vertexData == null) {
+					double g = point.getX();
+					double h = point.getY();
+					double i = point.getZ();
 
-			double u = jkl.getX() * (def.getY() * i - h * def.getZ()) +
-						jkl.getY() * (g * def.getZ() - def.getX() * i) +
-						jkl.getZ() * (def.getX() * h - def.getY() * g);
-			u = u / m;
-			
-			double v = i * (abc.getX() * jkl.getY() - jkl.getX() * abc.getY()) +
-						h * (jkl.getX() * abc.getZ() - abc.getX() * jkl.getZ()) +
-						g * (abc.getY() * jkl.getZ() - jkl.getY() * abc.getZ());
-			v = v / m;
-			
-			double w = 1.0 - u - v;
-			
-			Vector n = new Vector(0.0, 0.0, 0.0);
-			n.addTo(((Mesh.Vertex)this.p1).getNormal(w));
-			n.addTo(((Mesh.Vertex)this.p2).getNormal(u));
-			n.addTo(((Mesh.Vertex)this.p3).getNormal(v));
-			
-			if (this.useT)
-				n = super.getTransform(true).getInverse().transformAsNormal(n);
-			
-			
-			n.divideBy(n.length());
-			
-			return new ImmutableVector(n);
-		} else {
-			if (this.useT && getTransform(true) != null) {
-				return new ImmutableVector(getTransform(true).getInverse().transformAsNormal(this.normal));
-			} else {
-				return new ImmutableVector((Vector) this.normal.clone());
+					double m = abc.getX() * (def.getY() * i - h * def.getZ()) +
+							abc.getY() * (g * def.getZ() - def.getX() * i) +
+							abc.getZ() * (def.getX() * h - def.getY() * g);
+
+					double u = jkl.getX() * (def.getY() * i - h * def.getZ()) +
+							jkl.getY() * (g * def.getZ() - def.getX() * i) +
+							jkl.getZ() * (def.getX() * h - def.getY() * g);
+					u = u / m;
+
+					double v = i * (abc.getX() * jkl.getY() - jkl.getX() * abc.getY()) +
+							h * (jkl.getX() * abc.getZ() - abc.getX() * jkl.getZ()) +
+							g * (abc.getY() * jkl.getZ() - jkl.getY() * abc.getZ());
+					v = v / m;
+
+					double w = 1.0 - u - v;
+
+					Vector n = new Vector(0.0, 0.0, 0.0);
+					n.addTo(((Mesh.Vertex) p1).getNormal(w));
+					n.addTo(((Mesh.Vertex) p2).getNormal(u));
+					n.addTo(((Mesh.Vertex) p3).getNormal(v));
+
+					if (useT)
+						n = getTransform(true).getInverse().transformAsNormal(n);
+
+
+					n.divideBy(n.length());
+
+					return n;
+				} else {
+					if (useT && getTransform(true) != null) {
+						return getTransform(true).getInverse().transformAsNormal(normal);
+					} else {
+						return (Vector) normal.clone();
+					}
+				}
 			}
-		}
+
+			@Override
+			public void compact() {
+				p.compact();
+			}
+		};
 	}
 	
 	/**

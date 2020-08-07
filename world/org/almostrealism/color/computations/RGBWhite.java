@@ -14,18 +14,23 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.color;
+package org.almostrealism.color.computations;
 
-import org.almostrealism.math.AcceleratedProducer;
+import org.almostrealism.color.RGB;
 import org.almostrealism.util.Producer;
 
-public class RGBAdd extends AcceleratedProducer<RGB> {
-	public RGBAdd(Producer<RGB> a, Producer<RGB> b) {
-		super("add", RGB.blank(), a, b);
-	}
+public class RGBWhite implements Producer<RGB> {
+	private static RGBWhite local = new RGBWhite();
+
+	private RGB black;
+
+	public RGBWhite() { black = new RGB(1.0, 1.0, 1.0); }
+
+	public static RGBWhite getInstance() { return local; }
 
 	@Override
-	public RGB replaceNull(int argIndex) {
-		return RGBBlack.getInstance().evaluate(null);
-	}
+	public RGB evaluate(Object[] args) { return (RGB) black.clone(); }
+
+	@Override
+	public void compact() { }
 }

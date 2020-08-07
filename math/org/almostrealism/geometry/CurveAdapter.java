@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,8 +17,9 @@
 package org.almostrealism.geometry;
 
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.util.StaticProducer;
 
 public abstract class CurveAdapter implements Curve {
-	/** Delegates to {@link #getNormalAt(Vector)}. */
-	public Vector operate(Vector v) { return getNormalAt(v).evaluate(new Object[0]); }
+	/** Delegates to {@link #getNormalAt(org.almostrealism.util.Producer)}. */
+	public Vector operate(Vector v) { return getNormalAt(StaticProducer.of(v)).evaluate(new Object[0]); }
 }

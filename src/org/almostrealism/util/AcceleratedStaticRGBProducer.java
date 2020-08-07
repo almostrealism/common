@@ -17,7 +17,7 @@
 package org.almostrealism.util;
 
 import org.almostrealism.color.RGB;
-import org.almostrealism.color.RGBProducer;
+import org.almostrealism.color.computations.RGBProducer;
 
 public class AcceleratedStaticRGBProducer extends AcceleratedStaticProducer<RGB> implements RGBProducer {
 	public AcceleratedStaticRGBProducer(RGB value, Producer<RGB> output) {

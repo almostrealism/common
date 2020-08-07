@@ -16,6 +16,7 @@
 
 package org.almostrealism.physics;
 
+// TODO  getDependencies appears to have been injected by a refactor...
 public interface Fast {
 	/**
 	 * Sets the time until the getDependencies photon should actually be absorbed.

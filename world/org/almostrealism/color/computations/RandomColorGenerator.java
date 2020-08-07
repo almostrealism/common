@@ -14,8 +14,9 @@
  * limitations under the License.
  */
 
-package org.almostrealism.color;
+package org.almostrealism.color.computations;
 
+import org.almostrealism.color.RGB;
 import org.almostrealism.heredity.Gene;
 
 /**
@@ -41,7 +42,7 @@ public class RandomColorGenerator extends ColorProducerAdapter {
 	public RGBProducer getBaseRGB() { return this.baseRGB; }
 	public RGBProducer getOffsetRGB() { return this.offsetRGB; }
 	
-	/** @see org.almostrealism.color.ColorProducer#evaluate(java.lang.Object[]) */
+	/** @see ColorProducer#evaluate(java.lang.Object[]) */
 	public RGB evaluate(Object args[]) {
 		RGB base = this.baseRGB.evaluate(args);
 		RGB off = this.offsetRGB.evaluate(args);
@@ -54,7 +55,7 @@ public class RandomColorGenerator extends ColorProducerAdapter {
 	}
 
 	/**
-	 * Delegates to {@link org.almostrealism.color.ColorProducer#compact()}
+	 * Delegates to {@link ColorProducer#compact()}
 	 * on the base color and offset color.
 	 */
 	public void compact() {

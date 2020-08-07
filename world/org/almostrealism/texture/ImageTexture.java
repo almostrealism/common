@@ -29,8 +29,8 @@ import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.Triple;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.color.ColorProducer;
-import org.almostrealism.color.GeneratedColorProducer;
+import org.almostrealism.color.computations.ColorProducer;
+import org.almostrealism.color.computations.GeneratedColorProducer;
 import org.almostrealism.color.RGB;
 import org.almostrealism.relation.TripleFunction;
 import org.almostrealism.util.Editable;
@@ -290,7 +290,7 @@ public class ImageTexture implements Texture, Editable {
 	 * @param args {Vector, Double, Double, Double, Double}  Point, X scale factor, Y scale factor, X offset, Y offset.
 	 * @throws IllegalArgumentException  If args does not contain the correct object types.
 	 * 
-	 * @see org.almostrealism.color.ColorProducer#evaluate(java.lang.Object[])
+	 * @see ColorProducer#evaluate(java.lang.Object[])
 	 */
 	public RGB evaluate(Object args[]) {
 	    if (!(args[0] instanceof Vector)) throw new IllegalArgumentException("Illegal argument: " + args[0]);

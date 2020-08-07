@@ -25,8 +25,6 @@ import org.almostrealism.algebra.computations.MatrixTranspose;
 import org.almostrealism.geometry.TransformAsLocation;
 import org.almostrealism.geometry.TransformAsOffset;
 import org.almostrealism.math.HardwareOperator;
-import org.almostrealism.math.Hardware;
-import org.almostrealism.math.MemWrapper;
 import org.almostrealism.math.MemWrapperAdapter;
 import org.almostrealism.relation.TripleFunction;
 import org.almostrealism.util.Producer;
@@ -182,17 +180,16 @@ public class TransformMatrix extends MemWrapperAdapter implements TripleFunction
 		throw new RuntimeException("getScope is not implemented"); // TODO
 	}
 
-	// TODO  This should return a Producer
-	public void transform(Vector vector, int type) {
-		if (this.isIdentity) return;
+	public Producer<Vector> transform(Producer<Vector> vector, int type) {
+		if (this.isIdentity) return vector;
 		
 		if (type == TransformMatrix.TRANSFORM_AS_LOCATION) {
-			new TransformAsLocation(this, StaticProducer.of(vector)).evaluate(new Object[0]);
+			return new TransformAsLocation(this, vector);
 		} else if (type == TransformMatrix.TRANSFORM_AS_OFFSET) {
-			new TransformAsOffset(this, StaticProducer.of(vector)).evaluate(new Object[0]);
+			return new TransformAsOffset(this, vector);
 		} else if (type == TransformMatrix.TRANSFORM_AS_NORMAL) {
 			if (!this.inverted) this.calculateInverse();
-			this.inverseTranspose.transform(vector, TransformMatrix.TRANSFORM_AS_OFFSET);
+			return this.inverseTranspose.transform(vector, TransformMatrix.TRANSFORM_AS_OFFSET);
 		} else {
 			throw new IllegalArgumentException("Illegal type: " + type);
 		}
@@ -201,9 +198,7 @@ public class TransformMatrix extends MemWrapperAdapter implements TripleFunction
 	public double[] transform(double x, double y, double z, int type) {
 		if (this.isIdentity) return new double[] {x, y, z};
 
-		Vector v = new Vector(x, y, z);
-		transform(v, type);
-		return v.toArray();
+		return transform(StaticProducer.of(new Vector(x, y, z)), type).evaluate(new Object[0]).toArray();
 	}
 	
 	/**
@@ -215,8 +210,7 @@ public class TransformMatrix extends MemWrapperAdapter implements TripleFunction
 		vector = (Vector) vector.clone();
 		if (this.isIdentity) return vector;
 
-		transform(vector, TRANSFORM_AS_LOCATION);
-		return vector;
+		return transform(StaticProducer.of(vector), TRANSFORM_AS_LOCATION).evaluate(new Object[0]);
 	}
 	
 	/**
@@ -228,8 +222,7 @@ public class TransformMatrix extends MemWrapperAdapter implements TripleFunction
 		vector = (Vector) vector.clone();
 		if (this.isIdentity) return vector;
 
-		transform(vector, TRANSFORM_AS_OFFSET);
-		return vector;
+		return transform(StaticProducer.of(vector), TRANSFORM_AS_OFFSET).evaluate(new Object[0]);
 	}
 	
 	/**
@@ -241,8 +234,7 @@ public class TransformMatrix extends MemWrapperAdapter implements TripleFunction
 		vector = (Vector) vector.clone();
 		if (this.isIdentity) return vector;
 
-		transform(vector, TRANSFORM_AS_NORMAL);
-		return vector;
+		return transform(StaticProducer.of(vector), TRANSFORM_AS_NORMAL).evaluate(new Object[0]);
 	}
 	
 	/**

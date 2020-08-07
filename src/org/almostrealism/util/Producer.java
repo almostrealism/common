@@ -27,6 +27,10 @@ package org.almostrealism.util;
 // TODO  A subinterface of this interface should implement PathElement
 //       and the compact method should be moved there
 public interface Producer<T> {
+	default T evaluate() {
+		return evaluate(new Object[0]);
+	}
+
 	T evaluate(Object args[]);
 
 	/**

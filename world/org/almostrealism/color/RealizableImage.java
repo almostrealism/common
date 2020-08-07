@@ -20,6 +20,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 
 import org.almostrealism.algebra.Pair;
+import org.almostrealism.color.computations.ColorProducer;
 import org.almostrealism.util.Pipeline;
 import org.almostrealism.util.Producer;
 

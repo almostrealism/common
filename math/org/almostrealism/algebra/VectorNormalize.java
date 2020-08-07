@@ -19,7 +19,7 @@ package org.almostrealism.algebra;
 import org.almostrealism.math.AcceleratedProducer;
 import org.almostrealism.util.Producer;
 
-public class VectorNormalize extends AcceleratedProducer<Vector> {
+public class VectorNormalize extends AcceleratedProducer<Vector> implements VectorProducer {
 	public VectorNormalize(Producer<Vector> v) {
 		super("vectorNormalize", v);
 	}

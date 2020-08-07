@@ -51,7 +51,7 @@ public class Plane extends AbstractSurface implements ParticleGroup {
   
 	private int type;
 
-	private ImmutableVector normal;
+	private Producer<Vector> normal;
 
 	/**
 	 * Constructs a {@link Plane} that represents an XY plane that is black.
@@ -129,14 +129,13 @@ public class Plane extends AbstractSurface implements ParticleGroup {
 			TransformMatrix m = getTransform(true);
 
 			if (m != null) {
-				m.transform(n, TransformMatrix.TRANSFORM_AS_NORMAL);
-				normal = new ImmutableVector(n);
+				normal = m.transform(normal, TransformMatrix.TRANSFORM_AS_NORMAL);
 			}
 		}
 	}
 
 	@Override
-	public ImmutableVector getNormalAt(Vector p) {
+	public Producer<Vector> getNormalAt(Producer<Vector> p) {
 		calculateTransform();
 		return normal;
 	}

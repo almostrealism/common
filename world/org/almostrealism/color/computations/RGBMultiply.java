@@ -14,8 +14,9 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.color;
+package org.almostrealism.color.computations;
 
+import org.almostrealism.color.RGB;
 import org.almostrealism.math.AcceleratedProducer;
 import org.almostrealism.util.Producer;
 

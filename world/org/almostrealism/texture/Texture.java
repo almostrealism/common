@@ -16,9 +16,9 @@
 
 package org.almostrealism.texture;
 
-import org.almostrealism.color.ColorProducer;
+import org.almostrealism.color.computations.ColorProducer;
 import org.almostrealism.color.RGB;
-import org.almostrealism.color.RGBProducer;
+import org.almostrealism.color.computations.RGBProducer;
 import org.almostrealism.relation.TripleFunction;
 
 /**

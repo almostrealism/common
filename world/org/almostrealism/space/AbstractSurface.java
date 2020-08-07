@@ -23,13 +23,15 @@ import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.*;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.color.*;
+import org.almostrealism.color.computations.ColorProduct;
+import org.almostrealism.color.computations.GeneratedColorProducer;
+import org.almostrealism.color.computations.RGBAdd;
+import org.almostrealism.color.computations.RGBProducer;
 import org.almostrealism.geometry.TransformAsLocation;
 import org.almostrealism.graph.Mesh;
-import org.almostrealism.graph.PathElement;
 import org.almostrealism.physics.Porous;
 import org.almostrealism.relation.Constant;
 import org.almostrealism.relation.Operator;
-import org.almostrealism.relation.TripleFunction;
 import org.almostrealism.texture.Texture;
 import org.almostrealism.util.AdaptProducer;
 import org.almostrealism.util.CollectionUtils;
@@ -563,11 +565,11 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 	}
 	
 	/**
-	 * Delegates to  {#getNormalAt(Vector)}
+	 * Delegates to {@link #getNormalAt(Producer)}.
 	 */
 	@Override
 	public Vector operate(Triple p) {
-		return getNormalAt(new Vector(p.getA(), p.getB(), p.getC())).evaluate(new Object[0]);
+		return getNormalAt(StaticProducer.of(new Vector(p.getA(), p.getB(), p.getC()))).evaluate(new Object[0]);
 	}
 
 	@Override

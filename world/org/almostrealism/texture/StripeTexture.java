@@ -20,14 +20,12 @@ import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.Triple;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.color.ColorProducer;
-import org.almostrealism.color.GeneratedColorProducer;
+import org.almostrealism.color.computations.ColorProducer;
+import org.almostrealism.color.computations.GeneratedColorProducer;
 import org.almostrealism.color.RGB;
 import org.almostrealism.relation.TripleFunction;
 import org.almostrealism.util.Editable;
 import org.almostrealism.util.Producer;
-
-import java.awt.*;
 
 // TODO  Add vector direction in place of axis selection.
 
@@ -149,7 +147,7 @@ public class StripeTexture implements Texture, Editable {
 	 * @param args {point, arg0, arg1, ...}
 	 * @throws IllegalArgumentException  If args does not contain the correct object types.
 	 * 
-	 * @see org.almostrealism.color.ColorProducer#evaluate(java.lang.Object[])
+	 * @see ColorProducer#evaluate(java.lang.Object[])
 	 */
 	public RGB evaluate(Object args[]) {
 		System.out.println("StripeTexture.evaluate");

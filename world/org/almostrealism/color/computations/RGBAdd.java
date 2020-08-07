@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 Michael Murray
+ * Copyright 2018 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,22 +14,19 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.color;
+package org.almostrealism.color.computations;
 
+import org.almostrealism.color.RGB;
+import org.almostrealism.math.AcceleratedProducer;
 import org.almostrealism.util.Producer;
 
-public class RGBBlack implements Producer<RGB> {
-	private static RGBBlack local = new RGBBlack();
-
-	private RGB black;
-
-	public RGBBlack() { black = new RGB(); }
-
-	public static RGBBlack getInstance() { return local; }
+public class RGBAdd extends AcceleratedProducer<RGB> {
+	public RGBAdd(Producer<RGB> a, Producer<RGB> b) {
+		super("add", RGB.blank(), a, b);
+	}
 
 	@Override
-	public RGB evaluate(Object[] args) { return (RGB) black.clone(); }
-
-	@Override
-	public void compact() { }
+	public RGB replaceNull(int argIndex) {
+		return RGBBlack.getInstance().evaluate(null);
+	}
 }

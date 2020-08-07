@@ -14,9 +14,10 @@
  * limitations under the License.
  */
 
-package org.almostrealism.color;
+package org.almostrealism.color.computations;
 
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.color.RGB;
 import org.almostrealism.util.DynamicProducer;
 import org.almostrealism.util.Producer;
 import org.almostrealism.util.StaticProducer;
@@ -28,15 +29,12 @@ import org.almostrealism.util.StaticProducer;
  * @author Michael Murray
  */
 public interface RGBProducer extends Producer<RGB> {
-	static Producer<RGB> fromScalar(Producer<Scalar> value) {
-		return new DynamicProducer<>(args -> {
-			double v = value.evaluate(args).getValue();
-			return new RGB(v, v, v);
-		});
+	static RGBProducer fromScalar(Producer<Scalar> value) {
+		return new RGBFromScalars(value, value, value);
 	}
 
 	static RGBProducer fromScalar(Scalar value) {
-		return StaticProducer.of(new RGB(value.getValue(), value.getValue(), value.getValue()));
+		return fromScalar(StaticProducer.of(value));
 	}
 
 	static RGBProducer fromScalar(double value) {

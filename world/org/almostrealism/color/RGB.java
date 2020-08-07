@@ -24,6 +24,7 @@ import java.io.ObjectOutput;
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.Triple;
+import org.almostrealism.color.computations.RGBProducer;
 import org.almostrealism.math.MemWrapper;
 import org.almostrealism.math.MemWrapperAdapter;
 import org.almostrealism.util.Defaults;

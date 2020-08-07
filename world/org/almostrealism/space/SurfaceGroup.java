@@ -26,7 +26,7 @@ import java.util.concurrent.TimeoutException;
 import org.almostrealism.algebra.*;
 import org.almostrealism.algebra.computations.RayMatrixTransform;
 import org.almostrealism.color.RGB;
-import org.almostrealism.color.RGBAdd;
+import org.almostrealism.color.computations.RGBAdd;
 import org.almostrealism.color.ShaderContext;
 import org.almostrealism.geometry.ClosestIntersection;
 import org.almostrealism.graph.Mesh;
@@ -135,7 +135,7 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 	
 	/** Returns null. */
 	@Override
-	public VectorProducer getNormalAt(Vector point) { return null; } // TODO?
+	public VectorProducer getNormalAt(Producer<Vector> point) { return null; } // TODO?
 
 	@Override
 	public Mesh triangulate() {

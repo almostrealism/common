@@ -17,6 +17,7 @@
 package org.almostrealism.color;
 
 import org.almostrealism.algebra.DiscreteField;
+import org.almostrealism.color.computations.ColorProducer;
 import org.almostrealism.space.LightingContext;
 import org.almostrealism.util.Producer;
 
