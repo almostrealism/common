@@ -2,7 +2,6 @@ package org.almostrealism.math;
 
 import org.jocl.CL;
 import org.jocl.Pointer;
-import org.jocl.Sizeof;
 import org.jocl.cl_mem;
 
 public abstract class MemWrapperAdapter implements MemWrapper {
@@ -11,10 +10,12 @@ public abstract class MemWrapperAdapter implements MemWrapper {
 	private MemWrapper delegateMem;
 	private int delegateMemOffset;
 
+	private static int sizeOf = Hardware.getLocalHardware().getNumberSize();
+
 	protected void init() {
 		if (delegateMem == null) {
 			mem = CL.clCreateBuffer(Hardware.getLocalHardware().getContext(),
-					CL.CL_MEM_READ_WRITE, getMemLength() * Sizeof.cl_double,
+					CL.CL_MEM_READ_WRITE, getMemLength() * sizeOf,
 					null, null);
 		}
 	}
@@ -82,33 +83,52 @@ public abstract class MemWrapperAdapter implements MemWrapper {
 	}
 
 	protected static void setMem(cl_mem mem, int offset, double[] source, int srcOffset, int length) {
-		Pointer src = Pointer.to(source).withByteOffset(srcOffset* Sizeof.cl_double);
-		CL.clEnqueueWriteBuffer(Hardware.getLocalHardware().getQueue(), mem, CL.CL_TRUE,
-				offset * Sizeof.cl_double, length * Sizeof.cl_double,
-				src, 0, null, null);
+		if (Hardware.getLocalHardware().isDoublePrecision()) {
+			Pointer src = Pointer.to(source).withByteOffset(srcOffset * sizeOf);
+			CL.clEnqueueWriteBuffer(Hardware.getLocalHardware().getQueue(), mem, CL.CL_TRUE,
+					offset * sizeOf, length * sizeOf,
+					src, 0, null, null);
+		} else {
+			float f[] = new float[length];
+			for (int i = 0; i < f.length; i++) f[i] = (float) source[srcOffset + i];
+			Pointer src = Pointer.to(f).withByteOffset(0);
+			CL.clEnqueueWriteBuffer(Hardware.getLocalHardware().getQueue(), mem, CL.CL_TRUE,
+					offset * sizeOf, length * sizeOf,
+					src, 0, null, null);
+		}
 	}
 
 	protected static void setMem(cl_mem mem, int offset, MemWrapperAdapter src, int srcOffset, int length) {
 		if (src.delegateMem == null) {
 			CL.clEnqueueCopyBuffer(Hardware.getLocalHardware().getQueue(), src.mem, mem,
-					srcOffset * Sizeof.cl_double,
-					offset * Sizeof.cl_double, length * Sizeof.cl_double,
+					srcOffset * sizeOf,
+					offset * sizeOf, length * sizeOf,
 					0, null, null);
 		} else {
 			CL.clEnqueueCopyBuffer(Hardware.getLocalHardware().getQueue(),
 					src.delegateMem.getMem(), mem,
-					(src.delegateMemOffset + srcOffset) * Sizeof.cl_double,
-					offset * Sizeof.cl_double, length * Sizeof.cl_double,
+					(src.delegateMemOffset + srcOffset) * sizeOf,
+					offset * sizeOf, length * sizeOf,
 					0, null, null);
 		}
 	}
 
 	protected static void getMem(cl_mem mem, int sOffset, double out[], int oOffset, int length) {
-		Pointer dst = Pointer.to(out).withByteOffset(oOffset * Sizeof.cl_double);
-		CL.clEnqueueReadBuffer(Hardware.getLocalHardware().getQueue(), mem,
-				CL.CL_TRUE, sOffset * Sizeof.cl_double,
-				length * Sizeof.cl_double, dst, 0,
-				null, null);
+		if (Hardware.getLocalHardware().isDoublePrecision()) {
+			Pointer dst = Pointer.to(out).withByteOffset(oOffset * sizeOf);
+			CL.clEnqueueReadBuffer(Hardware.getLocalHardware().getQueue(), mem,
+					CL.CL_TRUE, sOffset * sizeOf,
+					length * sizeOf, dst, 0,
+					null, null);
+		} else {
+			float f[] = new float[length];
+			Pointer dst = Pointer.to(f).withByteOffset(0);
+			CL.clEnqueueReadBuffer(Hardware.getLocalHardware().getQueue(), mem,
+					CL.CL_TRUE, sOffset * sizeOf,
+					length * sizeOf, dst, 0,
+					null, null);
+			for (int i = 0; i < f.length; i++) out[oOffset + i] = f[i];
+		}
 	}
 
 	protected static void getMem(cl_mem mem, double out[], int offset) { getMem(mem, 0, out, offset, out.length); }

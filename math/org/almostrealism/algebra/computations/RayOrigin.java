@@ -28,6 +28,7 @@ import java.util.List;
 
 public class RayOrigin extends DynamicAcceleratedProducerAdapter<Vector> implements VectorProducer {
 	private String value[];
+	private boolean isStatic;
 
 	public RayOrigin(Producer<Ray> r) {
 		super(3, Vector.blank(), r);
@@ -45,15 +46,14 @@ public class RayOrigin extends DynamicAcceleratedProducerAdapter<Vector> impleme
 	/**
 	 * Returns true if the {@link Ray} {@link Producer} is static.
 	 */
-	public boolean isStatic() {
-		return inputProducers[1].getProducer().isStatic();
-	}
+	@Override
+	public boolean isStatic() { return isStatic; }
 
 	@Override
 	public void compact() {
 		super.compact();
 
-		if (value == null && isCompletelyDynamicAcceleratedAdapters()) {
+		if (value == null && isCompletelyValueOnly()) {
 			value = new String[3];
 
 			DynamicAcceleratedProducerAdapter<Vector> r =
@@ -61,7 +61,12 @@ public class RayOrigin extends DynamicAcceleratedProducerAdapter<Vector> impleme
 
 			for (int i = 0; i < value.length; i++) {
 				value[i] = r.getValue(i);
+				if (value[i].contains("Infinity")) {
+					throw new IllegalArgumentException("Infinity is not supported");
+				}
 			}
+
+			isStatic = r.isStatic();
 
 			List<Argument> newArgs = new ArrayList<>();
 			newArgs.add(inputProducers[0]);

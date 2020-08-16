@@ -26,7 +26,16 @@ import java.io.InputStreamReader;
 
 /** An interface to OpenCL. */
 public final class Hardware {
-	private static Hardware local = new Hardware("local");
+	private static Hardware local = new Hardware(AcceleratedFunctions.localFunctions);
+
+	public static final boolean enableGpu;
+	public static final boolean enableDoublePrecision;
+
+	static {
+		enableGpu = "gpu".equalsIgnoreCase(System.getenv("AR_HARDWARE_PLATFORM")) ||
+				"gpu".equalsIgnoreCase(System.getProperty("AR_HARDWARE_PLATFORM"));
+		enableDoublePrecision = !enableGpu;
+	}
 
 	private cl_context context;
 	private cl_command_queue queue;
@@ -35,12 +44,16 @@ public final class Hardware {
 
 	private Hardware(String name) {
 		final int platformIndex = 0;
-		final long deviceType = CL.CL_DEVICE_TYPE_CPU;
+		final long deviceType = enableGpu ? CL.CL_DEVICE_TYPE_GPU : CL.CL_DEVICE_TYPE_CPU;
 		final int deviceIndex = 0;
 
 		CL.setExceptionsEnabled(true);
 
-		System.out.println("Initializing Hardware...");
+		if (enableGpu) {
+			System.out.println("Initializing Hardware (GPU Enabled)...");
+		} else {
+			System.out.println("Initializing Hardware...");
+		}
 
 		int numPlatformsArray[] = new int[1];
 		CL.clGetPlatformIDs(0, null, numPlatformsArray);
@@ -61,13 +74,13 @@ public final class Hardware {
 		CL.clGetDeviceIDs(platform, deviceType, 0, null, numDevicesArray);
 		int numDevices = numDevicesArray[0];
 
-		System.out.println("Hardware[" + name + "]: " + numDevices + " CPU(s) available");
+		System.out.println("Hardware[" + name + "]: " + numDevices + " " + deviceName(deviceType) + "(s) available");
 
 		cl_device_id devices[] = new cl_device_id[numDevices];
 		CL.clGetDeviceIDs(platform, deviceType, numDevices, devices, null);
 		cl_device_id device = devices[deviceIndex];
 
-		System.out.println("Hardware[" + name + "]: Using CPU " + deviceIndex);
+		System.out.println("Hardware[" + name + "]: Using " + deviceName(deviceType) + " " + deviceIndex);
 
 		context = CL.clCreateContext(contextProperties, 1, new cl_device_id[] { device },
 								null, null, null);
@@ -84,11 +97,45 @@ public final class Hardware {
 
 	public static Hardware getLocalHardware() { return local; }
 
+	public boolean isGPU() { return enableGpu; }
+
+	public boolean isDoublePrecision() { return enableDoublePrecision; }
+
+	public int getNumberSize() { return isDoublePrecision() ? Sizeof.cl_double : Sizeof.cl_float; }
+
+	public String stringForDouble(double d) {
+		if (isGPU()) {
+			Float f = (float) d;
+			if (f.isInfinite()) {
+				return String.valueOf(f > 0 ? Float.MAX_VALUE : Float.MIN_VALUE);
+			}
+
+			return String.valueOf((float) d);
+		} else {
+			Double v = d;
+			if (v.isInfinite()) {
+				return String.valueOf(v > 0 ? Double.MAX_VALUE : Double.MIN_VALUE);
+			}
+
+			return String.valueOf(d);
+		}
+	}
+
 	public cl_context getContext() { return context; }
 
 	public cl_command_queue getQueue() { return queue; }
 
 	public AcceleratedFunctions getFunctions() { return functions; }
+
+	private static String deviceName(long type) {
+		if (type == CL.CL_DEVICE_TYPE_CPU) {
+			return "CPU";
+		} else if (type == CL.CL_DEVICE_TYPE_GPU) {
+			return "GPU";
+		} else {
+			throw new IllegalArgumentException("Unknown device type " + type);
+		}
+	}
 
 	protected static String loadSource(String name) {
 		return loadSource(Hardware.class.getClassLoader().getResourceAsStream(name + ".cl"), false);
@@ -99,10 +146,14 @@ public final class Hardware {
 	}
 
 	protected static String loadSource(InputStream is, boolean includeLocal) {
+		if (is == null) {
+			throw new IllegalArgumentException("InputStream is null");
+		}
+
 		StringBuffer buf = new StringBuffer();
 
 		if (includeLocal) {
-			buf.append(loadSource("local"));
+			buf.append(loadSource(AcceleratedFunctions.localFunctions));
 			buf.append("\n");
 		}
 

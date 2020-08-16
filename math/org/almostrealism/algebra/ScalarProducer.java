@@ -50,6 +50,20 @@ public interface ScalarProducer extends Producer<Scalar> {
 		return multiply(new Scalar(value));
 	}
 
+	default ScalarProducer divide(Producer<Scalar> value) {
+		return multiply(new ScalarPow(value, StaticProducer.of(-1.0)));
+	}
+
+	default ScalarProducer divide(Scalar value) {
+		return divide(StaticProducer.of(value));
+	}
+
+	default ScalarProducer divide(double value) {
+		return divide(new Scalar(value));
+	}
+
+	default ScalarProducer minus() { return multiply(-1.0); }
+
 	default ScalarProducer pow(Producer<Scalar> exponent) {
 		return new ScalarPow(this, exponent);
 	}

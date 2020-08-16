@@ -14,17 +14,29 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.algebra.computations;
+package org.almostrealism.geometry;
 
-import org.almostrealism.geometry.Ray;
+import org.almostrealism.math.MemoryBankAdapter;
 import org.almostrealism.util.Producer;
 
-public class OriginDotOrigin extends DotProduct {
-	public OriginDotOrigin(Producer<Ray> r) {
-		this(new RayOrigin(r));
+/**
+ * A collection of {@link Ray}s of a fixed length, that is contiguous in
+ * RAM and usable for kernel methods.
+ *
+ * @author  Michael Murray
+ */
+public class RayBank extends MemoryBankAdapter<Ray> {
+	public RayBank(int count) {
+		super(6, count, delegateSpec ->
+				new Ray(delegateSpec.getDelegate(), delegateSpec.getOffset()));
 	}
 
-	protected OriginDotOrigin(RayOrigin o) {
-		super(o, o);
+	public static RayBank fromProducer(Producer<Ray> producer, int count) {
+		RayBank bank = new RayBank(count);
+		for (int i = 0; i < bank.getCount(); i++) {
+			bank.set(i, producer.evaluate());
+		}
+
+		return bank;
 	}
 }

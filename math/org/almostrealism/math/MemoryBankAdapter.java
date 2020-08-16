@@ -16,6 +16,8 @@
 
 package org.almostrealism.math;
 
+import org.jocl.CLException;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
@@ -57,7 +59,7 @@ public abstract class MemoryBankAdapter<T extends MemWrapper> extends MemWrapper
 		super.init();
 		
 		entries = IntStream.range(0, count)
-				.map(i -> i * memLength)
+				.map(i -> i * getAtomicMemLength())
 				.mapToObj(DelegateSpec::new)
 				.map(supply)
 				.collect(Collectors.toList());
@@ -68,11 +70,23 @@ public abstract class MemoryBankAdapter<T extends MemWrapper> extends MemWrapper
 
 	@Override
 	public void set(int index, T value) {
-		setMem(getOffset() + index * getMemLength(), (MemWrapperAdapter) value, value.getOffset(), getMemLength());
+		try {
+			setMem(getOffset() + index * getAtomicMemLength(),
+					(MemWrapperAdapter) value, value.getOffset(),
+					getAtomicMemLength());
+		} catch (CLException e) {
+			e.printStackTrace();
+		}
 	}
 
 	@Override
 	public int getMemLength() { return totalMemLength; }
+
+	@Override
+	public int getAtomicMemLength() { return memLength; }
+
+	@Override
+	public int getCount() { return entries.size(); }
 
 	public class DelegateSpec {
 		private int offset;

@@ -24,8 +24,7 @@ import org.almostrealism.color.RGB;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.algebra.computations.RayDirection;
 import org.almostrealism.algebra.computations.RayOrigin;
-import org.almostrealism.geometry.RayProducer;
-import org.almostrealism.math.AcceleratedProducer;
+import org.almostrealism.geometry.RayFromVectors;
 import org.almostrealism.relation.Constant;
 import org.almostrealism.relation.Operator;
 import org.almostrealism.util.Producer;
@@ -36,8 +35,6 @@ import java.util.concurrent.TimeoutException;
 
 /** A {@link Plane} represents an plane in 3d space. */
 public class Plane extends AbstractSurface implements ParticleGroup {
-	public static final boolean enableHardwareAcceleration = true;
-
 	// TODO  Move these to an enum
 
 	/** Integer code for XY plane. **/
@@ -145,58 +142,29 @@ public class Plane extends AbstractSurface implements ParticleGroup {
 	 * {@link Ray} that intersection between the ray and this {@link Plane} occurs.
 	 */
 	@Override
-	public ContinuousField intersectAt(Producer r) {
+	public ContinuousField intersectAt(Producer<Ray> r) {
 		TransformMatrix m = getTransform(true);
 		Producer<Ray> tr = r;
 		if (m != null) tr = new RayMatrixTransform(m.getInverse(), tr);
 
-		tr = new RayProducer(new RayOrigin(tr), new VectorNormalize(new RayDirection(tr)));
+		// tr = new RayFromVectors(new RayOrigin(tr), new RayDirection(tr).normalize());
 
-		if (enableHardwareAcceleration) {
-			if (type == Plane.XY)
-				return new ShadableIntersection(this, r,
-						new AcceleratedProducer<>("planeXYIntersectAt",
-								new Producer[]{Scalar.blank(), tr}));
-			else if (type == Plane.XZ)
-				return new ShadableIntersection(this, r,
-						new AcceleratedProducer<>("planeXZIntersectAt",
-								new Producer[]{Scalar.blank(), tr}));
-			else if (type == Plane.YZ)
-				return new ShadableIntersection(this, r,
-						new AcceleratedProducer<>("planeYZIntersectAt",
-								new Producer[]{Scalar.blank(), tr}));
-			else
-				return null;
+		ScalarProducer s;
+
+		if (type == Plane.XY) {
+			// if (tr.getDirection().getZ() == 0.0) return new Scalar(-1);
+			s = new RayOrigin(tr).z().minus().divide(new RayDirection(tr).z());
+		} else if (type == Plane.XZ) {
+			// if (tr.getDirection().getY() == 0.0) return new Scalar(-1);
+			s = new RayOrigin(tr).y().minus().divide(new RayDirection(tr).y());
+		} else if (type == Plane.YZ) {
+			// if (tr.getDirection().getX() == 0.0) return new Scalar(-1);
+			s = new RayOrigin(tr).x().minus().divide(new RayDirection(tr).x());
 		} else {
-			final Producer<Ray> ftr = tr;
-
-			return new ShadableIntersection(this, r, new Producer<Scalar>() {
-				@Override
-				public Scalar evaluate(Object[] args) {
-					Ray r = ftr.evaluate(args);
-
-					Scalar s = null;
-
-					if (type == Plane.XY) {
-						if (r.getDirection().getZ() == 0.0) return new Scalar(-1);
-						s = new Scalar(-r.getOrigin().getZ() / r.getDirection().getZ());
-					} else if (type == Plane.XZ) {
-						if (r.getDirection().getY() == 0.0) return new Scalar(-1);
-						s = new Scalar(-r.getOrigin().getY() / r.getDirection().getY());
-					} else if (type == Plane.YZ) {
-						if (r.getDirection().getX() == 0.0) return new Scalar(-1);
-						s = new Scalar(-r.getOrigin().getX() / r.getDirection().getX());
-					}
-
-					return s;
-				}
-
-				@Override
-				public void compact() {
-					ftr.compact();
-				}
-			});
+			throw new IllegalArgumentException(String.valueOf(type));
 		}
+
+		return new ShadableIntersection(this, r, s);
 	}
 
 	@Override

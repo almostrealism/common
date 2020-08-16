@@ -16,7 +16,12 @@
 
 		<resources>
 			<resource>
-				<directory>resources</directory> <includes><include>local.cl</include></includes>
+				<directory>resources</directory>
+				<includes>
+					<include>local32.cl</include>
+					<include>local64.cl</include>
+					<include>org/almostrealism/math/test/TestKernel.cl</include>
+				</includes>
 			</resource>
 		</resources>
 

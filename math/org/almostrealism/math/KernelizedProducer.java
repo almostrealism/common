@@ -31,6 +31,10 @@ import java.util.stream.Stream;
  * @author  Michael Murray
  */
 public interface KernelizedProducer<T extends MemWrapper> extends Producer<T> {
+	default void kernelEvaluate(MemoryBank destination, MemoryBank args[]) {
+		kernelEvaluate(destination, args, 0, destination.getCount());
+	}
+
 	default void kernelEvaluate(MemoryBank destination, MemoryBank args[], int offset, int length) {
 		for (int i = 0; i < length; i++) {
 			final int fi = i;

@@ -19,13 +19,16 @@ package org.almostrealism.math;
 import org.almostrealism.algebra.Pair;
 import org.jocl.CL;
 import org.jocl.Pointer;
-import org.jocl.Sizeof;
 import org.jocl.cl_mem;
 
 public interface MemWrapper {
 	cl_mem getMem();
 	default int getOffset() { return 0; }
 	int getMemLength();
+
+	default int getAtomicMemLength() {
+		return getMemLength();
+	}
 
 	void destroy();
 
@@ -44,16 +47,30 @@ public interface MemWrapper {
 			throw new IllegalArgumentException(String.valueOf(length));
 		}
 
-		double out[] = new double[length];
-		Pointer dst = Pointer.to(out).withByteOffset(0);
-		CL.clEnqueueReadBuffer(Hardware.getLocalHardware().getQueue(), mem,
-				CL.CL_TRUE, sOffset * Sizeof.cl_double,
-				length * Sizeof.cl_double, dst, 0,
-				null, null);
-		if (length == 1) {
-			return new Pair(out[0], 0);
+		if (Hardware.getLocalHardware().isDoublePrecision()) {
+			double out[] = new double[length];
+			Pointer dst = Pointer.to(out).withByteOffset(0);
+			CL.clEnqueueReadBuffer(Hardware.getLocalHardware().getQueue(), mem,
+					CL.CL_TRUE, sOffset * Hardware.getLocalHardware().getNumberSize(),
+					length * Hardware.getLocalHardware().getNumberSize(), dst, 0,
+					null, null);
+			if (length == 1) {
+				return new Pair(out[0], 0);
+			} else {
+				return new Pair(out[0], out[1]);
+			}
 		} else {
-			return new Pair(out[0], out[1]);
+			float out[] = new float[length];
+			Pointer dst = Pointer.to(out).withByteOffset(0);
+			CL.clEnqueueReadBuffer(Hardware.getLocalHardware().getQueue(), mem,
+					CL.CL_TRUE, sOffset * Hardware.getLocalHardware().getNumberSize(),
+					length * Hardware.getLocalHardware().getNumberSize(), dst, 0,
+					null, null);
+			if (length == 1) {
+				return new Pair(out[0], 0);
+			} else {
+				return new Pair(out[0], out[1]);
+			}
 		}
 	}
 }

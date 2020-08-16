@@ -14,10 +14,8 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.algebra.computations;
+package org.almostrealism.geometry;
 
-import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.math.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.util.Producer;
@@ -26,24 +24,30 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-public class DotProduct extends DynamicAcceleratedProducerAdapter<Scalar> implements ScalarProducer {
+public class RayFromVectors extends DynamicAcceleratedProducerAdapter<Ray> {
 	private String value[];
 
-	public DotProduct(Producer<Vector> a, Producer<Vector> b) {
-		super(2, Scalar.blank(), a, b);
+	public RayFromVectors(Producer<Vector> origin, Producer<Vector> direction) {
+		super(6, Ray.blank(), origin, direction);
 	}
 
 	@Override
 	public String getValue(int pos) {
 		if (value == null) {
 			if (pos == 0) {
-				return getArgumentValueName(1, 0) + " * " + getArgumentValueName(2, 0) + " + " +
-						getArgumentValueName(1, 1) + " * " + getArgumentValueName(2, 1) + " + " +
-						getArgumentValueName(1, 2) + " * " + getArgumentValueName(2, 2);
+				return getArgumentValueName(1, 0);
 			} else if (pos == 1) {
-				return "1.0";
+				return getArgumentValueName(1, 1);
+			} else if (pos == 2) {
+				return getArgumentValueName(1, 2);
+			} else if (pos == 3) {
+				return getArgumentValueName(2, 0);
+			} else if (pos == 4) {
+				return getArgumentValueName(2, 1);
+			} else if (pos == 5) {
+				return getArgumentValueName(2, 2);
 			} else {
-				throw new IllegalArgumentException("Position " + pos + " is invalid");
+				throw new IllegalArgumentException("Position " + pos + " is not valid");
 			}
 		} else {
 			return value[pos];
@@ -55,25 +59,33 @@ public class DotProduct extends DynamicAcceleratedProducerAdapter<Scalar> implem
 		super.compact();
 
 		if (value == null && isCompletelyValueOnly()) {
-			DynamicAcceleratedProducerAdapter<Vector> a =
+			DynamicAcceleratedProducerAdapter<Vector> origin =
 					(DynamicAcceleratedProducerAdapter<Vector>) inputProducers[1].getProducer();
-			DynamicAcceleratedProducerAdapter<Vector> b =
+			DynamicAcceleratedProducerAdapter<Vector> direction =
 					(DynamicAcceleratedProducerAdapter<Vector>) inputProducers[2].getProducer();
-
-			value = new String[2];
-			value[0] = "(" + a.getValue(0) + ") * (" + b.getValue(0) + ") + " +
-					"(" + a.getValue(1) + ") * (" + b.getValue(1) + ") + " +
-					"(" + a.getValue(2) + ") * (" + b.getValue(2) + ")";
-			value[1] = "1.0";
-
-			if (value[0].contains("Infinity")) {
-				throw new IllegalArgumentException("Infinity is not supported");
-			}
 
 			List<Argument> newArgs = new ArrayList<>();
 			newArgs.add(inputProducers[0]);
-			newArgs.addAll(Arrays.asList(excludeResult(a.getInputProducers())));
-			newArgs.addAll(Arrays.asList(excludeResult(b.getInputProducers())));
+			newArgs.addAll(Arrays.asList(excludeResult(origin.getInputProducers())));
+			newArgs.addAll(Arrays.asList(excludeResult(direction.getInputProducers())));
+
+			value = new String[6];
+
+			value[0] = origin.getValue(0);
+			value[1] = origin.getValue(1);
+			value[2] = origin.getValue(2);
+			value[3] = direction.getValue(0);
+			value[4] = direction.getValue(1);
+			value[5] = direction.getValue(2);
+
+			for (int i = 0; i < value.length; i++) {
+				if (value[i].trim().length() <= 0) {
+					throw new IllegalArgumentException("Empty value for index " + i);
+				} else if (value[i].contains("Infinity")) {
+					throw new IllegalArgumentException("Infinity is not supported");
+				}
+			}
+
 			inputProducers = newArgs.toArray(new Argument[0]);
 			removeDuplicateArguments();
 		}

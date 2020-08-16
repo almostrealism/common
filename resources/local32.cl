@@ -1,30 +1,19 @@
-#pragma OPENCL EXTENSION cl_khr_fp64 : enable
-
-__kernel void scalarCopy_local(__local double *res, __local const double *m, const int resOffset, const int mOffset) {
+__kernel void scalarCopy_local(__local float *res, __local const float *m, const int resOffset, const int mOffset) {
     res[resOffset]     = m[mOffset];
     res[resOffset + 1] = m[mOffset + 1];
 }
 
-__kernel void scalarCopy_localToGlobal(__global double *res, __local const double *m, const int resOffset, const int mOffset) {
+__kernel void scalarCopy_localToGlobal(__global float *res, __local const float *m, const int resOffset, const int mOffset) {
     res[resOffset]     = m[mOffset];
     res[resOffset + 1] = m[mOffset + 1];
 }
 
-__kernel void scalarCopy_globalToLocal(__local double *res, __global const double *m, const int resOffset, const int mOffset) {
+__kernel void scalarCopy_globalToLocal(__local float *res, __global const float *m, const int resOffset, const int mOffset) {
     res[resOffset]     = m[mOffset];
     res[resOffset + 1] = m[mOffset + 1];
 }
 
-__kernel void rayCopy_local(__local double *res, __local const double *m, const int resOffset, const int mOffset) {
-    res[resOffset]     = m[mOffset];
-    res[resOffset + 1] = m[mOffset + 1];
-    res[resOffset + 2] = m[mOffset + 2];
-    res[resOffset + 3] = m[mOffset + 3];
-    res[resOffset + 4] = m[mOffset + 4];
-    res[resOffset + 5] = m[mOffset + 5];
-}
-
-__kernel void rayCopy_localToGlobal(__global double *res, __local const double *m, const int resOffset, const int mOffset) {
+__kernel void rayCopy_local(__local float *res, __local const float *m, const int resOffset, const int mOffset) {
     res[resOffset]     = m[mOffset];
     res[resOffset + 1] = m[mOffset + 1];
     res[resOffset + 2] = m[mOffset + 2];
@@ -33,7 +22,7 @@ __kernel void rayCopy_localToGlobal(__global double *res, __local const double *
     res[resOffset + 5] = m[mOffset + 5];
 }
 
-__kernel void rayCopy_globalToLocal(__local double *res, __global const double *m, const int resOffset, const int mOffset) {
+__kernel void rayCopy_localToGlobal(__global float *res, __local const float *m, const int resOffset, const int mOffset) {
     res[resOffset]     = m[mOffset];
     res[resOffset + 1] = m[mOffset + 1];
     res[resOffset + 2] = m[mOffset + 2];
@@ -42,29 +31,16 @@ __kernel void rayCopy_globalToLocal(__local double *res, __global const double *
     res[resOffset + 5] = m[mOffset + 5];
 }
 
-__kernel void matrixCopy_local(__local double *res, __local const double *m, const int resOffset, const int mOffset) {
+__kernel void rayCopy_globalToLocal(__local float *res, __global const float *m, const int resOffset, const int mOffset) {
     res[resOffset]     = m[mOffset];
     res[resOffset + 1] = m[mOffset + 1];
     res[resOffset + 2] = m[mOffset + 2];
     res[resOffset + 3] = m[mOffset + 3];
-
     res[resOffset + 4] = m[mOffset + 4];
     res[resOffset + 5] = m[mOffset + 5];
-    res[resOffset + 6] = m[mOffset + 6];
-    res[resOffset + 7] = m[mOffset + 7];
-
-    res[resOffset + 8]  = m[mOffset + 8];
-    res[resOffset + 9]  = m[mOffset + 9];
-    res[resOffset + 10] = m[mOffset + 10];
-    res[resOffset + 11] = m[mOffset + 11];
-
-    res[resOffset + 12] = m[mOffset + 12];
-    res[resOffset + 13] = m[mOffset + 13];
-    res[resOffset + 14] = m[mOffset + 14];
-    res[resOffset + 15] = m[mOffset + 15];
 }
 
-__kernel void matrixCopy_localToGlobal(__global double *res, __local const double *m, const int resOffset, const int mOffset) {
+__kernel void matrixCopy_local(__local float *res, __local const float *m, const int resOffset, const int mOffset) {
     res[resOffset]     = m[mOffset];
     res[resOffset + 1] = m[mOffset + 1];
     res[resOffset + 2] = m[mOffset + 2];
@@ -86,7 +62,29 @@ __kernel void matrixCopy_localToGlobal(__global double *res, __local const doubl
     res[resOffset + 15] = m[mOffset + 15];
 }
 
-__kernel void matrixCopy_globalToLocal(__local double *res, __global const double *m, const int resOffset, const int mOffset) {
+__kernel void matrixCopy_localToGlobal(__global float *res, __local const float *m, const int resOffset, const int mOffset) {
+    res[resOffset]     = m[mOffset];
+    res[resOffset + 1] = m[mOffset + 1];
+    res[resOffset + 2] = m[mOffset + 2];
+    res[resOffset + 3] = m[mOffset + 3];
+
+    res[resOffset + 4] = m[mOffset + 4];
+    res[resOffset + 5] = m[mOffset + 5];
+    res[resOffset + 6] = m[mOffset + 6];
+    res[resOffset + 7] = m[mOffset + 7];
+
+    res[resOffset + 8]  = m[mOffset + 8];
+    res[resOffset + 9]  = m[mOffset + 9];
+    res[resOffset + 10] = m[mOffset + 10];
+    res[resOffset + 11] = m[mOffset + 11];
+
+    res[resOffset + 12] = m[mOffset + 12];
+    res[resOffset + 13] = m[mOffset + 13];
+    res[resOffset + 14] = m[mOffset + 14];
+    res[resOffset + 15] = m[mOffset + 15];
+}
+
+__kernel void matrixCopy_globalToLocal(__local float *res, __global const float *m, const int resOffset, const int mOffset) {
     res[resOffset]     = m[mOffset];
     res[resOffset + 1] = m[mOffset + 1];
     res[resOffset + 2] = m[mOffset + 2];
@@ -109,7 +107,7 @@ __kernel void matrixCopy_globalToLocal(__local double *res, __global const doubl
 }
 
 __kernel void
-add(__global double *res, __global const double *a, __global const double *b,
+add(__global float *res, __global const float *a, __global const float *b,
     const int resOffset, const int aOffset, const int bOffset,
     const int resSize, const int aSize, const int bSize) {
 	res[resOffset] = a[aOffset] + b[bOffset];
@@ -118,7 +116,7 @@ add(__global double *res, __global const double *a, __global const double *b,
 }
 
 __kernel void
-subtract(__global double *res, __global const double *a, __global const double *b,
+subtract(__global float *res, __global const float *a, __global const float *b,
         const int resOffset, const int aOffset, const int bOffset,
         const int resSize, const int aSize, const int bSize) {
     res[resOffset] = a[aOffset] - b[bOffset];
@@ -127,7 +125,7 @@ subtract(__global double *res, __global const double *a, __global const double *
 }
 
 __kernel void
-multiply(__global double *res, __global const double *a, __global const double *b,
+multiply(__global float *res, __global const float *a, __global const float *b,
         const int resOffset, const int aOffset, const int bOffset,
         const int resSize, const int aSize, const int bSize) {
 	res[resOffset] = a[aOffset] * b[bOffset];
@@ -136,7 +134,7 @@ multiply(__global double *res, __global const double *a, __global const double *
 }
 
 __kernel void
-divide(__global double *res, __global const double *a, __global const double *b,
+divide(__global float *res, __global const float *a, __global const float *b,
         const int resOffset, const int aOffset, const int bOffset,
         const int resSize, const int aSize, const int bSize) {
 	res[resOffset] = a[aOffset] / b[bOffset];
@@ -145,7 +143,7 @@ divide(__global double *res, __global const double *a, __global const double *b,
 }
 
 __kernel void
-addTo(__global double *a, __global const double *b, const int aOffset, const int bOffset,
+addTo(__global float *a, __global const float *b, const int aOffset, const int bOffset,
       const int aSize, const int bSize) {
 	a[aOffset] += b[bOffset];
 	a[aOffset + 1] += b[bOffset + 1];
@@ -153,7 +151,7 @@ addTo(__global double *a, __global const double *b, const int aOffset, const int
 }
 
 __kernel void
-subtractFrom(__global double *a, __global const double *b, const int aOffset, const int bOffset,
+subtractFrom(__global float *a, __global const float *b, const int aOffset, const int bOffset,
             const int aSize, const int bSize) {
     a[aOffset] -= b[bOffset];
     a[aOffset + 1] -= b[bOffset + 1];
@@ -161,7 +159,7 @@ subtractFrom(__global double *a, __global const double *b, const int aOffset, co
 }
 
 __kernel void
-multiplyBy(__global double *a, __global const double *b, const int aOffset, const int bOffset,
+multiplyBy(__global float *a, __global const float *b, const int aOffset, const int bOffset,
            const int aSize, const int bSize) {
 	a[aOffset] *= b[bOffset];
 	a[aOffset + 1] *= b[bOffset + 1];
@@ -169,7 +167,7 @@ multiplyBy(__global double *a, __global const double *b, const int aOffset, cons
 }
 
 __kernel void
-divideBy(__global double *a, __global const double *b, const int aOffset, const int bOffset,
+divideBy(__global float *a, __global const float *b, const int aOffset, const int bOffset,
          const int aSize, const int bSize) {
 	a[aOffset] /= b[bOffset];
 	a[aOffset + 1] /= b[bOffset + 1];
@@ -177,23 +175,13 @@ divideBy(__global double *a, __global const double *b, const int aOffset, const 
 }
 
 __kernel void
-lengthSq(__global double *res, __global const double *v, const int resOffset, const int vOffset,
+lengthSq(__global float *res, __global const float *v, const int resOffset, const int vOffset,
          const int resSize, const int vSize) {
     res[resOffset] = v[vOffset] * v[vOffset] + v[vOffset + 1] * v[vOffset + 1] + v[vOffset + 2] * v[vOffset + 2];
 }
 
 __kernel void
-vectorNormalize(__global double *res, const int resOffset, const int resSize) {
-    double len = sqrt(res[resOffset] * res[resOffset] +
-                res[resOffset + 1] * res[resOffset + 1] +
-                res[resOffset + 2] * res[resOffset + 2]);
-    res[resOffset] = res[resOffset] / len;
-    res[resOffset + 1] = res[resOffset + 1] / len;
-    res[resOffset + 2] = res[resOffset + 2] / len;
-}
-
-__kernel void
-crossProduct(__global double *res, __global const double *a, __global const double *b,
+crossProduct(__global float *res, __global const float *a, __global const float *b,
             const int resOffset, const int aOffset, const int bOffset,
             const int resSize, const int aSize, const int bSize)
 {
@@ -203,7 +191,7 @@ crossProduct(__global double *res, __global const double *a, __global const doub
 }
 
 __kernel void
-rayPointAt(__global double *res, __global double *r, __global double *t,
+rayPointAt(__global float *res, __global float *r, __global float *t,
             const int resOffset, const int rOffset, const int tOffset,
             const int resSize, const int rSize, const int tSize) {
     res[resOffset] = r[rOffset] + t[tOffset] * r[rOffset + 3];
@@ -212,7 +200,7 @@ rayPointAt(__global double *res, __global double *r, __global double *t,
 }
 
 __kernel void
-matrixProduct(__global double *res, __global const double *a, __global const double *b,
+matrixProduct(__global float *res, __global const float *a, __global const float *b,
                 const int resOffset, const int aOffset, const int bOffset,
                 const int resSize, const int aSize, const int bSize) {
     for (int i = 0; i < 4; i++) {
@@ -226,37 +214,37 @@ matrixProduct(__global double *res, __global const double *a, __global const dou
 }
 
 __kernel void
-identityMatrix_local(__local double *m, const int mOffset) {
-    m[mOffset]     = (double) 1.0;
-    m[mOffset + 1] = (double) 0.0;
-    m[mOffset + 2] = (double) 0.0;
-    m[mOffset + 3] = (double) 0.0;
+identityMatrix_local(__local float *m, const int mOffset) {
+    m[mOffset]     =  1.0;
+    m[mOffset + 1] =  0.0;
+    m[mOffset + 2] =  0.0;
+    m[mOffset + 3] =  0.0;
 
-    m[mOffset + 4] = (double) 0.0;
-    m[mOffset + 5] = (double) 1.0;
-    m[mOffset + 6] = (double) 0.0;
-    m[mOffset + 7] = (double) 0.0;
+    m[mOffset + 4] =  0.0;
+    m[mOffset + 5] =  1.0;
+    m[mOffset + 6] =  0.0;
+    m[mOffset + 7] =  0.0;
 
-    m[mOffset + 8]  = (double) 0.0;
-    m[mOffset + 9]  = (double) 0.0;
-    m[mOffset + 10] = (double) 1.0;
-    m[mOffset + 11] = (double) 0.0;
+    m[mOffset + 8]  =  0.0;
+    m[mOffset + 9]  =  0.0;
+    m[mOffset + 10] =  1.0;
+    m[mOffset + 11] =  0.0;
 
-    m[mOffset + 12] = (double) 0.0;
-    m[mOffset + 13] = (double) 0.0;
-    m[mOffset + 14] = (double) 0.0;
-    m[mOffset + 15] = (double) 1.0;
+    m[mOffset + 12] =  0.0;
+    m[mOffset + 13] =  0.0;
+    m[mOffset + 14] =  0.0;
+    m[mOffset + 15] =  1.0;
 }
 
 __kernel void
-identityMatrix(__global double *m, const int mOffset, const int mSize) {
-    __local double m_l[16];
+identityMatrix(__global float *m, const int mOffset, const int mSize) {
+    __local float m_l[16];
     identityMatrix_local(m_l, 0);
     matrixCopy_localToGlobal(m, m_l, mOffset, 0);
 }
 
 __kernel void
-matrixTranspose_local(__local double *res, __local const double *m, const int resOffset, const int mOffset) {
+matrixTranspose_local(__local float *res, __local const float *m, const int resOffset, const int mOffset) {
     for (int i = 0; i < 4; i++) {
         for (int j = 0; j < 4; j++) {
             res[resOffset + i * 4 + j] = m[j * 4 + i];
@@ -265,22 +253,22 @@ matrixTranspose_local(__local double *res, __local const double *m, const int re
 }
 
 __kernel void
-matrixTranspose(__global double *res, __global const double *m, const int resOffset, const int mOffset,
+matrixTranspose(__global float *res, __global const float *m, const int resOffset, const int mOffset,
                 const int resSize, const int mSize) {
-    __local double m_l[16];
-    __local double res_l[16];
+    __local float m_l[16];
+    __local float res_l[16];
     matrixCopy_globalToLocal(m_l, m, 0, mOffset);
     matrixTranspose_local(res_l, m_l, 0, 0);
     matrixCopy_localToGlobal(res, res_l, resOffset, 0);
 }
 
 __kernel void
-matrixToUpperTriangle(__local double *res, __local double *df, __local const double *m,
+matrixToUpperTriangle(__local float *res, __local float *df, __local const float *m,
                         const int resOffset, const int dfOffset, const int mOffset) {
     matrixCopy_local(res, m, resOffset, mOffset);
 
-    double f1 = 0;
-    double temp = 0;
+    float f1 = 0;
+    float temp = 0;
     int v = 1;
 
     df[dfOffset] = 1;
@@ -319,11 +307,11 @@ matrixToUpperTriangle(__local double *res, __local double *df, __local const dou
 }
 
 __kernel void
-matrixDeterminant_local(__local double *res, __local double *df, __local double *ut,
-                        __local double *m,
+matrixDeterminant_local(__local float *res, __local float *df, __local float *ut,
+                        __local float *m,
                         const int resOffset, const int dfOffset, const int utOffset,
                         const int mOffset) {
-    double det = 1.0;
+    float det = 1.0;
 
     matrixToUpperTriangle(ut, df, m, 0, dfOffset, mOffset);
 
@@ -335,14 +323,14 @@ matrixDeterminant_local(__local double *res, __local double *df, __local double 
 }
 
 __kernel void
-matrixDeterminant(__global double *res, __global const double *m,
+matrixDeterminant(__global float *res, __global const float *m,
                   const int resOffset, const int mOffset,
                   const int resSize, const int mSize) {
-    __local double res_l[2];
-    __local double m_l[16];
+    __local float res_l[2];
+    __local float m_l[16];
 
-    __local double df_l[2];
-    __local double ut_l[16];
+    __local float df_l[2];
+    __local float ut_l[16];
 
     matrixCopy_globalToLocal(m_l, m, 0, mOffset);
     matrixDeterminant_local(res_l, df_l, ut_l, m_l, 0, 0, 0, 0);
@@ -350,9 +338,9 @@ matrixDeterminant(__global double *res, __global const double *m,
 }
 
 __kernel void
-matrixAdjoint_local(__local double *res, __local double *det, __local double *df,
-                    __local double *ut,
-                    __local double *ap, __local double *adj, __local const double *m,
+matrixAdjoint_local(__local float *res, __local float *det, __local float *df,
+                    __local float *ut,
+                    __local float *ap, __local float *adj, __local const float *m,
                     const int resOffset, const int detOffset, const int dfOffset,
                     const int utOffset,
                     const int apOffset, const int adjOffset, const int mOffset) {
@@ -377,7 +365,7 @@ matrixAdjoint_local(__local double *res, __local double *det, __local double *df
             }
 
             matrixDeterminant_local(det, df, ut, ap, detOffset, dfOffset, utOffset, apOffset);
-            adj[i * 4 + j] = pow(-1.0, i + j) * det[detOffset];
+            adj[i * 4 + j] =  pow((float) -1.0, (float) i + j) * (float) det[detOffset];
         }
     }
 
@@ -385,17 +373,17 @@ matrixAdjoint_local(__local double *res, __local double *det, __local double *df
 }
 
 __kernel void
-matrixAdjoint(__global double *res, __global const double *m,
+matrixAdjoint(__global float *res, __global const float *m,
                 const int resOffset, const int mOffset,
                 const int resSize, const int mSize) {
-    __local double m_l[16];
-    __local double res_l[16];
+    __local float m_l[16];
+    __local float res_l[16];
 
-    __local double det_l[2];
-    __local double df_l[2];
-    __local double ut_l[16];
-    __local double ap_l[16];
-    __local double adj_l[16];
+    __local float det_l[2];
+    __local float df_l[2];
+    __local float ut_l[16];
+    __local float ap_l[16];
+    __local float adj_l[16];
 
     matrixCopy_globalToLocal(m_l, m, 0, mOffset);
     matrixAdjoint_local(res_l, det_l, df_l, ut_l, ap_l, adj_l, m_l, 0, 0, 0, 0, 0, 0, 0);
@@ -403,7 +391,7 @@ matrixAdjoint(__global double *res, __global const double *m,
 }
 
 __kernel void
-translationMatrix(__global double *m, __global const double *v, const int mOffset, const int vOffset,
+translationMatrix(__global float *m, __global const float *v, const int mOffset, const int vOffset,
                     const int mSize, const int vSize) {
     m[mOffset + 3]  = v[vOffset];
     m[mOffset + 7]  = v[vOffset + 1];
@@ -411,7 +399,7 @@ translationMatrix(__global double *m, __global const double *v, const int mOffse
 }
 
 __kernel void
-scaleMatrix(__global double *m, __global const double *v, const int mOffset, const int vOffset,
+scaleMatrix(__global float *m, __global const float *v, const int mOffset, const int vOffset,
             const int mSize, const int vSize) {
     m[mOffset]  = v[vOffset];
     m[mOffset + 5]  = v[vOffset + 1];
@@ -420,39 +408,39 @@ scaleMatrix(__global double *m, __global const double *v, const int mOffset, con
 
 //
 //__kernel void
-//thinLensCameraRayAt(__global double *res, __global const double *pos, __global const double *sd,
-//                    __global const double *rand,
-//                    __global const double *l, __global const double *pd, __global const double *bl,
-//                    __global const double *fl, __global const double *u, __global const double *v,
-//                    __global const double *w,
+//thinLensCameraRayAt(__global float *res, __global const float *pos, __global const float *sd,
+//                    __global const float *rand,
+//                    __global const float *l, __global const float *pd, __global const float *bl,
+//                    __global const float *fl, __global const float *u, __global const float *v,
+//                    __global const float *w,
 //                    const int resOffset, const int posOffset, const int sdOffset, const int randOffset,
 //                    const int lOffset, const int pdOffset, const int blOffset,
 //                    const int flOffset, const int uOffset, const int vOffset, const int wOffset) {
-//    double bu = pd[pdOffset] / 2;
-//    double bv = pd[pdOffset + 1] / 2;
-//    double au = -bu;
-//    double av = -bv;
+//    float bu = pd[pdOffset] / 2;
+//    float bv = pd[pdOffset + 1] / 2;
+//    float au = -bu;
+//    float av = -bv;
 //
-//    double p = au + (bu - au) * (pos[posOffset] / (sd[sdOffset] - 1));
-//    double q = av + (bv - av) * (pos[posOffset + 1] / (sd[sdOffset + 1] - 1));
-//    double r = -fl[flOffset];
+//    float p = au + (bu - au) * (pos[posOffset] / (sd[sdOffset] - 1));
+//    float q = av + (bv - av) * (pos[posOffset + 1] / (sd[sdOffset + 1] - 1));
+//    float r = -fl[flOffset];
 //
 //    res[resOffset + 3] = p * u[uOffset] + q * v[vOffset] + r * w[wOffset];
 //    res[resOffset + 4] = p * u[uOffset + 1] + q * v[vOffset + 1] + r * w[wOffset + 1];
 //    res[resOffset + 5] = p * u[uOffset + 2] + q * v[vOffset + 2] + r * w[wOffset + 2];
 //
-//    double len = sqrt(res[resOffset + 3] * res[resOffset + 3] +
+//    float len = sqrt(res[resOffset + 3] * res[resOffset + 3] +
 //                    res[resOffset + 4] * res[resOffset + 4] +
 //                    res[resOffset + 5] * res[resOffset + 5]);
 //
 //    if (bl[blOffset] != 0.0 || bl[blOffset + 1] != 0.0) {
-//        double wx = res[resOffset + 3];
-//        double wy = res[resOffset + 4];
-//        double wz = res[resOffset + 5];
+//        float wx = res[resOffset + 3];
+//        float wy = res[resOffset + 4];
+//        float wz = res[resOffset + 5];
 //
-//        double tx = res[resOffset + 3];
-//        double ty = res[resOffset + 4];
-//        double tz = res[resOffset + 5];
+//        float tx = res[resOffset + 3];
+//        float ty = res[resOffset + 4];
+//        float tz = res[resOffset + 5];
 //
 //        if (tx < ty && ty < tz) {
 //            tx = 1.0;
@@ -462,23 +450,23 @@ scaleMatrix(__global double *m, __global const double *v, const int mOffset, con
 //            tz = 1.0;
 //        }
 //
-//        double wl = sqrt(wx * wx + wy * wy + wz * wz);
+//        float wl = sqrt(wx * wx + wy * wy + wz * wz);
 //        wx = wx / wl;
 //        wy = wy / wl;
 //        wz = wz / wl;
 //
-//        double ux = ty * wz - tz * wy;
-//        double uy = tz * wx - tx * wz;
-//        double uz = tx * wy - ty * wx;
+//        float ux = ty * wz - tz * wy;
+//        float uy = tz * wx - tx * wz;
+//        float uz = tx * wy - ty * wx;
 //
-//        double ul = sqrt(ux * ux + uy * uy + uz * uz);
+//        float ul = sqrt(ux * ux + uy * uy + uz * uz);
 //        ux = ux / ul;
 //        uy = uy / ul;
 //        uz = uz / ul;
 //
-//        double vx = wy * uz - wz * uy;
-//        double vy = wz * ux - wx * uz;
-//        double vz = wx * uy - wy * ux;
+//        float vx = wy * uz - wz * uy;
+//        float vy = wz * ux - wx * uz;
+//        float vz = wx * uy - wy * ux;
 //
 //        res[resOffset + 3] = res[resOffset + 3] +
 //                            ux * bl[blOffset] * (rand[randOffset] - 0.5) +
@@ -490,11 +478,11 @@ scaleMatrix(__global double *m, __global const double *v, const int mOffset, con
 //                            uz * bl[blOffset] * (rand[randOffset] - 0.5) +
 //                            vz * bl[blOffset + 1] * (rand[randOffset + 1] - 0.5);
 //
-//        double dl = sqrt(res[resOffset + 3] * res[resOffset + 3] +
+//        float dl = sqrt(res[resOffset + 3] * res[resOffset + 3] +
 //                        res[resOffset + 4] * res[resOffset + 4] +
 //                        res[resOffset + 5] * res[resOffset + 5]);
 //
-//        double d = len / dl;
+//        float d = len / dl;
 //        res[resOffset + 3] = res[resOffset + 3] * d;
 //        res[resOffset + 4] = res[resOffset + 4] * d;
 //        res[resOffset + 5] = res[resOffset + 5] * d;
@@ -506,7 +494,7 @@ scaleMatrix(__global double *m, __global const double *v, const int mOffset, con
 //}
 
 __kernel void
-planeXYIntersectAt(__global double *res, __global const double *r,
+planeXYIntersectAt(__global float *res, __global const float *r,
                     const int resOffset, const int rOffset,
                     const int resSize, const int rSize) {
     if (r[rOffset + 5] == 0) {
@@ -517,7 +505,7 @@ planeXYIntersectAt(__global double *res, __global const double *r,
 }
 
 __kernel void
-planeXZIntersectAt(__global double *res, __global const double *r,
+planeXZIntersectAt(__global float *res, __global const float *r,
                     const int resOffset, const int rOffset,
                     const int resSize, const int rSize) {
     if (r[rOffset + 4] == 0) {
@@ -528,7 +516,7 @@ planeXZIntersectAt(__global double *res, __global const double *r,
 }
 
 __kernel void
-planeYZIntersectAt(__global double *res, __global const double *r,
+planeYZIntersectAt(__global float *res, __global const float *r,
                     const int resOffset, const int rOffset,
                     const int resSize, const int rSize) {
     if (r[rOffset + 3] == 0) {
@@ -539,14 +527,14 @@ planeYZIntersectAt(__global double *res, __global const double *r,
 }
 
 __kernel void
-triangleIntersectAt(__global double *res,
-                    __global const double *r,
-                    __global const double *abc, __global const double *def, __global const double *jkl,
+triangleIntersectAt(__global float *res,
+                    __global const float *r,
+                    __global const float *abc, __global const float *def, __global const float *jkl,
                     const int resOffset, const int rOffset,
                     const int abcOffset, const int defOffset, const int jklOffset,
                     const int resSize, const int rSize,
                     const int abcSize, const int defSize, const int jklSize) {
-    double m = abc[abcOffset]       * (def[defOffset + 1] * r[rOffset + 5]  - r[rOffset + 4] * def[defOffset + 2]) +
+    float m = abc[abcOffset]       * (def[defOffset + 1] * r[rOffset + 5]  - r[rOffset + 4] * def[defOffset + 2]) +
                abc[abcOffset + 1]   * (r[rOffset + 3] * def[defOffset + 2]  - def[defOffset] * r[rOffset + 5]) +
                abc[abcOffset + 2]   * (def[defOffset] * r[rOffset + 4]      - def[defOffset + 1] * r[rOffset + 3]);
 
@@ -555,7 +543,7 @@ triangleIntersectAt(__global double *res,
         return;
     }
 
-    double u = jkl[jklOffset]       * (def[defOffset + 1] * r[rOffset + 5]  - r[rOffset + 4] * def[defOffset + 2]) +
+    float u = jkl[jklOffset]       * (def[defOffset + 1] * r[rOffset + 5]  - r[rOffset + 4] * def[defOffset + 2]) +
                jkl[jklOffset + 1]   * (r[rOffset + 3] * def[defOffset + 2]  - def[defOffset] * r[rOffset + 5]) +
                jkl[jklOffset + 2]   * (def[defOffset] * r[rOffset + 4]      - def[defOffset + 1] * r[rOffset + 3]);
     u = u / m;
@@ -565,7 +553,7 @@ triangleIntersectAt(__global double *res,
         return;
     }
 
-    double v = r[rOffset + 5] * (abc[abcOffset] * jkl[jklOffset + 1]      - jkl[jklOffset] * abc[abcOffset + 1]) +
+    float v = r[rOffset + 5] * (abc[abcOffset] * jkl[jklOffset + 1]      - jkl[jklOffset] * abc[abcOffset + 1]) +
                r[rOffset + 4] * (jkl[jklOffset] * abc[abcOffset + 2]      - abc[abcOffset] * jkl[jklOffset + 2]) +
                r[rOffset + 3] * (abc[abcOffset + 1] * jkl[jklOffset + 2]  - jkl[jklOffset + 1] * abc[abcOffset + 2]);
     v = v / m;
@@ -575,7 +563,7 @@ triangleIntersectAt(__global double *res,
         return;
     }
 
-    double t = def[defOffset + 2] * (abc[abcOffset] * jkl[jklOffset + 1] - jkl[jklOffset] * abc[abcOffset + 1]) +
+    float t = def[defOffset + 2] * (abc[abcOffset] * jkl[jklOffset + 1] - jkl[jklOffset] * abc[abcOffset + 1]) +
                def[defOffset + 1] * (jkl[jklOffset] * abc[abcOffset + 2] - abc[abcOffset] * jkl[jklOffset + 2]) +
                def[defOffset] * (abc[abcOffset + 1] * jkl[jklOffset + 2] - jkl[jklOffset + 1] * abc[abcOffset + 2]);
     res[resOffset] = -1.0 * t / m;

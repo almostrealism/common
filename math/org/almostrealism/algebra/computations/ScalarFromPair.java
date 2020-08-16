@@ -60,11 +60,14 @@ public class ScalarFromPair extends DynamicAcceleratedProducerAdapter<Scalar> im
 	public void compact() {
 		super.compact();
 
-		if (value == null && isCompletelyDynamicAcceleratedAdapters()) {
+		if (value == null && isCompletelyValueOnly()) {
 			List<Argument> newArgs = new ArrayList<>();
 			newArgs.add(getInputProducers()[0]);
 
 			value = ((DynamicAcceleratedProducerAdapter) getInputProducers()[1].getProducer()).getValue(coordinate);
+			if (value.contains("Infinity")) {
+				throw new IllegalArgumentException("Infinity is not supported");
+			}
 
 			if (getInputProducers()[1].getProducer().isStatic()) {
 				isStatic = true;

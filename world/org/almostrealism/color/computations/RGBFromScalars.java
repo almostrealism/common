@@ -44,7 +44,7 @@ public class RGBFromScalars extends DynamicAcceleratedProducerAdapter<RGB> imple
 	public void compact() {
 		super.compact();
 
-		if (value == null && isCompletelyDynamicAcceleratedAdapters()) {
+		if (value == null && isCompletelyValueOnly()) {
 			DynamicAcceleratedProducerAdapter xyz[] = new DynamicAcceleratedProducerAdapter[] {
 					((DynamicAcceleratedProducerAdapter) getInputProducers()[1].getProducer()),
 					((DynamicAcceleratedProducerAdapter) getInputProducers()[2].getProducer()),

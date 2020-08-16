@@ -17,6 +17,7 @@
 package org.almostrealism.algebra;
 
 import org.almostrealism.math.MemoryBankAdapter;
+import org.almostrealism.util.Producer;
 
 /**
  * A collection of {@link Pair}s of a fixed length, that is contiguous in
@@ -28,5 +29,14 @@ public class PairBank extends MemoryBankAdapter<Pair> {
 	public PairBank(int count) {
 		super(2, count, delegateSpec ->
 				new Pair(delegateSpec.getDelegate(), delegateSpec.getOffset()));
+	}
+
+	public static PairBank fromProducer(Producer<Pair> producer, int count) {
+		PairBank bank = new PairBank(count);
+		for (int i = 0; i < bank.getCount(); i++) {
+			bank.set(i, producer.evaluate());
+		}
+
+		return bank;
 	}
 }

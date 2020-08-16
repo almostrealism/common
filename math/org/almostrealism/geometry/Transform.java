@@ -67,13 +67,13 @@ public class Transform extends DynamicAcceleratedProducerAdapter<Vector> {
 	public void compact() {
 		super.compact();
 
-		if (value == null && isCompletelyDynamicAcceleratedAdapters()) {
+		if (value == null && isCompletelyValueOnly()) {
 			value = new String[3];
 
 			DynamicAcceleratedProducerAdapter<Vector> v =
 					(DynamicAcceleratedProducerAdapter<Vector>) inputProducers[1].getProducer();
-			DynamicAcceleratedProducerAdapter<Vector> t =
-					(DynamicAcceleratedProducerAdapter<Vector>) inputProducers[2].getProducer();
+			DynamicAcceleratedProducerAdapter<TransformMatrix> t =
+					(DynamicAcceleratedProducerAdapter<TransformMatrix>) inputProducers[2].getProducer();
 
 			for (int i = 0; i < value.length; i++) {
 				List<Product> sum = new ArrayList<>();
@@ -108,14 +108,29 @@ public class Transform extends DynamicAcceleratedProducerAdapter<Vector> {
 					if (itr.next().isZero()) itr.remove();
 				}
 
-				StringBuffer buf = new StringBuffer();
+				if (n.isZero() && sum.size() <= 0) {
+					value[i] = "0.0";
+				} else {
+					StringBuffer buf = new StringBuffer();
 
-				for (int j = 0; j < sum.size(); j++) {
-					buf.append(sum.get(j));
-					if (j < sum.size() - 1) buf.append(" + ");
+					if (!n.isZero()) {
+						buf.append(n);
+						if (sum.size() > 0) buf.append(" + ");
+					}
+
+					for (int j = 0; j < sum.size(); j++) {
+						buf.append(sum.get(j));
+						if (j < sum.size() - 1) buf.append(" + ");
+					}
+
+					value[i] = buf.toString();
 				}
+			}
 
-				value[i] = buf.toString();
+			for (int i = 0; i < value.length; i++) {
+				if (value[i].trim().length() <= 0) {
+					throw new IllegalArgumentException("Empty value for index " + i);
+				}
 			}
 
 			List<Argument> newArgs = new ArrayList<>();
@@ -135,7 +150,7 @@ public class Transform extends DynamicAcceleratedProducerAdapter<Vector> {
 		return getArgumentValueName(1, index);
 	}
 
-	private static class Product {
+	private class Product {
 		Number a, b;
 
 		public Product(Number a, Number b) {
@@ -153,7 +168,7 @@ public class Transform extends DynamicAcceleratedProducerAdapter<Vector> {
 
 		public String toString() {
 			if (isStatic()) {
-				return String.valueOf(Double.parseDouble(a.toString()) * Double.parseDouble(b.toString()));
+				return stringForDouble(doubleForString(a.toString()) * doubleForString(b.toString()));
 			} else if (a.isMultiplicativeIdentity()) {
 				return b.toString();
 			} else if (b.isMultiplicativeIdentity()) {
@@ -164,7 +179,7 @@ public class Transform extends DynamicAcceleratedProducerAdapter<Vector> {
 		}
 	}
 
-	private static class Number {
+	private class Number {
 		String number;
 		boolean isStatic;
 
@@ -180,17 +195,18 @@ public class Transform extends DynamicAcceleratedProducerAdapter<Vector> {
 
 		public void addTo(Number n) {
 			if (!isStatic || !n.isStatic) throw new IllegalArgumentException("Cannot add to unless isStatic");
-			number = String.valueOf(Double.parseDouble(number) + Double.parseDouble(n.number));
+			number = stringForDouble(doubleForString(number) + doubleForString(n.number));
 		}
 
 		public boolean isMultiplicativeIdentity() {
-			return isStatic && Double.parseDouble(number) == 1.0;
+			return isStatic && doubleForString(number) == 1.0;
 		}
 
 		public boolean isZero() {
-			return isStatic && Double.parseDouble(number) == 0.0;
+			return isStatic && doubleForString(number) == 0.0;
 		}
 
+		@Override
 		public String toString() {
 			return number;
 		}

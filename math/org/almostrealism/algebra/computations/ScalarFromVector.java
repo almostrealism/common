@@ -60,13 +60,16 @@ public class ScalarFromVector extends DynamicAcceleratedProducerAdapter<Scalar> 
 	public void compact() {
 		super.compact();
 
-		if (value == null && isCompletelyDynamicAcceleratedAdapters()) {
+		if (value == null && isCompletelyValueOnly()) {
 			List<Argument> newArgs = new ArrayList<>();
 			newArgs.add(getInputProducers()[0]);
 
 			DynamicAcceleratedProducerAdapter d = (DynamicAcceleratedProducerAdapter) getInputProducers()[1].getProducer();
 
 			value = d.getValue(coordinate);
+			if (value.contains("Infinity")) {
+				throw new IllegalArgumentException("Infinity is not supported");
+			}
 
 			for (int i = 1; i < d.getInputProducers().length; i++) {
 				newArgs.add(d.getInputProducers()[i]);

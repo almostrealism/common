@@ -32,7 +32,7 @@ public class AcceleratedProducer<T extends MemWrapper> implements KernelizedProd
 	private static Map<String, ThreadLocal<HardwareOperator>> operators = new HashMap<>();
 
 	private String function;
-	private boolean  kernel;
+	private boolean kernel;
 
 	protected Argument inputProducers[];
 
@@ -70,11 +70,15 @@ public class AcceleratedProducer<T extends MemWrapper> implements KernelizedProd
 
 			if (operators.get(function).get() == null) {
 				operators.get(function).set(Hardware.getLocalHardware()
-						.getFunctions().getOperators(getClass()).get(function, kernel, getArgsCount()));
+						.getFunctions().getOperators(getClass()).get(function, getArgsCount()));
 			}
 		}
 
 		return operators.get(function).get();
+	}
+
+	protected String getNumberType() {
+		return Hardware.getLocalHardware().isDoublePrecision() ? "double" : "float";
 	}
 
 	@Override
@@ -153,6 +157,23 @@ public class AcceleratedProducer<T extends MemWrapper> implements KernelizedProd
 	 */
 	protected T handleNull(int argIndex) {
 		throw new NullPointerException("argument " + argIndex + " to function " + function);
+	}
+
+	protected String stringForDouble(double d) {
+		return "(" + getNumberType() + ")" + Hardware.getLocalHardware().stringForDouble(d);
+	}
+
+	protected double doubleForString(String s) {
+		s = s.trim();
+		while (s.startsWith("(double)") || s.startsWith("(float)")) {
+			if (s.startsWith("(double)")) {
+				s = s.substring(8).trim();
+			} else if (s.startsWith("(float)")) {
+				s = s.substring(7).trim();
+			}
+		}
+
+		return Double.parseDouble(s);
 	}
 
 	@Override

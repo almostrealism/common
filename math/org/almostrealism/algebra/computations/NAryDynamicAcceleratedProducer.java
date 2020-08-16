@@ -19,7 +19,6 @@ package org.almostrealism.algebra.computations;
 import org.almostrealism.math.AcceleratedProducer;
 import org.almostrealism.math.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.math.MemWrapper;
-import org.almostrealism.util.AcceleratedStaticProducer;
 import org.almostrealism.util.Producer;
 
 import java.util.ArrayList;
@@ -58,7 +57,7 @@ public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> exten
 	public void compact() {
 		super.compact();
 
-		if (value == null && isCompletelyDynamicAcceleratedAdapters()) {
+		if (value == null && isCompletelyValueOnly()) {
 			List<AcceleratedProducer.Argument> newArgs = new ArrayList<>();
 			newArgs.add(getInputProducers()[0]);
 
@@ -80,20 +79,20 @@ public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> exten
 					double staticProduct = getIdentity();
 
 					for (int i = 0; i < staticProducers.size(); i++) {
-						staticProduct = combine(staticProduct, Double.parseDouble(staticProducers.get(i).getValue(pos)));
+						staticProduct = combine(staticProduct, doubleForString(staticProducers.get(i).getValue(pos)));
 					}
 
 					Double replace = isReplaceAll(staticProduct);
 					if (replace != null) {
-						value[pos] = String.valueOf(replace);
+						value[pos] = stringForDouble(replace);
 						valueStatic[pos] = true;
 						continue pos;
 					}
 
 					if (isRemove(staticProduct)) {
-						removed = String.valueOf(staticProduct);
+						removed = stringForDouble(staticProduct);
 					} else {
-						buf.append(staticProduct);
+						buf.append(stringForDouble(staticProduct));
 						if (dynamicProducers.size() > 0) buf.append(" " + operator + " ");
 					}
 				}
@@ -109,6 +108,9 @@ public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> exten
 				}
 
 				value[pos] = buf.length() > 0 ? buf.toString() : removed;
+				if (value[pos].contains("Infinity")) {
+					throw new IllegalArgumentException("Infinity is not supported");
+				}
 			}
 
 			// If there are no dynamic dependencies, or if all values have been replaced

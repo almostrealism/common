@@ -19,7 +19,7 @@ package org.almostrealism.util;
 import java.util.ArrayList;
 
 public class RankedChoiceProducer<T> extends ArrayList<ProducerWithRank<T>> implements Producer<T> {
-	private double e;
+	protected double e;
 
 	public RankedChoiceProducer(double e) { this.e = e; }
 
@@ -62,9 +62,6 @@ public class RankedChoiceProducer<T> extends ArrayList<ProducerWithRank<T>> impl
 	@Override
 	public void compact() {
 		// TODO  Hardware acceleration for ranked choice
-		for (ProducerWithRank p : this) {
-			p.getProducer().compact();
-			p.getRank().compact();
-		}
+		forEach(ProducerWithRank::compact);
 	}
 }

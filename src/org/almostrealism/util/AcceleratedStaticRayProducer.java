@@ -14,9 +14,13 @@
  * limitations under the License.
  */
 
-package org.almostrealism.geometry;
+package org.almostrealism.util;
 
-import org.almostrealism.util.Producer;
+import org.almostrealism.geometry.Ray;
+import org.almostrealism.geometry.RayProducer;
 
-public interface RayProducer extends Producer<Ray> {
+public class AcceleratedStaticRayProducer extends AcceleratedStaticProducer<Ray> implements RayProducer {
+	public AcceleratedStaticRayProducer(Ray value, Producer<Ray> output) {
+		super(value, output);
+	}
 }

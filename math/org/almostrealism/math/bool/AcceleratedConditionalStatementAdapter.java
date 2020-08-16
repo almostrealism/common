@@ -37,7 +37,8 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrappe
 			StringBuffer buf = new StringBuffer();
 
 			getVariables().forEach(var -> {
-				buf.append("double ");
+				buf.append(getNumberType());
+				buf.append(" ");
 				buf.append(var.getName());
 				buf.append(" = ");
 				buf.append(var.getData());
@@ -84,7 +85,8 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrappe
 			StringBuffer buf = new StringBuffer();
 
 			getVariables().forEach(var -> {
-				buf.append("double ");
+				buf.append(getNumberType());
+				buf.append(" ");
 				buf.append(var.getName());
 				buf.append(" = ");
 				buf.append(var.getData());

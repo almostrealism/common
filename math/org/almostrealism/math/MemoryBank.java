@@ -26,4 +26,5 @@ package org.almostrealism.math;
 public interface MemoryBank<T extends MemWrapper> extends MemWrapper {
 	T get(int index);
 	void set(int index, T value);
+	int getCount();
 }

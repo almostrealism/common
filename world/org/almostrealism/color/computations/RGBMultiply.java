@@ -20,6 +20,10 @@ import org.almostrealism.color.RGB;
 import org.almostrealism.math.AcceleratedProducer;
 import org.almostrealism.util.Producer;
 
+/**
+ * @deprecated Use ColorProduct
+ */
+@Deprecated
 public class RGBMultiply extends AcceleratedProducer<RGB> {
 	public RGBMultiply(Producer<RGB> a, Producer<RGB> b) {
 		super("multiply", RGB.blank(), a, b);

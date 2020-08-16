@@ -16,6 +16,7 @@
 
 package org.almostrealism.algebra;
 
+import org.almostrealism.math.MemWrapper;
 import org.almostrealism.util.Producer;
 
 public class Scalar extends Pair implements Comparable<Scalar> {
@@ -27,6 +28,11 @@ public class Scalar extends Pair implements Comparable<Scalar> {
 	public Scalar(boolean certain) { if (certain) setCertainty(1.0); }
 	public Scalar(double v) { setValue(v); setCertainty(1.0); }
 	public Scalar(double v, double c) { setValue(v); setCertainty(c); }
+
+	protected Scalar(MemWrapper delegate, int delegateOffset) {
+		super(delegate, delegateOffset);
+		setCertainty(1.0);
+	}
 
 	public Scalar setValue(double v) { setLeft(v); return this; }
 	public Scalar setCertainty(double c) { setRight(c); return this; }

@@ -19,6 +19,7 @@ package org.almostrealism.algebra;
 import org.almostrealism.math.Hardware;
 import org.almostrealism.math.MemWrapper;
 import org.almostrealism.math.MemWrapperAdapter;
+import org.almostrealism.util.Defaults;
 import org.almostrealism.util.DynamicProducer;
 import org.almostrealism.util.Producer;
 import org.jocl.CL;
@@ -129,6 +130,21 @@ public class Pair extends MemWrapperAdapter {
 	@Override
 	public int getMemLength() {
 		return 2;
+	}
+
+	/** @return A String representation of this Vector object. */
+	@Override
+	public String toString() {
+		StringBuffer value = new StringBuffer();
+
+		value.append("[");
+		value.append(Defaults.displayFormat.format(getX()));
+		value.append(", ");
+		value.append(Defaults.displayFormat.format(getY()));
+		value.append("]");
+
+
+		return value.toString();
 	}
 
 	public static Producer<Pair> empty() {

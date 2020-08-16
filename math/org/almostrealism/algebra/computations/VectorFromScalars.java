@@ -45,7 +45,7 @@ public class VectorFromScalars extends DynamicAcceleratedProducerAdapter<Vector>
 	public void compact() {
 		super.compact();
 
-		if (value == null && isCompletelyDynamicAcceleratedAdapters()) {
+		if (value == null && isCompletelyValueOnly()) {
 			DynamicAcceleratedProducerAdapter xyz[] = new DynamicAcceleratedProducerAdapter[] {
 					((DynamicAcceleratedProducerAdapter) getInputProducers()[1].getProducer()),
 					((DynamicAcceleratedProducerAdapter) getInputProducers()[2].getProducer()),
@@ -58,19 +58,32 @@ public class VectorFromScalars extends DynamicAcceleratedProducerAdapter<Vector>
 					xyz[2].getValue(0)
 			};
 
+			for (int i = 0; i < value.length; i++) {
+				if (value[i].contains("Infinity")) {
+					throw new IllegalArgumentException("Infinity is not supported");
+				}
+			}
+
 			List<Argument> newArgs = new ArrayList<>();
 			newArgs.add(inputProducers[0]);
 
-			for (int i = 1; i < xyz[0].getInputProducers().length; i++) {
-				newArgs.add(xyz[0].getInputProducers()[i]);
+			if (!xyz[0].isStatic()) {
+				for (int i = 1; i < xyz[0].getInputProducers().length; i++) {
+					newArgs.add(xyz[0].getInputProducers()[i]);
+				}
 			}
 
-			for (int i = 1; i < xyz[1].getInputProducers().length; i++) {
-				newArgs.add(xyz[1].getInputProducers()[i]);
+			if (!xyz[1].isStatic()) {
+				for (int i = 1; i < xyz[1].getInputProducers().length; i++) {
+					newArgs.add(xyz[1].getInputProducers()[i]);
+				}
 			}
 
-			for (int i = 1; i < xyz[2].getInputProducers().length; i++) {
-				newArgs.add(xyz[2].getInputProducers()[i]);
+
+			if (!xyz[0].isStatic()) {
+				for (int i = 1; i < xyz[2].getInputProducers().length; i++) {
+					newArgs.add(xyz[2].getInputProducers()[i]);
+				}
 			}
 
 			inputProducers = newArgs.toArray(new Argument[0]);

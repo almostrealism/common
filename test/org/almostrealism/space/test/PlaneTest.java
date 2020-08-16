@@ -20,27 +20,53 @@ import org.almostrealism.algebra.computations.RayMatrixTransform;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
+import org.almostrealism.math.DynamicAcceleratedProducer;
 import org.almostrealism.space.Plane;
 import org.almostrealism.space.ShadableIntersection;
+import org.almostrealism.util.Producer;
 import org.almostrealism.util.StaticProducer;
 import org.junit.Assert;
 import org.junit.Test;
 
 public class PlaneTest {
-	@Test
-	public void intersectionTest1() {
-		StaticProducer<Ray> r = new StaticProducer<>(new Ray(new Vector(0.0, 0.0, 1.0),
-															new Vector(0.0, 0.5, -1.0)));
+	protected ShadableIntersection test1() {
+		Producer<Ray> r = StaticProducer.of(new Ray(new Vector(0.0, 0.0, 1.0),
+												new Vector(0.0, 0.5, -1.0)));
 
 		Plane p = new Plane(Plane.XZ);
 		p.setLocation(new Vector(0.0, -10, 0.0));
 
-		ShadableIntersection intersection = (ShadableIntersection) p.intersectAt(r);
-		Assert.assertTrue(((Scalar) intersection.getDistance().evaluate(new Object[0])).getValue() == -20);
+		return (ShadableIntersection) p.intersectAt(r);
+	}
 
-		Assert.assertTrue(intersection.get(0).evaluate(new Object[0]).equals(
+	@Test
+	public void intersectionTest1() {
+		ShadableIntersection intersection = test1();
+		double distance = ((Scalar) intersection.getDistance().evaluate()).getValue();
+		System.out.println("distance = " + distance);
+		Assert.assertEquals(-20.0, distance, Math.pow(10, -10));
+
+		Assert.assertTrue(intersection.get(0).evaluate().equals(
 								new Ray(new Vector(0.0, -10.0, 21.0),
 										new Vector(0.0, 1.0, 0.0))));
+	}
+
+	@Test
+	public void intersectionTest1Compact() {
+		ShadableIntersection intersection = test1();
+
+		Producer<Scalar> p = intersection.getDistance();
+		p.compact();
+
+		System.out.println(((DynamicAcceleratedProducer) p).getFunctionDefinition());
+
+		double distance = p.evaluate().getValue();
+		System.out.println("distance = " + distance);
+		Assert.assertEquals(-20.0, distance, Math.pow(10, -10));
+
+		Assert.assertTrue(intersection.get(0).evaluate().equals(
+				new Ray(new Vector(0.0, -10.0, 21.0),
+						new Vector(0.0, 1.0, 0.0))));
 	}
 
 	@Test

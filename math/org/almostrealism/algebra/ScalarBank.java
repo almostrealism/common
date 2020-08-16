@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,11 +16,17 @@
 
 package org.almostrealism.algebra;
 
-import org.almostrealism.math.AcceleratedProducer;
-import org.almostrealism.util.Producer;
+import org.almostrealism.math.MemoryBankAdapter;
 
-public class VectorNormalize extends AcceleratedProducer<Vector> implements VectorProducer {
-	public VectorNormalize(Producer<Vector> v) {
-		super("vectorNormalize", v);
+/**
+ * A collection of {@link Scalar}s of a fixed length, that is contiguous in
+ * RAM and usable for kernel methods.
+ *
+ * @author  Michael Murray
+ */
+public class ScalarBank extends MemoryBankAdapter<Scalar> {
+	public ScalarBank(int count) {
+		super(2, count, delegateSpec ->
+				new Scalar(delegateSpec.getDelegate(), delegateSpec.getOffset()));
 	}
 }

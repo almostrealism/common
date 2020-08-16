@@ -21,6 +21,10 @@ import org.almostrealism.util.Producer;
 
 public class DirectionDotDirection extends DotProduct {
 	public DirectionDotDirection(Producer<Ray> r) {
-		super(new RayDirection(r), new RayDirection(r));
+		this(new RayDirection(r));
+	}
+	
+	protected DirectionDotDirection(RayDirection d) {
+		super(d, d);
 	}
 }

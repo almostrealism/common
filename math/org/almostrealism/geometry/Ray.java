@@ -51,6 +51,11 @@ public class Ray extends MemWrapperAdapter implements Cloneable {
 	public Ray() {
 		init();
 	}
+
+	protected Ray(MemWrapper delegate, int delegateOffset) {
+		setDelegate(delegate, delegateOffset);
+		init();
+	}
 	
 	/**
 	 * Constructs a Ray object using the specified origin and direction vectors.
@@ -156,7 +161,7 @@ public class Ray extends MemWrapperAdapter implements Cloneable {
 	 *          as a Vector object.
 	 */
 	public Producer<Vector> pointAt(Producer<Scalar> t) {
-		return new RayPointAt(new StaticProducer<>(this), t);
+		return new RayPointAt(StaticProducer.of(this), t);
 	}
 
 	@Override

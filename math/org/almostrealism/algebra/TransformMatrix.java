@@ -78,7 +78,7 @@ public class TransformMatrix extends MemWrapperAdapter implements TripleFunction
 	private void initMem(boolean identity) {
 		init();
 		if (identity) {
-			new IdentityMatrix(new StaticProducer<>(this)).evaluate(new Object[0]);
+			new IdentityMatrix(new StaticProducer<>(this)).evaluate();
 		}
 	}
 	
@@ -164,7 +164,7 @@ public class TransformMatrix extends MemWrapperAdapter implements TripleFunction
 	 * @see  MatrixProduct
 	 */
 	public TransformMatrix multiply(TransformMatrix matrix) {
-		return new MatrixProduct(new StaticProducer<>(this), new StaticProducer<>(matrix)).evaluate(new Object[0]);
+		return new MatrixProduct(StaticProducer.of(this), StaticProducer.of(matrix)).evaluate(new Object[0]);
 	}
 	
 	/**
@@ -304,7 +304,7 @@ public class TransformMatrix extends MemWrapperAdapter implements TripleFunction
 	 * returns the result as a double value.
 	 */
 	public double determinant() {
-		return new MatrixDeterminant(new StaticProducer<>(this)).evaluate(new Object[0]).getValue();
+		return new MatrixDeterminant(StaticProducer.of(this)).evaluate(new Object[0]).getValue();
 	}
 
 	/**
@@ -314,7 +314,7 @@ public class TransformMatrix extends MemWrapperAdapter implements TripleFunction
 	 */
 	public TransformMatrix transpose() {
 		if (transposeMatrix == null) {
-			transposeMatrix = new MatrixTranspose(new StaticProducer<>(this)).evaluate(new Object[0]);
+			transposeMatrix = new MatrixTranspose(StaticProducer.of(this)).evaluate(new Object[0]);
 		}
 
 		return transposeMatrix;

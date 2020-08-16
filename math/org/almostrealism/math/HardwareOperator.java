@@ -39,7 +39,6 @@ public class HardwareOperator<T extends MemWrapper> implements Operator<T>, Fact
 	private cl_program prog;
 	private String name;
 
-	private boolean isKernel;
 	private int argCount;
 
 	private long globalWorkSize = 1;
@@ -52,13 +51,8 @@ public class HardwareOperator<T extends MemWrapper> implements Operator<T>, Fact
 	}
 
 	public HardwareOperator(cl_program program, String name, int argCount) {
-		this(program, name, true, argCount);
-	}
-
-	public HardwareOperator(cl_program program, String name, boolean kernel, int argCount) {
 		this.prog = program;
 		this.name = name;
-		this.isKernel = kernel;
 		this.argCount = argCount;
 	}
 
@@ -148,7 +142,7 @@ public class HardwareOperator<T extends MemWrapper> implements Operator<T>, Fact
 
 			for (int i = 0; i < argCount; i++) {
 				CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
-						Pointer.to(new int[] { ((MemWrapper) args[i]).getMemLength() })); // Size
+						Pointer.to(new int[] { ((MemWrapper) args[i]).getAtomicMemLength() })); // Size
 			}
 
 			CL.clEnqueueNDRangeKernel(Hardware.getLocalHardware().getQueue(), kernel, 1,

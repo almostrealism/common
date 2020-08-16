@@ -36,15 +36,27 @@ import org.almostrealism.util.StaticProducer;
 @Function
 public interface VectorProducer extends Producer<Vector> {
     default ScalarProducer x() {
-        return new ScalarFromVector(this, ScalarFromVector.X);
+        return x(this);
+    }
+
+    static ScalarProducer x(Producer<Vector> v) {
+        return new ScalarFromVector(v, ScalarFromVector.X);
     }
 
     default ScalarProducer y() {
-        return new ScalarFromVector(this, ScalarFromVector.Y);
+        return y(this);
+    }
+
+    static ScalarProducer y(Producer<Vector> v) {
+        return new ScalarFromVector(v, ScalarFromVector.Y);
     }
 
     default ScalarProducer z() {
-        return new ScalarFromVector(this, ScalarFromVector.Z);
+        return z(this);
+    }
+
+    static ScalarProducer z(Producer<Vector> v) {
+        return new ScalarFromVector(v, ScalarFromVector.Z);
     }
 
     default ScalarProducer dotProduct(Producer<Vector> operand) {
@@ -64,15 +76,23 @@ public interface VectorProducer extends Producer<Vector> {
     }
 
     default VectorProduct scalarMultiply(Scalar operand) {
-        return scalarMultiply(new StaticProducer<>(operand));
+        return scalarMultiply(StaticProducer.of(operand));
     }
 
     default VectorProduct scalarMultiply(double operand) {
         return scalarMultiply(new Scalar(operand));
     }
 
+    default VectorProduct minus() {
+        return scalarMultiply(-1.0);
+    }
+
     default ScalarProducer length() {
-        return x().pow(2.0).add(y().pow(2.0)).add(z().pow(2.0)).pow(0.5);
+        return length(this);
+    }
+
+    static ScalarProducer length(Producer<Vector> v) {
+        return x(v).pow(2.0).add(y(v).pow(2.0)).add(z(v).pow(2.0)).pow(0.5);
     }
 
     default ScalarProducer lengthSq() {
@@ -80,9 +100,13 @@ public interface VectorProducer extends Producer<Vector> {
     }
 
     default VectorProducer normalize() {
-        ScalarProducer oneOverLength = length().pow(-1.0);
-        return new VectorFromScalars(x().multiply(oneOverLength),
-                                    y().multiply(oneOverLength),
-                                    z().multiply(oneOverLength));
+        return normalize(this);
+    }
+
+    static VectorProducer normalize(Producer<Vector> p) {
+        ScalarProducer oneOverLength = length(p).pow(-1.0);
+        return new VectorFromScalars(x(p).multiply(oneOverLength),
+                y(p).multiply(oneOverLength),
+                z(p).multiply(oneOverLength));
     }
 }

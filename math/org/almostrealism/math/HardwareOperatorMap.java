@@ -44,8 +44,6 @@ public class HardwareOperatorMap<T extends MemWrapper> {
 
 	public HardwareOperator<T> get(String key, int argCount) { return new HardwareOperator<>(prog, key, argCount); }
 
-	public HardwareOperator<T> get(String key, boolean kernel, int argCount) { return new HardwareOperator<>(prog, key, kernel, argCount); }
-
 	@Override
 	public void finalize() { CL.clReleaseProgram(prog); }
 }

@@ -25,6 +25,9 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.computations.RGBProducer;
+import org.almostrealism.geometry.Ray;
+import org.almostrealism.geometry.RayFromVectors;
+import org.almostrealism.geometry.RayProducer;
 
 public class StaticProducer<T> implements Producer<T> {
 	private T value;
@@ -52,6 +55,8 @@ public class StaticProducer<T> implements Producer<T> {
 			return (Producer<V>) new AcceleratedStaticPairProducer((Pair) value, Pair.empty());
 		} else if (value instanceof Vector) {
 			return (Producer<V>) new AcceleratedStaticVectorProducer((Vector) value, Vector.blank());
+		} else if (value instanceof Ray) {
+			return (Producer<V>) new AcceleratedStaticRayProducer((Ray) value, Ray.blank());
 		} else if (value instanceof TransformMatrix) {
 			return (Producer<V>) new AcceleratedStaticTransformMatrixProducer((TransformMatrix) value, TransformMatrix.blank());
 		} else if (value == null) {
@@ -73,6 +78,10 @@ public class StaticProducer<T> implements Producer<T> {
 
 	public static VectorProducer of(Vector value) {
 		return new AcceleratedStaticVectorProducer(value, Vector.blank());
+	}
+
+	public static RayProducer of(Ray value) {
+		return new AcceleratedStaticRayProducer(value, Ray.blank());
 	}
 
 	public static RGBProducer of(RGB value) { return new AcceleratedStaticRGBProducer(value, RGB.blank()); }

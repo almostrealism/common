@@ -55,7 +55,7 @@ public class StripeTexture implements Texture, Editable {
 	 * with a stripe width of 1.0 that is solid (not smooth) across the x axis.
 	 */
 	public StripeTexture() {
-		Object props[] = {new Double(1.0), new Boolean(false),
+		Object props[] = {new Double(0.1), new Boolean(false),
 							new Editable.Selection(StripeTexture.axisOptions),
 							new RGB(1.0, 1.0, 1.0), new RGB(0.0, 0.0, 0.0),
 							new Double(0.0)};

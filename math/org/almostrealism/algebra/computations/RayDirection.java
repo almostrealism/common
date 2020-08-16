@@ -46,7 +46,7 @@ public class RayDirection extends DynamicAcceleratedProducerAdapter<Vector> impl
 	public void compact() {
 		super.compact();
 
-		if (value == null && isCompletelyDynamicAcceleratedAdapters()) {
+		if (value == null && isCompletelyValueOnly()) {
 			value = new String[3];
 
 			DynamicAcceleratedProducerAdapter<Vector> r =
@@ -54,6 +54,9 @@ public class RayDirection extends DynamicAcceleratedProducerAdapter<Vector> impl
 
 			for (int i = 0; i < value.length; i++) {
 				value[i] = r.getValue(i + 3);
+				if (value[i].contains("Infinity")) {
+					throw new IllegalArgumentException("Infinity is not supported");
+				}
 			}
 
 			List<Argument> newArgs = new ArrayList<>();

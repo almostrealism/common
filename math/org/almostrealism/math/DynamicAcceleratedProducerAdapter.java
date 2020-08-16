@@ -56,10 +56,16 @@ public abstract class DynamicAcceleratedProducerAdapter<T extends MemWrapper> ex
 
 	public abstract String getValue(int pos);
 
-	protected boolean isCompletelyDynamicAcceleratedAdapters() {
+	public boolean isValueOnly() {
+		return true;
+	}
+
+	protected boolean isCompletelyValueOnly() {
 		// Confirm that all inputs are themselves dynamic accelerated adapters
 		for (int i = 1; i < getInputProducers().length; i++) {
 			if (getInputProducers()[i].getProducer() instanceof DynamicAcceleratedProducerAdapter == false)
+				return false;
+			if (!((DynamicAcceleratedProducerAdapter) getInputProducers()[i].getProducer()).isValueOnly())
 				return false;
 		}
 

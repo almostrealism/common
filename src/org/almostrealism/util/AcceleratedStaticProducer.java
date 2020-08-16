@@ -15,7 +15,13 @@ public class AcceleratedStaticProducer<T extends MemWrapper> extends DynamicAcce
 	@Override
 	public String getValue(int pos) {
 		Pair p = MemWrapper.fromMem(value.getMem(), value.getOffset() + pos, 1);
-		return String.valueOf(p.getA());
+
+		String s = stringForDouble(p.getA());
+		if (s.contains("Infinity")) {
+			throw new IllegalArgumentException("Infinity is not supported");
+		}
+
+		return s;
 	}
 
 	/**

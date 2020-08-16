@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,9 +22,9 @@ import org.almostrealism.geometry.Ray;
 import org.almostrealism.math.AcceleratedProducer;
 import org.almostrealism.util.Producer;
 
-public class RayPointAt extends AcceleratedProducer<Vector> {
+public class RayPointAt extends VectorSum {
 	public RayPointAt(Producer<Ray> r, Producer<Scalar> t) {
-		super("rayPointAt", Vector.blank(), r, t);
+		super(new RayOrigin(r), new VectorProduct(new RayDirection(r), new VectorFromScalars(t, t, t)));
 	}
 
 	/**

@@ -24,7 +24,7 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.algebra.computations.RayDirection;
 import org.almostrealism.algebra.computations.RayPointAt;
-import org.almostrealism.geometry.RayProducer;
+import org.almostrealism.geometry.RayFromVectors;
 import org.almostrealism.util.Producer;
 import org.almostrealism.util.ProducerWithRank;
 import org.almostrealism.util.StaticProducer;
@@ -36,7 +36,7 @@ import org.almostrealism.util.StaticProducer;
  */
 public class ShadableIntersection extends Intersection implements ContinuousField {
 	private Producer<Vector> incident;
-	private Producer<Ray> normal; // TODO  Change to Producer<Ray>
+	private Producer<Ray> normal;
 
 	public ShadableIntersection(Intersectable<?> surface, Producer<Ray> r, Producer<Scalar> distance) {
 		this(surface, new RayPointAt(r, distance), new RayDirection(r), distance);
@@ -48,28 +48,14 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 
 		this.incident = incident;
 
-		Producer p = new RayProducer(getPoint(), ((Gradient) surface).getNormalAt(point));
+		Producer p = new RayFromVectors(getPoint(), ((Gradient) surface).getNormalAt(point));
 		normal = new ProducerWithRank<>(p, distance);
 	}
 	
 	/** Returns the viewer direction. */
 	@Override
 	public Producer<Vector> getNormalAt(Producer<Vector> point) {
-		return new Producer<Vector>() {
-
-			@Override
-			public Vector evaluate(Object[] args) {
-				Vector v = incident.evaluate(args);
-				v.normalize();
-				v.multiplyBy(-1);
-				return v;
-			}
-
-			@Override
-			public void compact() {
-				incident.compact();
-			}
-		};
+		return VectorProducer.normalize(incident).scalarMultiply(-1.0);
 	}
 	
 	/** Delegates to {@link #getNormalAt(Producer)}. */

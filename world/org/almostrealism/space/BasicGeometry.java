@@ -261,15 +261,15 @@ public class BasicGeometry implements Positioned, Oriented, Scaled, DecodePostPr
 			if (getLocation() != null) {
 				completeTransform =
 						completeTransform.multiply(
-								new TranslationMatrix(new StaticProducer<>(getLocation())).evaluate(new Object[0]));
+								new TranslationMatrix(StaticProducer.of(getLocation())).evaluate());
 			}
 
 			ScaleMatrix sm;
 
 			if (size == 1.0) {
-				sm = new ScaleMatrix(new StaticProducer<>(scale));
+				sm = new ScaleMatrix(StaticProducer.of(scale));
 			} else {
-				sm = new ScaleMatrix(new StaticProducer<>(scale.multiply(size)));
+				sm = new ScaleMatrix(StaticProducer.of(scale.multiply(size)));
 			}
 
 			this.completeTransform = this.completeTransform.multiply(sm.evaluate(new Object[0]));

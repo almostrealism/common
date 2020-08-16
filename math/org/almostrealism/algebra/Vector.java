@@ -269,7 +269,7 @@ public class Vector extends MemWrapperAdapter implements Positioned, Triple, Clo
 	 */
 	public void addTo(Vector vector) {
 		if (addOperator.get() == null) {
-			addOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("addTo", false, 2));
+			addOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("addTo", 2));
 		}
 
 		addOperator.get().evaluate(new Object[] { this, vector });
@@ -293,7 +293,7 @@ public class Vector extends MemWrapperAdapter implements Positioned, Triple, Clo
 	 */
 	public synchronized void subtractFrom(Vector vector) {
 		if (subtractOperator.get() == null) {
-			subtractOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("subtractFrom", false, 2));
+			subtractOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("subtractFrom", 2));
 		}
 
 		subtractOperator.get().evaluate(new Object[] { this, vector });
@@ -316,7 +316,7 @@ public class Vector extends MemWrapperAdapter implements Positioned, Triple, Clo
 	 */
 	public synchronized void multiplyBy(double value) {
 		if (multiplyOperator.get() == null) {
-			multiplyOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("multiplyBy", false, 2));
+			multiplyOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("multiplyBy", 2));
 		}
 
 		multiplyOperator.get().evaluate(new Object[] { this, new Vector(value, value, value) });
@@ -337,7 +337,7 @@ public class Vector extends MemWrapperAdapter implements Positioned, Triple, Clo
 	 */
 	public synchronized void divideBy(double value) {
 		if (divideOperator.get() == null) {
-			divideOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("divideBy", false, 2));
+			divideOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("divideBy", 2));
 		}
 
 		divideOperator.get().evaluate(new Object[] { this, new Vector(value, value, value) });
@@ -354,7 +354,7 @@ public class Vector extends MemWrapperAdapter implements Positioned, Triple, Clo
 	/** Returns the cross product of this {@link Vector} and that of the specified {@link Vector}. */
 	public Vector crossProduct(Vector vector) {
 		if (crossOperator.get() == null) {
-			crossOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("crossProduct", false, 3));
+			crossOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("crossProduct", 3));
 		}
 
 		return crossOperator.get().evaluate(new Object[] { new Vector(), this, vector });
@@ -379,14 +379,14 @@ public class Vector extends MemWrapperAdapter implements Positioned, Triple, Clo
 	 */
 	public double lengthSq() {
 		if (lengthSqOperator.get() == null) {
-			lengthSqOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("lengthSq", false, 2));
+			lengthSqOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("lengthSq", 2));
 		}
 
 		return lengthSqOperator.get().evaluate(new Object[] { Scalar.blank().evaluate(new Object[0]), this }).getValue();
 	}
 
 	public void normalize() {
-		new VectorNormalize(new StaticProducer<>(this)).evaluate(new Object[0]);
+		StaticProducer.of(this).normalize().evaluate(new Object[0]);
 	}
 
 	/**

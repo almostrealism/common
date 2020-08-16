@@ -31,13 +31,13 @@ public abstract class DynamicAcceleratedProducer<T extends MemWrapper> extends A
 	private HardwareOperatorMap operators;
 
 	public DynamicAcceleratedProducer(Producer<?>... inputArgs) {
-		super(null, inputArgs);
+		super(null, true, inputArgs);
 		setFunctionName(functionName(getClass()));
 		initArgumentNames();
 	}
 
 	public DynamicAcceleratedProducer(Producer<?>[] inputArgs, Object[] additionalArguments) {
-		super(null, inputArgs, additionalArguments);
+		super(null, true, inputArgs, additionalArguments);
 		setFunctionName(functionName(getClass()));
 		initArgumentNames();
 	}
@@ -73,19 +73,35 @@ public abstract class DynamicAcceleratedProducer<T extends MemWrapper> extends A
 	}
 
 	private String getArgumentValueName(String v, int pos) {
+		return getArgumentValueName(v, pos, true);
+	}
+
+	private String getArgumentValueName(String v, int pos, boolean assignment) {
+		String name;
+
 		if (isKernel()) {
 			if (pos == 0) {
-				return v + "[get_global_id(0) * " + v + "Size + " + v + "Offset]";
+				name = v + "[get_global_id(0) * " + v + "Size + " + v + "Offset]";
 			} else {
-				return v + "[get_global_id(0) * " + v + "Size + " + v + "Offset + " + pos + "]";
+				name = v + "[get_global_id(0) * " + v + "Size + " + v + "Offset + " + pos + "]";
 			}
 		} else {
 			if (pos == 0) {
-				return v + "[" + v + "Offset]";
+				name = v + "[" + v + "Offset]";
 			} else {
-				return v + "[" + v + "Offset + " + pos + "]";
+				name = v + "[" + v + "Offset + " + pos + "]";
 			}
 		}
+
+		if (isCastEnabled() && !assignment) {
+			return "(float)" + name;
+		} else {
+			return name;
+		}
+	}
+
+	public boolean isCastEnabled() {
+		return Hardware.getLocalHardware().isGPU() && Hardware.getLocalHardware().isDoublePrecision();
 	}
 
 	public synchronized HardwareOperator getOperator() {
@@ -93,7 +109,7 @@ public abstract class DynamicAcceleratedProducer<T extends MemWrapper> extends A
 			operators = Hardware.getLocalHardware().getFunctions().getOperators(getFunctionDefinition());
 		}
 
-		return operators.get(getFunctionName(), false, getArgsCount());
+		return operators.get(getFunctionName(), getArgsCount());
 	}
 
 	public String getFunctionDefinition() {
@@ -112,7 +128,8 @@ public abstract class DynamicAcceleratedProducer<T extends MemWrapper> extends A
 		for (int i = 0; i < getInputProducers().length; i++) {
 			buf.append("__global ");
 			if (i != 0) buf.append("const ");
-			buf.append("double *");
+			buf.append(getNumberType());
+			buf.append(" *");
 			buf.append(getInputProducers()[i].getName());
 			buf.append(", ");
 		}
@@ -157,6 +174,10 @@ public abstract class DynamicAcceleratedProducer<T extends MemWrapper> extends A
 
 	protected static String functionName(Class c) {
 		String s = c.getSimpleName();
+		if (s.length() == 0) {
+			s = "anonymous";
+		}
+
 		if (s.length() < 2) {
 			throw new IllegalArgumentException(c.getName() + " has too short of a simple name to use for a function");
 		}

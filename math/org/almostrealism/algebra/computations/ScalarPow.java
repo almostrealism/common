@@ -26,10 +26,10 @@ public class ScalarPow extends DynamicAcceleratedProducerAdapter<Scalar> impleme
 			String v2 = getFunctionName() + "_v2";
 
 			if (pos == 0) {
-				return "pow(" + v1 + "[" + v1 + "Offset], " + v2 + "[" + v2 + "Offset])";
+				return "pow(" + getArgumentValueName(1, 0) + ", " + getArgumentValueName(2, 0) + ")";
 			} else if (pos == 1) {
 				// TODO  Certainty of exponent is ignored
-				return "pow(" + v1 + "[" + v1 + "Offset + 1], " + v2 + "[" + v2 + "Offset])";
+				return "pow(" + getArgumentValueName(1, 1) + ", " + getArgumentValueName(2, 0) + ")";
 			} else {
 				throw new IllegalArgumentException(String.valueOf(pos));
 			}
@@ -43,7 +43,7 @@ public class ScalarPow extends DynamicAcceleratedProducerAdapter<Scalar> impleme
 		this.base.compact();
 		this.exponent.compact();
 
-		if (value == null && isCompletelyDynamicAcceleratedAdapters()) {
+		if (value == null && isCompletelyValueOnly()) {
 			DynamicAcceleratedProducerAdapter bd = (DynamicAcceleratedProducerAdapter) base;
 			DynamicAcceleratedProducerAdapter ed = (DynamicAcceleratedProducerAdapter) exponent;
 
@@ -63,6 +63,13 @@ public class ScalarPow extends DynamicAcceleratedProducerAdapter<Scalar> impleme
 					"pow(" + bd.getValue(0) + ", " + ed.getValue(0) + ")",
 					"pow(" + bd.getValue(1) + ", " + ed.getValue(0) + ")"
 			};
+
+			if (value[0].contains("Infinity")) {
+				throw new IllegalArgumentException("Infinity is not supported");
+			}
+			if (value[1].contains("Infinity")) {
+				throw new IllegalArgumentException("Infinity is not supported");
+			}
 
 			inputProducers = newArgs.toArray(new Argument[0]);
 			removeDuplicateArguments();

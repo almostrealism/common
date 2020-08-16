@@ -45,7 +45,7 @@ public class PairFromScalars extends DynamicAcceleratedProducerAdapter<Pair> imp
 	public void compact() {
 		super.compact();
 
-		if (value == null && isCompletelyDynamicAcceleratedAdapters()) {
+		if (value == null && isCompletelyValueOnly()) {
 			DynamicAcceleratedProducerAdapter xy[] = new DynamicAcceleratedProducerAdapter[] {
 					((DynamicAcceleratedProducerAdapter) getInputProducers()[1].getProducer()),
 					((DynamicAcceleratedProducerAdapter) getInputProducers()[2].getProducer())
