@@ -108,6 +108,8 @@ public final class Hardware {
 			Float f = (float) d;
 			if (f.isInfinite()) {
 				return String.valueOf(f > 0 ? Float.MAX_VALUE : Float.MIN_VALUE);
+			} else if (f.isNaN()) {
+				return "0.0";
 			}
 
 			return String.valueOf((float) d);
@@ -115,6 +117,8 @@ public final class Hardware {
 			Double v = d;
 			if (v.isInfinite()) {
 				return String.valueOf(v > 0 ? Double.MAX_VALUE : Double.MIN_VALUE);
+			} else if (v.isNaN()) {
+				return "0.0";
 			}
 
 			return String.valueOf(d);
