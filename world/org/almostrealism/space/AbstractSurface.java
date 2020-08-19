@@ -28,7 +28,7 @@ import org.almostrealism.color.computations.GeneratedColorProducer;
 import org.almostrealism.color.computations.RGBAdd;
 import org.almostrealism.color.computations.RGBProducer;
 import org.almostrealism.geometry.TransformAsLocation;
-import org.almostrealism.graph.Mesh;
+import org.almostrealism.graph.mesh.Mesh;
 import org.almostrealism.physics.Porous;
 import org.almostrealism.relation.Constant;
 import org.almostrealism.relation.Operator;

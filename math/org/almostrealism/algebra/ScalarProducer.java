@@ -26,16 +26,22 @@ import org.almostrealism.util.Producer;
 import org.almostrealism.util.StaticProducer;
 
 public interface ScalarProducer extends Producer<Scalar> {
-	default ScalarProducer add(Producer<Scalar> value) {
+	ScalarProducer minusOne = StaticProducer.of(-1.0);
+
+	default ScalarSum add(Producer<Scalar> value) {
 		return new ScalarSum(this, value);
 	}
 
-	default ScalarProducer add(Scalar value) {
+	default ScalarSum add(Scalar value) {
 		return add(StaticProducer.of(value));
 	}
 
-	default ScalarProducer add(double value) {
+	default ScalarSum add(double value) {
 		return add(new Scalar(value));
+	}
+
+	default ScalarSum subtract(Producer<Scalar> value) {
+		return add(minus(value));
 	}
 
 	default ScalarProducer multiply(Producer<Scalar> value) {
@@ -63,6 +69,10 @@ public interface ScalarProducer extends Producer<Scalar> {
 	}
 
 	default ScalarProducer minus() { return multiply(-1.0); }
+
+	static ScalarProducer minus(Producer<Scalar> p) {
+		return new ScalarProduct(p, minusOne);
+	}
 
 	default ScalarProducer pow(Producer<Scalar> exponent) {
 		return new ScalarPow(this, exponent);

@@ -63,6 +63,8 @@ public abstract class DynamicAcceleratedProducerAdapter<T extends MemWrapper> ex
 	protected boolean isCompletelyValueOnly() {
 		// Confirm that all inputs are themselves dynamic accelerated adapters
 		for (int i = 1; i < getInputProducers().length; i++) {
+			if (getInputProducers()[i] == null)
+				throw new IllegalArgumentException("Null input producer");
 			if (getInputProducers()[i].getProducer() instanceof DynamicAcceleratedProducerAdapter == false)
 				return false;
 			if (!((DynamicAcceleratedProducerAdapter) getInputProducers()[i].getProducer()).isValueOnly())

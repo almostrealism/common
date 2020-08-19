@@ -1,4 +1,4 @@
-package org.almostrealism.graph;
+package org.almostrealism.graph.mesh;
 
 import io.almostrealism.js.JsonResource;
 import org.almostrealism.algebra.Vector;

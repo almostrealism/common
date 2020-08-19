@@ -1,8 +1,8 @@
 package org.almostrealism.graph.io;
 
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.graph.Mesh;
-import org.almostrealism.graph.MeshResource;
+import org.almostrealism.graph.mesh.Mesh;
+import org.almostrealism.graph.mesh.MeshResource;
 import org.almostrealism.io.ResourceTranscoder;
 import org.almostrealism.io.UnicodeResource;
 

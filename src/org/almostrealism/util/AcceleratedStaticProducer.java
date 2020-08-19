@@ -12,6 +12,19 @@ public class AcceleratedStaticProducer<T extends MemWrapper> extends DynamicAcce
 		this.value = value;
 	}
 
+	/**
+	 * Short circuit the evaluation of a CL program by simply returning
+	 * the value.
+	 */
+	@Override
+	public T evaluate(Object args[]) {
+		return value;
+	}
+
+	/**
+	 * Provided to support compact operations of other {@link DynamicAcceleratedProducerAdapter}s,
+	 * this is not actually used by {@link #evaluate(Object[])}.
+	 */
 	@Override
 	public String getValue(int pos) {
 		Pair p = MemWrapper.fromMem(value.getMem(), value.getOffset() + pos, 1);

@@ -208,6 +208,10 @@ public class AcceleratedProducer<T extends MemWrapper> implements KernelizedProd
 	protected static Argument[] arguments(Producer... producers) {
 		Argument args[] = new Argument[producers.length];
 		for (int i = 0; i < args.length; i++) {
+			if (producers[i] == null) {
+				throw new IllegalArgumentException("Null argument at index " + i);
+			}
+
 			args[i] = producers[i] == null ? null : new Argument(producers[i]);
 		}
 

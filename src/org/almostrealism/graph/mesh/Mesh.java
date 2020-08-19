@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package org.almostrealism.graph;
+package org.almostrealism.graph.mesh;
 
 import java.io.File;
 import java.io.IOException;
@@ -36,6 +36,7 @@ import org.almostrealism.color.RGB;
 import org.almostrealism.color.ShaderContext;
 import org.almostrealism.geometry.Positioned;
 import org.almostrealism.geometry.Ray;
+import org.almostrealism.graph.Automata;
 import org.almostrealism.io.FileDecoder;
 import org.almostrealism.io.SpatialData;
 import org.almostrealism.relation.Operator;
@@ -292,7 +293,9 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 
 		Triangle t = new Triangle(v1, v2, v3);
 
-		Vector tn = t.getNormalAt(Vector.blank()).evaluate(new Object[0]);
+		Producer<Vector> tnp = t.getNormalAt(Vector.blank());
+		tnp.compact();
+		Vector tn = tnp.evaluate();
 
 		if (this.triangles.add(new int[] {p1, p2, p3})) {
 			v1.addNormal(tn);
@@ -615,7 +618,6 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 	 * @return  The index of the triangle at the opposite end of the prisim that is created by extrusion.
 	 */
 	public int extrudeFace(int face, Vector n) {
-		// Triangle t = (Triangle) this.triangles.get(face);
 		Triangle t = this.getTriangle(face);
 		
 		Vector v1 = t.getVertices()[0];
@@ -690,80 +692,87 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 		boolean ut = t != null;
 		if (ut) ray = new RayMatrixTransform(t.getInverse(), ray);
 
-		final Producer<Ray> fray = ray;
+		if (Triangle.enableHardwareOperator) {
+			return null;
+		} else {
+			final Producer<Ray> fray = ray;
 
-		Producer<Scalar> s = new Producer<Scalar>() {
-			@Override
-			public Scalar evaluate(Object[] args) {
-				Triangle tr;
+			Producer<Scalar> s = new Producer<Scalar>() {
+				@Override
+				public Scalar evaluate(Object[] args) {
+					Triangle tr;
 
-				int b = 0;
+					int b = 0;
 
-				i: for (int i = 0; i < inter.length; i++) {
-					if (ignore[i]) continue i;
+					i:
+					for (int i = 0; i < inter.length; i++) {
+						if (ignore[i]) continue i;
 
-					if (tcache[i] != null) {
-						tr = tcache[i];
-						inter[i] = (ShadableIntersection) tr.intersectAt(fray);
-						continue i;
-					} else {
-						tr = getTriangle(i);
-						inter[i] = (ShadableIntersection) tr.intersectAt(fray);
-						// if (inter[i] == null) continue i;
-					}
+						if (tcache[i] != null) {
+							tr = tcache[i];
+							inter[i] = (ShadableIntersection) tr.intersectAt(fray);
+							continue i;
+						} else {
+							tr = getTriangle(i);
+							inter[i] = (ShadableIntersection) tr.intersectAt(fray);
+							// if (inter[i] == null) continue i;
+						}
 
-					Ray r = fray.evaluate(args);
+						Ray r = fray.evaluate(args);
 
-					Vector trv = tr.getVertices()[0].subtract(r.getOrigin());
-					double dt = tr.getNormalAt(Vector.blank())
-							.evaluate(new Object[0]).dotProduct(trv);
+						Vector trv = tr.getVertices()[0].subtract(r.getOrigin());
+						double dt = tr.getNormalAt(Vector.blank())
+								.evaluate(new Object[0]).dotProduct(trv);
 
-					if (!removeBackFaces) {
-						tcache[i] = tr;
-					} else if ((!getShadeFront() && !getShadeBack()) ||
-							(!getShadeFront() && dt < 0.0) ||
-							(!getShadeBack() && dt > 0.0) ||
-							(dt == 0.0)) {
-						b++;
-						ignore[i] = true;
-					} else {
-						tcache[i] = tr;
-					}
-				}
-
-				double closestIntersection = -1.0;
-				int closestIntersectionIndex = -1;
-
-				i: for (int i = 0; i < inter.length; i++) {
-					if (inter[i] == null) continue i;
-
-					double intersect = ((Scalar) inter[i].getDistance().evaluate(args)).getValue();
-
-					if (intersect >= Intersection.e) {
-						if (closestIntersectionIndex == -1 || intersect < closestIntersection) {
-							closestIntersection = intersect;
-							closestIntersectionIndex = i;
+						if (!removeBackFaces) {
+							tcache[i] = tr;
+						} else if ((!getShadeFront() && !getShadeBack()) ||
+								(!getShadeFront() && dt < 0.0) ||
+								(!getShadeBack() && dt > 0.0) ||
+								(dt == 0.0)) {
+							b++;
+							ignore[i] = true;
+						} else {
+							tcache[i] = tr;
 						}
 					}
+
+					double closestIntersection = -1.0;
+					int closestIntersectionIndex = -1;
+
+					i:
+					for (int i = 0; i < inter.length; i++) {
+						if (inter[i] == null) continue i;
+
+						double intersect = ((Scalar) inter[i].getDistance().evaluate(args)).getValue();
+
+						if (intersect >= Intersection.e) {
+							if (closestIntersectionIndex == -1 || intersect < closestIntersection) {
+								closestIntersection = intersect;
+								closestIntersectionIndex = i;
+							}
+						}
+					}
+
+					if (b > 0) System.out.println("Mesh: Removed " + b + " back faces.");
+
+					return closestIntersectionIndex < 0 ? null : new Scalar(closestIntersection);
 				}
 
-				if (b > 0) System.out.println("Mesh: Removed " + b + " back faces.");
+				@Override
+				public void compact() {
+					fray.compact();
+				}
+			};
 
-				return closestIntersectionIndex < 0 ? null : new Scalar(closestIntersection);
-			}
-
-			@Override
-			public void compact() {
-				// TODO
-			}
-		};
-
-		return new ShadableIntersection(this, ray, s);
+			return new ShadableIntersection(this, ray, s);
+		}
 	}
 	
 	/**
 	 * Does nothing.
 	 */
+	@Override
 	public void setSurfaces(Triangle surfaces[]) { }
 	
 //	/**
@@ -771,7 +780,9 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 //	 * This method should not be used to add triangles that will share verticies, because
 //	 * that can be done more efficiently with the addVector and addTriangle methods.
 //	 */
+	@Override
 	public void addSurface(Triangle s) {
+		throw new RuntimeException("Not implemented");
 //		this.triangles.add(s);
 //		s.setParent(this);
 	}
@@ -779,7 +790,9 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 //	/**
 //	 * Removes the Triangle object stored by this Mesh object at the specified index.
 //	 */
+	@Override
 	public void removeSurface(int index) {
+		throw new RuntimeException("Not implemented");
 //		Triangle t = (Triangle)this.triangles.get(index);
 //		
 //		Vector n = t.getNormalAt(new Vector());
@@ -798,8 +811,9 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 //	/**
 //	 * @return  An array of Surface objects containing the Triangle objects stored by this Mesh object.
 //	 */
+	@Override
 	public ShadableSurface[] getSurfaces() {
-		return null;
+		throw new RuntimeException("Not implemented");
 //		Triangle t[] = this.getTriangles();
 //		
 //		return t;

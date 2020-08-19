@@ -4,7 +4,7 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.Shader;
 import org.almostrealism.space.SceneResource;
-import org.almostrealism.graph.Triangle;
+import org.almostrealism.graph.mesh.Triangle;
 import org.almostrealism.io.*;
 import org.almostrealism.space.Scene;
 

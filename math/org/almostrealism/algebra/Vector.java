@@ -20,6 +20,7 @@ import org.almostrealism.algebra.computations.DotProduct;
 import org.almostrealism.geometry.Positioned;
 import org.almostrealism.math.HardwareOperator;
 import org.almostrealism.math.Hardware;
+import org.almostrealism.math.MemWrapper;
 import org.almostrealism.math.MemWrapperAdapter;
 import org.almostrealism.util.Defaults;
 import org.almostrealism.util.DynamicProducer;
@@ -51,6 +52,11 @@ public class Vector extends MemWrapperAdapter implements Positioned, Triple, Clo
 
 	/** Constructs a {@link Vector} with coordinates at the origin. */
 	public Vector() {
+		init();
+	}
+
+	public Vector(MemWrapper delegate, int delegateOffset) {
+		setDelegate(delegate, delegateOffset);
 		init();
 	}
 

@@ -18,7 +18,7 @@ package org.almostrealism.algebra.test;
 
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.graph.Triangle;
+import org.almostrealism.graph.mesh.Triangle;
 import org.almostrealism.util.StaticProducer;
 import org.junit.Assert;
 import org.junit.Test;

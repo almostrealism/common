@@ -34,6 +34,7 @@ public class Pair extends MemWrapperAdapter {
 
 	protected Pair(MemWrapper delegate, int delegateOffset) {
 		setDelegate(delegate, delegateOffset);
+		init();
 	}
 
 	public Pair(double x, double y) {

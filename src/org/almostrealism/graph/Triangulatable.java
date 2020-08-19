@@ -16,6 +16,8 @@
 
 package org.almostrealism.graph;
 
+import org.almostrealism.graph.mesh.Mesh;
+
 /**
  * Implementors of {@link Triangulatable} are able to produce a
  * {@link Mesh}. The {@link Mesh} should be an approximation of

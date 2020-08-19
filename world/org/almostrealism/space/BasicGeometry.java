@@ -45,7 +45,7 @@ public class BasicGeometry implements Positioned, Oriented, Scaled, DecodePostPr
 	protected boolean transformCurrent;
 	
 	public BasicGeometry() {
-		this(ZeroVector.getInstance().evaluate(new Object[0]));
+		this(ZeroVector.getInstance().evaluate());
 		transformCurrent = true;
 	}
 	

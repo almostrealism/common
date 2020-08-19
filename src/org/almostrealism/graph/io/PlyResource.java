@@ -1,8 +1,9 @@
 package org.almostrealism.graph.io;
 
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.graph.Mesh;
-import org.almostrealism.graph.MeshResource;
+import org.almostrealism.graph.mesh.DefaultVertexData;
+import org.almostrealism.graph.mesh.Mesh;
+import org.almostrealism.graph.mesh.MeshResource;
 import org.almostrealism.io.*;
 
 import java.io.BufferedReader;
@@ -23,15 +24,12 @@ public class PlyResource extends UnicodeResource {
 	}
 
 	public static class MeshReader implements ResourceTranscoder<PlyResource, MeshResource> {
-		private Mesh s;
-
-		public void setInitialMesh(Mesh m) { this.s = m; }
+		public void setInitialMesh(Mesh m) {
+			throw new RuntimeException("setInitialMesh no longer supported");
+		}
 
 		@Override
 		public MeshResource transcode(PlyResource r) throws IOException {
-			Mesh m = new Mesh();
-			if (s != null) m = s;
-
 			BufferedReader in = new BufferedReader(new InputStreamReader(r.getInputStream()));
 
 			int lineCount = 0;
@@ -54,6 +52,8 @@ public class PlyResource extends UnicodeResource {
 				}
 			}
 
+			DefaultVertexData data = new DefaultVertexData(pointCount, triangleCount);
+
 			i: for (int i = 0; i < pointCount; ) {
 				line = in.readLine();
 				lineCount++;
@@ -61,7 +61,7 @@ public class PlyResource extends UnicodeResource {
 				if (line.startsWith("#")) continue i;
 
 				double d[] = FileDecoder.parseDoubles(line);
-				m.addVector(new Vector(d[0], d[1], d[2]));
+				data.getVertices().set(i, new Vector(d[0], d[1], d[2]));
 
 				i++;
 
@@ -77,9 +77,7 @@ public class PlyResource extends UnicodeResource {
 				if (line.startsWith("#")) continue i;
 
 				double d[] = FileDecoder.parseDoubles(line);
-
-				// Only clear the cache the last time
-				m.addTriangle((int) d[1], (int) d[2], (int) d[3], i == (triangleCount - 1));
+				data.setTriangle(i, (int) d[1], (int) d[2], (int) d[3]);
 
 				i++;
 
@@ -88,7 +86,7 @@ public class PlyResource extends UnicodeResource {
 				}
 			}
 
-			return new MeshResource(m);
+			return new MeshResource(new Mesh(data));
 		}
 	}
 }

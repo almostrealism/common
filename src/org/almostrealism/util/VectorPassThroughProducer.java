@@ -16,20 +16,11 @@
 
 package org.almostrealism.util;
 
-public class PassThroughProducer<T> implements Producer<T> {
-	private int argIndex = -1;
+import org.almostrealism.algebra.Vector;
+import org.almostrealism.algebra.VectorProducer;
 
-	public PassThroughProducer(int argIndex) {
-		this.argIndex = argIndex;
+public class VectorPassThroughProducer extends PassThroughProducer<Vector> implements VectorProducer {
+	public VectorPassThroughProducer(int argIndex) {
+		super(argIndex);
 	}
-
-	/** Returns the argument at the index specified to the constructor of {@link PassThroughProducer}. */
-	@Override
-	public T evaluate(Object[] args) {
-		return (T) args[argIndex];
-	}
-
-	/** Does nothing. */
-	@Override
-	public void compact() { }
 }

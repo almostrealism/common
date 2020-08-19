@@ -57,6 +57,11 @@ public class RGB implements RGBProducer, Triple, MemWrapper, Externalizable, Clo
 			init();
 		}
 
+		protected Data192(MemWrapper delegate, int delegateOffset) {
+			setDelegate(delegate, delegateOffset);
+			init();
+		}
+
 		public void set(int i, double r) {
 			setMem(i, new double[] { r }, 0, 1);
 		}
@@ -216,17 +221,30 @@ public class RGB implements RGBProducer, Triple, MemWrapper, Externalizable, Clo
 		this.setGreen(this.adjust(g, f));
 		this.setBlue(this.adjust(b, f));
 	}
-	
+
+	protected RGB(MemWrapper delegate, int delegateOffset) {
+
+	}
+
 	private void initColorModule(int model) {
-		if (model == 192)
-			this.data = new Data192();
-		else if (model == 48)
+		initColorModule(model, null, 0);
+	}
+
+	private void initColorModule(int model, MemWrapper delegate, int delegateOffset) {
+		if (model == 192) {
+			if (delegate == null) {
+				this.data = new Data192();
+			} else {
+				this.data = new Data192(delegate, delegateOffset);
+			}
+		} else if (model == 48) {
 //			this.data = new Data48();
 			throw new RuntimeException("48 bit color temporarily disabled");
-		else
+		} else {
 			throw new RuntimeException(new IllegalArgumentException(model +
-										" bit color module not available."));
-		
+					" bit color module not available."));
+		}
+
 		this.colorDepth = model;
 	}
 	

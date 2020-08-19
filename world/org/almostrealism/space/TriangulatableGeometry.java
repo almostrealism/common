@@ -16,7 +16,7 @@
 
 package org.almostrealism.space;
 
-import org.almostrealism.graph.Mesh;
+import org.almostrealism.graph.mesh.Mesh;
 import org.almostrealism.graph.Triangulatable;
 
 /**

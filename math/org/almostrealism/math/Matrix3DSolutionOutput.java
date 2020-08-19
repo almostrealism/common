@@ -24,8 +24,8 @@ import java.io.InputStream;
 import java.io.PrintStream;
 
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.graph.Mesh;
-import org.almostrealism.graph.Triangle;
+import org.almostrealism.graph.mesh.Mesh;
+import org.almostrealism.graph.mesh.Triangle;
 import org.almostrealism.io.SpatialData;
 import org.almostrealism.space.AbstractSurface;
 import org.almostrealism.space.Gradient;

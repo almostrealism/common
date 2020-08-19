@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package org.almostrealism.graph;
+package org.almostrealism.graph.mesh;
 
 import org.almostrealism.algebra.*;
 import org.almostrealism.algebra.computations.RayMatrixTransform;
@@ -31,6 +31,7 @@ import org.almostrealism.space.BoundingSolid;
 import org.almostrealism.space.ShadableIntersection;
 import org.almostrealism.util.Producer;
 import org.almostrealism.util.StaticProducer;
+import org.almostrealism.util.VectorPassThroughProducer;
 
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -52,6 +53,32 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 	private boolean smooth, intcolor, useT = true;
 	private Vector abc = new Vector(), def = new Vector(), jkl = new Vector();
 
+	private static VectorProducer normalProducer;
+	private static VectorProducer abcProducer;
+	private static VectorProducer defProducer;
+	private static VectorProducer jklProducer;
+	
+	static {
+		VectorPassThroughProducer p1 = new VectorPassThroughProducer(0);
+		VectorPassThroughProducer p2 = new VectorPassThroughProducer(1);
+		VectorPassThroughProducer p3 = new VectorPassThroughProducer(2);
+
+		VectorProducer a = p2.subtract(p1);
+		VectorProducer b = p3.subtract(p1);
+
+		normalProducer = a.crossProduct(b);
+		normalProducer = normalProducer.normalize();
+
+		abcProducer = p1.subtract(p2);
+		defProducer = p1.subtract(p3);
+		jklProducer = p1;
+
+		normalProducer.compact();
+		abcProducer.compact();
+		defProducer.compact();
+		jklProducer.compact();
+	}
+
 	/**
 	 * Constructs a new {@link Triangle} with all vertices at the origin that is black.
 	 */	
@@ -64,7 +91,6 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 	 * Constructs a new Triangle object with the specified vertices that is black.
 	 */
 	public Triangle(Vector p1, Vector p2, Vector p3) {
-		super(null, 1.0, new RGB(0.0, 0.0, 0.0), false);
 		this.setVertices(p1, p2, p3);
 	}
 	
@@ -124,19 +150,26 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 	 * you must call the setVertices method again.
 	 */	
 	public void setVertices(Vector p1, Vector p2, Vector p3) {
-		this.p1 = p1;
-		this.p2 = p2;
-		this.p3 = p3;
-		
-		Vector a = this.p2.subtract(this.p1);
-		Vector b = this.p3.subtract(this.p1);
-		
-		this.normal = a.crossProduct(b);
-		this.normal.normalize();
-		
-		this.abc = this.p1.subtract(this.p2);
-		this.def = this.p1.subtract(this.p3);
-		this.jkl.setTo(this.p1);
+		if (enableHardwareOperator) {
+			this.normal = normalProducer.evaluate(new Object[] { p1, p2, p3 });
+			this.abc = abcProducer.evaluate(new Object[] { p1, p2, p3 });
+			this.def = defProducer.evaluate(new Object[] { p1, p2, p3 });
+			this.jkl = jklProducer.evaluate(new Object[] { p1, p2, p3 });
+		} else {
+			this.p1 = p1;
+			this.p2 = p2;
+			this.p3 = p3;
+
+			Vector a = this.p2.subtract(this.p1);
+			Vector b = this.p3.subtract(this.p1);
+
+			this.normal = a.crossProduct(b);
+			this.normal.normalize();
+
+			this.abc = this.p1.subtract(this.p2);
+			this.def = this.p1.subtract(this.p3);
+			this.jkl.setTo(this.p1);
+		}
 	}
 
 	public void setVertices(Vector v[]) {
@@ -242,6 +275,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 		}
 	}
 
+	@Override
 	public Producer<RGB> getValueAt(Producer<Vector> point) {
 		RGBProducer dcp = getColorAt(point, useT);
 
@@ -313,16 +347,16 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 	
 	/**
 	 * Returns a {@link Vector} {@link Producer} that represents the vector normal to this sphere
-	 * at the point represented by the specified Vector object.
+	 * at the point represented by the specified {@link Vector} {@link Producer}.
 	 */
 	@Override
-	public VectorProducer getNormalAt(Producer<Vector> p) {
-		return new VectorProducer() {
-			@Override
-			public Vector evaluate(Object[] args) {
-				Vector point = p.evaluate(args);
+	public Producer<Vector> getNormalAt(Producer<Vector> p) {
+		if (smooth && vertexData == null) {
+			return new VectorProducer() {
+				@Override
+				public Vector evaluate(Object[] args) {
+					Vector point = p.evaluate(args);
 
-				if (smooth && vertexData == null) {
 					double g = point.getX();
 					double h = point.getY();
 					double i = point.getZ();
@@ -355,20 +389,22 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 					n.divideBy(n.length());
 
 					return n;
-				} else {
-					if (useT && getTransform(true) != null) {
-						return getTransform(true).getInverse().transformAsNormal(normal);
-					} else {
-						return (Vector) normal.clone();
-					}
 				}
-			}
 
-			@Override
-			public void compact() {
-				p.compact();
+				@Override
+				public void compact() {
+					p.compact();
+				}
+			};
+		} else {
+			if (useT && getTransform(true) != null) {
+				return getTransform(true).getInverse().transform(
+						StaticProducer.of(normal),
+						TransformMatrix.TRANSFORM_AS_NORMAL);
+			} else {
+				return StaticProducer.of((Vector) normal.clone());
 			}
-		};
+		}
 	}
 	
 	/**

@@ -16,6 +16,7 @@
 
 package org.almostrealism.algebra;
 
+import org.almostrealism.algebra.computations.CrossProduct;
 import org.almostrealism.algebra.computations.DotProduct;
 import org.almostrealism.algebra.computations.ScalarFromVector;
 import org.almostrealism.algebra.computations.ScalarPow;
@@ -35,6 +36,7 @@ import org.almostrealism.util.StaticProducer;
  */
 @Function
 public interface VectorProducer extends Producer<Vector> {
+
     default ScalarProducer x() {
         return x(this);
     }
@@ -63,9 +65,15 @@ public interface VectorProducer extends Producer<Vector> {
         return new DotProduct(this, operand);
     }
 
+    default CrossProduct crossProduct(Producer<Vector> operand) {
+        return new CrossProduct(this, operand);
+    }
+
     default VectorSum add(Producer<Vector> operand) {
         return new VectorSum(this, operand);
     }
+
+    default VectorSum subtract(Producer<Vector> operand) { return new VectorSum(this, minus(operand)); }
 
     default VectorProduct multiply(Producer<Vector> operand) {
         return new VectorProduct(this, operand);
@@ -84,7 +92,14 @@ public interface VectorProducer extends Producer<Vector> {
     }
 
     default VectorProduct minus() {
-        return scalarMultiply(-1.0);
+        return minus(this);
+    }
+
+    default VectorProduct minus(Producer<Vector> p) {
+        return new VectorProduct(p,
+                new VectorFromScalars(ScalarProducer.minusOne,
+                        ScalarProducer.minusOne,
+                        ScalarProducer.minusOne));
     }
 
     default ScalarProducer length() {

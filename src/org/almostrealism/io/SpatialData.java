@@ -21,7 +21,7 @@ import java.beans.XMLDecoder;
 import java.io.IOException;
 import java.io.InputStream;
 
-import org.almostrealism.graph.Mesh;
+import org.almostrealism.graph.mesh.Mesh;
 import org.almostrealism.graph.io.GtsResource;
 import org.almostrealism.graph.io.ObjResource;
 import org.almostrealism.graph.io.PlyResource;
