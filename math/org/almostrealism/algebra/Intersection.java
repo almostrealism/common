@@ -28,8 +28,6 @@ public class Intersection<IN, OUT> implements PathElement<IN, OUT> {
 	/** A very small value (0.00000001) that is used in '>=' and '<=' operations to account for computational errors. */
 	public static final double e = 0.00000001;
 
-	private Intersectable surface;
-
 	private Producer<Vector> point;
 	private Producer<Scalar> distance;
 
@@ -37,14 +35,10 @@ public class Intersection<IN, OUT> implements PathElement<IN, OUT> {
 	 * Constructs a new Intersection object that represents an intersection between the specified
 	 * Ray and Surface objects at the specified points along the ray represented by the Ray object.
 	 */
-	public Intersection(Intersectable surface, Producer<Vector> point, Producer<Scalar> distance) {
-		this.surface = surface;
+	public Intersection(Producer<Vector> point, Producer<Scalar> distance) {
 		this.point = point;
 		this.distance = distance;
 	}
-	
-	/** @return  The Surface object stored by this Intersection object. */
-	public Intersectable getSurface() { return this.surface; }
 	
 	public Producer<Vector> getPoint() { return point; }
 

@@ -73,7 +73,11 @@ public interface VectorProducer extends Producer<Vector> {
         return new VectorSum(this, operand);
     }
 
-    default VectorSum subtract(Producer<Vector> operand) { return new VectorSum(this, minus(operand)); }
+    default VectorSum subtract(Producer<Vector> operand) { return subtract(this, operand); }
+
+    static VectorSum subtract(Producer<Vector> value, Producer<Vector> operand) {
+        return new VectorSum(value, minus(operand));
+    }
 
     default VectorProduct multiply(Producer<Vector> operand) {
         return new VectorProduct(this, operand);
@@ -95,7 +99,7 @@ public interface VectorProducer extends Producer<Vector> {
         return minus(this);
     }
 
-    default VectorProduct minus(Producer<Vector> p) {
+    static VectorProduct minus(Producer<Vector> p) {
         return new VectorProduct(p,
                 new VectorFromScalars(ScalarProducer.minusOne,
                         ScalarProducer.minusOne,

@@ -47,6 +47,8 @@ import org.almostrealism.space.ShadableSurfaceWrapper;
 import org.almostrealism.space.SpacePartition;
 import org.almostrealism.space.BoundingSolid;
 import org.almostrealism.util.Producer;
+import org.almostrealism.util.ProducerWithRank;
+import org.almostrealism.util.RankedChoiceProducer;
 
 // TODO  Add bounding solid to make intersection calc faster.
 
@@ -183,8 +185,11 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 	
 	public interface VertexData {
 		double getRed(int index); double getGreen(int index); double getBlue(int index);
+		RGB getColor(int index);
 		double getX(int index); double getY(int index); double getZ(int index);
+		Vector getPosition(int index);
 		double getTextureU(int index); double getTextureV(int index);
+		Pair getTexturePosition(int index);
 		
 		int[] getTriangle(int index); int getTriangleCount();
 		int getVertexCount();
@@ -689,82 +694,92 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 		if (this.isTreeLoaded()) return super.intersectAt(ray);
 
 		TransformMatrix t = getTransform(true);
-		boolean ut = t != null;
-		if (ut) ray = new RayMatrixTransform(t.getInverse(), ray);
+		Producer<Ray> tray = ray;
+		if (t != null) tray = new RayMatrixTransform(t.getInverse(), ray);
+		final Producer<Ray> fray = tray;
+
+		Triangle tr;
+
+		i: for (int i = 0; i < inter.length; i++) {
+			if (tcache[i] != null) {
+				tr = tcache[i];
+				inter[i] = (ShadableIntersection) tr.intersectAt(fray);
+				continue i;
+			} else {
+				tr = getTriangle(i);
+				inter[i] = (ShadableIntersection) tr.intersectAt(fray);
+			}
+
+			tcache[i] = tr;
+		}
+
+		Producer<Scalar> s = new Producer<Scalar>() {
+			@Override
+			public Scalar evaluate(Object[] args) {
+
+				int b = 0;
+
+				i: for (int i = 0; i < inter.length; i++) {
+					// if (ignore[i]) continue i;
+
+					Ray r = fray.evaluate(args);
+
+					Vector trv = tcache[i].getVertices()[0].subtract(r.getOrigin());
+					double dt = tcache[i].getNormalAt(Vector.blank())
+							.evaluate(new Object[0]).dotProduct(trv);
+
+					if (!removeBackFaces) {
+						// tcache[i] = tr;
+					} else if ((!getShadeFront() && !getShadeBack()) ||
+							(!getShadeFront() && dt < 0.0) ||
+							(!getShadeBack() && dt > 0.0) ||
+							(dt == 0.0)) {
+						b++;
+						ignore[i] = true;
+					} else {
+						// tcache[i] = tr;
+					}
+				}
+
+				double closestIntersection = -1.0;
+				int closestIntersectionIndex = -1;
+
+				i:
+				for (int i = 0; i < inter.length; i++) {
+					if (inter[i] == null) continue i;
+
+					double intersect = ((Scalar) inter[i].getDistance().evaluate(args)).getValue();
+
+					if (intersect >= Intersection.e) {
+						if (closestIntersectionIndex == -1 || intersect < closestIntersection) {
+							closestIntersection = intersect;
+							closestIntersectionIndex = i;
+						}
+					}
+				}
+
+				if (b > 0) System.out.println("Mesh: Removed " + b + " back faces.");
+
+				return closestIntersectionIndex < 0 ? null : new Scalar(closestIntersection);
+			}
+
+			@Override
+			public void compact() {
+				fray.compact();
+			}
+		};
 
 		if (Triangle.enableHardwareOperator) {
-			return null;
+			RankedChoiceProducer<Vector> closestNormal = new RankedChoiceProducer<>(Intersection.e);
+			for (ShadableIntersection in : inter) {
+				closestNormal.add(new ProducerWithRank<>(in.getNormalAt(null), in.getDistance()));
+			}
+
+			// Return an intersection of the ray with the distance function
+			// supplied above using the normal that is ranked best out of the
+			// ShadableIntersections from the triangles
+			return new ShadableIntersection(ray, closestNormal, s);
 		} else {
-			final Producer<Ray> fray = ray;
-
-			Producer<Scalar> s = new Producer<Scalar>() {
-				@Override
-				public Scalar evaluate(Object[] args) {
-					Triangle tr;
-
-					int b = 0;
-
-					i:
-					for (int i = 0; i < inter.length; i++) {
-						if (ignore[i]) continue i;
-
-						if (tcache[i] != null) {
-							tr = tcache[i];
-							inter[i] = (ShadableIntersection) tr.intersectAt(fray);
-							continue i;
-						} else {
-							tr = getTriangle(i);
-							inter[i] = (ShadableIntersection) tr.intersectAt(fray);
-							// if (inter[i] == null) continue i;
-						}
-
-						Ray r = fray.evaluate(args);
-
-						Vector trv = tr.getVertices()[0].subtract(r.getOrigin());
-						double dt = tr.getNormalAt(Vector.blank())
-								.evaluate(new Object[0]).dotProduct(trv);
-
-						if (!removeBackFaces) {
-							tcache[i] = tr;
-						} else if ((!getShadeFront() && !getShadeBack()) ||
-								(!getShadeFront() && dt < 0.0) ||
-								(!getShadeBack() && dt > 0.0) ||
-								(dt == 0.0)) {
-							b++;
-							ignore[i] = true;
-						} else {
-							tcache[i] = tr;
-						}
-					}
-
-					double closestIntersection = -1.0;
-					int closestIntersectionIndex = -1;
-
-					i:
-					for (int i = 0; i < inter.length; i++) {
-						if (inter[i] == null) continue i;
-
-						double intersect = ((Scalar) inter[i].getDistance().evaluate(args)).getValue();
-
-						if (intersect >= Intersection.e) {
-							if (closestIntersectionIndex == -1 || intersect < closestIntersection) {
-								closestIntersection = intersect;
-								closestIntersectionIndex = i;
-							}
-						}
-					}
-
-					if (b > 0) System.out.println("Mesh: Removed " + b + " back faces.");
-
-					return closestIntersectionIndex < 0 ? null : new Scalar(closestIntersection);
-				}
-
-				@Override
-				public void compact() {
-					fray.compact();
-				}
-			};
-
 			return new ShadableIntersection(this, ray, s);
 		}
 	}

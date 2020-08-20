@@ -38,18 +38,25 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 	private Producer<Vector> incident;
 	private Producer<Ray> normal;
 
-	public ShadableIntersection(Intersectable<?> surface, Producer<Ray> r, Producer<Scalar> distance) {
+	public ShadableIntersection(Gradient surface, Producer<Ray> r, Producer<Scalar> distance) {
 		this(surface, new RayPointAt(r, distance), new RayDirection(r), distance);
 	}
 
-	public ShadableIntersection(Intersectable<?> surface,
-								Producer<Vector> point, Producer<Vector> incident, Producer<Scalar> distance) {
-		super(surface, point, distance);
+	public ShadableIntersection(Producer<Ray> r, Producer<Vector> normal, Producer<Scalar> distance) {
+		this(new RayPointAt(r, distance), new RayDirection(r), normal, distance);
+	}
+
+	public ShadableIntersection(Gradient surface, Producer<Vector> point, Producer<Vector> incident, Producer<Scalar> distance) {
+		this(point, incident, surface.getNormalAt(point), distance);
+	}
+
+	public ShadableIntersection(Producer<Vector> point, Producer<Vector> incident, Producer<Vector> normal, Producer<Scalar> distance) {
+		super(point, distance);
 
 		this.incident = incident;
 
-		Producer p = new RayFromVectors(getPoint(), ((Gradient) surface).getNormalAt(point));
-		normal = new ProducerWithRank<>(p, distance);
+		Producer p = new RayFromVectors(getPoint(), normal);
+		this.normal = new ProducerWithRank<>(p, distance);
 	}
 	
 	/** Returns the viewer direction. */
@@ -73,7 +80,7 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 	public int size() { return 1; }
 
 	@Override
-	public boolean isEmpty() { return getPoint() == null; } // TODO  This isn't right
+	public boolean isEmpty() { return normal == null; }
 
 	@Override
 	public boolean contains(Object o) { return false; }

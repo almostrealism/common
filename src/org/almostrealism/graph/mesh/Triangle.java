@@ -51,12 +51,10 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 	private Vector p1, p2, p3;
 	private Vector normal;
 	private boolean smooth, intcolor, useT = true;
-	private Vector abc = new Vector(), def = new Vector(), jkl = new Vector();
+	private TriangleData data;
 
 	private static VectorProducer normalProducer;
-	private static VectorProducer abcProducer;
-	private static VectorProducer defProducer;
-	private static VectorProducer jklProducer;
+	private static TriangleDataProducer dataProducer;
 	
 	static {
 		VectorPassThroughProducer p1 = new VectorPassThroughProducer(0);
@@ -69,14 +67,10 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 		normalProducer = a.crossProduct(b);
 		normalProducer = normalProducer.normalize();
 
-		abcProducer = p1.subtract(p2);
-		defProducer = p1.subtract(p3);
-		jklProducer = p1;
-
 		normalProducer.compact();
-		abcProducer.compact();
-		defProducer.compact();
-		jklProducer.compact();
+
+		dataProducer = TriangleDataProducer.of(p1, p2, p3);
+		dataProducer.compact();
 	}
 
 	/**
@@ -115,31 +109,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 	}
 	
 	private void loadVertexData() {
-		double p1x = this.vertexData.getX(this.ind1);
-		double p1y = this.vertexData.getY(this.ind1);
-		double p1z = this.vertexData.getZ(this.ind1);
-		double p2x = this.vertexData.getX(this.ind2);
-		double p2y = this.vertexData.getY(this.ind2);
-		double p2z = this.vertexData.getZ(this.ind2);
-		double p3x = this.vertexData.getX(this.ind3);
-		double p3y = this.vertexData.getY(this.ind3);
-		double p3z = this.vertexData.getZ(this.ind3);
-		
-		Vector a = new Vector(p2x - p1x, p2y - p1y, p2z - p1z);
-		Vector b = new Vector(p3x - p1x, p3y - p1y, p3z - p1z);
-		
-		this.normal = a.crossProduct(b);
-		this.normal.divideBy(this.normal.length());
-		
-		this.abc.setX(p1x - p2x);
-		this.abc.setY(p1y - p2y);
-		this.abc.setZ(p1z - p2z);
-		this.def.setX(p1x - p3x);
-		this.def.setY(p1y - p3y);
-		this.def.setZ(p1z - p3z);
-		this.jkl.setX(p1x);
-		this.jkl.setY(p1y);
-		this.jkl.setZ(p1z);
+		setVertices(vertexData.getPosition(ind1), vertexData.getPosition(ind2), vertexData.getPosition(ind3));
 	}
 	
 	/**
@@ -152,9 +122,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 	public void setVertices(Vector p1, Vector p2, Vector p3) {
 		if (enableHardwareOperator) {
 			this.normal = normalProducer.evaluate(new Object[] { p1, p2, p3 });
-			this.abc = abcProducer.evaluate(new Object[] { p1, p2, p3 });
-			this.def = defProducer.evaluate(new Object[] { p1, p2, p3 });
-			this.jkl = jklProducer.evaluate(new Object[] { p1, p2, p3 });
+			this.data = dataProducer.evaluate(new Object[] { p1, p2, p3 });
 		} else {
 			this.p1 = p1;
 			this.p2 = p2;
@@ -166,9 +134,9 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 			this.normal = a.crossProduct(b);
 			this.normal.normalize();
 
-			this.abc = this.p1.subtract(this.p2);
-			this.def = this.p1.subtract(this.p3);
-			this.jkl.setTo(this.p1);
+			this.data.setABC(this.p1.subtract(this.p2));
+			this.data.setDEF(this.p1.subtract(this.p3));
+			this.data.setJKL(this.p1);
 		}
 	}
 
@@ -287,6 +255,10 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 				Vector triple = point.evaluate(args);
 				if (dc.length() < (Intersection.e * 100)) return new RGB(0.0, 0.0, 0.0);
 
+				Vector abc = data.getABC();
+				Vector def = data.getDEF();
+				Vector jkl = data.getJKL();
+
 				if (intcolor) {
 					double g = triple.getA();
 					double h = triple.getB();
@@ -361,6 +333,10 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 					double h = point.getY();
 					double i = point.getZ();
 
+					Vector abc = data.getABC();
+					Vector def = data.getDEF();
+					Vector jkl = data.getJKL();
+
 					double m = abc.getX() * (def.getY() * i - h * def.getZ()) +
 							abc.getY() * (g * def.getZ() - def.getX() * i) +
 							abc.getZ() * (def.getX() * h - def.getY() * g);
@@ -426,7 +402,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 											new Producer[] {
 												new StaticProducer(new Scalar()), ray
 											},
-											new Object[] { abc, def, jkl }));
+											new Object[] { data.getABC(), data.getDEF(), data.getJKL() }));
 		} else {
 			final Producer<Ray> fray = ray;
 
@@ -435,7 +411,9 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 				public Scalar evaluate(Object[] args) {
 					Ray r = fray.evaluate(args);
 
-					Vector jkl = Triangle.this.jkl.subtract(r.getOrigin());
+					Vector abc = data.getABC();
+					Vector def = data.getDEF();
+					Vector jkl = Triangle.this.data.getJKL().subtract(r.getOrigin());
 
 					double m = abc.getX() * (def.getY() * r.getDirection().getZ() - r.getDirection().getY() * def.getZ()) +
 							abc.getY() * (r.getDirection().getX() * def.getZ() - def.getX() * r.getDirection().getZ()) +

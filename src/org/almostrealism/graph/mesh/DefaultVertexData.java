@@ -16,8 +16,11 @@
 
 package org.almostrealism.graph.mesh;
 
+import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairBank;
+import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorBank;
+import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBBank;
 
 public class DefaultVertexData implements Mesh.VertexData {
@@ -37,6 +40,13 @@ public class DefaultVertexData implements Mesh.VertexData {
 	public VectorBank getVertices() { return vertices; }
 	public RGBBank getColors() { return colors; }
 	public PairBank getTextureCoordinates() { return texCoords; }
+
+	@Override
+	public RGB getColor(int index) { return getColors().get(index); }
+	@Override
+	public Vector getPosition(int index) { return getVertices().get(index); }
+	@Override
+	public Pair getTexturePosition(int index) { return getTextureCoordinates().get(index); }
 
 	@Override
 	public double getX(int index) { return vertices.get(index).getX(); }
