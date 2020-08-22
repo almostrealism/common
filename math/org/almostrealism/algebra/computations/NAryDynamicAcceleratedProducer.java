@@ -38,7 +38,7 @@ public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> exten
 	public String getValue(int pos) {
 		String v = getFunctionName() + "_v";
 
-		if (value == null) {
+		if (value == null || value[pos] == null) {
 			StringBuffer buf = new StringBuffer();
 
 			for (int i = 1; i < getArgsCount(); i++) {

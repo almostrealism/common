@@ -32,7 +32,7 @@ public class TriangleDataFromVectors extends DynamicAcceleratedProducerAdapter<T
 
 	@Override
 	public String getValue(int pos) {
-		if (value == null) {
+		if (value == null || value[pos] == null) {
 			return getArgumentValueName((pos / 3) + 1, pos % 3);
 		} else {
 			return value[pos];
@@ -43,53 +43,53 @@ public class TriangleDataFromVectors extends DynamicAcceleratedProducerAdapter<T
 	public void compact() {
 		super.compact();
 
-		if (value == null && isCompletelyValueOnly()) {
-			DynamicAcceleratedProducerAdapter vectors[] = new DynamicAcceleratedProducerAdapter[] {
-					((DynamicAcceleratedProducerAdapter) getInputProducers()[1].getProducer()),
-					((DynamicAcceleratedProducerAdapter) getInputProducers()[2].getProducer()),
-					((DynamicAcceleratedProducerAdapter) getInputProducers()[3].getProducer())
-			};
-
-			value = new String[] {
-					vectors[0].getValue(0),
-					vectors[0].getValue(1),
-					vectors[0].getValue(2),
-					vectors[1].getValue(0),
-					vectors[1].getValue(1),
-					vectors[1].getValue(2),
-					vectors[2].getValue(0),
-					vectors[2].getValue(1),
-					vectors[2].getValue(2)
-			};
-
-			for (int i = 0; i < value.length; i++) {
-				if (value[i].contains("Infinity")) {
-					throw new IllegalArgumentException("Infinity is not supported");
-				}
-			}
+		if (value == null) {
+			value = new String[9];
 
 			List<Argument> newArgs = new ArrayList<>();
 			newArgs.add(inputProducers[0]);
 
-			if (!vectors[0].isStatic()) {
-				for (int i = 1; i < vectors[0].getInputProducers().length; i++) {
-					newArgs.add(vectors[0].getInputProducers()[i]);
+			i: for (int i = 1; i < inputProducers.length; i++) {
+				// Ignore those that are not of a compactable kind
+				if (inputProducers[i].getProducer() instanceof
+						DynamicAcceleratedProducerAdapter == false) {
+					newArgs.add(inputProducers[i]);
+					continue i;
+				}
+
+				DynamicAcceleratedProducerAdapter producer =
+						(DynamicAcceleratedProducerAdapter)
+						inputProducers[i].getProducer();
+
+				// Ignore those that are more than just a value returned from getValue
+				if (!producer.isValueOnly()) {
+					newArgs.add(inputProducers[i]);
+					continue i;
+				}
+
+				// If it is just a value, include it in the compacted version
+				int index = 3 * (i - 1);
+				value[index] = producer.getValue(0);
+				value[index + 1] = producer.getValue(1);
+				value[index + 2] = producer.getValue(2);
+
+				// If it is not a static value, it depends on others, so bring
+				// those into the arguments for the compacted version
+				if (!producer.isStatic()) {
+					for (int j = 1; j < producer.getInputProducers().length; j++) {
+						newArgs.add(producer.getInputProducers()[j]);
+					}
 				}
 			}
 
-			if (!vectors[1].isStatic()) {
-				for (int i = 1; i < vectors[1].getInputProducers().length; i++) {
-					newArgs.add(vectors[1].getInputProducers()[i]);
+			// Check for illegal values
+			for (int i = 0; i < value.length; i++) {
+				if (value[i] != null && value[i].contains("Infinity")) {
+					throw new IllegalArgumentException("Infinity is not supported");
 				}
 			}
 
-
-			if (!vectors[0].isStatic()) {
-				for (int i = 1; i < vectors[2].getInputProducers().length; i++) {
-					newArgs.add(vectors[2].getInputProducers()[i]);
-				}
-			}
-
+			// Replace original parameters
 			inputProducers = newArgs.toArray(new Argument[0]);
 			removeDuplicateArguments();
 		}
