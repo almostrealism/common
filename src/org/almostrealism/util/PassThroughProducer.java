@@ -20,7 +20,7 @@ import org.almostrealism.math.MemWrapper;
 
 import java.lang.reflect.InvocationTargetException;
 
-public class PassThroughProducer<T> implements Producer<T> {
+public class PassThroughProducer<T> implements Producer<T>, ProducerArgumentReference {
 	private int argIndex = -1;
 
 	public PassThroughProducer(int argIndex) {
@@ -36,6 +36,9 @@ public class PassThroughProducer<T> implements Producer<T> {
 	/** Does nothing. */
 	@Override
 	public void compact() { }
+
+	@Override
+	public int getReferencedArgumentIndex() { return argIndex; }
 
 	public static <T> Producer<T> of(Class<T> type, int index) {
 		if (MemWrapper.class.isAssignableFrom(type)) {

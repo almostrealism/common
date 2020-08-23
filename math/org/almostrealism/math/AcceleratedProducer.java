@@ -19,6 +19,7 @@ package org.almostrealism.math;
 import org.almostrealism.color.computations.GeneratedColorProducer;
 import org.almostrealism.util.CollectionUtils;
 import org.almostrealism.util.Producer;
+import org.almostrealism.util.ProducerArgumentReference;
 import org.almostrealism.util.ProducerCache;
 import org.almostrealism.util.ProducerWithRank;
 import org.almostrealism.util.StaticProducer;
@@ -121,13 +122,11 @@ public class AcceleratedProducer<T extends MemWrapper> implements KernelizedProd
 	@Override
 	public void kernelEvaluate(MemoryBank destination, MemoryBank args[], int offset, int length) {
 		if (kernel) {
-			Object allArgs[] = CollectionUtils.include(new Object[0], destination, args);
-
 			HardwareOperator operator = getOperator();
 			operator.setGlobalWorkOffset(offset);
 			operator.setGlobalWorkSize(length);
 
-			operator.evaluate(allArgs);
+			operator.evaluate(getKernelArgs(destination, args));
 		} else {
 			for (int i = 0; i < length; i++) {
 				final int fi = i;
@@ -137,6 +136,24 @@ public class AcceleratedProducer<T extends MemWrapper> implements KernelizedProd
 								.collect(Collectors.toList()).toArray()));
 			}
 		}
+	}
+
+	protected MemoryBank[] getKernelArgs(MemoryBank destination, MemoryBank args[]) {
+		MemoryBank kernelArgs[] = new MemoryBank[inputProducers.length];
+		kernelArgs[0] = destination;
+
+		i: for (int i = 1; i < inputProducers.length; i++) {
+			if (inputProducers[i] == null) continue i;
+
+			if (inputProducers[i].getProducer() instanceof ProducerArgumentReference == false) {
+				throw new IllegalArgumentException(inputProducers[i].getName() + " is not a ProducerArgumentReference");
+			}
+
+			int argIndex = ((ProducerArgumentReference) inputProducers[i].getProducer()).getReferencedArgumentIndex();
+			kernelArgs[i] = args[argIndex];
+		}
+
+		return kernelArgs;
 	}
 
 	/**

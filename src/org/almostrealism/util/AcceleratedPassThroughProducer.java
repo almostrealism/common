@@ -20,7 +20,8 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.math.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.math.MemWrapper;
 
-public class AcceleratedPassThroughProducer<T extends MemWrapper> extends DynamicAcceleratedProducerAdapter<T> {
+public class AcceleratedPassThroughProducer<T extends MemWrapper>
+		extends DynamicAcceleratedProducerAdapter<T> implements ProducerArgumentReference {
 	private int argIndex;
 
 	public AcceleratedPassThroughProducer(int memLength, int argIndex) {
@@ -48,4 +49,7 @@ public class AcceleratedPassThroughProducer<T extends MemWrapper> extends Dynami
 	public String getValue(Argument arg, int pos) {
 		return getArgumentValueName(1, pos);
 	}
+
+	@Override
+	public int getReferencedArgumentIndex() { return argIndex; }
 }
