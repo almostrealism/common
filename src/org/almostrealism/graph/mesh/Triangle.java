@@ -276,9 +276,9 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 
 					if (vertexData == null) {
 						color = new RGB(0.0, 0.0, 0.0);
-						color.addTo(((Mesh.Vertex) p1).getColor(w));
-						color.addTo(((Mesh.Vertex) p2).getColor(u));
-						color.addTo(((Mesh.Vertex) p3).getColor(v));
+						color.addTo(((Vertex) p1).getColor(w));
+						color.addTo(((Vertex) p2).getColor(u));
+						color.addTo(((Vertex) p3).getColor(v));
 					} else {
 						double cr = vertexData.getRed(ind1) +
 								vertexData.getRed(ind2) +
@@ -346,9 +346,9 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 					double w = 1.0 - u - v;
 
 					Vector n = new Vector(0.0, 0.0, 0.0);
-					n.addTo(((Mesh.Vertex) p1).getNormal(w));
-					n.addTo(((Mesh.Vertex) p2).getNormal(u));
-					n.addTo(((Mesh.Vertex) p3).getNormal(v));
+					n.addTo(((Vertex) p1).getNormal(w));
+					n.addTo(((Vertex) p2).getNormal(u));
+					n.addTo(((Vertex) p3).getNormal(v));
 
 					if (useT)
 						n = getTransform(true).getInverse().transformAsNormal(n);
