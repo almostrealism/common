@@ -9,18 +9,14 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class ScalarPow extends DynamicAcceleratedProducerAdapter<Scalar> implements ScalarProducer {
-	private Producer<Scalar> base, exponent;
-
 	private String value[];
 
 	public ScalarPow(Producer<Scalar> base, Producer<Scalar> exponent) {
 		super(2, Scalar.blank(), base, exponent);
-		this.base = base;
-		this.exponent = exponent;
 	}
 
 	@Override
-	public String getValue(int pos) {
+	public String getValue(Argument arg, int pos) {
 		if (value == null) {
 			String v1 = getFunctionName() + "_v1";
 			String v2 = getFunctionName() + "_v2";
@@ -40,35 +36,30 @@ public class ScalarPow extends DynamicAcceleratedProducerAdapter<Scalar> impleme
 
 	@Override
 	public void compact() {
-		this.base.compact();
-		this.exponent.compact();
+		super.compact();
 
 		if (value == null && isCompletelyValueOnly()) {
-			DynamicAcceleratedProducerAdapter bd = (DynamicAcceleratedProducerAdapter) base;
-			DynamicAcceleratedProducerAdapter ed = (DynamicAcceleratedProducerAdapter) exponent;
-
 			List<Argument> newArgs = new ArrayList<>();
 			newArgs.add(inputProducers[0]);
 
-			for (int i = 1; i < bd.getInputProducers().length; i++) {
-				newArgs.add(bd.getInputProducers()[i]);
+			for (int i = 1; i < getInputProducer(1).getInputProducers().length; i++) {
+				newArgs.add(getInputProducer(1).getInputProducers()[i]);
 			}
 
-			for (int i = 1; i < ed.getInputProducers().length; i++) {
-				newArgs.add(ed.getInputProducers()[i]);
+			for (int i = 1; i < getInputProducer(2).getInputProducers().length; i++) {
+				newArgs.add(getInputProducer(2).getInputProducers()[i]);
 			}
 
 			// TODO  Certainty of exponent is ignored
 			value = new String[] {
-					"pow(" + bd.getValue(0) + ", " + ed.getValue(0) + ")",
-					"pow(" + bd.getValue(1) + ", " + ed.getValue(0) + ")"
+					"pow(" + getInputProducerValue(1, 0) + ", " + getInputProducerValue(2, 0) + ")",
+					"pow(" + getInputProducerValue(1, 1) + ", " + getInputProducerValue(2, 0) + ")"
 			};
 
-			if (value[0].contains("Infinity")) {
-				throw new IllegalArgumentException("Infinity is not supported");
-			}
-			if (value[1].contains("Infinity")) {
-				throw new IllegalArgumentException("Infinity is not supported");
+			for (int i = 0; i < value.length; i++) {
+				if (value[i].contains("Infinity")) {
+					throw new IllegalArgumentException("Infinity is not supported");
+				}
 			}
 
 			inputProducers = newArgs.toArray(new Argument[0]);

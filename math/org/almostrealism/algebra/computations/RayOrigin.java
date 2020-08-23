@@ -35,7 +35,7 @@ public class RayOrigin extends DynamicAcceleratedProducerAdapter<Vector> impleme
 	}
 
 	@Override
-	public String getValue(int pos) {
+	public String getValue(Argument arg, int pos) {
 		if (value == null) {
 			return getArgumentValueName(1, pos);
 		} else {
@@ -56,21 +56,18 @@ public class RayOrigin extends DynamicAcceleratedProducerAdapter<Vector> impleme
 		if (value == null && isCompletelyValueOnly()) {
 			value = new String[3];
 
-			DynamicAcceleratedProducerAdapter<Vector> r =
-					(DynamicAcceleratedProducerAdapter<Vector>) inputProducers[1].getProducer();
-
 			for (int i = 0; i < value.length; i++) {
-				value[i] = r.getValue(i);
+				value[i] = getInputProducerValue(1, i);
 				if (value[i].contains("Infinity")) {
 					throw new IllegalArgumentException("Infinity is not supported");
 				}
 			}
 
-			isStatic = r.isStatic();
+			isStatic = getInputProducer(1).isStatic();
 
 			List<Argument> newArgs = new ArrayList<>();
 			newArgs.add(inputProducers[0]);
-			newArgs.addAll(Arrays.asList(excludeResult(r.getInputProducers())));
+			newArgs.addAll(Arrays.asList(excludeResult(getInputProducer(1).getInputProducers())));
 			inputProducers = newArgs.toArray(new Argument[0]);
 			removeDuplicateArguments();
 		}

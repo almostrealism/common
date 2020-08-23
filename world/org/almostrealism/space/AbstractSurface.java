@@ -72,6 +72,21 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 		
 		this.setColor(new RGB(0.0, 0.0, 0.0));
 	}
+
+	public AbstractSurface(RGB color) {
+		this.setShadeFront(true);
+		this.setShadeBack(false);
+
+		this.setTextures(new Texture[0]);
+
+		this.setColor(color);
+	}
+
+	public AbstractSurface(RGB color, boolean addDefaultDiffuseShader) {
+		this(color);
+		if (!addDefaultDiffuseShader)
+			this.setShaders(new Shader[0]);
+	}
 	
 	/**
 	 * Sets the location and size of this {@link AbstractSurface} to those specified, and uses

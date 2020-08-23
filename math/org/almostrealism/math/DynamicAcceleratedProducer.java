@@ -130,6 +130,10 @@ public abstract class DynamicAcceleratedProducer<T extends MemWrapper> extends A
 			if (i != 0) buf.append("const ");
 			buf.append(getNumberType());
 			buf.append(" *");
+			if (getInputProducers()[i].getName() == null) {
+				throw new IllegalArgumentException("Null name for Argument " + i);
+			}
+
 			buf.append(getInputProducers()[i].getName());
 			buf.append(", ");
 		}

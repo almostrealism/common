@@ -42,7 +42,7 @@ public class ScalarFromPair extends DynamicAcceleratedProducerAdapter<Scalar> im
 	}
 
 	@Override
-	public String getValue(int pos) {
+	public String getValue(Argument arg, int pos) {
 		if (value == null) {
 			if (pos == 0) {
 				return getArgumentValueName(1, coordinate);
@@ -64,7 +64,7 @@ public class ScalarFromPair extends DynamicAcceleratedProducerAdapter<Scalar> im
 			List<Argument> newArgs = new ArrayList<>();
 			newArgs.add(getInputProducers()[0]);
 
-			value = ((DynamicAcceleratedProducerAdapter) getInputProducers()[1].getProducer()).getValue(coordinate);
+			value = getInputProducerValue(1, coordinate);
 			if (value.contains("Infinity")) {
 				throw new IllegalArgumentException("Infinity is not supported");
 			}

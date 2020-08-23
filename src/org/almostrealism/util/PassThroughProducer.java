@@ -16,6 +16,10 @@
 
 package org.almostrealism.util;
 
+import org.almostrealism.math.MemWrapper;
+
+import java.lang.reflect.InvocationTargetException;
+
 public class PassThroughProducer<T> implements Producer<T> {
 	private int argIndex = -1;
 
@@ -32,4 +36,18 @@ public class PassThroughProducer<T> implements Producer<T> {
 	/** Does nothing. */
 	@Override
 	public void compact() { }
+
+	public static <T> Producer<T> of(Class<T> type, int index) {
+		if (MemWrapper.class.isAssignableFrom(type)) {
+			try {
+				MemWrapper m = (MemWrapper) type.getConstructor().newInstance();
+				return new AcceleratedPassThroughProducer(m.getMemLength(), index);
+			} catch (InstantiationException | IllegalAccessException |
+					InvocationTargetException | NoSuchMethodException e) {
+				throw new IllegalArgumentException(e);
+			}
+		} else {
+			return new PassThroughProducer<>(index);
+		}
+	}
 }

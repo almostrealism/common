@@ -42,7 +42,7 @@ public class ScalarFromVector extends DynamicAcceleratedProducerAdapter<Scalar> 
 	}
 
 	@Override
-	public String getValue(int pos) {
+	public String getValue(Argument arg, int pos) {
 		if (value == null) {
 			if (pos == 0) {
 				return getArgumentValueName(1, coordinate);
@@ -64,15 +64,13 @@ public class ScalarFromVector extends DynamicAcceleratedProducerAdapter<Scalar> 
 			List<Argument> newArgs = new ArrayList<>();
 			newArgs.add(getInputProducers()[0]);
 
-			DynamicAcceleratedProducerAdapter d = (DynamicAcceleratedProducerAdapter) getInputProducers()[1].getProducer();
-
-			value = d.getValue(coordinate);
+			value = getInputProducerValue(1, coordinate);
 			if (value.contains("Infinity")) {
 				throw new IllegalArgumentException("Infinity is not supported");
 			}
 
-			for (int i = 1; i < d.getInputProducers().length; i++) {
-				newArgs.add(d.getInputProducers()[i]);
+			for (int i = 1; i < getInputProducer(1).getInputProducers().length; i++) {
+				newArgs.add(getInputProducer(1).getInputProducers()[i]);
 			}
 
 			inputProducers = newArgs.toArray(new Argument[0]);

@@ -35,7 +35,7 @@ public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> exten
 	}
 
 	@Override
-	public String getValue(int pos) {
+	public String getValue(Argument arg, int pos) {
 		String v = getFunctionName() + "_v";
 
 		if (value == null || value[pos] == null) {
@@ -65,8 +65,8 @@ public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> exten
 
 			AcceleratedProducer.Argument p[] = getInputProducers();
 
-			List<DynamicAcceleratedProducerAdapter> staticProducers = extractStaticProducers(p);
-			List<DynamicAcceleratedProducerAdapter> dynamicProducers = extractDynamicProducers(p);
+			List<Argument> staticProducers = extractStaticProducers(p);
+			List<Argument> dynamicProducers = extractDynamicProducers(p);
 
 			boolean valueStatic[] = new boolean[value.length];
 
@@ -79,7 +79,8 @@ public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> exten
 					double staticProduct = getIdentity();
 
 					for (int i = 0; i < staticProducers.size(); i++) {
-						staticProduct = combine(staticProduct, doubleForString(staticProducers.get(i).getValue(pos)));
+						staticProduct = combine(staticProduct,
+								doubleForString(getInputProducerValue(staticProducers.get(i), pos)));
 					}
 
 					Double replace = isReplaceAll(staticProduct);
@@ -98,11 +99,11 @@ public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> exten
 				}
 
 				for (int i = 0; i < dynamicProducers.size(); i++) {
-					for (int j = 1; j < dynamicProducers.get(i).getInputProducers().length; j++) {
-						newArgs.add(dynamicProducers.get(i).getInputProducers()[j]);
+					for (int j = 1; j < ((AcceleratedProducer) dynamicProducers.get(i).getProducer()).getInputProducers().length; j++) {
+						newArgs.add(((AcceleratedProducer) dynamicProducers.get(i).getProducer()).getInputProducers()[j]);
 					}
 					buf.append("(");
-					buf.append(dynamicProducers.get(i).getValue(pos));
+					buf.append(getInputProducerValue(dynamicProducers.get(i), pos));
 					buf.append(")");
 					if (i < (dynamicProducers.size() - 1)) buf.append(" " + operator + " ");
 				}

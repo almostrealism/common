@@ -26,7 +26,7 @@ public class AcceleratedStaticProducer<T extends MemWrapper> extends DynamicAcce
 	 * this is not actually used by {@link #evaluate(Object[])}.
 	 */
 	@Override
-	public String getValue(int pos) {
+	public String getValue(Argument arg, int pos) {
 		Pair p = MemWrapper.fromMem(value.getMem(), value.getOffset() + pos, 1);
 
 		String s = stringForDouble(p.getA());

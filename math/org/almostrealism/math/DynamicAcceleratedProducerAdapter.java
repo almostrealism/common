@@ -16,7 +16,6 @@
 
 package org.almostrealism.math;
 
-import org.almostrealism.util.AcceleratedStaticProducer;
 import org.almostrealism.util.Producer;
 
 import java.util.ArrayList;
@@ -48,13 +47,25 @@ public abstract class DynamicAcceleratedProducerAdapter<T extends MemWrapper> ex
 		StringBuffer buf = new StringBuffer();
 
 		for (int i = 0; i < memLength; i++) {
-			buf.append(outputVariable.apply(i) + " = " + getValue(i) + ";\n");
+			buf.append(outputVariable.apply(i) + " = " + getValue(null, i) + ";\n");
 		}
 
 		return buf.toString();
 	}
 
-	public abstract String getValue(int pos);
+	public AcceleratedProducer getInputProducer(int index) {
+		return (AcceleratedProducer) getInputProducers()[index].getProducer();
+	}
+
+	public String getInputProducerValue(int index, int pos) {
+		return getInputProducerValue(getInputProducers()[index], pos);
+	}
+
+	public static String getInputProducerValue(Argument arg, int pos) {
+		return ((DynamicAcceleratedProducerAdapter) arg.getProducer()).getValue(arg, pos);
+	}
+
+	public abstract String getValue(Argument arg, int pos);
 
 	public boolean isValueOnly() {
 		return true;
@@ -74,25 +85,25 @@ public abstract class DynamicAcceleratedProducerAdapter<T extends MemWrapper> ex
 		return true;
 	}
 
-	protected static List<DynamicAcceleratedProducerAdapter> extractStaticProducers(Argument args[]) {
-		List<DynamicAcceleratedProducerAdapter> staticProducers = new ArrayList<>();
+	protected static List<Argument> extractStaticProducers(Argument args[]) {
+		List<Argument> staticProducers = new ArrayList<>();
 
 		for (int i = 1; i < args.length; i++) {
 			if (args[i].getProducer() instanceof DynamicAcceleratedProducerAdapter && args[i].getProducer().isStatic()) {
-				staticProducers.add((DynamicAcceleratedProducerAdapter) args[i].getProducer());
+				staticProducers.add(args[i]);
 			}
 		}
 
 		return staticProducers;
 	}
 
-	protected static List<DynamicAcceleratedProducerAdapter> extractDynamicProducers(Argument args[]) {
-		List<DynamicAcceleratedProducerAdapter> dynamicProducers = new ArrayList<>();
+	protected static List<Argument> extractDynamicProducers(Argument args[]) {
+		List<Argument> dynamicProducers = new ArrayList<>();
 
 		for (int i = 1; i < args.length; i++) {
 			if (args[i].getProducer() instanceof DynamicAcceleratedProducerAdapter == false ||
 					!args[i].getProducer().isStatic()) {
-				dynamicProducers.add((DynamicAcceleratedProducerAdapter) args[i].getProducer());
+				dynamicProducers.add(args[i]);
 			}
 		}
 

@@ -29,6 +29,7 @@ import org.almostrealism.relation.Operator;
 import org.almostrealism.space.AbstractSurface;
 import org.almostrealism.space.BoundingSolid;
 import org.almostrealism.space.ShadableIntersection;
+import org.almostrealism.util.PassThroughProducer;
 import org.almostrealism.util.Producer;
 import org.almostrealism.util.StaticProducer;
 import org.almostrealism.util.VectorPassThroughProducer;
@@ -57,12 +58,12 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 	private static TriangleDataProducer dataProducer;
 	
 	static {
-		VectorPassThroughProducer p1 = new VectorPassThroughProducer(0);
-		VectorPassThroughProducer p2 = new VectorPassThroughProducer(1);
-		VectorPassThroughProducer p3 = new VectorPassThroughProducer(2);
+		Producer<Vector> p1 = PassThroughProducer.of(Vector.class, 0);
+		Producer<Vector> p2 = PassThroughProducer.of(Vector.class, 1);
+		Producer<Vector> p3 = PassThroughProducer.of(Vector.class, 2);
 
-		VectorProducer a = p2.subtract(p1);
-		VectorProducer b = p3.subtract(p1);
+		VectorProducer a = VectorProducer.subtract(p2, p1);
+		VectorProducer b = VectorProducer.subtract(p3, p1);
 
 		normalProducer = a.crossProduct(b);
 		normalProducer = normalProducer.normalize();
@@ -71,6 +72,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 
 		dataProducer = TriangleDataProducer.of(p1, p2, p3);
 		dataProducer.compact();
+		System.out.println("Compacted Triangle Data Producer");
 	}
 
 	/**
@@ -98,7 +100,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 	}
 	
 	public Triangle(int p1, int p2, int p3, RGB color, Mesh.VertexData data) {
-		super(null, 1.0, color, false);
+		super(color, false);
 		
 		this.ind1 = p1;
 		this.ind2 = p2;

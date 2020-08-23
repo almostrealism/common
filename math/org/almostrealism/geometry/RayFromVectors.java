@@ -32,7 +32,7 @@ public class RayFromVectors extends DynamicAcceleratedProducerAdapter<Ray> {
 	}
 
 	@Override
-	public String getValue(int pos) {
+	public String getValue(Argument arg, int pos) {
 		if (value == null) {
 			if (pos == 0) {
 				return getArgumentValueName(1, 0);
@@ -59,24 +59,19 @@ public class RayFromVectors extends DynamicAcceleratedProducerAdapter<Ray> {
 		super.compact();
 
 		if (value == null && isCompletelyValueOnly()) {
-			DynamicAcceleratedProducerAdapter<Vector> origin =
-					(DynamicAcceleratedProducerAdapter<Vector>) inputProducers[1].getProducer();
-			DynamicAcceleratedProducerAdapter<Vector> direction =
-					(DynamicAcceleratedProducerAdapter<Vector>) inputProducers[2].getProducer();
-
 			List<Argument> newArgs = new ArrayList<>();
 			newArgs.add(inputProducers[0]);
-			newArgs.addAll(Arrays.asList(excludeResult(origin.getInputProducers())));
-			newArgs.addAll(Arrays.asList(excludeResult(direction.getInputProducers())));
+			newArgs.addAll(Arrays.asList(excludeResult(getInputProducer(1).getInputProducers())));
+			newArgs.addAll(Arrays.asList(excludeResult(getInputProducer(2).getInputProducers())));
 
 			value = new String[6];
 
-			value[0] = origin.getValue(0);
-			value[1] = origin.getValue(1);
-			value[2] = origin.getValue(2);
-			value[3] = direction.getValue(0);
-			value[4] = direction.getValue(1);
-			value[5] = direction.getValue(2);
+			value[0] = getInputProducerValue(1, 0);
+			value[1] = getInputProducerValue(1, 1);
+			value[2] = getInputProducerValue(1, 2);
+			value[3] = getInputProducerValue(2, 0);
+			value[4] = getInputProducerValue(2, 1);
+			value[5] = getInputProducerValue(2, 2);
 
 			for (int i = 0; i < value.length; i++) {
 				if (value[i].trim().length() <= 0) {

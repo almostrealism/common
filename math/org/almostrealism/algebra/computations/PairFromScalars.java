@@ -24,6 +24,7 @@ import org.almostrealism.math.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.util.Producer;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 public class PairFromScalars extends DynamicAcceleratedProducerAdapter<Pair> implements PairProducer {
@@ -34,7 +35,7 @@ public class PairFromScalars extends DynamicAcceleratedProducerAdapter<Pair> imp
 	}
 
 	@Override
-	public String getValue(int pos) {
+	public String getValue(Argument arg, int pos) {
 		if (value == null) {
 			return getArgumentValueName(pos + 1, 0);
 		} else {
@@ -46,25 +47,18 @@ public class PairFromScalars extends DynamicAcceleratedProducerAdapter<Pair> imp
 		super.compact();
 
 		if (value == null && isCompletelyValueOnly()) {
-			DynamicAcceleratedProducerAdapter xy[] = new DynamicAcceleratedProducerAdapter[] {
-					((DynamicAcceleratedProducerAdapter) getInputProducers()[1].getProducer()),
-					((DynamicAcceleratedProducerAdapter) getInputProducers()[2].getProducer())
-			};
-
 			value = new String[] {
-					xy[0].getValue(0),
-					xy[1].getValue(0)
+					getInputProducerValue(1, 0),
+					getInputProducerValue(2, 0)
 			};
 
 			List<Argument> newArgs = new ArrayList<>();
 			newArgs.add(inputProducers[0]);
 
-			for (int i = 1; i < xy[0].getInputProducers().length; i++) {
-				newArgs.add(xy[0].getInputProducers()[i]);
-			}
-
-			for (int i = 1; i < xy[1].getInputProducers().length; i++) {
-				newArgs.add(xy[1].getInputProducers()[i]);
+			for (int i = 1; i <= 2; i++) {
+				if (!getInputProducer(i).isStatic()) {
+					newArgs.addAll(Arrays.asList(excludeResult(getInputProducer(i).getInputProducers())));
+				}
 			}
 
 			inputProducers = newArgs.toArray(new Argument[0]);

@@ -37,7 +37,7 @@ public class Transform extends DynamicAcceleratedProducerAdapter<Vector> {
 	}
 
 	@Override
-	public String getValue(int pos) {
+	public String getValue(Argument arg, int pos) {
 		if (value == null) {
 			StringBuffer buf = new StringBuffer();
 			buf.append(t(pos, 0));
@@ -70,22 +70,18 @@ public class Transform extends DynamicAcceleratedProducerAdapter<Vector> {
 		if (value == null && isCompletelyValueOnly()) {
 			value = new String[3];
 
-			DynamicAcceleratedProducerAdapter<Vector> v =
-					(DynamicAcceleratedProducerAdapter<Vector>) inputProducers[1].getProducer();
-			DynamicAcceleratedProducerAdapter<TransformMatrix> t =
-					(DynamicAcceleratedProducerAdapter<TransformMatrix>) inputProducers[2].getProducer();
-
 			for (int i = 0; i < value.length; i++) {
 				List<Product> sum = new ArrayList<>();
-				sum.add(new Product(new Number(t.getValue(4 * i), t.isStatic()),
-									new Number(v.getValue(0), v.isStatic())));
-				sum.add(new Product(new Number(t.getValue(4 * i + 1), t.isStatic()),
-									new Number(v.getValue(1), v.isStatic())));
-				sum.add(new Product(new Number(t.getValue(4 * i + 2), t.isStatic()),
-									new Number(v.getValue(2), v.isStatic())));
+				sum.add(new Product(new Number(getInputProducerValue(2, 4 * i), getInputProducer(2).isStatic()),
+									new Number(getInputProducerValue(1, 0), getInputProducer(1).isStatic())));
+				sum.add(new Product(new Number(getInputProducerValue(2, 4 * i + 1), getInputProducer(2).isStatic()),
+									new Number(getInputProducerValue(1, 1), getInputProducer(1).isStatic())));
+				sum.add(new Product(new Number(getInputProducerValue(2, 4 * i + 2), getInputProducer(2).isStatic()),
+									new Number(getInputProducerValue(1, 2), getInputProducer(1).isStatic())));
 
 				if (includeTranslation) {
-					sum.add(new Product(new Number(t.getValue(4 * i + 3), t.isStatic()),
+					sum.add(new Product(new Number(getInputProducerValue(2, 4 * i + 3),
+													getInputProducer(2).isStatic()),
 										new Number("1.0", true)));
 				}
 
@@ -135,8 +131,10 @@ public class Transform extends DynamicAcceleratedProducerAdapter<Vector> {
 
 			List<Argument> newArgs = new ArrayList<>();
 			newArgs.add(inputProducers[0]);
-			if (!v.isStatic()) newArgs.addAll(Arrays.asList(excludeResult(v.getInputProducers())));
-			if (!t.isStatic()) newArgs.addAll(Arrays.asList(excludeResult(t.getInputProducers())));
+			if (!getInputProducer(1).isStatic())
+				newArgs.addAll(Arrays.asList(excludeResult(getInputProducer(1).getInputProducers())));
+			if (!getInputProducer(2).isStatic())
+				newArgs.addAll(Arrays.asList(excludeResult(getInputProducer(2).getInputProducers())));
 			inputProducers = newArgs.toArray(new Argument[0]);
 			removeDuplicateArguments();
 		}

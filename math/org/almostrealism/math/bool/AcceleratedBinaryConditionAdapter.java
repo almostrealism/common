@@ -18,7 +18,6 @@ package org.almostrealism.math.bool;
 
 import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.math.DynamicAcceleratedProducer;
 import org.almostrealism.math.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.math.MemWrapper;
 import org.almostrealism.util.DynamicProducer;
@@ -119,9 +118,9 @@ public abstract class AcceleratedBinaryConditionAdapter<T extends MemWrapper> ex
 			List<Argument> operands = getOperands();
 
 			variables.add(new Variable<>(getVariableName(0),
-					((DynamicAcceleratedProducerAdapter) operands.get(0).getProducer()).getValue(0)));
+					((DynamicAcceleratedProducerAdapter) operands.get(0).getProducer()).getValue(operands.get(0), 0)));
 			variables.add(new Variable<>(getVariableName(1),
-					((DynamicAcceleratedProducerAdapter) operands.get(1).getProducer()).getValue(0)));
+					((DynamicAcceleratedProducerAdapter) operands.get(1).getProducer()).getValue(operands.get(1), 0)));
 
 			StringBuffer buf = new StringBuffer();
 			buf.append(getVariableName(0));

@@ -34,7 +34,7 @@ public class RayDirection extends DynamicAcceleratedProducerAdapter<Vector> impl
 	}
 
 	@Override
-	public String getValue(int pos) {
+	public String getValue(Argument arg, int pos) {
 		if (value == null) {
 			return getArgumentValueName(1, pos + 3);
 		} else {
@@ -49,11 +49,8 @@ public class RayDirection extends DynamicAcceleratedProducerAdapter<Vector> impl
 		if (value == null && isCompletelyValueOnly()) {
 			value = new String[3];
 
-			DynamicAcceleratedProducerAdapter<Vector> r =
-					(DynamicAcceleratedProducerAdapter<Vector>) inputProducers[1].getProducer();
-
 			for (int i = 0; i < value.length; i++) {
-				value[i] = r.getValue(i + 3);
+				value[i] = getInputProducerValue(1, i + 3);
 				if (value[i].contains("Infinity")) {
 					throw new IllegalArgumentException("Infinity is not supported");
 				}
@@ -61,7 +58,7 @@ public class RayDirection extends DynamicAcceleratedProducerAdapter<Vector> impl
 
 			List<Argument> newArgs = new ArrayList<>();
 			newArgs.add(inputProducers[0]);
-			newArgs.addAll(Arrays.asList(excludeResult(r.getInputProducers())));
+			newArgs.addAll(Arrays.asList(excludeResult(getInputProducer(1).getInputProducers())));
 			inputProducers = newArgs.toArray(new Argument[0]);
 			removeDuplicateArguments();
 		}

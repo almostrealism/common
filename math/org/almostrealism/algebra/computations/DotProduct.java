@@ -34,7 +34,7 @@ public class DotProduct extends DynamicAcceleratedProducerAdapter<Scalar> implem
 	}
 
 	@Override
-	public String getValue(int pos) {
+	public String getValue(Argument arg, int pos) {
 		if (value == null) {
 			if (pos == 0) {
 				return getArgumentValueName(1, 0) + " * " + getArgumentValueName(2, 0) + " + " +
@@ -55,15 +55,10 @@ public class DotProduct extends DynamicAcceleratedProducerAdapter<Scalar> implem
 		super.compact();
 
 		if (value == null && isCompletelyValueOnly()) {
-			DynamicAcceleratedProducerAdapter<Vector> a =
-					(DynamicAcceleratedProducerAdapter<Vector>) inputProducers[1].getProducer();
-			DynamicAcceleratedProducerAdapter<Vector> b =
-					(DynamicAcceleratedProducerAdapter<Vector>) inputProducers[2].getProducer();
-
 			value = new String[2];
-			value[0] = "(" + a.getValue(0) + ") * (" + b.getValue(0) + ") + " +
-					"(" + a.getValue(1) + ") * (" + b.getValue(1) + ") + " +
-					"(" + a.getValue(2) + ") * (" + b.getValue(2) + ")";
+			value[0] = "(" + getInputProducerValue(1, 0) + ") * (" + getInputProducerValue(2, 0) + ") + " +
+					"(" + getInputProducerValue(1, 1) + ") * (" + getInputProducerValue(2, 1) + ") + " +
+					"(" + getInputProducerValue(1, 2) + ") * (" + getInputProducerValue(2, 2) + ")";
 			value[1] = "1.0";
 
 			if (value[0].contains("Infinity")) {
@@ -72,8 +67,8 @@ public class DotProduct extends DynamicAcceleratedProducerAdapter<Scalar> implem
 
 			List<Argument> newArgs = new ArrayList<>();
 			newArgs.add(inputProducers[0]);
-			newArgs.addAll(Arrays.asList(excludeResult(a.getInputProducers())));
-			newArgs.addAll(Arrays.asList(excludeResult(b.getInputProducers())));
+			newArgs.addAll(Arrays.asList(excludeResult(getInputProducer(1).getInputProducers())));
+			newArgs.addAll(Arrays.asList(excludeResult(getInputProducer(2).getInputProducers())));
 			inputProducers = newArgs.toArray(new Argument[0]);
 			removeDuplicateArguments();
 		}

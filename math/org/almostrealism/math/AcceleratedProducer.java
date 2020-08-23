@@ -29,6 +29,8 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class AcceleratedProducer<T extends MemWrapper> implements KernelizedProducer<T> {
+	public static final boolean enableNullInputs = true;
+
 	private static Map<String, ThreadLocal<HardwareOperator>> operators = new HashMap<>();
 
 	private String function;
@@ -208,7 +210,7 @@ public class AcceleratedProducer<T extends MemWrapper> implements KernelizedProd
 	protected static Argument[] arguments(Producer... producers) {
 		Argument args[] = new Argument[producers.length];
 		for (int i = 0; i < args.length; i++) {
-			if (producers[i] == null) {
+			if (!enableNullInputs && producers[i] == null) {
 				throw new IllegalArgumentException("Null argument at index " + i);
 			}
 

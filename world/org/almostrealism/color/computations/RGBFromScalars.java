@@ -22,6 +22,7 @@ import org.almostrealism.math.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.util.Producer;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 public class RGBFromScalars extends DynamicAcceleratedProducerAdapter<RGB> implements RGBProducer {
@@ -32,7 +33,7 @@ public class RGBFromScalars extends DynamicAcceleratedProducerAdapter<RGB> imple
 	}
 
 	@Override
-	public String getValue(int pos) {
+	public String getValue(Argument arg, int pos) {
 		if (value == null) {
 			return getArgumentValueName(pos + 1, 0);
 		} else {
@@ -45,31 +46,17 @@ public class RGBFromScalars extends DynamicAcceleratedProducerAdapter<RGB> imple
 		super.compact();
 
 		if (value == null && isCompletelyValueOnly()) {
-			DynamicAcceleratedProducerAdapter xyz[] = new DynamicAcceleratedProducerAdapter[] {
-					((DynamicAcceleratedProducerAdapter) getInputProducers()[1].getProducer()),
-					((DynamicAcceleratedProducerAdapter) getInputProducers()[2].getProducer()),
-					((DynamicAcceleratedProducerAdapter) getInputProducers()[3].getProducer())
-			};
-
 			value = new String[] {
-					xyz[0].getValue(0),
-					xyz[1].getValue(0),
-					xyz[2].getValue(0)
+					getInputProducerValue(1, 0),
+					getInputProducerValue(2, 0),
+					getInputProducerValue(3, 0)
 			};
 
 			List<Argument> newArgs = new ArrayList<>();
 			newArgs.add(inputProducers[0]);
-
-			for (int i = 1; i < xyz[0].getInputProducers().length; i++) {
-				newArgs.add(xyz[0].getInputProducers()[i]);
-			}
-
-			for (int i = 1; i < xyz[1].getInputProducers().length; i++) {
-				newArgs.add(xyz[1].getInputProducers()[i]);
-			}
-
-			for (int i = 1; i < xyz[2].getInputProducers().length; i++) {
-				newArgs.add(xyz[2].getInputProducers()[i]);
+			for (int i = 1; i <= 3; i++) {
+				if (!getInputProducer(i).isStatic())
+					newArgs.addAll(Arrays.asList(excludeResult(getInputProducer(i).getInputProducers())));
 			}
 
 			inputProducers = newArgs.toArray(new Argument[0]);
