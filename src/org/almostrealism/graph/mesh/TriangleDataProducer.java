@@ -9,6 +9,11 @@ public interface TriangleDataProducer extends Producer<TriangleData> {
 		Producer<Vector> abc = VectorProducer.subtract(p1, p2);
 		Producer<Vector> def = VectorProducer.subtract(p1, p3);
 		Producer<Vector> jkl = p1;
-		return new TriangleDataFromVectors(abc, def, jkl);
+
+		VectorProducer a = VectorProducer.subtract(p2, p1);
+		VectorProducer b = VectorProducer.subtract(p3, p1);
+		VectorProducer normal = a.crossProduct(b);
+		normal = normal.normalize();
+		return new TriangleDataFromVectors(abc, def, jkl, normal);
 	}
 }

@@ -50,25 +50,15 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 	private int ind1, ind2, ind3;
 	
 	private Vector p1, p2, p3;
-	private Vector normal;
 	private boolean smooth, intcolor, useT = true;
 	private TriangleData data;
 
-	private static VectorProducer normalProducer;
 	private static TriangleDataProducer dataProducer;
 	
 	static {
 		Producer<Vector> p1 = PassThroughProducer.of(Vector.class, 0);
 		Producer<Vector> p2 = PassThroughProducer.of(Vector.class, 1);
 		Producer<Vector> p3 = PassThroughProducer.of(Vector.class, 2);
-
-		VectorProducer a = VectorProducer.subtract(p2, p1);
-		VectorProducer b = VectorProducer.subtract(p3, p1);
-
-		normalProducer = a.crossProduct(b);
-		normalProducer = normalProducer.normalize();
-
-		normalProducer.compact();
 
 		dataProducer = TriangleDataProducer.of(p1, p2, p3);
 		dataProducer.compact();
@@ -123,7 +113,6 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 	 */	
 	public void setVertices(Vector p1, Vector p2, Vector p3) {
 		if (enableHardwareOperator) {
-			this.normal = normalProducer.evaluate(new Object[] { p1, p2, p3 });
 			this.data = dataProducer.evaluate(new Object[] { p1, p2, p3 });
 		} else {
 			this.p1 = p1;
@@ -133,12 +122,13 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 			Vector a = this.p2.subtract(this.p1);
 			Vector b = this.p3.subtract(this.p1);
 
-			this.normal = a.crossProduct(b);
-			this.normal.normalize();
+			Vector normal = a.crossProduct(b);
+			normal.normalize();
 
 			this.data.setABC(this.p1.subtract(this.p2));
 			this.data.setDEF(this.p1.subtract(this.p3));
 			this.data.setJKL(this.p1);
+			this.data.setNormal(normal);
 		}
 	}
 
@@ -377,10 +367,10 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 		} else {
 			if (useT && getTransform(true) != null) {
 				return getTransform(true).getInverse().transform(
-						StaticProducer.of(normal),
+						StaticProducer.of(data.getNormal()),
 						TransformMatrix.TRANSFORM_AS_NORMAL);
 			} else {
-				return StaticProducer.of((Vector) normal.clone());
+				return StaticProducer.of((Vector) data.getNormal().clone());
 			}
 		}
 	}

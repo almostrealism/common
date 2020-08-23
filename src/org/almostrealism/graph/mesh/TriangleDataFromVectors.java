@@ -26,8 +26,9 @@ import java.util.List;
 public class TriangleDataFromVectors extends DynamicAcceleratedProducerAdapter<TriangleData> implements TriangleDataProducer {
 	private String value[];
 
-	public TriangleDataFromVectors(Producer<Vector> abc, Producer<Vector> def, Producer<Vector> jkl) {
-		super(9, TriangleData.blank(), abc, def, jkl);
+	public TriangleDataFromVectors(Producer<Vector> abc, Producer<Vector> def,
+								   Producer<Vector> jkl, Producer<Vector> normal) {
+		super(12, TriangleData.blank(), abc, def, jkl, normal);
 	}
 
 	@Override
@@ -44,7 +45,7 @@ public class TriangleDataFromVectors extends DynamicAcceleratedProducerAdapter<T
 		super.compact();
 
 		if (value == null) {
-			value = new String[9];
+			value = new String[12];
 
 			List<Argument> newArgs = new ArrayList<>();
 			newArgs.add(inputProducers[0]);

@@ -23,16 +23,18 @@ import org.almostrealism.util.Producer;
 
 public class TriangleData extends VectorBank {
 	public TriangleData() {
-		super(3);
+		super(4);
 	}
 
 	public void setABC(Vector abc) { set(0, abc); }
 	public void setDEF(Vector def) { set(1, def); }
 	public void setJKL(Vector jkl) { set(2, jkl); }
+	public void setNormal(Vector normal) { set(3, normal); }
 
 	public Vector getABC() { return get(0); }
 	public Vector getDEF() { return get(1); }
 	public Vector getJKL() { return get(2); }
+	public Vector getNormal() { return get(3); }
 
 	public static Producer<TriangleData> blank() {
 		return new DynamicProducer(args -> new TriangleData());
