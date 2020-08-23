@@ -531,23 +531,23 @@ planeYZIntersectAt(__global double *res, __global const double *r,
 __kernel void
 triangleIntersectAt(__global double *res,
                     __global const double *r,
-                    __global const double *abc, __global const double *def, __global const double *jkl,
+                    __global const double *data,
                     const int resOffset, const int rOffset,
-                    const int abcOffset, const int defOffset, const int jklOffset,
+                    const int dataOffset,
                     const int resSize, const int rSize,
-                    const int abcSize, const int defSize, const int jklSize) {
-    double m = abc[abcOffset]       * (def[defOffset + 1] * r[rOffset + 5]  - r[rOffset + 4] * def[defOffset + 2]) +
-               abc[abcOffset + 1]   * (r[rOffset + 3] * def[defOffset + 2]  - def[defOffset] * r[rOffset + 5]) +
-               abc[abcOffset + 2]   * (def[defOffset] * r[rOffset + 4]      - def[defOffset + 1] * r[rOffset + 3]);
+                    const int dataSize) {
+    double m = data[dataOffset]       * (data[dataOffset + 4] * r[rOffset + 5]  - r[rOffset + 4] * data[dataOffset + 5]) +
+               data[dataOffset + 1]   * (r[rOffset + 3] * data[dataOffset + 5]  - data[dataOffset + 3] * r[rOffset + 5]) +
+               data[dataOffset + 2]   * (data[dataOffset + 3] * r[rOffset + 4]  - data[dataOffset + 4] * r[rOffset + 3]);
 
     if (m == 0) {
         res[resOffset] = -1;
         return;
     }
 
-    double u = jkl[jklOffset]       * (def[defOffset + 1] * r[rOffset + 5]  - r[rOffset + 4] * def[defOffset + 2]) +
-               jkl[jklOffset + 1]   * (r[rOffset + 3] * def[defOffset + 2]  - def[defOffset] * r[rOffset + 5]) +
-               jkl[jklOffset + 2]   * (def[defOffset] * r[rOffset + 4]      - def[defOffset + 1] * r[rOffset + 3]);
+    double u = data[dataOffset + 6]   * (data[dataOffset + 4] * r[rOffset + 5]   - r[rOffset + 4] * data[dataOffset + 5]) +
+               data[dataOffset + 7]   * (r[rOffset + 3] * data[dataOffset + 5]   - data[dataOffset + 3] * r[rOffset + 5]) +
+               data[dataOffset + 8]   * (data[dataOffset + 3] * r[rOffset + 4]   - data[dataOffset + 4] * r[rOffset + 3]);
     u = u / m;
 
     if (u <= 0.0) {
@@ -555,9 +555,9 @@ triangleIntersectAt(__global double *res,
         return;
     }
 
-    double v = r[rOffset + 5] * (abc[abcOffset] * jkl[jklOffset + 1]      - jkl[jklOffset] * abc[abcOffset + 1]) +
-               r[rOffset + 4] * (jkl[jklOffset] * abc[abcOffset + 2]      - abc[abcOffset] * jkl[jklOffset + 2]) +
-               r[rOffset + 3] * (abc[abcOffset + 1] * jkl[jklOffset + 2]  - jkl[jklOffset + 1] * abc[abcOffset + 2]);
+    double v = r[rOffset + 5] * (data[dataOffset] * data[dataOffset + 7]     - data[dataOffset + 6] * data[dataOffset + 1]) +
+               r[rOffset + 4] * (data[dataOffset + 6] * data[dataOffset + 2]     - data[dataOffset] * data[dataOffset + 8]) +
+               r[rOffset + 3] * (data[dataOffset + 1] * data[dataOffset + 8] - data[dataOffset + 7] * data[dataOffset + 2]);
     v = v / m;
 
     if (v <= 0.0 || u + v >= 1.0)  {
@@ -565,8 +565,8 @@ triangleIntersectAt(__global double *res,
         return;
     }
 
-    double t = def[defOffset + 2] * (abc[abcOffset] * jkl[jklOffset + 1] - jkl[jklOffset] * abc[abcOffset + 1]) +
-               def[defOffset + 1] * (jkl[jklOffset] * abc[abcOffset + 2] - abc[abcOffset] * jkl[jklOffset + 2]) +
-               def[defOffset] * (abc[abcOffset + 1] * jkl[jklOffset + 2] - jkl[jklOffset + 1] * abc[abcOffset + 2]);
+    double t = data[dataOffset + 5] * (data[dataOffset] * data[dataOffset + 7] - data[dataOffset + 6] * data[dataOffset + 1]) +
+               data[dataOffset + 4] * (data[dataOffset + 6] * data[dataOffset + 2] - data[dataOffset] * data[dataOffset + 8]) +
+               data[dataOffset + 3] * (data[dataOffset + 1] * data[dataOffset + 8] - data[dataOffset + 7] * data[dataOffset + 2]);
     res[resOffset] = -1.0 * t / m;
 }

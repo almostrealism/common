@@ -46,9 +46,11 @@ import org.almostrealism.space.ShadableSurface;
 import org.almostrealism.space.ShadableSurfaceWrapper;
 import org.almostrealism.space.SpacePartition;
 import org.almostrealism.space.BoundingSolid;
+import org.almostrealism.util.AdaptProducer;
 import org.almostrealism.util.Producer;
 import org.almostrealism.util.ProducerWithRank;
 import org.almostrealism.util.RankedChoiceProducer;
+import org.almostrealism.util.StaticProducer;
 
 // TODO  Add bounding solid to make intersection calc faster.
 
@@ -154,7 +156,6 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 	
   private List points, triangles;
   private Triangle tcache[];
-  private ShadableIntersection inter[];
   private boolean ignore[];
   private boolean smooth, removeBackFaces, intcolor;
   
@@ -169,7 +170,6 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
   	public Mesh() {
   		this.points = new ArrayList();
   		this.triangles = new ArrayList();
-  		this.clearIntersectionCache();
   		this.clearIgnoreCache();
   		this.clearTriangleCache();
   	}
@@ -184,7 +184,6 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
   	public Mesh(Vector points[], int triangles[][]) {
   		this.points = new ArrayList();
   		this.triangles = new ArrayList();
-  		this.clearIntersectionCache();
   		this.clearIgnoreCache();
   		this.clearTriangleCache();
   		
@@ -196,8 +195,7 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
   	
   	public Mesh(VertexData data) {
   		this.vertexData = data;
-  		
-  		this.clearIntersectionCache();
+
 	  	this.clearIgnoreCache();
 	  	this.clearTriangleCache();
   	}
@@ -267,7 +265,6 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 			if (clearcache) {
 				this.clearIgnoreCache();
 				this.clearTriangleCache();
-				this.clearIntersectionCache();
 			}
 
 			return (this.triangles.size() - 1);
@@ -328,13 +325,6 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 		else
 			this.tcache = new Triangle[this.vertexData.getTriangleCount()];
 	}
-	
-	public synchronized void clearIntersectionCache() {
-		if (this.vertexData == null)
-			this.inter = new ShadableIntersection[this.triangles.size()];
-		else
-			this.inter = new ShadableIntersection[this.vertexData.getTriangleCount()];
-	}
   	
   	/**
   	 * Removes all points stored by this Mesh and adds those stored in the specified array.
@@ -367,7 +357,6 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
   		for (int i = 0; i < data.length; i++) this.triangles.add(data[i]);
   		
   		this.clearIgnoreCache();
-  		this.clearIntersectionCache();
   		this.clearTriangleCache();
   	}
   	
@@ -657,55 +646,50 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 
 		Triangle tr;
 
-		i: for (int i = 0; i < inter.length; i++) {
-			if (tcache[i] != null) {
-				tr = tcache[i];
-				inter[i] = (ShadableIntersection) tr.intersectAt(fray);
-				continue i;
-			} else {
-				tr = getTriangle(i);
-				inter[i] = (ShadableIntersection) tr.intersectAt(fray);
+		i: for (int i = 0; i < tcache.length; i++) {
+			if (tcache[i] == null) {
+				tcache[i] = getTriangle(i);
 			}
-
-			tcache[i] = tr;
 		}
 
-		Producer<Scalar> s = new Producer<Scalar>() {
+		Producer<Scalar> distance = new Producer<Scalar>() {
 			@Override
 			public Scalar evaluate(Object[] args) {
+				Ray r = fray.evaluate(args);
 
 				int b = 0;
 
-				i: for (int i = 0; i < inter.length; i++) {
-					// if (ignore[i]) continue i;
-
-					Ray r = fray.evaluate(args);
+				i: for (int i = 0; i < tcache.length; i++) {
+					if (!removeBackFaces) {
+						ignore[i] = false;
+						continue i;
+					}
 
 					Vector trv = tcache[i].getVertices()[0].subtract(r.getOrigin());
 					double dt = tcache[i].getNormalAt(Vector.blank())
 							.evaluate(new Object[0]).dotProduct(trv);
 
-					if (!removeBackFaces) {
-						// tcache[i] = tr;
-					} else if ((!getShadeFront() && !getShadeBack()) ||
+					if ((!getShadeFront() && !getShadeBack()) ||
 							(!getShadeFront() && dt < 0.0) ||
 							(!getShadeBack() && dt > 0.0) ||
 							(dt == 0.0)) {
 						b++;
 						ignore[i] = true;
 					} else {
-						// tcache[i] = tr;
+						ignore[i] = false;
 					}
 				}
+
+				if (b > 0) System.out.println("Mesh: Removed " + b + " back faces.");
 
 				double closestIntersection = -1.0;
 				int closestIntersectionIndex = -1;
 
 				i:
-				for (int i = 0; i < inter.length; i++) {
-					if (inter[i] == null) continue i;
+				for (int i = 0; i < tcache.length; i++) {
+					if (tcache[i] == null) continue i;
 
-					double intersect = ((Scalar) inter[i].getDistance().evaluate(args)).getValue();
+					double intersect = Triangle.intersectAt.evaluate(new Object[] { r, tcache[i].getData() }).getValue();
 
 					if (intersect >= Intersection.e) {
 						if (closestIntersectionIndex == -1 || intersect < closestIntersection) {
@@ -714,8 +698,6 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 						}
 					}
 				}
-
-				if (b > 0) System.out.println("Mesh: Removed " + b + " back faces.");
 
 				return closestIntersectionIndex < 0 ? null : new Scalar(closestIntersection);
 			}
@@ -728,16 +710,18 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 
 		if (Triangle.enableHardwareOperator) {
 			RankedChoiceProducer<Vector> closestNormal = new RankedChoiceProducer<>(Intersection.e);
-			for (ShadableIntersection in : inter) {
-				closestNormal.add(new ProducerWithRank<>(in.getNormalAt(null), in.getDistance()));
+			for (Triangle tri : tcache) {
+				closestNormal.add(new ProducerWithRank<>(
+						StaticProducer.of(tri.getData().getNormal()),
+						new AdaptProducer<>(Triangle.intersectAt, tray, StaticProducer.of(tri.getData()))));
 			}
 
 			// Return an intersection of the ray with the distance function
 			// supplied above using the normal that is ranked best out of the
-			// ShadableIntersections from the triangles
-			return new ShadableIntersection(ray, closestNormal, s);
+			// intersectAt evaluations from the triangles
+			return new ShadableIntersection(ray, closestNormal, distance);
 		} else {
-			return new ShadableIntersection(this, ray, s);
+			return new ShadableIntersection(this, ray, distance);
 		}
 	}
 	

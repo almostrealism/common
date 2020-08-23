@@ -16,6 +16,8 @@
 
 package org.almostrealism.util;
 
+import org.almostrealism.algebra.Scalar;
+
 import java.util.ArrayList;
 
 public class RankedChoiceProducer<T> extends ArrayList<ProducerWithRank<T>> implements Producer<T> {
@@ -35,7 +37,10 @@ public class RankedChoiceProducer<T> extends ArrayList<ProducerWithRank<T>> impl
 		}
 
 		r: for (ProducerWithRank<T> p : this) {
-			double r = p.getRank().evaluate(args).getValue();
+			Scalar rs = p.getRank().evaluate(args);
+			if (rs == null) continue r;
+
+			double r = rs.getValue();
 			if (r < e && printLog) System.out.println(p + " was skipped due to being less than " + e);
 			if (r < e) continue r;
 

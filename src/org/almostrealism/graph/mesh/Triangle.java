@@ -54,6 +54,8 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 	private TriangleData data;
 
 	private static TriangleDataProducer dataProducer;
+
+	protected static Producer<Scalar> intersectAt;
 	
 	static {
 		Producer<Vector> p1 = PassThroughProducer.of(Vector.class, 0);
@@ -62,7 +64,12 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 
 		dataProducer = TriangleDataProducer.of(p1, p2, p3);
 		dataProducer.compact();
-		System.out.println("Compacted Triangle Data Producer");
+
+		intersectAt = new AcceleratedProducer(
+				"triangleIntersectAt",
+				Scalar.blank(),
+				PassThroughProducer.of(Ray.class, 0),
+				PassThroughProducer.of(TriangleData.class, 1));
 	}
 
 	/**
@@ -103,6 +110,8 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 	private void loadVertexData() {
 		setVertices(vertexData.getPosition(ind1), vertexData.getPosition(ind2), vertexData.getPosition(ind3));
 	}
+
+	public TriangleData getData() { return data; }
 	
 	/**
 	 * Sets the vertices of this Triangle object to those specified.
@@ -392,7 +401,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 											"triangleIntersectAt",
 											false,
 											new Producer[] {
-												new StaticProducer(new Scalar()), ray
+												Scalar.blank(), ray
 											},
 											new Object[] { data.getABC(), data.getDEF(), data.getJKL() }));
 		} else {
