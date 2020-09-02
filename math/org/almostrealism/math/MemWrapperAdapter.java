@@ -1,6 +1,7 @@
 package org.almostrealism.math;
 
 import org.jocl.CL;
+import org.jocl.CLException;
 import org.jocl.Pointer;
 import org.jocl.cl_mem;
 
@@ -100,16 +101,16 @@ public abstract class MemWrapperAdapter implements MemWrapper {
 
 	protected static void setMem(cl_mem mem, int offset, MemWrapperAdapter src, int srcOffset, int length) {
 		if (src.delegateMem == null) {
-			CL.clEnqueueCopyBuffer(Hardware.getLocalHardware().getQueue(), src.mem, mem,
-					srcOffset * sizeOf,
-					offset * sizeOf, length * sizeOf,
-					0, null, null);
+			try {
+				CL.clEnqueueCopyBuffer(Hardware.getLocalHardware().getQueue(), src.mem, mem,
+						srcOffset * sizeOf,
+						offset * sizeOf, length * sizeOf,
+						0, null, null);
+			} catch (CLException e) {
+				throw e;
+			}
 		} else {
-			CL.clEnqueueCopyBuffer(Hardware.getLocalHardware().getQueue(),
-					src.delegateMem.getMem(), mem,
-					(src.delegateMemOffset + srcOffset) * sizeOf,
-					offset * sizeOf, length * sizeOf,
-					0, null, null);
+			setMem(mem, offset, (MemWrapperAdapter) src.delegateMem, src.delegateMemOffset + srcOffset, length);
 		}
 	}
 
