@@ -19,7 +19,9 @@ package org.almostrealism.math;
 import org.jocl.CLException;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -39,7 +41,21 @@ public abstract class MemoryBankAdapter<T extends MemWrapper> extends MemWrapper
 
 	private Function<DelegateSpec, T> supply;
 
-	private List<T> entries;
+	private List<T> entriesList;
+	private Map<Integer, T> entriesMap;
+
+	private CacheLevel cacheLevel;
+
+	/**
+	 * Initialize RAM with room for the indicated number of items,
+	 * each of the indicated size. Units are all in the size of
+	 * {@link org.jocl.Sizeof#cl_double}. The specified {@link Supplier}
+	 * is used to generated new instances of the target type.
+	 * This uses {@link CacheLevel#ALL}.
+	 */
+	protected MemoryBankAdapter(int memLength, int count, Function<DelegateSpec, T> supply) {
+		this(memLength, count, supply, CacheLevel.ALL);
+	}
 
 	/**
 	 * Initialize RAM with room for the indicated number of items,
@@ -47,36 +63,80 @@ public abstract class MemoryBankAdapter<T extends MemWrapper> extends MemWrapper
 	 * {@link org.jocl.Sizeof#cl_double}. The specified {@link Supplier}
 	 * is used to generated new instances of the target type.
 	 */
-	protected MemoryBankAdapter(int memLength, int count, Function<DelegateSpec, T> supply) {
+	protected MemoryBankAdapter(int memLength, int count, Function<DelegateSpec, T> supply, CacheLevel cacheLevel) {
 		this.memLength = memLength;
 		this.count = count;
 		this.totalMemLength = memLength * count;
 		this.supply = supply;
+		this.cacheLevel = cacheLevel;
 		init();
 	}
 
-	protected void init() {
-		super.init();
-		
-		entries = IntStream.range(0, count)
-				.map(i -> i * getAtomicMemLength())
-				.mapToObj(DelegateSpec::new)
-				.map(supply)
-				.collect(Collectors.toList());
+	/**
+	 * Initialize RAM with room for the indicated number of items,
+	 * each of the indicated size. Units are all in the size of
+	 * {@link org.jocl.Sizeof#cl_double}. The specified {@link Supplier}
+	 * is used to generated new instances of the target type.
+	 * This uses {@link CacheLevel#ALL}.
+	 */
+	protected MemoryBankAdapter(int memLength, int count, Function<DelegateSpec, T> supply,
+								MemWrapper delegate, int delegateOffset) {
+		this(memLength, count, supply, delegate, delegateOffset, CacheLevel.ALL);
+	}
+
+	/**
+	 * Initialize RAM with room for the indicated number of items,
+	 * each of the indicated size. Units are all in the size of
+	 * {@link org.jocl.Sizeof#cl_double}. The specified {@link Supplier}
+	 * is used to generated new instances of the target type.
+	 */
+	protected MemoryBankAdapter(int memLength, int count, Function<DelegateSpec, T> supply,
+								MemWrapper delegate, int delegateOffset, CacheLevel cacheLevel) {
+		this.memLength = memLength;
+		this.count = count;
+		this.totalMemLength = memLength * count;
+		this.supply = supply;
+		this.cacheLevel = cacheLevel;
+		setDelegate(delegate, delegateOffset);
+		init();
 	}
 
 	@Override
-	public T get(int index) { return entries.get(index); }
+	protected void init() {
+		super.init();
+
+		if (cacheLevel == CacheLevel.ALL) {
+			entriesList = IntStream.range(0, count)
+					.map(i -> i * getAtomicMemLength())
+					.mapToObj(DelegateSpec::new)
+					.map(supply)
+					.collect(Collectors.toList());
+		} else {
+			entriesMap = new HashMap<>();
+		}
+	}
+
+	@Override
+	public T get(int index) {
+		if (cacheLevel == CacheLevel.ALL) {
+			return entriesList.get(index);
+		} else if (cacheLevel == CacheLevel.ACCESSED) {
+			T value = entriesMap.get(Integer.valueOf(index));
+			if (value == null) {
+				value = supply.apply(new DelegateSpec(index * getAtomicMemLength()));
+				entriesMap.put(Integer.valueOf(index), value);
+			}
+			return value;
+		} else {
+			return supply.apply(new DelegateSpec(index * getAtomicMemLength()));
+		}
+	}
 
 	@Override
 	public void set(int index, T value) {
-		try {
-			setMem(getOffset() + index * getAtomicMemLength(),
-					(MemWrapperAdapter) value, value.getOffset(),
-					getAtomicMemLength());
-		} catch (CLException e) {
-			e.printStackTrace();
-		}
+		setMem(getOffset() + index * getAtomicMemLength(),
+				(MemWrapperAdapter) value, 0,
+				getAtomicMemLength());
 	}
 
 	@Override
@@ -86,7 +146,7 @@ public abstract class MemoryBankAdapter<T extends MemWrapper> extends MemWrapper
 	public int getAtomicMemLength() { return memLength; }
 
 	@Override
-	public int getCount() { return entries.size(); }
+	public int getCount() { return count; }
 
 	public class DelegateSpec {
 		private int offset;
@@ -99,5 +159,9 @@ public abstract class MemoryBankAdapter<T extends MemWrapper> extends MemWrapper
 
 		public int getOffset() { return offset; }
 		public void setOffset(int offset) { this.offset = offset; }
+	}
+
+	public enum CacheLevel {
+		NONE, ACCESSED, ALL
 	}
 }
