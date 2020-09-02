@@ -23,15 +23,16 @@ public class LessThan<T extends MemWrapper> extends AcceleratedBinaryConditionAd
 					   Producer<Scalar> rightOperand,
 					   Producer<T> trueValue,
 					   Producer<T> falseValue) {
-		this(memLength, blankValue.apply(memLength), leftOperand, rightOperand, trueValue, falseValue);
+		this(memLength, blankValue.apply(memLength), leftOperand, rightOperand, trueValue, falseValue, false);
 	}
 
 	public LessThan(int memLength,
-					   Producer<? extends MemWrapper> blankValue,
-					   Producer<Scalar> leftOperand,
-					   Producer<Scalar> rightOperand,
-					   Producer<T> trueValue,
-					   Producer<T> falseValue) {
-		super("<", memLength, blankValue, leftOperand, rightOperand, trueValue, falseValue);
+					Producer<? extends MemWrapper> blankValue,
+					Producer<Scalar> leftOperand,
+					Producer<Scalar> rightOperand,
+					Producer<T> trueValue,
+					Producer<T> falseValue,
+					boolean includeEqual) {
+		super(includeEqual ? "<=" : "<", memLength, blankValue, leftOperand, rightOperand, trueValue, falseValue);
 	}
 }
