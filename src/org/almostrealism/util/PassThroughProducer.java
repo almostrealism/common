@@ -41,13 +41,18 @@ public class PassThroughProducer<T> implements Producer<T>, ProducerArgumentRefe
 	public int getReferencedArgumentIndex() { return argIndex; }
 
 	public static <T> Producer<T> of(Class<T> type, int index) {
+		return of(type, index, 0);
+	}
+
+	public static <T> Producer<T> of(Class<T> type, int index, int kernelDimension) {
 		if (MemWrapper.class.isAssignableFrom(type)) {
 			try {
 				MemWrapper m = (MemWrapper) type.getConstructor().newInstance();
-				return new AcceleratedPassThroughProducer(m.getMemLength(), index);
+				return new AcceleratedPassThroughProducer(m.getMemLength(), index, kernelDimension);
 			} catch (InstantiationException | IllegalAccessException |
 					InvocationTargetException | NoSuchMethodException e) {
-				throw new IllegalArgumentException(e);
+				System.out.println("WARN: Unable to determine memory length for " + type.getName());
+				return new PassThroughProducer<>(index);
 			}
 		} else {
 			return new PassThroughProducer<>(index);
