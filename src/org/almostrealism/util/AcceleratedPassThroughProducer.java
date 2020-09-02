@@ -23,10 +23,16 @@ import org.almostrealism.math.MemWrapper;
 public class AcceleratedPassThroughProducer<T extends MemWrapper>
 		extends DynamicAcceleratedProducerAdapter<T> implements ProducerArgumentReference {
 	private int argIndex;
+	private int kernelIndex;
 
 	public AcceleratedPassThroughProducer(int memLength, int argIndex) {
+		this(memLength, argIndex, 0);
+	}
+
+	public AcceleratedPassThroughProducer(int memLength, int argIndex, int kernelIndex) {
 		super(memLength);
 		this.argIndex = argIndex;
+		this.kernelIndex = kernelIndex;
 		inputProducers = arguments(Scalar.blank(), this);
 		initArgumentNames();
 	}
@@ -47,7 +53,7 @@ public class AcceleratedPassThroughProducer<T extends MemWrapper>
 
 	@Override
 	public String getValue(Argument arg, int pos) {
-		return getArgumentValueName(1, pos);
+		return getArgumentValueName(1, pos, kernelIndex);
 	}
 
 	@Override
