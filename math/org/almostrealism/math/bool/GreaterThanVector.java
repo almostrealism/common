@@ -30,6 +30,6 @@ public class GreaterThanVector extends GreaterThan<Vector> implements Accelerate
 					   Producer<Scalar> rightOperand,
 					   Producer<Vector> trueValue,
 					   Producer<Vector> falseValue) {
-		super(3, Vector.blank(), leftOperand, rightOperand, trueValue, falseValue);
+		super(3, Vector.blank(), leftOperand, rightOperand, trueValue, falseValue, false);
 	}
 }
