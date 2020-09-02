@@ -51,7 +51,7 @@ public class AcceleratedProducer<T extends MemWrapper> implements KernelizedProd
 		this(function, kernel, producers(inputArgs, additionalArguments));
 	}
 
-	public AcceleratedProducer(String function, boolean kernel, Producer<?> inputArgs[]) {
+	public AcceleratedProducer(String function, boolean kernel, Producer<?>... inputArgs) {
 		this.function = function;
 		this.kernel = kernel;
 		this.inputProducers = arguments(inputArgs);
