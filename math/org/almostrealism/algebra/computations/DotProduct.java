@@ -41,7 +41,7 @@ public class DotProduct extends DynamicAcceleratedProducerAdapter<Scalar> implem
 						getArgumentValueName(1, 1) + " * " + getArgumentValueName(2, 1) + " + " +
 						getArgumentValueName(1, 2) + " * " + getArgumentValueName(2, 2);
 			} else if (pos == 1) {
-				return "1.0";
+				return stringForDouble(1.0);
 			} else {
 				throw new IllegalArgumentException("Position " + pos + " is invalid");
 			}
@@ -59,7 +59,7 @@ public class DotProduct extends DynamicAcceleratedProducerAdapter<Scalar> implem
 			value[0] = "(" + getInputProducerValue(1, 0) + ") * (" + getInputProducerValue(2, 0) + ") + " +
 					"(" + getInputProducerValue(1, 1) + ") * (" + getInputProducerValue(2, 1) + ") + " +
 					"(" + getInputProducerValue(1, 2) + ") * (" + getInputProducerValue(2, 2) + ")";
-			value[1] = "1.0";
+			value[1] = stringForDouble(1.0);
 
 			if (value[0].contains("Infinity")) {
 				throw new IllegalArgumentException("Infinity is not supported");
