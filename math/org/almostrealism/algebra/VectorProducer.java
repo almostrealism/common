@@ -61,13 +61,17 @@ public interface VectorProducer extends Producer<Vector> {
         return new ScalarFromVector(v, ScalarFromVector.Z);
     }
 
-    default ScalarProducer dotProduct(Producer<Vector> operand) {
-        return new DotProduct(this, operand);
+    default DotProduct dotProduct(Producer<Vector> operand) {
+        return dotProduct(this, operand);
     }
 
+    static DotProduct dotProduct(Producer<Vector> a, Producer<Vector> b) { return new DotProduct(a, b); }
+
     default CrossProduct crossProduct(Producer<Vector> operand) {
-        return new CrossProduct(this, operand);
+        return crossProduct(this, operand);
     }
+
+    static CrossProduct crossProduct(Producer<Vector> a, Producer<Vector> b) { return new CrossProduct(a, b); }
 
     default VectorSum add(Producer<Vector> operand) {
         return new VectorSum(this, operand);
