@@ -82,7 +82,7 @@ public class Transform extends DynamicAcceleratedProducerAdapter<Vector> {
 				if (includeTranslation) {
 					sum.add(new Product(new Number(getInputProducerValue(2, 4 * i + 3),
 													getInputProducer(2).isStatic()),
-										new Number("1.0", true)));
+										new Number(stringForDouble(1.0), true)));
 				}
 
 				Number n = new Number();
