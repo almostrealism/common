@@ -16,6 +16,7 @@
 
 package org.almostrealism.algebra;
 
+import org.almostrealism.math.MemWrapper;
 import org.almostrealism.math.MemoryBankAdapter;
 import org.almostrealism.util.Producer;
 
@@ -29,6 +30,12 @@ public class VectorBank extends MemoryBankAdapter<Vector> {
 	public VectorBank(int count) {
 		super(3, count, delegateSpec ->
 				new Vector(delegateSpec.getDelegate(), delegateSpec.getOffset()));
+	}
+
+	protected VectorBank(int count, MemWrapper delegate, int delegateOffset) {
+		super(3, count, delegateSpec ->
+				new Vector(delegateSpec.getDelegate(), delegateSpec.getOffset()),
+				delegate, delegateOffset);
 	}
 
 	public static VectorBank fromProducer(Producer<Vector> producer, int count) {
