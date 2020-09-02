@@ -65,25 +65,40 @@ public abstract class DynamicAcceleratedProducer<T extends MemWrapper> extends A
 	}
 
 	protected String getArgumentValueName(int index, int pos) {
-		return getArgumentValueName(getArgumentName(index), pos);
+		return getArgumentValueName(index, pos, 0);
+	}
+
+	protected String getArgumentValueName(int index, int pos, int kernelIndex) {
+		return getArgumentValueName(getArgumentName(index), pos, kernelIndex);
 	}
 
 	protected String getArgumentValueName(Argument arg, int pos) {
-		return getArgumentValueName(arg.getName(), pos);
+		return getArgumentValueName(arg.getName(), pos, 0);
 	}
 
-	private String getArgumentValueName(String v, int pos) {
-		return getArgumentValueName(v, pos, true);
+	protected String getArgumentValueName(Argument arg, int pos, int kernelIndex) {
+		return getArgumentValueName(arg.getName(), pos, kernelIndex);
+	}
+
+	private String getArgumentValueName(String v, int pos, int kernelIndex) {
+		return getArgumentValueName(v, pos, true, kernelIndex);
 	}
 
 	private String getArgumentValueName(String v, int pos, boolean assignment) {
+		return getArgumentValueName(v, pos, assignment, 0);
+	}
+
+	private String getArgumentValueName(String v, int pos, boolean assignment, int kernelIndex) {
 		String name;
 
 		if (isKernel()) {
+			String kernelOffset = kernelIndex < 0 ? "" :
+					("get_global_id(" + kernelIndex + ") * " + v + "Size + ");
+
 			if (pos == 0) {
-				name = v + "[get_global_id(0) * " + v + "Size + " + v + "Offset]";
+				name = v + "[" + kernelOffset + v + "Offset]";
 			} else {
-				name = v + "[get_global_id(0) * " + v + "Size + " + v + "Offset + " + pos + "]";
+				name = v + "[" + kernelOffset + v + "Offset + " + pos + "]";
 			}
 		} else {
 			if (pos == 0) {
