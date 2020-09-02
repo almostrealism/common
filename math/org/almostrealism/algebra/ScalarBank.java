@@ -29,4 +29,9 @@ public class ScalarBank extends MemoryBankAdapter<Scalar> {
 		super(2, count, delegateSpec ->
 				new Scalar(delegateSpec.getDelegate(), delegateSpec.getOffset()));
 	}
+
+	public ScalarBank(int count, CacheLevel cacheLevel) {
+		super(2, count, delegateSpec ->
+				new Scalar(delegateSpec.getDelegate(), delegateSpec.getOffset()), cacheLevel);
+	}
 }
