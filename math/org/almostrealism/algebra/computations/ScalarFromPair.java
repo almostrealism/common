@@ -47,12 +47,12 @@ public class ScalarFromPair extends DynamicAcceleratedProducerAdapter<Scalar> im
 			if (pos == 0) {
 				return getArgumentValueName(1, coordinate);
 			} else if (pos == 1) {
-				return "1.0";
+				return stringForDouble(1.0);
 			} else {
 				throw new IllegalArgumentException(String.valueOf(pos));
 			}
 		} else {
-			return pos == 0 ? value : "1.0";
+			return pos == 0 ? value : stringForDouble(1.0);
 		}
 	}
 
