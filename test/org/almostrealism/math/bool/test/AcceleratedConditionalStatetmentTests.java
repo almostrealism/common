@@ -15,8 +15,8 @@ public class AcceleratedConditionalStatetmentTests {
 		Producer<Scalar> c = StaticProducer.of(new Scalar(Math.random()));
 		Producer<Scalar> d = StaticProducer.of(new Scalar(Math.random()));
 
-		LessThan lt1 = new LessThan(2, Scalar.blank(), a, b, a, b);
-		LessThan lt2 = new LessThan(2, Scalar.blank(), b, c, lt1, StaticProducer.of(new Scalar(0.0)));
+		LessThan lt1 = new LessThan(2, Scalar.blank(), a, b, a, b, false);
+		LessThan lt2 = new LessThan(2, Scalar.blank(), b, c, lt1, StaticProducer.of(new Scalar(0.0)), false);
 		// LessThan lt3 = new LessThan(2, Scalar.blank(), c, d, lt2, StaticProducer.of(new Scalar(0.0)));
 
 		LessThan top = lt1;
