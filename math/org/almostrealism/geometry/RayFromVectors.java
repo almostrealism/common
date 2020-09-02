@@ -49,6 +49,8 @@ public class RayFromVectors extends DynamicAcceleratedProducerAdapter<Ray> {
 			} else {
 				throw new IllegalArgumentException("Position " + pos + " is not valid");
 			}
+		} else if (value[pos] == null) {
+			throw new NullPointerException("Compaction produced a null value");
 		} else {
 			return value[pos];
 		}
