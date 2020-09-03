@@ -17,6 +17,7 @@
 package org.almostrealism.graph.mesh;
 
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.math.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.util.Producer;
 
@@ -25,6 +26,11 @@ import java.util.List;
 
 public class TriangleDataFromVectors extends DynamicAcceleratedProducerAdapter<TriangleData> implements TriangleDataProducer {
 	private String value[];
+
+	public TriangleDataFromVectors(Producer<Vector> abc, Producer<Vector> def,
+								   Producer<Vector> jkl) {
+		this(abc, def, jkl, VectorProducer.crossProduct(abc, def).normalize());
+	}
 
 	public TriangleDataFromVectors(Producer<Vector> abc, Producer<Vector> def,
 								   Producer<Vector> jkl, Producer<Vector> normal) {
