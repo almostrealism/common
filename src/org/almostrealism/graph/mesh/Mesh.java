@@ -39,6 +39,8 @@ import org.almostrealism.geometry.Ray;
 import org.almostrealism.graph.Automata;
 import org.almostrealism.io.FileDecoder;
 import org.almostrealism.io.SpatialData;
+import org.almostrealism.math.KernelizedProducer;
+import org.almostrealism.math.MemoryBank;
 import org.almostrealism.relation.Operator;
 import org.almostrealism.space.KdTree;
 import org.almostrealism.space.ShadableIntersection;
@@ -298,8 +300,8 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 
 	/**
 	 * Returns the currently built spatial representation of the mesh vertices. The
-	 * representation is built on demand via buildSpatialVertexTree(). Returns null if
-	 * no representation has yet been built.
+	 * representation is built on demand via {@link #buildSpatialVertexTree()}.
+	 * Returns null if no representation has yet been built.
 	 *
 	 * @return The previously built tree.
 	 */
@@ -359,11 +361,22 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
   		this.clearIgnoreCache();
   		this.clearTriangleCache();
   	}
-  	
+
+  	public MeshData getMeshData() {
+		MeshData tdata = new MeshData(tcache.length);
+
+  		for (int i = 0; i < tcache.length; i++) {
+  			if (tcache[i] == null) tcache[i] = getTriangle(i);
+			tdata.set(i, tcache[i].getData());
+		}
+
+  		return tdata;
+	}
+
   	public int[][] getTriangleData() {
   		return this.getTriangleData(this.file == null);
   	}
-  	
+
   	public int[][] getTriangleData(boolean b) {
   		if (b)
   			return (int[][]) this.triangles.toArray(new int[0][0]);
@@ -644,62 +657,18 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 		if (t != null) tray = new RayMatrixTransform(t.getInverse(), ray);
 		final Producer<Ray> fray = tray;
 
-		Triangle tr;
+		final MeshData mdata = getMeshData();
 
-		i: for (int i = 0; i < tcache.length; i++) {
-			if (tcache[i] == null) {
-				tcache[i] = getTriangle(i);
+		KernelizedProducer<Scalar> distance = new KernelizedProducer<Scalar>() {
+			@Override
+			public void kernelEvaluate(MemoryBank destination, MemoryBank args[], int offset, int length) {
+				mdata.evaluateIntersectionKernel((KernelizedProducer) fray, (ScalarBank) destination,
+															args, offset, length);
 			}
-		}
 
-		Producer<Scalar> distance = new Producer<Scalar>() {
 			@Override
 			public Scalar evaluate(Object[] args) {
-				Ray r = fray.evaluate(args);
-
-				int b = 0;
-
-				i: for (int i = 0; i < tcache.length; i++) {
-					if (!removeBackFaces) {
-						ignore[i] = false;
-						continue i;
-					}
-
-					Vector trv = tcache[i].getVertices()[0].subtract(r.getOrigin());
-					double dt = tcache[i].getNormalAt(Vector.blank())
-							.evaluate(new Object[0]).dotProduct(trv);
-
-					if ((!getShadeFront() && !getShadeBack()) ||
-							(!getShadeFront() && dt < 0.0) ||
-							(!getShadeBack() && dt > 0.0) ||
-							(dt == 0.0)) {
-						b++;
-						ignore[i] = true;
-					} else {
-						ignore[i] = false;
-					}
-				}
-
-				if (b > 0) System.out.println("Mesh: Removed " + b + " back faces.");
-
-				double closestIntersection = -1.0;
-				int closestIntersectionIndex = -1;
-
-				i:
-				for (int i = 0; i < tcache.length; i++) {
-					if (tcache[i] == null) continue i;
-
-					double intersect = Triangle.intersectAt.evaluate(new Object[] { r, tcache[i].getData() }).getValue();
-
-					if (intersect >= Intersection.e) {
-						if (closestIntersectionIndex == -1 || intersect < closestIntersection) {
-							closestIntersection = intersect;
-							closestIntersectionIndex = i;
-						}
-					}
-				}
-
-				return closestIntersectionIndex < 0 ? null : new Scalar(closestIntersection);
+				return mdata.evaluateIntersection(fray, args);
 			}
 
 			@Override
@@ -709,7 +678,7 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 		};
 
 		if (Triangle.enableHardwareOperator) {
-			RankedChoiceProducer<Vector> closestNormal = new RankedChoiceProducer<>(Intersection.e);
+			RankedChoiceProducer<Vector> closestNormal = new RankedChoiceProducer<>(Intersection.e, false);
 			for (Triangle tri : tcache) {
 				closestNormal.add(new ProducerWithRank<>(
 						StaticProducer.of(tri.getData().getNormal()),
@@ -723,6 +692,33 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 		} else {
 			return new ShadableIntersection(this, ray, distance);
 		}
+	}
+
+	private void removeBackFaces(Ray r) {
+		int b = 0;
+
+		i: for (int i = 0; i < tcache.length; i++) {
+			if (!removeBackFaces) {
+				ignore[i] = false;
+				continue i;
+			}
+
+			Vector trv = tcache[i].getVertices()[0].subtract(r.getOrigin());
+			double dt = tcache[i].getNormalAt(Vector.blank())
+					.evaluate(new Object[0]).dotProduct(trv);
+
+			if ((!getShadeFront() && !getShadeBack()) ||
+					(!getShadeFront() && dt < 0.0) ||
+					(!getShadeBack() && dt > 0.0) ||
+					(dt == 0.0)) {
+				b++;
+				ignore[i] = true;
+			} else {
+				ignore[i] = false;
+			}
+		}
+
+		if (b > 0) System.out.println("Mesh: Removed " + b + " back faces.");
 	}
 	
 	/**
@@ -822,8 +818,7 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 
 	@Override
 	public boolean add(Triangle e) {
-		// TODO Auto-generated method stub
-		return false;
+		throw new RuntimeException("Not implemented");
 	}
 
 	@Override
