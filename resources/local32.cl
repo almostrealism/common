@@ -497,10 +497,10 @@ __kernel void
 planeXYIntersectAt(__global float *res, __global const float *r,
                     const int resOffset, const int rOffset,
                     const int resSize, const int rSize) {
-    if (r[rOffset + 5] == 0) {
-        res[resOffset] = -1;
+    if (r[get_global_id(0) * rSize + rOffset + 5] == 0) {
+        res[get_global_id(0) * resSize + resOffset] = -1;
     } else {
-        res[resOffset] = -r[rOffset + 2] / r[rOffset + 5];
+        res[get_global_id(0) * resSize + resOffset] = -r[get_global_id(0) * rSize + rOffset + 2] / r[get_global_id(0) * rSize + rOffset + 5];
     }
 }
 
@@ -508,10 +508,10 @@ __kernel void
 planeXZIntersectAt(__global float *res, __global const float *r,
                     const int resOffset, const int rOffset,
                     const int resSize, const int rSize) {
-    if (r[rOffset + 4] == 0) {
-        res[resOffset] = -1;
+    if (r[get_global_id(0) * rSize + rOffset + 4] == 0) {
+        res[get_global_id(0) * resSize + resOffset] = -1;
     } else {
-        res[resOffset] = -r[rOffset + 1] / r[rOffset + 4];
+        res[get_global_id(0) * resSize + resOffset] = -r[get_global_id(0) * rSize + rOffset + 1] / r[get_global_id(0) * rSize + rOffset + 4];
     }
 }
 
@@ -519,10 +519,10 @@ __kernel void
 planeYZIntersectAt(__global float *res, __global const float *r,
                     const int resOffset, const int rOffset,
                     const int resSize, const int rSize) {
-    if (r[rOffset + 3] == 0) {
-        res[resOffset] = -1;
+    if (r[get_global_id(0) * rSize + rOffset + 3] == 0) {
+        res[get_global_id(0) * resSize + resOffset] = -1;
     } else {
-        res[resOffset] = -r[rOffset] / r[rOffset + 3];
+        res[get_global_id(0) * resSize + resOffset] = -r[get_global_id(0) * rSize + rOffset] / r[get_global_id(0) * rSize + rOffset + 3];
     }
 }
 
@@ -530,41 +530,80 @@ __kernel void
 triangleIntersectAt(__global float *res,
                     __global const float *r,
                     __global const float *data,
+                    __global const float *dim,
                     const int resOffset, const int rOffset,
-                    const int dataOffset,
+                    const int dataOffset, const int dimOffset,
                     const int resSize, const int rSize,
-                    const int dataSize) {
-    float m =  data[dataOffset]       * (data[dataOffset + 4] * r[rOffset + 5]  - r[rOffset + 4] * data[dataOffset + 5]) +
-               data[dataOffset + 1]   * (r[rOffset + 3] * data[dataOffset + 5]  - data[dataOffset + 3] * r[rOffset + 5]) +
-               data[dataOffset + 2]   * (data[dataOffset + 3] * r[rOffset + 4]  - data[dataOffset + 4] * r[rOffset + 3]);
+                    const int dataSize, const int dimSize) {
+    int _resOffset = get_global_id(0) * resSize + resOffset;
+    int _rOffset = (get_global_id(0) / (int) dim[dimOffset]) * rSize + rOffset;
+    int _dataOffset = (get_global_id(0) % (int) dim[dimOffset]) * dataSize + dataOffset;
+
+    float m =  data[_dataOffset]       * (data[_dataOffset + 4] * r[_rOffset + 5]  - r[_rOffset + 4] * data[_dataOffset + 5]) +
+               data[_dataOffset + 1]   * (r[_rOffset + 3] * data[_dataOffset + 5]  - data[_dataOffset + 3] * r[_rOffset + 5]) +
+               data[_dataOffset + 2]   * (data[_dataOffset + 3] * r[_rOffset + 4]  - data[_dataOffset + 4] * r[_rOffset + 3]);
+
+    printf("m = %f\n", m);
 
     if (m == 0) {
-        res[resOffset] = -1;
+        res[_resOffset] = -1;
         return;
     }
 
-    float u =  data[dataOffset + 6]   * (data[dataOffset + 4] * r[rOffset + 5]   - r[rOffset + 4] * data[dataOffset + 5]) +
-               data[dataOffset + 7]   * (r[rOffset + 3] * data[dataOffset + 5]   - data[dataOffset + 3] * r[rOffset + 5]) +
-               data[dataOffset + 8]   * (data[dataOffset + 3] * r[rOffset + 4]   - data[dataOffset + 4] * r[rOffset + 3]);
+    float u =  data[_dataOffset + 6]   * (data[_dataOffset + 4] * r[_rOffset + 5]   - r[_rOffset + 4] * data[_dataOffset + 5]) +
+               data[_dataOffset + 7]   * (r[_rOffset + 3] * data[_dataOffset + 5]   - data[_dataOffset + 3] * r[_rOffset + 5]) +
+               data[_dataOffset + 8]   * (data[_dataOffset + 3] * r[_rOffset + 4]   - data[_dataOffset + 4] * r[_rOffset + 3]);
     u = u / m;
 
+    printf("u = %f\n", u);
+
     if (u <= 0.0) {
-        res[resOffset] = -1;
+        res[_resOffset] = -1;
         return;
     }
 
-    float v =  r[rOffset + 5] * (data[dataOffset] * data[dataOffset + 7]     - data[dataOffset + 6] * data[dataOffset + 1]) +
-               r[rOffset + 4] * (data[dataOffset + 6] * data[dataOffset + 2]     - data[dataOffset] * data[dataOffset + 8]) +
-               r[rOffset + 3] * (data[dataOffset + 1] * data[dataOffset + 8] - data[dataOffset + 7] * data[dataOffset + 2]);
+    float v =  r[_rOffset + 5] * (data[_dataOffset] * data[_dataOffset + 7]     - data[_dataOffset + 6] * data[_dataOffset + 1]) +
+               r[_rOffset + 4] * (data[_dataOffset + 6] * data[_dataOffset + 2]     - data[_dataOffset] * data[_dataOffset + 8]) +
+               r[_rOffset + 3] * (data[_dataOffset + 1] * data[_dataOffset + 8] - data[_dataOffset + 7] * data[_dataOffset + 2]);
     v = v / m;
 
+    printf("v = %f\n", v);
+
     if (v <= 0.0 || u + v >= 1.0)  {
-        res[resOffset] = -1;
+        res[_resOffset] = -1;
         return;
     }
 
-    float t =  data[dataOffset + 5] * (data[dataOffset] * data[dataOffset + 7] - data[dataOffset + 6] * data[dataOffset + 1]) +
-               data[dataOffset + 4] * (data[dataOffset + 6] * data[dataOffset + 2] - data[dataOffset] * data[dataOffset + 8]) +
-               data[dataOffset + 3] * (data[dataOffset + 1] * data[dataOffset + 8] - data[dataOffset + 7] * data[dataOffset + 2]);
-    res[resOffset] = -1.0 * t / m;
+    float t =  data[_dataOffset + 5] * (data[_dataOffset] * data[_dataOffset + 7] - data[_dataOffset + 6] * data[_dataOffset + 1]) +
+               data[_dataOffset + 4] * (data[_dataOffset + 6] * data[_dataOffset + 2] - data[_dataOffset] * data[_dataOffset + 8]) +
+               data[_dataOffset + 3] * (data[_dataOffset + 1] * data[_dataOffset + 8] - data[_dataOffset + 7] * data[_dataOffset + 2]);
+
+    printf("t = %f\n", t);
+
+    res[_resOffset] = -1.0 * t / m;
+}
+
+__kernel void
+highestRank(__global float *res,
+            __global const float *data,
+            __global const float *conf,
+            const int resOffset, const int dataOffset,
+            const int confOffset,
+            const int resSize, const int dataSize,
+            const int confSize) {
+	float closest = -1.0;
+	int closestIndex = -1;
+
+	for (int i = 0; i < conf[confOffset]; i++) {
+		float value = data[i * dataSize + dataOffset];
+
+		if (value >= conf[confOffset + 1]) {
+			if (closestIndex == -1 || value < closest) {
+				closest = value;
+				closestIndex = i;
+			}
+		}
+	}
+
+	res[resOffset] = closestIndex < 0 ? -1 : closest;
 }

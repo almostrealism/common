@@ -367,7 +367,7 @@ matrixAdjoint_local(__local double *res, __local double *det, __local double *df
             }
 
             matrixDeterminant_local(det, df, ut, ap, detOffset, dfOffset, utOffset, apOffset);
-            adj[i * 4 + j] = (double) pow((float) -1.0, (float) i + j) * (float) det[detOffset];
+            adj[i * 4 + j] = (double) pow((double) -1.0, (double) i + j) * (double) det[detOffset];
         }
     }
 
@@ -528,45 +528,77 @@ planeYZIntersectAt(__global double *res, __global const double *r,
     }
 }
 
+/*
 __kernel void
 triangleIntersectAt(__global double *res,
                     __global const double *r,
                     __global const double *data,
+                    __global const double *dim,
                     const int resOffset, const int rOffset,
-                    const int dataOffset,
+                    const int dataOffset, const int dimOffset,
                     const int resSize, const int rSize,
-                    const int dataSize) {
-    double m = data[dataOffset]       * (data[dataOffset + 4] * r[rOffset + 5]  - r[rOffset + 4] * data[dataOffset + 5]) +
-               data[dataOffset + 1]   * (r[rOffset + 3] * data[dataOffset + 5]  - data[dataOffset + 3] * r[rOffset + 5]) +
-               data[dataOffset + 2]   * (data[dataOffset + 3] * r[rOffset + 4]  - data[dataOffset + 4] * r[rOffset + 3]);
+                    const int dataSize, const int dimSize) {
+    int _resOffset = get_global_id(0) * resSize + resOffset;
+    int _rOffset = (get_global_id(0) / dim[dimOffset]) * rSize + rOffset;
+    int _dataOffset = (get_global_id(0) % dim[dimOffset]) * dataSize + dataOffset;
+
+    double m = data[_dataOffset]       * (data[_dataOffset + 4] * r[_rOffset + 5]  - r[_rOffset + 4] * data[_dataOffset + 5]) +
+               data[_dataOffset + 1]   * (r[_rOffset + 3] * data[_dataOffset + 5]  - data[_dataOffset + 3] * r[_rOffset + 5]) +
+               data[_dataOffset + 2]   * (data[_dataOffset + 3] * r[_rOffset + 4]  - data[_dataOffset + 4] * r[_rOffset + 3]);
 
     if (m == 0) {
-        res[resOffset] = -1;
+        res[_resOffset] = -1;
         return;
     }
 
-    double u = data[dataOffset + 6]   * (data[dataOffset + 4] * r[rOffset + 5]   - r[rOffset + 4] * data[dataOffset + 5]) +
-               data[dataOffset + 7]   * (r[rOffset + 3] * data[dataOffset + 5]   - data[dataOffset + 3] * r[rOffset + 5]) +
-               data[dataOffset + 8]   * (data[dataOffset + 3] * r[rOffset + 4]   - data[dataOffset + 4] * r[rOffset + 3]);
+    double u = data[_dataOffset + 6]   * (data[_dataOffset + 4] * r[_rOffset + 5]   - r[_rOffset + 4] * data[_dataOffset + 5]) +
+               data[_dataOffset + 7]   * (r[_rOffset + 3] * data[_dataOffset + 5]   - data[_dataOffset + 3] * r[_rOffset + 5]) +
+               data[_dataOffset + 8]   * (data[_dataOffset + 3] * r[_rOffset + 4]   - data[_dataOffset + 4] * r[_rOffset + 3]);
     u = u / m;
 
     if (u <= 0.0) {
-        res[resOffset] = -1;
+        res[_resOffset] = -1;
         return;
     }
 
-    double v = r[rOffset + 5] * (data[dataOffset] * data[dataOffset + 7]     - data[dataOffset + 6] * data[dataOffset + 1]) +
-               r[rOffset + 4] * (data[dataOffset + 6] * data[dataOffset + 2]     - data[dataOffset] * data[dataOffset + 8]) +
-               r[rOffset + 3] * (data[dataOffset + 1] * data[dataOffset + 8] - data[dataOffset + 7] * data[dataOffset + 2]);
+    double v = r[_rOffset + 5] * (data[_dataOffset] * data[_dataOffset + 7]     - data[_dataOffset + 6] * data[_dataOffset + 1]) +
+               r[_rOffset + 4] * (data[_dataOffset + 6] * data[_dataOffset + 2]     - data[_dataOffset] * data[_dataOffset + 8]) +
+               r[_rOffset + 3] * (data[_dataOffset + 1] * data[_dataOffset + 8] - data[_dataOffset + 7] * data[_dataOffset + 2]);
     v = v / m;
 
     if (v <= 0.0 || u + v >= 1.0)  {
-        res[resOffset] = -1;
+        res[_resOffset] = -1;
         return;
     }
 
-    double t = data[dataOffset + 5] * (data[dataOffset] * data[dataOffset + 7] - data[dataOffset + 6] * data[dataOffset + 1]) +
-               data[dataOffset + 4] * (data[dataOffset + 6] * data[dataOffset + 2] - data[dataOffset] * data[dataOffset + 8]) +
-               data[dataOffset + 3] * (data[dataOffset + 1] * data[dataOffset + 8] - data[dataOffset + 7] * data[dataOffset + 2]);
-    res[resOffset] = -1.0 * t / m;
+    double t = data[_dataOffset + 5] * (data[_dataOffset] * data[_dataOffset + 7] - data[_dataOffset + 6] * data[_dataOffset + 1]) +
+               data[_dataOffset + 4] * (data[_dataOffset + 6] * data[_dataOffset + 2] - data[_dataOffset] * data[_dataOffset + 8]) +
+               data[_dataOffset + 3] * (data[_dataOffset + 1] * data[_dataOffset + 8] - data[_dataOffset + 7] * data[_dataOffset + 2]);
+    res[_resOffset] = -1.0 * t / m;
+}
+*/
+
+__kernel void
+highestRank(__global double *res,
+            __global const double *data,
+            __global const double *conf,
+            const int resOffset, const int dataOffset,
+            const int confOffset,
+            const int resSize, const int dataSize,
+            const int confSize) {
+	double closest = -1.0;
+	int closestIndex = -1;
+
+	for (int i = 0; i < conf[confOffset]; i++) {
+		double value = data[i * dataSize + dataOffset];
+
+		if (value >= conf[confOffset + 1]) {
+			if (closestIndex == -1 || value < closest) {
+				closest = value;
+				closestIndex = i;
+			}
+		}
+	}
+
+	res[resOffset] = closestIndex < 0 ? -1 : closest;
 }
