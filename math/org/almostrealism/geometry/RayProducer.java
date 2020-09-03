@@ -16,7 +16,16 @@
 
 package org.almostrealism.geometry;
 
+import org.almostrealism.algebra.computations.RayDirection;
+import org.almostrealism.algebra.computations.RayOrigin;
 import org.almostrealism.util.Producer;
 
 public interface RayProducer extends Producer<Ray> {
+	default RayOrigin origin() { return origin(this); }
+
+	static RayOrigin origin(Producer<Ray> r) { return new RayOrigin(r); }
+
+	default RayDirection direction() { return direction(this); }
+
+	static RayDirection direction(Producer<Ray> r) { return new RayDirection(r); }
 }
