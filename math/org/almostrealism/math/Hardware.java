@@ -26,15 +26,18 @@ import java.io.InputStreamReader;
 
 /** An interface to OpenCL. */
 public final class Hardware {
-	private static Hardware local = new Hardware(AcceleratedFunctions.localFunctions);
+	private static Hardware local;
 
 	public static final boolean enableGpu;
 	public static final boolean enableDoublePrecision;
+	private static final long deviceType;
 
 	static {
 		enableGpu = "gpu".equalsIgnoreCase(System.getenv("AR_HARDWARE_PLATFORM")) ||
 				"gpu".equalsIgnoreCase(System.getProperty("AR_HARDWARE_PLATFORM"));
 		enableDoublePrecision = !enableGpu;
+		deviceType = enableGpu ? CL.CL_DEVICE_TYPE_GPU : CL.CL_DEVICE_TYPE_CPU;
+		local = new Hardware(AcceleratedFunctions.localFunctions);
 	}
 
 	private cl_context context;
@@ -44,7 +47,6 @@ public final class Hardware {
 
 	private Hardware(String name) {
 		final int platformIndex = 0;
-		final long deviceType = enableGpu ? CL.CL_DEVICE_TYPE_GPU : CL.CL_DEVICE_TYPE_CPU;
 		final int deviceIndex = 0;
 
 		CL.setExceptionsEnabled(true);
