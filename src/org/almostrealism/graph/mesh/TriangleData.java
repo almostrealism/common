@@ -18,12 +18,17 @@ package org.almostrealism.graph.mesh;
 
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorBank;
+import org.almostrealism.math.MemWrapper;
 import org.almostrealism.util.DynamicProducer;
 import org.almostrealism.util.Producer;
 
 public class TriangleData extends VectorBank {
 	public TriangleData() {
 		super(4);
+	}
+
+	protected TriangleData(MemWrapper delegate, int delegateOffset) {
+		super(4, delegate, delegateOffset);
 	}
 
 	public void setABC(Vector abc) { set(0, abc); }
