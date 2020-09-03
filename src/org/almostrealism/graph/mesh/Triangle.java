@@ -24,6 +24,7 @@ import org.almostrealism.color.computations.RGBProducer;
 import org.almostrealism.geometry.Positioned;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.math.AcceleratedProducer;
+import org.almostrealism.math.KernelizedProducer;
 import org.almostrealism.relation.Constant;
 import org.almostrealism.relation.Operator;
 import org.almostrealism.space.AbstractSurface;
@@ -55,7 +56,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 
 	private static TriangleDataProducer dataProducer;
 
-	protected static Producer<Scalar> intersectAt;
+	protected static KernelizedProducer<Scalar> intersectAt;
 	
 	static {
 		Producer<Vector> p1 = PassThroughProducer.of(Vector.class, 0);
@@ -65,11 +66,17 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 		dataProducer = TriangleDataProducer.of(p1, p2, p3);
 		dataProducer.compact();
 
-		intersectAt = new AcceleratedProducer(
-				"triangleIntersectAt",
-				Scalar.blank(),
-				PassThroughProducer.of(Ray.class, 0),
-				PassThroughProducer.of(TriangleData.class, 1));
+//		intersectAt = new AcceleratedProducer(
+//				"triangleIntersectAt",
+//				true,
+//				Scalar.blank(),
+//				PassThroughProducer.of(Ray.class, 0),
+//				PassThroughProducer.of(TriangleData.class, 1),
+//				PassThroughProducer.of(Pair.class, 2));
+
+		intersectAt = new TriangleIntersectAt(PassThroughProducer.of(TriangleData.class, 1),
+							PassThroughProducer.of(Ray.class, 0, -1));
+		intersectAt.compact();
 	}
 
 	/**
