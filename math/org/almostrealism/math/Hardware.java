@@ -28,26 +28,39 @@ import java.io.InputStreamReader;
 public final class Hardware {
 	private static Hardware local;
 
-	public static final boolean enableGpu;
-	public static final boolean enableDoublePrecision;
-	private static final long deviceType;
-
 	static {
-		enableGpu = "gpu".equalsIgnoreCase(System.getenv("AR_HARDWARE_PLATFORM")) ||
+		boolean gpu = "gpu".equalsIgnoreCase(System.getenv("AR_HARDWARE_PLATFORM")) ||
 				"gpu".equalsIgnoreCase(System.getProperty("AR_HARDWARE_PLATFORM"));
-		enableDoublePrecision = !enableGpu;
-		deviceType = enableGpu ? CL.CL_DEVICE_TYPE_GPU : CL.CL_DEVICE_TYPE_CPU;
-		local = new Hardware(AcceleratedFunctions.localFunctions);
+		local = new Hardware(false, false);
 	}
+
+	private final boolean enableGpu;
+	private final boolean enableDoublePrecision;
 
 	private cl_context context;
 	private cl_command_queue queue;
 
 	private AcceleratedFunctions functions;
+	
+	private Hardware(boolean enableGpu) {
+		this(enableGpu, !enableGpu);
+	}
 
-	private Hardware(String name) {
+	private Hardware(boolean enableGpu, boolean enableDoublePrecision) {
+		this(enableDoublePrecision ? "local64" : "local32", enableGpu, enableDoublePrecision);
+	}
+
+	private Hardware(String name, boolean enableGpu) {
+		this(name, enableGpu, !enableGpu);
+	}
+
+	private Hardware(String name, boolean enableGpu, boolean enableDoublePrecision) {
+		this.enableGpu = enableGpu;
+		this.enableDoublePrecision = enableDoublePrecision;
+
 		final int platformIndex = 0;
 		final int deviceIndex = 0;
+		final long deviceType = enableGpu ? CL.CL_DEVICE_TYPE_GPU : CL.CL_DEVICE_TYPE_CPU;
 
 		CL.setExceptionsEnabled(true);
 
@@ -143,15 +156,19 @@ public final class Hardware {
 		}
 	}
 
-	protected static String loadSource(String name) {
+	protected String loadSource() {
+		return loadSource(enableDoublePrecision ? "local64" : "local32");
+	}
+
+	protected String loadSource(String name) {
 		return loadSource(Hardware.class.getClassLoader().getResourceAsStream(name + ".cl"), false);
 	}
 
-	protected static String loadSource(InputStream is) {
+	protected String loadSource(InputStream is) {
 		return loadSource(is, true);
 	}
 
-	protected static String loadSource(InputStream is, boolean includeLocal) {
+	protected String loadSource(InputStream is, boolean includeLocal) {
 		if (is == null) {
 			throw new IllegalArgumentException("InputStream is null");
 		}
@@ -159,7 +176,7 @@ public final class Hardware {
 		StringBuffer buf = new StringBuffer();
 
 		if (includeLocal) {
-			buf.append(loadSource(AcceleratedFunctions.localFunctions));
+			buf.append(loadSource());
 			buf.append("\n");
 		}
 

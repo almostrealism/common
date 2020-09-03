@@ -25,8 +25,6 @@ import java.util.Map;
  * A wrapper for kernel programs in JOCL.
  */
 public class AcceleratedFunctions {
-	public static final String localFunctions = Hardware.enableDoublePrecision ? "local64" : "local32";
-
 	private Hardware hardware;
 	private HardwareOperatorMap base;
 	private Map<Class, HardwareOperatorMap> extensions;
@@ -45,7 +43,7 @@ public class AcceleratedFunctions {
 			if (in == null) {
 				extensions.put(c, base);
 			} else {
-				extensions.put(c, new HardwareOperatorMap(hardware, Hardware.loadSource(in)));
+				extensions.put(c, new HardwareOperatorMap(hardware, Hardware.getLocalHardware().loadSource(in)));
 			}
 		}
 
@@ -54,7 +52,7 @@ public class AcceleratedFunctions {
 
 	public synchronized HardwareOperatorMap getOperators(String source) {
 		StringBuffer buf = new StringBuffer();
-		buf.append(Hardware.loadSource(localFunctions));
+		buf.append(Hardware.getLocalHardware().loadSource());
 		buf.append("\n");
 		buf.append(source);
 
