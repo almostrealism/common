@@ -16,14 +16,32 @@
 
 package org.almostrealism.util;
 
+import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.algebra.ScalarBank;
+import org.almostrealism.math.AcceleratedProducer;
+import org.almostrealism.math.KernelizedProducer;
 
 import java.util.ArrayList;
 
 public class RankedChoiceProducer<T> extends ArrayList<ProducerWithRank<T>> implements Producer<T> {
 	protected double e;
+	private boolean tolerateNull;
 
-	public RankedChoiceProducer(double e) { this.e = e; }
+	public static final KernelizedProducer<Scalar> highestRank;
+
+	static {
+		highestRank = new AcceleratedProducer(
+				"highestRank",
+				true,
+				Scalar.blank(),
+				PassThroughProducer.of(Scalar.class, 0),
+				PassThroughProducer.of(Pair.class, 1));
+	}
+
+	public RankedChoiceProducer(double e) { this(e, true); }
+
+	public RankedChoiceProducer(double e, boolean tolerateNull) { this.e = e; this.tolerateNull = tolerateNull; }
 
 	@Override
 	public T evaluate(Object[] args) {
@@ -60,6 +78,10 @@ public class RankedChoiceProducer<T> extends ArrayList<ProducerWithRank<T>> impl
 		}
 
 		if (printLog) System.out.println(best + " was chosen\n----------");
+
+		if (best == null && !tolerateNull) {
+			throw new NullPointerException("Nothing selected by RankedChoiceProducer");
+		}
 
 		return best == null ? null : best.evaluate(args);
 	}
