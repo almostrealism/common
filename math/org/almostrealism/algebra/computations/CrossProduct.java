@@ -23,10 +23,10 @@ import org.almostrealism.util.Producer;
 public class CrossProduct extends VectorFromScalars {
 	public CrossProduct(Producer<Vector> a, Producer<Vector> b) {
 		super(VectorProducer.y(a).multiply(VectorProducer.z(b))
-						.subtract(VectorProducer.z(a)).multiply(VectorProducer.y(b)),
+						.subtract(VectorProducer.z(a).multiply(VectorProducer.y(b))),
 				VectorProducer.z(a).multiply(VectorProducer.x(b))
-						.subtract(VectorProducer.x(a)).multiply(VectorProducer.z(b)),
+						.subtract(VectorProducer.x(a).multiply(VectorProducer.z(b))),
 				VectorProducer.x(a).multiply(VectorProducer.y(b))
-						.subtract(VectorProducer.y(a)).multiply(VectorProducer.x(b)));
+						.subtract(VectorProducer.y(a).multiply(VectorProducer.x(b))));
 	}
 }
