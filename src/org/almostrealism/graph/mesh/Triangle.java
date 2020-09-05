@@ -56,7 +56,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 
 	private static TriangleDataProducer dataProducer;
 
-	protected static KernelizedProducer<Scalar> intersectAt;
+	public static final KernelizedProducer<Scalar> intersectAt;
 	
 	static {
 		Producer<Vector> p1 = PassThroughProducer.of(Vector.class, 0);
