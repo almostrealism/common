@@ -19,12 +19,13 @@ package org.almostrealism.algebra;
 import java.util.Arrays;
 
 import org.almostrealism.graph.PathElement;
+import org.almostrealism.util.DimensionAware;
 import org.almostrealism.util.Producer;
 
 /**
  * An Intersection object stores data for the intersections between a ray and a surface.
  */
-public class Intersection<IN, OUT> implements PathElement<IN, OUT> {
+public class Intersection<IN, OUT> implements PathElement<IN, OUT>, DimensionAware {
 	/** A very small value (0.00000001) that is used in '>=' and '<=' operations to account for computational errors. */
 	public static final double e = 0.00000001;
 
@@ -45,6 +46,13 @@ public class Intersection<IN, OUT> implements PathElement<IN, OUT> {
 	public Producer<Scalar> getDistance() { return distance; }
 
 	@Override
+	public void setDimensions(int width, int height, int ssw, int ssh) {
+		if (distance instanceof DimensionAware) {
+			((DimensionAware) distance).setDimensions(width, height, ssw, ssh);
+		}
+	}
+
+	@Override
 	public Iterable<Producer<IN>> getDependencies() {
 		return Arrays.asList((Producer<IN>) point);
 	}
@@ -52,6 +60,7 @@ public class Intersection<IN, OUT> implements PathElement<IN, OUT> {
 	/**
 	 * @return  A String representation of this Intersection object.
 	 */
+	@Override
 	public String toString() {
 		return "[" + getPoint() + "]";
 	}
