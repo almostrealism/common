@@ -655,43 +655,11 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 		TransformMatrix t = getTransform(true);
 		Producer<Ray> tray = ray;
 		if (t != null) tray = new RayMatrixTransform(t.getInverse(), ray);
-		final Producer<Ray> fray = tray;
 
-		final MeshData mdata = getMeshData();
+		CachedMeshIntersectionKernel kernel =
+				new CachedMeshIntersectionKernel(getMeshData(), (KernelizedProducer) tray);
 
-		KernelizedProducer<Scalar> distance = new KernelizedProducer<Scalar>() {
-			@Override
-			public void kernelEvaluate(MemoryBank destination, MemoryBank args[], int offset, int length) {
-				mdata.evaluateIntersectionKernel((KernelizedProducer) fray, (ScalarBank) destination,
-															args, offset, length);
-			}
-
-			@Override
-			public Scalar evaluate(Object[] args) {
-				return mdata.evaluateIntersection(fray, args);
-			}
-
-			@Override
-			public void compact() {
-				fray.compact();
-			}
-		};
-
-		if (Triangle.enableHardwareOperator) {
-			RankedChoiceProducer<Vector> closestNormal = new RankedChoiceProducer<>(Intersection.e, false);
-			for (Triangle tri : tcache) {
-				closestNormal.add(new ProducerWithRank<>(
-						StaticProducer.of(tri.getData().getNormal()),
-						new AdaptProducer<>(Triangle.intersectAt, tray, StaticProducer.of(tri.getData()))));
-			}
-
-			// Return an intersection of the ray with the distance function
-			// supplied above using the normal that is ranked best out of the
-			// intersectAt evaluations from the triangles
-			return new ShadableIntersection(ray, closestNormal, distance);
-		} else {
-			return new ShadableIntersection(this, ray, distance);
-		}
+		return new ShadableIntersection(ray, kernel.getClosestNormal(), kernel);
 	}
 
 	private void removeBackFaces(Ray r) {
