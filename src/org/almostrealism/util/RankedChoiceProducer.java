@@ -28,13 +28,13 @@ public class RankedChoiceProducer<T> extends ArrayList<ProducerWithRank<T>> impl
 	protected double e;
 	private boolean tolerateNull;
 
-	public static final KernelizedProducer<Scalar> highestRank;
+	public static final KernelizedProducer<Pair> highestRank;
 
 	static {
 		highestRank = new AcceleratedProducer(
 				"highestRank",
 				true,
-				Scalar.blank(),
+				Pair.empty(),
 				PassThroughProducer.of(Scalar.class, 0),
 				PassThroughProducer.of(Pair.class, 1));
 	}
