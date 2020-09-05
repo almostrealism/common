@@ -12,7 +12,6 @@ import org.almostrealism.math.MemoryBank;
 import org.almostrealism.math.MemoryBankAdapter;
 import org.almostrealism.util.Producer;
 import org.almostrealism.util.RankedChoiceProducer;
-import org.almostrealism.util.StaticProducer;
 
 public class MeshData extends TriangleDataBank {
 	/**
@@ -28,7 +27,7 @@ public class MeshData extends TriangleDataBank {
 	public Scalar evaluateIntersection(Producer<Ray> ray, Object args[]) {
 		ScalarBank distances = new ScalarBank(getCount(), CacheLevel.ACCESSED);
 		RayBank in = new RayBank(1);
-		ScalarBank out = new ScalarBank(1);
+		PairBank out = new PairBank(1);
 
 		PairBank conf = new PairBank(1);
 		conf.set(0, new Pair(getCount(), Intersection.e));
@@ -36,10 +35,19 @@ public class MeshData extends TriangleDataBank {
 		in.set(0, ray.evaluate(args));
 		Triangle.intersectAt.kernelEvaluate(distances, new MemoryBank[] { in, this });
 		RankedChoiceProducer.highestRank.kernelEvaluate(out, new MemoryBank[] { distances, conf });
-		return out.get(0);
+		return new Scalar(out.get(0).getA());
 	}
 
 	public void evaluateIntersectionKernel(KernelizedProducer<Ray> ray, ScalarBank destination,
+										   MemoryBank args[], int offset, int length) {
+		PairBank result = new PairBank(destination.getCount());
+		evaluateIntersectionKernel(ray, result, args, offset, length);
+		for (int i = 0; i < result.getCount(); i++) {
+			destination.get(i).setMem(new double[] { result.get(i).getA(), 1.0 });
+		}
+	}
+
+	public void evaluateIntersectionKernel(KernelizedProducer<Ray> ray, PairBank destination,
 										   MemoryBank args[], int offset, int length) {
 		if (offset != 0 || length != destination.getCount()) {
 			throw new IllegalArgumentException("Partial kernel evaluation is not supported");
@@ -56,7 +64,7 @@ public class MeshData extends TriangleDataBank {
 		if (enablePartialKernel) {
 			ScalarBank distances = new ScalarBank(getCount(), CacheLevel.ACCESSED);
 			RayBank in = new RayBank(1);
-			ScalarBank out = new ScalarBank(1);
+			PairBank out = new PairBank(1);
 
 			PairBank conf = new PairBank(1);
 			conf.set(0, new Pair(getCount(), Intersection.e));
