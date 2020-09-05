@@ -16,16 +16,11 @@
 
 package org.almostrealism.algebra;
 
-import org.almostrealism.math.Hardware;
 import org.almostrealism.math.MemWrapper;
 import org.almostrealism.math.MemWrapperAdapter;
 import org.almostrealism.util.Defaults;
 import org.almostrealism.util.DynamicProducer;
 import org.almostrealism.util.Producer;
-import org.jocl.CL;
-import org.jocl.Pointer;
-import org.jocl.Sizeof;
-import org.jocl.cl_mem;
 
 public class Pair extends MemWrapperAdapter {
 	public Pair() {
@@ -126,6 +121,28 @@ public class Pair extends MemWrapperAdapter {
 		d1[0] *= d;
 		d1[1] *= d;
 		this.setMem(d1);
+	}
+
+	/**
+	 * Returns an integer hash code value for this {@link Pair} obtained
+	 * by adding both components and casting to an int.
+	 */
+	@Override
+	public int hashCode() {
+		return (int) (this.getX() + this.getY());
+	}
+
+	/**
+	 * Returns true if and only if the object specified is a {@link Pair}
+	 * with equal values as this {@link Pair}.
+	 */
+	@Override
+	public boolean equals(Object obj) {
+		if (obj instanceof Pair == false)
+			return false;
+
+		Pair pair = (Pair) obj;
+		return pair.getX() == this.getX() && pair.getY() == this.getY();
 	}
 
 	@Override
