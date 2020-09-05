@@ -4,6 +4,7 @@ import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorProducer;
+import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayFromVectors;
 import org.almostrealism.graph.mesh.DefaultVertexData;
 import org.almostrealism.graph.mesh.Mesh;
@@ -12,6 +13,7 @@ import org.almostrealism.graph.mesh.TriangleData;
 import org.almostrealism.graph.mesh.TriangleIntersectAt;
 import org.almostrealism.math.MemoryBank;
 import org.almostrealism.util.PassThroughProducer;
+import org.almostrealism.util.Producer;
 import org.almostrealism.util.StaticProducer;
 import org.junit.Assert;
 import org.junit.Before;
@@ -20,8 +22,8 @@ import org.junit.Test;
 public class MeshIntersectionTest {
 	private VectorProducer origin1 = StaticProducer.of(new Vector(0.0, 0.0, 1.0));
 	private VectorProducer direction1 = StaticProducer.of(new Vector(0.0, 0.0, -1.0));
-	private VectorProducer origin2 = StaticProducer.of(new Vector(0.0, 0.0, 10.0));
-	private VectorProducer direction2 = StaticProducer.of(new Vector(-0.43418192863464355, 0.9011321067810059, -10.0));
+	private VectorProducer origin2 = StaticProducer.of(new Vector( -0.1, -1.0, 1.0));
+	private VectorProducer direction2 = StaticProducer.of(new Vector(0.0, 0.0, -1.0));
 
 	private MeshData data1, data2;
 
@@ -51,10 +53,10 @@ public class MeshIntersectionTest {
 		data2 = mesh2().getMeshData();
 	}
 
-	protected VectorProducer abc() { return StaticProducer.of(data1.get(0).getABC()); }
-	protected VectorProducer def() { return StaticProducer.of(data1.get(0).getDEF()); }
-	protected VectorProducer jkl() { return StaticProducer.of(data1.get(0).getJKL()); }
-	protected VectorProducer normal() { return StaticProducer.of(data1.get(0).getNormal()); }
+	protected VectorProducer abc(MeshData data) { return StaticProducer.of(data.get(0).getABC()); }
+	protected VectorProducer def(MeshData data) { return StaticProducer.of(data.get(0).getDEF()); }
+	protected VectorProducer jkl(MeshData data) { return StaticProducer.of(data.get(0).getJKL()); }
+	protected VectorProducer normal(MeshData data) { return StaticProducer.of(data.get(0).getNormal()); }
 
 	protected TriangleIntersectAt intersection() {
 		return new TriangleIntersectAt(PassThroughProducer.of(TriangleData.class, 0),
@@ -63,18 +65,50 @@ public class MeshIntersectionTest {
 	}
 
 	@Test
-	public void data() {
-		VectorProducer h = TriangleIntersectAt.h(def(), direction1);
+	public void data1() {
+		VectorProducer h = TriangleIntersectAt.h(def(data1), direction1);
 		System.out.println("h = " + h.evaluate());
 
-		ScalarProducer f = TriangleIntersectAt.f(abc(), h);
+		ScalarProducer f = TriangleIntersectAt.f(abc(data1), h);
 		System.out.println("f = " + f.evaluate().getValue());
 
 		ScalarProducer u = TriangleIntersectAt.u(
-												TriangleIntersectAt.s(jkl(), origin1),
-												TriangleIntersectAt.h(def(), direction1),
+												TriangleIntersectAt.s(jkl(data1), origin1),
+												TriangleIntersectAt.h(def(data1), direction1),
 												f.pow(-1.0));
 		System.out.println("u = " + u.evaluate().getValue());
+	}
+
+	@Test
+	public void data2() {
+		VectorProducer abc = abc(data2);
+		VectorProducer def = def(data2);
+		VectorProducer jkl = jkl(data2);
+
+		System.out.println("abc = " + abc.evaluate());
+		System.out.println("def = " + def.evaluate());
+		System.out.println("jkl = " + jkl.evaluate());
+
+		VectorProducer h = TriangleIntersectAt.h(def(data2), direction2);
+		System.out.println("h = " + h.evaluate());
+
+		ScalarProducer f = TriangleIntersectAt.f(abc(data2), h);
+		System.out.println("f = " + f.evaluate().getValue());
+
+		ScalarProducer u = TriangleIntersectAt.u(
+				TriangleIntersectAt.s(jkl(data2), origin2),
+				TriangleIntersectAt.h(def(data2), direction2),
+				f.pow(-1.0));
+		System.out.println("u = " + u.evaluate().getValue());
+
+		VectorProducer s = TriangleIntersectAt.s(jkl(data2), origin2);
+		System.out.println("s = " + s.evaluate());
+
+		VectorProducer q = TriangleIntersectAt.q(abc(data2), s);
+		System.out.println("q = " + q.evaluate());
+
+		ScalarProducer v = TriangleIntersectAt.v(direction2, f.pow(-1.0), q);
+		System.out.println("v = " + v.evaluate().getValue());
 	}
 
 	@Test
@@ -111,10 +145,16 @@ public class MeshIntersectionTest {
 		double distance = intersection().evaluate(new Object[] {
 				data2.get(0), origin2.evaluate(), direction2.evaluate() }).getValue();
 		System.out.println("distance = " + distance);
-		Assert.assertEquals(-1.0, distance, Math.pow(10, -10));
+		Assert.assertEquals(1.0, distance, Math.pow(10, -10));
 	}
 
+	@Test
 	public void intersectionKernel2() {
-
+		ScalarBank distances = new ScalarBank(1);
+		RayFromVectors ray = new RayFromVectors(origin2, direction2);
+		ray.compact();
+		data2.evaluateIntersectionKernel(ray, distances, new MemoryBank[0], 0, distances.getCount());
+		System.out.println("distance = " + distances.get(0).getValue());
+		Assert.assertEquals(1.0, distances.get(0).getValue(), Math.pow(10, -10));
 	}
 }
