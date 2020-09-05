@@ -606,4 +606,5 @@ highestRank(__global float *res,
 	}
 
 	res[resOffset] = closestIndex < 0 ? -1 : closest;
+	res[resOffset + 1] = closestIndex;
 }
