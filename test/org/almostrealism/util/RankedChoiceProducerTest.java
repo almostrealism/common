@@ -16,11 +16,11 @@ public class RankedChoiceProducerTest {
 	@Test
 	public void highestRank() {
 		Scalar in = new Scalar(1.0);
-		Scalar out = RankedChoiceProducer.highestRank.evaluate(
+		Pair out = RankedChoiceProducer.highestRank.evaluate(
 				new Object[] { in, new Pair(3, Intersection.e) });
 
-		System.out.println("rank = " + out.getValue());
-		Assert.assertEquals(1.0, out.getValue(), Math.pow(10, -10));
+		System.out.println("rank = " + out.getA());
+		Assert.assertEquals(1.0, out.getA(), Math.pow(10, -10));
 	}
 
 	@Test
@@ -31,14 +31,14 @@ public class RankedChoiceProducerTest {
 		in.set(2, new Scalar(1.0));
 		in.set(3, new Scalar(3.0));
 
-		ScalarBank out = new ScalarBank(1);
+		PairBank out = new PairBank(1);
 
 		PairBank conf = new PairBank(1);
 		conf.set(0, new Pair(4, Intersection.e));
 
 		RankedChoiceProducer.highestRank.kernelEvaluate(out, new MemoryBank[] { in, conf });
 
-		System.out.println("rank = " + out.get(0).getValue());
-		Assert.assertEquals(1.0, out.get(0).getValue(), Math.pow(10, -10));
+		System.out.println("rank = " + out.get(0).getA());
+		Assert.assertEquals(1.0, out.get(0).getA(), Math.pow(10, -10));
 	}
 }
