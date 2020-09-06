@@ -19,8 +19,6 @@ package org.almostrealism.algebra;
 public class UnityVector extends ImmutableVector {
 	private static UnityVector local = new UnityVector();
 
-	private Scalar zero = new Scalar(0.0);
-
 	public UnityVector() {
 		super(1, 1, 1);
 	}

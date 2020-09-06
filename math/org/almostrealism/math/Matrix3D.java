@@ -16,6 +16,7 @@
 
 package org.almostrealism.math;
 
+// Uses of this can be replaced with Tensor
 public class Matrix3D {
 	protected double matrix[][][];
 	protected int intMatrix[][][];

@@ -19,7 +19,6 @@ package org.almostrealism.algebra;
 /**
  * 4-element single-precision vector
  */
-
 public class Vec4f {
 	private float x;
 	private float y;

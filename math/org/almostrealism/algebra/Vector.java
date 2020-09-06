@@ -553,58 +553,6 @@ public class Vector extends MemWrapperAdapter implements Positioned, Triple, Clo
 		dest.setZ(v1.getZ() - v2.getZ());
 	}
 
-	public static int maxAxis(Vector v) {
-		int maxIndex = -1;
-		double maxVal = -1e30f;
-
-		if (v.getX() > maxVal) {
-			maxIndex = 0;
-			maxVal = v.getX();
-		}
-		if (v.getY() > maxVal) {
-			maxIndex = 1;
-			maxVal = v.getY();
-		}
-		if (v.getZ() > maxVal) {
-			maxIndex = 2;
-			maxVal = v.getZ();
-		}
-
-		return maxIndex;
-	}
-
-	public static int maxAxis4(Vec4f v) {
-		int maxIndex = -1;
-		float maxVal = -1e30f;
-		if (v.x() > maxVal) {
-			maxIndex = 0;
-			maxVal = v.x();
-		}
-
-		if (v.y() > maxVal) {
-			maxIndex = 1;
-			maxVal = v.y();
-		}
-
-		if (v.z() > maxVal) {
-			maxIndex = 2;
-			maxVal = v.z();
-		}
-
-		if (v.w() > maxVal) {
-			maxIndex = 3;
-			maxVal = v.w();
-		}
-
-		return maxIndex;
-	}
-
-	public static int closestAxis4(Vec4f vec) {
-		Vec4f tmp = new Vec4f(vec);
-		tmp.absolute();
-		return maxAxis4(tmp);
-	}
-
 	public static double getCoord(Vector vec, int num) {
 		switch (num) {
 			case 0: return vec.getX();
