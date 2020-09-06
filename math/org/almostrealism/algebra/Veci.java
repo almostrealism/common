@@ -43,25 +43,4 @@ public class Veci {
 	public void set(int i, int val) {
 		data[i] = val;
 	}
-
-	public Pair toPair() throws DimensionMismatchException {
-		if (length() != 2)
-			throw new DimensionMismatchException();
-		Pair out = new Pair();
-		out.setX(get(0));
-		out.setY(get(1));
-		return out;
-	}
-
-	public Vector toVector() throws DimensionMismatchException {
-		if (length() != 3)
-			throw new DimensionMismatchException();
-
-		Vector out = new Vector();
-		for (int i = 0; i < 3; i++) {
-			out.set(i, get(i));
-		}
-
-		return out;
-	}
 }
