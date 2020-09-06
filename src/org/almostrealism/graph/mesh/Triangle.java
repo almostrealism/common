@@ -54,25 +54,13 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 	private boolean smooth, intcolor, useT = true;
 	private TriangleData data;
 
-	private static TriangleDataProducer dataProducer;
+	protected static final KernelizedProducer<TriangleData> dataProducer;
 
 	public static final KernelizedProducer<Scalar> intersectAt;
 	
 	static {
-		Producer<Vector> p1 = PassThroughProducer.of(Vector.class, 0);
-		Producer<Vector> p2 = PassThroughProducer.of(Vector.class, 1);
-		Producer<Vector> p3 = PassThroughProducer.of(Vector.class, 2);
-
-		dataProducer = TriangleDataProducer.of(p1, p2, p3);
+		dataProducer = TriangleDataProducer.of(PassThroughProducer.of(TrianglePointData.class, 0));
 		dataProducer.compact();
-
-//		intersectAt = new AcceleratedProducer(
-//				"triangleIntersectAt",
-//				true,
-//				Scalar.blank(),
-//				PassThroughProducer.of(Ray.class, 0),
-//				PassThroughProducer.of(TriangleData.class, 1),
-//				PassThroughProducer.of(Pair.class, 2));
 
 		intersectAt = new TriangleIntersectAt(PassThroughProducer.of(TriangleData.class, 1),
 							PassThroughProducer.of(Ray.class, 0, -1));
@@ -129,7 +117,11 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 	 */	
 	public void setVertices(Vector p1, Vector p2, Vector p3) {
 		if (enableHardwareOperator) {
-			this.data = dataProducer.evaluate(new Object[] { p1, p2, p3 });
+			TrianglePointData points = new TrianglePointData();
+			points.setP1(p1);
+			points.setP2(p2);
+			points.setP3(p3);
+			this.data = dataProducer.evaluate(new Object[] { points });
 		} else {
 			this.p1 = p1;
 			this.p2 = p2;

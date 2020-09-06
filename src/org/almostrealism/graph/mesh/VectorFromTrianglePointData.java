@@ -19,13 +19,12 @@ package org.almostrealism.graph.mesh;
 import org.almostrealism.algebra.computations.VectorFromVectorBank;
 import org.almostrealism.util.Producer;
 
-public class VectorFromTriangleData extends VectorFromVectorBank {
-	public static final int ABC = 0;
-	public static final int DEF = 1;
-	public static final int JKL = 2;
-	public static final int NORMAL = 3;
+public class VectorFromTrianglePointData extends VectorFromVectorBank {
+	public static final int P1 = 0;
+	public static final int P2 = 1;
+	public static final int P3 = 2;
 
-	public VectorFromTriangleData(Producer<TriangleData> triangle, int position) {
+	public VectorFromTrianglePointData(Producer<TrianglePointData> triangle, int position) {
 		super(triangle, position);
 	}
 }

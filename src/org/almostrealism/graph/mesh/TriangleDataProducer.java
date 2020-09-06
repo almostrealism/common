@@ -29,6 +29,12 @@ public interface TriangleDataProducer extends Producer<TriangleData> {
 		return new VectorFromTriangleData(t, VectorFromTriangleData.NORMAL);
 	}
 
+	static TriangleDataFromVectors of(Producer<TrianglePointData> points) {
+		return of(new VectorFromTrianglePointData(points, VectorFromTrianglePointData.P1),
+				new VectorFromTrianglePointData(points, VectorFromTrianglePointData.P2),
+				new VectorFromTrianglePointData(points, VectorFromTrianglePointData.P3));
+	}
+
 	static TriangleDataFromVectors of(Producer<Vector> p1, Producer<Vector> p2, Producer<Vector> p3) {
 		return new TriangleDataFromVectors(VectorProducer.subtract(p2, p1),
 											VectorProducer.subtract(p3, p1),

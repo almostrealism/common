@@ -154,6 +154,8 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 		
 		int[] getTriangle(int index); int getTriangleCount();
 		int getVertexCount();
+
+		MeshPointData getMeshPointData();
 	}
 	
   private List points, triangles;
@@ -364,13 +366,17 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 
   	public MeshData getMeshData() {
 		MeshData tdata = new MeshData(tcache.length);
+		MeshPointData points = getMeshPointData();
+		Triangle.dataProducer.kernelEvaluate(tdata, new MemoryBank[] { points });
+  		return tdata;
+	}
 
-  		for (int i = 0; i < tcache.length; i++) {
-  			if (tcache[i] == null) tcache[i] = getTriangle(i);
-			tdata.set(i, tcache[i].getData());
+	public MeshPointData getMeshPointData() {
+  		if (vertexData == null) {
+  			throw new RuntimeException("Not implemented");
 		}
 
-  		return tdata;
+  		return vertexData.getMeshPointData();
 	}
 
   	public int[][] getTriangleData() {

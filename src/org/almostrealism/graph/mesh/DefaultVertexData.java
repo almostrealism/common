@@ -80,4 +80,18 @@ public class DefaultVertexData implements Mesh.VertexData {
 	public int getTriangleCount() { return triangles.length; }
 	@Override
 	public int getVertexCount() { return vertices.getCount(); }
+
+	@Override
+	public MeshPointData getMeshPointData() {
+		MeshPointData points = new MeshPointData(getTriangleCount());
+
+		for (int i = 0; i < triangles.length; i++) {
+			points.set(i,
+					getX(triangles[i][0]), getY(triangles[i][0]), getZ(triangles[i][0]),
+					getX(triangles[i][1]), getY(triangles[i][1]), getZ(triangles[i][1]),
+					getX(triangles[i][2]), getY(triangles[i][2]), getZ(triangles[i][2]));
+		}
+
+		return points;
+	}
 }
