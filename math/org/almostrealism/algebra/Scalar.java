@@ -17,6 +17,7 @@
 package org.almostrealism.algebra;
 
 import org.almostrealism.math.MemWrapper;
+import org.almostrealism.math.PooledMem;
 import org.almostrealism.util.Producer;
 
 public class Scalar extends Pair implements Comparable<Scalar> {
@@ -49,6 +50,9 @@ public class Scalar extends Pair implements Comparable<Scalar> {
 		Scalar s = new Scalar(getValue(), getCertainty());
 		return s;
 	}
+
+	@Override
+	public PooledMem getDefaultDelegate() { return ScalarPool.getLocal(); }
 
 	public static Producer<Scalar> blank() {
 		return new Producer<Scalar>() {

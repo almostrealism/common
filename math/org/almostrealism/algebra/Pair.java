@@ -18,6 +18,7 @@ package org.almostrealism.algebra;
 
 import org.almostrealism.math.MemWrapper;
 import org.almostrealism.math.MemWrapperAdapter;
+import org.almostrealism.math.PooledMem;
 import org.almostrealism.util.Defaults;
 import org.almostrealism.util.DynamicProducer;
 import org.almostrealism.util.Producer;
@@ -149,6 +150,9 @@ public class Pair extends MemWrapperAdapter {
 	public int getMemLength() {
 		return 2;
 	}
+
+	@Override
+	public PooledMem getDefaultDelegate() { return PairPool.getLocal(); }
 
 	/** @return A String representation of this Vector object. */
 	@Override

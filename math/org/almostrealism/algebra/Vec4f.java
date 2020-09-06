@@ -242,14 +242,6 @@ public class Vec4f {
 		w = a.w - b.w;
 	}
 
-	public Vecf toVecf() {
-		Vecf out = new Vecf(4);
-		for (int i = 0; i < 4; i++) {
-			out.set(i, get(i));
-		}
-		return out;
-	}
-
 	public String toString() {
 		return "(" + x + ", " + y + ", " + z + ")";
 	}

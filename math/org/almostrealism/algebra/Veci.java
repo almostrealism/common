@@ -64,13 +64,4 @@ public class Veci {
 
 		return out;
 	}
-
-	@Deprecated
-	public Vecf toVecf() {
-		Vecf out = new Vecf(length());
-		for (int i = 0; i < length(); i++) {
-			out.set(i, get(i));
-		}
-		return out;
-	}
 }

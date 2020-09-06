@@ -22,6 +22,7 @@ import org.almostrealism.math.HardwareOperator;
 import org.almostrealism.math.Hardware;
 import org.almostrealism.math.MemWrapper;
 import org.almostrealism.math.MemWrapperAdapter;
+import org.almostrealism.math.PooledMem;
 import org.almostrealism.util.Defaults;
 import org.almostrealism.util.DynamicProducer;
 import org.almostrealism.util.Producer;
@@ -408,15 +409,6 @@ public class Vector extends MemWrapperAdapter implements Positioned, Triple, Clo
 		v1.setTo(new Vector(v1.getX() / norm, v1.getY() / norm, v1.getZ() / norm));
 	}
 
-	@Deprecated
-	public Vecf toVecf() {
-		Vecf v = new Vecf(3);
-		v.set(0, (float) getX());
-		v.set(1, (float) getY());
-		v.set(2, (float) getZ());
-		return v;
-	}
-
 	/** This is the fastest way to get access to the data in this {@link Vector}. */
 	public double[] toArray() {
 		double d[] = new double[3];
@@ -456,6 +448,9 @@ public class Vector extends MemWrapperAdapter implements Positioned, Triple, Clo
 	@Override
 	public int getMemLength() { return 3; }
 
+	@Override
+	public VectorPool getDefaultDelegate() { return VectorPool.getLocal(); }
+
 	/**
 	 * @see java.lang.Object#clone()
 	 */
@@ -466,7 +461,7 @@ public class Vector extends MemWrapperAdapter implements Positioned, Triple, Clo
 		return v;
 	}
 
-	/** @return A String representation of this Vector object. */
+	/** @return A String representation of this {@link Vector}. */
 	@Override
 	public String toString() {
 		StringBuffer value = new StringBuffer();

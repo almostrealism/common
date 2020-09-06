@@ -61,7 +61,7 @@ public class PlyResource extends UnicodeResource {
 				if (line.startsWith("#")) continue i;
 
 				double d[] = FileDecoder.parseDoubles(line);
-				data.getVertices().set(i, new Vector(d[0], d[1], d[2]));
+				data.getVertices().set(i, d[0], d[1], d[2]);
 
 				i++;
 

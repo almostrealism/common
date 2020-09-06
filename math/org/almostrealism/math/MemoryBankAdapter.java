@@ -139,6 +139,10 @@ public abstract class MemoryBankAdapter<T extends MemWrapper> extends MemWrapper
 				getAtomicMemLength());
 	}
 
+	public void set(int index, double... values) {
+		setMem(getOffset() + index * getAtomicMemLength(), values, 0, values.length);
+	}
+
 	@Override
 	public int getMemLength() { return totalMemLength; }
 

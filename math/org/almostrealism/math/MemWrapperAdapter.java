@@ -1,3 +1,19 @@
+/*
+ * Copyright 2020 Michael Murray
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
 package org.almostrealism.math;
 
 import org.jocl.CL;
@@ -15,9 +31,16 @@ public abstract class MemWrapperAdapter implements MemWrapper {
 
 	protected void init() {
 		if (delegateMem == null) {
-			mem = CL.clCreateBuffer(Hardware.getLocalHardware().getContext(),
-					CL.CL_MEM_READ_WRITE, getMemLength() * sizeOf,
-					null, null);
+			PooledMem pool = getDefaultDelegate();
+
+			if (pool == null) {
+				mem = CL.clCreateBuffer(Hardware.getLocalHardware().getContext(),
+						CL.CL_MEM_READ_WRITE, getMemLength() * sizeOf,
+						null, null);
+			} else {
+				setDelegate(pool, pool.reserveOffset(this));
+				setMem(new double[getMemLength()]);
+			}
 		}
 	}
 
@@ -74,8 +97,10 @@ public abstract class MemWrapperAdapter implements MemWrapper {
 		this.delegateMemOffset = offset;
 	}
 
+	public PooledMem getDefaultDelegate() { return null; }
+
 	@Override
-	public void finalize() throws Throwable {
+	public void finalize() {
 		destroy();
 	}
 
