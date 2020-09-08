@@ -37,6 +37,9 @@ public final class Hardware {
 	private final boolean enableGpu;
 	private final boolean enableDoublePrecision;
 
+	private long memoryMax = 2000 * 1000 * 1000;
+	private long memoryUsed = 0;
+
 	private cl_context context;
 	private cl_command_queue queue;
 
@@ -145,6 +148,24 @@ public final class Hardware {
 	public cl_command_queue getQueue() { return queue; }
 
 	public AcceleratedFunctions getFunctions() { return functions; }
+
+	public cl_mem allocate(int size) {
+		long sizeOf = size * getNumberSize();
+
+		if (memoryUsed + sizeOf > memoryMax) {
+			throw new RuntimeException("Hardware: Memory Max Reached");
+		}
+
+		memoryUsed = memoryUsed + sizeOf;
+		return CL.clCreateBuffer(getContext(),
+				CL.CL_MEM_READ_WRITE, sizeOf,
+				null, null);
+	}
+
+	public void deallocate(int size, cl_mem mem) {
+		CL.clReleaseMemObject(mem);
+		memoryUsed = memoryUsed - size * getNumberSize();
+	}
 
 	private static String deviceName(long type) {
 		if (type == CL.CL_DEVICE_TYPE_CPU) {

@@ -19,7 +19,7 @@ package org.almostrealism.algebra;
 import org.almostrealism.math.MemoryPool;
 
 public class PairPool extends MemoryPool<Pair> {
-	private static final PairPool local = new PairPool(50000);
+	private static final PairPool local = new PairPool(200000);
 
 	public PairPool(int size) {
 		super(2, size);

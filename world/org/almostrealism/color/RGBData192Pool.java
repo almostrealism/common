@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,23 +14,16 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.color.computations;
+package org.almostrealism.color;
 
-import org.almostrealism.color.RGB;
-import org.almostrealism.util.Producer;
+import org.almostrealism.math.MemoryPool;
 
-public class RGBWhite implements Producer<RGB> {
-	private static RGBWhite local = new RGBWhite();
+public class RGBData192Pool extends MemoryPool<RGBData192> {
+	private static final RGBData192Pool local = new RGBData192Pool(50000);
 
-	private RGB white;
+	public RGBData192Pool(int size) {
+		super(3, size);
+	}
 
-	public RGBWhite() { white = new RGB(1.0, 1.0, 1.0); }
-
-	public static RGBWhite getInstance() { return local; }
-
-	@Override
-	public RGB evaluate(Object[] args) { return (RGB) white.clone(); }
-
-	@Override
-	public void compact() { }
+	public static RGBData192Pool getLocal() { return local; }
 }

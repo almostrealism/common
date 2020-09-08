@@ -38,7 +38,7 @@ import org.jocl.cl_mem;
  * 1.0 (strongest color).
  */
 public class RGB implements RGBProducer, Triple, MemWrapper, Externalizable, Cloneable {
-	private interface Data extends MemWrapper {
+	protected interface Data extends MemWrapper {
 		void set(int i, double r);
 		void add(int i, double r);
 		void scale(int i, double r);
@@ -48,69 +48,6 @@ public class RGB implements RGBProducer, Triple, MemWrapper, Externalizable, Clo
 		void write(ObjectOutput out) throws IOException;
 		void read(ObjectInput in) throws IOException;
 		void setMem(double[] source);
-	}
-	
-	private static class Data192 extends MemWrapperAdapter implements Data {
-		public static final int depth = 192;
-
-		public Data192() {
-			init();
-		}
-
-		protected Data192(MemWrapper delegate, int delegateOffset) {
-			setDelegate(delegate, delegateOffset);
-			init();
-		}
-
-		public void set(int i, double r) {
-			setMem(i, new double[] { r }, 0, 1);
-		}
-
-		public void add(int i, double r) {
-			double rgb[] = toArray();
-			rgb[i] += r;
-			setMem(rgb);
-		}
-
-		public void scale(int i, double r) {
-			double rgb[] = toArray();
-			rgb[i] *= r;
-			setMem(rgb);
-		}
-
-		public double get(int i) { return toArray()[i]; }
-
-		/** Returns the sum of the components (not vector length). */
-		public double length() {
-			double rgb[] = toArray();
-			return rgb[0] + rgb[1] + rgb[2];
-		}
-		
-		public void read(ObjectInput in) throws IOException {
-			double rgb[] = new double[3];
-			rgb[0] = in.readDouble();
-			rgb[1] = in.readDouble();
-			rgb[2] = in.readDouble();
-			setMem(rgb);
-		}
-		
-		public void write(ObjectOutput out) throws IOException {
-			double rgb[] = toArray();
-			out.writeDouble(rgb[0]);
-			out.writeDouble(rgb[1]);
-			out.writeDouble(rgb[2]);
-		}
-
-		@Override
-		public int getMemLength() {
-			return 3;
-		}
-
-		public double[] toArray() {
-			double d[] = new double[3];
-			getMem(0, d, 0, 3);
-			return d;
-		}
 	}
 
 //	private static class Data48 implements Data {
@@ -233,9 +170,9 @@ public class RGB implements RGBProducer, Triple, MemWrapper, Externalizable, Clo
 	private void initColorModule(int model, MemWrapper delegate, int delegateOffset) {
 		if (model == 192) {
 			if (delegate == null) {
-				this.data = new Data192();
+				this.data = new RGBData192();
 			} else {
-				this.data = new Data192(delegate, delegateOffset);
+				this.data = new RGBData192(delegate, delegateOffset);
 			}
 		} else if (model == 48) {
 //			this.data = new Data48();

@@ -65,6 +65,12 @@ public class MeshIntersectionTest {
 	}
 
 	@Test
+	public void normal1() {
+		Vector normal = normal(data1).evaluate();
+		System.out.println("normal = " + normal);
+	}
+
+	@Test
 	public void data1() {
 		VectorProducer h = TriangleIntersectAt.h(def(data1), direction1);
 		System.out.println("h = " + h.evaluate());

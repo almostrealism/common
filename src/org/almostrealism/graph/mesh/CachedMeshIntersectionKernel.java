@@ -61,9 +61,15 @@ public class CachedMeshIntersectionKernel implements KernelizedProducer<Scalar>,
 		}
 	}
 
+	/**
+	 * Returns a cached value from {@link #kernelEvaluate(MemoryBank, MemoryBank[], int, int)}.
+	 * This method will not work properly unless the kernel has already been evaluated.
+	 */
 	@Override
 	public Scalar evaluate(Object[] args) {
-		return data.evaluateIntersection(ray, args);
+		Pair pos = (Pair) args[0];
+		int n = DimensionAware.getPosition(pos.getX(), pos.getY(), width, height, ssw, ssh);
+		return new Scalar(cache.get(n).getA());
 	}
 
 	public Producer<Vector> getClosestNormal() {

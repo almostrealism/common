@@ -34,9 +34,7 @@ public abstract class MemWrapperAdapter implements MemWrapper {
 			PooledMem pool = getDefaultDelegate();
 
 			if (pool == null) {
-				mem = CL.clCreateBuffer(Hardware.getLocalHardware().getContext(),
-						CL.CL_MEM_READ_WRITE, getMemLength() * sizeOf,
-						null, null);
+				mem = Hardware.getLocalHardware().allocate(getMemLength());
 			} else {
 				setDelegate(pool, pool.reserveOffset(this));
 				setMem(new double[getMemLength()]);
@@ -53,7 +51,7 @@ public abstract class MemWrapperAdapter implements MemWrapper {
 	@Override
 	public void destroy() {
 		if (mem == null) return;
-		CL.clReleaseMemObject(mem);
+		Hardware.getLocalHardware().deallocate(getMemLength(), mem);
 		mem = null;
 	}
 

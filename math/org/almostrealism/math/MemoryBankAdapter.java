@@ -107,7 +107,7 @@ public abstract class MemoryBankAdapter<T extends MemWrapper> extends MemWrapper
 
 		if (cacheLevel == CacheLevel.ALL) {
 			entriesList = IntStream.range(0, count)
-					.map(i -> i * getAtomicMemLength())
+					.map(i -> getOffset() + i * getAtomicMemLength())
 					.mapToObj(DelegateSpec::new)
 					.map(supply)
 					.collect(Collectors.toList());
@@ -123,12 +123,12 @@ public abstract class MemoryBankAdapter<T extends MemWrapper> extends MemWrapper
 		} else if (cacheLevel == CacheLevel.ACCESSED) {
 			T value = entriesMap.get(Integer.valueOf(index));
 			if (value == null) {
-				value = supply.apply(new DelegateSpec(index * getAtomicMemLength()));
+				value = supply.apply(new DelegateSpec(getOffset() + index * getAtomicMemLength()));
 				entriesMap.put(Integer.valueOf(index), value);
 			}
 			return value;
 		} else {
-			return supply.apply(new DelegateSpec(index * getAtomicMemLength()));
+			return supply.apply(new DelegateSpec(getOffset() + index * getAtomicMemLength()));
 		}
 	}
 

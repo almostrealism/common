@@ -47,12 +47,12 @@ public class Defaults {
 
 	private static class TruncatedDecimalFormat extends DecimalFormat {
 		public TruncatedDecimalFormat() {
-			super("####00.00");
+			super("####00.0000");
 
 			this.setMinimumIntegerDigits(1);
 			this.setMaximumIntegerDigits(6);
-			this.setMaximumFractionDigits(2);
-			this.setMinimumFractionDigits(2);
+			this.setMaximumFractionDigits(4);
+			this.setMinimumFractionDigits(4);
 		}
 	}
 
