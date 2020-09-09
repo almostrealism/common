@@ -53,8 +53,11 @@ public class Method<T> implements Nameable {
 		this(member, name, generateArgNames(v), generateArgValues(v));
 	}
 
+	@Override
 	public void setName(String n) { this.name = n; }
+	@Override
 	public String getName() { return name; }
+
 	public void setMember(String m) { this.member = m; }
 	public String getMember() { return this.member; }
 

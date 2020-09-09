@@ -662,8 +662,6 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 		Producer<Ray> tray = ray;
 		if (t != null) tray = new RayMatrixTransform(t.getInverse(), ray);
 
-		tray.compact(); // The kernel only accepts compacted Ray Producers
-
 		CachedMeshIntersectionKernel kernel =
 				new CachedMeshIntersectionKernel(getMeshData(), (KernelizedProducer) tray);
 

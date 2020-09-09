@@ -40,4 +40,7 @@ public class ColorProduct extends NAryDynamicAcceleratedProducer<RGB> implements
 	 * Returns true if the specified value is 1.0, false otherwise.
 	 */
 	public boolean isRemove(double value) { return value == 1.0; }
+
+	@Override
+	protected RGB handleNull(int argIndex) { return null; }
 }

@@ -84,11 +84,15 @@ public interface VectorProducer extends Producer<Vector> {
     }
 
     default VectorProduct multiply(Producer<Vector> operand) {
-        return new VectorProduct(this, operand);
+        return multiply(this, operand);
     }
 
-    default VectorProduct scalarMultiply(Producer<Scalar> operand) {
-        return new VectorProduct(this, new VectorFromScalars(operand, operand, operand));
+    static VectorProduct multiply(Producer<Vector> a, Producer<Vector> b) { return new VectorProduct(a, b); }
+
+    default VectorProduct scalarMultiply(Producer<Scalar> operand) { return scalarMultiply(this, operand); }
+
+    static VectorProduct scalarMultiply(Producer<Vector> a, Producer<Scalar> b) {
+        return new VectorProduct(a, new VectorFromScalars(b, b, b));
     }
 
     default VectorProduct scalarMultiply(Scalar operand) {
@@ -119,7 +123,11 @@ public interface VectorProducer extends Producer<Vector> {
     }
 
     default ScalarProducer lengthSq() {
-        return x().pow(2.0).add(y().pow(2.0)).add(z().pow(2.0));
+        return lengthSq(this);
+    }
+
+    static ScalarProducer lengthSq(Producer<Vector> v) {
+        return VectorProducer.x(v).pow(2.0).add(VectorProducer.y(v).pow(2.0)).add(VectorProducer.z(v).pow(2.0));
     }
 
     default VectorProducer normalize() {

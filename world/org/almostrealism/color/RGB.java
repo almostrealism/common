@@ -428,11 +428,10 @@ public class RGB implements RGBProducer, Triple, MemWrapper, Externalizable, Clo
 	public RGB evaluate(Object args[]) { return (RGB) this.clone(); }
 
 	@Override
-	public void compact() {
-		// TODO  RGB should optionally accept any triple producer.
-		//       If this is the source of data, this compact method
-		//       should delegate to it.
-	}
+	public boolean isStatic() { return true; }
+
+	@Override
+	public void compact() { }
 
 	// @Override
 	// TODO

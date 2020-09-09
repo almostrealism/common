@@ -18,7 +18,7 @@ public class KernelTest {
 								new Vector(4, 5, 6))));
 		Ray r = k.evaluate();
 		System.out.println(r);
-		assert r.equals(new Ray(new Vector(1, 2, 3), new Vector(4, 5, 7)));
+		assert r.equals(new Ray(new Vector(1, 2, 3), new Vector(4, 5, 6)));
 	}
 
 	@Test

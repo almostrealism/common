@@ -17,6 +17,7 @@
 package org.almostrealism.math;
 
 import org.jocl.CL;
+import org.jocl.CLException;
 import org.jocl.cl_program;
 
 /**
@@ -36,8 +37,19 @@ public class HardwareOperatorMap<T extends MemWrapper> {
 		prog = CL.clCreateProgramWithSource(h.getContext(), 1, new String[] { src }, null, result);
 		if (result[0] != 0) throw new RuntimeException("Error creating HardwareOperatorMap: " + result[0]);
 
-		int r = CL.clBuildProgram(prog, 0, null, null, null, null);
-		if (r != 0) throw new RuntimeException("Error building HardwareOperatorMap:" + r);
+		RuntimeException ex = null;
+
+		try {
+			int r = CL.clBuildProgram(prog, 0, null, null, null, null);
+			if (r != 0) ex = new RuntimeException("Error building HardwareOperatorMap:" + r);
+		} catch (CLException e) {
+			ex = e;
+		}
+
+		if (ex != null) {
+			System.out.println("Error compiling:\n" + src);
+			throw ex;
+		}
 	}
 
 	public HardwareOperator<T> get(String key) { return new HardwareOperator<>(prog, key); }

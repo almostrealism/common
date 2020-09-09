@@ -24,7 +24,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-public class RayFromVectors extends DynamicAcceleratedProducerAdapter<Ray> {
+public class RayFromVectors extends DynamicAcceleratedProducerAdapter<Ray> implements RayProducer {
 	private String value[];
 
 	public RayFromVectors(Producer<Vector> origin, Producer<Vector> direction) {
