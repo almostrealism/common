@@ -19,7 +19,7 @@ package org.almostrealism.util;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.math.MemWrapper;
+import org.almostrealism.hardware.MemWrapper;
 
 import java.util.function.Function;
 

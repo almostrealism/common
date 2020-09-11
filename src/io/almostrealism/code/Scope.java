@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package io.almostrealism.code;
 
 import org.almostrealism.graph.ParameterizedGraph;
 import org.almostrealism.graph.Parent;
+import org.almostrealism.util.Nameable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -25,12 +26,11 @@ import java.util.List;
 /**
  * A {@link Scope} is the container for {@link Variable}s, {@link Method}s, and other {@link Scope}s.
  *
- * @param <V>  Type of the {@link Variable}s that are used in the {@link Scope}. Usually this isn't
- *             used, since most {@link Scope}s need to support a range of {@link Variable} types, but
- *             it can be useful if there should be a restriction of some kind.
+ * @param <T>  The type of the value returned by this {@link Scope}.
  */
-public class Scope<V extends Variable> extends ArrayList<Scope<V>> implements ParameterizedGraph<Scope<V>, V>, Parent<Scope<V>> {
-	private List<V> variables;
+public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<Scope<T>, T>, Parent<Scope<T>>, Nameable {
+	private String name;
+	private List<Variable> variables;
 	private List<Method> methods;
 
 	/**
@@ -42,9 +42,40 @@ public class Scope<V extends Variable> extends ArrayList<Scope<V>> implements Pa
 	}
 
 	/**
+	 * Creates an empty {@link Scope} with the specified name.
+	 */
+	public Scope(String name) {
+		this();
+		setName(name);
+	}
+
+	public String getName() { return name; }
+
+	public void setName(String name) { this.name = name; }
+
+	public List<Argument> getArguments() {
+		List<Argument> args = new ArrayList<>();
+		variables.stream()
+				.filter(v -> v instanceof ArgumentReference)
+				.map(v -> ((ArgumentReference) v).getReferent())
+				.forEach(args::add);
+		methods.stream()
+				.map(Method::getArguments)
+				.flatMap(List::stream)
+				.filter(v -> v instanceof ArgumentReference)
+				.map(v -> ((ArgumentReference) v).getReferent())
+				.forEach(v -> args.add((Argument) v));
+		this.stream()
+				.map(Scope::getArguments)
+				.flatMap(List::stream)
+				.forEach(args::add);
+		return args;
+	}
+
+	/**
 	 * @return  The {@link Variable}s in this {@link Scope}.
 	 */
-	public List<V> getVariables() { return variables; }
+	public List<Variable> getVariables() { return variables; }
 
 	/**
 	 * @return  The {@link Method}s in this {@link Scope}.
@@ -54,7 +85,8 @@ public class Scope<V extends Variable> extends ArrayList<Scope<V>> implements Pa
 	/**
 	 * @return  The inner {@link Scope}s contained by this {@link Scope}.
 	 */
-	public List<Scope<V>> getChildren() { return this; }
+	@Override
+	public List<Scope<T>> getChildren() { return this; }
 
 	/**
 	 * Writes the {@link Variable}s and {@link Method}s for this {@link Scope}
@@ -64,7 +96,7 @@ public class Scope<V extends Variable> extends ArrayList<Scope<V>> implements Pa
 	 * @param w  {@link CodePrintWriter} to use for encoding the {@link Scope}.
 	 */
 	public void write(CodePrintWriter w) {
-		for (V v : getVariables()) { w.println(v); }
+		for (Variable v : getVariables()) { w.println(v); }
 		for (Method m : getMethods()) { w.println(m); }
 		for (Scope s : getChildren()) { s.write(w); }
 		w.flush();

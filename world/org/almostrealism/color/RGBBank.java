@@ -16,7 +16,7 @@
 
 package org.almostrealism.color;
 
-import org.almostrealism.math.MemoryBankAdapter;
+import org.almostrealism.hardware.MemoryBankAdapter;
 import org.almostrealism.util.Producer;
 
 /**

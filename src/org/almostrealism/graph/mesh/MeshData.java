@@ -7,9 +7,9 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayBank;
-import org.almostrealism.math.KernelizedProducer;
-import org.almostrealism.math.MemoryBank;
-import org.almostrealism.math.MemoryBankAdapter;
+import org.almostrealism.hardware.KernelizedProducer;
+import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.hardware.MemoryBankAdapter;
 import org.almostrealism.util.Producer;
 import org.almostrealism.util.RankedChoiceProducer;
 

@@ -20,7 +20,7 @@ import org.almostrealism.algebra.computations.RayMatrixTransform;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.math.DynamicAcceleratedProducer;
+import org.almostrealism.hardware.DynamicAcceleratedProducer;
 import org.almostrealism.space.Plane;
 import org.almostrealism.space.ShadableIntersection;
 import org.almostrealism.util.Producer;

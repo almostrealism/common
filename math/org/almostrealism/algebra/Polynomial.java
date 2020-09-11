@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@ import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.computations.VectorFutureAdapter;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.relation.Constant;
+import org.almostrealism.relation.NameProvider;
 import org.almostrealism.relation.Operator;
 import org.almostrealism.space.AbstractSurface;
 import org.almostrealism.space.ShadableIntersection;
@@ -491,10 +492,10 @@ public class Polynomial extends AbstractSurface {
 			public void compact() { simplify(); }
 
 			@Override
-			public Scope<Variable<Scalar>> getScope(String prefix) {
+			public Scope<Scalar> getScope(NameProvider p) {
 				// TODO  Not sure this is correct
 				Scope s = new Scope();
-				s.getVariables().add(new Variable(prefix + "scalar", evaluate(new Object[0])));
+				s.getVariables().add(new Variable(p.getFunctionName() + "scalar", evaluate()));
 				return s;
 			}
 		};
@@ -506,6 +507,7 @@ public class Polynomial extends AbstractSurface {
 	}
 	
 	/** Returns a String representation of this {@link Polynomial}. */
+	@Override
 	public String toString() {
 		String output = null;
 		

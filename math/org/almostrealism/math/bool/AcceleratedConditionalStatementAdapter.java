@@ -1,9 +1,10 @@
 package org.almostrealism.math.bool;
 
+import io.almostrealism.code.Argument;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.math.DynamicAcceleratedProducer;
-import org.almostrealism.math.DynamicAcceleratedProducerAdapter;
-import org.almostrealism.math.MemWrapper;
+import org.almostrealism.hardware.DynamicAcceleratedProducer;
+import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
+import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.util.Producer;
 
 import java.util.ArrayList;
@@ -41,7 +42,7 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrappe
 				buf.append(" ");
 				buf.append(var.getName());
 				buf.append(" = ");
-				buf.append(var.getData());
+				buf.append(var.getValue());
 				buf.append(";\n");
 			});
 
@@ -89,7 +90,7 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrappe
 				buf.append(" ");
 				buf.append(var.getName());
 				buf.append(" = ");
-				buf.append(var.getData());
+				buf.append(var.getValue());
 				buf.append(";\n");
 			});
 

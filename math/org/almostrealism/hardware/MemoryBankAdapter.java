@@ -14,15 +14,11 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.math;
+package org.almostrealism.hardware;
 
-import org.jocl.CLException;
-
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;

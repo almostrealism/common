@@ -16,7 +16,7 @@
 
 package org.almostrealism.io;
 
-public interface PrintWriter {
+public interface PrintWriter extends AutoCloseable {
 	/** Increases the indent. */
 	void moreIndent();
 	
@@ -31,4 +31,7 @@ public interface PrintWriter {
 	
 	/** Appends a new line character. */
 	void println();
+
+	@Override
+	default void close() { }
 }

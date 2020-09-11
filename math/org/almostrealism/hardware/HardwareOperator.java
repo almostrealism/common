@@ -14,26 +14,18 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.math;
-
-import io.almostrealism.code.Method;
-import io.almostrealism.code.Scope;
-import io.almostrealism.code.Variable;
-import org.almostrealism.algebra.Scalar;
-import org.almostrealism.relation.Operator;
+package org.almostrealism.hardware;
 
 import org.almostrealism.util.Factory;
+import org.almostrealism.util.Producer;
 import org.jocl.*;
-
-import java.util.Arrays;
-import java.util.HashMap;
 
 /**
  * {@link HardwareOperator}s are intended to be used with {@link ThreadLocal}.
  *
  * @param <T> Return type
  */
-public class HardwareOperator<T extends MemWrapper> implements Operator<T>, Factory<cl_kernel> {
+public class HardwareOperator<T extends MemWrapper> implements Producer<T>, Factory<cl_kernel> {
 	private static Pointer zero = Pointer.to(new int[]{0});
 
 	private cl_program prog;
@@ -68,13 +60,6 @@ public class HardwareOperator<T extends MemWrapper> implements Operator<T>, Fact
 				throw e;
 			}
 		}
-	}
-
-	@Override
-	public Scope<? extends Variable> getScope(String prefix) {
-		Scope s = new Scope();
-		s.getMethods().add(new Method(name, Arrays.asList(), new HashMap<>()));
-		return s;
 	}
 
 	public long getGlobalWorkSize() { return globalWorkSize; }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,11 +19,13 @@ package io.almostrealism.c;
 import io.almostrealism.code.CodePrintWriterAdapter;
 import io.almostrealism.code.Method;
 import io.almostrealism.code.ResourceVariable;
+import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.io.PrintWriter;
+import org.almostrealism.util.Producer;
 
-import java.io.PrintWriter;
 import java.util.List;
 import java.util.Map;
 
@@ -36,18 +38,23 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 	@Override
 	public void println(Variable variable, boolean create) {
 		if (create) {
-			if (variable.getData() == null) {
-				this.p.println(typeString(variable.getType()) + " " + variable.getName());
+			if (variable.getProducer() == null) {
+				if (variable.getExpression() == null) {
+					this.p.println(typePrefix(variable.getType()) + variable.getName());
+				} else {
+					this.p.println(typePrefix(variable.getType()) + variable.getName() +
+									" = " + variable.getExpression() + ";");
+				}
 			} else {
-				this.p.println(typeString(variable.getType()) + " " + variable.getName() +
-								" = " + encode(variable.getData()) + ";");
+				this.p.println(typePrefix(variable.getType()) + variable.getName() +
+								" = " + encode(variable.getProducer()) + ";");
 			}
 		} else {
-			if (variable.getData() == null) {
+			if (variable.getProducer() == null) {
 				this.p.println(variable.getName() + " = null");
 			} else {
 				this.p.println(variable.getName() + " = " +
-								encode(variable.getData()) + ";");
+								encode(variable.getProducer()) + ";");
 			}
 		}
 	}
@@ -55,6 +62,14 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 	@Override
 	public void println(Method method) {
 		this.p.println(method.getName());
+	}
+
+	protected static String typePrefix(Class type) {
+		if (type == null) {
+			return "";
+		} else {
+			return typeString(type) + " ";
+ 		}
 	}
 
 	protected static String typeString(Class type) {
@@ -88,7 +103,7 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 			Variable v = args.get(argumentOrder.get(i));
 
 			if (v instanceof ResourceVariable) {
-				buf.append(encode(v.getData()));
+				buf.append(encode(v.getProducer()));
 			}
 
 			if (i < (argumentOrder.size() - 1)) {

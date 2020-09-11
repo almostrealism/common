@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ package io.almostrealism.code;
 import org.almostrealism.util.Nameable;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,17 +32,15 @@ import java.util.Map;
  */
 public class Method<T> implements Nameable {
 	private String member, name;
-	private List<String> argOrder;
-	private Map<String, Variable> arguments;
+	private List<Variable> arguments;
 
-	public Method(String name, List<String> argOrder, Map<String, Variable> arguments) {
-		this(null, name, argOrder, arguments);
+	public Method(String name, List<Variable> arguments) {
+		this(null, name, arguments);
 	}
 
-	public Method(String member, String name, List<String> argOrder, Map<String, Variable> arguments) {
+	public Method(String member, String name, List<Variable> arguments) {
 		this.member = member;
 		this.name = name;
-		this.argOrder = argOrder;
 		this.arguments = arguments;
 	}
 
@@ -50,7 +49,7 @@ public class Method<T> implements Nameable {
 	}
 
 	public Method(String member, String name, Variable... v) {
-		this(member, name, generateArgNames(v), generateArgValues(v));
+		this(member, name, Arrays.asList(v));
 	}
 
 	@Override
@@ -61,26 +60,5 @@ public class Method<T> implements Nameable {
 	public void setMember(String m) { this.member = m; }
 	public String getMember() { return this.member; }
 
-	public Map<String, Variable> getArguments() { return arguments; }
-	public List<String> getArgumentOrder() { return argOrder; }
-
-	private static List<String> generateArgNames(Variable v[]) {
-		List<String> l = new ArrayList<>();
-
-		for (int i = 0; i < v.length; i++) {
-			l.add(String.valueOf(i));
-		}
-
-		return l;
-	}
-
-	private static Map<String, Variable> generateArgValues(Variable v[]) {
-		Map<String, Variable> m = new HashMap<>();
-
-		for (int i = 0; i < v.length; i++) {
-			m.put(String.valueOf(i), v[i]);
-		}
-
-		return m;
-	}
+	public List<Variable> getArguments() { return arguments; }
 }

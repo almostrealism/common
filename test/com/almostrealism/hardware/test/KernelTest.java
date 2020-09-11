@@ -1,10 +1,9 @@
-package org.almostrealism.math.test;
+package com.almostrealism.hardware.test;
 
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayBank;
-import org.almostrealism.math.MemoryBank;
-import org.almostrealism.util.DynamicProducer;
+import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.util.PassThroughProducer;
 import org.almostrealism.util.StaticProducer;
 import org.junit.Test;

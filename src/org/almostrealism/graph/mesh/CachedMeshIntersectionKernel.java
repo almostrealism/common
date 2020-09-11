@@ -22,8 +22,8 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.math.KernelizedProducer;
-import org.almostrealism.math.MemoryBank;
+import org.almostrealism.hardware.KernelizedProducer;
+import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.util.DimensionAware;
 import org.almostrealism.util.Producer;
 

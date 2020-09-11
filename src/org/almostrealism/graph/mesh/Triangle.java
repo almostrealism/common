@@ -23,8 +23,8 @@ import org.almostrealism.color.RGB;
 import org.almostrealism.color.computations.RGBProducer;
 import org.almostrealism.geometry.Positioned;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.math.AcceleratedProducer;
-import org.almostrealism.math.KernelizedProducer;
+import org.almostrealism.hardware.AcceleratedProducer;
+import org.almostrealism.hardware.KernelizedProducer;
 import org.almostrealism.relation.Constant;
 import org.almostrealism.relation.Operator;
 import org.almostrealism.space.AbstractSurface;
@@ -33,7 +33,6 @@ import org.almostrealism.space.ShadableIntersection;
 import org.almostrealism.util.PassThroughProducer;
 import org.almostrealism.util.Producer;
 import org.almostrealism.util.StaticProducer;
-import org.almostrealism.util.VectorPassThroughProducer;
 
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;

@@ -1,7 +1,7 @@
-package org.almostrealism.math.test;
+package com.almostrealism.hardware.test;
 
-import org.almostrealism.math.Hardware;
-import org.almostrealism.math.HardwareOperatorMap;
+import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.HardwareOperatorMap;
 import org.junit.Test;
 
 public class HardwareOperatorMapTest {

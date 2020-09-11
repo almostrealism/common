@@ -24,8 +24,9 @@ import org.almostrealism.algebra.computations.MatrixToUpperTriangle;
 import org.almostrealism.algebra.computations.MatrixTranspose;
 import org.almostrealism.geometry.TransformAsLocation;
 import org.almostrealism.geometry.TransformAsOffset;
-import org.almostrealism.math.HardwareOperator;
-import org.almostrealism.math.MemWrapperAdapter;
+import org.almostrealism.hardware.HardwareOperator;
+import org.almostrealism.hardware.MemWrapperAdapter;
+import org.almostrealism.relation.NameProvider;
 import org.almostrealism.relation.TripleFunction;
 import org.almostrealism.util.Producer;
 import org.almostrealism.util.StaticProducer;
@@ -176,7 +177,7 @@ public class TransformMatrix extends MemWrapperAdapter implements TripleFunction
 	}
 
 	@Override
-	public Scope getScope(String prefix) {
+	public Scope getScope(NameProvider p) {
 		throw new RuntimeException("getScope is not implemented"); // TODO
 	}
 

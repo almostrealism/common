@@ -14,35 +14,39 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.math;
+package org.almostrealism.hardware;
 
-import org.almostrealism.util.CollectionUtils;
+import io.almostrealism.c.OpenCLPrintWriter;
+import io.almostrealism.code.Argument;
+import io.almostrealism.code.Scope;
+import io.almostrealism.code.ScopeEncoder;
+import org.almostrealism.relation.Computation;
+import org.almostrealism.relation.NameProvider;
 import org.almostrealism.util.Producer;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
-import java.util.function.Function;
 
-public abstract class DynamicAcceleratedProducer<T extends MemWrapper> extends AcceleratedProducer<T> {
+public abstract class AcceleratedComputation<T extends MemWrapper> extends AcceleratedProducer<T> implements Computation<T>, NameProvider {
 	private static long functionId = 0;
 
 	private HardwareOperatorMap operators;
 
-	public DynamicAcceleratedProducer(Producer<?>... inputArgs) {
+	public AcceleratedComputation(Producer<?>... inputArgs) {
 		super(null, true, inputArgs);
 		setFunctionName(functionName(getClass()));
 		initArgumentNames();
 	}
 
-	public DynamicAcceleratedProducer(Producer<?>[] inputArgs, Object[] additionalArguments) {
+	public AcceleratedComputation(Producer<?>[] inputArgs, Object[] additionalArguments) {
 		super(null, true, inputArgs, additionalArguments);
 		setFunctionName(functionName(getClass()));
 		initArgumentNames();
 	}
 
-	public DynamicAcceleratedProducer(boolean kernel, Producer<?>[] inputArgs, Object[] additionalArguments) {
+	public AcceleratedComputation(boolean kernel, Producer<?>[] inputArgs, Object[] additionalArguments) {
 		super(null, kernel, inputArgs, additionalArguments);
 		setFunctionName(functionName(getClass()));
 		initArgumentNames();
@@ -56,39 +60,8 @@ public abstract class DynamicAcceleratedProducer<T extends MemWrapper> extends A
 		}
 	}
 
-	protected String getArgumentName(int index) {
-		return getFunctionName() + "_v" + index;
-	}
-
-	protected String getVariableName(int index) {
-		return getFunctionName() + "_l" + index;
-	}
-
-	protected String getArgumentValueName(int index, int pos) {
-		return getArgumentValueName(index, pos, 0);
-	}
-
-	protected String getArgumentValueName(int index, int pos, int kernelIndex) {
-		return getArgumentValueName(getArgumentName(index), pos, kernelIndex);
-	}
-
-	protected String getArgumentValueName(Argument arg, int pos) {
-		return getArgumentValueName(arg.getName(), pos, 0);
-	}
-
-	protected String getArgumentValueName(Argument arg, int pos, int kernelIndex) {
-		return getArgumentValueName(arg.getName(), pos, kernelIndex);
-	}
-
-	private String getArgumentValueName(String v, int pos, int kernelIndex) {
-		return getArgumentValueName(v, pos, true, kernelIndex);
-	}
-
-	private String getArgumentValueName(String v, int pos, boolean assignment) {
-		return getArgumentValueName(v, pos, assignment, 0);
-	}
-
-	private String getArgumentValueName(String v, int pos, boolean assignment, int kernelIndex) {
+	@Override
+	public String getArgumentValueName(String v, int pos, boolean assignment, int kernelIndex) {
 		String name;
 
 		if (isKernel()) {
@@ -119,6 +92,7 @@ public abstract class DynamicAcceleratedProducer<T extends MemWrapper> extends A
 		return Hardware.getLocalHardware().isGPU() && Hardware.getLocalHardware().isDoublePrecision();
 	}
 
+	@Override
 	public synchronized HardwareOperator getOperator() {
 		if (operators == null) {
 			operators = Hardware.getLocalHardware().getFunctions().getOperators(getFunctionDefinition());
@@ -128,49 +102,10 @@ public abstract class DynamicAcceleratedProducer<T extends MemWrapper> extends A
 	}
 
 	public String getFunctionDefinition() {
-		StringBuffer buf = new StringBuffer();
-		buf.append("__kernel void " + getFunctionName() + "(");
-		buf.append(getFunctionArgsDefinition());
-		buf.append(") {\n");
-		buf.append(getBody(i -> getArgumentValueName(0, i)));
-		buf.append("}");
-		return buf.toString();
+		Scope scope = getScope(this);
+		ScopeEncoder encoder = new ScopeEncoder(OpenCLPrintWriter::new);
+		return encoder.apply(scope);
 	}
-
-	protected String getFunctionArgsDefinition() {
-		StringBuffer buf = new StringBuffer();
-
-		for (int i = 0; i < getInputProducers().length; i++) {
-			buf.append("__global ");
-			if (i != 0) buf.append("const ");
-			buf.append(getNumberType());
-			buf.append(" *");
-			if (getInputProducers()[i].getName() == null) {
-				throw new IllegalArgumentException("Null name for Argument " + i);
-			}
-
-			buf.append(getInputProducers()[i].getName());
-			buf.append(", ");
-		}
-
-		for (int i = 0; i < getInputProducers().length; i++) {
-			buf.append("const int ");
-			buf.append(getInputProducers()[i].getName());
-			buf.append("Offset");
-			buf.append(", ");
-		}
-
-		for (int i = 0; i < getInputProducers().length; i++) {
-			buf.append("const int ");
-			buf.append(getInputProducers()[i].getName());
-			buf.append("Size");
-			if (i < (getArgsCount() - 1)) buf.append(", ");
-		}
-
-		return buf.toString();
-	}
-
-	public abstract String getBody(Function<Integer, String> outputVariable);
 
 	protected void removeDuplicateArguments() {
 		List<Argument> args = new ArrayList<>();

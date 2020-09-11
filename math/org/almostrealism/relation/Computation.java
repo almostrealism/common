@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -21,10 +21,10 @@ import io.almostrealism.code.Variable;
 
 public interface Computation<T> {
 	/**
-	 * Return a {@link io.almostrealism.code.Scope} containing the {@link Variable}s
+	 * Return a {@link Scope} containing the {@link Variable}s
 	 * and {@link io.almostrealism.code.Method}s necessary to compute the output of
 	 * this {@link Computation}. {@link Variable}s and {@link io.almostrealism.code.Method}s
-	 * introduced should be prefixed with the specified {@link String}.
+	 * introduced should be named using the specified {@link NameProvider}.
 	 */
-	Scope<? extends Variable<T>> getScope(String prefix);
+	Scope<T> getScope(NameProvider provider);
 }

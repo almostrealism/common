@@ -18,6 +18,7 @@ package org.almostrealism.algebra;
 
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;
+import org.almostrealism.relation.NameProvider;
 import org.almostrealism.relation.TripleFunction;
 import org.almostrealism.util.Producer;
 
@@ -101,7 +102,7 @@ public class ImmutableVector implements VectorProducer, TripleFunction<Vector> {
 	}
 
 	@Override
-	public Scope<? extends Variable> getScope(String prefix) {
+	public Scope<? extends Variable> getScope(NameProvider p) {
 		return null;
 	}
 

@@ -20,10 +20,9 @@ public class Constant<T> implements Operator<T> {
 	}
 
 	@Override
-	public Scope<Variable<T>> getScope(String prefix) {
-		// TODO  Not sure this is correct
+	public Scope<T> getScope(NameProvider p) {
 		Scope s = new Scope();
-		s.getVariables().add(new Variable(prefix + v.getClass().getSimpleName(), v));
+		s.getVariables().add(new Variable(p.getFunctionName() + v.getClass().getSimpleName(), v));
 		return s;
 	}
 }

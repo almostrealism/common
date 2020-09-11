@@ -16,7 +16,7 @@
 
 package org.almostrealism.algebra;
 
-import org.almostrealism.math.AcceleratedProducer;
+import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.util.Producer;
 
 public class IdentityMatrix extends AcceleratedProducer<TransformMatrix> {

@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,15 +16,22 @@
 
 package io.almostrealism.code;
 
-import java.util.ArrayList;
-import java.util.List;
+import org.almostrealism.relation.NameProvider;
 
-public class Function<IN extends Variable> extends Scope<Variable> {
-	private List<IN> inputs;
+public class DefaultNameProvider implements NameProvider {
+	private String function;
 
-	public Function() {
-		inputs = new ArrayList<>();
+	public DefaultNameProvider(String function) {
+		this.function = function;
 	}
 
-	public List<IN> getInputs() { return inputs; }
+	@Override
+	public String getFunctionName() {
+		return function;
+	}
+
+	@Override
+	public String getArgumentValueName(String v, int pos, boolean assignment, int kernelIndex) {
+		return v + "[" + pos + "]";
+	}
 }

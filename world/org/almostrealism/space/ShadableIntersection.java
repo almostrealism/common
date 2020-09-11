@@ -25,6 +25,7 @@ import org.almostrealism.geometry.Ray;
 import org.almostrealism.algebra.computations.RayDirection;
 import org.almostrealism.algebra.computations.RayPointAt;
 import org.almostrealism.geometry.RayFromVectors;
+import org.almostrealism.relation.NameProvider;
 import org.almostrealism.util.Producer;
 import org.almostrealism.util.ProducerWithRank;
 import org.almostrealism.util.StaticProducer;
@@ -70,7 +71,7 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 	public Vector operate(Triple t) { return getNormalAt(StaticProducer.of(new Vector(t.getA(), t.getB(), t.getC()))).evaluate(new Object[0]); }
 
 	@Override
-	public Scope getScope(String prefix) {
+	public Scope getScope(NameProvider p) {
 		throw new RuntimeException("getScope is not implemented"); // TODO
 	}
 	

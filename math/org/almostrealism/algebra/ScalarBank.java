@@ -16,7 +16,7 @@
 
 package org.almostrealism.algebra;
 
-import org.almostrealism.math.MemoryBankAdapter;
+import org.almostrealism.hardware.MemoryBankAdapter;
 
 /**
  * A collection of {@link Scalar}s of a fixed length, that is contiguous in

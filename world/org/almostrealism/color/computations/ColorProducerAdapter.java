@@ -4,6 +4,7 @@ import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.Triple;
 import org.almostrealism.color.RGB;
+import org.almostrealism.relation.NameProvider;
 import org.almostrealism.relation.TripleFunction;
 import org.almostrealism.util.Producer;
 
@@ -15,12 +16,12 @@ public abstract class ColorProducerAdapter implements ColorProducer, TripleFunct
 	public void compact() { }
 
 	@Override
-	public Scope<Variable> getScope(String prefix) {
-		Scope<Variable> s = new Scope<>();
+	public Scope<RGB> getScope(NameProvider p) {
+		Scope<RGB> s = new Scope<>();
 		RGB v = operate(null); // TODO  Input?
-		s.getVariables().add(new Variable<>(prefix + "r", v.getRed()));
-		s.getVariables().add(new Variable<>(prefix + "g", v.getGreen()));
-		s.getVariables().add(new Variable<>(prefix + "b", v.getBlue()));
+		s.getVariables().add(new Variable<>(p.getFunctionName() + "r", v.getRed()));
+		s.getVariables().add(new Variable<>(p.getFunctionName() + "g", v.getGreen()));
+		s.getVariables().add(new Variable<>(p.getFunctionName() + "b", v.getBlue()));
 		return s;
 	}
 
@@ -42,12 +43,12 @@ public abstract class ColorProducerAdapter implements ColorProducer, TripleFunct
 			}
 
 			@Override
-			public Scope<Variable> getScope(String prefix) {
+			public Scope<Variable> getScope(NameProvider p) {
 				Scope<Variable> s = new Scope<>();
 				RGB v = operate(null); // TODO  Input?
-				s.getVariables().add(new Variable<>(prefix + "r", v.getRed()));
-				s.getVariables().add(new Variable<>(prefix + "g", v.getGreen()));
-				s.getVariables().add(new Variable<>(prefix + "b", v.getBlue()));
+				s.getVariables().add(new Variable<>(p.getFunctionName() + "r", v.getRed()));
+				s.getVariables().add(new Variable<>(p.getFunctionName() + "g", v.getGreen()));
+				s.getVariables().add(new Variable<>(p.getFunctionName() + "b", v.getBlue()));
 				return s;
 			}
 		};

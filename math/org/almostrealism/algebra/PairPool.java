@@ -16,7 +16,7 @@
 
 package org.almostrealism.algebra;
 
-import org.almostrealism.math.MemoryPool;
+import org.almostrealism.hardware.MemoryPool;
 
 public class PairPool extends MemoryPool<Pair> {
 	private static final PairPool local = new PairPool(200000);

@@ -19,7 +19,7 @@ package org.almostrealism.geometry;
 import org.almostrealism.algebra.IdentityMatrix;
 import org.almostrealism.algebra.TransformMatrix;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.math.AcceleratedProducer;
+import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.util.Producer;
 
 public class TranslationMatrix extends AcceleratedProducer<TransformMatrix> {

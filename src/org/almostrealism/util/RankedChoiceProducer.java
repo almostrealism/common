@@ -18,9 +18,8 @@ package org.almostrealism.util;
 
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarBank;
-import org.almostrealism.math.AcceleratedProducer;
-import org.almostrealism.math.KernelizedProducer;
+import org.almostrealism.hardware.AcceleratedProducer;
+import org.almostrealism.hardware.KernelizedProducer;
 
 import java.util.ArrayList;
 

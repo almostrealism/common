@@ -16,10 +16,11 @@
 
 package org.almostrealism.algebra.computations;
 
+import io.almostrealism.code.Argument;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorProducer;
-import org.almostrealism.math.DynamicAcceleratedProducerAdapter;
+import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.util.Producer;
 
 import java.util.ArrayList;

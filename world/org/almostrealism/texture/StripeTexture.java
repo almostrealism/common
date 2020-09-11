@@ -23,6 +23,7 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.color.computations.ColorProducer;
 import org.almostrealism.color.computations.GeneratedColorProducer;
 import org.almostrealism.color.RGB;
+import org.almostrealism.relation.NameProvider;
 import org.almostrealism.relation.TripleFunction;
 import org.almostrealism.util.Editable;
 import org.almostrealism.util.Producer;
@@ -77,7 +78,7 @@ public class StripeTexture implements Texture, Editable {
 	public void compact() { }
 
 	@Override
-	public Scope<? extends Variable> getScope(String prefix) {
+	public Scope<? extends Variable> getScope(NameProvider p) {
 		throw new RuntimeException("getScope is not implemented");
 	}
 
@@ -137,7 +138,7 @@ public class StripeTexture implements Texture, Editable {
 					}
 
 					@Override
-					public Scope<? extends Variable> getScope(String prefix) {
+					public Scope<RGB> getScope(NameProvider p) {
 						throw new RuntimeException("getScope is not implemented");
 					}
 				});

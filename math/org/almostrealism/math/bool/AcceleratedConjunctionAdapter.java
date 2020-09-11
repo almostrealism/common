@@ -16,10 +16,9 @@
 
 package org.almostrealism.math.bool;
 
+import io.almostrealism.code.Argument;
 import io.almostrealism.code.Variable;
-import org.almostrealism.math.DynamicAcceleratedProducer;
-import org.almostrealism.math.DynamicAcceleratedProducerAdapter;
-import org.almostrealism.math.MemWrapper;
+import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.util.DynamicProducer;
 import org.almostrealism.util.Producer;
 

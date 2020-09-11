@@ -19,7 +19,6 @@ package org.almostrealism.algebra.computations;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.math.AcceleratedProducer;
 import org.almostrealism.util.Producer;
 
 public class RayPointAt extends VectorSum {

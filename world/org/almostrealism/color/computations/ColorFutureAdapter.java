@@ -27,6 +27,7 @@ import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.Triple;
 import org.almostrealism.color.RGB;
+import org.almostrealism.relation.NameProvider;
 import org.almostrealism.relation.TripleFunction;
 import org.almostrealism.util.Producer;
 
@@ -44,7 +45,7 @@ public abstract class ColorFutureAdapter extends ArrayList<Future<Producer<RGB>>
 	}
 
 	@Override
-	public Scope<? extends Variable> getScope(String prefix) {
+	public Scope<RGB> getScope(NameProvider p) {
 		throw new RuntimeException("Not implemented");
 	}
 

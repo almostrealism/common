@@ -26,6 +26,7 @@ import org.almostrealism.algebra.computations.RayDirection;
 import org.almostrealism.algebra.computations.RayOrigin;
 import org.almostrealism.geometry.RayFromVectors;
 import org.almostrealism.relation.Constant;
+import org.almostrealism.relation.NameProvider;
 import org.almostrealism.relation.Operator;
 import org.almostrealism.util.Producer;
 
@@ -189,10 +190,10 @@ public class Plane extends AbstractSurface implements ParticleGroup {
 
 			@Override public void compact() { }
 
-			@Override public Scope<Variable<Scalar>> getScope(String prefix) {
+			@Override public Scope<Scalar> getScope(NameProvider p) {
 				// TODO  Not sure this is correct
 				Scope s = new Scope();
-				s.getVariables().add(new Variable(prefix + "scalar", evaluate(new Object[0])));
+				s.getVariables().add(new Variable(p.getFunctionName() + "scalar", evaluate(new Object[0])));
 				return s;
 			}
 		};

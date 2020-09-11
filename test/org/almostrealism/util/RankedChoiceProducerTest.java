@@ -5,10 +5,8 @@ import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairBank;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
-import org.almostrealism.geometry.RayBank;
-import org.almostrealism.graph.mesh.Triangle;
-import org.almostrealism.math.MemoryBank;
-import org.almostrealism.math.MemoryBankAdapter;
+import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.hardware.MemoryBankAdapter;
 import org.junit.Assert;
 import org.junit.Test;
 

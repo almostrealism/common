@@ -18,7 +18,7 @@ package org.almostrealism.graph.mesh;
 
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorBank;
-import org.almostrealism.math.MemWrapper;
+import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.util.DynamicProducer;
 import org.almostrealism.util.Producer;
 

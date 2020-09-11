@@ -16,9 +16,9 @@
 
 package org.almostrealism.algebra;
 
-import org.almostrealism.math.MemWrapper;
-import org.almostrealism.math.MemWrapperAdapter;
-import org.almostrealism.math.PooledMem;
+import org.almostrealism.hardware.MemWrapper;
+import org.almostrealism.hardware.MemWrapperAdapter;
+import org.almostrealism.hardware.PooledMem;
 import org.almostrealism.util.Defaults;
 import org.almostrealism.util.DynamicProducer;
 import org.almostrealism.util.Producer;

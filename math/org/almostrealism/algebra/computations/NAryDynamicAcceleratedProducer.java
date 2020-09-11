@@ -16,9 +16,13 @@
 
 package org.almostrealism.algebra.computations;
 
-import org.almostrealism.math.AcceleratedProducer;
-import org.almostrealism.math.DynamicAcceleratedProducerAdapter;
-import org.almostrealism.math.MemWrapper;
+import io.almostrealism.code.Argument;
+import io.almostrealism.code.Scope;
+import io.almostrealism.code.Variable;
+import org.almostrealism.hardware.AcceleratedProducer;
+import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
+import org.almostrealism.hardware.MemWrapper;
+import org.almostrealism.relation.NameProvider;
 import org.almostrealism.util.Producer;
 
 import java.util.ArrayList;
@@ -32,6 +36,17 @@ public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> exten
 	public NAryDynamicAcceleratedProducer(String operator, int memLength, Producer<T> blank, Producer<T>... producers) {
 		super(memLength, includeResult(blank, producers));
 		this.operator = operator;
+	}
+
+	@Override
+	public Scope<T> getScope(NameProvider p) {
+		Scope<T> scope = new Scope<>();
+
+		for (int i = 0; i < getMemLength(); i++) {
+			scope.getVariables().add(new Variable(p.getArgumentValueName(0, i), getValue(null, i)));
+		}
+
+		return scope;
 	}
 
 	@Override
@@ -58,12 +73,12 @@ public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> exten
 		super.compact();
 
 		if (value == null && isCompletelyValueOnly()) {
-			List<AcceleratedProducer.Argument> newArgs = new ArrayList<>();
+			List<Argument> newArgs = new ArrayList<>();
 			newArgs.add(getInputProducers()[0]);
 
 			value = new String[getMemLength()];
 
-			AcceleratedProducer.Argument p[] = getInputProducers();
+			Argument p[] = getInputProducers();
 
 			List<Argument> staticProducers = extractStaticProducers(p);
 			List<Argument> dynamicProducers = extractDynamicProducers(p);
@@ -118,7 +133,7 @@ public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> exten
 			// by a fixed value, this producer itself is static
 			if (dynamicProducers.isEmpty() || allTrue(valueStatic)) isStatic = true;
 
-			inputProducers = newArgs.toArray(new AcceleratedProducer.Argument[0]);
+			inputProducers = newArgs.toArray(new Argument[0]);
 			removeDuplicateArguments();
 		}
 	}

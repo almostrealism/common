@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.math.test;
+package com.almostrealism.hardware.test;
 
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;

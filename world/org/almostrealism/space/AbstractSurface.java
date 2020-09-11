@@ -31,6 +31,7 @@ import org.almostrealism.geometry.TransformAsLocation;
 import org.almostrealism.graph.mesh.Mesh;
 import org.almostrealism.physics.Porous;
 import org.almostrealism.relation.Constant;
+import org.almostrealism.relation.NameProvider;
 import org.almostrealism.relation.Operator;
 import org.almostrealism.texture.Texture;
 import org.almostrealism.util.AdaptProducer;
@@ -588,9 +589,9 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 	}
 
 	@Override
-	public Scope getScope(String prefix) {
+	public Scope getScope(NameProvider p) {
 		Scope s = new Scope();
-		s.getVariables().add(new Variable(prefix + "vector", operate(null))); // TODO Input?
+		s.getVariables().add(new Variable(p.getFunctionName() + "vector", operate(null))); // TODO Input?
 		return s;
 	}
 

@@ -17,12 +17,14 @@
 package io.almostrealism.js;
 
 import io.almostrealism.code.*;
+import org.almostrealism.algebra.Scalar;
+import org.almostrealism.io.PrintWriter;
 import org.almostrealism.io.Resource;
 import org.almostrealism.io.ResourceTranscoder;
 import org.almostrealism.io.ResourceTranscoderFactory;
+import org.almostrealism.util.Producer;
 
 import java.io.IOException;
-import java.io.PrintWriter;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -49,9 +51,9 @@ public class JavaScriptPrintWriter extends CodePrintWriterAdapter {
 	@Override
 	public void println(Method m) {
 		if (m.getMember() == null) {
-			p.println(m.getName() + "(" + toString(m.getArguments(), m.getArgumentOrder()) + ");");
+			p.println(m.getName() + "(" + toString(m.getArguments()) + ");");
 		} else {
-			p.println(m.getMember() + "." + m.getName() + "(" + toString(m.getArguments(), m.getArgumentOrder()) + ");");
+			p.println(m.getMember() + "." + m.getName() + "(" + toString(m.getArguments()) + ");");
 		}
 	}
 
@@ -79,12 +81,12 @@ public class JavaScriptPrintWriter extends CodePrintWriterAdapter {
 			
 			b.append(m.getName());
 			b.append("(");
-			b.append(toString(m.getArguments(), m.getArgumentOrder()));
+			b.append(toString(m.getArguments()));
 			b.append(")");
 			
 			return b.toString();
 		} else {
-			return v.getData().toString();
+			return v.getProducer().toString();
 		}
 	}
 	
@@ -105,6 +107,14 @@ public class JavaScriptPrintWriter extends CodePrintWriterAdapter {
 	}
 
 	protected static String toJson(Object o) {
+		if (o instanceof Producer) {
+			o = ((Producer) o).evaluate();
+		}
+
+		if (o instanceof Scalar) {
+			o = ((Scalar) o).getValue();
+		}
+
 		if (o instanceof String) {
 			return "\"" + o + "\"";
 		} else if (o instanceof Boolean[]) {
@@ -132,23 +142,23 @@ public class JavaScriptPrintWriter extends CodePrintWriterAdapter {
 		}
 	}
 
-	protected static String toString(Map<String, Variable> args, List<String> argumentOrder) {
+	protected static String toString(List<Variable> arguments) {
 		StringBuffer buf = new StringBuffer();
 
-		for (int i = 0; i < argumentOrder.size(); i++) {
-			Variable v = args.get(argumentOrder.get(i));
+		for (int i = 0; i < arguments.size(); i++) {
+			Variable v = arguments.get(i);
 
-			if (v instanceof ResourceVariable) {
-				buf.append(toJson((ResourceVariable) v));
+			if (v instanceof ResourceArgument) {
+				buf.append(toJson((ResourceArgument) v));
 			} else if (v.getGenerator() != null) {
 				buf.append(toString(v));
 			} else if (v instanceof InstanceReference) {
-				buf.append(((InstanceReference) v).getData());
+				buf.append(((InstanceReference) v).getProducer());
 			} else {
-				buf.append(toJson(v.getData()));
+				buf.append(toJson(v.getProducer()));
 			}
 
-			if (i < (argumentOrder.size() - 1)) {
+			if (i < (arguments.size() - 1)) {
 				buf.append(", ");
 			}
 		}

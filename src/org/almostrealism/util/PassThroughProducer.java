@@ -16,7 +16,7 @@
 
 package org.almostrealism.util;
 
-import org.almostrealism.math.MemWrapper;
+import org.almostrealism.hardware.MemWrapper;
 
 import java.lang.reflect.InvocationTargetException;
 

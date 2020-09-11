@@ -1,10 +1,11 @@
 package io.almostrealism.code.test;
 
-import java.io.PrintWriter;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.ArrayList;
+import java.util.List;
 
+import org.almostrealism.algebra.Scalar;
+import org.almostrealism.io.PrintStreamPrintWriter;
+import org.almostrealism.util.StaticProducer;
 import org.junit.Test;
 
 import io.almostrealism.code.CodePrintWriter;
@@ -15,20 +16,20 @@ import io.almostrealism.js.JavaScriptPrintWriter;
 public class CodePrintWriterTest {
 	@Test
 	public void methodTest() {
-		CodePrintWriter p = new JavaScriptPrintWriter(new PrintWriter(System.out));
+		CodePrintWriter p = new JavaScriptPrintWriter(new PrintStreamPrintWriter(System.out));
 		
-		Map<String, Variable> args = new HashMap<>();
-		args.put("arg", new Variable<Integer>("in", Integer.class, 1));
+		List<Variable> args = new ArrayList<>();
+		args.add(new Variable("in", StaticProducer.of(1)));
 		
 		p.beginScope("test");
-		p.println(new Variable<>("v", Integer.class, new Method<>(null, "func", Arrays.asList("arg"), args)));
+		p.println(new Variable<>("v", Scalar.class, new Method<>(null, "func", args)));
 		p.endScope();
-		
-		
-		args.put("arg", new Variable<>("test", Integer.class, new Method<>(null, "test", Arrays.asList(), new HashMap())));
+
+		args = new ArrayList<>();
+		args.add(new Variable<>("test", new Method<>(null, "test", new ArrayList<>())));
 		
 		p.beginScope("next");
-		p.println(new Variable<>("v", Integer.class, new Method<>(null, "func", Arrays.asList("arg"), args)));
+		p.println(new Variable<>("v", Scalar.class, new Method<>(null, "func", args)));
 		p.endScope();
 		
 		p.flush();

@@ -23,6 +23,7 @@ import org.almostrealism.algebra.Intersectable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Triple;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.relation.NameProvider;
 import org.almostrealism.space.ShadableIntersection;
 import org.almostrealism.util.Producer;
 
@@ -111,7 +112,7 @@ public class ClosestIntersection extends ArrayList<Producer<Ray>> implements Con
 	}
 
 	@Override
-	public Scope<? extends Variable> getScope(String prefix) {
+	public Scope<Vector> getScope(NameProvider p) {
 		// TODO
 		return null;
 	}

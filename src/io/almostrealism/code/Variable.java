@@ -17,6 +17,8 @@
 package io.almostrealism.code;
 
 import org.almostrealism.util.Nameable;
+import org.almostrealism.util.Producer;
+import org.almostrealism.util.StaticProducer;
 
 /**
  * A {@link Variable} wraps some data that can be included in a {@link Scope}.
@@ -26,23 +28,46 @@ import org.almostrealism.util.Nameable;
 public class Variable<T> implements Nameable {
 	private String name, annotation;
 	private Class<T> type;
-	private T data;
+	private Producer<T> producer;
+	private String expression;
 	private Method<T> generator;
 
-	public Variable(String name, T data) {
-		this(name, (Class<T>) data.getClass(), data);
+	public Variable(String name, T value) {
+		this(name, StaticProducer.of(value));
 	}
 
-	public Variable(String name, Class<T> type, T data) {
+	public Variable(String name, Producer<T> producer) {
+		this(name, null, producer);
+	}
+
+	public Variable(String name, Class<T> type, T value) {
+		this(name, type, StaticProducer.of(value));
+	}
+
+	public Variable(String name, Class<T> type, Producer<T> producer) {
 		setName(name);
 		setType(type);
-		this.data = data;
+		this.producer = producer;
+	}
+
+	public Variable(String name, Method<T> generator) {
+		this(name, null, generator);
 	}
 	
 	public Variable(String name, Class<T> type, Method<T> generator) {
 		setName(name);
 		setType(type);
 		this.generator = generator;
+	}
+
+	public Variable(String name, String expression) {
+		this(name, null, expression);
+	}
+
+	public Variable(String name, Class<T> type, String expression) {
+		setName(name);
+		setType(type);
+		this.expression = expression;
 	}
 
 	public void setName(String n) { this.name = n; }
@@ -54,9 +79,22 @@ public class Variable<T> implements Nameable {
 	public void setAnnotation(String a) { this.annotation = a; }
 	public String getAnnotation() { return this.annotation; }
 
-	public void setData(T data) { this.data = data; }
-	public T getData() { return data; }
+	public void setProducer(Producer<T> producer) { this.producer = producer; }
+	public Producer<T> getProducer() { return producer; }
 	
 	public void setGenerator(Method<T> generator) { this.generator = generator; }
 	public Method<T> getGenerator() { return this.generator; }
+
+	public String getExpression() { return expression; }
+	public void setExpression(String expression) { this.expression = expression; }
+
+	public T getValue() {
+		if (expression != null) {
+			return (T) expression;
+		} else if (producer != null) {
+			return producer.evaluate();
+		} else {
+			throw new RuntimeException();
+		}
+	}
 }

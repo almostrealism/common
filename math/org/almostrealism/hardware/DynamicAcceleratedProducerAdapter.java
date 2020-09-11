@@ -14,8 +14,9 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.math;
+package org.almostrealism.hardware;
 
+import io.almostrealism.code.Argument;
 import org.almostrealism.util.Producer;
 
 import java.util.ArrayList;

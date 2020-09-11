@@ -1,8 +1,9 @@
 package org.almostrealism.util;
 
+import io.almostrealism.code.Argument;
 import org.almostrealism.algebra.Pair;
-import org.almostrealism.math.DynamicAcceleratedProducerAdapter;
-import org.almostrealism.math.MemWrapper;
+import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
+import org.almostrealism.hardware.MemWrapper;
 
 public class AcceleratedStaticProducer<T extends MemWrapper> extends DynamicAcceleratedProducerAdapter<T> {
 	private T value;

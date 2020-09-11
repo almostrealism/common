@@ -21,17 +21,12 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.TransformMatrix;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.computations.RayPointAt;
-import org.almostrealism.math.AcceleratedProducer;
-import org.almostrealism.math.Hardware;
-import org.almostrealism.math.MemWrapper;
-import org.almostrealism.math.MemWrapperAdapter;
+import org.almostrealism.hardware.AcceleratedProducer;
+import org.almostrealism.hardware.MemWrapper;
+import org.almostrealism.hardware.MemWrapperAdapter;
 import org.almostrealism.util.DynamicProducer;
 import org.almostrealism.util.Producer;
 import org.almostrealism.util.StaticProducer;
-import org.jocl.CL;
-import org.jocl.Pointer;
-import org.jocl.Sizeof;
-import org.jocl.cl_mem;
 
 /**
  * A {@link Ray} represents a 3d ray. It stores the origin and direction of a 3d ray,

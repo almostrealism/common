@@ -1,7 +1,7 @@
 package org.almostrealism.math.bool;
 
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.math.MemWrapper;
+import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.util.DynamicProducer;
 import org.almostrealism.util.Producer;
 

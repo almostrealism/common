@@ -16,9 +16,9 @@
 
 package org.almostrealism.color;
 
-import org.almostrealism.math.MemWrapper;
-import org.almostrealism.math.MemWrapperAdapter;
-import org.almostrealism.math.PooledMem;
+import org.almostrealism.hardware.MemWrapper;
+import org.almostrealism.hardware.MemWrapperAdapter;
+import org.almostrealism.hardware.PooledMem;
 
 import java.io.IOException;
 import java.io.ObjectInput;

@@ -18,11 +18,10 @@ package org.almostrealism.algebra;
 
 import org.almostrealism.algebra.computations.DotProduct;
 import org.almostrealism.geometry.Positioned;
-import org.almostrealism.math.HardwareOperator;
-import org.almostrealism.math.Hardware;
-import org.almostrealism.math.MemWrapper;
-import org.almostrealism.math.MemWrapperAdapter;
-import org.almostrealism.math.PooledMem;
+import org.almostrealism.hardware.HardwareOperator;
+import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.MemWrapper;
+import org.almostrealism.hardware.MemWrapperAdapter;
 import org.almostrealism.util.Defaults;
 import org.almostrealism.util.DynamicProducer;
 import org.almostrealism.util.Producer;

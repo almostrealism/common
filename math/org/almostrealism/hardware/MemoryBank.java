@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.math;
+package org.almostrealism.hardware;
 
 /**
  * A {@link MemoryBank} tracks a section of RAM that is used to

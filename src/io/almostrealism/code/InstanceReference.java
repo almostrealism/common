@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,6 +16,8 @@
 
 package io.almostrealism.code;
 
+import org.almostrealism.util.StaticProducer;
+
 /**
  * {@link InstanceReference} is used to reference a previously declared
  * {@link Variable}. {@link CodePrintWriter} implementations should
@@ -23,27 +25,25 @@ package io.almostrealism.code;
  * {@link Variable} the text does not appear in quotes.
  */
 public class InstanceReference extends Variable<String> {
+	private Variable var;
+
 	public InstanceReference(Variable<?> v) {
 		this(v.getName());
+		this.var = v;
 	}
 
 	public InstanceReference(String varName) {
-		super(varName, varName);
+		super(varName, StaticProducer.of(varName));
 	}
 
 	/**
-	 * Side-effects value returned by {@link #getData()} to match.
+	 * Side-effects value returned by {@link #getProducer()} to match.
 	 */
+	@Override
 	public void setName(String varName) {
 		super.setName(varName);
-		super.setData(varName);
+		super.setProducer(StaticProducer.of(varName));
 	}
 
-	/**
-	 * Side-effects value returned by {@link #getName()} to match.
-	 */
-	public void setData(String varName) {
-		super.setName(varName);
-		super.setData(varName);
-	}
+	public Variable getReferent() { return var; }
 }

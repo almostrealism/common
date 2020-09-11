@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.math;
+package org.almostrealism.hardware;
 
 import org.jocl.CL;
 import org.jocl.CLException;

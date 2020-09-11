@@ -16,9 +16,10 @@
 
 package org.almostrealism.color.computations;
 
+import io.almostrealism.code.Argument;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.color.RGB;
-import org.almostrealism.math.DynamicAcceleratedProducerAdapter;
+import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.util.Producer;
 
 import java.util.ArrayList;

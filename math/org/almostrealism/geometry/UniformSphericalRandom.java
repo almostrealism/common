@@ -22,6 +22,7 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Triple;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorProducer;
+import org.almostrealism.relation.NameProvider;
 import org.almostrealism.relation.TripleFunction;
 import org.almostrealism.util.Producer;
 
@@ -49,7 +50,7 @@ public class UniformSphericalRandom implements VectorProducer, TripleFunction<Ve
 	public Vector operate(Triple in) { return evaluate(new Object[0]); }
 
 	@Override
-	public Scope<? extends Variable> getScope(String prefix) {
+	public Scope<Vector> getScope(NameProvider p) {
 		// TODO
 		return null;
 	}

@@ -16,9 +16,10 @@
 
 package org.almostrealism.graph.mesh;
 
+import io.almostrealism.code.Argument;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorProducer;
-import org.almostrealism.math.DynamicAcceleratedProducerAdapter;
+import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.util.Producer;
 
 import java.util.ArrayList;

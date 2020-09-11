@@ -16,9 +16,10 @@
 
 package org.almostrealism.util;
 
+import io.almostrealism.code.Argument;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.math.DynamicAcceleratedProducerAdapter;
-import org.almostrealism.math.MemWrapper;
+import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
+import org.almostrealism.hardware.MemWrapper;
 
 public class AcceleratedPassThroughProducer<T extends MemWrapper>
 		extends DynamicAcceleratedProducerAdapter<T> implements ProducerArgumentReference {

@@ -17,7 +17,7 @@
 package org.almostrealism.algebra.computations;
 
 import org.almostrealism.algebra.TransformMatrix;
-import org.almostrealism.math.AcceleratedProducer;
+import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.util.Producer;
 
 public class MatrixTranspose extends AcceleratedProducer<TransformMatrix> {

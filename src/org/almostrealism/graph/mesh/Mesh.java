@@ -39,8 +39,9 @@ import org.almostrealism.geometry.Ray;
 import org.almostrealism.graph.Automata;
 import org.almostrealism.io.FileDecoder;
 import org.almostrealism.io.SpatialData;
-import org.almostrealism.math.KernelizedProducer;
-import org.almostrealism.math.MemoryBank;
+import org.almostrealism.hardware.KernelizedProducer;
+import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.relation.NameProvider;
 import org.almostrealism.relation.Operator;
 import org.almostrealism.space.KdTree;
 import org.almostrealism.space.ShadableIntersection;
@@ -48,11 +49,7 @@ import org.almostrealism.space.ShadableSurface;
 import org.almostrealism.space.ShadableSurfaceWrapper;
 import org.almostrealism.space.SpacePartition;
 import org.almostrealism.space.BoundingSolid;
-import org.almostrealism.util.AdaptProducer;
 import org.almostrealism.util.Producer;
-import org.almostrealism.util.ProducerWithRank;
-import org.almostrealism.util.RankedChoiceProducer;
-import org.almostrealism.util.StaticProducer;
 
 // TODO  Add bounding solid to make intersection calc faster.
 
@@ -141,7 +138,7 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 
 		@Override public Vector operate(Triple in) { return getSurface().operate(in); }
 
-		@Override public Scope getScope(String prefix) { return getSurface().getScope(prefix); }
+		@Override public Scope getScope(NameProvider p) { return getSurface().getScope(p); }
 	}
 	
 	public interface VertexData {

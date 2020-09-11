@@ -14,8 +14,19 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.math;
+package io.almostrealism.code;
 
-public interface PooledMem<T extends MemWrapper> extends MemWrapper {
-	int reserveOffset(T owner);
+/**
+ * {@link ArgumentReference} is used to reference a declared {@link Argument}.
+ * {@link CodePrintWriter} implementations should encode the data as a
+ * {@link String}, but unlike a normal {@link String} {@link Variable} the
+ * text does not appear in quotes.
+ */
+public class ArgumentReference extends InstanceReference {
+	public ArgumentReference(Argument<?> arg) {
+		super(arg);
+	}
+
+	@Override
+	public Argument getReferent() { return (Argument) super.getReferent(); }
 }

@@ -17,7 +17,7 @@
 package org.almostrealism.color.computations;
 
 import org.almostrealism.color.RGB;
-import org.almostrealism.math.AcceleratedProducer;
+import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.util.Producer;
 
 public class RGBAdd extends AcceleratedProducer<RGB> {
