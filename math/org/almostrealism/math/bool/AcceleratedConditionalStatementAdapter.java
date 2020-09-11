@@ -42,7 +42,7 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrappe
 				buf.append(" ");
 				buf.append(var.getName());
 				buf.append(" = ");
-				buf.append(var.getValue());
+				buf.append(var.getExpression());
 				buf.append(";\n");
 			});
 
@@ -90,7 +90,7 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrappe
 				buf.append(" ");
 				buf.append(var.getName());
 				buf.append(" = ");
-				buf.append(var.getValue());
+				buf.append(var.getExpression());
 				buf.append(";\n");
 			});
 

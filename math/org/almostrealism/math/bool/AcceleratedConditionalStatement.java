@@ -27,9 +27,7 @@ import java.util.List;
 public interface AcceleratedConditionalStatement<T extends MemWrapper> extends Producer<T> {
 	String getCondition();
 
-	// TODO  Maybe this should be a Computation, or maybe this should go in another interface
-	// TODO  Maybe the type argument should be MemWrapper? Or Scalar? (instead of String)
-	default List<Variable<String>> getVariables() { return Arrays.asList(); }
+	default List<Variable> getVariables() { return Arrays.asList(); }
 
 	List<Argument> getOperands();
 

@@ -36,7 +36,6 @@ public abstract class AcceleratedBinaryConditionAdapter<T extends MemWrapper> ex
 	private Argument trueValue, falseValue;
 
 	private String condition;
-	private List<Variable<String>> variables;
 
 	public AcceleratedBinaryConditionAdapter(String operator, int memLength) {
 		this(operator, memLength, DynamicProducer.forMemLength());
@@ -71,13 +70,9 @@ public abstract class AcceleratedBinaryConditionAdapter<T extends MemWrapper> ex
 		this.rightOperand = inputProducers[2];
 		this.trueValue = inputProducers[3];
 		this.falseValue = inputProducers[4];
-		this.variables = new ArrayList<>();
 	}
 
 	public int getMemLength() { return memLength; }
-
-	@Override
-	public List<Variable<String>> getVariables() { return variables; }
 
 	@Override
 	public String getCondition() {
@@ -118,10 +113,11 @@ public abstract class AcceleratedBinaryConditionAdapter<T extends MemWrapper> ex
 		if (super.isCompacted() && condition == null) {
 			List<Argument> operands = getOperands();
 
-			variables.add(new Variable<>(getVariableName(0),
-					((DynamicAcceleratedProducerAdapter) operands.get(0).getProducer()).getValue(operands.get(0), 0)));
-			variables.add(new Variable<>(getVariableName(1),
-					((DynamicAcceleratedProducerAdapter) operands.get(1).getProducer()).getValue(operands.get(1), 0)));
+			DynamicAcceleratedProducerAdapter op1 = (DynamicAcceleratedProducerAdapter) operands.get(0).getProducer();
+			DynamicAcceleratedProducerAdapter op2 = (DynamicAcceleratedProducerAdapter) operands.get(1).getProducer();
+
+			addVariable(new Variable<>(getVariableName(0), op1.getValue(operands.get(0), 0), op1));
+			addVariable(new Variable<>(getVariableName(1), op2.getValue(operands.get(1), 0), op2));
 
 			StringBuffer buf = new StringBuffer();
 			buf.append(getVariableName(0));

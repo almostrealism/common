@@ -20,6 +20,8 @@ import org.almostrealism.util.Nameable;
 import org.almostrealism.util.Producer;
 import org.almostrealism.util.StaticProducer;
 
+import java.util.function.Supplier;
+
 /**
  * A {@link Variable} wraps some data that can be included in a {@link Scope}.
  *
@@ -29,7 +31,7 @@ public class Variable<T> implements Nameable {
 	private String name, annotation;
 	private Class<T> type;
 	private Producer<T> producer;
-	private String expression;
+	private Supplier<String> expression;
 	private Method<T> generator;
 
 	public Variable(String name, T value) {
@@ -37,7 +39,7 @@ public class Variable<T> implements Nameable {
 	}
 
 	public Variable(String name, Producer<T> producer) {
-		this(name, null, producer);
+		this(name, (Class) null, producer);
 	}
 
 	public Variable(String name, Class<T> type, T value) {
@@ -67,7 +69,31 @@ public class Variable<T> implements Nameable {
 	public Variable(String name, Class<T> type, String expression) {
 		setName(name);
 		setType(type);
+		this.expression = () -> expression;
+	}
+
+	public Variable(String name, String expression, Producer<T> producer) {
+		this(name, null, expression, producer);
+	}
+
+	public Variable(String name, Class<T> type, String expression, Producer<T> producer) {
+		setName(name);
+		setType(type);
+		this.expression = () -> expression;
+		this.producer = producer;
+	}
+
+	public Variable(String name, Class<T> type, Supplier<String> expression) {
+		setName(name);
+		setType(type);
 		this.expression = expression;
+	}
+
+	public Variable(String name, Class<T> type, Supplier<String> expression, Producer<T> producer) {
+		setName(name);
+		setType(type);
+		this.expression = expression;
+		this.producer = producer;
 	}
 
 	public void setName(String n) { this.name = n; }
@@ -85,14 +111,15 @@ public class Variable<T> implements Nameable {
 	public void setGenerator(Method<T> generator) { this.generator = generator; }
 	public Method<T> getGenerator() { return this.generator; }
 
-	public String getExpression() { return expression; }
-	public void setExpression(String expression) { this.expression = expression; }
+	public String getExpression() { return expression.get(); }
+	public void setExpression(String expression) { this.expression = () -> expression; }
+	public void setExpression(Supplier<String> expression) { this.expression = expression; }
 
 	public T getValue() {
-		if (expression != null) {
-			return (T) expression;
-		} else if (producer != null) {
+		if (producer != null) {
 			return producer.evaluate();
+		} else if (producer != null) {
+			return (T) expression.get();
 		} else {
 			throw new RuntimeException();
 		}

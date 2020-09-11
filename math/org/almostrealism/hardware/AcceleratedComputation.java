@@ -20,36 +20,44 @@ import io.almostrealism.c.OpenCLPrintWriter;
 import io.almostrealism.code.Argument;
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.ScopeEncoder;
+import io.almostrealism.code.Variable;
 import org.almostrealism.relation.Computation;
 import org.almostrealism.relation.NameProvider;
 import org.almostrealism.util.Producer;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 public abstract class AcceleratedComputation<T extends MemWrapper> extends AcceleratedProducer<T> implements Computation<T>, NameProvider {
 	private static long functionId = 0;
 
 	private HardwareOperatorMap operators;
+	private Map<Producer, List<Variable>> variables;
 
 	public AcceleratedComputation(Producer<?>... inputArgs) {
 		super(null, true, inputArgs);
 		setFunctionName(functionName(getClass()));
 		initArgumentNames();
+		variables = new HashMap<>();
 	}
 
 	public AcceleratedComputation(Producer<?>[] inputArgs, Object[] additionalArguments) {
 		super(null, true, inputArgs, additionalArguments);
 		setFunctionName(functionName(getClass()));
 		initArgumentNames();
+		variables = new HashMap<>();
 	}
 
 	public AcceleratedComputation(boolean kernel, Producer<?>[] inputArgs, Object[] additionalArguments) {
 		super(null, kernel, inputArgs, additionalArguments);
 		setFunctionName(functionName(getClass()));
 		initArgumentNames();
+		variables = new HashMap<>();
 	}
 
 	protected void initArgumentNames() {
@@ -58,6 +66,24 @@ public abstract class AcceleratedComputation<T extends MemWrapper> extends Accel
 				getInputProducers()[i].setName(getArgumentName(i));
 			}
 		}
+	}
+
+	public void addVariable(Variable v) {
+		if (v.getProducer() == null) {
+			throw new IllegalArgumentException("Producer must be provided for variable");
+		}
+
+		List<Variable> existing = variables.get(v.getProducer());
+		if (existing == null) {
+			existing = new ArrayList<>();
+			variables.put(v.getProducer(), existing);
+		}
+
+		existing.add(v);
+	}
+
+	public List<Variable> getVariables() {
+		return variables.values().stream().flatMap(List::stream).collect(Collectors.toList());
 	}
 
 	@Override

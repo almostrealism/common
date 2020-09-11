@@ -73,11 +73,15 @@ public class AcceleratedConjunctionAdapter<T extends MemWrapper> extends Acceler
 		inputProducers = args.toArray(new Argument[0]);
 	}
 
+	@Override
 	public int getMemLength() { return memLength; }
 
 	@Override
-	public List<Variable<String>> getVariables() {
-		return conjuncts.stream().flatMap(c -> c.getVariables().stream()).collect(Collectors.toList());
+	public List<Variable> getVariables() {
+		List<Variable> all = new ArrayList<>();
+		all.addAll(super.getVariables());
+		conjuncts.stream().flatMap(c -> c.getVariables().stream()).forEach(all::add);
+		return all;
 	}
 
 	@Override
