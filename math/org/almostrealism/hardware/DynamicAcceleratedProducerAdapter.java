@@ -23,6 +23,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.IntFunction;
+import java.util.stream.IntStream;
 
 public abstract class DynamicAcceleratedProducerAdapter<T extends MemWrapper> extends DynamicAcceleratedProducer<T> {
 	private int memLength;
@@ -48,12 +50,16 @@ public abstract class DynamicAcceleratedProducerAdapter<T extends MemWrapper> ex
 	@Override
 	public String getBody(Function<Integer, String> outputVariable) {
 		StringBuffer buf = new StringBuffer();
-
-		for (int i = 0; i < memLength; i++) {
-			buf.append(outputVariable.apply(i) + " = " + getValue(i) + ";\n");
-		}
-
+		writeVariables(buf::append);
+		IntStream.range(0, memLength)
+				.mapToObj(getAssignmentFunction(outputVariable))
+				.map(s -> s + "\n")
+				.forEach(buf::append);
 		return buf.toString();
+	}
+
+	public IntFunction<String> getAssignmentFunction(Function<Integer, String> outputVariable) {
+		return i -> outputVariable.apply(i) + " = " + getValue(i) + ";";
 	}
 
 	public AcceleratedProducer getInputProducer(int index) {

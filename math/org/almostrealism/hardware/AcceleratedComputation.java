@@ -39,26 +39,28 @@ public abstract class AcceleratedComputation<T extends MemWrapper> extends Accel
 
 	private HardwareOperatorMap operators;
 	private Map<Producer, List<Variable>> variables;
+	private List<Producer> variableOrder;
 
 	public AcceleratedComputation(Producer<?>... inputArgs) {
 		super(null, true, inputArgs);
-		setFunctionName(functionName(getClass()));
-		initArgumentNames();
-		variables = new HashMap<>();
+		init();
 	}
 
 	public AcceleratedComputation(Producer<?>[] inputArgs, Object[] additionalArguments) {
 		super(null, true, inputArgs, additionalArguments);
-		setFunctionName(functionName(getClass()));
-		initArgumentNames();
-		variables = new HashMap<>();
+		init();
 	}
 
 	public AcceleratedComputation(boolean kernel, Producer<?>[] inputArgs, Object[] additionalArguments) {
 		super(null, kernel, inputArgs, additionalArguments);
+		init();
+	}
+
+	protected void init() {
 		setFunctionName(functionName(getClass()));
 		initArgumentNames();
 		variables = new HashMap<>();
+		variableOrder = new ArrayList<>();
 	}
 
 	protected void initArgumentNames() {
@@ -81,10 +83,11 @@ public abstract class AcceleratedComputation<T extends MemWrapper> extends Accel
 		}
 
 		existing.add(v);
+		if (!variableOrder.contains(v.getProducer())) variableOrder.add(v.getProducer());
 	}
 
 	public List<Variable> getVariables() {
-		return variables.values().stream().flatMap(List::stream).collect(Collectors.toList());
+		return variableOrder.stream().map(variables::get).flatMap(List::stream).collect(Collectors.toList());
 	}
 
 	protected void writeVariables(Consumer<String> out) {
