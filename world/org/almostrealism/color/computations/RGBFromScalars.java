@@ -25,6 +25,7 @@ import org.almostrealism.util.Producer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.Function;
 
 public class RGBFromScalars extends DynamicAcceleratedProducerAdapter<RGB> implements RGBProducer {
 	private String value[];
@@ -34,12 +35,14 @@ public class RGBFromScalars extends DynamicAcceleratedProducerAdapter<RGB> imple
 	}
 
 	@Override
-	public String getValue(Argument arg, int pos) {
-		if (value == null) {
-			return getArgumentValueName(pos + 1, 0);
-		} else {
-			return value[pos];
-		}
+	public Function<Integer, String> getValueFunction() {
+		return pos -> {
+			if (value == null) {
+				return getArgumentValueName(pos + 1, 0);
+			} else {
+				return value[pos];
+			}
+		};
 	}
 
 	@Override

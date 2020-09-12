@@ -24,6 +24,7 @@ import org.almostrealism.util.Producer;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Function;
 
 public class TriangleDataFromVectors extends DynamicAcceleratedProducerAdapter<TriangleData> implements TriangleDataProducer {
 	private String value[];
@@ -39,12 +40,14 @@ public class TriangleDataFromVectors extends DynamicAcceleratedProducerAdapter<T
 	}
 
 	@Override
-	public String getValue(Argument arg, int pos) {
-		if (value == null || value[pos] == null) {
-			return getArgumentValueName((pos / 3) + 1, pos % 3);
-		} else {
-			return value[pos];
-		}
+	public Function<Integer, String> getValueFunction() {
+		return pos -> {
+			if (value == null || value[pos] == null) {
+				return getArgumentValueName((pos / 3) + 1, pos % 3);
+			} else {
+				return value[pos];
+			}
+		};
 	}
 
 	@Override
@@ -77,9 +80,9 @@ public class TriangleDataFromVectors extends DynamicAcceleratedProducerAdapter<T
 
 				// If it is just a value, include it in the compacted version
 				int index = 3 * (i - 1);
-				value[index] = producer.getValue(inputProducers[i], 0);
-				value[index + 1] = producer.getValue(inputProducers[i], 1);
-				value[index + 2] = producer.getValue(inputProducers[i], 2);
+				value[index] = producer.getValue(0);
+				value[index + 1] = producer.getValue(1);
+				value[index + 2] = producer.getValue(2);
 
 				// If it is not a static value, it depends on others, so bring
 				// those into the arguments for the compacted version

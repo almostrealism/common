@@ -20,6 +20,7 @@ import io.almostrealism.code.Scope;
 import org.almostrealism.relation.NameProvider;
 import org.almostrealism.util.Producer;
 
+import java.util.function.Consumer;
 import java.util.function.Function;
 
 public abstract class DynamicAcceleratedProducer<T extends MemWrapper> extends AcceleratedComputation<T> {

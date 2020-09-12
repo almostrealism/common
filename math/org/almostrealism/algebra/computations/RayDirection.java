@@ -26,6 +26,7 @@ import org.almostrealism.util.Producer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.Function;
 
 public class RayDirection extends DynamicAcceleratedProducerAdapter<Vector> implements VectorProducer {
 	private String value[];
@@ -35,12 +36,14 @@ public class RayDirection extends DynamicAcceleratedProducerAdapter<Vector> impl
 	}
 
 	@Override
-	public String getValue(Argument arg, int pos) {
-		if (value == null) {
-			return getArgumentValueName(1, pos + 3);
-		} else {
-			return value[pos];
-		}
+	public Function<Integer, String> getValueFunction() {
+		return pos -> {
+			if (value == null) {
+				return getArgumentValueName(1, pos + 3);
+			} else {
+				return value[pos];
+			}
+		};
 	}
 
 	@Override

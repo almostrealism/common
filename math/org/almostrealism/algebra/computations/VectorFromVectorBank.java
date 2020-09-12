@@ -26,6 +26,7 @@ import org.almostrealism.util.Producer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.Function;
 
 public class VectorFromVectorBank extends DynamicAcceleratedProducerAdapter<Vector> implements VectorProducer {
 	private int position;
@@ -38,16 +39,18 @@ public class VectorFromVectorBank extends DynamicAcceleratedProducerAdapter<Vect
 	}
 
 	@Override
-	public String getValue(Argument arg, int pos) {
-		if (value == null) {
-			if (pos >= 0 && pos < 3) {
-				return getArgumentValueName(1, position + pos);
+	public Function<Integer, String> getValueFunction() {
+		return pos -> {
+			if (value == null) {
+				if (pos >= 0 && pos < 3) {
+					return getArgumentValueName(1, position + pos);
+				} else {
+					throw new IllegalArgumentException(String.valueOf(pos));
+				}
 			} else {
-				throw new IllegalArgumentException(String.valueOf(pos));
+				return value[pos];
 			}
-		} else {
-			return value[pos];
-		}
+		};
 	}
 
 	@Override

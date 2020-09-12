@@ -24,7 +24,6 @@ import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.util.DynamicProducer;
 import org.almostrealism.util.Producer;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Function;
@@ -116,8 +115,8 @@ public abstract class AcceleratedBinaryConditionAdapter<T extends MemWrapper> ex
 			DynamicAcceleratedProducerAdapter op1 = (DynamicAcceleratedProducerAdapter) operands.get(0).getProducer();
 			DynamicAcceleratedProducerAdapter op2 = (DynamicAcceleratedProducerAdapter) operands.get(1).getProducer();
 
-			addVariable(new Variable<>(getVariableName(0), op1.getValue(operands.get(0), 0), op1));
-			addVariable(new Variable<>(getVariableName(1), op2.getValue(operands.get(1), 0), op2));
+			addVariable(new Variable<>(getVariableName(0), op1.getValue(0), op1));
+			addVariable(new Variable<>(getVariableName(1), op2.getValue(0), op2));
 
 			StringBuffer buf = new StringBuffer();
 			buf.append(getVariableName(0));

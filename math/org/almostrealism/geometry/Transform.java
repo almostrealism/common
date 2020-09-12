@@ -26,6 +26,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
+import java.util.function.Function;
 
 public class Transform extends DynamicAcceleratedProducerAdapter<Vector> {
 	private boolean includeTranslation;
@@ -38,30 +39,32 @@ public class Transform extends DynamicAcceleratedProducerAdapter<Vector> {
 	}
 
 	@Override
-	public String getValue(Argument arg, int pos) {
-		if (value == null) {
-			StringBuffer buf = new StringBuffer();
-			buf.append(t(pos, 0));
-			buf.append(" * ");
-			buf.append(v(0));
-			buf.append(" + ");
-			buf.append(t(pos, 1));
-			buf.append(" * ");
-			buf.append(v(1));
-			buf.append(" + ");
-			buf.append(t(pos, 2));
-			buf.append(" * ");
-			buf.append(v(2));
-
-			if (includeTranslation) {
+	public Function<Integer, String> getValueFunction() {
+		return pos -> {
+			if (value == null) {
+				StringBuffer buf = new StringBuffer();
+				buf.append(t(pos, 0));
+				buf.append(" * ");
+				buf.append(v(0));
 				buf.append(" + ");
-				buf.append(t(pos, 3));
-			}
+				buf.append(t(pos, 1));
+				buf.append(" * ");
+				buf.append(v(1));
+				buf.append(" + ");
+				buf.append(t(pos, 2));
+				buf.append(" * ");
+				buf.append(v(2));
 
-			return buf.toString();
-		} else {
-			return value[pos];
-		}
+				if (includeTranslation) {
+					buf.append(" + ");
+					buf.append(t(pos, 3));
+				}
+
+				return buf.toString();
+			} else {
+				return value[pos];
+			}
+		};
 	}
 
 	@Override

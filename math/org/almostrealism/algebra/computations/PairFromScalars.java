@@ -27,6 +27,7 @@ import org.almostrealism.util.Producer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.Function;
 
 public class PairFromScalars extends DynamicAcceleratedProducerAdapter<Pair> implements PairProducer {
 	private String value[];
@@ -36,12 +37,14 @@ public class PairFromScalars extends DynamicAcceleratedProducerAdapter<Pair> imp
 	}
 
 	@Override
-	public String getValue(Argument arg, int pos) {
-		if (value == null) {
-			return getArgumentValueName(pos + 1, 0);
-		} else {
-			return value[pos];
-		}
+	public Function<Integer, String> getValueFunction() {
+		return pos -> {
+			if (value == null) {
+				return getArgumentValueName(pos + 1, 0);
+			} else {
+				return value[pos];
+			}
+		};
 	}
 
 	public void compact() {

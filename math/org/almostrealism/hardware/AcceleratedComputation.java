@@ -31,6 +31,7 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 public abstract class AcceleratedComputation<T extends MemWrapper> extends AcceleratedProducer<T> implements Computation<T>, NameProvider {
@@ -84,6 +85,17 @@ public abstract class AcceleratedComputation<T extends MemWrapper> extends Accel
 
 	public List<Variable> getVariables() {
 		return variables.values().stream().flatMap(List::stream).collect(Collectors.toList());
+	}
+
+	protected void writeVariables(Consumer<String> out) {
+		getVariables().forEach(var -> {
+			out.accept(getNumberType());
+			out.accept(" ");
+			out.accept(var.getName());
+			out.accept(" = ");
+			out.accept(var.getExpression());
+			out.accept(";\n");
+		});
 	}
 
 	@Override

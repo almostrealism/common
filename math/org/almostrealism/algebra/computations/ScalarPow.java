@@ -8,6 +8,7 @@ import org.almostrealism.util.Producer;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Function;
 
 public class ScalarPow extends DynamicAcceleratedProducerAdapter<Scalar> implements ScalarProducer {
 	private String value[];
@@ -17,22 +18,24 @@ public class ScalarPow extends DynamicAcceleratedProducerAdapter<Scalar> impleme
 	}
 
 	@Override
-	public String getValue(Argument arg, int pos) {
-		if (value == null) {
-			String v1 = getFunctionName() + "_v1";
-			String v2 = getFunctionName() + "_v2";
+	public Function<Integer, String> getValueFunction() {
+		return pos -> {
+			if (value == null) {
+				String v1 = getFunctionName() + "_v1";
+				String v2 = getFunctionName() + "_v2";
 
-			if (pos == 0) {
-				return "pow(" + getArgumentValueName(1, 0) + ", " + getArgumentValueName(2, 0) + ")";
-			} else if (pos == 1) {
-				// TODO  Certainty of exponent is ignored
-				return "pow(" + getArgumentValueName(1, 1) + ", " + getArgumentValueName(2, 0) + ")";
+				if (pos == 0) {
+					return "pow(" + getArgumentValueName(1, 0) + ", " + getArgumentValueName(2, 0) + ")";
+				} else if (pos == 1) {
+					// TODO  Certainty of exponent is ignored
+					return "pow(" + getArgumentValueName(1, 1) + ", " + getArgumentValueName(2, 0) + ")";
+				} else {
+					throw new IllegalArgumentException(String.valueOf(pos));
+				}
 			} else {
-				throw new IllegalArgumentException(String.valueOf(pos));
+				return value[pos];
 			}
-		} else {
-			return value[pos];
-		}
+		};
 	}
 
 	@Override

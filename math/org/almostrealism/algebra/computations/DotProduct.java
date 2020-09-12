@@ -26,6 +26,7 @@ import org.almostrealism.util.Producer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.Function;
 
 public class DotProduct extends DynamicAcceleratedProducerAdapter<Scalar> implements ScalarProducer {
 	private String value[];
@@ -35,20 +36,22 @@ public class DotProduct extends DynamicAcceleratedProducerAdapter<Scalar> implem
 	}
 
 	@Override
-	public String getValue(Argument arg, int pos) {
-		if (value == null) {
-			if (pos == 0) {
-				return getArgumentValueName(1, 0) + " * " + getArgumentValueName(2, 0) + " + " +
-						getArgumentValueName(1, 1) + " * " + getArgumentValueName(2, 1) + " + " +
-						getArgumentValueName(1, 2) + " * " + getArgumentValueName(2, 2);
-			} else if (pos == 1) {
-				return stringForDouble(1.0);
+	public Function<Integer, String> getValueFunction() {
+		return pos -> {
+			if (value == null) {
+				if (pos == 0) {
+					return getArgumentValueName(1, 0) + " * " + getArgumentValueName(2, 0) + " + " +
+							getArgumentValueName(1, 1) + " * " + getArgumentValueName(2, 1) + " + " +
+							getArgumentValueName(1, 2) + " * " + getArgumentValueName(2, 2);
+				} else if (pos == 1) {
+					return stringForDouble(1.0);
+				} else {
+					throw new IllegalArgumentException("Position " + pos + " is invalid");
+				}
 			} else {
-				throw new IllegalArgumentException("Position " + pos + " is invalid");
+				return value[pos];
 			}
-		} else {
-			return value[pos];
-		}
+		};
 	}
 
 	@Override

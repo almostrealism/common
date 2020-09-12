@@ -24,6 +24,7 @@ import org.almostrealism.util.Producer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.Function;
 
 public class RayFromVectors extends DynamicAcceleratedProducerAdapter<Ray> implements RayProducer {
 	private String value[];
@@ -33,28 +34,30 @@ public class RayFromVectors extends DynamicAcceleratedProducerAdapter<Ray> imple
 	}
 
 	@Override
-	public String getValue(Argument arg, int pos) {
-		if (value == null) {
-			if (pos == 0) {
-				return getArgumentValueName(1, 0);
-			} else if (pos == 1) {
-				return getArgumentValueName(1, 1);
-			} else if (pos == 2) {
-				return getArgumentValueName(1, 2);
-			} else if (pos == 3) {
-				return getArgumentValueName(2, 0);
-			} else if (pos == 4) {
-				return getArgumentValueName(2, 1);
-			} else if (pos == 5) {
-				return getArgumentValueName(2, 2);
+	public Function<Integer, String> getValueFunction() {
+		return pos -> {
+			if (value == null) {
+				if (pos == 0) {
+					return getArgumentValueName(1, 0);
+				} else if (pos == 1) {
+					return getArgumentValueName(1, 1);
+				} else if (pos == 2) {
+					return getArgumentValueName(1, 2);
+				} else if (pos == 3) {
+					return getArgumentValueName(2, 0);
+				} else if (pos == 4) {
+					return getArgumentValueName(2, 1);
+				} else if (pos == 5) {
+					return getArgumentValueName(2, 2);
+				} else {
+					throw new IllegalArgumentException("Position " + pos + " is not valid");
+				}
+			} else if (value[pos] == null) {
+				throw new NullPointerException("Compaction produced a null value");
 			} else {
-				throw new IllegalArgumentException("Position " + pos + " is not valid");
+				return value[pos];
 			}
-		} else if (value[pos] == null) {
-			throw new NullPointerException("Compaction produced a null value");
-		} else {
-			return value[pos];
-		}
+		};
 	}
 
 	@Override

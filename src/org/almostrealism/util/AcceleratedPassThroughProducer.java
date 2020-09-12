@@ -21,6 +21,8 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.hardware.MemWrapper;
 
+import java.util.function.Function;
+
 public class AcceleratedPassThroughProducer<T extends MemWrapper>
 		extends DynamicAcceleratedProducerAdapter<T> implements ProducerArgumentReference {
 	private int argIndex;
@@ -53,8 +55,8 @@ public class AcceleratedPassThroughProducer<T extends MemWrapper>
 	}
 
 	@Override
-	public String getValue(Argument arg, int pos) {
-		return getArgumentValueName(1, pos, kernelIndex);
+	public Function<Integer, String> getValueFunction() {
+		return pos -> getArgumentValueName(1, pos, kernelIndex);
 	}
 
 	@Override

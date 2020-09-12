@@ -21,10 +21,12 @@ import org.almostrealism.util.Producer;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Consumer;
 import java.util.function.Function;
 
 public abstract class DynamicAcceleratedProducerAdapter<T extends MemWrapper> extends DynamicAcceleratedProducer<T> {
 	private int memLength;
+	private Function<Integer, String> variableRef;
 
 	public DynamicAcceleratedProducerAdapter(int memLength, Producer<?>... inputArgs) {
 		super(true, inputArgs, new Producer[0]);
@@ -48,7 +50,7 @@ public abstract class DynamicAcceleratedProducerAdapter<T extends MemWrapper> ex
 		StringBuffer buf = new StringBuffer();
 
 		for (int i = 0; i < memLength; i++) {
-			buf.append(outputVariable.apply(i) + " = " + getValue(null, i) + ";\n");
+			buf.append(outputVariable.apply(i) + " = " + getValue(i) + ";\n");
 		}
 
 		return buf.toString();
@@ -63,14 +65,18 @@ public abstract class DynamicAcceleratedProducerAdapter<T extends MemWrapper> ex
 	}
 
 	public static String getInputProducerValue(Argument arg, int pos) {
-		return ((DynamicAcceleratedProducerAdapter) arg.getProducer()).getValue(arg, pos);
+		return ((DynamicAcceleratedProducerAdapter) arg.getProducer()).getValue(pos);
 	}
 
-	public abstract String getValue(Argument arg, int pos);
-
-	public boolean isValueOnly() {
-		return true;
+	public String getValue(int pos) {
+		return (isVariableRef() ? variableRef : getValueFunction()).apply(pos);
 	}
+
+	public abstract Function<Integer, String> getValueFunction();
+
+	public boolean isVariableRef() { return variableRef != null;}
+
+	public boolean isValueOnly() { return true; }
 
 	protected boolean isCompletelyValueOnly() {
 		// Confirm that all inputs are themselves dynamic accelerated adapters

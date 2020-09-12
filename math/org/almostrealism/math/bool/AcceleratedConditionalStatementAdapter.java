@@ -37,14 +37,7 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrappe
 		if (compacted == null) {
 			StringBuffer buf = new StringBuffer();
 
-			getVariables().forEach(var -> {
-				buf.append(getNumberType());
-				buf.append(" ");
-				buf.append(var.getName());
-				buf.append(" = ");
-				buf.append(var.getExpression());
-				buf.append(";\n");
-			});
+			writeVariables(buf::append);
 
 			buf.append("if (");
 			buf.append(getCondition());
@@ -85,14 +78,7 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrappe
 		compacted = outputVariable -> {
 			StringBuffer buf = new StringBuffer();
 
-			getVariables().forEach(var -> {
-				buf.append(getNumberType());
-				buf.append(" ");
-				buf.append(var.getName());
-				buf.append(" = ");
-				buf.append(var.getExpression());
-				buf.append(";\n");
-			});
+			writeVariables(buf::append);
 
 			buf.append("if (");
 			buf.append(getCondition());

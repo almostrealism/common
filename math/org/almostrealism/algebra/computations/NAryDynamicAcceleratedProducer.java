@@ -27,6 +27,7 @@ import org.almostrealism.util.Producer;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Function;
 
 public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> extends DynamicAcceleratedProducerAdapter<T> {
 	private String operator;
@@ -43,28 +44,28 @@ public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> exten
 		Scope<T> scope = new Scope<>();
 
 		for (int i = 0; i < getMemLength(); i++) {
-			scope.getVariables().add(new Variable(p.getArgumentValueName(0, i), getValue(null, i)));
+			scope.getVariables().add(new Variable(p.getArgumentValueName(0, i), getValue(i)));
 		}
 
 		return scope;
 	}
 
 	@Override
-	public String getValue(Argument arg, int pos) {
-		String v = getFunctionName() + "_v";
+	public Function<Integer, String> getValueFunction() {
+		return pos -> {
+			if (value == null || value[pos] == null) {
+				StringBuffer buf = new StringBuffer();
 
-		if (value == null || value[pos] == null) {
-			StringBuffer buf = new StringBuffer();
+				for (int i = 1; i < getArgsCount(); i++) {
+					buf.append(getArgumentValueName(i, pos));
+					if (i < (getArgsCount() - 1)) buf.append(" " + operator + " ");
+				}
 
-			for (int i = 1; i < getArgsCount(); i++) {
-				buf.append(getArgumentValueName(i, pos));
-				if (i < (getArgsCount() - 1)) buf.append(" " + operator + " ");
+				return buf.toString();
+			} else {
+				return value[pos];
 			}
-
-			return buf.toString();
-		} else {
-			return value[pos];
-		}
+		};
 	}
 
 	// TODO  Combine ScalarProducts that are equal by converting to ScalarPow

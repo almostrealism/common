@@ -25,6 +25,7 @@ import org.almostrealism.util.Producer;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Function;
 
 public class ScalarFromVector extends DynamicAcceleratedProducerAdapter<Scalar> implements ScalarProducer {
 	public static final int X = 0;
@@ -43,18 +44,20 @@ public class ScalarFromVector extends DynamicAcceleratedProducerAdapter<Scalar> 
 	}
 
 	@Override
-	public String getValue(Argument arg, int pos) {
-		if (value == null) {
-			if (pos == 0) {
-				return getArgumentValueName(1, coordinate);
-			} else if (pos == 1) {
-				return stringForDouble(1.0);
+	public Function<Integer, String> getValueFunction() {
+		return pos -> {
+			if (value == null) {
+				if (pos == 0) {
+					return getArgumentValueName(1, coordinate);
+				} else if (pos == 1) {
+					return stringForDouble(1.0);
+				} else {
+					throw new IllegalArgumentException(String.valueOf(pos));
+				}
 			} else {
-				throw new IllegalArgumentException(String.valueOf(pos));
+				return value;
 			}
-		} else {
-			return value;
-		}
+		};
 	}
 
 	@Override
