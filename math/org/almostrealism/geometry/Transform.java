@@ -133,12 +133,17 @@ public class Transform extends DynamicAcceleratedProducerAdapter<Vector> {
 				}
 			}
 
+			// TODO  If both are static, this should be marked as static
 			List<Argument> newArgs = new ArrayList<>();
 			newArgs.add(inputProducers[0]);
 			if (!getInputProducer(1).isStatic())
 				newArgs.addAll(Arrays.asList(excludeResult(getInputProducer(1).getInputProducers())));
 			if (!getInputProducer(2).isStatic())
 				newArgs.addAll(Arrays.asList(excludeResult(getInputProducer(2).getInputProducers())));
+
+			absorbVariables(getInputProducer(1));
+			absorbVariables(getInputProducer(2));
+
 			inputProducers = newArgs.toArray(new Argument[0]);
 			removeDuplicateArguments();
 		}

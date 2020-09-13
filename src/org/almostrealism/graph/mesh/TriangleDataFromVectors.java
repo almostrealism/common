@@ -91,6 +91,8 @@ public class TriangleDataFromVectors extends DynamicAcceleratedProducerAdapter<T
 						newArgs.add(producer.getInputProducers()[j]);
 					}
 				}
+
+				absorbVariables(producer);
 			}
 
 			// Check for illegal values

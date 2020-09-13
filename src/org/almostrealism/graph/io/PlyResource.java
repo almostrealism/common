@@ -65,7 +65,7 @@ public class PlyResource extends UnicodeResource {
 
 				i++;
 
-				if (i % 50000 == 0) {
+				if (i % 100000 == 0) {
 					System.out.println("PlyResource: " + i + " of " + pointCount + " points loaded");
 				}
 			}
@@ -81,7 +81,7 @@ public class PlyResource extends UnicodeResource {
 
 				i++;
 
-				if (i % 50000 == 0) {
+				if (i % 100000 == 0) {
 					System.out.println("PlyResource: " + i + " of " + triangleCount + " triangles loaded");
 				}
 			}

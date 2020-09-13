@@ -17,11 +17,11 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.Argument;
+import io.almostrealism.code.Variable;
 import org.almostrealism.util.Producer;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.stream.IntStream;
@@ -48,9 +48,9 @@ public abstract class DynamicAcceleratedProducerAdapter<T extends MemWrapper> ex
 	public int getMemLength() { return memLength; }
 
 	@Override
-	public String getBody(Function<Integer, String> outputVariable) {
+	public String getBody(Function<Integer, String> outputVariable, List<Variable> existingVariables) {
 		StringBuffer buf = new StringBuffer();
-		writeVariables(buf::append);
+		writeVariables(buf::append, existingVariables);
 		IntStream.range(0, memLength)
 				.mapToObj(getAssignmentFunction(outputVariable))
 				.map(s -> s + "\n")
@@ -81,6 +81,19 @@ public abstract class DynamicAcceleratedProducerAdapter<T extends MemWrapper> ex
 	public abstract Function<Integer, String> getValueFunction();
 
 	public boolean isVariableRef() { return variableRef != null;}
+
+	public void convertToVariableRef() {
+		if (variableRef == null) {
+			IntStream.range(0, memLength)
+					.mapToObj(variableForIndex(getValueFunction()))
+					.forEach(this::addVariable);
+			variableRef = i -> getVariableName(i);
+		}
+	}
+
+	protected IntFunction<Variable> variableForIndex(Function<Integer, String> valueFunction) {
+		return i -> new Variable(getVariableName(i), () -> valueFunction.apply(i), this);
+	}
 
 	public boolean isValueOnly() { return true; }
 

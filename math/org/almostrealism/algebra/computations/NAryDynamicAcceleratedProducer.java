@@ -118,6 +118,8 @@ public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> exten
 					for (int j = 1; j < ((AcceleratedProducer) dynamicProducers.get(i).getProducer()).getInputProducers().length; j++) {
 						newArgs.add(((AcceleratedProducer) dynamicProducers.get(i).getProducer()).getInputProducers()[j]);
 					}
+
+					absorbVariables(dynamicProducers.get(i).getProducer());
 					buf.append("(");
 					buf.append(getInputProducerValue(dynamicProducers.get(i), pos));
 					buf.append(")");
@@ -152,7 +154,7 @@ public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> exten
 	 * {@link Producer} is static. If so, this method returns
 	 * true.
 	 */
-	public boolean isStatic() { return isStatic; }
+	public boolean isStatic() { return !isVariableRef() && isStatic; }
 
 	/**
 	 * Returns the identity value for this n-ary operator.

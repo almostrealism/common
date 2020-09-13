@@ -50,9 +50,13 @@ public class ScalarPow extends DynamicAcceleratedProducerAdapter<Scalar> impleme
 				newArgs.add(getInputProducer(1).getInputProducers()[i]);
 			}
 
+			absorbVariables(getInputProducer(1));
+
 			for (int i = 1; i < getInputProducer(2).getInputProducers().length; i++) {
 				newArgs.add(getInputProducer(2).getInputProducers()[i]);
 			}
+
+			absorbVariables(getInputProducer(2));
 
 			// TODO  Certainty of exponent is ignored
 			value = new String[] {
@@ -69,5 +73,7 @@ public class ScalarPow extends DynamicAcceleratedProducerAdapter<Scalar> impleme
 			inputProducers = newArgs.toArray(new Argument[0]);
 			removeDuplicateArguments();
 		}
+
+		convertToVariableRef();
 	}
 }

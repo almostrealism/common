@@ -73,12 +73,18 @@ public class ScalarFromVector extends DynamicAcceleratedProducerAdapter<Scalar> 
 				throw new IllegalArgumentException("Infinity is not supported");
 			}
 
+			// TODO  Set to static if getInputProducer(1) is static,
+			//       also no need to add its dependents if it static
 			for (int i = 1; i < getInputProducer(1).getInputProducers().length; i++) {
 				newArgs.add(getInputProducer(1).getInputProducers()[i]);
 			}
 
+			absorbVariables(getInputProducer(1));
+
 			inputProducers = newArgs.toArray(new Argument[0]);
 			removeDuplicateArguments();
 		}
+
+		convertToVariableRef();
 	}
 }

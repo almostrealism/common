@@ -17,10 +17,12 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.Scope;
+import io.almostrealism.code.Variable;
 import org.almostrealism.relation.NameProvider;
 import org.almostrealism.util.Producer;
 
-import java.util.function.Consumer;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Function;
 
 public abstract class DynamicAcceleratedProducer<T extends MemWrapper> extends AcceleratedComputation<T> {
@@ -55,7 +57,7 @@ public abstract class DynamicAcceleratedProducer<T extends MemWrapper> extends A
 			buf.append("__kernel void " + getFunctionName() + "(");
 			buf.append(getFunctionArgsDefinition());
 			buf.append(") {\n");
-			buf.append(getBody(i -> getArgumentValueName(0, i)));
+			buf.append(getBody(i -> getArgumentValueName(0, i), new ArrayList<>()));
 			buf.append("}");
 			return buf.toString();
 		}
@@ -94,7 +96,7 @@ public abstract class DynamicAcceleratedProducer<T extends MemWrapper> extends A
 		return buf.toString();
 	}
 
-	public abstract String getBody(Function<Integer, String> outputVariable);
+	public abstract String getBody(Function<Integer, String> outputVariable, List<Variable> existingVariables);
 
 	@Override
 	public Scope<T> getScope(NameProvider provider) {

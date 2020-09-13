@@ -73,8 +73,12 @@ public class DotProduct extends DynamicAcceleratedProducerAdapter<Scalar> implem
 			newArgs.add(inputProducers[0]);
 			newArgs.addAll(Arrays.asList(excludeResult(getInputProducer(1).getInputProducers())));
 			newArgs.addAll(Arrays.asList(excludeResult(getInputProducer(2).getInputProducers())));
+			absorbVariables(getInputProducer(1));
+			absorbVariables(getInputProducer(2));
 			inputProducers = newArgs.toArray(new Argument[0]);
 			removeDuplicateArguments();
 		}
+
+		convertToVariableRef();
 	}
 }

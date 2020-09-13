@@ -51,7 +51,7 @@ public class RayOrigin extends DynamicAcceleratedProducerAdapter<Vector> impleme
 	 * Returns true if the {@link Ray} {@link Producer} is static.
 	 */
 	@Override
-	public boolean isStatic() { return isStatic; }
+	public boolean isStatic() { return !isVariableRef() && isStatic; }
 
 	@Override
 	public void compact() {
@@ -72,6 +72,7 @@ public class RayOrigin extends DynamicAcceleratedProducerAdapter<Vector> impleme
 			List<Argument> newArgs = new ArrayList<>();
 			newArgs.add(inputProducers[0]);
 			newArgs.addAll(Arrays.asList(excludeResult(getInputProducer(1).getInputProducers())));
+			absorbVariables(getInputProducer(1));
 			inputProducers = newArgs.toArray(new Argument[0]);
 			removeDuplicateArguments();
 		}

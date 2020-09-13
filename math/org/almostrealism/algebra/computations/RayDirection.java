@@ -63,8 +63,11 @@ public class RayDirection extends DynamicAcceleratedProducerAdapter<Vector> impl
 			List<Argument> newArgs = new ArrayList<>();
 			newArgs.add(inputProducers[0]);
 			newArgs.addAll(Arrays.asList(excludeResult(getInputProducer(1).getInputProducers())));
+			absorbVariables(getInputProducer(1));
 			inputProducers = newArgs.toArray(new Argument[0]);
 			removeDuplicateArguments();
 		}
+
+		convertToVariableRef();
 	}
 }

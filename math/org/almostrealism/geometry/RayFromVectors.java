@@ -69,6 +69,8 @@ public class RayFromVectors extends DynamicAcceleratedProducerAdapter<Ray> imple
 			newArgs.add(inputProducers[0]);
 			newArgs.addAll(Arrays.asList(excludeResult(getInputProducer(1).getInputProducers())));
 			newArgs.addAll(Arrays.asList(excludeResult(getInputProducer(2).getInputProducers())));
+			absorbVariables(getInputProducer(1));
+			absorbVariables(getInputProducer(2));
 
 			value = new String[6];
 

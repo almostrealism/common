@@ -30,7 +30,7 @@ public class MemoryPool<T extends MemWrapper> extends MemoryBankAdapter<T> imple
 
 	public MemoryPool(int memLength, int size) {
 		super(memLength, size, null, CacheLevel.NONE);
-		defaultGc = size > 100 ? size / 100 : 1;
+		defaultGc = size > 200 ? size / 200 : 1;
 		initQueue();
 	}
 

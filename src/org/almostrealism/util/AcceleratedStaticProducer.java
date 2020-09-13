@@ -61,5 +61,5 @@ public class AcceleratedStaticProducer<T extends MemWrapper> extends DynamicAcce
 	 * Returns true.
 	 */
 	@Override
-	public boolean isStatic() { return true; }
+	public boolean isStatic() { return !isVariableRef() && true; }
 }

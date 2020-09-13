@@ -18,6 +18,7 @@ package org.almostrealism.math.bool;
 
 import io.almostrealism.code.Argument;
 import io.almostrealism.code.Variable;
+import org.almostrealism.hardware.AcceleratedComputation;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.util.DynamicProducer;
 import org.almostrealism.util.Producer;
@@ -80,7 +81,11 @@ public class AcceleratedConjunctionAdapter<T extends MemWrapper> extends Acceler
 	public List<Variable> getVariables() {
 		List<Variable> all = new ArrayList<>();
 		all.addAll(super.getVariables());
-		conjuncts.stream().flatMap(c -> c.getVariables().stream()).forEach(all::add);
+		conjuncts.stream()
+				.map(AcceleratedConditionalStatement::getVariables)
+				.flatMap(List::stream)
+				.filter(v -> !all.contains(v))
+				.forEach(all::add);
 		return all;
 	}
 

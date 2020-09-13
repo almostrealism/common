@@ -76,7 +76,6 @@ public abstract class AcceleratedBinaryConditionAdapter<T extends MemWrapper> ex
 	@Override
 	public String getCondition() {
 		if (condition == null) {
-			String v = getFunctionName() + "_v";
 			StringBuffer buf = new StringBuffer();
 			buf.append(getArgumentValueName(1, 0));
 			buf.append(" ");

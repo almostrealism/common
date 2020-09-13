@@ -62,6 +62,7 @@ public class PairFromScalars extends DynamicAcceleratedProducerAdapter<Pair> imp
 			for (int i = 1; i <= 2; i++) {
 				if (!getInputProducer(i).isStatic()) {
 					newArgs.addAll(Arrays.asList(excludeResult(getInputProducer(i).getInputProducers())));
+					absorbVariables(getInputProducer(i));
 				}
 			}
 

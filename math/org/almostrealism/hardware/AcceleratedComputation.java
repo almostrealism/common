@@ -40,6 +40,7 @@ public abstract class AcceleratedComputation<T extends MemWrapper> extends Accel
 	private HardwareOperatorMap operators;
 	private Map<Producer, List<Variable>> variables;
 	private List<Producer> variableOrder;
+	private List<String> variableNames;
 
 	public AcceleratedComputation(Producer<?>... inputArgs) {
 		super(null, true, inputArgs);
@@ -59,8 +60,7 @@ public abstract class AcceleratedComputation<T extends MemWrapper> extends Accel
 	protected void init() {
 		setFunctionName(functionName(getClass()));
 		initArgumentNames();
-		variables = new HashMap<>();
-		variableOrder = new ArrayList<>();
+		purgeVariables();
 	}
 
 	protected void initArgumentNames() {
@@ -82,16 +82,55 @@ public abstract class AcceleratedComputation<T extends MemWrapper> extends Accel
 			variables.put(v.getProducer(), existing);
 		}
 
-		existing.add(v);
-		if (!variableOrder.contains(v.getProducer())) variableOrder.add(v.getProducer());
+		if (!variableNames.contains(v.getName())) {
+			variableNames.add(v.getName());
+
+			if (!existing.contains(v)) existing.add(v);
+			if (!variableOrder.contains(v.getProducer())) variableOrder.add(v.getProducer());
+		} else if (containsVariable(v)) {
+			if (!existing.contains(v)) {
+				System.out.println("Variable name was already used with a different producer");
+			}
+		} else {
+			System.out.println("WARN: Variable name was reused");
+		}
+	}
+
+	public boolean containsVariable(Variable v) {
+		return getVariables().contains(v);
 	}
 
 	public List<Variable> getVariables() {
-		return variableOrder.stream().map(variables::get).flatMap(List::stream).collect(Collectors.toList());
+		return variableOrder.stream()
+				.map(variables::get)
+				.flatMap(List::stream)
+				.collect(Collectors.toList());
+	}
+
+	public void absorbVariables(Producer peer) {
+		if (peer instanceof AcceleratedComputation) {
+			absorbVariables((AcceleratedComputation) peer);
+		} else {
+			throw new IllegalArgumentException(peer + " is not an AcceleratedComputation");
+		}
+	}
+
+	public void absorbVariables(AcceleratedComputation peer) {
+		peer.getVariables().forEach(v -> addVariable((Variable) v));
+	}
+
+	public void purgeVariables() {
+		this.variables = new HashMap<>();
+		this.variableOrder = new ArrayList<>();
+		this.variableNames = new ArrayList<>();
 	}
 
 	protected void writeVariables(Consumer<String> out) {
-		getVariables().forEach(var -> {
+		writeVariables(out, new ArrayList<>());
+	}
+
+	protected void writeVariables(Consumer<String> out, List<Variable> existingVariables) {
+		getVariables().stream().filter(v -> !existingVariables.contains(v)).forEach(var -> {
 			out.accept(getNumberType());
 			out.accept(" ");
 			out.accept(var.getName());

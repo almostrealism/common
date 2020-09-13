@@ -61,10 +61,13 @@ public class RGBFromScalars extends DynamicAcceleratedProducerAdapter<RGB> imple
 			for (int i = 1; i <= 3; i++) {
 				if (!getInputProducer(i).isStatic())
 					newArgs.addAll(Arrays.asList(excludeResult(getInputProducer(i).getInputProducers())));
+				absorbVariables(getInputProducer(i));
 			}
 
 			inputProducers = newArgs.toArray(new Argument[0]);
 			removeDuplicateArguments();
 		}
+
+		convertToVariableRef();
 	}
 }

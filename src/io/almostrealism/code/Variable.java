@@ -20,6 +20,7 @@ import org.almostrealism.util.Nameable;
 import org.almostrealism.util.Producer;
 import org.almostrealism.util.StaticProducer;
 
+import java.util.Objects;
 import java.util.function.Supplier;
 
 /**
@@ -83,10 +84,18 @@ public class Variable<T> implements Nameable {
 		this.producer = producer;
 	}
 
+	public Variable(String name, Supplier<String> expression) {
+		this(name, null, expression);
+	}
+
 	public Variable(String name, Class<T> type, Supplier<String> expression) {
 		setName(name);
 		setType(type);
 		this.expression = expression;
+	}
+
+	public Variable(String name, Supplier<String> expression, Producer<T> producer) {
+		this(name, null, expression, producer);
 	}
 
 	public Variable(String name, Class<T> type, Supplier<String> expression, Producer<T> producer) {
@@ -124,4 +133,22 @@ public class Variable<T> implements Nameable {
 			throw new RuntimeException();
 		}
 	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (obj instanceof Variable == false) return false;
+
+		Variable v = (Variable) obj;
+		if (!Objects.equals(name, v.getName())) return false;
+		if (!Objects.equals(annotation, v.getAnnotation())) return false;
+		if (!Objects.equals(type, v.getType())) return false;
+		if (!Objects.equals(producer, v.getProducer())) return false;
+		if (!Objects.equals(expression, v.expression)) return false;
+		if (!Objects.equals(generator, v.getGenerator())) return false;
+
+		return true;
+	}
+
+	@Override
+	public int hashCode() { return name.hashCode(); }
 }

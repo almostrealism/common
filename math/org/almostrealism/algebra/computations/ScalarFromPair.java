@@ -24,6 +24,7 @@ import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.util.Producer;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.function.Function;
 
@@ -75,7 +76,11 @@ public class ScalarFromPair extends DynamicAcceleratedProducerAdapter<Scalar> im
 
 			if (getInputProducers()[1].getProducer().isStatic()) {
 				isStatic = true;
+			} else {
+				newArgs.addAll(Arrays.asList(excludeResult(getInputProducer(1).getInputProducers())));
 			}
+
+			absorbVariables(getInputProducer(1));
 
 			inputProducers = newArgs.toArray(new Argument[0]);
 			removeDuplicateArguments();
@@ -83,5 +88,5 @@ public class ScalarFromPair extends DynamicAcceleratedProducerAdapter<Scalar> im
 	}
 
 	@Override
-	public boolean isStatic() { return isStatic; }
+	public boolean isStatic() { return !isVariableRef() && isStatic; }
 }

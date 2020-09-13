@@ -70,6 +70,8 @@ public class VectorFromScalars extends DynamicAcceleratedProducerAdapter<Vector>
 				if (!getInputProducer(i).isStatic()) {
 					newArgs.addAll(Arrays.asList(excludeResult(getInputProducer(i).getInputProducers())));
 				}
+
+				absorbVariables(getInputProducer(i));
 			}
 
 			inputProducers = newArgs.toArray(new Argument[0]);
