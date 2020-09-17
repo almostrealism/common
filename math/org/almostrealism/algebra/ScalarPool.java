@@ -19,7 +19,7 @@ package org.almostrealism.algebra;
 import org.almostrealism.hardware.MemoryPool;
 
 public class ScalarPool extends MemoryPool<Scalar> {
-	private static final ScalarPool local = new ScalarPool(10000);
+	private static final ScalarPool local = new ScalarPool(50000);
 
 	public ScalarPool(int size) {
 		super(2, size);

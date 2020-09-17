@@ -37,7 +37,7 @@ public final class Hardware {
 	private final boolean enableGpu;
 	private final boolean enableDoublePrecision;
 
-	private long memoryMax = 2000 * 1000 * 1000;
+	private long memoryMax = 8000l * 1000l * 1000l;
 	private long memoryUsed = 0;
 
 	private cl_context context;

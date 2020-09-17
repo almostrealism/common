@@ -28,6 +28,7 @@ import org.almostrealism.geometry.RayFromVectors;
 import org.almostrealism.relation.NameProvider;
 import org.almostrealism.util.Producer;
 import org.almostrealism.util.ProducerWithRank;
+import org.almostrealism.util.ProducerWithRankAdapter;
 import org.almostrealism.util.StaticProducer;
 
 /**
@@ -57,7 +58,7 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 		this.incident = incident;
 
 		Producer p = new RayFromVectors(getPoint(), normal);
-		this.normal = new ProducerWithRank<>(p, distance);
+		this.normal = new ProducerWithRankAdapter<>(p, distance); // TODO  Should be accelerated producer
 	}
 	
 	/** Returns the viewer direction. */

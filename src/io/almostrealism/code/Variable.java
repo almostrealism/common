@@ -34,6 +34,7 @@ public class Variable<T> implements Nameable {
 	private Producer<T> producer;
 	private Supplier<String> expression;
 	private Method<T> generator;
+	private int arraySize = -1;
 
 	public Variable(String name, T value) {
 		this(name, StaticProducer.of(value));
@@ -74,14 +75,18 @@ public class Variable<T> implements Nameable {
 	}
 
 	public Variable(String name, String expression, Producer<T> producer) {
-		this(name, null, expression, producer);
+		this(name, null, () -> expression, producer);
 	}
 
-	public Variable(String name, Class<T> type, String expression, Producer<T> producer) {
+	public Variable(String name, Class<T> type, String expression, Producer<T> producer, int arraySize) {
 		setName(name);
 		setType(type);
 		this.expression = () -> expression;
 		this.producer = producer;
+	}
+
+	public Variable(String name, int arraySize) {
+		this(name, null, (Supplier) null, null, arraySize);
 	}
 
 	public Variable(String name, Supplier<String> expression) {
@@ -99,10 +104,24 @@ public class Variable<T> implements Nameable {
 	}
 
 	public Variable(String name, Class<T> type, Supplier<String> expression, Producer<T> producer) {
+		this(name, type, expression, producer, -1);
+	}
+
+	public Variable(String name, Producer<T> producer, int arraySize) {
+		this(name, null, (Supplier) null, producer, arraySize);
+	}
+
+	public Variable(String name, Producer<T> producer, int arraySize, String annotation) {
+		this(name, null, (Supplier) null, producer, arraySize);
+		setAnnotation(annotation);
+	}
+
+	public Variable(String name, Class<T> type, Supplier<String> expression, Producer<T> producer, int arraySize) {
 		setName(name);
 		setType(type);
 		this.expression = expression;
 		this.producer = producer;
+		setArraySize(arraySize);
 	}
 
 	public void setName(String n) { this.name = n; }
@@ -120,9 +139,12 @@ public class Variable<T> implements Nameable {
 	public void setGenerator(Method<T> generator) { this.generator = generator; }
 	public Method<T> getGenerator() { return this.generator; }
 
-	public String getExpression() { return expression.get(); }
+	public String getExpression() { return expression == null ? null : expression.get(); }
 	public void setExpression(String expression) { this.expression = () -> expression; }
 	public void setExpression(Supplier<String> expression) { this.expression = expression; }
+
+	public int getArraySize() { return arraySize; }
+	public void setArraySize(int arraySize) { this.arraySize = arraySize; }
 
 	public T getValue() {
 		if (producer != null) {

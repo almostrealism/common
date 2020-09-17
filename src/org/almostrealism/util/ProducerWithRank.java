@@ -18,38 +18,9 @@ package org.almostrealism.util;
 
 import org.almostrealism.algebra.Scalar;
 
-public class ProducerWithRank<T> implements Producer<T> {
-	private Producer<T> p;
-	private Producer<Scalar> rank;
+public interface ProducerWithRank<T> extends Producer<T> {
 
-	/**
-	 * This constructor uses this {@link Producer} as the
-	 * {@link Producer} argument, which requires that the
-	 * {@link #evaluate(Object[])} method be overridden.
-	 */
-	protected ProducerWithRank(Producer<Scalar> rank) {
-		this.p = this;
-		this.rank = rank;
-	}
+	Producer<T> getProducer();
 
-	public ProducerWithRank(Producer<T> p, Producer<Scalar> rank) {
-		this.p = p;
-		this.rank = rank;
-	}
-
-	public Producer<T> getProducer() { return p; }
-
-	public Producer<Scalar> getRank() { return rank; }
-
-	@Override
-	public T evaluate(Object[] args) {
-		if (p == this) return null;
-		return p.evaluate(args);
-	}
-
-	@Override
-	public void compact() {
-		if (p != this) p.compact();
-		rank.compact();
-	}
+	Producer<Scalar> getRank();
 }

@@ -608,3 +608,29 @@ highestRank(__global float *res,
 	res[resOffset] = closestIndex < 0 ? -1 : closest;
 	res[resOffset + 1] = closestIndex;
 }
+
+__kernel void
+highestRankLocal(__local float *res,
+            __local const float *data,
+            __local const float *conf,
+            const int resOffset, const int dataOffset,
+            const int confOffset,
+            const int resSize, const int dataSize,
+            const int confSize) {
+	float closest = -1.0;
+	int closestIndex = -1;
+
+	for (int i = 0; i < conf[confOffset]; i++) {
+		float value = data[i * dataSize + dataOffset];
+
+		if (value >= conf[confOffset + 1]) {
+			if (closestIndex == -1 || value < closest) {
+				closest = value;
+				closestIndex = i;
+			}
+		}
+	}
+
+	res[resOffset] = closestIndex < 0 ? -1 : closest;
+	res[resOffset + 1] = closestIndex;
+}

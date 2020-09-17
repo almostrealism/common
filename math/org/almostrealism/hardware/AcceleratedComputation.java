@@ -131,11 +131,30 @@ public abstract class AcceleratedComputation<T extends MemWrapper> extends Accel
 
 	protected void writeVariables(Consumer<String> out, List<Variable> existingVariables) {
 		getVariables().stream().filter(v -> !existingVariables.contains(v)).forEach(var -> {
+			if (var.getAnnotation() != null) {
+				out.accept(var.getAnnotation());
+				out.accept(" ");
+			}
+
 			out.accept(getNumberType());
 			out.accept(" ");
 			out.accept(var.getName());
-			out.accept(" = ");
-			out.accept(var.getExpression());
+
+			if (var.getExpression() == null) {
+				if (var.getArraySize() >= 0) {
+					out.accept("[");
+					out.accept(String.valueOf(var.getArraySize()));
+					out.accept("]");
+				}
+			} else {
+				if (var.getArraySize() >= 0) {
+					throw new RuntimeException("Not implemented");
+				} else {
+					out.accept(" = ");
+					out.accept(var.getExpression());
+				}
+			}
+
 			out.accept(";\n");
 		});
 	}

@@ -67,18 +67,26 @@ public class CachedMeshIntersectionKernel implements KernelizedProducer<Scalar>,
 	 */
 	@Override
 	public Scalar evaluate(Object[] args) {
-		Pair pos = (Pair) args[0];
-		int n = DimensionAware.getPosition(pos.getX(), pos.getY(), width, height, ssw, ssh);
-		return new Scalar(cache.get(n).getA());
+		if (cache == null) {
+			return new Scalar(data.evaluateIntersection(ray, args).getA());
+		} else {
+			Pair pos = (Pair) args[0];
+			int n = DimensionAware.getPosition(pos.getX(), pos.getY(), width, height, ssw, ssh);
+			return new Scalar(cache.get(n).getA());
+		}
 	}
 
 	public Producer<Vector> getClosestNormal() {
 		return new Producer<Vector>() {
 			@Override
 			public Vector evaluate(Object[] args) {
-				Pair pos = (Pair) args[0];
-				int n = DimensionAware.getPosition(pos.getX(), pos.getY(), width, height, ssw, ssh);
-				return data.get((int) cache.get(n).getB()).getNormal();
+				if (cache == null) {
+					return data.get((int) data.evaluateIntersection(ray, args).getB()).getNormal();
+				} else {
+					Pair pos = (Pair) args[0];
+					int n = DimensionAware.getPosition(pos.getX(), pos.getY(), width, height, ssw, ssh);
+					return data.get((int) cache.get(n).getB()).getNormal();
+				}
 			}
 
 			@Override

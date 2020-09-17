@@ -17,8 +17,16 @@ public interface NameProvider {
 		return getArgumentValueName(index, pos, 0);
 	}
 
+	default String getArgumentValueName(int index, int pos, boolean assignment) {
+		return getArgumentValueName(index, pos, assignment, 0);
+	}
+
 	default String getArgumentValueName(int index, int pos, int kernelIndex) {
-		return getArgumentValueName(getArgumentName(index), pos, kernelIndex);
+		return getArgumentValueName(index, pos, true, kernelIndex);
+	}
+
+	default String getArgumentValueName(int index, int pos, boolean assignment, int kernelIndex) {
+		return getArgumentValueName(getArgumentName(index), pos, assignment, kernelIndex);
 	}
 
 	default String getArgumentValueName(Argument arg, int pos) {

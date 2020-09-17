@@ -14,16 +14,20 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.color;
+package org.almostrealism.util;
 
-import org.almostrealism.hardware.MemoryPool;
+import org.almostrealism.algebra.Vector;
 
-public class RGBData192Pool extends MemoryPool<RGBData192> {
-	private static final RGBData192Pool local = new RGBData192Pool(300000);
-
-	public RGBData192Pool(int size) {
-		super(3, size);
+public class RankedChoiceProducerForVector extends RankedChoiceProducerForMemWrapper<Vector> {
+	public RankedChoiceProducerForVector(double e) {
+		super(e);
 	}
 
-	public static RGBData192Pool getLocal() { return local; }
+	public RankedChoiceProducerForVector(double e, boolean tolerateNull) {
+		super(e, tolerateNull);
+	}
+
+	public AcceleratedRankedChoiceProducer<Vector> getAccelerated() {
+		return getAccelerated(3, Vector.blank());
+	}
 }

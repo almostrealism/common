@@ -16,6 +16,7 @@
 
 package org.almostrealism.algebra;
 
+import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.hardware.MemoryBankAdapter;
 
 /**
@@ -33,5 +34,11 @@ public class ScalarBank extends MemoryBankAdapter<Scalar> {
 	public ScalarBank(int count, CacheLevel cacheLevel) {
 		super(2, count, delegateSpec ->
 				new Scalar(delegateSpec.getDelegate(), delegateSpec.getOffset()), cacheLevel);
+	}
+
+	public ScalarBank(int count, MemWrapper delegate, int delegateOffset, CacheLevel cacheLevel) {
+		super(3, count, delegateSpec ->
+						new Scalar(delegateSpec.getDelegate(), delegateSpec.getOffset()),
+				delegate, delegateOffset);
 	}
 }

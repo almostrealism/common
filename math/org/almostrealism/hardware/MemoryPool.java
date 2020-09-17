@@ -24,6 +24,8 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.stream.IntStream;
 
 public class MemoryPool<T extends MemWrapper> extends MemoryBankAdapter<T> implements PooledMem<T> {
+	public static boolean enableLog = false;
+
 	private ArrayBlockingQueue<Integer> available;
 	private List<Owner> owners;
 	private int defaultGc;
@@ -52,18 +54,22 @@ public class MemoryPool<T extends MemWrapper> extends MemoryBankAdapter<T> imple
 	}
 
 	public synchronized Owner owner(T owner) {
-		Owner o = new Owner();
-		o.reference = new WeakReference<>(owner);
+		try {
+			Owner o = new Owner();
+			o.reference = new WeakReference<>(owner);
 
-		Integer next = available.poll();
-		if (next == null) {
-			gc();
-			o.offset = available.remove();
-		} else {
-			o.offset = next;
+			Integer next = available.poll();
+			if (next == null) {
+				gc();
+				o.offset = available.remove();
+			} else {
+				o.offset = next;
+			}
+
+			return o;
+		} catch (Exception e) {
+			throw new RuntimeException("Pool exhausted", e);
 		}
-
-		return o;
 	}
 
 	public synchronized void gc() { gc(defaultGc); }
@@ -83,7 +89,7 @@ public class MemoryPool<T extends MemWrapper> extends MemoryBankAdapter<T> imple
 			if (freed >= demand) break w;
 		}
 
-		System.out.println(gcLog(freed, demand));
+		if (enableLog) System.out.println(gcLog(freed, demand));
 	}
 
 	private String gcLog(int freed, int demand) {

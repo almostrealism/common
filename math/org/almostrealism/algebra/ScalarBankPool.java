@@ -14,16 +14,12 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.color;
+package org.almostrealism.algebra;
 
 import org.almostrealism.hardware.MemoryPool;
 
-public class RGBData192Pool extends MemoryPool<RGBData192> {
-	private static final RGBData192Pool local = new RGBData192Pool(300000);
-
-	public RGBData192Pool(int size) {
-		super(3, size);
+public class ScalarBankPool extends MemoryPool<ScalarBank> {
+	public ScalarBankPool(int count, int size) {
+		super(2 * count, size);
 	}
-
-	public static RGBData192Pool getLocal() { return local; }
 }

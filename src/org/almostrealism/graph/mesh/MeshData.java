@@ -5,6 +5,7 @@ import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairBank;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
+import org.almostrealism.algebra.ScalarBankPool;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayBank;
 import org.almostrealism.hardware.KernelizedProducer;
@@ -20,12 +21,14 @@ public class MeshData extends TriangleDataBank {
 	 */
 	public static boolean enablePartialKernel = true;
 
+	private ScalarBank distances;
+
 	public MeshData(int triangles) {
 		super(triangles);
+		distances = new ScalarBank(getCount(), CacheLevel.ACCESSED);
 	}
 
-	public Scalar evaluateIntersection(Producer<Ray> ray, Object args[]) {
-		ScalarBank distances = new ScalarBank(getCount(), CacheLevel.ACCESSED);
+	public synchronized Pair evaluateIntersection(Producer<Ray> ray, Object args[]) {
 		RayBank in = new RayBank(1);
 		PairBank out = new PairBank(1);
 
@@ -35,7 +38,7 @@ public class MeshData extends TriangleDataBank {
 		in.set(0, ray.evaluate(args));
 		Triangle.intersectAt.kernelEvaluate(distances, new MemoryBank[] { in, this });
 		RankedChoiceProducer.highestRank.kernelEvaluate(out, new MemoryBank[] { distances, conf });
-		return new Scalar(out.get(0).getA());
+		return out.get(0);
 	}
 
 	public void evaluateIntersectionKernel(KernelizedProducer<Ray> ray, ScalarBank destination,

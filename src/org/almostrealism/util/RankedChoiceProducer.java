@@ -20,6 +20,7 @@ import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.hardware.KernelizedProducer;
+import org.almostrealism.hardware.MemWrapper;
 
 import java.util.ArrayList;
 
@@ -41,6 +42,8 @@ public class RankedChoiceProducer<T> extends ArrayList<ProducerWithRank<T>> impl
 	public RankedChoiceProducer(double e) { this(e, true); }
 
 	public RankedChoiceProducer(double e, boolean tolerateNull) { this.e = e; this.tolerateNull = tolerateNull; }
+
+	public double getEpsilon() { return e; }
 
 	@Override
 	public T evaluate(Object[] args) {
