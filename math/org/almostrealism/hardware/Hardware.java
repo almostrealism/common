@@ -26,19 +26,24 @@ import java.io.InputStreamReader;
 
 /** An interface to OpenCL. */
 public final class Hardware {
+	protected static final int MEMORY_SCALE;
+
 	private static Hardware local;
 
 	static {
 		boolean gpu = "gpu".equalsIgnoreCase(System.getenv("AR_HARDWARE_PLATFORM")) ||
 				"gpu".equalsIgnoreCase(System.getProperty("AR_HARDWARE_PLATFORM"));
 		local = new Hardware(false, false);
+
+		String memScale = System.getProperty("AR_HARDWARE_MEMORY_SCALE");
+		if (memScale == null) memScale = System.getenv("AR_HARDWARE_MEMORY_SCALE");
+		MEMORY_SCALE = memScale == null ? 4 : Integer.parseInt(memScale);
 	}
 
 	private final boolean enableGpu;
 	private final boolean enableDoublePrecision;
 
-	private long memoryMax = 8000l * 1000l * 1000l;
-	private long memoryUsed = 0;
+	private long memoryMax, memoryUsed;
 
 	private cl_context context;
 	private cl_command_queue queue;
@@ -58,6 +63,7 @@ public final class Hardware {
 	}
 
 	private Hardware(String name, boolean enableGpu, boolean enableDoublePrecision) {
+		this.memoryMax = ((long) Math.pow(2, getMemoryScale()) * 256l * 1000l * 1000l);
 		this.enableGpu = enableGpu;
 		this.enableDoublePrecision = enableDoublePrecision;
 
@@ -120,6 +126,10 @@ public final class Hardware {
 	public boolean isDoublePrecision() { return enableDoublePrecision; }
 
 	public int getNumberSize() { return isDoublePrecision() ? Sizeof.cl_double : Sizeof.cl_float; }
+
+	public int getMemoryScale() { return MEMORY_SCALE; }
+
+	public int getDefaultPoolSize() { return 6250 * (int) Math.pow(2, MEMORY_SCALE); }
 
 	public String stringForDouble(double d) {
 		if (isGPU()) {

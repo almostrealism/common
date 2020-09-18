@@ -16,10 +16,12 @@
 
 package org.almostrealism.algebra;
 
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryPool;
 
 public class ScalarPool extends MemoryPool<Scalar> {
-	private static final ScalarPool local = new ScalarPool(50000);
+	private static final ScalarPool local =
+			new ScalarPool(Hardware.getLocalHardware().getDefaultPoolSize() / 2);
 
 	public ScalarPool(int size) {
 		super(2, size);

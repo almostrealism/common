@@ -16,10 +16,12 @@
 
 package org.almostrealism.color;
 
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryPool;
 
 public class RGBData192Pool extends MemoryPool<RGBData192> {
-	private static final RGBData192Pool local = new RGBData192Pool(300000);
+	private static final RGBData192Pool local =
+			new RGBData192Pool(3 * Hardware.getLocalHardware().getDefaultPoolSize());
 
 	public RGBData192Pool(int size) {
 		super(3, size);

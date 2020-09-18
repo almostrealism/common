@@ -16,10 +16,12 @@
 
 package org.almostrealism.algebra;
 
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryPool;
 
 public class PairPool extends MemoryPool<Pair> {
-	private static final PairPool local = new PairPool(200000);
+	private static final PairPool local =
+			new PairPool(4 * Hardware.getLocalHardware().getDefaultPoolSize());
 
 	public PairPool(int size) {
 		super(2, size);

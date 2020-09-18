@@ -16,10 +16,12 @@
 
 package org.almostrealism.algebra;
 
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryPool;
 
 public class VectorPool extends MemoryPool<Pair> {
-	private static final VectorPool local = new VectorPool(80000);
+	private static final VectorPool local =
+			new VectorPool(Hardware.getLocalHardware().getDefaultPoolSize());
 
 	public VectorPool(int size) {
 		super(3, size);
