@@ -49,20 +49,23 @@ public class CachedMeshIntersectionKernel implements KernelizedProducer<Scalar>,
 	}
 
 	@Override
-	public void kernelEvaluate(MemoryBank destination, MemoryBank args[], int offset, int length) {
+	public MemoryBank<Scalar> createKernelDestination(int size) { return new ScalarBank(size); }
+
+	@Override
+	public void kernelEvaluate(MemoryBank destination, MemoryBank args[]) {
 		if (destination instanceof ScalarBank == false) {
 			throw new IllegalArgumentException("Kernel output is Scalar");
 		}
 
 		cache = new PairBank(destination.getCount());
-		data.evaluateIntersectionKernel(ray, cache, args, offset, length);
+		data.evaluateIntersectionKernel(ray, cache, args);
 		for (int i = 0; i < cache.getCount(); i++) {
 			((ScalarBank) destination).get(i).setMem(new double[] { cache.get(i).getA(), 1.0 });
 		}
 	}
 
 	/**
-	 * Returns a cached value from {@link #kernelEvaluate(MemoryBank, MemoryBank[], int, int)}.
+	 * Returns a cached value from {@link #kernelEvaluate(MemoryBank, MemoryBank[])}.
 	 * This method will not work properly unless the kernel has already been evaluated.
 	 */
 	@Override

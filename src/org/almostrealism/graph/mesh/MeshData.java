@@ -41,24 +41,18 @@ public class MeshData extends TriangleDataBank {
 		return out.get(0);
 	}
 
-	public void evaluateIntersectionKernel(KernelizedProducer<Ray> ray, ScalarBank destination,
-										   MemoryBank args[], int offset, int length) {
+	public void evaluateIntersectionKernel(KernelizedProducer<Ray> ray, ScalarBank destination, MemoryBank args[]) {
 		PairBank result = new PairBank(destination.getCount());
-		evaluateIntersectionKernel(ray, result, args, offset, length);
+		evaluateIntersectionKernel(ray, result, args);
 		for (int i = 0; i < result.getCount(); i++) {
 			destination.get(i).setMem(new double[] { result.get(i).getA(), 1.0 });
 		}
 	}
 
-	public void evaluateIntersectionKernel(KernelizedProducer<Ray> ray, PairBank destination,
-										   MemoryBank args[], int offset, int length) {
-		if (offset != 0 || length != destination.getCount()) {
-			throw new IllegalArgumentException("Partial kernel evaluation is not supported");
-		}
-
+	public void evaluateIntersectionKernel(KernelizedProducer<Ray> ray, PairBank destination, MemoryBank args[]) {
 		long startTime = System.currentTimeMillis();
 		RayBank rays = new RayBank(destination.getCount());
-		ray.kernelEvaluate(rays, args, offset, length);
+		ray.kernelEvaluate(rays, args);
 		System.out.println("MeshData: Evaluated ray kernel in " + (System.currentTimeMillis() - startTime) + " msec");
 
 		PairBank dim = new PairBank(1);

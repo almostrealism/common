@@ -119,19 +119,21 @@ public class AcceleratedProducer<T extends MemWrapper> implements KernelizedProd
 	 * destination.
 	 */
 	@Override
-	public void kernelEvaluate(MemoryBank destination, MemoryBank args[], int offset, int length) {
+	public void kernelEvaluate(MemoryBank destination, MemoryBank args[]) {
+		System.out.println("AcceleratedProducer: Evaluating " + getClass().getSimpleName() + " Kernel...");
+
 		if (kernel) {
 			HardwareOperator operator = getOperator();
-			operator.setGlobalWorkOffset(offset);
-			operator.setGlobalWorkSize(length);
+			operator.setGlobalWorkOffset(0);
+			operator.setGlobalWorkSize(destination.getCount());
 
 			operator.evaluate(getKernelArgs(destination, args));
 		} else {
-			for (int i = 0; i < length; i++) {
+			for (int i = 0; i < destination.getCount(); i++) {
 				final int fi = i;
-				destination.set(offset + i,
+				destination.set(i,
 						evaluate(Stream.of(args)
-								.map(arg -> arg.get(offset + fi))
+								.map(arg -> arg.get(fi))
 								.collect(Collectors.toList()).toArray()));
 			}
 		}
@@ -144,15 +146,25 @@ public class AcceleratedProducer<T extends MemWrapper> implements KernelizedProd
 		i: for (int i = 1; i < inputProducers.length; i++) {
 			if (inputProducers[i] == null) continue i;
 
-			if (inputProducers[i].getProducer() instanceof ProducerArgumentReference == false) {
-				throw new IllegalArgumentException(inputProducers[i].getName() + " is not a ProducerArgumentReference");
+			if (inputProducers[i].getProducer() instanceof ProducerArgumentReference) {
+				int argIndex = ((ProducerArgumentReference) inputProducers[i].getProducer()).getReferencedArgumentIndex();
+				kernelArgs[i] = args[argIndex];
+			} else if (inputProducers[i].getProducer() instanceof KernelizedProducer) {
+				KernelizedProducer kp = (KernelizedProducer)  inputProducers[i].getProducer();
+				kernelArgs[i] = kp.createKernelDestination(destination.getCount());
+				kp.kernelEvaluate(kernelArgs[i], args);
+			} else {
+				throw new IllegalArgumentException(inputProducers[i].getName() +
+						" is not a ProducerArgumentReference or KernelizedProducer");
 			}
-
-			int argIndex = ((ProducerArgumentReference) inputProducers[i].getProducer()).getReferencedArgumentIndex();
-			kernelArgs[i] = args[argIndex];
 		}
 
 		return kernelArgs;
+	}
+
+	@Override
+	public MemoryBank<T> createKernelDestination(int size) {
+		throw new RuntimeException("Not implemented");
 	}
 
 	/**

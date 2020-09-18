@@ -32,16 +32,14 @@ import java.util.stream.Stream;
  */
 public interface KernelizedProducer<T extends MemWrapper> extends Producer<T> {
 	default void kernelEvaluate(MemoryBank destination, MemoryBank args[]) {
-		kernelEvaluate(destination, args, 0, destination.getCount());
-	}
-
-	default void kernelEvaluate(MemoryBank destination, MemoryBank args[], int offset, int length) {
-		for (int i = 0; i < length; i++) {
+		for (int i = 0; i < destination.getCount(); i++) {
 			final int fi = i;
-			destination.set(offset + i,
+			destination.set(i,
 					evaluate(Stream.of(args)
-							.map(arg -> arg.get(offset + fi))
+							.map(arg -> arg.get(fi))
 							.collect(Collectors.toList()).toArray()));
 		}
 	}
+
+	MemoryBank<T> createKernelDestination(int size);
 }

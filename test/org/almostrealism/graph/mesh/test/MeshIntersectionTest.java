@@ -139,7 +139,7 @@ public class MeshIntersectionTest {
 		ScalarBank distances = new ScalarBank(1);
 		RayFromVectors ray = new RayFromVectors(origin1, direction1);
 		ray.compact();
-		data1.evaluateIntersectionKernel(ray, distances, new MemoryBank[0], 0, distances.getCount());
+		data1.evaluateIntersectionKernel(ray, distances, new MemoryBank[0]);
 		System.out.println("distance = " + distances.get(0).getValue());
 		Assert.assertEquals(1.0, distances.get(0).getValue(), Math.pow(10, -10));
 	}
@@ -157,7 +157,7 @@ public class MeshIntersectionTest {
 		ScalarBank distances = new ScalarBank(1);
 		RayFromVectors ray = new RayFromVectors(origin2, direction2);
 		ray.compact();
-		data2.evaluateIntersectionKernel(ray, distances, new MemoryBank[0], 0, distances.getCount());
+		data2.evaluateIntersectionKernel(ray, distances, new MemoryBank[0]);
 		System.out.println("distance = " + distances.get(0).getValue());
 		Assert.assertEquals(1.0, distances.get(0).getValue(), Math.pow(10, -10));
 	}
