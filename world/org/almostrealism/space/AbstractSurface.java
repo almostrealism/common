@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -35,7 +35,9 @@ import org.almostrealism.relation.NameProvider;
 import org.almostrealism.relation.Operator;
 import org.almostrealism.texture.Texture;
 import org.almostrealism.util.AdaptProducer;
+import org.almostrealism.util.AdaptProducerRGB;
 import org.almostrealism.util.CollectionUtils;
+import org.almostrealism.util.DynamicProducer;
 import org.almostrealism.util.Producer;
 import org.almostrealism.util.StaticProducer;
 
@@ -567,7 +569,8 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 	    	List<Producer<RGB>> texColors = new ArrayList<>();
 
 	        for (int i = 0; i < this.textures.length; i++) {
-	            texColors.add(AdaptProducer.fromFunction(this.textures[i], point));
+	        	Texture t = textures[i];
+	            texColors.add(new AdaptProducerRGB(new DynamicProducer<>(args -> t.operate((Triple) args[0])), point));
 	        }
 	        
 	        colorAt = new ColorProduct(
