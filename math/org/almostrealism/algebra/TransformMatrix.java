@@ -25,16 +25,19 @@ import org.almostrealism.algebra.computations.MatrixTranspose;
 import org.almostrealism.geometry.TransformAsLocation;
 import org.almostrealism.geometry.TransformAsOffset;
 import org.almostrealism.hardware.HardwareOperator;
+import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.hardware.MemWrapperAdapter;
+import org.almostrealism.hardware.PooledMem;
 import org.almostrealism.relation.NameProvider;
 import org.almostrealism.relation.TripleFunction;
+import org.almostrealism.util.DynamicProducer;
 import org.almostrealism.util.Producer;
 import org.almostrealism.util.StaticProducer;
 
 /**
  * A {@link TransformMatrix} object represents a 4 X 4 matrix used for transforming vectors.
  * A {@link TransformMatrix} object stores 16 double values for the matrix data and provides
- * methods for transforming varius types of vectors. The TransformMatrix class also provides
+ * methods for transforming various types of vectors. The TransformMatrix class also provides
  * some static methods that generate certain useful matrices.
  */
 public class TransformMatrix extends MemWrapperAdapter implements TripleFunction<Vector> {
@@ -42,7 +45,7 @@ public class TransformMatrix extends MemWrapperAdapter implements TripleFunction
 	public static final int TRANSFORM_AS_OFFSET = 2;
 	public static final int TRANSFORM_AS_NORMAL = 4;
 
-  /** The data for the identity matrix. */
+  	/** The data for the identity matrix. */
 	public static final double identity[][] = {{1.0, 0.0, 0.0, 0.0},
 											{0.0, 1.0, 0.0, 0.0},
 											{0.0, 0.0, 1.0, 0.0},
@@ -60,10 +63,15 @@ public class TransformMatrix extends MemWrapperAdapter implements TripleFunction
 	 * Constructs a {@link TransformMatrix} that by default contains the data for a 4 X 4 identity matrix.
 	 */
 	public TransformMatrix() {
-		this(true);
+		this(true, null, 0);
 	}
 
-	private TransformMatrix(boolean identity) {
+	protected TransformMatrix(MemWrapper delegate, int delegateOffset) {
+		this(true, delegate, delegateOffset);
+	}
+
+	private TransformMatrix(boolean identity, MemWrapper delegate, int delegateOffset) {
+		setDelegate(delegate, delegateOffset);
 		initMem(identity);
 	}
 	
@@ -180,6 +188,9 @@ public class TransformMatrix extends MemWrapperAdapter implements TripleFunction
 	public Scope getScope(NameProvider p) {
 		throw new RuntimeException("getScope is not implemented"); // TODO
 	}
+
+	@Override
+	public PooledMem getDefaultDelegate() { return TransformMatrixPool.getLocal(); }
 
 	public Producer<Vector> transform(Producer<Vector> vector, int type) {
 		if (this.isIdentity) return vector;
@@ -367,15 +378,8 @@ public class TransformMatrix extends MemWrapperAdapter implements TripleFunction
 	}
 
 	public static Producer<TransformMatrix> blank() {
-		return new Producer<TransformMatrix>() {
-			@Override
-			public TransformMatrix evaluate(Object[] args) {
-				return new TransformMatrix(false);
-			}
-
-			@Override
-			public void compact() { }
-		};
+		return new DynamicProducer<>(args ->
+				new TransformMatrix(false, null, 0));
 	}
 
 	/**
