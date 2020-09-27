@@ -17,6 +17,8 @@
 package org.almostrealism.util;
 
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.algebra.VectorBank;
+import org.almostrealism.hardware.MemoryBank;
 
 public class RankedChoiceProducerForVector extends RankedChoiceProducerForMemWrapper<Vector> {
 	public RankedChoiceProducerForVector(double e) {
@@ -28,6 +30,9 @@ public class RankedChoiceProducerForVector extends RankedChoiceProducerForMemWra
 	}
 
 	public AcceleratedRankedChoiceProducer<Vector> getAccelerated() {
-		return getAccelerated(3, Vector.blank());
+		return getAccelerated(3, Vector.blank(), VectorBank::new);
 	}
+
+	@Override
+	public MemoryBank<Vector> createKernelDestination(int size) { return new VectorBank(size); }
 }

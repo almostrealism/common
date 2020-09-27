@@ -17,6 +17,9 @@
 package org.almostrealism.util;
 
 import org.almostrealism.color.RGB;
+import org.almostrealism.color.RGBBank;
+import org.almostrealism.color.computations.RGBBlack;
+import org.almostrealism.hardware.MemoryBank;
 
 public class RankedChoiceProducerForRGB extends RankedChoiceProducerForMemWrapper<RGB> {
 	public RankedChoiceProducerForRGB(double e) {
@@ -28,6 +31,18 @@ public class RankedChoiceProducerForRGB extends RankedChoiceProducerForMemWrappe
 	}
 
 	public AcceleratedRankedChoiceProducer<RGB> getAccelerated() {
-		return getAccelerated(3, RGB.blank());
+		return getAccelerated(3, RGB.blank(), RGBBank::new);
 	}
+
+	@Override
+	public RGB replaceNull(Object[] args) {
+		if (tolerateNull) {
+			return RGBBlack.getInstance().evaluate();
+		} else {
+			throw new NullPointerException();
+		}
+	}
+
+	@Override
+	public MemoryBank<RGB> createKernelDestination(int size) { return new RGBBank(size); }
 }

@@ -16,9 +16,13 @@
 
 package org.almostrealism.util;
 
+import org.almostrealism.hardware.KernelizedProducer;
 import org.almostrealism.hardware.MemWrapper;
+import org.almostrealism.hardware.MemoryBank;
 
-public class RankedChoiceProducerForMemWrapper<T extends MemWrapper> extends RankedChoiceProducer<T> {
+import java.util.function.IntFunction;
+
+public abstract class RankedChoiceProducerForMemWrapper<T extends MemWrapper> extends RankedChoiceProducer<T> implements KernelizedProducer<T> {
 	public RankedChoiceProducerForMemWrapper(double e) {
 		super(e);
 	}
@@ -27,7 +31,8 @@ public class RankedChoiceProducerForMemWrapper<T extends MemWrapper> extends Ran
 		super(e, tolerateNull);
 	}
 
-	public AcceleratedRankedChoiceProducer<T> getAccelerated(int memLength, Producer<T> blankValue) {
-		return new AcceleratedRankedChoiceProducer(memLength, blankValue, this, getEpsilon(), blankValue::evaluate);
+	public AcceleratedRankedChoiceProducer<T> getAccelerated(int memLength, Producer<T> blankValue, IntFunction<MemoryBank<T>> forKernel) {
+		return new AcceleratedRankedChoiceProducer(memLength, blankValue, forKernel, this,
+													blankValue, getEpsilon(), blankValue::evaluate);
 	}
 }

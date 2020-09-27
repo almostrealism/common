@@ -26,7 +26,7 @@ import java.util.ArrayList;
 
 public class RankedChoiceProducer<T> extends ArrayList<ProducerWithRank<T>> implements Producer<T> {
 	protected double e;
-	private boolean tolerateNull;
+	protected boolean tolerateNull;
 
 	public static final KernelizedProducer<Pair> highestRank;
 
