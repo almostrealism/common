@@ -31,7 +31,9 @@ import javax.swing.JPanel;
 
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.color.RGB;
+import org.almostrealism.hardware.KernelizedProducer;
 import org.almostrealism.util.Producer;
+import org.almostrealism.util.StaticProducer;
 
 /**
  * An {@link ImageCanvas} object stores image data and paints the parent
@@ -157,13 +159,13 @@ public class ImageCanvas extends JPanel {
 	}
 	
 	/**
-	 * Writes the image data stored by this ImageCanvas object out to the specified file.
+	 * Writes the image data stored by this {@link ImageCanvas} out to the specified file.
 	 * 
 	 * @param file  File name.
 	 */
 	public void writeImage(String file) {
 		try {
-			ImageCanvas.encodeImageFile(this.image,
+			ImageCanvas.encodeImageFile(StaticProducer.of(this.image),
 							new File(file),
 							ImageCanvas.JPEGEncoding);
 		} catch (Exception e) {
@@ -179,8 +181,15 @@ public class ImageCanvas extends JPanel {
 		g.drawImage(img, 0, 0, Color.black, this);
 	}
 
-	public static void writeImage(Producer<RGB> image[][], OutputStream o, int encoding)
+	public static void writeImage(RGB[][] image, OutputStream o, int encoding)
+			throws IOException {
+		writeImage(StaticProducer.of(image), o, encoding);
+	}
+
+	public static void writeImage(Producer<RGB[][]> imageProducer, OutputStream o, int encoding)
 						throws IOException {
+		RGB[][] image = imageProducer.evaluate();
+
 		if (encoding == ImageCanvas.RGBListEncoding) {
 			ObjectOutputStream out = new ObjectOutputStream(o);
 			
@@ -189,8 +198,7 @@ public class ImageCanvas extends JPanel {
 					if (image[i][j] == null) {
 						new RGB(0.0, 0.0, 0.0).writeExternal(out);
 					} else {
-						image[i][j].evaluate(new Object[] { new Pair(i, image[i].length - 1 - j) }).writeExternal(out);
-//						image[i][j].evaluate(new Object[] { new Pair(i, j) }).writeExternal(out);
+						image[i][j].writeExternal(out);
 					}
 				}
 			}
@@ -208,7 +216,7 @@ public class ImageCanvas extends JPanel {
 					if (image[i][j] == null) {
 						out.println("0 0 0");
 					} else {
-						RGB c = image[i][j].evaluate(new Object[] { new Pair(i, j) });
+						RGB c = image[i][j];
 						int r = (int)(255 * c.getRed());
 						int g = (int)(255 * c.getGreen());
 						int b = (int)(255 * c.getBlue());
@@ -237,7 +245,7 @@ public class ImageCanvas extends JPanel {
 			
 			for (int j = 0; j < h; j++) {
 				for (int i = 0; i < w; i++) {
-					RGB c = image[i][j].evaluate(new Object[] { new Pair(i, j) });
+					RGB c = image[i][j];
 					b[index++] = 1;
 					b[index++] = (byte)(255 * c.getBlue());
 					b[index++] = (byte)(255 * c.getGreen());
@@ -262,7 +270,20 @@ public class ImageCanvas extends JPanel {
 	 * file represented by the specified File object. If the encoding code is not
 	 * recognized, the method returns.
 	 */
-	public static void encodeImageFile(Producer<RGB> image[][], File file, int encoding) throws IOException {
+	public static void encodeImageFile(RGB[][] image, File file, int encoding) throws IOException {
+		try (OutputStream o = new FileOutputStream(file)) {
+			ImageCanvas.writeImage(image, o, encoding);
+			o.flush();
+		}
+	}
+
+	/**
+	 * Encodes the image represented by the specified RGB array using the encoding
+	 * specified by the integer encoding code and saves the encoded data in the
+	 * file represented by the specified File object. If the encoding code is not
+	 * recognized, the method returns.
+	 */
+	public static void encodeImageFile(Producer<RGB[][]> image, File file, int encoding) throws IOException {
 		try (OutputStream o = new FileOutputStream(file)) {
 			ImageCanvas.writeImage(image, o, encoding);
 			o.flush();
