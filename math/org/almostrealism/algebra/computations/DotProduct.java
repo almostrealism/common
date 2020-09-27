@@ -18,9 +18,11 @@ package org.almostrealism.algebra.computations;
 
 import io.almostrealism.code.Argument;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
+import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.util.Producer;
 
 import java.util.ArrayList;
@@ -81,4 +83,7 @@ public class DotProduct extends DynamicAcceleratedProducerAdapter<Scalar> implem
 
 		convertToVariableRef();
 	}
+
+	@Override
+	public MemoryBank<Scalar> createKernelDestination(int size) { return new ScalarBank(size); }
 }
