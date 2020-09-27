@@ -17,7 +17,9 @@
 package org.almostrealism.algebra.computations;
 
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarProducer;
+import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.util.Producer;
 
 public class ScalarProduct extends NAryDynamicAcceleratedProducer<Scalar> implements ScalarProducer {
@@ -34,10 +36,15 @@ public class ScalarProduct extends NAryDynamicAcceleratedProducer<Scalar> implem
 	/**
 	 * Returns 0.0 if the specified value is zero, false otherwise.
 	 */
+	@Override
 	public Double isReplaceAll(double value) { return value == 0.0 ? 0.0 : null; }
 
 	/**
 	 * Returns true if the specified value is 1.0, false otherwise.
 	 */
+	@Override
 	public boolean isRemove(double value) { return value == 1.0; }
+
+	@Override
+	public MemoryBank<Scalar> createKernelDestination(int size) { return new ScalarBank(size); }
 }

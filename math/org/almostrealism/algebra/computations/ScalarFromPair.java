@@ -19,8 +19,10 @@ package org.almostrealism.algebra.computations;
 import io.almostrealism.code.Argument;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
+import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.util.Producer;
 
 import java.util.ArrayList;
@@ -89,4 +91,7 @@ public class ScalarFromPair extends DynamicAcceleratedProducerAdapter<Scalar> im
 
 	@Override
 	public boolean isStatic() { return !isVariableRef() && isStatic; }
+
+	@Override
+	public MemoryBank<Scalar> createKernelDestination(int size) { return new ScalarBank(size); }
 }
