@@ -21,6 +21,8 @@ import org.almostrealism.algebra.PairBank;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.algebra.VectorBank;
+import org.almostrealism.algebra.ZeroVector;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.hardware.KernelizedProducer;
 import org.almostrealism.hardware.MemoryBank;
@@ -33,7 +35,7 @@ public class CachedMeshIntersectionKernel implements KernelizedProducer<Scalar>,
 
 	private PairBank cache;
 
-	private int width, height, ssw, ssh;
+	private int width = -1, height = -1, ssw = -1, ssh = -1;
 
 	public CachedMeshIntersectionKernel(MeshData data, KernelizedProducer<Ray> ray) {
 		this.data = data;
@@ -54,7 +56,7 @@ public class CachedMeshIntersectionKernel implements KernelizedProducer<Scalar>,
 	@Override
 	public void kernelEvaluate(MemoryBank destination, MemoryBank args[]) {
 		if (destination instanceof ScalarBank == false) {
-			throw new IllegalArgumentException("Kernel output is Scalar");
+			throw new IllegalArgumentException("Kernel output is Scalar, destination must be ScalarBank");
 		}
 
 		cache = new PairBank(destination.getCount());
@@ -80,7 +82,7 @@ public class CachedMeshIntersectionKernel implements KernelizedProducer<Scalar>,
 	}
 
 	public Producer<Vector> getClosestNormal() {
-		return new Producer<Vector>() {
+		return new KernelizedProducer<Vector>() {
 			@Override
 			public Vector evaluate(Object[] args) {
 				if (cache == null) {
@@ -88,7 +90,10 @@ public class CachedMeshIntersectionKernel implements KernelizedProducer<Scalar>,
 				} else {
 					Pair pos = (Pair) args[0];
 					int n = DimensionAware.getPosition(pos.getX(), pos.getY(), width, height, ssw, ssh);
-					return data.get((int) cache.get(n).getB()).getNormal();
+					if (n < 0) return ZeroVector.getInstance().evaluate();
+					int a = (int) cache.get(n).getB();
+					if (a < 0) return ZeroVector.getInstance().evaluate();
+					return data.get(a).getNormal();
 				}
 			}
 
@@ -96,6 +101,9 @@ public class CachedMeshIntersectionKernel implements KernelizedProducer<Scalar>,
 			public void compact() {
 
 			}
+
+			@Override
+			public MemoryBank<Vector> createKernelDestination(int size) { return new VectorBank(size); }
 		};
 	}
 
