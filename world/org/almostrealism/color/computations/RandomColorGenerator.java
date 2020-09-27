@@ -18,6 +18,7 @@ package org.almostrealism.color.computations;
 
 import org.almostrealism.color.RGB;
 import org.almostrealism.heredity.Gene;
+import org.almostrealism.util.StaticProducer;
 
 /**
  * TODO  Accept a {@link Gene}.
@@ -28,7 +29,7 @@ public class RandomColorGenerator extends ColorProducerAdapter {
  	private RGBProducer baseRGB, offsetRGB;
  
 	public RandomColorGenerator() {
-		this(new RGB(0.0, 0.0, 0.0), new RGB(1.0, 1.0, 1.0));
+		this(StaticProducer.of(new RGB(0.0, 0.0, 0.0)), RGBWhite.getInstance());
 	}
 	
 	public RandomColorGenerator(RGBProducer baseRGB, RGBProducer offsetRGB) {
