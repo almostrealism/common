@@ -21,7 +21,7 @@ import org.almostrealism.hardware.MemoryPool;
 
 public class VectorPool extends MemoryPool<Pair> {
 	private static final VectorPool local =
-			new VectorPool(Hardware.getLocalHardware().getDefaultPoolSize());
+			new VectorPool(2 * Hardware.getLocalHardware().getDefaultPoolSize());
 
 	public VectorPool(int size) {
 		super(3, size);
