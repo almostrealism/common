@@ -20,6 +20,10 @@ public interface DimensionAware {
 	void setDimensions(int width, int height, int ssw, int ssh);
 
 	static int getPosition(double x, double y, int width, int height, int ssw, int ssh) {
+		if (width < 0) throw new IllegalArgumentException("Width cannot be less than zero");
+		if (height < 0) throw new IllegalArgumentException("Height cannot be less than zero");
+		if (ssw < 0) throw new IllegalArgumentException("Supersample width cannot be less than zero");
+		if (ssh < 0) throw new IllegalArgumentException("Supersample height cannot be less than zero");
 		return (int) (y * width * ssw * ssh) + (int) (x * ssh);
 	}
 }
