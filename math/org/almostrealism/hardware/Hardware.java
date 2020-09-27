@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -33,7 +33,7 @@ public final class Hardware {
 	static {
 		boolean gpu = "gpu".equalsIgnoreCase(System.getenv("AR_HARDWARE_PLATFORM")) ||
 				"gpu".equalsIgnoreCase(System.getProperty("AR_HARDWARE_PLATFORM"));
-		local = new Hardware(false, false);
+		local = new Hardware(false);
 
 		String memScale = System.getProperty("AR_HARDWARE_MEMORY_SCALE");
 		if (memScale == null) memScale = System.getenv("AR_HARDWARE_MEMORY_SCALE");
@@ -64,6 +64,7 @@ public final class Hardware {
 
 	private Hardware(String name, boolean enableGpu, boolean enableDoublePrecision) {
 		this.memoryMax = ((long) Math.pow(2, getMemoryScale()) * 256l * 1000l * 1000l);
+		if (enableDoublePrecision) memoryMax = memoryMax * 2;
 		this.enableGpu = enableGpu;
 		this.enableDoublePrecision = enableDoublePrecision;
 
