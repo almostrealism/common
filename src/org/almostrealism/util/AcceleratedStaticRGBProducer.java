@@ -17,10 +17,15 @@
 package org.almostrealism.util;
 
 import org.almostrealism.color.RGB;
+import org.almostrealism.color.RGBBank;
 import org.almostrealism.color.computations.RGBProducer;
+import org.almostrealism.hardware.MemoryBank;
 
 public class AcceleratedStaticRGBProducer extends AcceleratedStaticProducer<RGB> implements RGBProducer {
 	public AcceleratedStaticRGBProducer(RGB value, Producer<RGB> output) {
 		super(value, output);
 	}
+
+	@Override
+	public MemoryBank<RGB> createKernelDestination(int size) { return new RGBBank(size); }
 }
