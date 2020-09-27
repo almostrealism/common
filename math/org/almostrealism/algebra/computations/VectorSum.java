@@ -17,7 +17,9 @@
 package org.almostrealism.algebra.computations;
 
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.algebra.VectorBank;
 import org.almostrealism.algebra.VectorProducer;
+import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.util.Producer;
 
 public class VectorSum extends NAryDynamicAcceleratedProducer<Vector> implements VectorProducer {
@@ -35,4 +37,7 @@ public class VectorSum extends NAryDynamicAcceleratedProducer<Vector> implements
 	 * Returns true if the specified value is 0.0, false otherwise.
 	 */
 	public boolean isRemove(double value) { return value == 0.0; }
+
+	@Override
+	public MemoryBank<Vector> createKernelDestination(int size) { return new VectorBank(size); }
 }
