@@ -297,4 +297,54 @@ public class GraphicsConverter {
 		
 		return Toolkit.getDefaultToolkit().createImage(new MemoryImageSource(image.length, image[0].length, data, 0, image.length));
 	}
+
+	/**
+	 * Converts the specified array of RGB objects to an AWT Image object.
+	 * The array locations map to pixels in the image. The image produced
+	 * uses the RGB color model with no alpha channel.
+	 */
+	public static Image convertToAWTImage(RGB image[][]) {
+		return convertToAWTImage(image, null);
+	}
+
+	/**
+	 * Evaluates the specified array of {@link Producer}s as an AWT Image object.
+	 * The array locations map to pixels in the image. The image produced
+	 * uses the RGB color model with no alpha channel.
+	 */
+	// TODO  Accelerated
+	public static Image convertToAWTImage(RGB image[][], Pipeline notify) {
+		int data[] = new int[image.length * image[0].length];
+
+		int index = 0;
+		boolean wasNull = false;
+
+		for (int j = 0; j < image[0].length; j++) {
+			i: for (int i = 0; i < image.length; i++) {
+				if (image[i][j] == null) {
+					wasNull = true;
+					index++;
+					continue i;
+				}
+
+				RGB c = image[i][j];
+
+				int r = (int)(Math.min(1.0, Math.abs(c.getRed())) * 255);
+				int g = (int)(Math.min(1.0, Math.abs(c.getGreen())) * 255);
+				int b = (int)(Math.min(1.0, Math.abs(c.getBlue())) * 255);
+
+				data[index++] = 255 << 24 | r << 16 | g << 8 | b;
+			}
+
+			if (notify != null) {
+				Image img = Toolkit.getDefaultToolkit().createImage(new MemoryImageSource(j + 1, image[0].length, data, 0, image.length));
+				notify.evaluate(new Object[] {img});
+			}
+		}
+
+		if (wasNull)
+			System.out.println("GraphicsConverter: Some image data was null.");
+
+		return Toolkit.getDefaultToolkit().createImage(new MemoryImageSource(image.length, image[0].length, data, 0, image.length));
+	}
 }
