@@ -21,7 +21,7 @@ import org.almostrealism.hardware.MemoryPool;
 
 public class ScalarPool extends MemoryPool<Scalar> {
 	private static final ScalarPool local =
-			new ScalarPool(Hardware.getLocalHardware().getDefaultPoolSize() / 2);
+			new ScalarPool(2 * Hardware.getLocalHardware().getDefaultPoolSize());
 
 	public ScalarPool(int size) {
 		super(2, size);
