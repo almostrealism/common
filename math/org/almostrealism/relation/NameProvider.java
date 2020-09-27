@@ -33,6 +33,10 @@ public interface NameProvider {
 		return getArgumentValueName(arg.getName(), pos, 0);
 	}
 
+	default String getArgumentValueName(Argument arg, int pos, boolean assignment) {
+		return getArgumentValueName(arg.getName(), pos, assignment, 0);
+	}
+
 	default String getArgumentValueName(Argument arg, int pos, int kernelIndex) {
 		return getArgumentValueName(arg.getName(), pos, kernelIndex);
 	}
