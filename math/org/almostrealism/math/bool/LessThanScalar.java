@@ -17,6 +17,8 @@
 package org.almostrealism.math.bool;
 
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.algebra.ScalarBank;
+import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.util.Producer;
 
 public class LessThanScalar extends LessThan<Scalar> implements AcceleratedConditionalStatementScalar {
@@ -48,4 +50,7 @@ public class LessThanScalar extends LessThan<Scalar> implements AcceleratedCondi
 			boolean includeEqual) {
 		super(2, Scalar.blank(), leftOperand, rightOperand, trueValue, falseValue, includeEqual);
 	}
+
+	@Override
+	public MemoryBank<Scalar> createKernelDestination(int size) { return new ScalarBank(size); }
 }
