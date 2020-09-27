@@ -18,9 +18,11 @@ package org.almostrealism.algebra.computations;
 
 import io.almostrealism.code.Argument;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.algebra.VectorBank;
 import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
+import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.util.Producer;
 
 import java.util.ArrayList;
@@ -70,4 +72,7 @@ public class RayDirection extends DynamicAcceleratedProducerAdapter<Vector> impl
 
 		convertToVariableRef();
 	}
+
+	@Override
+	public MemoryBank<Vector> createKernelDestination(int size) { return new VectorBank(size); }
 }

@@ -19,6 +19,7 @@ package org.almostrealism.geometry;
 import io.almostrealism.code.Argument;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
+import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.util.Producer;
 
 import java.util.ArrayList;
@@ -93,4 +94,7 @@ public class RayFromVectors extends DynamicAcceleratedProducerAdapter<Ray> imple
 			removeDuplicateArguments();
 		}
 	}
+
+	@Override
+	public MemoryBank<Ray> createKernelDestination(int size) { return new RayBank(size); }
 }
