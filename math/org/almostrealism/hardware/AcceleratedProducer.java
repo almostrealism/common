@@ -30,6 +30,7 @@ import java.util.stream.Stream;
 
 public class AcceleratedProducer<T extends MemWrapper> implements KernelizedProducer<T> {
 	public static final boolean enableNullInputs = true;
+	public static final boolean enableKernel = true;
 
 	private static Map<String, ThreadLocal<HardwareOperator>> operators = new HashMap<>();
 
@@ -120,14 +121,20 @@ public class AcceleratedProducer<T extends MemWrapper> implements KernelizedProd
 	 */
 	@Override
 	public void kernelEvaluate(MemoryBank destination, MemoryBank args[]) {
-		System.out.println("AcceleratedProducer: Evaluating " + getClass().getSimpleName() + " Kernel...");
+		String name = getClass().getSimpleName();
+		if (name == null || name.trim().length() <= 0) name = "anonymous";
+		if (name.equals("AcceleratedProducer")) name = getFunctionName();
 
-		if (kernel) {
+		if (kernel && enableKernel) {
 			HardwareOperator operator = getOperator();
 			operator.setGlobalWorkOffset(0);
 			operator.setGlobalWorkSize(destination.getCount());
 
-			operator.evaluate(getKernelArgs(destination, args));
+			System.out.println("AcceleratedProducer: Preparing " + name + " kernel...");
+			MemoryBank input[] = getKernelArgs(destination, args);
+
+			System.out.println("AcceleratedProducer: Evaluating " + name + " kernel...");
+			operator.evaluate(input);
 		} else {
 			for (int i = 0; i < destination.getCount(); i++) {
 				final int fi = i;
@@ -154,7 +161,7 @@ public class AcceleratedProducer<T extends MemWrapper> implements KernelizedProd
 				kernelArgs[i] = kp.createKernelDestination(destination.getCount());
 				kp.kernelEvaluate(kernelArgs[i], args);
 			} else {
-				throw new IllegalArgumentException(inputProducers[i].getName() +
+				throw new IllegalArgumentException(inputProducers[i].getProducer().getClass().getSimpleName() +
 						" is not a ProducerArgumentReference or KernelizedProducer");
 			}
 		}
