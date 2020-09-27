@@ -44,7 +44,7 @@ public class RealizableImage implements Producer<RGB[][]> {
 	public RGB[][] evaluate(Object[] args) {
 		System.out.println("RealizableImage: Evaluating source kernel...");
 
-		Pair xy = (Pair) args[0];
+		Pair xy = (args != null && args.length > 0) ? (Pair) args[0] : new Pair(0, 0);
 		int x = (int) xy.getX();
 		int y = (int) xy.getY();
 		int w = (int) dim.getX();
