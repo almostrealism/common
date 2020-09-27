@@ -21,7 +21,7 @@ import org.almostrealism.hardware.MemoryPool;
 
 public class PairPool extends MemoryPool<Pair> {
 	private static final PairPool local =
-			new PairPool(4 * Hardware.getLocalHardware().getDefaultPoolSize());
+			new PairPool(5 * Hardware.getLocalHardware().getDefaultPoolSize());
 
 	public PairPool(int size) {
 		super(2, size);
