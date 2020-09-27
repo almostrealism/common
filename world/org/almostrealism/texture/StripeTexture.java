@@ -75,10 +75,11 @@ public class StripeTexture implements Texture, Editable {
 	// TODO  When ColorProducers are accepted in place of RGB values,
 	//       this method will need to be implemented so that it delegates
 	//       to the dependent producers
+	@Override
 	public void compact() { }
 
 	@Override
-	public Scope<? extends Variable> getScope(NameProvider p) {
+	public Scope<RGB> getScope(NameProvider p) {
 		throw new RuntimeException("getScope is not implemented");
 	}
 
