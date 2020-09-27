@@ -34,8 +34,12 @@ public class Argument<T> extends Variable<T> {
 
 	@Override
 	public void setProducer(Producer<T> producer) {
-		while (producer instanceof ProducerWithRank || producer instanceof GeneratedColorProducer) {
+		w: while (producer instanceof ProducerWithRank || producer instanceof GeneratedColorProducer) {
 			if (producer instanceof ProducerWithRank) {
+				if (((ProducerWithRank<T>) producer).getProducer() == producer) {
+					break w;
+				}
+
 				producer = ((ProducerWithRank) producer).getProducer();
 			}
 
