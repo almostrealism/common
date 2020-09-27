@@ -43,8 +43,8 @@ public abstract class ColorProducerAdapter implements ColorProducer, TripleFunct
 			}
 
 			@Override
-			public Scope<Variable> getScope(NameProvider p) {
-				Scope<Variable> s = new Scope<>();
+			public Scope<RGB> getScope(NameProvider p) {
+				Scope<RGB> s = new Scope<>();
 				RGB v = operate(null); // TODO  Input?
 				s.getVariables().add(new Variable<>(p.getFunctionName() + "r", v.getRed()));
 				s.getVariables().add(new Variable<>(p.getFunctionName() + "g", v.getGreen()));
