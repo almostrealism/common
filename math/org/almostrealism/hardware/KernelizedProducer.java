@@ -17,6 +17,7 @@
 package org.almostrealism.hardware;
 
 import org.almostrealism.util.Producer;
+import org.jocl.CLException;
 
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -32,13 +33,32 @@ import java.util.stream.Stream;
  */
 public interface KernelizedProducer<T extends MemWrapper> extends Producer<T> {
 	default void kernelEvaluate(MemoryBank destination, MemoryBank args[]) {
+		String name = getClass().getSimpleName();
+		if (name == null || name.trim().length() <= 0) name = "anonymous";
+		System.out.println("KernelizedProducer: Evaluating " + name + " kernel...");
+
 		for (int i = 0; i < destination.getCount(); i++) {
-			final int fi = i;
-			destination.set(i,
-					evaluate(Stream.of(args)
-							.map(arg -> arg.get(fi))
-							.collect(Collectors.toList()).toArray()));
+			T r = null;
+
+			try {
+				final int fi = i;
+				Object o[] = Stream.of(args)
+						.map(arg -> arg.get(fi))
+						.collect(Collectors.toList()).toArray();
+
+				r = evaluate(o);
+				if (r == null) r = replaceNull(o);
+
+				destination.set(i, r);
+			} catch (CLException e) {
+				System.out.println("ERROR: i = " + i + " of " + destination.getCount() + ", r = " + r);
+				throw e;
+			}
 		}
+	}
+
+	default T replaceNull(Object args[]) {
+		throw new NullPointerException();
 	}
 
 	MemoryBank<T> createKernelDestination(int size);
