@@ -24,10 +24,11 @@ import java.io.ObjectOutput;
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.Triple;
-import org.almostrealism.color.computations.RGBProducer;
 import org.almostrealism.hardware.MemWrapper;
+import org.almostrealism.relation.NameProvider;
 import org.almostrealism.util.Defaults;
 import org.almostrealism.util.DynamicProducer;
+import org.almostrealism.util.DynamicRGBProducer;
 import org.almostrealism.util.Producer;
 import org.jocl.cl_mem;
 
@@ -36,7 +37,7 @@ import org.jocl.cl_mem;
  * An RGB object stores these channels as double values between 0.0 (no color) and
  * 1.0 (strongest color).
  */
-public class RGB implements RGBProducer, Triple, MemWrapper, Externalizable, Cloneable {
+public class RGB implements Triple, MemWrapper, Externalizable, Cloneable {
 	protected interface Data extends MemWrapper {
 		void set(int i, double r);
 		void add(int i, double r);
@@ -46,7 +47,6 @@ public class RGB implements RGBProducer, Triple, MemWrapper, Externalizable, Clo
 		double length();
 		void write(ObjectOutput out) throws IOException;
 		void read(ObjectInput in) throws IOException;
-		void setMem(double[] source);
 	}
 
 //	private static class Data48 implements Data {
@@ -159,7 +159,7 @@ public class RGB implements RGBProducer, Triple, MemWrapper, Externalizable, Clo
 	}
 
 	protected RGB(MemWrapper delegate, int delegateOffset) {
-
+		initColorModule(192, delegate, delegateOffset);
 	}
 
 	private void initColorModule(int model) {
@@ -420,25 +420,13 @@ public class RGB implements RGBProducer, Triple, MemWrapper, Externalizable, Clo
 	    this.data.scale(1, 1.0 / rgb.getGreen());
 	    this.data.scale(2, 1.0 / rgb.getBlue());
 	}
-	
-	/**
-	 * @return  this.
-	 */
-	public RGB evaluate(Object args[]) { return (RGB) this.clone(); }
-
-	@Override
-	public boolean isStatic() { return true; }
-
-	@Override
-	public void compact() { }
 
 	// @Override
-	// TODO
-	public Scope getScope(String prefix) {
+	public Scope getScope(NameProvider p) {
 		Scope<Variable<Double>> s = new Scope<>();
-		s.getVariables().add(new Variable<>(prefix + "r", getRed()));
-		s.getVariables().add(new Variable<>(prefix + "g", getGreen()));
-		s.getVariables().add(new Variable<>(prefix + "b", getBlue()));
+		s.getVariables().add(new Variable<>(p.getArgumentValueName(0, 0), getRed()));
+		s.getVariables().add(new Variable<>(p.getArgumentValueName(0, 1), getGreen()));
+		s.getVariables().add(new Variable<>(p.getArgumentValueName(0, 2), getBlue()));
 		return s;
 	}
 	
@@ -558,7 +546,7 @@ public class RGB implements RGBProducer, Triple, MemWrapper, Externalizable, Clo
 	/**
 	 * @see java.io.Externalizable#readExternal(java.io.ObjectInput)
 	 */
-	public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+	public void readExternal(ObjectInput in) throws IOException {
 		this.initColorModule(in.readInt());
 		this.data.read(in);
 	}
@@ -578,10 +566,16 @@ public class RGB implements RGBProducer, Triple, MemWrapper, Externalizable, Clo
 	public void setDelegate(MemWrapper m, int offset) { data.setDelegate(m, offset); }
 
 	@Override
+	public MemWrapper getDelegate() { return data.getDelegate(); }
+
+	@Override
+	public int getDelegateOffset() { return data.getDelegateOffset(); }
+
+	@Override
 	public void destroy() { data.destroy(); }
 
 	public static Producer<RGB> blank() {
-		return new DynamicProducer<>(args -> new RGB(defaultDepth, 0, 0, 0, false));
+		return new DynamicRGBProducer(args -> new RGB(defaultDepth, 0, 0, 0, false));
 	}
 
 	public static RGB gray(double value) { return new RGB(value, value, value); }
