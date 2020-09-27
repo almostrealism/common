@@ -18,6 +18,8 @@ package org.almostrealism.algebra;
 
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.hardware.PooledMem;
+import org.almostrealism.util.DynamicProducer;
+import org.almostrealism.util.DynamicScalarProducer;
 import org.almostrealism.util.Producer;
 
 public class Scalar extends Pair implements Comparable<Scalar> {
@@ -55,15 +57,7 @@ public class Scalar extends Pair implements Comparable<Scalar> {
 	public PooledMem getDefaultDelegate() { return ScalarPool.getLocal(); }
 
 	public static Producer<Scalar> blank() {
-		return new Producer<Scalar>() {
-			@Override
-			public Scalar evaluate(Object[] args) {
-				return new Scalar(false);
-			}
-
-			@Override
-			public void compact() { }
-		};
+		return new DynamicScalarProducer(args -> new Scalar(false));
 	}
 
 	public static Scalar sel(double a, double b, double c) {
