@@ -51,7 +51,7 @@ public class Variable<T> implements Nameable {
 	public Variable(String name, Class<T> type, Producer<T> producer) {
 		setName(name);
 		setType(type);
-		this.producer = producer;
+		setProducer(producer);
 	}
 
 	public Variable(String name, Method<T> generator) {
@@ -82,7 +82,7 @@ public class Variable<T> implements Nameable {
 		setName(name);
 		setType(type);
 		this.expression = () -> expression;
-		this.producer = producer;
+		setProducer(producer);
 	}
 
 	public Variable(String name, int arraySize) {
@@ -120,7 +120,7 @@ public class Variable<T> implements Nameable {
 		setName(name);
 		setType(type);
 		this.expression = expression;
-		this.producer = producer;
+		setProducer(producer);
 		setArraySize(arraySize);
 	}
 
