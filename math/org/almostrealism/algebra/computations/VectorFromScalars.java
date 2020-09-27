@@ -19,8 +19,10 @@ package org.almostrealism.algebra.computations;
 import io.almostrealism.code.Argument;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.algebra.VectorBank;
 import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
+import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.util.Producer;
 
 import java.util.ArrayList;
@@ -78,4 +80,7 @@ public class VectorFromScalars extends DynamicAcceleratedProducerAdapter<Vector>
 			removeDuplicateArguments();
 		}
 	}
+
+	@Override
+	public MemoryBank<Vector> createKernelDestination(int size) { return new VectorBank(size); }
 }
