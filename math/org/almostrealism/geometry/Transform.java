@@ -19,7 +19,9 @@ package org.almostrealism.geometry;
 import io.almostrealism.code.Argument;
 import org.almostrealism.algebra.TransformMatrix;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.algebra.VectorBank;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
+import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.util.Producer;
 
 import java.util.ArrayList;
@@ -66,6 +68,9 @@ public class Transform extends DynamicAcceleratedProducerAdapter<Vector> {
 			}
 		};
 	}
+
+	@Override
+	public MemoryBank<Vector> createKernelDestination(int size) { return new VectorBank(size); }
 
 	@Override
 	public void compact() {
