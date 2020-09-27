@@ -17,20 +17,19 @@
 package org.almostrealism.color.computations;
 
 import org.almostrealism.color.RGB;
+import org.almostrealism.color.RGBBank;
+import org.almostrealism.hardware.KernelizedProducer;
+import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.util.AcceleratedStaticRGBProducer;
 import org.almostrealism.util.Producer;
 
-public class RGBWhite implements Producer<RGB> {
+public class RGBWhite extends AcceleratedStaticRGBProducer {
 	private static RGBWhite local = new RGBWhite();
 
-	private RGB white;
-
-	public RGBWhite() { white = new RGB(1.0, 1.0, 1.0); }
+	public RGBWhite() { super(new RGB(1.0, 1.0, 1.0), RGB.blank()); }
 
 	public static RGBWhite getInstance() { return local; }
 
 	@Override
-	public RGB evaluate(Object[] args) { return (RGB) white.clone(); }
-
-	@Override
-	public void compact() { }
+	public MemoryBank<RGB> createKernelDestination(int size) { return new RGBBank(size); }
 }
