@@ -30,6 +30,8 @@ public class AcceleratedStaticProducer<T extends MemWrapper> extends DynamicAcce
 		this.value = value;
 	}
 
+	public T getValue() { return value; }
+
 	/**
 	 * Short circuit the evaluation of a CL program by simply returning
 	 * the value.
