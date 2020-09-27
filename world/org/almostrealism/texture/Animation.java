@@ -40,7 +40,7 @@ public abstract class Animation implements Layered<RealizableImage> {
 		return new Thread(() -> {
 			for (RealizableImage r : Animation.this) {
 				try {
-					ImageCanvas.encodeImageFile(r.evaluate(null), new File(name), ImageCanvas.JPEGEncoding);
+					ImageCanvas.encodeImageFile(r, new File(name), ImageCanvas.JPEGEncoding);
 				} catch (IOException e) {
 					e.printStackTrace();
 				}
