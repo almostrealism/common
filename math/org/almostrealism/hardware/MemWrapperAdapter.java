@@ -44,9 +44,6 @@ public abstract class MemWrapperAdapter implements MemWrapper {
 	public cl_mem getMem() { return delegateMem == null ? mem : delegateMem.getMem(); }
 
 	@Override
-	public int getOffset() { return delegateMem == null ? 0 : delegateMemOffset; }
-
-	@Override
 	public MemWrapper getDelegate() { return delegateMem; }
 
 	@Override
