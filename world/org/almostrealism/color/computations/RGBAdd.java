@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import org.almostrealism.color.RGB;
 import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.util.Producer;
 
+@Deprecated
 public class RGBAdd extends AcceleratedProducer<RGB> {
 	public RGBAdd(Producer<RGB> a, Producer<RGB> b) {
 		super("add", RGB.blank(), a, b);
@@ -27,6 +28,6 @@ public class RGBAdd extends AcceleratedProducer<RGB> {
 
 	@Override
 	public RGB replaceNull(int argIndex) {
-		return RGBBlack.getInstance().evaluate(null);
+		return RGBBlack.getInstance().evaluate();
 	}
 }
