@@ -50,14 +50,8 @@ public class RealizableImage implements Producer<RGB[][]> {
 		int w = (int) dim.getX();
 		int h = (int) dim.getY();
 		int size = w * h;
-		PairBank input = new PairBank(size);
+		PairBank input = generateKernelInput(x, y, w, h);
 		RGBBank output = new RGBBank(size);
-
-		for (int i = 0; i < w; i++) {
-			for (int j = 0; j < h; j++) {
-				input.set(j * w + i, x + i, h - 1 - j - y);
-			}
-		}
 
 		source.kernelEvaluate(output, new MemoryBank[] { input });
 
@@ -74,4 +68,17 @@ public class RealizableImage implements Producer<RGB[][]> {
 
 	@Override
 	public void compact() { source.compact(); }
+
+	public static PairBank generateKernelInput(int x, int y, int width, int height) {
+		int size = width * height;
+		PairBank input = new PairBank(size);
+
+		for (int i = 0; i < width; i++) {
+			for (int j = 0; j < height; j++) {
+				input.set(j * width + i, x + i, height - 1 - j - y);
+			}
+		}
+
+		return input;
+	}
 }
