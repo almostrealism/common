@@ -14,10 +14,8 @@
  * limitations under the License.
  */
 
-package org.almostrealism.graph;
+package org.almostrealism.heredity;
 
-public interface ProteinCache<T> {
-	public long addProtein(T p);
-	
-	public T getProtein(long index);
+public interface ChromosomeBreeder<T> {
+	Chromosome<T> combine(Chromosome<T> c1, Chromosome<T> c2);
 }

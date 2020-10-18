@@ -249,11 +249,11 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 
 			// Move clock forward until it reaches the total time elapsed
 //			while (clock.getTime() < microseconds) {
-//				clock.tick();
+//				clock.tick().run();
 //			}
 
 			if ((i + 1) % iterationsPerFrame == 0 || this.vdt > 0.0) {
-				if (this.listener != null) this.listener.tick();
+				if (this.listener != null) this.listener.tick().run();
 
 				try {
 					long time = System.currentTimeMillis();

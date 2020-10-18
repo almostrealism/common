@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package org.almostrealism.graph;
 
 import org.almostrealism.heredity.Factor;
+import org.almostrealism.util.Producer;
 
 public class FilteredCell<T> extends CellAdapter<T> {
 	private Factor<T> filter;
@@ -24,9 +25,9 @@ public class FilteredCell<T> extends CellAdapter<T> {
 	public FilteredCell(Factor<T> filter) { this.filter = filter; }
 	
 	protected void setFilter(Factor<T> filter) { this.filter = filter; }
-	
-	public void push(long index) {
-		long filtered = addProtein(filter.getResultant(getProtein(index)));
-		super.push(filtered);
+
+	@Override
+	public Runnable push(Producer<T> protein) {
+		return super.push(filter.getResultant(protein));
 	}
 }

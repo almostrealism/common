@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,8 +14,11 @@
  * limitations under the License.
  */
 
-package org.almostrealism.graph;
+package org.almostrealism.util;
 
-public interface ProteinReceivable<T> {
-	void setProteinCache(ProteinCache<T> p);
+import java.util.ArrayList;
+
+public class RunnableList extends ArrayList<Runnable> implements Runnable {
+	@Override
+	public void run() { forEach(Runnable::run); }
 }

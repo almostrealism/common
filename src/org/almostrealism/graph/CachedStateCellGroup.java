@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,14 +17,16 @@
 package org.almostrealism.graph;
 
 import org.almostrealism.time.Temporal;
+import org.almostrealism.util.RunnableList;
 
 import java.util.ArrayList;
 import java.util.Iterator;
 
 public class CachedStateCellGroup<T> extends ArrayList<CachedStateCell<T>> implements Temporal {
 	@Override
-	public void tick() {
-		Iterator<CachedStateCell<T>> itr = iterator();
-		while (itr.hasNext()) itr.next().tick();
+	public Runnable tick() {
+		RunnableList tick = new RunnableList();
+		stream().map(CachedStateCell::tick).forEach(tick::add);
+		return tick;
 	}
 }

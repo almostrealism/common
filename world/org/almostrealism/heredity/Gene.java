@@ -17,7 +17,7 @@
 package org.almostrealism.heredity;
 
 public interface Gene<T> {
-	public Factor<T> getFactor(int index);
+	Factor<T> getFactor(int index);
 	
-	public int length();
+	int length();
 }

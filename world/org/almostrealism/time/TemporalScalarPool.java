@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,10 +14,18 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.graph;
+package org.almostrealism.time;
 
-import org.almostrealism.graph.Cell;
+import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.MemoryPool;
 
-public interface CellAdjustment<T, R> {
-	public void adjust(Cell<T> toAdjust, R arg);
+public class TemporalScalarPool extends MemoryPool<TemporalScalar> {
+	private static final TemporalScalarPool local =
+			new TemporalScalarPool(32 * Hardware.getLocalHardware().getDefaultPoolSize());
+
+	protected TemporalScalarPool(int size) {
+		super(2, size);
+	}
+
+	public static TemporalScalarPool getLocal() { return local; }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,39 +19,42 @@ package org.almostrealism.audio;
 import java.util.ArrayList;
 import java.util.Iterator;
 
+import org.almostrealism.algebra.Scalar;
 import org.almostrealism.graph.CachedStateCell;
+import org.almostrealism.graph.ScalarCachedStateCell;
 import org.almostrealism.graph.Source;
 import org.almostrealism.graph.SummationCell;
 import org.almostrealism.time.Temporal;
+import org.almostrealism.util.RunnableList;
 
-public class Mixer extends ArrayList<Source<Long>> implements Temporal {
-	private AudioProteinCache cache;
+public class Mixer extends ArrayList<Source<Scalar>> implements Temporal {
 	private SummationCell sum;
 
-	private CachedStateCell<Long> channels[] = new CachedStateCell[24];
+	private ScalarCachedStateCell channels[] = new ScalarCachedStateCell[24];
 	
-	public Mixer(AudioProteinCache cache, SummationCell receptor) {
-		this.cache = cache;
+	public Mixer(SummationCell receptor) {
 		this.sum = receptor;
 
 		for (int i = 0; i < channels.length; i++) {
-			channels[i] = new CachedStateCell<>();
+			channels[i] = new ScalarCachedStateCell();
 		}
 	}
 
-	public CachedStateCell<Long> getChannel(int i) {
+	public ScalarCachedStateCell getChannel(int i) {
 		return channels[i];
 	}
 	
 	@Override
-	public void tick() {
-		for (Source<Long> s : this) {
-			sum.push(cache.addProtein(s.next()));
-		}
+	public Runnable tick() {
+		RunnableList tick = new RunnableList();
+		stream().map(s -> sum.push(s.next())).forEach(tick::add);
+
+		tick.add(() -> {
+			Iterator<Source<Scalar>> itr = iterator();
+			while (itr.hasNext()) if (itr.next().isDone()) itr.remove();
+		});
 		
-		Iterator<Source<Long>> itr = iterator();
-		while (itr.hasNext()) if (itr.next().isDone()) itr.remove();
-		
-		this.sum.tick();
+		tick.add(sum.tick());
+		return tick;
 	}
 }

@@ -14,21 +14,17 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.graph;
+package org.almostrealism.graph.computations;
 
+import org.almostrealism.algebra.Scalar;
+import org.almostrealism.graph.SummationCell;
+import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.util.Producer;
+import org.almostrealism.util.StaticProducer;
 
-public class AdjustmentCell<A, R> extends CellAdapter<R> {
-	private Adjustable<A> cell;
-	private Adjustment<A> adjust;
-	
-	public AdjustmentCell(Adjustable<A> cell, Adjustment<A> adjustment) {
-		this.cell = cell;
-		this.adjust = adjustment;
-	}
+public class SummationCellOperation extends AcceleratedOperation {
 
-	@Override
-	public Runnable push(Producer<R> protein) {
-		return () -> adjust.adjust(cell);
+	public SummationCellOperation(SummationCell cell, Producer<Scalar> protein) {
+		super("push", false, new StaticProducer<>(cell.getCachedValue()), protein);
 	}
 }

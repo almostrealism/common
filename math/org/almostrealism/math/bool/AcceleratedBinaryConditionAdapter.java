@@ -52,12 +52,12 @@ public abstract class AcceleratedBinaryConditionAdapter<T extends MemWrapper> ex
 											 Producer<Scalar> rightOperand,
 											 Producer<T> trueValue,
 											 Producer<T> falseValue) {
-		this(operator, memLength, blankValue.apply(memLength), leftOperand, rightOperand, trueValue, falseValue);
+		this(operator, memLength, (Producer<T>) blankValue.apply(memLength), leftOperand, rightOperand, trueValue, falseValue);
 	}
 
 	public AcceleratedBinaryConditionAdapter(String operator,
 											 int memLength,
-											 Producer<? extends MemWrapper> blankValue,
+											 Producer<T> blankValue,
 											 Producer<Scalar> leftOperand,
 											 Producer<Scalar> rightOperand,
 											 Producer<T> trueValue,

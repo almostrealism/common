@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,6 @@
 
 package org.almostrealism.graph;
 
-public interface Transmitter<T> extends ProteinReceivable<T> {
-	public void setReceptor(Receptor<T> r);
+public interface Transmitter<T> {
+	void setReceptor(Receptor<T> r);
 }

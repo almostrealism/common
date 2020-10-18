@@ -23,17 +23,17 @@ public class GreaterThan<T extends MemWrapper> extends AcceleratedBinaryConditio
 					   Producer<Scalar> rightOperand,
 					   Producer<T> trueValue,
 					   Producer<T> falseValue) {
-		this(memLength, blankValue.apply(memLength), leftOperand, rightOperand, trueValue, falseValue, false);
+		this(memLength, (Producer<T>) blankValue.apply(memLength), leftOperand, rightOperand, trueValue, falseValue, false);
 	}
 
 	public GreaterThan(int memLength,
 					   Producer<Scalar> leftOperand,
 					   Producer<Scalar> rightOperand) {
-		this(memLength, (Producer) null, leftOperand, rightOperand, null, null, false);
+		this(memLength, null, leftOperand, rightOperand, null, null, false);
 	}
 
 	public GreaterThan(int memLength,
-					   Producer<? extends MemWrapper> blankValue,
+					   Producer<T> blankValue,
 					   Producer<Scalar> leftOperand,
 					   Producer<Scalar> rightOperand,
 					   Producer<T> trueValue,
@@ -41,7 +41,7 @@ public class GreaterThan<T extends MemWrapper> extends AcceleratedBinaryConditio
 		this(memLength, blankValue, leftOperand, rightOperand, trueValue, falseValue, false);
 	}
 	public GreaterThan(int memLength,
-					   Producer<? extends MemWrapper> blankValue,
+					   Producer<T> blankValue,
 					   Producer<Scalar> leftOperand,
 					   Producer<Scalar> rightOperand,
 					   Producer<T> trueValue,

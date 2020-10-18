@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,6 +27,13 @@ public class ArrayListGene<T> extends ArrayList<Factor<T>> implements Gene<T> {
 		}
 	}
 
+	public ArrayListGene(Factor<T>... factors) {
+		for (Factor<T> f : factors) add(f);
+	}
+
+	@Override
 	public Factor<T> getFactor(int index) { return get(index); }
+
+	@Override
 	public int length() { return size(); }
 }

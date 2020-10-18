@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,8 @@
 
 package org.almostrealism.heredity;
 
+import org.almostrealism.util.Producer;
+
 public class IdentityFactor<T> implements Factor<T> {
-	public T getResultant(T value) { return value; }
+	public Producer<T> getResultant(Producer<T> value) { return value; }
 }

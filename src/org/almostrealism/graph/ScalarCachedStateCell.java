@@ -16,19 +16,20 @@
 
 package org.almostrealism.graph;
 
-import org.almostrealism.util.Producer;
+import org.almostrealism.algebra.Scalar;
 
-public class AdjustmentCell<A, R> extends CellAdapter<R> {
-	private Adjustable<A> cell;
-	private Adjustment<A> adjust;
-	
-	public AdjustmentCell(Adjustable<A> cell, Adjustment<A> adjustment) {
-		this.cell = cell;
-		this.adjust = adjustment;
+public class ScalarCachedStateCell extends CachedStateCell<Scalar> {
+	public ScalarCachedStateCell() {
+		super(Scalar.blank());
 	}
 
 	@Override
-	public Runnable push(Producer<R> protein) {
-		return () -> adjust.adjust(cell);
+	protected void assign(Scalar out, Scalar in) {
+		out.setValue(in.getValue());
+	}
+
+	@Override
+	public void reset(Scalar out) {
+		out.setMem(new double[] { 0.0, 1.0 });
 	}
 }

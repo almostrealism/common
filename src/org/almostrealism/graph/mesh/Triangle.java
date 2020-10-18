@@ -398,8 +398,9 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 									new AcceleratedProducer<>(
 											"triangleIntersectAt",
 											false,
+											Scalar.blank(),
 											new Producer[] {
-												Scalar.blank(), ray
+												ray
 											},
 											new Object[] { data.getABC(), data.getDEF(), data.getJKL() }));
 		} else {

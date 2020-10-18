@@ -1,5 +1,6 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
+ *
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,39 +17,43 @@
 
 package org.almostrealism.audio;
 
-import org.almostrealism.graph.ProteinCache;
+import org.almostrealism.algebra.Scalar;
 import org.almostrealism.graph.Receptor;
+import org.almostrealism.util.Producer;
 
-public class AudioMeter implements Receptor<Long> {
-	private ProteinCache<Long> cache;
-	private Receptor<Long> forwarding;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.Consumer;
+
+public class AudioMeter implements Receptor<Scalar> {
+	private Receptor<Scalar> forwarding;
 	private int freq = 1;
 	private int count = 0;
 	
 	private long clipCount;
-	private long clipMax = Long.MAX_VALUE / 2;
-	private long clipMin = Long.MIN_VALUE / 2;
+	private double clipMax = 1.0;
+	private double clipMin = -1.0;
 	
-	private long silenceValue = 0;
+	private double silenceValue = 0;
 	private long silenceDuration;
 	
 	private boolean outEnabled = false;
+
+	private List<Consumer<Scalar>> listeners;
 	
-	public AudioMeter(ProteinCache<Long> cache) { setProteinCache(cache); }
+	public AudioMeter() {
+		listeners = new ArrayList<>();
+	}
 	
 	public void setTextOutputEnabled(boolean enabled) { this.outEnabled = enabled; }
 	
 	public void setReportingFrequency(int msec) {
-		this.freq = (int) ((msec / 1000d) * AudioProteinCache.sampleRate);
+		this.freq = (int) ((msec / 1000d) * OutputLine.sampleRate);
 	}
 	
-	public void setProteinCache(ProteinCache<Long> p) { this.cache = p; }
+	public void setForwarding(Receptor<Scalar> r) { this.forwarding = r; }
 	
-	public ProteinCache<Long> getProteinCache() { return this.cache; }
-	
-	public void setForwarding(Receptor<Long> r) { this.forwarding = r; }
-	
-	public void setSilenceValue(long value) { this.silenceValue = value; }
+	public void setSilenceValue(double value) { this.silenceValue = value; }
 	
 	public long getSilenceDuration() { return this.silenceDuration; }
 	
@@ -57,23 +62,40 @@ public class AudioMeter implements Receptor<Long> {
 	public void setClipMinValue(long value) { this.clipMin = value; }
 	
 	public long getClipCount() { return clipCount; }
-	
-	public void push(long l) {
-		if (outEnabled) {
-			if (count == 0) {
-				System.out.println(cache.getProtein(l));
-			} else if (cache.getProtein(l) != 0) {
-				System.out.println(cache.getProtein(l) + " [Frame " + count + " of " + freq + "]");
+
+	public void addListener(Consumer<Scalar> listener) {
+		listeners.add(listener);
+	}
+
+	public void removeListener(Consumer<Scalar> listener) {
+		listeners.remove(listener);
+	}
+
+	@Override
+	public Runnable push(Producer<Scalar> protein) {
+		Runnable f = forwarding == null ? null : forwarding.push(protein);
+
+		return () -> {
+			Scalar p = protein.evaluate();
+
+			if (outEnabled) {
+				if (count == 0) {
+					System.out.println(p);
+				} else if (p.getValue() != 0) {
+					System.out.println(p + " [Frame " + count + " of " + freq + "]");
+				}
 			}
-		}
-		
-		count++;
-		count = count % freq;
-		
-		if (cache.getProtein(l) >= clipMax || cache.getProtein(l) <= clipMin) clipCount++;
-		if (cache.getProtein(l) > silenceValue) silenceDuration = 0;
-		if (cache.getProtein(l) <= silenceValue) silenceDuration++;
-		
-		if (forwarding != null) forwarding.push(l);
+
+			count++;
+			count = count % freq;
+
+			if (p.getValue() >= clipMax || p.getValue() <= clipMin) clipCount++;
+			if (p.getValue() > silenceValue) silenceDuration = 0;
+			if (p.getValue() <= silenceValue) silenceDuration++;
+
+			if (f != null) f.run();
+
+			listeners.forEach(listener -> listener.accept(p));
+		};
 	}
 }

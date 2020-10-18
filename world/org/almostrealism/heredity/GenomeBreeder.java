@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,6 +16,6 @@
 
 package org.almostrealism.heredity;
 
-public interface Breeder<T> {
-	public Chromosome<T> combine(Chromosome<T> c1, Chromosome<T> c2);
+public interface GenomeBreeder {
+	Genome combine(Genome g1, Genome g2);
 }

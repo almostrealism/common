@@ -16,19 +16,6 @@
 
 package org.almostrealism.graph;
 
-import org.almostrealism.util.Producer;
-
-public class AdjustmentCell<A, R> extends CellAdapter<R> {
-	private Adjustable<A> cell;
-	private Adjustment<A> adjust;
-	
-	public AdjustmentCell(Adjustable<A> cell, Adjustment<A> adjustment) {
-		this.cell = cell;
-		this.adjust = adjustment;
-	}
-
-	@Override
-	public Runnable push(Producer<R> protein) {
-		return () -> adjust.adjust(cell);
-	}
+public interface Adjustable<T> {
+	void setAdjustment(T value);
 }

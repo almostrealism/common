@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,22 +18,25 @@ package org.almostrealism.graph;
 
 import java.util.Random;
 
-import org.almostrealism.graph.Cell;
+import org.almostrealism.heredity.Gene;
+import org.almostrealism.util.StaticProducer;
 
-public class ProbabilityDensityCellFactory<T> implements CellFactory<T> {
+public class ProbabilityDensityCellFactory<T> implements CellFactory<Double, T> {
 	private Random rand = new Random();
 	
-	private CellFactory<T> choices[];
+	private CellFactory<Double, T> choices[];
 	private double bias[];
 	private double jitter;
+	private int factorIndex;
 	
-	public ProbabilityDensityCellFactory(CellFactory<T> choices[]) {
-		this(choices, null);
+	public ProbabilityDensityCellFactory(CellFactory<Double, T> choices[], int factorIndex) {
+		this(choices, factorIndex, null);
 	}
 	
-	public ProbabilityDensityCellFactory(CellFactory<T> choices[], double biasFactors[]) {
+	public ProbabilityDensityCellFactory(CellFactory<Double, T> choices[], int factorIndex, double biasFactors[]) {
 		this.choices = choices;
 		this.bias = biasFactors;
+		this.factorIndex = factorIndex;
 		
 		if (this.bias == null) {
 			this.bias = new double[choices.length];
@@ -42,8 +45,11 @@ public class ProbabilityDensityCellFactory<T> implements CellFactory<T> {
 	}
 	
 	public void setJitter(double jitterIntensity) { this.jitter = jitterIntensity; }
-	
-	public Cell<T> generateCell(double arg) {
+
+	@Override
+	public Cell<T> generateCell(Gene<Double> g) {
+		double arg = g.getFactor(factorIndex).getResultant(new StaticProducer<>(Double.valueOf(1.0))).evaluate().doubleValue();
+
 		// Pick a point in N-Space, starting
 		// with the bias values initially
 		double random[] = generateRandoms(getBias(arg), 1.0);
@@ -77,7 +83,8 @@ public class ProbabilityDensityCellFactory<T> implements CellFactory<T> {
 		// randomly selected point. This distance is passed as an
 		// argument to the generateCell method, so that density
 		// cell factories can be daisy chained if desired.
-		return choices[smallestIndex].generateCell(smallestValue);
+		// return choices[smallestIndex].generateCell(smallestValue);
+		return choices[smallestIndex].generateCell(g);
 	}
 	
 	private double[] getBias(double centerOfBell) {

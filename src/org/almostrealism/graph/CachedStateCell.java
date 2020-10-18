@@ -18,46 +18,60 @@ package org.almostrealism.graph;
 
 import org.almostrealism.heredity.Factor;
 import org.almostrealism.time.Temporal;
+import org.almostrealism.util.Producer;
+import org.almostrealism.util.StaticProducer;
 
-public class CachedStateCell<T> extends FilteredCell<T> implements Factor<T>, Source<T>, Temporal {
+public abstract class CachedStateCell<T> extends FilteredCell<T> implements Factor<T>, Source<T>, Temporal {
 	public static boolean enableWarning = true;
 	
-	private T cachedValue;
-	private T outValue;
-	
-	public CachedStateCell() {
-		this(null);
-	}
+	private final T cachedValue;
+	private final T outValue;
 
-	public CachedStateCell(ProteinCache<T> proteinCache) {
+	public CachedStateCell(Producer<T> blank) {
 		super(null);
+		cachedValue = blank.evaluate();
+		outValue = blank.evaluate();
 		setFilter(this);
-		setProteinCache(proteinCache);
 	}
 	
-	public void setCachedValue(T v) { this.cachedValue = v; }
+	public void setCachedValue(T v) { assign(cachedValue, v); }
 
-	protected T getCachedValue() { return cachedValue; }
-
-	@Override
-	public T getResultant(T value) { return outValue; }
+	public T getCachedValue() { return cachedValue; }
 
 	@Override
-	public T next() { return getResultant(null); }
+	public Producer<T> getResultant(Producer<T> value) {
+		return new StaticProducer<>(outValue);
+	}
+
+	@Override
+	public Producer<T> next() { return getResultant(null); }
 
 	@Override
 	public boolean isDone() { return false; }
 
 	@Override
-	public void push(long index) {
-		if (cachedValue == null) {
-			cachedValue = getProtein(index);
-			System.out.println("Caching " + cachedValue);
-		} else if (enableWarning) {
-			System.out.println("Warning: Cached cell is pushed when full");
-		}
+	public Runnable push(Producer<T> protein) {
+		return () -> {
+			if (cachedValue == null) {
+				assign(cachedValue, protein.evaluate());
+			} else if (enableWarning) {
+				System.out.println("Warning: Cached cell is pushed when full");
+			}
+		};
 	}
 
+	protected abstract void assign(T out, T in);
+
+	protected abstract void reset(T out);
+
 	@Override
-	public void tick() { outValue = cachedValue; cachedValue = null; super.push(0); }
+	public Runnable tick() {
+		Runnable push = super.push(null);
+
+		return () -> {
+			assign(outValue, cachedValue);
+			reset(cachedValue);
+			push.run();
+		};
+	}
 }

@@ -16,23 +16,21 @@
 
 package org.almostrealism.heredity;
 
-import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.computations.ScalarProduct;
 import org.almostrealism.util.Defaults;
+import org.almostrealism.util.DynamicProducer;
 import org.almostrealism.util.Producer;
-import org.almostrealism.util.StaticProducer;
 
 // TODO  Rename
-public class LongScaleFactor implements ScaleFactor<Scalar> {
+public class NewLongScaleFactor implements ScaleFactor<Long> {
 	private double scale;
-	
-	public LongScaleFactor() { }
-	
-	public LongScaleFactor(double scale) { this.scale = scale; }
+
+	public NewLongScaleFactor() { }
+
+	public NewLongScaleFactor(double scale) { this.scale = scale; }
 
 	@Override
-	public Producer<Scalar> getResultant(Producer<Scalar> value) {
-		return new ScalarProduct(value, StaticProducer.of(new Scalar(scale)));
+	public Producer<Long> getResultant(Producer<Long> value) {
+		return new DynamicProducer<>(args -> (long) (value.evaluate(args) * scale));
 	}
 
 	@Override

@@ -120,10 +120,11 @@ public class Clock implements Temporal {
 	 * Increments the time of this clock by one tick and notifies all photon fields
 	 * of the tick event.
 	 */
-	public void tick() {
-		this.ticks++;
-		
-		Iterator itr = this.fields.iterator();
-		while (itr.hasNext()) ((PhotonField)itr.next()).tick(this.interval);
+	@Override
+	public Runnable tick() {
+		return () -> {
+			ticks++;
+			fields.forEach(f -> f.tick(interval));
+		};
 	}
 }

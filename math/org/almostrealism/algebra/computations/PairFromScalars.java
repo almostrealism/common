@@ -33,7 +33,7 @@ public class PairFromScalars extends DynamicAcceleratedProducerAdapter<Pair> imp
 	private String value[];
 
 	public PairFromScalars(Producer<Scalar> x, Producer<Scalar> y) {
-		super(2, Vector.blank(), x, y);
+		super(2, Pair.empty(), x, y);
 	}
 
 	@Override

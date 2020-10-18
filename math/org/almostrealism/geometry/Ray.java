@@ -110,8 +110,8 @@ public class Ray extends MemWrapperAdapter implements Cloneable {
 	 */
 	public Producer<Scalar> oDoto() {
 		// TODO  Cache
-		return new AcceleratedProducer<>("rayODotO", false,
-										new Producer[] { Scalar.blank() },
+		return new AcceleratedProducer<>("rayODotO", false, Scalar.blank(),
+										new Producer[0],
 										new Object[] { this });
 	}
 	
@@ -120,8 +120,8 @@ public class Ray extends MemWrapperAdapter implements Cloneable {
 	 */
 	public Producer<Scalar> dDotd() {
 		// TODO  Cache
-		return new AcceleratedProducer<>("rayDDotD", false,
-										new Producer[] { Scalar.blank() },
+		return new AcceleratedProducer<>("rayDDotD", false, Scalar.blank(),
+										new Producer[0],
 										new Object[] { this });
 	}
 	
@@ -130,8 +130,8 @@ public class Ray extends MemWrapperAdapter implements Cloneable {
 	 */
 	public Producer<Scalar> oDotd() {
 		// TODO  Cache
-		return new AcceleratedProducer<>("rayODotD", false,
-										new Producer[] { Scalar.blank() },
+		return new AcceleratedProducer<>("rayODotD", false, Scalar.blank(),
+										new Producer[0],
 										new Object[] { this });
 	}
 	

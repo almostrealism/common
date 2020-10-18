@@ -28,16 +28,16 @@ import java.util.function.Function;
 public abstract class DynamicAcceleratedProducer<T extends MemWrapper> extends AcceleratedComputation<T> {
 	private boolean enableComputationEncoding;
 
-	public DynamicAcceleratedProducer(Producer<?>... inputArgs) {
-		super(inputArgs);
+	public DynamicAcceleratedProducer(Producer<T> result, Producer<?>... inputArgs) {
+		super(result, inputArgs);
 	}
 
-	public DynamicAcceleratedProducer(Producer<?>[] inputArgs, Object[] additionalArguments) {
-		super(inputArgs, additionalArguments);
+	public DynamicAcceleratedProducer(Producer<T> result, Producer<?>[] inputArgs, Object[] additionalArguments) {
+		super(result, inputArgs, additionalArguments);
 	}
 
-	public DynamicAcceleratedProducer(boolean kernel, Producer<?>[] inputArgs, Object[] additionalArguments) {
-		super(kernel, inputArgs, additionalArguments);
+	public DynamicAcceleratedProducer(boolean kernel, Producer<T> result, Producer<?>[] inputArgs, Object[] additionalArguments) {
+		super(kernel, result, inputArgs, additionalArguments);
 	}
 
 	public boolean isEnableComputationEncoding() {

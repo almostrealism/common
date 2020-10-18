@@ -23,11 +23,11 @@ public class LessThan<T extends MemWrapper> extends AcceleratedBinaryConditionAd
 					   Producer<Scalar> rightOperand,
 					   Producer<T> trueValue,
 					   Producer<T> falseValue) {
-		this(memLength, blankValue.apply(memLength), leftOperand, rightOperand, trueValue, falseValue, false);
+		this(memLength, (Producer<T>) blankValue.apply(memLength), leftOperand, rightOperand, trueValue, falseValue, false);
 	}
 
 	public LessThan(int memLength,
-					Producer<? extends MemWrapper> blankValue,
+					Producer<T> blankValue,
 					Producer<Scalar> leftOperand,
 					Producer<Scalar> rightOperand,
 					Producer<T> trueValue,

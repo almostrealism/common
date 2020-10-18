@@ -16,7 +16,6 @@
 
 package org.almostrealism.util;
 
-import io.almostrealism.code.Argument;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.hardware.MemWrapper;
@@ -33,10 +32,10 @@ public class AcceleratedPassThroughProducer<T extends MemWrapper>
 	}
 
 	public AcceleratedPassThroughProducer(int memLength, int argIndex, int kernelIndex) {
-		super(memLength);
+		super(memLength, null);
 		this.argIndex = argIndex;
 		this.kernelIndex = kernelIndex;
-		inputProducers = arguments(Scalar.blank(), this);
+		inputProducers = arguments(null, this);
 		initArgumentNames();
 	}
 

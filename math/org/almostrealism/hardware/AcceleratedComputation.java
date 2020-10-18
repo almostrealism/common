@@ -42,18 +42,18 @@ public abstract class AcceleratedComputation<T extends MemWrapper> extends Accel
 	private List<Producer> variableOrder;
 	private List<String> variableNames;
 
-	public AcceleratedComputation(Producer<?>... inputArgs) {
-		super(null, true, inputArgs);
+	public AcceleratedComputation(Producer<T> result, Producer<?>... inputArgs) {
+		super(null, true, result, inputArgs);
 		init();
 	}
 
-	public AcceleratedComputation(Producer<?>[] inputArgs, Object[] additionalArguments) {
-		super(null, true, inputArgs, additionalArguments);
+	public AcceleratedComputation(Producer<T> result, Producer<?>[] inputArgs, Object[] additionalArguments) {
+		super(null, true, result, inputArgs, additionalArguments);
 		init();
 	}
 
-	public AcceleratedComputation(boolean kernel, Producer<?>[] inputArgs, Object[] additionalArguments) {
-		super(null, kernel, inputArgs, additionalArguments);
+	public AcceleratedComputation(boolean kernel, Producer<T> result, Producer<?>[] inputArgs, Object[] additionalArguments) {
+		super(null, kernel, result, inputArgs, additionalArguments);
 		init();
 	}
 

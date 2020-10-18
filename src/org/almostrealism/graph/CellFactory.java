@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,8 +16,8 @@
 
 package org.almostrealism.graph;
 
-import org.almostrealism.graph.Cell;
+import org.almostrealism.heredity.Gene;
 
-public interface CellFactory<T> {
-	public Cell<T> generateCell(double arg);
+public interface CellFactory<G, T> {
+	Cell<T> generateCell(Gene<G> g);
 }

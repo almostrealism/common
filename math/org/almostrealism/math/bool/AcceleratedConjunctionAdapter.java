@@ -47,11 +47,11 @@ public class AcceleratedConjunctionAdapter<T extends MemWrapper> extends Acceler
 										 	Function<Integer, Producer<? extends MemWrapper>> blankValue,
 										 	Producer<T> trueValue, Producer<T> falseValue,
 										 	AcceleratedConditionalStatement<T>... conjuncts) {
-		this(memLength, blankValue.apply(memLength), trueValue, falseValue, conjuncts);
+		this(memLength, (Producer<T>) blankValue.apply(memLength), trueValue, falseValue, conjuncts);
 	}
 
 	public AcceleratedConjunctionAdapter(int memLength,
-										 	Producer<? extends MemWrapper> blankValue,
+										 	Producer<T> blankValue,
 										 	Producer<T> trueValue, Producer<T> falseValue,
 										 	AcceleratedConditionalStatement<T>... conjuncts) {
 		super(blankValue);

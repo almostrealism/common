@@ -36,7 +36,7 @@ public class Transform extends DynamicAcceleratedProducerAdapter<Vector> {
 	private String value[];
 
 	public Transform(TransformMatrix t, Producer<Vector> v, boolean includeTranslation) {
-		super(3, new Producer[]{ Vector.blank(), v }, new Object[]{ t });
+		super(3, Vector.blank(), new Producer[]{ v }, new Object[]{ t });
 		this.includeTranslation = includeTranslation;
 	}
 

@@ -16,18 +16,28 @@
 
 package org.almostrealism.heredity;
 
-public class DoubleScaleFactor implements Factor<Double> {
+import org.almostrealism.util.Defaults;
+import org.almostrealism.util.DynamicProducer;
+import org.almostrealism.util.Producer;
+
+public class DoubleScaleFactor implements ScaleFactor<Double> {
 	private double scale;
 	
 	public DoubleScaleFactor() { }
 	
 	public DoubleScaleFactor(double scale) { this.scale = scale; }
-	
-	public Double getResultant(Double value) {
-		return value * scale;
+
+	@Override
+	public Producer<Double> getResultant(Producer<Double> value) {
+		return new DynamicProducer<>(args -> value.evaluate(args) * scale);
 	}
-	
+
+	@Override
 	public void setScale(double s) { this.scale = s; }
-	
+
+	@Override
 	public double getScale() { return scale; }
+
+	@Override
+	public String toString() { return Defaults.displayFormat.format(scale); }
 }

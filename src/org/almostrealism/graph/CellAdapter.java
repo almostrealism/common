@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,8 +16,10 @@
 
 package org.almostrealism.graph;
 
+import org.almostrealism.util.Producer;
+import org.almostrealism.util.RunnableList;
+
 public abstract class CellAdapter<T> implements Cell<T> {
-	private ProteinCache<T> o;
 	private Receptor<T> r;
 	private Receptor<T> meter;
 	
@@ -31,23 +33,16 @@ public abstract class CellAdapter<T> implements Cell<T> {
 	public void setReceptor(Receptor<T> r) { this.r = r; }
 	
 	public Receptor<T> getReceptor() { return this.r; }
-
-	@Override
-	public void setProteinCache(ProteinCache<T> p) { this.o = p; }
-	
-	public long addProtein(T p) { return o.addProtein(p); }
-	
-	public T getProtein(long index) { return o.getProtein(index); }
 	
 	public void setMeter(Receptor<T> m) { this.meter = m; }
-
-	protected void pushToMeter(long proteinIndex) { this.meter.push(proteinIndex); }
 	
 	/** Push to the {@link Receptor}. */
 	@Override
-	public void push(long proteinIndex) {
-		if (meter != null) meter.push(proteinIndex);
-		if (r != null) r.push(proteinIndex);
+	public Runnable push(Producer<T> protein) {
+		RunnableList push = new RunnableList();
+		if (meter != null) push.add(meter.push(protein));
+		if (r != null) push.add(r.push(protein));
+		return push;
 	}
 
 	@Override

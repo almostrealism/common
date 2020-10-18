@@ -36,6 +36,6 @@ public class RayPointAt extends VectorSum {
 			return null;
 		}
 
-		return super.handleNull(argIndex);
+		return (Vector) super.handleNull(argIndex);
 	}
 }

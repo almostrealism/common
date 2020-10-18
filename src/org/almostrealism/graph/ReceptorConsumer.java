@@ -18,17 +18,19 @@ package org.almostrealism.graph;
 
 import org.almostrealism.util.Producer;
 
-public class AdjustmentCell<A, R> extends CellAdapter<R> {
-	private Adjustable<A> cell;
-	private Adjustment<A> adjust;
-	
-	public AdjustmentCell(Adjustable<A> cell, Adjustment<A> adjustment) {
-		this.cell = cell;
-		this.adjust = adjustment;
+import java.util.function.Consumer;
+
+public class ReceptorConsumer<T> implements Receptor<T> {
+	private Consumer<T> consumer;
+
+	public ReceptorConsumer(Consumer<T> c) {
+		this.consumer = c;
 	}
 
 	@Override
-	public Runnable push(Producer<R> protein) {
-		return () -> adjust.adjust(cell);
+	public Runnable push(Producer<T> protein) {
+		return () -> consumer.accept(protein.evaluate());
 	}
+
+	protected void setConsumer(Consumer<T> c) { this.consumer = c; }
 }

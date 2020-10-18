@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,7 +16,11 @@
 
 package org.almostrealism.audio;
 
+import org.almostrealism.algebra.Scalar;
+
 public interface OutputLine {
+	int sampleRate = 24 * 1024; // 44100;
+
 	/**
 	 * Write the specified bytes. Using this method, the caller must
 	 * be aware of the number of bytes in a sample to write a valid
@@ -25,8 +29,8 @@ public interface OutputLine {
 	void write(byte b[]);
 
 	/**
-	 * Write one sample, coercing the long value into whatever
+	 * Write one sample, coercing the {@link Scalar} value into whatever
 	 * necessary to get one sample worth of bytes.
 	 */
-	void write(long sample);
+	void write(Scalar sample);
 }

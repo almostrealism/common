@@ -42,7 +42,7 @@ public class AcceleratedRankedChoiceProducer<T extends MemWrapper> extends Dynam
 	public AcceleratedRankedChoiceProducer(int memLength, Producer<T> blank, IntFunction<MemoryBank<T>> forKernel,
 										   List<ProducerWithRank<T>> values, Producer<T> defaultValue,
 										   double e, Supplier<T> onNull) {
-		super(generateArgs(blank, values, defaultValue));
+		super(blank, generateArgs(values, defaultValue));
 		this.memLength = memLength;
 		this.forKernel = forKernel;
 		this.valueCount = values.size();
@@ -284,15 +284,14 @@ public class AcceleratedRankedChoiceProducer<T extends MemWrapper> extends Dynam
 
 	@Override
 	protected T handleNull(int argIndex) {
-		return onNull == null ? super.handleNull(argIndex) : onNull.get();
+		return onNull == null ? (T) super.handleNull(argIndex) : onNull.get();
 	}
 
 	@Override
 	public MemoryBank<T> createKernelDestination(int size) { return forKernel.apply(size); }
 
-	private static <T> Producer[] generateArgs(Producer<T> blank, List<ProducerWithRank<T>> values, Producer<T> defaultValue) {
+	private static <T> Producer[] generateArgs(List<ProducerWithRank<T>> values, Producer<T> defaultValue) {
 		List<Producer> args = new ArrayList<>();
-		args.add(blank);
 		values.stream().map(ProducerWithRank::getRank).forEach(args::add);
 		values.stream().map(ProducerWithRank::getProducer).forEach(args::add);
 		args.add(defaultValue);

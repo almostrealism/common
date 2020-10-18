@@ -20,12 +20,15 @@ import org.almostrealism.util.Factory;
 import org.almostrealism.util.Producer;
 import org.jocl.*;
 
+import java.util.concurrent.Callable;
+import java.util.function.Consumer;
+
 /**
  * {@link HardwareOperator}s are intended to be used with {@link ThreadLocal}.
  *
  * @param <T> Return type
  */
-public class HardwareOperator<T extends MemWrapper> implements Producer<T>, Factory<cl_kernel> {
+public class HardwareOperator<T extends MemWrapper> implements Consumer<Object[]>, Factory<cl_kernel> {
 	private static Pointer zero = Pointer.to(new int[]{0});
 
 	private cl_program prog;
@@ -76,7 +79,7 @@ public class HardwareOperator<T extends MemWrapper> implements Producer<T>, Fact
 	 * {@link HardwareOperator} with a {@link ThreadLocal}.
 	 */
 	@Override
-	public synchronized T evaluate(Object[] args) {
+	public synchronized void accept(Object[] args) {
 		if (kernel == null) kernel = construct();
 
 		int index = 0;
@@ -133,15 +136,10 @@ public class HardwareOperator<T extends MemWrapper> implements Producer<T>, Fact
 			CL.clEnqueueNDRangeKernel(Hardware.getLocalHardware().getQueue(), kernel, 1,
 					new long[] { globalWorkOffset }, new long[] { globalWorkSize },
 					null, 0, null, null);
-
-			return (T) args[0];
 		} catch (CLException e) {
 			throw new RuntimeException(e.getMessage() + " for function " + name +
 							" (index = " + index + " argCount = " + argCount + ")", e);
 		}
 //		}
 	}
-
-	@Override
-	public void compact() { }
 }

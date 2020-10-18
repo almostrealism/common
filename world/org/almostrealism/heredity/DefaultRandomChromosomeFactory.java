@@ -44,7 +44,7 @@ public class DefaultRandomChromosomeFactory implements ChromosomeFactory<Long> {
 			ArrayListGene<Long> g = new ArrayListGene<Long>();
 			
 			for (int j = 0; j < factors; j++) {
-				g.add(new LongScaleFactor(min + StrictMath.random() * arg * (max - min)));
+				g.add(new NewLongScaleFactor(min + StrictMath.random() * arg * (max - min)));
 			}
 			
 			c.add(g);

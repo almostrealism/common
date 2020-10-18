@@ -23,5 +23,5 @@ package org.almostrealism.time;
  * @author  Michael Murray
  */
 public interface Temporal {
-	void tick();
+	Runnable tick();
 }

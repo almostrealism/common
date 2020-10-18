@@ -16,8 +16,8 @@
 
 package org.almostrealism.heredity;
 
-public interface Chromosome<T> extends Breedable {
-	public Gene<T> getGene(int index);
+public interface Chromosome<T> {
+	Gene<T> getGene(int index);
 	
-	public int length();
+	int length();
 }

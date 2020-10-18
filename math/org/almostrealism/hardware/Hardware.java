@@ -33,11 +33,12 @@ public final class Hardware {
 	static {
 		boolean gpu = "gpu".equalsIgnoreCase(System.getenv("AR_HARDWARE_PLATFORM")) ||
 				"gpu".equalsIgnoreCase(System.getProperty("AR_HARDWARE_PLATFORM"));
-		local = new Hardware(false);
 
 		String memScale = System.getProperty("AR_HARDWARE_MEMORY_SCALE");
 		if (memScale == null) memScale = System.getenv("AR_HARDWARE_MEMORY_SCALE");
 		MEMORY_SCALE = memScale == null ? 4 : Integer.parseInt(memScale);
+
+		local = new Hardware(false);
 	}
 
 	private final boolean enableGpu;
@@ -79,6 +80,9 @@ public final class Hardware {
 		} else {
 			System.out.println("Initializing Hardware...");
 		}
+
+		System.out.println("Hardware[" + name + "]: Max Off Heap RAM is " +
+						(memoryMax / 1000000) + " Megabytes");
 
 		int numPlatformsArray[] = new int[1];
 		CL.clGetPlatformIDs(0, null, numPlatformsArray);

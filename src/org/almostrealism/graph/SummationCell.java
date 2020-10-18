@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,25 +16,15 @@
 
 package org.almostrealism.graph;
 
-public class SummationCell extends CachedStateCell<Long> {
-	public SummationCell() {
-		this(null);
-	}
+import org.almostrealism.algebra.Scalar;
+import org.almostrealism.algebra.computations.ScalarSum;
+import org.almostrealism.graph.computations.SummationCellOperation;
+import org.almostrealism.util.Producer;
+import org.almostrealism.util.StaticProducer;
 
-	public SummationCell(ProteinCache<Long> proteinCache) {
-		super(proteinCache);
-	}
-
+public class SummationCell extends ScalarCachedStateCell {
 	@Override
-	public void push(long index) {
-		long value = getProtein(index);
-		
-		if (getCachedValue() == null) {
-//			System.out.println(this + " is caching " + value);
-			setCachedValue(value);
-		} else {
-//			System.out.println(this + " is caching " + getCachedValue() + " + " + value);
-			setCachedValue(getCachedValue() + value);
-		}
+	public Runnable push(Producer<Scalar> protein) {
+		return new SummationCellOperation(this, protein);
 	}
 }

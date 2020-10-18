@@ -20,11 +20,11 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrappe
 											implements AcceleratedConditionalStatement<T> {
 	private BiFunction<Function<Integer, String>, List<Variable>, String> compacted;
 
-	public AcceleratedConditionalStatementAdapter(Producer<? extends MemWrapper> blankValue) {
+	public AcceleratedConditionalStatementAdapter(Producer<T> blankValue) {
 		super(blankValue);
 	}
 
-	public AcceleratedConditionalStatementAdapter(Producer<? extends MemWrapper> blankValue,
+	public AcceleratedConditionalStatementAdapter(Producer<T> blankValue,
 												  Producer<Scalar> leftOperand,
 												  Producer<Scalar> rightOperand,
 												  Producer<T> trueValue,

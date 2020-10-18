@@ -16,6 +16,7 @@
 
 package org.almostrealism.algebra;
 
+import org.almostrealism.algebra.computations.CrossProduct;
 import org.almostrealism.algebra.computations.DotProduct;
 import org.almostrealism.geometry.Positioned;
 import org.almostrealism.hardware.HardwareOperator;
@@ -46,9 +47,6 @@ public class Vector extends MemWrapperAdapter implements Positioned, Triple, Clo
 	private static ThreadLocal<HardwareOperator<Vector>> subtractOperator = new ThreadLocal<>();
 	private static ThreadLocal<HardwareOperator<Vector>> multiplyOperator = new ThreadLocal<>();
 	private static ThreadLocal<HardwareOperator<Vector>> divideOperator = new ThreadLocal<>();
-	private static ThreadLocal<HardwareOperator<Scalar>> lengthSqOperator = new ThreadLocal<>();
-	private static ThreadLocal<HardwareOperator<Vector>> crossOperator = new ThreadLocal<>();
-	private static ThreadLocal<HardwareOperator<Scalar>> dotOperator = new ThreadLocal<>();
 
 	/** Constructs a {@link Vector} with coordinates at the origin. */
 	public Vector() {
@@ -256,8 +254,7 @@ public class Vector extends MemWrapperAdapter implements Positioned, Triple, Clo
 	 * Returns the opposite of the vector represented by this {@link Vector}.
 	 */
 	public Vector minus() {
-		// TODO  Make fast
-		return new Vector(-this.getX(), -this.getY(), -this.getZ());
+		return VectorProducer.minus(StaticProducer.of(this)).evaluate();
 	}
 
 	/** Returns the sum of this {@link Vector} and the specified {@link Vector}. */
@@ -278,7 +275,7 @@ public class Vector extends MemWrapperAdapter implements Positioned, Triple, Clo
 			addOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("addTo", 2));
 		}
 
-		addOperator.get().evaluate(new Object[] { this, vector });
+		addOperator.get().accept(new Object[] { this, vector });
 	}
 
 	/**
@@ -302,7 +299,7 @@ public class Vector extends MemWrapperAdapter implements Positioned, Triple, Clo
 			subtractOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("subtractFrom", 2));
 		}
 
-		subtractOperator.get().evaluate(new Object[] { this, vector });
+		subtractOperator.get().accept(new Object[] { this, vector });
 	}
 
 	/**
@@ -325,7 +322,7 @@ public class Vector extends MemWrapperAdapter implements Positioned, Triple, Clo
 			multiplyOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("multiplyBy", 2));
 		}
 
-		multiplyOperator.get().evaluate(new Object[] { this, new Vector(value, value, value) });
+		multiplyOperator.get().accept(new Object[] { this, new Vector(value, value, value) });
 	}
 
 	/** Returns the quotient of the division of this {@link Vector} by the specified value. */
@@ -346,7 +343,7 @@ public class Vector extends MemWrapperAdapter implements Positioned, Triple, Clo
 			divideOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("divideBy", 2));
 		}
 
-		divideOperator.get().evaluate(new Object[] { this, new Vector(value, value, value) });
+		divideOperator.get().accept(new Object[] { this, new Vector(value, value, value) });
 	}
 
 	/**
@@ -359,11 +356,7 @@ public class Vector extends MemWrapperAdapter implements Positioned, Triple, Clo
 
 	/** Returns the cross product of this {@link Vector} and that of the specified {@link Vector}. */
 	public Vector crossProduct(Vector vector) {
-		if (crossOperator.get() == null) {
-			crossOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("crossProduct", 3));
-		}
-
-		return crossOperator.get().evaluate(new Object[] { new Vector(), this, vector });
+		return new CrossProduct(StaticProducer.of(this), StaticProducer.of(vector)).evaluate();
 	}
 
 	public float[] toFloat() {
@@ -384,11 +377,7 @@ public class Vector extends MemWrapperAdapter implements Positioned, Triple, Clo
 	 * {@link Vector} as a double value.
 	 */
 	public double lengthSq() {
-		if (lengthSqOperator.get() == null) {
-			lengthSqOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("lengthSq", 2));
-		}
-
-		return lengthSqOperator.get().evaluate(new Object[] { Scalar.blank().evaluate(new Object[0]), this }).getValue();
+		return VectorProducer.lengthSq(StaticProducer.of(this)).evaluate().getValue();
 	}
 
 	public void normalize() {

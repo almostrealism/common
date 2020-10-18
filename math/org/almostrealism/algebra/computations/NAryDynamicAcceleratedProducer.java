@@ -35,7 +35,7 @@ public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> exten
 	private boolean isStatic;
 
 	public NAryDynamicAcceleratedProducer(String operator, int memLength, Producer<T> blank, Producer<T>... producers) {
-		super(memLength, includeResult(blank, producers));
+		super(memLength, blank, producers);
 		this.operator = operator;
 	}
 

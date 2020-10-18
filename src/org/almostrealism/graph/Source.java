@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,8 +16,10 @@
 
 package org.almostrealism.graph;
 
+import org.almostrealism.util.Producer;
+
 public interface Source<T> {
-	T next();
+	Producer<T> next();
 
 	boolean isDone();
 }

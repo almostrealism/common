@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,22 +16,33 @@
 
 package org.almostrealism.graph;
 
-public class RunningAverageCell extends CachedStateCell<Double> {
+import org.almostrealism.algebra.Scalar;
+import org.almostrealism.util.Producer;
+
+public class RunningAverageCell extends ScalarCachedStateCell {
 	private double total;
 	private int pushes;
-	
-	public void push(long index) {
-		this.total = total + getProtein(index);
-		this.pushes++;
-		
-		// Update the cached value to the current
-		// running average of values received
-		setCachedValue(this.total / pushes);
+
+	@Override
+	public Runnable push(Producer<Scalar> protein) {
+		return () -> {
+			this.total = total + protein.evaluate().getValue();
+			this.pushes++;
+
+			// Update the cached value to the current
+			// running average of values received
+			setCachedValue(new Scalar(this.total / pushes));
+		};
 	}
-	
-	public void tick() {
-		this.total = 0;
-		this.pushes = 0;
-		super.tick();
+
+	@Override
+	public Runnable tick() {
+		Runnable tick = super.tick();
+		
+		return () -> {
+			this.total = 0;
+			this.pushes = 0;
+			tick.run();
+		};
 	}
 }

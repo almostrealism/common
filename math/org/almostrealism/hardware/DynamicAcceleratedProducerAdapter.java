@@ -30,18 +30,18 @@ public abstract class DynamicAcceleratedProducerAdapter<T extends MemWrapper> ex
 	private int memLength;
 	private Function<Integer, String> variableRef;
 
-	public DynamicAcceleratedProducerAdapter(int memLength, Producer<?>... inputArgs) {
-		super(true, inputArgs, new Producer[0]);
+	public DynamicAcceleratedProducerAdapter(int memLength, Producer<T> result, Producer<?>... inputArgs) {
+		super(true, result, inputArgs, new Producer[0]);
 		this.memLength = memLength;
 	}
 
-	public DynamicAcceleratedProducerAdapter(int memLength, Producer<?>[] inputArgs, Object[] additionalArguments) {
-		super(true, inputArgs, additionalArguments);
+	public DynamicAcceleratedProducerAdapter(int memLength, Producer<T> result, Producer<?>[] inputArgs, Object[] additionalArguments) {
+		super(true, result, inputArgs, additionalArguments);
 		this.memLength = memLength;
 	}
 
-	public DynamicAcceleratedProducerAdapter(int memLength, boolean kernel, Producer<?>[] inputArgs, Object[] additionalArguments) {
-		super(kernel, inputArgs, additionalArguments);
+	public DynamicAcceleratedProducerAdapter(int memLength, boolean kernel, Producer<T> result, Producer<?>[] inputArgs, Object[] additionalArguments) {
+		super(kernel, result, inputArgs, additionalArguments);
 		this.memLength = memLength;
 	}
 
