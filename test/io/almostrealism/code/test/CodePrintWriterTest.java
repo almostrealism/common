@@ -3,7 +3,9 @@ package io.almostrealism.code.test;
 import java.util.ArrayList;
 import java.util.List;
 
+import io.almostrealism.code.Expression;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.io.PrintStreamPrintWriter;
 import org.almostrealism.util.StaticProducer;
 import org.junit.Test;
@@ -18,17 +20,17 @@ public class CodePrintWriterTest {
 	public void methodTest() {
 		CodePrintWriter p = new JavaScriptPrintWriter(new PrintStreamPrintWriter(System.out));
 		
-		List<Variable> args = new ArrayList<>();
-		args.add(new Variable("in", StaticProducer.of(1)));
+		List<Expression<?>> args = new ArrayList<>();
+		args.add(new Expression<>(Hardware.getLocalHardware().stringForDouble(1)));
 		
-		p.beginScope("test");
+		p.beginScope("test", new ArrayList<>());
 		p.println(new Variable<>("v", Scalar.class, new Method<>(null, "func", args)));
 		p.endScope();
 
 		args = new ArrayList<>();
-		args.add(new Variable<>("test", new Method<>(null, "test", new ArrayList<>())));
+		args.add(new Expression<>(new Method<>(null, "test", new ArrayList<>())));
 		
-		p.beginScope("next");
+		p.beginScope("next", new ArrayList<>());
 		p.println(new Variable<>("v", Scalar.class, new Method<>(null, "func", args)));
 		p.endScope();
 		

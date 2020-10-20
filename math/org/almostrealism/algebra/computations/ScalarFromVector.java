@@ -17,6 +17,9 @@
 package org.almostrealism.algebra.computations;
 
 import io.almostrealism.code.Argument;
+import io.almostrealism.code.ArgumentReference;
+import io.almostrealism.code.InstanceReference;
+import io.almostrealism.code.Expression;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.algebra.Vector;
@@ -25,7 +28,7 @@ import org.almostrealism.util.Producer;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Function;
+import java.util.function.IntFunction;
 
 public class ScalarFromVector extends DynamicAcceleratedProducerAdapter<Scalar> implements ScalarProducer {
 	public static final int X = 0;
@@ -35,7 +38,7 @@ public class ScalarFromVector extends DynamicAcceleratedProducerAdapter<Scalar> 
 	private Producer<Vector> vector;
 	private int coordinate;
 
-	private String value;
+	private Expression<Double> value;
 
 	public ScalarFromVector(Producer<Vector> vector, int coordinate) {
 		super(2, Scalar.blank(), vector);
@@ -44,13 +47,13 @@ public class ScalarFromVector extends DynamicAcceleratedProducerAdapter<Scalar> 
 	}
 
 	@Override
-	public Function<Integer, String> getValueFunction() {
+	public IntFunction<Expression<Double>> getValueFunction() {
 		return pos -> {
 			if (value == null) {
 				if (pos == 0) {
-					return getArgumentValueName(1, coordinate);
+					return new Expression<>(getArgumentValueName(1, coordinate));
 				} else if (pos == 1) {
-					return stringForDouble(1.0);
+					return new Expression(stringForDouble(1.0));
 				} else {
 					throw new IllegalArgumentException(String.valueOf(pos));
 				}
@@ -69,7 +72,7 @@ public class ScalarFromVector extends DynamicAcceleratedProducerAdapter<Scalar> 
 			newArgs.add(getInputProducers()[0]);
 
 			value = getInputProducerValue(1, coordinate);
-			if (value.contains("Infinity")) {
+			if (value.getExpression().contains("Infinity")) {
 				throw new IllegalArgumentException("Infinity is not supported");
 			}
 

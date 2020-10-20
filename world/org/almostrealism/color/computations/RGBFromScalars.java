@@ -17,6 +17,7 @@
 package org.almostrealism.color.computations;
 
 import io.almostrealism.code.Argument;
+import io.almostrealism.code.Expression;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.color.RGB;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
@@ -25,20 +26,20 @@ import org.almostrealism.util.Producer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.function.Function;
+import java.util.function.IntFunction;
 
 public class RGBFromScalars extends DynamicAcceleratedProducerAdapter<RGB> implements RGBProducer {
-	private String value[];
+	private Expression<Double> value[];
 
 	public RGBFromScalars(Producer<Scalar> r, Producer<Scalar> g, Producer<Scalar> b) {
 		super(3, RGB.blank(), r, g, b);
 	}
 
 	@Override
-	public Function<Integer, String> getValueFunction() {
+	public IntFunction<Expression<Double>> getValueFunction() {
 		return pos -> {
 			if (value == null) {
-				return getArgumentValueName(pos + 1, 0);
+				return new Expression<>(getArgumentValueName(pos + 1, 0));
 			} else {
 				return value[pos];
 			}
@@ -50,7 +51,7 @@ public class RGBFromScalars extends DynamicAcceleratedProducerAdapter<RGB> imple
 		super.compact();
 
 		if (value == null && isCompletelyValueOnly()) {
-			value = new String[] {
+			value = new Expression[] {
 					getInputProducerValue(1, 0),
 					getInputProducerValue(2, 0),
 					getInputProducerValue(3, 0)

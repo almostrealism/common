@@ -17,6 +17,7 @@
 package org.almostrealism.algebra.computations;
 
 import io.almostrealism.code.Argument;
+import io.almostrealism.code.Expression;
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;
 import org.almostrealism.hardware.AcceleratedProducer;
@@ -28,10 +29,11 @@ import org.almostrealism.util.Producer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
+import java.util.function.IntFunction;
 
 public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> extends DynamicAcceleratedProducerAdapter<T> {
 	private String operator;
-	private String value[];
+	private Expression<Double> value[];
 	private boolean isStatic;
 
 	public NAryDynamicAcceleratedProducer(String operator, int memLength, Producer<T> blank, Producer<T>... producers) {
@@ -41,7 +43,7 @@ public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> exten
 
 	@Override
 	public Scope<T> getScope(NameProvider p) {
-		Scope<T> scope = new Scope<>();
+		Scope<T> scope = new Scope<>(getFunctionName());
 
 		for (int i = 0; i < getMemLength(); i++) {
 			scope.getVariables().add(new Variable(p.getArgumentValueName(0, i), getValue(i)));
@@ -51,7 +53,7 @@ public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> exten
 	}
 
 	@Override
-	public Function<Integer, String> getValueFunction() {
+	public IntFunction<Expression<Double>> getValueFunction() {
 		return pos -> {
 			if (value == null || value[pos] == null) {
 				StringBuffer buf = new StringBuffer();
@@ -61,7 +63,7 @@ public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> exten
 					if (i < (getArgsCount() - 1)) buf.append(" " + operator + " ");
 				}
 
-				return buf.toString();
+				return new Expression(buf.toString());
 			} else {
 				return value[pos];
 			}
@@ -77,7 +79,7 @@ public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> exten
 			List<Argument> newArgs = new ArrayList<>();
 			newArgs.add(getInputProducers()[0]);
 
-			value = new String[getMemLength()];
+			value = new Expression[getMemLength()];
 
 			Argument p[] = getInputProducers();
 
@@ -96,12 +98,12 @@ public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> exten
 
 					for (int i = 0; i < staticProducers.size(); i++) {
 						staticProduct = combine(staticProduct,
-								doubleForString(getInputProducerValue(staticProducers.get(i), pos)));
+								doubleForString(getInputProducerValue(staticProducers.get(i), pos).getExpression()));
 					}
 
 					Double replace = isReplaceAll(staticProduct);
 					if (replace != null) {
-						value[pos] = stringForDouble(replace);
+						value[pos] = new Expression(stringForDouble(replace));
 						valueStatic[pos] = true;
 						continue pos;
 					}
@@ -121,13 +123,13 @@ public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> exten
 
 					absorbVariables(dynamicProducers.get(i).getProducer());
 					buf.append("(");
-					buf.append(getInputProducerValue(dynamicProducers.get(i), pos));
+					buf.append(getInputProducerValue(dynamicProducers.get(i), pos).getExpression());
 					buf.append(")");
 					if (i < (dynamicProducers.size() - 1)) buf.append(" " + operator + " ");
 				}
 
-				value[pos] = buf.length() > 0 ? buf.toString() : removed;
-				if (value[pos].contains("Infinity")) {
+				value[pos] = new Expression<>(buf.length() > 0 ? buf.toString() : removed);
+				if (value[pos].getExpression().contains("Infinity")) {
 					throw new IllegalArgumentException("Infinity is not supported");
 				}
 			}

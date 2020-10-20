@@ -17,6 +17,7 @@
 package org.almostrealism.algebra.computations;
 
 import io.almostrealism.code.Argument;
+import io.almostrealism.code.Expression;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorBank;
 import org.almostrealism.algebra.VectorProducer;
@@ -27,11 +28,12 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Function;
+import java.util.function.IntFunction;
 
 public class VectorFromVectorBank extends DynamicAcceleratedProducerAdapter<Vector> implements VectorProducer {
 	private int position;
 
-	private String value[];
+	private Expression<Double> value[];
 
 	public VectorFromVectorBank(Producer<? extends VectorBank> bank, int position) {
 		super(3, Vector.blank(), bank);
@@ -39,11 +41,11 @@ public class VectorFromVectorBank extends DynamicAcceleratedProducerAdapter<Vect
 	}
 
 	@Override
-	public Function<Integer, String> getValueFunction() {
+	public IntFunction<Expression<Double>> getValueFunction() {
 		return pos -> {
 			if (value == null) {
 				if (pos >= 0 && pos < 3) {
-					return getArgumentValueName(1, position + pos);
+					return new Expression<>(getArgumentValueName(1, position + pos));
 				} else {
 					throw new IllegalArgumentException(String.valueOf(pos));
 				}
@@ -61,11 +63,11 @@ public class VectorFromVectorBank extends DynamicAcceleratedProducerAdapter<Vect
 			List<Argument> newArgs = new ArrayList<>();
 			newArgs.add(getInputProducers()[0]);
 
-			value = new String[3];
+			value = new Expression[3];
 
 			for (int i = 0; i < value.length; i++) {
 				value[i] = getInputProducerValue(1, position + i);
-				if (value[i].contains("Infinity")) {
+				if (value[i].getExpression().contains("Infinity")) {
 					throw new IllegalArgumentException("Infinity is not supported");
 				}
 			}

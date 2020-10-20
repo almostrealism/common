@@ -20,6 +20,7 @@ import org.almostrealism.util.Nameable;
 import org.almostrealism.util.Producer;
 import org.almostrealism.util.StaticProducer;
 
+import java.util.List;
 import java.util.Objects;
 import java.util.function.Supplier;
 
@@ -30,28 +31,33 @@ import java.util.function.Supplier;
  */
 public class Variable<T> implements Nameable {
 	private String name, annotation;
-	private Class<T> type;
+	private Expression<T> expression;
 	private Producer<T> producer;
-	private Supplier<String> expression;
-	private Method<T> generator;
-	private int arraySize = -1;
 
-	public Variable(String name, T value) {
-		this(name, StaticProducer.of(value));
+	public Variable(String name, Expression<T> expression) {
+		this(name, expression, null);
+	}
+
+	public Variable(String name, Expression<T> expression, Producer<T> producer) {
+		setName(name);
+		setExpression(expression);
+		setProducer(producer);
+	}
+
+	public Variable(String name, T expression) {
+		this(name, (Expression) null, StaticProducer.of(expression));
 	}
 
 	public Variable(String name, Producer<T> producer) {
 		this(name, (Class) null, producer);
 	}
 
-	public Variable(String name, Class<T> type, T value) {
-		this(name, type, StaticProducer.of(value));
+	public Variable(String name, Class<T> type, T expression) {
+		this(name, type, StaticProducer.of(expression));
 	}
 
 	public Variable(String name, Class<T> type, Producer<T> producer) {
-		setName(name);
-		setType(type);
-		setProducer(producer);
+		this(name, new Expression(type), producer);
 	}
 
 	public Variable(String name, Method<T> generator) {
@@ -59,9 +65,7 @@ public class Variable<T> implements Nameable {
 	}
 	
 	public Variable(String name, Class<T> type, Method<T> generator) {
-		setName(name);
-		setType(type);
-		this.generator = generator;
+		this(name, new Expression(type, generator));
 	}
 
 	public Variable(String name, String expression) {
@@ -69,9 +73,7 @@ public class Variable<T> implements Nameable {
 	}
 
 	public Variable(String name, Class<T> type, String expression) {
-		setName(name);
-		setType(type);
-		this.expression = () -> expression;
+		this(name, new Expression(type, expression));
 	}
 
 	public Variable(String name, String expression, Producer<T> producer) {
@@ -79,10 +81,7 @@ public class Variable<T> implements Nameable {
 	}
 
 	public Variable(String name, Class<T> type, String expression, Producer<T> producer, int arraySize) {
-		setName(name);
-		setType(type);
-		this.expression = () -> expression;
-		setProducer(producer);
+		this(name, new Expression(type, expression, arraySize), producer);
 	}
 
 	public Variable(String name, int arraySize) {
@@ -94,9 +93,7 @@ public class Variable<T> implements Nameable {
 	}
 
 	public Variable(String name, Class<T> type, Supplier<String> expression) {
-		setName(name);
-		setType(type);
-		this.expression = expression;
+		this(name, new Expression(type, expression));
 	}
 
 	public Variable(String name, Supplier<String> expression, Producer<T> producer) {
@@ -117,44 +114,26 @@ public class Variable<T> implements Nameable {
 	}
 
 	public Variable(String name, Class<T> type, Supplier<String> expression, Producer<T> producer, int arraySize) {
-		setName(name);
-		setType(type);
-		this.expression = expression;
-		setProducer(producer);
-		setArraySize(arraySize);
+		this(name, new Expression(type, expression, arraySize), producer);
 	}
 
 	public void setName(String n) { this.name = n; }
 	public String getName() { return this.name; }
 
-	public void setType(Class<T> t) { this.type = t; }
-	public Class<T> getType() { return this.type; }
-
 	public void setAnnotation(String a) { this.annotation = a; }
 	public String getAnnotation() { return this.annotation; }
 
+	public void setExpression(Expression<T> value) { this.expression = value; }
+	public Expression<T> getExpression() { return expression; }
+
 	public void setProducer(Producer<T> producer) { this.producer = producer; }
 	public Producer<T> getProducer() { return producer; }
-	
-	public void setGenerator(Method<T> generator) { this.generator = generator; }
-	public Method<T> getGenerator() { return this.generator; }
 
-	public String getExpression() { return expression == null ? null : expression.get(); }
-	public void setExpression(String expression) { this.expression = () -> expression; }
-	public void setExpression(Supplier<String> expression) { this.expression = expression; }
+	public Class<T> getType() { return getExpression().getType(); }
+	public Method<T> getGenerator() { return getExpression().getGenerator(); }
+	public List<Variable> getDependencies() { return getExpression().getDependencies(); }
 
-	public int getArraySize() { return arraySize; }
-	public void setArraySize(int arraySize) { this.arraySize = arraySize; }
-
-	public T getValue() {
-		if (producer != null) {
-			return producer.evaluate();
-		} else if (producer != null) {
-			return (T) expression.get();
-		} else {
-			throw new RuntimeException();
-		}
-	}
+	public int getArraySize() { return getExpression().getArraySize(); }
 
 	@Override
 	public boolean equals(Object obj) {
@@ -163,10 +142,8 @@ public class Variable<T> implements Nameable {
 		Variable v = (Variable) obj;
 		if (!Objects.equals(name, v.getName())) return false;
 		if (!Objects.equals(annotation, v.getAnnotation())) return false;
-		if (!Objects.equals(type, v.getType())) return false;
+		if (!Objects.equals(expression, v.getExpression())) return false;
 		if (!Objects.equals(producer, v.getProducer())) return false;
-		if (!Objects.equals(expression, v.expression)) return false;
-		if (!Objects.equals(generator, v.getGenerator())) return false;
 
 		return true;
 	}

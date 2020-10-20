@@ -17,6 +17,7 @@
 package org.almostrealism.geometry;
 
 import io.almostrealism.code.Argument;
+import io.almostrealism.code.Expression;
 import org.almostrealism.algebra.TransformMatrix;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorBank;
@@ -28,12 +29,12 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
-import java.util.function.Function;
+import java.util.function.IntFunction;
 
 public class Transform extends DynamicAcceleratedProducerAdapter<Vector> {
 	private boolean includeTranslation;
 
-	private String value[];
+	private Expression<Double> value[];
 
 	public Transform(TransformMatrix t, Producer<Vector> v, boolean includeTranslation) {
 		super(3, Vector.blank(), new Producer[]{ v }, new Object[]{ t });
@@ -41,7 +42,7 @@ public class Transform extends DynamicAcceleratedProducerAdapter<Vector> {
 	}
 
 	@Override
-	public Function<Integer, String> getValueFunction() {
+	public IntFunction<Expression<Double>> getValueFunction() {
 		return pos -> {
 			if (value == null) {
 				StringBuffer buf = new StringBuffer();
@@ -62,7 +63,7 @@ public class Transform extends DynamicAcceleratedProducerAdapter<Vector> {
 					buf.append(t(pos, 3));
 				}
 
-				return buf.toString();
+				return new Expression(buf.toString());
 			} else {
 				return value[pos];
 			}
@@ -77,7 +78,7 @@ public class Transform extends DynamicAcceleratedProducerAdapter<Vector> {
 		super.compact();
 
 		if (value == null && isCompletelyValueOnly()) {
-			value = new String[3];
+			value = new Expression[3];
 
 			for (int i = 0; i < value.length; i++) {
 				List<Product> sum = new ArrayList<>();
@@ -91,7 +92,7 @@ public class Transform extends DynamicAcceleratedProducerAdapter<Vector> {
 				if (includeTranslation) {
 					sum.add(new Product(new Number(getInputProducerValue(2, 4 * i + 3),
 													getInputProducer(2).isStatic()),
-										new Number(stringForDouble(1.0), true)));
+										new Number(1.0)));
 				}
 
 				Number n = new Number();
@@ -102,7 +103,7 @@ public class Transform extends DynamicAcceleratedProducerAdapter<Vector> {
 					Product p = itr.next();
 
 					if (p.isStatic()) {
-						n.addTo(new Number(p.toString(), true));
+						n.addTo(new Number(p.toExpression(), true));
 						itr.remove();
 					}
 				}
@@ -114,7 +115,7 @@ public class Transform extends DynamicAcceleratedProducerAdapter<Vector> {
 				}
 
 				if (n.isZero() && sum.size() <= 0) {
-					value[i] = "0.0";
+					value[i] = new Expression<>("0.0");
 				} else {
 					StringBuffer buf = new StringBuffer();
 
@@ -128,12 +129,12 @@ public class Transform extends DynamicAcceleratedProducerAdapter<Vector> {
 						if (j < sum.size() - 1) buf.append(" + ");
 					}
 
-					value[i] = buf.toString();
+					value[i] = new Expression<>(buf.toString());
 				}
 			}
 
 			for (int i = 0; i < value.length; i++) {
-				if (value[i].trim().length() <= 0) {
+				if (value[i].getExpression().trim().length() <= 0) {
 					throw new IllegalArgumentException("Empty value for index " + i);
 				}
 			}
@@ -178,6 +179,8 @@ public class Transform extends DynamicAcceleratedProducerAdapter<Vector> {
 			return a.isZero() || b.isZero();
 		}
 
+		public Expression toExpression() { return new Expression(toString()); }
+
 		public String toString() {
 			if (isStatic()) {
 				return stringForDouble(doubleForString(a.toString()) * doubleForString(b.toString()));
@@ -200,8 +203,12 @@ public class Transform extends DynamicAcceleratedProducerAdapter<Vector> {
 			isStatic = true;
 		}
 
-		public Number(String number, boolean isStatic) {
-			this.number = number;
+		public Number(double value) {
+			this(new Expression(stringForDouble(value)), true);
+		}
+
+		public Number(Expression number, boolean isStatic) {
+			this.number = number.getExpression();
 			this.isStatic = isStatic;
 		}
 

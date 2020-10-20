@@ -2,6 +2,7 @@ package io.almostrealism.code;
 
 import org.almostrealism.io.PrintWriter;
 
+import java.util.ArrayList;
 import java.util.function.Function;
 
 public class ScopeEncoder implements Function<Scope, String>, PrintWriter {
@@ -18,7 +19,7 @@ public class ScopeEncoder implements Function<Scope, String>, PrintWriter {
 	public String apply(Scope scope) {
 		this.result = new StringBuffer();
 
-		output.beginScope("scope");
+		output.beginScope(scope.getName(), scope.getArguments());
 		scope.write(output);
 		output.endScope();
 

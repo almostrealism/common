@@ -36,14 +36,14 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 	}
 
 	@Override
-	public void println(Variable variable, boolean create) {
+	public void println(Variable<?> variable, boolean create) {
 		if (create) {
 			if (variable.getProducer() == null) {
 				if (variable.getExpression() == null) {
 					this.p.println(typePrefix(variable.getType()) + variable.getName());
 				} else {
 					this.p.println(typePrefix(variable.getType()) + variable.getName() +
-									" = " + variable.getExpression() + ";");
+									" = " + variable.getExpression().getValue() + ";");
 				}
 			} else {
 				this.p.println(typePrefix(variable.getType()) + variable.getName() +
@@ -62,6 +62,10 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 	@Override
 	public void println(Method method) {
 		this.p.println(method.getName());
+	}
+
+	public static String renderAssignment(Variable<?> var) {
+		return var.getName() + " = " + var.getExpression().getValue() + ";";
 	}
 
 	protected static String typePrefix(Class type) {

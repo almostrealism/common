@@ -16,11 +16,13 @@
 
 package org.almostrealism.util;
 
+import io.almostrealism.code.Expression;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.hardware.MemWrapper;
 
 import java.util.function.Function;
+import java.util.function.IntFunction;
 
 public class AcceleratedPassThroughProducer<T extends MemWrapper>
 		extends DynamicAcceleratedProducerAdapter<T> implements ProducerArgumentReference {
@@ -54,8 +56,8 @@ public class AcceleratedPassThroughProducer<T extends MemWrapper>
 	}
 
 	@Override
-	public Function<Integer, String> getValueFunction() {
-		return pos -> getArgumentValueName(1, pos, kernelIndex);
+	public IntFunction<Expression<Double>> getValueFunction() {
+		return pos -> new Expression<>(getArgumentValueName(1, pos, kernelIndex));
 	}
 
 	@Override

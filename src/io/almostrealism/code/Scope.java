@@ -30,7 +30,7 @@ import java.util.List;
  */
 public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<Scope<T>, T>, Parent<Scope<T>>, Nameable {
 	private String name;
-	private List<Variable> variables;
+	private List<Variable<?>> variables;
 	private List<Method> methods;
 
 	/**
@@ -56,6 +56,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 	public List<Argument> getArguments() {
 		List<Argument> args = new ArrayList<>();
 		variables.stream()
+				.map(Variable::getExpression)
 				.filter(v -> v instanceof ArgumentReference)
 				.map(v -> ((ArgumentReference) v).getReferent())
 				.forEach(args::add);
@@ -75,7 +76,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 	/**
 	 * @return  The {@link Variable}s in this {@link Scope}.
 	 */
-	public List<Variable> getVariables() { return variables; }
+	public List<Variable<?>> getVariables() { return variables; }
 
 	/**
 	 * @return  The {@link Method}s in this {@link Scope}.

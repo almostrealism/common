@@ -22,5 +22,6 @@ public class OpenCLPrintWriter extends CPrintWriter {
 
 	public OpenCLPrintWriter(PrintWriter p) {
 		super(p);
+		setScopePrefix("__kernel void");
 	}
 }

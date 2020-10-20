@@ -17,6 +17,7 @@
 package org.almostrealism.algebra.computations;
 
 import io.almostrealism.code.Argument;
+import io.almostrealism.code.Expression;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarProducer;
@@ -29,24 +30,25 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Function;
+import java.util.function.IntFunction;
 
 public class DotProduct extends DynamicAcceleratedProducerAdapter<Scalar> implements ScalarProducer {
-	private String value[];
+	private Expression<Double> value[];
 
 	public DotProduct(Producer<Vector> a, Producer<Vector> b) {
 		super(2, Scalar.blank(), a, b);
 	}
 
 	@Override
-	public Function<Integer, String> getValueFunction() {
+	public IntFunction<Expression<Double>> getValueFunction() {
 		return pos -> {
 			if (value == null) {
 				if (pos == 0) {
-					return getArgumentValueName(1, 0) + " * " + getArgumentValueName(2, 0) + " + " +
+					return new Expression(getArgumentValueName(1, 0) + " * " + getArgumentValueName(2, 0) + " + " +
 							getArgumentValueName(1, 1) + " * " + getArgumentValueName(2, 1) + " + " +
-							getArgumentValueName(1, 2) + " * " + getArgumentValueName(2, 2);
+							getArgumentValueName(1, 2) + " * " + getArgumentValueName(2, 2));
 				} else if (pos == 1) {
-					return stringForDouble(1.0);
+					return new Expression(stringForDouble(1.0));
 				} else {
 					throw new IllegalArgumentException("Position " + pos + " is invalid");
 				}
@@ -61,13 +63,13 @@ public class DotProduct extends DynamicAcceleratedProducerAdapter<Scalar> implem
 		super.compact();
 
 		if (value == null && isCompletelyValueOnly()) {
-			value = new String[2];
-			value[0] = "(" + getInputProducerValue(1, 0) + ") * (" + getInputProducerValue(2, 0) + ") + " +
-					"(" + getInputProducerValue(1, 1) + ") * (" + getInputProducerValue(2, 1) + ") + " +
-					"(" + getInputProducerValue(1, 2) + ") * (" + getInputProducerValue(2, 2) + ")";
-			value[1] = stringForDouble(1.0);
+			value = new Expression[2];
+			value[0] = new Expression<>("(" + getInputProducerValue(1, 0).getExpression() + ") * (" + getInputProducerValue(2, 0).getExpression() + ") + " +
+					"(" + getInputProducerValue(1, 1).getExpression() + ") * (" + getInputProducerValue(2, 1).getExpression() + ") + " +
+					"(" + getInputProducerValue(1, 2).getExpression() + ") * (" + getInputProducerValue(2, 2).getExpression() + ")");
+			value[1] = new Expression<>(stringForDouble(1.0));
 
-			if (value[0].contains("Infinity")) {
+			if (value[0].getExpression().contains("Infinity")) {
 				throw new IllegalArgumentException("Infinity is not supported");
 			}
 

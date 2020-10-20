@@ -27,7 +27,6 @@ import org.almostrealism.util.Producer;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Map;
 
 /**
  * A {@link CodePrintWriter} implementation for writing JavaScript.
@@ -58,7 +57,7 @@ public class JavaScriptPrintWriter extends CodePrintWriterAdapter {
 	}
 
 	@Override
-	public void beginScope(String name) {
+	public void beginScope(String name, List<Argument<?>> arguments) {
 		if (name == null) {
 			p.println("{");
 		} else {
@@ -149,11 +148,11 @@ public class JavaScriptPrintWriter extends CodePrintWriterAdapter {
 			Variable v = arguments.get(i);
 
 			if (v instanceof ResourceArgument) {
-				buf.append(toJson((ResourceArgument) v));
+				buf.append(toJson(v));
 			} else if (v.getGenerator() != null) {
 				buf.append(toString(v));
-			} else if (v instanceof InstanceReference) {
-				buf.append(((InstanceReference) v).getProducer());
+			} else if (v.getExpression() instanceof InstanceReference) {
+				buf.append(v.getProducer().evaluate()); // TODO  This cant be right...
 			} else {
 				buf.append(toJson(v.getProducer()));
 			}

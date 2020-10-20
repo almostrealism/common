@@ -16,8 +16,6 @@
 
 package org.almostrealism.algebra;
 
-import org.almostrealism.util.Producer;
-
 public class ZeroVector extends ImmutableVector {
 	private static ZeroVector local = new ZeroVector();
 

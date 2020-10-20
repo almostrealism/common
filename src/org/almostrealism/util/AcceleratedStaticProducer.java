@@ -16,11 +16,13 @@
 
 package org.almostrealism.util;
 
+import io.almostrealism.code.Expression;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.hardware.MemWrapper;
 
 import java.util.function.Function;
+import java.util.function.IntFunction;
 
 public class AcceleratedStaticProducer<T extends MemWrapper> extends DynamicAcceleratedProducerAdapter<T> {
 	private T value;
@@ -46,7 +48,7 @@ public class AcceleratedStaticProducer<T extends MemWrapper> extends DynamicAcce
 	 * this is not actually used by {@link #evaluate(Object[])}.
 	 */
 	@Override
-	public Function<Integer, String> getValueFunction() {
+	public IntFunction<Expression<Double>> getValueFunction() {
 		return pos -> {
 			Pair p = MemWrapper.fromMem(value.getMem(), value.getOffset() + pos, 1);
 
@@ -55,7 +57,7 @@ public class AcceleratedStaticProducer<T extends MemWrapper> extends DynamicAcce
 				throw new IllegalArgumentException("Infinity is not supported");
 			}
 
-			return s;
+			return new Expression<>(s);
 		};
 	}
 

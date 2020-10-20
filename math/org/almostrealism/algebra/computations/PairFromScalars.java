@@ -17,6 +17,7 @@
 package org.almostrealism.algebra.computations;
 
 import io.almostrealism.code.Argument;
+import io.almostrealism.code.Expression;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairProducer;
 import org.almostrealism.algebra.Scalar;
@@ -28,19 +29,20 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Function;
+import java.util.function.IntFunction;
 
 public class PairFromScalars extends DynamicAcceleratedProducerAdapter<Pair> implements PairProducer {
-	private String value[];
+	private Expression<Double> value[];
 
 	public PairFromScalars(Producer<Scalar> x, Producer<Scalar> y) {
 		super(2, Pair.empty(), x, y);
 	}
 
 	@Override
-	public Function<Integer, String> getValueFunction() {
+	public IntFunction<Expression<Double>> getValueFunction() {
 		return pos -> {
 			if (value == null) {
-				return getArgumentValueName(pos + 1, 0);
+				return new Expression<>(getArgumentValueName(pos + 1, 0));
 			} else {
 				return value[pos];
 			}
@@ -51,7 +53,7 @@ public class PairFromScalars extends DynamicAcceleratedProducerAdapter<Pair> imp
 		super.compact();
 
 		if (value == null && isCompletelyValueOnly()) {
-			value = new String[] {
+			value = new Expression[] {
 					getInputProducerValue(1, 0),
 					getInputProducerValue(2, 0)
 			};

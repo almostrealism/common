@@ -151,7 +151,7 @@ public abstract class AcceleratedComputation<T extends MemWrapper> extends Accel
 					throw new RuntimeException("Not implemented");
 				} else {
 					out.accept(" = ");
-					out.accept(var.getExpression());
+					out.accept(String.valueOf(var.getExpression().getValue()));
 				}
 			}
 

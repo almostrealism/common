@@ -17,6 +17,7 @@
 package org.almostrealism.graph.mesh;
 
 import io.almostrealism.code.Argument;
+import io.almostrealism.code.Expression;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
@@ -25,9 +26,10 @@ import org.almostrealism.util.Producer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
+import java.util.function.IntFunction;
 
 public class TriangleDataFromVectors extends DynamicAcceleratedProducerAdapter<TriangleData> implements TriangleDataProducer {
-	private String value[];
+	private Expression<Double> value[];
 
 	public TriangleDataFromVectors(Producer<Vector> abc, Producer<Vector> def,
 								   Producer<Vector> jkl) {
@@ -40,10 +42,10 @@ public class TriangleDataFromVectors extends DynamicAcceleratedProducerAdapter<T
 	}
 
 	@Override
-	public Function<Integer, String> getValueFunction() {
+	public IntFunction<Expression<Double>> getValueFunction() {
 		return pos -> {
 			if (value == null || value[pos] == null) {
-				return getArgumentValueName((pos / 3) + 1, pos % 3);
+				return new Expression<>(getArgumentValueName((pos / 3) + 1, pos % 3));
 			} else {
 				return value[pos];
 			}
@@ -55,7 +57,7 @@ public class TriangleDataFromVectors extends DynamicAcceleratedProducerAdapter<T
 		super.compact();
 
 		if (value == null) {
-			value = new String[12];
+			value = new Expression[12];
 
 			List<Argument> newArgs = new ArrayList<>();
 			newArgs.add(inputProducers[0]);
@@ -97,7 +99,7 @@ public class TriangleDataFromVectors extends DynamicAcceleratedProducerAdapter<T
 
 			// Check for illegal values
 			for (int i = 0; i < value.length; i++) {
-				if (value[i] != null && value[i].contains("Infinity")) {
+				if (value[i] != null && value[i].getExpression().contains("Infinity")) {
 					throw new IllegalArgumentException("Infinity is not supported");
 				}
 			}

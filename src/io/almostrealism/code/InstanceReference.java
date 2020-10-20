@@ -24,7 +24,7 @@ import org.almostrealism.util.StaticProducer;
  * encode the data as a {@link String}, but unlike a normal {@link String}
  * {@link Variable} the text does not appear in quotes.
  */
-public class InstanceReference extends Variable<String> {
+public class InstanceReference<T> extends Expression<T> {
 	private Variable var;
 
 	public InstanceReference(Variable<?> v) {
@@ -33,16 +33,7 @@ public class InstanceReference extends Variable<String> {
 	}
 
 	public InstanceReference(String varName) {
-		super(varName, StaticProducer.of(varName));
-	}
-
-	/**
-	 * Side-effects value returned by {@link #getProducer()} to match.
-	 */
-	@Override
-	public void setName(String varName) {
-		super.setName(varName);
-		super.setProducer(StaticProducer.of(varName));
+		super(varName);
 	}
 
 	public Variable getReferent() { return var; }

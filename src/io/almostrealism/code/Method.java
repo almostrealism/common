@@ -32,23 +32,23 @@ import java.util.Map;
  */
 public class Method<T> implements Nameable {
 	private String member, name;
-	private List<Variable> arguments;
+	private List<Expression<?>> arguments;
 
-	public Method(String name, List<Variable> arguments) {
+	public Method(String name, List<Expression<?>> arguments) {
 		this(null, name, arguments);
 	}
 
-	public Method(String member, String name, List<Variable> arguments) {
+	public Method(String member, String name, List<Expression<?>> arguments) {
 		this.member = member;
 		this.name = name;
 		this.arguments = arguments;
 	}
 
-	public Method(String name, Variable... v) {
+	public Method(String name, Expression<?>... v) {
 		this(null, name, v);
 	}
 
-	public Method(String member, String name, Variable... v) {
+	public Method(String member, String name, Expression<?>... v) {
 		this(member, name, Arrays.asList(v));
 	}
 
@@ -60,5 +60,5 @@ public class Method<T> implements Nameable {
 	public void setMember(String m) { this.member = m; }
 	public String getMember() { return this.member; }
 
-	public List<Variable> getArguments() { return arguments; }
+	public List<Expression<?>> getArguments() { return arguments; }
 }

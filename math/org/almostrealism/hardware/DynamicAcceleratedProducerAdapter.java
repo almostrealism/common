@@ -16,7 +16,10 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.c.OpenCLPrintWriter;
 import io.almostrealism.code.Argument;
+import io.almostrealism.code.InstanceReference;
+import io.almostrealism.code.Expression;
 import io.almostrealism.code.Variable;
 import org.almostrealism.util.Producer;
 
@@ -28,7 +31,7 @@ import java.util.stream.IntStream;
 
 public abstract class DynamicAcceleratedProducerAdapter<T extends MemWrapper> extends DynamicAcceleratedProducer<T> {
 	private int memLength;
-	private Function<Integer, String> variableRef;
+	private IntFunction<InstanceReference> variableRef;
 
 	public DynamicAcceleratedProducerAdapter(int memLength, Producer<T> result, Producer<?>... inputArgs) {
 		super(true, result, inputArgs, new Producer[0]);
@@ -53,32 +56,33 @@ public abstract class DynamicAcceleratedProducerAdapter<T extends MemWrapper> ex
 		writeVariables(buf::append, existingVariables);
 		IntStream.range(0, memLength)
 				.mapToObj(getAssignmentFunction(outputVariable))
+				.map(OpenCLPrintWriter::renderAssignment)
 				.map(s -> s + "\n")
 				.forEach(buf::append);
 		return buf.toString();
 	}
 
-	public IntFunction<String> getAssignmentFunction(Function<Integer, String> outputVariable) {
-		return i -> outputVariable.apply(i) + " = " + getValue(i) + ";";
+	public IntFunction<Variable<Double>> getAssignmentFunction(Function<Integer, String> outputVariable) {
+		return i -> new Variable<>(outputVariable.apply(i), getValue(i));
 	}
 
 	public AcceleratedProducer getInputProducer(int index) {
 		return (AcceleratedProducer) getInputProducers()[index].getProducer();
 	}
 
-	public String getInputProducerValue(int index, int pos) {
+	public Expression<Double> getInputProducerValue(int index, int pos) {
 		return getInputProducerValue(getInputProducers()[index], pos);
 	}
 
-	public static String getInputProducerValue(Argument arg, int pos) {
+	public static Expression<Double> getInputProducerValue(Argument arg, int pos) {
 		return ((DynamicAcceleratedProducerAdapter) arg.getProducer()).getValue(pos);
 	}
 
-	public String getValue(int pos) {
+	public Expression getValue(int pos) {
 		return (isVariableRef() ? variableRef : getValueFunction()).apply(pos);
 	}
 
-	public abstract Function<Integer, String> getValueFunction();
+	public abstract IntFunction<Expression<Double>> getValueFunction();
 
 	public boolean isVariableRef() { return variableRef != null;}
 
@@ -87,12 +91,12 @@ public abstract class DynamicAcceleratedProducerAdapter<T extends MemWrapper> ex
 			IntStream.range(0, memLength)
 					.mapToObj(variableForIndex(getValueFunction()))
 					.forEach(this::addVariable);
-			variableRef = i -> getVariableName(i);
+			variableRef = i -> new InstanceReference(getVariableName(i));
 		}
 	}
 
-	protected IntFunction<Variable> variableForIndex(Function<Integer, String> valueFunction) {
-		return i -> new Variable(getVariableName(i), () -> valueFunction.apply(i), this);
+	protected IntFunction<Variable<Double>> variableForIndex(IntFunction<Expression<Double>> valueFunction) {
+		return i -> new Variable(getVariableName(i), valueFunction.apply(i), this);
 	}
 
 	public boolean isValueOnly() { return true; }

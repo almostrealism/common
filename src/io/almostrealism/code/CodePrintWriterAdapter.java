@@ -18,10 +18,14 @@ package io.almostrealism.code;
 
 import org.almostrealism.io.PrintWriter;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.Consumer;
+
 public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 	protected PrintWriter p;
 
-	private String nameSuffix = "()";
+	private String nameSuffix = "";
 	private String scopePrefix;
 	private String scopeSuffix = "{";
 	private String scopeClose = "}";
@@ -38,7 +42,7 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 
 	@Override
 	public void println(Scope s) {
-		beginScope(s.getName());
+		beginScope(s.getName(), new ArrayList<>());
 		s.write(this);
 		endScope();
 	}
@@ -47,7 +51,7 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 	public void flush() { }
 
 	@Override
-	public void beginScope(String name) {
+	public void beginScope(String name, List<Argument<?>> arguments) {
 		StringBuffer buf = new StringBuffer();
 
 		if (name != null) {
@@ -58,11 +62,32 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 			if (nameSuffix != null) {
 				buf.append(nameSuffix);
 			}
+
+			buf.append("(");
+			renderArguments(arguments, buf::append);
+			buf.append(")");
 		}
 
 		if (scopeSuffix != null) { buf.append(" "); buf.append(scopeSuffix); }
 
 		p.println(buf.toString());
+	}
+
+	protected void renderArguments(List<Argument<?>> arguments, Consumer<String> out) {
+		for (int i = 0; i < arguments.size(); i++) {
+			if (arguments.get(i).getAnnotation() != null) {
+				out.accept(arguments.get(i).getAnnotation());
+				out.accept(" ");
+			}
+
+			out.accept(arguments.get(i).getType().toString());
+			out.accept(" ");
+			out.accept(arguments.get(i).getName());
+
+			if (i < arguments.size() - 1) {
+				out.accept(", ");
+			}
+		}
 	}
 
 	@Override

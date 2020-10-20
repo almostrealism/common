@@ -140,16 +140,11 @@ public class TransformMatrix extends MemWrapperAdapter implements TripleFunction
 	 * @return  Value from matrix.
 	 */
 	@Deprecated
-	public double getValue(int r, int c) { return this.toArray()[r * r + c]; }
-	
-	public TransformMatrix getInverseTransposeMatrix() {
-		if (!this.inverted) this.calculateInverse();
-		return this.inverseMatrix;
-	}
+	public double getValue(int r, int c) { return this.toArray()[r * 4 + c]; }
 	
 	/**
-	 * Multiplys the matrix represented by this TransformMatrix object with the specified
-	 * double value and returns the result as a TransformMatrix object.
+	 * Multiplies the matrix represented by this {@link TransformMatrix} with the specified
+	 * double value and returns the result as a {@link TransformMatrix}.
 	 */
 	// TODO  Improve the performance of this method using CL
 	public TransformMatrix multiply(double value) {

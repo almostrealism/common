@@ -16,7 +16,7 @@
 
 package io.almostrealism.code;
 
-import org.almostrealism.relation.Computation;
+import java.util.List;
 
 /**
  * A {@link CodePrintWriter} is implemented for each language that a {@link Scope} may be
@@ -29,7 +29,7 @@ public interface CodePrintWriter {
 	 *
 	 * @param v  Variable to print.
 	 */
-	void println(Variable v);
+	void println(Variable<?> v);
 
 	/**
 	 * Write the specified {@link Variable} (name of the variable and the data).
@@ -37,21 +37,21 @@ public interface CodePrintWriter {
 	 * @param v  Variable to print.
 	 * @param create  True if the variable has not been mentioned before in this scope.
 	 */
-	void println(Variable v, boolean create);
+	void println(Variable<?> v, boolean create);
 
 	/**
 	 * Write a call to the function represented by the specified {@link Method}.
 	 *
 	 * @param m  Method call to print.
 	 */
-	void println(Method m);
+	void println(Method<?> m);
 
 	/**
 	 * Write the {@link Scope}.
 	 *
 	 * @param s  Computation to print.
 	 */
-	void println(Scope s);
+	void println(Scope<?> s);
 
 	/**
 	 * Flush the underlying output mechanism.
@@ -62,10 +62,10 @@ public interface CodePrintWriter {
 	 * Begin a named scope. Most {@link CodePrintWriter} implementations support
 	 * null for the name.
 	 */
-	void beginScope(String name);
+	void beginScope(String name, List<Argument<?>> arguments);
 
 	/**
-	 * End a scope which was introduced with {@link #beginScope(String)}.
+	 * End a scope which was introduced with {@link #beginScope(String, List)}.
 	 */
 	void endScope();
 }
