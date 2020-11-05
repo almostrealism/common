@@ -16,11 +16,17 @@
 
 package org.almostrealism.util;
 
+import io.almostrealism.code.Argument;
 import io.almostrealism.code.Expression;
+import io.almostrealism.code.Scope;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.hardware.MemWrapper;
+import org.almostrealism.relation.NameProvider;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 
@@ -37,17 +43,22 @@ public class AcceleratedPassThroughProducer<T extends MemWrapper>
 		super(memLength, null);
 		this.argIndex = argIndex;
 		this.kernelIndex = kernelIndex;
-		inputProducers = arguments(null, this);
+
+		Argument result = new Argument("");
+		result.setSortHint(-1);
+
+		List<Argument> args = new ArrayList<>();
+		args.add(result);
+		args.addAll(Arrays.asList(arguments(compileProducer(this))));
+		setArguments(args);
 		initArgumentNames();
 	}
 
 	/**
-	 * Returns the argument at the index specified to the constructor of
-	 * {@link AcceleratedPassThroughProducer}.
+	 * Returns an empty scope, as this is not intended to be converted.
 	 */
-	@Override
-	public T evaluate(Object[] args) {
-		return (T) args[argIndex];
+	public Scope<T> getScope(NameProvider p) {
+		return new Scope<>();
 	}
 
 	@Override
@@ -57,7 +68,7 @@ public class AcceleratedPassThroughProducer<T extends MemWrapper>
 
 	@Override
 	public IntFunction<Expression<Double>> getValueFunction() {
-		return pos -> new Expression<>(getArgumentValueName(1, pos, kernelIndex));
+		return pos -> new Expression<>(Double.class, getArgumentValueName(1, pos, kernelIndex), getArgument(1));
 	}
 
 	@Override

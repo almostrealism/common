@@ -18,18 +18,15 @@ package org.almostrealism.color.computations;
 
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBBank;
-import org.almostrealism.hardware.KernelizedProducer;
 import org.almostrealism.hardware.MemoryBank;
-import org.almostrealism.util.AcceleratedStaticRGBProducer;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.AcceleratedStaticRGBComputation;
 
-public class RGBWhite extends AcceleratedStaticRGBProducer {
+public class RGBWhite extends AcceleratedStaticRGBComputation {
 	private static RGBWhite local = new RGBWhite();
 
 	public RGBWhite() { super(new RGB(1.0, 1.0, 1.0), RGB.blank()); }
 
 	public static RGBWhite getInstance() { return local; }
 
-	@Override
-	public MemoryBank<RGB> createKernelDestination(int size) { return new RGBBank(size); }
+	public static RGBProducer getProducer() { return new DefaultRGBProducer(getInstance()); }
 }

@@ -21,13 +21,14 @@ import java.util.*;
 import io.almostrealism.code.Scope;
 import org.almostrealism.algebra.*;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.algebra.computations.DefaultVectorProducer;
+import org.almostrealism.geometry.DefaultRayProducer;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.algebra.computations.RayDirection;
 import org.almostrealism.algebra.computations.RayPointAt;
 import org.almostrealism.geometry.RayFromVectors;
 import org.almostrealism.relation.NameProvider;
 import org.almostrealism.util.Producer;
-import org.almostrealism.util.ProducerWithRank;
 import org.almostrealism.util.ProducerWithRankAdapter;
 import org.almostrealism.util.StaticProducer;
 
@@ -36,16 +37,17 @@ import org.almostrealism.util.StaticProducer;
  * 
  * @author  Michael Murray
  */
-public class ShadableIntersection extends Intersection implements ContinuousField {
+public class ShadableIntersection extends Intersection implements ContinuousField, VectorFeatures {
 	private Producer<Vector> incident;
 	private Producer<Ray> normal;
 
 	public ShadableIntersection(Gradient surface, Producer<Ray> r, Producer<Scalar> distance) {
-		this(surface, new RayPointAt(r, distance), new RayDirection(r), distance);
+		this(surface, new DefaultVectorProducer(new RayPointAt(r, distance)),
+				new DefaultVectorProducer(new RayDirection(r)), distance);
 	}
 
 	public ShadableIntersection(Producer<Ray> r, Producer<Vector> normal, Producer<Scalar> distance) {
-		this(new RayPointAt(r, distance), new RayDirection(r), normal, distance);
+		this(new DefaultVectorProducer(new RayPointAt(r, distance)), new DefaultVectorProducer(new RayDirection(r)), normal, distance);
 	}
 
 	public ShadableIntersection(Gradient surface, Producer<Vector> point, Producer<Vector> incident, Producer<Scalar> distance) {
@@ -57,19 +59,19 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 
 		this.incident = incident;
 
-		Producer p = new RayFromVectors(getPoint(), normal);
+		Producer p = new DefaultRayProducer(new RayFromVectors(getPoint(), normal));
 		this.normal = new ProducerWithRankAdapter<>(p, distance); // TODO  Should be accelerated producer
 	}
 	
 	/** Returns the viewer direction. */
 	@Override
-		public Producer<Vector> getNormalAt(Producer<Vector> point) {
-		return VectorProducer.normalize(incident).scalarMultiply(-1.0);
+	public Producer<Vector> getNormalAt(Producer<Vector> point) {
+		return normalize(incident).scalarMultiply(-1.0);
 	}
 	
 	/** Delegates to {@link #getNormalAt(Producer)}. */
 	@Override
-	public Vector operate(Triple t) { return getNormalAt(StaticProducer.of(new Vector(t.getA(), t.getB(), t.getC()))).evaluate(new Object[0]); }
+	public Vector operate(Vector t) { return getNormalAt(StaticProducer.of(t)).evaluate(); }
 
 	@Override
 	public Scope getScope(NameProvider p) {

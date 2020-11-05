@@ -28,6 +28,7 @@ public class DefaultVertexData implements Mesh.VertexData {
 	private RGBBank colors;
 	private PairBank texCoords;
 
+	// TODO Convert to a vertex bank so that conversion to MeshPointData can be kernelized
 	private int triangles[][];
 
 	public DefaultVertexData(int points, int triangles) {
@@ -81,6 +82,7 @@ public class DefaultVertexData implements Mesh.VertexData {
 	@Override
 	public int getVertexCount() { return vertices.getCount(); }
 
+	// TODO Kernelize
 	@Override
 	public MeshPointData getMeshPointData() {
 		MeshPointData points = new MeshPointData(getTriangleCount());

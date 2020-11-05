@@ -19,20 +19,19 @@ package org.almostrealism.algebra.computations;
 import io.almostrealism.code.Argument;
 import io.almostrealism.code.Expression;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarBank;
-import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
-import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.hardware.ComputerFeatures;
+import org.almostrealism.relation.Computation;
 import org.almostrealism.util.Producer;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.function.Function;
 import java.util.function.IntFunction;
 
-public class DotProduct extends DynamicAcceleratedProducerAdapter<Scalar> implements ScalarProducer {
+public class DotProduct extends DynamicAcceleratedProducerAdapter<Scalar> implements Computation<Scalar>, ComputerFeatures {
 	private Expression<Double> value[];
 
 	public DotProduct(Producer<Vector> a, Producer<Vector> b) {
@@ -44,11 +43,12 @@ public class DotProduct extends DynamicAcceleratedProducerAdapter<Scalar> implem
 		return pos -> {
 			if (value == null) {
 				if (pos == 0) {
-					return new Expression(getArgumentValueName(1, 0) + " * " + getArgumentValueName(2, 0) + " + " +
+					return new Expression(Double.class, getArgumentValueName(1, 0) + " * " + getArgumentValueName(2, 0) + " + " +
 							getArgumentValueName(1, 1) + " * " + getArgumentValueName(2, 1) + " + " +
-							getArgumentValueName(1, 2) + " * " + getArgumentValueName(2, 2));
+							getArgumentValueName(1, 2) + " * " + getArgumentValueName(2, 2),
+							getArgument(1), getArgument(2));
 				} else if (pos == 1) {
-					return new Expression(stringForDouble(1.0));
+					return new Expression(Double.class, stringForDouble(1.0));
 				} else {
 					throw new IllegalArgumentException("Position " + pos + " is invalid");
 				}
@@ -64,28 +64,27 @@ public class DotProduct extends DynamicAcceleratedProducerAdapter<Scalar> implem
 
 		if (value == null && isCompletelyValueOnly()) {
 			value = new Expression[2];
-			value[0] = new Expression<>("(" + getInputProducerValue(1, 0).getExpression() + ") * (" + getInputProducerValue(2, 0).getExpression() + ") + " +
+			value[0] = new Expression<>(Double.class, "(" + getInputProducerValue(1, 0).getExpression() + ") * (" + getInputProducerValue(2, 0).getExpression() + ") + " +
 					"(" + getInputProducerValue(1, 1).getExpression() + ") * (" + getInputProducerValue(2, 1).getExpression() + ") + " +
-					"(" + getInputProducerValue(1, 2).getExpression() + ") * (" + getInputProducerValue(2, 2).getExpression() + ")");
-			value[1] = new Expression<>(stringForDouble(1.0));
+					"(" + getInputProducerValue(1, 2).getExpression() + ") * (" + getInputProducerValue(2, 2).getExpression() + ")",
+					getInputProducerValue(1, 0), getInputProducerValue(1, 1), getInputProducerValue(1, 2),
+					getInputProducerValue(2, 0), getInputProducerValue(2, 1), getInputProducerValue(2, 2));
+			value[1] = new Expression<>(Double.class, stringForDouble(1.0));
 
 			if (value[0].getExpression().contains("Infinity")) {
 				throw new IllegalArgumentException("Infinity is not supported");
 			}
 
 			List<Argument> newArgs = new ArrayList<>();
-			newArgs.add(inputProducers[0]);
-			newArgs.addAll(Arrays.asList(excludeResult(getInputProducer(1).getInputProducers())));
-			newArgs.addAll(Arrays.asList(excludeResult(getInputProducer(2).getInputProducers())));
+			newArgs.add(getArguments().get(0));
+			newArgs.addAll(AcceleratedProducer.excludeResult(getInputProducer(1).getArguments()));
+			newArgs.addAll(AcceleratedProducer.excludeResult(getInputProducer(2).getArguments()));
 			absorbVariables(getInputProducer(1));
 			absorbVariables(getInputProducer(2));
-			inputProducers = newArgs.toArray(new Argument[0]);
+			// setArguments(newArgs);
 			removeDuplicateArguments();
 		}
 
 		convertToVariableRef();
 	}
-
-	@Override
-	public MemoryBank<Scalar> createKernelDestination(int size) { return new ScalarBank(size); }
 }

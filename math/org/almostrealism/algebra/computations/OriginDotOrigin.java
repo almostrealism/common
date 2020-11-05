@@ -16,6 +16,7 @@
 
 package org.almostrealism.algebra.computations;
 
+import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.util.Producer;
 
@@ -25,6 +26,10 @@ public class OriginDotOrigin extends DotProduct {
 	}
 
 	protected OriginDotOrigin(RayOrigin o) {
-		super(o, o);
+		this(new DefaultVectorProducer(o), true);
+	}
+
+	private OriginDotOrigin(Producer<Vector> origin, boolean ignore) {
+		super(origin, origin);
 	}
 }

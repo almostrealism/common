@@ -32,7 +32,7 @@ import org.almostrealism.util.Producer;
 /**
  * @author  Michael Murray
  */
-public class ColorSum extends NAryDynamicAcceleratedProducer<RGB> implements RGBProducer {
+public class ColorSum extends NAryDynamicAcceleratedProducer<RGB> {
 	public ColorSum(Producer<RGB>... producers) {
 		super("+", 3, RGB.blank(), producers);
 	}

@@ -16,6 +16,8 @@
 
 package org.almostrealism.util;
 
+import org.almostrealism.algebra.computations.DefaultPairProducer;
+import org.almostrealism.algebra.computations.DefaultScalarProducer;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairProducer;
 import org.almostrealism.algebra.Scalar;
@@ -23,10 +25,12 @@ import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.algebra.TransformMatrix;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorProducer;
+import org.almostrealism.algebra.computations.DefaultVectorProducer;
 import org.almostrealism.color.RGB;
+import org.almostrealism.color.computations.DefaultRGBProducer;
 import org.almostrealism.color.computations.RGBProducer;
+import org.almostrealism.geometry.DefaultRayProducer;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.geometry.RayFromVectors;
 import org.almostrealism.geometry.RayProducer;
 
 public class StaticProducer<T> implements Producer<T> {
@@ -50,15 +54,15 @@ public class StaticProducer<T> implements Producer<T> {
 
 	public static <V> Producer<V> of(V value) {
 		if (value instanceof Scalar) {
-			return (Producer<V>) new AcceleratedStaticScalarProducer((Scalar) value, Scalar.blank());
+			return (Producer<V>) new DefaultScalarProducer(new AcceleratedStaticScalarComputation((Scalar) value, Scalar.blank()));
 		} else if (value instanceof Pair) {
-			return (Producer<V>) new AcceleratedStaticPairProducer((Pair) value, Pair.empty());
+			return (Producer<V>) new DefaultPairProducer(new AcceleratedStaticPairComputation((Pair) value, Pair.empty()));
 		} else if (value instanceof Vector) {
-			return (Producer<V>) new AcceleratedStaticVectorProducer((Vector) value, Vector.blank());
+			return (Producer<V>) new DefaultVectorProducer(new AcceleratedStaticVectorComputation((Vector) value, Vector.blank()));
 		} else if (value instanceof Ray) {
-			return (Producer<V>) new AcceleratedStaticRayProducer((Ray) value, Ray.blank());
+			return (Producer<V>) new DefaultRayProducer(new AcceleratedStaticRayComputation((Ray) value, Ray.blank()));
 		} else if (value instanceof TransformMatrix) {
-			return (Producer<V>) new AcceleratedStaticTransformMatrixProducer((TransformMatrix) value, TransformMatrix.blank());
+			return (Producer<V>) new DefaultTransformMatrixProducer(new AcceleratedStaticTransformMatrixComputation((TransformMatrix) value, TransformMatrix.blank()));
 		} else if (value == null) {
 			return null;
 		} else {
@@ -69,20 +73,22 @@ public class StaticProducer<T> implements Producer<T> {
 	public static ScalarProducer of(double value) { return of(new Scalar(value)); }
 
 	public static ScalarProducer of(Scalar value) {
-		return new AcceleratedStaticScalarProducer(value, Scalar.blank());
+		return new DefaultScalarProducer(new AcceleratedStaticScalarComputation(value, Scalar.blank()));
 	}
 
 	public static PairProducer of(Pair value) {
-		return new AcceleratedStaticPairProducer(value, Pair.empty());
+		return new DefaultPairProducer(new AcceleratedStaticPairComputation(value, Pair.empty()));
 	}
 
 	public static VectorProducer of(Vector value) {
-		return new AcceleratedStaticVectorProducer(value, Vector.blank());
+		return new DefaultVectorProducer(new AcceleratedStaticVectorComputation(value, Vector.blank()));
 	}
 
 	public static RayProducer of(Ray value) {
-		return new AcceleratedStaticRayProducer(value, Ray.blank());
+		return new DefaultRayProducer(new AcceleratedStaticRayComputation(value, Ray.blank()));
 	}
 
-	public static RGBProducer of(RGB value) { return new AcceleratedStaticRGBProducer(value, RGB.blank()); }
+	public static RGBProducer of(RGB value) {
+		return new DefaultRGBProducer(new AcceleratedStaticRGBComputation(value, RGB.blank()));
+	}
 }

@@ -18,19 +18,20 @@ package org.almostrealism.algebra.computations;
 
 import io.almostrealism.code.Argument;
 import io.almostrealism.code.Expression;
+import io.almostrealism.code.Scope;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorBank;
-import org.almostrealism.algebra.VectorProducer;
+import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
+import org.almostrealism.relation.NameProvider;
 import org.almostrealism.util.Producer;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.function.Function;
 import java.util.function.IntFunction;
 
-public class VectorFromVectorBank extends DynamicAcceleratedProducerAdapter<Vector> implements VectorProducer {
+public class VectorFromVectorBank extends DynamicAcceleratedProducerAdapter<Vector> {
 	private int position;
 
 	private Expression<Double> value[];
@@ -45,7 +46,7 @@ public class VectorFromVectorBank extends DynamicAcceleratedProducerAdapter<Vect
 		return pos -> {
 			if (value == null) {
 				if (pos >= 0 && pos < 3) {
-					return new Expression<>(getArgumentValueName(1, position + pos));
+					return new Expression<>(Double.class, getArgumentValueName(1, position + pos), getArgument(1));
 				} else {
 					throw new IllegalArgumentException(String.valueOf(pos));
 				}
@@ -61,7 +62,7 @@ public class VectorFromVectorBank extends DynamicAcceleratedProducerAdapter<Vect
 
 		if (value == null && isCompletelyValueOnly()) {
 			List<Argument> newArgs = new ArrayList<>();
-			newArgs.add(getInputProducers()[0]);
+			newArgs.add(getArguments().get(0));
 
 			value = new Expression[3];
 
@@ -72,10 +73,10 @@ public class VectorFromVectorBank extends DynamicAcceleratedProducerAdapter<Vect
 				}
 			}
 
-			newArgs.addAll(Arrays.asList(excludeResult(getInputProducer(1).getInputProducers())));
+			newArgs.addAll(AcceleratedProducer.excludeResult(getInputProducer(1).getArguments()));
 			absorbVariables(getInputProducer(1));
 
-			inputProducers = newArgs.toArray(new Argument[0]);
+			// setArguments(newArgs);
 			removeDuplicateArguments();
 		}
 	}

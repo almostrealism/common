@@ -2,6 +2,8 @@ package org.almostrealism.util;
 
 import io.almostrealism.code.Argument;
 import io.almostrealism.code.Variable;
+import org.almostrealism.hardware.AcceleratedProducer;
+import org.almostrealism.hardware.DynamicAcceleratedMultiProducer;
 import org.almostrealism.hardware.DynamicAcceleratedProducer;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.hardware.MemoryBank;
@@ -51,19 +53,10 @@ public class AcceleratedRankedChoiceProducer<T extends MemWrapper> extends Dynam
 		this.ranks = getRanks();
 		this.choices = getChoices();
 		this.defaultValue = getDefaultValue();
-		addVariable(new Variable(getHighestRankResultVariable(), this, 2, "__local"));
-		addVariable(new Variable(getHighestRankInputVariable(), this, 2 * valueCount, "__local"));
-		addVariable(new Variable(getHighestRankConfVariable(), this, 2, "__local"));
+		addVariable(new Variable(getHighestRankResultVariable().getName(), this, 2, "__local"));
+		addVariable(new Variable(getHighestRankInputVariable().getName(), this, 2 * valueCount, "__local"));
+		addVariable(new Variable(getHighestRankConfVariable().getName(), this, 2, "__local"));
 	}
-
-//	public T evaluate(Object args[]) {
-//		for (int i = 1; i < inputProducers.length; i++) {
-//			System.out.println("input[" + i + "] = " + inputProducers[i].getProducer().evaluate(args));
-//		}
-//
-//		return super.evaluate(args);
-//	}
-
 
 	@Override
 	public void setDimensions(int width, int height, int ssw, int ssh) {
@@ -77,7 +70,7 @@ public class AcceleratedRankedChoiceProducer<T extends MemWrapper> extends Dynam
 	}
 
 	@Override
-	public String getBody(Function<Integer, String> outputVariable, List<Variable> existingVariables) {
+	public String getBody(Variable outputVariable, List<Variable> existingVariables) {
 		StringBuffer buf = new StringBuffer();
 
 		List<Variable> variables = new ArrayList<>();
@@ -88,11 +81,11 @@ public class AcceleratedRankedChoiceProducer<T extends MemWrapper> extends Dynam
 
 		writeInputAssignments(buf::append, variables);
 		buf.append("highestRankLocal(");
-		buf.append(getHighestRankResultVariable());
+		buf.append(getHighestRankResultVariable().getName());
 		buf.append(", ");
-		buf.append(getHighestRankInputVariable());
+		buf.append(getHighestRankInputVariable().getName());
 		buf.append(", ");
-		buf.append(getHighestRankConfVariable());
+		buf.append(getHighestRankConfVariable().getName());
 		buf.append(", 0, 0, 0, 2, 2, 2);\n");
 //		writeHighestRank(buf::append);
 //		buf.append("printf(\"rank = %f, choice = %f\\n\", " +
@@ -109,23 +102,23 @@ public class AcceleratedRankedChoiceProducer<T extends MemWrapper> extends Dynam
 
 		IntStream.range(0, ranks.size()).forEach(i -> {
 			if (compactedRanks == null || compactedRanks[i] == null) {
-				output.accept(getHighestRankInputVariable());
+				output.accept(getHighestRankInputVariable().getName());
 				output.accept("[");
 				output.accept(String.valueOf(2 * i));
 				output.accept("] = ");
-				output.accept(getArgumentValueName(ranks.get(i), 0));
+				output.accept(getVariableValueName(ranks.get(i), 0));
 				output.accept(";\n");
 			} else {
 				output.accept(compactedRanks[i].apply(existingVariables));
 			}
 		});
 
-		output.accept(getHighestRankConfVariable());
+		output.accept(getHighestRankConfVariable().getName());
 		output.accept("[0] = ");
 		output.accept(stringForDouble(ranks.size()));
 		output.accept(";\n");
 
-		output.accept(getHighestRankConfVariable());
+		output.accept(getHighestRankConfVariable().getName());
 		output.accept("[1] = ");
 		output.accept(stringForDouble(e));
 		output.accept(";\n");
@@ -137,7 +130,7 @@ public class AcceleratedRankedChoiceProducer<T extends MemWrapper> extends Dynam
 			output.accept("if (");
 			output.accept(stringForDouble(i));
 			output.accept(" == ");
-			output.accept(getHighestRankResultVariable());
+			output.accept(getHighestRankResultVariable().getName());
 			output.accept("[1]) {\n");
 			writeOutputAssignments(output, i, existingVariables);
 			output.accept("}");
@@ -155,7 +148,7 @@ public class AcceleratedRankedChoiceProducer<T extends MemWrapper> extends Dynam
 				IntStream.range(0, memLength).forEach(i -> {
 					output.accept(getArgumentValueName(0, i, true));
 					output.accept(" = ");
-					output.accept(getArgumentValueName(getDefaultValue(), i, false));
+					output.accept(getVariableValueName(getDefaultValue(), i, false));
 					output.accept(";\n");
 				});
 			} else {
@@ -179,14 +172,14 @@ public class AcceleratedRankedChoiceProducer<T extends MemWrapper> extends Dynam
 		output.accept("__local int closestIndex;\n");
 		output.accept("closestIndex = -1;\n");
 		output.accept("for (int i = 0; i < ");
-		output.accept(getHighestRankConfVariable());
+		output.accept(getHighestRankConfVariable().getName());
 		output.accept("[0]; i++) {\n");
 		output.accept("__local double value;\n");
 		output.accept("value = ");
-		output.accept(getHighestRankInputVariable());
+		output.accept(getHighestRankInputVariable().getName());
 		output.accept("[i * 2];\n");
 		output.accept("if (value >= ");
-		output.accept(getHighestRankConfVariable());
+		output.accept(getHighestRankConfVariable().getName());
 		output.accept("[1]");
 		output.accept(") {\n");
 		output.accept("if (closestIndex == -1 || value < closest) {\n");
@@ -195,50 +188,50 @@ public class AcceleratedRankedChoiceProducer<T extends MemWrapper> extends Dynam
 		output.accept("}\n");
 		output.accept("}\n");
 		output.accept("}\n");
-		output.accept(getHighestRankResultVariable());
+		output.accept(getHighestRankResultVariable().getName());
 		output.accept("[0] = closestIndex < 0 ? -1 : closest;\n");
-		output.accept(getHighestRankResultVariable());
+		output.accept(getHighestRankResultVariable().getName());
 		output.accept("[1] = closestIndex;\n");
 	}
 
-	protected String getHighestRankResultVariable() { return getVariableName(0); }
-	protected String getHighestRankInputVariable() { return getVariableName(1); }
-	protected String getHighestRankConfVariable() { return getVariableName(2); }
-	public int getDefaultValueIndex() { return getInputProducers().length - 1; }
+	protected Variable<Double> getHighestRankResultVariable() { return getVariable(0); }
+	protected Variable<Double> getHighestRankInputVariable() { return getVariable(1); }
+	protected Variable<Double> getHighestRankConfVariable() { return getVariable(2); }
+	public int getDefaultValueIndex() { return getArguments().size() - 1; }
 
 	public List<Argument> getRanks() { return ranks == null ? getArguments(i -> i + 1) : ranks; }
 	public List<Argument> getChoices() { return choices == null ? getArguments(indexOfChoice()) : choices; }
-	public Argument getDefaultValue() { return defaultValue == null ? getInputProducers()[getInputProducers().length - 1] : defaultValue; }
+	public Argument getDefaultValue() { return defaultValue == null ? getArguments().get(getArguments().size() - 1) : defaultValue; }
 
 	private List<Argument> getArguments(IntUnaryOperator index) {
 		return IntStream.range(0, valueCount)
 				.map(index)
-				.mapToObj(i -> inputProducers[i])
+				.mapToObj(i -> getArguments().get(i))
 				.collect(Collectors.toList());
 	}
 
 	private IntUnaryOperator indexOfChoice() { return i -> i + valueCount + 1; }
 
+	@Override
 	public void compact() {
 		super.compact();
 
 		if (enableCompaction && (compactedRanks == null || compactedChoices == null)) {
 			List<Argument> newArgs = new ArrayList<>();
-			newArgs.add(getInputProducers()[0]);
+			newArgs.add(getArguments().get(0));
 
 			List<Argument> ranks = getRanks();
 			compactedRanks = new Function[ranks.size()];
 			IntStream.range(0, compactedRanks.length).forEach(i -> {
-				if (ranks.get(i).getProducer() instanceof DynamicAcceleratedProducer) {
-					DynamicAcceleratedProducer p = (DynamicAcceleratedProducer) ranks.get(i).getProducer();
+				if (ranks.get(i).getProducer() instanceof DynamicAcceleratedMultiProducer) {
+					DynamicAcceleratedMultiProducer p = (DynamicAcceleratedMultiProducer) ranks.get(i).getProducer();
 					compactedRanks[i] = ev -> {
-						String s = p.getBody((Function<Integer, String>) pos ->
-								getHighestRankInputVariable() + "[" + (2 * i + pos) + "]", ev);
+						String s = p.getBody(getHighestRankInputVariable(), ev);
 						ev.addAll(p.getVariables());
 						return s;
 					};
 
-					newArgs.addAll(Arrays.asList(excludeResult(p.getInputProducers())));
+					newArgs.addAll(AcceleratedProducer.excludeResult(p.getArguments()));
 				} else {
 					newArgs.add(ranks.get(i));
 				}
@@ -247,37 +240,35 @@ public class AcceleratedRankedChoiceProducer<T extends MemWrapper> extends Dynam
 			List<Argument> choices = getChoices();
 			compactedChoices = new Function[choices.size()];
 			IntStream.range(0, compactedChoices.length).forEach(i -> {
-				if (choices.get(i).getProducer() instanceof DynamicAcceleratedProducer) {
-					DynamicAcceleratedProducer p = (DynamicAcceleratedProducer) choices.get(i).getProducer();
+				if (choices.get(i).getProducer() instanceof DynamicAcceleratedMultiProducer) {
+					DynamicAcceleratedMultiProducer p = (DynamicAcceleratedMultiProducer) choices.get(i).getProducer();
 					compactedChoices[i] = ev -> {
-						String s = p.getBody((Function<Integer, String>) pos ->
-								getArgumentValueName(0, pos, true), ev);
+						String s = p.getBody(getOutputVariable(), ev);
 						ev.addAll(p.getVariables());
 						return s;
 					};
 
-					newArgs.addAll(Arrays.asList(excludeResult(p.getInputProducers())));
+					newArgs.addAll(AcceleratedProducer.excludeResult(p.getArguments()));
 				} else {
 					newArgs.add(choices.get(i));
 				}
 			});
 
 			Argument defaultValue = getDefaultValue();
-			if (defaultValue.getProducer() instanceof DynamicAcceleratedProducer) {
-				DynamicAcceleratedProducer p = (DynamicAcceleratedProducer) defaultValue.getProducer();
+			if (defaultValue.getProducer() instanceof DynamicAcceleratedMultiProducer) {
+				DynamicAcceleratedMultiProducer p = (DynamicAcceleratedMultiProducer) defaultValue.getProducer();
 				compactedDefaultValue = ev -> {
-					String s = p.getBody((Function<Integer, String>) pos ->
-							getArgumentValueName(0, pos, true), ev);
+					String s = p.getBody(getOutputVariable(), ev);
 					ev.addAll(p.getVariables());
 					return s;
 				};
 
-				newArgs.addAll(Arrays.asList(excludeResult(p.getInputProducers())));
+				newArgs.addAll(AcceleratedProducer.excludeResult(p.getArguments()));
 			} else {
 				newArgs.add(defaultValue);
 			}
 
-			inputProducers = newArgs.toArray(new Argument[0]);
+			// setArguments(newArgs);
 			removeDuplicateArguments();
 		}
 	}

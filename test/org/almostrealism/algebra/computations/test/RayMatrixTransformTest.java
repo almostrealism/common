@@ -20,12 +20,13 @@ import org.almostrealism.algebra.TransformMatrix;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.computations.RayMatrixTransform;
 import org.almostrealism.geometry.Ray;
+import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.util.Producer;
 import org.almostrealism.util.StaticProducer;
 import org.junit.Assert;
 import org.junit.Test;
 
-public class RayMatrixTransformTest {
+public class RayMatrixTransformTest implements HardwareFeatures {
 	protected TransformMatrix getMatrix() {
 		return new TransformMatrix(new double[][] {
 				{0.25, 0.0, 0.0, 0.0},
@@ -43,7 +44,7 @@ public class RayMatrixTransformTest {
 	@Test
 	public void scaleAndTranslate() {
 		RayMatrixTransform transform = new RayMatrixTransform(getMatrix(), getRay1());
-		Ray r = transform.evaluate();
+		Ray r = compileProducer(transform).evaluate();
 		System.out.println(r);
 		Assert.assertEquals(0.25, r.getOrigin().getX(), Math.pow(10, -7));
 		Assert.assertEquals(3.9, r.getOrigin().getY(), Math.pow(10, -7));

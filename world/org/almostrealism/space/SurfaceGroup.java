@@ -176,7 +176,7 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 	@Override
 	public ContinuousField intersectAt(Producer ray) {
 		TransformMatrix m = getTransform(true);
-		if (m != null) ray = new RayMatrixTransform(m.getInverse(), ray);
+		if (m != null) ray = m.getInverse().transform(ray);
 		List<Intersectable> l = new ArrayList<>();
 		l.addAll(surfaces);
 		return new ClosestIntersection(ray, l);

@@ -20,9 +20,8 @@ import io.almostrealism.code.Argument;
 import io.almostrealism.code.Expression;
 import org.almostrealism.algebra.TransformMatrix;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorBank;
+import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
-import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.util.Producer;
 
 import java.util.ArrayList;
@@ -63,15 +62,12 @@ public class Transform extends DynamicAcceleratedProducerAdapter<Vector> {
 					buf.append(t(pos, 3));
 				}
 
-				return new Expression(buf.toString());
+				return new Expression(Double.class, buf.toString(), getArgument(1), getArgument(2));
 			} else {
 				return value[pos];
 			}
 		};
 	}
-
-	@Override
-	public MemoryBank<Vector> createKernelDestination(int size) { return new VectorBank(size); }
 
 	@Override
 	public void compact() {
@@ -115,7 +111,7 @@ public class Transform extends DynamicAcceleratedProducerAdapter<Vector> {
 				}
 
 				if (n.isZero() && sum.size() <= 0) {
-					value[i] = new Expression<>("0.0");
+					value[i] = new Expression<>(Double.class, stringForDouble(0.0));
 				} else {
 					StringBuffer buf = new StringBuffer();
 
@@ -129,7 +125,7 @@ public class Transform extends DynamicAcceleratedProducerAdapter<Vector> {
 						if (j < sum.size() - 1) buf.append(" + ");
 					}
 
-					value[i] = new Expression<>(buf.toString());
+					value[i] = new Expression<>(Double.class, buf.toString());
 				}
 			}
 
@@ -141,16 +137,23 @@ public class Transform extends DynamicAcceleratedProducerAdapter<Vector> {
 
 			// TODO  If both are static, this should be marked as static
 			List<Argument> newArgs = new ArrayList<>();
-			newArgs.add(inputProducers[0]);
-			if (!getInputProducer(1).isStatic())
-				newArgs.addAll(Arrays.asList(excludeResult(getInputProducer(1).getInputProducers())));
-			if (!getInputProducer(2).isStatic())
-				newArgs.addAll(Arrays.asList(excludeResult(getInputProducer(2).getInputProducers())));
+			newArgs.add(getArguments().get(0));
+			if (!getInputProducer(1).isStatic()) {
+				List<Argument> args = AcceleratedProducer.excludeResult(getInputProducer(1).getArguments());
+				newArgs.addAll(args);
+				for (Expression e : value) e.getDependencies().addAll(args);
+			}
+
+			if (!getInputProducer(2).isStatic()) {
+				List<Argument> args = AcceleratedProducer.excludeResult(getInputProducer(2).getArguments());
+				newArgs.addAll(args);
+				for (Expression e : value) e.getDependencies().addAll(args);
+			}
 
 			absorbVariables(getInputProducer(1));
 			absorbVariables(getInputProducer(2));
 
-			inputProducers = newArgs.toArray(new Argument[0]);
+			// setArguments(newArgs);
 			removeDuplicateArguments();
 		}
 	}
@@ -179,7 +182,7 @@ public class Transform extends DynamicAcceleratedProducerAdapter<Vector> {
 			return a.isZero() || b.isZero();
 		}
 
-		public Expression toExpression() { return new Expression(toString()); }
+		public Expression toExpression() { return new Expression(Double.class, toString()); }
 
 		public String toString() {
 			if (isStatic()) {
@@ -195,39 +198,38 @@ public class Transform extends DynamicAcceleratedProducerAdapter<Vector> {
 	}
 
 	private class Number {
-		String number;
+		Expression number;
 		boolean isStatic;
 
 		public Number() {
-			number = "0.0";
+			number = new Expression(Double.class, stringForDouble(0.0));
 			isStatic = true;
 		}
 
 		public Number(double value) {
-			this(new Expression(stringForDouble(value)), true);
+			this(new Expression(Double.class, stringForDouble(value)), true);
 		}
 
 		public Number(Expression number, boolean isStatic) {
-			this.number = number.getExpression();
+			this.number = number;
 			this.isStatic = isStatic;
 		}
 
 		public void addTo(Number n) {
 			if (!isStatic || !n.isStatic) throw new IllegalArgumentException("Cannot add to unless isStatic");
-			number = stringForDouble(doubleForString(number) + doubleForString(n.number));
+			number = new Expression(Double.class, stringForDouble(doubleForString(number.getExpression()) +
+														doubleForString(n.number.getExpression())));
 		}
 
 		public boolean isMultiplicativeIdentity() {
-			return isStatic && doubleForString(number) == 1.0;
+			return isStatic && doubleForString(number.getExpression()) == 1.0;
 		}
 
 		public boolean isZero() {
-			return isStatic && doubleForString(number) == 0.0;
+			return isStatic && doubleForString(number.getExpression()) == 0.0;
 		}
 
 		@Override
-		public String toString() {
-			return number;
-		}
+		public String toString() { return number.getExpression(); }
 	}
 }

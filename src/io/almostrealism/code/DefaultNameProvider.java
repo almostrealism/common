@@ -31,7 +31,10 @@ public class DefaultNameProvider implements NameProvider {
 	}
 
 	@Override
-	public String getArgumentValueName(String v, int pos, boolean assignment, int kernelIndex) {
-		return v + "[" + pos + "]";
+	public Variable getOutputVariable() { return getArgument(0); }
+
+	@Override
+	public String getVariableValueName(Variable v, int pos, boolean assignment, int kernelIndex) {
+		return v.getName() + "[" + pos + "]";
 	}
 }

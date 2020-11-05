@@ -54,7 +54,7 @@ public class AdaptProducer<T> implements Producer<T> {
 		for (Producer arg : args) arg.compact();
 	}
 
-	public static <T extends Triple> AdaptProducer<T> fromFunction(TripleFunction<T> f, Producer<? extends Triple> in) {
-		return new AdaptProducer<>(new DynamicProducer<>(args -> f.operate((Triple) args[0])), in);
+	public static <T extends Triple, V> AdaptProducer<V> fromFunction(TripleFunction<T, V> f, Producer<? extends Triple> in) {
+		return new AdaptProducer<>(new DynamicProducer<>(args -> f.operate((T) args[0])), in);
 	}
 }

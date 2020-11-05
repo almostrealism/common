@@ -27,6 +27,6 @@ import org.almostrealism.util.Producer;
  * @author  Michael Murray
  */
 @ModelEntity
-public interface Camera extends Computation { // TODO  Move to geometry package
+public interface Camera extends Computation<Ray> { // TODO  Move to geometry package
 	Producer<Ray> rayAt(Producer<Pair> screenPosition, Producer<Pair> screenDimensions);
 }

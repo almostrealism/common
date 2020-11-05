@@ -17,13 +17,13 @@
 package org.almostrealism.graph.mesh;
 
 import org.almostrealism.algebra.*;
-import org.almostrealism.algebra.computations.RayMatrixTransform;
 import org.almostrealism.color.computations.GeneratedColorProducer;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.computations.RGBProducer;
 import org.almostrealism.geometry.Positioned;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.hardware.AcceleratedProducer;
+import org.almostrealism.hardware.DynamicAcceleratedOperation;
 import org.almostrealism.hardware.KernelizedProducer;
 import org.almostrealism.relation.Constant;
 import org.almostrealism.relation.Operator;
@@ -391,7 +391,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 	public ContinuousField intersectAt(Producer ray) {
 		TransformMatrix t = getTransform(true);
 		boolean ut = useT && t != null;
-		if (ut) ray = new RayMatrixTransform(t.getInverse(), ray);
+		if (ut) ray = t.getInverse().transform(ray);
 
 		if (enableHardwareOperator) {
 			return new ShadableIntersection(this, ray,

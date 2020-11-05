@@ -16,6 +16,8 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.OperationAdapter;
+import org.almostrealism.util.Named;
 import org.almostrealism.util.Producer;
 import org.jocl.CLException;
 
@@ -33,9 +35,10 @@ import java.util.stream.Stream;
  */
 public interface KernelizedProducer<T extends MemWrapper> extends Producer<T> {
 	default void kernelEvaluate(MemoryBank destination, MemoryBank args[]) {
-		String name = getClass().getSimpleName();
-		if (name == null || name.trim().length() <= 0) name = "anonymous";
-		System.out.println("KernelizedProducer: Evaluating " + name + " kernel...");
+		String name = this instanceof Named ? ((Named) this).getName() : OperationAdapter.operationName(getClass(), "function");
+		if (KernelizedOperation.enableKernelLog) System.out.println("KernelizedProducer: Evaluating " + name + " kernel...");
+
+		boolean enableLog = name.equals("LightingEngineAggregator");
 
 		for (int i = 0; i < destination.getCount(); i++) {
 			T r = null;
@@ -51,9 +54,10 @@ public interface KernelizedProducer<T extends MemWrapper> extends Producer<T> {
 
 				destination.set(i, r);
 			} catch (CLException e) {
-				System.out.println("ERROR: i = " + i + " of " + destination.getCount() + ", r = " + r);
-				throw e;
+				throw new HardwareException("i = " + i + " of " + destination.getCount() + ", r = " + r, e);
 			}
+
+			if (enableLog && (i + 1) % 100 == 0) System.out.println((i + 1) + " lighting engine aggregator results collected");
 		}
 	}
 

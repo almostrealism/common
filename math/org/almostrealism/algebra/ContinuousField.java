@@ -13,6 +13,6 @@ import org.almostrealism.space.Gradient;
  * 
  * @author  Michael Murray
  */
-public interface ContinuousField extends DiscreteField, Gradient {
+public interface ContinuousField extends DiscreteField, Gradient<Vector> {
 
 }

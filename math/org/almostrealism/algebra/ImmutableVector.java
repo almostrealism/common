@@ -17,16 +17,12 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.code.Scope;
-import io.almostrealism.code.Variable;
-import org.almostrealism.hardware.KernelizedProducer;
 import org.almostrealism.hardware.MemWrapper;
-import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.relation.NameProvider;
 import org.almostrealism.relation.TripleFunction;
-import org.almostrealism.util.AcceleratedStaticVectorProducer;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.AcceleratedStaticVectorComputation;
 
-public class ImmutableVector extends AcceleratedStaticVectorProducer implements TripleFunction<Vector> {
+public class ImmutableVector extends AcceleratedStaticVectorComputation implements TripleFunction<Triple, Vector> {
 	public ImmutableVector() {
 		super(new Data(), Vector.blank());
 	}
@@ -43,11 +39,6 @@ public class ImmutableVector extends AcceleratedStaticVectorProducer implements 
 
 	@Override
 	public Vector operate(Triple in) { return getValue(); }
-
-	@Override
-	public Scope<Vector> getScope(NameProvider p) {
-		return null;
-	}
 
 	@Override
 	public Vector getValue() { return (Vector) super.getValue().clone(); }

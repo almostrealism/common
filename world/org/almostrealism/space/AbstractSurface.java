@@ -27,14 +27,13 @@ import org.almostrealism.color.computations.ColorProduct;
 import org.almostrealism.color.computations.GeneratedColorProducer;
 import org.almostrealism.color.computations.RGBAdd;
 import org.almostrealism.color.computations.RGBProducer;
-import org.almostrealism.geometry.TransformAsLocation;
 import org.almostrealism.graph.mesh.Mesh;
+import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.physics.Porous;
 import org.almostrealism.relation.Constant;
 import org.almostrealism.relation.NameProvider;
 import org.almostrealism.relation.Operator;
 import org.almostrealism.texture.Texture;
-import org.almostrealism.util.AdaptProducer;
 import org.almostrealism.util.AdaptProducerRGB;
 import org.almostrealism.util.CollectionUtils;
 import org.almostrealism.util.DynamicProducer;
@@ -49,7 +48,7 @@ import org.almostrealism.util.StaticProducer;
  * 
  * @author  Michael Murray
  */
-public abstract class AbstractSurface extends TriangulatableGeometry implements ShadableSurface, Porous {
+public abstract class AbstractSurface extends TriangulatableGeometry implements ShadableSurface, Porous, HardwareFeatures {
 	private boolean shadeFront, shadeBack;
 
 	private RGB color;
@@ -561,7 +560,7 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 	 */
 	public RGBProducer getColorAt(Producer<Vector> point, boolean transform) {
 	    if (transform && getTransform(true) != null)
-	    	point = new TransformAsLocation(getTransform(true).getInverse(), point);
+	    	point = getTransform(true).getInverse().transform(point, TransformMatrix.TRANSFORM_AS_LOCATION);
 	    
 	    Producer<RGB> colorAt = StaticProducer.of(getColor());
 	    
@@ -573,22 +572,19 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 	            texColors.add(new AdaptProducerRGB(new DynamicProducer<>(args -> t.operate((Triple) args[0])), point));
 	        }
 	        
-	        colorAt = new ColorProduct(
-	        		CollectionUtils.include(new Producer[0], colorAt, texColors.toArray(new Producer[0])));
+	        colorAt = compileProducer(new ColorProduct(
+	        		CollectionUtils.include(new Producer[0], colorAt, texColors.toArray(new Producer[0]))));
 	    }
 
 	    if (this.parent != null)
-	        colorAt = new ColorProduct(colorAt, this.parent.getColorAt(point, transform));
+	        colorAt = compileProducer(new ColorProduct(colorAt, this.parent.getColorAt(point, transform)));
 		
 		return GeneratedColorProducer.fromProducer(this, colorAt);
 	}
-	
-	/**
-	 * Delegates to {@link #getNormalAt(Producer)}.
-	 */
+
 	@Override
-	public Vector operate(Triple p) {
-		return getNormalAt(StaticProducer.of(new Vector(p.getA(), p.getB(), p.getC()))).evaluate(new Object[0]);
+	public RGB operate(Vector in) {
+		return getValueAt(StaticProducer.of(in)).evaluate();
 	}
 
 	@Override

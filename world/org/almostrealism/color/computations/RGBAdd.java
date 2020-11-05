@@ -28,6 +28,6 @@ public class RGBAdd extends AcceleratedProducer<RGB> {
 
 	@Override
 	public RGB replaceNull(int argIndex) {
-		return RGBBlack.getInstance().evaluate();
+		return RGBBlack.getProducer().evaluate();
 	}
 }

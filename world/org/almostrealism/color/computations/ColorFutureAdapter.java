@@ -33,7 +33,7 @@ import org.almostrealism.util.Producer;
 
 public abstract class ColorFutureAdapter extends ArrayList<Future<Producer<RGB>>>
 										implements ColorProducer, Future<ColorProducer>,
-										TripleFunction<RGB> {
+										TripleFunction<Triple, RGB> {
 
 	public void add(ColorProducer p) {
 		addAll(convertToFutures(new RGBProducer[] { p }));

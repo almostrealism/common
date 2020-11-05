@@ -16,90 +16,88 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;
-import org.almostrealism.relation.NameProvider;
 import org.almostrealism.util.Producer;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Function;
+import java.util.function.Consumer;
 
-public abstract class DynamicAcceleratedProducer<T extends MemWrapper> extends AcceleratedComputation<T> {
-	private boolean enableComputationEncoding;
+public abstract class DynamicAcceleratedProducer<T extends MemWrapper> extends DynamicAcceleratedOperation implements KernelizedProducer<T> {
+	public DynamicAcceleratedProducer(Producer<T> result, Producer<?> inputArgs[], Object additionalArguments[]) {
+		this(result, AcceleratedProducer.producers(inputArgs, additionalArguments));
+	}
 
 	public DynamicAcceleratedProducer(Producer<T> result, Producer<?>... inputArgs) {
-		super(result, inputArgs);
+		this(true, result, inputArgs);
 	}
 
-	public DynamicAcceleratedProducer(Producer<T> result, Producer<?>[] inputArgs, Object[] additionalArguments) {
-		super(result, inputArgs, additionalArguments);
+	public DynamicAcceleratedProducer(boolean kernel, Producer<T> result, Producer<?> inputArgs[], Object additionalArguments[]) {
+		this(kernel, result, AcceleratedProducer.producers(inputArgs, additionalArguments));
 	}
 
-	public DynamicAcceleratedProducer(boolean kernel, Producer<T> result, Producer<?>[] inputArgs, Object[] additionalArguments) {
-		super(kernel, result, inputArgs, additionalArguments);
-	}
-
-	public boolean isEnableComputationEncoding() {
-		return enableComputationEncoding;
-	}
-
-	public void setEnableComputationEncoding(boolean enableComputationEncoding) {
-		this.enableComputationEncoding = enableComputationEncoding;
+	public DynamicAcceleratedProducer(boolean kernel, Producer<T> result, Producer<?>... inputArgs) {
+		super(kernel, AcceleratedProducer.includeResult(result, inputArgs));
+		init();
 	}
 
 	@Override
-	public String getFunctionDefinition() {
-		if (enableComputationEncoding) {
-			return super.getFunctionDefinition();
-		} else {
-			StringBuffer buf = new StringBuffer();
-			buf.append("__kernel void " + getFunctionName() + "(");
-			buf.append(getFunctionArgsDefinition());
-			buf.append(") {\n");
-			buf.append(getBody(i -> getArgumentValueName(0, i), new ArrayList<>()));
-			buf.append("}");
-			return buf.toString();
-		}
+	public T evaluate(Object[] args) { return (T) apply(args)[0]; }
+
+	protected void writeVariables(Consumer<String> out) {
+		writeVariables(out, new ArrayList<>());
 	}
 
-	protected String getFunctionArgsDefinition() {
-		StringBuffer buf = new StringBuffer();
-
-		for (int i = 0; i < getInputProducers().length; i++) {
-			buf.append("__global ");
-			if (i != 0) buf.append("const ");
-			buf.append(getNumberType());
-			buf.append(" *");
-			if (getInputProducers()[i].getName() == null) {
-				throw new IllegalArgumentException("Null name for Argument " + i);
+	protected void writeVariables(Consumer<String> out, List<Variable> existingVariables) {
+		getVariables().stream()
+				.filter(v -> !existingVariables.contains(v)).forEach((Consumer<Variable<?>>) var -> {
+			if (var.getAnnotation() != null) {
+				out.accept(var.getAnnotation());
+				out.accept(" ");
 			}
 
-			buf.append(getInputProducers()[i].getName());
-			buf.append(", ");
-		}
+			out.accept(getNumberType());
+			out.accept(" ");
+			out.accept(var.getName());
 
-		for (int i = 0; i < getInputProducers().length; i++) {
-			buf.append("const int ");
-			buf.append(getInputProducers()[i].getName());
-			buf.append("Offset");
-			buf.append(", ");
-		}
+			if (var.getExpression().getExpression() == null) {
+				if (var.getArraySize() >= 0) {
+					out.accept("[");
+					out.accept(String.valueOf(var.getArraySize()));
+					out.accept("]");
+				}
+			} else {
+				if (var.getArraySize() >= 0) {
+					throw new RuntimeException("Not implemented");
+				} else {
+					out.accept(" = ");
+					out.accept(String.valueOf(var.getExpression().getValue()));
+				}
+			}
 
-		for (int i = 0; i < getInputProducers().length; i++) {
-			buf.append("const int ");
-			buf.append(getInputProducers()[i].getName());
-			buf.append("Size");
-			if (i < (getArgsCount() - 1)) buf.append(", ");
-		}
-
-		return buf.toString();
+			out.accept(";\n");
+		});
 	}
 
-	public abstract String getBody(Function<Integer, String> outputVariable, List<Variable> existingVariables);
+	/**
+	 * If {@link #isKernel()} returns true, this method will pass the
+	 * destination and the argument {@link MemoryBank}s to the
+	 * {@link HardwareOperator}. Otherwise, {@link #evaluate(Object[])}
+	 * will be called sequentially and the result will be added to the
+	 * destination.
+	 */
+	@Override
+	public void kernelEvaluate(MemoryBank destination, MemoryBank args[]) {
+		AcceleratedProducer.kernelEvaluate(this, destination, args, isKernel());
+	}
 
 	@Override
-	public Scope<T> getScope(NameProvider provider) {
+	protected MemoryBank[] getKernelArgs(MemoryBank args[]) {
+		return getKernelArgs(getArguments(), args, 1);
+	}
+
+	@Override
+	public MemoryBank<T> createKernelDestination(int size) {
 		throw new RuntimeException("Not implemented");
 	}
 }

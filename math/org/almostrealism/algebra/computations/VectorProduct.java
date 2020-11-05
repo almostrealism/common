@@ -20,7 +20,7 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.util.Producer;
 
-public class VectorProduct extends NAryDynamicAcceleratedProducer<Vector> implements VectorProducer {
+public class VectorProduct extends NAryDynamicAcceleratedProducer<Vector> {
 	public VectorProduct(Producer<Vector>... producers) {
 		super("*", 3, Vector.blank(), producers);
 	}

@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.util.Producer;
 
-public class VectorSum extends NAryDynamicAcceleratedProducer<Vector> implements VectorProducer {
+public class VectorSum extends NAryDynamicAcceleratedProducer<Vector> {
 	public VectorSum(Producer<Vector>... producers) {
 		super("+", 3, Vector.blank(), producers);
 	}
@@ -37,7 +37,4 @@ public class VectorSum extends NAryDynamicAcceleratedProducer<Vector> implements
 	 * Returns true if the specified value is 0.0, false otherwise.
 	 */
 	public boolean isRemove(double value) { return value == 0.0; }
-
-	@Override
-	public MemoryBank<Vector> createKernelDestination(int size) { return new VectorBank(size); }
 }

@@ -96,7 +96,7 @@ public class StripeTexture implements Texture, Editable {
 	 * @return  The color of the texture represented by this StripeTexture object at the specified point as an RGB object.
 	 */
 	public ColorProducer getColorAt(Object props[]) {
-		return GeneratedColorProducer.fromFunction(this, new TripleFunction<RGB>() {
+		return GeneratedColorProducer.fromFunction(this, new TripleFunction<Triple, RGB>() {
 					@Override
 					public RGB operate(Triple l) {
 						Vector point = new Vector(l.getA(), l.getB(), l.getC());

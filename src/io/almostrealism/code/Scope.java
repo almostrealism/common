@@ -21,7 +21,12 @@ import org.almostrealism.graph.Parent;
 import org.almostrealism.util.Nameable;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * A {@link Scope} is the container for {@link Variable}s, {@link Method}s, and other {@link Scope}s.
@@ -55,11 +60,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 
 	public List<Argument> getArguments() {
 		List<Argument> args = new ArrayList<>();
-		variables.stream()
-				.map(Variable::getExpression)
-				.filter(v -> v instanceof ArgumentReference)
-				.map(v -> ((ArgumentReference) v).getReferent())
-				.forEach(args::add);
+		extractArgumentDependencies(variables).forEach(args::add);
 		methods.stream()
 				.map(Method::getArguments)
 				.flatMap(List::stream)
@@ -70,6 +71,29 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 				.map(Scope::getArguments)
 				.flatMap(List::stream)
 				.forEach(args::add);
+		sortArguments(args);
+		return args;
+	}
+
+	private static List<Argument> extractArgumentDependencies(Collection<Variable<?>> vars) {
+		List<Argument> args = new ArrayList<>();
+
+		v:  for (Variable<?> var : vars) {
+			if (var == null) continue v;
+
+			if (var instanceof Argument && !args.contains(var)) {
+				args.add((Argument) var);
+			}
+
+			if (var.getExpression() instanceof ArgumentReference &&
+					!args.contains(((ArgumentReference) var.getExpression()).getReferent())) {
+				args.add(((ArgumentReference) var.getExpression()).getReferent());
+			}
+
+			extractArgumentDependencies(var.getDependencies()).stream()
+					.filter(a -> !args.contains(a)).forEach(args::add);
+		}
+
 		return args;
 	}
 
@@ -101,5 +125,11 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 		for (Method m : getMethods()) { w.println(m); }
 		for (Scope s : getChildren()) { s.write(w); }
 		w.flush();
+	}
+
+	public static void sortArguments(List<Argument> arguments) {
+		if (arguments != null) {
+			Collections.sort(arguments, Comparator.comparing(v -> v == null ? Integer.MAX_VALUE : v.getSortHint()));
+		}
 	}
 }

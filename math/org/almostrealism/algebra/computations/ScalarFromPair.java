@@ -20,19 +20,16 @@ import io.almostrealism.code.Argument;
 import io.almostrealism.code.Expression;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarBank;
-import org.almostrealism.algebra.ScalarProducer;
+import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
-import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.util.Producer;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.function.Function;
 import java.util.function.IntFunction;
 
-public class ScalarFromPair extends DynamicAcceleratedProducerAdapter<Scalar> implements ScalarProducer {
+public class ScalarFromPair extends DynamicAcceleratedProducerAdapter<Scalar> {
 	public static final int X = 0;
 	public static final int Y = 1;
 
@@ -53,14 +50,14 @@ public class ScalarFromPair extends DynamicAcceleratedProducerAdapter<Scalar> im
 		return pos -> {
 			if (value == null) {
 				if (pos == 0) {
-					return new Expression<>(getArgumentValueName(1, coordinate));
+					return new Expression<>(Double.class, getArgumentValueName(1, coordinate), getArgument(1));
 				} else if (pos == 1) {
-					return new Expression<>(stringForDouble(1.0));
+					return new Expression<>(Double.class, stringForDouble(1.0));
 				} else {
 					throw new IllegalArgumentException(String.valueOf(pos));
 				}
 			} else {
-				return pos == 0 ? value : new Expression<>(stringForDouble(1.0));
+				return pos == 0 ? value : new Expression<>(Double.class, stringForDouble(1.0));
 			}
 		};
 	}
@@ -71,29 +68,26 @@ public class ScalarFromPair extends DynamicAcceleratedProducerAdapter<Scalar> im
 
 		if (value == null && isCompletelyValueOnly()) {
 			List<Argument> newArgs = new ArrayList<>();
-			newArgs.add(getInputProducers()[0]);
+			newArgs.add(getArguments().get(0));
 
 			value = getInputProducerValue(1, coordinate);
 			if (value.getExpression().contains("Infinity")) {
 				throw new IllegalArgumentException("Infinity is not supported");
 			}
 
-			if (getInputProducers()[1].getProducer().isStatic()) {
+			if (getArguments().get(1).getProducer().isStatic()) {
 				isStatic = true;
 			} else {
-				newArgs.addAll(Arrays.asList(excludeResult(getInputProducer(1).getInputProducers())));
+				newArgs.addAll(AcceleratedProducer.excludeResult(getInputProducer(1).getArguments()));
 			}
 
 			absorbVariables(getInputProducer(1));
 
-			inputProducers = newArgs.toArray(new Argument[0]);
+			// setArguments(newArgs);
 			removeDuplicateArguments();
 		}
 	}
 
 	@Override
 	public boolean isStatic() { return !isVariableRef() && isStatic; }
-
-	@Override
-	public MemoryBank<Scalar> createKernelDestination(int size) { return new ScalarBank(size); }
 }

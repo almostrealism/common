@@ -26,7 +26,7 @@ import org.almostrealism.relation.NameProvider;
 import org.almostrealism.relation.TripleFunction;
 import org.almostrealism.util.Producer;
 
-public class UniformSphericalRandom implements VectorProducer, TripleFunction<Vector> {
+public class UniformSphericalRandom implements VectorProducer, TripleFunction<Triple, Vector> {
 	private static UniformSphericalRandom local = new UniformSphericalRandom();
 
 	@Override
@@ -47,7 +47,7 @@ public class UniformSphericalRandom implements VectorProducer, TripleFunction<Ve
 	public void compact() { }
 
 	@Override
-	public Vector operate(Triple in) { return evaluate(new Object[0]); }
+	public Vector operate(Triple in) { return evaluate(); }
 
 	@Override
 	public Scope<Vector> getScope(NameProvider p) {

@@ -30,7 +30,7 @@ import org.almostrealism.relation.TripleFunction;
 import org.almostrealism.util.Producer;
 
 public abstract class VectorFutureAdapter extends ArrayList<Future<Producer<Vector>>>
-		implements VectorProducer, Future<Producer<Vector>>, TripleFunction<Vector> {
+		implements VectorProducer, Future<Producer<Vector>>, TripleFunction<Triple, Vector> {
 
 	public void add(VectorProducer p) {
 		addAll(convertToFutures(new VectorProducer[] { p }));

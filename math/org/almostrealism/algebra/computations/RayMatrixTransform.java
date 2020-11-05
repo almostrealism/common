@@ -16,16 +16,18 @@
 
 package org.almostrealism.algebra.computations;
 
+import io.almostrealism.code.Scope;
 import org.almostrealism.algebra.TransformMatrix;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayFromVectors;
 import org.almostrealism.geometry.TransformAsLocation;
 import org.almostrealism.geometry.TransformAsOffset;
+import org.almostrealism.relation.NameProvider;
 import org.almostrealism.util.Producer;
 
 public class RayMatrixTransform extends RayFromVectors {
 	public RayMatrixTransform(TransformMatrix t, Producer<Ray> r) {
-		super(new TransformAsLocation(t, new RayOrigin(r)),
-				new TransformAsOffset(t, new RayDirection(r)));
+		super(new DefaultVectorProducer(new TransformAsLocation(t, new DefaultVectorProducer(new RayOrigin(r)))),
+				new DefaultVectorProducer(new TransformAsOffset(t, new DefaultVectorProducer(new RayDirection(r)))));
 	}
 }

@@ -8,7 +8,7 @@ import org.almostrealism.relation.NameProvider;
 import org.almostrealism.relation.TripleFunction;
 import org.almostrealism.util.Producer;
 
-public abstract class ColorProducerAdapter implements ColorProducer, TripleFunction<RGB> {
+public abstract class ColorProducerAdapter implements ColorProducer, TripleFunction<Triple, RGB> {
 	@Override
 	public RGB operate(Triple in) { return evaluate(new Triple[] { in }); }
 
@@ -25,7 +25,7 @@ public abstract class ColorProducerAdapter implements ColorProducer, TripleFunct
 		return s;
 	}
 
-	public static ColorProducer fromFunction(TripleFunction<RGB> t) {
+	public static ColorProducer fromFunction(TripleFunction<Triple, RGB> t) {
 		return new ColorProducer() {
 			@Override
 			public RGB evaluate(Object args[]) {

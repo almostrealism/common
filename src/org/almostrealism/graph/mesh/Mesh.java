@@ -136,7 +136,7 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 
 		@Override public Producer<RGB> shade(ShaderContext p) { return this.getSurface().shade(p); }
 
-		@Override public Vector operate(Triple in) { return getSurface().operate(in); }
+		@Override public RGB operate(Vector in) { return getSurface().operate(in); }
 
 		@Override public Scope getScope(NameProvider p) { return getSurface().getScope(p); }
 	}
@@ -657,7 +657,7 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 
 		TransformMatrix t = getTransform(true);
 		Producer<Ray> tray = ray;
-		if (t != null) tray = new RayMatrixTransform(t.getInverse(), ray);
+		if (t != null) tray = t.getInverse().transform(ray);
 
 		CachedMeshIntersectionKernel kernel =
 				new CachedMeshIntersectionKernel(getMeshData(), (KernelizedProducer) tray);

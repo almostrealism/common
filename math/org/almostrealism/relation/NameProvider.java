@@ -1,9 +1,24 @@
 package org.almostrealism.relation;
 
 import io.almostrealism.code.Argument;
+import io.almostrealism.code.Variable;
+
+import java.util.function.BiFunction;
 
 public interface NameProvider {
 	String getFunctionName();
+
+	default String getDefaultAnnotation() { return null; }
+
+	default Argument getArgument(int index) {
+		return new Argument(getArgumentName(index), getDefaultAnnotation(), Double.class);
+	}
+
+	default Variable getVariable(int index) {
+		return new Variable(getVariableName(index), getDefaultAnnotation(), Double.class, null);
+	}
+
+	Variable getOutputVariable();
 
 	default String getArgumentName(int index) {
 		return getFunctionName() + "_v" + index;
@@ -26,28 +41,41 @@ public interface NameProvider {
 	}
 
 	default String getArgumentValueName(int index, int pos, boolean assignment, int kernelIndex) {
-		return getArgumentValueName(getArgumentName(index), pos, assignment, kernelIndex);
+		return getVariableValueName(getArgument(index), pos, assignment, kernelIndex);
 	}
 
-	default String getArgumentValueName(Argument arg, int pos) {
-		return getArgumentValueName(arg.getName(), pos, 0);
+	default String getVariableValueName(Variable v, int pos) {
+		return getVariableValueName(v, pos, 0);
 	}
 
-	default String getArgumentValueName(Argument arg, int pos, boolean assignment) {
-		return getArgumentValueName(arg.getName(), pos, assignment, 0);
+	default String getVariableValueName(Variable v, int pos, boolean assignment) {
+		return getVariableValueName(v, pos, assignment, 0);
 	}
 
-	default String getArgumentValueName(Argument arg, int pos, int kernelIndex) {
-		return getArgumentValueName(arg.getName(), pos, kernelIndex);
+	default String getVariableValueName(Variable v, int pos, int kernelIndex) {
+		return getVariableValueName(v, pos, false, kernelIndex);
 	}
 
-	default String getArgumentValueName(String v, int pos, int kernelIndex) {
-		return getArgumentValueName(v, pos, true, kernelIndex);
-	}
+	String getVariableValueName(Variable v, int pos, boolean assignment, int kernelIndex);
 
-	default String getArgumentValueName(String v, int pos, boolean assignment) {
-		return getArgumentValueName(v, pos, assignment, 0);
-	}
+	default NameProvider withOutputVariable(Variable outputVariable) {
+		NameProvider p = this;
 
-	String getArgumentValueName(String v, int pos, boolean assignment, int kernelIndex);
+		return new NameProvider() {
+			@Override
+			public String getFunctionName() {
+				return p.getFunctionName();
+			}
+
+			@Override
+			public Variable getOutputVariable() {
+				return outputVariable;
+			}
+
+			@Override
+			public String getVariableValueName(Variable v, int pos, boolean assignment, int kernelIndex) {
+				return p.getVariableValueName(v, pos, assignment, kernelIndex);
+			}
+		};
+	}
 }

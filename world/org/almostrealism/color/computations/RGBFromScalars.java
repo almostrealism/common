@@ -20,6 +20,7 @@ import io.almostrealism.code.Argument;
 import io.almostrealism.code.Expression;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.color.RGB;
+import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.util.Producer;
 
@@ -28,7 +29,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.function.IntFunction;
 
-public class RGBFromScalars extends DynamicAcceleratedProducerAdapter<RGB> implements RGBProducer {
+public class RGBFromScalars extends DynamicAcceleratedProducerAdapter<RGB> {
 	private Expression<Double> value[];
 
 	public RGBFromScalars(Producer<Scalar> r, Producer<Scalar> g, Producer<Scalar> b) {
@@ -39,7 +40,7 @@ public class RGBFromScalars extends DynamicAcceleratedProducerAdapter<RGB> imple
 	public IntFunction<Expression<Double>> getValueFunction() {
 		return pos -> {
 			if (value == null) {
-				return new Expression<>(getArgumentValueName(pos + 1, 0));
+				return new Expression<>(Double.class, getArgumentValueName(pos + 1, 0), getArgument(pos + 1));
 			} else {
 				return value[pos];
 			}
@@ -58,14 +59,14 @@ public class RGBFromScalars extends DynamicAcceleratedProducerAdapter<RGB> imple
 			};
 
 			List<Argument> newArgs = new ArrayList<>();
-			newArgs.add(inputProducers[0]);
+			newArgs.add(getArguments().get(0));
 			for (int i = 1; i <= 3; i++) {
 				if (!getInputProducer(i).isStatic())
-					newArgs.addAll(Arrays.asList(excludeResult(getInputProducer(i).getInputProducers())));
+					newArgs.addAll(AcceleratedProducer.excludeResult(getInputProducer(i).getArguments()));
 				absorbVariables(getInputProducer(i));
 			}
 
-			inputProducers = newArgs.toArray(new Argument[0]);
+			// setArguments(newArgs);
 			removeDuplicateArguments();
 		}
 

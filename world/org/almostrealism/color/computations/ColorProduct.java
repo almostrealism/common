@@ -22,7 +22,7 @@ import org.almostrealism.color.RGBBank;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.util.Producer;
 
-public class ColorProduct extends NAryDynamicAcceleratedProducer<RGB> implements RGBProducer {
+public class ColorProduct extends NAryDynamicAcceleratedProducer<RGB> {
 	public ColorProduct(Producer<RGB>... producers) {
 		super("*", 3, RGB.blank(), producers);
 	}
@@ -36,16 +36,12 @@ public class ColorProduct extends NAryDynamicAcceleratedProducer<RGB> implements
 	/**
 	 * Returns 0.0 if the specified value is zero, false otherwise.
 	 */
+	@Override
 	public Double isReplaceAll(double value) { return value == 0.0 ? 0.0 : null; }
 
 	/**
 	 * Returns true if the specified value is 1.0, false otherwise.
 	 */
+	@Override
 	public boolean isRemove(double value) { return value == 1.0; }
-
-	@Override
-	protected RGB handleNull(int argIndex) { return null; }
-
-	@Override
-	public MemoryBank<RGB> createKernelDestination(int size) { return new RGBBank(size); }
 }

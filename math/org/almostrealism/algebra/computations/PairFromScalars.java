@@ -19,19 +19,17 @@ package org.almostrealism.algebra.computations;
 import io.almostrealism.code.Argument;
 import io.almostrealism.code.Expression;
 import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.PairProducer;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.Vector;
+import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.util.Producer;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.function.Function;
 import java.util.function.IntFunction;
 
-public class PairFromScalars extends DynamicAcceleratedProducerAdapter<Pair> implements PairProducer {
+public class PairFromScalars extends DynamicAcceleratedProducerAdapter<Pair> {
 	private Expression<Double> value[];
 
 	public PairFromScalars(Producer<Scalar> x, Producer<Scalar> y) {
@@ -42,7 +40,7 @@ public class PairFromScalars extends DynamicAcceleratedProducerAdapter<Pair> imp
 	public IntFunction<Expression<Double>> getValueFunction() {
 		return pos -> {
 			if (value == null) {
-				return new Expression<>(getArgumentValueName(pos + 1, 0));
+				return new Expression<>(Double.class, getArgumentValueName(pos + 1, 0), getArgument(pos + 1));
 			} else {
 				return value[pos];
 			}
@@ -59,16 +57,16 @@ public class PairFromScalars extends DynamicAcceleratedProducerAdapter<Pair> imp
 			};
 
 			List<Argument> newArgs = new ArrayList<>();
-			newArgs.add(inputProducers[0]);
+			newArgs.add(getArguments().get(0));
 
 			for (int i = 1; i <= 2; i++) {
 				if (!getInputProducer(i).isStatic()) {
-					newArgs.addAll(Arrays.asList(excludeResult(getInputProducer(i).getInputProducers())));
+					newArgs.addAll(AcceleratedProducer.excludeResult(getInputProducer(i).getArguments()));
 					absorbVariables(getInputProducer(i));
 				}
 			}
 
-			inputProducers = newArgs.toArray(new Argument[0]);
+			// setArguments(newArgs);
 			removeDuplicateArguments();
 		}
 	}

@@ -4,18 +4,23 @@ import org.almostrealism.algebra.TransformMatrix;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.TransformAsLocation;
 import org.almostrealism.geometry.TranslationMatrix;
+import org.almostrealism.hardware.AcceleratedComputationProducer;
+import org.almostrealism.hardware.DynamicAcceleratedProducer;
+import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.util.StaticProducer;
 import org.junit.Assert;
 import org.junit.Test;
 
-public class TransformTest {
+public class TransformTest implements HardwareFeatures {
 	protected TransformMatrix matrix() {
 		return new TranslationMatrix(StaticProducer.of(
 				new Vector(0.0, 10.0, 0.0))).evaluate();
 	}
 
-	protected TransformAsLocation transformAsLocation() {
-		return new TransformAsLocation(matrix(), StaticProducer.of(new Vector(1.0, 2.0, 3.0)));
+	protected AcceleratedComputationProducer<Vector> transformAsLocation() {
+		return (AcceleratedComputationProducer<Vector>) compileProducer(
+				new TransformAsLocation(matrix(),
+						StaticProducer.of(new Vector(1.0, 2.0, 3.0))));
 	}
 
 	@Test
@@ -26,7 +31,7 @@ public class TransformTest {
 
 	@Test
 	public void applyAsLocationCompact() {
-		TransformAsLocation t = transformAsLocation();
+		AcceleratedComputationProducer<Vector> t = transformAsLocation();
 		t.compact();
 
 		System.out.println(t.getFunctionDefinition());

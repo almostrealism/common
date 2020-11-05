@@ -17,6 +17,8 @@
 package org.almostrealism.math.bool;
 
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.algebra.VectorBank;
+import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.util.Producer;
 
 public class AcceleratedConjunctionVector extends AcceleratedConjunctionAdapter<Vector>
@@ -29,4 +31,7 @@ public class AcceleratedConjunctionVector extends AcceleratedConjunctionAdapter<
 										 AcceleratedConditionalStatement<Vector>... conjuncts) {
 		super(3, Vector.blank(), trueValue, falseValue, conjuncts);
 	}
+
+	@Override
+	public MemoryBank<Vector> createKernelDestination(int size) { return new VectorBank(size); }
 }

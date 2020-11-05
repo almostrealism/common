@@ -2,6 +2,8 @@ package org.almostrealism.color.computations;
 
 import org.almostrealism.algebra.Triple;
 import org.almostrealism.color.RGB;
+import org.almostrealism.hardware.Hardware;
+import org.almostrealism.relation.Computation;
 import org.almostrealism.relation.TripleFunction;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.util.DynamicProducer;
@@ -27,13 +29,18 @@ public class GeneratedColorProducer<T> extends ColorProducerAdapter implements G
 		return p;
 	}
 
-	public static <T> GeneratedColorProducer<T> fromFunction(T generator, TripleFunction<RGB> t) {
+	public static <T> GeneratedColorProducer<T> fromFunction(T generator, TripleFunction<Triple, RGB> t) {
 		return new GeneratedColorProducer(generator, new DynamicProducer<>(args ->
 				t.operate(args.length > 0 ? (Triple) args[0] : new Vector(1.0, 1.0, 1.0))));
 	}
 
 	public static <T> GeneratedColorProducer<T> fromProducer(T generator, Producer<RGB> p) {
 		return new GeneratedColorProducer(generator, p);
+	}
+
+	public static <T> GeneratedColorProducer<T> fromComputation(T generator, Computation<RGB> c) {
+		return fromProducer(generator,
+				Hardware.getLocalHardware().getComputer().compileProducer(c));
 	}
 
 	@Override

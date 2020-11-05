@@ -21,9 +21,11 @@ import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayProducer;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.math.bool.AcceleratedConjunctionScalar;
 import org.almostrealism.math.bool.GreaterThanScalar;
 import org.almostrealism.math.bool.LessThanScalar;
+import org.almostrealism.relation.Computation;
 import org.almostrealism.util.Producer;
 import org.almostrealism.util.StaticProducer;
 
@@ -115,8 +117,11 @@ public class TriangleIntersectAt extends LessThanScalar {
 		return f.multiply(direction.dotProduct(q));
 	}
 
-	// TODO  Make private
 	private static ScalarProducer t(VectorProducer def, ScalarProducer f, VectorProducer q) {
 		return f.multiply(def.dotProduct(q));
+	}
+
+	public static TriangleIntersectAt construct(Producer<TriangleData> t, Computation<Ray> r) {
+		return new TriangleIntersectAt(t, Hardware.getLocalHardware().getComputer().compileProducer(r));
 	}
 }

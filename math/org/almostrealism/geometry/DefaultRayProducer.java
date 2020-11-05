@@ -14,18 +14,20 @@
  * limitations under the License.
  */
 
-package org.almostrealism.util;
+package org.almostrealism.geometry;
 
-import org.almostrealism.color.RGB;
-import org.almostrealism.color.RGBBank;
-import org.almostrealism.color.computations.RGBProducer;
+import org.almostrealism.hardware.AcceleratedComputationProducer;
 import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.relation.Computation;
 
-public class AcceleratedStaticRGBProducer extends AcceleratedStaticProducer<RGB> implements RGBProducer {
-	public AcceleratedStaticRGBProducer(RGB value, Producer<RGB> output) {
-		super(value, output);
+public class DefaultRayProducer extends AcceleratedComputationProducer<Ray> implements RayProducer {
+
+	public DefaultRayProducer(Computation<Ray> c) {
+		super(c);
 	}
 
 	@Override
-	public MemoryBank<RGB> createKernelDestination(int size) { return new RGBBank(size); }
+	public MemoryBank<Ray> createKernelDestination(int size) {
+		return new RayBank(size);
+	}
 }

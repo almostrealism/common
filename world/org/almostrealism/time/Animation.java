@@ -36,7 +36,7 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 	private boolean sleep, render;
 	private boolean logState;
 
-	private List<Function<RigidBody, Gradient>> forces;
+	private List<Function<RigidBody, Gradient<?>>> forces;
 
 	private String dir;
 
@@ -61,7 +61,7 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 	 *
 	 * @param f  The force {@link Function} to add.
 	 */
-	public void addForce(Function<RigidBody, Gradient> f) { forces.add(f); }
+	public void addForce(Function<RigidBody, Gradient<?>> f) { forces.add(f); }
 
 	public void setIterations(int itr) { this.itr = itr; }
 
@@ -180,12 +180,12 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 
 				Vector g = new Vector(0.0, 0.0, 0.0);
 
-				for (Function<RigidBody, Gradient> f : forces) {
-					Gradient grad = f.apply((RigidBody) s);
+				for (Function<RigidBody, Gradient<?>> f : forces) {
+					Gradient<?> grad = f.apply((RigidBody) s);
 
 					if (grad != null) {
 						g.addTo(grad.getNormalAt(StaticProducer.of(((RigidBody) s).getState().getLocation()))
-								.evaluate(new Object[]{((RigidBody) s).getState()}));
+								.evaluate(new Object[] { ((RigidBody) s).getState() }));
 					}
 				}
 

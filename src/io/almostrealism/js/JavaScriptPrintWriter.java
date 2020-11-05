@@ -39,8 +39,8 @@ public class JavaScriptPrintWriter extends CodePrintWriterAdapter {
 	}
 
 	@Override
-	public void println(Variable v, boolean create) {
-		if (create) {
+	public void println(Variable v) {
+		if (v.isDeclaration()) {
 			p.println("var " + v.getName() + " = " + toString(v) + ";");
 		} else {
 			p.println(v.getName() + " = " + toString(v) + ";");
@@ -67,7 +67,10 @@ public class JavaScriptPrintWriter extends CodePrintWriterAdapter {
 
 	@Override
 	public void endScope() { p.println("}"); }
-	
+
+	@Override
+	protected String nameForType(Class<?> type) { return ""; }
+
 	protected static String toString(Variable v) {
 		if (v instanceof ResourceVariable) {
 			return toJson((ResourceVariable) v);

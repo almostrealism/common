@@ -1,4 +1,4 @@
-/*
+ /*
  * Copyright 2020 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,20 +19,17 @@ package org.almostrealism.algebra.computations;
 import io.almostrealism.code.Argument;
 import io.almostrealism.code.Expression;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorBank;
-import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.geometry.Ray;
+import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
-import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.util.Producer;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.function.Function;
 import java.util.function.IntFunction;
 
-public class RayOrigin extends DynamicAcceleratedProducerAdapter<Vector> implements VectorProducer {
+public class RayOrigin extends DynamicAcceleratedProducerAdapter<Vector> {
 	private Expression<Double> value[];
 	private boolean isStatic;
 
@@ -44,7 +41,7 @@ public class RayOrigin extends DynamicAcceleratedProducerAdapter<Vector> impleme
 	public IntFunction<Expression<Double>> getValueFunction() {
 		return pos -> {
 			if (value == null) {
-				return new Expression(getArgumentValueName(1, pos));
+				return new Expression(Double.class, getArgumentValueName(1, pos), getArgument(1));
 			} else {
 				return value[pos];
 			}
@@ -74,14 +71,11 @@ public class RayOrigin extends DynamicAcceleratedProducerAdapter<Vector> impleme
 			isStatic = getInputProducer(1).isStatic();
 
 			List<Argument> newArgs = new ArrayList<>();
-			newArgs.add(inputProducers[0]);
-			newArgs.addAll(Arrays.asList(excludeResult(getInputProducer(1).getInputProducers())));
+			newArgs.add(getArguments().get(0));
+			newArgs.addAll(AcceleratedProducer.excludeResult(getInputProducer(1).getArguments()));
 			absorbVariables(getInputProducer(1));
-			inputProducers = newArgs.toArray(new Argument[0]);
+			// setArguments(newArgs);
 			removeDuplicateArguments();
 		}
 	}
-	
-	@Override
-	public MemoryBank<Vector> createKernelDestination(int size) { return new VectorBank(size); }
 }

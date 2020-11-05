@@ -21,19 +21,20 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.algebra.computations.RayCopy;
 import org.almostrealism.algebra.computations.RayPointAt;
+import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.util.StaticProducer;
 import org.junit.Assert;
 import org.junit.Test;
 
-public class RayTest {
+public class RayTest implements HardwareFeatures {
 	@Test
 	public void pointAtTest1() {
 		StaticProducer<Ray> r = new StaticProducer<>(new Ray(new Vector(0.0, 0.0, 0.0),
 															new Vector(0.0, 1.0, 0.5)));
 		StaticProducer<Scalar> s = new StaticProducer<>(new Scalar(10));
 		RayPointAt p = new RayPointAt(r, s);
-		Assert.assertTrue(p.evaluate(new Object[0]).equals(new Vector(0.0, 10.0, 5.0)));
-		Assert.assertTrue(p.evaluate(new Object[0]).equals(new Vector(0.0, 10.0, 5.0)));
+		Assert.assertTrue(compileProducer(p).evaluate(new Object[0]).equals(new Vector(0.0, 10.0, 5.0)));
+		Assert.assertTrue(compileProducer(p).evaluate(new Object[0]).equals(new Vector(0.0, 10.0, 5.0)));
 	}
 
 	@Test
@@ -41,7 +42,7 @@ public class RayTest {
 		StaticProducer<Ray> r = new StaticProducer<>(new Ray(new Vector(0.0, 0.0, 1.0),
 															new Vector(0.0, 0.5, -1.0)));
 		RayPointAt at = new RayPointAt(r, new StaticProducer<>(new Scalar(-20)));
-		Assert.assertTrue(at.evaluate(new Object[0]).equals(new Vector(0.0, -10.0, 21.0)));
+		Assert.assertTrue(compileProducer(at).evaluate(new Object[0]).equals(new Vector(0.0, -10.0, 21.0)));
 	}
 
 	@Test

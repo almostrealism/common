@@ -16,6 +16,10 @@
 
 package org.almostrealism.algebra;
 
+import io.almostrealism.code.Scope;
+import org.almostrealism.algebra.computations.DefaultVectorProducer;
+import org.almostrealism.relation.NameProvider;
+
 public class ZeroVector extends ImmutableVector {
 	private static ZeroVector local = new ZeroVector();
 
@@ -26,4 +30,6 @@ public class ZeroVector extends ImmutableVector {
 	}
 
 	public static ZeroVector getInstance() { return local; }
+
+	public static VectorProducer getProducer() { return new DefaultVectorProducer(getInstance()); }
 }

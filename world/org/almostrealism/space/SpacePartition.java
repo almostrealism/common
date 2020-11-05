@@ -316,7 +316,7 @@ public class SpacePartition<T extends ShadableSurface> extends SurfaceGroup<T> {
 	public ContinuousField intersectAt(Producer r) {
 		TransformMatrix t = getTransform(true);
 		boolean ut = t != null;
-		if (ut) r = new RayMatrixTransform(t.getInverse(), r);
+		if (ut) r = t.getInverse().transform(r);
 		return this.root.intersectAt(r);
 	}
 }

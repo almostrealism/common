@@ -16,6 +16,8 @@
 
 package org.almostrealism.io;
 
+import java.util.function.Consumer;
+
 public interface PrintWriter extends AutoCloseable {
 	/** Increases the indent. */
 	void moreIndent();
@@ -34,4 +36,31 @@ public interface PrintWriter extends AutoCloseable {
 
 	@Override
 	default void close() { }
+
+	static PrintWriter of(Consumer<String> c) {
+		return new PrintWriter() {
+			// TODO  Support indent
+			@Override
+			public void moreIndent() { }
+
+			@Override
+			public void lessIndent() { }
+
+			@Override
+			public void print(String s) {
+				c.accept(s);
+			}
+
+			@Override
+			public void println(String s) {
+				print(s);
+				println();
+			}
+
+			@Override
+			public void println() {
+				c.accept("\n");
+			}
+		};
+	}
 }

@@ -16,12 +16,43 @@
 
 package io.almostrealism.c;
 
+import io.almostrealism.code.Argument;
 import org.almostrealism.io.PrintWriter;
+
+import java.util.List;
+import java.util.function.Consumer;
 
 public class OpenCLPrintWriter extends CPrintWriter {
 
 	public OpenCLPrintWriter(PrintWriter p) {
 		super(p);
 		setScopePrefix("__kernel void");
+	}
+
+	protected void renderArguments(List<Argument<?>> arguments, Consumer<String> out) {
+		renderArguments(arguments, out, true, null, "*", "");
+		out.accept(", ");
+		renderArguments(arguments, out, false, Integer.class, "", "Offset");
+		out.accept(", ");
+		renderArguments(arguments, out, false, Integer.class, "", "Size");
+	}
+
+	private void renderArguments(List<Argument<?>> arguments, Consumer<String> out, boolean enableAnnotation, Class replaceType, String prefix, String suffix) {
+		for (int i = 0; i < arguments.size(); i++) {
+			if (enableAnnotation && arguments.get(i).getAnnotation() != null) {
+				out.accept(arguments.get(i).getAnnotation());
+				out.accept(" ");
+			}
+
+			out.accept(nameForType(replaceType == null ? arguments.get(i).getType() : replaceType));
+			out.accept(" ");
+			out.accept(prefix);
+			out.accept(arguments.get(i).getName());
+			out.accept(suffix);
+
+			if (i < arguments.size() - 1) {
+				out.accept(", ");
+			}
+		}
 	}
 }

@@ -16,11 +16,10 @@
 
 package org.almostrealism.util;
 
-import org.almostrealism.geometry.Ray;
-import org.almostrealism.geometry.RayProducer;
+public class Ops implements CodeFeatures {
+	private static Ops ops = new Ops();
 
-public class AcceleratedStaticRayProducer extends AcceleratedStaticProducer<Ray> implements RayProducer {
-	public AcceleratedStaticRayProducer(Ray value, Producer<Ray> output) {
-		super(value, output);
-	}
+	private Ops() { }
+
+	public static Ops ops() { return ops; }
 }

@@ -1,6 +1,5 @@
 package org.almostrealism.graph.io;
 
-import org.almostrealism.algebra.Vector;
 import org.almostrealism.graph.mesh.DefaultVertexData;
 import org.almostrealism.graph.mesh.Mesh;
 import org.almostrealism.graph.mesh.MeshResource;
@@ -12,6 +11,8 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 
 public class PlyResource extends UnicodeResource {
+	public static boolean enableVerbose = false;
+
 	public PlyResource() { }
 
 	public PlyResource(File f) throws IOException { super(f); }
@@ -65,10 +66,12 @@ public class PlyResource extends UnicodeResource {
 
 				i++;
 
-				if (i % 100000 == 0) {
+				if (enableVerbose && i % 100000 == 0) {
 					System.out.println("PlyResource: " + i + " of " + pointCount + " points loaded");
 				}
 			}
+
+			System.out.println("PlyResoure: " + pointCount + " points loaded");
 
 			i: for (int i = 0; i < triangleCount; ) {
 				line = in.readLine();
@@ -81,10 +84,12 @@ public class PlyResource extends UnicodeResource {
 
 				i++;
 
-				if (i % 100000 == 0) {
+				if (enableVerbose && i % 100000 == 0) {
 					System.out.println("PlyResource: " + i + " of " + triangleCount + " triangles loaded");
 				}
 			}
+
+			System.out.println("PlyResoure: " + triangleCount + " triangles loaded");
 
 			return new MeshResource(new Mesh(data));
 		}

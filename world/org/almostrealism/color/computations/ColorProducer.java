@@ -16,6 +16,7 @@
 
 package org.almostrealism.color.computations;
 
+import org.almostrealism.algebra.Triple;
 import org.almostrealism.color.RGB;
 import org.almostrealism.relation.TripleFunction;
 
@@ -25,5 +26,5 @@ import org.almostrealism.relation.TripleFunction;
  * 
  * @author Michael Murray
  */
-public interface ColorProducer extends RGBProducer, TripleFunction<RGB> {
+public interface ColorProducer extends RGBProducer, TripleFunction<Triple, RGB> {
 }

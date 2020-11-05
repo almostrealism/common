@@ -19,17 +19,16 @@ package org.almostrealism.geometry;
 import io.almostrealism.code.Argument;
 import io.almostrealism.code.Expression;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
-import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.util.Producer;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.function.Function;
 import java.util.function.IntFunction;
 
-public class RayFromVectors extends DynamicAcceleratedProducerAdapter<Ray> implements RayProducer {
+public class RayFromVectors extends DynamicAcceleratedProducerAdapter<Ray> {
 	private Expression<Double> value[];
 
 	public RayFromVectors(Producer<Vector> origin, Producer<Vector> direction) {
@@ -41,17 +40,17 @@ public class RayFromVectors extends DynamicAcceleratedProducerAdapter<Ray> imple
 		return pos -> {
 			if (value == null) {
 				if (pos == 0) {
-					return new Expression<>(getArgumentValueName(1, 0));
+					return new Expression<>(Double.class, getArgumentValueName(1, 0), getArgument(1));
 				} else if (pos == 1) {
-					return new Expression<>(getArgumentValueName(1, 1));
+					return new Expression<>(Double.class, getArgumentValueName(1, 1), getArgument(1));
 				} else if (pos == 2) {
-					return new Expression<>(getArgumentValueName(1, 2));
+					return new Expression<>(Double.class, getArgumentValueName(1, 2), getArgument(1));
 				} else if (pos == 3) {
-					return new Expression<>(getArgumentValueName(2, 0));
+					return new Expression<>(Double.class, getArgumentValueName(2, 0), getArgument(2));
 				} else if (pos == 4) {
-					return new Expression<>(getArgumentValueName(2, 1));
+					return new Expression<>(Double.class, getArgumentValueName(2, 1), getArgument(2));
 				} else if (pos == 5) {
-					return new Expression<>(getArgumentValueName(2, 2));
+					return new Expression<>(Double.class, getArgumentValueName(2, 2), getArgument(2));
 				} else {
 					throw new IllegalArgumentException("Position " + pos + " is not valid");
 				}
@@ -69,9 +68,9 @@ public class RayFromVectors extends DynamicAcceleratedProducerAdapter<Ray> imple
 
 		if (value == null && isCompletelyValueOnly()) {
 			List<Argument> newArgs = new ArrayList<>();
-			newArgs.add(inputProducers[0]);
-			newArgs.addAll(Arrays.asList(excludeResult(getInputProducer(1).getInputProducers())));
-			newArgs.addAll(Arrays.asList(excludeResult(getInputProducer(2).getInputProducers())));
+			newArgs.add(getArguments().get(0));
+			newArgs.addAll(AcceleratedProducer.excludeResult(getInputProducer(1).getArguments()));
+			newArgs.addAll(AcceleratedProducer.excludeResult(getInputProducer(2).getArguments()));
 			absorbVariables(getInputProducer(1));
 			absorbVariables(getInputProducer(2));
 
@@ -92,11 +91,8 @@ public class RayFromVectors extends DynamicAcceleratedProducerAdapter<Ray> imple
 				}
 			}
 
-			inputProducers = newArgs.toArray(new Argument[0]);
+			// setArguments(newArgs);
 			removeDuplicateArguments();
 		}
 	}
-
-	@Override
-	public MemoryBank<Ray> createKernelDestination(int size) { return new RayBank(size); }
 }

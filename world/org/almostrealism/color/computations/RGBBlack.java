@@ -17,15 +17,14 @@
 package org.almostrealism.color.computations;
 
 import org.almostrealism.color.RGB;
-import org.almostrealism.util.AcceleratedStaticRGBProducer;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.AcceleratedStaticRGBComputation;
 
-public class RGBBlack extends AcceleratedStaticRGBProducer {
+public class RGBBlack extends AcceleratedStaticRGBComputation {
 	private static RGBBlack local = new RGBBlack();
-
-	private RGB black;
 
 	public RGBBlack() { super(new RGB(), RGB.blank()); }
 
 	public static RGBBlack getInstance() { return local; }
+
+	public static RGBProducer getProducer() { return new DefaultRGBProducer(getInstance()); }
 }

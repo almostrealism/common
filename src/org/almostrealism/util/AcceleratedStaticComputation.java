@@ -24,29 +24,16 @@ import org.almostrealism.hardware.MemWrapper;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 
-public class AcceleratedStaticProducer<T extends MemWrapper> extends DynamicAcceleratedProducerAdapter<T> {
+public class AcceleratedStaticComputation<T extends MemWrapper> extends DynamicAcceleratedProducerAdapter<T> {
 	private T value;
 
-	public AcceleratedStaticProducer(T value, Producer<T> output) {
+	public AcceleratedStaticComputation(T value, Producer<T> output) {
 		super(value.getMemLength(), output);
 		this.value = value;
 	}
 
 	public T getValue() { return value; }
 
-	/**
-	 * Short circuit the evaluation of a CL program by simply returning
-	 * the value.
-	 */
-	@Override
-	public T evaluate(Object args[]) {
-		return value;
-	}
-
-	/**
-	 * Provided to support compact operations of other {@link DynamicAcceleratedProducerAdapter}s,
-	 * this is not actually used by {@link #evaluate(Object[])}.
-	 */
 	@Override
 	public IntFunction<Expression<Double>> getValueFunction() {
 		return pos -> {
@@ -57,7 +44,7 @@ public class AcceleratedStaticProducer<T extends MemWrapper> extends DynamicAcce
 				throw new IllegalArgumentException("Infinity is not supported");
 			}
 
-			return new Expression<>(s);
+			return new Expression<>(Double.class, s);
 		};
 	}
 

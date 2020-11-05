@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,15 +17,23 @@
 package org.almostrealism.algebra.test;
 
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.algebra.VectorProducer;
+import org.almostrealism.util.CodeFeatures;
+import org.junit.Assert;
+import org.junit.Test;
 
-public class VectorMathTest {
-	public static void main(String args[]) {
-		Vector v = new Vector(1, 2, 3);
-		System.out.println(v);
-		v.subtractFrom(new Vector(2, 2, 2));
-//		System.out.println(v.dotProduct(new Vector(1, 1, 1)));
+public class VectorMathTest implements CodeFeatures {
+	@Test
+	public void crossProduct() {
+		VectorProducer cp = vector(0.0, 0.0, -1.0)
+				.crossProduct(vector(100.0, -100.0, 0.0)
+						.subtract(vector(0.0, 100.0, 0.0)));
+
+		Vector v = cp.evaluate();
 		System.out.println(v);
 
-		System.out.println(new Vector(2.0, 2.0, 2.0).divide(2.0));
+		Assert.assertEquals(-200, v.getX(), Math.pow(10, -10));
+		Assert.assertEquals(-100, v.getY(), Math.pow(10, -10));
+		Assert.assertEquals(0, v.getZ(), Math.pow(10, -10));
 	}
 }

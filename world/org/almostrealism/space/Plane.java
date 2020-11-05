@@ -19,12 +19,10 @@ package org.almostrealism.space;
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.*;
-import org.almostrealism.algebra.computations.RayMatrixTransform;
 import org.almostrealism.color.RGB;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.algebra.computations.RayDirection;
-import org.almostrealism.algebra.computations.RayOrigin;
-import org.almostrealism.geometry.RayFromVectors;
+import org.almostrealism.geometry.RayProducer;
+import org.almostrealism.hardware.ComputerFeatures;
 import org.almostrealism.relation.Constant;
 import org.almostrealism.relation.NameProvider;
 import org.almostrealism.relation.Operator;
@@ -122,7 +120,7 @@ public class Plane extends AbstractSurface implements ParticleGroup {
 			else
 				n = null;
 
-			normal = new ImmutableVector(n); // This causes us to avoid infinite regress
+			normal = compileProducer(new ImmutableVector(n)); // This causes us to avoid infinite regress
 
 			TransformMatrix m = getTransform(true);
 
@@ -146,21 +144,18 @@ public class Plane extends AbstractSurface implements ParticleGroup {
 	public ContinuousField intersectAt(Producer<Ray> r) {
 		TransformMatrix m = getTransform(true);
 		Producer<Ray> tr = r;
-		if (m != null) tr = new RayMatrixTransform(m.getInverse(), tr);
+		if (m != null) tr = m.getInverse().transform(tr);
 
 		// tr = new RayFromVectors(new RayOrigin(tr), new RayDirection(tr).normalize());
 
 		ScalarProducer s;
 
 		if (type == Plane.XY) {
-			// if (tr.getDirection().getZ() == 0.0) return new Scalar(-1);
-			s = new RayOrigin(tr).z().minus().divide(new RayDirection(tr).z());
+			s = RayProducer.origin(tr).z().minus().divide(RayProducer.direction(tr).z());
 		} else if (type == Plane.XZ) {
-			// if (tr.getDirection().getY() == 0.0) return new Scalar(-1);
-			s = new RayOrigin(tr).y().minus().divide(new RayDirection(tr).y());
+			s = RayProducer.origin(tr).y().minus().divide(RayProducer.direction(tr).y());
 		} else if (type == Plane.YZ) {
-			// if (tr.getDirection().getX() == 0.0) return new Scalar(-1);
-			s = new RayOrigin(tr).x().minus().divide(new RayDirection(tr).x());
+			s = RayProducer.origin(tr).x().minus().divide(RayProducer.direction(tr).x());
 		} else {
 			throw new IllegalArgumentException(String.valueOf(type));
 		}
@@ -179,11 +174,11 @@ public class Plane extends AbstractSurface implements ParticleGroup {
 			@Override
 			public Scalar evaluate(Object[] args) {
 				if (type == Plane.XY)
-					return new Scalar(((Operator<Vector>) getInput()).evaluate(args).getZ());
+					return new Scalar(getInput().evaluate(args).getZ());
 				else if (type == Plane.XZ)
-					return new Scalar(((Operator<Vector>) getInput()).evaluate(args).getY());
+					return new Scalar(getInput().evaluate(args).getY());
 				else if (type == Plane.YZ)
-					return new Scalar(((Operator<Vector>) getInput()).evaluate(args).getX());
+					return new Scalar(getInput().evaluate(args).getX());
 				else
 					return null;
 			}

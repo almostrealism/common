@@ -16,8 +16,6 @@
 
 package io.almostrealism.code;
 
-import org.almostrealism.util.StaticProducer;
-
 /**
  * {@link InstanceReference} is used to reference a previously declared
  * {@link Variable}. {@link CodePrintWriter} implementations should
@@ -27,13 +25,13 @@ import org.almostrealism.util.StaticProducer;
 public class InstanceReference<T> extends Expression<T> {
 	private Variable var;
 
-	public InstanceReference(Variable<?> v) {
-		this(v.getName());
+	public InstanceReference(Variable<T> v) {
+		this(v.getType(), v.getName());
 		this.var = v;
 	}
 
-	public InstanceReference(String varName) {
-		super(varName);
+	public InstanceReference(Class<T> type, String varName) {
+		super(type, varName);
 	}
 
 	public Variable getReferent() { return var; }

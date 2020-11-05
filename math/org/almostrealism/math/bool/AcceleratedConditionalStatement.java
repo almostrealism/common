@@ -27,7 +27,7 @@ import java.util.List;
 public interface AcceleratedConditionalStatement<T extends MemWrapper> extends Producer<T> {
 	String getCondition();
 
-	default List<Variable> getVariables() { return Arrays.asList(); }
+	default List<Variable<?>> getVariables() { return Arrays.asList(); }
 
 	List<Argument> getOperands();
 

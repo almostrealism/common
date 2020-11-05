@@ -16,8 +16,6 @@
 
 package org.almostrealism.algebra;
 
-import org.almostrealism.algebra.computations.CrossProduct;
-import org.almostrealism.algebra.computations.DotProduct;
 import org.almostrealism.geometry.Positioned;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.Hardware;
@@ -32,7 +30,7 @@ import org.almostrealism.util.StaticProducer;
  * A {@link Vector} represents a 3d vector. It stores three coordinates, x, y, z
  * in a buffer maintained by JOCL.
  */
-public class Vector extends MemWrapperAdapter implements Positioned, Triple, Cloneable {
+public class Vector extends MemWrapperAdapter implements Positioned, Triple, Cloneable, VectorFeatures {
 	public static final int CARTESIAN_COORDINATES = 0;
 	public static final int SPHERICAL_COORDINATES = 1;
 
@@ -254,7 +252,7 @@ public class Vector extends MemWrapperAdapter implements Positioned, Triple, Clo
 	 * Returns the opposite of the vector represented by this {@link Vector}.
 	 */
 	public Vector minus() {
-		return VectorProducer.minus(StaticProducer.of(this)).evaluate();
+		return minus(StaticProducer.of(this)).evaluate();
 	}
 
 	/** Returns the sum of this {@link Vector} and the specified {@link Vector}. */
@@ -350,13 +348,13 @@ public class Vector extends MemWrapperAdapter implements Positioned, Triple, Clo
 	 * Returns the dot product of this {@link Vector} and the specified {@link Vector}.
 	 */
 	public synchronized double dotProduct(Vector vector) {
-		return new DotProduct(StaticProducer.of(this),
+		return dotProduct(StaticProducer.of(this),
 				StaticProducer.of(vector)).evaluate(new Object[0]).getValue();
 	}
 
 	/** Returns the cross product of this {@link Vector} and that of the specified {@link Vector}. */
 	public Vector crossProduct(Vector vector) {
-		return new CrossProduct(StaticProducer.of(this), StaticProducer.of(vector)).evaluate();
+		return crossProduct(StaticProducer.of(this), StaticProducer.of(vector)).evaluate();
 	}
 
 	public float[] toFloat() {
@@ -377,24 +375,11 @@ public class Vector extends MemWrapperAdapter implements Positioned, Triple, Clo
 	 * {@link Vector} as a double value.
 	 */
 	public double lengthSq() {
-		return VectorProducer.lengthSq(StaticProducer.of(this)).evaluate().getValue();
+		return lengthSq(StaticProducer.of(this)).evaluate().getValue();
 	}
 
 	public void normalize() {
 		StaticProducer.of(this).normalize().evaluate(new Object[0]);
-	}
-
-	/**
-	 * Sets the value of this {@link Vector} to the
-	 * normalization of {@link Vector} v1.
-	 *
-	 * @param v1 the un-normalized vector
-	 */
-	@Deprecated
-	public void normalize(Vector v1) {
-		// TODO  This can be made faster
-		double norm = Math.sqrt(v1.getX() * v1.getX() + v1.getY() * v1.getY() + v1.getZ() * v1.getZ());
-		v1.setTo(new Vector(v1.getX() / norm, v1.getY() / norm, v1.getZ() / norm));
 	}
 
 	/** This is the fastest way to get access to the data in this {@link Vector}. */

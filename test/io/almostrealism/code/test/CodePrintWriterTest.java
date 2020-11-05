@@ -21,7 +21,7 @@ public class CodePrintWriterTest {
 		CodePrintWriter p = new JavaScriptPrintWriter(new PrintStreamPrintWriter(System.out));
 		
 		List<Expression<?>> args = new ArrayList<>();
-		args.add(new Expression<>(Hardware.getLocalHardware().stringForDouble(1)));
+		args.add(new Expression<>(Double.class, Hardware.getLocalHardware().stringForDouble(1)));
 		
 		p.beginScope("test", new ArrayList<>());
 		p.println(new Variable<>("v", Scalar.class, new Method<>(null, "func", args)));

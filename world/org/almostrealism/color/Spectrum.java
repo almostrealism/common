@@ -22,5 +22,5 @@ import org.almostrealism.stats.ProbabilityDistribution;
  * @author  Mike Murray
  */
 public interface Spectrum {
-	public ProbabilityDistribution getSpectra();
+	ProbabilityDistribution getSpectra();
 }

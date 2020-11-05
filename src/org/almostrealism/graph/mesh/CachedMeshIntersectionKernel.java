@@ -90,9 +90,9 @@ public class CachedMeshIntersectionKernel implements KernelizedProducer<Scalar>,
 				} else {
 					Pair pos = (Pair) args[0];
 					int n = DimensionAware.getPosition(pos.getX(), pos.getY(), width, height, ssw, ssh);
-					if (n < 0) return ZeroVector.getInstance().evaluate();
+					if (n < 0) return ZeroVector.getProducer().evaluate();
 					int a = (int) cache.get(n).getB();
-					if (a < 0) return ZeroVector.getInstance().evaluate();
+					if (a < 0) return ZeroVector.getProducer().evaluate();
 					return data.get(a).getNormal();
 				}
 			}

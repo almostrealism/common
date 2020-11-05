@@ -37,7 +37,7 @@ public class RankedChoiceProducerForRGB extends RankedChoiceProducerForMemWrappe
 	@Override
 	public RGB replaceNull(Object[] args) {
 		if (tolerateNull) {
-			return RGBBlack.getInstance().evaluate();
+			return RGBBlack.getProducer().evaluate();
 		} else {
 			throw new NullPointerException();
 		}

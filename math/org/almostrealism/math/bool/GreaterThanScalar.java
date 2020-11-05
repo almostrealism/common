@@ -17,6 +17,8 @@
 package org.almostrealism.math.bool;
 
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.algebra.ScalarBank;
+import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.util.Producer;
 
 public class GreaterThanScalar extends GreaterThan<Scalar> implements AcceleratedConditionalStatementScalar {
@@ -44,4 +46,7 @@ public class GreaterThanScalar extends GreaterThan<Scalar> implements Accelerate
 			Producer<Scalar> falseValue) {
 		super(2, Scalar.blank(), leftOperand, rightOperand, trueValue, falseValue, false);
 	}
+
+	@Override
+	public MemoryBank<Scalar> createKernelDestination(int size) { return new ScalarBank(size); }
 }

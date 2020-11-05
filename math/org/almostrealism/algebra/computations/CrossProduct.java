@@ -17,16 +17,16 @@
 package org.almostrealism.algebra.computations;
 
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.util.Producer;
+import static org.almostrealism.util.Ops.*;
 
 public class CrossProduct extends VectorFromScalars {
 	public CrossProduct(Producer<Vector> a, Producer<Vector> b) {
-		super(VectorProducer.y(a).multiply(VectorProducer.z(b))
-						.subtract(VectorProducer.z(a).multiply(VectorProducer.y(b))),
-				VectorProducer.z(a).multiply(VectorProducer.x(b))
-						.subtract(VectorProducer.x(a).multiply(VectorProducer.z(b))),
-				VectorProducer.x(a).multiply(VectorProducer.y(b))
-						.subtract(VectorProducer.y(a).multiply(VectorProducer.x(b))));
+		super(ops().y(a).multiply(ops().z(b))
+						.subtract(ops().z(a).multiply(ops().y(b))),
+				ops().z(a).multiply(ops().x(b))
+						.subtract(ops().x(a).multiply(ops().z(b))),
+				ops().x(a).multiply(ops().y(b))
+						.subtract(ops().y(a).multiply(ops().x(b))));
 	}
 }

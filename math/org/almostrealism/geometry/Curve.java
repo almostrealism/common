@@ -26,6 +26,6 @@ import org.almostrealism.util.Producer;
  *
  * @author  Michael Murray
  */
-public interface Curve<T> extends Gradient {
+public interface Curve<T> extends Gradient<T> {
 	Producer<T> getValueAt(Producer<Vector> point);
 }

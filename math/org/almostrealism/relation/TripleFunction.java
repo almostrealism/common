@@ -18,6 +18,6 @@ package org.almostrealism.relation;
 
 import org.almostrealism.algebra.Triple;
 
-public interface TripleFunction<T extends Triple> extends Computation<T> {
-	T operate(Triple in);
+public interface TripleFunction<T extends Triple, V> extends Computation<V> {
+	V operate(T in);
 }

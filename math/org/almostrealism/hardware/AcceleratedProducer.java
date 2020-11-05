@@ -16,9 +16,15 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.Argument;
+import io.almostrealism.code.ComputationProducerAdapter;
+import org.almostrealism.util.CollectionUtils;
 import org.almostrealism.util.Producer;
 import org.almostrealism.util.ProducerArgumentReference;
+import org.almostrealism.util.StaticProducer;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -52,52 +58,12 @@ public class AcceleratedProducer<T extends MemWrapper> extends AcceleratedOperat
 	 */
 	@Override
 	public void kernelEvaluate(MemoryBank destination, MemoryBank args[]) {
-		String name = getClass().getSimpleName();
-		if (name == null || name.trim().length() <= 0) name = "anonymous";
-		if (name.equals("AcceleratedProducer")) name = getFunctionName();
-
-		if (isKernel() && enableKernel) {
-			HardwareOperator operator = getOperator();
-			operator.setGlobalWorkOffset(0);
-			operator.setGlobalWorkSize(destination.getCount());
-
-			System.out.println("AcceleratedProducer: Preparing " + name + " kernel...");
-			MemoryBank input[] = getKernelArgs(destination, args);
-
-			System.out.println("AcceleratedProducer: Evaluating " + name + " kernel...");
-			operator.accept(input);
-		} else {
-			for (int i = 0; i < destination.getCount(); i++) {
-				final int fi = i;
-				destination.set(i,
-						evaluate(Stream.of(args)
-								.map(arg -> arg.get(fi))
-								.collect(Collectors.toList()).toArray()));
-			}
-		}
+		kernelEvaluate(this, destination, args, isKernel());
 	}
 
-	protected MemoryBank[] getKernelArgs(MemoryBank destination, MemoryBank args[]) {
-		MemoryBank kernelArgs[] = new MemoryBank[inputProducers.length];
-		kernelArgs[0] = destination;
-
-		i: for (int i = 1; i < inputProducers.length; i++) {
-			if (inputProducers[i] == null) continue i;
-
-			if (inputProducers[i].getProducer() instanceof ProducerArgumentReference) {
-				int argIndex = ((ProducerArgumentReference) inputProducers[i].getProducer()).getReferencedArgumentIndex();
-				kernelArgs[i] = args[argIndex];
-			} else if (inputProducers[i].getProducer() instanceof KernelizedProducer) {
-				KernelizedProducer kp = (KernelizedProducer)  inputProducers[i].getProducer();
-				kernelArgs[i] = kp.createKernelDestination(destination.getCount());
-				kp.kernelEvaluate(kernelArgs[i], args);
-			} else {
-				throw new IllegalArgumentException(inputProducers[i].getProducer().getClass().getSimpleName() +
-						" is not a ProducerArgumentReference or KernelizedProducer");
-			}
-		}
-
-		return kernelArgs;
+	@Override
+	protected MemoryBank[] getKernelArgs(MemoryBank args[]) {
+		return getKernelArgs(getArguments(), args, 1);
 	}
 
 	@Override
@@ -105,11 +71,54 @@ public class AcceleratedProducer<T extends MemWrapper> extends AcceleratedOperat
 		throw new RuntimeException("Not implemented");
 	}
 
-	@Override
-	public synchronized void compact() {
-		for (int i = 0; i < inputProducers.length; i++) {
-			if (inputProducers[i] != null && inputProducers[i].getProducer() != null)
-				inputProducers[i].getProducer().compact();
+	public static void kernelEvaluate(KernelizedOperation operation, MemoryBank destination, MemoryBank args[], boolean kernel) {
+		if (kernel && enableKernel) {
+			operation.kernelOperate(includeResult(destination, args));
+		} else if (operation instanceof Producer) {
+			for (int i = 0; i < destination.getCount(); i++) {
+				final int fi = i;
+				destination.set(i,
+						((Producer<MemWrapper>) operation).evaluate(Stream.of(args)
+								.map(arg -> arg.get(fi))
+								.collect(Collectors.toList()).toArray()));
+			}
+		} else {
+			// This will produce an error, but thats the correct outcome
+			operation.kernelOperate(includeResult(destination, args));
 		}
+	}
+
+	public static Producer[] includeResult(Producer res, Producer... p) {
+		return CollectionUtils.include(new Producer[0], res, p);
+	}
+
+	public static MemoryBank[] includeResult(MemoryBank res, MemoryBank... p) {
+		return CollectionUtils.include(new MemoryBank[0], res, p);
+	}
+
+	public static List<Argument> excludeResult(List<Argument> p) {
+		List<Argument> r = new ArrayList<>();
+		for (int i = 1; i < p.size(); i++) r.add(p.get(i));
+		return r;
+	}
+
+	public static Argument[] excludeResult(Argument... p) {
+		Argument q[] = new Argument[p.length - 1];
+		for (int i = 1; i < p.length; i++) q[i - 1] = p[i];
+		return q;
+	}
+
+	public static Producer[] producers(Producer inputs[], Object fixedValues[]) {
+		Producer p[] = new Producer[inputs.length + fixedValues.length];
+
+		for (int i = 0; i < inputs.length; i++) {
+			p[i] = inputs[i];
+		}
+
+		for (int i = 0; i < fixedValues.length; i++) {
+			p[inputs.length + i] = fixedValues == null ? null : StaticProducer.of(fixedValues[i]);
+		}
+
+		return p;
 	}
 }

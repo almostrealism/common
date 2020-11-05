@@ -18,6 +18,7 @@ package org.almostrealism.color;
 
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairBank;
+import org.almostrealism.hardware.KernelizedOperation;
 import org.almostrealism.hardware.KernelizedProducer;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.util.Producer;
@@ -42,7 +43,7 @@ public class RealizableImage implements Producer<RGB[][]> {
 
 	@Override
 	public RGB[][] evaluate(Object[] args) {
-		System.out.println("RealizableImage: Evaluating source kernel...");
+		if (KernelizedOperation.enableKernelLog) System.out.println("RealizableImage: Evaluating source kernel...");
 
 		Pair xy = (args != null && args.length > 0) ? (Pair) args[0] : new Pair(0, 0);
 		int x = (int) xy.getX();

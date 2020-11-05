@@ -5,17 +5,19 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.computations.RayMatrixTransform;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.TranslationMatrix;
+import org.almostrealism.hardware.AcceleratedComputationProducer;
+import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.util.StaticProducer;
 import org.junit.Assert;
 import org.junit.Test;
 
-public class RayMatrixTransformTest {
-	protected RayMatrixTransform transform() {
+public class RayMatrixTransformTest implements HardwareFeatures {
+	protected AcceleratedComputationProducer<Ray> transform() {
 		TransformMatrix m = new TranslationMatrix(StaticProducer.of(
 				new Vector(0.0, -10.0, 0.0))).evaluate();
 
 		Ray r = new Ray(new Vector(1.0, 2.0, 3.0), new Vector(4.0, 5.0, 6.0));
-		return new RayMatrixTransform(m.getInverse(), StaticProducer.of(r));
+		return (AcceleratedComputationProducer) compileProducer(new RayMatrixTransform(m.getInverse(), StaticProducer.of(r)));
 	}
 
 	@Test
@@ -26,7 +28,7 @@ public class RayMatrixTransformTest {
 
 	@Test
 	public void applyCompact() {
-		RayMatrixTransform t = transform();
+		AcceleratedComputationProducer<Ray> t = transform();
 		t.compact();
 
 		System.out.println(t.getFunctionDefinition());

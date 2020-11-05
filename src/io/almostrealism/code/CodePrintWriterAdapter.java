@@ -37,8 +37,7 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 	protected void setScopeSuffix(String suffix) { this.scopeSuffix = suffix; }
 	protected void setScopeClose(String close) { this.scopeClose = close; }
 
-	@Override
-	public void println(Variable v) { println(v, true); };
+	protected abstract String nameForType(Class<?> type);
 
 	@Override
 	public void println(Scope s) {
@@ -80,7 +79,7 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 				out.accept(" ");
 			}
 
-			out.accept(arguments.get(i).getType().toString());
+			out.accept(nameForType(arguments.get(i).getType()));
 			out.accept(" ");
 			out.accept(arguments.get(i).getName());
 

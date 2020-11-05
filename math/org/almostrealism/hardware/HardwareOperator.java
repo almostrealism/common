@@ -58,7 +58,7 @@ public class HardwareOperator<T extends MemWrapper> implements Consumer<Object[]
 			return CL.clCreateKernel(prog, name, null);
 		} catch (CLException e) {
 			if ("CL_INVALID_KERNEL_NAME".equals(e.getMessage())) {
-				throw new IllegalArgumentException("\"" + name + "\" is not a valid kernel name", e);
+				throw new HardwareException("\"" + name + "\" is not a valid kernel name", e);
 			} else {
 				throw e;
 			}
@@ -137,7 +137,7 @@ public class HardwareOperator<T extends MemWrapper> implements Consumer<Object[]
 					new long[] { globalWorkOffset }, new long[] { globalWorkSize },
 					null, 0, null, null);
 		} catch (CLException e) {
-			throw new RuntimeException(e.getMessage() + " for function " + name +
+			throw new HardwareException(e.getMessage() + " for function " + name +
 							" (index = " + index + " argCount = " + argCount + ")", e);
 		}
 //		}

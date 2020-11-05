@@ -17,59 +17,53 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.Argument;
-import org.almostrealism.util.CollectionUtils;
+import io.almostrealism.code.OperationAdapter;
+import org.almostrealism.relation.Computation;
+import org.almostrealism.util.Compactable;
+import org.almostrealism.util.Named;
 import org.almostrealism.util.Producer;
 import org.almostrealism.util.ProducerArgumentReference;
 import org.almostrealism.util.ProducerCache;
-import org.almostrealism.util.StaticProducer;
+import org.jocl.CLException;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Function;
 
-public class AcceleratedOperation implements Function<Object[], Object[]>, Runnable {
-	public static final boolean enableNullInputs = true;
-	public static final boolean enableKernel = true;
-
+public class AcceleratedOperation extends OperationAdapter implements Function<Object[], Object[]>, Runnable,
+														KernelizedOperation, Compactable, ComputerFeatures {
 	private static Map<String, ThreadLocal<HardwareOperator>> operators = new HashMap<>();
 
-	private String function;
 	private boolean kernel;
 
-	protected Argument inputProducers[];
-
 	public AcceleratedOperation(String function, boolean kernel, Producer<?>... args) {
-		this.function = function;
+		super(args);
+		setFunctionName(function);
 		this.kernel = kernel;
-		this.inputProducers = arguments(args);
 	}
 
-	public void setFunctionName(String name) { function = name; }
-
-	public String getFunctionName() { return function; }
-
-	public int getArgsCount() { return inputProducers.length; }
-
-	public Argument[] getInputProducers() { return inputProducers; }
+	public AcceleratedOperation(String function, boolean kernel, Argument<?>... args) {
+		super(args);
+		setFunctionName(function);
+		this.kernel = kernel;
+	}
 
 	public HardwareOperator getOperator() {
 		// TODO  This needs to be by class in addition to function, as function names may collide
 		synchronized (AcceleratedProducer.class) {
-			if (operators.get(function) == null) {
-				operators.put(function, new ThreadLocal<>());
+			if (operators.get(getFunctionName()) == null) {
+				operators.put(getFunctionName(), new ThreadLocal<>());
 			}
 
-			if (operators.get(function).get() == null) {
-				operators.get(function).set(Hardware.getLocalHardware()
-						.getFunctions().getOperators(getClass()).get(function, getArgsCount()));
+			if (operators.get(getFunctionName()).get() == null) {
+				operators.get(getFunctionName()).set(Hardware.getLocalHardware()
+						.getFunctions().getOperators(getClass()).get(getFunctionName(), getArgsCount()));
 			}
 		}
 
-		return operators.get(function).get();
-	}
-
-	protected String getNumberType() {
-		return Hardware.getLocalHardware().isDoublePrecision() ? "double" : "float";
+		return operators.get(getFunctionName()).get();
 	}
 
 	@Override
@@ -77,55 +71,91 @@ public class AcceleratedOperation implements Function<Object[], Object[]>, Runna
 
 	@Override
 	public synchronized Object[] apply(Object[] args) {
+		HardwareOperator op = getOperator();
+
 		Object allArgs[] = getAllArgs(args);
 
 		for (int i = 0; i < allArgs.length; i++) {
 			if (allArgs[i] == null) return new Object[] { handleNull(i) };
 		}
 
-		getOperator().accept(allArgs);
+		op.accept(allArgs);
 		return allArgs;
 	}
 
 	protected Object[] getAllArgs(Object args[]) {
-		Object allArgs[] = new Object[inputProducers.length];
+		Object allArgs[] = new Object[getArguments().size()];
 
-		for (int i = 0; i < inputProducers.length; i++) {
+		for (int i = 0; i < getArguments().size(); i++) {
 			try {
-				allArgs[i] = inputProducers[i] == null ? replaceNull(i) : ProducerCache.evaluate(inputProducers[i].getProducer(), args);
+				if (getArguments().get(i) == null) {
+					allArgs[i] = replaceNull(i);
+				} else if (getArguments().get(i).getProducer() == null) {
+					throw new IllegalArgumentException("No Producer for " + getArguments().get(i).getName());
+				} else {
+					int argRef = getProducerArgumentReferenceIndex(getArguments().get(i));
+
+					if (argRef >= args.length) {
+						throw new IllegalArgumentException("Not enough arguments were supplied for evaluation");
+					}
+
+					if (argRef >= 0) {
+						allArgs[i] = args[argRef];
+					} else {
+						allArgs[i] = ProducerCache.evaluate(getArguments().get(i).getProducer(), args);
+					}
+				}
+
 				if (allArgs[i] == null) allArgs[i] = replaceNull(i);
+			} catch (IllegalArgumentException e) {
+				throw e;
 			} catch (Exception e) {
-				throw new RuntimeException("Function \"" + function +
+				throw new RuntimeException("Function \"" + getFunctionName() +
 						"\" could not complete due to exception evaluating argument " + i +
-						" (" + inputProducers[i].getProducer().getClass() + ")", e);
+						" (" + getArguments().get(i).getProducer().getClass() + ")", e);
 			}
 		}
 
 		return allArgs;
 	}
 
-	protected MemoryBank[] getKernelArgs(MemoryBank destination, MemoryBank args[]) {
-		MemoryBank kernelArgs[] = new MemoryBank[inputProducers.length];
-		kernelArgs[0] = destination;
+	private int getProducerArgumentReferenceIndex(Argument<?> arg) {
+		if (arg.getProducer() instanceof AcceleratedComputationOperation == false) return -1;
 
-		i:
-		for (int i = 1; i < inputProducers.length; i++) {
-			if (inputProducers[i] == null) continue i;
-
-			if (inputProducers[i].getProducer() instanceof ProducerArgumentReference) {
-				int argIndex = ((ProducerArgumentReference) inputProducers[i].getProducer()).getReferencedArgumentIndex();
-				kernelArgs[i] = args[argIndex];
-			} else if (inputProducers[i].getProducer() instanceof KernelizedProducer) {
-				KernelizedProducer kp = (KernelizedProducer) inputProducers[i].getProducer();
-				kernelArgs[i] = kp.createKernelDestination(destination.getCount());
-				kp.kernelEvaluate(kernelArgs[i], args);
-			} else {
-				throw new IllegalArgumentException(inputProducers[i].getProducer().getClass().getSimpleName() +
-						" is not a ProducerArgumentReference or KernelizedProducer");
-			}
+		Computation c = ((AcceleratedComputationOperation) arg.getProducer()).getComputation();
+		if (c instanceof ProducerArgumentReference) {
+			return ((ProducerArgumentReference) c).getReferencedArgumentIndex();
 		}
 
-		return kernelArgs;
+		return -1;
+	}
+
+	@Override
+	public void kernelOperate(MemoryBank[] args) {
+		String name = this instanceof Named ? ((Named) this).getName() : OperationAdapter.operationName(getClass(), "function");
+
+		try {
+			if (isKernel() && enableKernel) {
+				HardwareOperator operator = getOperator();
+				operator.setGlobalWorkOffset(0);
+				operator.setGlobalWorkSize(args[0].getCount());
+
+				if (enableKernelLog) System.out.println("AcceleratedOperation: Preparing " + name + " kernel...");
+				MemoryBank input[] = getKernelArgs(args);
+
+				if (enableKernelLog) System.out.println("AcceleratedOperation: Evaluating " + name + " kernel...");
+
+				operator.accept(input);
+			} else {
+				throw new HardwareException("Kernel not supported", null);
+			}
+		} catch (CLException e) {
+			throw new HardwareException("Could not evaluate AcceleratedOperation", e);
+		}
+	}
+
+	protected MemoryBank[] getKernelArgs(MemoryBank args[]) {
+		return getKernelArgs(getArguments(), args, 0);
 	}
 
 	/**
@@ -147,30 +177,13 @@ public class AcceleratedOperation implements Function<Object[], Object[]>, Runna
 	 * @param argIndex  The index of the argument that is null.
 	 */
 	protected Object handleNull(int argIndex) {
-		throw new NullPointerException("argument " + argIndex + " to function " + function);
-	}
-
-	protected String stringForDouble(double d) {
-		return "(" + getNumberType() + ")" + Hardware.getLocalHardware().stringForDouble(d);
-	}
-
-	protected double doubleForString(String s) {
-		s = s.trim();
-		while (s.startsWith("(double)") || s.startsWith("(float)")) {
-			if (s.startsWith("(double)")) {
-				s = s.substring(8).trim();
-			} else if (s.startsWith("(float)")) {
-				s = s.substring(7).trim();
-			}
-		}
-
-		return Double.parseDouble(s);
+		throw new NullPointerException("argument " + argIndex + " to function " + getFunctionName());
 	}
 
 	public boolean isKernel() { return kernel; }
 
 	public boolean isInputKernel() {
-		for (Argument arg : inputProducers) {
+		for (Argument arg : getArguments()) {
 			if (arg.getProducer() instanceof AcceleratedProducer == false) return false;
 			if (!((AcceleratedProducer) arg.getProducer()).isKernel()) return false;
 		}
@@ -178,40 +191,42 @@ public class AcceleratedOperation implements Function<Object[], Object[]>, Runna
 		return false;
 	}
 
-	protected static Producer[] includeResult(Producer res, Producer... p) {
-		return CollectionUtils.include(new Producer[0], res, p);
-	}
+	protected static MemoryBank[] getKernelArgs(List<Argument> arguments, MemoryBank args[], int passThroughLength) {
+		MemoryBank kernelArgs[] = new MemoryBank[arguments.size()];
 
-	protected static Argument[] excludeResult(Argument... p) {
-		Argument q[] = new Argument[p.length - 1];
-		for (int i = 1; i < p.length; i++) q[i - 1] = p[i];
-		return q;
-	}
+		for (int i = 0; i < passThroughLength; i++) {
+			kernelArgs[i] = args[i];
+		}
 
-	protected static Argument[] arguments(Producer... producers) {
-		Argument args[] = new Argument[producers.length];
-		for (int i = 0; i < args.length; i++) {
-			if (!enableNullInputs && producers[i] == null) {
-				throw new IllegalArgumentException("Null argument at index " + i);
+		i: for (int i = passThroughLength; i < arguments.size(); i++) {
+			if (arguments.get(i) == null) continue i;
+
+			if (arguments.get(i).getProducer() instanceof ProducerArgumentReference) {
+				int argIndex = ((ProducerArgumentReference) arguments.get(i).getProducer()).getReferencedArgumentIndex();
+				kernelArgs[i] = args[passThroughLength + argIndex];
+				continue i;
 			}
 
-			args[i] = producers[i] == null ? null : new Argument(producers[i]);
+			Optional<Computation> c = Hardware.getLocalHardware().getComputer().decompile(arguments.get(i).getProducer());
+
+			if (c.orElse(null) instanceof ProducerArgumentReference) {
+				int argIndex = ((ProducerArgumentReference) c.get()).getReferencedArgumentIndex();
+				kernelArgs[i] = args[passThroughLength + argIndex];
+			} else if (arguments.get(i).getProducer() instanceof KernelizedProducer) {
+				MemoryBank downstreamArgs[] = new MemoryBank[args.length - passThroughLength];
+				for (int j = passThroughLength; j < args.length; j++) {
+					downstreamArgs[j - passThroughLength] = args[j];
+				}
+
+				KernelizedProducer kp = (KernelizedProducer) arguments.get(i).getProducer();
+				kernelArgs[i] = kp.createKernelDestination(args[0].getCount());
+				kp.kernelEvaluate(kernelArgs[i], downstreamArgs);
+			} else {
+				throw new IllegalArgumentException(arguments.get(i).getProducer().getClass().getSimpleName() +
+						" is not a ProducerArgumentReference or KernelizedProducer");
+			}
 		}
 
-		return args;
-	}
-
-	protected static Producer[] producers(Producer inputs[], Object fixedValues[]) {
-		Producer p[] = new Producer[inputs.length + fixedValues.length];
-
-		for (int i = 0; i < inputs.length; i++) {
-			p[i] = inputs[i];
-		}
-
-		for (int i = 0; i < fixedValues.length; i++) {
-			p[inputs.length + i] = fixedValues == null ? null : StaticProducer.of(fixedValues[i]);
-		}
-
-		return p;
+		return kernelArgs;
 	}
 }

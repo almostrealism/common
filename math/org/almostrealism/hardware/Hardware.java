@@ -26,6 +26,8 @@ import java.io.InputStreamReader;
 
 /** An interface to OpenCL. */
 public final class Hardware {
+	public static boolean enableVerbose = false;
+
 	protected static final int MEMORY_SCALE;
 
 	private static Hardware local;
@@ -50,6 +52,7 @@ public final class Hardware {
 	private cl_command_queue queue;
 
 	private AcceleratedFunctions functions;
+	private Computer computer;
 	
 	private Hardware(boolean enableGpu) {
 		this(enableGpu, !enableGpu);
@@ -88,7 +91,7 @@ public final class Hardware {
 		CL.clGetPlatformIDs(0, null, numPlatformsArray);
 		int numPlatforms = numPlatformsArray[0];
 
-		System.out.println("Hardware[" + name + "]: " + numPlatforms + " platforms available");
+		if (enableVerbose) System.out.println("Hardware[" + name + "]: " + numPlatforms + " platforms available");
 
 		cl_platform_id platforms[] = new cl_platform_id[numPlatforms];
 		CL.clGetPlatformIDs(platforms.length, platforms, null);
@@ -113,22 +116,29 @@ public final class Hardware {
 
 		context = CL.clCreateContext(contextProperties, 1, new cl_device_id[] { device },
 								null, null, null);
-		System.out.println("Hardware[" + name + "]: OpenCL context initialized");
+		if (enableVerbose) System.out.println("Hardware[" + name + "]: OpenCL context initialized");
 
 		queue = CL.clCreateCommandQueue(context, device, 0, null);
-		System.out.println("Hardware[" + name + "]: OpenCL command queue initialized");
+		if (enableVerbose) System.out.println("Hardware[" + name + "]: OpenCL command queue initialized");
 
-		System.out.println("Hardware[" + name + "]: Loading accelerated functions");
+		if (enableVerbose) System.out.println("Hardware[" + name + "]: Loading accelerated functions");
 		functions = new AcceleratedFunctions();
 		functions.init(this, loadSource(name));
 		System.out.println("Hardware[" + name + "]: Accelerated functions loaded for " + name);
+
+		computer = new DefaultComputer();
+		if (enableVerbose) System.out.println("Hardware[" + name + "]: Created DefaultComputer");
 	}
 
 	public static Hardware getLocalHardware() { return local; }
 
+	public Computer getComputer() { return computer; }
+
 	public boolean isGPU() { return enableGpu; }
 
 	public boolean isDoublePrecision() { return enableDoublePrecision; }
+
+	public String getNumberTypeName() { return isDoublePrecision() ? "double" : "float"; }
 
 	public int getNumberSize() { return isDoublePrecision() ? Sizeof.cl_double : Sizeof.cl_float; }
 
@@ -156,6 +166,23 @@ public final class Hardware {
 
 			return String.valueOf(d);
 		}
+	}
+
+	public String getNumberType() {
+		return Hardware.getLocalHardware().isDoublePrecision() ? "double" : "float";
+	}
+
+	protected double doubleForString(String s) {
+		s = s.trim();
+		while (s.startsWith("(double)") || s.startsWith("(float)")) {
+			if (s.startsWith("(double)")) {
+				s = s.substring(8).trim();
+			} else if (s.startsWith("(float)")) {
+				s = s.substring(7).trim();
+			}
+		}
+
+		return Double.parseDouble(s);
 	}
 
 	public cl_context getContext() { return context; }

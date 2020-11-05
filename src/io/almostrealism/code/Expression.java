@@ -1,14 +1,35 @@
+/*
+ * Copyright 2020 Michael Murray
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
 package io.almostrealism.code;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Supplier;
+import java.util.stream.Stream;
 
 public class Expression<T> {
 	private Class<T> type;
 	private Supplier<String> expression;
 	private Method<T> generator;
-	private List<Variable> dependencies;
+	private List<Variable<?>> dependencies = new ArrayList<>();
 	private int arraySize = -1;
 
 	public Expression(Class<T> type) {
@@ -24,18 +45,25 @@ public class Expression<T> {
 		this.generator = generator;
 	}
 
-	public Expression(String expression) {
-		this(null, expression);
+	public Expression(Class<T> type, String expression) {
+		this(type, expression, new Variable[0]);
 	}
 
-	public Expression(Class<T> type, String expression) {
+	public Expression(Class<T> type, String expression, Expression<?>... dependencies) {
+		this(type, expression, dependencies(dependencies));
+	}
+
+	public Expression(Class<T> type, String expression, Variable<?>... dependencies) {
 		setType(type);
 		this.expression = () -> expression;
+		this.dependencies = new ArrayList<>();
+		Stream.of(dependencies).forEach(this.dependencies::add);
 	}
 
 	public Expression(Class<T> type, String expression, int arraySize) {
 		setType(type);
 		this.expression = () -> expression;
+		setArraySize(arraySize);
 	}
 
 	public Expression(int arraySize) {
@@ -67,7 +95,7 @@ public class Expression<T> {
 	public void setExpression(String expression) { this.expression = () -> expression; }
 	public void setExpression(Supplier<String> expression) { this.expression = expression; }
 
-	public List<Variable> getDependencies() { return dependencies; }
+	public List<Variable<?>> getDependencies() { return dependencies; }
 
 	public int getArraySize() { return arraySize; }
 	public void setArraySize(int arraySize) { this.arraySize = arraySize; }
@@ -95,4 +123,10 @@ public class Expression<T> {
 
 	@Override
 	public int hashCode() { return getValue().hashCode(); }
+
+	private static Variable[] dependencies(Expression expressions[]) {
+		Set<Variable<?>> dependencies = new HashSet<>();
+		for (Expression e : expressions) dependencies.addAll(e.getDependencies());
+		return dependencies.toArray(new Variable[0]);
+	}
 }

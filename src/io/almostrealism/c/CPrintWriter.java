@@ -17,12 +17,14 @@
 package io.almostrealism.c;
 
 import io.almostrealism.code.CodePrintWriterAdapter;
+import io.almostrealism.code.Expression;
 import io.almostrealism.code.Method;
 import io.almostrealism.code.ResourceVariable;
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.io.PrintWriter;
 import org.almostrealism.util.Producer;
 
@@ -36,8 +38,8 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 	}
 
 	@Override
-	public void println(Variable<?> variable, boolean create) {
-		if (create) {
+	public void println(Variable<?> variable) {
+		if (variable.isDeclaration()) {
 			if (variable.getProducer() == null) {
 				if (variable.getExpression() == null) {
 					this.p.println(typePrefix(variable.getType()) + variable.getName());
@@ -47,14 +49,14 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 				}
 			} else {
 				this.p.println(typePrefix(variable.getType()) + variable.getName() +
-								" = " + encode(variable.getProducer()) + ";");
+								" = " + encode(variable.getExpression()) + ";");
 			}
 		} else {
-			if (variable.getProducer() == null) {
-				this.p.println(variable.getName() + " = null");
+			if (variable.getExpression() == null) {
+				//   this.p.println(variable.getName() + " = null;");
 			} else {
 				this.p.println(variable.getName() + " = " +
-								encode(variable.getProducer()) + ";");
+								encode(variable.getExpression()) + ";");
 			}
 		}
 	}
@@ -76,6 +78,8 @@ public class CPrintWriter extends CodePrintWriterAdapter {
  		}
 	}
 
+	protected String nameForType(Class<?> type) { return typeString(type); }
+
 	protected static String typeString(Class type) {
 		if (type == null) return "";
 
@@ -83,6 +87,10 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 			return "vec3";
 		} else if (type == Pair.class) {
 			return "vec2";
+		} else if (type == Double.class) {
+			return Hardware.getLocalHardware().getNumberTypeName();
+		} else if (type == Integer.class) {
+			return "int";
 		} else {
 			throw new IllegalArgumentException("Unable to encode " + type);
 		}
@@ -95,6 +103,8 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 		} else if (data instanceof Pair) {
 			Pair v = (Pair) data;
 			return "vec2(" + v.getX() + ", " + v.getY() + ")";
+		} else if (data instanceof Expression) {
+			return ((Expression) data).getExpression();
 		} else {
 			throw new IllegalArgumentException("Unable to encode " + data);
 		}

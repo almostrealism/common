@@ -16,6 +16,7 @@
 
 package org.almostrealism.texture;
 
+import org.almostrealism.algebra.Triple;
 import org.almostrealism.color.computations.ColorProducer;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.computations.RGBProducer;
@@ -26,7 +27,7 @@ import org.almostrealism.relation.TripleFunction;
  * 
  * @author  Michael Murray
  */
-public interface Texture extends ColorProducer, TripleFunction<RGB> {
+public interface Texture extends ColorProducer, TripleFunction<Triple, RGB> {
 	/**
 	 * Returns the color of the texture represented by this Texture object at the specified point as an RGB object
 	 * using the specified arguments.

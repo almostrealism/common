@@ -17,9 +17,11 @@
 package org.almostrealism.geometry;
 
 
+import org.almostrealism.algebra.computations.DefaultVectorProducer;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.TransformMatrix;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.algebra.computations.RayPointAt;
 import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.hardware.MemWrapper;
@@ -152,11 +154,11 @@ public class Ray extends MemWrapperAdapter implements Cloneable {
 	}
 	
 	/**
-	 * @return  The point on the ray represented by this Ray object at distance t from the origin
-	 *          as a Vector object.
+	 * @return  The point on the ray represented by this {@link Ray} at distance t from the origin
+	 *          as a {@link Vector}.
 	 */
-	public Producer<Vector> pointAt(Producer<Scalar> t) {
-		return new RayPointAt(StaticProducer.of(this), t);
+	public VectorProducer pointAt(Producer<Scalar> t) {
+		return new DefaultVectorProducer(new RayPointAt(StaticProducer.of(this), t));
 	}
 
 	@Override

@@ -29,7 +29,7 @@ public class Vertex extends Vector {
 
 	public Vertex(Vector p) {
 		super(p.getX(), p.getY(), p.getZ());
-		this.setNormal(ZeroVector.getInstance().evaluate(new Object[0]));
+		this.setNormal(ZeroVector.getProducer().evaluate());
 	}
 
 	public void setColor(RGB c) {

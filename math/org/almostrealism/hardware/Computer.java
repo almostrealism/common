@@ -19,8 +19,14 @@ package org.almostrealism.hardware;
 import org.almostrealism.relation.Computation;
 import org.almostrealism.util.Producer;
 
-public interface Computer {
+import java.util.Optional;
+
+public interface Computer<B> {
 	Runnable compileRunnable(Computation<Void> c);
 
-	<T> Producer<T> compileProducer(Computation<T> c);
+	<T extends B> Producer<T> compileProducer(Computation<T> c);
+
+	<T> Optional<Computation<T>> decompile(Runnable r);
+
+	<T> Optional<Computation<T>> decompile(Producer<T> p);
 }

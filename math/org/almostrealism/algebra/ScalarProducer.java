@@ -16,6 +16,7 @@
 
 package org.almostrealism.algebra;
 
+import org.almostrealism.algebra.computations.DefaultScalarProducer;
 import org.almostrealism.algebra.computations.ScalarPow;
 import org.almostrealism.algebra.computations.ScalarProduct;
 import org.almostrealism.algebra.computations.ScalarSum;
@@ -28,24 +29,24 @@ import org.almostrealism.util.StaticProducer;
 public interface ScalarProducer extends Producer<Scalar> {
 	ScalarProducer minusOne = StaticProducer.of(-1.0);
 
-	default ScalarSum add(Producer<Scalar> value) {
-		return new ScalarSum(this, value);
+	default ScalarProducer add(Producer<Scalar> value) {
+		return new DefaultScalarProducer(new ScalarSum(this, value));
 	}
 
-	default ScalarSum add(Scalar value) {
+	default ScalarProducer add(Scalar value) {
 		return add(StaticProducer.of(value));
 	}
 
-	default ScalarSum add(double value) {
+	default ScalarProducer add(double value) {
 		return add(new Scalar(value));
 	}
 
-	default ScalarSum subtract(Producer<Scalar> value) {
+	default ScalarProducer subtract(Producer<Scalar> value) {
 		return add(minus(value));
 	}
 
 	default ScalarProducer multiply(Producer<Scalar> value) {
-		return new ScalarProduct(this, value);
+		return new DefaultScalarProducer(new ScalarProduct(this, value));
 	}
 
 	default ScalarProducer multiply(Scalar value) {
@@ -57,7 +58,7 @@ public interface ScalarProducer extends Producer<Scalar> {
 	}
 
 	default ScalarProducer divide(Producer<Scalar> value) {
-		return multiply(new ScalarPow(value, StaticProducer.of(-1.0)));
+		return multiply(new DefaultScalarProducer(new ScalarPow(value, StaticProducer.of(-1.0))));
 	}
 
 	default ScalarProducer divide(Scalar value) {
@@ -71,19 +72,25 @@ public interface ScalarProducer extends Producer<Scalar> {
 	default ScalarProducer minus() { return multiply(-1.0); }
 
 	static ScalarProducer minus(Producer<Scalar> p) {
-		return new ScalarProduct(p, minusOne);
+		return new DefaultScalarProducer(new ScalarProduct(p, minusOne));
 	}
 
-	default ScalarProducer pow(Producer<Scalar> exponent) {
-		return new ScalarPow(this, exponent);
+	default ScalarProducer pow(Producer<Scalar> exponent) { return pow(this, exponent); }
+
+	default ScalarProducer pow(Scalar exp) { return pow(this, exp); }
+
+	default ScalarProducer pow(double exp) { return pow(this, exp); }
+
+	static ScalarProducer pow(Producer<Scalar> base, Producer<Scalar> exponent) {
+		return new DefaultScalarProducer(new ScalarPow(base, exponent));
 	}
 
-	default ScalarProducer pow(Scalar value) {
-		return pow(StaticProducer.of(value));
+	static ScalarProducer pow(Producer<Scalar> base, Scalar exp) {
+		return pow(base, StaticProducer.of(exp));
 	}
 
-	default ScalarProducer pow(double value) {
-		return pow(new Scalar(value));
+	static ScalarProducer pow(Producer<Scalar> base, double value) {
+		return pow(base, new Scalar(value));
 	}
 
 	default AcceleratedConditionalStatementVector greaterThan(Producer<Scalar> operand) {

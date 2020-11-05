@@ -20,6 +20,7 @@ import org.almostrealism.util.Nameable;
 import org.almostrealism.util.Producer;
 import org.almostrealism.util.StaticProducer;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Supplier;
@@ -31,21 +32,40 @@ import java.util.function.Supplier;
  */
 public class Variable<T> implements Nameable {
 	private String name, annotation;
+	private boolean declaration;
+
 	private Expression<T> expression;
+
 	private Producer<T> producer;
+	private Variable<?> dependsOn;
 
 	public Variable(String name, Expression<T> expression) {
-		this(name, expression, null);
+		this(name, true, expression, (Producer) null);
 	}
 
-	public Variable(String name, Expression<T> expression, Producer<T> producer) {
+	public Variable(String name, Expression<T> expression, Variable<?> dependsOn) {
+		this(name, true, expression, dependsOn);
+	}
+
+	public Variable(String name, boolean declaration, Expression<T> expression) {
+		this(name, declaration, expression, (Variable) null);
+	}
+
+	public Variable(String name, boolean declaration, Expression<T> expression, Variable<?> dependsOn) {
+		this(name, expression);
+		this.declaration = declaration;
+		this.dependsOn = dependsOn;
+	}
+
+	public Variable(String name, boolean declaration, Expression<T> expression, Producer<T> producer) {
 		setName(name);
 		setExpression(expression);
 		setProducer(producer);
+		this.declaration = declaration;
 	}
 
 	public Variable(String name, T expression) {
-		this(name, (Expression) null, StaticProducer.of(expression));
+		this(name, true, (Expression) null, StaticProducer.of(expression));
 	}
 
 	public Variable(String name, Producer<T> producer) {
@@ -57,7 +77,12 @@ public class Variable<T> implements Nameable {
 	}
 
 	public Variable(String name, Class<T> type, Producer<T> producer) {
-		this(name, new Expression(type), producer);
+		this(name, true, new Expression(type), producer);
+	}
+
+	public Variable(String name, String annotation, Class<T> type, Producer<T> producer) {
+		this(name, type, producer);
+		setAnnotation(annotation);
 	}
 
 	public Variable(String name, Method<T> generator) {
@@ -76,36 +101,8 @@ public class Variable<T> implements Nameable {
 		this(name, new Expression(type, expression));
 	}
 
-	public Variable(String name, String expression, Producer<T> producer) {
-		this(name, null, () -> expression, producer);
-	}
-
 	public Variable(String name, Class<T> type, String expression, Producer<T> producer, int arraySize) {
-		this(name, new Expression(type, expression, arraySize), producer);
-	}
-
-	public Variable(String name, int arraySize) {
-		this(name, null, (Supplier) null, null, arraySize);
-	}
-
-	public Variable(String name, Supplier<String> expression) {
-		this(name, null, expression);
-	}
-
-	public Variable(String name, Class<T> type, Supplier<String> expression) {
-		this(name, new Expression(type, expression));
-	}
-
-	public Variable(String name, Supplier<String> expression, Producer<T> producer) {
-		this(name, null, expression, producer);
-	}
-
-	public Variable(String name, Class<T> type, Supplier<String> expression, Producer<T> producer) {
-		this(name, type, expression, producer, -1);
-	}
-
-	public Variable(String name, Producer<T> producer, int arraySize) {
-		this(name, null, (Supplier) null, producer, arraySize);
+		this(name, true, new Expression(type, expression, arraySize), producer);
 	}
 
 	public Variable(String name, Producer<T> producer, int arraySize, String annotation) {
@@ -114,7 +111,7 @@ public class Variable<T> implements Nameable {
 	}
 
 	public Variable(String name, Class<T> type, Supplier<String> expression, Producer<T> producer, int arraySize) {
-		this(name, new Expression(type, expression, arraySize), producer);
+		this(name, true, new Expression(type, expression, arraySize), producer);
 	}
 
 	public void setName(String n) { this.name = n; }
@@ -122,6 +119,9 @@ public class Variable<T> implements Nameable {
 
 	public void setAnnotation(String a) { this.annotation = a; }
 	public String getAnnotation() { return this.annotation; }
+
+	public void setDeclaration(boolean declaration) { this.declaration = declaration; }
+	public boolean isDeclaration() { return declaration; }
 
 	public void setExpression(Expression<T> value) { this.expression = value; }
 	public Expression<T> getExpression() { return expression; }
@@ -131,7 +131,12 @@ public class Variable<T> implements Nameable {
 
 	public Class<T> getType() { return getExpression().getType(); }
 	public Method<T> getGenerator() { return getExpression().getGenerator(); }
-	public List<Variable> getDependencies() { return getExpression().getDependencies(); }
+	public List<Variable<?>> getDependencies() {
+		List<Variable<?>> deps = new ArrayList<>();
+		if (dependsOn != null) deps.add(dependsOn);
+		deps.addAll(getExpression().getDependencies());
+		return deps;
+	}
 
 	public int getArraySize() { return getExpression().getArraySize(); }
 
@@ -140,10 +145,11 @@ public class Variable<T> implements Nameable {
 		if (obj instanceof Variable == false) return false;
 
 		Variable v = (Variable) obj;
-		if (!Objects.equals(name, v.getName())) return false;
+		if (!Objects.equals(name, v.name)) return false;
 		if (!Objects.equals(annotation, v.getAnnotation())) return false;
 		if (!Objects.equals(expression, v.getExpression())) return false;
 		if (!Objects.equals(producer, v.getProducer())) return false;
+		if (!Objects.equals(dependsOn, v.dependsOn)) return false;
 
 		return true;
 	}

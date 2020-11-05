@@ -16,6 +16,7 @@
 
 package org.almostrealism.algebra.computations;
 
+import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.util.Producer;
 
@@ -25,6 +26,10 @@ public class DirectionDotDirection extends DotProduct {
 	}
 	
 	protected DirectionDotDirection(RayDirection d) {
+		this(new DefaultVectorProducer(d), true);
+	}
+
+	private DirectionDotDirection(Producer<Vector> d, boolean ignore) {
 		super(d, d);
 	}
 }

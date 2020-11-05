@@ -18,6 +18,8 @@ package org.almostrealism.math.bool;
 
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.algebra.VectorBank;
+import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.util.Producer;
 
 public class GreaterThanVector extends GreaterThan<Vector> implements AcceleratedConditionalStatementVector {
@@ -32,4 +34,7 @@ public class GreaterThanVector extends GreaterThan<Vector> implements Accelerate
 					   Producer<Vector> falseValue) {
 		super(3, Vector.blank(), leftOperand, rightOperand, trueValue, falseValue, false);
 	}
+
+	@Override
+	public MemoryBank<Vector> createKernelDestination(int size) { return new VectorBank(size); }
 }

@@ -10,18 +10,20 @@ import org.almostrealism.graph.mesh.Mesh;
 import org.almostrealism.graph.mesh.MeshData;
 import org.almostrealism.graph.mesh.TriangleData;
 import org.almostrealism.graph.mesh.TriangleIntersectAt;
+import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.util.CodeFeatures;
 import org.almostrealism.util.PassThroughProducer;
 import org.almostrealism.util.StaticProducer;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
-public class MeshIntersectionTest {
-	private VectorProducer origin1 = StaticProducer.of(new Vector(0.0, 0.0, 1.0));
-	private VectorProducer direction1 = StaticProducer.of(new Vector(0.0, 0.0, -1.0));
-	private VectorProducer origin2 = StaticProducer.of(new Vector( -0.1, -1.0, 1.0));
-	private VectorProducer direction2 = StaticProducer.of(new Vector(0.0, 0.0, -1.0));
+public class MeshIntersectionTest implements HardwareFeatures, CodeFeatures {
+	private VectorProducer origin1 = vector(0.0, 1.0, 1.0);
+	private VectorProducer direction1 = vector(0.0, 0.0, -1.0);
+	private VectorProducer origin2 = vector( -0.1, -1.0, 1.0);
+	private VectorProducer direction2 = vector(0.0, 0.0, -1.0);
 
 	private MeshData data1, data2;
 
@@ -57,7 +59,7 @@ public class MeshIntersectionTest {
 	protected VectorProducer normal(MeshData data) { return StaticProducer.of(data.get(0).getNormal()); }
 
 	protected TriangleIntersectAt intersection() {
-		return new TriangleIntersectAt(PassThroughProducer.of(TriangleData.class, 0),
+		return TriangleIntersectAt.construct(PassThroughProducer.of(TriangleData.class, 0),
 										new RayFromVectors(PassThroughProducer.of(Vector.class, 1),
 															PassThroughProducer.of(Vector.class, 2)));
 	}
@@ -70,6 +72,8 @@ public class MeshIntersectionTest {
 
 	@Test
 	public void data1() {
+		System.out.println(def(data1).evaluate());
+
 		VectorProducer h = TriangleIntersectAt.h(def(data1), direction1);
 		System.out.println("h = " + h.evaluate());
 
@@ -124,6 +128,7 @@ public class MeshIntersectionTest {
 	public void intersectAtCompact1() {
 		TriangleIntersectAt intersect = intersection();
 		intersect.compact();
+		System.out.println(intersect.getFunctionDefinition());
 		evaluate(intersect, true);
 	}
 
@@ -139,7 +144,7 @@ public class MeshIntersectionTest {
 		ScalarBank distances = new ScalarBank(1);
 		RayFromVectors ray = new RayFromVectors(origin1, direction1);
 		ray.compact();
-		data1.evaluateIntersectionKernel(ray, distances, new MemoryBank[0]);
+		data1.evaluateIntersectionKernel(compileProducer(ray), distances, new MemoryBank[0]);
 		System.out.println("distance = " + distances.get(0).getValue());
 		Assert.assertEquals(1.0, distances.get(0).getValue(), Math.pow(10, -10));
 	}
@@ -157,7 +162,7 @@ public class MeshIntersectionTest {
 		ScalarBank distances = new ScalarBank(1);
 		RayFromVectors ray = new RayFromVectors(origin2, direction2);
 		ray.compact();
-		data2.evaluateIntersectionKernel(ray, distances, new MemoryBank[0]);
+		data2.evaluateIntersectionKernel(compileProducer(ray), distances, new MemoryBank[0]);
 		System.out.println("distance = " + distances.get(0).getValue());
 		Assert.assertEquals(1.0, distances.get(0).getValue(), Math.pow(10, -10));
 	}

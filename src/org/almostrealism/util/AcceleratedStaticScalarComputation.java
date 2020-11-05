@@ -16,16 +16,15 @@
 
 package org.almostrealism.util;
 
+import io.almostrealism.code.Scope;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.relation.NameProvider;
 
-public class AcceleratedStaticScalarProducer extends AcceleratedStaticProducer<Scalar> implements ScalarProducer {
-	public AcceleratedStaticScalarProducer(Scalar value, Producer<Scalar> output) {
+public class AcceleratedStaticScalarComputation extends AcceleratedStaticComputation<Scalar> {
+	public AcceleratedStaticScalarComputation(Scalar value, Producer<Scalar> output) {
 		super(value, output);
 	}
-
-	@Override
-	public MemoryBank<Scalar> createKernelDestination(int size) { return new ScalarBank(size); }
 }

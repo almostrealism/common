@@ -1,13 +1,28 @@
+/*
+ * Copyright 2020 Michael Murray
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
 package org.almostrealism.graph.mesh;
 
 import org.almostrealism.algebra.Intersection;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairBank;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
-import org.almostrealism.algebra.ScalarBankPool;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayBank;
+import org.almostrealism.hardware.KernelizedOperation;
 import org.almostrealism.hardware.KernelizedProducer;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryBankAdapter;
@@ -53,7 +68,8 @@ public class MeshData extends TriangleDataBank {
 		long startTime = System.currentTimeMillis();
 		RayBank rays = new RayBank(destination.getCount());
 		ray.kernelEvaluate(rays, args);
-		System.out.println("MeshData: Evaluated ray kernel in " + (System.currentTimeMillis() - startTime) + " msec");
+
+		if (KernelizedOperation.enableKernelLog) System.out.println("MeshData: Evaluated ray kernel in " + (System.currentTimeMillis() - startTime) + " msec");
 
 		PairBank dim = new PairBank(1);
 		dim.set(0, new Pair(this.getCount(), rays.getCount()));
@@ -72,6 +88,8 @@ public class MeshData extends TriangleDataBank {
 				RankedChoiceProducer.highestRank.kernelEvaluate(out, new MemoryBank[] { distances, conf });
 				destination.set(i, out.get(0));
 			}
+
+			if (KernelizedOperation.enableKernelLog) System.out.println(rays.getCount() + " intersection kernels evaluated");
 		} else {
 			ScalarBank distances = new ScalarBank(this.getCount() * rays.getCount(),
 					MemoryBankAdapter.CacheLevel.NONE);

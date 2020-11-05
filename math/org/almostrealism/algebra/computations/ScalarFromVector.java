@@ -17,20 +17,18 @@
 package org.almostrealism.algebra.computations;
 
 import io.almostrealism.code.Argument;
-import io.almostrealism.code.ArgumentReference;
-import io.almostrealism.code.InstanceReference;
 import io.almostrealism.code.Expression;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
+import org.almostrealism.hardware.ComputerFeatures;
 import org.almostrealism.util.Producer;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.IntFunction;
 
-public class ScalarFromVector extends DynamicAcceleratedProducerAdapter<Scalar> implements ScalarProducer {
+public class ScalarFromVector extends DynamicAcceleratedProducerAdapter<Scalar> implements ComputerFeatures {
 	public static final int X = 0;
 	public static final int Y = 1;
 	public static final int Z = 2;
@@ -51,9 +49,9 @@ public class ScalarFromVector extends DynamicAcceleratedProducerAdapter<Scalar> 
 		return pos -> {
 			if (value == null) {
 				if (pos == 0) {
-					return new Expression<>(getArgumentValueName(1, coordinate));
+					return new Expression<>(Double.class, getArgumentValueName(1, coordinate), getArgument(1));
 				} else if (pos == 1) {
-					return new Expression(stringForDouble(1.0));
+					return new Expression(Double.class, stringForDouble(1.0));
 				} else {
 					throw new IllegalArgumentException(String.valueOf(pos));
 				}
@@ -69,7 +67,7 @@ public class ScalarFromVector extends DynamicAcceleratedProducerAdapter<Scalar> 
 
 		if (value == null && isCompletelyValueOnly()) {
 			List<Argument> newArgs = new ArrayList<>();
-			newArgs.add(getInputProducers()[0]);
+			newArgs.add(getArguments().get(0));
 
 			value = getInputProducerValue(1, coordinate);
 			if (value.getExpression().contains("Infinity")) {
@@ -78,13 +76,13 @@ public class ScalarFromVector extends DynamicAcceleratedProducerAdapter<Scalar> 
 
 			// TODO  Set to static if getInputProducer(1) is static,
 			//       also no need to add its dependents if it static
-			for (int i = 1; i < getInputProducer(1).getInputProducers().length; i++) {
-				newArgs.add(getInputProducer(1).getInputProducers()[i]);
+			for (int i = 1; i < getInputProducer(1).getArguments().size(); i++) {
+				newArgs.add(getInputProducer(1).getArguments().get(i));
 			}
 
 			absorbVariables(getInputProducer(1));
 
-			inputProducers = newArgs.toArray(new Argument[0]);
+			// setArguments(newArgs);
 			removeDuplicateArguments();
 		}
 

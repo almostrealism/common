@@ -18,20 +18,21 @@ package org.almostrealism.algebra.computations;
 
 import io.almostrealism.code.Argument;
 import io.almostrealism.code.Expression;
+import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;
 import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
+import org.almostrealism.hardware.ComputerFeatures;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.relation.NameProvider;
 import org.almostrealism.util.Producer;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Function;
 import java.util.function.IntFunction;
 
-public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> extends DynamicAcceleratedProducerAdapter<T> {
+public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> extends DynamicAcceleratedProducerAdapter<T> implements ComputerFeatures {
 	private String operator;
 	private Expression<Double> value[];
 	private boolean isStatic;
@@ -42,28 +43,19 @@ public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> exten
 	}
 
 	@Override
-	public Scope<T> getScope(NameProvider p) {
-		Scope<T> scope = new Scope<>(getFunctionName());
-
-		for (int i = 0; i < getMemLength(); i++) {
-			scope.getVariables().add(new Variable(p.getArgumentValueName(0, i), getValue(i)));
-		}
-
-		return scope;
-	}
-
-	@Override
 	public IntFunction<Expression<Double>> getValueFunction() {
 		return pos -> {
 			if (value == null || value[pos] == null) {
 				StringBuffer buf = new StringBuffer();
 
+				List<Argument> deps = new ArrayList<>();
 				for (int i = 1; i < getArgsCount(); i++) {
 					buf.append(getArgumentValueName(i, pos));
 					if (i < (getArgsCount() - 1)) buf.append(" " + operator + " ");
+					deps.add(getArgument(i));
 				}
 
-				return new Expression(buf.toString());
+				return new Expression(Double.class, buf.toString(), deps.toArray(new Variable[0]));
 			} else {
 				return value[pos];
 			}
@@ -77,11 +69,11 @@ public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> exten
 
 		if (value == null && isCompletelyValueOnly()) {
 			List<Argument> newArgs = new ArrayList<>();
-			newArgs.add(getInputProducers()[0]);
+			newArgs.add(getArguments().get(0));
 
 			value = new Expression[getMemLength()];
 
-			Argument p[] = getInputProducers();
+			List<Argument> p = getArguments();
 
 			List<Argument> staticProducers = extractStaticProducers(p);
 			List<Argument> dynamicProducers = extractDynamicProducers(p);
@@ -103,7 +95,7 @@ public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> exten
 
 					Double replace = isReplaceAll(staticProduct);
 					if (replace != null) {
-						value[pos] = new Expression(stringForDouble(replace));
+						value[pos] = new Expression(Double.class, stringForDouble(replace));
 						valueStatic[pos] = true;
 						continue pos;
 					}
@@ -116,19 +108,24 @@ public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> exten
 					}
 				}
 
+				List<Variable<?>> deps = new ArrayList<>();
+
 				for (int i = 0; i < dynamicProducers.size(); i++) {
-					for (int j = 1; j < ((AcceleratedProducer) dynamicProducers.get(i).getProducer()).getInputProducers().length; j++) {
-						newArgs.add(((AcceleratedProducer) dynamicProducers.get(i).getProducer()).getInputProducers()[j]);
+					for (int j = 1; j < ((OperationAdapter) dynamicProducers.get(i).getProducer()).getArguments().size(); j++) {
+						newArgs.add(((OperationAdapter) dynamicProducers.get(i).getProducer()).getArguments().get(j));
 					}
+
+					Expression e = getInputProducerValue(dynamicProducers.get(i), pos);
+					deps.addAll(e.getDependencies());
 
 					absorbVariables(dynamicProducers.get(i).getProducer());
 					buf.append("(");
-					buf.append(getInputProducerValue(dynamicProducers.get(i), pos).getExpression());
+					buf.append(e.getExpression());
 					buf.append(")");
 					if (i < (dynamicProducers.size() - 1)) buf.append(" " + operator + " ");
 				}
 
-				value[pos] = new Expression<>(buf.length() > 0 ? buf.toString() : removed);
+				value[pos] = new Expression<>(Double.class, buf.length() > 0 ? buf.toString() : removed, deps.toArray(new Variable[0]));
 				if (value[pos].getExpression().contains("Infinity")) {
 					throw new IllegalArgumentException("Infinity is not supported");
 				}
@@ -138,7 +135,7 @@ public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> exten
 			// by a fixed value, this producer itself is static
 			if (dynamicProducers.isEmpty() || allTrue(valueStatic)) isStatic = true;
 
-			inputProducers = newArgs.toArray(new Argument[0]);
+			// setArguments(newArgs);
 			removeDuplicateArguments();
 		}
 	}

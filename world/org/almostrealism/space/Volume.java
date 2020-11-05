@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ package org.almostrealism.space;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.geometry.Curve;
+import org.almostrealism.util.Producer;
 
 /**
  * A {@link Volume} represents a region of space in three dimensions
@@ -35,7 +36,7 @@ public interface Volume<T> extends Curve<T> {
 	 * @param x  {x, y, z} - The point in space to test.
 	 * @return  True if the point is within this volume, false otherwise.
 	 */
-	boolean inside(VectorProducer x);
+	boolean inside(Producer<Vector> x);
 	
 	/**
 	 * Calculates the distance along the line defined by the specified position
@@ -58,7 +59,7 @@ public interface Volume<T> extends Curve<T> {
 	 * @param xyz  {x, y, z} - Position in spatial coordinates.
 	 * @return  {u, v} - Position in surface coordinates (u,v between 0.0 and 1.0).
 	 */
-	double[] getSurfaceCoords(VectorProducer xyz);
+	double[] getSurfaceCoords(Producer<Vector> xyz);
 	
 	/**
 	 * Returns 3D coordinates on the surface of this volume at the specified point

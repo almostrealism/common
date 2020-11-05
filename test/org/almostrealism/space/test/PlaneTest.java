@@ -20,7 +20,8 @@ import org.almostrealism.algebra.computations.RayMatrixTransform;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.hardware.DynamicAcceleratedProducer;
+import org.almostrealism.hardware.DynamicAcceleratedMultiProducer;
+import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.space.Plane;
 import org.almostrealism.space.ShadableIntersection;
 import org.almostrealism.util.Producer;
@@ -28,7 +29,7 @@ import org.almostrealism.util.StaticProducer;
 import org.junit.Assert;
 import org.junit.Test;
 
-public class PlaneTest {
+public class PlaneTest implements HardwareFeatures {
 	protected ShadableIntersection test1() {
 		Producer<Ray> r = StaticProducer.of(new Ray(new Vector(0.0, 0.0, 1.0),
 												new Vector(0.0, 0.5, -1.0)));
@@ -58,7 +59,7 @@ public class PlaneTest {
 		Producer<Scalar> p = intersection.getDistance();
 		p.compact();
 
-		System.out.println(((DynamicAcceleratedProducer) p).getFunctionDefinition());
+		System.out.println(((DynamicAcceleratedMultiProducer) p).getFunctionDefinition());
 
 		double distance = p.evaluate().getValue();
 		System.out.println("distance = " + distance);
@@ -91,14 +92,14 @@ public class PlaneTest {
 		p.setLocation(new Vector(0.0, -10, 0.0));
 
 		RayMatrixTransform t = new RayMatrixTransform(p.getTransform(true), r);
-		Assert.assertTrue(t.evaluate(new Object[0]).equals(new Ray(new Vector(0.0, -10.0, 1.0),
+		Assert.assertTrue(compileProducer(t).evaluate().equals(new Ray(new Vector(0.0, -10.0, 1.0),
 																new Vector(0.0, 0.5, -1.0))));
 
 		t = new RayMatrixTransform(p.getTransform(true).getInverse(), r);
-		Assert.assertTrue(t.evaluate(new Object[0]).equals(new Ray(new Vector(0.0, 10.0, 1.0),
+		Assert.assertTrue(compileProducer(t).evaluate().equals(new Ray(new Vector(0.0, 10.0, 1.0),
 																	new Vector(0.0, 0.5, -1.0))));
 
-		Vector v = t.evaluate(new Object[0]).pointAt(new StaticProducer<>(new Scalar(-20))).evaluate(new Object[0]);
+		Vector v = compileProducer(t).evaluate().pointAt(new StaticProducer<>(new Scalar(-20))).evaluate(new Object[0]);
 		Assert.assertTrue(v.equals(new Vector(0.0, 0.0, 21.0)));
 	}
 }

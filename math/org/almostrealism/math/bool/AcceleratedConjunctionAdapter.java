@@ -18,7 +18,6 @@ package org.almostrealism.math.bool;
 
 import io.almostrealism.code.Argument;
 import io.almostrealism.code.Variable;
-import org.almostrealism.hardware.AcceleratedComputation;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.util.DynamicProducer;
 import org.almostrealism.util.Producer;
@@ -30,7 +29,6 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public class AcceleratedConjunctionAdapter<T extends MemWrapper> extends AcceleratedConditionalStatementAdapter<T> {
-	private int memLength;
 	private List<AcceleratedConditionalStatement<T>> conjuncts;
 	private Argument trueValue, falseValue;
 
@@ -54,15 +52,14 @@ public class AcceleratedConjunctionAdapter<T extends MemWrapper> extends Acceler
 										 	Producer<T> blankValue,
 										 	Producer<T> trueValue, Producer<T> falseValue,
 										 	AcceleratedConditionalStatement<T>... conjuncts) {
-		super(blankValue);
-		this.memLength = memLength;
+		super(memLength, blankValue);
 		this.conjuncts = Arrays.asList(conjuncts);
 		initArguments(trueValue, falseValue);
 	}
 
 	protected void initArguments(Producer<T> trueValue, Producer<T> falseValue) {
 		List<Argument> args = new ArrayList<>();
-		args.add(inputProducers[0]);
+		args.add(getArguments().get(0));
 		args.addAll(getOperands());
 
 		this.trueValue = new Argument(getArgumentName(1), trueValue);
@@ -71,15 +68,12 @@ public class AcceleratedConjunctionAdapter<T extends MemWrapper> extends Acceler
 		this.falseValue = new Argument(getArgumentName(2), falseValue);
 		args.add(this.falseValue);
 		
-		inputProducers = args.toArray(new Argument[0]);
+		setArguments(args);
 	}
 
 	@Override
-	public int getMemLength() { return memLength; }
-
-	@Override
-	public List<Variable> getVariables() {
-		List<Variable> all = new ArrayList<>();
+	public List<Variable<?>> getVariables() {
+		List<Variable<?>> all = new ArrayList<>();
 		all.addAll(super.getVariables());
 		conjuncts.stream()
 				.map(AcceleratedConditionalStatement::getVariables)
@@ -117,7 +111,7 @@ public class AcceleratedConjunctionAdapter<T extends MemWrapper> extends Acceler
 
 	@Override
 	public void compact() {
-		super.compact();
 		conjuncts.forEach(Producer::compact);
+		super.compact();
 	}
 }

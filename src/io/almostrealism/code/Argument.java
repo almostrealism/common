@@ -20,6 +20,8 @@ import org.almostrealism.color.computations.GeneratedColorProducer;
 import org.almostrealism.util.Producer;
 import org.almostrealism.util.ProducerWithRank;
 
+import java.util.function.IntFunction;
+
 /**
  * A parameter for a {@link Method}. Note that this type will extract
  * the internal {@link Producer} from instances of {@link ProducerWithRank}
@@ -28,9 +30,20 @@ import org.almostrealism.util.ProducerWithRank;
  * and the generator will not be available.
  */
 public class Argument<T> extends Variable<T> {
+	private int sortHint;
+
+	public Argument(String name) { super(name, (Producer) null); }
+	public Argument(String name, String annotation) { this(name, annotation, null); }
+	public Argument(String name, Class<T> type) { super(name, type, (Producer) null); }
+	public Argument(String name, String annotation, Class<T> type) {
+		super(name, annotation, type, null);
+	}
 	public Argument(Producer<T> p) { super(null, p); }
 	public Argument(String name, Producer<T> p) { super(name, p); }
 	public Argument(String name, Method<T> m) { super(name, null, m); }
+
+	public void setSortHint(int hint) { this.sortHint = hint; }
+	public int getSortHint() { return sortHint; }
 
 	@Override
 	public void setProducer(Producer<T> producer) {

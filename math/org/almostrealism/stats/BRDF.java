@@ -17,7 +17,7 @@
 package org.almostrealism.stats;
 
 public interface BRDF {
-	public SphericalProbabilityDistribution getBRDF();
+	SphericalProbabilityDistribution getBRDF();
 	
-	public void setBRDF(SphericalProbabilityDistribution brdf);
+	void setBRDF(SphericalProbabilityDistribution brdf);
 }

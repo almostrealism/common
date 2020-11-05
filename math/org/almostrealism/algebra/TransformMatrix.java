@@ -22,8 +22,12 @@ import org.almostrealism.algebra.computations.MatrixDeterminant;
 import org.almostrealism.algebra.computations.MatrixProduct;
 import org.almostrealism.algebra.computations.MatrixToUpperTriangle;
 import org.almostrealism.algebra.computations.MatrixTranspose;
+import org.almostrealism.algebra.computations.RayMatrixTransform;
+import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.TransformAsLocation;
 import org.almostrealism.geometry.TransformAsOffset;
+import org.almostrealism.hardware.ComputerFeatures;
+import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.hardware.MemWrapperAdapter;
@@ -40,7 +44,7 @@ import org.almostrealism.util.StaticProducer;
  * methods for transforming various types of vectors. The TransformMatrix class also provides
  * some static methods that generate certain useful matrices.
  */
-public class TransformMatrix extends MemWrapperAdapter implements TripleFunction<Vector> {
+public class TransformMatrix extends MemWrapperAdapter implements TripleFunction<Triple, Vector>, HardwareFeatures {
 	public static final int TRANSFORM_AS_LOCATION = 1;
 	public static final int TRANSFORM_AS_OFFSET = 2;
 	public static final int TRANSFORM_AS_NORMAL = 4;
@@ -191,9 +195,9 @@ public class TransformMatrix extends MemWrapperAdapter implements TripleFunction
 		if (this.isIdentity) return vector;
 		
 		if (type == TransformMatrix.TRANSFORM_AS_LOCATION) {
-			return new TransformAsLocation(this, vector);
+			return compileProducer(new TransformAsLocation(this, vector));
 		} else if (type == TransformMatrix.TRANSFORM_AS_OFFSET) {
-			return new TransformAsOffset(this, vector);
+			return compileProducer(new TransformAsOffset(this, vector));
 		} else if (type == TransformMatrix.TRANSFORM_AS_NORMAL) {
 			if (!this.inverted) this.calculateInverse();
 			return this.inverseTranspose.transform(vector, TransformMatrix.TRANSFORM_AS_OFFSET);
@@ -242,6 +246,10 @@ public class TransformMatrix extends MemWrapperAdapter implements TripleFunction
 		if (this.isIdentity) return vector;
 
 		return transform(StaticProducer.of(vector), TRANSFORM_AS_NORMAL).evaluate(new Object[0]);
+	}
+
+	public Producer<Ray> transform(Producer<Ray> ray) {
+		return compileProducer(new RayMatrixTransform(this, ray));
 	}
 	
 	/**

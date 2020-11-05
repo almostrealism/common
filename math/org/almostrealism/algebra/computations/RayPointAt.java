@@ -17,25 +17,13 @@
 package org.almostrealism.algebra.computations;
 
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
+import org.almostrealism.geometry.RayProducer;
 import org.almostrealism.util.Producer;
+import static org.almostrealism.util.Ops.*;
 
 public class RayPointAt extends VectorSum {
 	public RayPointAt(Producer<Ray> r, Producer<Scalar> t) {
-		super(new RayOrigin(r), new VectorProduct(new RayDirection(r), new VectorFromScalars(t, t, t)));
-	}
-
-	/**
-	 * This implementation allows the {@link Scalar} argument to be null,
-	 * resulting in the function returning null.
-	 */
-	@Override
-	public Vector handleNull(int argIndex) {
-		if (argIndex == 2) {
-			return null;
-		}
-
-		return (Vector) super.handleNull(argIndex);
+		super(RayProducer.origin(r), ops().scalarMultiply(RayProducer.direction(r), t));
 	}
 }

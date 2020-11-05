@@ -21,6 +21,6 @@ import org.almostrealism.util.Producer;
 
 public class OriginDotDirection extends DotProduct {
 	public OriginDotDirection(Producer<Ray> r) {
-		super(new RayOrigin(r), new RayDirection(r));
+		super(new DefaultVectorProducer(new RayOrigin(r)), new DefaultVectorProducer(new RayDirection(r)));
 	}
 }

@@ -22,7 +22,7 @@ import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.util.Producer;
 
-public class ScalarSum extends NAryDynamicAcceleratedProducer<Scalar> implements ScalarProducer {
+public class ScalarSum extends NAryDynamicAcceleratedProducer<Scalar> {
 	public ScalarSum(Producer<Scalar>... producers) {
 		super("+", 2, Scalar.blank(), producers);
 	}
@@ -36,8 +36,6 @@ public class ScalarSum extends NAryDynamicAcceleratedProducer<Scalar> implements
 	/**
 	 * Returns true if the specified value is 0.0, false otherwise.
 	 */
-	public boolean isRemove(double value) { return value == 0.0; }
-
 	@Override
-	public MemoryBank<Scalar> createKernelDestination(int size) { return new ScalarBank(size); }
+	public boolean isRemove(double value) { return value == 0.0; }
 }

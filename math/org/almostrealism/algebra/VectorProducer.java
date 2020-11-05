@@ -17,13 +17,13 @@
 package org.almostrealism.algebra;
 
 import org.almostrealism.algebra.computations.CrossProduct;
+import org.almostrealism.algebra.computations.DefaultScalarProducer;
+import org.almostrealism.algebra.computations.DefaultVectorProducer;
 import org.almostrealism.algebra.computations.DotProduct;
 import org.almostrealism.algebra.computations.ScalarFromVector;
-import org.almostrealism.algebra.computations.ScalarPow;
 import org.almostrealism.algebra.computations.VectorFromScalars;
 import org.almostrealism.algebra.computations.VectorProduct;
 import org.almostrealism.algebra.computations.VectorSum;
-import org.almostrealism.relation.TripleFunction;
 import org.almostrealism.uml.Function;
 import org.almostrealism.util.Producer;
 import org.almostrealism.util.StaticProducer;
@@ -35,109 +35,61 @@ import org.almostrealism.util.StaticProducer;
  * @author  Michael Murray
  */
 @Function
-public interface VectorProducer extends Producer<Vector> {
+public interface VectorProducer extends VectorFeatures, Producer<Vector> {
 
     default ScalarProducer x() {
         return x(this);
-    }
-
-    static ScalarProducer x(Producer<Vector> v) {
-        return new ScalarFromVector(v, ScalarFromVector.X);
     }
 
     default ScalarProducer y() {
         return y(this);
     }
 
-    static ScalarProducer y(Producer<Vector> v) {
-        return new ScalarFromVector(v, ScalarFromVector.Y);
-    }
-
     default ScalarProducer z() {
         return z(this);
     }
 
-    static ScalarProducer z(Producer<Vector> v) {
-        return new ScalarFromVector(v, ScalarFromVector.Z);
-    }
-
-    default DotProduct dotProduct(Producer<Vector> operand) {
+    default ScalarProducer dotProduct(Producer<Vector> operand) {
         return dotProduct(this, operand);
     }
 
-    static DotProduct dotProduct(Producer<Vector> a, Producer<Vector> b) { return new DotProduct(a, b); }
-
-    default CrossProduct crossProduct(Producer<Vector> operand) {
+    default VectorProducer crossProduct(Producer<Vector> operand) {
         return crossProduct(this, operand);
     }
 
-    static CrossProduct crossProduct(Producer<Vector> a, Producer<Vector> b) { return new CrossProduct(a, b); }
-
-    default VectorSum add(Producer<Vector> operand) {
-        return new VectorSum(this, operand);
+    default VectorProducer add(Producer<Vector> operand) {
+        return add(this, operand);
     }
 
-    default VectorSum subtract(Producer<Vector> operand) { return subtract(this, operand); }
+    default VectorProducer subtract(Producer<Vector> operand) { return subtract(this, operand); }
 
-    static VectorSum subtract(Producer<Vector> value, Producer<Vector> operand) {
-        return new VectorSum(value, minus(operand));
-    }
-
-    default VectorProduct multiply(Producer<Vector> operand) {
+    default VectorProducer multiply(Producer<Vector> operand) {
         return multiply(this, operand);
     }
 
-    static VectorProduct multiply(Producer<Vector> a, Producer<Vector> b) { return new VectorProduct(a, b); }
+    default VectorProducer scalarMultiply(Producer<Scalar> operand) { return scalarMultiply(this, operand); }
 
-    default VectorProduct scalarMultiply(Producer<Scalar> operand) { return scalarMultiply(this, operand); }
-
-    static VectorProduct scalarMultiply(Producer<Vector> a, Producer<Scalar> b) {
-        return new VectorProduct(a, new VectorFromScalars(b, b, b));
-    }
-
-    default VectorProduct scalarMultiply(Scalar operand) {
+    default VectorProducer scalarMultiply(Scalar operand) {
         return scalarMultiply(StaticProducer.of(operand));
     }
 
-    default VectorProduct scalarMultiply(double operand) {
+    default VectorProducer scalarMultiply(double operand) {
         return scalarMultiply(new Scalar(operand));
     }
 
-    default VectorProduct minus() {
+    default VectorProducer minus() {
         return minus(this);
-    }
-
-    static VectorProduct minus(Producer<Vector> p) {
-        return new VectorProduct(p,
-                new VectorFromScalars(ScalarProducer.minusOne,
-                        ScalarProducer.minusOne,
-                        ScalarProducer.minusOne));
     }
 
     default ScalarProducer length() {
         return length(this);
     }
 
-    static ScalarProducer length(Producer<Vector> v) {
-        return x(v).pow(2.0).add(y(v).pow(2.0)).add(z(v).pow(2.0)).pow(0.5);
-    }
-
     default ScalarProducer lengthSq() {
         return lengthSq(this);
     }
 
-    static ScalarProducer lengthSq(Producer<Vector> v) {
-        return VectorProducer.x(v).pow(2.0).add(VectorProducer.y(v).pow(2.0)).add(VectorProducer.z(v).pow(2.0));
-    }
-
     default VectorProducer normalize() {
         return normalize(this);
-    }
-
-    static VectorProducer normalize(Producer<Vector> p) {
-        ScalarProducer oneOverLength = length(p).pow(-1.0);
-        return new VectorFromScalars(x(p).multiply(oneOverLength),
-                y(p).multiply(oneOverLength),
-                z(p).multiply(oneOverLength));
     }
 }

@@ -17,6 +17,7 @@
 package org.almostrealism.math.bool;
 
 import io.almostrealism.code.Argument;
+import io.almostrealism.code.MultiExpression;
 import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
@@ -30,7 +31,6 @@ import java.util.function.Function;
 
 public abstract class AcceleratedBinaryConditionAdapter<T extends MemWrapper> extends AcceleratedConditionalStatementAdapter<T> {
 	private String operator;
-	private int memLength;
 	private Argument leftOperand, rightOperand;
 	private Argument trueValue, falseValue;
 
@@ -62,16 +62,13 @@ public abstract class AcceleratedBinaryConditionAdapter<T extends MemWrapper> ex
 											 Producer<Scalar> rightOperand,
 											 Producer<T> trueValue,
 											 Producer<T> falseValue) {
-		super(blankValue, leftOperand, rightOperand, trueValue, falseValue);
+		super(memLength, blankValue, leftOperand, rightOperand, trueValue, falseValue);
 		this.operator = operator;
-		this.memLength = memLength;
-		this.leftOperand = inputProducers[1];
-		this.rightOperand = inputProducers[2];
-		this.trueValue = inputProducers[3];
-		this.falseValue = inputProducers[4];
+		this.leftOperand = getArguments().get(1);
+		this.rightOperand = getArguments().get(2);
+		this.trueValue = getArguments().get(3);
+		this.falseValue = getArguments().get(4);
 	}
-
-	public int getMemLength() { return memLength; }
 
 	@Override
 	public String getCondition() {
@@ -111,11 +108,11 @@ public abstract class AcceleratedBinaryConditionAdapter<T extends MemWrapper> ex
 		if (super.isCompacted() && condition == null) {
 			List<Argument> operands = getOperands();
 
-			DynamicAcceleratedProducerAdapter op1 = (DynamicAcceleratedProducerAdapter) operands.get(0).getProducer();
-			DynamicAcceleratedProducerAdapter op2 = (DynamicAcceleratedProducerAdapter) operands.get(1).getProducer();
+			MultiExpression op1 = (MultiExpression) decompile(operands.get(0).getProducer()).get();
+			MultiExpression op2 = (MultiExpression) decompile(operands.get(1).getProducer()).get();
 
-			addVariable(new Variable<>(getVariableName(0), op1.getValue(0), op1));
-			addVariable(new Variable<>(getVariableName(1), op2.getValue(0), op2));
+			addVariable(new Variable<>(getVariableName(0), true, op1.getValue(0), operands.get(0).getProducer()));
+			addVariable(new Variable<>(getVariableName(1), true, op2.getValue(0), operands.get(1).getProducer()));
 
 			StringBuffer buf = new StringBuffer();
 			buf.append(getVariableName(0));

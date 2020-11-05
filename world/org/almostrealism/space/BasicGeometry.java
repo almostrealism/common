@@ -37,7 +37,7 @@ public class BasicGeometry implements Positioned, Oriented, Scaled, DecodePostPr
 	protected Vector location;
 	protected double size;
 	
-	protected Vector scale = (Vector) UnityVector.getInstance().evaluate(new Object[0]).clone();
+	protected Vector scale = (Vector) UnityVector.getProducer().evaluate(new Object[0]).clone();
 	protected double rotateX, rotateY, rotateZ;
 
 	private TransformMatrix transforms[];
@@ -45,7 +45,7 @@ public class BasicGeometry implements Positioned, Oriented, Scaled, DecodePostPr
 	protected boolean transformCurrent;
 	
 	public BasicGeometry() {
-		this(ZeroVector.getInstance().evaluate());
+		this(ZeroVector.getProducer().evaluate());
 		transformCurrent = true;
 	}
 	

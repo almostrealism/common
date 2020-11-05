@@ -1,8 +1,30 @@
+/*
+ * Copyright 2020 Michael Murray
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
 package org.almostrealism.math.bool;
 
 import io.almostrealism.code.Argument;
+import io.almostrealism.code.MultiExpression;
+import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.hardware.AcceleratedComputationOperation;
+import org.almostrealism.hardware.AcceleratedProducer;
+import org.almostrealism.hardware.DynamicAcceleratedMultiProducer;
+import org.almostrealism.hardware.DynamicAcceleratedOperation;
 import org.almostrealism.hardware.DynamicAcceleratedProducer;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.hardware.MemWrapper;
@@ -12,30 +34,34 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.BiFunction;
-import java.util.function.Function;
 import java.util.stream.Stream;
 
 public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrapper>
 											extends DynamicAcceleratedProducer<T>
 											implements AcceleratedConditionalStatement<T> {
-	private BiFunction<Function<Integer, String>, List<Variable>, String> compacted;
+	private int memLength;
 
-	public AcceleratedConditionalStatementAdapter(Producer<T> blankValue) {
+	private BiFunction<Variable, List<Variable>, String> compacted;
+
+	public AcceleratedConditionalStatementAdapter(int memLength, Producer<T> blankValue) {
 		super(blankValue);
+		this.memLength = memLength;
 	}
 
-	public AcceleratedConditionalStatementAdapter(Producer<T> blankValue,
+	public AcceleratedConditionalStatementAdapter(int memLength,
+												  Producer<T> blankValue,
 												  Producer<Scalar> leftOperand,
 												  Producer<Scalar> rightOperand,
 												  Producer<T> trueValue,
 												  Producer<T> falseValue) {
 		super(blankValue, leftOperand, rightOperand, trueValue, falseValue);
+		this.memLength = memLength;
 	}
 
-	public abstract int getMemLength();
+	public int getMemLength() { return memLength; }
 
 	@Override
-	public String getBody(Function<Integer, String> outputVariable, List<Variable> existingVariables) {
+	public String getBody(Variable outputVariable, List<Variable> existingVariables) {
 		if (compacted == null) {
 			StringBuffer buf = new StringBuffer();
 
@@ -47,9 +73,9 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrappe
 
 			for (int i = 0; i < getMemLength(); i++) {
 				buf.append("\t");
-				buf.append(outputVariable.apply(i));
+				buf.append(getVariableValueName(outputVariable, i, true));
 				buf.append(" = ");
-				buf.append(getArgumentValueName(getTrueValue(), i));
+				buf.append(getVariableValueName(getTrueValue(), i));
 				buf.append(";\n");
 			}
 
@@ -57,9 +83,9 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrappe
 
 			for (int i = 0; i < getMemLength(); i++) {
 				buf.append("\t");
-				buf.append(outputVariable.apply(i));
+				buf.append(getVariableValueName(outputVariable, i, true));
 				buf.append(" = ");
-				buf.append(getArgumentValueName(getFalseValue(), i));
+				buf.append(getVariableValueName(getFalseValue(), i));
 				buf.append(";\n");
 			}
 
@@ -90,11 +116,11 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrappe
 			buf.append(getCondition());
 			buf.append(") {\n");
 			if (getTrueValue() != null) {
-				buf.append(((DynamicAcceleratedProducer) getTrueValue().getProducer()).getBody(outputVariable, allVariables));
+				buf.append(((DynamicAcceleratedOperation) getTrueValue().getProducer()).getBody(outputVariable, allVariables));
 			}
 			buf.append("} else {\n");
 			if (getFalseValue() != null) {
-				buf.append(((DynamicAcceleratedProducer) getFalseValue().getProducer()).getBody(outputVariable, allVariables));
+				buf.append(((DynamicAcceleratedOperation) getFalseValue().getProducer()).getBody(outputVariable, allVariables));
 			}
 			buf.append("}\n");
 
@@ -102,35 +128,49 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrappe
 		};
 
 		List<Argument> newArgs = new ArrayList<>();
-		if (inputProducers[0] != null) newArgs.add(inputProducers[0]);
+		if (getArguments().get(0) != null) newArgs.add(getArguments().get(0));
+		getOperands().stream().map(Argument::getProducer)
+				.filter(p -> p instanceof AcceleratedComputationOperation)
+				.forEach(p -> ((AcceleratedComputationOperation) p).compile());
 		getOperands().stream()
-				.map(o -> excludeResult(((DynamicAcceleratedProducer) o.getProducer()).getInputProducers()))
-				.flatMap(Stream::of)
+				.map(o -> AcceleratedProducer.excludeResult(((OperationAdapter) o.getProducer()).getArguments()))
+				.flatMap(List::stream)
 				.forEach(newArgs::add);
 		getOperands().stream()
 				.map(Argument::getProducer)
 				.forEach(this::absorbVariables);
 		if (getTrueValue() != null) {
-			newArgs.addAll(Arrays.asList(excludeResult(((DynamicAcceleratedProducer)
-					getTrueValue().getProducer()).getInputProducers())));
+			if (getTrueValue().getProducer() instanceof AcceleratedComputationOperation) {
+				((AcceleratedComputationOperation) getTrueValue().getProducer()).compile();
+			}
+
+			newArgs.addAll(AcceleratedProducer.excludeResult(((OperationAdapter)
+					getTrueValue().getProducer()).getArguments()));
 		}
 
 		if (getFalseValue() != null) {
-			newArgs.addAll(Arrays.asList(excludeResult(((DynamicAcceleratedProducer)
-					getFalseValue().getProducer()).getInputProducers())));
+			if (getFalseValue().getProducer() instanceof AcceleratedComputationOperation) {
+				((AcceleratedComputationOperation) getFalseValue().getProducer()).compile();
+			}
+
+			newArgs.addAll(AcceleratedProducer.excludeResult(((OperationAdapter)
+					getFalseValue().getProducer()).getArguments()));
 		}
 
-		inputProducers = newArgs.toArray(new Argument[0]);
+		setArguments(newArgs);
 		removeDuplicateArguments();
 	}
 
 	protected boolean isCompactable() {
 		if (compacted != null) return false;
 
-		if (getTrueValue() != null && getTrueValue().getProducer() instanceof DynamicAcceleratedProducer == false) return false;
-		if (getFalseValue() != null && getFalseValue().getProducer() instanceof DynamicAcceleratedProducer == false) return false;
+		if (getTrueValue() != null && getTrueValue().getProducer() instanceof DynamicAcceleratedOperation == false)
+			return false;
+		if (getFalseValue() != null && getFalseValue().getProducer() instanceof DynamicAcceleratedOperation == false)
+			return false;
 		for (Argument a : getOperands()) {
-			if (a.getProducer() instanceof DynamicAcceleratedProducerAdapter == false) return false;
+			if (decompile(a.getProducer()).orElse(null) instanceof MultiExpression == false)
+				return false;
 		}
 
 		return true;

@@ -20,19 +20,18 @@ import io.almostrealism.code.Argument;
 import io.almostrealism.code.Expression;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorBank;
+import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.algebra.VectorProducer;
+import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
-import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.util.Producer;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.function.Function;
 import java.util.function.IntFunction;
 
-public class VectorFromScalars extends DynamicAcceleratedProducerAdapter<Vector> implements VectorProducer {
+public class VectorFromScalars extends DynamicAcceleratedProducerAdapter<Vector> {
 	private Expression<Double> value[];
 
 	public VectorFromScalars(Producer<Scalar> x, Producer<Scalar> y, Producer<Scalar> z) {
@@ -43,7 +42,7 @@ public class VectorFromScalars extends DynamicAcceleratedProducerAdapter<Vector>
 	public IntFunction<Expression<Double>> getValueFunction() {
 		return pos -> {
 			if (value == null) {
-				return new Expression(getArgumentValueName(pos + 1, 0));
+				return new Expression(Double.class, getArgumentValueName(pos + 1, 0), getArgument(pos + 1));
 			} else {
 				return value[pos];
 			}
@@ -68,21 +67,18 @@ public class VectorFromScalars extends DynamicAcceleratedProducerAdapter<Vector>
 			}
 
 			List<Argument> newArgs = new ArrayList<>();
-			newArgs.add(inputProducers[0]);
+			newArgs.add(getArguments().get(0));
 
 			for (int i = 1; i <= 3; i++) {
 				if (!getInputProducer(i).isStatic()) {
-					newArgs.addAll(Arrays.asList(excludeResult(getInputProducer(i).getInputProducers())));
+					newArgs.addAll(AcceleratedProducer.excludeResult(getInputProducer(i).getArguments()));
 				}
 
 				absorbVariables(getInputProducer(i));
 			}
 
-			inputProducers = newArgs.toArray(new Argument[0]);
+			// setArguments(newArgs);
 			removeDuplicateArguments();
 		}
 	}
-
-	@Override
-	public MemoryBank<Vector> createKernelDestination(int size) { return new VectorBank(size); }
 }

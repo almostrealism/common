@@ -16,16 +16,6 @@
 
 package org.almostrealism.util;
 
-import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorBank;
-import org.almostrealism.algebra.VectorProducer;
-import org.almostrealism.hardware.MemoryBank;
-
-public class AcceleratedStaticVectorProducer extends AcceleratedStaticProducer<Vector> implements VectorProducer {
-	public AcceleratedStaticVectorProducer(Vector value, Producer<Vector> output) {
-		super(value, output);
-	}
-
-	@Override
-	public MemoryBank<Vector> createKernelDestination(int size) { return new VectorBank(size); }
+public interface Named {
+	String getName();
 }

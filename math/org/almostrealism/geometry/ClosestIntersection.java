@@ -106,7 +106,7 @@ public class ClosestIntersection extends ArrayList<Producer<Ray>> implements Con
 	}
 
 	@Override
-	public Vector operate(Triple in) {
+	public Vector operate(Vector in) {
 		// TODO
 		return null;
 	}

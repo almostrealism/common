@@ -241,7 +241,7 @@ public class ImageTexture implements Texture, Editable {
 	 * @see org.almostrealism.texture.Texture#getColorAt(java.lang.Object[])
 	 */
 	public ColorProducer getColorAt(Object args[]) {
-		return GeneratedColorProducer.fromFunction(this, new TripleFunction<RGB>() {
+		return GeneratedColorProducer.fromFunction(this, new TripleFunction<Triple, RGB>() {
 			@Override
 			public RGB operate(Triple l) {
 				Vector point = new Vector(l.getA(), l.getB(), l.getC());

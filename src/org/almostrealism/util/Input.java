@@ -16,16 +16,10 @@
 
 package org.almostrealism.util;
 
-import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.PairBank;
-import org.almostrealism.algebra.PairProducer;
-import org.almostrealism.hardware.MemoryBank;
+public class Input {
+	private Input() { }
 
-public class AcceleratedStaticPairProducer extends AcceleratedStaticProducer<Pair> implements PairProducer {
-	public AcceleratedStaticPairProducer(Pair value, Producer<Pair> output) {
-		super(value, output);
+	public static <T> Producer<T> value(Class<T> type, int argIndex) {
+		return PassThroughProducer.of(type, argIndex);
 	}
-
-	@Override
-	public MemoryBank<Pair> createKernelDestination(int size) { return new PairBank(size); }
 }

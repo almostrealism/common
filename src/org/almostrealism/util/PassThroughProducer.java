@@ -16,11 +16,13 @@
 
 package org.almostrealism.util;
 
+import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.MemWrapper;
 
 import java.lang.reflect.InvocationTargetException;
 
-public class PassThroughProducer<T> implements Producer<T>, ProducerArgumentReference {
+public class PassThroughProducer<T> implements Producer<T>, ProducerArgumentReference, HardwareFeatures {
 	private int argIndex = -1;
 
 	public PassThroughProducer(int argIndex) {
@@ -48,7 +50,8 @@ public class PassThroughProducer<T> implements Producer<T>, ProducerArgumentRefe
 		if (MemWrapper.class.isAssignableFrom(type)) {
 			try {
 				MemWrapper m = (MemWrapper) type.getConstructor().newInstance();
-				return new AcceleratedPassThroughProducer(m.getMemLength(), index, kernelDimension);
+				return Hardware.getLocalHardware().getComputer()
+						.compileProducer(new AcceleratedPassThroughProducer(m.getMemLength(), index, kernelDimension));
 			} catch (InstantiationException | IllegalAccessException |
 					InvocationTargetException | NoSuchMethodException e) {
 				System.out.println("WARN: Unable to determine memory length for " + type.getName());

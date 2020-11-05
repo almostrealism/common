@@ -29,7 +29,7 @@ public class RandomColorGenerator extends ColorProducerAdapter {
  	private RGBProducer baseRGB, offsetRGB;
  
 	public RandomColorGenerator() {
-		this(StaticProducer.of(new RGB(0.0, 0.0, 0.0)), RGBWhite.getInstance());
+		this(StaticProducer.of(new RGB(0.0, 0.0, 0.0)), RGBWhite.getProducer());
 	}
 	
 	public RandomColorGenerator(RGBProducer baseRGB, RGBProducer offsetRGB) {

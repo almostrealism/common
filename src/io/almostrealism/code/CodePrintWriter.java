@@ -32,14 +32,6 @@ public interface CodePrintWriter {
 	void println(Variable<?> v);
 
 	/**
-	 * Write the specified {@link Variable} (name of the variable and the data).
-	 *
-	 * @param v  Variable to print.
-	 * @param create  True if the variable has not been mentioned before in this scope.
-	 */
-	void println(Variable<?> v, boolean create);
-
-	/**
 	 * Write a call to the function represented by the specified {@link Method}.
 	 *
 	 * @param m  Method call to print.
