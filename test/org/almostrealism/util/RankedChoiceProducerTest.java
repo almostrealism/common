@@ -31,7 +31,7 @@ import org.junit.Test;
 import java.util.Arrays;
 import java.util.List;
 
-public class RankedChoiceProducerTest {
+public class RankedChoiceProducerTest implements CodeFeatures {
 	@Test
 	public void highestRank() {
 		Scalar in = new Scalar(1.0);
@@ -63,14 +63,14 @@ public class RankedChoiceProducerTest {
 
 	protected RankedChoiceProducerForVector getRankedChoiceProducer1() {
 		ProducerWithRank<Vector> v1 =
-				new ProducerWithRankAdapter<>(StaticProducer.of(new Vector(1, 2, 3)),
-						StaticProducer.of(2));
+				new ProducerWithRankAdapter<>(vector(1, 2, 3),
+						scalar(2));
 		ProducerWithRank<Vector> v2 =
-				new ProducerWithRankAdapter<>(StaticProducer.of(new Vector(4, 5, 6)),
-						StaticProducer.of(1));
+				new ProducerWithRankAdapter<>(vector(4, 5, 6),
+						scalar(1));
 		ProducerWithRank<Vector> v3 =
-				new ProducerWithRankAdapter<>(StaticProducer.of(new Vector(7, 8, 9)),
-						StaticProducer.of(3));
+				new ProducerWithRankAdapter<>(vector(7, 8, 9),
+						scalar(3));
 
 		RankedChoiceProducerForVector rcp = new RankedChoiceProducerForVector(Intersection.e);
 		rcp.add(v1);
@@ -81,11 +81,11 @@ public class RankedChoiceProducerTest {
 
 	protected RankedChoiceProducerForVector getRankedChoiceProducer2() {
 		ProducerWithRank<Vector> v1 =
-				new ProducerWithRankAdapter<>(StaticProducer.of(new Vector(0.7034, 0.7034, 0.7034)),
-						StaticProducer.of(0.9002));
+				new ProducerWithRankAdapter<>(vector(0.7034, 0.7034, 0.7034),
+						scalar(0.9002));
 		ProducerWithRank<Vector> v2 =
-				new ProducerWithRankAdapter<>(StaticProducer.of(new Vector(0.0, 0.0, 0.0)),
-						StaticProducer.of(-17.274));
+				new ProducerWithRankAdapter<>(vector(0.0, 0.0, 0.0),
+						scalar(-17.274));
 
 		RankedChoiceProducerForVector rcp = new RankedChoiceProducerForVector(Intersection.e);
 		rcp.add(v1);

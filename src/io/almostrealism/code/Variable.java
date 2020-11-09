@@ -18,12 +18,14 @@ package io.almostrealism.code;
 
 import org.almostrealism.util.Nameable;
 import org.almostrealism.util.Producer;
-import org.almostrealism.util.StaticProducer;
+import org.almostrealism.util.Provider;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Supplier;
+
+import static org.almostrealism.util.Ops.*;
 
 /**
  * A {@link Variable} wraps some data that can be included in a {@link Scope}.
@@ -64,16 +66,16 @@ public class Variable<T> implements Nameable {
 		this.declaration = declaration;
 	}
 
-	public Variable(String name, T expression) {
-		this(name, true, (Expression) null, StaticProducer.of(expression));
+	public Variable(String name, T value) {
+		this(name, true, (Expression) null, ops().v(value));
 	}
 
-	public Variable(String name, Producer<T> producer) {
-		this(name, (Class) null, producer);
+	public Variable(String name, String annotation, Producer<T> producer) {
+		this(name, annotation, (Class) null, producer);
 	}
 
-	public Variable(String name, Class<T> type, T expression) {
-		this(name, type, StaticProducer.of(expression));
+	public Variable(String name, Class<T> type, T value) {
+		this(name, type, ops().v(value));
 	}
 
 	public Variable(String name, Class<T> type, Producer<T> producer) {

@@ -22,7 +22,8 @@ import org.almostrealism.physics.RigidBody;
 import org.almostrealism.space.Gradient;
 import org.almostrealism.space.Scene;
 import org.almostrealism.space.ShadableSurface;
-import org.almostrealism.util.StaticProducer;
+import org.almostrealism.util.CodeFeatures;
+import org.almostrealism.util.Provider;
 
 import java.io.*;
 import java.util.ArrayList;
@@ -30,7 +31,7 @@ import java.util.List;
 import java.util.Properties;
 import java.util.function.Function;
 
-public class Animation<T extends ShadableSurface> extends Scene<T> implements Runnable {
+public class Animation<T extends ShadableSurface> extends Scene<T> implements Runnable, CodeFeatures {
 	private int itr;
 	private double dt, fdt, vdt, totalTime;
 	private boolean sleep, render;
@@ -184,7 +185,7 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 					Gradient<?> grad = f.apply((RigidBody) s);
 
 					if (grad != null) {
-						g.addTo(grad.getNormalAt(StaticProducer.of(((RigidBody) s).getState().getLocation()))
+						g.addTo(grad.getNormalAt(v(((RigidBody) s).getState().getLocation()))
 								.evaluate(new Object[] { ((RigidBody) s).getState() }));
 					}
 				}

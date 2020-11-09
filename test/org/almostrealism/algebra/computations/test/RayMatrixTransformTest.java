@@ -21,12 +21,13 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.computations.RayMatrixTransform;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.hardware.HardwareFeatures;
+import org.almostrealism.util.CodeFeatures;
 import org.almostrealism.util.Producer;
-import org.almostrealism.util.StaticProducer;
+import org.almostrealism.util.Provider;
 import org.junit.Assert;
 import org.junit.Test;
 
-public class RayMatrixTransformTest implements HardwareFeatures {
+public class RayMatrixTransformTest implements HardwareFeatures, CodeFeatures {
 	protected TransformMatrix getMatrix() {
 		return new TransformMatrix(new double[][] {
 				{0.25, 0.0, 0.0, 0.0},
@@ -37,8 +38,8 @@ public class RayMatrixTransformTest implements HardwareFeatures {
 	}
 
 	protected Producer<Ray> getRay1() {
-		return StaticProducer.of(new Ray(new Vector(1.0, 2.0, 3.0),
-										new Vector(4.0, 5.0, 6.0)));
+		return v(new Ray(new Vector(1.0, 2.0, 3.0),
+						new Vector(4.0, 5.0, 6.0)));
 	}
 
 	@Test

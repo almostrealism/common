@@ -30,11 +30,13 @@ public class OpenCLPrintWriter extends CPrintWriter {
 	}
 
 	protected void renderArguments(List<Argument<?>> arguments, Consumer<String> out) {
-		renderArguments(arguments, out, true, null, "*", "");
-		out.accept(", ");
-		renderArguments(arguments, out, false, Integer.class, "", "Offset");
-		out.accept(", ");
-		renderArguments(arguments, out, false, Integer.class, "", "Size");
+		if (!arguments.isEmpty()) {
+			renderArguments(arguments, out, true, null, "*", "");
+			out.accept(", ");
+			renderArguments(arguments, out, false, Integer.class, "", "Offset");
+			out.accept(", ");
+			renderArguments(arguments, out, false, Integer.class, "", "Size");
+		}
 	}
 
 	private void renderArguments(List<Argument<?>> arguments, Consumer<String> out, boolean enableAnnotation, Class replaceType, String prefix, String suffix) {

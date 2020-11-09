@@ -18,13 +18,13 @@ package org.almostrealism.algebra.test;
 
 import org.almostrealism.algebra.computations.MatrixAdjoint;
 import org.almostrealism.algebra.TransformMatrix;
-import org.almostrealism.util.StaticProducer;
+import org.almostrealism.util.Provider;
 import org.junit.Test;
 
 public class MatrixAdjointTest {
 	@Test
 	public void test() {
 //		System.out.println(new TransformMatrix().toString());
-		new MatrixAdjoint(new StaticProducer<>(new TransformMatrix())).evaluate(new Object[0]);
+		new MatrixAdjoint(new Provider<>(new TransformMatrix())).evaluate(new Object[0]);
 	}
 }

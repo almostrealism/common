@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ package org.almostrealism.color.computations;
 
 import org.almostrealism.color.RGB;
 import org.almostrealism.heredity.Gene;
-import org.almostrealism.util.StaticProducer;
+import org.almostrealism.util.Provider;
 
 /**
  * TODO  Accept a {@link Gene}.
@@ -29,7 +29,7 @@ public class RandomColorGenerator extends ColorProducerAdapter {
  	private RGBProducer baseRGB, offsetRGB;
  
 	public RandomColorGenerator() {
-		this(StaticProducer.of(new RGB(0.0, 0.0, 0.0)), RGBWhite.getProducer());
+		this(RGBBlack.getProducer(), RGBWhite.getProducer());
 	}
 	
 	public RandomColorGenerator(RGBProducer baseRGB, RGBProducer offsetRGB) {

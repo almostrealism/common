@@ -26,9 +26,10 @@ import org.almostrealism.algebra.computations.RayPointAt;
 import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.hardware.MemWrapperAdapter;
+import org.almostrealism.util.CodeFeatures;
 import org.almostrealism.util.DynamicProducer;
 import org.almostrealism.util.Producer;
-import org.almostrealism.util.StaticProducer;
+import org.almostrealism.util.Provider;
 
 /**
  * A {@link Ray} represents a 3d ray. It stores the origin and direction of a 3d ray,
@@ -36,7 +37,7 @@ import org.almostrealism.util.StaticProducer;
  * 
  * @author  Michael Murray
  */
-public class Ray extends MemWrapperAdapter implements Cloneable {
+public class Ray extends MemWrapperAdapter implements Cloneable, CodeFeatures {
 	private Ray(double coords[]) {
 		this();
 		this.setMem(coords);
@@ -158,7 +159,7 @@ public class Ray extends MemWrapperAdapter implements Cloneable {
 	 *          as a {@link Vector}.
 	 */
 	public VectorProducer pointAt(Producer<Scalar> t) {
-		return new DefaultVectorProducer(new RayPointAt(StaticProducer.of(this), t));
+		return new DefaultVectorProducer(new RayPointAt(v(this), t));
 	}
 
 	@Override

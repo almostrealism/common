@@ -19,7 +19,9 @@ package org.almostrealism.space;
 import java.util.*;
 
 import io.almostrealism.code.Scope;
-import org.almostrealism.algebra.*;
+import org.almostrealism.algebra.ContinuousField;
+import org.almostrealism.algebra.Intersection;
+import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.computations.DefaultVectorProducer;
 import org.almostrealism.geometry.DefaultRayProducer;
@@ -28,16 +30,16 @@ import org.almostrealism.algebra.computations.RayDirection;
 import org.almostrealism.algebra.computations.RayPointAt;
 import org.almostrealism.geometry.RayFromVectors;
 import org.almostrealism.relation.NameProvider;
+import org.almostrealism.util.CodeFeatures;
 import org.almostrealism.util.Producer;
 import org.almostrealism.util.ProducerWithRankAdapter;
-import org.almostrealism.util.StaticProducer;
 
 /**
  * Extends {@link Intersection} to provide metadata that is required for shading.
  * 
  * @author  Michael Murray
  */
-public class ShadableIntersection extends Intersection implements ContinuousField, VectorFeatures {
+public class ShadableIntersection extends Intersection implements ContinuousField, CodeFeatures {
 	private Producer<Vector> incident;
 	private Producer<Ray> normal;
 
@@ -71,7 +73,7 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 	
 	/** Delegates to {@link #getNormalAt(Producer)}. */
 	@Override
-	public Vector operate(Vector t) { return getNormalAt(StaticProducer.of(t)).evaluate(); }
+	public Vector operate(Vector t) { return getNormalAt(v(t)).evaluate(); }
 
 	@Override
 	public Scope getScope(NameProvider p) {

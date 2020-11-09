@@ -19,6 +19,7 @@ package org.almostrealism.util;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairProducer;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorFeatures;
@@ -35,7 +36,9 @@ import org.almostrealism.geometry.RayProducer;
 import org.almostrealism.graph.mesh.TriangleData;
 import org.almostrealism.graph.mesh.TrianglePointData;
 
-public interface CodeFeatures extends VectorFeatures {
+public interface CodeFeatures extends ScalarFeatures, VectorFeatures {
+	default <T> Provider<T> p(T value) { return new Provider<>(value); }
+
 	default ScalarProducer v(double value) { return value(new Scalar(value)); }
 
 	default ScalarProducer v(Scalar value) { return value(value); }
@@ -64,6 +67,10 @@ public interface CodeFeatures extends VectorFeatures {
 		return new DefaultScalarProducer(new AcceleratedStaticScalarComputation(value, Scalar.blank()));
 	}
 
+	default ScalarProducer scalar() {
+		return Scalar.blank();
+	}
+
 	default PairProducer pair(double x, double y) { return value(new Pair(x, y)); }
 
 	default PairProducer value(Pair value) {
@@ -73,6 +80,10 @@ public interface CodeFeatures extends VectorFeatures {
 	default Producer<Vector> vector(int argIndex) { return value(Vector.class, argIndex); }
 
 	default VectorProducer vector(double x, double y, double z) { return value(new Vector(x, y, z)); }
+
+	default VectorProducer vector(double v[]) { return vector(v[0], v[1], v[2]); }
+
+	default Producer<Vector> vector() { return Vector.blank(); }
 
 	default VectorProducer value(Vector value) {
 		return new DefaultVectorProducer(new AcceleratedStaticVectorComputation(value, Vector.blank()));
@@ -91,6 +102,10 @@ public interface CodeFeatures extends VectorFeatures {
 	default Producer<TrianglePointData> points(int argIndex) { return value(TrianglePointData.class, argIndex); }
 
 	default RGBProducer rgb(double r, double g, double b) { return value(new RGB(r, g, b)); }
+
+	default RGBProducer rgb(Scalar v) { return RGBProducer.fromScalar(v); }
+
+	default RGBProducer rgb(double v) { return RGBProducer.fromScalar(v); }
 
 	default RGBProducer value(RGB value) {
 		return new DefaultRGBProducer(new AcceleratedStaticRGBComputation(value, RGB.blank()));

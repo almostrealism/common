@@ -59,6 +59,7 @@ public interface Volume<T> extends Curve<T> {
 	 * @param xyz  {x, y, z} - Position in spatial coordinates.
 	 * @return  {u, v} - Position in surface coordinates (u,v between 0.0 and 1.0).
 	 */
+	// TODO  Return Producer<Pair>
 	double[] getSurfaceCoords(Producer<Vector> xyz);
 	
 	/**

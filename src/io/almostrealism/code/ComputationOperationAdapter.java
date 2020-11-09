@@ -17,8 +17,11 @@
 package io.almostrealism.code;
 
 import org.almostrealism.relation.Computation;
+import org.almostrealism.relation.NameProvider;
 import org.almostrealism.util.Compactable;
 import org.almostrealism.util.Producer;
+
+import java.util.stream.IntStream;
 
 public abstract class ComputationOperationAdapter<T> extends OperationAdapter implements Computation<T>, Compactable {
 
@@ -29,6 +32,14 @@ public abstract class ComputationOperationAdapter<T> extends OperationAdapter im
 	@Override
 	public Argument getArgument(int index) { return getArguments().get(index); }
 
+	@Override
+	public Scope<T> getScope(NameProvider provider) {
+		Scope<T> scope = new Scope<>(provider.getFunctionName());
+		scope.getVariables().addAll(getVariables());
+		return scope;
+	}
+
+	@Override
 	public void compact() {
 		super.compact();
 		compileArguments();

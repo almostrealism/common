@@ -2,18 +2,19 @@ package org.almostrealism.math.bool.test;
 
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.math.bool.LessThan;
+import org.almostrealism.util.CodeFeatures;
 import org.almostrealism.util.Producer;
-import org.almostrealism.util.StaticProducer;
+import org.almostrealism.util.Provider;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.stream.IntStream;
 
-public class AcceleratedConditionalStatementTests {
+public class AcceleratedConditionalStatementTests implements CodeFeatures {
 	@Test
 	public void compact() {
-		Producer<Scalar> a = StaticProducer.of(Math.random());
-		Producer<Scalar> b = StaticProducer.of(Math.random());
+		Producer<Scalar> a = scalar(Math.random());
+		Producer<Scalar> b = scalar(Math.random());
 
 		LessThan lt = new LessThan(2, Scalar.blank(), a, b, a, b, false);
 
@@ -38,14 +39,14 @@ public class AcceleratedConditionalStatementTests {
 			double c = i * Math.random();
 			double d = i * Math.random();
 
-			Producer<Scalar> pa = StaticProducer.of(a);
-			Producer<Scalar> pb = StaticProducer.of(b);
-			Producer<Scalar> pc = StaticProducer.of(c);
-			Producer<Scalar> pd = StaticProducer.of(d);
+			Producer<Scalar> pa = scalar(a);
+			Producer<Scalar> pb = scalar(b);
+			Producer<Scalar> pc = scalar(c);
+			Producer<Scalar> pd = scalar(d);
 
 			LessThan lt1 = new LessThan(2, Scalar.blank(), pa, pb, pa, pb, false);
-			LessThan lt2 = new LessThan(2, Scalar.blank(), pb, pc, lt1, StaticProducer.of(-a), false);
-			LessThan lt3 = new LessThan(2, Scalar.blank(), pc, pd, lt2, StaticProducer.of(-b), false);
+			LessThan lt2 = new LessThan(2, Scalar.blank(), pb, pc, lt1, scalar(-a), false);
+			LessThan lt3 = new LessThan(2, Scalar.blank(), pc, pd, lt2, scalar(-b), false);
 
 			LessThan top = lt3;
 

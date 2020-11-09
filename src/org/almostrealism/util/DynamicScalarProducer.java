@@ -18,12 +18,13 @@ package org.almostrealism.util;
 
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
+import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.hardware.KernelizedProducer;
 import org.almostrealism.hardware.MemoryBank;
 
 import java.util.function.Function;
 
-public class DynamicScalarProducer extends DynamicProducer<Scalar> implements KernelizedProducer<Scalar> {
+public class DynamicScalarProducer extends DynamicProducer<Scalar> implements KernelizedProducer<Scalar>, ScalarProducer {
 
 	public DynamicScalarProducer(Function<Object[], Scalar> function) {
 		super(function);

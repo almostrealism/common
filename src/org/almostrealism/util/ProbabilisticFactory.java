@@ -35,7 +35,7 @@ public class ProbabilisticFactory<V> extends HashMap<Factory<V>, Double> impleme
 	 */
 	public ProbabilisticFactory(List<? extends Factory<V>> factories, Gene<Double> probabilities) {
 		for (int i = 0; i < factories.size(); i++) {
-			put(factories.get(i), probabilities.getFactor(i).getResultant(new StaticProducer<>(Double.valueOf(1.0))).evaluate());
+			put(factories.get(i), probabilities.getFactor(i).getResultant(new Provider<>(Double.valueOf(1.0))).evaluate());
 		}
 	}
 	

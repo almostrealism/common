@@ -56,7 +56,7 @@ public class Scalar extends Pair implements Comparable<Scalar> {
 	@Override
 	public PooledMem getDefaultDelegate() { return ScalarPool.getLocal(); }
 
-	public static Producer<Scalar> blank() {
+	public static ScalarProducer blank() {
 		return new DynamicScalarProducer(args -> new Scalar(false));
 	}
 

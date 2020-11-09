@@ -20,6 +20,7 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.color.RGB;
 import org.almostrealism.util.Producer;
+import org.almostrealism.util.Provider;
 import org.almostrealism.util.StaticProducer;
 
 /**

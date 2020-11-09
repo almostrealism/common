@@ -17,16 +17,15 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.Argument;
-import io.almostrealism.code.ComputationProducerAdapter;
 import org.almostrealism.util.CollectionUtils;
 import org.almostrealism.util.Producer;
-import org.almostrealism.util.ProducerArgumentReference;
-import org.almostrealism.util.StaticProducer;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+
+import static org.almostrealism.util.Ops.*;
 
 public class AcceleratedProducer<T extends MemWrapper> extends AcceleratedOperation implements KernelizedProducer<T> {
 
@@ -116,7 +115,7 @@ public class AcceleratedProducer<T extends MemWrapper> extends AcceleratedOperat
 		}
 
 		for (int i = 0; i < fixedValues.length; i++) {
-			p[inputs.length + i] = fixedValues == null ? null : StaticProducer.of(fixedValues[i]);
+			p[inputs.length + i] = fixedValues == null ? null : ops().v(fixedValues[i]);
 		}
 
 		return p;

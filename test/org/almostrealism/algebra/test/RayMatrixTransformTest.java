@@ -7,17 +7,17 @@ import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.TranslationMatrix;
 import org.almostrealism.hardware.AcceleratedComputationProducer;
 import org.almostrealism.hardware.HardwareFeatures;
-import org.almostrealism.util.StaticProducer;
+import org.almostrealism.util.CodeFeatures;
+import org.almostrealism.util.Provider;
 import org.junit.Assert;
 import org.junit.Test;
 
-public class RayMatrixTransformTest implements HardwareFeatures {
+public class RayMatrixTransformTest implements HardwareFeatures, CodeFeatures {
 	protected AcceleratedComputationProducer<Ray> transform() {
-		TransformMatrix m = new TranslationMatrix(StaticProducer.of(
-				new Vector(0.0, -10.0, 0.0))).evaluate();
+		TransformMatrix m = new TranslationMatrix(vector(0.0, -10.0, 0.0)).evaluate();
 
 		Ray r = new Ray(new Vector(1.0, 2.0, 3.0), new Vector(4.0, 5.0, 6.0));
-		return (AcceleratedComputationProducer) compileProducer(new RayMatrixTransform(m.getInverse(), StaticProducer.of(r)));
+		return (AcceleratedComputationProducer) compileProducer(new RayMatrixTransform(m.getInverse(), v(r)));
 	}
 
 	@Test

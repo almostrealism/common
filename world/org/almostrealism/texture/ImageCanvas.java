@@ -29,11 +29,10 @@ import java.io.OutputStream;
 import javax.imageio.ImageIO;
 import javax.swing.JPanel;
 
-import org.almostrealism.algebra.Pair;
 import org.almostrealism.color.RGB;
-import org.almostrealism.hardware.KernelizedProducer;
+import org.almostrealism.util.CodeFeatures;
 import org.almostrealism.util.Producer;
-import org.almostrealism.util.StaticProducer;
+import static org.almostrealism.util.Ops.*;
 
 /**
  * An {@link ImageCanvas} object stores image data and paints the parent
@@ -41,7 +40,7 @@ import org.almostrealism.util.StaticProducer;
  * 
  * @author  Michael Murray
  */
-public class ImageCanvas extends JPanel {
+public class ImageCanvas extends JPanel implements CodeFeatures {
   private int screenX, screenY;
   private double xScale, yScale;
   private double xOff, yOff;
@@ -165,7 +164,7 @@ public class ImageCanvas extends JPanel {
 	 */
 	public void writeImage(String file) {
 		try {
-			ImageCanvas.encodeImageFile(StaticProducer.of(this.image),
+			ImageCanvas.encodeImageFile(v(this.image),
 							new File(file),
 							ImageCanvas.JPEGEncoding);
 		} catch (Exception e) {
@@ -174,8 +173,9 @@ public class ImageCanvas extends JPanel {
 	}
 	
 	/**
-	 * Overrides normal JPanel paint method.
+	 * Overrides normal {@link JPanel#paint(Graphics)} method to display the {@link Image}.
 	 */
+	@Override
 	public void paint(Graphics g) {
 		Image img = GraphicsConverter.convertToAWTImage(this.image);
 		g.drawImage(img, 0, 0, Color.black, this);
@@ -183,7 +183,7 @@ public class ImageCanvas extends JPanel {
 
 	public static void writeImage(RGB[][] image, OutputStream o, int encoding)
 			throws IOException {
-		writeImage(StaticProducer.of(image), o, encoding);
+		writeImage(ops().v(image), o, encoding);
 	}
 
 	public static void writeImage(Producer<RGB[][]> imageProducer, OutputStream o, int encoding)

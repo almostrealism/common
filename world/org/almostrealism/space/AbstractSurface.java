@@ -35,10 +35,11 @@ import org.almostrealism.relation.NameProvider;
 import org.almostrealism.relation.Operator;
 import org.almostrealism.texture.Texture;
 import org.almostrealism.util.AdaptProducerRGB;
+import org.almostrealism.util.CodeFeatures;
 import org.almostrealism.util.CollectionUtils;
 import org.almostrealism.util.DynamicProducer;
 import org.almostrealism.util.Producer;
-import org.almostrealism.util.StaticProducer;
+import org.almostrealism.util.Provider;
 
 /**
  * {@link AbstractSurface} is an abstract implementation of {@link ShadableSurface} that takes
@@ -48,7 +49,7 @@ import org.almostrealism.util.StaticProducer;
  * 
  * @author  Michael Murray
  */
-public abstract class AbstractSurface extends TriangulatableGeometry implements ShadableSurface, Porous, HardwareFeatures {
+public abstract class AbstractSurface extends TriangulatableGeometry implements ShadableSurface, Porous, HardwareFeatures, CodeFeatures {
 	private boolean shadeFront, shadeBack;
 
 	private RGB color;
@@ -562,7 +563,7 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 	    if (transform && getTransform(true) != null)
 	    	point = getTransform(true).getInverse().transform(point, TransformMatrix.TRANSFORM_AS_LOCATION);
 	    
-	    Producer<RGB> colorAt = StaticProducer.of(getColor());
+	    Producer<RGB> colorAt = v(getColor());
 	    
 	    if (textures.length > 0) {
 	    	List<Producer<RGB>> texColors = new ArrayList<>();
@@ -584,7 +585,7 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 
 	@Override
 	public RGB operate(Vector in) {
-		return getValueAt(StaticProducer.of(in)).evaluate();
+		return getValueAt(v(in)).evaluate();
 	}
 
 	@Override

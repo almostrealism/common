@@ -57,8 +57,7 @@ public abstract class DynamicAcceleratedProducerAdapter<T extends MemWrapper> ex
 
 	@Override
 	public Scope<T> getScope(NameProvider provider) {
-		Scope<T> scope = new Scope<>(provider.getFunctionName());
-		scope.getVariables().addAll(getVariables());
+		Scope<T> scope = super.getScope(provider);
 		IntStream.range(0, memLength)
 				.mapToObj(getAssignmentFunction(provider.getOutputVariable()))
 				.forEach(v -> scope.getVariables().add((Variable) v));

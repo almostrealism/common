@@ -61,6 +61,7 @@ public class JavaScriptPrintWriter extends CodePrintWriterAdapter {
 		if (name == null) {
 			p.println("{");
 		} else {
+			// TODO  Include arguments
 			p.println("function " + name + "() {");
 		}
 	}

@@ -26,7 +26,6 @@ import org.almostrealism.algebra.computations.RayMatrixTransform;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.TransformAsLocation;
 import org.almostrealism.geometry.TransformAsOffset;
-import org.almostrealism.hardware.ComputerFeatures;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.MemWrapper;
@@ -34,9 +33,10 @@ import org.almostrealism.hardware.MemWrapperAdapter;
 import org.almostrealism.hardware.PooledMem;
 import org.almostrealism.relation.NameProvider;
 import org.almostrealism.relation.TripleFunction;
+import org.almostrealism.util.CodeFeatures;
 import org.almostrealism.util.DynamicProducer;
 import org.almostrealism.util.Producer;
-import org.almostrealism.util.StaticProducer;
+import org.almostrealism.util.Provider;
 
 /**
  * A {@link TransformMatrix} object represents a 4 X 4 matrix used for transforming vectors.
@@ -44,7 +44,7 @@ import org.almostrealism.util.StaticProducer;
  * methods for transforming various types of vectors. The TransformMatrix class also provides
  * some static methods that generate certain useful matrices.
  */
-public class TransformMatrix extends MemWrapperAdapter implements TripleFunction<Triple, Vector>, HardwareFeatures {
+public class TransformMatrix extends MemWrapperAdapter implements TripleFunction<Triple, Vector>, HardwareFeatures, CodeFeatures {
 	public static final int TRANSFORM_AS_LOCATION = 1;
 	public static final int TRANSFORM_AS_OFFSET = 2;
 	public static final int TRANSFORM_AS_NORMAL = 4;
@@ -91,7 +91,7 @@ public class TransformMatrix extends MemWrapperAdapter implements TripleFunction
 	private void initMem(boolean identity) {
 		init();
 		if (identity) {
-			new IdentityMatrix(new StaticProducer<>(this)).evaluate();
+			new IdentityMatrix(new Provider<>(this)).evaluate();
 		}
 	}
 	
@@ -172,7 +172,7 @@ public class TransformMatrix extends MemWrapperAdapter implements TripleFunction
 	 * @see  MatrixProduct
 	 */
 	public TransformMatrix multiply(TransformMatrix matrix) {
-		return new MatrixProduct(StaticProducer.of(this), StaticProducer.of(matrix)).evaluate(new Object[0]);
+		return new MatrixProduct(v(this), v(matrix)).evaluate();
 	}
 	
 	/**
@@ -209,7 +209,7 @@ public class TransformMatrix extends MemWrapperAdapter implements TripleFunction
 	public double[] transform(double x, double y, double z, int type) {
 		if (this.isIdentity) return new double[] {x, y, z};
 
-		return transform(StaticProducer.of(new Vector(x, y, z)), type).evaluate(new Object[0]).toArray();
+		return transform(vector(x, y, z), type).evaluate().toArray();
 	}
 	
 	/**
@@ -221,7 +221,7 @@ public class TransformMatrix extends MemWrapperAdapter implements TripleFunction
 		vector = (Vector) vector.clone();
 		if (this.isIdentity) return vector;
 
-		return transform(StaticProducer.of(vector), TRANSFORM_AS_LOCATION).evaluate(new Object[0]);
+		return transform(v(vector), TRANSFORM_AS_LOCATION).evaluate();
 	}
 	
 	/**
@@ -233,7 +233,7 @@ public class TransformMatrix extends MemWrapperAdapter implements TripleFunction
 		vector = (Vector) vector.clone();
 		if (this.isIdentity) return vector;
 
-		return transform(StaticProducer.of(vector), TRANSFORM_AS_OFFSET).evaluate(new Object[0]);
+		return transform(v(vector), TRANSFORM_AS_OFFSET).evaluate();
 	}
 	
 	/**
@@ -245,7 +245,7 @@ public class TransformMatrix extends MemWrapperAdapter implements TripleFunction
 		vector = (Vector) vector.clone();
 		if (this.isIdentity) return vector;
 
-		return transform(StaticProducer.of(vector), TRANSFORM_AS_NORMAL).evaluate(new Object[0]);
+		return transform(v(vector), TRANSFORM_AS_NORMAL).evaluate();
 	}
 
 	public Producer<Ray> transform(Producer<Ray> ray) {
@@ -319,17 +319,17 @@ public class TransformMatrix extends MemWrapperAdapter implements TripleFunction
 	 * returns the result as a double value.
 	 */
 	public double determinant() {
-		return new MatrixDeterminant(StaticProducer.of(this)).evaluate(new Object[0]).getValue();
+		return new MatrixDeterminant(v(this)).evaluate().getValue();
 	}
 
 	/**
-	 * Computes the transpose of the matrix represented by this TransformMatrix object and
-	 * returns the result as a TransformMatrix object. If this method is called after the
+	 * Computes the transpose of the matrix represented by this {@link TransformMatrix} and
+	 * returns the result as a {@link TransformMatrix}. If this method is called after the
 	 * last matrix modification it will return a stored transposition.
 	 */
 	public TransformMatrix transpose() {
 		if (transposeMatrix == null) {
-			transposeMatrix = new MatrixTranspose(StaticProducer.of(this)).evaluate(new Object[0]);
+			transposeMatrix = new MatrixTranspose(v(this)).evaluate();
 		}
 
 		return transposeMatrix;
@@ -340,7 +340,7 @@ public class TransformMatrix extends MemWrapperAdapter implements TripleFunction
 	 * returns the result as a TransformMatrix object.
 	 */
 	public TransformMatrix adjoint() {
-		return new MatrixAdjoint(new StaticProducer<>(this)).evaluate(new Object[0]);
+		return new MatrixAdjoint(new Provider<>(this)).evaluate(new Object[0]);
 	}
 	
 	/**
@@ -348,7 +348,7 @@ public class TransformMatrix extends MemWrapperAdapter implements TripleFunction
 	 * returns the result as a TransformMatrix object.
 	 */
 	public TransformMatrix toUpperTriangle() {
-		return new MatrixToUpperTriangle(new StaticProducer<>(this)).evaluate(new Object[0]);
+		return new MatrixToUpperTriangle(new Provider<>(this)).evaluate(new Object[0]);
 	}
 
 	@Override

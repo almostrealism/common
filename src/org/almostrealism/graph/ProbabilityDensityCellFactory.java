@@ -19,7 +19,7 @@ package org.almostrealism.graph;
 import java.util.Random;
 
 import org.almostrealism.heredity.Gene;
-import org.almostrealism.util.StaticProducer;
+import org.almostrealism.util.Provider;
 
 public class ProbabilityDensityCellFactory<T> implements CellFactory<Double, T> {
 	private Random rand = new Random();
@@ -48,7 +48,7 @@ public class ProbabilityDensityCellFactory<T> implements CellFactory<Double, T> 
 
 	@Override
 	public Cell<T> generateCell(Gene<Double> g) {
-		double arg = g.getFactor(factorIndex).getResultant(new StaticProducer<>(Double.valueOf(1.0))).evaluate().doubleValue();
+		double arg = g.getFactor(factorIndex).getResultant(new Provider<>(Double.valueOf(1.0))).evaluate().doubleValue();
 
 		// Pick a point in N-Space, starting
 		// with the bias values initially

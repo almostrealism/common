@@ -27,7 +27,9 @@ import org.almostrealism.math.bool.GreaterThanScalar;
 import org.almostrealism.math.bool.LessThanScalar;
 import org.almostrealism.relation.Computation;
 import org.almostrealism.util.Producer;
-import org.almostrealism.util.StaticProducer;
+import org.almostrealism.util.Provider;
+
+import static org.almostrealism.util.Ops.*;
 
 public class TriangleIntersectAt extends LessThanScalar {
 	public TriangleIntersectAt(Producer<TriangleData> t, Producer<Ray> r) {
@@ -71,20 +73,20 @@ public class TriangleIntersectAt extends LessThanScalar {
 								  ScalarProducer u, ScalarProducer v, ScalarProducer t) {
 		this(abc, def, jkl, normal, origin, direction, f, q, s,
 				new AcceleratedConjunctionScalar(
-						t, StaticProducer.of(-1.0),
-						new GreaterThanScalar(u, StaticProducer.of(0.0), true),
-						new LessThanScalar(u, StaticProducer.of(1.0), true),
-						new GreaterThanScalar(v, StaticProducer.of(0.0), true),
-						new LessThanScalar(u.add(v), StaticProducer.of(1.0), true)));
+						t, ops().scalar(-1.0),
+						new GreaterThanScalar(u, ops().scalar(0.0), true),
+						new LessThanScalar(u, ops().scalar(1.0), true),
+						new GreaterThanScalar(v, ops().scalar(0.0), true),
+						new LessThanScalar(u.add(v), ops().scalar(1.0), true)));
 	}
 
 	protected TriangleIntersectAt(VectorProducer abc, VectorProducer def, VectorProducer jkl,
 				VectorProducer normal, VectorProducer origin, VectorProducer direction,
 				ScalarProducer f, VectorProducer q, VectorProducer s,
 				AcceleratedConjunctionScalar trueValue) {
-		super(f, StaticProducer.of(-Intersection.e), trueValue,
-				new GreaterThanScalar(f, StaticProducer.of(Intersection.e), trueValue,
-								StaticProducer.of(-1.0)), true);
+		super(f, ops().scalar(-Intersection.e), trueValue,
+				new GreaterThanScalar(f, ops().scalar(Intersection.e), trueValue,
+						ops().scalar(-1.0)), true);
 	}
 
 	// TODO  Make private

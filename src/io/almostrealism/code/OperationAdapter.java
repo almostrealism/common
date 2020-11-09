@@ -88,13 +88,11 @@ public abstract class OperationAdapter implements Compactable, NameProvider, Nam
 		}
 	}
 
-	public Scope compile() { return null; }
+	public Scope compile() { return compile(this); }
+
+	public Scope compile(NameProvider p) { return null; }
 
 	public void addVariable(Variable v) {
-		if (v.getProducer() == null) {
-			throw new IllegalArgumentException("Producer must be provided for variable");
-		}
-
 		List<Variable<?>> existing = variables.get(v.getProducer());
 		if (existing == null) {
 			existing = new ArrayList<>();

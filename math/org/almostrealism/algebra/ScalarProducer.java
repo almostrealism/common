@@ -19,18 +19,17 @@ package org.almostrealism.algebra;
 import org.almostrealism.algebra.computations.DefaultScalarProducer;
 import org.almostrealism.algebra.computations.ScalarPow;
 import org.almostrealism.algebra.computations.ScalarProduct;
-import org.almostrealism.algebra.computations.ScalarSum;
 import org.almostrealism.math.bool.AcceleratedConditionalStatementVector;
 import org.almostrealism.math.bool.GreaterThanVector;
 import org.almostrealism.math.bool.LessThanVector;
 import org.almostrealism.util.Producer;
+import org.almostrealism.util.Provider;
 import org.almostrealism.util.StaticProducer;
 
-public interface ScalarProducer extends Producer<Scalar> {
-	ScalarProducer minusOne = StaticProducer.of(-1.0);
+public interface ScalarProducer extends Producer<Scalar>, ScalarFeatures {
 
 	default ScalarProducer add(Producer<Scalar> value) {
-		return new DefaultScalarProducer(new ScalarSum(this, value));
+		return scalarAdd(this, value);
 	}
 
 	default ScalarProducer add(Scalar value) {
@@ -80,18 +79,6 @@ public interface ScalarProducer extends Producer<Scalar> {
 	default ScalarProducer pow(Scalar exp) { return pow(this, exp); }
 
 	default ScalarProducer pow(double exp) { return pow(this, exp); }
-
-	static ScalarProducer pow(Producer<Scalar> base, Producer<Scalar> exponent) {
-		return new DefaultScalarProducer(new ScalarPow(base, exponent));
-	}
-
-	static ScalarProducer pow(Producer<Scalar> base, Scalar exp) {
-		return pow(base, StaticProducer.of(exp));
-	}
-
-	static ScalarProducer pow(Producer<Scalar> base, double value) {
-		return pow(base, new Scalar(value));
-	}
 
 	default AcceleratedConditionalStatementVector greaterThan(Producer<Scalar> operand) {
 		return greaterThan(operand, null, null);

@@ -24,14 +24,15 @@ import org.almostrealism.hardware.DynamicAcceleratedMultiProducer;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.space.Plane;
 import org.almostrealism.space.ShadableIntersection;
+import org.almostrealism.util.CodeFeatures;
 import org.almostrealism.util.Producer;
-import org.almostrealism.util.StaticProducer;
+import org.almostrealism.util.Provider;
 import org.junit.Assert;
 import org.junit.Test;
 
-public class PlaneTest implements HardwareFeatures {
+public class PlaneTest implements HardwareFeatures, CodeFeatures {
 	protected ShadableIntersection test1() {
-		Producer<Ray> r = StaticProducer.of(new Ray(new Vector(0.0, 0.0, 1.0),
+		Producer<Ray> r = v(new Ray(new Vector(0.0, 0.0, 1.0),
 												new Vector(0.0, 0.5, -1.0)));
 
 		Plane p = new Plane(Plane.XZ);
@@ -72,7 +73,7 @@ public class PlaneTest implements HardwareFeatures {
 
 	@Test
 	public void intersectionTest2() {
-		StaticProducer<Ray> r = new StaticProducer<>(new Ray(new Vector(0.0, 1.0, 1.0),
+		Provider<Ray> r = new Provider<>(new Ray(new Vector(0.0, 1.0, 1.0),
 														new Vector(0.0, 0.0, -1.0)));
 
 		Plane p = new Plane(Plane.XZ);
@@ -84,7 +85,7 @@ public class PlaneTest implements HardwareFeatures {
 
 	@Test
 	public void transformTest() {
-		StaticProducer<Ray> r = new StaticProducer<>(new Ray(new Vector(0.0, 0.0, 1.0),
+		Provider<Ray> r = new Provider<>(new Ray(new Vector(0.0, 0.0, 1.0),
 															new Vector(0.0, 0.5, -1.0)));
 
 
@@ -99,7 +100,7 @@ public class PlaneTest implements HardwareFeatures {
 		Assert.assertTrue(compileProducer(t).evaluate().equals(new Ray(new Vector(0.0, 10.0, 1.0),
 																	new Vector(0.0, 0.5, -1.0))));
 
-		Vector v = compileProducer(t).evaluate().pointAt(new StaticProducer<>(new Scalar(-20))).evaluate(new Object[0]);
+		Vector v = compileProducer(t).evaluate().pointAt(new Provider<>(new Scalar(-20))).evaluate(new Object[0]);
 		Assert.assertTrue(v.equals(new Vector(0.0, 0.0, 21.0)));
 	}
 }

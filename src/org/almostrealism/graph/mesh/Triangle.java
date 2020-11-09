@@ -23,16 +23,15 @@ import org.almostrealism.color.computations.RGBProducer;
 import org.almostrealism.geometry.Positioned;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.hardware.AcceleratedProducer;
-import org.almostrealism.hardware.DynamicAcceleratedOperation;
 import org.almostrealism.hardware.KernelizedProducer;
 import org.almostrealism.relation.Constant;
 import org.almostrealism.relation.Operator;
 import org.almostrealism.space.AbstractSurface;
 import org.almostrealism.space.BoundingSolid;
 import org.almostrealism.space.ShadableIntersection;
+import org.almostrealism.util.CodeFeatures;
 import org.almostrealism.util.PassThroughProducer;
 import org.almostrealism.util.Producer;
-import org.almostrealism.util.StaticProducer;
 
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -43,7 +42,7 @@ import java.util.concurrent.TimeoutException;
  * 
  * @author  Michael Murray
  */
-public class Triangle extends AbstractSurface implements ParticleGroup {
+public class Triangle extends AbstractSurface implements ParticleGroup, CodeFeatures {
 	public static boolean enableHardwareOperator = true;
 
 	private Mesh.VertexData vertexData;
@@ -374,10 +373,10 @@ public class Triangle extends AbstractSurface implements ParticleGroup {
 		} else {
 			if (useT && getTransform(true) != null) {
 				return getTransform(true).getInverse().transform(
-						StaticProducer.of(data.getNormal()),
+						v(data.getNormal()),
 						TransformMatrix.TRANSFORM_AS_NORMAL);
 			} else {
-				return StaticProducer.of((Vector) data.getNormal().clone());
+				return v((Vector) data.getNormal().clone());
 			}
 		}
 	}

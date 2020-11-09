@@ -32,14 +32,15 @@ import java.util.function.IntFunction;
 public class Argument<T> extends Variable<T> {
 	private int sortHint;
 
-	public Argument(String name) { super(name, (Producer) null); }
-	public Argument(String name, String annotation) { this(name, annotation, null); }
-	public Argument(String name, Class<T> type) { super(name, type, (Producer) null); }
+	public Argument(String name) { this(name, null, (Producer) null); }
+	public Argument(String name, String annotation) { this(name, annotation, (Producer) null); }
+	public Argument(String name, Class<T> type) { super(name, null, type, null); }
 	public Argument(String name, String annotation, Class<T> type) {
 		super(name, annotation, type, null);
 	}
-	public Argument(Producer<T> p) { super(null, p); }
-	public Argument(String name, Producer<T> p) { super(name, p); }
+	public Argument(Producer<T> p) { this(null, null, p); }
+	public Argument(String name, String annotation, Producer<T> p) { super(name, annotation, p); }
+	public Argument(String name, Producer<T> p) { super(name, (String) null, p); }
 	public Argument(String name, Method<T> m) { super(name, null, m); }
 
 	public void setSortHint(int hint) { this.sortHint = hint; }

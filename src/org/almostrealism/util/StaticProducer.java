@@ -16,8 +16,6 @@
 
 package org.almostrealism.util;
 
-import org.almostrealism.algebra.computations.DefaultPairProducer;
-import org.almostrealism.algebra.computations.DefaultScalarProducer;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairProducer;
 import org.almostrealism.algebra.Scalar;
@@ -25,6 +23,8 @@ import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.algebra.TransformMatrix;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorProducer;
+import org.almostrealism.algebra.computations.DefaultPairProducer;
+import org.almostrealism.algebra.computations.DefaultScalarProducer;
 import org.almostrealism.algebra.computations.DefaultVectorProducer;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.computations.DefaultRGBProducer;
@@ -33,26 +33,23 @@ import org.almostrealism.geometry.DefaultRayProducer;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayProducer;
 
-public class StaticProducer<T> implements Producer<T> {
-	private T value;
+import java.util.function.Supplier;
 
-	public StaticProducer(T v) {
-		value = v;
-	}
-
+public interface StaticProducer<T> extends Producer<T>, Supplier<T> {
 	@Override
-	public T evaluate(Object[] args) { return value; }
+	default T evaluate(Object[] args) { return get(); }
 
 	/** Does nothing. */
 	@Override
-	public void compact() { }
+	default void compact() { }
 
 	/**
 	 * Returns true.
 	 */
-	public boolean isStatic() { return true; }
+	@Override
+	default boolean isStatic() { return true; }
 
-	public static <V> Producer<V> of(V value) {
+	static <V> Producer<V> of(V value) {
 		if (value instanceof Scalar) {
 			return (Producer<V>) new DefaultScalarProducer(new AcceleratedStaticScalarComputation((Scalar) value, Scalar.blank()));
 		} else if (value instanceof Pair) {
@@ -66,29 +63,29 @@ public class StaticProducer<T> implements Producer<T> {
 		} else if (value == null) {
 			return null;
 		} else {
-			return new StaticProducer<>(value);
+			return new Provider<>(value);
 		}
 	}
 
-	public static ScalarProducer of(double value) { return of(new Scalar(value)); }
+	static ScalarProducer of(double value) { return of(new Scalar(value)); }
 
-	public static ScalarProducer of(Scalar value) {
+	static ScalarProducer of(Scalar value) {
 		return new DefaultScalarProducer(new AcceleratedStaticScalarComputation(value, Scalar.blank()));
 	}
 
-	public static PairProducer of(Pair value) {
+	static PairProducer of(Pair value) {
 		return new DefaultPairProducer(new AcceleratedStaticPairComputation(value, Pair.empty()));
 	}
 
-	public static VectorProducer of(Vector value) {
+	static VectorProducer of(Vector value) {
 		return new DefaultVectorProducer(new AcceleratedStaticVectorComputation(value, Vector.blank()));
 	}
 
-	public static RayProducer of(Ray value) {
+	static RayProducer of(Ray value) {
 		return new DefaultRayProducer(new AcceleratedStaticRayComputation(value, Ray.blank()));
 	}
 
-	public static RGBProducer of(RGB value) {
+	static RGBProducer of(RGB value) {
 		return new DefaultRGBProducer(new AcceleratedStaticRGBComputation(value, RGB.blank()));
 	}
 }

@@ -1,7 +1,7 @@
 package io.almostrealism.code;
 
 import org.almostrealism.io.Resource;
-import org.almostrealism.util.StaticProducer;
+import static org.almostrealism.util.Ops.*;
 
 /**
  * A {@link ResourceArgument} is an {@link Argument} implementation
@@ -19,7 +19,7 @@ public class ResourceArgument<T> extends Argument<T> {
 	 * @see  Resource#getData()
 	 */
 	public ResourceArgument(String name, Resource<T> r) {
-		super(name, StaticProducer.of(r.getData()));
+		super(name, ops().v(r.getData()));
 		this.res = r;
 	}
 

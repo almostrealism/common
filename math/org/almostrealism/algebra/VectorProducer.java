@@ -16,16 +16,9 @@
 
 package org.almostrealism.algebra;
 
-import org.almostrealism.algebra.computations.CrossProduct;
-import org.almostrealism.algebra.computations.DefaultScalarProducer;
-import org.almostrealism.algebra.computations.DefaultVectorProducer;
-import org.almostrealism.algebra.computations.DotProduct;
-import org.almostrealism.algebra.computations.ScalarFromVector;
-import org.almostrealism.algebra.computations.VectorFromScalars;
-import org.almostrealism.algebra.computations.VectorProduct;
-import org.almostrealism.algebra.computations.VectorSum;
 import org.almostrealism.uml.Function;
 import org.almostrealism.util.Producer;
+import org.almostrealism.util.Provider;
 import org.almostrealism.util.StaticProducer;
 
 /**

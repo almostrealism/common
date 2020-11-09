@@ -21,16 +21,17 @@ import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.hardware.MemWrapperAdapter;
+import org.almostrealism.util.CodeFeatures;
 import org.almostrealism.util.Defaults;
 import org.almostrealism.util.DynamicProducer;
 import org.almostrealism.util.Producer;
-import org.almostrealism.util.StaticProducer;
+import org.almostrealism.util.Provider;
 
 /**
  * A {@link Vector} represents a 3d vector. It stores three coordinates, x, y, z
  * in a buffer maintained by JOCL.
  */
-public class Vector extends MemWrapperAdapter implements Positioned, Triple, Cloneable, VectorFeatures {
+public class Vector extends MemWrapperAdapter implements Positioned, Triple, Cloneable, CodeFeatures {
 	public static final int CARTESIAN_COORDINATES = 0;
 	public static final int SPHERICAL_COORDINATES = 1;
 
@@ -252,7 +253,7 @@ public class Vector extends MemWrapperAdapter implements Positioned, Triple, Clo
 	 * Returns the opposite of the vector represented by this {@link Vector}.
 	 */
 	public Vector minus() {
-		return minus(StaticProducer.of(this)).evaluate();
+		return minus(v(this)).evaluate();
 	}
 
 	/** Returns the sum of this {@link Vector} and the specified {@link Vector}. */
@@ -348,13 +349,12 @@ public class Vector extends MemWrapperAdapter implements Positioned, Triple, Clo
 	 * Returns the dot product of this {@link Vector} and the specified {@link Vector}.
 	 */
 	public synchronized double dotProduct(Vector vector) {
-		return dotProduct(StaticProducer.of(this),
-				StaticProducer.of(vector)).evaluate(new Object[0]).getValue();
+		return dotProduct(v(this), v(vector)).evaluate().getValue();
 	}
 
 	/** Returns the cross product of this {@link Vector} and that of the specified {@link Vector}. */
 	public Vector crossProduct(Vector vector) {
-		return crossProduct(StaticProducer.of(this), StaticProducer.of(vector)).evaluate();
+		return crossProduct(v(this), v(vector)).evaluate();
 	}
 
 	public float[] toFloat() {
@@ -375,11 +375,11 @@ public class Vector extends MemWrapperAdapter implements Positioned, Triple, Clo
 	 * {@link Vector} as a double value.
 	 */
 	public double lengthSq() {
-		return lengthSq(StaticProducer.of(this)).evaluate().getValue();
+		return lengthSq(v(this)).evaluate().getValue();
 	}
 
 	public void normalize() {
-		StaticProducer.of(this).normalize().evaluate(new Object[0]);
+		v(this).normalize().evaluate();
 	}
 
 	/** This is the fastest way to get access to the data in this {@link Vector}. */
@@ -501,7 +501,7 @@ public class Vector extends MemWrapperAdapter implements Positioned, Triple, Clo
 			d1 = v1.subtract(v0);
 			d2 = v2.subtract(v0);
 
-			Vector n = new Vector();
+			Vector n;
 
 			if (ccw) {
 				n = d1.crossProduct(d2);
@@ -531,7 +531,7 @@ public class Vector extends MemWrapperAdapter implements Positioned, Triple, Clo
 			case 0: return vec.getX();
 			case 1: return vec.getY();
 			case 2: return vec.getZ();
-			default: throw new InternalError();
+			default: throw new RuntimeException();
 		}
 	}
 
@@ -540,7 +540,7 @@ public class Vector extends MemWrapperAdapter implements Positioned, Triple, Clo
 			case 0: vec.setX(value); break;
 			case 1: vec.setY(value); break;
 			case 2: vec.setZ(value); break;
-			default: throw new InternalError();
+			default: throw new RuntimeException();
 		}
 	}
 
@@ -549,7 +549,7 @@ public class Vector extends MemWrapperAdapter implements Positioned, Triple, Clo
 			case 0: vec.setX(vec.getX() * value); break;
 			case 1: vec.setY(vec.getY() * value); break;
 			case 2: vec.setZ(vec.getZ() * value); break;
-			default: throw new InternalError();
+			default: throw new RuntimeException();
 		}
 	}
 

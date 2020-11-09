@@ -18,12 +18,13 @@ package org.almostrealism.graph;
 
 import org.almostrealism.heredity.Factor;
 import org.almostrealism.time.Temporal;
+import org.almostrealism.util.CodeFeatures;
 import org.almostrealism.util.Producer;
+import org.almostrealism.util.Provider;
+import org.almostrealism.util.RunnableList;
 import org.almostrealism.util.StaticProducer;
 
-public abstract class CachedStateCell<T> extends FilteredCell<T> implements Factor<T>, Source<T>, Temporal {
-	public static boolean enableWarning = true;
-	
+public abstract class CachedStateCell<T> extends FilteredCell<T> implements Factor<T>, Source<T>, Temporal, CodeFeatures {
 	private final T cachedValue;
 	private final T outValue;
 
@@ -34,13 +35,13 @@ public abstract class CachedStateCell<T> extends FilteredCell<T> implements Fact
 		setFilter(this);
 	}
 	
-	public void setCachedValue(T v) { assign(cachedValue, v); }
+	public void setCachedValue(T v) { assign(p(cachedValue), v(v)).run(); }
 
 	public T getCachedValue() { return cachedValue; }
 
 	@Override
 	public Producer<T> getResultant(Producer<T> value) {
-		return new StaticProducer<>(outValue);
+		return new Provider<>(outValue);
 	}
 
 	@Override
@@ -51,27 +52,27 @@ public abstract class CachedStateCell<T> extends FilteredCell<T> implements Fact
 
 	@Override
 	public Runnable push(Producer<T> protein) {
-		return () -> {
-			if (cachedValue == null) {
-				assign(cachedValue, protein.evaluate());
-			} else if (enableWarning) {
-				System.out.println("Warning: Cached cell is pushed when full");
-			}
-		};
+		return assign(p(cachedValue), protein);
 	}
 
-	protected abstract void assign(T out, T in);
+	protected abstract Runnable assign(Provider<T> out, Producer<T> in);
 
-	protected abstract void reset(T out);
+	protected abstract Runnable reset(Provider<T> out);
 
 	@Override
 	public Runnable tick() {
 		Runnable push = super.push(null);
 
 		return () -> {
-			assign(outValue, cachedValue);
-			reset(cachedValue);
+			assign(p(outValue), v(cachedValue)).run();
+			reset(p(cachedValue)).run();
 			push.run();
 		};
+
+//		RunnableList tick = new RunnableList();
+//		tick.add(assign(p(outValue), v(cachedValue)));
+//		tick.add(reset(p(cachedValue)));
+//		tick.add(super.push(null));
+//		return tick;
 	}
 }

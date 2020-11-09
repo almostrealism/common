@@ -6,15 +6,16 @@ import org.almostrealism.algebra.computations.ScalarFromVector;
 import org.almostrealism.algebra.computations.ScalarProduct;
 import org.almostrealism.hardware.AcceleratedComputationProducer;
 import org.almostrealism.hardware.HardwareFeatures;
+import org.almostrealism.util.CodeFeatures;
 import org.almostrealism.util.Producer;
-import org.almostrealism.util.StaticProducer;
+import org.almostrealism.util.Provider;
 import org.junit.Test;
 
-public class AcceleratedComputationProducerTests implements HardwareFeatures {
+public class AcceleratedComputationProducerTests implements HardwareFeatures, CodeFeatures {
 	@Test
 	public void staticProducer() {
-		Producer<Vector> res = StaticProducer.of(new Vector(0.0, 1.0, 2.0));
-		Vector v = res.evaluate(new Object[0]);
+		Producer<Vector> res = vector(0.0, 1.0, 2.0);
+		Vector v = res.evaluate();
 		System.out.println(v);
 		assert v.getX() == 0.0;
 		assert v.getY() == 1.0;
@@ -23,7 +24,7 @@ public class AcceleratedComputationProducerTests implements HardwareFeatures {
 
 	@Test
 	public void scalarFromVector() {
-		AcceleratedComputationProducer<Scalar> res = (AcceleratedComputationProducer) compileProducer(new ScalarFromVector(new StaticProducer<>(new Vector(0.0, 1.0, 2.0)), ScalarFromVector.Y));
+		AcceleratedComputationProducer<Scalar> res = (AcceleratedComputationProducer) compileProducer(new ScalarFromVector(new Provider<>(new Vector(0.0, 1.0, 2.0)), ScalarFromVector.Y));
 		System.out.println(res.getFunctionDefinition());
 		Scalar s = res.evaluate(new Object[0]);
 		System.out.println(s.getValue());
@@ -32,7 +33,7 @@ public class AcceleratedComputationProducerTests implements HardwareFeatures {
 
 	@Test
 	public void compactScalarFromVector() {
-		ScalarFromVector res = new ScalarFromVector(StaticProducer.of(new Vector(0.0, 1.0, 2.0)), ScalarFromVector.Y);
+		ScalarFromVector res = new ScalarFromVector(vector(0.0, 1.0, 2.0), ScalarFromVector.Y);
 		res.compact();
 		Scalar s = compileProducer(res).evaluate();
 		System.out.println(s.getValue());
@@ -41,9 +42,9 @@ public class AcceleratedComputationProducerTests implements HardwareFeatures {
 
 	@Test
 	public void scalarProduct() {
-		Producer<Scalar> x = StaticProducer.of(new Scalar(3.0));
+		Producer<Scalar> x = scalar(3.0);
 		AcceleratedComputationProducer<Scalar> res = (AcceleratedComputationProducer)
-				compileProducer(new ScalarProduct(x, StaticProducer.of(new Scalar(0.5))));
+				compileProducer(new ScalarProduct(x, scalar(0.5)));
 		System.out.println(res.getFunctionDefinition());
 
 		Scalar s = res.evaluate();

@@ -68,6 +68,10 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 
 	@Override
 	public void addVariable(Variable v) {
+		if (v.getProducer() == null) {
+			throw new IllegalArgumentException("Producer must be provided for variable");
+		}
+
 		((OperationAdapter) getComputation()).addVariable(v);
 	}
 
@@ -86,8 +90,9 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 		return getValueName(v, pos, assignment, (enableKernel && isKernel()) ? kernelIndex : -1);
 	}
 
-	public Scope<T> compile() {
-		return compile(((OperationAdapter) getComputation()).getArgument(0));
+	@Override
+	public Scope<T> compile(NameProvider p) {
+		return compile(p, ((OperationAdapter) getComputation()).getArgument(0));
 	}
 
 	public Scope<T> compile(Variable<T> outputVariable) {

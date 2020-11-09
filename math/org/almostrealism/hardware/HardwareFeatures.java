@@ -22,7 +22,7 @@ import org.almostrealism.util.Producer;
 import java.util.Optional;
 
 public interface HardwareFeatures {
-	default <T extends MemWrapper> Runnable compileRunnable(Computation<T> c) {
+	default Runnable compileRunnable(Computation<?> c) {
 		return Hardware.getLocalHardware().getComputer().compileRunnable(c);
 	}
 

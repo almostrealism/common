@@ -4,16 +4,16 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayBank;
 import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.util.CodeFeatures;
 import org.almostrealism.util.PassThroughProducer;
-import org.almostrealism.util.StaticProducer;
+import org.almostrealism.util.Provider;
 import org.junit.Test;
 
-public class KernelTest {
+public class KernelTest implements CodeFeatures {
 	@Test
 	public void copyRay() {
 		TestKernel k = new TestKernel(Ray.blank(),
-				StaticProducer.of(
-						new Ray(new Vector(1, 2, 3),
+				v(new Ray(new Vector(1, 2, 3),
 								new Vector(4, 5, 6))));
 		Ray r = k.evaluate();
 		System.out.println(r);
@@ -28,7 +28,7 @@ public class KernelTest {
 									new PassThroughProducer<>(0));
 
 		RayBank output = RayBank.fromProducer(Ray.blank(), count);
-		RayBank input = RayBank.fromProducer(StaticProducer.of(
+		RayBank input = RayBank.fromProducer(v(
 				new Ray(new Vector(1, 2, 3),
 						new Vector(4, 5, 7))), count);
 

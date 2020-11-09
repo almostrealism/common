@@ -7,7 +7,6 @@ import io.almostrealism.code.Expression;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.io.PrintStreamPrintWriter;
-import org.almostrealism.util.StaticProducer;
 import org.junit.Test;
 
 import io.almostrealism.code.CodePrintWriter;

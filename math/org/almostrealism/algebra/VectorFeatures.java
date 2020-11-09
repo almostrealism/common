@@ -25,6 +25,7 @@ import org.almostrealism.algebra.computations.VectorFromScalars;
 import org.almostrealism.algebra.computations.VectorProduct;
 import org.almostrealism.algebra.computations.VectorSum;
 import org.almostrealism.util.Producer;
+import org.almostrealism.util.Provider;
 import org.almostrealism.util.StaticProducer;
 
 /**

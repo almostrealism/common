@@ -17,6 +17,8 @@
 package org.almostrealism.graph;
 
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.util.Producer;
+import org.almostrealism.util.Provider;
 
 public class ScalarCachedStateCell extends CachedStateCell<Scalar> {
 	public ScalarCachedStateCell() {
@@ -24,12 +26,16 @@ public class ScalarCachedStateCell extends CachedStateCell<Scalar> {
 	}
 
 	@Override
-	protected void assign(Scalar out, Scalar in) {
-		out.setValue(in.getValue());
+	protected Runnable assign(Provider<Scalar> out, Producer<Scalar> in) {
+		return () -> {
+			double v = in.evaluate().getValue();
+			if (v != 0) System.out.println("v = " + v);
+			out.get().setValue(v);
+		};
 	}
 
 	@Override
-	public void reset(Scalar out) {
-		out.setMem(new double[] { 0.0, 1.0 });
+	public Runnable reset(Provider<Scalar> out) {
+		return () -> out.get().setMem(new double[] { 0.0, 1.0 });
 	}
 }

@@ -14,7 +14,7 @@ import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.util.CodeFeatures;
 import org.almostrealism.util.PassThroughProducer;
-import org.almostrealism.util.StaticProducer;
+import org.almostrealism.util.Provider;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
@@ -53,10 +53,10 @@ public class MeshIntersectionTest implements HardwareFeatures, CodeFeatures {
 		data2 = mesh2().getMeshData();
 	}
 
-	protected VectorProducer abc(MeshData data) { return StaticProducer.of(data.get(0).getABC()); }
-	protected VectorProducer def(MeshData data) { return StaticProducer.of(data.get(0).getDEF()); }
-	protected VectorProducer jkl(MeshData data) { return StaticProducer.of(data.get(0).getJKL()); }
-	protected VectorProducer normal(MeshData data) { return StaticProducer.of(data.get(0).getNormal()); }
+	protected VectorProducer abc(MeshData data) { return v(data.get(0).getABC()); }
+	protected VectorProducer def(MeshData data) { return v(data.get(0).getDEF()); }
+	protected VectorProducer jkl(MeshData data) { return v(data.get(0).getJKL()); }
+	protected VectorProducer normal(MeshData data) { return v(data.get(0).getNormal()); }
 
 	protected TriangleIntersectAt intersection() {
 		return TriangleIntersectAt.construct(PassThroughProducer.of(TriangleData.class, 0),

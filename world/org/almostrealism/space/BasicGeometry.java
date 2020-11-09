@@ -23,7 +23,8 @@ import org.almostrealism.algebra.ZeroVector;
 import org.almostrealism.geometry.*;
 import org.almostrealism.io.DecodePostProcessing;
 import org.almostrealism.uml.ModelEntity;
-import org.almostrealism.util.StaticProducer;
+import org.almostrealism.util.CodeFeatures;
+import org.almostrealism.util.Provider;
 
 /**
  * Provides a simple mechanism to keep track of tranformation
@@ -33,7 +34,7 @@ import org.almostrealism.util.StaticProducer;
  * @author  Michael Murray
  */
 @ModelEntity
-public class BasicGeometry implements Positioned, Oriented, Scaled, DecodePostProcessing {
+public class BasicGeometry implements Positioned, Oriented, Scaled, DecodePostProcessing, CodeFeatures {
 	protected Vector location;
 	protected double size;
 	
@@ -261,15 +262,15 @@ public class BasicGeometry implements Positioned, Oriented, Scaled, DecodePostPr
 			if (getLocation() != null) {
 				completeTransform =
 						completeTransform.multiply(
-								new TranslationMatrix(StaticProducer.of(getLocation())).evaluate());
+								new TranslationMatrix(v(getLocation())).evaluate());
 			}
 
 			ScaleMatrix sm;
 
 			if (size == 1.0) {
-				sm = new ScaleMatrix(StaticProducer.of(scale));
+				sm = new ScaleMatrix(v(scale));
 			} else {
-				sm = new ScaleMatrix(StaticProducer.of(scale.multiply(size)));
+				sm = new ScaleMatrix(v(scale.multiply(size)));
 			}
 
 			this.completeTransform = this.completeTransform.multiply(sm.evaluate(new Object[0]));

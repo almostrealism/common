@@ -20,11 +20,11 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.graph.SummationCell;
 import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.util.Producer;
-import org.almostrealism.util.StaticProducer;
+import org.almostrealism.util.Provider;
 
 public class SummationCellOperation extends AcceleratedOperation {
 
 	public SummationCellOperation(SummationCell cell, Producer<Scalar> protein) {
-		super("push", false, new StaticProducer<>(cell.getCachedValue()), protein);
+		super("push", false, new Provider<>(cell.getCachedValue()), protein);
 	}
 }

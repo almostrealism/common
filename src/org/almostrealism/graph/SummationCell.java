@@ -17,10 +17,8 @@
 package org.almostrealism.graph;
 
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.computations.ScalarSum;
 import org.almostrealism.graph.computations.SummationCellOperation;
 import org.almostrealism.util.Producer;
-import org.almostrealism.util.StaticProducer;
 
 public class SummationCell extends ScalarCachedStateCell {
 	@Override
