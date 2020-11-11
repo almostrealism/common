@@ -27,11 +27,7 @@ public class ScalarCachedStateCell extends CachedStateCell<Scalar> {
 
 	@Override
 	protected Runnable assign(Provider<Scalar> out, Producer<Scalar> in) {
-		return () -> {
-			double v = in.evaluate().getValue();
-			if (v != 0) System.out.println("v = " + v);
-			out.get().setValue(v);
-		};
+		return () -> out.get().setValue(in.evaluate().getValue());
 	}
 
 	@Override

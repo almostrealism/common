@@ -61,18 +61,10 @@ public abstract class CachedStateCell<T> extends FilteredCell<T> implements Fact
 
 	@Override
 	public Runnable tick() {
-		Runnable push = super.push(null);
-
-		return () -> {
-			assign(p(outValue), v(cachedValue)).run();
-			reset(p(cachedValue)).run();
-			push.run();
-		};
-
-//		RunnableList tick = new RunnableList();
-//		tick.add(assign(p(outValue), v(cachedValue)));
-//		tick.add(reset(p(cachedValue)));
-//		tick.add(super.push(null));
-//		return tick;
+		RunnableList tick = new RunnableList();
+		tick.add(assign(p(outValue), p(cachedValue)));
+		tick.add(reset(p(cachedValue)));
+		tick.add(super.push(null));
+		return tick;
 	}
 }
