@@ -20,19 +20,24 @@ import org.jocl.CL;
 import org.jocl.CLException;
 import org.jocl.cl_program;
 
+import java.util.function.BiFunction;
+import java.util.function.Function;
+
 /**
  * Wrapper for a cl_program that contains the accelerated functions used in the running application.
  */
-public class HardwareOperatorMap<T extends MemWrapper> {
+public class HardwareOperatorMap<T extends MemWrapper> implements BiFunction<String, CLException, HardwareException> {
 	private cl_program prog;
+	private String src;
 
 	protected HardwareOperatorMap() { }
 
 	public HardwareOperatorMap(Hardware h, String src) {
-		init(h, src);
+		this.src = src;
+		init(h);
 	}
 
-	protected void init(Hardware h, String src) {
+	protected void init(Hardware h) {
 		int[] result = new int[1];
 		prog = CL.clCreateProgramWithSource(h.getContext(), 1, new String[] { src }, null, result);
 		if (result[0] != 0) throw new RuntimeException("Error creating HardwareOperatorMap: " + result[0]);
@@ -52,9 +57,18 @@ public class HardwareOperatorMap<T extends MemWrapper> {
 		}
 	}
 
-	public HardwareOperator<T> get(String key) { return new HardwareOperator<>(prog, key); }
+	public HardwareOperator<T> get(String key) { return new HardwareOperator<>(prog, key, 2, this); }
 
-	public HardwareOperator<T> get(String key, int argCount) { return new HardwareOperator<>(prog, key, argCount); }
+	public HardwareOperator<T> get(String key, int argCount) { return new HardwareOperator<>(prog, key, argCount, this); }
+
+	@Override
+	public HardwareException apply(String name, CLException e) {
+		if ("CL_INVALID_KERNEL_NAME".equals(e.getMessage())) {
+			return new HardwareException("\"" + name + "\" is not a valid kernel name", e, src);
+		} else {
+			return new HardwareException(e.getMessage(), e, src);
+		}
+	}
 
 	@Override
 	public void finalize() { CL.clReleaseProgram(prog); }

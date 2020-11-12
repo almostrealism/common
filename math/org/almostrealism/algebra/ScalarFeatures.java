@@ -18,6 +18,7 @@ package org.almostrealism.algebra;
 
 import org.almostrealism.algebra.computations.DefaultScalarProducer;
 import org.almostrealism.algebra.computations.ScalarPow;
+import org.almostrealism.algebra.computations.ScalarProduct;
 import org.almostrealism.algebra.computations.ScalarSum;
 import org.almostrealism.util.Producer;
 import org.almostrealism.util.StaticProducer;
@@ -27,6 +28,14 @@ public interface ScalarFeatures {
 
 	default ScalarProducer scalarAdd(Producer<Scalar> a, Producer<Scalar> b) {
 		return new DefaultScalarProducer(new ScalarSum(a, b));
+	}
+
+	default ScalarProducer scalarSubtract(Producer<Scalar> a, Producer<Scalar> b) {
+		return new DefaultScalarProducer(new ScalarSum(a, scalarMinus(b)));
+	}
+
+	default ScalarProducer scalarMinus(Producer<Scalar> v) {
+		return new DefaultScalarProducer(new ScalarProduct(minusOne, v));
 	}
 
 	default ScalarProducer pow(Producer<Scalar> base, Producer<Scalar> exponent) {

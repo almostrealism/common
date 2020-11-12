@@ -38,6 +38,8 @@ public class AcceleratedOperation extends OperationAdapter implements Function<O
 
 	private boolean kernel;
 
+	private Class cls;
+
 	public AcceleratedOperation(String function, boolean kernel, Producer<?>... args) {
 		super(args);
 		setFunctionName(function);
@@ -50,6 +52,10 @@ public class AcceleratedOperation extends OperationAdapter implements Function<O
 		this.kernel = kernel;
 	}
 
+	public void setSourceClass(Class cls) { this.cls = cls; }
+
+	public Class getSourceClass() { return cls == null ? getClass() : cls; }
+
 	public HardwareOperator getOperator() {
 		// TODO  This needs to be by class in addition to function, as function names may collide
 		synchronized (AcceleratedProducer.class) {
@@ -59,7 +65,7 @@ public class AcceleratedOperation extends OperationAdapter implements Function<O
 
 			if (operators.get(getFunctionName()).get() == null) {
 				operators.get(getFunctionName()).set(Hardware.getLocalHardware()
-						.getFunctions().getOperators(getClass()).get(getFunctionName(), getArgsCount()));
+						.getFunctions().getOperators(getSourceClass()).get(getFunctionName(), getArgsCount()));
 			}
 		}
 

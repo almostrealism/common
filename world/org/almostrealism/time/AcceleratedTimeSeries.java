@@ -16,7 +16,14 @@
 
 package org.almostrealism.time;
 
-public class AcceleratedTimeSeries extends TemporalScalarBank {
+import org.almostrealism.hardware.AcceleratedOperation;
+import org.almostrealism.hardware.HardwareFeatures;
+import org.almostrealism.util.AcceleratedAssignment;
+import org.almostrealism.util.CodeFeatures;
+import org.almostrealism.util.DynamicProducer;
+import org.almostrealism.util.Producer;
+
+public class AcceleratedTimeSeries extends TemporalScalarBank implements CodeFeatures, HardwareFeatures {
 
 	public AcceleratedTimeSeries(int maxEntries) {
 		super(maxEntries, CacheLevel.NONE);
@@ -32,7 +39,7 @@ public class AcceleratedTimeSeries extends TemporalScalarBank {
 	public int getLength() { return getEndCursorIndex() - getBeginCursorIndex(); }
 	public boolean isEmpty() { return getLength() == 0; }
 
-	public synchronized void add(TemporalScalar value) {
+	public void add(TemporalScalar value) {
 		if (getEndCursorIndex() >= (getCount() - 1)) {
 			throw new RuntimeException("AcceleratedTimeSeries is full");
 		}
@@ -41,15 +48,31 @@ public class AcceleratedTimeSeries extends TemporalScalarBank {
 		set(getEndCursorIndex(), value);
 	}
 
-	public synchronized void purge(double time) {
-		if (isEmpty()) return;
-
-		for (int i = getBeginCursorIndex() + 1; i < getEndCursorIndex(); i++) {
-			if (get(i).getTime() > time) {
-				setBeginCursorIndex(i - 1);
-				return;
-			}
+	@Deprecated
+	public void add(double time, double value) {
+		if (getEndCursorIndex() >= (getCount() - 1)) {
+			throw new RuntimeException("AcceleratedTimeSeries is full");
 		}
+
+		setEndCursorIndex(getEndCursorIndex() + 1);
+		set(getEndCursorIndex(), time, value);
+	}
+
+	public Runnable add(Producer<TemporalScalar> value) {
+		return compileRunnable(new AcceleratedAssignment<>(2, head(), value));
+	}
+
+	protected Producer<TemporalScalar> head() {
+		return new DynamicProducer<>(args -> {
+			setEndCursorIndex(getEndCursorIndex() + 1);
+			return get(getEndCursorIndex());
+		});
+	}
+
+	public Runnable purge(Producer<CursorPair> time) {
+		AcceleratedOperation op = new AcceleratedOperation("xyz", false, p(this), time);
+		op.setSourceClass(AcceleratedTimeSeries.class);
+		return op;
 	}
 
 	public synchronized TemporalScalar valueAt(double time) {

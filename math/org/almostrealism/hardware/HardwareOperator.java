@@ -21,7 +21,9 @@ import org.almostrealism.util.Producer;
 import org.jocl.*;
 
 import java.util.concurrent.Callable;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 /**
  * {@link HardwareOperator}s are intended to be used with {@link ThreadLocal}.
@@ -41,14 +43,14 @@ public class HardwareOperator<T extends MemWrapper> implements Consumer<Object[]
 
 	private cl_kernel kernel;
 
-	public HardwareOperator(cl_program program, String name) {
-		this(program, name, 2);
-	}
+	private BiFunction<String, CLException, HardwareException> exceptionProcessor;
 
-	public HardwareOperator(cl_program program, String name, int argCount) {
+	public HardwareOperator(cl_program program, String name, int argCount,
+							BiFunction<String, CLException, HardwareException> exceptionProcessor) {
 		this.prog = program;
 		this.name = name;
 		this.argCount = argCount;
+		this.exceptionProcessor = exceptionProcessor;
 	}
 
 	// TODO  How do these kernels get released when done?
@@ -57,11 +59,7 @@ public class HardwareOperator<T extends MemWrapper> implements Consumer<Object[]
 		try {
 			return CL.clCreateKernel(prog, name, null);
 		} catch (CLException e) {
-			if ("CL_INVALID_KERNEL_NAME".equals(e.getMessage())) {
-				throw new HardwareException("\"" + name + "\" is not a valid kernel name", e);
-			} else {
-				throw e;
-			}
+			throw exceptionProcessor == null ? e : exceptionProcessor.apply(name, e);
 		}
 	}
 
@@ -137,6 +135,7 @@ public class HardwareOperator<T extends MemWrapper> implements Consumer<Object[]
 					new long[] { globalWorkOffset }, new long[] { globalWorkSize },
 					null, 0, null, null);
 		} catch (CLException e) {
+			// TODO  This should use the exception processor also, but theres no way to pass the message details
 			throw new HardwareException(e.getMessage() + " for function " + name +
 							" (index = " + index + " argCount = " + argCount + ")", e);
 		}
