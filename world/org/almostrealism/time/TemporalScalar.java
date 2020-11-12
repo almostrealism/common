@@ -19,6 +19,8 @@ package org.almostrealism.time;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.hardware.PooledMem;
+import org.almostrealism.util.Producer;
+import static org.almostrealism.util.Ops.*;
 
 public class TemporalScalar extends Pair {
 	public TemporalScalar() { }
@@ -43,5 +45,9 @@ public class TemporalScalar extends Pair {
 	@Override
 	public PooledMem getDefaultDelegate() {
 		return TemporalScalarPool.getLocal();
+	}
+
+	public static Producer<TemporalScalar> blank() {
+		return ops().v(args -> new TemporalScalar());
 	}
 }

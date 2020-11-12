@@ -17,6 +17,7 @@
 package org.almostrealism.time;
 
 import org.almostrealism.hardware.AcceleratedOperation;
+import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.util.AcceleratedAssignment;
 import org.almostrealism.util.CodeFeatures;
@@ -70,12 +71,18 @@ public class AcceleratedTimeSeries extends TemporalScalarBank implements CodeFea
 	}
 
 	public Runnable purge(Producer<CursorPair> time) {
-		AcceleratedOperation op = new AcceleratedOperation("xyz", false, p(this), time);
+		AcceleratedOperation op = new AcceleratedOperation("prg", false, p(this), time);
 		op.setSourceClass(AcceleratedTimeSeries.class);
 		return op;
 	}
 
-	public synchronized TemporalScalar valueAt(double time) {
+	public Producer<TemporalScalar> valueAt(Producer<CursorPair> cursor) {
+		AcceleratedProducer op = new AcceleratedProducer("vat", TemporalScalar.blank(), p(this), cursor);
+		op.setSourceClass(AcceleratedTimeSeries.class);
+		return op;
+	}
+
+	public TemporalScalar valueAt(double time) {
 		TemporalScalar left = null;
 		TemporalScalar right = null;
 

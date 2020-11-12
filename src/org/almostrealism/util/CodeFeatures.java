@@ -36,6 +36,8 @@ import org.almostrealism.geometry.RayProducer;
 import org.almostrealism.graph.mesh.TriangleData;
 import org.almostrealism.graph.mesh.TrianglePointData;
 
+import java.util.function.Function;
+
 public interface CodeFeatures extends ScalarFeatures, VectorFeatures {
 	default <T> Provider<T> p(T value) { return new Provider<>(value); }
 
@@ -57,6 +59,10 @@ public interface CodeFeatures extends ScalarFeatures, VectorFeatures {
 
 	default <T> Producer<T> v(Class<T> type, int argIndex) {
 		return value(type, argIndex);
+	}
+
+	default <T> Producer<T> v(Function<Object[], T> function) {
+		return new DynamicProducer<>(function);
 	}
 
 	default ScalarProducer value(double value) { return scalar(value); }
