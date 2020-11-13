@@ -35,6 +35,8 @@ import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayProducer;
 import org.almostrealism.graph.mesh.TriangleData;
 import org.almostrealism.graph.mesh.TrianglePointData;
+import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.MemWrapper;
 
 import java.util.function.Function;
 
@@ -63,6 +65,10 @@ public interface CodeFeatures extends ScalarFeatures, VectorFeatures {
 
 	default <T> Producer<T> v(Function<Object[], T> function) {
 		return new DynamicProducer<>(function);
+	}
+
+	default <T extends MemWrapper> Runnable a(int memLength, Producer<T> result, Producer<T> value) {
+		return Hardware.getLocalHardware().getComputer().compileRunnable(new AcceleratedAssignment<>(memLength, result, value));
 	}
 
 	default ScalarProducer value(double value) { return scalar(value); }

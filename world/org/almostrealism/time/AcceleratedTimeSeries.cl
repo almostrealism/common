@@ -14,7 +14,7 @@ __kernel void prg(__global double *bank, __global double *cursors,
 __kernel void vat(__global double *res, __global double *bank, __global double *cursors,
                 const int resOffset, const int bankOffset, const int cursorsOffset,
                 const int resSize, const int bankSize, const int cursorsSize) {
-    res[resOffset] = cursors[cursorsOffset];
+    res[resOffset + 1] = 1.0;
 
 	int left = -1;
 	int right = -1;
@@ -43,5 +43,5 @@ __kernel void vat(__global double *res, __global double *bank, __global double *
 	double t1 = cursors[cursorsOffset] - bank[2 * left];
 	double t2 = bank[2 * right] - bank[2 * left];
 
-	res[resOffset + 1] = v1 + (t1 / t2) * (v2 - v1);
+	res[resOffset] = v1 + (t1 / t2) * (v2 - v1);
 }

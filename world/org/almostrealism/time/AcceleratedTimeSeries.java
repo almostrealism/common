@@ -16,6 +16,7 @@
 
 package org.almostrealism.time;
 
+import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.hardware.HardwareFeatures;
@@ -76,7 +77,7 @@ public class AcceleratedTimeSeries extends TemporalScalarBank implements CodeFea
 		return op;
 	}
 
-	public Producer<TemporalScalar> valueAt(Producer<CursorPair> cursor) {
+	public Producer<Scalar> valueAt(Producer<CursorPair> cursor) {
 		AcceleratedProducer op = new AcceleratedProducer("vat", TemporalScalar.blank(), p(this), cursor);
 		op.setSourceClass(AcceleratedTimeSeries.class);
 		return op;
