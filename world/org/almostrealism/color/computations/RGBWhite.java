@@ -24,7 +24,7 @@ import org.almostrealism.util.AcceleratedStaticRGBComputation;
 public class RGBWhite extends AcceleratedStaticRGBComputation {
 	private static RGBWhite local = new RGBWhite();
 
-	public RGBWhite() { super(new RGB(1.0, 1.0, 1.0), RGB.blank()); }
+	public RGBWhite() { super(new RGB(1.0, 1.0, 1.0), () -> RGB.blank()); }
 
 	public static RGBWhite getInstance() { return local; }
 

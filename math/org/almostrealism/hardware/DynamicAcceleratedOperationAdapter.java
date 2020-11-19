@@ -20,13 +20,14 @@ import io.almostrealism.code.ComputationOperationAdapter;
 import org.almostrealism.util.Producer;
 
 import java.util.Arrays;
+import java.util.function.Supplier;
 
-public abstract class DynamicAcceleratedOperationAdapter extends ComputationOperationAdapter<Void> implements ComputerFeatures {
-	public DynamicAcceleratedOperationAdapter(Producer<?>... inputArgs) {
-		this(inputArgs, new Producer[0]);
+public abstract class DynamicAcceleratedOperationAdapter<T> extends ComputationOperationAdapter<T, Void> implements ComputerFeatures {
+	public DynamicAcceleratedOperationAdapter(Supplier<Producer<T>>... inputArgs) {
+		this(inputArgs, new Object[0]);
 	}
 
-	public DynamicAcceleratedOperationAdapter(Producer<?>[] inputArgs, Object[] additionalArguments) {
+	public DynamicAcceleratedOperationAdapter(Supplier<Producer<T>>[] inputArgs, Object[] additionalArguments) {
 		this.setArguments(Arrays.asList(arguments(AcceleratedProducer.producers(inputArgs, additionalArguments))));
 		init();
 	}

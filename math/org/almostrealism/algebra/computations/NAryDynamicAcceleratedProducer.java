@@ -31,13 +31,14 @@ import org.almostrealism.util.Producer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.IntFunction;
+import java.util.function.Supplier;
 
-public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> extends DynamicAcceleratedProducerAdapter<T> implements ComputerFeatures {
+public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> extends DynamicAcceleratedProducerAdapter<T, T> implements ComputerFeatures {
 	private String operator;
 	private Expression<Double> value[];
 	private boolean isStatic;
 
-	public NAryDynamicAcceleratedProducer(String operator, int memLength, Producer<T> blank, Producer<T>... producers) {
+	public NAryDynamicAcceleratedProducer(String operator, int memLength, Supplier<Producer<T>> blank, Supplier<Producer<? extends T>>... producers) {
 		super(memLength, blank, producers);
 		this.operator = operator;
 	}
@@ -73,10 +74,10 @@ public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> exten
 
 			value = new Expression[getMemLength()];
 
-			List<Argument> p = getArguments();
+			List<Argument<? extends T>> p = getArguments();
 
-			List<Argument> staticProducers = extractStaticProducers(p);
-			List<Argument> dynamicProducers = extractDynamicProducers(p);
+			List<Argument<? extends T>> staticProducers = extractStaticProducers(p);
+			List<Argument<? extends T>> dynamicProducers = extractDynamicProducers(p);
 
 			boolean valueStatic[] = new boolean[value.length];
 
@@ -112,7 +113,7 @@ public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> exten
 
 				for (int i = 0; i < dynamicProducers.size(); i++) {
 					for (int j = 1; j < ((OperationAdapter) dynamicProducers.get(i).getProducer()).getArguments().size(); j++) {
-						newArgs.add(((OperationAdapter) dynamicProducers.get(i).getProducer()).getArguments().get(j));
+						newArgs.add(((OperationAdapter<?>) dynamicProducers.get(i).getProducer()).getArguments().get(j));
 					}
 
 					Expression e = getInputProducerValue(dynamicProducers.get(i), pos);

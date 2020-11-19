@@ -19,10 +19,13 @@ package org.almostrealism.util;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorBank;
 import org.almostrealism.algebra.VectorProducer;
+import org.almostrealism.algebra.VectorSupplier;
 import org.almostrealism.hardware.MemoryBank;
 
-public class AcceleratedStaticVectorComputation extends AcceleratedStaticComputation<Vector> {
-	public AcceleratedStaticVectorComputation(Vector value, Producer<Vector> output) {
+import java.util.function.Supplier;
+
+public class AcceleratedStaticVectorComputation extends AcceleratedStaticComputation<Vector> implements VectorSupplier {
+	public AcceleratedStaticVectorComputation(Vector value, Supplier<Producer<Vector>> output) {
 		super(value, output);
 	}
 }

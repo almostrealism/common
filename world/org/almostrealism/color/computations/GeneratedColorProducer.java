@@ -34,7 +34,7 @@ public class GeneratedColorProducer<T> extends ColorProducerAdapter implements G
 				t.operate(args.length > 0 ? (Triple) args[0] : new Vector(1.0, 1.0, 1.0))));
 	}
 
-	public static <T> GeneratedColorProducer<T> fromProducer(T generator, Producer<RGB> p) {
+	public static <T> GeneratedColorProducer<T> fromProducer(T generator, Producer<? extends RGB> p) {
 		return new GeneratedColorProducer(generator, p);
 	}
 

@@ -23,11 +23,12 @@ import org.almostrealism.hardware.MemWrapper;
 
 import java.util.function.Function;
 import java.util.function.IntFunction;
+import java.util.function.Supplier;
 
-public class AcceleratedStaticComputation<T extends MemWrapper> extends DynamicAcceleratedProducerAdapter<T> {
+public class AcceleratedStaticComputation<T extends MemWrapper> extends DynamicAcceleratedProducerAdapter<MemWrapper, T> {
 	private T value;
 
-	public AcceleratedStaticComputation(T value, Producer<T> output) {
+	public AcceleratedStaticComputation(T value, Supplier<Producer<T>> output) {
 		super(value.getMemLength(), output);
 		this.value = value;
 	}

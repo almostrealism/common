@@ -17,6 +17,7 @@
 package org.almostrealism.space;
 
 import java.util.*;
+import java.util.function.Supplier;
 
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;
@@ -526,7 +527,8 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 			if (color == null) {
 				color = getParent().shade(p);
 			} else {
-				color = new RGBAdd(color, getParent().shade(p));
+				final Producer<RGB> fc = color;
+				color = new RGBAdd(() -> fc, () -> getParent().shade(p));
 			}
 		}
 		
@@ -559,33 +561,34 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 	/**
 	 * @return  The color of this AbstractSurface at the specified point as an RGB object.
 	 */
-	public RGBProducer getColorAt(Producer<Vector> point, boolean transform) {
+	public RGBProducer getColorAt(Producer<? extends Vector> point, boolean transform) {
 	    if (transform && getTransform(true) != null)
 	    	point = getTransform(true).getInverse().transform(point, TransformMatrix.TRANSFORM_AS_LOCATION);
-	    
-	    Producer<RGB> colorAt = v(getColor());
+
+		Producer<? extends Vector> fp = point;
+	    Supplier<Producer<? extends RGB>> colorAt = v(getColor());
 	    
 	    if (textures.length > 0) {
-	    	List<Producer<RGB>> texColors = new ArrayList<>();
+	    	List<Supplier<Producer<RGB>>> texColors = new ArrayList<>();
 
 	        for (int i = 0; i < this.textures.length; i++) {
 	        	Texture t = textures[i];
-	            texColors.add(new AdaptProducerRGB(new DynamicProducer<>(args -> t.operate((Triple) args[0])), point));
+	            texColors.add(() -> new AdaptProducerRGB(new DynamicProducer<>(args -> t.operate((Triple) args[0])), fp));
 	        }
 	        
-	        colorAt = compileProducer(new ColorProduct(
-	        		CollectionUtils.include(new Producer[0], colorAt, texColors.toArray(new Producer[0]))));
+	        colorAt = new ColorProduct(
+	        		CollectionUtils.include(new Supplier[0], colorAt, texColors.toArray(new Supplier[0])));
 	    }
 
 	    if (this.parent != null)
-	        colorAt = compileProducer(new ColorProduct(colorAt, this.parent.getColorAt(point, transform)));
+	        colorAt = new ColorProduct(colorAt, () -> this.parent.getColorAt(fp, transform));
 		
-		return GeneratedColorProducer.fromProducer(this, colorAt);
+		return GeneratedColorProducer.fromProducer(this, colorAt.get());
 	}
 
 	@Override
 	public RGB operate(Vector in) {
-		return getValueAt(v(in)).evaluate();
+		return getValueAt((Producer<Vector>) v(in).get()).evaluate();
 	}
 
 	@Override

@@ -22,31 +22,31 @@ import org.almostrealism.util.Producer;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import static org.almostrealism.util.Ops.*;
 
-public class AcceleratedProducer<T extends MemWrapper> extends AcceleratedOperation implements KernelizedProducer<T> {
-
-	public AcceleratedProducer(String function, Producer<T> result, Producer<?>... inputArgs) {
+public class AcceleratedProducer<I extends MemWrapper, O extends MemWrapper> extends AcceleratedOperation implements KernelizedProducer<O> {
+	public AcceleratedProducer(String function, Supplier<Producer<O>> result, Supplier<Producer<? extends I>>... inputArgs) {
 		this(function, false, result, inputArgs, new Object[0]);
 	}
 
-	public AcceleratedProducer(String function, Producer<T> result, Producer<?> inputArgs[], Object additionalArguments[]) {
+	public AcceleratedProducer(String function, Supplier<Producer<O>> result, Supplier<Producer<? extends I>> inputArgs[], Object additionalArguments[]) {
 		this(function, false, result, inputArgs, additionalArguments);
 	}
 
-	public AcceleratedProducer(String function, boolean kernel, Producer<T> result, Producer<?> inputArgs[], Object additionalArguments[]) {
+	public AcceleratedProducer(String function, boolean kernel, Supplier<Producer<O>> result, Supplier<Producer<? extends I>> inputArgs[], Object additionalArguments[]) {
 		this(function, kernel, result, producers(inputArgs, additionalArguments));
 	}
 
-	public AcceleratedProducer(String function, boolean kernel, Producer<T> result, Producer<?>... inputArgs) {
+	public AcceleratedProducer(String function, boolean kernel, Supplier<Producer<O>> result, Supplier<Producer<? extends I>>... inputArgs) {
 		super(function, kernel, includeResult(result, inputArgs));
 	}
 
 	@Override
-	public T evaluate(Object[] args) { return (T) apply(args)[0]; }
+	public O evaluate(Object[] args) { return (O) apply(args)[0]; }
 
 	/**
 	 * If {@link #isKernel()} returns true, this method will pass the
@@ -66,7 +66,7 @@ public class AcceleratedProducer<T extends MemWrapper> extends AcceleratedOperat
 	}
 
 	@Override
-	public MemoryBank<T> createKernelDestination(int size) {
+	public MemoryBank<O> createKernelDestination(int size) {
 		throw new RuntimeException("Not implemented");
 	}
 
@@ -87,16 +87,16 @@ public class AcceleratedProducer<T extends MemWrapper> extends AcceleratedOperat
 		}
 	}
 
-	public static Producer[] includeResult(Producer res, Producer... p) {
-		return CollectionUtils.include(new Producer[0], res, p);
+	public static Supplier[] includeResult(Supplier res, Supplier... p) {
+		return CollectionUtils.include(new Supplier[0], res, p);
 	}
 
 	public static MemoryBank[] includeResult(MemoryBank res, MemoryBank... p) {
 		return CollectionUtils.include(new MemoryBank[0], res, p);
 	}
 
-	public static List<Argument> excludeResult(List<Argument> p) {
-		List<Argument> r = new ArrayList<>();
+	public static <T> List<Argument<? extends T>> excludeResult(List<Argument<? extends T>> p) {
+		List<Argument<? extends T>> r = new ArrayList<>();
 		for (int i = 1; i < p.size(); i++) r.add(p.get(i));
 		return r;
 	}
@@ -107,15 +107,16 @@ public class AcceleratedProducer<T extends MemWrapper> extends AcceleratedOperat
 		return q;
 	}
 
-	public static Producer[] producers(Producer inputs[], Object fixedValues[]) {
-		Producer p[] = new Producer[inputs.length + fixedValues.length];
+	public static Supplier[] producers(Supplier inputs[], Object fixedValues[]) {
+		Supplier p[] = new Supplier[inputs.length + fixedValues.length];
 
 		for (int i = 0; i < inputs.length; i++) {
 			p[i] = inputs[i];
 		}
 
 		for (int i = 0; i < fixedValues.length; i++) {
-			p[inputs.length + i] = fixedValues == null ? null : ops().v(fixedValues[i]);
+			Object o = fixedValues[i];
+			p[inputs.length + i] = fixedValues == null ? null : () -> ops().v(o);
 		}
 
 		return p;

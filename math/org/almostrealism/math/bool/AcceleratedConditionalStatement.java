@@ -18,6 +18,7 @@ package org.almostrealism.math.bool;
 
 import io.almostrealism.code.Argument;
 import io.almostrealism.code.Variable;
+import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.util.Producer;
 
@@ -29,8 +30,8 @@ public interface AcceleratedConditionalStatement<T extends MemWrapper> extends P
 
 	default List<Variable<?>> getVariables() { return Arrays.asList(); }
 
-	List<Argument> getOperands();
+	List<Argument<Scalar>> getOperands();
 
-	Argument getTrueValue();
-	Argument getFalseValue();
+	Argument<T> getTrueValue();
+	Argument<T> getFalseValue();
 }

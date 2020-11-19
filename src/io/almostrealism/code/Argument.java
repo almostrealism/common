@@ -21,6 +21,7 @@ import org.almostrealism.util.Producer;
 import org.almostrealism.util.ProducerWithRank;
 
 import java.util.function.IntFunction;
+import java.util.function.Supplier;
 
 /**
  * A parameter for a {@link Method}. Note that this type will extract
@@ -32,33 +33,35 @@ import java.util.function.IntFunction;
 public class Argument<T> extends Variable<T> {
 	private int sortHint;
 
-	public Argument(String name) { this(name, null, (Producer) null); }
-	public Argument(String name, String annotation) { this(name, annotation, (Producer) null); }
+	public Argument(String name) { this(name, null, (Supplier<Producer<? extends T>>) null); }
+	public Argument(String name, String annotation) { this(name, annotation, (Supplier<Producer<? extends T>>) null); }
 	public Argument(String name, Class<T> type) { super(name, null, type, null); }
 	public Argument(String name, String annotation, Class<T> type) {
 		super(name, annotation, type, null);
 	}
-	public Argument(Producer<T> p) { this(null, null, p); }
-	public Argument(String name, String annotation, Producer<T> p) { super(name, annotation, p); }
-	public Argument(String name, Producer<T> p) { super(name, (String) null, p); }
+	public Argument(Supplier<Producer<? extends T>> p) { this(null, null, p); }
+	public Argument(String name, String annotation, Supplier<Producer<? extends T>> p) { super(name, annotation, p); }
+	public Argument(String name, Supplier<Producer<? extends T>> p) { super(name, (String) null, p); }
 	public Argument(String name, Method<T> m) { super(name, null, m); }
 
 	public void setSortHint(int hint) { this.sortHint = hint; }
 	public int getSortHint() { return sortHint; }
 
 	@Override
-	public void setProducer(Producer<T> producer) {
-		w: while (producer instanceof ProducerWithRank || producer instanceof GeneratedColorProducer) {
-			if (producer instanceof ProducerWithRank) {
-				if (((ProducerWithRank<T>) producer).getProducer() == producer) {
+	public void setProducer(Supplier<Producer<? extends T>> producer) {
+		w: while (producer.get() instanceof ProducerWithRank || producer.get() instanceof GeneratedColorProducer) {
+			Producer<? extends T> p = producer.get();
+
+			if (p instanceof ProducerWithRank) {
+				if (((ProducerWithRank<T>) p).getProducer() == p) {
 					break w;
 				}
 
-				producer = ((ProducerWithRank) producer).getProducer();
+				producer = () -> ((ProducerWithRank)  p).getProducer();
 			}
 
 			if (producer instanceof GeneratedColorProducer) {
-				producer = ((GeneratedColorProducer) producer).getProducer();
+				producer = () -> ((GeneratedColorProducer) p).getProducer();
 			}
 		}
 

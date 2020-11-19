@@ -26,7 +26,6 @@ import org.almostrealism.graph.mesh.TriangleData;
 import org.almostrealism.graph.mesh.TriangleDataProducer;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.util.CodeFeatures;
-import org.almostrealism.util.Ops;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -74,7 +73,7 @@ public class TriangleDataTest implements CodeFeatures {
 	@Test
 	public void triangleData() {
 		MeshPointData points = points();
-		TriangleDataProducer td = TriangleDataProducer.of(v(points.get(0).getP1()),
+		TriangleDataProducer td = TriangleDataProducer.triangle(v(points.get(0).getP1()),
 														v(points.get(0).getP2()),
 														v(points.get(0).getP3()));
 		triangleDataAssertions(td.evaluate());
@@ -83,7 +82,7 @@ public class TriangleDataTest implements CodeFeatures {
 	@Test
 	public void triangleDataCompact() {
 		MeshPointData points = points();
-		TriangleDataProducer td = TriangleDataProducer.of(v(points.get(0).getP1()),
+		TriangleDataProducer td = TriangleDataProducer.triangle(v(points.get(0).getP1()),
 				v(points.get(0).getP2()),
 				v(points.get(0).getP3()));
 		td.compact();
@@ -93,7 +92,7 @@ public class TriangleDataTest implements CodeFeatures {
 	@Test
 	public void triangleDataKernel() {
 		MeshPointData points = points();
-		TriangleDataProducer td = TriangleDataProducer.of(points(0));
+		TriangleDataProducer td = TriangleDataProducer.triangle(points(0));
 		td.compact();
 
 		MeshData output = new MeshData(1);

@@ -16,20 +16,17 @@
 
 package org.almostrealism.algebra.computations;
 
-import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.util.Producer;
 
+import java.util.function.Supplier;
+
 public class OriginDotOrigin extends DotProduct {
-	public OriginDotOrigin(Producer<Ray> r) {
+	public OriginDotOrigin(Supplier<Producer<? extends Ray>> r) {
 		this(new RayOrigin(r));
 	}
 
 	protected OriginDotOrigin(RayOrigin o) {
-		this(new DefaultVectorProducer(o), true);
-	}
-
-	private OriginDotOrigin(Producer<Vector> origin, boolean ignore) {
-		super(origin, origin);
+		super(o, o);
 	}
 }

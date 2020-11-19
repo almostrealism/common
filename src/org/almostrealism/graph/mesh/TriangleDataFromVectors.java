@@ -28,18 +28,19 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.IntFunction;
+import java.util.function.Supplier;
 
-public class TriangleDataFromVectors extends DynamicAcceleratedProducerAdapter<TriangleData> {
+public class TriangleDataFromVectors extends DynamicAcceleratedProducerAdapter<Vector, TriangleData> {
 	private Expression<Double> value[];
 
-	public TriangleDataFromVectors(Producer<Vector> abc, Producer<Vector> def,
-								   Producer<Vector> jkl) {
+	public TriangleDataFromVectors(Supplier<Producer<? extends Vector>> abc, Supplier<Producer<? extends Vector>> def,
+								   Supplier<Producer<? extends Vector>> jkl) {
 		this(abc, def, jkl, ops().crossProduct(abc, def).normalize());
 	}
 
-	public TriangleDataFromVectors(Producer<Vector> abc, Producer<Vector> def,
-								   Producer<Vector> jkl, Producer<Vector> normal) {
-		super(12, TriangleData.blank(), abc, def, jkl, normal);
+	public TriangleDataFromVectors(Supplier<Producer<? extends Vector>> abc, Supplier<Producer<? extends Vector>> def,
+								   Supplier<Producer<? extends Vector>> jkl, Supplier<Producer<? extends Vector>> normal) {
+		super(12, () -> TriangleData.blank(), abc, def, jkl, normal);
 	}
 
 	@Override
@@ -62,23 +63,16 @@ public class TriangleDataFromVectors extends DynamicAcceleratedProducerAdapter<T
 		if (value == null) {
 			value = new Expression[12];
 
-			List<Argument> newArgs = new ArrayList<>();
-			newArgs.add(getArguments().get(0));
-
 			i: for (int i = 1; i < getArguments().size(); i++) {
-				Optional<Computation> c = decompile(getArguments().get(i).getProducer());
-
 				// Ignore those that are not of a compactable kind
-				if (c.orElse(null) instanceof DynamicAcceleratedProducerAdapter == false) {
-					newArgs.add(getArguments().get(i));
+				if (getArguments().get(i).getProducer() instanceof DynamicAcceleratedProducerAdapter == false) {
 					continue i;
 				}
 
-				DynamicAcceleratedProducerAdapter<Vector> child = (DynamicAcceleratedProducerAdapter<Vector>) c.get();
+				DynamicAcceleratedProducerAdapter child = (DynamicAcceleratedProducerAdapter) getArguments().get(i).getProducer();
 
 				// Ignore those that are more than just a value returned from getValue
 				if (!child.isValueOnly()) {
-					newArgs.add(getArguments().get(i));
 					continue i;
 				}
 
@@ -88,15 +82,7 @@ public class TriangleDataFromVectors extends DynamicAcceleratedProducerAdapter<T
 				value[index + 1] = child.getValue(1);
 				value[index + 2] = child.getValue(2);
 
-				// If it is not a static value, it depends on others, so bring
-				// those into the arguments for the compacted version
-				if (!child.isStatic()) {
-					for (int j = 1; j < child.getArguments().size(); j++) {
-						newArgs.add(child.getArguments().get(j));
-					}
-				}
-
-				absorbVariables(child);
+				absorbVariables((Supplier) child);
 			}
 
 			// Check for illegal values
@@ -105,10 +91,6 @@ public class TriangleDataFromVectors extends DynamicAcceleratedProducerAdapter<T
 					throw new IllegalArgumentException("Infinity is not supported");
 				}
 			}
-
-			// Replace original parameters
-			// setArguments(newArgs);
-			removeDuplicateArguments();
 		}
 	}
 }

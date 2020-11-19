@@ -149,14 +149,14 @@ public class JavaScriptPrintWriter extends CodePrintWriterAdapter {
 		StringBuffer buf = new StringBuffer();
 
 		for (int i = 0; i < arguments.size(); i++) {
-			Variable v = arguments.get(i);
+			Variable<?> v = arguments.get(i);
 
 			if (v instanceof ResourceArgument) {
 				buf.append(toJson(v));
 			} else if (v.getGenerator() != null) {
 				buf.append(toString(v));
 			} else if (v.getExpression() instanceof InstanceReference) {
-				buf.append(v.getProducer().evaluate()); // TODO  This cant be right...
+				buf.append(v.getProducer().get().evaluate()); // TODO  This cant be right...
 			} else {
 				buf.append(toJson(v.getProducer()));
 			}

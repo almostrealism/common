@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,8 +22,10 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.util.Producer;
 
-public class ScaleMatrix extends AcceleratedProducer<TransformMatrix> {
-	public ScaleMatrix(Producer<Vector> s) {
-		super("scaleMatrix", new IdentityMatrix(), s);
+import java.util.function.Supplier;
+
+public class ScaleMatrix extends AcceleratedProducer<Vector, TransformMatrix> {
+	public ScaleMatrix(Supplier<Producer<? extends Vector>> s) {
+		super("scaleMatrix", () -> new IdentityMatrix(), s);
 	}
 }

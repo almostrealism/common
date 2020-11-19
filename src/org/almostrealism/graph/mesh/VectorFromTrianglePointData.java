@@ -16,15 +16,18 @@
 
 package org.almostrealism.graph.mesh;
 
+import org.almostrealism.algebra.VectorBank;
 import org.almostrealism.algebra.computations.VectorFromVectorBank;
 import org.almostrealism.util.Producer;
+
+import java.util.function.Supplier;
 
 public class VectorFromTrianglePointData extends VectorFromVectorBank {
 	public static final int P1 = 0;
 	public static final int P2 = 1;
 	public static final int P3 = 2;
 
-	public VectorFromTrianglePointData(Producer<TrianglePointData> triangle, int position) {
+	public VectorFromTrianglePointData(Supplier<Producer<? extends VectorBank>> triangle, int position) {
 		super(triangle, position);
 	}
 }

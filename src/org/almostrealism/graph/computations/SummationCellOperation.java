@@ -20,11 +20,13 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.graph.SummationCell;
 import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.util.Producer;
-import org.almostrealism.util.Provider;
+import static org.almostrealism.util.Ops.*;
 
-public class SummationCellOperation extends AcceleratedOperation {
+import java.util.function.Supplier;
 
-	public SummationCellOperation(SummationCell cell, Producer<Scalar> protein) {
-		super("push", false, new Provider<>(cell.getCachedValue()), protein);
+public class SummationCellOperation extends AcceleratedOperation<Scalar> {
+
+	public SummationCellOperation(SummationCell cell, Supplier<Producer<? extends Scalar>> protein) {
+		super("push", false, ops().p(cell.getCachedValue()), protein);
 	}
 }

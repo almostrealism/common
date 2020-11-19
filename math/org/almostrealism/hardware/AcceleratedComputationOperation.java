@@ -35,7 +35,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.stream.Collectors;
 
-public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperation implements NameProvider {
+public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperation<MemWrapper> implements NameProvider {
 	private Computation<T> computation;
 
 	public AcceleratedComputationOperation(Computation<T> c, boolean kernel) {
@@ -113,8 +113,8 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	@Override
-	public String getBody(Variable outputVariable, List<Variable> existingVariables) {
-		Scope<T> scope = compile(outputVariable);
+	public String getBody(Variable<MemWrapper> outputVariable, List<Variable<?>> existingVariables) {
+		Scope<T> scope = compile((Variable<T>) outputVariable);
 		StringBuffer buf = new StringBuffer();
 		scope.write(new OpenCLPrintWriter(PrintWriter.of(buf::append)));
 		return buf.toString();

@@ -31,7 +31,7 @@ import java.util.function.Function;
 import java.util.function.IntFunction;
 
 public class AcceleratedPassThroughProducer<T extends MemWrapper>
-		extends DynamicAcceleratedProducerAdapter<T> implements ProducerArgumentReference {
+		extends DynamicAcceleratedProducerAdapter<T, T> implements ProducerArgumentReference {
 	private int argIndex;
 	private int kernelIndex;
 
@@ -47,9 +47,9 @@ public class AcceleratedPassThroughProducer<T extends MemWrapper>
 		Argument result = new Argument("");
 		result.setSortHint(-1);
 
-		List<Argument> args = new ArrayList<>();
+		List<Argument<? extends T>> args = new ArrayList<>();
 		args.add(result);
-		args.addAll(Arrays.asList(arguments(compileProducer(this))));
+		args.addAll(Arrays.asList(arguments(this)));
 		setArguments(args);
 		initArgumentNames();
 	}

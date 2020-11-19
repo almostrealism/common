@@ -16,22 +16,11 @@
 
 package org.almostrealism.geometry;
 
-import org.almostrealism.algebra.computations.DefaultVectorProducer;
 import org.almostrealism.algebra.VectorProducer;
-import org.almostrealism.algebra.computations.RayDirection;
-import org.almostrealism.algebra.computations.RayOrigin;
 import org.almostrealism.util.Producer;
 
-public interface RayProducer extends Producer<Ray> {
+public interface RayProducer extends Producer<Ray>, RayFeatures {
 	default VectorProducer origin() { return origin(this); }
 
-	static VectorProducer origin(Producer<Ray> r) {
-		return new DefaultVectorProducer(new RayOrigin(r));
-	}
-
 	default VectorProducer direction() { return direction(this); }
-
-	static VectorProducer direction(Producer<Ray> r) {
-		return new DefaultVectorProducer(new RayDirection(r));
-	}
 }

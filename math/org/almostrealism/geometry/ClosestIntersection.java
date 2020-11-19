@@ -31,15 +31,15 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class ClosestIntersection extends ArrayList<Producer<Ray>> implements ContinuousField {
-	private Producer<Ray> r;
+	private Producer<? extends Ray> r;
 	private List<ContinuousField> s;
 
-	public ClosestIntersection(Producer<Ray> ray, Iterable<Intersectable> surfaces) {
+	public ClosestIntersection(Producer<? extends Ray> ray, Iterable<Intersectable> surfaces) {
 		r = ray;
 		s = new ArrayList<>();
 
 		for (Intersectable<?> in : surfaces) {
-			s.add(in.intersectAt(ray));
+			s.add(in.intersectAt((Producer<Ray>) ray));
 		}
 
 		this.add(new Producer<Ray>() {
@@ -51,7 +51,7 @@ public class ClosestIntersection extends ArrayList<Producer<Ray>> implements Con
 				p: for (ContinuousField in : s) {
 					if (in == null) continue p;
 
-					Scalar s = (Scalar) ((ShadableIntersection) in).getDistance().evaluate(args);
+					Scalar s = ((Producer<Scalar>) ((ShadableIntersection) in).getDistance().get()).evaluate(args);
 					if (s == null) continue p;
 
 					double v = s.getValue();
@@ -83,7 +83,7 @@ public class ClosestIntersection extends ArrayList<Producer<Ray>> implements Con
 				p: for (ContinuousField in : s) {
 					if (in == null) continue p;
 
-					Scalar s = (Scalar) ((ShadableIntersection) in).getDistance().evaluate(args);
+					Scalar s = ((Producer<Scalar>) ((ShadableIntersection) in).getDistance().get()).evaluate(args);
 					if (s == null) continue p;
 
 					double v = s.getValue();

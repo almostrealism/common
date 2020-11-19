@@ -20,8 +20,10 @@ import org.almostrealism.algebra.TransformMatrix;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.util.Producer;
 
+import java.util.function.Supplier;
+
 public class TransformAsOffset extends Transform {
-	public TransformAsOffset(TransformMatrix t, Producer<Vector> v) {
+	public TransformAsOffset(TransformMatrix t, Supplier<Producer<? extends Vector>> v) {
 		super(t, v, false);
 	}
 }

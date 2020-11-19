@@ -22,15 +22,16 @@ import org.almostrealism.algebra.*;
 import org.almostrealism.color.RGB;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayProducer;
-import org.almostrealism.hardware.ComputerFeatures;
 import org.almostrealism.relation.Constant;
 import org.almostrealism.relation.NameProvider;
 import org.almostrealism.relation.Operator;
 import org.almostrealism.util.Producer;
+import static org.almostrealism.util.Ops.*;
 
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Supplier;
 
 /** A {@link Plane} represents an plane in 3d space. */
 public class Plane extends AbstractSurface implements ParticleGroup {
@@ -125,7 +126,7 @@ public class Plane extends AbstractSurface implements ParticleGroup {
 			TransformMatrix m = getTransform(true);
 
 			if (m != null) {
-				normal = m.transform(normal, TransformMatrix.TRANSFORM_AS_NORMAL);
+				normal = (Producer<Vector>) m.transform(normal, TransformMatrix.TRANSFORM_AS_NORMAL);
 			}
 		}
 	}
@@ -143,24 +144,24 @@ public class Plane extends AbstractSurface implements ParticleGroup {
 	@Override
 	public ContinuousField intersectAt(Producer<Ray> r) {
 		TransformMatrix m = getTransform(true);
-		Producer<Ray> tr = r;
+		Supplier<Producer<? extends Ray>> tr = () -> r;
 		if (m != null) tr = m.getInverse().transform(tr);
 
 		// tr = new RayFromVectors(new RayOrigin(tr), new RayDirection(tr).normalize());
 
-		ScalarProducer s;
+		ScalarSupplier s;
 
 		if (type == Plane.XY) {
-			s = RayProducer.origin(tr).z().minus().divide(RayProducer.direction(tr).z());
+			s = ops().origin(tr).z().minus().divide(ops().direction(tr).z());
 		} else if (type == Plane.XZ) {
-			s = RayProducer.origin(tr).y().minus().divide(RayProducer.direction(tr).y());
+			s = ops().origin(tr).y().minus().divide(ops().direction(tr).y());
 		} else if (type == Plane.YZ) {
-			s = RayProducer.origin(tr).x().minus().divide(RayProducer.direction(tr).x());
+			s = ops().origin(tr).x().minus().divide(ops().direction(tr).x());
 		} else {
 			throw new IllegalArgumentException(String.valueOf(type));
 		}
 
-		return new ShadableIntersection(this, r, s);
+		return new ShadableIntersection(this, () -> r, s);
 	}
 
 	@Override

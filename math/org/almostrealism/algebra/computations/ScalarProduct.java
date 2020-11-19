@@ -19,12 +19,15 @@ package org.almostrealism.algebra.computations;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarProducer;
+import org.almostrealism.algebra.ScalarSupplier;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.util.Producer;
 
-public class ScalarProduct extends NAryDynamicAcceleratedProducer<Scalar> {
-	public ScalarProduct(Producer<Scalar>... producers) {
-		super("*", 2, Scalar.blank(), producers);
+import java.util.function.Supplier;
+
+public class ScalarProduct extends NAryDynamicAcceleratedProducer<Scalar> implements ScalarSupplier {
+	public ScalarProduct(Supplier<Producer<? extends Scalar>>... producers) {
+		super("*", 2, () -> Scalar.blank(), producers);
 	}
 
 	@Override

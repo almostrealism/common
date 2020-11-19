@@ -19,9 +19,12 @@ package org.almostrealism.color.computations;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.color.RGB;
+import org.almostrealism.relation.ProducerComputation;
 import org.almostrealism.util.Producer;
 import org.almostrealism.util.Provider;
 import org.almostrealism.util.StaticProducer;
+
+import java.util.function.Supplier;
 
 /**
  * {@link RGBProducer} is implemented by any class that can produce an {@link RGB} object
@@ -29,32 +32,18 @@ import org.almostrealism.util.StaticProducer;
  *
  * @author Michael Murray
  */
-public interface RGBProducer extends Producer<RGB> {
+public interface RGBProducer extends Producer<RGB>, RGBFeatures {
 	default RGBProducer add(Producer<RGB> operand) {
-		return add(this, operand);
+		return cadd(this, operand);
 	}
 
-	static RGBProducer add(Producer<RGB> value, Producer<RGB> operand) {
-		return new DefaultRGBProducer(new ColorSum(value, operand));
-	}
-
-	default RGBProducer subtract(Producer<RGB> operand) { return subtract(this, operand); }
-
-	static RGBProducer subtract(Producer<RGB> value, Producer<RGB> operand) {
-		return new DefaultRGBProducer(new ColorSum(value, minus(operand)));
-	}
+	default RGBProducer subtract(Producer<RGB> operand) { return csubtract(this, operand); }
 
 	default RGBProducer multiply(Producer<RGB> operand) {
-		return multiply(this, operand);
+		return cmultiply(this, operand);
 	}
 
-	static RGBProducer multiply(Producer<RGB> a, Producer<RGB> b) { return new DefaultRGBProducer(new ColorProduct(a, b)); }
-
-	default RGBProducer scalarMultiply(Producer<Scalar> operand) { return scalarMultiply(this, operand); }
-
-	static RGBProducer scalarMultiply(Producer<RGB> a, Producer<Scalar> b) {
-		return multiply(a, fromScalar(b));
-	}
+	default RGBProducer scalarMultiply(Producer<Scalar> operand) { return cscalarMultiply(this, operand); }
 
 	default RGBProducer scalarMultiply(Scalar operand) {
 		return scalarMultiply(StaticProducer.of(operand));
@@ -65,22 +54,6 @@ public interface RGBProducer extends Producer<RGB> {
 	}
 	
 	default RGBProducer minus() {
-		return minus(this);
-	}
-
-	static RGBProducer minus(Producer<RGB> p) {
-		return multiply(p, fromScalar(ScalarProducer.minusOne));
-	}
-
-	static RGBProducer fromScalar(Producer<Scalar> value) {
-		return new DefaultRGBProducer(new RGBFromScalars(value, value, value));
-	}
-
-	static RGBProducer fromScalar(Scalar value) {
-		return fromScalar(StaticProducer.of(value));
-	}
-
-	static RGBProducer fromScalar(double value) {
-		return StaticProducer.of(new RGB(value, value, value));
+		return cminus(this);
 	}
 }

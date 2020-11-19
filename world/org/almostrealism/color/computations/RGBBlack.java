@@ -22,7 +22,7 @@ import org.almostrealism.util.AcceleratedStaticRGBComputation;
 public class RGBBlack extends AcceleratedStaticRGBComputation {
 	private static RGBBlack local = new RGBBlack();
 
-	public RGBBlack() { super(new RGB(), RGB.blank()); }
+	public RGBBlack() { super(new RGB(), () -> RGB.blank()); }
 
 	public static RGBBlack getInstance() { return local; }
 

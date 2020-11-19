@@ -38,11 +38,11 @@ public class Variable<T> implements Nameable {
 
 	private Expression<T> expression;
 
-	private Producer<T> producer;
+	private Supplier<Producer<? extends T>> producer;
 	private Variable<?> dependsOn;
 
 	public Variable(String name, Expression<T> expression) {
-		this(name, true, expression, (Producer) null);
+		this(name, true, expression, (Supplier<Producer<? extends T>>) null);
 	}
 
 	public Variable(String name, Expression<T> expression, Variable<?> dependsOn) {
@@ -59,7 +59,7 @@ public class Variable<T> implements Nameable {
 		this.dependsOn = dependsOn;
 	}
 
-	public Variable(String name, boolean declaration, Expression<T> expression, Producer<T> producer) {
+	public Variable(String name, boolean declaration, Expression<T> expression, Supplier<Producer<? extends T>> producer) {
 		setName(name);
 		setExpression(expression);
 		setProducer(producer);
@@ -70,7 +70,7 @@ public class Variable<T> implements Nameable {
 		this(name, true, (Expression) null, ops().v(value));
 	}
 
-	public Variable(String name, String annotation, Producer<T> producer) {
+	public Variable(String name, String annotation, Supplier<Producer<? extends T>> producer) {
 		this(name, annotation, (Class) null, producer);
 	}
 
@@ -78,11 +78,11 @@ public class Variable<T> implements Nameable {
 		this(name, type, ops().v(value));
 	}
 
-	public Variable(String name, Class<T> type, Producer<T> producer) {
+	public Variable(String name, Class<T> type, Supplier<Producer<? extends T>> producer) {
 		this(name, true, new Expression(type), producer);
 	}
 
-	public Variable(String name, String annotation, Class<T> type, Producer<T> producer) {
+	public Variable(String name, String annotation, Class<T> type, Supplier<Producer<? extends T>> producer) {
 		this(name, type, producer);
 		setAnnotation(annotation);
 	}
@@ -103,16 +103,16 @@ public class Variable<T> implements Nameable {
 		this(name, new Expression(type, expression));
 	}
 
-	public Variable(String name, Class<T> type, String expression, Producer<T> producer, int arraySize) {
+	public Variable(String name, Class<T> type, String expression, Supplier<Producer<? extends T>> producer, int arraySize) {
 		this(name, true, new Expression(type, expression, arraySize), producer);
 	}
 
-	public Variable(String name, Producer<T> producer, int arraySize, String annotation) {
+	public Variable(String name, Supplier<Producer<? extends T>> producer, int arraySize, String annotation) {
 		this(name, null, (Supplier) null, producer, arraySize);
 		setAnnotation(annotation);
 	}
 
-	public Variable(String name, Class<T> type, Supplier<String> expression, Producer<T> producer, int arraySize) {
+	public Variable(String name, Class<T> type, Supplier<String> expression, Supplier<Producer<? extends T>> producer, int arraySize) {
 		this(name, true, new Expression(type, expression, arraySize), producer);
 	}
 
@@ -128,8 +128,8 @@ public class Variable<T> implements Nameable {
 	public void setExpression(Expression<T> value) { this.expression = value; }
 	public Expression<T> getExpression() { return expression; }
 
-	public void setProducer(Producer<T> producer) { this.producer = producer; }
-	public Producer<T> getProducer() { return producer; }
+	public void setProducer(Supplier<Producer<? extends T>> producer) { this.producer = producer; }
+	public Supplier<Producer<? extends T>> getProducer() { return producer; }
 
 	public Class<T> getType() { return getExpression().getType(); }
 	public Method<T> getGenerator() { return getExpression().getGenerator(); }

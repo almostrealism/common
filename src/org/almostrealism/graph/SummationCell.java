@@ -23,6 +23,6 @@ import org.almostrealism.util.Producer;
 public class SummationCell extends ScalarCachedStateCell {
 	@Override
 	public Runnable push(Producer<Scalar> protein) {
-		return new SummationCellOperation(this, protein);
+		return new SummationCellOperation(this, () -> protein);
 	}
 }

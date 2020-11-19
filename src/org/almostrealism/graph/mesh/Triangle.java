@@ -32,10 +32,12 @@ import org.almostrealism.space.ShadableIntersection;
 import org.almostrealism.util.CodeFeatures;
 import org.almostrealism.util.PassThroughProducer;
 import org.almostrealism.util.Producer;
+import static org.almostrealism.util.Ops.*;
 
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Supplier;
 
 /**
  * A Triangle object represents a triangle in 3d space.
@@ -57,10 +59,11 @@ public class Triangle extends AbstractSurface implements ParticleGroup, CodeFeat
 	public static final KernelizedProducer<Scalar> intersectAt;
 	
 	static {
-		dataProducer = TriangleDataProducer.of(PassThroughProducer.of(TrianglePointData.class, 0));
+		dataProducer = (KernelizedProducer<TriangleData>)
+				ops().triangle(PassThroughProducer.of(VectorBank.class, 0)).get();
 		dataProducer.compact();
 
-		intersectAt = new TriangleIntersectAt(PassThroughProducer.of(TriangleData.class, 1),
+		intersectAt = new TriangleIntersectAt(PassThroughProducer.of(VectorBank.class, 1),
 							PassThroughProducer.of(Ray.class, 0, -1));
 		intersectAt.compact();
 	}
@@ -372,11 +375,11 @@ public class Triangle extends AbstractSurface implements ParticleGroup, CodeFeat
 			};
 		} else {
 			if (useT && getTransform(true) != null) {
-				return getTransform(true).getInverse().transform(
+				return (Producer<Vector>) getTransform(true).getInverse().transform(
 						v(data.getNormal()),
-						TransformMatrix.TRANSFORM_AS_NORMAL);
+						TransformMatrix.TRANSFORM_AS_NORMAL).get();
 			} else {
-				return v((Vector) data.getNormal().clone());
+				return (Producer<Vector>) v((Vector) data.getNormal().clone()).get();
 			}
 		}
 	}
@@ -390,25 +393,26 @@ public class Triangle extends AbstractSurface implements ParticleGroup, CodeFeat
 	public ContinuousField intersectAt(Producer ray) {
 		TransformMatrix t = getTransform(true);
 		boolean ut = useT && t != null;
-		if (ut) ray = t.getInverse().transform(ray);
+		Supplier<Producer<? extends Ray>> r = () -> ray;
+		if (ut) r = t.getInverse().transform(() -> ray);
 
 		if (enableHardwareOperator) {
-			return new ShadableIntersection(this, ray,
-									new AcceleratedProducer<>(
+			final Supplier<Producer<? extends Ray>> fr = r;
+
+			return new ShadableIntersection(this, r,
+					() -> new AcceleratedProducer<Ray, Scalar>(
 											"triangleIntersectAt",
 											false,
-											Scalar.blank(),
-											new Producer[] {
-												ray
-											},
+											() -> Scalar.blank(),
+											new Supplier[] { () -> fr },
 											new Object[] { data.getABC(), data.getDEF(), data.getJKL() }));
 		} else {
-			final Producer<Ray> fray = ray;
+			final Supplier<Producer<? extends Ray>> fr = r;
 
 			Producer<Scalar> s = new Producer<Scalar>() {
 				@Override
 				public Scalar evaluate(Object[] args) {
-					Ray r = fray.evaluate(args);
+					Ray r = fr.get().evaluate(args);
 
 					Vector abc = data.getABC();
 					Vector def = data.getDEF();
@@ -451,7 +455,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup, CodeFeat
 				}
 			};
 
-			return new ShadableIntersection(this, ray, s);
+			return new ShadableIntersection(this, r, () -> s);
 		}
 	}
 

@@ -27,12 +27,13 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.IntFunction;
+import java.util.function.Supplier;
 
-public class RayFromVectors extends DynamicAcceleratedProducerAdapter<Ray> {
+public class RayFromVectors extends DynamicAcceleratedProducerAdapter<Vector, Ray> {
 	private Expression<Double> value[];
-
-	public RayFromVectors(Producer<Vector> origin, Producer<Vector> direction) {
-		super(6, Ray.blank(), origin, direction);
+	
+	public RayFromVectors(Supplier<Producer<? extends Vector>> origin, Supplier<Producer<? extends Vector>> direction) {
+		super(6, () -> Ray.blank(), origin, direction);
 	}
 
 	@Override

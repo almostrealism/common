@@ -19,8 +19,10 @@ package org.almostrealism.algebra.computations;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.util.Producer;
 
+import java.util.function.Supplier;
+
 public class OriginDotDirection extends DotProduct {
-	public OriginDotDirection(Producer<Ray> r) {
-		super(new DefaultVectorProducer(new RayOrigin(r)), new DefaultVectorProducer(new RayDirection(r)));
+	public OriginDotDirection(Supplier<Producer<? extends Ray>> r) {
+		super(new RayOrigin(r), new RayDirection(r));
 	}
 }

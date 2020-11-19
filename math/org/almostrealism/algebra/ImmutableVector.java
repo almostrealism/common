@@ -16,24 +16,22 @@
 
 package org.almostrealism.algebra;
 
-import io.almostrealism.code.Scope;
 import org.almostrealism.hardware.MemWrapper;
-import org.almostrealism.relation.NameProvider;
 import org.almostrealism.relation.TripleFunction;
 import org.almostrealism.util.AcceleratedStaticVectorComputation;
 
 public class ImmutableVector extends AcceleratedStaticVectorComputation implements TripleFunction<Triple, Vector> {
 	public ImmutableVector() {
-		super(new Data(), Vector.blank());
+		super(new Data(), () -> Vector.blank());
 	}
 
 	public ImmutableVector(double x, double y, double z) {
-		super(new Data(), Vector.blank());
+		super(new Data(), () -> Vector.blank());
 		setValue(new Vector(x, y, z));
 	}
 
 	public ImmutableVector(Vector v) {
-		super(new Data(), Vector.blank());
+		super(new Data(), () -> Vector.blank());
 		setValue(v);
 	}
 

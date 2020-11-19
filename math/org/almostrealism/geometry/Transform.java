@@ -29,14 +29,15 @@ import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 import java.util.function.IntFunction;
+import java.util.function.Supplier;
 
-public class Transform extends DynamicAcceleratedProducerAdapter<Vector> {
+public class Transform extends DynamicAcceleratedProducerAdapter<Vector, Vector> {
 	private boolean includeTranslation;
 
 	private Expression<Double> value[];
 
-	public Transform(TransformMatrix t, Producer<Vector> v, boolean includeTranslation) {
-		super(3, Vector.blank(), new Producer[]{ v }, new Object[]{ t });
+	public Transform(TransformMatrix t, Supplier<Producer<? extends Vector>> v, boolean includeTranslation) {
+		super(3, () -> Vector.blank(), new Supplier[] { v }, new Object[] { t });
 		this.includeTranslation = includeTranslation;
 	}
 
@@ -136,17 +137,13 @@ public class Transform extends DynamicAcceleratedProducerAdapter<Vector> {
 			}
 
 			// TODO  If both are static, this should be marked as static
-			List<Argument> newArgs = new ArrayList<>();
-			newArgs.add(getArguments().get(0));
 			if (!getInputProducer(1).isStatic()) {
-				List<Argument> args = AcceleratedProducer.excludeResult(getInputProducer(1).getArguments());
-				newArgs.addAll(args);
+				List<Argument<? extends Vector>> args = AcceleratedProducer.excludeResult(getInputProducer(1).getArguments());
 				for (Expression e : value) e.getDependencies().addAll(args);
 			}
 
 			if (!getInputProducer(2).isStatic()) {
-				List<Argument> args = AcceleratedProducer.excludeResult(getInputProducer(2).getArguments());
-				newArgs.addAll(args);
+				List<Argument<? extends Vector>> args = AcceleratedProducer.excludeResult(getInputProducer(2).getArguments());
 				for (Expression e : value) e.getDependencies().addAll(args);
 			}
 

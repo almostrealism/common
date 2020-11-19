@@ -28,6 +28,7 @@ import java.util.ListIterator;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Supplier;
 
 import io.almostrealism.code.Scope;
 import org.almostrealism.algebra.*;
@@ -308,6 +309,7 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 		return spatialVertexTree;
 	}
 
+	@Override
 	public void loadTree() {
 		this.loadTriangles();
 		super.loadTree(this.tcache.length);
@@ -656,13 +658,13 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 		if (this.isTreeLoaded()) return super.intersectAt(ray);
 
 		TransformMatrix t = getTransform(true);
-		Producer<Ray> tray = ray;
-		if (t != null) tray = t.getInverse().transform(ray);
+		Supplier<Producer<? extends Ray>> tray = () -> ray;
+		if (t != null) tray = t.getInverse().transform(tray);
 
 		CachedMeshIntersectionKernel kernel =
 				new CachedMeshIntersectionKernel(getMeshData(), (KernelizedProducer) tray);
 
-		return new ShadableIntersection(ray, kernel.getClosestNormal(), kernel);
+		return new ShadableIntersection(() -> ray, () -> kernel.getClosestNormal(), () -> kernel);
 	}
 
 	private void removeBackFaces(Ray r) {

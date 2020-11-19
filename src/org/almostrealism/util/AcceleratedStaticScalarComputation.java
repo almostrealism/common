@@ -16,15 +16,13 @@
 
 package org.almostrealism.util;
 
-import io.almostrealism.code.Scope;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarBank;
-import org.almostrealism.algebra.ScalarProducer;
-import org.almostrealism.hardware.MemoryBank;
-import org.almostrealism.relation.NameProvider;
+import org.almostrealism.algebra.ScalarSupplier;
 
-public class AcceleratedStaticScalarComputation extends AcceleratedStaticComputation<Scalar> {
-	public AcceleratedStaticScalarComputation(Scalar value, Producer<Scalar> output) {
+import java.util.function.Supplier;
+
+public class AcceleratedStaticScalarComputation extends AcceleratedStaticComputation<Scalar> implements ScalarSupplier {
+	public AcceleratedStaticScalarComputation(Scalar value, Supplier<Producer<Scalar>> output) {
 		super(value, output);
 	}
 }

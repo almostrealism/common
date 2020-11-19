@@ -20,6 +20,8 @@ import org.almostrealism.algebra.computations.NAryDynamicAcceleratedProducer;
 import org.almostrealism.color.RGB;
 import org.almostrealism.util.Producer;
 
+import java.util.function.Supplier;
+
 
 // TODO  Combine ColorSums that are equal by converting to ColorProduct
 // TODO  If all the members of a ColorSum are ColorProducts, and those
@@ -32,9 +34,9 @@ import org.almostrealism.util.Producer;
 /**
  * @author  Michael Murray
  */
-public class ColorSum extends NAryDynamicAcceleratedProducer<RGB> {
-	public ColorSum(Producer<RGB>... producers) {
-		super("+", 3, RGB.blank(), producers);
+public class ColorSum extends NAryDynamicAcceleratedProducer<RGB> implements RGBSupplier {
+	public ColorSum(Supplier<Producer<? extends RGB>>... producers) {
+		super("+", 3, () -> RGB.blank(), producers);
 	}
 
 	@Override

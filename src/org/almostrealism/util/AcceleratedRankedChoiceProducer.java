@@ -2,6 +2,7 @@ package org.almostrealism.util;
 
 import io.almostrealism.code.Argument;
 import io.almostrealism.code.Variable;
+import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.hardware.DynamicAcceleratedMultiProducer;
 import org.almostrealism.hardware.DynamicAcceleratedProducer;
@@ -19,7 +20,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-public class AcceleratedRankedChoiceProducer<T extends MemWrapper> extends DynamicAcceleratedProducer<T> implements DimensionAware {
+public class AcceleratedRankedChoiceProducer<T extends MemWrapper> extends DynamicAcceleratedProducer<T, T> implements DimensionAware {
 	public static final boolean enableCompaction = true;
 	public static final boolean enableOpenClKernelWorkaround = true;
 
@@ -29,20 +30,21 @@ public class AcceleratedRankedChoiceProducer<T extends MemWrapper> extends Dynam
 	private Supplier<T> onNull;
 	private IntFunction<MemoryBank<T>> forKernel;
 
-	private Function<List<Variable>, String> compactedRanks[];
-	private Function<List<Variable>, String> compactedChoices[];
-	private Function<List<Variable>, String> compactedDefaultValue;
+	private Function<List<Variable<?>>, String> compactedRanks[];
+	private Function<List<Variable<?>>, String> compactedChoices[];
+	private Function<List<Variable<?>>, String> compactedDefaultValue;
 
-	private List<Argument> ranks, choices;
+	private List<Argument<Scalar>> ranks;
+	private List<Argument<T>> choices;
 	private Argument defaultValue;
 
-	public AcceleratedRankedChoiceProducer(int memLength, Producer<T> blank, IntFunction<MemoryBank<T>> forKernel,
-										   List<ProducerWithRank<T>> values, Producer<T> defaultValue, double e) {
+	public AcceleratedRankedChoiceProducer(int memLength, Supplier<Producer<T>> blank, IntFunction<MemoryBank<T>> forKernel,
+										   List<ProducerWithRank<T>> values, Supplier<Producer<T>> defaultValue, double e) {
 		this(memLength, blank, forKernel, values, defaultValue, e, null);
 	}
 
-	public AcceleratedRankedChoiceProducer(int memLength, Producer<T> blank, IntFunction<MemoryBank<T>> forKernel,
-										   List<ProducerWithRank<T>> values, Producer<T> defaultValue,
+	public AcceleratedRankedChoiceProducer(int memLength, Supplier<Producer<T>> blank, IntFunction<MemoryBank<T>> forKernel,
+										   List<ProducerWithRank<T>> values, Supplier<Producer<T>> defaultValue,
 										   double e, Supplier<T> onNull) {
 		super(blank, generateArgs(values, defaultValue));
 		this.memLength = memLength;
@@ -53,16 +55,16 @@ public class AcceleratedRankedChoiceProducer<T extends MemWrapper> extends Dynam
 		this.ranks = getRanks();
 		this.choices = getChoices();
 		this.defaultValue = getDefaultValue();
-		addVariable(new Variable(getHighestRankResultVariable().getName(), this, 2, "__local"));
-		addVariable(new Variable(getHighestRankInputVariable().getName(), this, 2 * valueCount, "__local"));
-		addVariable(new Variable(getHighestRankConfVariable().getName(), this, 2, "__local"));
+		addVariable(new Variable(getHighestRankResultVariable().getName(), () -> this, 2, "__local"));
+		addVariable(new Variable(getHighestRankInputVariable().getName(), () -> this, 2 * valueCount, "__local"));
+		addVariable(new Variable(getHighestRankConfVariable().getName(), () -> this, 2, "__local"));
 	}
 
 	@Override
 	public void setDimensions(int width, int height, int ssw, int ssh) {
 		getRanks().stream().map(Argument::getProducer).filter(p -> p instanceof DimensionAware)
 				.forEach(p -> ((DimensionAware) p).setDimensions(width, height, ssw, ssh));
-		getChoices().stream().map(Argument::getProducer).filter(p -> p instanceof DimensionAware)
+		getChoices().stream().map(Argument::getProducer).map(Supplier::get).filter(p -> p instanceof DimensionAware)
 				.forEach(p -> ((DimensionAware) p).setDimensions(width, height, ssw, ssh));
 		if (getDefaultValue().getProducer() instanceof DimensionAware) {
 			((DimensionAware) getDefaultValue().getProducer()).setDimensions(width, height, ssw, ssh);
@@ -70,10 +72,10 @@ public class AcceleratedRankedChoiceProducer<T extends MemWrapper> extends Dynam
 	}
 
 	@Override
-	public String getBody(Variable outputVariable, List<Variable> existingVariables) {
+	public String getBody(Variable<MemWrapper> outputVariable, List<Variable<?>> existingVariables) {
 		StringBuffer buf = new StringBuffer();
 
-		List<Variable> variables = new ArrayList<>();
+		List<Variable<?>> variables = new ArrayList<>();
 		variables.addAll(existingVariables);
 
 		writeVariables(buf::append, variables);
@@ -97,8 +99,8 @@ public class AcceleratedRankedChoiceProducer<T extends MemWrapper> extends Dynam
 		return buf.toString();
 	}
 
-	protected void writeInputAssignments(Consumer<String> output, List<Variable> existingVariables) {
-		List<Argument> ranks = getRanks();
+	protected void writeInputAssignments(Consumer<String> output, List<Variable<?>> existingVariables) {
+		List<Argument<Scalar>> ranks = getRanks();
 
 		IntStream.range(0, ranks.size()).forEach(i -> {
 			if (compactedRanks == null || compactedRanks[i] == null) {
@@ -124,8 +126,8 @@ public class AcceleratedRankedChoiceProducer<T extends MemWrapper> extends Dynam
 		output.accept(";\n");
 	}
 
-	protected void writeOutputAssignments(Consumer<String> output, List<Variable> existingVariables) {
-		List<Argument> choices = getChoices();
+	protected void writeOutputAssignments(Consumer<String> output, List<Variable<?>> existingVariables) {
+		List<Argument<T>> choices = getChoices();
 		IntStream.range(0, choices.size()).forEach(i -> {
 			output.accept("if (");
 			output.accept(stringForDouble(i));
@@ -142,7 +144,7 @@ public class AcceleratedRankedChoiceProducer<T extends MemWrapper> extends Dynam
 		output.accept("}\n");
 	}
 
-	protected void writeOutputAssignments(Consumer<String> output, int index, List<Variable> existingVariables) {
+	protected void writeOutputAssignments(Consumer<String> output, int index, List<Variable<?>> existingVariables) {
 		if (index < 0) {
 			if (compactedDefaultValue == null) {
 				IntStream.range(0, memLength).forEach(i -> {
@@ -199,14 +201,14 @@ public class AcceleratedRankedChoiceProducer<T extends MemWrapper> extends Dynam
 	protected Variable<Double> getHighestRankConfVariable() { return getVariable(2); }
 	public int getDefaultValueIndex() { return getArguments().size() - 1; }
 
-	public List<Argument> getRanks() { return ranks == null ? getArguments(i -> i + 1) : ranks; }
-	public List<Argument> getChoices() { return choices == null ? getArguments(indexOfChoice()) : choices; }
+	public List<Argument<Scalar>> getRanks() { return ranks == null ? getArguments(i -> i + 1) : ranks; }
+	public List<Argument<T>> getChoices() { return choices == null ? getArguments(indexOfChoice()) : choices; }
 	public Argument getDefaultValue() { return defaultValue == null ? getArguments().get(getArguments().size() - 1) : defaultValue; }
 
-	private List<Argument> getArguments(IntUnaryOperator index) {
+	private <T> List<Argument<T>> getArguments(IntUnaryOperator index) {
 		return IntStream.range(0, valueCount)
 				.map(index)
-				.mapToObj(i -> getArguments().get(i))
+				.mapToObj(i -> (Argument<T>) getArguments().get(i))
 				.collect(Collectors.toList());
 	}
 
@@ -220,7 +222,7 @@ public class AcceleratedRankedChoiceProducer<T extends MemWrapper> extends Dynam
 			List<Argument> newArgs = new ArrayList<>();
 			newArgs.add(getArguments().get(0));
 
-			List<Argument> ranks = getRanks();
+			List<Argument<Scalar>> ranks = getRanks();
 			compactedRanks = new Function[ranks.size()];
 			IntStream.range(0, compactedRanks.length).forEach(i -> {
 				if (ranks.get(i).getProducer() instanceof DynamicAcceleratedMultiProducer) {
@@ -237,7 +239,7 @@ public class AcceleratedRankedChoiceProducer<T extends MemWrapper> extends Dynam
 				}
 			});
 
-			List<Argument> choices = getChoices();
+			List<Argument<T>> choices = getChoices();
 			compactedChoices = new Function[choices.size()];
 			IntStream.range(0, compactedChoices.length).forEach(i -> {
 				if (choices.get(i).getProducer() instanceof DynamicAcceleratedMultiProducer) {
@@ -281,11 +283,11 @@ public class AcceleratedRankedChoiceProducer<T extends MemWrapper> extends Dynam
 	@Override
 	public MemoryBank<T> createKernelDestination(int size) { return forKernel.apply(size); }
 
-	private static <T> Producer[] generateArgs(List<ProducerWithRank<T>> values, Producer<T> defaultValue) {
-		List<Producer> args = new ArrayList<>();
-		values.stream().map(ProducerWithRank::getRank).forEach(args::add);
-		values.stream().map(ProducerWithRank::getProducer).forEach(args::add);
+	private static <T> Supplier[] generateArgs(List<ProducerWithRank<T>> values, Supplier<Producer<T>> defaultValue) {
+		List<Supplier> args = new ArrayList<>();
+		values.stream().map(ProducerWithRank::getRank).map(p -> (Supplier) () -> p).forEach(args::add);
+		values.stream().map(ProducerWithRank::getProducer).map(p -> (Supplier) () -> p).forEach(args::add);
 		args.add(defaultValue);
-		return args.toArray(new Producer[0]);
+		return args.toArray(new Supplier[0]);
 	}
 }

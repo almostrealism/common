@@ -164,9 +164,8 @@ public class ImageCanvas extends JPanel implements CodeFeatures {
 	 */
 	public void writeImage(String file) {
 		try {
-			ImageCanvas.encodeImageFile(v(this.image),
-							new File(file),
-							ImageCanvas.JPEGEncoding);
+			ImageCanvas.encodeImageFile((Producer<RGB[][]>) v(this.image).get(),
+							new File(file), ImageCanvas.JPEGEncoding);
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
@@ -183,7 +182,7 @@ public class ImageCanvas extends JPanel implements CodeFeatures {
 
 	public static void writeImage(RGB[][] image, OutputStream o, int encoding)
 			throws IOException {
-		writeImage(ops().v(image), o, encoding);
+		writeImage((Producer<RGB[][]>) ops().v(image).get(), o, encoding);
 	}
 
 	public static void writeImage(Producer<RGB[][]> imageProducer, OutputStream o, int encoding)

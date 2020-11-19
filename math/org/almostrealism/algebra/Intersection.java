@@ -17,6 +17,7 @@
 package org.almostrealism.algebra;
 
 import java.util.Arrays;
+import java.util.function.Supplier;
 
 import org.almostrealism.graph.PathElement;
 import org.almostrealism.util.DimensionAware;
@@ -29,21 +30,21 @@ public class Intersection<IN, OUT> implements PathElement<IN, OUT>, DimensionAwa
 	/** A very small value (0.00000001) that is used in '>=' and '<=' operations to account for computational errors. */
 	public static final double e = 0.00000001;
 
-	private Producer<Vector> point;
-	private Producer<Scalar> distance;
+	private Supplier<Producer<Vector>> point;
+	private Supplier<Producer<Scalar>> distance;
 
 	/**
-	 * Constructs a new Intersection object that represents an intersection between the specified
-	 * Ray and Surface objects at the specified points along the ray represented by the Ray object.
+	 * Constructs a new {@link Intersection} that represents an intersection between the specified
+	 * Ray and Surface objects at the specified points along the ray represented by the Ray.
 	 */
-	public Intersection(Producer<Vector> point, Producer<Scalar> distance) {
+	public Intersection(Supplier<Producer<Vector>> point, Supplier<Producer<Scalar>> distance) {
 		this.point = point;
 		this.distance = distance;
 	}
 	
-	public Producer<Vector> getPoint() { return point; }
+	public Supplier<Producer<Vector>> getPoint() { return point; }
 
-	public Producer<Scalar> getDistance() { return distance; }
+	public Supplier<Producer<Scalar>> getDistance() { return distance; }
 
 	@Override
 	public void setDimensions(int width, int height, int ssw, int ssh) {

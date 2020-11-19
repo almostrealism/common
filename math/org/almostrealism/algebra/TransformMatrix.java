@@ -38,6 +38,8 @@ import org.almostrealism.util.DynamicProducer;
 import org.almostrealism.util.Producer;
 import org.almostrealism.util.Provider;
 
+import java.util.function.Supplier;
+
 /**
  * A {@link TransformMatrix} object represents a 4 X 4 matrix used for transforming vectors.
  * A {@link TransformMatrix} object stores 16 double values for the matrix data and provides
@@ -91,7 +93,7 @@ public class TransformMatrix extends MemWrapperAdapter implements TripleFunction
 	private void initMem(boolean identity) {
 		init();
 		if (identity) {
-			new IdentityMatrix(new Provider<>(this)).evaluate();
+			new IdentityMatrix(() -> new Provider<>(this)).evaluate();
 		}
 	}
 	
@@ -191,13 +193,17 @@ public class TransformMatrix extends MemWrapperAdapter implements TripleFunction
 	@Override
 	public PooledMem getDefaultDelegate() { return TransformMatrixPool.getLocal(); }
 
-	public Producer<Vector> transform(Producer<Vector> vector, int type) {
+	public Producer<? extends Vector> transform(Producer<? extends Vector> vector, int type) {
+		return transform(() -> vector, type).get();
+	}
+
+	public Supplier<Producer<? extends Vector>> transform(Supplier<Producer<? extends Vector>> vector, int type) {
 		if (this.isIdentity) return vector;
 		
 		if (type == TransformMatrix.TRANSFORM_AS_LOCATION) {
-			return compileProducer(new TransformAsLocation(this, vector));
+			return new TransformAsLocation(this, vector);
 		} else if (type == TransformMatrix.TRANSFORM_AS_OFFSET) {
-			return compileProducer(new TransformAsOffset(this, vector));
+			return new TransformAsOffset(this, vector);
 		} else if (type == TransformMatrix.TRANSFORM_AS_NORMAL) {
 			if (!this.inverted) this.calculateInverse();
 			return this.inverseTranspose.transform(vector, TransformMatrix.TRANSFORM_AS_OFFSET);
@@ -209,7 +215,7 @@ public class TransformMatrix extends MemWrapperAdapter implements TripleFunction
 	public double[] transform(double x, double y, double z, int type) {
 		if (this.isIdentity) return new double[] {x, y, z};
 
-		return transform(vector(x, y, z), type).evaluate().toArray();
+		return transform(vector(x, y, z), type).get().evaluate().toArray();
 	}
 	
 	/**
@@ -221,7 +227,7 @@ public class TransformMatrix extends MemWrapperAdapter implements TripleFunction
 		vector = (Vector) vector.clone();
 		if (this.isIdentity) return vector;
 
-		return transform(v(vector), TRANSFORM_AS_LOCATION).evaluate();
+		return transform(v(vector), TRANSFORM_AS_LOCATION).get().evaluate();
 	}
 	
 	/**
@@ -233,7 +239,7 @@ public class TransformMatrix extends MemWrapperAdapter implements TripleFunction
 		vector = (Vector) vector.clone();
 		if (this.isIdentity) return vector;
 
-		return transform(v(vector), TRANSFORM_AS_OFFSET).evaluate();
+		return transform(v(vector), TRANSFORM_AS_OFFSET).get().evaluate();
 	}
 	
 	/**
@@ -245,11 +251,11 @@ public class TransformMatrix extends MemWrapperAdapter implements TripleFunction
 		vector = (Vector) vector.clone();
 		if (this.isIdentity) return vector;
 
-		return transform(v(vector), TRANSFORM_AS_NORMAL).evaluate();
+		return transform(v(vector), TRANSFORM_AS_NORMAL).get().evaluate();
 	}
 
-	public Producer<Ray> transform(Producer<Ray> ray) {
-		return compileProducer(new RayMatrixTransform(this, ray));
+	public RayMatrixTransform transform(Supplier<Producer<? extends Ray>> ray) {
+		return new RayMatrixTransform(this, ray);
 	}
 	
 	/**
@@ -340,7 +346,7 @@ public class TransformMatrix extends MemWrapperAdapter implements TripleFunction
 	 * returns the result as a TransformMatrix object.
 	 */
 	public TransformMatrix adjoint() {
-		return new MatrixAdjoint(new Provider<>(this)).evaluate(new Object[0]);
+		return new MatrixAdjoint(p(this)).evaluate();
 	}
 	
 	/**
@@ -348,7 +354,7 @@ public class TransformMatrix extends MemWrapperAdapter implements TripleFunction
 	 * returns the result as a TransformMatrix object.
 	 */
 	public TransformMatrix toUpperTriangle() {
-		return new MatrixToUpperTriangle(new Provider<>(this)).evaluate(new Object[0]);
+		return new MatrixToUpperTriangle(p(this)).evaluate();
 	}
 
 	@Override

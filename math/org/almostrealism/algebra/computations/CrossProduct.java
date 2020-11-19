@@ -18,10 +18,13 @@ package org.almostrealism.algebra.computations;
 
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.util.Producer;
+
+import java.util.function.Supplier;
+
 import static org.almostrealism.util.Ops.*;
 
 public class CrossProduct extends VectorFromScalars {
-	public CrossProduct(Producer<Vector> a, Producer<Vector> b) {
+	public CrossProduct(Supplier<Producer<? extends Vector>> a, Supplier<Producer<? extends Vector>> b) {
 		super(ops().y(a).multiply(ops().z(b))
 						.subtract(ops().z(a).multiply(ops().y(b))),
 				ops().z(a).multiply(ops().x(b))

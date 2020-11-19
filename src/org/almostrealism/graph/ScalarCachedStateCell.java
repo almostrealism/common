@@ -20,18 +20,20 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.util.Producer;
 import org.almostrealism.util.Provider;
 
+import java.util.function.Supplier;
+
 public class ScalarCachedStateCell extends CachedStateCell<Scalar> {
 	public ScalarCachedStateCell() {
 		super(Scalar.blank());
 	}
 
 	@Override
-	protected Runnable assign(Provider<Scalar> out, Producer<Scalar> in) {
-		return () -> out.get().setValue(in.evaluate().getValue());
+	protected Runnable assign(Supplier<Producer<? extends Scalar>> out, Supplier<Producer<? extends Scalar>> in) {
+		return () -> out.get().evaluate().setValue(in.get().evaluate().getValue());
 	}
 
 	@Override
-	public Runnable reset(Provider<Scalar> out) {
-		return () -> out.get().setMem(new double[] { 0.0, 1.0 });
+	public Runnable reset(Supplier<Producer<? extends Scalar>> out) {
+		return () -> out.get().evaluate().setMem(new double[] { 0.0, 1.0 });
 	}
 }

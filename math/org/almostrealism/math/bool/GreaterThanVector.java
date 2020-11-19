@@ -22,17 +22,19 @@ import org.almostrealism.algebra.VectorBank;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.util.Producer;
 
+import java.util.function.Supplier;
+
 public class GreaterThanVector extends GreaterThan<Vector> implements AcceleratedConditionalStatementVector {
 	public GreaterThanVector() {
 		this(null, null, null, null);
 	}
 
 	public GreaterThanVector(
-					   Producer<Scalar> leftOperand,
-					   Producer<Scalar> rightOperand,
-					   Producer<Vector> trueValue,
-					   Producer<Vector> falseValue) {
-		super(3, Vector.blank(), leftOperand, rightOperand, trueValue, falseValue, false);
+			Supplier leftOperand,
+			Supplier rightOperand,
+			Supplier<Producer<Vector>> trueValue,
+			Supplier<Producer<Vector>> falseValue) {
+		super(3, () -> Vector.blank(), leftOperand, rightOperand, trueValue, falseValue, false);
 	}
 
 	@Override

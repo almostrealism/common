@@ -28,6 +28,7 @@ import org.almostrealism.util.Producer;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 public abstract class AcceleratedBinaryConditionAdapter<T extends MemWrapper> extends AcceleratedConditionalStatementAdapter<T> {
 	private String operator;
@@ -36,32 +37,28 @@ public abstract class AcceleratedBinaryConditionAdapter<T extends MemWrapper> ex
 
 	private String condition;
 
-	public AcceleratedBinaryConditionAdapter(String operator, int memLength) {
-		this(operator, memLength, DynamicProducer.forMemLength());
-	}
-
 	public AcceleratedBinaryConditionAdapter(String operator, int memLength,
-											 Function<Integer, Producer<? extends MemWrapper>> blankValue) {
+											 Function<Integer, Supplier<Producer<T>>> blankValue) {
 		this(operator, memLength, blankValue, null, null, null, null);
 	}
 
 	public AcceleratedBinaryConditionAdapter(String operator,
 											 int memLength,
-											 Function<Integer, Producer<? extends MemWrapper>> blankValue,
-											 Producer<Scalar> leftOperand,
-											 Producer<Scalar> rightOperand,
-											 Producer<T> trueValue,
-											 Producer<T> falseValue) {
-		this(operator, memLength, (Producer<T>) blankValue.apply(memLength), leftOperand, rightOperand, trueValue, falseValue);
+											 Function<Integer, Supplier<Producer<T>>> blankValue,
+											 Supplier<Producer> leftOperand,
+											 Supplier<Producer> rightOperand,
+											 Supplier<Producer<T>> trueValue,
+											 Supplier<Producer<T>> falseValue) {
+		this(operator, memLength, blankValue.apply(memLength), leftOperand, rightOperand, trueValue, falseValue);
 	}
 
 	public AcceleratedBinaryConditionAdapter(String operator,
 											 int memLength,
-											 Producer<T> blankValue,
-											 Producer<Scalar> leftOperand,
-											 Producer<Scalar> rightOperand,
-											 Producer<T> trueValue,
-											 Producer<T> falseValue) {
+											 Supplier<Producer<T>> blankValue,
+											 Supplier<Producer> leftOperand,
+											 Supplier<Producer> rightOperand,
+											 Supplier<Producer<T>> trueValue,
+											 Supplier<Producer<T>> falseValue) {
 		super(memLength, blankValue, leftOperand, rightOperand, trueValue, falseValue);
 		this.operator = operator;
 		this.leftOperand = getArguments().get(1);
@@ -86,7 +83,7 @@ public abstract class AcceleratedBinaryConditionAdapter<T extends MemWrapper> ex
 	}
 
 	@Override
-	public List<Argument> getOperands() {
+	public List<Argument<Scalar>> getOperands() {
 		return Arrays.asList(leftOperand, rightOperand);
 	}
 
@@ -106,10 +103,10 @@ public abstract class AcceleratedBinaryConditionAdapter<T extends MemWrapper> ex
 		super.compact();
 
 		if (super.isCompacted() && condition == null) {
-			List<Argument> operands = getOperands();
+			List<Argument<Scalar>> operands = getOperands();
 
-			MultiExpression op1 = (MultiExpression) decompile(operands.get(0).getProducer()).get();
-			MultiExpression op2 = (MultiExpression) decompile(operands.get(1).getProducer()).get();
+			MultiExpression op1 = (MultiExpression) operands.get(0).getProducer();
+			MultiExpression op2 = (MultiExpression) operands.get(1).getProducer();
 
 			addVariable(new Variable<>(getVariableName(0), true, op1.getValue(0), operands.get(0).getProducer()));
 			addVariable(new Variable<>(getVariableName(1), true, op2.getValue(0), operands.get(1).getProducer()));

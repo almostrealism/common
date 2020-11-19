@@ -13,6 +13,7 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
+
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.Argument;
@@ -22,15 +23,16 @@ import org.jocl.CLException;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Supplier;
 
-public abstract class DynamicAcceleratedOperation extends AcceleratedOperation {
+public abstract class DynamicAcceleratedOperation<T extends MemWrapper> extends AcceleratedOperation<T> {
 	private HardwareOperatorMap operators;
 
-	public DynamicAcceleratedOperation(boolean kernel, Producer<?>... args) {
+	public DynamicAcceleratedOperation(boolean kernel, Supplier<Producer<? extends T>>... args) {
 		super(null, kernel, args);
 	}
 
-	public DynamicAcceleratedOperation(boolean kernel, Argument<?>... args) {
+	public DynamicAcceleratedOperation(boolean kernel, Argument<T>... args) {
 		super(null, kernel, args);
 	}
 
@@ -110,5 +112,5 @@ public abstract class DynamicAcceleratedOperation extends AcceleratedOperation {
 		return buf.toString();
 	}
 
-	public abstract String getBody(Variable outputVariable, List<Variable> existingVariables);
+	public abstract String getBody(Variable<T> outputVariable, List<Variable<?>> existingVariables);
 }

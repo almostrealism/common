@@ -21,34 +21,34 @@ import io.almostrealism.code.MultiExpression;
 import io.almostrealism.code.Variable;
 import org.almostrealism.util.Producer;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
-public abstract class DynamicAcceleratedMultiProducer<T extends MemWrapper> extends DynamicAcceleratedProducer<T> implements KernelizedProducer<T>, MultiExpression<Double> {
+public abstract class DynamicAcceleratedMultiProducer<I extends MemWrapper, O extends MemWrapper> extends DynamicAcceleratedProducer<I, O> implements KernelizedProducer<O>, MultiExpression<Double> {
 	private int memLength;
 
-	public DynamicAcceleratedMultiProducer(int memLength, Producer<T> result, Producer<?> inputArgs[], Object additionalArguments[]) {
+	public DynamicAcceleratedMultiProducer(int memLength, Supplier<Producer<O>> result, Supplier<Producer<? extends I>> inputArgs[], Object additionalArguments[]) {
 		this(memLength, result, AcceleratedProducer.producers(inputArgs, additionalArguments));
 	}
 
-	public DynamicAcceleratedMultiProducer(int memLength, Producer<T> result, Producer<?>... inputArgs) {
+	public DynamicAcceleratedMultiProducer(int memLength, Supplier<Producer<O>> result, Supplier<Producer<? extends I>>... inputArgs) {
 		this(memLength, true, result, inputArgs);
 	}
 
-	public DynamicAcceleratedMultiProducer(int memLength, boolean kernel, Producer<T> result, Producer<?> inputArgs[], Object additionalArguments[]) {
+	public DynamicAcceleratedMultiProducer(int memLength, boolean kernel, Supplier<Producer<O>> result,
+										   Supplier<Producer<?>> inputArgs[], Object additionalArguments[]) {
 		this(memLength, kernel, result, AcceleratedProducer.producers(inputArgs, additionalArguments));
 	}
 
-	public DynamicAcceleratedMultiProducer(int memLength, boolean kernel, Producer<T> result, Producer<?>... inputArgs) {
+	public DynamicAcceleratedMultiProducer(int memLength, boolean kernel, Supplier<Producer<O>> result, Supplier<Producer<? extends I>>... inputArgs) {
 		super(kernel, result, inputArgs);
 		this.memLength = memLength;
 	}
 
 	public int getMemLength() { return memLength; }
 
-	public String getBody(Variable outputVariable, List<Variable> existingVariables) {
+	public String getBody(Variable<MemWrapper> outputVariable, List<Variable<?>> existingVariables) {
 		StringBuffer buf = new StringBuffer();
 		writeVariables(buf::append, existingVariables);
 		IntStream.range(0, memLength)

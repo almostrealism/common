@@ -22,15 +22,17 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.util.Producer;
 
+import java.util.function.Supplier;
+
 public class AcceleratedConjunctionScalar extends AcceleratedConjunctionAdapter<Scalar>
 		implements AcceleratedConditionalStatementScalar {
 	public AcceleratedConjunctionScalar() {
 		this(null, null);
 	}
 
-	public AcceleratedConjunctionScalar(Producer<Scalar> trueValue, Producer<Scalar> falseValue,
+	public AcceleratedConjunctionScalar(Supplier trueValue, Supplier falseValue,
 										AcceleratedConditionalStatement<Scalar>... conjuncts) {
-		super(2, Scalar.blank(), trueValue, falseValue, conjuncts);
+		super(2, () -> Scalar.blank(), trueValue, falseValue, conjuncts);
 	}
 
 	@Override

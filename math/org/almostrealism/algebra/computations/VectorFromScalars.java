@@ -22,6 +22,7 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.algebra.VectorProducer;
+import org.almostrealism.algebra.VectorSupplier;
 import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.util.Producer;
@@ -30,12 +31,13 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.IntFunction;
+import java.util.function.Supplier;
 
-public class VectorFromScalars extends DynamicAcceleratedProducerAdapter<Vector> {
+public class VectorFromScalars extends DynamicAcceleratedProducerAdapter<Scalar, Vector> implements VectorSupplier  {
 	private Expression<Double> value[];
 
-	public VectorFromScalars(Producer<Scalar> x, Producer<Scalar> y, Producer<Scalar> z) {
-		super(3, Vector.blank(), x, y, z);
+	public VectorFromScalars(Supplier<Producer<? extends Scalar>> x, Supplier<Producer<? extends Scalar>> y, Supplier<Producer<? extends Scalar>> z) {
+		super(3, () -> Vector.blank(), x, y, z);
 	}
 
 	@Override

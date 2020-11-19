@@ -469,7 +469,7 @@ public class Polynomial extends AbstractSurface {
 			}
 		};
 
-		return new ShadableIntersection(Polynomial.this, r, s);
+		return new ShadableIntersection(Polynomial.this, () -> r, () -> s);
 	}
 
 	@Override

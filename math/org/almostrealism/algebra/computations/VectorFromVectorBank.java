@@ -21,6 +21,7 @@ import io.almostrealism.code.Expression;
 import io.almostrealism.code.Scope;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorBank;
+import org.almostrealism.algebra.VectorSupplier;
 import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.relation.NameProvider;
@@ -30,14 +31,15 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.IntFunction;
+import java.util.function.Supplier;
 
-public class VectorFromVectorBank extends DynamicAcceleratedProducerAdapter<Vector> {
+public class VectorFromVectorBank extends DynamicAcceleratedProducerAdapter<VectorBank, Vector> implements VectorSupplier {
 	private int position;
 
 	private Expression<Double> value[];
 
-	public VectorFromVectorBank(Producer<? extends VectorBank> bank, int position) {
-		super(3, Vector.blank(), bank);
+	public VectorFromVectorBank(Supplier<Producer<? extends VectorBank>> bank, int position) {
+		super(3, () -> Vector.blank(), bank);
 		this.position = position * 3;
 	}
 

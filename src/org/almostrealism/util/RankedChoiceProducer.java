@@ -23,6 +23,7 @@ import org.almostrealism.hardware.KernelizedProducer;
 import org.almostrealism.hardware.MemWrapper;
 
 import java.util.ArrayList;
+import java.util.function.Supplier;
 
 public class RankedChoiceProducer<T> extends ArrayList<ProducerWithRank<T>> implements Producer<T> {
 	protected double e;
@@ -31,12 +32,12 @@ public class RankedChoiceProducer<T> extends ArrayList<ProducerWithRank<T>> impl
 	public static final KernelizedProducer<Pair> highestRank;
 
 	static {
-		highestRank = new AcceleratedProducer(
+		highestRank = new AcceleratedProducer<>(
 				"highestRank",
 				true,
-				Pair.empty(),
-				PassThroughProducer.of(Scalar.class, 0),
-				PassThroughProducer.of(Pair.class, 1));
+				() -> Pair.empty(),
+				PassThroughProducer.of(MemWrapper.class, 0),
+				PassThroughProducer.of(MemWrapper.class, 1));
 	}
 
 	public RankedChoiceProducer(double e) { this(e, true); }

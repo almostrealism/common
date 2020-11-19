@@ -23,26 +23,25 @@ import io.almostrealism.code.Expression;
 import io.almostrealism.code.MultiExpression;
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;
-import org.almostrealism.relation.Computation;
 import org.almostrealism.relation.NameProvider;
 import org.almostrealism.util.Producer;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Optional;
 import java.util.function.IntFunction;
+import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
-public abstract class DynamicAcceleratedProducerAdapter<T extends MemWrapper> extends ComputationProducerAdapter<T> implements MemWrapperComputation<T>, MultiExpression<Double>, ComputerFeatures {
+public abstract class DynamicAcceleratedProducerAdapter<I extends MemWrapper, O extends MemWrapper> extends ComputationProducerAdapter<I, O> implements MemWrapperComputation<O>, MultiExpression<Double>, ComputerFeatures {
 	private int memLength;
 	private IntFunction<InstanceReference> variableRef;
 
-	public DynamicAcceleratedProducerAdapter(int memLength, Producer<T> result, Producer<?>... inputArgs) {
+	public DynamicAcceleratedProducerAdapter(int memLength, Supplier<Producer<O>> result, Supplier<Producer<? extends I>>... inputArgs) {
 		this(memLength, result, inputArgs, new Producer[0]);
 	}
 
-	public DynamicAcceleratedProducerAdapter(int memLength, Producer<T> result, Producer<?>[] inputArgs, Object[] additionalArguments) {
+	public DynamicAcceleratedProducerAdapter(int memLength, Supplier<Producer<O>> result, Supplier<Producer<? extends I>>[] inputArgs, Object[] additionalArguments) {
 		this.memLength = memLength;
 		this.setArguments(Arrays.asList(arguments(
 				AcceleratedProducer.includeResult(result,
@@ -56,16 +55,19 @@ public abstract class DynamicAcceleratedProducerAdapter<T extends MemWrapper> ex
 	public int getMemLength() { return memLength; }
 
 	@Override
-	public Scope<T> getScope(NameProvider provider) {
-		Scope<T> scope = super.getScope(provider);
+	public Producer<O> get() { return compileProducer(this); }
+
+	@Override
+	public Scope<O> getScope(NameProvider provider) {
+		Scope<O> scope = super.getScope(provider);
 		IntStream.range(0, memLength)
 				.mapToObj(getAssignmentFunction(provider.getOutputVariable()))
 				.forEach(v -> scope.getVariables().add((Variable) v));
 		return scope;
 	}
 
-	public AcceleratedOperation getInputProducer(int index) {
-		return (AcceleratedOperation) getArguments().get(index).getProducer();
+	public AcceleratedOperation<I> getInputProducer(int index) {
+		return (AcceleratedOperation<I>) getArguments().get(index).getProducer();
 	}
 
 	public Expression<Double> getInputProducerValue(int index, int pos) {
@@ -73,8 +75,7 @@ public abstract class DynamicAcceleratedProducerAdapter<T extends MemWrapper> ex
 	}
 
 	public static Expression<Double> getInputProducerValue(Argument arg, int pos) {
-		Optional<Computation> c = Hardware.getLocalHardware().getComputer().decompile(arg.getProducer());
-		return ((DynamicAcceleratedProducerAdapter) c.get()).getValue(pos);
+		return ((DynamicAcceleratedProducerAdapter) arg.getProducer()).getValue(pos);
 	}
 
 	@Override
@@ -96,7 +97,7 @@ public abstract class DynamicAcceleratedProducerAdapter<T extends MemWrapper> ex
 	}
 
 	protected IntFunction<Variable<Double>> variableForIndex(IntFunction<Expression<Double>> valueFunction) {
-		return i -> new Variable(getVariableName(i), true, valueFunction.apply(i), compileProducer(this));
+		return i -> new Variable(getVariableName(i), true, valueFunction.apply(i), this);
 	}
 
 	public boolean isValueOnly() { return true; }
@@ -107,11 +108,9 @@ public abstract class DynamicAcceleratedProducerAdapter<T extends MemWrapper> ex
 			if (getArguments().get(i) == null)
 				throw new IllegalArgumentException("Null input producer");
 
-			Optional<Computation> c = decompile(getArguments().get(i).getProducer());
-
-			if (c.orElse(null) instanceof DynamicAcceleratedProducerAdapter == false)
+			if (getArgumentProducer(i) instanceof DynamicAcceleratedProducerAdapter == false)
 				return false;
-			if (!((DynamicAcceleratedProducerAdapter) c.get()).isValueOnly())
+			if (!((DynamicAcceleratedProducerAdapter) getArgumentProducer(i)).isValueOnly())
 				return false;
 		}
 
@@ -120,12 +119,12 @@ public abstract class DynamicAcceleratedProducerAdapter<T extends MemWrapper> ex
 
 	public String getDefaultAnnotation() { return "__global"; }
 
-	protected static List<Argument> extractStaticProducers(List<Argument> args) {
-		List<Argument> staticProducers = new ArrayList<>();
+	protected static <T> List<Argument<? extends T>> extractStaticProducers(List<Argument<? extends T>> args) {
+		List<Argument<? extends T>> staticProducers = new ArrayList<>();
 
 		for (int i = 1; i < args.size(); i++) {
 			if (args.get(i).getProducer() instanceof DynamicAcceleratedProducerAdapter &&
-					args.get(i).getProducer().isStatic()) {
+					((DynamicAcceleratedProducerAdapter) args.get(i).getProducer()).isStatic()) {
 				staticProducers.add(args.get(i));
 			}
 		}
@@ -133,12 +132,12 @@ public abstract class DynamicAcceleratedProducerAdapter<T extends MemWrapper> ex
 		return staticProducers;
 	}
 
-	protected static List<Argument> extractDynamicProducers(List<Argument> args) {
-		List<Argument> dynamicProducers = new ArrayList<>();
+	protected static <T> List<Argument<? extends T>> extractDynamicProducers(List<Argument<? extends T>> args) {
+		List<Argument<? extends T>> dynamicProducers = new ArrayList<>();
 
 		for (int i = 1; i < args.size(); i++) {
 			if (args.get(i).getProducer() instanceof DynamicAcceleratedProducerAdapter == false ||
-					!args.get(i).getProducer().isStatic()) {
+					!((DynamicAcceleratedProducerAdapter) args.get(i).getProducer()).isStatic()) {
 				dynamicProducers.add(args.get(i));
 			}
 		}

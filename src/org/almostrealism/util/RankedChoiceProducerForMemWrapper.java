@@ -32,7 +32,7 @@ public abstract class RankedChoiceProducerForMemWrapper<T extends MemWrapper> ex
 	}
 
 	public AcceleratedRankedChoiceProducer<T> getAccelerated(int memLength, Producer<T> blankValue, IntFunction<MemoryBank<T>> forKernel) {
-		return new AcceleratedRankedChoiceProducer(memLength, blankValue, forKernel, this,
-													blankValue, getEpsilon(), blankValue::evaluate);
+		return new AcceleratedRankedChoiceProducer(memLength, () -> blankValue, forKernel, this,
+												() -> blankValue, getEpsilon(), blankValue::evaluate);
 	}
 }

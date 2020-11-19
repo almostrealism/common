@@ -21,6 +21,7 @@ import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.MemWrapper;
 
 import java.lang.reflect.InvocationTargetException;
+import java.util.function.Supplier;
 
 public class PassThroughProducer<T> implements Producer<T>, ProducerArgumentReference, HardwareFeatures {
 	private int argIndex = -1;
@@ -42,23 +43,22 @@ public class PassThroughProducer<T> implements Producer<T>, ProducerArgumentRefe
 	@Override
 	public int getReferencedArgumentIndex() { return argIndex; }
 
-	public static <T> Producer<T> of(Class<T> type, int index) {
+	public static <T> Supplier<Producer<? extends T>> of(Class<T> type, int index) {
 		return of(type, index, 0);
 	}
 
-	public static <T> Producer<T> of(Class<T> type, int index, int kernelDimension) {
+	public static <T> Supplier<Producer<? extends T>> of(Class<? extends T> type, int index, int kernelDimension) {
 		if (MemWrapper.class.isAssignableFrom(type)) {
 			try {
 				MemWrapper m = (MemWrapper) type.getConstructor().newInstance();
-				return Hardware.getLocalHardware().getComputer()
-						.compileProducer(new AcceleratedPassThroughProducer(m.getMemLength(), index, kernelDimension));
+				return new AcceleratedPassThroughProducer(m.getMemLength(), index, kernelDimension);
 			} catch (InstantiationException | IllegalAccessException |
 					InvocationTargetException | NoSuchMethodException e) {
 				System.out.println("WARN: Unable to determine memory length for " + type.getName());
-				return new PassThroughProducer<>(index);
+				return () -> new PassThroughProducer<>(index);
 			}
 		} else {
-			return new PassThroughProducer<>(index);
+			return () -> new PassThroughProducer<>(index);
 		}
 	}
 }

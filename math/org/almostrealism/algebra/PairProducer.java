@@ -16,20 +16,9 @@
 
 package org.almostrealism.algebra;
 
-import org.almostrealism.algebra.computations.DefaultPairProducer;
-import org.almostrealism.algebra.computations.DefaultScalarProducer;
-import org.almostrealism.algebra.computations.PairFromScalars;
-import org.almostrealism.algebra.computations.ScalarFromPair;
 import org.almostrealism.util.Producer;
 
-public interface PairProducer extends Producer<Pair> {
-	default ScalarProducer x() { return x(this); }
-	default ScalarProducer y() { return y(this); }
-
-	static ScalarProducer x(Producer<Pair> p) { return new DefaultScalarProducer(new ScalarFromPair(p, ScalarFromPair.X)); }
-	static ScalarProducer y(Producer<Pair> p) { return new DefaultScalarProducer(new ScalarFromPair(p, ScalarFromPair.Y)); }
-
-	static PairProducer fromScalars(Producer<Scalar> x, Producer<Scalar> y) {
-		return new DefaultPairProducer(new PairFromScalars(x, y));
-	}
+public interface PairProducer extends Producer<Pair>, PairFeatures {
+	default ScalarProducer x() { return l(this); }
+	default ScalarProducer y() { return r(this); }
 }

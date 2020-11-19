@@ -21,20 +21,21 @@ import org.almostrealism.relation.NameProvider;
 import org.almostrealism.util.Compactable;
 import org.almostrealism.util.Producer;
 
+import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
-public abstract class ComputationOperationAdapter<T> extends OperationAdapter implements Computation<T>, Compactable {
+public abstract class ComputationOperationAdapter<I, O> extends OperationAdapter<I> implements Computation<O>, Compactable {
 
 	public ComputationOperationAdapter() {
-		super(new Producer[0]);
+		super(new Supplier[0]);
 	}
 
 	@Override
 	public Argument getArgument(int index) { return getArguments().get(index); }
 
 	@Override
-	public Scope<T> getScope(NameProvider provider) {
-		Scope<T> scope = new Scope<>(provider.getFunctionName());
+	public Scope<O> getScope(NameProvider provider) {
+		Scope<O> scope = new Scope<>(provider.getFunctionName());
 		scope.getVariables().addAll(getVariables());
 		return scope;
 	}

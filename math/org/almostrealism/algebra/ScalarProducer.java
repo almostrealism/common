@@ -22,9 +22,12 @@ import org.almostrealism.algebra.computations.ScalarProduct;
 import org.almostrealism.math.bool.AcceleratedConditionalStatementVector;
 import org.almostrealism.math.bool.GreaterThanVector;
 import org.almostrealism.math.bool.LessThanVector;
+import org.almostrealism.relation.ProducerComputation;
 import org.almostrealism.util.Producer;
 import org.almostrealism.util.Provider;
 import org.almostrealism.util.StaticProducer;
+
+import java.util.function.Supplier;
 
 public interface ScalarProducer extends Producer<Scalar>, ScalarFeatures {
 
@@ -41,11 +44,15 @@ public interface ScalarProducer extends Producer<Scalar>, ScalarFeatures {
 	}
 
 	default ScalarProducer subtract(Producer<Scalar> value) {
-		return add(minus(value));
+		return add(scalarMinus(value));
 	}
 
 	default ScalarProducer multiply(Producer<Scalar> value) {
-		return new DefaultScalarProducer(new ScalarProduct(this, value));
+		return new DefaultScalarProducer(multiply(() -> value));
+	}
+
+	default ProducerComputation<Scalar> multiply(Supplier<Producer<? extends Scalar>> value) {
+		return new ScalarProduct(() -> this, value);
 	}
 
 	default ScalarProducer multiply(Scalar value) {
@@ -57,7 +64,11 @@ public interface ScalarProducer extends Producer<Scalar>, ScalarFeatures {
 	}
 
 	default ScalarProducer divide(Producer<Scalar> value) {
-		return multiply(new DefaultScalarProducer(new ScalarPow(value, StaticProducer.of(-1.0))));
+		return new DefaultScalarProducer(divide(() -> value));
+	}
+
+	default ProducerComputation<Scalar> divide(Supplier<Producer<? extends Scalar>> value) {
+		return multiply(new ScalarPow(value, () -> StaticProducer.of(-1.0)));
 	}
 
 	default ScalarProducer divide(Scalar value) {
@@ -69,10 +80,6 @@ public interface ScalarProducer extends Producer<Scalar>, ScalarFeatures {
 	}
 
 	default ScalarProducer minus() { return multiply(-1.0); }
-
-	static ScalarProducer minus(Producer<Scalar> p) {
-		return new DefaultScalarProducer(new ScalarProduct(p, minusOne));
-	}
 
 	default ScalarProducer pow(Producer<Scalar> exponent) { return pow(this, exponent); }
 
@@ -87,7 +94,7 @@ public interface ScalarProducer extends Producer<Scalar>, ScalarFeatures {
 	default AcceleratedConditionalStatementVector greaterThan(Producer<Scalar> operand,
 															  Producer<Vector> trueValue,
 															  Producer<Vector> falseValue) {
-		return new GreaterThanVector(this, operand, trueValue, falseValue);
+		return new GreaterThanVector(() -> this, () -> operand, () -> trueValue, () -> falseValue);
 	}
 
 	default AcceleratedConditionalStatementVector lessThan(Producer<Scalar> operand) {
@@ -97,6 +104,12 @@ public interface ScalarProducer extends Producer<Scalar>, ScalarFeatures {
 	default AcceleratedConditionalStatementVector lessThan(Producer<Scalar> operand,
 															  Producer<Vector> trueValue,
 															  Producer<Vector> falseValue) {
-		return new LessThanVector(this, operand, trueValue, falseValue);
+		return lessThan(() -> operand, () -> trueValue, () -> falseValue);
+	}
+
+	default AcceleratedConditionalStatementVector lessThan(Supplier<Producer<Scalar>> operand,
+														   Supplier<Producer<Vector>> trueValue,
+														   Supplier<Producer<Vector>> falseValue) {
+		return new LessThanVector(() -> this, operand, trueValue, falseValue);
 	}
 }

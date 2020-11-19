@@ -20,8 +20,10 @@ import org.almostrealism.algebra.TransformMatrix;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.util.Producer;
 
+import java.util.function.Supplier;
+
 public class TransformAsLocation extends Transform {
-	public TransformAsLocation(TransformMatrix t, Producer<Vector> v) {
+	public TransformAsLocation(TransformMatrix t, Supplier<Producer<? extends Vector>> v) {
 		super(t, v, true);
 	}
 }

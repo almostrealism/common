@@ -31,6 +31,8 @@ import org.almostrealism.util.DynamicProducer;
 import org.almostrealism.util.Producer;
 import org.almostrealism.util.Provider;
 
+import java.util.function.Supplier;
+
 /**
  * A {@link Ray} represents a 3d ray. It stores the origin and direction of a 3d ray,
  * which are vector quantities, as {@link Vector}s.
@@ -113,9 +115,8 @@ public class Ray extends MemWrapperAdapter implements Cloneable, CodeFeatures {
 	 */
 	public Producer<Scalar> oDoto() {
 		// TODO  Cache
-		return new AcceleratedProducer<>("rayODotO", false, Scalar.blank(),
-										new Producer[0],
-										new Object[] { this });
+		return new AcceleratedProducer<>("rayODotO", false, () -> Scalar.blank(),
+										new Supplier[0], new Object[] { this });
 	}
 	
 	/**
@@ -123,9 +124,8 @@ public class Ray extends MemWrapperAdapter implements Cloneable, CodeFeatures {
 	 */
 	public Producer<Scalar> dDotd() {
 		// TODO  Cache
-		return new AcceleratedProducer<>("rayDDotD", false, Scalar.blank(),
-										new Producer[0],
-										new Object[] { this });
+		return new AcceleratedProducer<>("rayDDotD", false, () -> Scalar.blank(),
+										new Supplier[0], new Object[] { this });
 	}
 	
 	/**
@@ -133,9 +133,8 @@ public class Ray extends MemWrapperAdapter implements Cloneable, CodeFeatures {
 	 */
 	public Producer<Scalar> oDotd() {
 		// TODO  Cache
-		return new AcceleratedProducer<>("rayODotD", false, Scalar.blank(),
-										new Producer[0],
-										new Object[] { this });
+		return new AcceleratedProducer<>("rayODotD", false, () -> Scalar.blank(),
+										new Supplier[0], new Object[] { this });
 	}
 	
 	/**
@@ -159,7 +158,7 @@ public class Ray extends MemWrapperAdapter implements Cloneable, CodeFeatures {
 	 *          as a {@link Vector}.
 	 */
 	public VectorProducer pointAt(Producer<Scalar> t) {
-		return new DefaultVectorProducer(new RayPointAt(v(this), t));
+		return new DefaultVectorProducer(new RayPointAt(v(this), () -> t));
 	}
 
 	@Override

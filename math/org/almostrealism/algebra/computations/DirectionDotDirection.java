@@ -16,20 +16,17 @@
 
 package org.almostrealism.algebra.computations;
 
-import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.util.Producer;
 
+import java.util.function.Supplier;
+
 public class DirectionDotDirection extends DotProduct {
-	public DirectionDotDirection(Producer<Ray> r) {
+	public DirectionDotDirection(Supplier<Producer<? extends Ray>> r) {
 		this(new RayDirection(r));
 	}
 	
 	protected DirectionDotDirection(RayDirection d) {
-		this(new DefaultVectorProducer(d), true);
-	}
-
-	private DirectionDotDirection(Producer<Vector> d, boolean ignore) {
 		super(d, d);
 	}
 }

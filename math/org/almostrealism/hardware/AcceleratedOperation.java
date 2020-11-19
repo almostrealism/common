@@ -31,8 +31,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
-public class AcceleratedOperation extends OperationAdapter implements Function<Object[], Object[]>, Runnable,
+public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter<T> implements Function<Object[], Object[]>, Runnable,
 														KernelizedOperation, Compactable, ComputerFeatures {
 	private static Map<String, ThreadLocal<HardwareOperator>> operators = new HashMap<>();
 
@@ -40,13 +41,13 @@ public class AcceleratedOperation extends OperationAdapter implements Function<O
 
 	private Class cls;
 
-	public AcceleratedOperation(String function, boolean kernel, Producer<?>... args) {
+	public AcceleratedOperation(String function, boolean kernel, Supplier<Producer<? extends T>>... args) {
 		super(args);
 		setFunctionName(function);
 		this.kernel = kernel;
 	}
 
-	public AcceleratedOperation(String function, boolean kernel, Argument<?>... args) {
+	public AcceleratedOperation(String function, boolean kernel, Argument<T>... args) {
 		super(args);
 		setFunctionName(function);
 		this.kernel = kernel;
@@ -197,7 +198,7 @@ public class AcceleratedOperation extends OperationAdapter implements Function<O
 		return false;
 	}
 
-	protected static MemoryBank[] getKernelArgs(List<Argument> arguments, MemoryBank args[], int passThroughLength) {
+	protected static <T> MemoryBank[] getKernelArgs(List<Argument<? extends T>> arguments, MemoryBank args[], int passThroughLength) {
 		MemoryBank kernelArgs[] = new MemoryBank[arguments.size()];
 
 		for (int i = 0; i < passThroughLength; i++) {
@@ -213,12 +214,12 @@ public class AcceleratedOperation extends OperationAdapter implements Function<O
 				continue i;
 			}
 
-			Optional<Computation> c = Hardware.getLocalHardware().getComputer().decompile(arguments.get(i).getProducer());
+			Supplier<? extends Producer<? extends T>> c = arguments.get(i).getProducer();
 
-			if (c.orElse(null) instanceof ProducerArgumentReference) {
+			if (c instanceof ProducerArgumentReference) {
 				int argIndex = ((ProducerArgumentReference) c.get()).getReferencedArgumentIndex();
 				kernelArgs[i] = args[passThroughLength + argIndex];
-			} else if (arguments.get(i).getProducer() instanceof KernelizedProducer) {
+			} else if (c instanceof KernelizedProducer) {
 				MemoryBank downstreamArgs[] = new MemoryBank[args.length - passThroughLength];
 				for (int j = passThroughLength; j < args.length; j++) {
 					downstreamArgs[j - passThroughLength] = args[j];

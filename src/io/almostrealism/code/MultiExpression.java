@@ -22,7 +22,7 @@ import java.util.function.IntFunction;
 
 public interface MultiExpression<T> extends NameProvider {
 
-	default IntFunction<Variable<T>> getAssignmentFunction(Variable<T> outputVariable) {
+	default IntFunction<Variable<T>> getAssignmentFunction(Variable<?> outputVariable) {
 		return i -> new Variable<>(getVariableValueName(outputVariable, i, true), false, getValue(i), outputVariable);
 	}
 

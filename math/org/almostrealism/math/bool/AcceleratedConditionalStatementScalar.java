@@ -21,12 +21,14 @@ import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.util.CollectionUtils;
 import org.almostrealism.util.Producer;
 
+import java.util.function.Supplier;
+
 public interface AcceleratedConditionalStatementScalar extends AcceleratedConditionalStatement<Scalar>, ScalarProducer {
-	default AcceleratedConjunctionScalar and(AcceleratedConditionalStatement<Scalar> operand, Producer<Scalar> trueValue, Producer<Scalar> falseValue) {
+	default AcceleratedConjunctionScalar and(AcceleratedConditionalStatement<Scalar> operand, Supplier<Producer<Scalar>> trueValue, Supplier<Producer<Scalar>> falseValue) {
 		return and(trueValue, falseValue, operand);
 	}
 
-	default AcceleratedConjunctionScalar and(Producer<Scalar> trueValue, Producer<Scalar> falseValue, AcceleratedConditionalStatement<Scalar>... operands) {
+	default AcceleratedConjunctionScalar and(Supplier<Producer<Scalar>> trueValue, Supplier<Producer<Scalar>> falseValue, AcceleratedConditionalStatement<Scalar>... operands) {
 		return new AcceleratedConjunctionScalar(trueValue, falseValue,
 				CollectionUtils.include(new AcceleratedConditionalStatement[0], this, operands));
 	}

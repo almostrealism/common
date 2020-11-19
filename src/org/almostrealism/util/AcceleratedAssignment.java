@@ -23,12 +23,13 @@ import org.almostrealism.hardware.DynamicAcceleratedOperationAdapter;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.relation.NameProvider;
 
+import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
-public class AcceleratedAssignment<T extends MemWrapper> extends DynamicAcceleratedOperationAdapter {
+public class AcceleratedAssignment<T extends MemWrapper> extends DynamicAcceleratedOperationAdapter<T> {
 	private int memLength;
 
-	public AcceleratedAssignment(int memLength, Producer<T> result, Producer<T> value) {
+	public AcceleratedAssignment(int memLength, Supplier<Producer<T>> result, Supplier<Producer<T>> value) {
 		super(result, value);
 		this.memLength = memLength;
 	}

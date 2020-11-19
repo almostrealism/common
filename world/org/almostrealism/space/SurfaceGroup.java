@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Supplier;
 
 import org.almostrealism.algebra.*;
 import org.almostrealism.algebra.computations.RayMatrixTransform;
@@ -29,6 +30,7 @@ import org.almostrealism.color.RGB;
 import org.almostrealism.color.computations.RGBAdd;
 import org.almostrealism.color.ShaderContext;
 import org.almostrealism.geometry.ClosestIntersection;
+import org.almostrealism.geometry.Ray;
 import org.almostrealism.graph.mesh.Mesh;
 import org.almostrealism.graph.mesh.Triangle;
 import org.almostrealism.relation.Constant;
@@ -126,7 +128,8 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 			if (color == null) {
 				color = getParent().shade(p);
 			} else {
-				color = new RGBAdd(color, getParent().shade(p));
+				final Producer<RGB> fc = color;
+				color = new RGBAdd(() -> fc, () -> getParent().shade(p));
 			}
 		}
 		
@@ -176,10 +179,11 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 	@Override
 	public ContinuousField intersectAt(Producer ray) {
 		TransformMatrix m = getTransform(true);
-		if (m != null) ray = m.getInverse().transform(ray);
+		Supplier<Producer<? extends Ray>> r = () -> ray;
+		if (m != null) r = m.getInverse().transform(() -> ray);
 		List<Intersectable> l = new ArrayList<>();
 		l.addAll(surfaces);
-		return new ClosestIntersection(ray, l);
+		return new ClosestIntersection(r.get(), l);
 	}
 
 	@Override

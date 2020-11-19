@@ -30,26 +30,27 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BiFunction;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-public abstract class OperationAdapter implements Compactable, NameProvider, Named {
+public abstract class OperationAdapter<T> implements Compactable, NameProvider, Named {
 	public static final boolean enableNullInputs = true;
 
 	private static long functionId = 0;
 
 	private String function;
 
-	private List<Argument> arguments;
+	private List<Argument<? extends T>> arguments;
 
-	private Map<Producer, List<Variable<?>>> variables;
-	private List<Producer> variableOrder;
+	private Map<Supplier<Producer>, List<Variable<?>>> variables;
+	private List<Supplier<Producer>> variableOrder;
 	private List<String> variableNames;
 
-	public OperationAdapter(Producer... args) {
+	public OperationAdapter(Supplier<Producer<? extends T>>... args) {
 		setArguments(Arrays.asList(arguments(args)));
 	}
 
-	public OperationAdapter(Argument<?>... args) {
+	public OperationAdapter(Argument<? extends T>... args) {
 		if (args.length > 0) setArguments(Arrays.asList(args));
 	}
 
@@ -63,11 +64,19 @@ public abstract class OperationAdapter implements Compactable, NameProvider, Nam
 
 	public int getArgsCount() { return getArguments().size(); }
 
-	protected void setArguments(List<Argument> arguments) { this.arguments = arguments; }
+	protected void setArguments(List<Argument<? extends T>> arguments) { this.arguments = arguments; }
 
-	public List<Argument> getArguments() {
+	public List<Argument<? extends T>> getArguments() {
 		Scope.sortArguments(arguments);
 		return arguments;
+	}
+
+	public List<Supplier<? extends Producer<? extends T>>> getArgumentProducers() {
+		return getArguments().stream().map(Argument::getProducer).collect(Collectors.toList());
+	}
+
+	public Supplier<? extends Producer<? extends T>> getArgumentProducer(int argIndex) {
+		return getArguments().get(argIndex).getProducer();
 	}
 
 	public void init() {
@@ -124,7 +133,7 @@ public abstract class OperationAdapter implements Compactable, NameProvider, Nam
 				.collect(Collectors.toList());
 	}
 
-	public void absorbVariables(Producer peer) {
+	public void absorbVariables(Supplier peer) {
 		if (peer instanceof OperationAdapter) {
 			absorbVariables((OperationAdapter) peer);
 		} else {
@@ -133,7 +142,7 @@ public abstract class OperationAdapter implements Compactable, NameProvider, Nam
 	}
 
 	public void absorbVariables(OperationAdapter peer) {
-		peer.getVariables().forEach(v -> addVariable(v));
+		peer.getVariables().forEach(v -> addVariable((Variable) v));
 	}
 
 	public void purgeVariables() {
@@ -142,7 +151,7 @@ public abstract class OperationAdapter implements Compactable, NameProvider, Nam
 		this.variableNames = new ArrayList<>();
 	}
 
-	protected static Argument[] arguments(Producer... producers) {
+	protected static <T> Argument<T>[] arguments(Supplier<Producer<? extends T>>... producers) {
 		Argument args[] = new Argument[producers.length];
 		for (int i = 0; i < args.length; i++) {
 			if (!enableNullInputs && producers[i] == null) {
@@ -156,11 +165,11 @@ public abstract class OperationAdapter implements Compactable, NameProvider, Nam
 	}
 
 	protected void removeDuplicateArguments() {
-		List<Argument> args = new ArrayList<>();
+		List<Argument<? extends T>> args = new ArrayList<>();
 		args.addAll(getArguments());
 
 		List<String> names = new ArrayList<>();
-		Iterator<Argument> itr = args.iterator();
+		Iterator<Argument<? extends T>> itr = args.iterator();
 
 		while (itr.hasNext()) {
 			Argument arg = itr.next();
@@ -176,10 +185,7 @@ public abstract class OperationAdapter implements Compactable, NameProvider, Nam
 
 	@Override
 	public synchronized void compact() {
-		for (int i = 0; i < getArguments().size(); i++) {
-			if (getArguments().get(i) != null && getArguments().get(i).getProducer() != null)
-				getArguments().get(i).getProducer().compact();
-		}
+		getArgumentProducers().stream().filter(p -> p instanceof Compactable).forEach(p -> ((Compactable) p).compact());
 	}
 
 	protected static String functionName(Class c) {

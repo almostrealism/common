@@ -19,6 +19,7 @@ package org.almostrealism.algebra.computations;
 import io.almostrealism.code.Argument;
 import io.almostrealism.code.Expression;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.algebra.ScalarSupplier;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
@@ -30,12 +31,13 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.IntFunction;
+import java.util.function.Supplier;
 
-public class DotProduct extends DynamicAcceleratedProducerAdapter<Scalar> implements Computation<Scalar>, ComputerFeatures {
+public class DotProduct extends DynamicAcceleratedProducerAdapter<Vector, Scalar> implements ScalarSupplier, ComputerFeatures {
 	private Expression<Double> value[];
 
-	public DotProduct(Producer<Vector> a, Producer<Vector> b) {
-		super(2, Scalar.blank(), a, b);
+	public DotProduct(Supplier<Producer<? extends Vector>> a, Supplier<Producer<? extends Vector>> b) {
+		super(2, () -> Scalar.blank(), a, b);
 	}
 
 	@Override
@@ -75,14 +77,8 @@ public class DotProduct extends DynamicAcceleratedProducerAdapter<Scalar> implem
 				throw new IllegalArgumentException("Infinity is not supported");
 			}
 
-			List<Argument> newArgs = new ArrayList<>();
-			newArgs.add(getArguments().get(0));
-			newArgs.addAll(AcceleratedProducer.excludeResult(getInputProducer(1).getArguments()));
-			newArgs.addAll(AcceleratedProducer.excludeResult(getInputProducer(2).getArguments()));
 			absorbVariables(getInputProducer(1));
 			absorbVariables(getInputProducer(2));
-			// setArguments(newArgs);
-			removeDuplicateArguments();
 		}
 
 		convertToVariableRef();

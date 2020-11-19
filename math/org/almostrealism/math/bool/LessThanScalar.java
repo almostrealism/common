@@ -21,34 +21,36 @@ import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.util.Producer;
 
+import java.util.function.Supplier;
+
 public class LessThanScalar extends LessThan<Scalar> implements AcceleratedConditionalStatementScalar {
 	public LessThanScalar() {
 		this(null, null, null, null);
 	}
 
-	public LessThanScalar(Producer<Scalar> leftOperand, Producer<Scalar> rightOperand) {
+	public LessThanScalar(Supplier<Producer> leftOperand, Supplier<Producer> rightOperand) {
 		this(leftOperand, rightOperand, null, null);
 	}
 
-	public LessThanScalar(Producer<Scalar> leftOperand, Producer<Scalar> rightOperand, boolean includeEqual) {
+	public LessThanScalar(Supplier leftOperand, Supplier rightOperand, boolean includeEqual) {
 		this(leftOperand, rightOperand, null, null, includeEqual);
 	}
 
 	public LessThanScalar(
-			Producer<Scalar> leftOperand,
-			Producer<Scalar> rightOperand,
-			Producer<Scalar> trueValue,
-			Producer<Scalar> falseValue) {
+			Supplier<Producer> leftOperand,
+			Supplier<Producer> rightOperand,
+			Supplier<Producer<Scalar>> trueValue,
+			Supplier<Producer<Scalar>> falseValue) {
 		this(leftOperand, rightOperand, trueValue, falseValue, false);
 	}
 
 	public LessThanScalar(
-			Producer<Scalar> leftOperand,
-			Producer<Scalar> rightOperand,
-			Producer<Scalar> trueValue,
-			Producer<Scalar> falseValue,
+			Supplier leftOperand,
+			Supplier rightOperand,
+			Supplier trueValue,
+			Supplier falseValue,
 			boolean includeEqual) {
-		super(2, Scalar.blank(), leftOperand, rightOperand, trueValue, falseValue, includeEqual);
+		super(2, () -> Scalar.blank(), leftOperand, rightOperand, trueValue, falseValue, includeEqual);
 	}
 
 	@Override

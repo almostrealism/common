@@ -21,30 +21,32 @@ import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.util.Producer;
 
+import java.util.function.Supplier;
+
 public class GreaterThanScalar extends GreaterThan<Scalar> implements AcceleratedConditionalStatementScalar {
 	public GreaterThanScalar() {
 		this(null, null, null, null);
 	}
 
 	public GreaterThanScalar(
-			Producer<Scalar> leftOperand,
-			Producer<Scalar> rightOperand) {
-		super(2, Scalar.blank(), leftOperand, rightOperand, null, null, false);
+			Supplier leftOperand,
+			Supplier rightOperand) {
+		super(2, () -> Scalar.blank(), leftOperand, rightOperand, null, null, false);
 	}
 
 	public GreaterThanScalar(
-			Producer<Scalar> leftOperand,
-			Producer<Scalar> rightOperand,
+			Supplier leftOperand,
+			Supplier rightOperand,
 			boolean includeEqual) {
-		super(2, Scalar.blank(), leftOperand, rightOperand, null, null, includeEqual);
+		super(2, () -> Scalar.blank(), leftOperand, rightOperand, null, null, includeEqual);
 	}
 
 	public GreaterThanScalar(
-			Producer<Scalar> leftOperand,
-			Producer<Scalar> rightOperand,
-			Producer<Scalar> trueValue,
-			Producer<Scalar> falseValue) {
-		super(2, Scalar.blank(), leftOperand, rightOperand, trueValue, falseValue, false);
+			Supplier leftOperand,
+			Supplier rightOperand,
+			Supplier trueValue,
+			Supplier falseValue) {
+		super(2, () -> Scalar.blank(), leftOperand, rightOperand, trueValue, falseValue, false);
 	}
 
 	@Override

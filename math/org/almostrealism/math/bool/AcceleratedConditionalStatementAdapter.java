@@ -34,26 +34,27 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.BiFunction;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrapper>
-											extends DynamicAcceleratedProducer<T>
+											extends DynamicAcceleratedProducer<MemWrapper, T>
 											implements AcceleratedConditionalStatement<T> {
 	private int memLength;
 
-	private BiFunction<Variable, List<Variable>, String> compacted;
+	private BiFunction<Variable<MemWrapper>, List<Variable<?>>, String> compacted;
 
-	public AcceleratedConditionalStatementAdapter(int memLength, Producer<T> blankValue) {
+	public AcceleratedConditionalStatementAdapter(int memLength, Supplier<Producer<T>> blankValue) {
 		super(blankValue);
 		this.memLength = memLength;
 	}
 
 	public AcceleratedConditionalStatementAdapter(int memLength,
-												  Producer<T> blankValue,
-												  Producer<Scalar> leftOperand,
-												  Producer<Scalar> rightOperand,
-												  Producer<T> trueValue,
-												  Producer<T> falseValue) {
+												  Supplier<Producer<T>> blankValue,
+												  Supplier<Producer> leftOperand,
+												  Supplier<Producer> rightOperand,
+												  Supplier<Producer<T>> trueValue,
+												  Supplier<Producer<T>> falseValue) {
 		super(blankValue, leftOperand, rightOperand, trueValue, falseValue);
 		this.memLength = memLength;
 	}
@@ -61,7 +62,7 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrappe
 	public int getMemLength() { return memLength; }
 
 	@Override
-	public String getBody(Variable outputVariable, List<Variable> existingVariables) {
+	public String getBody(Variable<MemWrapper> outputVariable, List<Variable<?>> existingVariables) {
 		if (compacted == null) {
 			StringBuffer buf = new StringBuffer();
 
@@ -127,15 +128,16 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrappe
 			return buf.toString();
 		};
 
-		List<Argument> newArgs = new ArrayList<>();
+		List<Argument<? extends MemWrapper>> newArgs = new ArrayList<>();
 		if (getArguments().get(0) != null) newArgs.add(getArguments().get(0));
-		getOperands().stream().map(Argument::getProducer)
-				.filter(p -> p instanceof AcceleratedComputationOperation)
-				.forEach(p -> ((AcceleratedComputationOperation) p).compile());
+//		TODO  May still need to compile them(?)
+//		getOperands().stream().map(Argument::getProducer)
+//				.filter(p -> p instanceof AcceleratedComputationOperation)
+//				.forEach(p -> ((AcceleratedComputationOperation) p).compile());
 		getOperands().stream()
 				.map(o -> AcceleratedProducer.excludeResult(((OperationAdapter) o.getProducer()).getArguments()))
 				.flatMap(List::stream)
-				.forEach(newArgs::add);
+				.forEach(arg -> newArgs.add((Argument) arg));
 		getOperands().stream()
 				.map(Argument::getProducer)
 				.forEach(this::absorbVariables);
@@ -164,12 +166,12 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrappe
 	protected boolean isCompactable() {
 		if (compacted != null) return false;
 
-		if (getTrueValue() != null && getTrueValue().getProducer() instanceof DynamicAcceleratedOperation == false)
+		if (getTrueValue() != null && getTrueValue().getProducer().get() instanceof DynamicAcceleratedOperation == false)
 			return false;
-		if (getFalseValue() != null && getFalseValue().getProducer() instanceof DynamicAcceleratedOperation == false)
+		if (getFalseValue() != null && getFalseValue().getProducer().get() instanceof DynamicAcceleratedOperation == false)
 			return false;
 		for (Argument a : getOperands()) {
-			if (decompile(a.getProducer()).orElse(null) instanceof MultiExpression == false)
+			if (a.getProducer() instanceof MultiExpression == false)
 				return false;
 		}
 

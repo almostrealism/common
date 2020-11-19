@@ -20,6 +20,7 @@ import io.almostrealism.code.Argument;
 import io.almostrealism.code.Expression;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.algebra.ScalarSupplier;
 import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.util.Producer;
@@ -28,20 +29,19 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.IntFunction;
+import java.util.function.Supplier;
 
-public class ScalarFromPair extends DynamicAcceleratedProducerAdapter<Scalar> {
+public class ScalarFromPair extends DynamicAcceleratedProducerAdapter<Pair, Scalar> implements ScalarSupplier {
 	public static final int X = 0;
 	public static final int Y = 1;
 
-	private Producer<Pair> pair;
 	private int coordinate;
 
 	private Expression<Double> value;
 	private boolean isStatic;
 
-	public ScalarFromPair(Producer<Pair> pair, int coordinate) {
-		super(2, Scalar.blank(), pair);
-		this.pair = pair;
+	public ScalarFromPair(Supplier<Producer<? extends Pair>> pair, int coordinate) {
+		super(2, () -> Scalar.blank(), pair);
 		this.coordinate = coordinate;
 	}
 
@@ -75,7 +75,8 @@ public class ScalarFromPair extends DynamicAcceleratedProducerAdapter<Scalar> {
 				throw new IllegalArgumentException("Infinity is not supported");
 			}
 
-			if (getArguments().get(1).getProducer().isStatic()) {
+			// TODO  Probably should check if supplier itself is static...
+			if (((Producer) getArguments().get(1).getProducer().get()).isStatic()) {
 				isStatic = true;
 			} else {
 				newArgs.addAll(AcceleratedProducer.excludeResult(getInputProducer(1).getArguments()));

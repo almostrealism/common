@@ -16,13 +16,10 @@
 
 package org.almostrealism.heredity;
 
-import org.almostrealism.algebra.computations.DefaultScalarProducer;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.computations.ScalarProduct;
 import org.almostrealism.util.CodeFeatures;
 import org.almostrealism.util.Defaults;
 import org.almostrealism.util.Producer;
-import org.almostrealism.util.Provider;
 
 // TODO  Rename
 public class LongScaleFactor implements ScaleFactor<Scalar>, CodeFeatures {
@@ -34,7 +31,7 @@ public class LongScaleFactor implements ScaleFactor<Scalar>, CodeFeatures {
 
 	@Override
 	public Producer<Scalar> getResultant(Producer<Scalar> value) {
-		return new DefaultScalarProducer(new ScalarProduct(value, scalar(scale)));
+		return (Producer<Scalar>) scalarsMultiply(() -> value, scalar(scale)).get();
 	}
 
 	@Override

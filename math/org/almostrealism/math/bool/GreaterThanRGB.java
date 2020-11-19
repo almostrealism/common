@@ -16,11 +16,12 @@
 
 package org.almostrealism.math.bool;
 
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBBank;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.util.Producer;
+
+import java.util.function.Supplier;
 
 public class GreaterThanRGB extends GreaterThan<RGB> {
 	public GreaterThanRGB() {
@@ -28,11 +29,11 @@ public class GreaterThanRGB extends GreaterThan<RGB> {
 	}
 
 	public GreaterThanRGB(
-			Producer<Scalar> leftOperand,
-			Producer<Scalar> rightOperand,
-			Producer<RGB> trueValue,
-			Producer<RGB> falseValue) {
-		super(3, RGB.blank(), leftOperand, rightOperand, trueValue, falseValue, false);
+			Supplier<Producer> leftOperand,
+			Supplier<Producer> rightOperand,
+			Supplier<Producer<RGB>> trueValue,
+			Supplier<Producer<RGB>> falseValue) {
+		super(3, () -> RGB.blank(), leftOperand, rightOperand, trueValue, falseValue, false);
 	}
 
 	@Override

@@ -18,59 +18,61 @@ package org.almostrealism.graph.mesh;
 
 import org.almostrealism.algebra.Intersection;
 import org.almostrealism.algebra.ScalarProducer;
+import org.almostrealism.algebra.ScalarSupplier;
+import org.almostrealism.algebra.VectorBank;
 import org.almostrealism.algebra.VectorProducer;
+import org.almostrealism.algebra.VectorSupplier;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.geometry.RayProducer;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.math.bool.AcceleratedConjunctionScalar;
 import org.almostrealism.math.bool.GreaterThanScalar;
 import org.almostrealism.math.bool.LessThanScalar;
 import org.almostrealism.relation.Computation;
 import org.almostrealism.util.Producer;
-import org.almostrealism.util.Provider;
-
 import static org.almostrealism.util.Ops.*;
 
+import java.util.function.Supplier;
+
 public class TriangleIntersectAt extends LessThanScalar {
-	public TriangleIntersectAt(Producer<TriangleData> t, Producer<Ray> r) {
-		this(TriangleDataProducer.abc(t), TriangleDataProducer.def(t), TriangleDataProducer.jkl(t),
-				TriangleDataProducer.normal(t), RayProducer.origin(r), RayProducer.direction(r));
+	public TriangleIntersectAt(Supplier<Producer<? extends VectorBank>> t, Supplier<Producer<? extends Ray>> r) {
+		this(ops().abc(t), ops().def(t), ops().jkl(t),
+				ops().normal(t), ops().origin(r), ops().direction(r));
 	}
 
-	protected TriangleIntersectAt(VectorProducer abc, VectorProducer def, VectorProducer jkl,
-								  VectorProducer normal, VectorProducer origin, VectorProducer direction) {
+	protected TriangleIntersectAt(VectorSupplier abc, VectorSupplier def, VectorSupplier jkl,
+								  VectorSupplier normal, VectorSupplier origin, VectorSupplier direction) {
 		this(abc, def, jkl, normal, origin, direction, s(jkl, origin));
 	}
 
-	protected TriangleIntersectAt(VectorProducer abc, VectorProducer def, VectorProducer jkl,
-								  VectorProducer normal, VectorProducer origin, VectorProducer direction,
-								  VectorProducer s) {
+	protected TriangleIntersectAt(VectorSupplier abc, VectorSupplier def, VectorSupplier jkl,
+								  VectorSupplier normal, VectorSupplier origin, VectorSupplier direction,
+								  VectorSupplier s) {
 		this(abc, def, jkl, normal, origin, direction, f(abc, h(def, direction)), q(abc, s), s);
 	}
 
-	protected TriangleIntersectAt(VectorProducer abc, VectorProducer def, VectorProducer jkl,
-								  VectorProducer normal, VectorProducer origin, VectorProducer direction,
-								  ScalarProducer f, VectorProducer q, VectorProducer s) {
+	protected TriangleIntersectAt(VectorSupplier abc, VectorSupplier def, VectorSupplier jkl,
+								  VectorSupplier normal, VectorSupplier origin, VectorSupplier direction,
+								  ScalarSupplier f, VectorSupplier q, VectorSupplier s) {
 		this(abc, def, jkl, normal, origin, direction, f, q, s, v(direction, f.pow(-1.0), q));
 	}
 
-	protected TriangleIntersectAt(VectorProducer abc, VectorProducer def, VectorProducer jkl,
-								  VectorProducer normal, VectorProducer origin, VectorProducer direction,
-								  ScalarProducer f, VectorProducer q, VectorProducer s, ScalarProducer v) {
+	protected TriangleIntersectAt(VectorSupplier abc, VectorSupplier def, VectorSupplier jkl,
+								  VectorSupplier normal, VectorSupplier origin, VectorSupplier direction,
+								  ScalarSupplier f, VectorSupplier q, VectorSupplier s, ScalarSupplier v) {
 		this(abc, def, jkl, normal, origin, direction, f, q, s, u(s, h(def, direction), f.pow(-1.0)), v);
 	}
 
-	protected TriangleIntersectAt(VectorProducer abc, VectorProducer def, VectorProducer jkl,
-								  VectorProducer normal, VectorProducer origin, VectorProducer direction,
-								  ScalarProducer f, VectorProducer q, VectorProducer s,
-								  ScalarProducer u, ScalarProducer v) {
+	protected TriangleIntersectAt(VectorSupplier abc, VectorSupplier def, VectorSupplier jkl,
+								  VectorSupplier normal, VectorSupplier origin, VectorSupplier direction,
+								  ScalarSupplier f, VectorSupplier q, VectorSupplier s,
+								  ScalarSupplier u, ScalarSupplier v) {
 		this(abc, def, jkl, normal, origin, direction, f, q, s, u, v, t(def, f.pow(-1.0), q));
 	}
 
-	protected TriangleIntersectAt(VectorProducer abc, VectorProducer def, VectorProducer jkl,
-				VectorProducer normal, VectorProducer origin, VectorProducer direction,
-								  ScalarProducer f, VectorProducer q, VectorProducer s,
-								  ScalarProducer u, ScalarProducer v, ScalarProducer t) {
+	protected TriangleIntersectAt(VectorSupplier abc, VectorSupplier def, VectorSupplier jkl,
+				VectorSupplier normal, VectorSupplier origin, VectorSupplier direction,
+								  ScalarSupplier f, VectorSupplier q, VectorSupplier s,
+								  ScalarSupplier u, ScalarSupplier v, ScalarSupplier t) {
 		this(abc, def, jkl, normal, origin, direction, f, q, s,
 				new AcceleratedConjunctionScalar(
 						t, ops().scalar(-1.0),
@@ -80,50 +82,50 @@ public class TriangleIntersectAt extends LessThanScalar {
 						new LessThanScalar(u.add(v), ops().scalar(1.0), true)));
 	}
 
-	protected TriangleIntersectAt(VectorProducer abc, VectorProducer def, VectorProducer jkl,
-				VectorProducer normal, VectorProducer origin, VectorProducer direction,
-				ScalarProducer f, VectorProducer q, VectorProducer s,
+	protected TriangleIntersectAt(VectorSupplier abc, VectorSupplier def, VectorSupplier jkl,
+				VectorSupplier normal, VectorSupplier origin, VectorSupplier direction,
+				ScalarSupplier f, VectorSupplier q, VectorSupplier s,
 				AcceleratedConjunctionScalar trueValue) {
-		super(f, ops().scalar(-Intersection.e), trueValue,
-				new GreaterThanScalar(f, ops().scalar(Intersection.e), trueValue,
+		super(f, ops().scalar(-Intersection.e), () -> trueValue,
+				() -> new GreaterThanScalar(f, ops().scalar(Intersection.e), () -> trueValue,
 						ops().scalar(-1.0)), true);
 	}
 
 	// TODO  Make private
-	public static VectorProducer h(VectorProducer def, VectorProducer direction) {
+	public static VectorSupplier h(VectorSupplier def, VectorSupplier direction) {
 		return direction.crossProduct(def);
 	}
 
 	// TODO  Make private
-	public static ScalarProducer f(VectorProducer abc, VectorProducer h) {
+	public static ScalarSupplier f(VectorSupplier abc, VectorSupplier h) {
 		return abc.dotProduct(h);
 	}
 
 	// TODO  Make private
-	public static VectorProducer s(VectorProducer jkl, VectorProducer origin) {
+	public static VectorSupplier s(VectorSupplier jkl, VectorSupplier origin) {
 		return origin.subtract(jkl);
 	}
 
 	// TODO  Make private
-	public static ScalarProducer u(VectorProducer s, VectorProducer h, ScalarProducer f) {
+	public static ScalarSupplier u(VectorSupplier s, VectorSupplier h, ScalarSupplier f) {
 		return f.multiply(s.dotProduct(h));
 	}
 
 	// TODO  Make private
-	public static VectorProducer q(VectorProducer abc, VectorProducer s) {
+	public static VectorSupplier q(VectorSupplier abc, VectorSupplier s) {
 		return s.crossProduct(abc);
 	}
 
 	// TODO  Make private
-	public static ScalarProducer v(VectorProducer direction, ScalarProducer f, VectorProducer q) {
+	public static ScalarSupplier v(VectorSupplier direction, ScalarSupplier f, VectorSupplier q) {
 		return f.multiply(direction.dotProduct(q));
 	}
 
-	private static ScalarProducer t(VectorProducer def, ScalarProducer f, VectorProducer q) {
+	private static ScalarSupplier t(VectorSupplier def, ScalarSupplier f, VectorSupplier q) {
 		return f.multiply(def.dotProduct(q));
 	}
 
-	public static TriangleIntersectAt construct(Producer<TriangleData> t, Computation<Ray> r) {
-		return new TriangleIntersectAt(t, Hardware.getLocalHardware().getComputer().compileProducer(r));
+	public static TriangleIntersectAt construct(Supplier<Producer<? extends VectorBank>> t, Supplier<Producer<? extends Ray>> r) {
+		return new TriangleIntersectAt(t, r);
 	}
 }

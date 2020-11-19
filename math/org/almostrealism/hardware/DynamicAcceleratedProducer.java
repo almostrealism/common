@@ -22,33 +22,34 @@ import org.almostrealism.util.Producer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
-public abstract class DynamicAcceleratedProducer<T extends MemWrapper> extends DynamicAcceleratedOperation implements KernelizedProducer<T> {
-	public DynamicAcceleratedProducer(Producer<T> result, Producer<?> inputArgs[], Object additionalArguments[]) {
+public abstract class DynamicAcceleratedProducer<I extends MemWrapper, O extends MemWrapper> extends DynamicAcceleratedOperation<MemWrapper> implements KernelizedProducer<O> {
+	public DynamicAcceleratedProducer(Supplier<Producer<O>> result, Supplier<Producer<? extends I>> inputArgs[], Object additionalArguments[]) {
 		this(result, AcceleratedProducer.producers(inputArgs, additionalArguments));
 	}
 
-	public DynamicAcceleratedProducer(Producer<T> result, Producer<?>... inputArgs) {
+	public DynamicAcceleratedProducer(Supplier<Producer<O>> result, Supplier... inputArgs) {
 		this(true, result, inputArgs);
 	}
 
-	public DynamicAcceleratedProducer(boolean kernel, Producer<T> result, Producer<?> inputArgs[], Object additionalArguments[]) {
+	public DynamicAcceleratedProducer(boolean kernel, Supplier<Producer<O>> result, Supplier<Producer<? extends I>> inputArgs[], Object additionalArguments[]) {
 		this(kernel, result, AcceleratedProducer.producers(inputArgs, additionalArguments));
 	}
 
-	public DynamicAcceleratedProducer(boolean kernel, Producer<T> result, Producer<?>... inputArgs) {
+	public DynamicAcceleratedProducer(boolean kernel, Supplier<Producer<O>> result, Supplier<Producer<? extends I>>... inputArgs) {
 		super(kernel, AcceleratedProducer.includeResult(result, inputArgs));
 		init();
 	}
 
 	@Override
-	public T evaluate(Object[] args) { return (T) apply(args)[0]; }
+	public O evaluate(Object[] args) { return (O) apply(args)[0]; }
 
 	protected void writeVariables(Consumer<String> out) {
 		writeVariables(out, new ArrayList<>());
 	}
 
-	protected void writeVariables(Consumer<String> out, List<Variable> existingVariables) {
+	protected void writeVariables(Consumer<String> out, List<Variable<?>> existingVariables) {
 		getVariables().stream()
 				.filter(v -> !existingVariables.contains(v)).forEach((Consumer<Variable<?>>) var -> {
 			if (var.getAnnotation() != null) {
@@ -97,7 +98,7 @@ public abstract class DynamicAcceleratedProducer<T extends MemWrapper> extends D
 	}
 
 	@Override
-	public MemoryBank<T> createKernelDestination(int size) {
+	public MemoryBank<O> createKernelDestination(int size) {
 		throw new RuntimeException("Not implemented");
 	}
 }

@@ -253,7 +253,7 @@ public class Vector extends MemWrapperAdapter implements Positioned, Triple, Clo
 	 * Returns the opposite of the vector represented by this {@link Vector}.
 	 */
 	public Vector minus() {
-		return minus(v(this)).evaluate();
+		return minus(v(this)).get().evaluate();
 	}
 
 	/** Returns the sum of this {@link Vector} and the specified {@link Vector}. */
@@ -349,12 +349,12 @@ public class Vector extends MemWrapperAdapter implements Positioned, Triple, Clo
 	 * Returns the dot product of this {@link Vector} and the specified {@link Vector}.
 	 */
 	public synchronized double dotProduct(Vector vector) {
-		return dotProduct(v(this), v(vector)).evaluate().getValue();
+		return dotProduct(v(this), v(vector)).get().evaluate().getValue();
 	}
 
 	/** Returns the cross product of this {@link Vector} and that of the specified {@link Vector}. */
 	public Vector crossProduct(Vector vector) {
-		return crossProduct(v(this), v(vector)).evaluate();
+		return crossProduct(v(this), v(vector)).get().evaluate();
 	}
 
 	public float[] toFloat() {
@@ -375,11 +375,11 @@ public class Vector extends MemWrapperAdapter implements Positioned, Triple, Clo
 	 * {@link Vector} as a double value.
 	 */
 	public double lengthSq() {
-		return lengthSq(v(this)).evaluate().getValue();
+		return lengthSq(v(this)).get().evaluate().getValue();
 	}
 
 	public void normalize() {
-		v(this).normalize().evaluate();
+		v(this).normalize().get().evaluate();
 	}
 
 	/** This is the fastest way to get access to the data in this {@link Vector}. */

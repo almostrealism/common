@@ -24,6 +24,8 @@ import org.almostrealism.util.Provider;
 import org.almostrealism.util.RunnableList;
 import org.almostrealism.util.StaticProducer;
 
+import java.util.function.Supplier;
+
 public abstract class CachedStateCell<T> extends FilteredCell<T> implements Factor<T>, Source<T>, Temporal, CodeFeatures {
 	private final T cachedValue;
 	private final T outValue;
@@ -52,12 +54,12 @@ public abstract class CachedStateCell<T> extends FilteredCell<T> implements Fact
 
 	@Override
 	public Runnable push(Producer<T> protein) {
-		return assign(p(cachedValue), protein);
+		return assign(p(cachedValue), () -> protein);
 	}
 
-	protected abstract Runnable assign(Provider<T> out, Producer<T> in);
+	protected abstract Runnable assign(Supplier<Producer<? extends T>> out, Supplier<Producer<? extends T>> in);
 
-	protected abstract Runnable reset(Provider<T> out);
+	protected abstract Runnable reset(Supplier<Producer<? extends T>> out);
 
 	@Override
 	public Runnable tick() {

@@ -19,6 +19,7 @@ package org.almostrealism.algebra.computations;
 import io.almostrealism.code.Argument;
 import io.almostrealism.code.Expression;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.algebra.ScalarSupplier;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.hardware.ComputerFeatures;
@@ -27,20 +28,19 @@ import org.almostrealism.util.Producer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.IntFunction;
+import java.util.function.Supplier;
 
-public class ScalarFromVector extends DynamicAcceleratedProducerAdapter<Scalar> implements ComputerFeatures {
+public class ScalarFromVector extends DynamicAcceleratedProducerAdapter<Vector, Scalar> implements ScalarSupplier, ComputerFeatures {
 	public static final int X = 0;
 	public static final int Y = 1;
 	public static final int Z = 2;
 
-	private Producer<Vector> vector;
 	private int coordinate;
 
 	private Expression<Double> value;
 
-	public ScalarFromVector(Producer<Vector> vector, int coordinate) {
-		super(2, Scalar.blank(), vector);
-		this.vector = vector;
+	public ScalarFromVector(Supplier<Producer<? extends Vector>> vector, int coordinate) {
+		super(2, () -> Scalar.blank(), vector);
 		this.coordinate = coordinate;
 	}
 
@@ -66,7 +66,7 @@ public class ScalarFromVector extends DynamicAcceleratedProducerAdapter<Scalar> 
 		super.compact();
 
 		if (value == null && isCompletelyValueOnly()) {
-			List<Argument> newArgs = new ArrayList<>();
+			List<Argument<?>> newArgs = new ArrayList<>();
 			newArgs.add(getArguments().get(0));
 
 			value = getInputProducerValue(1, coordinate);

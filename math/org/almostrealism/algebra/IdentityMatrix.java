@@ -19,10 +19,12 @@ package org.almostrealism.algebra;
 import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.util.Producer;
 
-public class IdentityMatrix extends AcceleratedProducer<TransformMatrix> {
-	public IdentityMatrix() { this(TransformMatrix.blank()); }
+import java.util.function.Supplier;
 
-	public IdentityMatrix(Producer<TransformMatrix> newMatrix) {
+public class IdentityMatrix extends AcceleratedProducer<TransformMatrix, TransformMatrix> {
+	public IdentityMatrix() { this(() -> TransformMatrix.blank()); }
+
+	public IdentityMatrix(Supplier<Producer<TransformMatrix>> newMatrix) {
 		super("identityMatrix", newMatrix);
 	}
 }

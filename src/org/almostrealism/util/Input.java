@@ -16,10 +16,12 @@
 
 package org.almostrealism.util;
 
+import java.util.function.Supplier;
+
 public class Input {
 	private Input() { }
 
-	public static <T> Producer<T> value(Class<T> type, int argIndex) {
+	public static <T> Supplier<Producer<? extends T>> value(Class<T> type, int argIndex) {
 		return PassThroughProducer.of(type, argIndex);
 	}
 }

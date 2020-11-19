@@ -28,12 +28,13 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.IntFunction;
+import java.util.function.Supplier;
 
-public class RGBFromScalars extends DynamicAcceleratedProducerAdapter<RGB> {
+public class RGBFromScalars extends DynamicAcceleratedProducerAdapter<Scalar, RGB> implements RGBSupplier {
 	private Expression<Double> value[];
 
-	public RGBFromScalars(Producer<Scalar> r, Producer<Scalar> g, Producer<Scalar> b) {
-		super(3, RGB.blank(), r, g, b);
+	public RGBFromScalars(Supplier<Producer<? extends Scalar>> r, Supplier<Producer<? extends Scalar>> g, Supplier<Producer<? extends Scalar>> b) {
+		super(3, () -> RGB.blank(), r, g, b);
 	}
 
 	@Override
@@ -58,16 +59,9 @@ public class RGBFromScalars extends DynamicAcceleratedProducerAdapter<RGB> {
 					getInputProducerValue(3, 0)
 			};
 
-			List<Argument> newArgs = new ArrayList<>();
-			newArgs.add(getArguments().get(0));
 			for (int i = 1; i <= 3; i++) {
-				if (!getInputProducer(i).isStatic())
-					newArgs.addAll(AcceleratedProducer.excludeResult(getInputProducer(i).getArguments()));
 				absorbVariables(getInputProducer(i));
 			}
-
-			// setArguments(newArgs);
-			removeDuplicateArguments();
 		}
 
 		convertToVariableRef();

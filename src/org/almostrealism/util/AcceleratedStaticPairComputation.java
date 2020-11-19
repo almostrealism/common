@@ -21,8 +21,10 @@ import org.almostrealism.algebra.PairBank;
 import org.almostrealism.algebra.PairProducer;
 import org.almostrealism.hardware.MemoryBank;
 
+import java.util.function.Supplier;
+
 public class AcceleratedStaticPairComputation extends AcceleratedStaticComputation<Pair> {
-	public AcceleratedStaticPairComputation(Pair value, Producer<Pair> output) {
+	public AcceleratedStaticPairComputation(Pair value, Supplier<Producer<Pair>> output) {
 		super(value, output);
 	}
 }

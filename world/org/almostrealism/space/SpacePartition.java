@@ -22,6 +22,8 @@ import org.almostrealism.geometry.Ray;
 import org.almostrealism.graph.mesh.Triangle;
 import org.almostrealism.util.Producer;
 
+import java.util.function.Supplier;
+
 public class SpacePartition<T extends ShadableSurface> extends SurfaceGroup<T> {
 	public static int l, r, s;
 	
@@ -313,10 +315,11 @@ public class SpacePartition<T extends ShadableSurface> extends SurfaceGroup<T> {
 	public boolean isTreeLoaded() { return (this.root != null); }
 
 	@Override
-	public ContinuousField intersectAt(Producer r) {
+	public ContinuousField intersectAt(Producer ray) {
 		TransformMatrix t = getTransform(true);
 		boolean ut = t != null;
+		Supplier<Producer<? extends Ray>> r = () -> ray;
 		if (ut) r = t.getInverse().transform(r);
-		return this.root.intersectAt(r);
+		return this.root.intersectAt(r.get());
 	}
 }

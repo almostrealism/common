@@ -18,47 +18,45 @@ package org.almostrealism.math.bool;
 
 import io.almostrealism.code.Argument;
 import io.almostrealism.code.Variable;
+import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.MemWrapper;
-import org.almostrealism.util.DynamicProducer;
 import org.almostrealism.util.Producer;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 public class AcceleratedConjunctionAdapter<T extends MemWrapper> extends AcceleratedConditionalStatementAdapter<T> {
 	private List<AcceleratedConditionalStatement<T>> conjuncts;
 	private Argument trueValue, falseValue;
 
-	public AcceleratedConjunctionAdapter(int memLength) {
-		this(memLength, DynamicProducer.forMemLength());
-	}
-
 	public AcceleratedConjunctionAdapter(int memLength,
-											 Function<Integer, Producer<? extends MemWrapper>> blankValue) {
+											 Function<Integer, Supplier<Producer<T>>> blankValue) {
 		this(memLength, blankValue, null, null);
 	}
 
 	public AcceleratedConjunctionAdapter(int memLength,
-										 	Function<Integer, Producer<? extends MemWrapper>> blankValue,
-										 	Producer<T> trueValue, Producer<T> falseValue,
+										 	Function<Integer, Supplier<Producer<T>>> blankValue,
+										 	Supplier<Producer<T>> trueValue, Supplier<Producer<T>> falseValue,
 										 	AcceleratedConditionalStatement<T>... conjuncts) {
-		this(memLength, (Producer<T>) blankValue.apply(memLength), trueValue, falseValue, conjuncts);
+		this(memLength, (Supplier<Producer<T>>) blankValue.apply(memLength), trueValue, falseValue, conjuncts);
 	}
 
 	public AcceleratedConjunctionAdapter(int memLength,
-										 	Producer<T> blankValue,
-										 	Producer<T> trueValue, Producer<T> falseValue,
+										 	Supplier<Producer<T>> blankValue,
+										 	Supplier<Producer<T>> trueValue,
+										 	Supplier<Producer<T>> falseValue,
 										 	AcceleratedConditionalStatement<T>... conjuncts) {
 		super(memLength, blankValue);
 		this.conjuncts = Arrays.asList(conjuncts);
 		initArguments(trueValue, falseValue);
 	}
 
-	protected void initArguments(Producer<T> trueValue, Producer<T> falseValue) {
-		List<Argument> args = new ArrayList<>();
+	protected void initArguments(Supplier<Producer<T>> trueValue, Supplier<Producer<T>> falseValue) {
+		List<Argument<? extends MemWrapper>> args = new ArrayList<>();
 		args.add(getArguments().get(0));
 		args.addAll(getOperands());
 
@@ -99,7 +97,7 @@ public class AcceleratedConjunctionAdapter<T extends MemWrapper> extends Acceler
 	}
 
 	@Override
-	public List<Argument> getOperands() {
+	public List<Argument<Scalar>> getOperands() {
 		return conjuncts.stream().flatMap(c -> c.getOperands().stream()).collect(Collectors.toList());
 	}
 

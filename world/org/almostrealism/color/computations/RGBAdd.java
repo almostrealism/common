@@ -20,10 +20,12 @@ import org.almostrealism.color.RGB;
 import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.util.Producer;
 
+import java.util.function.Supplier;
+
 @Deprecated
-public class RGBAdd extends AcceleratedProducer<RGB> {
-	public RGBAdd(Producer<RGB> a, Producer<RGB> b) {
-		super("add", RGB.blank(), a, b);
+public class RGBAdd extends AcceleratedProducer<RGB, RGB> {
+	public RGBAdd(Supplier<Producer<? extends RGB>> a, Supplier<Producer<? extends RGB>> b) {
+		super("add", () -> RGB.blank(), a, b);
 	}
 
 	@Override

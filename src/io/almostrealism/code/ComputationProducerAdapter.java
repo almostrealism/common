@@ -16,5 +16,7 @@
 
 package io.almostrealism.code;
 
-public abstract class ComputationProducerAdapter<T> extends ComputationOperationAdapter<T> {
+import org.almostrealism.relation.ProducerComputation;
+
+public abstract class ComputationProducerAdapter<I, O> extends ComputationOperationAdapter<I, O> implements ProducerComputation<O> {
 }

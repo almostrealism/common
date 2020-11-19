@@ -21,15 +21,18 @@ import org.almostrealism.algebra.VectorBank;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.util.Producer;
 
+import java.util.function.Supplier;
+
 public class AcceleratedConjunctionVector extends AcceleratedConjunctionAdapter<Vector>
 										implements AcceleratedConditionalStatementVector {
 	public AcceleratedConjunctionVector() {
 		this(null, null);
 	}
 
-	public AcceleratedConjunctionVector(Producer<Vector> trueValue, Producer<Vector> falseValue,
-										 AcceleratedConditionalStatement<Vector>... conjuncts) {
-		super(3, Vector.blank(), trueValue, falseValue, conjuncts);
+	public AcceleratedConjunctionVector(Supplier<Producer<Vector>> trueValue,
+										Supplier<Producer<Vector>> falseValue,
+										AcceleratedConditionalStatement<Vector>... conjuncts) {
+		super(3, () -> Vector.blank(), trueValue, falseValue, conjuncts);
 	}
 
 	@Override

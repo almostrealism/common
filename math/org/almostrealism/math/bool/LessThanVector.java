@@ -18,7 +18,10 @@ package org.almostrealism.math.bool;
 
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.util.Producer;
+
+import java.util.function.Supplier;
 
 public class LessThanVector extends LessThan<Vector> implements AcceleratedConditionalStatementVector {
 	public LessThanVector() {
@@ -26,10 +29,10 @@ public class LessThanVector extends LessThan<Vector> implements AcceleratedCondi
 	}
 
 	public LessThanVector(
-			Producer<Scalar> leftOperand,
-			Producer<Scalar> rightOperand,
-			Producer<Vector> trueValue,
-			Producer<Vector> falseValue) {
-		super(3, Vector.blank(), leftOperand, rightOperand, trueValue, falseValue, false);
+			Supplier leftOperand,
+			Supplier rightOperand,
+			Supplier<Producer<Vector>> trueValue,
+			Supplier<Producer<Vector>> falseValue) {
+		super(3, () -> Vector.blank(), leftOperand, rightOperand, trueValue, falseValue, false);
 	}
 }

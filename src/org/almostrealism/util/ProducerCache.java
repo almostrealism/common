@@ -18,6 +18,7 @@ package org.almostrealism.util;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.function.Supplier;
 
 /**
  * The {@link ProducerCache} provides static methods for keeping track
@@ -29,7 +30,7 @@ import java.util.Map;
  * @author  Michael Murray
  */
 public class ProducerCache {
-	private static ThreadLocal<Map<Producer, Object>> cache = new ThreadLocal<>();
+	private static ThreadLocal<Map<Supplier, Object>> cache = new ThreadLocal<>();
 
 	private static ThreadLocal<Object[]> lastParameter = new ThreadLocal<>();
 
@@ -38,14 +39,14 @@ public class ProducerCache {
 	 */
 	private ProducerCache() { }
 
-	public static <T> T evaluate(Producer<T> p, Object args[]) {
+	public static <T> T evaluate(Supplier<Producer<? extends T>> p, Object args[]) {
 		checkArgs(args);
 
 		if (getCache().containsKey(p)) {
 			return (T) getCache().get(p);
 		}
 
-		T result = p.evaluate(args);
+		T result = p.get().evaluate(args);
 		getCache().put(p, result);
 		return result;
 	}
@@ -59,7 +60,7 @@ public class ProducerCache {
 		}
 	}
 
-	private static Map<Producer, Object> getCache() {
+	private static Map<Supplier, Object> getCache() {
 		if (cache.get() == null) {
 			cache.set(new HashMap<>());
 		}

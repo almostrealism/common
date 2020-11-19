@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -20,8 +20,10 @@ import org.almostrealism.algebra.TransformMatrix;
 import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.util.Producer;
 
-public class MatrixProduct extends AcceleratedProducer<TransformMatrix> {
-	public MatrixProduct(Producer<TransformMatrix> a, Producer<TransformMatrix> b) {
-		super("matrixProduct", TransformMatrix.blank(), a, b);
+import java.util.function.Supplier;
+
+public class MatrixProduct extends AcceleratedProducer<TransformMatrix, TransformMatrix> {
+	public MatrixProduct(Supplier<Producer<? extends TransformMatrix>> a, Supplier<Producer<? extends TransformMatrix>> b) {
+		super("matrixProduct", () -> TransformMatrix.blank(), a, b);
 	}
 }

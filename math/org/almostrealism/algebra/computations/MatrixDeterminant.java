@@ -21,8 +21,10 @@ import org.almostrealism.algebra.TransformMatrix;
 import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.util.Producer;
 
-public class MatrixDeterminant extends AcceleratedProducer<Scalar> {
-	public MatrixDeterminant(Producer<TransformMatrix> m) {
-		super("matrixDeterminant", Scalar.blank(), m);
+import java.util.function.Supplier;
+
+public class MatrixDeterminant extends AcceleratedProducer<TransformMatrix, Scalar> {
+	public MatrixDeterminant(Supplier<Producer<? extends TransformMatrix>> m) {
+		super("matrixDeterminant", () -> Scalar.blank(), m);
 	}
 }

@@ -54,12 +54,14 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 		setName(name);
 	}
 
+	@Override
 	public String getName() { return name; }
 
+	@Override
 	public void setName(String name) { this.name = name; }
 
-	public List<Argument> getArguments() {
-		List<Argument> args = new ArrayList<>();
+	public <A> List<Argument<? extends A>> getArguments() {
+		List<Argument<? extends A>> args = new ArrayList<>();
 		extractArgumentDependencies(variables).forEach(args::add);
 		methods.stream()
 				.map(Method::getArguments)
@@ -70,7 +72,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 		this.stream()
 				.map(Scope::getArguments)
 				.flatMap(List::stream)
-				.forEach(args::add);
+				.forEach(arg -> args.add((Argument<A>) arg));
 		sortArguments(args);
 		return args;
 	}
@@ -127,7 +129,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 		w.flush();
 	}
 
-	public static void sortArguments(List<Argument> arguments) {
+	public static <T> void sortArguments(List<Argument<? extends T>> arguments) {
 		if (arguments != null) {
 			Collections.sort(arguments, Comparator.comparing(v -> v == null ? Integer.MAX_VALUE : v.getSortHint()));
 		}
