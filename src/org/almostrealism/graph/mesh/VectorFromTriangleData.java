@@ -22,13 +22,13 @@ import org.almostrealism.util.Producer;
 
 import java.util.function.Supplier;
 
-public class VectorFromTriangleData extends VectorFromVectorBank {
+public class VectorFromTriangleData extends VectorFromVectorBank<TriangleData> {
 	public static final int ABC = 0;
 	public static final int DEF = 1;
 	public static final int JKL = 2;
 	public static final int NORMAL = 3;
 
-	public VectorFromTriangleData(Supplier<Producer<? extends VectorBank>> triangle, int position) {
+	public VectorFromTriangleData(Supplier<Producer<? extends TriangleData>> triangle, int position) {
 		super(triangle, position);
 	}
 }

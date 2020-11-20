@@ -60,10 +60,10 @@ public class Triangle extends AbstractSurface implements ParticleGroup, CodeFeat
 	
 	static {
 		dataProducer = (KernelizedProducer<TriangleData>)
-				ops().triangle(PassThroughProducer.of(VectorBank.class, 0)).get();
+				ops().triangle(PassThroughProducer.of(TrianglePointData.class, 0)).get();
 		dataProducer.compact();
 
-		intersectAt = new TriangleIntersectAt(PassThroughProducer.of(VectorBank.class, 1),
+		intersectAt = new TriangleIntersectAt(PassThroughProducer.of(TriangleData.class, 1),
 							PassThroughProducer.of(Ray.class, 0, -1));
 		intersectAt.compact();
 	}

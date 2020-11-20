@@ -16,15 +16,15 @@
 
 package org.almostrealism.graph.mesh;
 
-import org.almostrealism.algebra.VectorProducer;
-import org.almostrealism.hardware.KernelizedProducer;
+import org.almostrealism.algebra.VectorSupplier;
+import org.almostrealism.relation.ProducerComputation;
 
-public interface TriangleDataProducer extends KernelizedProducer<TriangleData>, TriangleDataFeatures {
-	default VectorProducer abc() { return abc(this); }
+public interface TriangleDataSupplier extends ProducerComputation<TriangleData>, TriangleDataFeatures {
+	default VectorSupplier abc() { return abc(this); }
 
-	default VectorProducer def() { return def(this); }
+	default VectorSupplier def() { return def(this); }
 
-	default VectorProducer jkl() { return jkl(this); }
+	default VectorSupplier jkl() { return jkl(this); }
 
-	default VectorProducer normal() { return normal(this); }
+	default VectorSupplier normal() { return normal(this); }
 }

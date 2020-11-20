@@ -30,7 +30,7 @@ import java.util.Optional;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public class TriangleDataFromVectors extends DynamicAcceleratedProducerAdapter<Vector, TriangleData> {
+public class TriangleDataFromVectors extends DynamicAcceleratedProducerAdapter<Vector, TriangleData> implements TriangleDataSupplier {
 	private Expression<Double> value[];
 
 	public TriangleDataFromVectors(Supplier<Producer<? extends Vector>> abc, Supplier<Producer<? extends Vector>> def,

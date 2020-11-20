@@ -33,12 +33,12 @@ import java.util.List;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public class VectorFromVectorBank extends DynamicAcceleratedProducerAdapter<VectorBank, Vector> implements VectorSupplier {
+public class VectorFromVectorBank<T extends VectorBank> extends DynamicAcceleratedProducerAdapter<T, Vector> implements VectorSupplier {
 	private int position;
 
 	private Expression<Double> value[];
 
-	public VectorFromVectorBank(Supplier<Producer<? extends VectorBank>> bank, int position) {
+	public VectorFromVectorBank(Supplier<Producer<? extends T>> bank, int position) {
 		super(3, () -> Vector.blank(), bank);
 		this.position = position * 3;
 	}

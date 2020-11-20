@@ -18,9 +18,11 @@ package org.almostrealism.util;
 
 import org.almostrealism.algebra.Scalar;
 
+import java.util.function.Supplier;
+
 public class ProducerWithRankAdapter<T> implements ProducerWithRank<T> {
-	private Producer<T> p;
-	private Producer<Scalar> rank;
+	private Producer<? extends T> p;
+	private Producer<? extends Scalar> rank;
 
 	/**
 	 * This constructor uses this {@link Producer} as the
@@ -32,16 +34,20 @@ public class ProducerWithRankAdapter<T> implements ProducerWithRank<T> {
 		this.rank = rank;
 	}
 
-	public ProducerWithRankAdapter(Producer<T> p, Producer<Scalar> rank) {
+	public ProducerWithRankAdapter(Supplier<Producer<? extends T>> p, Supplier<Producer<? extends Scalar>> rank) {
+		this(p.get(), rank.get());
+	}
+
+	public ProducerWithRankAdapter(Producer<? extends T> p, Producer<? extends Scalar> rank) {
 		this.p = p;
 		this.rank = rank;
 	}
 
 	@Override
-	public Producer<T> getProducer() { return p; }
+	public Producer<T> getProducer() { return (Producer<T>) p; }
 
 	@Override
-	public Producer<Scalar> getRank() { return rank; }
+	public Producer<Scalar> getRank() { return (Producer<Scalar>) rank; }
 
 	@Override
 	public T evaluate(Object[] args) {
