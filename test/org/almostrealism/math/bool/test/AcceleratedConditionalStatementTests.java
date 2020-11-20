@@ -1,6 +1,7 @@
 package org.almostrealism.math.bool.test;
 
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.algebra.ScalarSupplier;
 import org.almostrealism.math.bool.LessThan;
 import org.almostrealism.util.CodeFeatures;
 import org.almostrealism.util.Producer;
@@ -13,10 +14,10 @@ import java.util.stream.IntStream;
 public class AcceleratedConditionalStatementTests implements CodeFeatures {
 	@Test
 	public void compact() {
-		Producer<Scalar> a = scalar(Math.random());
-		Producer<Scalar> b = scalar(Math.random());
+		ScalarSupplier a = scalar(Math.random());
+		ScalarSupplier b = scalar(Math.random());
 
-		LessThan lt = new LessThan(2, Scalar.blank(), a, b, a, b, false);
+		LessThan lt = new LessThan(2, () -> Scalar.blank(), a, b, a, b, false);
 
 		lt.compact();
 		System.out.println(lt.getFunctionDefinition());
@@ -24,10 +25,10 @@ public class AcceleratedConditionalStatementTests implements CodeFeatures {
 		Scalar s = (Scalar) lt.evaluate();
 		System.out.println(s.getValue());
 
-		if (a.evaluate().getValue() < b.evaluate().getValue()) {
-			Assert.assertEquals(a.evaluate().getValue(), s.getValue(), Math.pow(10, -10));
+		if (a.get().evaluate().getValue() < b.get().evaluate().getValue()) {
+			Assert.assertEquals(a.get().evaluate().getValue(), s.getValue(), Math.pow(10, -10));
 		} else {
-			Assert.assertEquals(b.evaluate().getValue(), s.getValue(), Math.pow(10, -10));
+			Assert.assertEquals(b.get().evaluate().getValue(), s.getValue(), Math.pow(10, -10));
 		}
 	}
 
@@ -39,14 +40,14 @@ public class AcceleratedConditionalStatementTests implements CodeFeatures {
 			double c = i * Math.random();
 			double d = i * Math.random();
 
-			Producer<Scalar> pa = scalar(a);
-			Producer<Scalar> pb = scalar(b);
-			Producer<Scalar> pc = scalar(c);
-			Producer<Scalar> pd = scalar(d);
+			ScalarSupplier pa = scalar(a);
+			ScalarSupplier pb = scalar(b);
+			ScalarSupplier pc = scalar(c);
+			ScalarSupplier pd = scalar(d);
 
-			LessThan lt1 = new LessThan(2, Scalar.blank(), pa, pb, pa, pb, false);
-			LessThan lt2 = new LessThan(2, Scalar.blank(), pb, pc, lt1, scalar(-a), false);
-			LessThan lt3 = new LessThan(2, Scalar.blank(), pc, pd, lt2, scalar(-b), false);
+			LessThan lt1 = new LessThan(2, () -> Scalar.blank(), pa, pb, pa, pb, false);
+			LessThan lt2 = new LessThan(2, () -> Scalar.blank(), pb, pc, () -> lt1, scalar(-a), false);
+			LessThan lt3 = new LessThan(2, () -> Scalar.blank(), pc, pd, () -> lt2, scalar(-b), false);
 
 			LessThan top = lt3;
 

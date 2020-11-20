@@ -19,6 +19,8 @@ package org.almostrealism.geometry;
 import org.almostrealism.hardware.MemoryBankAdapter;
 import org.almostrealism.util.Producer;
 
+import java.util.function.Supplier;
+
 /**
  * A collection of {@link Ray}s of a fixed length, that is contiguous in
  * RAM and usable for kernel methods.
@@ -31,10 +33,10 @@ public class RayBank extends MemoryBankAdapter<Ray> {
 				new Ray(delegateSpec.getDelegate(), delegateSpec.getOffset()));
 	}
 
-	public static RayBank fromProducer(Producer<Ray> producer, int count) {
+	public static RayBank fromProducer(Supplier<Producer<? extends Ray>> producer, int count) {
 		RayBank bank = new RayBank(count);
 		for (int i = 0; i < bank.getCount(); i++) {
-			bank.set(i, producer.evaluate());
+			bank.set(i, producer.get().evaluate());
 		}
 
 		return bank;

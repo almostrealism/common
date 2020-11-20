@@ -32,32 +32,28 @@ import org.junit.Test;
 
 public class PlaneTest implements HardwareFeatures, CodeFeatures {
 	protected ShadableIntersection test1() {
-		Producer<Ray> r = v(new Ray(new Vector(0.0, 0.0, 1.0),
-												new Vector(0.0, 0.5, -1.0)));
-
 		Plane p = new Plane(Plane.XZ);
 		p.setLocation(new Vector(0.0, -10, 0.0));
 
-		return (ShadableIntersection) p.intersectAt(r);
+		return (ShadableIntersection) p.intersectAt((Producer<Ray>) ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0).get());
 	}
 
 	@Test
 	public void intersectionTest1() {
 		ShadableIntersection intersection = test1();
-		double distance = ((Scalar) intersection.getDistance().evaluate()).getValue();
+		double distance = ((Producer<Scalar>) intersection.getDistance().get()).evaluate().getValue();
 		System.out.println("distance = " + distance);
 		Assert.assertEquals(-20.0, distance, Math.pow(10, -10));
 
 		Assert.assertTrue(intersection.get(0).evaluate().equals(
-								new Ray(new Vector(0.0, -10.0, 21.0),
-										new Vector(0.0, 1.0, 0.0))));
+								ray(0.0, -10.0, 21.0, 0.0, 1.0, 0.0).get()));
 	}
 
 	@Test
 	public void intersectionTest1Compact() {
 		ShadableIntersection intersection = test1();
 
-		Producer<Scalar> p = intersection.getDistance();
+		Producer<Scalar> p = (Producer<Scalar>) intersection.getDistance();
 		p.compact();
 
 		System.out.println(((DynamicAcceleratedMultiProducer) p).getFunctionDefinition());
@@ -80,23 +76,25 @@ public class PlaneTest implements HardwareFeatures, CodeFeatures {
 		p.setLocation(new Vector(0.0, 0, 0.0));
 
 		ShadableIntersection intersection = (ShadableIntersection) p.intersectAt(r);
-		Assert.assertTrue(((Scalar) intersection.getDistance().evaluate(new Object[0])).getValue() == -1);
+		Assert.assertEquals(-1.0, ((Producer<Scalar>) intersection.getDistance()).evaluate().getValue(), Math.pow(10, -10));
 	}
 
 	@Test
 	public void transformTest() {
 		Provider<Ray> r = new Provider<>(new Ray(new Vector(0.0, 0.0, 1.0),
 															new Vector(0.0, 0.5, -1.0)));
-
+		ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0);
 
 		Plane p = new Plane(Plane.XZ);
 		p.setLocation(new Vector(0.0, -10, 0.0));
 
-		RayMatrixTransform t = new RayMatrixTransform(p.getTransform(true), r);
+		RayMatrixTransform t = new RayMatrixTransform(p.getTransform(true),
+					ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0));
 		Assert.assertTrue(compileProducer(t).evaluate().equals(new Ray(new Vector(0.0, -10.0, 1.0),
 																new Vector(0.0, 0.5, -1.0))));
 
-		t = new RayMatrixTransform(p.getTransform(true).getInverse(), r);
+		t = new RayMatrixTransform(p.getTransform(true).getInverse(),
+					ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0));
 		Assert.assertTrue(compileProducer(t).evaluate().equals(new Ray(new Vector(0.0, 10.0, 1.0),
 																	new Vector(0.0, 0.5, -1.0))));
 

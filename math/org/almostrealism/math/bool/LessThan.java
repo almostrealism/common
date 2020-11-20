@@ -41,10 +41,10 @@ public class LessThan<T extends MemWrapper> extends AcceleratedBinaryConditionAd
 
 	public LessThan(int memLength,
 					Supplier<Producer<T>> blankValue,
-					Supplier<Producer> leftOperand,
-					Supplier<Producer> rightOperand,
-					Supplier<Producer<T>> trueValue,
-					Supplier<Producer<T>> falseValue,
+					Supplier leftOperand,
+					Supplier rightOperand,
+					Supplier trueValue,
+					Supplier falseValue,
 					boolean includeEqual) {
 		super(includeEqual ? "<=" : "<", memLength, blankValue, leftOperand, rightOperand, trueValue, falseValue);
 	}

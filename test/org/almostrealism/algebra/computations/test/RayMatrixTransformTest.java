@@ -20,6 +20,7 @@ import org.almostrealism.algebra.TransformMatrix;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.computations.RayMatrixTransform;
 import org.almostrealism.geometry.Ray;
+import org.almostrealism.geometry.RaySupplier;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.util.CodeFeatures;
 import org.almostrealism.util.Producer;
@@ -37,9 +38,8 @@ public class RayMatrixTransformTest implements HardwareFeatures, CodeFeatures {
 		});
 	}
 
-	protected Producer<Ray> getRay1() {
-		return v(new Ray(new Vector(1.0, 2.0, 3.0),
-						new Vector(4.0, 5.0, 6.0)));
+	protected RaySupplier getRay1() {
+		return ray(1.0, 2.0, 3.0,4.0, 5.0, 6.0);
 	}
 
 	@Test

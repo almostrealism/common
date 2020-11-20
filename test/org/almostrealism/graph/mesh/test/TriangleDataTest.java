@@ -18,14 +18,18 @@ package org.almostrealism.graph.mesh.test;
 
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorProducer;
+import org.almostrealism.algebra.VectorSupplier;
 import org.almostrealism.graph.mesh.DefaultVertexData;
 import org.almostrealism.graph.mesh.Mesh;
 import org.almostrealism.graph.mesh.MeshData;
 import org.almostrealism.graph.mesh.MeshPointData;
 import org.almostrealism.graph.mesh.TriangleData;
 import org.almostrealism.graph.mesh.TriangleDataProducer;
+import org.almostrealism.graph.mesh.TriangleDataSupplier;
+import org.almostrealism.hardware.KernelizedProducer;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.util.CodeFeatures;
+import org.almostrealism.util.Producer;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -49,21 +53,21 @@ public class TriangleDataTest implements CodeFeatures {
 	public void edges() {
 		MeshPointData points = points();
 
-		VectorProducer edge1 = subtract(v(points.get(0).getP2()), v(points.get(0).getP1()));
-		Vector value = edge1.evaluate();
+		VectorSupplier edge1 = subtract(v(points.get(0).getP2()), v(points.get(0).getP1()));
+		Vector value = edge1.get().evaluate();
 		System.out.println(value);
 		Assert.assertEquals(-1, value.getX(), Math.pow(10, -10));
 		Assert.assertEquals(-2, value.getY(), Math.pow(10, -10));
 		Assert.assertEquals(0, value.getZ(), Math.pow(10, -10));
 
-		VectorProducer edge2 = subtract(v(points.get(0).getP3()), v(points.get(0).getP1()));
-		value = edge2.evaluate();
+		VectorSupplier edge2 = subtract(v(points.get(0).getP3()), v(points.get(0).getP1()));
+		value = edge2.get().evaluate();
 		System.out.println(value);
 		Assert.assertEquals(1, value.getX(), Math.pow(10, -10));
 		Assert.assertEquals(-2, value.getY(), Math.pow(10, -10));
 		Assert.assertEquals(0, value.getZ(), Math.pow(10, -10));
 
-		value = vector(0.0, 0.0, -1.0).crossProduct(edge2).evaluate();
+		value = vector(0.0, 0.0, -1.0).crossProduct(edge2).get().evaluate();
 		System.out.println(value);
 		Assert.assertEquals(-2, value.getX(), Math.pow(10, -10));
 		Assert.assertEquals(-1, value.getY(), Math.pow(10, -10));
@@ -73,18 +77,18 @@ public class TriangleDataTest implements CodeFeatures {
 	@Test
 	public void triangleData() {
 		MeshPointData points = points();
-		TriangleDataProducer td = TriangleDataProducer.triangle(v(points.get(0).getP1()),
-														v(points.get(0).getP2()),
-														v(points.get(0).getP3()));
-		triangleDataAssertions(td.evaluate());
+		TriangleDataSupplier td = triangle(v(points.get(0).getP1()),
+											v(points.get(0).getP2()),
+											v(points.get(0).getP3()));
+		triangleDataAssertions(td.get().evaluate());
 	}
 
 	@Test
 	public void triangleDataCompact() {
 		MeshPointData points = points();
-		TriangleDataProducer td = TriangleDataProducer.triangle(v(points.get(0).getP1()),
+		Producer<? extends TriangleData> td = triangle(v(points.get(0).getP1()),
 				v(points.get(0).getP2()),
-				v(points.get(0).getP3()));
+				v(points.get(0).getP3())).get();
 		td.compact();
 		triangleDataAssertions(td.evaluate());
 	}
@@ -92,11 +96,11 @@ public class TriangleDataTest implements CodeFeatures {
 	@Test
 	public void triangleDataKernel() {
 		MeshPointData points = points();
-		TriangleDataProducer td = TriangleDataProducer.triangle(points(0));
+		Producer<? extends TriangleData> td = triangle(points(0)).get();
 		td.compact();
 
 		MeshData output = new MeshData(1);
-		td.kernelEvaluate(output, new MemoryBank[] { points });
+		((KernelizedProducer) td).kernelEvaluate(output, new MemoryBank[] { points });
 		triangleDataAssertions(output.get(0));
 	}
 

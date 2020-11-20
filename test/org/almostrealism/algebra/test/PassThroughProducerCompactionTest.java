@@ -12,10 +12,10 @@ import org.junit.Test;
 public class PassThroughProducerCompactionTest implements HardwareFeatures {
 	protected AcceleratedComputationProducer<Scalar> product() {
 		return (AcceleratedComputationProducer)
-				compileProducer(new ScalarProduct(compileProducer(new ScalarSum(
+				new ScalarProduct(new ScalarSum(
 					PassThroughProducer.of(Scalar.class, 0),
-					PassThroughProducer.of(Scalar.class, 1))),
-				PassThroughProducer.of(Scalar.class, 2)));
+					PassThroughProducer.of(Scalar.class, 1)),
+				PassThroughProducer.of(Scalar.class, 2)).get();
 	}
 
 	@Test

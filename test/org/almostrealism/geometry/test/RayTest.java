@@ -16,32 +16,27 @@
 
 package org.almostrealism.geometry.test;
 
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.algebra.computations.RayCopy;
 import org.almostrealism.algebra.computations.RayPointAt;
 import org.almostrealism.hardware.HardwareFeatures;
+import org.almostrealism.util.CodeFeatures;
 import org.almostrealism.util.Provider;
 import org.junit.Assert;
 import org.junit.Test;
 
-public class RayTest implements HardwareFeatures {
+public class RayTest implements HardwareFeatures, CodeFeatures {
 	@Test
 	public void pointAtTest1() {
-		Provider<Ray> r = new Provider<>(new Ray(new Vector(0.0, 0.0, 0.0),
-															new Vector(0.0, 1.0, 0.5)));
-		Provider<Scalar> s = new Provider<>(new Scalar(10));
-		RayPointAt p = new RayPointAt(r, s);
-		Assert.assertTrue(compileProducer(p).evaluate(new Object[0]).equals(new Vector(0.0, 10.0, 5.0)));
-		Assert.assertTrue(compileProducer(p).evaluate(new Object[0]).equals(new Vector(0.0, 10.0, 5.0)));
+		RayPointAt p = new RayPointAt(ray(0.0, 0.0, 0.0, 0.0, 1.0, 0.0), scalar(10));
+		Assert.assertTrue(p.get().evaluate(new Object[0]).equals(new Vector(0.0, 10.0, 5.0)));
+		Assert.assertTrue(p.get().evaluate(new Object[0]).equals(new Vector(0.0, 10.0, 5.0)));
 	}
 
 	@Test
 	public void pointAtTest2() {
-		Provider<Ray> r = new Provider<>(new Ray(new Vector(0.0, 0.0, 1.0),
-															new Vector(0.0, 0.5, -1.0)));
-		RayPointAt at = new RayPointAt(r, new Provider<>(new Scalar(-20)));
+		RayPointAt at = new RayPointAt(ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0), scalar(-20));
 		Assert.assertTrue(compileProducer(at).evaluate(new Object[0]).equals(new Vector(0.0, -10.0, 21.0)));
 	}
 

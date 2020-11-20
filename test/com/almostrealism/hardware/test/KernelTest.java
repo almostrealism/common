@@ -12,9 +12,7 @@ import org.junit.Test;
 public class KernelTest implements CodeFeatures {
 	@Test
 	public void copyRay() {
-		TestKernel k = new TestKernel(Ray.blank(),
-				v(new Ray(new Vector(1, 2, 3),
-								new Vector(4, 5, 6))));
+		TestKernel k = new TestKernel(() -> Ray.blank(), ray(1, 2, 3, 4, 5, 6));
 		Ray r = k.evaluate();
 		System.out.println(r);
 		assert r.equals(new Ray(new Vector(1, 2, 3), new Vector(4, 5, 6)));
@@ -24,13 +22,12 @@ public class KernelTest implements CodeFeatures {
 	public void copyRayKernel() {
 		int count = 2;
 
-		TestKernel k = new TestKernel(Ray.blank(),
-									new PassThroughProducer<>(0));
+		TestKernel k = new TestKernel(() -> Ray.blank(),
+									PassThroughProducer.of(Ray.class, 0));
 
-		RayBank output = RayBank.fromProducer(Ray.blank(), count);
-		RayBank input = RayBank.fromProducer(v(
-				new Ray(new Vector(1, 2, 3),
-						new Vector(4, 5, 7))), count);
+		RayBank output = RayBank.fromProducer(() -> Ray.blank(), count);
+		RayBank input = RayBank.fromProducer(
+				ray(1, 2, 3,4, 5, 7), count);
 
 		k.kernelEvaluate(output, new MemoryBank[] { input });
 

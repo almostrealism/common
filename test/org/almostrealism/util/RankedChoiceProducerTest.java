@@ -96,7 +96,7 @@ public class RankedChoiceProducerTest implements CodeFeatures {
 	@Test
 	public void rankedChoice1() {
 		RankedChoiceProducerForVector rcp = getRankedChoiceProducer1();
-		DynamicAcceleratedProducer<Vector> acc = rcp.getAccelerated();
+		DynamicAcceleratedProducer<Vector, Vector> acc = rcp.getAccelerated();
 		System.out.println(acc.getFunctionDefinition());
 
 		Vector result = acc.evaluate();
@@ -107,7 +107,7 @@ public class RankedChoiceProducerTest implements CodeFeatures {
 	@Test
 	public void rankedChoice2() {
 		RankedChoiceProducerForVector rcp = getRankedChoiceProducer2();
-		DynamicAcceleratedProducer<Vector> acc = rcp.getAccelerated();
+		DynamicAcceleratedProducer<Vector, Vector> acc = rcp.getAccelerated();
 		System.out.println(acc.getFunctionDefinition());
 
 		Vector result = acc.evaluate();
@@ -118,7 +118,7 @@ public class RankedChoiceProducerTest implements CodeFeatures {
 	@Test
 	public void rankedChoiceCompact1() {
 		RankedChoiceProducerForVector rcp = getRankedChoiceProducer1();
-		DynamicAcceleratedProducer<Vector> acc = rcp.getAccelerated();
+		DynamicAcceleratedProducer<Vector, Vector> acc = rcp.getAccelerated();
 		acc.compact();
 		System.out.println(acc.getFunctionDefinition());
 
@@ -138,8 +138,8 @@ public class RankedChoiceProducerTest implements CodeFeatures {
 										PassThroughProducer.of(Scalar.class, 5)));
 
 		AcceleratedRankedChoiceProducer<Scalar> acc =
-				new AcceleratedRankedChoiceProducer<>(2, Scalar.blank(), ScalarBank::new,
-													values, Scalar.blank(), Intersection.e, Scalar.blank()::evaluate);
+				new AcceleratedRankedChoiceProducer<>(2, () -> Scalar.blank(), ScalarBank::new,
+													values, () -> Scalar.blank(), Intersection.e, Scalar.blank()::evaluate);
 
 		System.out.println(acc.getFunctionDefinition());
 
