@@ -34,6 +34,7 @@ import org.almostrealism.geometry.Ray;
 import org.almostrealism.graph.mesh.Mesh;
 import org.almostrealism.graph.mesh.Triangle;
 import org.almostrealism.relation.Constant;
+import org.almostrealism.relation.Maker;
 import org.almostrealism.relation.Operator;
 import org.almostrealism.util.Producer;
 
@@ -117,8 +118,9 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 	public Iterator<T> iterator() { return surfaces.iterator(); }
 	
 	/** {@link ShadableSurface#shade(ShaderContext)} */
-	public Producer<RGB> shade(ShaderContext p) {
-		Producer<RGB> color = null;
+	@Override
+	public Maker<RGB> shade(ShaderContext p) {
+		Maker<RGB> color = null;
 		
 		if (getShaderSet() != null) {
 			color = getShaderSet().shade(p, p.getIntersection());
@@ -128,8 +130,8 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 			if (color == null) {
 				color = getParent().shade(p);
 			} else {
-				final Producer<RGB> fc = color;
-				color = new RGBAdd(() -> fc, () -> getParent().shade(p));
+				final Maker<RGB> fc = color;
+				color = () -> new RGBAdd(fc, getParent().shade(p));
 			}
 		}
 		

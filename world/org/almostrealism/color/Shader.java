@@ -18,6 +18,7 @@ package org.almostrealism.color;
 
 import org.almostrealism.algebra.DiscreteField;
 import org.almostrealism.color.computations.ColorProducer;
+import org.almostrealism.relation.Maker;
 import org.almostrealism.space.LightingContext;
 import org.almostrealism.util.Producer;
 
@@ -30,5 +31,5 @@ public interface Shader<C extends LightingContext> {
 	 * shaded color calculated using the values of the specified
 	 * {@link ShaderContext} object.
 	 */
-	Producer<RGB> shade(C parameters, DiscreteField normals);
+	Maker<RGB> shade(C parameters, DiscreteField normals);
 }

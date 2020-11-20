@@ -25,6 +25,7 @@ import org.almostrealism.geometry.Curve;
 import org.almostrealism.util.Producer;
 
 import java.util.Collection;
+import java.util.function.Supplier;
 
 public class PhotonFieldContext<T extends PhotonField, F extends Absorber> extends ShaderContext {
 	private T field;
@@ -36,7 +37,7 @@ public class PhotonFieldContext<T extends PhotonField, F extends Absorber> exten
 		this.film = film;
 	}
 
-	public PhotonFieldContext(ContinuousField intersection, Producer<Vector> lightDirection,
+	public PhotonFieldContext(ContinuousField intersection, Supplier<Producer<? extends Vector>> lightDirection,
 							  Light light, Iterable<Light> otherLights,
 							  Collection<Curve<RGB>> otherSurfaces,
 							  T field, F film) {
@@ -45,7 +46,7 @@ public class PhotonFieldContext<T extends PhotonField, F extends Absorber> exten
 		this.film = film;
 	}
 
-	public PhotonFieldContext(ContinuousField intersection, Producer<Vector> lightDirection,
+	public PhotonFieldContext(ContinuousField intersection, Supplier<Producer<? extends Vector>> lightDirection,
 							  Light light, Iterable<Light> otherLights,
 							  Curve<RGB> surface, Curve<RGB>[] otherSurfaces,
 							  T field, F film) {

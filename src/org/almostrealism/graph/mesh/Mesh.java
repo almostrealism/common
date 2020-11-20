@@ -42,6 +42,7 @@ import org.almostrealism.io.FileDecoder;
 import org.almostrealism.io.SpatialData;
 import org.almostrealism.hardware.KernelizedProducer;
 import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.relation.Maker;
 import org.almostrealism.relation.NameProvider;
 import org.almostrealism.relation.Operator;
 import org.almostrealism.space.KdTree;
@@ -135,7 +136,7 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 		@Override
 		public Operator<Scalar> expect() { return getSurface().expect(); }
 
-		@Override public Producer<RGB> shade(ShaderContext p) { return this.getSurface().shade(p); }
+		@Override public Maker<RGB> shade(ShaderContext p) { return this.getSurface().shade(p); }
 
 		@Override public RGB operate(Vector in) { return getSurface().operate(in); }
 

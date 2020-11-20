@@ -16,5 +16,9 @@
 
 package org.almostrealism.relation;
 
-public interface ProducerComputation<T> extends Computation<T>, Maker<T> {
+import org.almostrealism.util.Producer;
+
+import java.util.function.Supplier;
+
+public interface Maker<T> extends Supplier<Producer<? extends T>> {
 }

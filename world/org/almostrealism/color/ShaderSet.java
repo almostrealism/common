@@ -21,6 +21,7 @@ import java.util.Iterator;
 
 import org.almostrealism.algebra.DiscreteField;
 import org.almostrealism.color.computations.RGBAdd;
+import org.almostrealism.relation.Maker;
 import org.almostrealism.space.LightingContext;
 import org.almostrealism.util.Producer;
 
@@ -32,8 +33,9 @@ public class ShaderSet<C extends LightingContext> extends HashSet<Shader<C>> imp
      * @return  The sum of the values given by the shade method for each {@link Shader}
 	 *          instance stored by this {@link ShaderSet}.
      */
-    public Producer<RGB> shade(C p, DiscreteField normals) {
-        Producer<RGB> color = null;
+    @Override
+    public Maker<RGB> shade(C p, DiscreteField normals) {
+        Maker<RGB> color = null;
         
         Iterator<Shader<C>> itr = super.iterator();
 
@@ -41,8 +43,8 @@ public class ShaderSet<C extends LightingContext> extends HashSet<Shader<C>> imp
         	if (color == null) {
         		color = itr.next().shade(p, normals);
 			} else {
-        		final Producer<RGB> fc = color;
-				color = new RGBAdd(() -> fc, () -> itr.next().shade(p, normals));
+        		final Maker<RGB> fc = color;
+				color = () -> new RGBAdd(fc, itr.next().shade(p, normals));
 			}
 		}
         
@@ -50,8 +52,10 @@ public class ShaderSet<C extends LightingContext> extends HashSet<Shader<C>> imp
     }
     
 	/** @return  False. */
+	@Override
 	public boolean equals(Object o) { return false; }
 	
 	/** @return  "ShaderSet". */
+	@Override
 	public String toString() { return "ShaderSet[" + size() + "]"; }
 }

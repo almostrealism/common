@@ -32,6 +32,7 @@ import org.almostrealism.graph.mesh.Mesh;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.physics.Porous;
 import org.almostrealism.relation.Constant;
+import org.almostrealism.relation.Maker;
 import org.almostrealism.relation.NameProvider;
 import org.almostrealism.relation.Operator;
 import org.almostrealism.texture.Texture;
@@ -512,12 +513,12 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 	 * of this {@link AbstractSurface} and returns this value as an {@link RGB}.
 	 */
 	@Override
-	public Producer<RGB> shade(ShaderContext p) {
+	public Maker<RGB> shade(ShaderContext p) {
 //		System.out.println(this + ".shade(reflections = " + p.getReflectionCount() + ")");
 
 		p.setSurface(this);
 		
-		Producer<RGB> color = null;
+		Maker<RGB> color = null;
 		
 		if (this.shaders != null) {
 			color = this.shaders.shade(p, p.getIntersection());
@@ -527,8 +528,8 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 			if (color == null) {
 				color = getParent().shade(p);
 			} else {
-				final Producer<RGB> fc = color;
-				color = new RGBAdd(() -> fc, () -> getParent().shade(p));
+				final Maker<RGB> fc = color;
+				color = () -> new RGBAdd(fc, getParent().shade(p));
 			}
 		}
 		

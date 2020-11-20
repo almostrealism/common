@@ -22,12 +22,13 @@ import org.almostrealism.util.Producer;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * @author  Michael Murray
  */
 public class LightingContext {
-	private Producer<Vector> lightDirection;
+	private Supplier<Producer<? extends Vector>> lightDirection;
 	private Light light;
 	private Iterable<Light> otherLights;
 	
@@ -36,12 +37,12 @@ public class LightingContext {
 	 * 
 	 * @param l  Vector object to use.
 	 */
-	public void setLightDirection(Producer<Vector> l) { this.lightDirection = l; }
+	public void setLightDirection(Supplier<Producer<? extends Vector>> l) { this.lightDirection = l; }
 	
 	/**
 	 * @return  A {@link Vector} {@link Producer} representing the direction toward the light (this can be expected to be unit length).
 	 */
-	public Producer<Vector> getLightDirection() { return this.lightDirection; }
+	public Supplier<Producer<? extends Vector>> getLightDirection() { return this.lightDirection; }
 	
 	/**
 	 * Sets the Light to the specified Light object.
