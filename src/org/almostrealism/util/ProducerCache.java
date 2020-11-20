@@ -46,9 +46,14 @@ public class ProducerCache {
 			return (T) getCache().get(p);
 		}
 
-		T result = p.get().evaluate(args);
-		getCache().put(p, result);
-		return result;
+		try {
+			T result = p.get().evaluate(args);
+
+			getCache().put(p, result);
+			return result;
+		} catch (ClassCastException e) {
+			throw new IllegalArgumentException(String.valueOf(p.getClass()), e);
+		}
 	}
 
 	public static void clear() { getCache().clear(); }

@@ -16,25 +16,6 @@
 
 package org.almostrealism.util;
 
-import org.almostrealism.algebra.computations.DefaultPairProducer;
-import org.almostrealism.algebra.computations.DefaultScalarProducer;
-import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.PairProducer;
-import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarProducer;
-import org.almostrealism.algebra.TransformMatrix;
-import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorProducer;
-import org.almostrealism.algebra.computations.DefaultVectorProducer;
-import org.almostrealism.color.RGB;
-import org.almostrealism.color.computations.DefaultRGBProducer;
-import org.almostrealism.color.computations.RGBProducer;
-import org.almostrealism.geometry.DefaultRayProducer;
-import org.almostrealism.geometry.Ray;
-import org.almostrealism.geometry.RayProducer;
-
-import java.util.function.Supplier;
-
 public class Provider<T> implements StaticProducer<T> {
 	private T value;
 

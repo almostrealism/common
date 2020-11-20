@@ -128,7 +128,14 @@ public class Variable<T> implements Nameable {
 	public void setExpression(Expression<T> value) { this.expression = value; }
 	public Expression<T> getExpression() { return expression; }
 
-	public void setProducer(Supplier<Producer<? extends T>> producer) { this.producer = producer; }
+	public void setProducer(Supplier<Producer<? extends T>> producer) {
+		if (producer instanceof Provider) {
+			throw new IllegalArgumentException("Provider does not supply a Producer");
+		}
+
+		this.producer = producer;
+	}
+
 	public Supplier<Producer<? extends T>> getProducer() { return producer; }
 
 	public Class<T> getType() { return getExpression().getType(); }
