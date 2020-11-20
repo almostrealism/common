@@ -54,7 +54,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 public interface CodeFeatures extends ScalarFeatures, PairFeatures, TriangleDataFeatures, RayFeatures, RGBFeatures {
-	default <T> Supplier<Producer<? extends T>> p(T value) { return () -> new Provider<>(value); }
+	default <T> Maker<T> p(T value) { return () -> new Provider<>(value); }
 
 	default ScalarSupplier v(double value) { return value(new Scalar(value)); }
 
