@@ -82,7 +82,7 @@ public interface ScalarSupplier extends ProducerComputation<Scalar>, ScalarFeatu
 		return new GreaterThanVector(this, operand, trueValue, falseValue);
 	}
 
-	default AcceleratedConditionalStatementVector lessThan(Supplier<Producer<Scalar>> operand) {
+	default AcceleratedConditionalStatementVector lessThan(Supplier operand) {
 		return lessThan(operand, null, null);
 	}
 

@@ -21,6 +21,7 @@ import org.almostrealism.color.computations.ColorProducer;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.computations.RGBProducer;
 import org.almostrealism.relation.TripleFunction;
+import org.almostrealism.util.Producer;
 
 /**
  * The {@link Texture} interface is implemented by classes that can be used to texture a surface.
@@ -33,5 +34,5 @@ public interface Texture extends ColorProducer, TripleFunction<Triple, RGB> {
 	 * using the specified arguments.
 	 */
 	@Deprecated
-	RGBProducer getColorAt(Object args[]);
+	Producer<RGB> getColorAt(Object args[]);
 }

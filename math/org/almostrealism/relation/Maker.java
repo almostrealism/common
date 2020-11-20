@@ -21,4 +21,6 @@ import org.almostrealism.util.Producer;
 import java.util.function.Supplier;
 
 public interface Maker<T> extends Supplier<Producer<? extends T>> {
+	@Override
+	Producer<T> get();
 }

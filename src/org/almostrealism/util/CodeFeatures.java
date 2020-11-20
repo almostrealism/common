@@ -19,6 +19,7 @@ package org.almostrealism.util;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairFeatures;
 import org.almostrealism.algebra.PairProducer;
+import org.almostrealism.algebra.PairSupplier;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.algebra.ScalarProducer;
@@ -46,6 +47,7 @@ import org.almostrealism.graph.mesh.TriangleDataFeatures;
 import org.almostrealism.graph.mesh.TrianglePointData;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemWrapper;
+import org.almostrealism.relation.Maker;
 import org.almostrealism.relation.ProducerComputation;
 
 import java.util.function.Function;
@@ -58,7 +60,7 @@ public interface CodeFeatures extends ScalarFeatures, PairFeatures, TriangleData
 
 	default ScalarSupplier v(Scalar value) { return value(value); }
 
-	default PairProducer v(Pair value) { return value(value); }
+	default PairSupplier v(Pair value) { return value(value); }
 
 	default VectorSupplier v(Vector value) { return value(value); }
 
@@ -66,7 +68,7 @@ public interface CodeFeatures extends ScalarFeatures, PairFeatures, TriangleData
 
 	default RGBSupplier v(RGB value) { return value(value); }
 
-	default <T> Supplier<Producer<? extends T>> v(T v) {
+	default <T> Maker<T> v(T v) {
 		return value(v);
 	}
 
@@ -94,10 +96,10 @@ public interface CodeFeatures extends ScalarFeatures, PairFeatures, TriangleData
 		return Scalar.blank();
 	}
 
-	default PairProducer pair(double x, double y) { return value(new Pair(x, y)); }
+	default PairSupplier pair(double x, double y) { return value(new Pair(x, y)); }
 
-	default PairProducer value(Pair value) {
-		return new DefaultPairProducer(new AcceleratedStaticPairComputation(value, () -> Pair.empty()));
+	default PairSupplier value(Pair value) {
+		return new AcceleratedStaticPairComputation(value, () -> Pair.empty());
 	}
 
 	default Supplier<Producer<? extends Vector>> vector(int argIndex) { return value(Vector.class, argIndex); }
@@ -106,7 +108,7 @@ public interface CodeFeatures extends ScalarFeatures, PairFeatures, TriangleData
 
 	default VectorSupplier vector(double v[]) { return vector(v[0], v[1], v[2]); }
 
-	default Producer<Vector> vector() { return Vector.blank(); }
+	default Maker<Vector> vector() { return () -> Vector.blank(); }
 
 	default VectorSupplier value(Vector value) {
 		return new AcceleratedStaticVectorComputation(value, () -> Vector.blank());
@@ -134,7 +136,7 @@ public interface CodeFeatures extends ScalarFeatures, PairFeatures, TriangleData
 		return new AcceleratedStaticRGBComputation(value, () -> RGB.blank());
 	}
 
-	default <T> Supplier<Producer<? extends T>> value(T v) {
+	default <T> Maker<T> value(T v) {
 		if (v instanceof Scalar) {
 			return (ProducerComputation<T>) new AcceleratedStaticScalarComputation((Scalar) v, () -> Scalar.blank());
 		} else if (v instanceof Pair) {

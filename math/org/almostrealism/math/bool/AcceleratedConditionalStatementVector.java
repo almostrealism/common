@@ -24,11 +24,11 @@ import org.almostrealism.util.Producer;
 import java.util.function.Supplier;
 
 public interface AcceleratedConditionalStatementVector extends AcceleratedConditionalStatement<Vector>, VectorProducer {
-	default AcceleratedConjunctionVector and(AcceleratedConditionalStatement<Vector> operand, Supplier<Producer<Vector>> trueValue, Supplier<Producer<Vector>> falseValue) {
+	default AcceleratedConjunctionVector and(AcceleratedConditionalStatement<Vector> operand, Supplier trueValue, Supplier falseValue) {
 		return and(trueValue, falseValue, operand);
 	}
 
-	default AcceleratedConjunctionVector and(Supplier<Producer<Vector>> trueValue, Supplier<Producer<Vector>> falseValue, AcceleratedConditionalStatement<Vector>... operands) {
+	default AcceleratedConjunctionVector and(Supplier trueValue, Supplier falseValue, AcceleratedConditionalStatement<Vector>... operands) {
 		return new AcceleratedConjunctionVector(trueValue, falseValue,
 				CollectionUtils.include(new AcceleratedConditionalStatement[0], this, operands));
 	}

@@ -29,10 +29,10 @@ public class GreaterThanRGB extends GreaterThan<RGB> {
 	}
 
 	public GreaterThanRGB(
-			Supplier<Producer> leftOperand,
-			Supplier<Producer> rightOperand,
-			Supplier<Producer<RGB>> trueValue,
-			Supplier<Producer<RGB>> falseValue) {
+			Supplier leftOperand,
+			Supplier rightOperand,
+			Supplier trueValue,
+			Supplier falseValue) {
 		super(3, () -> RGB.blank(), leftOperand, rightOperand, trueValue, falseValue, false);
 	}
 
