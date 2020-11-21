@@ -216,20 +216,20 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 
 			Supplier<? extends Producer<? extends T>> c = arguments.get(i).getProducer();
 
-			if (c instanceof ProducerArgumentReference) {
+			if (c.get() instanceof ProducerArgumentReference) {
 				int argIndex = ((ProducerArgumentReference) c.get()).getReferencedArgumentIndex();
 				kernelArgs[i] = args[passThroughLength + argIndex];
-			} else if (c instanceof KernelizedProducer) {
+			} else if (c.get() instanceof KernelizedProducer) {
 				MemoryBank downstreamArgs[] = new MemoryBank[args.length - passThroughLength];
 				for (int j = passThroughLength; j < args.length; j++) {
 					downstreamArgs[j - passThroughLength] = args[j];
 				}
 
-				KernelizedProducer kp = (KernelizedProducer) arguments.get(i).getProducer();
+				KernelizedProducer kp = (KernelizedProducer) arguments.get(i).getProducer().get();
 				kernelArgs[i] = kp.createKernelDestination(args[0].getCount());
 				kp.kernelEvaluate(kernelArgs[i], downstreamArgs);
 			} else {
-				throw new IllegalArgumentException(arguments.get(i).getProducer().getClass().getSimpleName() +
+				throw new IllegalArgumentException(arguments.get(i).getProducer().get().getClass().getSimpleName() +
 						" is not a ProducerArgumentReference or KernelizedProducer");
 			}
 		}
