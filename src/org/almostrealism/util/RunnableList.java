@@ -17,8 +17,14 @@
 package org.almostrealism.util;
 
 import java.util.ArrayList;
+import java.util.List;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
-public class RunnableList extends ArrayList<Runnable> implements Runnable {
+public class RunnableList extends ArrayList<Supplier<Runnable>> implements Supplier<Runnable> {
 	@Override
-	public void run() { forEach(Runnable::run); }
+	public Runnable get() {
+		List<Runnable> run = stream().map(Supplier::get).collect(Collectors.toList());
+		return () -> run.forEach(Runnable::run);
+	}
 }

@@ -37,7 +37,7 @@ public abstract class CachedStateCell<T> extends FilteredCell<T> implements Fact
 		setFilter(this);
 	}
 	
-	public void setCachedValue(T v) { assign(p(cachedValue), v(v)).run(); }
+	public void setCachedValue(T v) { assign(p(cachedValue), v(v)).get().run(); }
 
 	public T getCachedValue() { return cachedValue; }
 
@@ -53,16 +53,16 @@ public abstract class CachedStateCell<T> extends FilteredCell<T> implements Fact
 	public boolean isDone() { return false; }
 
 	@Override
-	public Runnable push(Producer<T> protein) {
+	public Supplier<Runnable> push(Producer<T> protein) {
 		return assign(p(cachedValue), () -> protein);
 	}
 
-	protected abstract Runnable assign(Supplier<Producer<? extends T>> out, Supplier<Producer<? extends T>> in);
+	protected abstract Supplier<Runnable> assign(Supplier<Producer<? extends T>> out, Supplier<Producer<? extends T>> in);
 
-	protected abstract Runnable reset(Supplier<Producer<? extends T>> out);
+	protected abstract Supplier<Runnable> reset(Supplier<Producer<? extends T>> out);
 
 	@Override
-	public Runnable tick() {
+	public Supplier<Runnable> tick() {
 		RunnableList tick = new RunnableList();
 		tick.add(assign(p(outValue), p(cachedValue)));
 		tick.add(reset(p(cachedValue)));

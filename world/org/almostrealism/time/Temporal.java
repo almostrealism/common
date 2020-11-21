@@ -16,6 +16,8 @@
 
 package org.almostrealism.time;
 
+import java.util.function.Supplier;
+
 /**
  * Any operation that is performed as a sequence of steps can implement {@link Temporal}
  * to allow for easy synchronization between groups of operations.
@@ -23,5 +25,5 @@ package org.almostrealism.time;
  * @author  Michael Murray
  */
 public interface Temporal {
-	Runnable tick();
+	Supplier<Runnable> tick();
 }

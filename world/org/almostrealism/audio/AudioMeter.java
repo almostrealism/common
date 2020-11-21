@@ -24,6 +24,7 @@ import org.almostrealism.util.Producer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 public class AudioMeter implements Receptor<Scalar> {
 	private Receptor<Scalar> forwarding;
@@ -72,10 +73,10 @@ public class AudioMeter implements Receptor<Scalar> {
 	}
 
 	@Override
-	public Runnable push(Producer<Scalar> protein) {
-		Runnable f = forwarding == null ? null : forwarding.push(protein);
+	public Supplier<Runnable> push(Producer<Scalar> protein) {
+		Supplier<Runnable> f = forwarding == null ? null : forwarding.push(protein);
 
-		return () -> {
+		return () -> () -> {
 			Scalar p = protein.evaluate();
 
 			if (outEnabled) {
@@ -93,7 +94,7 @@ public class AudioMeter implements Receptor<Scalar> {
 			if (p.getValue() > silenceValue) silenceDuration = 0;
 			if (p.getValue() <= silenceValue) silenceDuration++;
 
-			if (f != null) f.run();
+			if (f != null) f.get().run();
 
 			listeners.forEach(listener -> listener.accept(p));
 		};

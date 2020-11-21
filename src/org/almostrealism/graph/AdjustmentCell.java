@@ -18,6 +18,8 @@ package org.almostrealism.graph;
 
 import org.almostrealism.util.Producer;
 
+import java.util.function.Supplier;
+
 public class AdjustmentCell<A, R> extends CellAdapter<R> {
 	private Adjustable<A> cell;
 	private Adjustment<A> adjust;
@@ -28,7 +30,7 @@ public class AdjustmentCell<A, R> extends CellAdapter<R> {
 	}
 
 	@Override
-	public Runnable push(Producer<R> protein) {
-		return () -> adjust.adjust(cell);
+	public Supplier<Runnable> push(Producer<R> protein) {
+		return () -> () -> adjust.adjust(cell);
 	}
 }

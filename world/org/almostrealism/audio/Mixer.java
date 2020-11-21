@@ -18,6 +18,7 @@ package org.almostrealism.audio;
 
 import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.function.Supplier;
 
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.graph.CachedStateCell;
@@ -45,11 +46,11 @@ public class Mixer extends ArrayList<Source<Scalar>> implements Temporal {
 	}
 	
 	@Override
-	public Runnable tick() {
+	public Supplier<Runnable> tick() {
 		RunnableList tick = new RunnableList();
 		stream().map(s -> sum.push(s.next())).forEach(tick::add);
 
-		tick.add(() -> {
+		tick.add(() -> () -> {
 			Iterator<Source<Scalar>> itr = iterator();
 			while (itr.hasNext()) if (itr.next().isDone()) itr.remove();
 		});

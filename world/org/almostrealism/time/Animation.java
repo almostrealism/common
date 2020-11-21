@@ -255,7 +255,7 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 //			}
 
 			if ((i + 1) % iterationsPerFrame == 0 || this.vdt > 0.0) {
-				if (this.listener != null) this.listener.tick().run();
+				if (this.listener != null) this.listener.tick().get().run();
 
 				try {
 					long time = System.currentTimeMillis();

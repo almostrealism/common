@@ -28,12 +28,12 @@ public class ScalarCachedStateCell extends CachedStateCell<Scalar> {
 	}
 
 	@Override
-	protected Runnable assign(Supplier<Producer<? extends Scalar>> out, Supplier<Producer<? extends Scalar>> in) {
-		return () -> out.get().evaluate().setValue(in.get().evaluate().getValue());
+	protected Supplier<Runnable> assign(Supplier<Producer<? extends Scalar>> out, Supplier<Producer<? extends Scalar>> in) {
+		return () -> () -> out.get().evaluate().setValue(in.get().evaluate().getValue());
 	}
 
 	@Override
-	public Runnable reset(Supplier<Producer<? extends Scalar>> out) {
-		return () -> out.get().evaluate().setMem(new double[] { 0.0, 1.0 });
+	public Supplier<Runnable> reset(Supplier<Producer<? extends Scalar>> out) {
+		return () -> () -> out.get().evaluate().setMem(new double[] { 0.0, 1.0 });
 	}
 }

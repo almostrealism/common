@@ -20,9 +20,11 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.graph.computations.SummationCellOperation;
 import org.almostrealism.util.Producer;
 
+import java.util.function.Supplier;
+
 public class SummationCell extends ScalarCachedStateCell {
 	@Override
-	public Runnable push(Producer<Scalar> protein) {
-		return new SummationCellOperation(this, () -> protein);
+	public Supplier<Runnable> push(Producer<Scalar> protein) {
+		return () -> new SummationCellOperation(this, () -> protein);
 	}
 }

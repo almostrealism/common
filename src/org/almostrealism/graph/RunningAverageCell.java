@@ -19,13 +19,15 @@ package org.almostrealism.graph;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.util.Producer;
 
+import java.util.function.Supplier;
+
 public class RunningAverageCell extends ScalarCachedStateCell {
 	private double total;
 	private int pushes;
 
 	@Override
-	public Runnable push(Producer<Scalar> protein) {
-		return () -> {
+	public Supplier<Runnable> push(Producer<Scalar> protein) {
+		return () -> () -> {
 			this.total = total + protein.evaluate().getValue();
 			this.pushes++;
 
@@ -36,13 +38,13 @@ public class RunningAverageCell extends ScalarCachedStateCell {
 	}
 
 	@Override
-	public Runnable tick() {
-		Runnable tick = super.tick();
+	public Supplier<Runnable> tick() {
+		Supplier<Runnable> tick = super.tick();
 		
-		return () -> {
+		return () -> () -> {
 			this.total = 0;
 			this.pushes = 0;
-			tick.run();
+			tick.get().run();
 		};
 	}
 }

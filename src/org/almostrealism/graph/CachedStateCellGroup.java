@@ -21,10 +21,11 @@ import org.almostrealism.util.RunnableList;
 
 import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.function.Supplier;
 
 public class CachedStateCellGroup<T> extends ArrayList<CachedStateCell<T>> implements Temporal {
 	@Override
-	public Runnable tick() {
+	public Supplier<Runnable> tick() {
 		RunnableList tick = new RunnableList();
 		stream().map(CachedStateCell::tick).forEach(tick::add);
 		return tick;

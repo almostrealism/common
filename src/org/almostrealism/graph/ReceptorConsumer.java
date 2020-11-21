@@ -19,6 +19,7 @@ package org.almostrealism.graph;
 import org.almostrealism.util.Producer;
 
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 public class ReceptorConsumer<T> implements Receptor<T> {
 	private Consumer<T> consumer;
@@ -28,8 +29,8 @@ public class ReceptorConsumer<T> implements Receptor<T> {
 	}
 
 	@Override
-	public Runnable push(Producer<T> protein) {
-		return () -> consumer.accept(protein.evaluate());
+	public Supplier<Runnable> push(Producer<T> protein) {
+		return () -> () -> consumer.accept(protein.evaluate());
 	}
 
 	protected void setConsumer(Consumer<T> c) { this.consumer = c; }

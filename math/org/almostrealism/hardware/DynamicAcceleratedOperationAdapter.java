@@ -22,7 +22,7 @@ import org.almostrealism.util.Producer;
 import java.util.Arrays;
 import java.util.function.Supplier;
 
-public abstract class DynamicAcceleratedOperationAdapter<T> extends ComputationOperationAdapter<T, Void> implements ComputerFeatures {
+public abstract class DynamicAcceleratedOperationAdapter<T> extends ComputationOperationAdapter<T, Void> implements Supplier<Runnable>, ComputerFeatures {
 	public DynamicAcceleratedOperationAdapter(Supplier<Producer<T>>... inputArgs) {
 		this(inputArgs, new Object[0]);
 	}
@@ -34,4 +34,7 @@ public abstract class DynamicAcceleratedOperationAdapter<T> extends ComputationO
 
 	@Override
 	public String getDefaultAnnotation() { return "__global"; }
+
+	@Override
+	public Runnable get() { return compileRunnable(this); }
 }

@@ -23,6 +23,7 @@ import org.almostrealism.physics.PhotonField;
 import org.almostrealism.physics.PhysicalConstants;
 
 import java.util.HashSet;
+import java.util.function.Supplier;
 
 /**
  * A Clock object keeps track of time (usually measured in microseconds).
@@ -121,8 +122,8 @@ public class Clock implements Temporal {
 	 * of the tick event.
 	 */
 	@Override
-	public Runnable tick() {
-		return () -> {
+	public Supplier<Runnable> tick() {
+		return () -> () -> {
 			ticks++;
 			fields.forEach(f -> f.tick(interval));
 		};

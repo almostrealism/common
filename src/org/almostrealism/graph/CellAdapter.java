@@ -19,6 +19,8 @@ package org.almostrealism.graph;
 import org.almostrealism.util.Producer;
 import org.almostrealism.util.RunnableList;
 
+import java.util.function.Supplier;
+
 public abstract class CellAdapter<T> implements Cell<T> {
 	private Receptor<T> r;
 	private Receptor<T> meter;
@@ -38,7 +40,7 @@ public abstract class CellAdapter<T> implements Cell<T> {
 	
 	/** Push to the {@link Receptor}. */
 	@Override
-	public Runnable push(Producer<T> protein) {
+	public Supplier<Runnable> push(Producer<T> protein) {
 		RunnableList push = new RunnableList();
 		if (meter != null) push.add(meter.push(protein));
 		if (r != null) push.add(r.push(protein));

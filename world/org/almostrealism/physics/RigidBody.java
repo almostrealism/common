@@ -118,7 +118,7 @@ public interface RigidBody {
 			this.v = this.p.divide(this.mass);
 			this.w = this.in.getInverse().transformAsOffset(this.l);
 			
-			for (Temporal t : listeners) t.tick().run();
+			for (Temporal t : listeners) t.tick().get().run();
 		}
 		
 		public void linearImpulse(Vector impulse) {

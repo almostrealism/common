@@ -19,11 +19,12 @@ package org.almostrealism.time;
 import org.almostrealism.util.RunnableList;
 
 import java.util.ArrayList;
+import java.util.function.Supplier;
 
 public class TemporalList extends ArrayList<Temporal> implements Temporal {
 
 	@Override
-	public Runnable tick() {
+	public Supplier<Runnable> tick() {
 		RunnableList tick = new RunnableList();
 		stream().map(Temporal::tick).forEach(tick::add);
 		return tick;
