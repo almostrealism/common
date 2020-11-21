@@ -36,8 +36,8 @@ public class RankedChoiceProducer<T> extends ArrayList<ProducerWithRank<T>> impl
 				"highestRank",
 				true,
 				() -> Pair.empty(),
-				PassThroughProducer.of(MemWrapper.class, 0),
-				PassThroughProducer.of(MemWrapper.class, 1));
+				PassThroughProducer.of(Scalar.class, 0),
+				PassThroughProducer.of(Pair.class, 1));
 	}
 
 	public RankedChoiceProducer(double e) { this(e, true); }

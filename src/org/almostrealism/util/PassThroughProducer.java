@@ -43,7 +43,7 @@ public class PassThroughProducer<T> implements Producer<T>, ProducerArgumentRefe
 	@Override
 	public int getReferencedArgumentIndex() { return argIndex; }
 
-	public static <T> Supplier<Producer<? extends T>> of(Class<T> type, int index) {
+	public static <T> Supplier<Producer<? extends T>> of(Class<? extends T> type, int index) {
 		return of(type, index, 0);
 	}
 

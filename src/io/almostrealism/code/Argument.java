@@ -49,7 +49,7 @@ public class Argument<T> extends Variable<T> {
 
 	@Override
 	public void setProducer(Supplier<Producer<? extends T>> producer) {
-		w: while (producer.get() instanceof ProducerWithRank || producer.get() instanceof GeneratedColorProducer) {
+		w: while (producer != null && (producer.get() instanceof ProducerWithRank || producer.get() instanceof GeneratedColorProducer)) {
 			Producer<? extends T> p = producer.get();
 
 			if (p instanceof ProducerWithRank) {
