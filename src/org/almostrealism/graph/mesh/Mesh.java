@@ -663,7 +663,7 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 		if (t != null) tray = t.getInverse().transform(tray);
 
 		CachedMeshIntersectionKernel kernel =
-				new CachedMeshIntersectionKernel(getMeshData(), (KernelizedProducer) tray);
+				new CachedMeshIntersectionKernel(getMeshData(), (KernelizedProducer) tray.get());
 
 		return new ShadableIntersection(() -> ray, () -> kernel.getClosestNormal(), () -> kernel);
 	}
