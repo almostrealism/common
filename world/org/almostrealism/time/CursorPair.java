@@ -20,6 +20,8 @@ import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.util.Producer;
 
+import java.util.function.Supplier;
+
 public class CursorPair extends Pair {
 	public CursorPair() { super(0, 0); }
 
@@ -33,8 +35,8 @@ public class CursorPair extends Pair {
 
 	public double getDelayCursor() { return getB(); }
 
-	public Runnable increment(Producer<Scalar> value) {
-		return () -> {
+	public Supplier<Runnable> increment(Producer<Scalar> value) {
+		return () -> () -> {
 			double v = value.evaluate().getValue();
 			setCursor(getCursor() + v);
 			setDelayCursor(getDelayCursor() + v);

@@ -63,8 +63,8 @@ public class AcceleratedTimeSeries extends TemporalScalarBank implements CodeFea
 		set(getEndCursorIndex(), time, value);
 	}
 
-	public Runnable add(Supplier<Producer<TemporalScalar>> value) {
-		return compileRunnable(new AcceleratedAssignment<>(2, head(), value));
+	public Supplier<Runnable> add(Supplier<Producer<TemporalScalar>> value) {
+		return new AcceleratedAssignment<>(2, head(), value);
 	}
 
 	protected Supplier<Producer<TemporalScalar>> head() {
@@ -74,10 +74,10 @@ public class AcceleratedTimeSeries extends TemporalScalarBank implements CodeFea
 		});
 	}
 
-	public Runnable purge(Producer<CursorPair> time) {
+	public Supplier<Runnable> purge(Producer<CursorPair> time) {
 		AcceleratedOperation op = new AcceleratedOperation<MemWrapper>("prg", false, p(this), () -> time);
 		op.setSourceClass(AcceleratedTimeSeries.class);
-		return op;
+		return () -> op;
 	}
 
 	public Producer<Scalar> valueAt(Producer<CursorPair> cursor) {

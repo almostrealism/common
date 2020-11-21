@@ -80,12 +80,12 @@ public interface CodeFeatures extends ScalarFeatures, PairFeatures, TriangleData
 		return new DynamicProducer<>(function);
 	}
 
-	default <T extends MemWrapper> Runnable a(int memLength, Producer<T> result, Producer<T> value) {
+	default <T extends MemWrapper> Supplier<Runnable> a(int memLength, Producer<T> result, Producer<T> value) {
 		return a(memLength, () -> result, () -> value);
 	}
 
-	default <T extends MemWrapper> Runnable a(int memLength, Supplier<Producer<T>> result, Supplier<Producer<T>> value) {
-		return Hardware.getLocalHardware().getComputer().compileRunnable(new AcceleratedAssignment<>(memLength, result, value));
+	default <T extends MemWrapper> Supplier<Runnable> a(int memLength, Supplier<Producer<T>> result, Supplier<Producer<T>> value) {
+		return new AcceleratedAssignment<>(memLength, result, value);
 	}
 
 	default ScalarSupplier value(double value) { return scalar(value); }
