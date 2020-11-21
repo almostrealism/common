@@ -29,7 +29,7 @@ import java.util.List;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public class RayFromVectors extends DynamicAcceleratedProducerAdapter<Vector, Ray> {
+public class RayFromVectors extends DynamicAcceleratedProducerAdapter<Vector, Ray> implements RaySupplier {
 	private Expression<Double> value[];
 	
 	public RayFromVectors(Supplier<Producer<? extends Vector>> origin, Supplier<Producer<? extends Vector>> direction) {

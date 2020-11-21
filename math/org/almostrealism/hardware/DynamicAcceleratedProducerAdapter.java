@@ -56,9 +56,6 @@ public abstract class DynamicAcceleratedProducerAdapter<I extends MemWrapper, O 
 	public int getMemLength() { return memLength; }
 
 	@Override
-	public Producer<O> get() { return compileProducer(this); }
-
-	@Override
 	public Scope<O> getScope(NameProvider provider) {
 		Scope<O> scope = super.getScope(provider);
 		IntStream.range(0, memLength)

@@ -17,6 +17,7 @@
 package org.almostrealism.color.computations;
 
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.algebra.computations.DefaultScalarProducer;
 import org.almostrealism.color.RGB;
 import org.almostrealism.relation.ProducerComputation;
 import org.almostrealism.util.Producer;
@@ -25,6 +26,9 @@ import org.almostrealism.util.StaticProducer;
 import java.util.function.Supplier;
 
 public interface RGBSupplier extends ProducerComputation<RGB>, RGBFeatures {
+	@Override
+	default Producer<RGB> get() { return new DefaultRGBProducer(this); }
+
 	default RGBSupplier add(Supplier<Producer<? extends RGB>> operand) {
 		return cadd(this, operand);
 	}

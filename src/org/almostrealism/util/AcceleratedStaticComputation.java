@@ -18,6 +18,8 @@ package org.almostrealism.util;
 
 import io.almostrealism.code.Expression;
 import org.almostrealism.algebra.Pair;
+import org.almostrealism.algebra.Scalar;
+import org.almostrealism.algebra.computations.DefaultScalarProducer;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.hardware.MemWrapper;
 
@@ -32,6 +34,9 @@ public class AcceleratedStaticComputation<T extends MemWrapper> extends DynamicA
 		super(value.getMemLength(), output);
 		this.value = value;
 	}
+
+	@Override
+	public Producer<T> get() { return compileProducer(this); }
 
 	public T getValue() { return value; }
 

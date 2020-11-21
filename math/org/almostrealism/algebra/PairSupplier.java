@@ -16,9 +16,14 @@
 
 package org.almostrealism.algebra;
 
+import org.almostrealism.algebra.computations.DefaultPairProducer;
 import org.almostrealism.relation.ProducerComputation;
+import org.almostrealism.util.Producer;
 
 public interface PairSupplier extends ProducerComputation<Pair>, PairFeatures {
+	@Override
+	default Producer<Pair> get() { return new DefaultPairProducer(this); }
+
 	default ScalarSupplier x() { return l(this); }
 	default ScalarSupplier y() { return r(this); }
 }

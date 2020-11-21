@@ -54,6 +54,9 @@ public class AcceleratedPassThroughProducer<T extends MemWrapper>
 		initArgumentNames();
 	}
 
+	@Override
+	public Producer<T> get() { return compileProducer(this); }
+
 	/**
 	 * Returns an empty scope, as this is not intended to be converted.
 	 */

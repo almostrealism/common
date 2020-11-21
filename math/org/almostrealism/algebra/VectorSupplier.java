@@ -16,6 +16,7 @@
 
 package org.almostrealism.algebra;
 
+import org.almostrealism.algebra.computations.DefaultVectorProducer;
 import org.almostrealism.relation.ProducerComputation;
 import org.almostrealism.util.Producer;
 import org.almostrealism.util.StaticProducer;
@@ -23,6 +24,10 @@ import org.almostrealism.util.StaticProducer;
 import java.util.function.Supplier;
 
 public interface VectorSupplier extends ProducerComputation<Vector>, VectorFeatures {
+
+	@Override
+	default Producer<Vector> get() { return new DefaultVectorProducer(this); }
+
 	default ScalarSupplier x() {
 		return x(this);
 	}

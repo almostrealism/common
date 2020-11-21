@@ -1,5 +1,6 @@
 package org.almostrealism.algebra;
 
+import org.almostrealism.algebra.computations.DefaultScalarProducer;
 import org.almostrealism.algebra.computations.ScalarPow;
 import org.almostrealism.algebra.computations.ScalarProduct;
 import org.almostrealism.math.bool.AcceleratedConditionalStatementVector;
@@ -12,6 +13,9 @@ import org.almostrealism.util.StaticProducer;
 import java.util.function.Supplier;
 
 public interface ScalarSupplier extends ProducerComputation<Scalar>, ScalarFeatures {
+	@Override
+	default Producer<Scalar> get() { return new DefaultScalarProducer(this); }
+
 	default ScalarSupplier add(Supplier<Producer<? extends Scalar>> value) {
 		return scalarAdd(this, value);
 	}
