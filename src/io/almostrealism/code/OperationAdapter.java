@@ -72,7 +72,7 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 	}
 
 	public List<Supplier<? extends Producer<? extends T>>> getArgumentProducers() {
-		return getArguments().stream().map(Argument::getProducer).collect(Collectors.toList());
+		return getArguments().stream().map(arg -> arg == null ? null : arg.getProducer()).collect(Collectors.toList());
 	}
 
 	public Supplier<? extends Producer<? extends T>> getArgumentProducer(int argIndex) {

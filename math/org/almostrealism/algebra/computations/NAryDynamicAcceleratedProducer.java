@@ -69,9 +69,6 @@ public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> exten
 		super.compact();
 
 		if (value == null && isCompletelyValueOnly()) {
-			List<Argument> newArgs = new ArrayList<>();
-			newArgs.add(getArguments().get(0));
-
 			value = new Expression[getMemLength()];
 
 			List<Argument<? extends T>> p = getArguments();
@@ -112,10 +109,6 @@ public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> exten
 				List<Variable<?>> deps = new ArrayList<>();
 
 				for (int i = 0; i < dynamicProducers.size(); i++) {
-					for (int j = 1; j < ((OperationAdapter) dynamicProducers.get(i).getProducer()).getArguments().size(); j++) {
-						newArgs.add(((OperationAdapter<?>) dynamicProducers.get(i).getProducer()).getArguments().get(j));
-					}
-
 					Expression e = getInputProducerValue(dynamicProducers.get(i), pos);
 					deps.addAll(e.getDependencies());
 
@@ -135,9 +128,6 @@ public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> exten
 			// If there are no dynamic dependencies, or if all values have been replaced
 			// by a fixed value, this producer itself is static
 			if (dynamicProducers.isEmpty() || allTrue(valueStatic)) isStatic = true;
-
-			// setArguments(newArgs);
-			removeDuplicateArguments();
 		}
 	}
 

@@ -68,10 +68,6 @@ public class RayFromVectors extends DynamicAcceleratedProducerAdapter<Vector, Ra
 		super.compact();
 
 		if (value == null && isCompletelyValueOnly()) {
-			List<Argument> newArgs = new ArrayList<>();
-			newArgs.add(getArguments().get(0));
-			newArgs.addAll(AcceleratedProducer.excludeResult(getInputProducer(1).getArguments()));
-			newArgs.addAll(AcceleratedProducer.excludeResult(getInputProducer(2).getArguments()));
 			absorbVariables(getInputProducer(1));
 			absorbVariables(getInputProducer(2));
 
@@ -91,9 +87,6 @@ public class RayFromVectors extends DynamicAcceleratedProducerAdapter<Vector, Ra
 					throw new IllegalArgumentException("Infinity is not supported");
 				}
 			}
-
-			// setArguments(newArgs);
-			removeDuplicateArguments();
 		}
 	}
 }

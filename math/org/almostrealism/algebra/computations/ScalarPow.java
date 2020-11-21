@@ -46,19 +46,7 @@ public class ScalarPow extends DynamicAcceleratedProducerAdapter<Scalar, Scalar>
 		super.compact();
 
 		if (value == null && isCompletelyValueOnly()) {
-			List<Argument> newArgs = new ArrayList<>();
-			newArgs.add(getArguments().get(0));
-
-			for (int i = 1; i < getInputProducer(1).getArguments().size(); i++) {
-				newArgs.add(getInputProducer(1).getArguments().get(i));
-			}
-
 			absorbVariables(getInputProducer(1));
-
-			for (int i = 1; i < getInputProducer(2).getArguments().size(); i++) {
-				newArgs.add(getInputProducer(2).getArguments().get(i));
-			}
-
 			absorbVariables(getInputProducer(2));
 
 			// TODO  Certainty of exponent is ignored
@@ -76,9 +64,6 @@ public class ScalarPow extends DynamicAcceleratedProducerAdapter<Scalar, Scalar>
 					throw new IllegalArgumentException("Infinity is not supported");
 				}
 			}
-
-			// setArguments(newArgs);
-			removeDuplicateArguments();
 		}
 
 		convertToVariableRef();

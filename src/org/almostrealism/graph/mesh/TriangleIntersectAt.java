@@ -82,8 +82,8 @@ public class TriangleIntersectAt extends LessThanScalar {
 				VectorSupplier normal, VectorSupplier origin, VectorSupplier direction,
 				ScalarSupplier f, VectorSupplier q, VectorSupplier s,
 				AcceleratedConjunctionScalar trueValue) {
-		super(f, ops().scalar(-Intersection.e), () -> trueValue,
-				() -> new GreaterThanScalar(f, ops().scalar(Intersection.e), () -> trueValue,
+		super(f, ops().scalar(-Intersection.e), trueValue,
+				new GreaterThanScalar(f, ops().scalar(Intersection.e), trueValue,
 						ops().scalar(-1.0)), true);
 	}
 

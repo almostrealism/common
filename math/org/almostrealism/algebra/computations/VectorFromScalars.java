@@ -68,19 +68,9 @@ public class VectorFromScalars extends DynamicAcceleratedProducerAdapter<Scalar,
 				}
 			}
 
-			List<Argument> newArgs = new ArrayList<>();
-			newArgs.add(getArguments().get(0));
-
 			for (int i = 1; i <= 3; i++) {
-				if (!getInputProducer(i).isStatic()) {
-					newArgs.addAll(AcceleratedProducer.excludeResult(getInputProducer(i).getArguments()));
-				}
-
 				absorbVariables(getInputProducer(i));
 			}
-
-			// setArguments(newArgs);
-			removeDuplicateArguments();
 		}
 	}
 }

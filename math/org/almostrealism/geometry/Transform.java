@@ -149,9 +149,6 @@ public class Transform extends DynamicAcceleratedProducerAdapter<Vector, Vector>
 
 			absorbVariables(getInputProducer(1));
 			absorbVariables(getInputProducer(2));
-
-			// setArguments(newArgs);
-			removeDuplicateArguments();
 		}
 	}
 

@@ -66,24 +66,12 @@ public class ScalarFromVector extends DynamicAcceleratedProducerAdapter<Vector, 
 		super.compact();
 
 		if (value == null && isCompletelyValueOnly()) {
-			List<Argument<?>> newArgs = new ArrayList<>();
-			newArgs.add(getArguments().get(0));
-
 			value = getInputProducerValue(1, coordinate);
 			if (value.getExpression().contains("Infinity")) {
 				throw new IllegalArgumentException("Infinity is not supported");
 			}
 
-			// TODO  Set to static if getInputProducer(1) is static,
-			//       also no need to add its dependents if it static
-			for (int i = 1; i < getInputProducer(1).getArguments().size(); i++) {
-				newArgs.add(getInputProducer(1).getArguments().get(i));
-			}
-
 			absorbVariables(getInputProducer(1));
-
-			// setArguments(newArgs);
-			removeDuplicateArguments();
 		}
 
 		convertToVariableRef();

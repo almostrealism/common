@@ -63,9 +63,6 @@ public class VectorFromVectorBank<T extends VectorBank> extends DynamicAccelerat
 		super.compact();
 
 		if (value == null && isCompletelyValueOnly()) {
-			List<Argument> newArgs = new ArrayList<>();
-			newArgs.add(getArguments().get(0));
-
 			value = new Expression[3];
 
 			for (int i = 0; i < value.length; i++) {
@@ -75,11 +72,7 @@ public class VectorFromVectorBank<T extends VectorBank> extends DynamicAccelerat
 				}
 			}
 
-			newArgs.addAll(AcceleratedProducer.excludeResult(getInputProducer(1).getArguments()));
 			absorbVariables(getInputProducer(1));
-
-			// setArguments(newArgs);
-			removeDuplicateArguments();
 		}
 	}
 }

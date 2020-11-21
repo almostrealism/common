@@ -67,9 +67,6 @@ public class ScalarFromPair extends DynamicAcceleratedProducerAdapter<Pair, Scal
 		super.compact();
 
 		if (value == null && isCompletelyValueOnly()) {
-			List<Argument> newArgs = new ArrayList<>();
-			newArgs.add(getArguments().get(0));
-
 			value = getInputProducerValue(1, coordinate);
 			if (value.getExpression().contains("Infinity")) {
 				throw new IllegalArgumentException("Infinity is not supported");
@@ -78,14 +75,9 @@ public class ScalarFromPair extends DynamicAcceleratedProducerAdapter<Pair, Scal
 			// TODO  Probably should check if supplier itself is static...
 			if (((Producer) getArguments().get(1).getProducer().get()).isStatic()) {
 				isStatic = true;
-			} else {
-				newArgs.addAll(AcceleratedProducer.excludeResult(getInputProducer(1).getArguments()));
 			}
 
 			absorbVariables(getInputProducer(1));
-
-			// setArguments(newArgs);
-			removeDuplicateArguments();
 		}
 	}
 

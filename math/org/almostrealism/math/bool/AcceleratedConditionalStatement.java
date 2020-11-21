@@ -24,8 +24,9 @@ import org.almostrealism.util.Producer;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.Supplier;
 
-public interface AcceleratedConditionalStatement<T extends MemWrapper> extends Producer<T> {
+public interface AcceleratedConditionalStatement<T extends MemWrapper> extends Producer<T>, Supplier<Producer<? extends T>> {
 	String getCondition();
 
 	default List<Variable<?>> getVariables() { return Arrays.asList(); }
@@ -34,4 +35,9 @@ public interface AcceleratedConditionalStatement<T extends MemWrapper> extends P
 
 	Argument<T> getTrueValue();
 	Argument<T> getFalseValue();
+
+	@Override
+	default Producer<T> get() {
+		return this;
+	}
 }
