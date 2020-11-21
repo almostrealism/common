@@ -117,15 +117,13 @@ public interface VectorFeatures {
 	}
 
 	default VectorProducer minus(Producer<Vector> p) {
-		return multiply(p, fromScalars(ScalarProducer.minusOne,
-				ScalarProducer.minusOne,
-				ScalarProducer.minusOne));
+		return new DefaultVectorProducer(minus(() -> p));
 	}
 
 	default VectorSupplier minus(Supplier<Producer<? extends Vector>> p) {
-		return multiply(p, fromScalars(() -> ScalarProducer.minusOne,
-				() -> ScalarProducer.minusOne,
-				() -> ScalarProducer.minusOne));
+		return multiply(p, fromScalars(ScalarProducer.minusOne,
+				ScalarProducer.minusOne,
+				ScalarProducer.minusOne));
 	}
 
 	default ScalarProducer length(Producer<Vector> v) {
@@ -145,10 +143,7 @@ public interface VectorFeatures {
 	}
 
 	default VectorProducer normalize(Producer<Vector> p) {
-		ScalarProducer oneOverLength = length(p).pow(-1.0);
-		return fromScalars(x(p).multiply(oneOverLength),
-				y(p).multiply(oneOverLength),
-				z(p).multiply(oneOverLength));
+		return new DefaultVectorProducer(normalize(() -> p));
 	}
 
 	default VectorSupplier normalize(Supplier<Producer<? extends Vector>> p) {

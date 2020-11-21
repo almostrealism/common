@@ -27,7 +27,7 @@ import org.almostrealism.util.StaticProducer;
 import java.util.function.Supplier;
 
 public interface ScalarFeatures {
-	ScalarProducer minusOne = StaticProducer.of(-1.0);
+	Supplier<Producer<? extends Scalar>> minusOne = () -> StaticProducer.of(-1.0);
 
 	default ScalarProducer scalarAdd(Producer<Scalar> a, Producer<Scalar> b) {
 		return new DefaultScalarProducer(scalarAdd(() -> a, () -> b));
@@ -58,7 +58,7 @@ public interface ScalarFeatures {
 	}
 
 	default ScalarSupplier scalarMinus(Supplier<Producer<? extends Scalar>> v) {
-		return new ScalarProduct(() -> minusOne, v);
+		return new ScalarProduct(minusOne, v);
 	}
 
 	default ScalarProducer pow(Producer<Scalar> base, Producer<Scalar> exponent) {
