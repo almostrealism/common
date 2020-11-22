@@ -18,11 +18,11 @@ package org.almostrealism.geometry;
 
 import org.almostrealism.algebra.VectorSupplier;
 import org.almostrealism.relation.ProducerComputation;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 public interface RaySupplier extends ProducerComputation<Ray>, RayFeatures {
 	@Override
-	default Producer<Ray> get() { return new DefaultRayProducer(this); }
+	default Evaluable<Ray> get() { return new DefaultRayEvaluable(this); }
 
 	default VectorSupplier origin() { return origin(this); }
 

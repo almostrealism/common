@@ -18,7 +18,7 @@ package org.almostrealism.hardware;
 
 import org.almostrealism.relation.Computation;
 
-public class AcceleratedComputationProducer<T extends MemWrapper> extends AcceleratedComputationOperation implements KernelizedProducer<T> {
+public class AcceleratedComputationProducer<T extends MemWrapper> extends AcceleratedComputationOperation implements KernelizedEvaluable<T> {
 	public AcceleratedComputationProducer(Computation c) {
 		this(c, true);
 	}

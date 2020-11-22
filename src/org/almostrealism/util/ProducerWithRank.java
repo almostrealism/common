@@ -18,9 +18,9 @@ package org.almostrealism.util;
 
 import org.almostrealism.algebra.Scalar;
 
-public interface ProducerWithRank<T> extends Producer<T> {
+public interface ProducerWithRank<T> extends Evaluable<T> {
 
-	Producer<T> getProducer();
+	Evaluable<T> getProducer();
 
-	Producer<Scalar> getRank();
+	Evaluable<Scalar> getRank();
 }

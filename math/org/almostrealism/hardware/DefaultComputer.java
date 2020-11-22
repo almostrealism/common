@@ -17,7 +17,7 @@
 package org.almostrealism.hardware;
 
 import org.almostrealism.relation.Computation;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 import java.util.Optional;
 
@@ -29,7 +29,7 @@ public class DefaultComputer implements Computer<MemWrapper> {
 	}
 
 	@Override
-	public <T extends MemWrapper> Producer<T> compileProducer(Computation<T> c) {
+	public <T extends MemWrapper> Evaluable<T> compileProducer(Computation<T> c) {
 		return new AcceleratedComputationProducer<>(c);
 	}
 
@@ -43,7 +43,7 @@ public class DefaultComputer implements Computer<MemWrapper> {
 	}
 
 	@Override
-	public <T> Optional<Computation<T>> decompile(Producer<T> p) {
+	public <T> Optional<Computation<T>> decompile(Evaluable<T> p) {
 		if (p instanceof AcceleratedComputationProducer) {
 			return Optional.of(((AcceleratedComputationProducer) p).getComputation());
 		} else {

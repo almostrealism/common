@@ -18,13 +18,13 @@ package org.almostrealism.color.computations;
 
 import org.almostrealism.color.RGB;
 import org.almostrealism.hardware.AcceleratedProducer;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 import java.util.function.Supplier;
 
 @Deprecated
 public class RGBAdd extends AcceleratedProducer<RGB, RGB> {
-	public RGBAdd(Supplier<Producer<? extends RGB>> a, Supplier<Producer<? extends RGB>> b) {
+	public RGBAdd(Supplier<Evaluable<? extends RGB>> a, Supplier<Evaluable<? extends RGB>> b) {
 		super("add", () -> RGB.blank(), a, b);
 	}
 

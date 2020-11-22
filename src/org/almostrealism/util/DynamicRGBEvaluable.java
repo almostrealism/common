@@ -18,14 +18,14 @@ package org.almostrealism.util;
 
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBBank;
-import org.almostrealism.hardware.KernelizedProducer;
+import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 
 import java.util.function.Function;
 
-public class DynamicRGBProducer extends DynamicProducer<RGB> implements KernelizedProducer<RGB> {
+public class DynamicRGBEvaluable extends DynamicEvaluable<RGB> implements KernelizedEvaluable<RGB> {
 
-	public DynamicRGBProducer(Function<Object[], RGB> function) {
+	public DynamicRGBEvaluable(Function<Object[], RGB> function) {
 		super(function);
 	}
 

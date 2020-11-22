@@ -17,12 +17,12 @@
 package org.almostrealism.algebra.computations;
 
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 import java.util.function.Supplier;
 
 public class DirectionDotDirection extends DotProduct {
-	public DirectionDotDirection(Supplier<Producer<? extends Ray>> r) {
+	public DirectionDotDirection(Supplier<Evaluable<? extends Ray>> r) {
 		this(new RayDirection(r));
 	}
 	

@@ -21,33 +21,33 @@ import org.almostrealism.algebra.Scalar;
 import java.util.function.Supplier;
 
 public class ProducerWithRankAdapter<T> implements ProducerWithRank<T> {
-	private Producer<? extends T> p;
-	private Producer<? extends Scalar> rank;
+	private Evaluable<? extends T> p;
+	private Evaluable<? extends Scalar> rank;
 
 	/**
-	 * This constructor uses this {@link Producer} as the
-	 * {@link Producer} argument, which requires that the
+	 * This constructor uses this {@link Evaluable} as the
+	 * {@link Evaluable} argument, which requires that the
 	 * {@link #evaluate(Object[])} method be overridden.
 	 */
-	protected ProducerWithRankAdapter(Producer<Scalar> rank) {
+	protected ProducerWithRankAdapter(Evaluable<Scalar> rank) {
 		this.p = this;
 		this.rank = rank;
 	}
 
-	public ProducerWithRankAdapter(Supplier<Producer<? extends T>> p, Supplier<Producer<? extends Scalar>> rank) {
+	public ProducerWithRankAdapter(Supplier<Evaluable<? extends T>> p, Supplier<Evaluable<? extends Scalar>> rank) {
 		this(p.get(), rank.get());
 	}
 
-	public ProducerWithRankAdapter(Producer<? extends T> p, Producer<? extends Scalar> rank) {
+	public ProducerWithRankAdapter(Evaluable<? extends T> p, Evaluable<? extends Scalar> rank) {
 		this.p = p;
 		this.rank = rank;
 	}
 
 	@Override
-	public Producer<T> getProducer() { return (Producer<T>) p; }
+	public Evaluable<T> getProducer() { return (Evaluable<T>) p; }
 
 	@Override
-	public Producer<Scalar> getRank() { return (Producer<Scalar>) rank; }
+	public Evaluable<Scalar> getRank() { return (Evaluable<Scalar>) rank; }
 
 	@Override
 	public T evaluate(Object[] args) {

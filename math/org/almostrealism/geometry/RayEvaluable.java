@@ -16,11 +16,11 @@
 
 package org.almostrealism.geometry;
 
-import org.almostrealism.algebra.VectorProducer;
-import org.almostrealism.util.Producer;
+import org.almostrealism.algebra.VectorEvaluable;
+import org.almostrealism.util.Evaluable;
 
-public interface RayProducer extends Producer<Ray>, RayFeatures {
-	default VectorProducer origin() { return origin(this); }
+public interface RayEvaluable extends Evaluable<Ray>, RayFeatures {
+	default VectorEvaluable origin() { return origin(this); }
 
-	default VectorProducer direction() { return direction(this); }
+	default VectorEvaluable direction() { return direction(this); }
 }

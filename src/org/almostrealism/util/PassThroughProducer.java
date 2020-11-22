@@ -16,14 +16,13 @@
 
 package org.almostrealism.util;
 
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.MemWrapper;
 
 import java.lang.reflect.InvocationTargetException;
 import java.util.function.Supplier;
 
-public class PassThroughProducer<T> implements Producer<T>, ProducerArgumentReference, HardwareFeatures {
+public class PassThroughProducer<T> implements Evaluable<T>, ProducerArgumentReference, HardwareFeatures {
 	private int argIndex = -1;
 
 	public PassThroughProducer(int argIndex) {
@@ -43,11 +42,11 @@ public class PassThroughProducer<T> implements Producer<T>, ProducerArgumentRefe
 	@Override
 	public int getReferencedArgumentIndex() { return argIndex; }
 
-	public static <T> Supplier<Producer<? extends T>> of(Class<? extends T> type, int index) {
+	public static <T> Supplier<Evaluable<? extends T>> of(Class<? extends T> type, int index) {
 		return of(type, index, 0);
 	}
 
-	public static <T> Supplier<Producer<? extends T>> of(Class<? extends T> type, int index, int kernelDimension) {
+	public static <T> Supplier<Evaluable<? extends T>> of(Class<? extends T> type, int index, int kernelDimension) {
 		if (MemWrapper.class.isAssignableFrom(type)) {
 			try {
 				MemWrapper m = (MemWrapper) type.getConstructor().newInstance();

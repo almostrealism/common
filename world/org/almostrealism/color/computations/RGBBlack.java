@@ -26,5 +26,5 @@ public class RGBBlack extends AcceleratedStaticRGBComputation {
 
 	public static RGBBlack getInstance() { return local; }
 
-	public static RGBProducer getProducer() { return new DefaultRGBProducer(getInstance()); }
+	public static RGBEvaluable getProducer() { return new DefaultRGBEvaluable(getInstance()); }
 }

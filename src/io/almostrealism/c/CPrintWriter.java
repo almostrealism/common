@@ -20,13 +20,11 @@ import io.almostrealism.code.CodePrintWriterAdapter;
 import io.almostrealism.code.Expression;
 import io.almostrealism.code.Method;
 import io.almostrealism.code.ResourceVariable;
-import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.io.PrintWriter;
-import org.almostrealism.util.Producer;
 
 import java.util.List;
 import java.util.Map;

@@ -20,22 +20,17 @@ import io.almostrealism.code.Argument;
 import io.almostrealism.code.MultiExpression;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.Variable;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.AcceleratedProducer;
-import org.almostrealism.hardware.DynamicAcceleratedMultiProducer;
 import org.almostrealism.hardware.DynamicAcceleratedOperation;
 import org.almostrealism.hardware.DynamicAcceleratedProducer;
-import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.hardware.MemWrapper;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
-import java.util.stream.Stream;
 
 public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrapper>
 											extends DynamicAcceleratedProducer<MemWrapper, T>
@@ -44,17 +39,17 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrappe
 
 	private BiFunction<Variable<MemWrapper>, List<Variable<?>>, String> compacted;
 
-	public AcceleratedConditionalStatementAdapter(int memLength, Supplier<Producer<T>> blankValue) {
+	public AcceleratedConditionalStatementAdapter(int memLength, Supplier<Evaluable<T>> blankValue) {
 		super(blankValue);
 		this.memLength = memLength;
 	}
 
 	public AcceleratedConditionalStatementAdapter(int memLength,
-												  Supplier<Producer<T>> blankValue,
-												  Supplier<Producer> leftOperand,
-												  Supplier<Producer> rightOperand,
-												  Supplier<Producer<T>> trueValue,
-												  Supplier<Producer<T>> falseValue) {
+												  Supplier<Evaluable<T>> blankValue,
+												  Supplier<Evaluable> leftOperand,
+												  Supplier<Evaluable> rightOperand,
+												  Supplier<Evaluable<T>> trueValue,
+												  Supplier<Evaluable<T>> falseValue) {
 		super(blankValue, leftOperand, rightOperand, trueValue, falseValue);
 		this.memLength = memLength;
 	}

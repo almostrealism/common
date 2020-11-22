@@ -14,11 +14,13 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.algebra;
+package org.almostrealism.util;
 
-import org.almostrealism.util.Producer;
+import org.almostrealism.algebra.Vector;
+import org.almostrealism.algebra.VectorEvaluable;
 
-public interface PairProducer extends Producer<Pair>, PairFeatures {
-	default ScalarProducer x() { return l(this); }
-	default ScalarProducer y() { return r(this); }
+public class VectorPassThroughEvaluable extends PassThroughProducer<Vector> implements VectorEvaluable {
+	public VectorPassThroughEvaluable(int argIndex) {
+		super(argIndex);
+	}
 }

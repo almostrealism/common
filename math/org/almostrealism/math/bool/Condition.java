@@ -16,7 +16,7 @@
 
 package org.almostrealism.math.bool;
 
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
-public interface Condition extends Producer<Boolean> {
+public interface Condition extends Evaluable<Boolean> {
 }

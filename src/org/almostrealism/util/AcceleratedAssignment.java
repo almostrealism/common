@@ -29,7 +29,7 @@ import java.util.stream.IntStream;
 public class AcceleratedAssignment<T extends MemWrapper> extends DynamicAcceleratedOperationAdapter<T> {
 	private int memLength;
 
-	public AcceleratedAssignment(int memLength, Supplier<Producer<T>> result, Supplier<Producer<T>> value) {
+	public AcceleratedAssignment(int memLength, Supplier<Evaluable<T>> result, Supplier<Evaluable<T>> value) {
 		super(result, value);
 		this.memLength = memLength;
 	}

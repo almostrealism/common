@@ -25,7 +25,6 @@ import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
 
 import org.almostrealism.algebra.*;
-import org.almostrealism.algebra.computations.RayMatrixTransform;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.computations.RGBAdd;
 import org.almostrealism.color.ShaderContext;
@@ -36,7 +35,7 @@ import org.almostrealism.graph.mesh.Triangle;
 import org.almostrealism.relation.Constant;
 import org.almostrealism.relation.Maker;
 import org.almostrealism.relation.Operator;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 /**
  * A {@link SurfaceGroup} object allows {@link ShadableSurface} objects to be grouped together.
@@ -140,7 +139,7 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 	
 	/** Returns null. */
 	@Override
-	public VectorProducer getNormalAt(Producer<Vector> point) { return null; } // TODO?
+	public VectorEvaluable getNormalAt(Evaluable<Vector> point) { return null; } // TODO?
 
 	@Override
 	public Mesh triangulate() {
@@ -179,9 +178,9 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 	 * (>= 0). If there is no intersection >= 0 along the ray, null is returned.
 	 */
 	@Override
-	public ContinuousField intersectAt(Producer ray) {
+	public ContinuousField intersectAt(Evaluable ray) {
 		TransformMatrix m = getTransform(true);
-		Supplier<Producer<? extends Ray>> r = () -> ray;
+		Supplier<Evaluable<? extends Ray>> r = () -> ray;
 		if (m != null) r = m.getInverse().transform(() -> ray);
 		List<Intersectable> l = new ArrayList<>();
 		l.addAll(surfaces);

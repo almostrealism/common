@@ -18,7 +18,7 @@ package org.almostrealism.algebra;
 
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.hardware.MemoryBankAdapter;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 /**
  * A collection of {@link Vector}s of a fixed length, that is contiguous in
@@ -38,7 +38,7 @@ public class VectorBank extends MemoryBankAdapter<Vector> {
 				delegate, delegateOffset);
 	}
 
-	public static VectorBank fromProducer(Producer<Vector> producer, int count) {
+	public static VectorBank fromProducer(Evaluable<Vector> producer, int count) {
 		VectorBank bank = new VectorBank(count);
 		for (int i = 0; i < bank.getCount(); i++) {
 			bank.set(i, producer.evaluate());

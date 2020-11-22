@@ -18,15 +18,15 @@ package org.almostrealism.util;
 
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
-import org.almostrealism.algebra.ScalarProducer;
-import org.almostrealism.hardware.KernelizedProducer;
+import org.almostrealism.algebra.ScalarEvaluable;
+import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 
 import java.util.function.Function;
 
-public class DynamicScalarProducer extends DynamicProducer<Scalar> implements KernelizedProducer<Scalar>, ScalarProducer {
+public class DynamicScalarEvaluable extends DynamicEvaluable<Scalar> implements KernelizedEvaluable<Scalar>, ScalarEvaluable {
 
-	public DynamicScalarProducer(Function<Object[], Scalar> function) {
+	public DynamicScalarEvaluable(Function<Object[], Scalar> function) {
 		super(function);
 	}
 

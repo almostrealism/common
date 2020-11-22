@@ -19,14 +19,14 @@ package org.almostrealism.graph.computations;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.graph.SummationCell;
 import org.almostrealism.hardware.AcceleratedOperation;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 import static org.almostrealism.util.Ops.*;
 
 import java.util.function.Supplier;
 
 public class SummationCellOperation extends AcceleratedOperation<Scalar> {
 
-	public SummationCellOperation(SummationCell cell, Supplier<Producer<? extends Scalar>> protein) {
+	public SummationCellOperation(SummationCell cell, Supplier<Evaluable<? extends Scalar>> protein) {
 		super("push", false, ops().p(cell.getCachedValue()), protein);
 	}
 }

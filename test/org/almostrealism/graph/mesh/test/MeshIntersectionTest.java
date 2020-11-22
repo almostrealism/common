@@ -1,10 +1,8 @@
 package org.almostrealism.graph.mesh.test;
 
 import org.almostrealism.algebra.ScalarBank;
-import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.algebra.ScalarSupplier;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.algebra.VectorSupplier;
 import org.almostrealism.geometry.RayFromVectors;
 import org.almostrealism.graph.mesh.DefaultVertexData;
@@ -16,7 +14,6 @@ import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.util.CodeFeatures;
 import org.almostrealism.util.PassThroughProducer;
-import org.almostrealism.util.Provider;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;

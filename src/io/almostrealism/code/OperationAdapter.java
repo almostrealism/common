@@ -19,17 +19,14 @@ package io.almostrealism.code;
 import org.almostrealism.relation.NameProvider;
 import org.almostrealism.util.Compactable;
 import org.almostrealism.util.Named;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.function.BiFunction;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -42,11 +39,11 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 
 	private List<Argument<? extends T>> arguments;
 
-	private Map<Supplier<Producer>, List<Variable<?>>> variables;
-	private List<Supplier<Producer>> variableOrder;
+	private Map<Supplier<Evaluable>, List<Variable<?>>> variables;
+	private List<Supplier<Evaluable>> variableOrder;
 	private List<String> variableNames;
 
-	public OperationAdapter(Supplier<Producer<? extends T>>... args) {
+	public OperationAdapter(Supplier<Evaluable<? extends T>>... args) {
 		setArguments(Arrays.asList(arguments(args)));
 	}
 
@@ -71,11 +68,11 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 		return arguments;
 	}
 
-	public List<Supplier<? extends Producer<? extends T>>> getArgumentProducers() {
+	public List<Supplier<? extends Evaluable<? extends T>>> getArgumentProducers() {
 		return getArguments().stream().map(arg -> arg == null ? null : arg.getProducer()).collect(Collectors.toList());
 	}
 
-	public Supplier<? extends Producer<? extends T>> getArgumentProducer(int argIndex) {
+	public Supplier<? extends Evaluable<? extends T>> getArgumentProducer(int argIndex) {
 		return getArguments().get(argIndex).getProducer();
 	}
 
@@ -151,7 +148,7 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 		this.variableNames = new ArrayList<>();
 	}
 
-	protected static <T> Argument<T>[] arguments(Supplier<Producer<? extends T>>... producers) {
+	protected static <T> Argument<T>[] arguments(Supplier<Evaluable<? extends T>>... producers) {
 		Argument args[] = new Argument[producers.length];
 		for (int i = 0; i < args.length; i++) {
 			if (!enableNullInputs && producers[i] == null) {

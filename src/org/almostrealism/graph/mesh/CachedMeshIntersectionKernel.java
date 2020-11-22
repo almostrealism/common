@@ -24,20 +24,20 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorBank;
 import org.almostrealism.algebra.ZeroVector;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.hardware.KernelizedProducer;
+import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.util.DimensionAware;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
-public class CachedMeshIntersectionKernel implements KernelizedProducer<Scalar>, DimensionAware {
+public class CachedMeshIntersectionKernel implements KernelizedEvaluable<Scalar>, DimensionAware {
 	private MeshData data;
-	private KernelizedProducer<Ray> ray;
+	private KernelizedEvaluable<Ray> ray;
 
 	private PairBank cache;
 
 	private int width = -1, height = -1, ssw = -1, ssh = -1;
 
-	public CachedMeshIntersectionKernel(MeshData data, KernelizedProducer<Ray> ray) {
+	public CachedMeshIntersectionKernel(MeshData data, KernelizedEvaluable<Ray> ray) {
 		this.data = data;
 		this.ray = ray;
 	}
@@ -81,8 +81,8 @@ public class CachedMeshIntersectionKernel implements KernelizedProducer<Scalar>,
 		}
 	}
 
-	public Producer<Vector> getClosestNormal() {
-		return new KernelizedProducer<Vector>() {
+	public Evaluable<Vector> getClosestNormal() {
+		return new KernelizedEvaluable<Vector>() {
 			@Override
 			public Vector evaluate(Object[] args) {
 				if (cache == null) {

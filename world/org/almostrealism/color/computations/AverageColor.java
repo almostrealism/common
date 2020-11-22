@@ -22,7 +22,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
-public class AverageColor extends ColorProducerAdapter {
+public class AverageColor extends ColorEvaluableAdapter {
 	private static class Color {
 		double p;
 		RGB c;

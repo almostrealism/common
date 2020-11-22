@@ -18,14 +18,14 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.OperationAdapter;
 import org.almostrealism.util.Named;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 import org.jocl.CLException;
 
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
- * A {@link KernelizedProducer} is a {@link Producer} that can be evaluated
+ * A {@link KernelizedEvaluable} is a {@link Evaluable} that can be evaluated
  * for a {@link MemoryBank} with one operation. The default implementation
  * of this {@link MemoryBank} evaluation simply delegates to the normal
  * {@link #evaluate(Object[])} method for each element of the
@@ -33,7 +33,7 @@ import java.util.stream.Stream;
  *
  * @author  Michael Murray
  */
-public interface KernelizedProducer<T extends MemWrapper> extends Producer<T> {
+public interface KernelizedEvaluable<T extends MemWrapper> extends Evaluable<T> {
 	default void kernelEvaluate(MemoryBank destination, MemoryBank args[]) {
 		String name = this instanceof Named ? ((Named) this).getName() : OperationAdapter.operationName(getClass(), "function");
 		if (KernelizedOperation.enableKernelLog) System.out.println("KernelizedProducer: Evaluating " + name + " kernel...");

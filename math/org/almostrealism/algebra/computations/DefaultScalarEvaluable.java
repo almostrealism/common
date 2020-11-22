@@ -18,14 +18,14 @@ package org.almostrealism.algebra.computations;
 
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
-import org.almostrealism.algebra.ScalarProducer;
+import org.almostrealism.algebra.ScalarEvaluable;
 import org.almostrealism.hardware.AcceleratedComputationProducer;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.relation.Computation;
 
-public class DefaultScalarProducer extends AcceleratedComputationProducer<Scalar> implements ScalarProducer {
+public class DefaultScalarEvaluable extends AcceleratedComputationProducer<Scalar> implements ScalarEvaluable {
 
-	public DefaultScalarProducer(Computation<Scalar> c) {
+	public DefaultScalarEvaluable(Computation<Scalar> c) {
 		super(c);
 	}
 

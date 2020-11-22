@@ -22,7 +22,7 @@ import org.almostrealism.io.PrintWriter;
 import org.almostrealism.io.Resource;
 import org.almostrealism.io.ResourceTranscoder;
 import org.almostrealism.io.ResourceTranscoderFactory;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -110,8 +110,8 @@ public class JavaScriptPrintWriter extends CodePrintWriterAdapter {
 	}
 
 	protected static String toJson(Object o) {
-		if (o instanceof Producer) {
-			o = ((Producer) o).evaluate();
+		if (o instanceof Evaluable) {
+			o = ((Evaluable) o).evaluate();
 		}
 
 		if (o instanceof Scalar) {

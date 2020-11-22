@@ -19,12 +19,12 @@ package org.almostrealism.algebra.computations;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.TransformMatrix;
 import org.almostrealism.hardware.AcceleratedProducer;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 import java.util.function.Supplier;
 
 public class MatrixDeterminant extends AcceleratedProducer<TransformMatrix, Scalar> {
-	public MatrixDeterminant(Supplier<Producer<? extends TransformMatrix>> m) {
+	public MatrixDeterminant(Supplier<Evaluable<? extends TransformMatrix>> m) {
 		super("matrixDeterminant", () -> Scalar.blank(), m);
 	}
 }

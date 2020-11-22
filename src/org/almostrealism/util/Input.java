@@ -21,7 +21,7 @@ import java.util.function.Supplier;
 public class Input {
 	private Input() { }
 
-	public static <T> Supplier<Producer<? extends T>> value(Class<T> type, int argIndex) {
+	public static <T> Supplier<Evaluable<? extends T>> value(Class<T> type, int argIndex) {
 		return PassThroughProducer.of(type, argIndex);
 	}
 }

@@ -27,7 +27,7 @@ import org.almostrealism.color.*;
 import org.almostrealism.color.computations.ColorProduct;
 import org.almostrealism.color.computations.GeneratedColorProducer;
 import org.almostrealism.color.computations.RGBAdd;
-import org.almostrealism.color.computations.RGBProducer;
+import org.almostrealism.color.computations.RGBEvaluable;
 import org.almostrealism.graph.mesh.Mesh;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.physics.Porous;
@@ -36,12 +36,11 @@ import org.almostrealism.relation.Maker;
 import org.almostrealism.relation.NameProvider;
 import org.almostrealism.relation.Operator;
 import org.almostrealism.texture.Texture;
-import org.almostrealism.util.AdaptProducerRGB;
+import org.almostrealism.util.AdaptEvaluableRGB;
 import org.almostrealism.util.CodeFeatures;
 import org.almostrealism.util.CollectionUtils;
-import org.almostrealism.util.DynamicProducer;
-import org.almostrealism.util.Producer;
-import org.almostrealism.util.Provider;
+import org.almostrealism.util.DynamicEvaluable;
+import org.almostrealism.util.Evaluable;
 
 /**
  * {@link AbstractSurface} is an abstract implementation of {@link ShadableSurface} that takes
@@ -557,24 +556,24 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 	public RGB getColor() { return this.color; }
 
 	@Override
-	public Producer<RGB> getValueAt(Producer<Vector> point) { return getColorAt(point, true); }
+	public Evaluable<RGB> getValueAt(Evaluable<Vector> point) { return getColorAt(point, true); }
 	
 	/**
 	 * @return  The color of this AbstractSurface at the specified point as an RGB object.
 	 */
-	public RGBProducer getColorAt(Producer<? extends Vector> point, boolean transform) {
+	public RGBEvaluable getColorAt(Evaluable<? extends Vector> point, boolean transform) {
 	    if (transform && getTransform(true) != null)
 	    	point = getTransform(true).getInverse().transform(point, TransformMatrix.TRANSFORM_AS_LOCATION);
 
-		Producer<? extends Vector> fp = point;
-	    Supplier<Producer<? extends RGB>> colorAt = v(getColor());
+		Evaluable<? extends Vector> fp = point;
+	    Supplier<Evaluable<? extends RGB>> colorAt = v(getColor());
 	    
 	    if (textures.length > 0) {
-	    	List<Supplier<Producer<RGB>>> texColors = new ArrayList<>();
+	    	List<Supplier<Evaluable<RGB>>> texColors = new ArrayList<>();
 
 	        for (int i = 0; i < this.textures.length; i++) {
 	        	Texture t = textures[i];
-	            texColors.add(() -> new AdaptProducerRGB(new DynamicProducer<>(args -> t.operate((Triple) args[0])), fp));
+	            texColors.add(() -> new AdaptEvaluableRGB(new DynamicEvaluable<>(args -> t.operate((Triple) args[0])), fp));
 	        }
 	        
 	        colorAt = new ColorProduct(
@@ -589,7 +588,7 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 
 	@Override
 	public RGB operate(Vector in) {
-		return getValueAt((Producer<Vector>) v(in).get()).evaluate();
+		return getValueAt((Evaluable<Vector>) v(in).get()).evaluate();
 	}
 
 	@Override

@@ -21,11 +21,10 @@ import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.*;
 import org.almostrealism.color.RGB;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.geometry.RayProducer;
 import org.almostrealism.relation.Constant;
 import org.almostrealism.relation.NameProvider;
 import org.almostrealism.relation.Operator;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 import static org.almostrealism.util.Ops.*;
 
 import java.util.concurrent.ExecutionException;
@@ -48,7 +47,7 @@ public class Plane extends AbstractSurface implements ParticleGroup {
   
 	private int type;
 
-	private Producer<Vector> normal;
+	private Evaluable<Vector> normal;
 
 	/**
 	 * Constructs a {@link Plane} that represents an XY plane that is black.
@@ -126,13 +125,13 @@ public class Plane extends AbstractSurface implements ParticleGroup {
 			TransformMatrix m = getTransform(true);
 
 			if (m != null) {
-				normal = (Producer<Vector>) m.transform(normal, TransformMatrix.TRANSFORM_AS_NORMAL);
+				normal = (Evaluable<Vector>) m.transform(normal, TransformMatrix.TRANSFORM_AS_NORMAL);
 			}
 		}
 	}
 
 	@Override
-	public Producer<Vector> getNormalAt(Producer<Vector> p) {
+	public Evaluable<Vector> getNormalAt(Evaluable<Vector> p) {
 		calculateTransform();
 		return normal;
 	}
@@ -142,9 +141,9 @@ public class Plane extends AbstractSurface implements ParticleGroup {
 	 * {@link Ray} that intersection between the ray and this {@link Plane} occurs.
 	 */
 	@Override
-	public ContinuousField intersectAt(Producer<Ray> r) {
+	public ContinuousField intersectAt(Evaluable<Ray> r) {
 		TransformMatrix m = getTransform(true);
-		Supplier<Producer<? extends Ray>> tr = () -> r;
+		Supplier<Evaluable<? extends Ray>> tr = () -> r;
 		if (m != null) tr = m.getInverse().transform(tr);
 
 		// tr = new RayFromVectors(new RayOrigin(tr), new RayDirection(tr).normalize());

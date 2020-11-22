@@ -17,13 +17,10 @@
 package org.almostrealism.hardware;
 
 import org.almostrealism.util.Factory;
-import org.almostrealism.util.Producer;
 import org.jocl.*;
 
-import java.util.concurrent.Callable;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
-import java.util.function.Function;
 
 /**
  * {@link HardwareOperator}s are intended to be used with {@link ThreadLocal}.

@@ -19,7 +19,6 @@ package org.almostrealism.util;
 import io.almostrealism.code.Argument;
 import io.almostrealism.code.Expression;
 import io.almostrealism.code.Scope;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.relation.NameProvider;
@@ -27,7 +26,6 @@ import org.almostrealism.relation.NameProvider;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.function.Function;
 import java.util.function.IntFunction;
 
 public class AcceleratedPassThroughProducer<T extends MemWrapper>
@@ -55,7 +53,7 @@ public class AcceleratedPassThroughProducer<T extends MemWrapper>
 	}
 
 	@Override
-	public Producer<T> get() { return compileProducer(this); }
+	public Evaluable<T> get() { return compileProducer(this); }
 
 	/**
 	 * Returns an empty scope, as this is not intended to be converted.

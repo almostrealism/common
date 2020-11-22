@@ -17,7 +17,7 @@
 package org.almostrealism.hardware;
 
 import org.almostrealism.relation.Computation;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 import java.util.Optional;
 
@@ -26,15 +26,15 @@ public interface HardwareFeatures {
 		return Hardware.getLocalHardware().getComputer().compileRunnable(c);
 	}
 
-	default <T extends MemWrapper> KernelizedProducer<T> compileProducer(Computation<T> c) {
-		return (KernelizedProducer) Hardware.getLocalHardware().getComputer().compileProducer(c);
+	default <T extends MemWrapper> KernelizedEvaluable<T> compileProducer(Computation<T> c) {
+		return (KernelizedEvaluable) Hardware.getLocalHardware().getComputer().compileProducer(c);
 	}
 
 	default <T extends MemWrapper> Optional<Computation<T>> decompile(Runnable r) {
 		return Hardware.getLocalHardware().getComputer().decompile(r);
 	}
 
-	default <T extends MemWrapper> Optional<Computation<T>> decompile(Producer<T> r) {
+	default <T extends MemWrapper> Optional<Computation<T>> decompile(Evaluable<T> r) {
 		return Hardware.getLocalHardware().getComputer().decompile(r);
 	}
 

@@ -21,12 +21,12 @@ import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayFromVectors;
 import org.almostrealism.geometry.TransformAsLocation;
 import org.almostrealism.geometry.TransformAsOffset;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 import java.util.function.Supplier;
 
 public class RayMatrixTransform extends RayFromVectors {
-	public RayMatrixTransform(TransformMatrix t, Supplier<Producer<? extends Ray>> r) {
+	public RayMatrixTransform(TransformMatrix t, Supplier<Evaluable<? extends Ray>> r) {
 		super(new TransformAsLocation(t, new RayOrigin(r)),
 				new TransformAsOffset(t, new RayDirection(r)));
 	}

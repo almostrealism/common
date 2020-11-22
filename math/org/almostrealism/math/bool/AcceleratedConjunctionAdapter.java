@@ -20,7 +20,7 @@ import io.almostrealism.code.Argument;
 import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.MemWrapper;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -34,28 +34,28 @@ public class AcceleratedConjunctionAdapter<T extends MemWrapper> extends Acceler
 	private Argument trueValue, falseValue;
 
 	public AcceleratedConjunctionAdapter(int memLength,
-											 Function<Integer, Supplier<Producer<T>>> blankValue) {
+											 Function<Integer, Supplier<Evaluable<T>>> blankValue) {
 		this(memLength, blankValue, null, null);
 	}
 
 	public AcceleratedConjunctionAdapter(int memLength,
-										 	Function<Integer, Supplier<Producer<T>>> blankValue,
-										 	Supplier<Producer<T>> trueValue, Supplier<Producer<T>> falseValue,
-										 	AcceleratedConditionalStatement<T>... conjuncts) {
-		this(memLength, (Supplier<Producer<T>>) blankValue.apply(memLength), trueValue, falseValue, conjuncts);
+										 Function<Integer, Supplier<Evaluable<T>>> blankValue,
+										 Supplier<Evaluable<T>> trueValue, Supplier<Evaluable<T>> falseValue,
+										 AcceleratedConditionalStatement<T>... conjuncts) {
+		this(memLength, (Supplier<Evaluable<T>>) blankValue.apply(memLength), trueValue, falseValue, conjuncts);
 	}
 
 	public AcceleratedConjunctionAdapter(int memLength,
-										 	Supplier<Producer<T>> blankValue,
-										 	Supplier<Producer<T>> trueValue,
-										 	Supplier<Producer<T>> falseValue,
+										 	Supplier<Evaluable<T>> blankValue,
+										 	Supplier<Evaluable<T>> trueValue,
+										 	Supplier<Evaluable<T>> falseValue,
 										 	AcceleratedConditionalStatement<T>... conjuncts) {
 		super(memLength, blankValue);
 		this.conjuncts = Arrays.asList(conjuncts);
 		initArguments(trueValue, falseValue);
 	}
 
-	protected void initArguments(Supplier<Producer<T>> trueValue, Supplier<Producer<T>> falseValue) {
+	protected void initArguments(Supplier<Evaluable<T>> trueValue, Supplier<Evaluable<T>> falseValue) {
 		List<Argument<? extends MemWrapper>> args = new ArrayList<>();
 		args.add(getArguments().get(0));
 		args.addAll(getOperands());
@@ -109,7 +109,7 @@ public class AcceleratedConjunctionAdapter<T extends MemWrapper> extends Acceler
 
 	@Override
 	public void compact() {
-		conjuncts.forEach(Producer::compact);
+		conjuncts.forEach(Evaluable::compact);
 		super.compact();
 	}
 }

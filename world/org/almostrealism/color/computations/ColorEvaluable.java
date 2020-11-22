@@ -26,5 +26,5 @@ import org.almostrealism.relation.TripleFunction;
  * 
  * @author Michael Murray
  */
-public interface ColorProducer extends RGBProducer, TripleFunction<Triple, RGB> {
+public interface ColorEvaluable extends RGBEvaluable, TripleFunction<Triple, RGB> {
 }

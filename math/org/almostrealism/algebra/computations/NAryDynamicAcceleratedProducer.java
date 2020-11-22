@@ -18,15 +18,11 @@ package org.almostrealism.algebra.computations;
 
 import io.almostrealism.code.Argument;
 import io.almostrealism.code.Expression;
-import io.almostrealism.code.OperationAdapter;
-import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;
-import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.hardware.ComputerFeatures;
 import org.almostrealism.hardware.MemWrapper;
-import org.almostrealism.relation.NameProvider;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -38,7 +34,7 @@ public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> exten
 	private Expression<Double> value[];
 	private boolean isStatic;
 
-	public NAryDynamicAcceleratedProducer(String operator, int memLength, Supplier<Producer<T>> blank, Supplier<Producer<? extends T>>... producers) {
+	public NAryDynamicAcceleratedProducer(String operator, int memLength, Supplier<Evaluable<T>> blank, Supplier<Evaluable<? extends T>>... producers) {
 		super(memLength, blank, producers);
 		this.operator = operator;
 	}
@@ -141,7 +137,7 @@ public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> exten
 
 	/**
 	 * After {@link #compact()}, it may be determined that this
-	 * {@link Producer} is static. If so, this method returns
+	 * {@link Evaluable} is static. If so, this method returns
 	 * true.
 	 */
 	public boolean isStatic() { return !isVariableRef() && isStatic; }

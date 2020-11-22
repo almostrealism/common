@@ -16,27 +16,21 @@
 
 package org.almostrealism.algebra.computations;
 
-import io.almostrealism.code.Argument;
 import io.almostrealism.code.Expression;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarSupplier;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.hardware.ComputerFeatures;
-import org.almostrealism.relation.Computation;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
 public class DotProduct extends DynamicAcceleratedProducerAdapter<Vector, Scalar> implements ScalarSupplier, ComputerFeatures {
 	private Expression<Double> value[];
 
-	public DotProduct(Supplier<Producer<? extends Vector>> a, Supplier<Producer<? extends Vector>> b) {
+	public DotProduct(Supplier<Evaluable<? extends Vector>> a, Supplier<Evaluable<? extends Vector>> b) {
 		super(2, () -> Scalar.blank(), a, b);
 	}
 

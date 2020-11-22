@@ -17,9 +17,8 @@
 package org.almostrealism.physics;
 
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.time.Clock;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 /**
  * An Absorber instance represents a solid object that absorbs and emits energy
@@ -58,7 +57,7 @@ public interface Absorber {
 	 *          This should be a unit vector, because all photons travel at
 	 *          100 percent of the speed of light.
 	 */
-	Producer<Vector> emit();
+	Evaluable<Vector> emit();
 	
 	/**
 	 * @return  The quantity of energy that would be emitted by this absorber if the emit
@@ -77,7 +76,7 @@ public interface Absorber {
 	 * @return  {x, y, z} - The position of the photon that will getDependencies be emitted by this
 	 *          Absorber.
 	 */
-	Producer<Vector> getEmitPosition();
+	Evaluable<Vector> getEmitPosition();
 	
 	/** @param c  The Clock instance for this absorber to use to keep time. */
 	void setClock(Clock c);

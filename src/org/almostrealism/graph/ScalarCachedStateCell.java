@@ -17,8 +17,7 @@
 package org.almostrealism.graph;
 
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.util.Producer;
-import org.almostrealism.util.Provider;
+import org.almostrealism.util.Evaluable;
 
 import java.util.function.Supplier;
 
@@ -28,12 +27,12 @@ public class ScalarCachedStateCell extends CachedStateCell<Scalar> {
 	}
 
 	@Override
-	protected Supplier<Runnable> assign(Supplier<Producer<? extends Scalar>> out, Supplier<Producer<? extends Scalar>> in) {
+	protected Supplier<Runnable> assign(Supplier<Evaluable<? extends Scalar>> out, Supplier<Evaluable<? extends Scalar>> in) {
 		return () -> () -> out.get().evaluate().setValue(in.get().evaluate().getValue());
 	}
 
 	@Override
-	public Supplier<Runnable> reset(Supplier<Producer<? extends Scalar>> out) {
+	public Supplier<Runnable> reset(Supplier<Evaluable<? extends Scalar>> out) {
 		return () -> () -> out.get().evaluate().setMem(new double[] { 0.0, 1.0 });
 	}
 }

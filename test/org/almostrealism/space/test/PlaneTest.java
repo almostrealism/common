@@ -25,7 +25,7 @@ import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.space.Plane;
 import org.almostrealism.space.ShadableIntersection;
 import org.almostrealism.util.CodeFeatures;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 import org.almostrealism.util.Provider;
 import org.junit.Assert;
 import org.junit.Test;
@@ -35,13 +35,13 @@ public class PlaneTest implements HardwareFeatures, CodeFeatures {
 		Plane p = new Plane(Plane.XZ);
 		p.setLocation(new Vector(0.0, -10, 0.0));
 
-		return (ShadableIntersection) p.intersectAt((Producer<Ray>) ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0).get());
+		return (ShadableIntersection) p.intersectAt((Evaluable<Ray>) ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0).get());
 	}
 
 	@Test
 	public void intersectionTest1() {
 		ShadableIntersection intersection = test1();
-		double distance = ((Producer<Scalar>) intersection.getDistance().get()).evaluate().getValue();
+		double distance = ((Evaluable<Scalar>) intersection.getDistance().get()).evaluate().getValue();
 		System.out.println("distance = " + distance);
 		Assert.assertEquals(-20.0, distance, Math.pow(10, -10));
 
@@ -53,7 +53,7 @@ public class PlaneTest implements HardwareFeatures, CodeFeatures {
 	public void intersectionTest1Compact() {
 		ShadableIntersection intersection = test1();
 
-		Producer<Scalar> p = (Producer<Scalar>) intersection.getDistance();
+		Evaluable<Scalar> p = (Evaluable<Scalar>) intersection.getDistance();
 		p.compact();
 
 		System.out.println(((DynamicAcceleratedMultiProducer) p).getFunctionDefinition());
@@ -76,7 +76,7 @@ public class PlaneTest implements HardwareFeatures, CodeFeatures {
 		p.setLocation(new Vector(0.0, 0, 0.0));
 
 		ShadableIntersection intersection = (ShadableIntersection) p.intersectAt(r);
-		Assert.assertEquals(-1.0, ((Producer<Scalar>) intersection.getDistance()).evaluate().getValue(), Math.pow(10, -10));
+		Assert.assertEquals(-1.0, ((Evaluable<Scalar>) intersection.getDistance()).evaluate().getValue(), Math.pow(10, -10));
 	}
 
 	@Test

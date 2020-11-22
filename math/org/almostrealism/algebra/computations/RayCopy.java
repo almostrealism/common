@@ -17,12 +17,12 @@
 package org.almostrealism.algebra.computations;
 
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
-public class RayCopy implements Producer<Ray> {
-	private Producer<Ray> r;
+public class RayCopy implements Evaluable<Ray> {
+	private Evaluable<Ray> r;
 
-	public RayCopy(Producer<Ray> r) {
+	public RayCopy(Evaluable<Ray> r) {
 		this.r = r;
 	}
 

@@ -25,7 +25,6 @@ import org.almostrealism.algebra.Camera;
 import org.almostrealism.color.Light;
 import org.almostrealism.color.RGB;
 import org.almostrealism.geometry.Curve;
-import org.almostrealism.util.Producer;
 
 /**
  * {@link Scene} extends {@link SurfaceList} to store {@link Light}s and a {@link Camera}.

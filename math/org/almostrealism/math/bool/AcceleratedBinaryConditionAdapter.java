@@ -20,10 +20,8 @@ import io.almostrealism.code.Argument;
 import io.almostrealism.code.MultiExpression;
 import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.hardware.MemWrapper;
-import org.almostrealism.util.DynamicProducer;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 import java.util.Arrays;
 import java.util.List;
@@ -38,27 +36,27 @@ public abstract class AcceleratedBinaryConditionAdapter<T extends MemWrapper> ex
 	private String condition;
 
 	public AcceleratedBinaryConditionAdapter(String operator, int memLength,
-											 Function<Integer, Supplier<Producer<T>>> blankValue) {
+											 Function<Integer, Supplier<Evaluable<T>>> blankValue) {
 		this(operator, memLength, blankValue, null, null, null, null);
 	}
 
 	public AcceleratedBinaryConditionAdapter(String operator,
 											 int memLength,
-											 Function<Integer, Supplier<Producer<T>>> blankValue,
-											 Supplier<Producer> leftOperand,
-											 Supplier<Producer> rightOperand,
-											 Supplier<Producer<T>> trueValue,
-											 Supplier<Producer<T>> falseValue) {
+											 Function<Integer, Supplier<Evaluable<T>>> blankValue,
+											 Supplier<Evaluable> leftOperand,
+											 Supplier<Evaluable> rightOperand,
+											 Supplier<Evaluable<T>> trueValue,
+											 Supplier<Evaluable<T>> falseValue) {
 		this(operator, memLength, blankValue.apply(memLength), leftOperand, rightOperand, trueValue, falseValue);
 	}
 
 	public AcceleratedBinaryConditionAdapter(String operator,
 											 int memLength,
-											 Supplier<Producer<T>> blankValue,
-											 Supplier<Producer> leftOperand,
-											 Supplier<Producer> rightOperand,
-											 Supplier<Producer<T>> trueValue,
-											 Supplier<Producer<T>> falseValue) {
+											 Supplier<Evaluable<T>> blankValue,
+											 Supplier<Evaluable> leftOperand,
+											 Supplier<Evaluable> rightOperand,
+											 Supplier<Evaluable<T>> trueValue,
+											 Supplier<Evaluable<T>> falseValue) {
 		super(memLength, blankValue, leftOperand, rightOperand, trueValue, falseValue);
 		this.operator = operator;
 		this.leftOperand = getArguments().get(1);

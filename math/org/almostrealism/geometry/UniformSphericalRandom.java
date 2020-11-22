@@ -17,16 +17,13 @@
 package org.almostrealism.geometry;
 
 import io.almostrealism.code.Scope;
-import io.almostrealism.code.Variable;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Triple;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorProducer;
+import org.almostrealism.algebra.VectorEvaluable;
 import org.almostrealism.relation.NameProvider;
 import org.almostrealism.relation.TripleFunction;
-import org.almostrealism.util.Producer;
 
-public class UniformSphericalRandom implements VectorProducer, TripleFunction<Triple, Vector> {
+public class UniformSphericalRandom implements VectorEvaluable, TripleFunction<Triple, Vector> {
 	private static UniformSphericalRandom local = new UniformSphericalRandom();
 
 	@Override

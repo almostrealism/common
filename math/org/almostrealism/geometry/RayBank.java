@@ -17,7 +17,7 @@
 package org.almostrealism.geometry;
 
 import org.almostrealism.hardware.MemoryBankAdapter;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 import java.util.function.Supplier;
 
@@ -33,7 +33,7 @@ public class RayBank extends MemoryBankAdapter<Ray> {
 				new Ray(delegateSpec.getDelegate(), delegateSpec.getOffset()));
 	}
 
-	public static RayBank fromProducer(Supplier<Producer<? extends Ray>> producer, int count) {
+	public static RayBank fromProducer(Supplier<Evaluable<? extends Ray>> producer, int count) {
 		RayBank bank = new RayBank(count);
 		for (int i = 0; i < bank.getCount(); i++) {
 			bank.set(i, producer.get().evaluate());

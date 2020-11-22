@@ -24,14 +24,13 @@ import java.util.concurrent.TimeoutException;
 
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;
-import org.almostrealism.algebra.computations.VectorFutureAdapter;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.relation.Constant;
 import org.almostrealism.relation.NameProvider;
 import org.almostrealism.relation.Operator;
 import org.almostrealism.space.AbstractSurface;
 import org.almostrealism.space.ShadableIntersection;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 /** A {@link Polynomial} represents a 3d polynomial surface. */
 public class Polynomial extends AbstractSurface {
@@ -328,13 +327,13 @@ public class Polynomial extends AbstractSurface {
 	}
 	
 	/**
-	 * Returns a {@link Vector} {@link Producer} that represents the vector normal to
+	 * Returns a {@link Vector} {@link Evaluable} that represents the vector normal to
 	 * this polynomial surface at the point represented by the specified {@link Vector}
-	 * {@link Producer}.
+	 * {@link Evaluable}.
 	 */
 	@Override
-	public VectorProducer getNormalAt(Producer<Vector> p) {
-		return new VectorProducer() {
+	public VectorEvaluable getNormalAt(Evaluable<Vector> p) {
+		return new VectorEvaluable() {
 			@Override
 			public Vector evaluate(Object[] args) {
 				Vector point = p.evaluate(args);
@@ -354,8 +353,8 @@ public class Polynomial extends AbstractSurface {
 	 * represented by this {@link Polynomial} object occurs.
 	 */
 	@Override
-	public ShadableIntersection intersectAt(Producer<Ray> r) {
-		Producer <Scalar> s = new Producer<Scalar>() {
+	public ShadableIntersection intersectAt(Evaluable<Ray> r) {
+		Evaluable<Scalar> s = new Evaluable<Scalar>() {
 			@Override
 			public Scalar evaluate(Object[] args) {
 				Ray ray = r.evaluate(args);

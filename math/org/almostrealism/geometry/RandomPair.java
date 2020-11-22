@@ -17,9 +17,9 @@
 package org.almostrealism.geometry;
 
 import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.PairProducer;
+import org.almostrealism.algebra.PairEvaluable;
 
-public class RandomPair implements PairProducer {
+public class RandomPair implements PairEvaluable {
 	/**
 	 * Produce a {@link Pair} with all values randomly selected
 	 * between 0 and 1.

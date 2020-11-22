@@ -17,40 +17,39 @@
 package io.almostrealism.code;
 
 import org.almostrealism.color.computations.GeneratedColorProducer;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 import org.almostrealism.util.ProducerWithRank;
 
-import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
 /**
  * A parameter for a {@link Method}. Note that this type will extract
- * the internal {@link Producer} from instances of {@link ProducerWithRank}
+ * the internal {@link Evaluable} from instances of {@link ProducerWithRank}
  * and the rank will not be available, and will extract the internal
- * {@link Producer} from instances of {@link GeneratedColorProducer}
+ * {@link Evaluable} from instances of {@link GeneratedColorProducer}
  * and the generator will not be available.
  */
 public class Argument<T> extends Variable<T> {
 	private int sortHint;
 
-	public Argument(String name) { this(name, null, (Supplier<Producer<? extends T>>) null); }
-	public Argument(String name, String annotation) { this(name, annotation, (Supplier<Producer<? extends T>>) null); }
+	public Argument(String name) { this(name, null, (Supplier<Evaluable<? extends T>>) null); }
+	public Argument(String name, String annotation) { this(name, annotation, (Supplier<Evaluable<? extends T>>) null); }
 	public Argument(String name, Class<T> type) { super(name, null, type, null); }
 	public Argument(String name, String annotation, Class<T> type) {
 		super(name, annotation, type, null);
 	}
-	public Argument(Supplier<Producer<? extends T>> p) { this(null, null, p); }
-	public Argument(String name, String annotation, Supplier<Producer<? extends T>> p) { super(name, annotation, p); }
-	public Argument(String name, Supplier<Producer<? extends T>> p) { super(name, (String) null, p); }
+	public Argument(Supplier<Evaluable<? extends T>> p) { this(null, null, p); }
+	public Argument(String name, String annotation, Supplier<Evaluable<? extends T>> p) { super(name, annotation, p); }
+	public Argument(String name, Supplier<Evaluable<? extends T>> p) { super(name, (String) null, p); }
 	public Argument(String name, Method<T> m) { super(name, null, m); }
 
 	public void setSortHint(int hint) { this.sortHint = hint; }
 	public int getSortHint() { return sortHint; }
 
 	@Override
-	public void setProducer(Supplier<Producer<? extends T>> producer) {
+	public void setProducer(Supplier<Evaluable<? extends T>> producer) {
 		w: while (producer != null && (producer.get() instanceof ProducerWithRank || producer.get() instanceof GeneratedColorProducer)) {
-			Producer<? extends T> p = producer.get();
+			Evaluable<? extends T> p = producer.get();
 
 			if (p instanceof ProducerWithRank) {
 				if (((ProducerWithRank<T>) p).getProducer() == p) {

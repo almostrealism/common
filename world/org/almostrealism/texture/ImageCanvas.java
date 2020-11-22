@@ -31,7 +31,7 @@ import javax.swing.JPanel;
 
 import org.almostrealism.color.RGB;
 import org.almostrealism.util.CodeFeatures;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 import static org.almostrealism.util.Ops.*;
 
 /**
@@ -164,7 +164,7 @@ public class ImageCanvas extends JPanel implements CodeFeatures {
 	 */
 	public void writeImage(String file) {
 		try {
-			ImageCanvas.encodeImageFile((Producer<RGB[][]>) v(this.image).get(),
+			ImageCanvas.encodeImageFile((Evaluable<RGB[][]>) v(this.image).get(),
 							new File(file), ImageCanvas.JPEGEncoding);
 		} catch (Exception e) {
 			e.printStackTrace();
@@ -182,10 +182,10 @@ public class ImageCanvas extends JPanel implements CodeFeatures {
 
 	public static void writeImage(RGB[][] image, OutputStream o, int encoding)
 			throws IOException {
-		writeImage((Producer<RGB[][]>) ops().v(image).get(), o, encoding);
+		writeImage((Evaluable<RGB[][]>) ops().v(image).get(), o, encoding);
 	}
 
-	public static void writeImage(Producer<RGB[][]> imageProducer, OutputStream o, int encoding)
+	public static void writeImage(Evaluable<RGB[][]> imageProducer, OutputStream o, int encoding)
 						throws IOException {
 		RGB[][] image = imageProducer.evaluate();
 
@@ -282,7 +282,7 @@ public class ImageCanvas extends JPanel implements CodeFeatures {
 	 * file represented by the specified File object. If the encoding code is not
 	 * recognized, the method returns.
 	 */
-	public static void encodeImageFile(Producer<RGB[][]> image, File file, int encoding) throws IOException {
+	public static void encodeImageFile(Evaluable<RGB[][]> image, File file, int encoding) throws IOException {
 		try (OutputStream o = new FileOutputStream(file)) {
 			ImageCanvas.writeImage(image, o, encoding);
 			o.flush();

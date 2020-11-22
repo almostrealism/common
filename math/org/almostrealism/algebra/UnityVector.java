@@ -16,7 +16,7 @@
 
 package org.almostrealism.algebra;
 
-import org.almostrealism.algebra.computations.DefaultVectorProducer;
+import org.almostrealism.algebra.computations.DefaultVectorEvaluable;
 
 public class UnityVector extends ImmutableVector {
 	private static UnityVector local = new UnityVector();
@@ -27,5 +27,5 @@ public class UnityVector extends ImmutableVector {
 
 	public static UnityVector getInstance() { return local; }
 
-	public static VectorProducer getProducer() { return new DefaultVectorProducer(getInstance()); }
+	public static VectorEvaluable getProducer() { return new DefaultVectorEvaluable(getInstance()); }
 }

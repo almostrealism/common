@@ -17,22 +17,21 @@
 package org.almostrealism.texture;
 
 import org.almostrealism.algebra.Triple;
-import org.almostrealism.color.computations.ColorProducer;
+import org.almostrealism.color.computations.ColorEvaluable;
 import org.almostrealism.color.RGB;
-import org.almostrealism.color.computations.RGBProducer;
 import org.almostrealism.relation.TripleFunction;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 /**
  * The {@link Texture} interface is implemented by classes that can be used to texture a surface.
  * 
  * @author  Michael Murray
  */
-public interface Texture extends ColorProducer, TripleFunction<Triple, RGB> {
+public interface Texture extends ColorEvaluable, TripleFunction<Triple, RGB> {
 	/**
 	 * Returns the color of the texture represented by this Texture object at the specified point as an RGB object
 	 * using the specified arguments.
 	 */
 	@Deprecated
-	Producer<RGB> getColorAt(Object args[]);
+	Evaluable<RGB> getColorAt(Object args[]);
 }

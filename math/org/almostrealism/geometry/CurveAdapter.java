@@ -18,9 +18,9 @@ package org.almostrealism.geometry;
 
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.util.CodeFeatures;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 public abstract class CurveAdapter<T> implements Curve<T>, CodeFeatures {
-	/** Delegates to {@link #getNormalAt(org.almostrealism.util.Producer)}. */
-	public T operate(Vector v) { return getValueAt((Producer<Vector>) v(v).get()).evaluate(); }
+	/** Delegates to {@link #getNormalAt(Evaluable)}. */
+	public T operate(Vector v) { return getValueAt((Evaluable<Vector>) v(v).get()).evaluate(); }
 }

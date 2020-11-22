@@ -6,9 +6,9 @@ import org.almostrealism.algebra.Triple;
 import org.almostrealism.color.RGB;
 import org.almostrealism.relation.NameProvider;
 import org.almostrealism.relation.TripleFunction;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
-public abstract class ColorProducerAdapter implements ColorProducer, TripleFunction<Triple, RGB> {
+public abstract class ColorEvaluableAdapter implements ColorEvaluable, TripleFunction<Triple, RGB> {
 	@Override
 	public RGB operate(Triple in) { return evaluate(new Triple[] { in }); }
 
@@ -25,8 +25,8 @@ public abstract class ColorProducerAdapter implements ColorProducer, TripleFunct
 		return s;
 	}
 
-	public static ColorProducer fromFunction(TripleFunction<Triple, RGB> t) {
-		return new ColorProducer() {
+	public static ColorEvaluable fromFunction(TripleFunction<Triple, RGB> t) {
+		return new ColorEvaluable() {
 			@Override
 			public RGB evaluate(Object args[]) {
 				return operate((Triple) args[0]);
@@ -39,7 +39,7 @@ public abstract class ColorProducerAdapter implements ColorProducer, TripleFunct
 
 			@Override
 			public void compact() {
-				if (t instanceof Producer) ((Producer) t).compact();
+				if (t instanceof Evaluable) ((Evaluable) t).compact();
 			}
 
 			@Override

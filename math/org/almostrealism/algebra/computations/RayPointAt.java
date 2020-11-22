@@ -18,13 +18,13 @@ package org.almostrealism.algebra.computations;
 
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 import static org.almostrealism.util.Ops.*;
 
 import java.util.function.Supplier;
 
 public class RayPointAt extends VectorSum {
-	public RayPointAt(Supplier<Producer<? extends Ray>> r, Supplier<Producer<? extends Scalar>> t) {
+	public RayPointAt(Supplier<Evaluable<? extends Ray>> r, Supplier<Evaluable<? extends Scalar>> t) {
 		super(ops().origin(r), ops().scalarMultiply(ops().direction(r), t));
 	}
 }

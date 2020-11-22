@@ -16,29 +16,29 @@
 
 package org.almostrealism.geometry;
 
-import org.almostrealism.algebra.VectorProducer;
+import org.almostrealism.algebra.VectorEvaluable;
 import org.almostrealism.algebra.VectorSupplier;
-import org.almostrealism.algebra.computations.DefaultVectorProducer;
+import org.almostrealism.algebra.computations.DefaultVectorEvaluable;
 import org.almostrealism.algebra.computations.RayDirection;
 import org.almostrealism.algebra.computations.RayOrigin;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 import java.util.function.Supplier;
 
 public interface RayFeatures {
-	default VectorProducer origin(Producer<Ray> r) {
-		return new DefaultVectorProducer(origin(() -> r));
+	default VectorEvaluable origin(Evaluable<Ray> r) {
+		return new DefaultVectorEvaluable(origin(() -> r));
 	}
 
-	default VectorSupplier origin(Supplier<Producer<? extends Ray>> r) {
+	default VectorSupplier origin(Supplier<Evaluable<? extends Ray>> r) {
 		return new RayOrigin(r);
 	}
 
-	default VectorProducer direction(Producer<Ray> r) {
-		return new DefaultVectorProducer(direction(() -> r));
+	default VectorEvaluable direction(Evaluable<Ray> r) {
+		return new DefaultVectorEvaluable(direction(() -> r));
 	}
 
-	default VectorSupplier direction(Supplier<Producer<? extends Ray>> r) {
+	default VectorSupplier direction(Supplier<Evaluable<? extends Ray>> r) {
 		return new RayDirection(r);
 	}
 }

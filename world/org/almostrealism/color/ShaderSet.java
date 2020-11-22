@@ -23,7 +23,6 @@ import org.almostrealism.algebra.DiscreteField;
 import org.almostrealism.color.computations.RGBAdd;
 import org.almostrealism.relation.Maker;
 import org.almostrealism.space.LightingContext;
-import org.almostrealism.util.Producer;
 
 /**
  * @author  Michael Murray

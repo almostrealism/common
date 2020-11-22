@@ -16,8 +16,8 @@
 
 package org.almostrealism.heredity;
 
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 public class IdentityFactor<T> implements Factor<T> {
-	public Producer<T> getResultant(Producer<T> value) { return value; }
+	public Evaluable<T> getResultant(Evaluable<T> value) { return value; }
 }

@@ -4,8 +4,6 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarSupplier;
 import org.almostrealism.math.bool.LessThan;
 import org.almostrealism.util.CodeFeatures;
-import org.almostrealism.util.Producer;
-import org.almostrealism.util.Provider;
 import org.junit.Assert;
 import org.junit.Test;
 

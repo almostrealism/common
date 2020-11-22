@@ -24,19 +24,18 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 import io.almostrealism.code.Scope;
-import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.Triple;
 import org.almostrealism.color.RGB;
 import org.almostrealism.relation.NameProvider;
 import org.almostrealism.relation.TripleFunction;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
-public abstract class ColorFutureAdapter extends ArrayList<Future<Producer<RGB>>>
-										implements ColorProducer, Future<ColorProducer>,
+public abstract class ColorFutureAdapter extends ArrayList<Future<Evaluable<RGB>>>
+										implements ColorEvaluable, Future<ColorEvaluable>,
 										TripleFunction<Triple, RGB> {
 
-	public void add(ColorProducer p) {
-		addAll(convertToFutures(new RGBProducer[] { p }));
+	public void add(ColorEvaluable p) {
+		addAll(convertToFutures(new RGBEvaluable[] { p }));
 	}
 	
 	@Override
@@ -53,7 +52,7 @@ public abstract class ColorFutureAdapter extends ArrayList<Future<Producer<RGB>>
 	public boolean cancel(boolean mayInterruptIfRunning) {
 		boolean cancelled = true;
 		
-		for (Future<Producer<RGB>> p : this) {
+		for (Future<Evaluable<RGB>> p : this) {
 			cancelled &= p.cancel(mayInterruptIfRunning);
 		}
 		
@@ -62,7 +61,7 @@ public abstract class ColorFutureAdapter extends ArrayList<Future<Producer<RGB>>
 	
 	@Override
 	public boolean isCancelled() {
-		for (Future<Producer<RGB>> p : this) {
+		for (Future<Evaluable<RGB>> p : this) {
 			if (!p.isCancelled()) return false;
 		}
 		
@@ -71,7 +70,7 @@ public abstract class ColorFutureAdapter extends ArrayList<Future<Producer<RGB>>
 	
 	@Override
 	public boolean isDone() {
-		for (Future<Producer<RGB>> p : this) {
+		for (Future<Evaluable<RGB>> p : this) {
 			if (!p.isDone()) return false;
 		}
 		
@@ -79,34 +78,34 @@ public abstract class ColorFutureAdapter extends ArrayList<Future<Producer<RGB>>
 	}
 	
 	@Override
-	public ColorProducer get() throws InterruptedException, ExecutionException {
+	public ColorEvaluable get() throws InterruptedException, ExecutionException {
 		return this;
 	}
 	
 	@Override
-	public ColorProducer get(long timeout, TimeUnit unit)
+	public ColorEvaluable get(long timeout, TimeUnit unit)
 			throws InterruptedException, ExecutionException, TimeoutException {
 		return this;
 	}
 
 	/**
-	 * Delegates to the {@link ColorProducer#compact()} method for any {@link ColorProducer}s
-	 * in this collection. {@link Future}s without a known {@link ColorProducer} cannot be
+	 * Delegates to the {@link ColorEvaluable#compact()} method for any {@link ColorEvaluable}s
+	 * in this collection. {@link Future}s without a known {@link ColorEvaluable} cannot be
 	 * compacted.
 	 */
 	@Override
 	public void compact() {
-		for (Future<Producer<RGB>> f : this) {
+		for (Future<Evaluable<RGB>> f : this) {
 			if (f instanceof StaticColorProducer) {
 				((StaticColorProducer) f).compact();
 			}
 		}
 	}
 
-	protected Iterable<Producer<RGB>> getStaticColorProducers() {
-		List<Producer<RGB>> l = new ArrayList<>();
+	protected Iterable<Evaluable<RGB>> getStaticColorProducers() {
+		List<Evaluable<RGB>> l = new ArrayList<>();
 
-		for (Future<Producer<RGB>> f : this) {
+		for (Future<Evaluable<RGB>> f : this) {
 			if (f instanceof StaticColorProducer) {
 				l.add(((StaticColorProducer) f).p);
 			}
@@ -115,10 +114,10 @@ public abstract class ColorFutureAdapter extends ArrayList<Future<Producer<RGB>>
 		return l;
 	}
 
-	public static List<Future<Producer<RGB>>> convertToFutures(Producer<RGB>... producers) {
-		ArrayList<Future<Producer<RGB>>> pr = new ArrayList<>();
+	public static List<Future<Evaluable<RGB>>> convertToFutures(Evaluable<RGB>... producers) {
+		ArrayList<Future<Evaluable<RGB>>> pr = new ArrayList<>();
 		
-		for (Producer<RGB> p : producers) {
+		for (Evaluable<RGB> p : producers) {
 			pr.add(new StaticColorProducer(p));
 		}
 		
@@ -127,10 +126,10 @@ public abstract class ColorFutureAdapter extends ArrayList<Future<Producer<RGB>>
 
 	// TODO  When ColorProducer implements PathElement, this should be changed to
 	//       implement PathElement as well
-	protected static class StaticColorProducer implements Future<Producer<RGB>> {
-		private Producer<RGB> p;
+	protected static class StaticColorProducer implements Future<Evaluable<RGB>> {
+		private Evaluable<RGB> p;
 
-		protected StaticColorProducer(Producer<RGB> p) { this.p = p; }
+		protected StaticColorProducer(Evaluable<RGB> p) { this.p = p; }
 
 		@Override
 		public boolean cancel(boolean mayInterruptIfRunning) { return false; }
@@ -142,12 +141,12 @@ public abstract class ColorFutureAdapter extends ArrayList<Future<Producer<RGB>>
 		public boolean isDone() { return false; }
 
 		@Override
-		public Producer<RGB> get() throws InterruptedException, ExecutionException {
+		public Evaluable<RGB> get() throws InterruptedException, ExecutionException {
 			return p;
 		}
 
 		@Override
-		public Producer<RGB> get(long timeout, TimeUnit unit)
+		public Evaluable<RGB> get(long timeout, TimeUnit unit)
 				throws InterruptedException, ExecutionException, TimeoutException {
 			return get();
 		}

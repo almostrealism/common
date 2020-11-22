@@ -22,9 +22,9 @@ import java.util.function.Supplier;
 
 /**
  * The {@link ProducerCache} provides static methods for keeping track
- * of the last result of a {@link Producer} in the current {@link Thread}.
+ * of the last result of a {@link Evaluable} in the current {@link Thread}.
  * Based on the assumption that a thread processes only one set of arguments
- * at a time, this allows {@link Producer} evaluation to be short circuited
+ * at a time, this allows {@link Evaluable} evaluation to be short circuited
  * when the arguments have not changed.
  *
  * @author  Michael Murray
@@ -39,7 +39,7 @@ public class ProducerCache {
 	 */
 	private ProducerCache() { }
 
-	public static <T> T evaluate(Supplier<Producer<? extends T>> p, Object args[]) {
+	public static <T> T evaluate(Supplier<Evaluable<? extends T>> p, Object args[]) {
 		checkArgs(args);
 
 		if (getCache().containsKey(p)) {

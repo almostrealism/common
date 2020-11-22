@@ -19,17 +19,15 @@ package org.almostrealism.util;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.AcceleratedProducer;
-import org.almostrealism.hardware.KernelizedProducer;
-import org.almostrealism.hardware.MemWrapper;
+import org.almostrealism.hardware.KernelizedEvaluable;
 
 import java.util.ArrayList;
-import java.util.function.Supplier;
 
-public class RankedChoiceProducer<T> extends ArrayList<ProducerWithRank<T>> implements Producer<T> {
+public class RankedChoiceProducer<T> extends ArrayList<ProducerWithRank<T>> implements Evaluable<T> {
 	protected double e;
 	protected boolean tolerateNull;
 
-	public static final KernelizedProducer<Pair> highestRank;
+	public static final KernelizedEvaluable<Pair> highestRank;
 
 	static {
 		highestRank = new AcceleratedProducer<>(
@@ -48,7 +46,7 @@ public class RankedChoiceProducer<T> extends ArrayList<ProducerWithRank<T>> impl
 
 	@Override
 	public T evaluate(Object[] args) {
-		Producer<T> best = null;
+		Evaluable<T> best = null;
 		double rank = Double.MAX_VALUE;
 
 		boolean printLog = false; // Math.random() < 0.04;

@@ -17,18 +17,18 @@
 package org.almostrealism.math.bool;
 
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarProducer;
+import org.almostrealism.algebra.ScalarEvaluable;
 import org.almostrealism.util.CollectionUtils;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 import java.util.function.Supplier;
 
-public interface AcceleratedConditionalStatementScalar extends AcceleratedConditionalStatement<Scalar>, ScalarProducer {
-	default AcceleratedConjunctionScalar and(AcceleratedConditionalStatement<Scalar> operand, Supplier<Producer<Scalar>> trueValue, Supplier<Producer<Scalar>> falseValue) {
+public interface AcceleratedConditionalStatementScalar extends AcceleratedConditionalStatement<Scalar>, ScalarEvaluable {
+	default AcceleratedConjunctionScalar and(AcceleratedConditionalStatement<Scalar> operand, Supplier<Evaluable<Scalar>> trueValue, Supplier<Evaluable<Scalar>> falseValue) {
 		return and(trueValue, falseValue, operand);
 	}
 
-	default AcceleratedConjunctionScalar and(Supplier<Producer<Scalar>> trueValue, Supplier<Producer<Scalar>> falseValue, AcceleratedConditionalStatement<Scalar>... operands) {
+	default AcceleratedConjunctionScalar and(Supplier<Evaluable<Scalar>> trueValue, Supplier<Evaluable<Scalar>> falseValue, AcceleratedConditionalStatement<Scalar>... operands) {
 		return new AcceleratedConjunctionScalar(trueValue, falseValue,
 				CollectionUtils.include(new AcceleratedConditionalStatement[0], this, operands));
 	}

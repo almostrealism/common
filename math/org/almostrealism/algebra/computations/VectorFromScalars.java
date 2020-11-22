@@ -16,27 +16,20 @@
 
 package org.almostrealism.algebra.computations;
 
-import io.almostrealism.code.Argument;
 import io.almostrealism.code.Expression;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorFeatures;
-import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.algebra.VectorSupplier;
-import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
 public class VectorFromScalars extends DynamicAcceleratedProducerAdapter<Scalar, Vector> implements VectorSupplier  {
 	private Expression<Double> value[];
 
-	public VectorFromScalars(Supplier<Producer<? extends Scalar>> x, Supplier<Producer<? extends Scalar>> y, Supplier<Producer<? extends Scalar>> z) {
+	public VectorFromScalars(Supplier<Evaluable<? extends Scalar>> x, Supplier<Evaluable<? extends Scalar>> y, Supplier<Evaluable<? extends Scalar>> z) {
 		super(3, () -> Vector.blank(), x, y, z);
 	}
 

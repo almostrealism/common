@@ -17,14 +17,11 @@
 package org.almostrealism.algebra.computations.test;
 
 import org.almostrealism.algebra.TransformMatrix;
-import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.computations.RayMatrixTransform;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RaySupplier;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.util.CodeFeatures;
-import org.almostrealism.util.Producer;
-import org.almostrealism.util.Provider;
 import org.junit.Assert;
 import org.junit.Test;
 

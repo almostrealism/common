@@ -18,25 +18,22 @@ package org.almostrealism.util;
 
 import io.almostrealism.code.Expression;
 import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.computations.DefaultScalarProducer;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.hardware.MemWrapper;
 
-import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
 public class AcceleratedStaticComputation<T extends MemWrapper> extends DynamicAcceleratedProducerAdapter<MemWrapper, T> {
 	private T value;
 
-	public AcceleratedStaticComputation(T value, Supplier<Producer<T>> output) {
+	public AcceleratedStaticComputation(T value, Supplier<Evaluable<T>> output) {
 		super(value.getMemLength(), output);
 		this.value = value;
 	}
 
 	@Override
-	public Producer<T> get() { return compileProducer(this); }
+	public Evaluable<T> get() { return compileProducer(this); }
 
 	public T getValue() { return value; }
 

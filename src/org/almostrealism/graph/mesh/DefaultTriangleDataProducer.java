@@ -20,7 +20,7 @@ import org.almostrealism.hardware.AcceleratedComputationProducer;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.relation.Computation;
 
-public class DefaultTriangleDataProducer extends AcceleratedComputationProducer<TriangleData> implements TriangleDataProducer {
+public class DefaultTriangleDataProducer extends AcceleratedComputationProducer<TriangleData> implements TriangleDataEvaluable {
 
 	public DefaultTriangleDataProducer(Computation<TriangleData> c) {
 		super(c);

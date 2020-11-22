@@ -20,20 +20,20 @@ import org.almostrealism.algebra.Triple;
 import org.almostrealism.relation.TripleFunction;
 
 /**
- * The {@link AdaptProducer} provides a way for a {@link Producer}
- * to accept {@link Producer}s of its arguments instead of the arguments
- * directly. The resulting {@link Producer} instead accepts whatever
- * arguments those supplied {@link Producer}s accept. This only works
+ * The {@link AdaptEvaluable} provides a way for a {@link Evaluable}
+ * to accept {@link Evaluable}s of its arguments instead of the arguments
+ * directly. The resulting {@link Evaluable} instead accepts whatever
+ * arguments those supplied {@link Evaluable}s accept. This only works
  * if all the supplied producers accept the exact same arguments in
  * the same order.
  *
  * @author  Michael Murray
  */
-public class AdaptProducer<T> implements Producer<T> {
-	private Producer<T> p;
-	private Producer args[];
+public class AdaptEvaluable<T> implements Evaluable<T> {
+	private Evaluable<T> p;
+	private Evaluable args[];
 
-	public AdaptProducer(Producer<T> p, Producer... args) {
+	public AdaptEvaluable(Evaluable<T> p, Evaluable... args) {
 		this.p = p;
 		this.args = args;
 	}
@@ -51,10 +51,10 @@ public class AdaptProducer<T> implements Producer<T> {
 	@Override
 	public void compact() {
 		this.p.compact();
-		for (Producer arg : args) arg.compact();
+		for (Evaluable arg : args) arg.compact();
 	}
 
-	public static <T extends Triple, V> AdaptProducer<V> fromFunction(TripleFunction<T, V> f, Producer<? extends Triple> in) {
-		return new AdaptProducer<>(new DynamicProducer<>(args -> f.operate((T) args[0])), in);
+	public static <T extends Triple, V> AdaptEvaluable<V> fromFunction(TripleFunction<T, V> f, Evaluable<? extends Triple> in) {
+		return new AdaptEvaluable<>(new DynamicEvaluable<>(args -> f.operate((T) args[0])), in);
 	}
 }

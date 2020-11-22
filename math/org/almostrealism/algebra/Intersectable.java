@@ -19,7 +19,7 @@ package org.almostrealism.algebra;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.relation.Operator;
 import org.almostrealism.uml.Function;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 import java.util.concurrent.Future;
 
@@ -33,7 +33,7 @@ public interface Intersectable<T> extends Future<Operator<T>> {
 	 * the vector equation p = o + t * d where p is a point of intersection of
 	 * the specified ray and the surface.
 	 */
-	ContinuousField intersectAt(Producer<Ray> ray);
+	ContinuousField intersectAt(Evaluable<Ray> ray);
 
 	/**
 	 * If the evaluation of the {@link Operator} returned by {@link #get()}

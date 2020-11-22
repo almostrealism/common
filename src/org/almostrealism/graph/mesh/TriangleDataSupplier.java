@@ -17,14 +17,13 @@
 package org.almostrealism.graph.mesh;
 
 import org.almostrealism.algebra.VectorSupplier;
-import org.almostrealism.algebra.computations.DefaultScalarProducer;
 import org.almostrealism.relation.ProducerComputation;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 public interface TriangleDataSupplier extends ProducerComputation<TriangleData>, TriangleDataFeatures {
 
 	@Override
-	default Producer<TriangleData> get() { return new DefaultTriangleDataProducer(this); }
+	default Evaluable<TriangleData> get() { return new DefaultTriangleDataProducer(this); }
 
 	default VectorSupplier abc() { return abc(this); }
 

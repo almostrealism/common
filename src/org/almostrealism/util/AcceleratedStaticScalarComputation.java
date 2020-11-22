@@ -22,7 +22,7 @@ import org.almostrealism.algebra.ScalarSupplier;
 import java.util.function.Supplier;
 
 public class AcceleratedStaticScalarComputation extends AcceleratedStaticComputation<Scalar> implements ScalarSupplier {
-	public AcceleratedStaticScalarComputation(Scalar value, Supplier<Producer<Scalar>> output) {
+	public AcceleratedStaticScalarComputation(Scalar value, Supplier<Evaluable<Scalar>> output) {
 		super(value, output);
 	}
 }

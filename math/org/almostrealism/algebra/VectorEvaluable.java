@@ -17,72 +17,71 @@
 package org.almostrealism.algebra;
 
 import org.almostrealism.uml.Function;
-import org.almostrealism.util.Producer;
-import org.almostrealism.util.Provider;
-import org.almostrealism.util.StaticProducer;
+import org.almostrealism.util.Evaluable;
+import org.almostrealism.util.StaticEvaluable;
 
 /**
- * {@link VectorProducer} is implemented by any class that can produce an {@link Vector} object
+ * {@link VectorEvaluable} is implemented by any class that can produce an {@link Vector} object
  * given some array of input objects.
  * 
  * @author  Michael Murray
  */
 @Function
-public interface VectorProducer extends VectorFeatures, Producer<Vector> {
+public interface VectorEvaluable extends VectorFeatures, Evaluable<Vector> {
 
-    default ScalarProducer x() {
+    default ScalarEvaluable x() {
         return x(this);
     }
 
-    default ScalarProducer y() {
+    default ScalarEvaluable y() {
         return y(this);
     }
 
-    default ScalarProducer z() {
+    default ScalarEvaluable z() {
         return z(this);
     }
 
-    default ScalarProducer dotProduct(Producer<Vector> operand) {
+    default ScalarEvaluable dotProduct(Evaluable<Vector> operand) {
         return dotProduct(this, operand);
     }
 
-    default VectorProducer crossProduct(Producer<Vector> operand) {
+    default VectorEvaluable crossProduct(Evaluable<Vector> operand) {
         return crossProduct(this, operand);
     }
 
-    default VectorProducer add(Producer<Vector> operand) {
+    default VectorEvaluable add(Evaluable<Vector> operand) {
         return add(this, operand);
     }
 
-    default VectorProducer subtract(Producer<Vector> operand) { return subtract(this, operand); }
+    default VectorEvaluable subtract(Evaluable<Vector> operand) { return subtract(this, operand); }
 
-    default VectorProducer multiply(Producer<Vector> operand) {
+    default VectorEvaluable multiply(Evaluable<Vector> operand) {
         return multiply(this, operand);
     }
 
-    default VectorProducer scalarMultiply(Producer<Scalar> operand) { return scalarMultiply(this, operand); }
+    default VectorEvaluable scalarMultiply(Evaluable<Scalar> operand) { return scalarMultiply(this, operand); }
 
-    default VectorProducer scalarMultiply(Scalar operand) {
-        return scalarMultiply(StaticProducer.of(operand));
+    default VectorEvaluable scalarMultiply(Scalar operand) {
+        return scalarMultiply(StaticEvaluable.of(operand));
     }
 
-    default VectorProducer scalarMultiply(double operand) {
+    default VectorEvaluable scalarMultiply(double operand) {
         return scalarMultiply(new Scalar(operand));
     }
 
-    default VectorProducer minus() {
+    default VectorEvaluable minus() {
         return minus(this);
     }
 
-    default ScalarProducer length() {
+    default ScalarEvaluable length() {
         return length(this);
     }
 
-    default ScalarProducer lengthSq() {
+    default ScalarEvaluable lengthSq() {
         return lengthSq(this);
     }
 
-    default VectorProducer normalize() {
+    default VectorEvaluable normalize() {
         return normalize(this);
     }
 }

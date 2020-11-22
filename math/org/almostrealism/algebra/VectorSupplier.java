@@ -16,17 +16,17 @@
 
 package org.almostrealism.algebra;
 
-import org.almostrealism.algebra.computations.DefaultVectorProducer;
+import org.almostrealism.algebra.computations.DefaultVectorEvaluable;
 import org.almostrealism.relation.ProducerComputation;
-import org.almostrealism.util.Producer;
-import org.almostrealism.util.StaticProducer;
+import org.almostrealism.util.Evaluable;
+import org.almostrealism.util.StaticEvaluable;
 
 import java.util.function.Supplier;
 
 public interface VectorSupplier extends ProducerComputation<Vector>, VectorFeatures {
 
 	@Override
-	default Producer<Vector> get() { return new DefaultVectorProducer(this); }
+	default Evaluable<Vector> get() { return new DefaultVectorEvaluable(this); }
 
 	default ScalarSupplier x() {
 		return x(this);
@@ -40,32 +40,32 @@ public interface VectorSupplier extends ProducerComputation<Vector>, VectorFeatu
 		return z(this);
 	}
 
-	default ScalarSupplier dotProduct(Producer<Vector> operand) {
+	default ScalarSupplier dotProduct(Evaluable<Vector> operand) {
 		return dotProduct(() -> operand);
 	}
 
-	default ScalarSupplier dotProduct(Supplier<Producer<? extends Vector>> operand) {
+	default ScalarSupplier dotProduct(Supplier<Evaluable<? extends Vector>> operand) {
 		return dotProduct(this, operand);
 	}
 
-	default VectorSupplier crossProduct(Supplier<Producer<? extends Vector>> operand) {
+	default VectorSupplier crossProduct(Supplier<Evaluable<? extends Vector>> operand) {
 		return crossProduct(this, operand);
 	}
 
-	default VectorSupplier add(Supplier<Producer<? extends Vector>> operand) {
+	default VectorSupplier add(Supplier<Evaluable<? extends Vector>> operand) {
 		return add(this, operand);
 	}
 
-	default VectorSupplier subtract(Supplier<Producer<? extends Vector>> operand) { return subtract(this, operand); }
+	default VectorSupplier subtract(Supplier<Evaluable<? extends Vector>> operand) { return subtract(this, operand); }
 
-	default VectorSupplier multiply(Supplier<Producer<? extends Vector>> operand) {
+	default VectorSupplier multiply(Supplier<Evaluable<? extends Vector>> operand) {
 		return multiply(this, operand);
 	}
 
-	default VectorSupplier scalarMultiply(Supplier<Producer<? extends Scalar>> operand) { return scalarMultiply(this, operand); }
+	default VectorSupplier scalarMultiply(Supplier<Evaluable<? extends Scalar>> operand) { return scalarMultiply(this, operand); }
 
 	default VectorSupplier scalarMultiply(Scalar operand) {
-		return scalarMultiply(() -> StaticProducer.of(operand));
+		return scalarMultiply(() -> StaticEvaluable.of(operand));
 	}
 
 	default VectorSupplier scalarMultiply(double operand) {

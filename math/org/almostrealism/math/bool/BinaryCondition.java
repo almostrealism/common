@@ -16,10 +16,10 @@
 
 package org.almostrealism.math.bool;
 
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 public interface BinaryCondition<L, R> extends Condition {
-	Producer<L> getLeftOperand();
+	Evaluable<L> getLeftOperand();
 
-	Producer<R> getRightOperand();
+	Evaluable<R> getRightOperand();
 }

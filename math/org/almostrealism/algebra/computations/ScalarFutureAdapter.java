@@ -24,21 +24,21 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.VectorProducer;
-import org.almostrealism.util.Producer;
+import org.almostrealism.algebra.VectorEvaluable;
+import org.almostrealism.util.Evaluable;
 
-public abstract class ScalarFutureAdapter extends ArrayList<Future<Producer<Scalar>>>
-		implements Producer<Scalar>, Future<Producer<Scalar>> {
+public abstract class ScalarFutureAdapter extends ArrayList<Future<Evaluable<Scalar>>>
+		implements Evaluable<Scalar>, Future<Evaluable<Scalar>> {
 
-	public void add(Producer<Scalar> p) {
-		addAll(convertToFutures(new Producer[] { p }));
+	public void add(Evaluable<Scalar> p) {
+		addAll(convertToFutures(new Evaluable[] { p }));
 	}
 
 	@Override
 	public boolean cancel(boolean mayInterruptIfRunning) {
 		boolean cancelled = true;
 
-		for (Future<Producer<Scalar>> p : this) {
+		for (Future<Evaluable<Scalar>> p : this) {
 			cancelled &= p.cancel(mayInterruptIfRunning);
 		}
 
@@ -47,7 +47,7 @@ public abstract class ScalarFutureAdapter extends ArrayList<Future<Producer<Scal
 
 	@Override
 	public boolean isCancelled() {
-		for (Future<Producer<Scalar>> p : this) {
+		for (Future<Evaluable<Scalar>> p : this) {
 			if (!p.isCancelled()) return false;
 		}
 
@@ -56,7 +56,7 @@ public abstract class ScalarFutureAdapter extends ArrayList<Future<Producer<Scal
 
 	@Override
 	public boolean isDone() {
-		for (Future<Producer<Scalar>> p : this) {
+		for (Future<Evaluable<Scalar>> p : this) {
 			if (!p.isDone()) return false;
 		}
 
@@ -64,34 +64,34 @@ public abstract class ScalarFutureAdapter extends ArrayList<Future<Producer<Scal
 	}
 
 	@Override
-	public Producer<Scalar> get() throws InterruptedException, ExecutionException {
+	public Evaluable<Scalar> get() throws InterruptedException, ExecutionException {
 		return this;
 	}
 
 	@Override
-	public Producer<Scalar> get(long timeout, TimeUnit unit)
+	public Evaluable<Scalar> get(long timeout, TimeUnit unit)
 			throws InterruptedException, ExecutionException, TimeoutException {
 		return this;
 	}
 
 	/**
-	 * Delegates to the {@link VectorProducer#compact()} method for any {@link VectorProducer}s
-	 * in this collection. {@link Future}s without a known {@link VectorProducer} cannot be
+	 * Delegates to the {@link VectorEvaluable#compact()} method for any {@link VectorEvaluable}s
+	 * in this collection. {@link Future}s without a known {@link VectorEvaluable} cannot be
 	 * compacted.
 	 */
 	@Override
 	public void compact() {
-		for (Future<Producer<Scalar>> f : this) {
+		for (Future<Evaluable<Scalar>> f : this) {
 			if (f instanceof StaticScalarProducer) {
 				((StaticScalarProducer) f).compact();
 			}
 		}
 	}
 
-	protected Iterable<Producer<Scalar>> getStaticScalarProducers() {
-		List<Producer<Scalar>> l = new ArrayList<>();
+	protected Iterable<Evaluable<Scalar>> getStaticScalarProducers() {
+		List<Evaluable<Scalar>> l = new ArrayList<>();
 
-		for (Future<Producer<Scalar>> f : this) {
+		for (Future<Evaluable<Scalar>> f : this) {
 			if (f instanceof StaticScalarProducer) {
 				l.add(((StaticScalarProducer) f).p);
 			}
@@ -100,10 +100,10 @@ public abstract class ScalarFutureAdapter extends ArrayList<Future<Producer<Scal
 		return l;
 	}
 
-	public static List<Future<Producer<Scalar>>> convertToFutures(Producer<Scalar>... producers) {
-		ArrayList<Future<Producer<Scalar>>> pr = new ArrayList<>();
+	public static List<Future<Evaluable<Scalar>>> convertToFutures(Evaluable<Scalar>... producers) {
+		ArrayList<Future<Evaluable<Scalar>>> pr = new ArrayList<>();
 
-		for (Producer<Scalar> p : producers) {
+		for (Evaluable<Scalar> p : producers) {
 			pr.add(new StaticScalarProducer(p));
 		}
 
@@ -112,10 +112,10 @@ public abstract class ScalarFutureAdapter extends ArrayList<Future<Producer<Scal
 
 	// TODO  When ColorProducer implements PathElement, this should be changed to
 	//       implement PathElement as well
-	protected static class StaticScalarProducer implements Future<Producer<Scalar>> {
-		private Producer<Scalar> p;
+	protected static class StaticScalarProducer implements Future<Evaluable<Scalar>> {
+		private Evaluable<Scalar> p;
 
-		protected StaticScalarProducer(Producer<Scalar> p) { this.p = p; }
+		protected StaticScalarProducer(Evaluable<Scalar> p) { this.p = p; }
 
 		@Override
 		public boolean cancel(boolean mayInterruptIfRunning) { return false; }
@@ -127,12 +127,12 @@ public abstract class ScalarFutureAdapter extends ArrayList<Future<Producer<Scal
 		public boolean isDone() { return false; }
 
 		@Override
-		public Producer<Scalar> get() throws InterruptedException, ExecutionException {
+		public Evaluable<Scalar> get() throws InterruptedException, ExecutionException {
 			return p;
 		}
 
 		@Override
-		public Producer<Scalar> get(long timeout, TimeUnit unit)
+		public Evaluable<Scalar> get(long timeout, TimeUnit unit)
 				throws InterruptedException, ExecutionException, TimeoutException {
 			return get();
 		}

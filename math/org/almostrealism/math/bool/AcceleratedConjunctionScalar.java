@@ -18,9 +18,7 @@ package org.almostrealism.math.bool;
 
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
-import org.almostrealism.algebra.Vector;
 import org.almostrealism.hardware.MemoryBank;
-import org.almostrealism.util.Producer;
 
 import java.util.function.Supplier;
 

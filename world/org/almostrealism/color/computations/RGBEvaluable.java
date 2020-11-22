@@ -17,43 +17,38 @@
 package org.almostrealism.color.computations;
 
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.color.RGB;
-import org.almostrealism.relation.ProducerComputation;
-import org.almostrealism.util.Producer;
-import org.almostrealism.util.Provider;
-import org.almostrealism.util.StaticProducer;
-
-import java.util.function.Supplier;
+import org.almostrealism.util.Evaluable;
+import org.almostrealism.util.StaticEvaluable;
 
 /**
- * {@link RGBProducer} is implemented by any class that can produce an {@link RGB} object
+ * {@link RGBEvaluable} is implemented by any class that can produce an {@link RGB} object
  * given some array of input objects.
  *
  * @author Michael Murray
  */
-public interface RGBProducer extends Producer<RGB>, RGBFeatures {
-	default RGBProducer add(Producer<RGB> operand) {
+public interface RGBEvaluable extends Evaluable<RGB>, RGBFeatures {
+	default RGBEvaluable add(Evaluable<RGB> operand) {
 		return cadd(this, operand);
 	}
 
-	default RGBProducer subtract(Producer<RGB> operand) { return csubtract(this, operand); }
+	default RGBEvaluable subtract(Evaluable<RGB> operand) { return csubtract(this, operand); }
 
-	default RGBProducer multiply(Producer<RGB> operand) {
+	default RGBEvaluable multiply(Evaluable<RGB> operand) {
 		return cmultiply(this, operand);
 	}
 
-	default RGBProducer scalarMultiply(Producer<Scalar> operand) { return cscalarMultiply(this, operand); }
+	default RGBEvaluable scalarMultiply(Evaluable<Scalar> operand) { return cscalarMultiply(this, operand); }
 
-	default RGBProducer scalarMultiply(Scalar operand) {
-		return scalarMultiply(StaticProducer.of(operand));
+	default RGBEvaluable scalarMultiply(Scalar operand) {
+		return scalarMultiply(StaticEvaluable.of(operand));
 	}
 
-	default RGBProducer scalarMultiply(double operand) {
+	default RGBEvaluable scalarMultiply(double operand) {
 		return scalarMultiply(new Scalar(operand));
 	}
 	
-	default RGBProducer minus() {
+	default RGBEvaluable minus() {
 		return cminus(this);
 	}
 }

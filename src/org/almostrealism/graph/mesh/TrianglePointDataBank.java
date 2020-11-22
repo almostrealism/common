@@ -17,7 +17,7 @@
 package org.almostrealism.graph.mesh;
 
 import org.almostrealism.hardware.MemoryBankAdapter;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 /**
  * A collection of {@link TrianglePointData}s of a fixed length, that is contiguous in
@@ -31,7 +31,7 @@ public class TrianglePointDataBank extends MemoryBankAdapter<TrianglePointData> 
 				new TrianglePointData(delegateSpec.getDelegate(), delegateSpec.getOffset()));
 	}
 
-	public static TrianglePointDataBank fromProducer(Producer<TrianglePointData> producer, int count) {
+	public static TrianglePointDataBank fromProducer(Evaluable<TrianglePointData> producer, int count) {
 		TrianglePointDataBank bank = new TrianglePointDataBank(count);
 		for (int i = 0; i < bank.getCount(); i++) {
 			bank.set(i, producer.evaluate());

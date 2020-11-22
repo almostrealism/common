@@ -18,5 +18,5 @@ package org.almostrealism.util;
 
 import org.almostrealism.relation.Juncture;
 
-public interface Pipeline<T> extends Juncture, Producer<T> {
+public interface Pipeline<T> extends Juncture, Evaluable<T> {
 }

@@ -17,7 +17,7 @@
 package org.almostrealism.graph;
 
 import org.almostrealism.heredity.Factor;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 import java.util.function.Supplier;
 
@@ -29,7 +29,7 @@ public class FilteredCell<T> extends CellAdapter<T> {
 	protected void setFilter(Factor<T> filter) { this.filter = filter; }
 
 	@Override
-	public Supplier<Runnable> push(Producer<T> protein) {
+	public Supplier<Runnable> push(Evaluable<T> protein) {
 		return super.push(filter.getResultant(protein));
 	}
 }

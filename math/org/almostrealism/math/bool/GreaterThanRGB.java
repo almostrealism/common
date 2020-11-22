@@ -19,7 +19,6 @@ package org.almostrealism.math.bool;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBBank;
 import org.almostrealism.hardware.MemoryBank;
-import org.almostrealism.util.Producer;
 
 import java.util.function.Supplier;
 

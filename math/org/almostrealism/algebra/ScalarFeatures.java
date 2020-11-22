@@ -16,72 +16,71 @@
 
 package org.almostrealism.algebra;
 
-import org.almostrealism.algebra.computations.DefaultScalarProducer;
+import org.almostrealism.algebra.computations.DefaultScalarEvaluable;
 import org.almostrealism.algebra.computations.ScalarPow;
 import org.almostrealism.algebra.computations.ScalarProduct;
 import org.almostrealism.algebra.computations.ScalarSum;
-import org.almostrealism.relation.ProducerComputation;
-import org.almostrealism.util.Producer;
-import org.almostrealism.util.StaticProducer;
+import org.almostrealism.util.Evaluable;
+import org.almostrealism.util.StaticEvaluable;
 
 import java.util.function.Supplier;
 
 public interface ScalarFeatures {
-	Supplier<Producer<? extends Scalar>> minusOne = () -> StaticProducer.of(-1.0);
+	Supplier<Evaluable<? extends Scalar>> minusOne = () -> StaticEvaluable.of(-1.0);
 
-	default ScalarProducer scalarAdd(Producer<Scalar> a, Producer<Scalar> b) {
-		return new DefaultScalarProducer(scalarAdd(() -> a, () -> b));
+	default ScalarEvaluable scalarAdd(Evaluable<Scalar> a, Evaluable<Scalar> b) {
+		return new DefaultScalarEvaluable(scalarAdd(() -> a, () -> b));
 	}
 
-	default ScalarSupplier scalarAdd(Supplier<Producer<? extends Scalar>> a, Supplier<Producer<? extends Scalar>> b) {
+	default ScalarSupplier scalarAdd(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
 		return new ScalarSum(a, b);
 	}
 
-	default ScalarProducer scalarSubtract(Producer<Scalar> a, Producer<Scalar> b) {
-		return new DefaultScalarProducer(scalarSubtract(() -> a, () -> b));
+	default ScalarEvaluable scalarSubtract(Evaluable<Scalar> a, Evaluable<Scalar> b) {
+		return new DefaultScalarEvaluable(scalarSubtract(() -> a, () -> b));
 	}
 
-	default ScalarSupplier scalarSubtract(Supplier<Producer<? extends Scalar>> a, Supplier<Producer<? extends Scalar>> b) {
+	default ScalarSupplier scalarSubtract(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
 		return new ScalarSum(a, scalarMinus(b));
 	}
 
-	default ScalarProducer scalarsMultiply(Producer<Scalar> a, Producer<Scalar> b) {
-		return new DefaultScalarProducer(scalarsMultiply(() -> a, () -> b));
+	default ScalarEvaluable scalarsMultiply(Evaluable<Scalar> a, Evaluable<Scalar> b) {
+		return new DefaultScalarEvaluable(scalarsMultiply(() -> a, () -> b));
 	}
 
-	default ScalarSupplier scalarsMultiply(Supplier<Producer<? extends Scalar>> a, Supplier<Producer<? extends Scalar>> b) {
+	default ScalarSupplier scalarsMultiply(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
 		return new ScalarProduct(a, b);
 	}
 
-	default ScalarProducer scalarMinus(Producer<Scalar> v) {
-		return new DefaultScalarProducer(scalarMinus(() -> v));
+	default ScalarEvaluable scalarMinus(Evaluable<Scalar> v) {
+		return new DefaultScalarEvaluable(scalarMinus(() -> v));
 	}
 
-	default ScalarSupplier scalarMinus(Supplier<Producer<? extends Scalar>> v) {
+	default ScalarSupplier scalarMinus(Supplier<Evaluable<? extends Scalar>> v) {
 		return new ScalarProduct(minusOne, v);
 	}
 
-	default ScalarProducer pow(Producer<Scalar> base, Producer<Scalar> exponent) {
-		return new DefaultScalarProducer(pow(() -> base, () -> exponent));
+	default ScalarEvaluable pow(Evaluable<Scalar> base, Evaluable<Scalar> exponent) {
+		return new DefaultScalarEvaluable(pow(() -> base, () -> exponent));
 	}
 
-	default ScalarSupplier pow(Supplier<Producer<? extends Scalar>> base, Supplier<Producer<? extends Scalar>> exponent) {
+	default ScalarSupplier pow(Supplier<Evaluable<? extends Scalar>> base, Supplier<Evaluable<? extends Scalar>> exponent) {
 		return new ScalarPow(base, exponent);
 	}
 
-	default ScalarProducer pow(Producer<Scalar> base, Scalar exp) {
-		return pow(base, StaticProducer.of(exp));
+	default ScalarEvaluable pow(Evaluable<Scalar> base, Scalar exp) {
+		return pow(base, StaticEvaluable.of(exp));
 	}
 
-	default ScalarSupplier pow(Supplier<Producer<? extends Scalar>> base, Scalar exp) {
-		return pow(base, () -> StaticProducer.of(exp));
+	default ScalarSupplier pow(Supplier<Evaluable<? extends Scalar>> base, Scalar exp) {
+		return pow(base, () -> StaticEvaluable.of(exp));
 	}
 
-	default ScalarProducer pow(Producer<Scalar> base, double value) {
+	default ScalarEvaluable pow(Evaluable<Scalar> base, double value) {
 		return pow(base, new Scalar(value));
 	}
 
-	default ScalarSupplier pow(Supplier<Producer<? extends Scalar>> base, double value) {
+	default ScalarSupplier pow(Supplier<Evaluable<? extends Scalar>> base, double value) {
 		return pow(base, new Scalar(value));
 	}
 }

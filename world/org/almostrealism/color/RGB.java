@@ -27,9 +27,8 @@ import org.almostrealism.algebra.Triple;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.relation.NameProvider;
 import org.almostrealism.util.Defaults;
-import org.almostrealism.util.DynamicProducer;
-import org.almostrealism.util.DynamicRGBProducer;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.DynamicRGBEvaluable;
+import org.almostrealism.util.Evaluable;
 import org.jocl.cl_mem;
 
 /**
@@ -574,8 +573,8 @@ public class RGB implements Triple, MemWrapper, Externalizable, Cloneable {
 	@Override
 	public void destroy() { data.destroy(); }
 
-	public static Producer<RGB> blank() {
-		return new DynamicRGBProducer(args -> new RGB(defaultDepth, 0, 0, 0, false));
+	public static Evaluable<RGB> blank() {
+		return new DynamicRGBEvaluable(args -> new RGB(defaultDepth, 0, 0, 0, false));
 	}
 
 	public static RGB gray(double value) { return new RGB(value, value, value); }

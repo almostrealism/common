@@ -17,9 +17,8 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.Argument;
-import org.almostrealism.relation.Maker;
 import org.almostrealism.util.CollectionUtils;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -29,20 +28,20 @@ import java.util.stream.Stream;
 
 import static org.almostrealism.util.Ops.*;
 
-public class AcceleratedProducer<I extends MemWrapper, O extends MemWrapper> extends AcceleratedOperation implements KernelizedProducer<O> {
-	public AcceleratedProducer(String function, Supplier<Producer<O>> result, Supplier<Producer<? extends I>>... inputArgs) {
+public class AcceleratedProducer<I extends MemWrapper, O extends MemWrapper> extends AcceleratedOperation implements KernelizedEvaluable<O> {
+	public AcceleratedProducer(String function, Supplier<Evaluable<O>> result, Supplier<Evaluable<? extends I>>... inputArgs) {
 		this(function, false, result, inputArgs, new Object[0]);
 	}
 
-	public AcceleratedProducer(String function, Supplier<Producer<O>> result, Supplier<Producer<? extends I>> inputArgs[], Object additionalArguments[]) {
+	public AcceleratedProducer(String function, Supplier<Evaluable<O>> result, Supplier<Evaluable<? extends I>> inputArgs[], Object additionalArguments[]) {
 		this(function, false, result, inputArgs, additionalArguments);
 	}
 
-	public AcceleratedProducer(String function, boolean kernel, Supplier<Producer<O>> result, Supplier<Producer<? extends I>> inputArgs[], Object additionalArguments[]) {
+	public AcceleratedProducer(String function, boolean kernel, Supplier<Evaluable<O>> result, Supplier<Evaluable<? extends I>> inputArgs[], Object additionalArguments[]) {
 		this(function, kernel, result, producers(inputArgs, additionalArguments));
 	}
 
-	public AcceleratedProducer(String function, boolean kernel, Supplier<Producer<O>> result, Supplier<Producer<? extends I>>... inputArgs) {
+	public AcceleratedProducer(String function, boolean kernel, Supplier<Evaluable<O>> result, Supplier<Evaluable<? extends I>>... inputArgs) {
 		super(function, kernel, includeResult(result, inputArgs));
 	}
 
@@ -74,11 +73,11 @@ public class AcceleratedProducer<I extends MemWrapper, O extends MemWrapper> ext
 	public static void kernelEvaluate(KernelizedOperation operation, MemoryBank destination, MemoryBank args[], boolean kernel) {
 		if (kernel && enableKernel) {
 			operation.kernelOperate(includeResult(destination, args));
-		} else if (operation instanceof Producer) {
+		} else if (operation instanceof Evaluable) {
 			for (int i = 0; i < destination.getCount(); i++) {
 				final int fi = i;
 				destination.set(i,
-						((Producer<MemWrapper>) operation).evaluate(Stream.of(args)
+						((Evaluable<MemWrapper>) operation).evaluate(Stream.of(args)
 								.map(arg -> arg.get(fi))
 								.collect(Collectors.toList()).toArray()));
 			}

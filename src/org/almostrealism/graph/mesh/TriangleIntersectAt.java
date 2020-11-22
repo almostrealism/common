@@ -18,19 +18,18 @@ package org.almostrealism.graph.mesh;
 
 import org.almostrealism.algebra.Intersection;
 import org.almostrealism.algebra.ScalarSupplier;
-import org.almostrealism.algebra.VectorBank;
 import org.almostrealism.algebra.VectorSupplier;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.math.bool.AcceleratedConjunctionScalar;
 import org.almostrealism.math.bool.GreaterThanScalar;
 import org.almostrealism.math.bool.LessThanScalar;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 import static org.almostrealism.util.Ops.*;
 
 import java.util.function.Supplier;
 
 public class TriangleIntersectAt extends LessThanScalar {
-	public TriangleIntersectAt(Supplier<Producer<? extends TriangleData>> t, Supplier<Producer<? extends Ray>> r) {
+	public TriangleIntersectAt(Supplier<Evaluable<? extends TriangleData>> t, Supplier<Evaluable<? extends Ray>> r) {
 		this(ops().abc(t), ops().def(t), ops().jkl(t),
 				ops().normal(t), ops().origin(r), ops().direction(r));
 	}
@@ -121,7 +120,7 @@ public class TriangleIntersectAt extends LessThanScalar {
 		return f.multiply(def.dotProduct(q));
 	}
 
-	public static TriangleIntersectAt construct(Supplier<Producer<? extends TriangleData>> t, Supplier<Producer<? extends Ray>> r) {
+	public static TriangleIntersectAt construct(Supplier<Evaluable<? extends TriangleData>> t, Supplier<Evaluable<? extends Ray>> r) {
 		return new TriangleIntersectAt(t, r);
 	}
 }

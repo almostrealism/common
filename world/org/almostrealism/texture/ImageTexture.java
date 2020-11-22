@@ -26,16 +26,15 @@ import java.net.MalformedURLException;
 import java.net.URL;
 
 import io.almostrealism.code.Scope;
-import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.Triple;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.color.computations.ColorProducer;
+import org.almostrealism.color.computations.ColorEvaluable;
 import org.almostrealism.color.computations.GeneratedColorProducer;
 import org.almostrealism.color.RGB;
 import org.almostrealism.relation.NameProvider;
 import org.almostrealism.relation.TripleFunction;
 import org.almostrealism.util.Editable;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 
 // TODO  Improve documentation.
@@ -240,7 +239,7 @@ public class ImageTexture implements Texture, Editable {
 	 * 
 	 * @see org.almostrealism.texture.Texture#getColorAt(java.lang.Object[])
 	 */
-	public ColorProducer getColorAt(Object args[]) {
+	public ColorEvaluable getColorAt(Object args[]) {
 		return GeneratedColorProducer.fromFunction(this, new TripleFunction<Triple, RGB>() {
 			@Override
 			public RGB operate(Triple l) {
@@ -291,7 +290,7 @@ public class ImageTexture implements Texture, Editable {
 	 * @param args {Vector, Double, Double, Double, Double}  Point, X scale factor, Y scale factor, X offset, Y offset.
 	 * @throws IllegalArgumentException  If args does not contain the correct object types.
 	 * 
-	 * @see ColorProducer#evaluate(java.lang.Object[])
+	 * @see ColorEvaluable#evaluate(java.lang.Object[])
 	 */
 	public RGB evaluate(Object args[]) {
 	    if (!(args[0] instanceof Vector)) throw new IllegalArgumentException("Illegal argument: " + args[0]);
@@ -348,12 +347,12 @@ public class ImageTexture implements Texture, Editable {
 	/**
 	 * @return  An empty array.
 	 */
-	public Producer[] getInputPropertyValues() { return new Producer[0]; }
+	public Evaluable[] getInputPropertyValues() { return new Evaluable[0]; }
 	
 	/**
 	 * Does nothing.
 	 */
-	public void setInputPropertyValue(int index, Producer p) {}
+	public void setInputPropertyValue(int index, Evaluable p) {}
     
     /**
      * @return  "Image Texture".

@@ -19,10 +19,8 @@ package io.almostrealism.code;
 import org.almostrealism.relation.Computation;
 import org.almostrealism.relation.NameProvider;
 import org.almostrealism.util.Compactable;
-import org.almostrealism.util.Producer;
 
 import java.util.function.Supplier;
-import java.util.stream.IntStream;
 
 public abstract class ComputationOperationAdapter<I, O> extends OperationAdapter<I> implements Computation<O>, Compactable {
 

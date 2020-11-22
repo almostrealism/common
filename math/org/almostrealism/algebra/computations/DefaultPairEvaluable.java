@@ -14,20 +14,23 @@
  * limitations under the License.
  */
 
-package org.almostrealism.geometry;
+package org.almostrealism.algebra.computations;
 
+import org.almostrealism.algebra.Pair;
+import org.almostrealism.algebra.PairBank;
+import org.almostrealism.algebra.PairEvaluable;
 import org.almostrealism.hardware.AcceleratedComputationProducer;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.relation.Computation;
 
-public class DefaultRayProducer extends AcceleratedComputationProducer<Ray> implements RayProducer {
+public class DefaultPairEvaluable extends AcceleratedComputationProducer<Pair> implements PairEvaluable {
 
-	public DefaultRayProducer(Computation<Ray> c) {
+	public DefaultPairEvaluable(Computation<Pair> c) {
 		super(c);
 	}
 
 	@Override
-	public MemoryBank<Ray> createKernelDestination(int size) {
-		return new RayBank(size);
+	public MemoryBank<Pair> createKernelDestination(int size) {
+		return new PairBank(size);
 	}
 }

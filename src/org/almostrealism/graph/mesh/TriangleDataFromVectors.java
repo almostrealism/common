@@ -16,30 +16,25 @@
 
 package org.almostrealism.graph.mesh;
 
-import io.almostrealism.code.Argument;
 import io.almostrealism.code.Expression;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
-import org.almostrealism.relation.Computation;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 import static org.almostrealism.util.Ops.*;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
 public class TriangleDataFromVectors extends DynamicAcceleratedProducerAdapter<Vector, TriangleData> implements TriangleDataSupplier {
 	private Expression<Double> value[];
 
-	public TriangleDataFromVectors(Supplier<Producer<? extends Vector>> abc, Supplier<Producer<? extends Vector>> def,
-								   Supplier<Producer<? extends Vector>> jkl) {
+	public TriangleDataFromVectors(Supplier<Evaluable<? extends Vector>> abc, Supplier<Evaluable<? extends Vector>> def,
+								   Supplier<Evaluable<? extends Vector>> jkl) {
 		this(abc, def, jkl, ops().crossProduct(abc, def).normalize());
 	}
 
-	public TriangleDataFromVectors(Supplier<Producer<? extends Vector>> abc, Supplier<Producer<? extends Vector>> def,
-								   Supplier<Producer<? extends Vector>> jkl, Supplier<Producer<? extends Vector>> normal) {
+	public TriangleDataFromVectors(Supplier<Evaluable<? extends Vector>> abc, Supplier<Evaluable<? extends Vector>> def,
+								   Supplier<Evaluable<? extends Vector>> jkl, Supplier<Evaluable<? extends Vector>> normal) {
 		super(12, () -> TriangleData.blank(), abc, def, jkl, normal);
 	}
 

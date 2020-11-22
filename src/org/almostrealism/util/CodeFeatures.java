@@ -18,34 +18,23 @@ package org.almostrealism.util;
 
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairFeatures;
-import org.almostrealism.algebra.PairProducer;
 import org.almostrealism.algebra.PairSupplier;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
-import org.almostrealism.algebra.ScalarProducer;
+import org.almostrealism.algebra.ScalarEvaluable;
 import org.almostrealism.algebra.ScalarSupplier;
 import org.almostrealism.algebra.TransformMatrix;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorFeatures;
-import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.algebra.VectorSupplier;
-import org.almostrealism.algebra.computations.DefaultPairProducer;
-import org.almostrealism.algebra.computations.DefaultScalarProducer;
-import org.almostrealism.algebra.computations.DefaultVectorProducer;
 import org.almostrealism.color.RGB;
-import org.almostrealism.color.computations.DefaultRGBProducer;
 import org.almostrealism.color.computations.RGBFeatures;
-import org.almostrealism.color.computations.RGBProducer;
 import org.almostrealism.color.computations.RGBSupplier;
-import org.almostrealism.geometry.DefaultRayProducer;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayFeatures;
-import org.almostrealism.geometry.RayProducer;
 import org.almostrealism.geometry.RaySupplier;
 import org.almostrealism.graph.mesh.TriangleData;
 import org.almostrealism.graph.mesh.TriangleDataFeatures;
 import org.almostrealism.graph.mesh.TrianglePointData;
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.relation.Maker;
 import org.almostrealism.relation.ProducerComputation;
@@ -72,19 +61,19 @@ public interface CodeFeatures extends ScalarFeatures, PairFeatures, TriangleData
 		return value(v);
 	}
 
-	default <T> Supplier<Producer<? extends T>> v(Class<T> type, int argIndex) {
+	default <T> Supplier<Evaluable<? extends T>> v(Class<T> type, int argIndex) {
 		return value(type, argIndex);
 	}
 
-	default <T> Producer<T> v(Function<Object[], T> function) {
-		return new DynamicProducer<>(function);
+	default <T> Evaluable<T> v(Function<Object[], T> function) {
+		return new DynamicEvaluable<>(function);
 	}
 
-	default <T extends MemWrapper> Supplier<Runnable> a(int memLength, Producer<T> result, Producer<T> value) {
+	default <T extends MemWrapper> Supplier<Runnable> a(int memLength, Evaluable<T> result, Evaluable<T> value) {
 		return a(memLength, () -> result, () -> value);
 	}
 
-	default <T extends MemWrapper> Supplier<Runnable> a(int memLength, Supplier<Producer<T>> result, Supplier<Producer<T>> value) {
+	default <T extends MemWrapper> Supplier<Runnable> a(int memLength, Supplier<Evaluable<T>> result, Supplier<Evaluable<T>> value) {
 		return new AcceleratedAssignment<>(memLength, result, value);
 	}
 
@@ -96,7 +85,7 @@ public interface CodeFeatures extends ScalarFeatures, PairFeatures, TriangleData
 		return new AcceleratedStaticScalarComputation(value, () -> Scalar.blank());
 	}
 
-	default ScalarProducer scalar() {
+	default ScalarEvaluable scalar() {
 		return Scalar.blank();
 	}
 
@@ -106,7 +95,7 @@ public interface CodeFeatures extends ScalarFeatures, PairFeatures, TriangleData
 		return new AcceleratedStaticPairComputation(value, () -> Pair.empty());
 	}
 
-	default Supplier<Producer<? extends Vector>> vector(int argIndex) { return value(Vector.class, argIndex); }
+	default Supplier<Evaluable<? extends Vector>> vector(int argIndex) { return value(Vector.class, argIndex); }
 
 	default VectorSupplier vector(double x, double y, double z) { return value(new Vector(x, y, z)); }
 
@@ -126,9 +115,9 @@ public interface CodeFeatures extends ScalarFeatures, PairFeatures, TriangleData
 		return new AcceleratedStaticRayComputation(value, () -> Ray.blank());
 	}
 
-	default Supplier<Producer<? extends TriangleData>> triangle(int argIndex) { return value(TriangleData.class, argIndex); }
+	default Supplier<Evaluable<? extends TriangleData>> triangle(int argIndex) { return value(TriangleData.class, argIndex); }
 
-	default Supplier<Producer<? extends TrianglePointData>> points(int argIndex) { return value(TrianglePointData.class, argIndex); }
+	default Supplier<Evaluable<? extends TrianglePointData>> points(int argIndex) { return value(TrianglePointData.class, argIndex); }
 
 	default RGBSupplier rgb(double r, double g, double b) { return value(new RGB(r, g, b)); }
 
@@ -158,7 +147,7 @@ public interface CodeFeatures extends ScalarFeatures, PairFeatures, TriangleData
 		}
 	}
 
-	default <T> Supplier<Producer<? extends T>> value(Class<T> type, int argIndex) {
+	default <T> Supplier<Evaluable<? extends T>> value(Class<T> type, int argIndex) {
 		return Input.value(type, argIndex);
 	}
 

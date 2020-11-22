@@ -17,19 +17,17 @@
 package org.almostrealism.graph.mesh.test;
 
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.algebra.VectorSupplier;
 import org.almostrealism.graph.mesh.DefaultVertexData;
 import org.almostrealism.graph.mesh.Mesh;
 import org.almostrealism.graph.mesh.MeshData;
 import org.almostrealism.graph.mesh.MeshPointData;
 import org.almostrealism.graph.mesh.TriangleData;
-import org.almostrealism.graph.mesh.TriangleDataProducer;
 import org.almostrealism.graph.mesh.TriangleDataSupplier;
-import org.almostrealism.hardware.KernelizedProducer;
+import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.util.CodeFeatures;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -86,7 +84,7 @@ public class TriangleDataTest implements CodeFeatures {
 	@Test
 	public void triangleDataCompact() {
 		MeshPointData points = points();
-		Producer<? extends TriangleData> td = triangle(v(points.get(0).getP1()),
+		Evaluable<? extends TriangleData> td = triangle(v(points.get(0).getP1()),
 				v(points.get(0).getP2()),
 				v(points.get(0).getP3())).get();
 		td.compact();
@@ -96,11 +94,11 @@ public class TriangleDataTest implements CodeFeatures {
 	@Test
 	public void triangleDataKernel() {
 		MeshPointData points = points();
-		Producer<? extends TriangleData> td = triangle(points(0)).get();
+		Evaluable<? extends TriangleData> td = triangle(points(0)).get();
 		td.compact();
 
 		MeshData output = new MeshData(1);
-		((KernelizedProducer) td).kernelEvaluate(output, new MemoryBank[] { points });
+		((KernelizedEvaluable) td).kernelEvaluate(output, new MemoryBank[] { points });
 		triangleDataAssertions(output.get(0));
 	}
 

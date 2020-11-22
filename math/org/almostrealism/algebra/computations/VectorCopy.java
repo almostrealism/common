@@ -17,12 +17,12 @@
 package org.almostrealism.algebra.computations;
 
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
-public class VectorCopy implements Producer<Vector> {
-	private Producer<Vector> v;
+public class VectorCopy implements Evaluable<Vector> {
+	private Evaluable<Vector> v;
 
-	public VectorCopy(Producer<Vector> v) {
+	public VectorCopy(Evaluable<Vector> v) {
 		this.v = v;
 	}
 

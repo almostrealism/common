@@ -16,20 +16,13 @@
 
 package org.almostrealism.algebra.computations;
 
-import io.almostrealism.code.Argument;
 import io.almostrealism.code.Expression;
-import io.almostrealism.code.Scope;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorBank;
 import org.almostrealism.algebra.VectorSupplier;
-import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
-import org.almostrealism.relation.NameProvider;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
@@ -38,7 +31,7 @@ public class VectorFromVectorBank<T extends VectorBank> extends DynamicAccelerat
 
 	private Expression<Double> value[];
 
-	public VectorFromVectorBank(Supplier<Producer<? extends T>> bank, int position) {
+	public VectorFromVectorBank(Supplier<Evaluable<? extends T>> bank, int position) {
 		super(3, () -> Vector.blank(), bank);
 		this.position = position * 3;
 	}

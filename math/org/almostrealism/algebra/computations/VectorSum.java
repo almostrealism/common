@@ -17,16 +17,13 @@
 package org.almostrealism.algebra.computations;
 
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorBank;
-import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.algebra.VectorSupplier;
-import org.almostrealism.hardware.MemoryBank;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 import java.util.function.Supplier;
 
 public class VectorSum extends NAryDynamicAcceleratedProducer<Vector> implements VectorSupplier {
-	public VectorSum(Supplier<Producer<? extends Vector>>... producers) {
+	public VectorSum(Supplier<Evaluable<? extends Vector>>... producers) {
 		super("+", 3, () -> Vector.blank(), producers);
 	}
 

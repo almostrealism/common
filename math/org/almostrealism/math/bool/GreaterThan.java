@@ -17,46 +17,46 @@
 package org.almostrealism.math.bool;
 
 import org.almostrealism.hardware.MemWrapper;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 import java.util.function.Function;
 import java.util.function.Supplier;
 
 public class GreaterThan<T extends MemWrapper> extends AcceleratedBinaryConditionAdapter<T> {
 	public GreaterThan(int memLength,
-					   Function<Integer, Supplier<Producer<T>>> blankValue) {
+					   Function<Integer, Supplier<Evaluable<T>>> blankValue) {
 		this(memLength, blankValue, null, null, null, null);
 	}
 
 	public GreaterThan(int memLength,
-					   Function<Integer, Supplier<Producer<T>>> blankValue,
-					   Supplier<Producer> leftOperand,
-					   Supplier<Producer> rightOperand,
-					   Supplier<Producer<T>> trueValue,
-					   Supplier<Producer<T>> falseValue) {
+					   Function<Integer, Supplier<Evaluable<T>>> blankValue,
+					   Supplier<Evaluable> leftOperand,
+					   Supplier<Evaluable> rightOperand,
+					   Supplier<Evaluable<T>> trueValue,
+					   Supplier<Evaluable<T>> falseValue) {
 		this(memLength, blankValue.apply(memLength), leftOperand, rightOperand, trueValue, falseValue, false);
 	}
 
 	public GreaterThan(int memLength,
-					   Supplier<Producer> leftOperand,
-					   Supplier<Producer> rightOperand) {
+					   Supplier<Evaluable> leftOperand,
+					   Supplier<Evaluable> rightOperand) {
 		this(memLength, null, leftOperand, rightOperand, null, null, false);
 	}
 
 	public GreaterThan(int memLength,
-					   Supplier<Producer<T>> blankValue,
-					   Supplier<Producer> leftOperand,
-					   Supplier<Producer> rightOperand,
-					   Supplier<Producer<T>> trueValue,
-					   Supplier<Producer<T>> falseValue) {
+					   Supplier<Evaluable<T>> blankValue,
+					   Supplier<Evaluable> leftOperand,
+					   Supplier<Evaluable> rightOperand,
+					   Supplier<Evaluable<T>> trueValue,
+					   Supplier<Evaluable<T>> falseValue) {
 		this(memLength, blankValue, leftOperand, rightOperand, trueValue, falseValue, false);
 	}
 	public GreaterThan(int memLength,
-					   Supplier<Producer<T>> blankValue,
-					   Supplier<Producer> leftOperand,
-					   Supplier<Producer> rightOperand,
-					   Supplier<Producer<T>> trueValue,
-					   Supplier<Producer<T>> falseValue,
+					   Supplier<Evaluable<T>> blankValue,
+					   Supplier<Evaluable> leftOperand,
+					   Supplier<Evaluable> rightOperand,
+					   Supplier<Evaluable<T>> trueValue,
+					   Supplier<Evaluable<T>> falseValue,
 					   boolean includeEqual) {
 		super(includeEqual ? ">=" : ">", memLength, blankValue, leftOperand, rightOperand, trueValue, falseValue);
 	}

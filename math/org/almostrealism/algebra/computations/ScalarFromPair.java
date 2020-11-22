@@ -16,18 +16,13 @@
 
 package org.almostrealism.algebra.computations;
 
-import io.almostrealism.code.Argument;
 import io.almostrealism.code.Expression;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarSupplier;
-import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
@@ -40,7 +35,7 @@ public class ScalarFromPair extends DynamicAcceleratedProducerAdapter<Pair, Scal
 	private Expression<Double> value;
 	private boolean isStatic;
 
-	public ScalarFromPair(Supplier<Producer<? extends Pair>> pair, int coordinate) {
+	public ScalarFromPair(Supplier<Evaluable<? extends Pair>> pair, int coordinate) {
 		super(2, () -> Scalar.blank(), pair);
 		this.coordinate = coordinate;
 	}
@@ -73,7 +68,7 @@ public class ScalarFromPair extends DynamicAcceleratedProducerAdapter<Pair, Scal
 			}
 
 			// TODO  Probably should check if supplier itself is static...
-			if (((Producer) getArguments().get(1).getProducer().get()).isStatic()) {
+			if (((Evaluable) getArguments().get(1).getProducer().get()).isStatic()) {
 				isStatic = true;
 			}
 

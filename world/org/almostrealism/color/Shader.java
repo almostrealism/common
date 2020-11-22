@@ -17,17 +17,16 @@
 package org.almostrealism.color;
 
 import org.almostrealism.algebra.DiscreteField;
-import org.almostrealism.color.computations.ColorProducer;
+import org.almostrealism.color.computations.ColorEvaluable;
 import org.almostrealism.relation.Maker;
 import org.almostrealism.space.LightingContext;
-import org.almostrealism.util.Producer;
 
 /**
  * The Shader interface is implemented by classes that provide a method for shading a surface.
  */
 public interface Shader<C extends LightingContext> {
 	/**
-	 * Returns a {@link ColorProducer} object that represents the
+	 * Returns a {@link ColorEvaluable} object that represents the
 	 * shaded color calculated using the values of the specified
 	 * {@link ShaderContext} object.
 	 */

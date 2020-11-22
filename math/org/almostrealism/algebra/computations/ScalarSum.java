@@ -17,16 +17,13 @@
 package org.almostrealism.algebra.computations;
 
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarBank;
-import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.algebra.ScalarSupplier;
-import org.almostrealism.hardware.MemoryBank;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 import java.util.function.Supplier;
 
 public class ScalarSum extends NAryDynamicAcceleratedProducer<Scalar> implements ScalarSupplier {
-	public ScalarSum(Supplier<Producer<? extends Scalar>>... producers) {
+	public ScalarSum(Supplier<Evaluable<? extends Scalar>>... producers) {
 		super("+", 2, () -> Scalar.blank(), producers);
 	}
 

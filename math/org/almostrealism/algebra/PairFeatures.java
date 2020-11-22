@@ -16,36 +16,36 @@
 
 package org.almostrealism.algebra;
 
-import org.almostrealism.algebra.computations.DefaultPairProducer;
-import org.almostrealism.algebra.computations.DefaultScalarProducer;
+import org.almostrealism.algebra.computations.DefaultPairEvaluable;
+import org.almostrealism.algebra.computations.DefaultScalarEvaluable;
 import org.almostrealism.algebra.computations.PairFromScalars;
 import org.almostrealism.algebra.computations.ScalarFromPair;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 import java.util.function.Supplier;
 
 public interface PairFeatures {
-	default ScalarProducer l(Producer<Pair> p) {
-		return new DefaultScalarProducer(l(() -> p));
+	default ScalarEvaluable l(Evaluable<Pair> p) {
+		return new DefaultScalarEvaluable(l(() -> p));
 	}
 
-	default ScalarSupplier l(Supplier<Producer<? extends Pair>> p) {
+	default ScalarSupplier l(Supplier<Evaluable<? extends Pair>> p) {
 		return new ScalarFromPair(p, ScalarFromPair.X);
 	}
 
-	default ScalarProducer r(Producer<Pair> p) {
-		return new DefaultScalarProducer(r(() -> p));
+	default ScalarEvaluable r(Evaluable<Pair> p) {
+		return new DefaultScalarEvaluable(r(() -> p));
 	}
 
-	default ScalarSupplier r(Supplier<Producer<? extends Pair>> p) {
+	default ScalarSupplier r(Supplier<Evaluable<? extends Pair>> p) {
 		return new ScalarFromPair(p, ScalarFromPair.Y);
 	}
 
-	default PairProducer fromScalars(Producer<Scalar> x, Producer<Scalar> y) {
-		return new DefaultPairProducer(fromScalars(() -> x, () -> y));
+	default PairEvaluable fromScalars(Evaluable<Scalar> x, Evaluable<Scalar> y) {
+		return new DefaultPairEvaluable(fromScalars(() -> x, () -> y));
 	}
 
-	default PairSupplier fromScalars(Supplier<Producer<? extends Scalar>> x, Supplier<Producer<? extends Scalar>> y) {
+	default PairSupplier fromScalars(Supplier<Evaluable<? extends Scalar>> x, Supplier<Evaluable<? extends Scalar>> y) {
 		return new PairFromScalars(x, y);
 	}
 }

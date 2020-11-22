@@ -26,10 +26,10 @@ import org.almostrealism.algebra.ContinuousField;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Curve;
 import org.almostrealism.space.LightingContext;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 /**
- * A {@link ShaderContext} provides access to the set of {@link Producer}s
+ * A {@link ShaderContext} provides access to the set of {@link Evaluable}s
  * in a {@link org.almostrealism.space.Scene}.
  * 
  * @author  Michael Murray
@@ -55,18 +55,18 @@ public class ShaderContext extends LightingContext {
 	 * Constructs a new ShaderParameters object using the specified arguments.
 	 * 
 	 * @param intersection  The details about the surface/ray intersection.
-	 * @param lightDirection  {@link Vector} {@link Producer} representing the direction toward the light (should be unit length).
+	 * @param lightDirection  {@link Vector} {@link Evaluable} representing the direction toward the light (should be unit length).
 	 * @param light  Light object representing the light.
 	 * @param otherLights  Array of Light objects representing other lights in the scene.
 	 * @param otherSurfaces  Collection of other Surface objects in the scene.
 	 */
-	public ShaderContext(ContinuousField intersection, Supplier<Producer<? extends Vector>> lightDirection, Light light,
-							Iterable<Light> otherLights, Collection<Curve<RGB>> otherSurfaces) {
+	public ShaderContext(ContinuousField intersection, Supplier<Evaluable<? extends Vector>> lightDirection, Light light,
+						 Iterable<Light> otherLights, Collection<Curve<RGB>> otherSurfaces) {
 		this(intersection, lightDirection, light, otherLights, otherSurfaces.toArray(new Curve[0]));
 	}
 	
-	private ShaderContext(ContinuousField intersection, Supplier<Producer<? extends Vector>> lightDirection, Light light,
-			Iterable<Light> otherLights, Curve<RGB> otherSurfaces[]) {
+	private ShaderContext(ContinuousField intersection, Supplier<Evaluable<? extends Vector>> lightDirection, Light light,
+						  Iterable<Light> otherLights, Curve<RGB> otherSurfaces[]) {
 		this(intersection, lightDirection, light, otherLights, null, otherSurfaces);
 	}
 	
@@ -80,7 +80,7 @@ public class ShaderContext extends LightingContext {
 	 * @param surface  Surface object to be shaded.
 	 * @param otherSurfaces  Array of other Surface objects in the scene.
 	 */
-	public ShaderContext(ContinuousField intersection, Supplier<Producer<? extends Vector>> lightDirection, Light light,
+	public ShaderContext(ContinuousField intersection, Supplier<Evaluable<? extends Vector>> lightDirection, Light light,
 						 Iterable<Light> otherLights, Curve<RGB> surface, Curve<RGB> otherSurfaces[]) {
 		this.intersection = intersection;
 		this.setLightDirection(lightDirection);

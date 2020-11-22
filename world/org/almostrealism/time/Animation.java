@@ -23,8 +23,7 @@ import org.almostrealism.space.Gradient;
 import org.almostrealism.space.Scene;
 import org.almostrealism.space.ShadableSurface;
 import org.almostrealism.util.CodeFeatures;
-import org.almostrealism.util.Producer;
-import org.almostrealism.util.Provider;
+import org.almostrealism.util.Evaluable;
 
 import java.io.*;
 import java.util.ArrayList;
@@ -186,7 +185,7 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 					Gradient<?> grad = f.apply((RigidBody) s);
 
 					if (grad != null) {
-						g.addTo(grad.getNormalAt((Producer<Vector>) v(((RigidBody) s).getState().getLocation()).get())
+						g.addTo(grad.getNormalAt((Evaluable<Vector>) v(((RigidBody) s).getState().getLocation()).get())
 								.evaluate(new Object[] { ((RigidBody) s).getState() }));
 					}
 				}

@@ -20,14 +20,12 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.TransformMatrix;
 import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.hardware.MemWrapper;
-import org.almostrealism.hardware.MemWrapperAdapter;
-import org.almostrealism.util.DynamicProducer;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 import java.util.function.Supplier;
 
 public class MatrixToUpperTriangle extends AcceleratedProducer<MemWrapper, TransformMatrix> {
-	public MatrixToUpperTriangle(Supplier<Producer<? extends MemWrapper>> m) {
+	public MatrixToUpperTriangle(Supplier<Evaluable<? extends MemWrapper>> m) {
 		super("matrixToUpperTriangle", () -> TransformMatrix.blank(), () -> Scalar.blank(), m);
 	}
 }

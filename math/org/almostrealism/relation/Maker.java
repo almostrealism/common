@@ -16,11 +16,11 @@
 
 package org.almostrealism.relation;
 
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 import java.util.function.Supplier;
 
-public interface Maker<T> extends Supplier<Producer<? extends T>> {
+public interface Maker<T> extends Supplier<Evaluable<? extends T>> {
 	@Override
-	Producer<T> get();
+	Evaluable<T> get();
 }

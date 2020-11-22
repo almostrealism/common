@@ -19,20 +19,20 @@ package org.almostrealism.color;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairBank;
 import org.almostrealism.hardware.KernelizedOperation;
-import org.almostrealism.hardware.KernelizedProducer;
+import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
-public class RealizableImage implements Producer<RGB[][]> {
-	private KernelizedProducer<RGB> source;
+public class RealizableImage implements Evaluable<RGB[][]> {
+	private KernelizedEvaluable<RGB> source;
 	private Pair dim;
 
-	public RealizableImage(KernelizedProducer<RGB> source, Pair dimensions) {
+	public RealizableImage(KernelizedEvaluable<RGB> source, Pair dimensions) {
 		this.source = source;
 		this.dim = dimensions;
 	}
 
-	public KernelizedProducer<RGB> getSource() { return source; }
+	public KernelizedEvaluable<RGB> getSource() { return source; }
 
 	public Pair getDimensions() { return dim; }
 

@@ -16,18 +16,13 @@
 
 package org.almostrealism.algebra.computations;
 
-import io.almostrealism.code.Argument;
 import io.almostrealism.code.Expression;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorSupplier;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
@@ -35,7 +30,7 @@ import java.util.function.Supplier;
 	private Expression<Double> value[];
 	private boolean isStatic;
 
-	public RayOrigin(Supplier<Producer<? extends Ray>> r) {
+	public RayOrigin(Supplier<Evaluable<? extends Ray>> r) {
 		super(3, () -> Vector.blank(), r);
 	}
 
@@ -51,7 +46,7 @@ import java.util.function.Supplier;
 	}
 
 	/**
-	 * Returns true if the {@link Ray} {@link Producer} is static.
+	 * Returns true if the {@link Ray} {@link Evaluable} is static.
 	 */
 	@Override
 	public boolean isStatic() { return !isVariableRef() && isStatic; }

@@ -17,17 +17,17 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.ComputationOperationAdapter;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 import java.util.Arrays;
 import java.util.function.Supplier;
 
 public abstract class DynamicAcceleratedOperationAdapter<T> extends ComputationOperationAdapter<T, Void> implements Supplier<Runnable>, ComputerFeatures {
-	public DynamicAcceleratedOperationAdapter(Supplier<Producer<T>>... inputArgs) {
+	public DynamicAcceleratedOperationAdapter(Supplier<Evaluable<T>>... inputArgs) {
 		this(inputArgs, new Object[0]);
 	}
 
-	public DynamicAcceleratedOperationAdapter(Supplier<Producer<T>>[] inputArgs, Object[] additionalArguments) {
+	public DynamicAcceleratedOperationAdapter(Supplier<Evaluable<T>>[] inputArgs, Object[] additionalArguments) {
 		this.setArguments(Arrays.asList(arguments(AcceleratedProducer.producers(inputArgs, additionalArguments))));
 		init();
 	}

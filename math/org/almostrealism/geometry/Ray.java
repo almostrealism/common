@@ -17,19 +17,18 @@
 package org.almostrealism.geometry;
 
 
-import org.almostrealism.algebra.computations.DefaultVectorProducer;
+import org.almostrealism.algebra.computations.DefaultVectorEvaluable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.TransformMatrix;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorProducer;
+import org.almostrealism.algebra.VectorEvaluable;
 import org.almostrealism.algebra.computations.RayPointAt;
 import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.hardware.MemWrapperAdapter;
 import org.almostrealism.util.CodeFeatures;
-import org.almostrealism.util.DynamicProducer;
-import org.almostrealism.util.Producer;
-import org.almostrealism.util.Provider;
+import org.almostrealism.util.DynamicEvaluable;
+import org.almostrealism.util.Evaluable;
 
 import java.util.function.Supplier;
 
@@ -113,7 +112,7 @@ public class Ray extends MemWrapperAdapter implements Cloneable, CodeFeatures {
 	/**
 	 * @return  The dot product of the origin of this ray with itself.
 	 */
-	public Producer<Scalar> oDoto() {
+	public Evaluable<Scalar> oDoto() {
 		// TODO  Cache
 		return new AcceleratedProducer<>("rayODotO", false, () -> Scalar.blank(),
 										new Supplier[0], new Object[] { this });
@@ -122,7 +121,7 @@ public class Ray extends MemWrapperAdapter implements Cloneable, CodeFeatures {
 	/**
 	 * @return  The dot product of the direction of this ray with itself.
 	 */
-	public Producer<Scalar> dDotd() {
+	public Evaluable<Scalar> dDotd() {
 		// TODO  Cache
 		return new AcceleratedProducer<>("rayDDotD", false, () -> Scalar.blank(),
 										new Supplier[0], new Object[] { this });
@@ -131,7 +130,7 @@ public class Ray extends MemWrapperAdapter implements Cloneable, CodeFeatures {
 	/**
 	 * @return  The dot product of the origin of this ray with the direction of this ray.
 	 */
-	public Producer<Scalar> oDotd() {
+	public Evaluable<Scalar> oDotd() {
 		// TODO  Cache
 		return new AcceleratedProducer<>("rayODotD", false, () -> Scalar.blank(),
 										new Supplier[0], new Object[] { this });
@@ -157,8 +156,8 @@ public class Ray extends MemWrapperAdapter implements Cloneable, CodeFeatures {
 	 * @return  The point on the ray represented by this {@link Ray} at distance t from the origin
 	 *          as a {@link Vector}.
 	 */
-	public VectorProducer pointAt(Producer<Scalar> t) {
-		return new DefaultVectorProducer(new RayPointAt(v(this), () -> t));
+	public VectorEvaluable pointAt(Evaluable<Scalar> t) {
+		return new DefaultVectorEvaluable(new RayPointAt(v(this), () -> t));
 	}
 
 	@Override
@@ -205,7 +204,7 @@ public class Ray extends MemWrapperAdapter implements Cloneable, CodeFeatures {
 		return value;
 	}
 
-	public static Producer<Ray> blank() {
-		return new DynamicProducer<>(args -> new Ray());
+	public static Evaluable<Ray> blank() {
+		return new DynamicEvaluable<>(args -> new Ray());
 	}
 }

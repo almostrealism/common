@@ -14,17 +14,22 @@
  * limitations under the License.
  */
 
-package org.almostrealism.graph.mesh;
+package org.almostrealism.color.computations;
 
-import org.almostrealism.algebra.VectorProducer;
-import org.almostrealism.hardware.KernelizedProducer;
+import org.almostrealism.color.RGB;
+import org.almostrealism.color.RGBBank;
+import org.almostrealism.hardware.AcceleratedComputationProducer;
+import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.relation.Computation;
 
-public interface TriangleDataProducer extends KernelizedProducer<TriangleData>, TriangleDataFeatures {
-	default VectorProducer abc() { return abc(this); }
+public class DefaultRGBEvaluable extends AcceleratedComputationProducer<RGB> implements RGBEvaluable {
 
-	default VectorProducer def() { return def(this); }
+	public DefaultRGBEvaluable(Computation<RGB> c) {
+		super(c);
+	}
 
-	default VectorProducer jkl() { return jkl(this); }
-
-	default VectorProducer normal() { return normal(this); }
+	@Override
+	public MemoryBank<RGB> createKernelDestination(int size) {
+		return new RGBBank(size);
+	}
 }

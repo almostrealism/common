@@ -17,7 +17,7 @@
 package org.almostrealism.graph;
 
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 import java.util.function.Supplier;
 
@@ -26,7 +26,7 @@ public class RunningAverageCell extends ScalarCachedStateCell {
 	private int pushes;
 
 	@Override
-	public Supplier<Runnable> push(Producer<Scalar> protein) {
+	public Supplier<Runnable> push(Evaluable<Scalar> protein) {
 		return () -> () -> {
 			this.total = total + protein.evaluate().getValue();
 			this.pushes++;

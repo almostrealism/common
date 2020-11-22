@@ -2,7 +2,7 @@ package org.almostrealism.relation;
 
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 public class Constant<T> implements Operator<T> {
 	private T v;
@@ -16,7 +16,7 @@ public class Constant<T> implements Operator<T> {
 
 	@Override
 	public void compact() {
-		if (v instanceof Producer) ((Producer) v).compact();
+		if (v instanceof Evaluable) ((Evaluable) v).compact();
 	}
 
 	@Override

@@ -18,7 +18,6 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.c.OpenCLPrintWriter;
 import io.almostrealism.code.Argument;
-import io.almostrealism.code.ComputationOperationAdapter;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.ScopeEncoder;
@@ -28,12 +27,8 @@ import org.almostrealism.relation.Computation;
 import org.almostrealism.relation.NameProvider;
 import org.almostrealism.util.Compactable;
 import org.almostrealism.util.Named;
-import org.almostrealism.util.Producer;
 
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.stream.Collectors;
 
 public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperation<MemWrapper> implements NameProvider {
 	private Computation<T> computation;

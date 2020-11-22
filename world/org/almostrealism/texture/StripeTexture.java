@@ -17,16 +17,15 @@
 package org.almostrealism.texture;
 
 import io.almostrealism.code.Scope;
-import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.Triple;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.color.computations.ColorProducer;
+import org.almostrealism.color.computations.ColorEvaluable;
 import org.almostrealism.color.computations.GeneratedColorProducer;
 import org.almostrealism.color.RGB;
 import org.almostrealism.relation.NameProvider;
 import org.almostrealism.relation.TripleFunction;
 import org.almostrealism.util.Editable;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 // TODO  Add vector direction in place of axis selection.
 
@@ -95,7 +94,7 @@ public class StripeTexture implements Texture, Editable {
 	 * @throws IllegalArgumentException  If one of the objects specified is not of the correct type.
 	 * @return  The color of the texture represented by this StripeTexture object at the specified point as an RGB object.
 	 */
-	public ColorProducer getColorAt(Object props[]) {
+	public ColorEvaluable getColorAt(Object props[]) {
 		return GeneratedColorProducer.fromFunction(this, new TripleFunction<Triple, RGB>() {
 					@Override
 					public RGB operate(Triple l) {
@@ -149,7 +148,7 @@ public class StripeTexture implements Texture, Editable {
 	 * @param args {point, arg0, arg1, ...}
 	 * @throws IllegalArgumentException  If args does not contain the correct object types.
 	 * 
-	 * @see ColorProducer#evaluate(java.lang.Object[])
+	 * @see ColorEvaluable#evaluate(java.lang.Object[])
 	 */
 	public RGB evaluate(Object args[]) {
 		System.out.println("StripeTexture.evaluate");
@@ -217,8 +216,8 @@ public class StripeTexture implements Texture, Editable {
 	/**
 	 * @return  {first color, second color}.
 	 */
-	public Producer[] getInputPropertyValues() {
-		return new Producer[] {(Producer)this.props[3], (Producer)this.props[4]};
+	public Evaluable[] getInputPropertyValues() {
+		return new Evaluable[] {(Evaluable)this.props[3], (Evaluable)this.props[4]};
 	}
 	
 	/**
@@ -227,7 +226,7 @@ public class StripeTexture implements Texture, Editable {
 	 * @throws IllegalArgumentException  If the Producer object specified is not of the correct type.
 	 * @throws IndexOutOfBoundsException  If the index > 1.
 	 */
-	public void setInputPropertyValue(int index, Producer p) {
+	public void setInputPropertyValue(int index, Evaluable p) {
 		if (index == 0)
 			this.setPropertyValue(p, 3);
 		else if (index == 1)

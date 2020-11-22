@@ -19,11 +19,11 @@ package org.almostrealism.graph.mesh;
 import org.almostrealism.algebra.*;
 import org.almostrealism.color.computations.GeneratedColorProducer;
 import org.almostrealism.color.RGB;
-import org.almostrealism.color.computations.RGBProducer;
+import org.almostrealism.color.computations.RGBEvaluable;
 import org.almostrealism.geometry.Positioned;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.hardware.AcceleratedProducer;
-import org.almostrealism.hardware.KernelizedProducer;
+import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.relation.Constant;
 import org.almostrealism.relation.Operator;
 import org.almostrealism.space.AbstractSurface;
@@ -31,7 +31,7 @@ import org.almostrealism.space.BoundingSolid;
 import org.almostrealism.space.ShadableIntersection;
 import org.almostrealism.util.CodeFeatures;
 import org.almostrealism.util.PassThroughProducer;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 import static org.almostrealism.util.Ops.*;
 
 import java.util.concurrent.ExecutionException;
@@ -54,12 +54,12 @@ public class Triangle extends AbstractSurface implements ParticleGroup, CodeFeat
 	private boolean smooth, intcolor, useT = true;
 	private TriangleData data;
 
-	protected static final KernelizedProducer<TriangleData> dataProducer;
+	protected static final KernelizedEvaluable<TriangleData> dataProducer;
 
-	public static final KernelizedProducer<Scalar> intersectAt;
+	public static final KernelizedEvaluable<Scalar> intersectAt;
 	
 	static {
-		dataProducer = (KernelizedProducer<TriangleData>)
+		dataProducer = (KernelizedEvaluable<TriangleData>)
 				ops().triangle(PassThroughProducer.of(TrianglePointData.class, 0)).get();
 		dataProducer.compact();
 
@@ -245,10 +245,10 @@ public class Triangle extends AbstractSurface implements ParticleGroup, CodeFeat
 	}
 
 	@Override
-	public Producer<RGB> getValueAt(Producer<Vector> point) {
-		RGBProducer dcp = getColorAt(point, useT);
+	public Evaluable<RGB> getValueAt(Evaluable<Vector> point) {
+		RGBEvaluable dcp = getColorAt(point, useT);
 
-		return GeneratedColorProducer.fromProducer(this, new Producer<RGB>() {
+		return GeneratedColorProducer.fromProducer(this, new Evaluable<RGB>() {
 			@Override
 			public RGB evaluate(Object[] args) {
 				RGB dc = dcp.evaluate(args);
@@ -319,13 +319,13 @@ public class Triangle extends AbstractSurface implements ParticleGroup, CodeFeat
 	}
 	
 	/**
-	 * Returns a {@link Vector} {@link Producer} that represents the vector normal to this sphere
-	 * at the point represented by the specified {@link Vector} {@link Producer}.
+	 * Returns a {@link Vector} {@link Evaluable} that represents the vector normal to this sphere
+	 * at the point represented by the specified {@link Vector} {@link Evaluable}.
 	 */
 	@Override
-	public Producer<Vector> getNormalAt(Producer<Vector> p) {
+	public Evaluable<Vector> getNormalAt(Evaluable<Vector> p) {
 		if (smooth && vertexData == null) {
-			return new VectorProducer() {
+			return new VectorEvaluable() {
 				@Override
 				public Vector evaluate(Object[] args) {
 					Vector point = p.evaluate(args);
@@ -375,11 +375,11 @@ public class Triangle extends AbstractSurface implements ParticleGroup, CodeFeat
 			};
 		} else {
 			if (useT && getTransform(true) != null) {
-				return (Producer<Vector>) getTransform(true).getInverse().transform(
+				return (Evaluable<Vector>) getTransform(true).getInverse().transform(
 						v(data.getNormal()),
 						TransformMatrix.TRANSFORM_AS_NORMAL).get();
 			} else {
-				return (Producer<Vector>) v((Vector) data.getNormal().clone()).get();
+				return (Evaluable<Vector>) v((Vector) data.getNormal().clone()).get();
 			}
 		}
 	}
@@ -390,14 +390,14 @@ public class Triangle extends AbstractSurface implements ParticleGroup, CodeFeat
 	 * {@link Triangle} occurs.
 	 */
 	@Override
-	public ContinuousField intersectAt(Producer ray) {
+	public ContinuousField intersectAt(Evaluable ray) {
 		TransformMatrix t = getTransform(true);
 		boolean ut = useT && t != null;
-		Supplier<Producer<? extends Ray>> r = () -> ray;
+		Supplier<Evaluable<? extends Ray>> r = () -> ray;
 		if (ut) r = t.getInverse().transform(() -> ray);
 
 		if (enableHardwareOperator) {
-			final Supplier<Producer<? extends Ray>> fr = r;
+			final Supplier<Evaluable<? extends Ray>> fr = r;
 
 			return new ShadableIntersection(this, r,
 					() -> new AcceleratedProducer<Ray, Scalar>(
@@ -407,9 +407,9 @@ public class Triangle extends AbstractSurface implements ParticleGroup, CodeFeat
 											new Supplier[] { () -> fr },
 											new Object[] { data.getABC(), data.getDEF(), data.getJKL() }));
 		} else {
-			final Supplier<Producer<? extends Ray>> fr = r;
+			final Supplier<Evaluable<? extends Ray>> fr = r;
 
-			Producer<Scalar> s = new Producer<Scalar>() {
+			Evaluable<Scalar> s = new Evaluable<Scalar>() {
 				@Override
 				public Scalar evaluate(Object[] args) {
 					Ray r = fr.get().evaluate(args);

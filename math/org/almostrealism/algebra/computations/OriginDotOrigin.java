@@ -17,12 +17,12 @@
 package org.almostrealism.algebra.computations;
 
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 import java.util.function.Supplier;
 
 public class OriginDotOrigin extends DotProduct {
-	public OriginDotOrigin(Supplier<Producer<? extends Ray>> r) {
+	public OriginDotOrigin(Supplier<Evaluable<? extends Ray>> r) {
 		this(new RayOrigin(r));
 	}
 

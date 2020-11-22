@@ -18,7 +18,7 @@ package org.almostrealism.algebra;
 
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.hardware.MemoryBankAdapter;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 /**
  * A collection of {@link TransformMatrix}s of a fixed length, that is contiguous in
@@ -38,7 +38,7 @@ public class TransformMatrixBank extends MemoryBankAdapter<TransformMatrix> {
 				delegate, delegateOffset);
 	}
 
-	public static TransformMatrixBank fromProducer(Producer<TransformMatrix> producer, int count) {
+	public static TransformMatrixBank fromProducer(Evaluable<TransformMatrix> producer, int count) {
 		TransformMatrixBank bank = new TransformMatrixBank(count);
 		for (int i = 0; i < bank.getCount(); i++) {
 			bank.set(i, producer.evaluate());

@@ -17,7 +17,7 @@
 package io.almostrealism.code;
 
 import org.almostrealism.util.Nameable;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 import org.almostrealism.util.Provider;
 
 import java.util.ArrayList;
@@ -38,11 +38,11 @@ public class Variable<T> implements Nameable {
 
 	private Expression<T> expression;
 
-	private Supplier<Producer<? extends T>> producer;
+	private Supplier<Evaluable<? extends T>> producer;
 	private Variable<?> dependsOn;
 
 	public Variable(String name, Expression<T> expression) {
-		this(name, true, expression, (Supplier<Producer<? extends T>>) null);
+		this(name, true, expression, (Supplier<Evaluable<? extends T>>) null);
 	}
 
 	public Variable(String name, Expression<T> expression, Variable<?> dependsOn) {
@@ -59,7 +59,7 @@ public class Variable<T> implements Nameable {
 		this.dependsOn = dependsOn;
 	}
 
-	public Variable(String name, boolean declaration, Expression<T> expression, Supplier<Producer<? extends T>> producer) {
+	public Variable(String name, boolean declaration, Expression<T> expression, Supplier<Evaluable<? extends T>> producer) {
 		setName(name);
 		setExpression(expression);
 		setProducer(producer);
@@ -70,7 +70,7 @@ public class Variable<T> implements Nameable {
 		this(name, true, (Expression) null, ops().v(value));
 	}
 
-	public Variable(String name, String annotation, Supplier<Producer<? extends T>> producer) {
+	public Variable(String name, String annotation, Supplier<Evaluable<? extends T>> producer) {
 		this(name, annotation, (Class) null, producer);
 	}
 
@@ -78,11 +78,11 @@ public class Variable<T> implements Nameable {
 		this(name, type, ops().v(value));
 	}
 
-	public Variable(String name, Class<T> type, Supplier<Producer<? extends T>> producer) {
+	public Variable(String name, Class<T> type, Supplier<Evaluable<? extends T>> producer) {
 		this(name, true, new Expression(type), producer);
 	}
 
-	public Variable(String name, String annotation, Class<T> type, Supplier<Producer<? extends T>> producer) {
+	public Variable(String name, String annotation, Class<T> type, Supplier<Evaluable<? extends T>> producer) {
 		this(name, type, producer);
 		setAnnotation(annotation);
 	}
@@ -103,16 +103,16 @@ public class Variable<T> implements Nameable {
 		this(name, new Expression(type, expression));
 	}
 
-	public Variable(String name, Class<T> type, String expression, Supplier<Producer<? extends T>> producer, int arraySize) {
+	public Variable(String name, Class<T> type, String expression, Supplier<Evaluable<? extends T>> producer, int arraySize) {
 		this(name, true, new Expression(type, expression, arraySize), producer);
 	}
 
-	public Variable(String name, Supplier<Producer<? extends T>> producer, int arraySize, String annotation) {
+	public Variable(String name, Supplier<Evaluable<? extends T>> producer, int arraySize, String annotation) {
 		this(name, null, (Supplier) null, producer, arraySize);
 		setAnnotation(annotation);
 	}
 
-	public Variable(String name, Class<T> type, Supplier<String> expression, Supplier<Producer<? extends T>> producer, int arraySize) {
+	public Variable(String name, Class<T> type, Supplier<String> expression, Supplier<Evaluable<? extends T>> producer, int arraySize) {
 		this(name, true, new Expression(type, expression, arraySize), producer);
 	}
 
@@ -128,7 +128,7 @@ public class Variable<T> implements Nameable {
 	public void setExpression(Expression<T> value) { this.expression = value; }
 	public Expression<T> getExpression() { return expression; }
 
-	public void setProducer(Supplier<Producer<? extends T>> producer) {
+	public void setProducer(Supplier<Evaluable<? extends T>> producer) {
 		if (producer instanceof Provider) {
 			throw new IllegalArgumentException("Provider does not supply a Producer");
 		}
@@ -136,7 +136,7 @@ public class Variable<T> implements Nameable {
 		this.producer = producer;
 	}
 
-	public Supplier<Producer<? extends T>> getProducer() { return producer; }
+	public Supplier<Evaluable<? extends T>> getProducer() { return producer; }
 
 	public Class<T> getType() { return getExpression().getType(); }
 	public Method<T> getGenerator() { return getExpression().getGenerator(); }

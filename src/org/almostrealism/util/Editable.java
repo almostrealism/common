@@ -80,11 +80,11 @@ public interface Editable {
 	 * @return  An array of Producer objects containing the property values of those
 	 *          properties that are repeatedly evaluated.
 	 */
-	Producer[] getInputPropertyValues();
+	Evaluable[] getInputPropertyValues();
 	
 	/**
 	 * @param index  Index of input property (array index from this.getInputPropertyValue).
 	 * @param p  Producer object to use for input property.
 	 */
-	void setInputPropertyValue(int index, Producer p);
+	void setInputPropertyValue(int index, Evaluable p);
 }

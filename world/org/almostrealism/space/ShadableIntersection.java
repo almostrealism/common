@@ -24,15 +24,14 @@ import org.almostrealism.algebra.ContinuousField;
 import org.almostrealism.algebra.Intersection;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.computations.DefaultVectorProducer;
-import org.almostrealism.geometry.DefaultRayProducer;
+import org.almostrealism.geometry.DefaultRayEvaluable;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.algebra.computations.RayDirection;
 import org.almostrealism.algebra.computations.RayPointAt;
 import org.almostrealism.geometry.RayFromVectors;
 import org.almostrealism.relation.NameProvider;
 import org.almostrealism.util.CodeFeatures;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 import org.almostrealism.util.ProducerWithRankAdapter;
 
 /**
@@ -41,39 +40,39 @@ import org.almostrealism.util.ProducerWithRankAdapter;
  * @author  Michael Murray
  */
 public class ShadableIntersection extends Intersection implements ContinuousField, CodeFeatures {
-	private Supplier<Producer<? extends Vector>> incident;
-	private Supplier<Producer<? extends Ray>> normal;
+	private Supplier<Evaluable<? extends Vector>> incident;
+	private Supplier<Evaluable<? extends Ray>> normal;
 
-	public ShadableIntersection(Gradient surface, Supplier<Producer<? extends Ray>> r, Supplier<Producer<? extends Scalar>> distance) {
+	public ShadableIntersection(Gradient surface, Supplier<Evaluable<? extends Ray>> r, Supplier<Evaluable<? extends Scalar>> distance) {
 		this(surface, new RayPointAt(r, distance), new RayDirection(r), distance);
 	}
 
-	public ShadableIntersection(Supplier<Producer<? extends Ray>> r, Supplier<Producer<? extends Vector>> normal, Supplier<Producer<? extends Scalar>> distance) {
+	public ShadableIntersection(Supplier<Evaluable<? extends Ray>> r, Supplier<Evaluable<? extends Vector>> normal, Supplier<Evaluable<? extends Scalar>> distance) {
 		this(new RayPointAt(r, distance), new RayDirection(r), normal, distance);
 	}
 
-	public ShadableIntersection(Gradient surface, Supplier<Producer<? extends Vector>> point, Supplier<Producer<? extends Vector>> incident, Supplier<Producer<? extends Scalar>> distance) {
+	public ShadableIntersection(Gradient surface, Supplier<Evaluable<? extends Vector>> point, Supplier<Evaluable<? extends Vector>> incident, Supplier<Evaluable<? extends Scalar>> distance) {
 		this(point, incident, () -> surface.getNormalAt(point.get()), distance);
 	}
 
-	public ShadableIntersection(Supplier<Producer<? extends Vector>> point, Supplier<Producer<? extends Vector>> incident, Supplier<Producer<? extends Vector>> normal, Supplier<Producer<? extends Scalar>> distance) {
+	public ShadableIntersection(Supplier<Evaluable<? extends Vector>> point, Supplier<Evaluable<? extends Vector>> incident, Supplier<Evaluable<? extends Vector>> normal, Supplier<Evaluable<? extends Scalar>> distance) {
 		super(point, distance);
 
 		this.incident = incident;
 
-		Producer<Ray> p = new DefaultRayProducer(new RayFromVectors(getPoint(), normal));
-		this.normal = () -> new ProducerWithRankAdapter<>(p, (Producer<Scalar>) distance.get()); // TODO  Should be accelerated producer
+		Evaluable<Ray> p = new DefaultRayEvaluable(new RayFromVectors(getPoint(), normal));
+		this.normal = () -> new ProducerWithRankAdapter<>(p, (Evaluable<Scalar>) distance.get()); // TODO  Should be accelerated producer
 	}
 	
 	/** Returns the viewer direction. */
 	@Override
-	public Producer<Vector> getNormalAt(Producer<Vector> point) {
-		return (Producer<Vector>) normalize(incident).scalarMultiply(-1.0).get();
+	public Evaluable<Vector> getNormalAt(Evaluable<Vector> point) {
+		return (Evaluable<Vector>) normalize(incident).scalarMultiply(-1.0).get();
 	}
 	
-	/** Delegates to {@link #getNormalAt(Producer)}. */
+	/** Delegates to {@link #getNormalAt(Evaluable)}. */
 	@Override
-	public Vector operate(Vector t) { return getNormalAt((Producer<Vector>) v(t).get()).evaluate(); }
+	public Vector operate(Vector t) { return getNormalAt((Evaluable<Vector>) v(t).get()).evaluate(); }
 
 	@Override
 	public Scope getScope(NameProvider p) {
@@ -81,7 +80,7 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 	}
 	
 	@Override
-	public Producer<Ray> get(int index) { return (Producer<Ray>) normal.get(); }
+	public Evaluable<Ray> get(int index) { return (Evaluable<Ray>) normal.get(); }
 	
 	public int size() { return 1; }
 
@@ -92,7 +91,7 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 	public boolean contains(Object o) { return false; }
 
 	@Override
-	public Iterator<Producer<Ray>> iterator() { return Arrays.asList((Producer<Ray>) normal.get()).iterator(); }
+	public Iterator<Evaluable<Ray>> iterator() { return Arrays.asList((Evaluable<Ray>) normal.get()).iterator(); }
 
 	@Override
 	public Object[] toArray() { return new Object[] { normal }; }
@@ -101,7 +100,7 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 	public <T> T[] toArray(T[] a) { return Arrays.asList(normal).toArray(a); }
 
 	@Override
-	public boolean add(Producer<Ray> e) { return false; }
+	public boolean add(Evaluable<Ray> e) { return false; }
 
 	@Override
 	public boolean remove(Object o) { return false; }
@@ -110,10 +109,10 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 	public boolean containsAll(Collection<?> c) { return false; }
 
 	@Override
-	public boolean addAll(Collection<? extends Producer<Ray>> c) { return false; }
+	public boolean addAll(Collection<? extends Evaluable<Ray>> c) { return false; }
 
 	@Override
-	public boolean addAll(int index, Collection<? extends Producer<Ray>> c) { return false; }
+	public boolean addAll(int index, Collection<? extends Evaluable<Ray>> c) { return false; }
 
 	@Override
 	public boolean removeAll(Collection<?> c) { return false; }
@@ -125,13 +124,13 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 	public void clear() { }
 
 	@Override
-	public Producer<Ray> set(int index, Producer<Ray> element) { return null; }
+	public Evaluable<Ray> set(int index, Evaluable<Ray> element) { return null; }
 
 	@Override
-	public void add(int index, Producer<Ray> element) { }
+	public void add(int index, Evaluable<Ray> element) { }
 
 	@Override
-	public Producer<Ray> remove(int index) { return null; }
+	public Evaluable<Ray> remove(int index) { return null; }
 
 	@Override
 	public int indexOf(Object o) { return 0; }
@@ -140,17 +139,17 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 	public int lastIndexOf(Object o) { return 0; }
 
 	@Override
-	public ListIterator<Producer<Ray>> listIterator() {
-		return Arrays.asList((Producer<Ray>) normal.get()).listIterator();
+	public ListIterator<Evaluable<Ray>> listIterator() {
+		return Arrays.asList((Evaluable<Ray>) normal.get()).listIterator();
 	}
 
 	@Override
-	public ListIterator<Producer<Ray>> listIterator(int index) {
-		return Arrays.asList((Producer<Ray>) normal.get()).listIterator();
+	public ListIterator<Evaluable<Ray>> listIterator(int index) {
+		return Arrays.asList((Evaluable<Ray>) normal.get()).listIterator();
 	}
 
 	@Override
-	public List<Producer<Ray>> subList(int fromIndex, int toIndex) {
-		return Arrays.asList((Producer<Ray>) normal.get()).subList(fromIndex, toIndex);
+	public List<Evaluable<Ray>> subList(int fromIndex, int toIndex) {
+		return Arrays.asList((Evaluable<Ray>) normal.get()).subList(fromIndex, toIndex);
 	}
 }

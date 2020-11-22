@@ -16,7 +16,7 @@
 
 package org.almostrealism.util;
 
-public class Provider<T> implements StaticProducer<T> {
+public class Provider<T> implements StaticEvaluable<T> {
 	private T value;
 
 	public Provider(T v) {

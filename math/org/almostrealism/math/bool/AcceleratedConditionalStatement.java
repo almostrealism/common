@@ -20,13 +20,13 @@ import io.almostrealism.code.Argument;
 import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.MemWrapper;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Supplier;
 
-public interface AcceleratedConditionalStatement<T extends MemWrapper> extends Producer<T>, Supplier<Producer<? extends T>> {
+public interface AcceleratedConditionalStatement<T extends MemWrapper> extends Evaluable<T>, Supplier<Evaluable<? extends T>> {
 	String getCondition();
 
 	default List<Variable<?>> getVariables() { return Arrays.asList(); }
@@ -37,7 +37,7 @@ public interface AcceleratedConditionalStatement<T extends MemWrapper> extends P
 	Argument<T> getFalseValue();
 
 	@Override
-	default Producer<T> get() {
+	default Evaluable<T> get() {
 		return this;
 	}
 }

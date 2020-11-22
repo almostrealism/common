@@ -23,10 +23,9 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorSupplier;
 import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 import java.util.function.IntFunction;
@@ -37,7 +36,7 @@ public class Transform extends DynamicAcceleratedProducerAdapter<Vector, Vector>
 
 	private Expression<Double> value[];
 
-	public Transform(TransformMatrix t, Supplier<Producer<? extends Vector>> v, boolean includeTranslation) {
+	public Transform(TransformMatrix t, Supplier<Evaluable<? extends Vector>> v, boolean includeTranslation) {
 		super(3, () -> Vector.blank(), new Supplier[] { v }, new Object[] { t });
 		this.includeTranslation = includeTranslation;
 	}

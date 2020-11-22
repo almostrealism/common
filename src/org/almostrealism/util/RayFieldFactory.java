@@ -61,7 +61,7 @@ public class RayFieldFactory
 
         RayField rayField = new RayField();
         for (Ray ray : rays) {
-            Producer<Ray> r = new Provider<>(ray);
+            Evaluable<Ray> r = new Provider<>(ray);
             rayField.add(r);
         }
 

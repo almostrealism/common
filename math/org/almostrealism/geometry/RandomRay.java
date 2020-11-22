@@ -16,9 +16,9 @@
 
 package org.almostrealism.geometry;
 
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
-public class RandomRay implements Producer<Ray> {
+public class RandomRay implements Evaluable<Ray> {
 	/**
 	 * Produce a ray with all values randomly selected
 	 * between 0 and 1.

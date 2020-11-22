@@ -17,16 +17,14 @@
 package org.almostrealism.color;
 
 import org.almostrealism.relation.Maker;
-import org.almostrealism.util.Producer;
-
-import java.util.concurrent.Callable;
+import org.almostrealism.util.Evaluable;
 
 /**
  * @author  Michael Murray
  */
 public interface Shadable {
 	/**
-	 * Returns an {@link RGB} {@link Producer} representing the color of this {@link Shadable}
+	 * Returns an {@link RGB} {@link Evaluable} representing the color of this {@link Shadable}
 	 * based on the specified parameters.
 	 *
 	 * @see Shader

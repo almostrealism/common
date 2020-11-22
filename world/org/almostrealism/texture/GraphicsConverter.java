@@ -30,7 +30,7 @@ import javax.swing.ImageIcon;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.color.RGB;
 import org.almostrealism.util.Pipeline;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 /**
  * The {@link GraphicsConverter} provides static methods that allow conversion between colors
@@ -191,30 +191,30 @@ public class GraphicsConverter {
 	}
 
 	/**
-	 * Evaluates the specified array of {@link Producer}s, producing {@link RGB}s.
+	 * Evaluates the specified array of {@link Evaluable}s, producing {@link RGB}s.
 	 */
-	public static RGB[][] convertToRGBArray(Producer<RGB> image[][]) {
+	public static RGB[][] convertToRGBArray(Evaluable<RGB> image[][]) {
 		return convertToRGBArray(image, (Pipeline) null);
 	}
 
 	/**
-	 * Evaluates the specified array of {@link Producer}s, producing {@link RGB}s.
+	 * Evaluates the specified array of {@link Evaluable}s, producing {@link RGB}s.
 	 */
-	public static RGB[][] convertToRGBArray(Producer<RGB> image[][], Pipeline notify) {
+	public static RGB[][] convertToRGBArray(Evaluable<RGB> image[][], Pipeline notify) {
 		return convertToRGBArray(image, p -> new Pair(p.getX(), image[(int) p.getX()].length - 1 - p.getY()), notify);
 	}
 
 	/**
-	 * Evaluates the specified array of {@link Producer}s, producing {@link RGB}s.
+	 * Evaluates the specified array of {@link Evaluable}s, producing {@link RGB}s.
 	 */
-	public static RGB[][] convertToRGBArray(Producer<RGB> image[][], Function<Pair, Pair> positionForImageIndices) {
+	public static RGB[][] convertToRGBArray(Evaluable<RGB> image[][], Function<Pair, Pair> positionForImageIndices) {
 		return convertToRGBArray(image, positionForImageIndices, null);
 	}
 
 	/**
-	 * Evaluates the specified array of {@link Producer}s, producing {@link RGB}s.
+	 * Evaluates the specified array of {@link Evaluable}s, producing {@link RGB}s.
 	 */
-	public static RGB[][] convertToRGBArray(Producer<RGB> image[][], Function<Pair, Pair> positionForImageIndices, Pipeline notify) {
+	public static RGB[][] convertToRGBArray(Evaluable<RGB> image[][], Function<Pair, Pair> positionForImageIndices, Pipeline notify) {
 		RGB evaluated[][] = new RGB[image.length][image[0].length];
 
 		boolean wasNull = false;
@@ -245,25 +245,25 @@ public class GraphicsConverter {
 	 * The array locations map to pixels in the image. The image produced
 	 * uses the RGB color model with no alpha channel.
 	 */
-	public static Image convertToAWTImage(Producer<RGB> image[][]) {
+	public static Image convertToAWTImage(Evaluable<RGB> image[][]) {
 		return convertToAWTImage(image, null);
 	}
 
 	/**
-	 * Evaluates the specified array of {@link Producer}s as an AWT Image object.
+	 * Evaluates the specified array of {@link Evaluable}s as an AWT Image object.
 	 * The array locations map to pixels in the image. The image produced
 	 * uses the RGB color model with no alpha channel.
 	 */
-	public static Image convertToAWTImage(Producer<RGB> image[][], Pipeline notify) {
+	public static Image convertToAWTImage(Evaluable<RGB> image[][], Pipeline notify) {
 		return convertToAWTImage(image,  p -> new Pair(p.getX(), image[(int) p.getX()].length - 1 - p.getY()), notify);
 	}
 
 	/**
-	 * Evaluates the specified array of {@link Producer}s as an AWT Image object.
+	 * Evaluates the specified array of {@link Evaluable}s as an AWT Image object.
 	 * The array locations map to pixels in the image. The image produced
 	 * uses the RGB color model with no alpha channel.
 	 */
-	public static Image convertToAWTImage(Producer<RGB> image[][], Function<Pair, Pair> positionForImageIndices, Pipeline notify) {
+	public static Image convertToAWTImage(Evaluable<RGB> image[][], Function<Pair, Pair> positionForImageIndices, Pipeline notify) {
 		int data[] = new int[image.length * image[0].length];
 		
 		int index = 0;
@@ -308,7 +308,7 @@ public class GraphicsConverter {
 	}
 
 	/**
-	 * Evaluates the specified array of {@link Producer}s as an AWT Image object.
+	 * Evaluates the specified array of {@link Evaluable}s as an AWT Image object.
 	 * The array locations map to pixels in the image. The image produced
 	 * uses the RGB color model with no alpha channel.
 	 */

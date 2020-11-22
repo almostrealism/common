@@ -22,7 +22,7 @@ import org.almostrealism.color.computations.RGBSupplier;
 import java.util.function.Supplier;
 
 public class AcceleratedStaticRGBComputation extends AcceleratedStaticComputation<RGB> implements RGBSupplier {
-	public AcceleratedStaticRGBComputation(RGB value, Supplier<Producer<RGB>> output) {
+	public AcceleratedStaticRGBComputation(RGB value, Supplier<Evaluable<RGB>> output) {
 		super(value, output);
 	}
 }

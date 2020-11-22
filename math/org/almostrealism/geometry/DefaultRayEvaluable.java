@@ -14,23 +14,20 @@
  * limitations under the License.
  */
 
-package org.almostrealism.algebra.computations;
+package org.almostrealism.geometry;
 
-import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorBank;
-import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.hardware.AcceleratedComputationProducer;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.relation.Computation;
 
-public class DefaultVectorProducer extends AcceleratedComputationProducer<Vector> implements VectorProducer {
+public class DefaultRayEvaluable extends AcceleratedComputationProducer<Ray> implements RayEvaluable {
 
-	public DefaultVectorProducer(Computation<Vector> c) {
+	public DefaultRayEvaluable(Computation<Ray> c) {
 		super(c);
 	}
 
 	@Override
-	public MemoryBank<Vector> createKernelDestination(int size) {
-		return new VectorBank(size);
+	public MemoryBank<Ray> createKernelDestination(int size) {
+		return new RayBank(size);
 	}
 }

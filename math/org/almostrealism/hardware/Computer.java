@@ -17,16 +17,16 @@
 package org.almostrealism.hardware;
 
 import org.almostrealism.relation.Computation;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 import java.util.Optional;
 
 public interface Computer<B> {
 	Runnable compileRunnable(Computation<Void> c);
 
-	<T extends B> Producer<T> compileProducer(Computation<T> c);
+	<T extends B> Evaluable<T> compileProducer(Computation<T> c);
 
 	<T> Optional<Computation<T>> decompile(Runnable r);
 
-	<T> Optional<Computation<T>> decompile(Producer<T> p);
+	<T> Optional<Computation<T>> decompile(Evaluable<T> p);
 }

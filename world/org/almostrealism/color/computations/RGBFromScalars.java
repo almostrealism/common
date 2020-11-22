@@ -16,24 +16,19 @@
 
 package org.almostrealism.color.computations;
 
-import io.almostrealism.code.Argument;
 import io.almostrealism.code.Expression;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.color.RGB;
-import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
 public class RGBFromScalars extends DynamicAcceleratedProducerAdapter<Scalar, RGB> implements RGBSupplier {
 	private Expression<Double> value[];
 
-	public RGBFromScalars(Supplier<Producer<? extends Scalar>> r, Supplier<Producer<? extends Scalar>> g, Supplier<Producer<? extends Scalar>> b) {
+	public RGBFromScalars(Supplier<Evaluable<? extends Scalar>> r, Supplier<Evaluable<? extends Scalar>> g, Supplier<Evaluable<? extends Scalar>> b) {
 		super(3, () -> RGB.blank(), r, g, b);
 	}
 

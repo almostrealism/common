@@ -16,21 +16,21 @@
 
 package org.almostrealism.algebra.computations;
 
-import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.PairBank;
-import org.almostrealism.algebra.PairProducer;
+import org.almostrealism.algebra.Vector;
+import org.almostrealism.algebra.VectorBank;
+import org.almostrealism.algebra.VectorEvaluable;
 import org.almostrealism.hardware.AcceleratedComputationProducer;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.relation.Computation;
 
-public class DefaultPairProducer extends AcceleratedComputationProducer<Pair> implements PairProducer {
+public class DefaultVectorEvaluable extends AcceleratedComputationProducer<Vector> implements VectorEvaluable {
 
-	public DefaultPairProducer(Computation<Pair> c) {
+	public DefaultVectorEvaluable(Computation<Vector> c) {
 		super(c);
 	}
 
 	@Override
-	public MemoryBank<Pair> createKernelDestination(int size) {
-		return new PairBank(size);
+	public MemoryBank<Vector> createKernelDestination(int size) {
+		return new VectorBank(size);
 	}
 }

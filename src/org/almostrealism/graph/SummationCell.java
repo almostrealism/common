@@ -18,13 +18,13 @@ package org.almostrealism.graph;
 
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.graph.computations.SummationCellOperation;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 import java.util.function.Supplier;
 
 public class SummationCell extends ScalarCachedStateCell {
 	@Override
-	public Supplier<Runnable> push(Producer<Scalar> protein) {
+	public Supplier<Runnable> push(Evaluable<Scalar> protein) {
 		return () -> new SummationCellOperation(this, () -> protein);
 	}
 }

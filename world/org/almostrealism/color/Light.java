@@ -19,7 +19,6 @@ package org.almostrealism.color;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.relation.Maker;
 import org.almostrealism.texture.Texture;
-import org.almostrealism.util.Producer;
 
 /**
  * A {@link Light} implementation provides lighting information used for rendering.

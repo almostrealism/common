@@ -17,64 +17,64 @@
 package org.almostrealism.color.computations;
 
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarProducer;
+import org.almostrealism.algebra.ScalarEvaluable;
 import org.almostrealism.color.RGB;
-import org.almostrealism.util.Producer;
-import org.almostrealism.util.StaticProducer;
+import org.almostrealism.util.Evaluable;
+import org.almostrealism.util.StaticEvaluable;
 
 import java.util.function.Supplier;
 
 public interface RGBFeatures {
-	default RGBProducer cadd(Producer<RGB> value, Producer<RGB> operand) {
-		return new DefaultRGBProducer(cadd(() -> value, () -> operand));
+	default RGBEvaluable cadd(Evaluable<RGB> value, Evaluable<RGB> operand) {
+		return new DefaultRGBEvaluable(cadd(() -> value, () -> operand));
 	}
 
-	default RGBSupplier cadd(Supplier<Producer<? extends RGB>> value, Supplier<Producer<? extends RGB>> operand) {
+	default RGBSupplier cadd(Supplier<Evaluable<? extends RGB>> value, Supplier<Evaluable<? extends RGB>> operand) {
 		return new ColorSum(value, operand);
 	}
 
-	default RGBProducer csubtract(Producer<RGB> value, Producer<RGB> operand) {
-		return new DefaultRGBProducer(csubtract(() -> value, () -> operand));
+	default RGBEvaluable csubtract(Evaluable<RGB> value, Evaluable<RGB> operand) {
+		return new DefaultRGBEvaluable(csubtract(() -> value, () -> operand));
 	}
 
-	default RGBSupplier csubtract(Supplier<Producer<? extends RGB>> value, Supplier<Producer<? extends RGB>> operand) {
+	default RGBSupplier csubtract(Supplier<Evaluable<? extends RGB>> value, Supplier<Evaluable<? extends RGB>> operand) {
 		return new ColorSum(value, cminus(operand));
 	}
 
-	default RGBProducer cmultiply(Producer<RGB> a, Producer<RGB> b) {
-		return new DefaultRGBProducer(cmultiply(() -> a, () -> b));
+	default RGBEvaluable cmultiply(Evaluable<RGB> a, Evaluable<RGB> b) {
+		return new DefaultRGBEvaluable(cmultiply(() -> a, () -> b));
 	}
 
-	default RGBSupplier cmultiply(Supplier<Producer<? extends RGB>> a, Supplier<Producer<? extends RGB>> b) {
+	default RGBSupplier cmultiply(Supplier<Evaluable<? extends RGB>> a, Supplier<Evaluable<? extends RGB>> b) {
 		return new ColorProduct(a, b);
 	}
 
-	default RGBProducer cscalarMultiply(Producer<RGB> a, Producer<Scalar> b) {
-		return new DefaultRGBProducer(cscalarMultiply(() -> a, () -> b));
+	default RGBEvaluable cscalarMultiply(Evaluable<RGB> a, Evaluable<Scalar> b) {
+		return new DefaultRGBEvaluable(cscalarMultiply(() -> a, () -> b));
 	}
 
-	default RGBSupplier cscalarMultiply(Supplier<Producer<? extends RGB>> a, Supplier<Producer<? extends Scalar>> b) {
+	default RGBSupplier cscalarMultiply(Supplier<Evaluable<? extends RGB>> a, Supplier<Evaluable<? extends Scalar>> b) {
 		return cmultiply(a, cfromScalar(b));
 	}
 
-	default RGBProducer cminus(Producer<RGB> p) {
-		return new DefaultRGBProducer(cminus(() -> p));
+	default RGBEvaluable cminus(Evaluable<RGB> p) {
+		return new DefaultRGBEvaluable(cminus(() -> p));
 	}
 
-	default RGBSupplier cminus(Supplier<Producer<? extends RGB>> p) {
-		return cmultiply(p, cfromScalar(ScalarProducer.minusOne));
+	default RGBSupplier cminus(Supplier<Evaluable<? extends RGB>> p) {
+		return cmultiply(p, cfromScalar(ScalarEvaluable.minusOne));
 	}
 
-	default RGBProducer cfromScalar(Producer<Scalar> value) {
-		return new DefaultRGBProducer(cfromScalar(() -> value));
+	default RGBEvaluable cfromScalar(Evaluable<Scalar> value) {
+		return new DefaultRGBEvaluable(cfromScalar(() -> value));
 	}
 
-	default RGBSupplier cfromScalar(Supplier<Producer<? extends Scalar>> value) {
+	default RGBSupplier cfromScalar(Supplier<Evaluable<? extends Scalar>> value) {
 		return new RGBFromScalars(value, value, value);
 	}
 
 	default RGBSupplier cfromScalar(Scalar value) {
-		return cfromScalar(() -> StaticProducer.of(value));
+		return cfromScalar(() -> StaticEvaluable.of(value));
 	}
 
 	default RGBSupplier cfromScalar(double value) {

@@ -19,10 +19,9 @@ package org.almostrealism.graph;
 import org.almostrealism.heredity.Factor;
 import org.almostrealism.time.Temporal;
 import org.almostrealism.util.CodeFeatures;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 import org.almostrealism.util.Provider;
 import org.almostrealism.util.RunnableList;
-import org.almostrealism.util.StaticProducer;
 
 import java.util.function.Supplier;
 
@@ -30,7 +29,7 @@ public abstract class CachedStateCell<T> extends FilteredCell<T> implements Fact
 	private final T cachedValue;
 	private final T outValue;
 
-	public CachedStateCell(Producer<T> blank) {
+	public CachedStateCell(Evaluable<T> blank) {
 		super(null);
 		cachedValue = blank.evaluate();
 		outValue = blank.evaluate();
@@ -42,24 +41,24 @@ public abstract class CachedStateCell<T> extends FilteredCell<T> implements Fact
 	public T getCachedValue() { return cachedValue; }
 
 	@Override
-	public Producer<T> getResultant(Producer<T> value) {
+	public Evaluable<T> getResultant(Evaluable<T> value) {
 		return new Provider<>(outValue);
 	}
 
 	@Override
-	public Producer<T> next() { return getResultant(null); }
+	public Evaluable<T> next() { return getResultant(null); }
 
 	@Override
 	public boolean isDone() { return false; }
 
 	@Override
-	public Supplier<Runnable> push(Producer<T> protein) {
+	public Supplier<Runnable> push(Evaluable<T> protein) {
 		return assign(p(cachedValue), () -> protein);
 	}
 
-	protected abstract Supplier<Runnable> assign(Supplier<Producer<? extends T>> out, Supplier<Producer<? extends T>> in);
+	protected abstract Supplier<Runnable> assign(Supplier<Evaluable<? extends T>> out, Supplier<Evaluable<? extends T>> in);
 
-	protected abstract Supplier<Runnable> reset(Supplier<Producer<? extends T>> out);
+	protected abstract Supplier<Runnable> reset(Supplier<Evaluable<? extends T>> out);
 
 	@Override
 	public Supplier<Runnable> tick() {

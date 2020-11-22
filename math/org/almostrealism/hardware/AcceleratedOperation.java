@@ -21,7 +21,7 @@ import io.almostrealism.code.OperationAdapter;
 import org.almostrealism.relation.Computation;
 import org.almostrealism.util.Compactable;
 import org.almostrealism.util.Named;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 import org.almostrealism.util.ProducerArgumentReference;
 import org.almostrealism.util.ProducerCache;
 import org.jocl.CLException;
@@ -29,7 +29,6 @@ import org.jocl.CLException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -41,7 +40,7 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 
 	private Class cls;
 
-	public AcceleratedOperation(String function, boolean kernel, Supplier<Producer<? extends T>>... args) {
+	public AcceleratedOperation(String function, boolean kernel, Supplier<Evaluable<? extends T>>... args) {
 		super(args);
 		setFunctionName(function);
 		this.kernel = kernel;
@@ -214,18 +213,18 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 				continue i;
 			}
 
-			Supplier<? extends Producer<? extends T>> c = arguments.get(i).getProducer();
+			Supplier<? extends Evaluable<? extends T>> c = arguments.get(i).getProducer();
 
 			if (c.get() instanceof ProducerArgumentReference) {
 				int argIndex = ((ProducerArgumentReference) c.get()).getReferencedArgumentIndex();
 				kernelArgs[i] = args[passThroughLength + argIndex];
-			} else if (c.get() instanceof KernelizedProducer) {
+			} else if (c.get() instanceof KernelizedEvaluable) {
 				MemoryBank downstreamArgs[] = new MemoryBank[args.length - passThroughLength];
 				for (int j = passThroughLength; j < args.length; j++) {
 					downstreamArgs[j - passThroughLength] = args[j];
 				}
 
-				KernelizedProducer kp = (KernelizedProducer) arguments.get(i).getProducer().get();
+				KernelizedEvaluable kp = (KernelizedEvaluable) arguments.get(i).getProducer().get();
 				kernelArgs[i] = kp.createKernelDestination(args[0].getCount());
 				kp.kernelEvaluate(kernelArgs[i], downstreamArgs);
 			} else {

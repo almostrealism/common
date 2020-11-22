@@ -16,9 +16,8 @@
 
 package org.almostrealism.time;
 
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.MemoryBankAdapter;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 /**
  * A collection of {@link TemporalScalar}s of a fixed length, that is contiguous in
@@ -37,7 +36,7 @@ public class TemporalScalarBank extends MemoryBankAdapter<TemporalScalar> {
 				new TemporalScalar(delegateSpec.getDelegate(), delegateSpec.getOffset()), cacheLevel);
 	}
 
-	public static TemporalScalarBank fromProducer(Producer<TemporalScalar> producer, int count) {
+	public static TemporalScalarBank fromProducer(Evaluable<TemporalScalar> producer, int count) {
 		TemporalScalarBank bank = new TemporalScalarBank(count);
 		for (int i = 0; i < bank.getCount(); i++) {
 			bank.set(i, producer.evaluate());

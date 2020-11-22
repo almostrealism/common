@@ -18,7 +18,7 @@ package org.almostrealism.color;
 
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.hardware.MemoryBankAdapter;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 /**
  * A collection of {@link RGBData192}s of a fixed length, that is contiguous in
@@ -38,7 +38,7 @@ public class RGBData192Bank extends MemoryBankAdapter<RGBData192> {
 				delegate, delegateOffset);
 	}
 
-	public static RGBData192Bank fromProducer(Producer<RGBData192> producer, int count) {
+	public static RGBData192Bank fromProducer(Evaluable<RGBData192> producer, int count) {
 		RGBData192Bank bank = new RGBData192Bank(count);
 		for (int i = 0; i < bank.getCount(); i++) {
 			bank.set(i, producer.evaluate());

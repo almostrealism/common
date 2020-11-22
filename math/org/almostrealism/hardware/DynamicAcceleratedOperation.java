@@ -18,8 +18,7 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.Argument;
 import io.almostrealism.code.Variable;
-import org.almostrealism.util.Producer;
-import org.jocl.CLException;
+import org.almostrealism.util.Evaluable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -28,7 +27,7 @@ import java.util.function.Supplier;
 public abstract class DynamicAcceleratedOperation<T extends MemWrapper> extends AcceleratedOperation<T> {
 	private HardwareOperatorMap operators;
 
-	public DynamicAcceleratedOperation(boolean kernel, Supplier<Producer<? extends T>>... args) {
+	public DynamicAcceleratedOperation(boolean kernel, Supplier<Evaluable<? extends T>>... args) {
 		super(null, kernel, args);
 	}
 

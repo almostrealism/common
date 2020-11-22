@@ -17,8 +17,8 @@
 package org.almostrealism.heredity;
 
 import org.almostrealism.util.Defaults;
-import org.almostrealism.util.DynamicProducer;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.DynamicEvaluable;
+import org.almostrealism.util.Evaluable;
 
 // TODO  Rename
 public class NewLongScaleFactor implements ScaleFactor<Long> {
@@ -29,8 +29,8 @@ public class NewLongScaleFactor implements ScaleFactor<Long> {
 	public NewLongScaleFactor(double scale) { this.scale = scale; }
 
 	@Override
-	public Producer<Long> getResultant(Producer<Long> value) {
-		return new DynamicProducer<>(args -> (long) (value.evaluate(args) * scale));
+	public Evaluable<Long> getResultant(Evaluable<Long> value) {
+		return new DynamicEvaluable<>(args -> (long) (value.evaluate(args) * scale));
 	}
 
 	@Override

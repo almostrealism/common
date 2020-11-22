@@ -17,8 +17,6 @@
 package org.almostrealism.color.computations;
 
 import org.almostrealism.color.RGB;
-import org.almostrealism.color.RGBBank;
-import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.util.AcceleratedStaticRGBComputation;
 
 public class RGBWhite extends AcceleratedStaticRGBComputation {
@@ -28,5 +26,5 @@ public class RGBWhite extends AcceleratedStaticRGBComputation {
 
 	public static RGBWhite getInstance() { return local; }
 
-	public static RGBProducer getProducer() { return new DefaultRGBProducer(getInstance()); }
+	public static RGBEvaluable getProducer() { return new DefaultRGBEvaluable(getInstance()); }
 }

@@ -16,18 +16,16 @@
 
 package org.almostrealism.util;
 
-/**
- * The Producer interface is implemented by classes that represent a
- * repeatedly evaluated function.
- * 
- * @see org.almostrealism.util.Editable
- *
- * @author  Michael Murray
- */
-public interface Producer<T> extends Compactable {
-	default T evaluate() {
-		return evaluate(new Object[0]);
+import org.almostrealism.color.RGB;
+import org.almostrealism.color.RGBBank;
+import org.almostrealism.hardware.KernelizedEvaluable;
+import org.almostrealism.hardware.MemoryBank;
+
+public class AdaptEvaluableRGB extends AdaptEvaluable<RGB> implements KernelizedEvaluable<RGB> {
+	public AdaptEvaluableRGB(Evaluable<RGB> p, Evaluable... args) {
+		super(p, args);
 	}
 
-	T evaluate(Object args[]);
+	@Override
+	public MemoryBank<RGB> createKernelDestination(int size) { return new RGBBank(size); }
 }

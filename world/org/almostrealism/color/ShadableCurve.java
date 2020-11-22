@@ -17,7 +17,6 @@
 package org.almostrealism.color;
 
 import org.almostrealism.geometry.Curve;
-import org.almostrealism.util.Producer;
 
 /**
  * A {@link ShadableCurve} is a {@link Curve} with an {@link RGB} value

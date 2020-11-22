@@ -19,8 +19,8 @@ package org.almostrealism.graph.mesh;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorBank;
 import org.almostrealism.hardware.MemWrapper;
-import org.almostrealism.util.DynamicProducer;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.DynamicEvaluable;
+import org.almostrealism.util.Evaluable;
 
 public class TrianglePointData extends VectorBank {
 	public TrianglePointData() {
@@ -39,7 +39,7 @@ public class TrianglePointData extends VectorBank {
 	public Vector getP2() { return get(1); }
 	public Vector getP3() { return get(2); }
 
-	public static Producer<TrianglePointData> blank() {
-		return new DynamicProducer(args -> new TrianglePointData());
+	public static Evaluable<TrianglePointData> blank() {
+		return new DynamicEvaluable(args -> new TrianglePointData());
 	}
 }

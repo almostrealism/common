@@ -16,17 +16,14 @@
 
 package org.almostrealism.algebra.computations;
 
-import io.almostrealism.code.Argument;
 import io.almostrealism.code.Expression;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarSupplier;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.hardware.ComputerFeatures;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
@@ -39,7 +36,7 @@ public class ScalarFromVector extends DynamicAcceleratedProducerAdapter<Vector, 
 
 	private Expression<Double> value;
 
-	public ScalarFromVector(Supplier<Producer<? extends Vector>> vector, int coordinate) {
+	public ScalarFromVector(Supplier<Evaluable<? extends Vector>> vector, int coordinate) {
 		super(2, () -> Scalar.blank(), vector);
 		this.coordinate = coordinate;
 	}

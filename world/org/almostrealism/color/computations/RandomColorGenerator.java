@@ -18,32 +18,31 @@ package org.almostrealism.color.computations;
 
 import org.almostrealism.color.RGB;
 import org.almostrealism.heredity.Gene;
-import org.almostrealism.util.Provider;
 
 /**
  * TODO  Accept a {@link Gene}.
  * 
  * @author Michael Murray
  */
-public class RandomColorGenerator extends ColorProducerAdapter {
- 	private RGBProducer baseRGB, offsetRGB;
+public class RandomColorGenerator extends ColorEvaluableAdapter {
+ 	private RGBEvaluable baseRGB, offsetRGB;
  
 	public RandomColorGenerator() {
 		this(RGBBlack.getProducer(), RGBWhite.getProducer());
 	}
 	
-	public RandomColorGenerator(RGBProducer baseRGB, RGBProducer offsetRGB) {
+	public RandomColorGenerator(RGBEvaluable baseRGB, RGBEvaluable offsetRGB) {
 		this.baseRGB = baseRGB;
 		this.offsetRGB = offsetRGB;
 	}
 	
-	public void setBaseRGB(ColorProducer base) { this.baseRGB = base; }
-	public void setOffsetRGB(ColorProducer offset) { this.offsetRGB = offset; }
+	public void setBaseRGB(ColorEvaluable base) { this.baseRGB = base; }
+	public void setOffsetRGB(ColorEvaluable offset) { this.offsetRGB = offset; }
 	
-	public RGBProducer getBaseRGB() { return this.baseRGB; }
-	public RGBProducer getOffsetRGB() { return this.offsetRGB; }
+	public RGBEvaluable getBaseRGB() { return this.baseRGB; }
+	public RGBEvaluable getOffsetRGB() { return this.offsetRGB; }
 	
-	/** @see ColorProducer#evaluate(java.lang.Object[]) */
+	/** @see ColorEvaluable#evaluate(java.lang.Object[]) */
 	public RGB evaluate(Object args[]) {
 		RGB base = this.baseRGB.evaluate(args);
 		RGB off = this.offsetRGB.evaluate(args);
@@ -56,7 +55,7 @@ public class RandomColorGenerator extends ColorProducerAdapter {
 	}
 
 	/**
-	 * Delegates to {@link ColorProducer#compact()}
+	 * Delegates to {@link ColorEvaluable#compact()}
 	 * on the base color and offset color.
 	 */
 	public void compact() {

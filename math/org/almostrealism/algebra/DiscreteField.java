@@ -3,7 +3,7 @@ package org.almostrealism.algebra;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.graph.NodeList;
 import org.almostrealism.space.Gradient;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 /**
  * A {@link DiscreteField} is a collection of points in space and corresponding directions.
@@ -11,6 +11,6 @@ import org.almostrealism.util.Producer;
  * 
  * @author  Michael Murray
  */
-public interface DiscreteField extends NodeList<Producer<Ray>> {
+public interface DiscreteField extends NodeList<Evaluable<Ray>> {
 
 }

@@ -20,12 +20,12 @@ import org.almostrealism.algebra.IdentityMatrix;
 import org.almostrealism.algebra.TransformMatrix;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.hardware.AcceleratedProducer;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.Evaluable;
 
 import java.util.function.Supplier;
 
 public class TranslationMatrix extends AcceleratedProducer<Vector, TransformMatrix> {
-	public TranslationMatrix(Supplier<Producer<? extends Vector>> t) {
+	public TranslationMatrix(Supplier<Evaluable<? extends Vector>> t) {
 		super("translationMatrix", () -> new IdentityMatrix(), t);
 	}
 }

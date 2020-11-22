@@ -17,7 +17,6 @@
 package org.almostrealism.algebra.test;
 
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.algebra.VectorSupplier;
 import org.almostrealism.util.CodeFeatures;
 import org.junit.Assert;

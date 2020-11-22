@@ -34,8 +34,8 @@ import org.almostrealism.hardware.PooledMem;
 import org.almostrealism.relation.NameProvider;
 import org.almostrealism.relation.TripleFunction;
 import org.almostrealism.util.CodeFeatures;
-import org.almostrealism.util.DynamicProducer;
-import org.almostrealism.util.Producer;
+import org.almostrealism.util.DynamicEvaluable;
+import org.almostrealism.util.Evaluable;
 import org.almostrealism.util.Provider;
 
 import java.util.function.Supplier;
@@ -193,11 +193,11 @@ public class TransformMatrix extends MemWrapperAdapter implements TripleFunction
 	@Override
 	public PooledMem getDefaultDelegate() { return TransformMatrixPool.getLocal(); }
 
-	public Producer<? extends Vector> transform(Producer<? extends Vector> vector, int type) {
+	public Evaluable<? extends Vector> transform(Evaluable<? extends Vector> vector, int type) {
 		return transform(() -> vector, type).get();
 	}
 
-	public Supplier<Producer<? extends Vector>> transform(Supplier<Producer<? extends Vector>> vector, int type) {
+	public Supplier<Evaluable<? extends Vector>> transform(Supplier<Evaluable<? extends Vector>> vector, int type) {
 		if (this.isIdentity) return vector;
 		
 		if (type == TransformMatrix.TRANSFORM_AS_LOCATION) {
@@ -254,7 +254,7 @@ public class TransformMatrix extends MemWrapperAdapter implements TripleFunction
 		return transform(v(vector), TRANSFORM_AS_NORMAL).get().evaluate();
 	}
 
-	public RayMatrixTransform transform(Supplier<Producer<? extends Ray>> ray) {
+	public RayMatrixTransform transform(Supplier<Evaluable<? extends Ray>> ray) {
 		return new RayMatrixTransform(this, ray);
 	}
 	
@@ -386,8 +386,8 @@ public class TransformMatrix extends MemWrapperAdapter implements TripleFunction
 		return data;
 	}
 
-	public static Producer<TransformMatrix> blank() {
-		return new DynamicProducer<>(args ->
+	public static Evaluable<TransformMatrix> blank() {
+		return new DynamicEvaluable<>(args ->
 				new TransformMatrix(false, null, 0));
 	}
 
