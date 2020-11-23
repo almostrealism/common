@@ -32,6 +32,7 @@ import org.almostrealism.color.computations.ColorEvaluable;
 import org.almostrealism.color.computations.GeneratedColorProducer;
 import org.almostrealism.color.RGB;
 import org.almostrealism.relation.NameProvider;
+import org.almostrealism.relation.Producer;
 import org.almostrealism.relation.TripleFunction;
 import org.almostrealism.util.Editable;
 import org.almostrealism.relation.Evaluable;
@@ -298,18 +299,23 @@ public class ImageTexture implements Texture, Editable {
 	}
 
     /** @see org.almostrealism.util.Editable#getPropertyNames() */
+	@Override
     public String[] getPropertyNames() { return ImageTexture.propNames; }
 
     /** @see org.almostrealism.util.Editable#getPropertyDescriptions() */
+	@Override
     public String[] getPropertyDescriptions() { return ImageTexture.propDesc; }
 
     /** @see org.almostrealism.util.Editable#getPropertyTypes() */
+	@Override
     public Class[] getPropertyTypes() { return ImageTexture.propTypes; }
 
     /** @see org.almostrealism.util.Editable#getPropertyValues() */
+	@Override
     public Object[] getPropertyValues() { return new Object[] {this.url, new Double(this.xScale), new Double(this.yScale)}; }
 
     /** @see org.almostrealism.util.Editable#setPropertyValue(java.lang.Object, int) */
+	@Override
     public void setPropertyValue(Object value, int index) {
     		if (index >= ImageTexture.propTypes.length) {
     			throw new IndexOutOfBoundsException("Index out of bounds: " + index);
@@ -329,6 +335,7 @@ public class ImageTexture implements Texture, Editable {
     /**
      * @see org.almostrealism.util.Editable#setPropertyValues(java.lang.Object[])
      */
+	@Override
     public void setPropertyValues(Object[] values) {
 		for (int i = 0; i < values.length; i++) {
 			this.setPropertyValue(values[i], i);
@@ -338,15 +345,18 @@ public class ImageTexture implements Texture, Editable {
 	/**
 	 * @return  An empty array.
 	 */
-	public Evaluable[] getInputPropertyValues() { return new Evaluable[0]; }
+	@Override
+	public Producer[] getInputPropertyValues() { return new Producer[0]; }
 	
 	/**
 	 * Does nothing.
 	 */
-	public void setInputPropertyValue(int index, Evaluable p) {}
+	@Override
+	public void setInputPropertyValue(int index, Producer p) { }
     
     /**
      * @return  "Image Texture".
      */
+    @Override
     public String toString() { return "Image Texture"; }
 }

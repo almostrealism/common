@@ -23,6 +23,7 @@ import org.almostrealism.color.computations.ColorEvaluable;
 import org.almostrealism.color.computations.GeneratedColorProducer;
 import org.almostrealism.color.RGB;
 import org.almostrealism.relation.NameProvider;
+import org.almostrealism.relation.Producer;
 import org.almostrealism.relation.TripleFunction;
 import org.almostrealism.util.Editable;
 import org.almostrealism.relation.Evaluable;
@@ -197,8 +198,9 @@ public class StripeTexture implements Texture, Editable {
 	/**
 	 * @return  {first color, second color}.
 	 */
-	public Evaluable[] getInputPropertyValues() {
-		return new Evaluable[] {(Evaluable)this.props[3], (Evaluable)this.props[4]};
+	@Override
+	public Producer[] getInputPropertyValues() {
+		return new Producer[] {(Producer) this.props[3], (Producer) this.props[4]};
 	}
 	
 	/**
@@ -207,7 +209,7 @@ public class StripeTexture implements Texture, Editable {
 	 * @throws IllegalArgumentException  If the Producer object specified is not of the correct type.
 	 * @throws IndexOutOfBoundsException  If the index > 1.
 	 */
-	public void setInputPropertyValue(int index, Evaluable p) {
+	public void setInputPropertyValue(int index, Producer p) {
 		if (index == 0)
 			this.setPropertyValue(p, 3);
 		else if (index == 1)

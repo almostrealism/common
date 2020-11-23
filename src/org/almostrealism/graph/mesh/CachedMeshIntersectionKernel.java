@@ -90,9 +90,9 @@ public class CachedMeshIntersectionKernel implements KernelizedEvaluable<Scalar>
 				} else {
 					Pair pos = (Pair) args[0];
 					int n = DimensionAware.getPosition(pos.getX(), pos.getY(), width, height, ssw, ssh);
-					if (n < 0) return ZeroVector.getProducer().evaluate();
+					if (n < 0) return ZeroVector.getEvaluable().evaluate();
 					int a = (int) cache.get(n).getB();
-					if (a < 0) return ZeroVector.getProducer().evaluate();
+					if (a < 0) return ZeroVector.getEvaluable().evaluate();
 					return data.get(a).getNormal();
 				}
 			}

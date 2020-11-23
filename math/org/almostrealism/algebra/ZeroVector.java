@@ -29,5 +29,5 @@ public class ZeroVector extends ImmutableVector {
 
 	public static ZeroVector getInstance() { return local; }
 
-	public static VectorEvaluable getProducer() { return new DefaultVectorEvaluable(getInstance()); }
+	public static VectorEvaluable getEvaluable() { return new DefaultVectorEvaluable(getInstance()); }
 }

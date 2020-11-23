@@ -26,5 +26,5 @@ public class RGBWhite extends AcceleratedStaticRGBComputation {
 
 	public static RGBWhite getInstance() { return local; }
 
-	public static RGBEvaluable getProducer() { return new DefaultRGBEvaluable(getInstance()); }
+	public static RGBEvaluable getEvaluable() { return new DefaultRGBEvaluable(getInstance()); }
 }

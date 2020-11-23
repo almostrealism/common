@@ -24,7 +24,6 @@ import org.almostrealism.geometry.*;
 import org.almostrealism.io.DecodePostProcessing;
 import org.almostrealism.uml.ModelEntity;
 import org.almostrealism.util.CodeFeatures;
-import org.almostrealism.util.Provider;
 
 /**
  * Provides a simple mechanism to keep track of tranformation
@@ -46,7 +45,7 @@ public class BasicGeometry implements Positioned, Oriented, Scaled, DecodePostPr
 	protected boolean transformCurrent;
 	
 	public BasicGeometry() {
-		this(ZeroVector.getProducer().evaluate());
+		this(ZeroVector.getEvaluable().evaluate());
 		transformCurrent = true;
 	}
 	
