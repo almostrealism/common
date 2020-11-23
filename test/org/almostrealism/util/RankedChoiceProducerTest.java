@@ -138,8 +138,8 @@ public class RankedChoiceProducerTest implements CodeFeatures {
 										PassThroughEvaluable.of(Scalar.class, 5)));
 
 		AcceleratedRankedChoiceProducer<Scalar> acc =
-				new AcceleratedRankedChoiceProducer<>(2, () -> Scalar.blank(), ScalarBank::new,
-													values, () -> Scalar.blank(), Intersection.e, Scalar.blank()::evaluate);
+				new AcceleratedRankedChoiceProducer<>(2, Scalar.blank(), ScalarBank::new,
+													values, Scalar.blank(), Intersection.e, Scalar.blank().get()::evaluate);
 
 		System.out.println(acc.getFunctionDefinition());
 

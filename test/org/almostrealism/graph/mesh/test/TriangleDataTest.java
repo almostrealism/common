@@ -26,6 +26,7 @@ import org.almostrealism.graph.mesh.TriangleData;
 import org.almostrealism.graph.mesh.TriangleDataProducer;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.relation.Producer;
 import org.almostrealism.util.CodeFeatures;
 import org.almostrealism.relation.Evaluable;
 import org.junit.Assert;
@@ -84,21 +85,21 @@ public class TriangleDataTest implements CodeFeatures {
 	@Test
 	public void triangleDataCompact() {
 		MeshPointData points = points();
-		Evaluable<? extends TriangleData> td = triangle(v(points.get(0).getP1()),
+		Producer<TriangleData> td = triangle(v(points.get(0).getP1()),
 				v(points.get(0).getP2()),
-				v(points.get(0).getP3())).get();
+				v(points.get(0).getP3()));
 		td.compact();
-		triangleDataAssertions(td.evaluate());
+		triangleDataAssertions(td.get().evaluate());
 	}
 
 	@Test
 	public void triangleDataKernel() {
 		MeshPointData points = points();
-		Evaluable<? extends TriangleData> td = triangle(points(0)).get();
+		Producer<TriangleData> td = triangle(points(0));
 		td.compact();
 
 		MeshData output = new MeshData(1);
-		((KernelizedEvaluable) td).kernelEvaluate(output, new MemoryBank[] { points });
+		((KernelizedEvaluable) td.get()).kernelEvaluate(output, new MemoryBank[] { points });
 		triangleDataAssertions(output.get(0));
 	}
 

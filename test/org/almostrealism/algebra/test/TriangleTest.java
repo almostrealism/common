@@ -19,17 +19,18 @@ package org.almostrealism.algebra.test;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.graph.mesh.Triangle;
+import org.almostrealism.util.CodeFeatures;
 import org.almostrealism.util.Provider;
 import org.junit.Assert;
 import org.junit.Test;
 
-public class TriangleTest {
+public class TriangleTest implements CodeFeatures {
 	@Test
 	public void test() {
 		Triangle t = new Triangle(new Vector(1.0, 1.0, -1.0),
 									new Vector(-1.0, 1.0, -1.0),
 									new Vector(0.0, -1.0, -1.0));
-		Ray r = t.intersectAt(new Provider(new Ray(new Vector(0.0, 0.0, 0.0), new Vector(0.0, 0.0, -1.0)))).get(0).evaluate(new Object[0]);
+		Ray r = t.intersectAt(ray(0.0, 0.0, 0.0, 0.0, 0.0, -1.0)).get(0).get().evaluate();
 		Assert.assertTrue(r.equals(new Ray(new Vector(0.0, 0.0, -1.0), new Vector(0.0, 0.0, 1.0))));
 	}
 }

@@ -22,6 +22,7 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.hardware.DynamicAcceleratedMultiProducer;
 import org.almostrealism.hardware.HardwareFeatures;
+import org.almostrealism.relation.Producer;
 import org.almostrealism.space.Plane;
 import org.almostrealism.space.ShadableIntersection;
 import org.almostrealism.util.CodeFeatures;
@@ -35,7 +36,7 @@ public class PlaneTest implements HardwareFeatures, CodeFeatures {
 		Plane p = new Plane(Plane.XZ);
 		p.setLocation(new Vector(0.0, -10, 0.0));
 
-		return (ShadableIntersection) p.intersectAt((Evaluable<Ray>) ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0).get());
+		return (ShadableIntersection) p.intersectAt(ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0));
 	}
 
 	@Test
@@ -45,7 +46,7 @@ public class PlaneTest implements HardwareFeatures, CodeFeatures {
 		System.out.println("distance = " + distance);
 		Assert.assertEquals(-20.0, distance, Math.pow(10, -10));
 
-		Assert.assertTrue(intersection.get(0).evaluate().equals(
+		Assert.assertTrue(intersection.get(0).get().evaluate().equals(
 								ray(0.0, -10.0, 21.0, 0.0, 1.0, 0.0).get()));
 	}
 
@@ -53,30 +54,29 @@ public class PlaneTest implements HardwareFeatures, CodeFeatures {
 	public void intersectionTest1Compact() {
 		ShadableIntersection intersection = test1();
 
-		Evaluable<Scalar> p = (Evaluable<Scalar>) intersection.getDistance();
+		Producer<Scalar> p = (Producer<Scalar>) intersection.getDistance();
 		p.compact();
 
 		System.out.println(((DynamicAcceleratedMultiProducer) p).getFunctionDefinition());
 
-		double distance = p.evaluate().getValue();
+		double distance = p.get().evaluate().getValue();
 		System.out.println("distance = " + distance);
 		Assert.assertEquals(-20.0, distance, Math.pow(10, -10));
 
-		Assert.assertTrue(intersection.get(0).evaluate().equals(
+		Assert.assertTrue(intersection.get(0).get().evaluate().equals(
 				new Ray(new Vector(0.0, -10.0, 21.0),
 						new Vector(0.0, 1.0, 0.0))));
 	}
 
 	@Test
 	public void intersectionTest2() {
-		Provider<Ray> r = new Provider<>(new Ray(new Vector(0.0, 1.0, 1.0),
-														new Vector(0.0, 0.0, -1.0)));
+		Producer<Ray> r = ray(0.0, 1.0, 1.0, 0.0, 0.0, -1.0);
 
 		Plane p = new Plane(Plane.XZ);
 		p.setLocation(new Vector(0.0, 0, 0.0));
 
 		ShadableIntersection intersection = (ShadableIntersection) p.intersectAt(r);
-		Assert.assertEquals(-1.0, ((Evaluable<Scalar>) intersection.getDistance()).evaluate().getValue(), Math.pow(10, -10));
+		Assert.assertEquals(-1.0, ((Evaluable<Scalar>) intersection.getDistance().get()).evaluate().getValue(), Math.pow(10, -10));
 	}
 
 	@Test

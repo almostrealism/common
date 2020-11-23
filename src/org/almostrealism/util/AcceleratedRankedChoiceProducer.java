@@ -39,12 +39,12 @@ public class AcceleratedRankedChoiceProducer<T extends MemWrapper> extends Dynam
 	private Argument defaultValue;
 
 	public AcceleratedRankedChoiceProducer(int memLength, Supplier<Evaluable<? extends T>> blank, IntFunction<MemoryBank<T>> forKernel,
-										   List<EvaluableWithRank<T>> values, Supplier<Evaluable<T>> defaultValue, double e) {
+										   List<EvaluableWithRank<T>> values, Supplier<Evaluable<? extends T>> defaultValue, double e) {
 		this(memLength, blank, forKernel, values, defaultValue, e, null);
 	}
 
 	public AcceleratedRankedChoiceProducer(int memLength, Supplier<Evaluable<? extends T>> blank, IntFunction<MemoryBank<T>> forKernel,
-										   List<EvaluableWithRank<T>> values, Supplier<Evaluable<T>> defaultValue,
+										   List<EvaluableWithRank<T>> values, Supplier<Evaluable<? extends T>> defaultValue,
 										   double e, Supplier<T> onNull) {
 		super(blank, generateArgs(values, defaultValue));
 		this.memLength = memLength;
@@ -283,7 +283,7 @@ public class AcceleratedRankedChoiceProducer<T extends MemWrapper> extends Dynam
 	@Override
 	public MemoryBank<T> createKernelDestination(int size) { return forKernel.apply(size); }
 
-	private static <T> Supplier[] generateArgs(List<EvaluableWithRank<T>> values, Supplier<Evaluable<T>> defaultValue) {
+	private static <T> Supplier[] generateArgs(List<EvaluableWithRank<T>> values, Supplier<Evaluable<? extends T>> defaultValue) {
 		List<Supplier> args = new ArrayList<>();
 		values.stream().map(EvaluableWithRank::getRank).map(p -> (Supplier) () -> p).forEach(args::add);
 		values.stream().map(EvaluableWithRank::getProducer).map(p -> (Supplier) () -> p).forEach(args::add);

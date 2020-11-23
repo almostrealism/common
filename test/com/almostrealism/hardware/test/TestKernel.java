@@ -7,7 +7,7 @@ import org.almostrealism.relation.Evaluable;
 import java.util.function.Supplier;
 
 public class TestKernel extends AcceleratedProducer<Ray, Ray> {
-	public TestKernel(Supplier<Evaluable<Ray>> blank, Supplier<Evaluable<? extends Ray>>... inputArgs) {
+	public TestKernel(Supplier<Evaluable<? extends Ray>> blank, Supplier<Evaluable<? extends Ray>>... inputArgs) {
 		super("testKernel", true, blank, inputArgs);
 	}
 }
