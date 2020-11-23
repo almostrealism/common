@@ -98,7 +98,7 @@ public class PlaneTest implements HardwareFeatures, CodeFeatures {
 		Assert.assertTrue(compileProducer(t).evaluate().equals(new Ray(new Vector(0.0, 10.0, 1.0),
 																	new Vector(0.0, 0.5, -1.0))));
 
-		Vector v = compileProducer(t).evaluate().pointAt(new Provider<>(new Scalar(-20))).evaluate(new Object[0]);
+		Vector v = compileProducer(t).evaluate().pointAt(scalar(-20)).get().evaluate();
 		Assert.assertTrue(v.equals(new Vector(0.0, 0.0, 21.0)));
 	}
 }

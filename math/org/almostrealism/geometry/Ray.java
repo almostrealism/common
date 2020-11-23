@@ -17,6 +17,7 @@
 package org.almostrealism.geometry;
 
 
+import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.algebra.computations.DefaultVectorEvaluable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.TransformMatrix;
@@ -157,8 +158,8 @@ public class Ray extends MemWrapperAdapter implements Cloneable, CodeFeatures {
 	 * @return  The point on the ray represented by this {@link Ray} at distance t from the origin
 	 *          as a {@link Vector}.
 	 */
-	public VectorEvaluable pointAt(Evaluable<Scalar> t) {
-		return new DefaultVectorEvaluable(new RayPointAt(v(this), () -> t));
+	public VectorProducer pointAt(Producer<Scalar> t) {
+		return new RayPointAt(v(this), t);
 	}
 
 	@Override
