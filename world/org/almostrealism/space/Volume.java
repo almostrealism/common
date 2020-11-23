@@ -19,6 +19,7 @@ package org.almostrealism.space;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Curve;
 import org.almostrealism.relation.Evaluable;
+import org.almostrealism.relation.Producer;
 
 /**
  * A {@link Volume} represents a region of space in three dimensions
@@ -35,7 +36,7 @@ public interface Volume<T> extends Curve<T> {
 	 * @param x  {x, y, z} - The point in space to test.
 	 * @return  True if the point is within this volume, false otherwise.
 	 */
-	boolean inside(Evaluable<Vector> x);
+	boolean inside(Producer<Vector> x);
 	
 	/**
 	 * Calculates the distance along the line defined by the specified position

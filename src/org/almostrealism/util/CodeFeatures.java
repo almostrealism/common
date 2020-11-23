@@ -61,7 +61,7 @@ public interface CodeFeatures extends ScalarFeatures, PairFeatures, TriangleData
 		return value(v);
 	}
 
-	default <T> Supplier<Evaluable<? extends T>> v(Class<T> type, int argIndex) {
+	default <T> Producer<T> v(Class<T> type, int argIndex) {
 		return value(type, argIndex);
 	}
 
@@ -147,7 +147,7 @@ public interface CodeFeatures extends ScalarFeatures, PairFeatures, TriangleData
 		}
 	}
 
-	default <T> Supplier<Evaluable<? extends T>> value(Class<T> type, int argIndex) {
+	default <T> Producer<T> value(Class<T> type, int argIndex) {
 		return Input.value(type, argIndex);
 	}
 

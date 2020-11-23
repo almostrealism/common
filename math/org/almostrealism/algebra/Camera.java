@@ -18,15 +18,16 @@ package org.almostrealism.algebra;
 
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.relation.Computation;
+import org.almostrealism.relation.Producer;
 import org.almostrealism.uml.ModelEntity;
 import org.almostrealism.relation.Evaluable;
 
 /**
- * Implementations of the Camera interface provide a method for calculating viewing rays.
+ * Implementations of the {@link Camera} interface provide a method for calculating viewing rays.
  * 
  * @author  Michael Murray
  */
 @ModelEntity
-public interface Camera extends Computation<Ray> { // TODO  Move to geometry package
-	Evaluable<Ray> rayAt(Evaluable<Pair> screenPosition, Evaluable<Pair> screenDimensions);
+public interface Camera { // TODO  Move to geometry package
+	Producer<Ray> rayAt(Producer<Pair> screenPosition, Producer<Pair> screenDimensions);
 }

@@ -19,6 +19,7 @@ package org.almostrealism.util;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.relation.Evaluable;
+import org.almostrealism.relation.Producer;
 
 import java.lang.reflect.InvocationTargetException;
 import java.util.function.Supplier;
@@ -39,11 +40,11 @@ public class PassThroughEvaluable<T> implements Evaluable<T>, ProducerArgumentRe
 	@Override
 	public int getReferencedArgumentIndex() { return argIndex; }
 
-	public static <T> Supplier<Evaluable<? extends T>> of(Class<? extends T> type, int index) {
+	public static <T> Producer<T> of(Class<? extends T> type, int index) {
 		return of(type, index, 0);
 	}
 
-	public static <T> Supplier<Evaluable<? extends T>> of(Class<? extends T> type, int index, int kernelDimension) {
+	public static <T> Producer<T> of(Class<? extends T> type, int index, int kernelDimension) {
 		if (MemWrapper.class.isAssignableFrom(type)) {
 			try {
 				MemWrapper m = (MemWrapper) type.getConstructor().newInstance();
