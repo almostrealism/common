@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,11 +16,11 @@
 
 package org.almostrealism.graph;
 
-import org.almostrealism.relation.Evaluable;
+import org.almostrealism.relation.Producer;
 
 /**
  * @author  Michael Murray
  */
 public interface PathElement<IN, OUT> { // extends Producer<OUT> { TODO
-	Iterable<Evaluable<IN>> getDependencies();
+	Iterable<Producer<IN>> getDependencies();
 }

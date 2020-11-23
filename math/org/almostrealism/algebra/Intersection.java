@@ -20,31 +20,32 @@ import java.util.Arrays;
 import java.util.function.Supplier;
 
 import org.almostrealism.graph.PathElement;
+import org.almostrealism.relation.Producer;
 import org.almostrealism.util.DimensionAware;
 import org.almostrealism.relation.Evaluable;
 
 /**
  * An Intersection object stores data for the intersections between a ray and a surface.
  */
-public class Intersection<IN, OUT> implements PathElement<IN, OUT>, DimensionAware {
+public class Intersection<OUT> implements PathElement<Vector, OUT>, DimensionAware {
 	/** A very small value (0.00000001) that is used in '>=' and '<=' operations to account for computational errors. */
 	public static final double e = 0.00000001;
 
-	private Supplier<Evaluable<Vector>> point;
-	private Supplier<Evaluable<Scalar>> distance;
+	private Producer<Vector> point;
+	private Producer<Scalar> distance;
 
 	/**
 	 * Constructs a new {@link Intersection} that represents an intersection between the specified
 	 * Ray and Surface objects at the specified points along the ray represented by the Ray.
 	 */
-	public Intersection(Supplier<Evaluable<Vector>> point, Supplier<Evaluable<Scalar>> distance) {
+	public Intersection(Producer<Vector> point, Producer<Scalar> distance) {
 		this.point = point;
 		this.distance = distance;
 	}
 	
-	public Supplier<Evaluable<Vector>> getPoint() { return point; }
+	public Producer<Vector> getPoint() { return point; }
 
-	public Supplier<Evaluable<Scalar>> getDistance() { return distance; }
+	public Producer<Scalar> getDistance() { return distance; }
 
 	@Override
 	public void setDimensions(int width, int height, int ssw, int ssh) {
@@ -54,8 +55,8 @@ public class Intersection<IN, OUT> implements PathElement<IN, OUT>, DimensionAwa
 	}
 
 	@Override
-	public Iterable<Evaluable<IN>> getDependencies() {
-		return Arrays.asList((Evaluable<IN>) point);
+	public Iterable<Producer<Vector>> getDependencies() {
+		return Arrays.asList(point);
 	}
 
 	/**
