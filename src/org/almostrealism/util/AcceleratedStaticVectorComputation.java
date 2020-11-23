@@ -17,12 +17,13 @@
 package org.almostrealism.util;
 
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorSupplier;
+import org.almostrealism.algebra.VectorProducer;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 
-public class AcceleratedStaticVectorComputation extends AcceleratedStaticComputation<Vector> implements VectorSupplier {
-	public AcceleratedStaticVectorComputation(Vector value, Supplier<Evaluable<Vector>> output) {
+public class AcceleratedStaticVectorComputation extends AcceleratedStaticComputation<Vector> implements VectorProducer {
+	public AcceleratedStaticVectorComputation(Vector value, Supplier<Evaluable<? extends Vector>> output) {
 		super(value, output);
 	}
 }

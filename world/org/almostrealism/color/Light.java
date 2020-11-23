@@ -17,7 +17,7 @@
 package org.almostrealism.color;
 
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.relation.Maker;
+import org.almostrealism.relation.Producer;
 import org.almostrealism.texture.Texture;
 
 /**
@@ -51,5 +51,5 @@ public interface Light {
 	 *       where as this method needs to accept input as a producer. Perhaps texture is wrong
 	 *       to be a producer directly, if it changes then we can use this strategy.
 	 */
-	Maker<RGB> getColorAt(Maker<Vector> point);
+	Producer<RGB> getColorAt(Producer<Vector> point);
 }

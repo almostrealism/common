@@ -5,7 +5,7 @@ import org.almostrealism.algebra.computations.ScalarProduct;
 import org.almostrealism.algebra.computations.ScalarSum;
 import org.almostrealism.hardware.AcceleratedComputationProducer;
 import org.almostrealism.hardware.HardwareFeatures;
-import org.almostrealism.util.PassThroughProducer;
+import org.almostrealism.util.PassThroughEvaluable;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -13,9 +13,9 @@ public class PassThroughProducerCompactionTest implements HardwareFeatures {
 	protected AcceleratedComputationProducer<Scalar> product() {
 		return (AcceleratedComputationProducer)
 				new ScalarProduct(new ScalarSum(
-					PassThroughProducer.of(Scalar.class, 0),
-					PassThroughProducer.of(Scalar.class, 1)),
-				PassThroughProducer.of(Scalar.class, 2)).get();
+					PassThroughEvaluable.of(Scalar.class, 0),
+					PassThroughEvaluable.of(Scalar.class, 1)),
+				PassThroughEvaluable.of(Scalar.class, 2)).get();
 	}
 
 	@Test

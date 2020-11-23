@@ -19,6 +19,8 @@ package org.almostrealism.util;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.graph.RayField;
+import org.almostrealism.relation.Evaluable;
+import org.almostrealism.relation.Producer;
 import org.almostrealism.space.BoundingSolid;
 
 import java.util.*;
@@ -28,8 +30,7 @@ import java.util.*;
  *
  * @author Dan Chivers
  */
-public class RayFieldFactory
-{
+public class RayFieldFactory implements CodeFeatures {
     public enum RayDistribution { UNIFORM, RANDOM }
 
     private static RayFieldFactory INSTANCE;
@@ -61,8 +62,7 @@ public class RayFieldFactory
 
         RayField rayField = new RayField();
         for (Ray ray : rays) {
-            Evaluable<Ray> r = new Provider<>(ray);
-            rayField.add(r);
+            rayField.add(p(ray));
         }
 
         return rayField;

@@ -19,36 +19,36 @@ package org.almostrealism.color.computations;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.color.RGB;
 import org.almostrealism.relation.ProducerComputation;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 import org.almostrealism.util.StaticEvaluable;
 
 import java.util.function.Supplier;
 
-public interface RGBSupplier extends ProducerComputation<RGB>, RGBFeatures {
+public interface RGBProducer extends ProducerComputation<RGB>, RGBFeatures {
 	@Override
 	default Evaluable<RGB> get() { return new DefaultRGBEvaluable(this); }
 
-	default RGBSupplier add(Supplier<Evaluable<? extends RGB>> operand) {
+	default RGBProducer add(Supplier<Evaluable<? extends RGB>> operand) {
 		return cadd(this, operand);
 	}
 
-	default RGBSupplier subtract(Supplier<Evaluable<? extends RGB>> operand) { return csubtract(this, operand); }
+	default RGBProducer subtract(Supplier<Evaluable<? extends RGB>> operand) { return csubtract(this, operand); }
 
-	default RGBSupplier multiply(Supplier<Evaluable<? extends RGB>> operand) {
+	default RGBProducer multiply(Supplier<Evaluable<? extends RGB>> operand) {
 		return cmultiply(this, operand);
 	}
 
-	default RGBSupplier scalarMultiply(Supplier<Evaluable<? extends Scalar>> operand) { return cscalarMultiply(this, operand); }
+	default RGBProducer scalarMultiply(Supplier<Evaluable<? extends Scalar>> operand) { return cscalarMultiply(this, operand); }
 
-	default RGBSupplier scalarMultiply(Scalar operand) {
+	default RGBProducer scalarMultiply(Scalar operand) {
 		return scalarMultiply(() -> StaticEvaluable.of(operand));
 	}
 
-	default RGBSupplier scalarMultiply(double operand) {
+	default RGBProducer scalarMultiply(double operand) {
 		return scalarMultiply(new Scalar(operand));
 	}
 
-	default RGBSupplier minus() {
+	default RGBProducer minus() {
 		return cminus(this);
 	}
 }

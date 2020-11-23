@@ -18,7 +18,7 @@ package org.almostrealism.color.computations;
 
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.color.RGB;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 import org.almostrealism.util.StaticEvaluable;
 
 /**

@@ -19,7 +19,8 @@ package org.almostrealism.audio;
 
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.graph.Receptor;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
+import org.almostrealism.relation.Producer;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -73,11 +74,11 @@ public class AudioMeter implements Receptor<Scalar> {
 	}
 
 	@Override
-	public Supplier<Runnable> push(Evaluable<Scalar> protein) {
+	public Supplier<Runnable> push(Producer<Scalar> protein) {
 		Supplier<Runnable> f = forwarding == null ? null : forwarding.push(protein);
 
 		return () -> () -> {
-			Scalar p = protein.evaluate();
+			Scalar p = protein.get().evaluate();
 
 			if (outEnabled) {
 				if (count == 0) {

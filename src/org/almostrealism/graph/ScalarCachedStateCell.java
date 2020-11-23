@@ -17,13 +17,13 @@
 package org.almostrealism.graph;
 
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 
 public class ScalarCachedStateCell extends CachedStateCell<Scalar> {
 	public ScalarCachedStateCell() {
-		super(Scalar.blank());
+		super(Scalar.blank().get());
 	}
 
 	@Override

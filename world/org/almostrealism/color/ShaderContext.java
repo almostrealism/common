@@ -26,7 +26,7 @@ import org.almostrealism.algebra.ContinuousField;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Curve;
 import org.almostrealism.space.LightingContext;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
 /**
  * A {@link ShaderContext} provides access to the set of {@link Evaluable}s

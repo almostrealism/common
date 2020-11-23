@@ -19,7 +19,7 @@ package io.almostrealism.code;
 import org.almostrealism.relation.NameProvider;
 import org.almostrealism.util.Compactable;
 import org.almostrealism.util.Named;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.ArrayList;
 import java.util.Arrays;

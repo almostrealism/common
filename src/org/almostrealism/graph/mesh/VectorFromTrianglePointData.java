@@ -17,7 +17,7 @@
 package org.almostrealism.graph.mesh;
 
 import org.almostrealism.algebra.computations.VectorFromVectorBank;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 

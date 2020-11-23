@@ -20,7 +20,7 @@ import org.almostrealism.algebra.IdentityMatrix;
 import org.almostrealism.algebra.TransformMatrix;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.hardware.AcceleratedProducer;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 

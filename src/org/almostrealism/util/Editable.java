@@ -16,6 +16,8 @@
 
 package org.almostrealism.util;
 
+import org.almostrealism.relation.Evaluable;
+
 /**
  * Classes that implement the Editable interface can have editable
  * properties modified with a general set of methods.

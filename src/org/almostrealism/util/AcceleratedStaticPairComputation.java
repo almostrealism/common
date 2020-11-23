@@ -17,12 +17,13 @@
 package org.almostrealism.util;
 
 import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.PairSupplier;
+import org.almostrealism.algebra.PairProducer;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 
-public class AcceleratedStaticPairComputation extends AcceleratedStaticComputation<Pair> implements PairSupplier {
-	public AcceleratedStaticPairComputation(Pair value, Supplier<Evaluable<Pair>> output) {
+public class AcceleratedStaticPairComputation extends AcceleratedStaticComputation<Pair> implements PairProducer {
+	public AcceleratedStaticPairComputation(Pair value, Supplier<Evaluable<? extends Pair>> output) {
 		super(value, output);
 	}
 }

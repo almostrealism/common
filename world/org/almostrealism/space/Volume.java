@@ -18,7 +18,7 @@ package org.almostrealism.space;
 
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Curve;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
 /**
  * A {@link Volume} represents a region of space in three dimensions

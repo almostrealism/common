@@ -5,8 +5,7 @@ import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayBank;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.util.CodeFeatures;
-import org.almostrealism.util.PassThroughProducer;
-import org.almostrealism.util.Provider;
+import org.almostrealism.util.PassThroughEvaluable;
 import org.junit.Test;
 
 public class KernelTest implements CodeFeatures {
@@ -23,7 +22,7 @@ public class KernelTest implements CodeFeatures {
 		int count = 2;
 
 		TestKernel k = new TestKernel(() -> Ray.blank(),
-									PassThroughProducer.of(Ray.class, 0));
+									PassThroughEvaluable.of(Ray.class, 0));
 
 		RayBank output = RayBank.fromProducer(() -> Ray.blank(), count);
 		RayBank input = RayBank.fromProducer(

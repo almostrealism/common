@@ -19,9 +19,9 @@ package org.almostrealism.graph.mesh;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.algebra.VectorEvaluable;
-import org.almostrealism.algebra.VectorSupplier;
+import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.algebra.computations.DefaultVectorEvaluable;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 
@@ -32,7 +32,7 @@ public interface TriangleDataFeatures extends VectorFeatures {
 		return new DefaultVectorEvaluable(abc(() -> t));
 	}
 
-	default VectorSupplier abc(Supplier<Evaluable<? extends TriangleData>> t) {
+	default VectorProducer abc(Supplier<Evaluable<? extends TriangleData>> t) {
 		return new VectorFromTriangleData(t, VectorFromTriangleData.ABC);
 	}
 
@@ -40,7 +40,7 @@ public interface TriangleDataFeatures extends VectorFeatures {
 		return new DefaultVectorEvaluable(def(() -> t));
 	}
 
-	default VectorSupplier def(Supplier<Evaluable<? extends TriangleData>> t) {
+	default VectorProducer def(Supplier<Evaluable<? extends TriangleData>> t) {
 		return new VectorFromTriangleData(t, VectorFromTriangleData.DEF);
 	}
 
@@ -48,7 +48,7 @@ public interface TriangleDataFeatures extends VectorFeatures {
 		return new DefaultVectorEvaluable(jkl(() -> t));
 	}
 
-	default VectorSupplier jkl(Supplier<Evaluable<? extends TriangleData>> t) {
+	default VectorProducer jkl(Supplier<Evaluable<? extends TriangleData>> t) {
 		return new VectorFromTriangleData(t, VectorFromTriangleData.JKL);
 	}
 
@@ -56,17 +56,17 @@ public interface TriangleDataFeatures extends VectorFeatures {
 		return new DefaultVectorEvaluable(normal(() -> t));
 	}
 
-	default VectorSupplier normal(Supplier<Evaluable<? extends TriangleData>> t) {
+	default VectorProducer normal(Supplier<Evaluable<? extends TriangleData>> t) {
 		return new VectorFromTriangleData(t, VectorFromTriangleData.NORMAL);
 	}
 
-	default TriangleDataSupplier triangle(Supplier<Evaluable<? extends TrianglePointData>> points) {
+	default TriangleDataProducer triangle(Supplier<Evaluable<? extends TrianglePointData>> points) {
 		return triangle(new VectorFromTrianglePointData(points, VectorFromTrianglePointData.P1),
 				new VectorFromTrianglePointData(points, VectorFromTrianglePointData.P2),
 				new VectorFromTrianglePointData(points, VectorFromTrianglePointData.P3));
 	}
 
-	default TriangleDataSupplier triangle(Supplier<Evaluable<? extends Vector>> p1, Supplier<Evaluable<? extends Vector>> p2, Supplier<Evaluable<? extends Vector>> p3) {
+	default TriangleDataProducer triangle(Supplier<Evaluable<? extends Vector>> p1, Supplier<Evaluable<? extends Vector>> p2, Supplier<Evaluable<? extends Vector>> p3) {
 		return new TriangleDataFromVectors(ops().subtract(p2, p1), ops().subtract(p3, p1), p1);
 	}
 }

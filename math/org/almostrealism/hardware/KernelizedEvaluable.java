@@ -18,7 +18,7 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.OperationAdapter;
 import org.almostrealism.util.Named;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 import org.jocl.CLException;
 
 import java.util.stream.Collectors;

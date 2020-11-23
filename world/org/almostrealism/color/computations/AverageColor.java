@@ -16,13 +16,16 @@
 
 package org.almostrealism.color.computations;
 
+import io.almostrealism.code.Scope;
 import org.almostrealism.color.RGB;
+import org.almostrealism.relation.NameProvider;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
-public class AverageColor extends ColorEvaluableAdapter {
+public class AverageColor extends ColorProducerAdapter {
 	private static class Color {
 		double p;
 		RGB c;
@@ -47,20 +50,30 @@ public class AverageColor extends ColorEvaluableAdapter {
 	}
 	
 	public void setInvert(boolean invert) { this.invert = invert; }
-	
-	public RGB evaluate(Object args[]) {
-		RGB c = new RGB(0.0, 0.0, 0.0);
-		Iterator itr = this.colors.iterator();
-		
-		w: while (itr.hasNext()) {
-			Color n = (Color) itr.next();
-			if (n.c == null) continue w;
-			c.addTo(n.c.multiply(n.p / this.tot));
-		}
-		
-		return c;
+
+	@Override
+	public Evaluable<RGB> get() {
+		return args -> {
+			RGB c = new RGB(0.0, 0.0, 0.0);
+			Iterator itr = this.colors.iterator();
+
+			w:
+			while (itr.hasNext()) {
+				Color n = (Color) itr.next();
+				if (n.c == null) continue w;
+				c.addTo(n.c.multiply(n.p / this.tot));
+			}
+
+			return c;
+		};
 	}
 
+	@Override
+	public Scope<RGB> getScope(NameProvider provider) {
+		throw new RuntimeException("Not implemented");
+	}
+
+	@Override
 	public void compact() {
 		// TODO  AverageColor should be modified to accept ColorProducers instead
 		//       of RGB values and this method should delegate to them

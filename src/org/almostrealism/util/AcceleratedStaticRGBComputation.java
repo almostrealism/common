@@ -17,12 +17,13 @@
 package org.almostrealism.util;
 
 import org.almostrealism.color.RGB;
-import org.almostrealism.color.computations.RGBSupplier;
+import org.almostrealism.color.computations.RGBProducer;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 
-public class AcceleratedStaticRGBComputation extends AcceleratedStaticComputation<RGB> implements RGBSupplier {
-	public AcceleratedStaticRGBComputation(RGB value, Supplier<Evaluable<RGB>> output) {
+public class AcceleratedStaticRGBComputation extends AcceleratedStaticComputation<RGB> implements RGBProducer {
+	public AcceleratedStaticRGBComputation(RGB value, Supplier<Evaluable<? extends RGB>> output) {
 		super(value, output);
 	}
 }

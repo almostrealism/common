@@ -16,10 +16,10 @@
 
 package org.almostrealism.graph;
 
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Producer;
 
 public interface Source<T> {
-	Evaluable<T> next();
+	Producer<T> next();
 
 	boolean isDone();
 }

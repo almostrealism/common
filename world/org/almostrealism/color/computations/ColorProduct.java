@@ -18,13 +18,13 @@ package org.almostrealism.color.computations;
 
 import org.almostrealism.algebra.computations.NAryDynamicAcceleratedProducer;
 import org.almostrealism.color.RGB;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 
-public class ColorProduct extends NAryDynamicAcceleratedProducer<RGB> implements RGBSupplier {
+public class ColorProduct extends NAryDynamicAcceleratedProducer<RGB> implements RGBProducer {
 	public ColorProduct(Supplier<Evaluable<? extends RGB>>... producers) {
-		super("*", 3, () -> RGB.blank(), producers);
+		super("*", 3, RGB.blank(), producers);
 	}
 
 	@Override

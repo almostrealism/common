@@ -17,10 +17,11 @@
 package org.almostrealism.util;
 
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 
-public class ProducerWithRankAdapter<T> implements ProducerWithRank<T> {
+public class EvaluableWithRankAdapter<T> implements EvaluableWithRank<T> {
 	private Evaluable<? extends T> p;
 	private Evaluable<? extends Scalar> rank;
 
@@ -29,16 +30,16 @@ public class ProducerWithRankAdapter<T> implements ProducerWithRank<T> {
 	 * {@link Evaluable} argument, which requires that the
 	 * {@link #evaluate(Object[])} method be overridden.
 	 */
-	protected ProducerWithRankAdapter(Evaluable<Scalar> rank) {
+	protected EvaluableWithRankAdapter(Evaluable<Scalar> rank) {
 		this.p = this;
 		this.rank = rank;
 	}
 
-	public ProducerWithRankAdapter(Supplier<Evaluable<? extends T>> p, Supplier<Evaluable<? extends Scalar>> rank) {
+	public EvaluableWithRankAdapter(Supplier<Evaluable<? extends T>> p, Supplier<Evaluable<? extends Scalar>> rank) {
 		this(p.get(), rank.get());
 	}
 
-	public ProducerWithRankAdapter(Evaluable<? extends T> p, Evaluable<? extends Scalar> rank) {
+	public EvaluableWithRankAdapter(Evaluable<? extends T> p, Evaluable<? extends Scalar> rank) {
 		this.p = p;
 		this.rank = rank;
 	}
@@ -53,11 +54,5 @@ public class ProducerWithRankAdapter<T> implements ProducerWithRank<T> {
 	public T evaluate(Object[] args) {
 		if (p == this) return null;
 		return p.evaluate(args);
-	}
-
-	@Override
-	public void compact() {
-		if (p != this) p.compact();
-		rank.compact();
 	}
 }

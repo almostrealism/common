@@ -19,16 +19,16 @@ package org.almostrealism.geometry;
 import io.almostrealism.code.Expression;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public class RayFromVectors extends DynamicAcceleratedProducerAdapter<Vector, Ray> implements RaySupplier {
+public class RayFromVectors extends DynamicAcceleratedProducerAdapter<Vector, Ray> implements RayProducer {
 	private Expression<Double> value[];
 	
 	public RayFromVectors(Supplier<Evaluable<? extends Vector>> origin, Supplier<Evaluable<? extends Vector>> direction) {
-		super(6, () -> Ray.blank(), origin, direction);
+		super(6, Ray.blank(), origin, direction);
 	}
 
 	@Override

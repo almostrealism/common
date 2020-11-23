@@ -18,19 +18,19 @@ package org.almostrealism.algebra.computations;
 
 import io.almostrealism.code.Expression;
 import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.PairSupplier;
+import org.almostrealism.algebra.PairProducer;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public class PairFromScalars extends DynamicAcceleratedProducerAdapter<Scalar, Pair> implements PairSupplier {
+public class PairFromScalars extends DynamicAcceleratedProducerAdapter<Scalar, Pair> implements PairProducer {
 	private Expression<Double> value[];
 
 	public PairFromScalars(Supplier<Evaluable<? extends Scalar>> x, Supplier<Evaluable<? extends Scalar>> y) {
-		super(2, () -> Pair.empty(), x, y);
+		super(2, Pair.empty(), x, y);
 	}
 
 	@Override

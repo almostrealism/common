@@ -19,20 +19,20 @@ package org.almostrealism.algebra.computations;
 import io.almostrealism.code.Expression;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorBank;
-import org.almostrealism.algebra.VectorSupplier;
+import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public class VectorFromVectorBank<T extends VectorBank> extends DynamicAcceleratedProducerAdapter<T, Vector> implements VectorSupplier {
+public class VectorFromVectorBank<T extends VectorBank> extends DynamicAcceleratedProducerAdapter<T, Vector> implements VectorProducer {
 	private int position;
 
 	private Expression<Double> value[];
 
 	public VectorFromVectorBank(Supplier<Evaluable<? extends T>> bank, int position) {
-		super(3, () -> Vector.blank(), bank);
+		super(3, Vector.blank(), bank);
 		this.position = position * 3;
 	}
 

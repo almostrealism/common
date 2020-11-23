@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package org.almostrealism.util;
+package org.almostrealism.relation;
 
 /**
  * The Producer interface is implemented by classes that represent a
@@ -24,10 +24,10 @@ package org.almostrealism.util;
  *
  * @author  Michael Murray
  */
-public interface Evaluable<T> extends Compactable {
+public interface Evaluable<T> {
 	default T evaluate() {
 		return evaluate(new Object[0]);
 	}
 
-	T evaluate(Object args[]);
+	T evaluate(Object... args);
 }

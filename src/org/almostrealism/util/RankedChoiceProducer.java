@@ -20,10 +20,11 @@ import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.hardware.KernelizedEvaluable;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.ArrayList;
 
-public class RankedChoiceProducer<T> extends ArrayList<ProducerWithRank<T>> implements Evaluable<T> {
+public class RankedChoiceProducer<T> extends ArrayList<EvaluableWithRank<T>> implements Evaluable<T> {
 	protected double e;
 	protected boolean tolerateNull;
 
@@ -33,9 +34,9 @@ public class RankedChoiceProducer<T> extends ArrayList<ProducerWithRank<T>> impl
 		highestRank = new AcceleratedProducer<>(
 				"highestRank",
 				true,
-				() -> Pair.empty(),
-				PassThroughProducer.of(Scalar.class, 0),
-				PassThroughProducer.of(Pair.class, 1));
+				Pair.empty(),
+				PassThroughEvaluable.of(Scalar.class, 0),
+				PassThroughEvaluable.of(Pair.class, 1));
 	}
 
 	public RankedChoiceProducer(double e) { this(e, true); }
@@ -55,7 +56,7 @@ public class RankedChoiceProducer<T> extends ArrayList<ProducerWithRank<T>> impl
 			System.out.println("RankedChoiceProducer: There are " + size() + " Producers to choose from");
 		}
 
-		r: for (ProducerWithRank<T> p : this) {
+		r: for (EvaluableWithRank<T> p : this) {
 			Scalar rs = p.getRank().evaluate(args);
 			if (rs == null) continue r;
 
@@ -85,11 +86,5 @@ public class RankedChoiceProducer<T> extends ArrayList<ProducerWithRank<T>> impl
 		}
 
 		return best == null ? null : best.evaluate(args);
-	}
-
-	@Override
-	public void compact() {
-		// TODO  Hardware acceleration for ranked choice
-		forEach(ProducerWithRank::compact);
 	}
 }

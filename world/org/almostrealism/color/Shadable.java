@@ -16,8 +16,8 @@
 
 package org.almostrealism.color;
 
-import org.almostrealism.relation.Maker;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Producer;
+import org.almostrealism.relation.Evaluable;
 
 /**
  * @author  Michael Murray
@@ -29,5 +29,5 @@ public interface Shadable {
 	 *
 	 * @see Shader
 	 */
-	Maker<RGB> shade(ShaderContext parameters);
+	Producer<RGB> shade(ShaderContext parameters);
 }

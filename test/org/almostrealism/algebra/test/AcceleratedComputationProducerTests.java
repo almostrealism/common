@@ -1,9 +1,9 @@
 package org.almostrealism.algebra.test;
 
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarSupplier;
+import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorSupplier;
+import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.algebra.computations.ScalarFromVector;
 import org.almostrealism.algebra.computations.ScalarProduct;
 import org.almostrealism.hardware.AcceleratedComputationProducer;
@@ -14,7 +14,7 @@ import org.junit.Test;
 public class AcceleratedComputationProducerTests implements HardwareFeatures, CodeFeatures {
 	@Test
 	public void staticProducer() {
-		VectorSupplier res = vector(0.0, 1.0, 2.0);
+		VectorProducer res = vector(0.0, 1.0, 2.0);
 		Vector v = res.get().evaluate();
 		System.out.println(v);
 		assert v.getX() == 0.0;
@@ -42,7 +42,7 @@ public class AcceleratedComputationProducerTests implements HardwareFeatures, Co
 
 	@Test
 	public void scalarProduct() {
-		ScalarSupplier x = scalar(3.0);
+		ScalarProducer x = scalar(3.0);
 		AcceleratedComputationProducer<Scalar> res = (AcceleratedComputationProducer)
 				compileProducer(new ScalarProduct(x, scalar(0.5)));
 		System.out.println(res.getFunctionDefinition());

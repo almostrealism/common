@@ -17,14 +17,14 @@
 package org.almostrealism.algebra.computations;
 
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarSupplier;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.algebra.ScalarProducer;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 
-public class ScalarProduct extends NAryDynamicAcceleratedProducer<Scalar> implements ScalarSupplier {
+public class ScalarProduct extends NAryDynamicAcceleratedProducer<Scalar> implements ScalarProducer {
 	public ScalarProduct(Supplier<Evaluable<? extends Scalar>>... producers) {
-		super("*", 2, () -> Scalar.blank(), producers);
+		super("*", 2, Scalar.blank(), producers);
 	}
 
 	@Override

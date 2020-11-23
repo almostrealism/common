@@ -22,7 +22,7 @@ import org.almostrealism.io.PrintWriter;
 import org.almostrealism.io.Resource;
 import org.almostrealism.io.ResourceTranscoder;
 import org.almostrealism.io.ResourceTranscoderFactory;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
 import java.io.IOException;
 import java.util.Arrays;

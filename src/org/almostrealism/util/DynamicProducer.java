@@ -20,13 +20,15 @@ import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.hardware.MemWrapper;
+import org.almostrealism.relation.Evaluable;
+import org.almostrealism.relation.Producer;
 
 import java.util.function.Function;
 
-public class DynamicEvaluable<T> implements Evaluable<T> {
+public class DynamicProducer<T> implements Producer<T> {
 	private Function<Object[], T> function;
 
-	public DynamicEvaluable(Function<Object[], T> function) {
+	public DynamicProducer(Function<Object[], T> function) {
 		this.function = function;
 	}
 
@@ -34,7 +36,7 @@ public class DynamicEvaluable<T> implements Evaluable<T> {
 	 * Applies the {@link Function}.
 	 */
 	@Override
-	public T evaluate(Object[] args) { return function.apply(args); }
+	public Evaluable<T> get() { return args -> function.apply(args); }
 
 	/**
 	 * Does nothing.
@@ -42,14 +44,14 @@ public class DynamicEvaluable<T> implements Evaluable<T> {
 	@Override
 	public void compact() { }
 
-	public static Function<Integer, Evaluable<? extends MemWrapper>> forMemLength() {
+	public static Function<Integer, Producer<? extends MemWrapper>> forMemLength() {
 		return len -> {
 			if (len == 2) {
-				return new DynamicEvaluable<>(args -> new Pair());
+				return new DynamicProducer<>(args -> new Pair());
 			} else if (len == 3) {
-				return new DynamicEvaluable<>(args -> new Vector());
+				return new DynamicProducer<>(args -> new Vector());
 			} else if (len == 6) {
-				return new DynamicEvaluable<>(args -> new Ray());
+				return new DynamicProducer<>(args -> new Ray());
 			} else {
 				throw new IllegalArgumentException("Mem length " + len + " unknown");
 			}

@@ -17,9 +17,10 @@
 package org.almostrealism.graph;
 
 import org.almostrealism.heredity.Factor;
+import org.almostrealism.relation.Producer;
 import org.almostrealism.time.Temporal;
 import org.almostrealism.util.CodeFeatures;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 import org.almostrealism.util.Provider;
 import org.almostrealism.util.RunnableList;
 
@@ -41,19 +42,19 @@ public abstract class CachedStateCell<T> extends FilteredCell<T> implements Fact
 	public T getCachedValue() { return cachedValue; }
 
 	@Override
-	public Evaluable<T> getResultant(Evaluable<T> value) {
-		return new Provider<>(outValue);
+	public Producer<T> getResultant(Producer<T> value) {
+		return p(outValue);
 	}
 
 	@Override
-	public Evaluable<T> next() { return getResultant(null); }
+	public Producer<T> next() { return getResultant(null); }
 
 	@Override
 	public boolean isDone() { return false; }
 
 	@Override
-	public Supplier<Runnable> push(Evaluable<T> protein) {
-		return assign(p(cachedValue), () -> protein);
+	public Supplier<Runnable> push(Producer<T> protein) {
+		return assign(p(cachedValue), protein);
 	}
 
 	protected abstract Supplier<Runnable> assign(Supplier<Evaluable<? extends T>> out, Supplier<Evaluable<? extends T>> in);

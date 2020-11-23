@@ -21,10 +21,10 @@ import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.hardware.MemWrapperAdapter;
+import org.almostrealism.relation.Producer;
 import org.almostrealism.util.CodeFeatures;
 import org.almostrealism.util.Defaults;
-import org.almostrealism.util.DynamicEvaluable;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.util.DynamicProducer;
 
 /**
  * A {@link Vector} represents a 3d vector. It stores three coordinates, x, y, z
@@ -450,8 +450,8 @@ public class Vector extends MemWrapperAdapter implements Positioned, Triple, Clo
 		return value.toString();
 	}
 
-	public static Evaluable<Vector> blank() {
-		return new DynamicEvaluable<>(args -> new Vector());
+	public static Producer<Vector> blank() {
+		return new DynamicProducer<>(args -> new Vector());
 	}
 
 	/**

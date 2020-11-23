@@ -17,14 +17,14 @@
 package org.almostrealism.algebra;
 
 import org.almostrealism.hardware.AcceleratedProducer;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 
 public class IdentityMatrix extends AcceleratedProducer<TransformMatrix, TransformMatrix> {
-	public IdentityMatrix() { this(() -> TransformMatrix.blank()); }
+	public IdentityMatrix() { this(TransformMatrix.blank()); }
 
-	public IdentityMatrix(Supplier<Evaluable<TransformMatrix>> newMatrix) {
+	public IdentityMatrix(Supplier<Evaluable<? extends TransformMatrix>> newMatrix) {
 		super("identityMatrix", newMatrix);
 	}
 }

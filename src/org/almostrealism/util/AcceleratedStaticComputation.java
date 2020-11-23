@@ -20,6 +20,7 @@ import io.almostrealism.code.Expression;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.hardware.MemWrapper;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
@@ -27,7 +28,7 @@ import java.util.function.Supplier;
 public class AcceleratedStaticComputation<T extends MemWrapper> extends DynamicAcceleratedProducerAdapter<MemWrapper, T> {
 	private T value;
 
-	public AcceleratedStaticComputation(T value, Supplier<Evaluable<T>> output) {
+	public AcceleratedStaticComputation(T value, Supplier<Evaluable<? extends T>> output) {
 		super(value.getMemLength(), output);
 		this.value = value;
 	}

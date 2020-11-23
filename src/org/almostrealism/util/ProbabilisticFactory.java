@@ -23,7 +23,7 @@ import org.almostrealism.heredity.DoubleScaleFactor;
 import org.almostrealism.heredity.Factor;
 import org.almostrealism.heredity.Gene;
 
-public class ProbabilisticFactory<V> extends HashMap<Factory<V>, Double> implements Factory<V> {
+public class ProbabilisticFactory<V> extends HashMap<Factory<V>, Double> implements Factory<V>, CodeFeatures {
 	/** Constructs an empty {@link ProbabilisticFactory}. */
 	public ProbabilisticFactory() { }
 	
@@ -35,7 +35,7 @@ public class ProbabilisticFactory<V> extends HashMap<Factory<V>, Double> impleme
 	 */
 	public ProbabilisticFactory(List<? extends Factory<V>> factories, Gene<Double> probabilities) {
 		for (int i = 0; i < factories.size(); i++) {
-			put(factories.get(i), probabilities.getFactor(i).getResultant(new Provider<>(Double.valueOf(1.0))).evaluate());
+			put(factories.get(i), probabilities.getFactor(i).getResultant(p(Double.valueOf(1.0))).get().evaluate());
 		}
 	}
 	

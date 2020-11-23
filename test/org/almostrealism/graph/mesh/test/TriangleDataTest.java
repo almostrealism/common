@@ -17,17 +17,17 @@
 package org.almostrealism.graph.mesh.test;
 
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorSupplier;
+import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.graph.mesh.DefaultVertexData;
 import org.almostrealism.graph.mesh.Mesh;
 import org.almostrealism.graph.mesh.MeshData;
 import org.almostrealism.graph.mesh.MeshPointData;
 import org.almostrealism.graph.mesh.TriangleData;
-import org.almostrealism.graph.mesh.TriangleDataSupplier;
+import org.almostrealism.graph.mesh.TriangleDataProducer;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.util.CodeFeatures;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -51,14 +51,14 @@ public class TriangleDataTest implements CodeFeatures {
 	public void edges() {
 		MeshPointData points = points();
 
-		VectorSupplier edge1 = subtract(v(points.get(0).getP2()), v(points.get(0).getP1()));
+		VectorProducer edge1 = subtract(v(points.get(0).getP2()), v(points.get(0).getP1()));
 		Vector value = edge1.get().evaluate();
 		System.out.println(value);
 		Assert.assertEquals(-1, value.getX(), Math.pow(10, -10));
 		Assert.assertEquals(-2, value.getY(), Math.pow(10, -10));
 		Assert.assertEquals(0, value.getZ(), Math.pow(10, -10));
 
-		VectorSupplier edge2 = subtract(v(points.get(0).getP3()), v(points.get(0).getP1()));
+		VectorProducer edge2 = subtract(v(points.get(0).getP3()), v(points.get(0).getP1()));
 		value = edge2.get().evaluate();
 		System.out.println(value);
 		Assert.assertEquals(1, value.getX(), Math.pow(10, -10));
@@ -75,7 +75,7 @@ public class TriangleDataTest implements CodeFeatures {
 	@Test
 	public void triangleData() {
 		MeshPointData points = points();
-		TriangleDataSupplier td = triangle(v(points.get(0).getP1()),
+		TriangleDataProducer td = triangle(v(points.get(0).getP1()),
 											v(points.get(0).getP2()),
 											v(points.get(0).getP3()));
 		triangleDataAssertions(td.get().evaluate());

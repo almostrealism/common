@@ -17,14 +17,14 @@
 package org.almostrealism.algebra.computations;
 
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorSupplier;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.algebra.VectorProducer;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 
-public class VectorProduct extends NAryDynamicAcceleratedProducer<Vector> implements VectorSupplier {
+public class VectorProduct extends NAryDynamicAcceleratedProducer<Vector> implements VectorProducer {
 	public VectorProduct(Supplier<Evaluable<? extends Vector>>... producers) {
-		super("*", 3, () -> Vector.blank(), producers);
+		super("*", 3, Vector.blank(), producers);
 	}
 
 	@Override

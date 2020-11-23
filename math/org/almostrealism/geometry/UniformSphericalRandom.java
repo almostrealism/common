@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,11 +16,9 @@
 
 package org.almostrealism.geometry;
 
-import io.almostrealism.code.Scope;
 import org.almostrealism.algebra.Triple;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorEvaluable;
-import org.almostrealism.relation.NameProvider;
 import org.almostrealism.relation.TripleFunction;
 
 public class UniformSphericalRandom implements VectorEvaluable, TripleFunction<Triple, Vector> {
@@ -41,16 +39,7 @@ public class UniformSphericalRandom implements VectorEvaluable, TripleFunction<T
 	}
 
 	@Override
-	public void compact() { }
-
-	@Override
 	public Vector operate(Triple in) { return evaluate(); }
-
-	@Override
-	public Scope<Vector> getScope(NameProvider p) {
-		// TODO
-		return null;
-	}
 
 	public static UniformSphericalRandom getInstance() { return local; }
 }

@@ -18,7 +18,7 @@ package org.almostrealism.algebra.computations;
 
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 import static org.almostrealism.util.Ops.*;
 
 import java.util.function.Supplier;

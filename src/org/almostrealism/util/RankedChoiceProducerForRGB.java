@@ -31,13 +31,13 @@ public class RankedChoiceProducerForRGB extends RankedChoiceProducerForMemWrappe
 	}
 
 	public AcceleratedRankedChoiceProducer<RGB> getAccelerated() {
-		return getAccelerated(3, RGB.blank(), RGBBank::new);
+		return getAccelerated(3, RGB.blank().get(), RGBBank::new);
 	}
 
 	@Override
 	public RGB replaceNull(Object[] args) {
 		if (tolerateNull) {
-			return RGBBlack.getProducer().evaluate();
+			return RGBBlack.getEvaluable().evaluate();
 		} else {
 			throw new NullPointerException();
 		}

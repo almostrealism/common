@@ -19,28 +19,21 @@ package org.almostrealism.space;
 import java.util.*;
 import java.util.function.Supplier;
 
-import io.almostrealism.code.Scope;
-import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.*;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.color.*;
 import org.almostrealism.color.computations.ColorProduct;
-import org.almostrealism.color.computations.GeneratedColorProducer;
 import org.almostrealism.color.computations.RGBAdd;
-import org.almostrealism.color.computations.RGBEvaluable;
 import org.almostrealism.graph.mesh.Mesh;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.physics.Porous;
 import org.almostrealism.relation.Constant;
-import org.almostrealism.relation.Maker;
-import org.almostrealism.relation.NameProvider;
+import org.almostrealism.relation.Producer;
 import org.almostrealism.relation.Operator;
 import org.almostrealism.texture.Texture;
-import org.almostrealism.util.AdaptEvaluableRGB;
+import org.almostrealism.util.AdaptProducerRGB;
 import org.almostrealism.util.CodeFeatures;
 import org.almostrealism.util.CollectionUtils;
-import org.almostrealism.util.DynamicEvaluable;
-import org.almostrealism.util.Evaluable;
 
 /**
  * {@link AbstractSurface} is an abstract implementation of {@link ShadableSurface} that takes
@@ -512,12 +505,12 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 	 * of this {@link AbstractSurface} and returns this value as an {@link RGB}.
 	 */
 	@Override
-	public Maker<RGB> shade(ShaderContext p) {
+	public Producer<RGB> shade(ShaderContext p) {
 //		System.out.println(this + ".shade(reflections = " + p.getReflectionCount() + ")");
 
 		p.setSurface(this);
 		
-		Maker<RGB> color = null;
+		Producer<RGB> color = null;
 		
 		if (this.shaders != null) {
 			color = this.shaders.shade(p, p.getIntersection());
@@ -527,7 +520,7 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 			if (color == null) {
 				color = getParent().shade(p);
 			} else {
-				final Maker<RGB> fc = color;
+				final Producer<RGB> fc = color;
 				color = () -> new RGBAdd(fc, getParent().shade(p));
 			}
 		}
@@ -556,24 +549,24 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 	public RGB getColor() { return this.color; }
 
 	@Override
-	public Evaluable<RGB> getValueAt(Evaluable<Vector> point) { return getColorAt(point, true); }
+	public Producer<RGB> getValueAt(Producer<Vector> point) { return getColorAt(point, true); }
 	
 	/**
 	 * @return  The color of this AbstractSurface at the specified point as an RGB object.
 	 */
-	public RGBEvaluable getColorAt(Evaluable<? extends Vector> point, boolean transform) {
+	public Producer<RGB> getColorAt(Producer<Vector> point, boolean transform) {
 	    if (transform && getTransform(true) != null)
 	    	point = getTransform(true).getInverse().transform(point, TransformMatrix.TRANSFORM_AS_LOCATION);
 
-		Evaluable<? extends Vector> fp = point;
-	    Supplier<Evaluable<? extends RGB>> colorAt = v(getColor());
+		Producer<Vector> fp = point;
+		Producer<RGB> colorAt = v(getColor());
 	    
 	    if (textures.length > 0) {
-	    	List<Supplier<Evaluable<RGB>>> texColors = new ArrayList<>();
+	    	List<Producer<RGB>> texColors = new ArrayList<>();
 
 	        for (int i = 0; i < this.textures.length; i++) {
 	        	Texture t = textures[i];
-	            texColors.add(() -> new AdaptEvaluableRGB(new DynamicEvaluable<>(args -> t.operate((Triple) args[0])), fp));
+	            texColors.add(new AdaptProducerRGB(() -> args -> t.operate((Triple) args[0]), fp));
 	        }
 	        
 	        colorAt = new ColorProduct(
@@ -581,21 +574,14 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 	    }
 
 	    if (this.parent != null)
-	        colorAt = new ColorProduct(colorAt, () -> this.parent.getColorAt(fp, transform));
+	        colorAt = new ColorProduct(colorAt, this.parent.getColorAt(fp, transform));
 		
-		return GeneratedColorProducer.fromProducer(this, colorAt.get());
+		return colorAt;
 	}
 
 	@Override
 	public RGB operate(Vector in) {
-		return getValueAt((Evaluable<Vector>) v(in).get()).evaluate();
-	}
-
-	@Override
-	public Scope getScope(NameProvider p) {
-		Scope s = new Scope();
-		s.getVariables().add(new Variable(p.getFunctionName() + "vector", operate(null))); // TODO Input?
-		return s;
+		return getValueAt(v(in)).get().evaluate();
 	}
 
 	@Override

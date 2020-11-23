@@ -18,7 +18,7 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.Argument;
 import io.almostrealism.code.Variable;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.ArrayList;
 import java.util.List;

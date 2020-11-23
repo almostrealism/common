@@ -14,16 +14,14 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.algebra;
+package org.almostrealism.util;
 
-import org.almostrealism.algebra.computations.DefaultPairEvaluable;
-import org.almostrealism.relation.ProducerComputation;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.algebra.Scalar;
+import org.almostrealism.relation.Evaluable;
 
-public interface PairSupplier extends ProducerComputation<Pair>, PairFeatures {
-	@Override
-	default Evaluable<Pair> get() { return new DefaultPairEvaluable(this); }
+public interface EvaluableWithRank<T> extends Evaluable<T> {
 
-	default ScalarSupplier x() { return l(this); }
-	default ScalarSupplier y() { return r(this); }
+	Evaluable<T> getProducer();
+
+	Evaluable<Scalar> getRank();
 }

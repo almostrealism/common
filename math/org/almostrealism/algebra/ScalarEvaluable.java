@@ -23,7 +23,7 @@ import org.almostrealism.math.bool.AcceleratedConditionalStatementVector;
 import org.almostrealism.math.bool.GreaterThanVector;
 import org.almostrealism.math.bool.LessThanVector;
 import org.almostrealism.relation.ProducerComputation;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 import org.almostrealism.util.StaticEvaluable;
 
 import java.util.function.Supplier;

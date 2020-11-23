@@ -17,11 +17,11 @@
 package org.almostrealism.geometry;
 
 import org.almostrealism.algebra.VectorEvaluable;
-import org.almostrealism.algebra.VectorSupplier;
+import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.algebra.computations.DefaultVectorEvaluable;
 import org.almostrealism.algebra.computations.RayDirection;
 import org.almostrealism.algebra.computations.RayOrigin;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 
@@ -30,7 +30,7 @@ public interface RayFeatures {
 		return new DefaultVectorEvaluable(origin(() -> r));
 	}
 
-	default VectorSupplier origin(Supplier<Evaluable<? extends Ray>> r) {
+	default VectorProducer origin(Supplier<Evaluable<? extends Ray>> r) {
 		return new RayOrigin(r);
 	}
 
@@ -38,7 +38,7 @@ public interface RayFeatures {
 		return new DefaultVectorEvaluable(direction(() -> r));
 	}
 
-	default VectorSupplier direction(Supplier<Evaluable<? extends Ray>> r) {
+	default VectorProducer direction(Supplier<Evaluable<? extends Ray>> r) {
 		return new RayDirection(r);
 	}
 }

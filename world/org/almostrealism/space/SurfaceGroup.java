@@ -22,20 +22,17 @@ import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.function.Supplier;
 
 import org.almostrealism.algebra.*;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.computations.RGBAdd;
 import org.almostrealism.color.ShaderContext;
 import org.almostrealism.geometry.ClosestIntersection;
-import org.almostrealism.geometry.Ray;
 import org.almostrealism.graph.mesh.Mesh;
 import org.almostrealism.graph.mesh.Triangle;
 import org.almostrealism.relation.Constant;
-import org.almostrealism.relation.Maker;
+import org.almostrealism.relation.Producer;
 import org.almostrealism.relation.Operator;
-import org.almostrealism.util.Evaluable;
 
 /**
  * A {@link SurfaceGroup} object allows {@link ShadableSurface} objects to be grouped together.
@@ -118,8 +115,8 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 	
 	/** {@link ShadableSurface#shade(ShaderContext)} */
 	@Override
-	public Maker<RGB> shade(ShaderContext p) {
-		Maker<RGB> color = null;
+	public Producer<RGB> shade(ShaderContext p) {
+		Producer<RGB> color = null;
 		
 		if (getShaderSet() != null) {
 			color = getShaderSet().shade(p, p.getIntersection());
@@ -129,7 +126,7 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 			if (color == null) {
 				color = getParent().shade(p);
 			} else {
-				final Maker<RGB> fc = color;
+				final Producer<RGB> fc = color;
 				color = () -> new RGBAdd(fc, getParent().shade(p));
 			}
 		}
@@ -139,7 +136,7 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 	
 	/** Returns null. */
 	@Override
-	public VectorEvaluable getNormalAt(Evaluable<Vector> point) { return null; } // TODO?
+	public Producer<Vector> getNormalAt(Producer<Vector> point) { return null; } // TODO?
 
 	@Override
 	public Mesh triangulate() {
@@ -178,13 +175,12 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 	 * (>= 0). If there is no intersection >= 0 along the ray, null is returned.
 	 */
 	@Override
-	public ContinuousField intersectAt(Evaluable ray) {
+	public ContinuousField intersectAt(Producer ray) {
 		TransformMatrix m = getTransform(true);
-		Supplier<Evaluable<? extends Ray>> r = () -> ray;
-		if (m != null) r = m.getInverse().transform(() -> ray);
+		if (m != null) ray = m.getInverse().transform(ray);
 		List<Intersectable> l = new ArrayList<>();
 		l.addAll(surfaces);
-		return new ClosestIntersection(r.get(), l);
+		return new ClosestIntersection(ray, l);
 	}
 
 	@Override

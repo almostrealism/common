@@ -19,7 +19,7 @@ package org.almostrealism.algebra;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.relation.Computation;
 import org.almostrealism.uml.ModelEntity;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
 /**
  * Implementations of the Camera interface provide a method for calculating viewing rays.

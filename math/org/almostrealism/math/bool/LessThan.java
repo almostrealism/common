@@ -17,28 +17,28 @@
 package org.almostrealism.math.bool;
 
 import org.almostrealism.hardware.MemWrapper;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.function.Function;
 import java.util.function.Supplier;
 
 public class LessThan<T extends MemWrapper> extends AcceleratedBinaryConditionAdapter<T> {
 	public LessThan(int memLength,
-					   Function<Integer, Supplier<Evaluable<T>>> blankValue) {
+					   Function<Integer, Supplier<Evaluable<? extends T>>> blankValue) {
 		this(memLength, blankValue, null, null, null, null);
 	}
 
 	public LessThan(int memLength,
-					Function<Integer, Supplier<Evaluable<T>>> blankValue,
+					Function<Integer, Supplier<Evaluable<? extends T>>> blankValue,
 					Supplier<Evaluable> leftOperand,
 					Supplier<Evaluable> rightOperand,
-					Supplier<Evaluable<T>> trueValue,
-					Supplier<Evaluable<T>> falseValue) {
+					Supplier<Evaluable<? extends T>> trueValue,
+					Supplier<Evaluable<? extends T>> falseValue) {
 		this(memLength, blankValue.apply(memLength), leftOperand, rightOperand, trueValue, falseValue, false);
 	}
 
 	public LessThan(int memLength,
-					Supplier<Evaluable<T>> blankValue,
+					Supplier<Evaluable<? extends T>> blankValue,
 					Supplier leftOperand,
 					Supplier rightOperand,
 					Supplier trueValue,

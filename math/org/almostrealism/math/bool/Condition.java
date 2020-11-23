@@ -16,7 +16,7 @@
 
 package org.almostrealism.math.bool;
 
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
 public interface Condition extends Evaluable<Boolean> {
 }

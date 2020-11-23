@@ -25,7 +25,7 @@ import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;
 import org.almostrealism.relation.NameProvider;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -38,11 +38,11 @@ public abstract class DynamicAcceleratedProducerAdapter<I extends MemWrapper, O 
 	private int memLength;
 	private IntFunction<InstanceReference> variableRef;
 
-	public DynamicAcceleratedProducerAdapter(int memLength, Supplier<Evaluable<O>> result, Supplier<Evaluable<? extends I>>... inputArgs) {
+	public DynamicAcceleratedProducerAdapter(int memLength, Supplier<Evaluable<? extends O>> result, Supplier<Evaluable<? extends I>>... inputArgs) {
 		this(memLength, result, inputArgs, new Evaluable[0]);
 	}
 
-	public DynamicAcceleratedProducerAdapter(int memLength, Supplier<Evaluable<O>> result, Supplier<Evaluable<? extends I>>[] inputArgs, Object[] additionalArguments) {
+	public DynamicAcceleratedProducerAdapter(int memLength, Supplier<Evaluable<? extends O>> result, Supplier<Evaluable<? extends I>>[] inputArgs, Object[] additionalArguments) {
 		this.memLength = memLength;
 		this.setArguments(Arrays.asList(arguments(
 				AcceleratedProducer.includeResult(result,

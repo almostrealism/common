@@ -17,7 +17,7 @@
 package org.almostrealism.algebra.test;
 
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorSupplier;
+import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.util.CodeFeatures;
 import org.junit.Assert;
 import org.junit.Test;
@@ -25,7 +25,7 @@ import org.junit.Test;
 public class VectorMathTest implements CodeFeatures {
 	@Test
 	public void crossProduct() {
-		VectorSupplier cp = vector(0.0, 0.0, -1.0)
+		VectorProducer cp = vector(0.0, 0.0, -1.0)
 				.crossProduct(vector(100.0, -100.0, 0.0)
 						.subtract(vector(0.0, 100.0, 0.0)));
 

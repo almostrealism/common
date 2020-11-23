@@ -25,7 +25,7 @@ import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.hardware.DynamicAcceleratedOperation;
 import org.almostrealism.hardware.DynamicAcceleratedProducer;
 import org.almostrealism.hardware.MemWrapper;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -39,17 +39,17 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrappe
 
 	private BiFunction<Variable<MemWrapper>, List<Variable<?>>, String> compacted;
 
-	public AcceleratedConditionalStatementAdapter(int memLength, Supplier<Evaluable<T>> blankValue) {
+	public AcceleratedConditionalStatementAdapter(int memLength, Supplier<Evaluable<? extends T>> blankValue) {
 		super(blankValue);
 		this.memLength = memLength;
 	}
 
 	public AcceleratedConditionalStatementAdapter(int memLength,
-												  Supplier<Evaluable<T>> blankValue,
+												  Supplier<Evaluable<? extends T>> blankValue,
 												  Supplier<Evaluable> leftOperand,
 												  Supplier<Evaluable> rightOperand,
-												  Supplier<Evaluable<T>> trueValue,
-												  Supplier<Evaluable<T>> falseValue) {
+												  Supplier<Evaluable<? extends T>> trueValue,
+												  Supplier<Evaluable<? extends T>> falseValue) {
 		super(blankValue, leftOperand, rightOperand, trueValue, falseValue);
 		this.memLength = memLength;
 	}

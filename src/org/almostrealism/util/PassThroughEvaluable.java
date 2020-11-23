@@ -18,26 +18,23 @@ package org.almostrealism.util;
 
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.MemWrapper;
+import org.almostrealism.relation.Evaluable;
 
 import java.lang.reflect.InvocationTargetException;
 import java.util.function.Supplier;
 
-public class PassThroughProducer<T> implements Evaluable<T>, ProducerArgumentReference, HardwareFeatures {
+public class PassThroughEvaluable<T> implements Evaluable<T>, ProducerArgumentReference, HardwareFeatures {
 	private int argIndex = -1;
 
-	public PassThroughProducer(int argIndex) {
+	public PassThroughEvaluable(int argIndex) {
 		this.argIndex = argIndex;
 	}
 
-	/** Returns the argument at the index specified to the constructor of {@link PassThroughProducer}. */
+	/** Returns the argument at the index specified to the constructor of {@link PassThroughEvaluable}. */
 	@Override
 	public T evaluate(Object[] args) {
 		return (T) args[argIndex];
 	}
-
-	/** Does nothing. */
-	@Override
-	public void compact() { }
 
 	@Override
 	public int getReferencedArgumentIndex() { return argIndex; }
@@ -54,10 +51,10 @@ public class PassThroughProducer<T> implements Evaluable<T>, ProducerArgumentRef
 			} catch (InstantiationException | IllegalAccessException |
 					InvocationTargetException | NoSuchMethodException e) {
 				System.out.println("WARN: Unable to determine memory length for " + type.getName());
-				return () -> new PassThroughProducer<>(index);
+				return () -> new PassThroughEvaluable<>(index);
 			}
 		} else {
-			return () -> new PassThroughProducer<>(index);
+			return () -> new PassThroughEvaluable<>(index);
 		}
 	}
 }

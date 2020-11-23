@@ -20,7 +20,7 @@ import org.almostrealism.algebra.Triple;
 import org.almostrealism.color.computations.ColorEvaluable;
 import org.almostrealism.color.RGB;
 import org.almostrealism.relation.TripleFunction;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
 /**
  * The {@link Texture} interface is implemented by classes that can be used to texture a surface.

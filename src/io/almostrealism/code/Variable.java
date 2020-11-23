@@ -17,7 +17,7 @@
 package io.almostrealism.code;
 
 import org.almostrealism.util.Nameable;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 import org.almostrealism.util.Provider;
 
 import java.util.ArrayList;

@@ -20,12 +20,26 @@ import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBBank;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.relation.Evaluable;
+import org.almostrealism.relation.Producer;
 
-public class AdaptEvaluableRGB extends AdaptEvaluable<RGB> implements KernelizedEvaluable<RGB> {
-	public AdaptEvaluableRGB(Evaluable<RGB> p, Evaluable... args) {
+public class AdaptProducerRGB extends AdaptProducer<RGB> {
+	public AdaptProducerRGB(Producer<RGB> p, Producer... args) {
 		super(p, args);
 	}
 
 	@Override
-	public MemoryBank<RGB> createKernelDestination(int size) { return new RGBBank(size); }
+	public KernelizedEvaluable<RGB> get() {
+		Evaluable<RGB> e = super.get();
+
+		return new KernelizedEvaluable<RGB>() {
+			@Override
+			public MemoryBank<RGB> createKernelDestination(int size) { return new RGBBank(size); }
+
+			@Override
+			public RGB evaluate(Object... arguments) {
+				return e.evaluate(arguments);
+			}
+		};
+	}
 }

@@ -16,5 +16,7 @@
 
 package org.almostrealism.relation;
 
-public interface ProducerComputation<T> extends Computation<T>, Maker<T> {
+import org.almostrealism.util.Compactable;
+
+public interface ProducerComputation<T> extends Computation<T>, Producer<T>, Compactable {
 }

@@ -21,7 +21,7 @@ import java.util.function.Supplier;
 
 import org.almostrealism.graph.PathElement;
 import org.almostrealism.util.DimensionAware;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
 /**
  * An Intersection object stores data for the intersections between a ray and a surface.

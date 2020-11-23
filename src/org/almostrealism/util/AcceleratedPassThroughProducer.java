@@ -21,6 +21,7 @@ import io.almostrealism.code.Expression;
 import io.almostrealism.code.Scope;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.hardware.MemWrapper;
+import org.almostrealism.relation.Evaluable;
 import org.almostrealism.relation.NameProvider;
 
 import java.util.ArrayList;

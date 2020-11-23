@@ -26,7 +26,7 @@ import org.almostrealism.hardware.KernelizedOperation;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryBankAdapter;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 import org.almostrealism.util.RankedChoiceProducer;
 
 public class MeshData extends TriangleDataBank {

@@ -25,7 +25,7 @@ import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.space.Plane;
 import org.almostrealism.space.ShadableIntersection;
 import org.almostrealism.util.CodeFeatures;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 import org.almostrealism.util.Provider;
 import org.junit.Assert;
 import org.junit.Test;

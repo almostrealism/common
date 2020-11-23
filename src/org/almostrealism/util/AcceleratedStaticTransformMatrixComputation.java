@@ -17,11 +17,12 @@
 package org.almostrealism.util;
 
 import org.almostrealism.algebra.TransformMatrix;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 
 public class AcceleratedStaticTransformMatrixComputation extends AcceleratedStaticComputation<TransformMatrix> {
-	public AcceleratedStaticTransformMatrixComputation(TransformMatrix value, Supplier<Evaluable<TransformMatrix>> output) {
+	public AcceleratedStaticTransformMatrixComputation(TransformMatrix value, Supplier<Evaluable<? extends TransformMatrix>> output) {
 		super(value, output);
 	}
 }

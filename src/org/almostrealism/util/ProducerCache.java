@@ -16,6 +16,8 @@
 
 package org.almostrealism.util;
 
+import org.almostrealism.relation.Evaluable;
+
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Supplier;

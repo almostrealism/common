@@ -16,20 +16,20 @@
 
 package org.almostrealism.graph.mesh;
 
-import org.almostrealism.algebra.VectorSupplier;
+import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.relation.ProducerComputation;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
-public interface TriangleDataSupplier extends ProducerComputation<TriangleData>, TriangleDataFeatures {
+public interface TriangleDataProducer extends ProducerComputation<TriangleData>, TriangleDataFeatures {
 
 	@Override
 	default Evaluable<TriangleData> get() { return new DefaultTriangleDataProducer(this); }
 
-	default VectorSupplier abc() { return abc(this); }
+	default VectorProducer abc() { return abc(this); }
 
-	default VectorSupplier def() { return def(this); }
+	default VectorProducer def() { return def(this); }
 
-	default VectorSupplier jkl() { return jkl(this); }
+	default VectorProducer jkl() { return jkl(this); }
 
-	default VectorSupplier normal() { return normal(this); }
+	default VectorProducer normal() { return normal(this); }
 }

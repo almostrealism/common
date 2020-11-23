@@ -31,7 +31,7 @@ import javax.swing.JPanel;
 
 import org.almostrealism.color.RGB;
 import org.almostrealism.util.CodeFeatures;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 import static org.almostrealism.util.Ops.*;
 
 /**

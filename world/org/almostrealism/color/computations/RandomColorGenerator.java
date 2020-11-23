@@ -16,48 +16,59 @@
 
 package org.almostrealism.color.computations;
 
+import io.almostrealism.code.Scope;
 import org.almostrealism.color.RGB;
 import org.almostrealism.heredity.Gene;
+import org.almostrealism.relation.NameProvider;
+import org.almostrealism.relation.Evaluable;
 
 /**
  * TODO  Accept a {@link Gene}.
  * 
  * @author Michael Murray
  */
-public class RandomColorGenerator extends ColorEvaluableAdapter {
- 	private RGBEvaluable baseRGB, offsetRGB;
+public class RandomColorGenerator extends ColorProducerAdapter {
+ 	private RGBProducer baseRGB, offsetRGB;
  
 	public RandomColorGenerator() {
-		this(RGBBlack.getProducer(), RGBWhite.getProducer());
+		this(RGBBlack.getInstance(), RGBWhite.getInstance());
 	}
 	
-	public RandomColorGenerator(RGBEvaluable baseRGB, RGBEvaluable offsetRGB) {
+	public RandomColorGenerator(RGBProducer baseRGB, RGBProducer offsetRGB) {
 		this.baseRGB = baseRGB;
 		this.offsetRGB = offsetRGB;
 	}
 	
-	public void setBaseRGB(ColorEvaluable base) { this.baseRGB = base; }
-	public void setOffsetRGB(ColorEvaluable offset) { this.offsetRGB = offset; }
+	public void setBaseRGB(RGBProducer base) { this.baseRGB = base; }
+	public void setOffsetRGB(RGBProducer offset) { this.offsetRGB = offset; }
 	
-	public RGBEvaluable getBaseRGB() { return this.baseRGB; }
-	public RGBEvaluable getOffsetRGB() { return this.offsetRGB; }
-	
-	/** @see ColorEvaluable#evaluate(java.lang.Object[]) */
-	public RGB evaluate(Object args[]) {
-		RGB base = this.baseRGB.evaluate(args);
-		RGB off = this.offsetRGB.evaluate(args);
-		
-		base.setRed(base.getRed() + Math.random() * off.getRed());
-		base.setGreen(base.getGreen() + Math.random() * off.getGreen());
-		base.setBlue(base.getBlue() + Math.random() * off.getBlue());
-		
-		return base;
+	public RGBProducer getBaseRGB() { return this.baseRGB; }
+	public RGBProducer getOffsetRGB() { return this.offsetRGB; }
+
+	@Override
+	public Evaluable<RGB> get() {
+		return args -> {
+			RGB base = this.baseRGB.get().evaluate(args);
+			RGB off = this.offsetRGB.get().evaluate(args);
+
+			base.setRed(base.getRed() + Math.random() * off.getRed());
+			base.setGreen(base.getGreen() + Math.random() * off.getGreen());
+			base.setBlue(base.getBlue() + Math.random() * off.getBlue());
+
+			return base;
+		};
+	}
+
+	@Override
+	public Scope<RGB> getScope(NameProvider provider) {
+		throw new RuntimeException("Not implemented");
 	}
 
 	/**
-	 * Delegates to {@link ColorEvaluable#compact()}
+	 * Delegates to {@link RGBProducer#compact()}
 	 * on the base color and offset color.
 	 */
+	@Override
 	public void compact() {
 		baseRGB.compact();
 		offsetRGB.compact();

@@ -34,7 +34,7 @@ import org.almostrealism.color.RGB;
 import org.almostrealism.relation.NameProvider;
 import org.almostrealism.relation.TripleFunction;
 import org.almostrealism.util.Editable;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
 
 // TODO  Improve documentation.
@@ -227,11 +227,6 @@ public class ImageTexture implements Texture, Editable {
 		}
 	}
 
-	@Override
-	public Scope getScope(NameProvider p) {
-		throw new RuntimeException("getScope is not implemented"); // TODO
-	}
-
 	/**
 	 * @param args {Double, Double, Double, Double}  X scale factor, Y scale factor, X offset, Y offset.
 	 * @throws IllegalArgumentException  If args does not contain the correct object types.
@@ -239,7 +234,7 @@ public class ImageTexture implements Texture, Editable {
 	 * 
 	 * @see org.almostrealism.texture.Texture#getColorAt(java.lang.Object[])
 	 */
-	public ColorEvaluable getColorAt(Object args[]) {
+	public Evaluable<RGB> getColorAt(Object args[]) {
 		return GeneratedColorProducer.fromFunction(this, new TripleFunction<Triple, RGB>() {
 			@Override
 			public RGB operate(Triple l) {
@@ -278,12 +273,7 @@ public class ImageTexture implements Texture, Editable {
 					return null;
 				}
 			}
-
-			@Override
-			public Scope<RGB> getScope(NameProvider p) {
-				throw new RuntimeException("getScope is not implemented");
-			}
-		});
+		}).get();
 	}
 	
 	/**
@@ -292,6 +282,7 @@ public class ImageTexture implements Texture, Editable {
 	 * 
 	 * @see ColorEvaluable#evaluate(java.lang.Object[])
 	 */
+	@Override
 	public RGB evaluate(Object args[]) {
 	    if (!(args[0] instanceof Vector)) throw new IllegalArgumentException("Illegal argument: " + args[0]);
 	    if (!(args[1] instanceof Double)) throw new IllegalArgumentException("Illegal argument: " + args[1]);

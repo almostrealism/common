@@ -27,7 +27,7 @@ import org.almostrealism.geometry.Ray;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.util.DimensionAware;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
 public class CachedMeshIntersectionKernel implements KernelizedEvaluable<Scalar>, DimensionAware {
 	private MeshData data;
@@ -98,17 +98,7 @@ public class CachedMeshIntersectionKernel implements KernelizedEvaluable<Scalar>
 			}
 
 			@Override
-			public void compact() {
-
-			}
-
-			@Override
 			public MemoryBank<Vector> createKernelDestination(int size) { return new VectorBank(size); }
 		};
-	}
-
-	@Override
-	public void compact() {
-		ray.compact();
 	}
 }

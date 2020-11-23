@@ -20,7 +20,7 @@ import org.almostrealism.algebra.computations.DefaultScalarEvaluable;
 import org.almostrealism.algebra.computations.ScalarPow;
 import org.almostrealism.algebra.computations.ScalarProduct;
 import org.almostrealism.algebra.computations.ScalarSum;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 import org.almostrealism.util.StaticEvaluable;
 
 import java.util.function.Supplier;
@@ -32,7 +32,7 @@ public interface ScalarFeatures {
 		return new DefaultScalarEvaluable(scalarAdd(() -> a, () -> b));
 	}
 
-	default ScalarSupplier scalarAdd(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
+	default ScalarProducer scalarAdd(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
 		return new ScalarSum(a, b);
 	}
 
@@ -40,7 +40,7 @@ public interface ScalarFeatures {
 		return new DefaultScalarEvaluable(scalarSubtract(() -> a, () -> b));
 	}
 
-	default ScalarSupplier scalarSubtract(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
+	default ScalarProducer scalarSubtract(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
 		return new ScalarSum(a, scalarMinus(b));
 	}
 
@@ -48,7 +48,7 @@ public interface ScalarFeatures {
 		return new DefaultScalarEvaluable(scalarsMultiply(() -> a, () -> b));
 	}
 
-	default ScalarSupplier scalarsMultiply(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
+	default ScalarProducer scalarsMultiply(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
 		return new ScalarProduct(a, b);
 	}
 
@@ -56,7 +56,7 @@ public interface ScalarFeatures {
 		return new DefaultScalarEvaluable(scalarMinus(() -> v));
 	}
 
-	default ScalarSupplier scalarMinus(Supplier<Evaluable<? extends Scalar>> v) {
+	default ScalarProducer scalarMinus(Supplier<Evaluable<? extends Scalar>> v) {
 		return new ScalarProduct(minusOne, v);
 	}
 
@@ -64,7 +64,7 @@ public interface ScalarFeatures {
 		return new DefaultScalarEvaluable(pow(() -> base, () -> exponent));
 	}
 
-	default ScalarSupplier pow(Supplier<Evaluable<? extends Scalar>> base, Supplier<Evaluable<? extends Scalar>> exponent) {
+	default ScalarProducer pow(Supplier<Evaluable<? extends Scalar>> base, Supplier<Evaluable<? extends Scalar>> exponent) {
 		return new ScalarPow(base, exponent);
 	}
 
@@ -72,7 +72,7 @@ public interface ScalarFeatures {
 		return pow(base, StaticEvaluable.of(exp));
 	}
 
-	default ScalarSupplier pow(Supplier<Evaluable<? extends Scalar>> base, Scalar exp) {
+	default ScalarProducer pow(Supplier<Evaluable<? extends Scalar>> base, Scalar exp) {
 		return pow(base, () -> StaticEvaluable.of(exp));
 	}
 
@@ -80,7 +80,7 @@ public interface ScalarFeatures {
 		return pow(base, new Scalar(value));
 	}
 
-	default ScalarSupplier pow(Supplier<Evaluable<? extends Scalar>> base, double value) {
+	default ScalarProducer pow(Supplier<Evaluable<? extends Scalar>> base, double value) {
 		return pow(base, new Scalar(value));
 	}
 }

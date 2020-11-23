@@ -18,12 +18,12 @@ package org.almostrealism.algebra.computations;
 
 import org.almostrealism.algebra.TransformMatrix;
 import org.almostrealism.hardware.AcceleratedProducer;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 
 public class MatrixProduct extends AcceleratedProducer<TransformMatrix, TransformMatrix> {
 	public MatrixProduct(Supplier<Evaluable<? extends TransformMatrix>> a, Supplier<Evaluable<? extends TransformMatrix>> b) {
-		super("matrixProduct", () -> TransformMatrix.blank(), a, b);
+		super("matrixProduct", TransformMatrix.blank(), a, b);
 	}
 }

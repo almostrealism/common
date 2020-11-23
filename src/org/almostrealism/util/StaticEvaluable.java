@@ -31,6 +31,7 @@ import org.almostrealism.color.computations.RGBEvaluable;
 import org.almostrealism.geometry.DefaultRayEvaluable;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayEvaluable;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 
@@ -38,35 +39,25 @@ public interface StaticEvaluable<T> extends Evaluable<T>, Supplier<T> {
 	@Override
 	default T evaluate(Object[] args) { return get(); }
 
-	/** Does nothing. */
-	@Override
-	default void compact() { }
-
-	/**
-	 * Returns true.
-	 */
-	@Override
-	default boolean isStatic() { return true; }
-
 	static ScalarEvaluable of(double value) { return of(new Scalar(value)); }
 
 	static ScalarEvaluable of(Scalar value) {
-		return new DefaultScalarEvaluable(new AcceleratedStaticScalarComputation(value, () -> Scalar.blank()));
+		return new DefaultScalarEvaluable(new AcceleratedStaticScalarComputation(value, Scalar.blank()));
 	}
 
 	static PairEvaluable of(Pair value) {
-		return new DefaultPairEvaluable(new AcceleratedStaticPairComputation(value, () -> Pair.empty()));
+		return new DefaultPairEvaluable(new AcceleratedStaticPairComputation(value, Pair.empty()));
 	}
 
 	static VectorEvaluable of(Vector value) {
-		return new DefaultVectorEvaluable(new AcceleratedStaticVectorComputation(value, () -> Vector.blank()));
+		return new DefaultVectorEvaluable(new AcceleratedStaticVectorComputation(value, Vector.blank()));
 	}
 
 	static RayEvaluable of(Ray value) {
-		return new DefaultRayEvaluable(new AcceleratedStaticRayComputation(value, () -> Ray.blank()));
+		return new DefaultRayEvaluable(new AcceleratedStaticRayComputation(value, Ray.blank()));
 	}
 
 	static RGBEvaluable of(RGB value) {
-		return new DefaultRGBEvaluable(new AcceleratedStaticRGBComputation(value, () -> RGB.blank()));
+		return new DefaultRGBEvaluable(new AcceleratedStaticRGBComputation(value, RGB.blank()));
 	}
 }

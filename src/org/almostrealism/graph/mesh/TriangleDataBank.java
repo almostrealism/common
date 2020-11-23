@@ -17,7 +17,7 @@
 package org.almostrealism.graph.mesh;
 
 import org.almostrealism.hardware.MemoryBankAdapter;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
 /**
  * A collection of {@link TriangleData}s of a fixed length, that is contiguous in

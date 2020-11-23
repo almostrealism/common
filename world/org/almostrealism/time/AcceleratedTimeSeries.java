@@ -21,10 +21,11 @@ import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.MemWrapper;
+import org.almostrealism.relation.Producer;
 import org.almostrealism.util.AcceleratedAssignment;
 import org.almostrealism.util.CodeFeatures;
-import org.almostrealism.util.DynamicEvaluable;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.util.DynamicProducer;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 
@@ -63,12 +64,12 @@ public class AcceleratedTimeSeries extends TemporalScalarBank implements CodeFea
 		set(getEndCursorIndex(), time, value);
 	}
 
-	public Supplier<Runnable> add(Supplier<Evaluable<TemporalScalar>> value) {
+	public Supplier<Runnable> add(Producer<TemporalScalar> value) {
 		return new AcceleratedAssignment<>(2, head(), value);
 	}
 
-	protected Supplier<Evaluable<TemporalScalar>> head() {
-		return () -> new DynamicEvaluable<>(args -> {
+	protected Producer<TemporalScalar> head() {
+		return new DynamicProducer<>(args -> {
 			setEndCursorIndex(getEndCursorIndex() + 1);
 			return get(getEndCursorIndex());
 		});
@@ -81,7 +82,7 @@ public class AcceleratedTimeSeries extends TemporalScalarBank implements CodeFea
 	}
 
 	public Evaluable<Scalar> valueAt(Evaluable<CursorPair> cursor) {
-		AcceleratedProducer op = new AcceleratedProducer<MemWrapper, TemporalScalar>("vat", () -> TemporalScalar.blank(), p(this), () -> cursor);
+		AcceleratedProducer op = new AcceleratedProducer<MemWrapper, TemporalScalar>("vat", TemporalScalar.blank(), p(this), () -> cursor);
 		op.setSourceClass(AcceleratedTimeSeries.class);
 		return op;
 	}

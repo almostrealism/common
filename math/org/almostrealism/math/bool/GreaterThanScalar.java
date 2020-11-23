@@ -30,14 +30,14 @@ public class GreaterThanScalar extends GreaterThan<Scalar> implements Accelerate
 	public GreaterThanScalar(
 			Supplier leftOperand,
 			Supplier rightOperand) {
-		super(2, () -> Scalar.blank(), leftOperand, rightOperand, null, null, false);
+		super(2, Scalar.blank(), leftOperand, rightOperand, null, null, false);
 	}
 
 	public GreaterThanScalar(
 			Supplier leftOperand,
 			Supplier rightOperand,
 			boolean includeEqual) {
-		super(2, () -> Scalar.blank(), leftOperand, rightOperand, null, null, includeEqual);
+		super(2, Scalar.blank(), leftOperand, rightOperand, null, null, includeEqual);
 	}
 
 	public GreaterThanScalar(
@@ -45,7 +45,7 @@ public class GreaterThanScalar extends GreaterThan<Scalar> implements Accelerate
 			Supplier rightOperand,
 			Supplier trueValue,
 			Supplier falseValue) {
-		super(2, () -> Scalar.blank(), leftOperand, rightOperand, trueValue, falseValue, false);
+		super(2, Scalar.blank(), leftOperand, rightOperand, trueValue, falseValue, false);
 	}
 
 	@Override

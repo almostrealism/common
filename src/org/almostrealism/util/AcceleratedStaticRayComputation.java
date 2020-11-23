@@ -17,12 +17,13 @@
 package org.almostrealism.util;
 
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.geometry.RaySupplier;
+import org.almostrealism.geometry.RayProducer;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 
-public class AcceleratedStaticRayComputation extends AcceleratedStaticComputation<Ray> implements RaySupplier {
-	public AcceleratedStaticRayComputation(Ray value, Supplier<Evaluable<Ray>> output) {
+public class AcceleratedStaticRayComputation extends AcceleratedStaticComputation<Ray> implements RayProducer {
+	public AcceleratedStaticRayComputation(Ray value, Supplier<Evaluable<? extends Ray>> output) {
 		super(value, output);
 	}
 }

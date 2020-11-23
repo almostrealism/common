@@ -16,20 +16,38 @@
 
 package org.almostrealism.util;
 
+import io.almostrealism.code.Scope;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
-import org.almostrealism.algebra.ScalarEvaluable;
+import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.relation.Evaluable;
+import org.almostrealism.relation.NameProvider;
 
 import java.util.function.Function;
 
-public class DynamicScalarEvaluable extends DynamicEvaluable<Scalar> implements KernelizedEvaluable<Scalar>, ScalarEvaluable {
+public class DynamicScalarProducer extends DynamicProducer<Scalar> implements ScalarProducer {
 
-	public DynamicScalarEvaluable(Function<Object[], Scalar> function) {
+	public DynamicScalarProducer(Function<Object[], Scalar> function) {
 		super(function);
 	}
 
 	@Override
-	public MemoryBank<Scalar> createKernelDestination(int size) { return new ScalarBank(size); }
+	public Scope<Scalar> getScope(NameProvider provider) {
+		throw new RuntimeException("Not implemented");
+	}
+
+	@Override
+	public Evaluable<Scalar> get() {
+		Evaluable<Scalar> e = super.get();
+
+		return new KernelizedEvaluable<Scalar>() {
+			@Override
+			public MemoryBank<Scalar> createKernelDestination(int size) { return new ScalarBank(size); }
+
+			@Override
+			public Scalar evaluate(Object... args) { return e.evaluate(args); }
+		};
+	}
 }

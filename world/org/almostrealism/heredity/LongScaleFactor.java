@@ -17,9 +17,9 @@
 package org.almostrealism.heredity;
 
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.relation.Producer;
 import org.almostrealism.util.CodeFeatures;
 import org.almostrealism.util.Defaults;
-import org.almostrealism.util.Evaluable;
 
 // TODO  Rename
 public class LongScaleFactor implements ScaleFactor<Scalar>, CodeFeatures {
@@ -30,8 +30,8 @@ public class LongScaleFactor implements ScaleFactor<Scalar>, CodeFeatures {
 	public LongScaleFactor(double scale) { this.scale = scale; }
 
 	@Override
-	public Evaluable<Scalar> getResultant(Evaluable<Scalar> value) {
-		return (Evaluable<Scalar>) scalarsMultiply(() -> value, scalar(scale)).get();
+	public Producer<Scalar> getResultant(Producer<Scalar> value) {
+		return scalarsMultiply(value, scalar(scale));
 	}
 
 	@Override

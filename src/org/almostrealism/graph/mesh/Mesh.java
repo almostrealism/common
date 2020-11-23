@@ -28,9 +28,7 @@ import java.util.ListIterator;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
-import java.util.function.Supplier;
 
-import io.almostrealism.code.Scope;
 import org.almostrealism.algebra.*;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.ShaderContext;
@@ -41,8 +39,7 @@ import org.almostrealism.io.FileDecoder;
 import org.almostrealism.io.SpatialData;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
-import org.almostrealism.relation.Maker;
-import org.almostrealism.relation.NameProvider;
+import org.almostrealism.relation.Producer;
 import org.almostrealism.relation.Operator;
 import org.almostrealism.space.KdTree;
 import org.almostrealism.space.ShadableIntersection;
@@ -50,7 +47,6 @@ import org.almostrealism.space.ShadableSurface;
 import org.almostrealism.space.ShadableSurfaceWrapper;
 import org.almostrealism.space.SpacePartition;
 import org.almostrealism.space.BoundingSolid;
-import org.almostrealism.util.Evaluable;
 
 // TODO  Add bounding solid to make intersection calc faster.
 
@@ -111,13 +107,13 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 		
 		@Override public boolean getShadeFront() { return this.getSurface().getShadeFront(); }
 		@Override public boolean getShadeBack() { return this.getSurface().getShadeBack(); }
-		@Override public Evaluable<RGB> getValueAt(Evaluable<Vector> point) { return this.getSurface().getValueAt(point); }
+		@Override public Producer<RGB> getValueAt(Producer<Vector> point) { return this.getSurface().getValueAt(point); }
 
 		@Override
 		public BoundingSolid calculateBoundingSolid() { return mesh.calculateBoundingSolid(); }
 
-		@Override public Evaluable<Vector> getNormalAt(Evaluable<Vector> point) { return this.getSurface().getNormalAt(point); }
-		@Override public ContinuousField intersectAt(Evaluable<Ray> ray) { return this.getSurface().intersectAt(ray); }
+		@Override public Producer<Vector> getNormalAt(Producer<Vector> point) { return this.getSurface().getNormalAt(point); }
+		@Override public ContinuousField intersectAt(Producer<Ray> ray) { return this.getSurface().intersectAt(ray); }
 
 		@Override
 		public boolean cancel(boolean mayInterruptIfRunning) { return getSurface().cancel(mayInterruptIfRunning); }
@@ -135,11 +131,9 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 		@Override
 		public Operator<Scalar> expect() { return getSurface().expect(); }
 
-		@Override public Maker<RGB> shade(ShaderContext p) { return this.getSurface().shade(p); }
+		@Override public Producer<RGB> shade(ShaderContext p) { return this.getSurface().shade(p); }
 
 		@Override public RGB operate(Vector in) { return getSurface().operate(in); }
-
-		@Override public Scope getScope(NameProvider p) { return getSurface().getScope(p); }
 	}
 	
 	public interface VertexData {
@@ -255,9 +249,9 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 
 		Triangle t = new Triangle(v1, v2, v3);
 
-		Evaluable<Vector> tnp = t.getNormalAt(Vector.blank());
+		Producer<Vector> tnp = t.getNormalAt(Vector.blank());
 		tnp.compact();
-		Vector tn = tnp.evaluate();
+		Vector tn = tnp.get().evaluate();
 
 		if (this.triangles.add(new int[] {p1, p2, p3})) {
 			v1.addNormal(tn);
@@ -575,7 +569,7 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 	 */
 	public int extrudeFace(int face, double l) {
 		return this.extrudeFace(face,
-				((Triangle) this.triangles.get(face)).getNormalAt(Vector.blank()).evaluate(new Object[0]).multiply(l));
+				((Triangle) this.triangles.get(face)).getNormalAt(Vector.blank()).get().evaluate().multiply(l));
 	}
 	
 	/**
@@ -651,20 +645,20 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 	public Mesh triangulate() { return this; }
 
 	/**
-	 * @see ShadableSurface#intersectAt(Evaluable)
+	 * @see ShadableSurface#intersectAt(Producer)
 	 */
 	@Override
-	public ContinuousField intersectAt(Evaluable ray) {
+	public ContinuousField intersectAt(Producer ray) {
 		if (this.isTreeLoaded()) return super.intersectAt(ray);
 
 		TransformMatrix t = getTransform(true);
-		Supplier<Evaluable<? extends Ray>> tray = () -> ray;
+		Producer<Ray> tray = ray;
 		if (t != null) tray = t.getInverse().transform(tray);
 
 		CachedMeshIntersectionKernel kernel =
 				new CachedMeshIntersectionKernel(getMeshData(), (KernelizedEvaluable) tray.get());
 
-		return new ShadableIntersection(() -> ray, () -> kernel.getClosestNormal(), () -> kernel);
+		return new ShadableIntersection(ray, () -> kernel.getClosestNormal(), () -> kernel);
 	}
 
 	private void removeBackFaces(Ray r) {
@@ -677,8 +671,8 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 			}
 
 			Vector trv = tcache[i].getVertices()[0].subtract(r.getOrigin());
-			double dt = tcache[i].getNormalAt(Vector.blank())
-					.evaluate(new Object[0]).dotProduct(trv);
+			double dt = tcache[i].getNormalAt(Vector.blank()).get()
+					.evaluate().dotProduct(trv);
 
 			if ((!getShadeFront() && !getShadeBack()) ||
 					(!getShadeFront() && dt < 0.0) ||

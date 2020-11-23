@@ -24,7 +24,9 @@ import org.almostrealism.geometry.Ray;
 import org.almostrealism.relation.Constant;
 import org.almostrealism.relation.NameProvider;
 import org.almostrealism.relation.Operator;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
+import org.almostrealism.relation.Producer;
+
 import static org.almostrealism.util.Ops.*;
 
 import java.util.concurrent.ExecutionException;
@@ -47,7 +49,7 @@ public class Plane extends AbstractSurface implements ParticleGroup {
   
 	private int type;
 
-	private Evaluable<Vector> normal;
+	private Producer<Vector> normal;
 
 	/**
 	 * Constructs a {@link Plane} that represents an XY plane that is black.
@@ -120,18 +122,18 @@ public class Plane extends AbstractSurface implements ParticleGroup {
 			else
 				n = null;
 
-			normal = compileProducer(new ImmutableVector(n)); // This causes us to avoid infinite regress
+			normal = new ImmutableVector(n); // This causes us to avoid infinite regress
 
 			TransformMatrix m = getTransform(true);
 
 			if (m != null) {
-				normal = (Evaluable<Vector>) m.transform(normal, TransformMatrix.TRANSFORM_AS_NORMAL);
+				normal = m.transform(normal, TransformMatrix.TRANSFORM_AS_NORMAL);
 			}
 		}
 	}
 
 	@Override
-	public Evaluable<Vector> getNormalAt(Evaluable<Vector> p) {
+	public Producer<Vector> getNormalAt(Producer<Vector> p) {
 		calculateTransform();
 		return normal;
 	}
@@ -141,14 +143,14 @@ public class Plane extends AbstractSurface implements ParticleGroup {
 	 * {@link Ray} that intersection between the ray and this {@link Plane} occurs.
 	 */
 	@Override
-	public ContinuousField intersectAt(Evaluable<Ray> r) {
+	public ContinuousField intersectAt(Producer<Ray> r) {
 		TransformMatrix m = getTransform(true);
-		Supplier<Evaluable<? extends Ray>> tr = () -> r;
+		Supplier<Evaluable<? extends Ray>> tr = r;
 		if (m != null) tr = m.getInverse().transform(tr);
 
 		// tr = new RayFromVectors(new RayOrigin(tr), new RayDirection(tr).normalize());
 
-		ScalarSupplier s;
+		ScalarProducer s;
 
 		if (type == Plane.XY) {
 			s = ops().origin(tr).z().minus().divide(ops().direction(tr).z());
@@ -160,7 +162,7 @@ public class Plane extends AbstractSurface implements ParticleGroup {
 			throw new IllegalArgumentException(String.valueOf(type));
 		}
 
-		return new ShadableIntersection(this, () -> r, s);
+		return new ShadableIntersection(this, r, s);
 	}
 
 	@Override
@@ -182,8 +184,6 @@ public class Plane extends AbstractSurface implements ParticleGroup {
 				else
 					return null;
 			}
-
-			@Override public void compact() { }
 
 			@Override public Scope<Scalar> getScope(NameProvider p) {
 				// TODO  Not sure this is correct

@@ -26,9 +26,10 @@ import org.almostrealism.algebra.computations.RayPointAt;
 import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.hardware.MemWrapperAdapter;
+import org.almostrealism.relation.Producer;
 import org.almostrealism.util.CodeFeatures;
-import org.almostrealism.util.DynamicEvaluable;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.util.DynamicProducer;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 
@@ -114,7 +115,7 @@ public class Ray extends MemWrapperAdapter implements Cloneable, CodeFeatures {
 	 */
 	public Evaluable<Scalar> oDoto() {
 		// TODO  Cache
-		return new AcceleratedProducer<>("rayODotO", false, () -> Scalar.blank(),
+		return new AcceleratedProducer<>("rayODotO", false, Scalar.blank(),
 										new Supplier[0], new Object[] { this });
 	}
 	
@@ -123,7 +124,7 @@ public class Ray extends MemWrapperAdapter implements Cloneable, CodeFeatures {
 	 */
 	public Evaluable<Scalar> dDotd() {
 		// TODO  Cache
-		return new AcceleratedProducer<>("rayDDotD", false, () -> Scalar.blank(),
+		return new AcceleratedProducer<>("rayDDotD", false, Scalar.blank(),
 										new Supplier[0], new Object[] { this });
 	}
 	
@@ -132,7 +133,7 @@ public class Ray extends MemWrapperAdapter implements Cloneable, CodeFeatures {
 	 */
 	public Evaluable<Scalar> oDotd() {
 		// TODO  Cache
-		return new AcceleratedProducer<>("rayODotD", false, () -> Scalar.blank(),
+		return new AcceleratedProducer<>("rayODotD", false, Scalar.blank(),
 										new Supplier[0], new Object[] { this });
 	}
 	
@@ -181,7 +182,7 @@ public class Ray extends MemWrapperAdapter implements Cloneable, CodeFeatures {
 
 	@Override
 	public Object clone() {
-		// TODO  hardware accelerate
+		// TODO  copy mem directly
 		double coords[] = toArray();
 		return new Ray(coords);
 	}
@@ -204,7 +205,7 @@ public class Ray extends MemWrapperAdapter implements Cloneable, CodeFeatures {
 		return value;
 	}
 
-	public static Evaluable<Ray> blank() {
-		return new DynamicEvaluable<>(args -> new Ray());
+	public static Producer<Ray> blank() {
+		return new DynamicProducer<>(args -> new Ray());
 	}
 }

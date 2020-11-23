@@ -16,10 +16,10 @@
 
 package org.almostrealism.graph;
 
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Producer;
 
 import java.util.function.Supplier;
 
 public interface Receptor<T> {
-	Supplier<Runnable> push(Evaluable<T> protein);
+	Supplier<Runnable> push(Producer<T> protein);
 }

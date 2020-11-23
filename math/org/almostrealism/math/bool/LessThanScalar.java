@@ -19,7 +19,7 @@ package org.almostrealism.math.bool;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.hardware.MemoryBank;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 
@@ -50,7 +50,7 @@ public class LessThanScalar extends LessThan<Scalar> implements AcceleratedCondi
 			Supplier trueValue,
 			Supplier falseValue,
 			boolean includeEqual) {
-		super(2, () -> Scalar.blank(), leftOperand, rightOperand, trueValue, falseValue, includeEqual);
+		super(2, Scalar.blank(), leftOperand, rightOperand, trueValue, falseValue, includeEqual);
 	}
 
 	@Override

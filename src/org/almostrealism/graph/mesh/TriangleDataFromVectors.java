@@ -19,13 +19,13 @@ package org.almostrealism.graph.mesh;
 import io.almostrealism.code.Expression;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 import static org.almostrealism.util.Ops.*;
 
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public class TriangleDataFromVectors extends DynamicAcceleratedProducerAdapter<Vector, TriangleData> implements TriangleDataSupplier {
+public class TriangleDataFromVectors extends DynamicAcceleratedProducerAdapter<Vector, TriangleData> implements TriangleDataProducer {
 	private Expression<Double> value[];
 
 	public TriangleDataFromVectors(Supplier<Evaluable<? extends Vector>> abc, Supplier<Evaluable<? extends Vector>> def,
@@ -35,7 +35,7 @@ public class TriangleDataFromVectors extends DynamicAcceleratedProducerAdapter<V
 
 	public TriangleDataFromVectors(Supplier<Evaluable<? extends Vector>> abc, Supplier<Evaluable<? extends Vector>> def,
 								   Supplier<Evaluable<? extends Vector>> jkl, Supplier<Evaluable<? extends Vector>> normal) {
-		super(12, () -> TriangleData.blank(), abc, def, jkl, normal);
+		super(12, TriangleData.blank(), abc, def, jkl, normal);
 	}
 
 	@Override

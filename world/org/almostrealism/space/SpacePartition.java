@@ -19,9 +19,7 @@ package org.almostrealism.space;
 import org.almostrealism.algebra.*;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.graph.mesh.Triangle;
-import org.almostrealism.util.Evaluable;
-
-import java.util.function.Supplier;
+import org.almostrealism.relation.Producer;
 
 public class SpacePartition<T extends ShadableSurface> extends SurfaceGroup<T> {
 	public static int l, r, s;
@@ -215,7 +213,7 @@ public class SpacePartition<T extends ShadableSurface> extends SurfaceGroup<T> {
 		public boolean isRight(Vector v) { return this.isRight(v, this.offset); }
 		public boolean isLeft(Vector v) { return this.isLeft(v, this.offset); }
 		
-		public ShadableIntersection intersectAt(Evaluable r) {
+		public ShadableIntersection intersectAt(Producer r) {
 			return null; // TODO
 			/*
 			List<ShadableIntersection> l = new ArrayList<ShadableIntersection>();
@@ -314,11 +312,11 @@ public class SpacePartition<T extends ShadableSurface> extends SurfaceGroup<T> {
 	public boolean isTreeLoaded() { return (this.root != null); }
 
 	@Override
-	public ContinuousField intersectAt(Evaluable ray) {
+	public ContinuousField intersectAt(Producer ray) {
 		TransformMatrix t = getTransform(true);
 		boolean ut = t != null;
-		Supplier<Evaluable<? extends Ray>> r = () -> ray;
+		Producer<Ray> r = ray;
 		if (ut) r = t.getInverse().transform(r);
-		return this.root.intersectAt(r.get());
+		return this.root.intersectAt(r);
 	}
 }

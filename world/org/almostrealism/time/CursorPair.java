@@ -18,7 +18,7 @@ package org.almostrealism.time;
 
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 

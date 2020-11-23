@@ -19,7 +19,7 @@ package org.almostrealism.util;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorEvaluable;
 
-public class VectorPassThroughEvaluable extends PassThroughProducer<Vector> implements VectorEvaluable {
+public class VectorPassThroughEvaluable extends PassThroughEvaluable<Vector> implements VectorEvaluable {
 	public VectorPassThroughEvaluable(int argIndex) {
 		super(argIndex);
 	}

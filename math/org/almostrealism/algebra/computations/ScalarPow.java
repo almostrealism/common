@@ -2,18 +2,18 @@ package org.almostrealism.algebra.computations;
 
 import io.almostrealism.code.Expression;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarSupplier;
+import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public class ScalarPow extends DynamicAcceleratedProducerAdapter<Scalar, Scalar> implements ScalarSupplier {
+public class ScalarPow extends DynamicAcceleratedProducerAdapter<Scalar, Scalar> implements ScalarProducer {
 	private Expression<Double> value[];
 
 	public ScalarPow(Supplier<Evaluable<? extends Scalar>> base, Supplier<Evaluable<? extends Scalar>> exponent) {
-		super(2, () -> Scalar.blank(), base, exponent);
+		super(2, Scalar.blank(), base, exponent);
 	}
 
 	@Override

@@ -20,7 +20,7 @@ import org.almostrealism.algebra.Intersectable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.color.ShadableCurve;
 import org.almostrealism.uml.ModelEntity;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
 /**
  * The {@link ShadableSurface} interface is implemented by any 3d object which may be

@@ -1,7 +1,7 @@
 package org.almostrealism.math.bool.test;
 
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarSupplier;
+import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.math.bool.LessThan;
 import org.almostrealism.util.CodeFeatures;
 import org.junit.Assert;
@@ -12,8 +12,8 @@ import java.util.stream.IntStream;
 public class AcceleratedConditionalStatementTests implements CodeFeatures {
 	@Test
 	public void compact() {
-		ScalarSupplier a = scalar(Math.random());
-		ScalarSupplier b = scalar(Math.random());
+		ScalarProducer a = scalar(Math.random());
+		ScalarProducer b = scalar(Math.random());
 
 		LessThan lt = new LessThan(2, () -> Scalar.blank(), a, b, a, b, false);
 
@@ -38,10 +38,10 @@ public class AcceleratedConditionalStatementTests implements CodeFeatures {
 			double c = i * Math.random();
 			double d = i * Math.random();
 
-			ScalarSupplier pa = scalar(a);
-			ScalarSupplier pb = scalar(b);
-			ScalarSupplier pc = scalar(c);
-			ScalarSupplier pd = scalar(d);
+			ScalarProducer pa = scalar(a);
+			ScalarProducer pb = scalar(b);
+			ScalarProducer pc = scalar(c);
+			ScalarProducer pd = scalar(d);
 
 			LessThan lt1 = new LessThan(2, () -> Scalar.blank(), pa, pb, pa, pb, false);
 			LessThan lt2 = new LessThan(2, () -> Scalar.blank(), pb, pc, () -> lt1, scalar(-a), false);

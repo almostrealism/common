@@ -17,12 +17,13 @@
 package org.almostrealism.util;
 
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarSupplier;
+import org.almostrealism.algebra.ScalarProducer;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 
-public class AcceleratedStaticScalarComputation extends AcceleratedStaticComputation<Scalar> implements ScalarSupplier {
-	public AcceleratedStaticScalarComputation(Scalar value, Supplier<Evaluable<Scalar>> output) {
+public class AcceleratedStaticScalarComputation extends AcceleratedStaticComputation<Scalar> implements ScalarProducer {
+	public AcceleratedStaticScalarComputation(Scalar value, Supplier<Evaluable<? extends Scalar>> output) {
 		super(value, output);
 	}
 }

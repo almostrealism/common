@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,6 +18,6 @@ package org.almostrealism.relation;
 
 import org.almostrealism.algebra.Triple;
 
-public interface TripleFunction<T extends Triple, V> extends Computation<V> {
+public interface TripleFunction<T extends Triple, V> {
 	V operate(T in);
 }

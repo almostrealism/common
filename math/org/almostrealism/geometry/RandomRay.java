@@ -16,7 +16,7 @@
 
 package org.almostrealism.geometry;
 
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
 public class RandomRay implements Evaluable<Ray> {
 	/**
@@ -30,12 +30,5 @@ public class RandomRay implements Evaluable<Ray> {
 				Math.random(), Math.random(), Math.random(),
 				Math.random(), Math.random(), Math.random() });
 		return r;
-	}
-
-	/**
-	 * Does nothing.
-	 */
-	@Override
-	public void compact() {
 	}
 }

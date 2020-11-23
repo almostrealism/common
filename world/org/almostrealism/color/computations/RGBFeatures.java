@@ -19,7 +19,7 @@ package org.almostrealism.color.computations;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarEvaluable;
 import org.almostrealism.color.RGB;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 import org.almostrealism.util.StaticEvaluable;
 
 import java.util.function.Supplier;
@@ -29,7 +29,7 @@ public interface RGBFeatures {
 		return new DefaultRGBEvaluable(cadd(() -> value, () -> operand));
 	}
 
-	default RGBSupplier cadd(Supplier<Evaluable<? extends RGB>> value, Supplier<Evaluable<? extends RGB>> operand) {
+	default RGBProducer cadd(Supplier<Evaluable<? extends RGB>> value, Supplier<Evaluable<? extends RGB>> operand) {
 		return new ColorSum(value, operand);
 	}
 
@@ -37,7 +37,7 @@ public interface RGBFeatures {
 		return new DefaultRGBEvaluable(csubtract(() -> value, () -> operand));
 	}
 
-	default RGBSupplier csubtract(Supplier<Evaluable<? extends RGB>> value, Supplier<Evaluable<? extends RGB>> operand) {
+	default RGBProducer csubtract(Supplier<Evaluable<? extends RGB>> value, Supplier<Evaluable<? extends RGB>> operand) {
 		return new ColorSum(value, cminus(operand));
 	}
 
@@ -45,7 +45,7 @@ public interface RGBFeatures {
 		return new DefaultRGBEvaluable(cmultiply(() -> a, () -> b));
 	}
 
-	default RGBSupplier cmultiply(Supplier<Evaluable<? extends RGB>> a, Supplier<Evaluable<? extends RGB>> b) {
+	default RGBProducer cmultiply(Supplier<Evaluable<? extends RGB>> a, Supplier<Evaluable<? extends RGB>> b) {
 		return new ColorProduct(a, b);
 	}
 
@@ -53,7 +53,7 @@ public interface RGBFeatures {
 		return new DefaultRGBEvaluable(cscalarMultiply(() -> a, () -> b));
 	}
 
-	default RGBSupplier cscalarMultiply(Supplier<Evaluable<? extends RGB>> a, Supplier<Evaluable<? extends Scalar>> b) {
+	default RGBProducer cscalarMultiply(Supplier<Evaluable<? extends RGB>> a, Supplier<Evaluable<? extends Scalar>> b) {
 		return cmultiply(a, cfromScalar(b));
 	}
 
@@ -61,7 +61,7 @@ public interface RGBFeatures {
 		return new DefaultRGBEvaluable(cminus(() -> p));
 	}
 
-	default RGBSupplier cminus(Supplier<Evaluable<? extends RGB>> p) {
+	default RGBProducer cminus(Supplier<Evaluable<? extends RGB>> p) {
 		return cmultiply(p, cfromScalar(ScalarEvaluable.minusOne));
 	}
 
@@ -69,15 +69,15 @@ public interface RGBFeatures {
 		return new DefaultRGBEvaluable(cfromScalar(() -> value));
 	}
 
-	default RGBSupplier cfromScalar(Supplier<Evaluable<? extends Scalar>> value) {
+	default RGBProducer cfromScalar(Supplier<Evaluable<? extends Scalar>> value) {
 		return new RGBFromScalars(value, value, value);
 	}
 
-	default RGBSupplier cfromScalar(Scalar value) {
+	default RGBProducer cfromScalar(Scalar value) {
 		return cfromScalar(() -> StaticEvaluable.of(value));
 	}
 
-	default RGBSupplier cfromScalar(double value) {
+	default RGBProducer cfromScalar(double value) {
 		return cfromScalar(new Scalar(value));
 	}
 }

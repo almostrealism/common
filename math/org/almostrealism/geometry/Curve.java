@@ -17,8 +17,8 @@
 package org.almostrealism.geometry;
 
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.relation.Producer;
 import org.almostrealism.space.Gradient;
-import org.almostrealism.util.Evaluable;
 
 /**
  * Like a {@link Gradient}, which has a normal vector for points in space,
@@ -27,5 +27,5 @@ import org.almostrealism.util.Evaluable;
  * @author  Michael Murray
  */
 public interface Curve<T> extends Gradient<T> {
-	Evaluable<T> getValueAt(Evaluable<Vector> point);
+	Producer<T> getValueAt(Producer<Vector> point);
 }

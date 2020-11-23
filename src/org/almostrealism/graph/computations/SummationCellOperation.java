@@ -19,7 +19,7 @@ package org.almostrealism.graph.computations;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.graph.SummationCell;
 import org.almostrealism.hardware.AcceleratedOperation;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 import static org.almostrealism.util.Ops.*;
 
 import java.util.function.Supplier;

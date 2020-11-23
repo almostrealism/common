@@ -20,10 +20,10 @@ import io.almostrealism.code.Argument;
 import io.almostrealism.code.Expression;
 import org.almostrealism.algebra.TransformMatrix;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorSupplier;
+import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -31,13 +31,13 @@ import java.util.List;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public class Transform extends DynamicAcceleratedProducerAdapter<Vector, Vector> implements VectorSupplier {
+public class Transform extends DynamicAcceleratedProducerAdapter<Vector, Vector> implements VectorProducer {
 	private boolean includeTranslation;
 
 	private Expression<Double> value[];
 
 	public Transform(TransformMatrix t, Supplier<Evaluable<? extends Vector>> v, boolean includeTranslation) {
-		super(3, () -> Vector.blank(), new Supplier[] { v }, new Object[] { t });
+		super(3, Vector.blank(), new Supplier[] { v }, new Object[] { t });
 		this.includeTranslation = includeTranslation;
 	}
 

@@ -19,8 +19,8 @@ package org.almostrealism.space;
 import org.almostrealism.algebra.Differentiable;
 import org.almostrealism.algebra.Triple;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.relation.Producer;
 import org.almostrealism.uml.Function;
-import org.almostrealism.util.Evaluable;
 
 /**
  * A {@link Gradient} represents any continuously evaluable {@link org.almostrealism.relation.TripleFunction}
@@ -34,5 +34,5 @@ public interface Gradient<T> extends Differentiable<T> {
 	 * Returns a {@link Vector} that represents the normal to the surface at the point
 	 * represented by the specified {@link Triple}.
 	 */
-	Evaluable<Vector> getNormalAt(Evaluable<Vector> point);
+	Producer<Vector> getNormalAt(Producer<Vector> point);
 }

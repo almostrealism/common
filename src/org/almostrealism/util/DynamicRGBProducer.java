@@ -16,19 +16,40 @@
 
 package org.almostrealism.util;
 
+import io.almostrealism.code.Scope;
+import org.almostrealism.algebra.Scalar;
+import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBBank;
+import org.almostrealism.color.computations.RGBProducer;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.relation.Evaluable;
+import org.almostrealism.relation.NameProvider;
 
 import java.util.function.Function;
 
-public class DynamicRGBEvaluable extends DynamicEvaluable<RGB> implements KernelizedEvaluable<RGB> {
+public class DynamicRGBProducer extends DynamicProducer<RGB> implements RGBProducer {
 
-	public DynamicRGBEvaluable(Function<Object[], RGB> function) {
+	public DynamicRGBProducer(Function<Object[], RGB> function) {
 		super(function);
 	}
 
 	@Override
-	public MemoryBank<RGB> createKernelDestination(int size) { return new RGBBank(size); }
+	public Scope<RGB> getScope(NameProvider provider) {
+		throw new RuntimeException("Not implemented");
+	}
+
+	@Override
+	public Evaluable<RGB> get() {
+		Evaluable<RGB> e = super.get();
+
+		return new KernelizedEvaluable<RGB>() {
+			@Override
+			public MemoryBank<RGB> createKernelDestination(int size) { return new RGBBank(size); }
+
+			@Override
+			public RGB evaluate(Object... args) { return e.evaluate(args); }
+		};
+	}
 }

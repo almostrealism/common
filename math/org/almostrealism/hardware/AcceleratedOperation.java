@@ -21,7 +21,7 @@ import io.almostrealism.code.OperationAdapter;
 import org.almostrealism.relation.Computation;
 import org.almostrealism.util.Compactable;
 import org.almostrealism.util.Named;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 import org.almostrealism.util.ProducerArgumentReference;
 import org.almostrealism.util.ProducerCache;
 import org.jocl.CLException;

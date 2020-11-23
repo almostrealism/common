@@ -21,6 +21,7 @@ import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;
 import org.almostrealism.hardware.DynamicAcceleratedOperationAdapter;
 import org.almostrealism.hardware.MemWrapper;
+import org.almostrealism.relation.Evaluable;
 import org.almostrealism.relation.NameProvider;
 
 import java.util.function.Supplier;
@@ -29,7 +30,7 @@ import java.util.stream.IntStream;
 public class AcceleratedAssignment<T extends MemWrapper> extends DynamicAcceleratedOperationAdapter<T> {
 	private int memLength;
 
-	public AcceleratedAssignment(int memLength, Supplier<Evaluable<T>> result, Supplier<Evaluable<T>> value) {
+	public AcceleratedAssignment(int memLength, Supplier<Evaluable<? extends T>> result, Supplier<Evaluable<? extends T>> value) {
 		super(result, value);
 		this.memLength = memLength;
 	}

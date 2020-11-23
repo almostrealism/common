@@ -17,8 +17,10 @@
 package org.almostrealism.algebra.computations;
 
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
+// TODO  Use assignment instead...
+@Deprecated
 public class VectorCopy implements Evaluable<Vector> {
 	private Evaluable<Vector> v;
 
@@ -28,10 +30,4 @@ public class VectorCopy implements Evaluable<Vector> {
 
 	@Override
 	public Vector evaluate(Object args[]) { return new Vector(v.evaluate(args)); }
-
-	@Override
-	public void compact() {
-		v.compact();
-		// TODO
-	}
 }

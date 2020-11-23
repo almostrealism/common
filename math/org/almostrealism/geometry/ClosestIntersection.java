@@ -16,50 +16,52 @@
 
 package org.almostrealism.geometry;
 
-import io.almostrealism.code.Scope;
 import org.almostrealism.algebra.ContinuousField;
 import org.almostrealism.algebra.Intersectable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.relation.NameProvider;
+import org.almostrealism.relation.Producer;
 import org.almostrealism.space.ShadableIntersection;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.ArrayList;
 import java.util.List;
 
-public class ClosestIntersection extends ArrayList<Evaluable<Ray>> implements ContinuousField {
-	private Evaluable<? extends Ray> r;
+public class ClosestIntersection extends ArrayList<Producer<Ray>> implements ContinuousField {
+	private Producer<Ray> r;
 	private List<ContinuousField> s;
 
-	public ClosestIntersection(Evaluable<? extends Ray> ray, Iterable<Intersectable> surfaces) {
+	public ClosestIntersection(Producer<Ray> ray, Iterable<Intersectable> surfaces) {
 		r = ray;
 		s = new ArrayList<>();
 
 		for (Intersectable<?> in : surfaces) {
-			s.add(in.intersectAt((Evaluable<Ray>) ray));
+			s.add(in.intersectAt(ray));
 		}
 
-		this.add(new Evaluable<Ray>() {
+		this.add(new Producer<Ray>() {
 			@Override
-			public Ray evaluate(Object[] args) {
-				double d = Double.MAX_VALUE;
-				ContinuousField intersection = null;
+			public Evaluable<Ray> get() {
+				return args -> {
+					double d = Double.MAX_VALUE;
+					ContinuousField intersection = null;
 
-				p: for (ContinuousField in : s) {
-					if (in == null) continue p;
+					p:
+					for (ContinuousField in : s) {
+						if (in == null) continue p;
 
-					Scalar s = ((Evaluable<Scalar>) ((ShadableIntersection) in).getDistance().get()).evaluate(args);
-					if (s == null) continue p;
+						Scalar s = ((Evaluable<Scalar>) ((ShadableIntersection) in).getDistance().get()).evaluate(args);
+						if (s == null) continue p;
 
-					double v = s.getValue();
-					if (v >= 0.0 && v < d) {
-						d = v;
-						intersection = in;
+						double v = s.getValue();
+						if (v >= 0.0 && v < d) {
+							d = v;
+							intersection = in;
+						}
 					}
-				}
 
-				return intersection == null ? null : intersection.get(0).evaluate(args);
+					return intersection == null ? null : intersection.get(0).get().evaluate(args);
+				};
 			}
 
 			// TODO  Hardware acceleration
@@ -71,27 +73,30 @@ public class ClosestIntersection extends ArrayList<Evaluable<Ray>> implements Co
 	}
 
 	@Override
-	public Evaluable<Vector> getNormalAt(Evaluable<Vector> point) {
-		return new Evaluable<Vector>() {
+	public Producer<Vector> getNormalAt(Producer<Vector> point) {
+		return new Producer<Vector>() {
 			@Override
-			public Vector evaluate(Object[] args) {
-				double d = Double.MAX_VALUE;
-				Vector normal = null;
+			public Evaluable<Vector> get() {
+				return args -> {
+					double d = Double.MAX_VALUE;
+					Vector normal = null;
 
-				p: for (ContinuousField in : s) {
-					if (in == null) continue p;
+					p:
+					for (ContinuousField in : s) {
+						if (in == null) continue p;
 
-					Scalar s = ((Evaluable<Scalar>) ((ShadableIntersection) in).getDistance().get()).evaluate(args);
-					if (s == null) continue p;
+						Scalar s = ((Evaluable<Scalar>) ((ShadableIntersection) in).getDistance().get()).evaluate(args);
+						if (s == null) continue p;
 
-					double v = s.getValue();
-					if (v >= 0.0 && v < d) {
-						d = v;
-						normal = in.getNormalAt(point).evaluate(args);
+						double v = s.getValue();
+						if (v >= 0.0 && v < d) {
+							d = v;
+							normal = in.getNormalAt(point).get().evaluate(args);
+						}
 					}
-				}
 
-				return normal;
+					return normal;
+				};
 			}
 
 			// TODO  Hardware acceleration
@@ -105,12 +110,6 @@ public class ClosestIntersection extends ArrayList<Evaluable<Ray>> implements Co
 
 	@Override
 	public Vector operate(Vector in) {
-		// TODO
-		return null;
-	}
-
-	@Override
-	public Scope<Vector> getScope(NameProvider p) {
 		// TODO
 		return null;
 	}

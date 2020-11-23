@@ -18,20 +18,20 @@ package org.almostrealism.algebra.computations;
 
 import io.almostrealism.code.Expression;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorSupplier;
+import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
- public class RayOrigin extends DynamicAcceleratedProducerAdapter<Ray, Vector> implements VectorSupplier {
+ public class RayOrigin extends DynamicAcceleratedProducerAdapter<Ray, Vector> implements VectorProducer {
 	private Expression<Double> value[];
 	private boolean isStatic;
 
 	public RayOrigin(Supplier<Evaluable<? extends Ray>> r) {
-		super(3, () -> Vector.blank(), r);
+		super(3, Vector.blank(), r);
 	}
 
 	@Override

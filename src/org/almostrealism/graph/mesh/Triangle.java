@@ -17,21 +17,20 @@
 package org.almostrealism.graph.mesh;
 
 import org.almostrealism.algebra.*;
-import org.almostrealism.color.computations.GeneratedColorProducer;
 import org.almostrealism.color.RGB;
-import org.almostrealism.color.computations.RGBEvaluable;
 import org.almostrealism.geometry.Positioned;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.relation.Constant;
 import org.almostrealism.relation.Operator;
+import org.almostrealism.relation.Producer;
 import org.almostrealism.space.AbstractSurface;
 import org.almostrealism.space.BoundingSolid;
 import org.almostrealism.space.ShadableIntersection;
 import org.almostrealism.util.CodeFeatures;
-import org.almostrealism.util.PassThroughProducer;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.util.PassThroughEvaluable;
+import org.almostrealism.relation.Evaluable;
 import static org.almostrealism.util.Ops.*;
 
 import java.util.concurrent.ExecutionException;
@@ -56,15 +55,15 @@ public class Triangle extends AbstractSurface implements ParticleGroup, CodeFeat
 
 	protected static final KernelizedEvaluable<TriangleData> dataProducer;
 
-	public static final KernelizedEvaluable<Scalar> intersectAt;
+	public static final TriangleIntersectAt intersectAt;
 	
 	static {
-		dataProducer = (KernelizedEvaluable<TriangleData>)
-				ops().triangle(PassThroughProducer.of(TrianglePointData.class, 0)).get();
-		dataProducer.compact();
+		TriangleDataProducer triangle = ops().triangle(PassThroughEvaluable.of(TrianglePointData.class, 0));
+		triangle.compact();
+		dataProducer = (KernelizedEvaluable<TriangleData>) triangle.get();
 
-		intersectAt = new TriangleIntersectAt(PassThroughProducer.of(TriangleData.class, 1),
-							PassThroughProducer.of(Ray.class, 0, -1));
+		intersectAt = new TriangleIntersectAt(PassThroughEvaluable.of(TriangleData.class, 1),
+							PassThroughEvaluable.of(Ray.class, 0, -1));
 		intersectAt.compact();
 	}
 
@@ -245,69 +244,71 @@ public class Triangle extends AbstractSurface implements ParticleGroup, CodeFeat
 	}
 
 	@Override
-	public Evaluable<RGB> getValueAt(Evaluable<Vector> point) {
-		RGBEvaluable dcp = getColorAt(point, useT);
+	public Producer<RGB> getValueAt(Producer<Vector> point) {
+		Producer<RGB> dcp = getColorAt(point, useT);
 
-		return GeneratedColorProducer.fromProducer(this, new Evaluable<RGB>() {
+		return new Producer<RGB>() {
 			@Override
-			public RGB evaluate(Object[] args) {
-				RGB dc = dcp.evaluate(args);
+			public Evaluable<RGB> get() {
+				return args -> {
+					RGB dc = dcp.get().evaluate(args);
 
-				Vector triple = point.evaluate(args);
-				if (dc.length() < (Intersection.e * 100)) return new RGB(0.0, 0.0, 0.0);
+					Vector triple = point.get().evaluate(args);
+					if (dc.length() < (Intersection.e * 100)) return new RGB(0.0, 0.0, 0.0);
 
-				Vector abc = data.getABC();
-				Vector def = data.getDEF();
-				Vector jkl = data.getJKL();
+					Vector abc = data.getABC();
+					Vector def = data.getDEF();
+					Vector jkl = data.getJKL();
 
-				if (intcolor) {
-					double g = triple.getA();
-					double h = triple.getB();
-					double i = triple.getC();
+					if (intcolor) {
+						double g = triple.getA();
+						double h = triple.getB();
+						double i = triple.getC();
 
-					double m = abc.getX() * (def.getY() * i - h * def.getZ()) +
-							abc.getY() * (g * def.getZ() - def.getX() * i) +
-							abc.getZ() * (def.getX() * h - def.getY() * g);
+						double m = abc.getX() * (def.getY() * i - h * def.getZ()) +
+								abc.getY() * (g * def.getZ() - def.getX() * i) +
+								abc.getZ() * (def.getX() * h - def.getY() * g);
 
-					double u = jkl.getX() * (def.getY() * i - h * def.getZ()) +
-							jkl.getY() * (g * def.getZ() - def.getX() * i) +
-							jkl.getZ() * (def.getX() * h - def.getY() * g);
-					u = u / m;
+						double u = jkl.getX() * (def.getY() * i - h * def.getZ()) +
+								jkl.getY() * (g * def.getZ() - def.getX() * i) +
+								jkl.getZ() * (def.getX() * h - def.getY() * g);
+						u = u / m;
 
-					double v = i * (abc.getX() * jkl.getY() - jkl.getX() * abc.getY()) +
-							h * (jkl.getX() * abc.getZ() - abc.getX() * jkl.getZ()) +
-							g * (abc.getY() * jkl.getZ() - jkl.getY() * abc.getZ());
-					v = v / m;
+						double v = i * (abc.getX() * jkl.getY() - jkl.getX() * abc.getY()) +
+								h * (jkl.getX() * abc.getZ() - abc.getX() * jkl.getZ()) +
+								g * (abc.getY() * jkl.getZ() - jkl.getY() * abc.getZ());
+						v = v / m;
 
-					double w = 1.0 - u - v;
+						double w = 1.0 - u - v;
 
-					RGB color = null;
+						RGB color = null;
 
-					if (vertexData == null) {
-						color = new RGB(0.0, 0.0, 0.0);
-						color.addTo(((Vertex) p1).getColor(w));
-						color.addTo(((Vertex) p2).getColor(u));
-						color.addTo(((Vertex) p3).getColor(v));
+						if (vertexData == null) {
+							color = new RGB(0.0, 0.0, 0.0);
+							color.addTo(((Vertex) p1).getColor(w));
+							color.addTo(((Vertex) p2).getColor(u));
+							color.addTo(((Vertex) p3).getColor(v));
+						} else {
+							double cr = vertexData.getRed(ind1) +
+									vertexData.getRed(ind2) +
+									vertexData.getRed(ind3);
+							double cg = vertexData.getGreen(ind1) +
+									vertexData.getGreen(ind2) +
+									vertexData.getGreen(ind3);
+							double cb = vertexData.getBlue(ind1) +
+									vertexData.getBlue(ind2) +
+									vertexData.getBlue(ind3);
+
+							color = new RGB(cr, cg, cb);
+						}
+
+						color.multiplyBy(dc);
+
+						return color;
 					} else {
-						double cr = vertexData.getRed(ind1) +
-								vertexData.getRed(ind2) +
-								vertexData.getRed(ind3);
-						double cg = vertexData.getGreen(ind1) +
-								vertexData.getGreen(ind2) +
-								vertexData.getGreen(ind3);
-						double cb = vertexData.getBlue(ind1) +
-								vertexData.getBlue(ind2) +
-								vertexData.getBlue(ind3);
-
-						color = new RGB(cr, cg, cb);
+						return dc;
 					}
-
-					color.multiplyBy(dc);
-
-					return color;
-				} else {
-					return dc;
-				}
+				};
 			}
 
 			@Override
@@ -315,7 +316,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup, CodeFeat
 				dcp.compact();
 				point.compact();
 			}
-		});
+		};
 	}
 	
 	/**
@@ -323,49 +324,51 @@ public class Triangle extends AbstractSurface implements ParticleGroup, CodeFeat
 	 * at the point represented by the specified {@link Vector} {@link Evaluable}.
 	 */
 	@Override
-	public Evaluable<Vector> getNormalAt(Evaluable<Vector> p) {
+	public Producer<Vector> getNormalAt(Producer<Vector> p) {
 		if (smooth && vertexData == null) {
-			return new VectorEvaluable() {
+			return new Producer<Vector>() {
 				@Override
-				public Vector evaluate(Object[] args) {
-					Vector point = p.evaluate(args);
+				public Evaluable<Vector> get() {
+					return args -> {
+						Vector point = p.get().evaluate(args);
 
-					double g = point.getX();
-					double h = point.getY();
-					double i = point.getZ();
+						double g = point.getX();
+						double h = point.getY();
+						double i = point.getZ();
 
-					Vector abc = data.getABC();
-					Vector def = data.getDEF();
-					Vector jkl = data.getJKL();
+						Vector abc = data.getABC();
+						Vector def = data.getDEF();
+						Vector jkl = data.getJKL();
 
-					double m = abc.getX() * (def.getY() * i - h * def.getZ()) +
-							abc.getY() * (g * def.getZ() - def.getX() * i) +
-							abc.getZ() * (def.getX() * h - def.getY() * g);
+						double m = abc.getX() * (def.getY() * i - h * def.getZ()) +
+								abc.getY() * (g * def.getZ() - def.getX() * i) +
+								abc.getZ() * (def.getX() * h - def.getY() * g);
 
-					double u = jkl.getX() * (def.getY() * i - h * def.getZ()) +
-							jkl.getY() * (g * def.getZ() - def.getX() * i) +
-							jkl.getZ() * (def.getX() * h - def.getY() * g);
-					u = u / m;
+						double u = jkl.getX() * (def.getY() * i - h * def.getZ()) +
+								jkl.getY() * (g * def.getZ() - def.getX() * i) +
+								jkl.getZ() * (def.getX() * h - def.getY() * g);
+						u = u / m;
 
-					double v = i * (abc.getX() * jkl.getY() - jkl.getX() * abc.getY()) +
-							h * (jkl.getX() * abc.getZ() - abc.getX() * jkl.getZ()) +
-							g * (abc.getY() * jkl.getZ() - jkl.getY() * abc.getZ());
-					v = v / m;
+						double v = i * (abc.getX() * jkl.getY() - jkl.getX() * abc.getY()) +
+								h * (jkl.getX() * abc.getZ() - abc.getX() * jkl.getZ()) +
+								g * (abc.getY() * jkl.getZ() - jkl.getY() * abc.getZ());
+						v = v / m;
 
-					double w = 1.0 - u - v;
+						double w = 1.0 - u - v;
 
-					Vector n = new Vector(0.0, 0.0, 0.0);
-					n.addTo(((Vertex) p1).getNormal(w));
-					n.addTo(((Vertex) p2).getNormal(u));
-					n.addTo(((Vertex) p3).getNormal(v));
+						Vector n = new Vector(0.0, 0.0, 0.0);
+						n.addTo(((Vertex) p1).getNormal(w));
+						n.addTo(((Vertex) p2).getNormal(u));
+						n.addTo(((Vertex) p3).getNormal(v));
 
-					if (useT)
-						n = getTransform(true).getInverse().transformAsNormal(n);
+						if (useT)
+							n = getTransform(true).getInverse().transformAsNormal(n);
 
 
-					n.divideBy(n.length());
+						n.divideBy(n.length());
 
-					return n;
+						return n;
+					};
 				}
 
 				@Override
@@ -375,11 +378,11 @@ public class Triangle extends AbstractSurface implements ParticleGroup, CodeFeat
 			};
 		} else {
 			if (useT && getTransform(true) != null) {
-				return (Evaluable<Vector>) getTransform(true).getInverse().transform(
+				return getTransform(true).getInverse().transform(
 						v(data.getNormal()),
-						TransformMatrix.TRANSFORM_AS_NORMAL).get();
+						TransformMatrix.TRANSFORM_AS_NORMAL);
 			} else {
-				return (Evaluable<Vector>) v((Vector) data.getNormal().clone()).get();
+				return v((Vector) data.getNormal().clone());
 			}
 		}
 	}
@@ -390,11 +393,11 @@ public class Triangle extends AbstractSurface implements ParticleGroup, CodeFeat
 	 * {@link Triangle} occurs.
 	 */
 	@Override
-	public ContinuousField intersectAt(Evaluable ray) {
+	public ContinuousField intersectAt(Producer ray) {
 		TransformMatrix t = getTransform(true);
 		boolean ut = useT && t != null;
-		Supplier<Evaluable<? extends Ray>> r = () -> ray;
-		if (ut) r = t.getInverse().transform(() -> ray);
+		Producer<Ray> r = ray;
+		if (ut) r = t.getInverse().transform(ray);
 
 		if (enableHardwareOperator) {
 			final Supplier<Evaluable<? extends Ray>> fr = r;
@@ -403,50 +406,52 @@ public class Triangle extends AbstractSurface implements ParticleGroup, CodeFeat
 					() -> new AcceleratedProducer<Ray, Scalar>(
 											"triangleIntersectAt",
 											false,
-											() -> Scalar.blank(),
+											Scalar.blank(),
 											new Supplier[] { () -> fr },
 											new Object[] { data.getABC(), data.getDEF(), data.getJKL() }));
 		} else {
 			final Supplier<Evaluable<? extends Ray>> fr = r;
 
-			Evaluable<Scalar> s = new Evaluable<Scalar>() {
+			Producer<Scalar> s = new Producer<Scalar>() {
 				@Override
-				public Scalar evaluate(Object[] args) {
-					Ray r = fr.get().evaluate(args);
+				public Evaluable<Scalar> get() {
+					return args -> {
+						Ray r = fr.get().evaluate(args);
 
-					Vector abc = data.getABC();
-					Vector def = data.getDEF();
-					Vector jkl = Triangle.this.data.getJKL().subtract(r.getOrigin());
+						Vector abc = data.getABC();
+						Vector def = data.getDEF();
+						Vector jkl = Triangle.this.data.getJKL().subtract(r.getOrigin());
 
-					double m = abc.getX() * (def.getY() * r.getDirection().getZ() - r.getDirection().getY() * def.getZ()) +
-							abc.getY() * (r.getDirection().getX() * def.getZ() - def.getX() * r.getDirection().getZ()) +
-							abc.getZ() * (def.getX() * r.getDirection().getY() - def.getY() * r.getDirection().getX());
+						double m = abc.getX() * (def.getY() * r.getDirection().getZ() - r.getDirection().getY() * def.getZ()) +
+								abc.getY() * (r.getDirection().getX() * def.getZ() - def.getX() * r.getDirection().getZ()) +
+								abc.getZ() * (def.getX() * r.getDirection().getY() - def.getY() * r.getDirection().getX());
 
-					if (m == 0)
-						return null;
+						if (m == 0)
+							return null;
 
-					double u = jkl.getX() * (def.getY() * r.getDirection().getZ() - r.getDirection().getY() * def.getZ()) +
-							jkl.getY() * (r.getDirection().getX() * def.getZ() - def.getX() * r.getDirection().getZ()) +
-							jkl.getZ() * (def.getX() * r.getDirection().getY() - def.getY() * r.getDirection().getX());
-					u = u / m;
+						double u = jkl.getX() * (def.getY() * r.getDirection().getZ() - r.getDirection().getY() * def.getZ()) +
+								jkl.getY() * (r.getDirection().getX() * def.getZ() - def.getX() * r.getDirection().getZ()) +
+								jkl.getZ() * (def.getX() * r.getDirection().getY() - def.getY() * r.getDirection().getX());
+						u = u / m;
 
-					if (u <= 0.0)
-						return null;
+						if (u <= 0.0)
+							return null;
 
-					double v = r.getDirection().getZ() * (abc.getX() * jkl.getY() - jkl.getX() * abc.getY()) +
-							r.getDirection().getY() * (jkl.getX() * abc.getZ() - abc.getX() * jkl.getZ()) +
-							r.getDirection().getX() * (abc.getY() * jkl.getZ() - jkl.getY() * abc.getZ());
-					v = v / m;
+						double v = r.getDirection().getZ() * (abc.getX() * jkl.getY() - jkl.getX() * abc.getY()) +
+								r.getDirection().getY() * (jkl.getX() * abc.getZ() - abc.getX() * jkl.getZ()) +
+								r.getDirection().getX() * (abc.getY() * jkl.getZ() - jkl.getY() * abc.getZ());
+						v = v / m;
 
-					if (v <= 0.0 || u + v >= 1.0)
-						return null;
+						if (v <= 0.0 || u + v >= 1.0)
+							return null;
 
-					double t = def.getZ() * (abc.getX() * jkl.getY() - jkl.getX() * abc.getY()) +
-							def.getY() * (jkl.getX() * abc.getZ() - abc.getX() * jkl.getZ()) +
-							def.getX() * (abc.getY() * jkl.getZ() - jkl.getY() * abc.getZ());
-					t = -1.0 * t / m;
+						double t = def.getZ() * (abc.getX() * jkl.getY() - jkl.getX() * abc.getY()) +
+								def.getY() * (jkl.getX() * abc.getZ() - abc.getX() * jkl.getZ()) +
+								def.getX() * (abc.getY() * jkl.getZ() - jkl.getY() * abc.getZ());
+						t = -1.0 * t / m;
 
-					return new Scalar(t);
+						return new Scalar(t);
+					};
 				}
 
 				@Override
@@ -455,7 +460,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup, CodeFeat
 				}
 			};
 
-			return new ShadableIntersection(this, r, () -> s);
+			return new ShadableIntersection(this, r, s);
 		}
 	}
 

@@ -16,8 +16,8 @@
 
 package org.almostrealism.heredity;
 
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Producer;
 
 public interface Factor<T> {
-	Evaluable<T> getResultant(Evaluable<T> value);
+	Producer<T> getResultant(Producer<T> value);
 }

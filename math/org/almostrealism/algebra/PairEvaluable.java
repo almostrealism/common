@@ -16,7 +16,7 @@
 
 package org.almostrealism.algebra;
 
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
 public interface PairEvaluable extends Evaluable<Pair>, PairFeatures {
 	default ScalarEvaluable x() { return l(this); }

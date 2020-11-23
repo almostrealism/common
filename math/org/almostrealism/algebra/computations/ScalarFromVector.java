@@ -18,16 +18,16 @@ package org.almostrealism.algebra.computations;
 
 import io.almostrealism.code.Expression;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarSupplier;
+import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.hardware.ComputerFeatures;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public class ScalarFromVector extends DynamicAcceleratedProducerAdapter<Vector, Scalar> implements ScalarSupplier, ComputerFeatures {
+public class ScalarFromVector extends DynamicAcceleratedProducerAdapter<Vector, Scalar> implements ScalarProducer, ComputerFeatures {
 	public static final int X = 0;
 	public static final int Y = 1;
 	public static final int Z = 2;
@@ -37,7 +37,7 @@ public class ScalarFromVector extends DynamicAcceleratedProducerAdapter<Vector, 
 	private Expression<Double> value;
 
 	public ScalarFromVector(Supplier<Evaluable<? extends Vector>> vector, int coordinate) {
-		super(2, () -> Scalar.blank(), vector);
+		super(2, Scalar.blank(), vector);
 		this.coordinate = coordinate;
 	}
 

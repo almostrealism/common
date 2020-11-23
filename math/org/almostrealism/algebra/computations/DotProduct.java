@@ -18,20 +18,20 @@ package org.almostrealism.algebra.computations;
 
 import io.almostrealism.code.Expression;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarSupplier;
+import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.hardware.ComputerFeatures;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public class DotProduct extends DynamicAcceleratedProducerAdapter<Vector, Scalar> implements ScalarSupplier, ComputerFeatures {
+public class DotProduct extends DynamicAcceleratedProducerAdapter<Vector, Scalar> implements ScalarProducer, ComputerFeatures {
 	private Expression<Double> value[];
 
 	public DotProduct(Supplier<Evaluable<? extends Vector>> a, Supplier<Evaluable<? extends Vector>> b) {
-		super(2, () -> Scalar.blank(), a, b);
+		super(2, Scalar.blank(), a, b);
 	}
 
 	@Override

@@ -25,7 +25,7 @@ import org.almostrealism.color.RGB;
 import org.almostrealism.relation.NameProvider;
 import org.almostrealism.relation.TripleFunction;
 import org.almostrealism.util.Editable;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
 // TODO  Add vector direction in place of axis selection.
 
@@ -69,32 +69,18 @@ public class StripeTexture implements Texture, Editable {
 	}
 
 	/**
-	 * This method does nothing, as {@link StripeTexture} depends on static {@link RGB} values.
-	 */
-	// TODO  When ColorProducers are accepted in place of RGB values,
-	//       this method will need to be implemented so that it delegates
-	//       to the dependent producers
-	@Override
-	public void compact() { }
-
-	@Override
-	public Scope<RGB> getScope(NameProvider p) {
-		throw new RuntimeException("getScope is not implemented");
-	}
-
-	/**
 	 * @return  The color of the texture represented by this {@link StripeTexture}
 	 *          object at the specified point as an RGB object.
 	 */
 	public RGB operate(Triple t) {
-		return this.props == null ? null : this.getColorAt(this.props).operate(t);
+		return this.props == null ? null : this.getColorAt(this.props).evaluate(t);
 	}
 
 	/**
 	 * @throws IllegalArgumentException  If one of the objects specified is not of the correct type.
 	 * @return  The color of the texture represented by this StripeTexture object at the specified point as an RGB object.
 	 */
-	public ColorEvaluable getColorAt(Object props[]) {
+	public Evaluable<RGB> getColorAt(Object props[]) {
 		return GeneratedColorProducer.fromFunction(this, new TripleFunction<Triple, RGB>() {
 					@Override
 					public RGB operate(Triple l) {
@@ -136,12 +122,7 @@ public class StripeTexture implements Texture, Editable {
 								return c2;
 						}
 					}
-
-					@Override
-					public Scope<RGB> getScope(NameProvider p) {
-						throw new RuntimeException("getScope is not implemented");
-					}
-				});
+				}).get();
 	}
 	
 	/**

@@ -19,7 +19,7 @@ package org.almostrealism.math.bool;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorBank;
 import org.almostrealism.hardware.MemoryBank;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 
@@ -31,9 +31,9 @@ public class GreaterThanVector extends GreaterThan<Vector> implements Accelerate
 	public GreaterThanVector(
 			Supplier leftOperand,
 			Supplier rightOperand,
-			Supplier<Evaluable<Vector>> trueValue,
-			Supplier<Evaluable<Vector>> falseValue) {
-		super(3, () -> Vector.blank(), leftOperand, rightOperand, trueValue, falseValue, false);
+			Supplier<Evaluable<? extends Vector>> trueValue,
+			Supplier<Evaluable<? extends Vector>> falseValue) {
+		super(3, Vector.blank(), leftOperand, rightOperand, trueValue, falseValue, false);
 	}
 
 	@Override

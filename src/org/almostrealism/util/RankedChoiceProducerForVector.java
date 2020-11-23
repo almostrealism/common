@@ -30,7 +30,7 @@ public class RankedChoiceProducerForVector extends RankedChoiceProducerForMemWra
 	}
 
 	public AcceleratedRankedChoiceProducer<Vector> getAccelerated() {
-		return getAccelerated(3, Vector.blank(), VectorBank::new);
+		return getAccelerated(3, Vector.blank().get(), VectorBank::new);
 	}
 
 	@Override

@@ -18,7 +18,7 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.Argument;
 import org.almostrealism.util.CollectionUtils;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -29,19 +29,19 @@ import java.util.stream.Stream;
 import static org.almostrealism.util.Ops.*;
 
 public class AcceleratedProducer<I extends MemWrapper, O extends MemWrapper> extends AcceleratedOperation implements KernelizedEvaluable<O> {
-	public AcceleratedProducer(String function, Supplier<Evaluable<O>> result, Supplier<Evaluable<? extends I>>... inputArgs) {
+	public AcceleratedProducer(String function, Supplier<Evaluable<? extends O>> result, Supplier<Evaluable<? extends I>>... inputArgs) {
 		this(function, false, result, inputArgs, new Object[0]);
 	}
 
-	public AcceleratedProducer(String function, Supplier<Evaluable<O>> result, Supplier<Evaluable<? extends I>> inputArgs[], Object additionalArguments[]) {
+	public AcceleratedProducer(String function, Supplier<Evaluable<? extends O>> result, Supplier<Evaluable<? extends I>> inputArgs[], Object additionalArguments[]) {
 		this(function, false, result, inputArgs, additionalArguments);
 	}
 
-	public AcceleratedProducer(String function, boolean kernel, Supplier<Evaluable<O>> result, Supplier<Evaluable<? extends I>> inputArgs[], Object additionalArguments[]) {
+	public AcceleratedProducer(String function, boolean kernel, Supplier<Evaluable<? extends O>> result, Supplier<Evaluable<? extends I>> inputArgs[], Object additionalArguments[]) {
 		this(function, kernel, result, producers(inputArgs, additionalArguments));
 	}
 
-	public AcceleratedProducer(String function, boolean kernel, Supplier<Evaluable<O>> result, Supplier<Evaluable<? extends I>>... inputArgs) {
+	public AcceleratedProducer(String function, boolean kernel, Supplier<Evaluable<? extends O>> result, Supplier<Evaluable<? extends I>>... inputArgs) {
 		super(function, kernel, includeResult(result, inputArgs));
 	}
 

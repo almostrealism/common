@@ -21,7 +21,7 @@ import java.util.Iterator;
 
 import org.almostrealism.algebra.DiscreteField;
 import org.almostrealism.color.computations.RGBAdd;
-import org.almostrealism.relation.Maker;
+import org.almostrealism.relation.Producer;
 import org.almostrealism.space.LightingContext;
 
 /**
@@ -33,8 +33,8 @@ public class ShaderSet<C extends LightingContext> extends HashSet<Shader<C>> imp
 	 *          instance stored by this {@link ShaderSet}.
      */
     @Override
-    public Maker<RGB> shade(C p, DiscreteField normals) {
-        Maker<RGB> color = null;
+    public Producer<RGB> shade(C p, DiscreteField normals) {
+        Producer<RGB> color = null;
         
         Iterator<Shader<C>> itr = super.iterator();
 
@@ -42,7 +42,7 @@ public class ShaderSet<C extends LightingContext> extends HashSet<Shader<C>> imp
         	if (color == null) {
         		color = itr.next().shade(p, normals);
 			} else {
-        		final Maker<RGB> fc = color;
+        		final Producer<RGB> fc = color;
 				color = () -> new RGBAdd(fc, itr.next().shade(p, normals));
 			}
 		}

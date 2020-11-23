@@ -14,13 +14,13 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.util;
+package org.almostrealism.color.computations;
 
-import org.almostrealism.algebra.Scalar;
+import org.almostrealism.algebra.Triple;
+import org.almostrealism.color.RGB;
+import org.almostrealism.relation.TripleFunction;
 
-public interface ProducerWithRank<T> extends Evaluable<T> {
-
-	Evaluable<T> getProducer();
-
-	Evaluable<Scalar> getRank();
+public abstract class ColorProducerAdapter implements RGBProducer, TripleFunction<Triple, RGB> {
+	@Override
+	public RGB operate(Triple in) { return get().evaluate(in); }
 }

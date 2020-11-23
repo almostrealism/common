@@ -17,8 +17,10 @@
 package org.almostrealism.algebra.computations;
 
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
+// TODO  Use assignment instead...
+@Deprecated
 public class RayCopy implements Evaluable<Ray> {
 	private Evaluable<Ray> r;
 
@@ -28,10 +30,4 @@ public class RayCopy implements Evaluable<Ray> {
 
 	@Override
 	public Ray evaluate(Object args[]) { return new Ray(r.evaluate(args)); }
-
-	@Override
-	public void compact() {
-		r.compact();
-		// TODO
-	}
 }

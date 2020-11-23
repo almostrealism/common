@@ -19,7 +19,7 @@ package org.almostrealism.algebra.computations.test;
 import org.almostrealism.algebra.TransformMatrix;
 import org.almostrealism.algebra.computations.RayMatrixTransform;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.geometry.RaySupplier;
+import org.almostrealism.geometry.RayProducer;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.util.CodeFeatures;
 import org.junit.Assert;
@@ -35,7 +35,7 @@ public class RayMatrixTransformTest implements HardwareFeatures, CodeFeatures {
 		});
 	}
 
-	protected RaySupplier getRay1() {
+	protected RayProducer getRay1() {
 		return ray(1.0, 2.0, 3.0,4.0, 5.0, 6.0);
 	}
 

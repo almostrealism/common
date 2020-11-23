@@ -18,7 +18,7 @@ package org.almostrealism.algebra;
 
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.hardware.PooledMem;
-import org.almostrealism.util.DynamicScalarEvaluable;
+import org.almostrealism.util.DynamicScalarProducer;
 
 public class Scalar extends Pair implements Comparable<Scalar> {
 	public static final double EPSILON = 1.19209290e-07;
@@ -54,8 +54,8 @@ public class Scalar extends Pair implements Comparable<Scalar> {
 	@Override
 	public PooledMem getDefaultDelegate() { return ScalarPool.getLocal(); }
 
-	public static ScalarEvaluable blank() {
-		return new DynamicScalarEvaluable(args -> new Scalar(false));
+	public static ScalarProducer blank() {
+		return new DynamicScalarProducer(args -> new Scalar(false));
 	}
 
 	public static Scalar sel(double a, double b, double c) {

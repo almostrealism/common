@@ -16,11 +16,14 @@
 
 package org.almostrealism.relation;
 
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.util.Compactable;
 
 import java.util.function.Supplier;
 
-public interface Maker<T> extends Supplier<Evaluable<? extends T>> {
+public interface Producer<T> extends Supplier<Evaluable<? extends T>>, Compactable {
 	@Override
 	Evaluable<T> get();
+
+	@Override
+	default void compact() { }
 }

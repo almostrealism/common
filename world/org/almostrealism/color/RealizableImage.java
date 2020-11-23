@@ -21,50 +21,52 @@ import org.almostrealism.algebra.PairBank;
 import org.almostrealism.hardware.KernelizedOperation;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Producer;
+import org.almostrealism.relation.Evaluable;
 
-public class RealizableImage implements Evaluable<RGB[][]> {
-	private KernelizedEvaluable<RGB> source;
+public class RealizableImage implements Producer<RGB[][]> {
+	private Producer<RGB> source;
 	private Pair dim;
 
-	public RealizableImage(KernelizedEvaluable<RGB> source, Pair dimensions) {
+	public RealizableImage(Producer<RGB> source, Pair dimensions) {
 		this.source = source;
 		this.dim = dimensions;
 	}
 
-	public KernelizedEvaluable<RGB> getSource() { return source; }
+	public Producer<RGB> getSource() { return source; }
 
 	public Pair getDimensions() { return dim; }
 
 	@Override
-	public RGB[][] evaluate() {
-		return evaluate(new Object[] { new Pair(0, 0) });
-	}
+	public Evaluable<RGB[][]> get() {
+		return args -> {
+			if (KernelizedOperation.enableKernelLog) System.out.println("RealizableImage: Evaluating source kernel...");
 
-	@Override
-	public RGB[][] evaluate(Object[] args) {
-		if (KernelizedOperation.enableKernelLog) System.out.println("RealizableImage: Evaluating source kernel...");
-
-		Pair xy = (args != null && args.length > 0) ? (Pair) args[0] : new Pair(0, 0);
-		int x = (int) xy.getX();
-		int y = (int) xy.getY();
-		int w = (int) dim.getX();
-		int h = (int) dim.getY();
-		int size = w * h;
-		PairBank input = generateKernelInput(x, y, w, h);
-		RGBBank output = new RGBBank(size);
-
-		source.kernelEvaluate(output, new MemoryBank[] { input });
-
-		RGB image[][] = new RGB[w][h];
-
-		for (int i = 0; i < w; i++) {
-			for (int j = 0; j < h; j++) {
-				image[i][j] = output.get(j * w + i);
+			if (args == null || args.length <= 0) {
+				args = new Object[]{new Pair(0, 0)};
 			}
-		}
 
-		return image;
+			Pair xy = (args != null && args.length > 0) ? (Pair) args[0] : new Pair(0, 0);
+			int x = (int) xy.getX();
+			int y = (int) xy.getY();
+			int w = (int) dim.getX();
+			int h = (int) dim.getY();
+			int size = w * h;
+			PairBank input = generateKernelInput(x, y, w, h);
+			RGBBank output = new RGBBank(size);
+
+			((KernelizedEvaluable) source.get()).kernelEvaluate(output, new MemoryBank[]{input});
+
+			RGB image[][] = new RGB[w][h];
+
+			for (int i = 0; i < w; i++) {
+				for (int j = 0; j < h; j++) {
+					image[i][j] = output.get(j * w + i);
+				}
+			}
+
+			return image;
+		};
 	}
 
 	@Override

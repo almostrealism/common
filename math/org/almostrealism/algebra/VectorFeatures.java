@@ -24,7 +24,7 @@ import org.almostrealism.algebra.computations.ScalarFromVector;
 import org.almostrealism.algebra.computations.VectorFromScalars;
 import org.almostrealism.algebra.computations.VectorProduct;
 import org.almostrealism.algebra.computations.VectorSum;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 import org.almostrealism.util.StaticEvaluable;
 
 import java.util.function.Supplier;
@@ -40,7 +40,7 @@ public interface VectorFeatures {
 		return new DefaultScalarEvaluable(x(() -> v));
 	}
 
-	default ScalarSupplier x(Supplier<Evaluable<? extends Vector>> v) {
+	default ScalarProducer x(Supplier<Evaluable<? extends Vector>> v) {
 		return new ScalarFromVector(v, ScalarFromVector.X);
 	}
 
@@ -48,7 +48,7 @@ public interface VectorFeatures {
 		return new DefaultScalarEvaluable(y(() -> v));
 	}
 
-	default ScalarSupplier y(Supplier<Evaluable<? extends Vector>> v) {
+	default ScalarProducer y(Supplier<Evaluable<? extends Vector>> v) {
 		return new ScalarFromVector(v, ScalarFromVector.Y);
 	}
 
@@ -56,7 +56,7 @@ public interface VectorFeatures {
 		return new DefaultScalarEvaluable(z(() -> v));
 	}
 
-	default ScalarSupplier z(Supplier<Evaluable<? extends Vector>> v) {
+	default ScalarProducer z(Supplier<Evaluable<? extends Vector>> v) {
 		return new ScalarFromVector(v, ScalarFromVector.Z);
 	}
 
@@ -64,7 +64,7 @@ public interface VectorFeatures {
 		return new DefaultScalarEvaluable(dotProduct(() -> a, () -> b));
 	}
 
-	default ScalarSupplier dotProduct(Supplier<Evaluable<? extends Vector>> a, Supplier<Evaluable<? extends Vector>> b) {
+	default ScalarProducer dotProduct(Supplier<Evaluable<? extends Vector>> a, Supplier<Evaluable<? extends Vector>> b) {
 		return new DotProduct(a, b);
 	}
 
@@ -72,7 +72,7 @@ public interface VectorFeatures {
 		return new DefaultVectorEvaluable(crossProduct(() -> a, () -> b));
 	}
 
-	default VectorSupplier crossProduct(Supplier<Evaluable<? extends Vector>> a, Supplier<Evaluable<? extends Vector>> b) {
+	default VectorProducer crossProduct(Supplier<Evaluable<? extends Vector>> a, Supplier<Evaluable<? extends Vector>> b) {
 		return new CrossProduct(a, b);
 	}
 
@@ -80,7 +80,7 @@ public interface VectorFeatures {
 		return new DefaultVectorEvaluable(add(() -> value, () -> operand));
 	}
 
-	default VectorSupplier add(Supplier<Evaluable<? extends Vector>> value, Supplier<Evaluable<? extends Vector>> operand) {
+	default VectorProducer add(Supplier<Evaluable<? extends Vector>> value, Supplier<Evaluable<? extends Vector>> operand) {
 		return new VectorSum(value, operand);
 	}
 
@@ -88,13 +88,13 @@ public interface VectorFeatures {
 		return new DefaultVectorEvaluable(subtract(() -> value, () -> operand));
 	}
 
-	default VectorSupplier subtract(Supplier<Evaluable<? extends Vector>> value, Supplier<Evaluable<? extends Vector>> operand) {
+	default VectorProducer subtract(Supplier<Evaluable<? extends Vector>> value, Supplier<Evaluable<? extends Vector>> operand) {
 		return new VectorSum(value, minus(operand));
 	}
 
 	default VectorEvaluable multiply(Evaluable<Vector> a, Evaluable<Vector> b) { return new DefaultVectorEvaluable(multiply(() -> a, () -> b)); }
 
-	default VectorSupplier multiply(Supplier<Evaluable<? extends Vector>> a, Supplier<Evaluable<? extends Vector>> b) {
+	default VectorProducer multiply(Supplier<Evaluable<? extends Vector>> a, Supplier<Evaluable<? extends Vector>> b) {
 		return new VectorProduct(a, b);
 	}
 
@@ -110,7 +110,7 @@ public interface VectorFeatures {
 		return new DefaultVectorEvaluable(scalarMultiply(() -> a, () -> b));
 	}
 
-	default VectorSupplier scalarMultiply(Supplier<Evaluable<? extends Vector>> a, Supplier<Evaluable<? extends Scalar>> b) {
+	default VectorProducer scalarMultiply(Supplier<Evaluable<? extends Vector>> a, Supplier<Evaluable<? extends Scalar>> b) {
 		return multiply(a, fromScalars(b, b, b));
 	}
 
@@ -118,7 +118,7 @@ public interface VectorFeatures {
 		return new DefaultVectorEvaluable(minus(() -> p));
 	}
 
-	default VectorSupplier minus(Supplier<Evaluable<? extends Vector>> p) {
+	default VectorProducer minus(Supplier<Evaluable<? extends Vector>> p) {
 		return multiply(p, fromScalars(ScalarEvaluable.minusOne,
 				ScalarEvaluable.minusOne,
 				ScalarEvaluable.minusOne));
@@ -128,7 +128,7 @@ public interface VectorFeatures {
 		return new DefaultScalarEvaluable(length(() -> v));
 	}
 
-	default ScalarSupplier length(Supplier<Evaluable<? extends Vector>> v) {
+	default ScalarProducer length(Supplier<Evaluable<? extends Vector>> v) {
 		return x(v).pow(2.0).add(y(v).pow(2.0)).add(z(v).pow(2.0)).pow(0.5);
 	}
 
@@ -136,7 +136,7 @@ public interface VectorFeatures {
 		return x(v).pow(2.0).add(y(v).pow(2.0)).add(z(v).pow(2.0));
 	}
 
-	default ScalarSupplier lengthSq(Supplier<Evaluable<? extends Vector>> v) {
+	default ScalarProducer lengthSq(Supplier<Evaluable<? extends Vector>> v) {
 		return x(v).pow(2.0).add(y(v).pow(2.0)).add(z(v).pow(2.0));
 	}
 
@@ -144,8 +144,8 @@ public interface VectorFeatures {
 		return new DefaultVectorEvaluable(normalize(() -> p));
 	}
 
-	default VectorSupplier normalize(Supplier<Evaluable<? extends Vector>> p) {
-		ScalarSupplier oneOverLength = length(p).pow(-1.0);
+	default VectorProducer normalize(Supplier<Evaluable<? extends Vector>> p) {
+		ScalarProducer oneOverLength = length(p).pow(-1.0);
 		return fromScalars(x(p).multiply(oneOverLength),
 				y(p).multiply(oneOverLength),
 				z(p).multiply(oneOverLength));
@@ -155,7 +155,7 @@ public interface VectorFeatures {
 		return new DefaultVectorEvaluable(fromScalars(() -> x, () -> y, () -> z));
 	}
 
-	default VectorSupplier fromScalars(Supplier<Evaluable<? extends Scalar>> x, Supplier<Evaluable<? extends Scalar>> y, Supplier<Evaluable<? extends Scalar>> z) {
+	default VectorProducer fromScalars(Supplier<Evaluable<? extends Scalar>> x, Supplier<Evaluable<? extends Scalar>> y, Supplier<Evaluable<? extends Scalar>> z) {
 		return new VectorFromScalars(x, y, z);
 	}
 }

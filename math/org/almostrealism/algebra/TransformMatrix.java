@@ -16,7 +16,6 @@
 
 package org.almostrealism.algebra;
 
-import io.almostrealism.code.Scope;
 import org.almostrealism.algebra.computations.MatrixAdjoint;
 import org.almostrealism.algebra.computations.MatrixDeterminant;
 import org.almostrealism.algebra.computations.MatrixProduct;
@@ -31,11 +30,11 @@ import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.hardware.MemWrapperAdapter;
 import org.almostrealism.hardware.PooledMem;
-import org.almostrealism.relation.NameProvider;
+import org.almostrealism.relation.Producer;
 import org.almostrealism.relation.TripleFunction;
 import org.almostrealism.util.CodeFeatures;
-import org.almostrealism.util.DynamicEvaluable;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.util.DynamicProducer;
+import org.almostrealism.relation.Evaluable;
 import org.almostrealism.util.Provider;
 
 import java.util.function.Supplier;
@@ -186,18 +185,14 @@ public class TransformMatrix extends MemWrapperAdapter implements TripleFunction
 	}
 
 	@Override
-	public Scope getScope(NameProvider p) {
-		throw new RuntimeException("getScope is not implemented"); // TODO
-	}
-
-	@Override
 	public PooledMem getDefaultDelegate() { return TransformMatrixPool.getLocal(); }
 
-	public Evaluable<? extends Vector> transform(Evaluable<? extends Vector> vector, int type) {
+	@Deprecated
+	public Evaluable<Vector> transform(Evaluable<Vector> vector, int type) {
 		return transform(() -> vector, type).get();
 	}
 
-	public Supplier<Evaluable<? extends Vector>> transform(Supplier<Evaluable<? extends Vector>> vector, int type) {
+	public Producer<Vector> transform(Producer<Vector> vector, int type) {
 		if (this.isIdentity) return vector;
 		
 		if (type == TransformMatrix.TRANSFORM_AS_LOCATION) {
@@ -386,14 +381,14 @@ public class TransformMatrix extends MemWrapperAdapter implements TripleFunction
 		return data;
 	}
 
-	public static Evaluable<TransformMatrix> blank() {
-		return new DynamicEvaluable<>(args ->
+	public static Producer<TransformMatrix> blank() {
+		return new DynamicProducer<>(args ->
 				new TransformMatrix(false, null, 0));
 	}
 
 	/**
-	 * Generates a TransformMatrix object that can be used to translate vectors using the specified
-	 * translation coordinates.
+	 * Generates a {@link TransformMatrix} that can be used to translate vectors using
+	 * the specified translation coordinates.
 	 *
 	 * Use {@link org.almostrealism.geometry.TranslationMatrix} instead.
 	 */

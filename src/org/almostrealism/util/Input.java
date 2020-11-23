@@ -16,12 +16,14 @@
 
 package org.almostrealism.util;
 
+import org.almostrealism.relation.Evaluable;
+
 import java.util.function.Supplier;
 
 public class Input {
 	private Input() { }
 
 	public static <T> Supplier<Evaluable<? extends T>> value(Class<T> type, int argIndex) {
-		return PassThroughProducer.of(type, argIndex);
+		return PassThroughEvaluable.of(type, argIndex);
 	}
 }

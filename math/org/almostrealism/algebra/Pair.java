@@ -19,9 +19,9 @@ package org.almostrealism.algebra;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.hardware.MemWrapperAdapter;
 import org.almostrealism.hardware.PooledMem;
+import org.almostrealism.relation.Producer;
 import org.almostrealism.util.Defaults;
-import org.almostrealism.util.DynamicEvaluable;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.util.DynamicProducer;
 
 public class Pair extends MemWrapperAdapter {
 	public Pair() {
@@ -169,7 +169,7 @@ public class Pair extends MemWrapperAdapter {
 		return value.toString();
 	}
 
-	public static Evaluable<Pair> empty() {
-		return new DynamicEvaluable<>(args -> new Pair());
+	public static Producer<Pair> empty() {
+		return new DynamicProducer<>(args -> new Pair());
 	}
 }

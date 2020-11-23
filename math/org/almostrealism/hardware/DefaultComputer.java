@@ -17,7 +17,7 @@
 package org.almostrealism.hardware;
 
 import org.almostrealism.relation.Computation;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.Optional;
 

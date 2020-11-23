@@ -19,14 +19,14 @@ package com.almostrealism.hardware.test;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.math.bool.GreaterThan;
 import org.almostrealism.util.CodeFeatures;
-import org.almostrealism.util.DynamicEvaluable;
+import org.almostrealism.util.DynamicProducer;
 import org.junit.Test;
 
 public class BinaryOperatorTests implements CodeFeatures {
 	@Test
 	public void greaterThan() {
 		GreaterThan<Vector> operation = new GreaterThan(
-				3, DynamicEvaluable.forMemLength(),
+				3, DynamicProducer.forMemLength(),
 				scalar(2.0),
 				scalar(3.0),
 				vector(1.0, 2.0, 3.0),

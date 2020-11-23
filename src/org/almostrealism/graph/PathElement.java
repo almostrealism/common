@@ -16,7 +16,7 @@
 
 package org.almostrealism.graph;
 
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
 /**
  * @author  Michael Murray

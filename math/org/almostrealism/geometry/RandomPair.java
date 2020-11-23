@@ -31,11 +31,4 @@ public class RandomPair implements PairEvaluable {
 				Math.random(), Math.random() });
 		return r;
 	}
-
-	/**
-	 * Does nothing.
-	 */
-	@Override
-	public void compact() {
-	}
 }

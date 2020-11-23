@@ -19,8 +19,9 @@ package org.almostrealism.graph;
 import org.almostrealism.algebra.DiscreteField;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.relation.Producer;
 import org.almostrealism.space.KdTree;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.*;
 
@@ -46,9 +47,9 @@ public class RayField implements DiscreteField {
     }
 
     @Override
-    public boolean add(Evaluable<Ray> rayCallable) {
+    public boolean add(Producer<Ray> rayCallable) {
         try {
-            Ray ray = rayCallable.evaluate(new Object[0]);
+            Ray ray = rayCallable.get().evaluate();
             raysSet.add(ray);
             rays.addPoint(ray.getOrigin().getData(), ray);
             return true;
@@ -58,9 +59,9 @@ public class RayField implements DiscreteField {
     }
 
     @Override
-    public boolean addAll(Collection<? extends Evaluable<Ray>> c) {
+    public boolean addAll(Collection<? extends Producer<Ray>> c) {
         boolean allOk = true;
-        for (Evaluable<Ray> r : c) {
+        for (Producer<Ray> r : c) {
             allOk &= add(r);
         }
         return allOk;
@@ -102,7 +103,7 @@ public class RayField implements DiscreteField {
     }
 
     @Override
-    public Iterator<Evaluable<Ray>> iterator() {
+    public Iterator<Producer<Ray>> iterator() {
         throw new UnsupportedOperationException();
     }
 
@@ -117,7 +118,7 @@ public class RayField implements DiscreteField {
     }
 
     @Override
-    public boolean addAll(int index, Collection<? extends Evaluable<Ray>> c) {
+    public boolean addAll(int index, Collection<? extends Producer<Ray>> c) {
         throw new UnsupportedOperationException();
     }
 
@@ -132,22 +133,22 @@ public class RayField implements DiscreteField {
     }
 
     @Override
-    public Evaluable<Ray> get(int index) {
+    public Producer<Ray> get(int index) {
         throw new UnsupportedOperationException();
     }
 
     @Override
-    public Evaluable<Ray> set(int index, Evaluable<Ray> element) {
+    public Producer<Ray> set(int index, Producer<Ray> element) {
         throw new UnsupportedOperationException();
     }
 
     @Override
-    public void add(int index, Evaluable<Ray> element) {
+    public void add(int index, Producer<Ray> element) {
         throw new UnsupportedOperationException();
     }
 
     @Override
-    public Evaluable<Ray> remove(int index) {
+    public Producer<Ray> remove(int index) {
         throw new UnsupportedOperationException();
     }
 
@@ -162,17 +163,17 @@ public class RayField implements DiscreteField {
     }
 
     @Override
-    public ListIterator<Evaluable<Ray>> listIterator() {
+    public ListIterator<Producer<Ray>> listIterator() {
         throw new UnsupportedOperationException();
     }
 
     @Override
-    public ListIterator<Evaluable<Ray>> listIterator(int index) {
+    public ListIterator<Producer<Ray>> listIterator(int index) {
         throw new UnsupportedOperationException();
     }
 
     @Override
-    public List<Evaluable<Ray>> subList(int fromIndex, int toIndex) {
+    public List<Producer<Ray>> subList(int fromIndex, int toIndex) {
         throw new UnsupportedOperationException();
     }
 }

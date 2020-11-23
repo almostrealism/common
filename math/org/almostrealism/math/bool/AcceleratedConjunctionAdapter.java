@@ -20,42 +20,44 @@ import io.almostrealism.code.Argument;
 import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.MemWrapper;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.util.Compactable;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 public class AcceleratedConjunctionAdapter<T extends MemWrapper> extends AcceleratedConditionalStatementAdapter<T> {
-	private List<AcceleratedConditionalStatement<T>> conjuncts;
+	private List<AcceleratedConditionalStatement<? extends T>> conjuncts;
 	private Argument trueValue, falseValue;
 
 	public AcceleratedConjunctionAdapter(int memLength,
-											 Function<Integer, Supplier<Evaluable<T>>> blankValue) {
+											 Function<Integer, Supplier<Evaluable<? extends T>>> blankValue) {
 		this(memLength, blankValue, null, null);
 	}
 
 	public AcceleratedConjunctionAdapter(int memLength,
-										 Function<Integer, Supplier<Evaluable<T>>> blankValue,
-										 Supplier<Evaluable<T>> trueValue, Supplier<Evaluable<T>> falseValue,
-										 AcceleratedConditionalStatement<T>... conjuncts) {
-		this(memLength, (Supplier<Evaluable<T>>) blankValue.apply(memLength), trueValue, falseValue, conjuncts);
+										 Function<Integer, Supplier<Evaluable<? extends T>>> blankValue,
+										 Supplier<Evaluable<? extends T>> trueValue, Supplier<Evaluable<? extends T>> falseValue,
+										 AcceleratedConditionalStatement<? extends T>... conjuncts) {
+		this(memLength, blankValue.apply(memLength), trueValue, falseValue, conjuncts);
 	}
 
 	public AcceleratedConjunctionAdapter(int memLength,
-										 	Supplier<Evaluable<T>> blankValue,
-										 	Supplier<Evaluable<T>> trueValue,
-										 	Supplier<Evaluable<T>> falseValue,
-										 	AcceleratedConditionalStatement<T>... conjuncts) {
+										 	Supplier<Evaluable<? extends T>> blankValue,
+										 	Supplier<Evaluable<? extends T>> trueValue,
+										 	Supplier<Evaluable<? extends T>> falseValue,
+										 	AcceleratedConditionalStatement<? extends T>... conjuncts) {
 		super(memLength, blankValue);
 		this.conjuncts = Arrays.asList(conjuncts);
 		initArguments(trueValue, falseValue);
 	}
 
-	protected void initArguments(Supplier<Evaluable<T>> trueValue, Supplier<Evaluable<T>> falseValue) {
+	protected void initArguments(Supplier<Evaluable<? extends T>> trueValue, Supplier<Evaluable<? extends T>> falseValue) {
 		List<Argument<? extends MemWrapper>> args = new ArrayList<>();
 		args.add(getArguments().get(0));
 		args.addAll(getOperands());
@@ -109,7 +111,10 @@ public class AcceleratedConjunctionAdapter<T extends MemWrapper> extends Acceler
 
 	@Override
 	public void compact() {
-		conjuncts.forEach(Evaluable::compact);
+		conjuncts.stream()
+				.map(c -> c instanceof Compactable ? (Compactable) c : null)
+				.filter(Objects::nonNull)
+				.forEach(Compactable::compact);
 		super.compact();
 	}
 }

@@ -14,12 +14,16 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.math.bool;
+package org.almostrealism.algebra;
 
+import org.almostrealism.algebra.computations.DefaultPairEvaluable;
+import org.almostrealism.relation.ProducerComputation;
 import org.almostrealism.relation.Evaluable;
 
-public interface BinaryCondition<L, R> extends Condition {
-	Evaluable<L> getLeftOperand();
+public interface PairProducer extends ProducerComputation<Pair>, PairFeatures {
+	@Override
+	default Evaluable<Pair> get() { return new DefaultPairEvaluable(this); }
 
-	Evaluable<R> getRightOperand();
+	default ScalarProducer x() { return l(this); }
+	default ScalarProducer y() { return r(this); }
 }

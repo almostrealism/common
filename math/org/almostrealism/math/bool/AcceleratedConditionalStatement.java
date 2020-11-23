@@ -20,13 +20,14 @@ import io.almostrealism.code.Argument;
 import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.MemWrapper;
-import org.almostrealism.util.Evaluable;
+import org.almostrealism.relation.Producer;
+import org.almostrealism.util.Compactable;
+import org.almostrealism.relation.Evaluable;
 
 import java.util.Arrays;
 import java.util.List;
-import java.util.function.Supplier;
 
-public interface AcceleratedConditionalStatement<T extends MemWrapper> extends Evaluable<T>, Supplier<Evaluable<? extends T>> {
+public interface AcceleratedConditionalStatement<T extends MemWrapper> extends Evaluable<T>, Producer<T>, Compactable {
 	String getCondition();
 
 	default List<Variable<?>> getVariables() { return Arrays.asList(); }
