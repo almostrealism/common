@@ -102,8 +102,16 @@ public interface VectorFeatures {
 		return scalarMultiply(a, new Scalar(b));
 	}
 
+	default VectorProducer scalarMultiply(Supplier<Evaluable<? extends Vector>> a, double b) {
+		return scalarMultiply(a, new Scalar(b));
+	}
+
 	default VectorEvaluable scalarMultiply(Evaluable<Vector> a, Scalar b) {
 		return scalarMultiply(a, StaticEvaluable.of(b));
+	}
+
+	default VectorProducer scalarMultiply(Supplier<Evaluable<? extends Vector>> a, Scalar b) {
+		return scalarMultiply(a, () -> StaticEvaluable.of(b));
 	}
 
 	default VectorEvaluable scalarMultiply(Evaluable<Vector> a, Evaluable<Scalar> b) {
