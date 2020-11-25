@@ -17,16 +17,15 @@
 package org.almostrealism.graph;
 
 import org.almostrealism.time.Temporal;
-import org.almostrealism.util.RunnableList;
+import org.almostrealism.util.OperationList;
 
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.function.Supplier;
 
 public class CachedStateCellGroup<T> extends ArrayList<CachedStateCell<T>> implements Temporal {
 	@Override
 	public Supplier<Runnable> tick() {
-		RunnableList tick = new RunnableList();
+		OperationList tick = new OperationList();
 		stream().map(CachedStateCell::tick).forEach(tick::add);
 		return tick;
 	}

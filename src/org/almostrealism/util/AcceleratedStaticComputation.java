@@ -16,45 +16,16 @@
 
 package org.almostrealism.util;
 
-import io.almostrealism.code.Expression;
-import org.almostrealism.algebra.Pair;
-import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.relation.Evaluable;
 
-import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public class AcceleratedStaticComputation<T extends MemWrapper> extends DynamicAcceleratedProducerAdapter<MemWrapper, T> {
-	private T value;
-
+public class AcceleratedStaticComputation<T extends MemWrapper> extends AcceleratedStaticComputationAdapter<T> {
 	public AcceleratedStaticComputation(T value, Supplier<Evaluable<? extends T>> output) {
-		super(value.getMemLength(), output);
-		this.value = value;
+		super(value, output);
 	}
 
 	@Override
 	public Evaluable<T> get() { return compileProducer(this); }
-
-	public T getValue() { return value; }
-
-	@Override
-	public IntFunction<Expression<Double>> getValueFunction() {
-		return pos -> {
-			Pair p = MemWrapper.fromMem(value.getMem(), value.getOffset() + pos, 1);
-
-			String s = stringForDouble(p.getA());
-			if (s.contains("Infinity")) {
-				throw new IllegalArgumentException("Infinity is not supported");
-			}
-
-			return new Expression<>(Double.class, s);
-		};
-	}
-
-	/**
-	 * Returns true.
-	 */
-	@Override
-	public boolean isStatic() { return !isVariableRef() && true; }
 }

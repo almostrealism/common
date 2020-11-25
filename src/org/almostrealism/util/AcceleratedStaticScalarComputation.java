@@ -22,7 +22,7 @@ import org.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 
-public class AcceleratedStaticScalarComputation extends AcceleratedStaticComputation<Scalar> implements ScalarProducer {
+public class AcceleratedStaticScalarComputation extends AcceleratedStaticComputationAdapter<Scalar> implements ScalarProducer {
 	public AcceleratedStaticScalarComputation(Scalar value, Supplier<Evaluable<? extends Scalar>> output) {
 		super(value, output);
 	}

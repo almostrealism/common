@@ -112,11 +112,11 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrappe
 			buf.append(getCondition());
 			buf.append(") {\n");
 			if (getTrueValue() != null) {
-				buf.append(((DynamicAcceleratedOperation) getTrueValue().getProducer()).getBody(outputVariable, allVariables));
+				buf.append(((DynamicAcceleratedOperation) getTrueValue().getProducer().get()).getBody(outputVariable, allVariables));
 			}
 			buf.append("} else {\n");
 			if (getFalseValue() != null) {
-				buf.append(((DynamicAcceleratedOperation) getFalseValue().getProducer()).getBody(outputVariable, allVariables));
+				buf.append(((DynamicAcceleratedOperation) getFalseValue().getProducer().get()).getBody(outputVariable, allVariables));
 			}
 			buf.append("}\n");
 

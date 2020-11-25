@@ -16,11 +16,17 @@
 
 package org.almostrealism.hardware;
 
+import org.almostrealism.algebra.computations.DefaultVectorEvaluable;
 import org.almostrealism.relation.Computation;
+import org.almostrealism.util.AcceleratedStaticVectorComputation;
 
 public class AcceleratedComputationProducer<T extends MemWrapper> extends AcceleratedComputationOperation implements KernelizedEvaluable<T> {
 	public AcceleratedComputationProducer(Computation c) {
 		this(c, true);
+
+		if (c instanceof AcceleratedStaticVectorComputation && this instanceof DefaultVectorEvaluable == false) {
+			throw new IllegalArgumentException("!");
+		}
 	}
 
 	public AcceleratedComputationProducer(Computation c, boolean kernel) {

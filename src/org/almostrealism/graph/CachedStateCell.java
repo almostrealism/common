@@ -21,8 +21,7 @@ import org.almostrealism.relation.Producer;
 import org.almostrealism.time.Temporal;
 import org.almostrealism.util.CodeFeatures;
 import org.almostrealism.relation.Evaluable;
-import org.almostrealism.util.Provider;
-import org.almostrealism.util.RunnableList;
+import org.almostrealism.util.OperationList;
 
 import java.util.function.Supplier;
 
@@ -63,7 +62,7 @@ public abstract class CachedStateCell<T> extends FilteredCell<T> implements Fact
 
 	@Override
 	public Supplier<Runnable> tick() {
-		RunnableList tick = new RunnableList();
+		OperationList tick = new OperationList();
 		tick.add(assign(p(outValue), p(cachedValue)));
 		tick.add(reset(p(cachedValue)));
 		tick.add(super.push(null));

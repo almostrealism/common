@@ -22,7 +22,7 @@ import org.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 
-public class AcceleratedStaticRayComputation extends AcceleratedStaticComputation<Ray> implements RayProducer {
+public class AcceleratedStaticRayComputation extends AcceleratedStaticComputationAdapter<Ray> implements RayProducer {
 	public AcceleratedStaticRayComputation(Ray value, Supplier<Evaluable<? extends Ray>> output) {
 		super(value, output);
 	}

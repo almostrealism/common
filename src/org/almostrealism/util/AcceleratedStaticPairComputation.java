@@ -22,7 +22,7 @@ import org.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 
-public class AcceleratedStaticPairComputation extends AcceleratedStaticComputation<Pair> implements PairProducer {
+public class AcceleratedStaticPairComputation extends AcceleratedStaticComputationAdapter<Pair> implements PairProducer {
 	public AcceleratedStaticPairComputation(Pair value, Supplier<Evaluable<? extends Pair>> output) {
 		super(value, output);
 	}

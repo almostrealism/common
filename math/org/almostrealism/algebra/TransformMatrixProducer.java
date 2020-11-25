@@ -14,9 +14,13 @@
  * limitations under the License.
  */
 
-package org.almostrealism.relation;
+package org.almostrealism.algebra;
 
-import java.util.function.Supplier;
+import org.almostrealism.algebra.computations.DefaultTransformMatrixEvaluable;
+import org.almostrealism.relation.Evaluable;
+import org.almostrealism.relation.ProducerComputation;
 
-public interface RunnableComputation<T> extends Computation<T>, Supplier<Runnable> {
+public interface TransformMatrixProducer extends ProducerComputation<TransformMatrix>, TransformMatrixFeatures {
+	@Override
+	default Evaluable<TransformMatrix> get() { return new DefaultTransformMatrixEvaluable(this); }
 }

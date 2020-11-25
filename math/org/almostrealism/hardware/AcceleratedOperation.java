@@ -228,7 +228,7 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 				kernelArgs[i] = kp.createKernelDestination(args[0].getCount());
 				kp.kernelEvaluate(kernelArgs[i], downstreamArgs);
 			} else {
-				throw new IllegalArgumentException(arguments.get(i).getProducer().get().getClass().getSimpleName() +
+				throw new IllegalArgumentException(c.get().getClass().getSimpleName() +
 						" is not a ProducerArgumentReference or KernelizedProducer");
 			}
 		}

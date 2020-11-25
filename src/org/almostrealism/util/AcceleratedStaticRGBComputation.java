@@ -22,7 +22,7 @@ import org.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 
-public class AcceleratedStaticRGBComputation extends AcceleratedStaticComputation<RGB> implements RGBProducer {
+public class AcceleratedStaticRGBComputation extends AcceleratedStaticComputationAdapter<RGB> implements RGBProducer {
 	public AcceleratedStaticRGBComputation(RGB value, Supplier<Evaluable<? extends RGB>> output) {
 		super(value, output);
 	}

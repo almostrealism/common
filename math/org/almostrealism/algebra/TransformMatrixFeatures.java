@@ -14,16 +14,7 @@
  * limitations under the License.
  */
 
-package org.almostrealism.util;
+package org.almostrealism.algebra;
 
-import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorProducer;
-import org.almostrealism.relation.Evaluable;
-
-import java.util.function.Supplier;
-
-public class AcceleratedStaticVectorComputation extends AcceleratedStaticComputationAdapter<Vector> implements VectorProducer {
-	public AcceleratedStaticVectorComputation(Vector value, Supplier<Evaluable<? extends Vector>> output) {
-		super(value, output);
-	}
+public interface TransformMatrixFeatures {
 }

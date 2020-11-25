@@ -21,12 +21,11 @@ import java.util.Iterator;
 import java.util.function.Supplier;
 
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.graph.CachedStateCell;
 import org.almostrealism.graph.ScalarCachedStateCell;
 import org.almostrealism.graph.Source;
 import org.almostrealism.graph.SummationCell;
 import org.almostrealism.time.Temporal;
-import org.almostrealism.util.RunnableList;
+import org.almostrealism.util.OperationList;
 
 public class Mixer extends ArrayList<Source<Scalar>> implements Temporal {
 	private SummationCell sum;
@@ -47,7 +46,7 @@ public class Mixer extends ArrayList<Source<Scalar>> implements Temporal {
 	
 	@Override
 	public Supplier<Runnable> tick() {
-		RunnableList tick = new RunnableList();
+		OperationList tick = new OperationList();
 		stream().map(s -> sum.push(s.next())).forEach(tick::add);
 
 		tick.add(() -> () -> {

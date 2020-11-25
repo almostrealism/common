@@ -14,17 +14,7 @@
  * limitations under the License.
  */
 
-package org.almostrealism.util;
+package org.almostrealism.relation;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.function.Supplier;
-import java.util.stream.Collectors;
-
-public class RunnableList extends ArrayList<Supplier<Runnable>> implements Supplier<Runnable> {
-	@Override
-	public Runnable get() {
-		List<Runnable> run = stream().map(Supplier::get).collect(Collectors.toList());
-		return () -> run.forEach(Runnable::run);
-	}
+public interface OperationComputation<T> extends Computation<T>, Operation {
 }

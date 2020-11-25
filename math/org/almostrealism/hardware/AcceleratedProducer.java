@@ -116,7 +116,7 @@ public class AcceleratedProducer<I extends MemWrapper, O extends MemWrapper> ext
 
 		for (int i = 0; i < fixedValues.length; i++) {
 			Object o = fixedValues[i];
-			p[inputs.length + i] = fixedValues == null ? null : () -> ops().v(o);
+			p[inputs.length + i] = fixedValues == null ? null : ops().v(o);
 		}
 
 		return p;
