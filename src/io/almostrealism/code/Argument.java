@@ -18,13 +18,13 @@ package io.almostrealism.code;
 
 import org.almostrealism.color.computations.GeneratedColorProducer;
 import org.almostrealism.relation.Evaluable;
-import org.almostrealism.util.EvaluableWithRank;
+import org.almostrealism.util.ProducerWithRank;
 
 import java.util.function.Supplier;
 
 /**
  * A parameter for a {@link Method}. Note that this type will extract
- * the internal {@link Evaluable} from instances of {@link EvaluableWithRank}
+ * the internal {@link Evaluable} from instances of {@link ProducerWithRank}
  * and the rank will not be available, and will extract the internal
  * {@link Evaluable} from instances of {@link GeneratedColorProducer}
  * and the generator will not be available.
@@ -48,19 +48,17 @@ public class Argument<T> extends Variable<T> {
 
 	@Override
 	public void setProducer(Supplier<Evaluable<? extends T>> producer) {
-		w: while (producer != null && (producer.get() instanceof EvaluableWithRank || producer.get() instanceof GeneratedColorProducer)) {
-			Evaluable<? extends T> p = producer.get();
-
-			if (p instanceof EvaluableWithRank) {
-				if (((EvaluableWithRank<T>) p).getProducer() == p) {
+		w: while (producer instanceof ProducerWithRank || producer instanceof GeneratedColorProducer) {
+			if (producer instanceof ProducerWithRank) {
+				if (((ProducerWithRank<T>) producer).getProducer() == producer) {
 					break w;
 				}
 
-				producer = () -> ((EvaluableWithRank)  p).getProducer();
+				producer = ((ProducerWithRank)  producer).getProducer();
 			}
 
 			if (producer instanceof GeneratedColorProducer) {
-				producer = ((GeneratedColorProducer) p).getProducer();
+				producer = ((GeneratedColorProducer) producer).getProducer();
 			}
 		}
 

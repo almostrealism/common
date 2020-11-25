@@ -31,7 +31,7 @@ import org.almostrealism.geometry.RayFromVectors;
 import org.almostrealism.relation.Producer;
 import org.almostrealism.util.CodeFeatures;
 import org.almostrealism.relation.Evaluable;
-import org.almostrealism.util.EvaluableWithRankAdapter;
+import org.almostrealism.util.ProducerWithRankAdapter;
 
 /**
  * Extends {@link Intersection} to provide metadata that is required for shading.
@@ -59,8 +59,8 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 
 		this.incident = incident;
 
-		Evaluable<Ray> p = new DefaultRayEvaluable(new RayFromVectors(getPoint(), normal));
-		this.normal = () -> new EvaluableWithRankAdapter<>(p, distance.get()); // TODO  Should be accelerated producer
+		Producer<Ray> p = new RayFromVectors(getPoint(), normal);
+		this.normal = new ProducerWithRankAdapter<>(p, distance);
 	}
 	
 	/** Returns the viewer direction. */

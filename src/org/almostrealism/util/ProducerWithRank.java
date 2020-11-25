@@ -17,11 +17,11 @@
 package org.almostrealism.util;
 
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.relation.Evaluable;
+import org.almostrealism.relation.Producer;
 
-public interface EvaluableWithRank<T> extends Evaluable<T> {
+public interface ProducerWithRank<T> extends Producer<T> {
 
-	Evaluable<T> getProducer();
+	Producer<T> getProducer();
 
-	Evaluable<Scalar> getRank();
+	Producer<Scalar> getRank();
 }

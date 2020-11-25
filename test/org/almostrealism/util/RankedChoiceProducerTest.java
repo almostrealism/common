@@ -62,14 +62,14 @@ public class RankedChoiceProducerTest implements CodeFeatures {
 	}
 
 	protected RankedChoiceProducerForVector getRankedChoiceProducer1() {
-		EvaluableWithRank<Vector> v1 =
-				new EvaluableWithRankAdapter<>(vector(1, 2, 3),
+		ProducerWithRank<Vector> v1 =
+				new ProducerWithRankAdapter<>(vector(1, 2, 3),
 						scalar(2));
-		EvaluableWithRank<Vector> v2 =
-				new EvaluableWithRankAdapter<>(vector(4, 5, 6),
+		ProducerWithRank<Vector> v2 =
+				new ProducerWithRankAdapter<>(vector(4, 5, 6),
 						scalar(1));
-		EvaluableWithRank<Vector> v3 =
-				new EvaluableWithRankAdapter<>(vector(7, 8, 9),
+		ProducerWithRank<Vector> v3 =
+				new ProducerWithRankAdapter<>(vector(7, 8, 9),
 						scalar(3));
 
 		RankedChoiceProducerForVector rcp = new RankedChoiceProducerForVector(Intersection.e);
@@ -80,11 +80,11 @@ public class RankedChoiceProducerTest implements CodeFeatures {
 	}
 
 	protected RankedChoiceProducerForVector getRankedChoiceProducer2() {
-		EvaluableWithRank<Vector> v1 =
-				new EvaluableWithRankAdapter<>(vector(0.7034, 0.7034, 0.7034),
+		ProducerWithRank<Vector> v1 =
+				new ProducerWithRankAdapter<>(vector(0.7034, 0.7034, 0.7034),
 						scalar(0.9002));
-		EvaluableWithRank<Vector> v2 =
-				new EvaluableWithRankAdapter<>(vector(0.0, 0.0, 0.0),
+		ProducerWithRank<Vector> v2 =
+				new ProducerWithRankAdapter<>(vector(0.0, 0.0, 0.0),
 						scalar(-17.274));
 
 		RankedChoiceProducerForVector rcp = new RankedChoiceProducerForVector(Intersection.e);
@@ -129,12 +129,12 @@ public class RankedChoiceProducerTest implements CodeFeatures {
 
 	@Test
 	public void randomRankedChoiceKernel() {
-		List<EvaluableWithRank<Scalar>> values = Arrays.asList(
-				new EvaluableWithRankAdapter<>(PassThroughEvaluable.of(Scalar.class, 0),
+		List<ProducerWithRank<Scalar>> values = Arrays.asList(
+				new ProducerWithRankAdapter<>(PassThroughEvaluable.of(Scalar.class, 0),
 										PassThroughEvaluable.of(Scalar.class, 1)),
-				new EvaluableWithRankAdapter<>(PassThroughEvaluable.of(Scalar.class, 2),
+				new ProducerWithRankAdapter<>(PassThroughEvaluable.of(Scalar.class, 2),
 										PassThroughEvaluable.of(Scalar.class, 3)),
-				new EvaluableWithRankAdapter<>(PassThroughEvaluable.of(Scalar.class, 4),
+				new ProducerWithRankAdapter<>(PassThroughEvaluable.of(Scalar.class, 4),
 										PassThroughEvaluable.of(Scalar.class, 5)));
 
 		AcceleratedRankedChoiceProducer<Scalar> acc =

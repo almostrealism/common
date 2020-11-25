@@ -21,10 +21,11 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.relation.Evaluable;
+import org.almostrealism.relation.Producer;
 
 import java.util.ArrayList;
 
-public class RankedChoiceProducer<T> extends ArrayList<EvaluableWithRank<T>> implements Evaluable<T> {
+public class RankedChoiceProducer<T> extends ArrayList<ProducerWithRank<T>> implements Evaluable<T> {
 	protected double e;
 	protected boolean tolerateNull;
 
@@ -47,7 +48,7 @@ public class RankedChoiceProducer<T> extends ArrayList<EvaluableWithRank<T>> imp
 
 	@Override
 	public T evaluate(Object[] args) {
-		Evaluable<T> best = null;
+		Producer<T> best = null;
 		double rank = Double.MAX_VALUE;
 
 		boolean printLog = false; // Math.random() < 0.04;
@@ -56,8 +57,8 @@ public class RankedChoiceProducer<T> extends ArrayList<EvaluableWithRank<T>> imp
 			System.out.println("RankedChoiceProducer: There are " + size() + " Producers to choose from");
 		}
 
-		r: for (EvaluableWithRank<T> p : this) {
-			Scalar rs = p.getRank().evaluate(args);
+		r: for (ProducerWithRank<T> p : this) {
+			Scalar rs = p.getRank().get().evaluate(args);
 			if (rs == null) continue r;
 
 			double r = rs.getValue();
@@ -85,6 +86,6 @@ public class RankedChoiceProducer<T> extends ArrayList<EvaluableWithRank<T>> imp
 			throw new NullPointerException("Nothing selected by RankedChoiceProducer");
 		}
 
-		return best == null ? null : best.evaluate(args);
+		return best == null ? null : best.get().evaluate(args);
 	}
 }
