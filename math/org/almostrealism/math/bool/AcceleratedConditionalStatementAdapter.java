@@ -130,12 +130,12 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrappe
 
 		List<Argument<? extends MemWrapper>> newArgs = new ArrayList<>();
 		if (getArguments().get(0) != null) newArgs.add(getArguments().get(0));
-//		TODO  May still need to compile them(?)
-//		getOperands().stream().map(Argument::getProducer)
-//				.filter(p -> p instanceof AcceleratedComputationOperation)
-//				.forEach(p -> ((AcceleratedComputationOperation) p).compile());
-		getOperands().stream()
-				.map(o -> AcceleratedProducer.excludeResult(((OperationAdapter) o.getProducer()).getArguments()))
+		getOperands().stream().map(Argument::getProducer).map(Supplier::get)
+				.filter(p -> p instanceof AcceleratedComputationOperation)
+				.map(p -> {
+					((AcceleratedComputationOperation) p).compile();
+					return AcceleratedProducer.excludeResult(((OperationAdapter) p).getArguments());
+				})
 				.flatMap(List::stream)
 				.forEach(arg -> newArgs.add((Argument) arg));
 		getOperands().stream()
