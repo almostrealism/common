@@ -16,9 +16,13 @@
 
 package org.almostrealism.geometry;
 
+import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.algebra.VectorEvaluable;
 import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.algebra.computations.DefaultVectorEvaluable;
+import org.almostrealism.algebra.computations.DirectionDotDirection;
+import org.almostrealism.algebra.computations.OriginDotDirection;
+import org.almostrealism.algebra.computations.OriginDotOrigin;
 import org.almostrealism.algebra.computations.RayDirection;
 import org.almostrealism.algebra.computations.RayOrigin;
 import org.almostrealism.relation.Evaluable;
@@ -41,4 +45,10 @@ public interface RayFeatures {
 	default VectorProducer direction(Supplier<Evaluable<? extends Ray>> r) {
 		return new RayDirection(r);
 	}
+
+	default ScalarProducer oDoto(Supplier<Evaluable<? extends Ray>> r) { return new OriginDotOrigin(r); }
+
+	default ScalarProducer dDotd(Supplier<Evaluable<? extends Ray>> r) { return new DirectionDotDirection(r); }
+
+	default ScalarProducer oDotd(Supplier<Evaluable<? extends Ray>> r) { return new OriginDotDirection(r); }
 }

@@ -40,6 +40,7 @@ import org.almostrealism.relation.Producer;
 import org.almostrealism.relation.ProducerComputation;
 
 import java.util.function.Function;
+import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
 public interface CodeFeatures extends ScalarFeatures, PairFeatures, TriangleDataFeatures, RayFeatures, RGBFeatures {
@@ -109,6 +110,11 @@ public interface CodeFeatures extends ScalarFeatures, PairFeatures, TriangleData
 
 	default RayProducer ray(double x, double y, double z, double dx, double dy, double dz) {
 		return value(new Ray(new Vector(x, y, z), new Vector(dx, dy, dz)));
+	}
+
+	default RayProducer ray(IntFunction<Double> values) {
+		return ray(values.apply(0), values.apply(1), values.apply(2),
+					values.apply(3), values.apply(4), values.apply(5));
 	}
 
 	default RayProducer value(Ray value) {

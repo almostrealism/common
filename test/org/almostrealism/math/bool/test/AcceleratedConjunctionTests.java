@@ -1,6 +1,7 @@
 package org.almostrealism.math.bool.test;
 
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.geometry.Ray;
 import org.almostrealism.math.bool.AcceleratedConjunctionScalar;
 import org.almostrealism.math.bool.LessThan;
 import org.almostrealism.relation.Producer;
@@ -38,5 +39,35 @@ public class AcceleratedConjunctionTests extends AcceleratedConditionalStatement
 		IntStream.range(0, 10).mapToObj(i ->
 			conjunctionTest(i * Math.random(), i * Math.random(), i * Math.random(), i * Math.random()))
 				.forEach(Runnable::run);
+	}
+
+	protected AcceleratedConjunctionScalar dotProductConjunction() {
+		return conjunction(ray(i -> Math.random()).oDotd(), v(1), oDotd(v(Ray.class, 0)), v(1));
+	}
+
+	@Test
+	public void dotProductInConjunction() {
+		AcceleratedConjunctionScalar c = dotProductConjunction();
+		c.compact();
+		double v = c.evaluate(ray(i -> Math.random()).get().evaluate()).getValue();
+		System.out.println(v);
+		Assert.assertNotEquals(0, v);
+	}
+
+	@Test
+	public void dotProductInNestedConjunction() {
+		AcceleratedConjunctionScalar c = dotProductConjunction();
+		c = conjunction(c, v(Scalar.class, 1),
+				v(Math.random()), v(Scalar.class, 2));
+		c.compact();
+
+		System.out.println(c.getFunctionDefinition());
+
+		double v = c.evaluate(ray(i -> Math.random()).get().evaluate(),
+							v(Math.random()).get().evaluate(),
+							v(Math.random()).get().evaluate()).getValue();
+
+		System.out.println(v);
+		Assert.assertNotEquals(0, v);
 	}
 }
