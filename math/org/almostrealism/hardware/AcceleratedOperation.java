@@ -126,6 +126,10 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 	}
 
 	private int getProducerArgumentReferenceIndex(Argument<?> arg) {
+		if (arg.getProducer() instanceof ProducerArgumentReference) {
+			return ((ProducerArgumentReference) arg.getProducer()).getReferencedArgumentIndex();
+		}
+
 		if (arg.getProducer() instanceof AcceleratedComputationOperation == false) return -1;
 
 		Computation c = ((AcceleratedComputationOperation) arg.getProducer()).getComputation();

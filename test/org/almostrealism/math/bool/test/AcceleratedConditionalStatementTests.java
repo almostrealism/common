@@ -3,7 +3,9 @@ package org.almostrealism.math.bool.test;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.math.bool.LessThan;
+import org.almostrealism.relation.Producer;
 import org.almostrealism.util.CodeFeatures;
+import org.almostrealism.util.PassThroughEvaluable;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -15,7 +17,7 @@ public class AcceleratedConditionalStatementTests implements CodeFeatures {
 		ScalarProducer a = scalar(Math.random());
 		ScalarProducer b = scalar(Math.random());
 
-		LessThan lt = new LessThan(2, () -> Scalar.blank(), a, b, a, b, false);
+		LessThan lt = new LessThan(2, Scalar.blank(), a, b, a, b, false);
 
 		lt.compact();
 		System.out.println(lt.getFunctionDefinition());
@@ -27,6 +29,44 @@ public class AcceleratedConditionalStatementTests implements CodeFeatures {
 			Assert.assertEquals(a.get().evaluate().getValue(), s.getValue(), Math.pow(10, -10));
 		} else {
 			Assert.assertEquals(b.get().evaluate().getValue(), s.getValue(), Math.pow(10, -10));
+		}
+	}
+
+	protected LessThan lessThan() {
+		Producer<Scalar> one = PassThroughEvaluable.of(Scalar.class, 0);
+		Producer<Scalar> two = PassThroughEvaluable.of(Scalar.class, 1);
+		return new LessThan(2, Scalar.blank(), one, two, one, two, false);
+	}
+
+	@Test
+	public void withPassThrough() {
+		Scalar a = scalar(Math.random()).get().evaluate();
+		Scalar b = scalar(Math.random()).get().evaluate();
+
+		LessThan lt = lessThan();
+		check(lt, a, b);
+	}
+
+	@Test
+	public void compactWithPassThrough() {
+		Scalar a = scalar(Math.random()).get().evaluate();
+		Scalar b = scalar(Math.random()).get().evaluate();
+
+		LessThan lt = lessThan();
+		lt.compact();
+		check(lt, a, b);
+	}
+
+	private void check(LessThan lt, Scalar a, Scalar b) {
+		System.out.println(lt.getFunctionDefinition());
+
+		Scalar s = (Scalar) lt.evaluate(a, b);
+		System.out.println(s.getValue());
+
+		if (a.getValue() < b.getValue()) {
+			Assert.assertEquals(a.getValue(), s.getValue(), Math.pow(10, -10));
+		} else {
+			Assert.assertEquals(b.getValue(), s.getValue(), Math.pow(10, -10));
 		}
 	}
 
@@ -43,9 +83,9 @@ public class AcceleratedConditionalStatementTests implements CodeFeatures {
 			ScalarProducer pc = scalar(c);
 			ScalarProducer pd = scalar(d);
 
-			LessThan lt1 = new LessThan(2, () -> Scalar.blank(), pa, pb, pa, pb, false);
-			LessThan lt2 = new LessThan(2, () -> Scalar.blank(), pb, pc, () -> lt1, scalar(-a), false);
-			LessThan lt3 = new LessThan(2, () -> Scalar.blank(), pc, pd, () -> lt2, scalar(-b), false);
+			LessThan lt1 = new LessThan(2, Scalar.blank(), pa, pb, pa, pb, false);
+			LessThan lt2 = new LessThan(2, Scalar.blank(), pb, pc, lt1, scalar(-a), false);
+			LessThan lt3 = new LessThan(2, Scalar.blank(), pc, pd, lt2, scalar(-b), false);
 
 			LessThan top = lt3;
 

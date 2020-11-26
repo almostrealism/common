@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-package com.almostrealism.hardware.test;
+package org.almostrealism.hardware.test;
 
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.math.bool.GreaterThan;

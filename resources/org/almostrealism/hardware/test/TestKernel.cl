@@ -1,4 +1,4 @@
-__kernel void testKernel(__global float *res, __global const float *r,
+__kernel void testKernel(__global double *res, __global const double *r,
                         const int resOffset, const int rOffset,
                         const int resSize, const int rSize) {
     res[get_global_id(0) * resSize + resOffset]     = r[get_global_id(0) * rSize + rOffset];

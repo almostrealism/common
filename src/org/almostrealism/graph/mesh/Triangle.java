@@ -407,7 +407,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup, CodeFeat
 											"triangleIntersectAt",
 											false,
 											Scalar.blank(),
-											new Supplier[] { () -> fr },
+											new Supplier[] { fr },
 											new Object[] { data.getABC(), data.getDEF(), data.getJKL() }));
 		} else {
 			final Supplier<Evaluable<? extends Ray>> fr = r;

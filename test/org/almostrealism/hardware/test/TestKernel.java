@@ -1,4 +1,4 @@
-package com.almostrealism.hardware.test;
+package org.almostrealism.hardware.test;
 
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.hardware.AcceleratedProducer;

@@ -29,15 +29,15 @@ import org.junit.Test;
 public class RayTest implements HardwareFeatures, CodeFeatures {
 	@Test
 	public void pointAtTest1() {
-		RayPointAt p = new RayPointAt(ray(0.0, 0.0, 0.0, 0.0, 1.0, 0.0), scalar(10));
-		Assert.assertTrue(p.get().evaluate(new Object[0]).equals(new Vector(0.0, 10.0, 5.0)));
-		Assert.assertTrue(p.get().evaluate(new Object[0]).equals(new Vector(0.0, 10.0, 5.0)));
+		RayPointAt p = new RayPointAt(ray(0.0, 0.0, 0.0, 0.0, 1.0, 0.5), scalar(10));
+		Assert.assertTrue(p.get().evaluate().equals(new Vector(0.0, 10.0, 5.0)));
+		Assert.assertTrue(p.get().evaluate().equals(new Vector(0.0, 10.0, 5.0)));
 	}
 
 	@Test
 	public void pointAtTest2() {
 		RayPointAt at = new RayPointAt(ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0), scalar(-20));
-		Assert.assertTrue(compileProducer(at).evaluate(new Object[0]).equals(new Vector(0.0, -10.0, 21.0)));
+		Assert.assertTrue(at.get().evaluate().equals(new Vector(0.0, -10.0, 21.0)));
 	}
 
 	@Test

@@ -15,7 +15,7 @@ import io.almostrealism.code.Variable;
 import io.almostrealism.js.JavaScriptPrintWriter;
 
 public class CodePrintWriterTest {
-	@Test
+	// @Test
 	public void methodTest() {
 		CodePrintWriter p = new JavaScriptPrintWriter(new PrintStreamPrintWriter(System.out));
 		

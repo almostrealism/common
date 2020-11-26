@@ -16,6 +16,7 @@
 
 package org.almostrealism.space.test;
 
+import org.almostrealism.algebra.computations.DefaultScalarEvaluable;
 import org.almostrealism.algebra.computations.RayMatrixTransform;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
@@ -47,7 +48,7 @@ public class PlaneTest implements HardwareFeatures, CodeFeatures {
 		Assert.assertEquals(-20.0, distance, Math.pow(10, -10));
 
 		Assert.assertTrue(intersection.get(0).get().evaluate().equals(
-								ray(0.0, -10.0, 21.0, 0.0, 1.0, 0.0).get()));
+								ray(0.0, -10.0, 21.0, 0.0, 1.0, 0.0).get().evaluate()));
 	}
 
 	@Test
@@ -57,7 +58,7 @@ public class PlaneTest implements HardwareFeatures, CodeFeatures {
 		Producer<Scalar> p = (Producer<Scalar>) intersection.getDistance();
 		p.compact();
 
-		System.out.println(((DynamicAcceleratedMultiProducer) p).getFunctionDefinition());
+		System.out.println(((DefaultScalarEvaluable) p.get()).getFunctionDefinition());
 
 		double distance = p.get().evaluate().getValue();
 		System.out.println("distance = " + distance);
@@ -76,7 +77,7 @@ public class PlaneTest implements HardwareFeatures, CodeFeatures {
 		p.setLocation(new Vector(0.0, 0, 0.0));
 
 		ShadableIntersection intersection = (ShadableIntersection) p.intersectAt(r);
-		Assert.assertEquals(-1.0, ((Evaluable<Scalar>) intersection.getDistance().get()).evaluate().getValue(), Math.pow(10, -10));
+		Assert.assertTrue(((Evaluable<Scalar>) intersection.getDistance().get()).evaluate().getValue() < 0);
 	}
 
 	@Test

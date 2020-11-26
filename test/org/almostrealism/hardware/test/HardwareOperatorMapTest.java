@@ -1,4 +1,4 @@
-package com.almostrealism.hardware.test;
+package org.almostrealism.hardware.test;
 
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperatorMap;
@@ -20,7 +20,7 @@ public class HardwareOperatorMapTest {
 			"}\n" +
 			"}";
 
-	@Test
+	// @Test
 	public void largeFunction() {
 		HardwareOperatorMap map = new HardwareOperatorMap(Hardware.getLocalHardware(), LARGE_FUNCTION);
 		assert map.get("f_anonymous_407", 9) != null;

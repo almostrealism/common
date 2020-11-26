@@ -54,7 +54,7 @@ public class ProducerCache {
 			getCache().put(p, result);
 			return result;
 		} catch (ClassCastException e) {
-			throw new IllegalArgumentException(String.valueOf(p.getClass()), e);
+			throw new IllegalArgumentException(String.valueOf(p.get().getClass()), e);
 		}
 	}
 

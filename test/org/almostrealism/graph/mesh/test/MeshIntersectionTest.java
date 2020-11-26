@@ -150,8 +150,8 @@ public class MeshIntersectionTest implements HardwareFeatures, CodeFeatures {
 
 	@Test
 	public void intersectAt2() {
-		double distance = intersection().evaluate(new Object[] {
-				data2.get(0), origin2.get().evaluate(), direction2.get().evaluate() }).getValue();
+		double distance = intersection().evaluate(
+				data2.get(0), origin2.get().evaluate(), direction2.get().evaluate()).getValue();
 		System.out.println("distance = " + distance);
 		Assert.assertEquals(1.0, distance, Math.pow(10, -10));
 	}

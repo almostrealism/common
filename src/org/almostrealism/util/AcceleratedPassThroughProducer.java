@@ -55,13 +55,14 @@ public class AcceleratedPassThroughProducer<T extends MemWrapper>
 
 	@Override
 	public Evaluable<T> get() { return compileProducer(this); }
-
-	/**
-	 * Returns an empty scope, as this is not intended to be converted.
-	 */
-	public Scope<T> getScope(NameProvider p) {
-		return new Scope<>();
-	}
+//
+//	/**
+//	 * Returns an empty scope, as this is not intended to be converted.
+//	 */
+//	@Override
+//	public Scope<T> getScope(NameProvider p) {
+//		return new Scope<>();
+//	}
 
 	@Override
 	public void compact() {

@@ -43,7 +43,7 @@ public abstract class DynamicAcceleratedProducer<I extends MemWrapper, O extends
 	}
 
 	@Override
-	public O evaluate(Object[] args) { return (O) apply(args)[0]; }
+	public O evaluate(Object... args) { return (O) apply(args)[0]; }
 
 	protected void writeVariables(Consumer<String> out) {
 		writeVariables(out, new ArrayList<>());

@@ -26,6 +26,7 @@ import org.almostrealism.relation.NameProvider;
 import org.almostrealism.relation.Operator;
 import org.almostrealism.relation.Evaluable;
 import org.almostrealism.relation.Producer;
+import org.almostrealism.util.CodeFeatures;
 
 import static org.almostrealism.util.Ops.*;
 
@@ -35,7 +36,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
 
 /** A {@link Plane} represents an plane in 3d space. */
-public class Plane extends AbstractSurface implements ParticleGroup {
+public class Plane extends AbstractSurface implements ParticleGroup, CodeFeatures {
 	// TODO  Move these to an enum
 
 	/** Integer code for XY plane. **/
@@ -153,11 +154,11 @@ public class Plane extends AbstractSurface implements ParticleGroup {
 		ScalarProducer s;
 
 		if (type == Plane.XY) {
-			s = ops().origin(tr).z().minus().divide(ops().direction(tr).z());
+			s = origin(tr).z().minus().divide(direction(tr).z());
 		} else if (type == Plane.XZ) {
-			s = ops().origin(tr).y().minus().divide(ops().direction(tr).y());
+			s = origin(tr).y().minus().divide(direction(tr).y());
 		} else if (type == Plane.YZ) {
-			s = ops().origin(tr).x().minus().divide(ops().direction(tr).x());
+			s = origin(tr).x().minus().divide(direction(tr).x());
 		} else {
 			throw new IllegalArgumentException(String.valueOf(type));
 		}
