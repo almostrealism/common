@@ -35,7 +35,11 @@ public class AcceleratedConditionalStatementTests implements CodeFeatures {
 	protected LessThan lessThan() {
 		Producer<Scalar> one = PassThroughEvaluable.of(Scalar.class, 0);
 		Producer<Scalar> two = PassThroughEvaluable.of(Scalar.class, 1);
-		return new LessThan(2, Scalar.blank(), one, two, one, two, false);
+		return lessThan(one, two);
+	}
+
+	protected LessThan lessThan(Producer<Scalar> a, Producer<Scalar> b) {
+		return new LessThan(2, Scalar.blank(), a, b, a, b, false);
 	}
 
 	@Test
