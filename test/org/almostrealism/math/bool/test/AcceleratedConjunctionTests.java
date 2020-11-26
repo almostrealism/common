@@ -41,13 +41,13 @@ public class AcceleratedConjunctionTests extends AcceleratedConditionalStatement
 				.forEach(Runnable::run);
 	}
 
-	protected AcceleratedConjunctionScalar dotProductConjunction() {
+	protected AcceleratedConjunctionScalar dotProductConjunction(Producer<Ray> r) {
 		return conjunction(ray(i -> Math.random()).oDotd(), v(1), oDotd(v(Ray.class, 0)), v(1));
 	}
 
 	@Test
 	public void dotProductInConjunction() {
-		AcceleratedConjunctionScalar c = dotProductConjunction();
+		AcceleratedConjunctionScalar c = dotProductConjunction(v(Ray.class, 0));
 		c.compact();
 
 		System.out.println(c.getFunctionDefinition());
@@ -58,8 +58,52 @@ public class AcceleratedConjunctionTests extends AcceleratedConditionalStatement
 	}
 
 	@Test
-	public void dotProductInNestedConjunction() {
-		AcceleratedConjunctionScalar c = dotProductConjunction();
+	public void dotProductInNestedConjunction1() {
+		AcceleratedConjunctionScalar c = dotProductConjunction(ray(i -> Math.random()));
+		c = conjunction(c, v(Scalar.class, 0),
+				v(Math.random()), v(Math.random()));
+		c.compact();
+
+		System.out.println(c.getFunctionDefinition());
+
+		double v = c.evaluate(v(Math.random()).get().evaluate()).getValue();
+
+		System.out.println(v);
+		Assert.assertNotEquals(0, v);
+	}
+
+	@Test
+	public void dotProductInNestedConjunction2() {
+		AcceleratedConjunctionScalar c = dotProductConjunction(ray(i -> Math.random()));
+		c = conjunction(c, v(Math.random()), v(Scalar.class, 0), v(Math.random()));
+		c.compact();
+
+		System.out.println(c.getFunctionDefinition());
+
+		double v = c.evaluate(v(Math.random()).get().evaluate()).getValue();
+
+		System.out.println(v);
+		Assert.assertNotEquals(0, v);
+	}
+
+	@Test
+	public void dotProductInNestedConjunction3() {
+		AcceleratedConjunctionScalar c = dotProductConjunction(v(Ray.class, 0));
+		c = conjunction(c, v(Math.random()),
+				v(Math.random()), v(Math.random()));
+		c.compact();
+
+		System.out.println(c.getFunctionDefinition());
+
+		double v = c.evaluate(ray(i -> Math.random()).get().evaluate()).getValue();
+
+		System.out.println(v);
+		Assert.assertNotEquals(0, v);
+	}
+
+	@Test
+	public void dotProductInNestedConjunction4() {
+		AcceleratedConjunctionScalar c = dotProductConjunction(v(Ray.class, 0));
 		c = conjunction(c, v(Scalar.class, 1),
 				v(Math.random()), v(Scalar.class, 2));
 		c.compact();
