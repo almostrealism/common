@@ -49,6 +49,9 @@ public class AcceleratedConjunctionTests extends AcceleratedConditionalStatement
 	public void dotProductInConjunction() {
 		AcceleratedConjunctionScalar c = dotProductConjunction();
 		c.compact();
+
+		System.out.println(c.getFunctionDefinition());
+
 		double v = c.evaluate(ray(i -> Math.random()).get().evaluate()).getValue();
 		System.out.println(v);
 		Assert.assertNotEquals(0, v);

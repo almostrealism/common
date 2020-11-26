@@ -2,6 +2,8 @@ package org.almostrealism.math.bool.test;
 
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarProducer;
+import org.almostrealism.geometry.Ray;
+import org.almostrealism.math.bool.AcceleratedConjunctionScalar;
 import org.almostrealism.math.bool.LessThan;
 import org.almostrealism.relation.Producer;
 import org.almostrealism.util.CodeFeatures;
@@ -32,14 +34,14 @@ public class AcceleratedConditionalStatementTests implements CodeFeatures {
 		}
 	}
 
-	protected LessThan lessThan() {
+	protected LessThan<Scalar> lessThan() {
 		Producer<Scalar> one = PassThroughEvaluable.of(Scalar.class, 0);
 		Producer<Scalar> two = PassThroughEvaluable.of(Scalar.class, 1);
 		return lessThan(one, two);
 	}
 
-	protected LessThan lessThan(Producer<Scalar> a, Producer<Scalar> b) {
-		return new LessThan(2, Scalar.blank(), a, b, a, b, false);
+	protected LessThan<Scalar> lessThan(Producer<Scalar> a, Producer<Scalar> b) {
+		return new LessThan<>(2, Scalar.blank(), a, b, a, b, false);
 	}
 
 	@Test
@@ -59,6 +61,18 @@ public class AcceleratedConditionalStatementTests implements CodeFeatures {
 		LessThan lt = lessThan();
 		lt.compact();
 		check(lt, a, b);
+	}
+
+	@Test
+	public void compactWithDotProduct() {
+		LessThan<Scalar> lt = lessThan(ray(i -> Math.random()).oDotd(), oDotd(v(Ray.class, 0)));
+		lt.compact();
+
+		System.out.println(lt.getFunctionDefinition());
+
+		double v = lt.evaluate(ray(i -> Math.random()).get().evaluate()).getValue();
+		System.out.println(v);
+		Assert.assertNotEquals(0, v);
 	}
 
 	private void check(LessThan lt, Scalar a, Scalar b) {

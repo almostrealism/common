@@ -99,6 +99,11 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrappe
 
 		if (!isCompactable()) return;
 
+		DynamicAcceleratedOperation trueOperation =
+				(DynamicAcceleratedOperation) (getTrueValue() == null ? null : getTrueValue().getProducer().get());
+		DynamicAcceleratedOperation falseOperation =
+				(DynamicAcceleratedOperation) (getFalseValue() == null ? null : getFalseValue().getProducer().get());
+
 		compacted = (outputVariable, existingVariables) -> {
 			StringBuffer buf = new StringBuffer();
 
@@ -111,12 +116,12 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrappe
 			buf.append("if (");
 			buf.append(getCondition());
 			buf.append(") {\n");
-			if (getTrueValue() != null) {
-				buf.append(((DynamicAcceleratedOperation) getTrueValue().getProducer().get()).getBody(outputVariable, allVariables));
+			if (trueOperation != null) {
+				buf.append(trueOperation.getBody(outputVariable, allVariables));
 			}
 			buf.append("} else {\n");
-			if (getFalseValue() != null) {
-				buf.append(((DynamicAcceleratedOperation) getFalseValue().getProducer().get()).getBody(outputVariable, allVariables));
+			if (falseOperation != null) {
+				buf.append(falseOperation.getBody(outputVariable, allVariables));
 			}
 			buf.append("}\n");
 
@@ -136,22 +141,15 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrappe
 		getOperands().stream()
 				.map(Argument::getProducer)
 				.forEach(this::absorbVariables);
-		if (getTrueValue() != null) {
-			if (getTrueValue().getProducer() instanceof AcceleratedComputationOperation) {
-				((AcceleratedComputationOperation) getTrueValue().getProducer()).compile();
-			}
 
-			newArgs.addAll(AcceleratedProducer.excludeResult(((OperationAdapter)
-					getTrueValue().getProducer()).getArguments()));
+		if (trueOperation != null) {
+			trueOperation.compile();
+			newArgs.addAll(AcceleratedProducer.excludeResult(trueOperation.getArguments()));
 		}
 
-		if (getFalseValue() != null) {
-			if (getFalseValue().getProducer() instanceof AcceleratedComputationOperation) {
-				((AcceleratedComputationOperation) getFalseValue().getProducer()).compile();
-			}
-
-			newArgs.addAll(AcceleratedProducer.excludeResult(((OperationAdapter)
-					getFalseValue().getProducer()).getArguments()));
+		if (falseOperation != null) {
+			falseOperation.compile();
+			newArgs.addAll(AcceleratedProducer.excludeResult(falseOperation.getArguments()));
 		}
 
 		setArguments(newArgs);

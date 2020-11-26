@@ -99,7 +99,7 @@ public abstract class AcceleratedBinaryConditionAdapter<T extends MemWrapper> ex
 	@Override
 	public void compact() {
 		super.compact();
-
+		
 		if (super.isCompacted() && condition == null) {
 			List<Argument<Scalar>> operands = getOperands();
 
