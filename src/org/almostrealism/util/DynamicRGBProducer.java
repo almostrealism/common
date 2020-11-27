@@ -29,27 +29,14 @@ import org.almostrealism.relation.NameProvider;
 
 import java.util.function.Function;
 
-public class DynamicRGBProducer extends DynamicProducer<RGB> implements RGBProducer {
+public class DynamicRGBProducer extends DynamicProducerForMemWrapper<RGB> implements RGBProducer {
 
 	public DynamicRGBProducer(Function<Object[], RGB> function) {
-		super(function);
+		super(function, RGBBank::new);
 	}
 
 	@Override
 	public Scope<RGB> getScope(NameProvider provider) {
 		throw new RuntimeException("Not implemented");
-	}
-
-	@Override
-	public Evaluable<RGB> get() {
-		Evaluable<RGB> e = super.get();
-
-		return new KernelizedEvaluable<RGB>() {
-			@Override
-			public MemoryBank<RGB> createKernelDestination(int size) { return new RGBBank(size); }
-
-			@Override
-			public RGB evaluate(Object... args) { return e.evaluate(args); }
-		};
 	}
 }

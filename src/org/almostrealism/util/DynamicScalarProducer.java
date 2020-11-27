@@ -27,27 +27,14 @@ import org.almostrealism.relation.NameProvider;
 
 import java.util.function.Function;
 
-public class DynamicScalarProducer extends DynamicProducer<Scalar> implements ScalarProducer {
+public class DynamicScalarProducer extends DynamicProducerForMemWrapper<Scalar> implements ScalarProducer {
 
 	public DynamicScalarProducer(Function<Object[], Scalar> function) {
-		super(function);
+		super(function, ScalarBank::new);
 	}
 
 	@Override
 	public Scope<Scalar> getScope(NameProvider provider) {
 		throw new RuntimeException("Not implemented");
-	}
-
-	@Override
-	public Evaluable<Scalar> get() {
-		Evaluable<Scalar> e = super.get();
-
-		return new KernelizedEvaluable<Scalar>() {
-			@Override
-			public MemoryBank<Scalar> createKernelDestination(int size) { return new ScalarBank(size); }
-
-			@Override
-			public Scalar evaluate(Object... args) { return e.evaluate(args); }
-		};
 	}
 }
