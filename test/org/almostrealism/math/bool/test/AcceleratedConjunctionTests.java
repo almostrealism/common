@@ -51,6 +51,7 @@ public class AcceleratedConjunctionTests extends AcceleratedConditionalStatement
 		c.compact();
 
 		System.out.println(c.getFunctionDefinition());
+		Assert.assertEquals(2, c.getArgsCount());
 
 		double v = c.evaluate(ray(i -> Math.random()).get().evaluate()).getValue();
 		System.out.println(v);

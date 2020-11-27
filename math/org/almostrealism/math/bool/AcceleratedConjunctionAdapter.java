@@ -19,6 +19,7 @@ package org.almostrealism.math.bool;
 import io.almostrealism.code.Argument;
 import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.util.Compactable;
 import org.almostrealism.relation.Evaluable;
@@ -72,20 +73,22 @@ public class AcceleratedConjunctionAdapter<T extends MemWrapper> extends Acceler
 	}
 
 	@Override
-	protected void initArgumentNames() {
-		initArgumentNames(getArguments(false));
-	}
+	protected void initArgumentNames() { initArgumentNames(getArguments(false)); }
+
+	@Override
+	protected void removeDuplicateArguments() { super.removeDuplicateArguments(getArguments(false)); }
 
 	@Override
 	public List<Argument<? extends MemWrapper>> getArguments() { return getArguments(true); }
 
-	public List<Argument<? extends MemWrapper>> getArguments(boolean includeConjuncts) {
+	protected List<Argument<? extends MemWrapper>> getArguments(boolean includeConjuncts) {
 		List<Argument<? extends MemWrapper>> all = new ArrayList<>();
 		all.addAll(super.getArguments());
 
 		if (includeConjuncts) {
 			conjuncts.stream()
 					.map(AcceleratedConditionalStatement::getArguments)
+					.map(AcceleratedProducer::excludeResult)
 					.flatMap(List::stream)
 					.filter(Objects::nonNull)
 					.filter(v -> !all.contains(v))
