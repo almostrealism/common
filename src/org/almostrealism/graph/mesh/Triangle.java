@@ -20,7 +20,6 @@ import org.almostrealism.algebra.*;
 import org.almostrealism.color.RGB;
 import org.almostrealism.geometry.Positioned;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.relation.Constant;
 import org.almostrealism.relation.Operator;
@@ -40,7 +39,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
 
 /**
- * A Triangle object represents a triangle in 3d space.
+ * A {@link Triangle} represents a triangle in 3d space.
  * 
  * @author  Michael Murray
  */
