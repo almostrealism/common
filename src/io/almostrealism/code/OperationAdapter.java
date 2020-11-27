@@ -83,8 +83,12 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 	}
 
 	protected void initArgumentNames() {
+		initArgumentNames(getArguments());
+	}
+
+	protected void initArgumentNames(List<Argument<? extends T>> args) {
 		int i = 0;
-		for (Argument arg : getArguments()) {
+		for (Argument arg : args) {
 			if (arg != null) {
 				arg.setName(getArgumentName(i));
 				arg.setAnnotation(getDefaultAnnotation());

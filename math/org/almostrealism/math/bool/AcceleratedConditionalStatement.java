@@ -30,7 +30,8 @@ import java.util.List;
 public interface AcceleratedConditionalStatement<T extends MemWrapper> extends Evaluable<T>, Producer<T>, Compactable {
 	String getCondition();
 
-	default List<Variable<?>> getVariables() { return Arrays.asList(); }
+	List<Argument<? extends MemWrapper>> getArguments();
+	List<Variable<?>> getVariables();
 
 	List<Argument<Scalar>> getOperands();
 

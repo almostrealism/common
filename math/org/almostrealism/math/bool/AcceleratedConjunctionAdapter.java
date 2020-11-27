@@ -59,7 +59,7 @@ public class AcceleratedConjunctionAdapter<T extends MemWrapper> extends Acceler
 
 	protected void initArguments(Supplier<Evaluable<? extends T>> trueValue, Supplier<Evaluable<? extends T>> falseValue) {
 		List<Argument<? extends MemWrapper>> args = new ArrayList<>();
-		args.add(getArguments().get(0));
+		args.add(getArguments(false).get(0));
 		args.addAll(getOperands());
 
 		this.trueValue = new Argument(getArgumentName(1), trueValue);
@@ -69,6 +69,29 @@ public class AcceleratedConjunctionAdapter<T extends MemWrapper> extends Acceler
 		args.add(this.falseValue);
 		
 		setArguments(args);
+	}
+
+	@Override
+	protected void initArgumentNames() {
+		initArgumentNames(getArguments(false));
+	}
+
+	@Override
+	public List<Argument<? extends MemWrapper>> getArguments() { return getArguments(true); }
+
+	public List<Argument<? extends MemWrapper>> getArguments(boolean includeConjuncts) {
+		List<Argument<? extends MemWrapper>> all = new ArrayList<>();
+		all.addAll(super.getArguments());
+
+		if (includeConjuncts) {
+			conjuncts.stream()
+					.map(AcceleratedConditionalStatement::getArguments)
+					.flatMap(List::stream)
+					.filter(v -> !all.contains(v))
+					.forEach(all::add);
+		}
+
+		return all;
 	}
 
 	@Override
