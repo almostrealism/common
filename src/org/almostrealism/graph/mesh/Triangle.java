@@ -28,6 +28,7 @@ import org.almostrealism.relation.Producer;
 import org.almostrealism.space.AbstractSurface;
 import org.almostrealism.space.BoundingSolid;
 import org.almostrealism.space.ShadableIntersection;
+import org.almostrealism.util.AdaptProducer;
 import org.almostrealism.util.CodeFeatures;
 import org.almostrealism.util.PassThroughEvaluable;
 import org.almostrealism.relation.Evaluable;
@@ -400,15 +401,8 @@ public class Triangle extends AbstractSurface implements ParticleGroup, CodeFeat
 		if (ut) r = t.getInverse().transform(ray);
 
 		if (enableHardwareOperator) {
-			final Supplier<Evaluable<? extends Ray>> fr = r;
-
-			return new ShadableIntersection(this, r,
-					() -> new AcceleratedProducer<Ray, Scalar>(
-											"triangleIntersectAt",
-											false,
-											Scalar.blank(),
-											new Supplier[] { fr },
-											new Object[] { data.getABC(), data.getDEF(), data.getJKL() }));
+			// TODO  Perhaps r should be ray...
+			return new ShadableIntersection(this, r, new AdaptProducer<>(intersectAt, r, v(data)));
 		} else {
 			final Supplier<Evaluable<? extends Ray>> fr = r;
 

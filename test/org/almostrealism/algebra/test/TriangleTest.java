@@ -25,7 +25,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 public class TriangleTest implements CodeFeatures {
-	// @Test
+	@Test
 	public void test() {
 		Triangle t = new Triangle(new Vector(1.0, 1.0, -1.0),
 									new Vector(-1.0, 1.0, -1.0),
