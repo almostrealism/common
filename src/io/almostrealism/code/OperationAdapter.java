@@ -165,9 +165,9 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 		return args;
 	}
 
-	protected void removeDuplicateArguments() { removeDuplicateArguments(getArguments()); }
+	protected void removeDuplicateArguments() { setArguments(removeDuplicateArguments(getArguments())); }
 
-	protected void removeDuplicateArguments(List<Argument<? extends T>> arguments) {
+	protected List<Argument<? extends T>> removeDuplicateArguments(List<Argument<? extends T>> arguments) {
 		List<Argument<? extends T>> args = new ArrayList<>();
 		args.addAll(arguments);
 
@@ -183,7 +183,7 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 			}
 		}
 
-		setArguments(args);
+		return args;
 	}
 
 	@Override

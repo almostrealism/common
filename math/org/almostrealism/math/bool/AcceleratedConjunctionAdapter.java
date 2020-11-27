@@ -76,7 +76,7 @@ public class AcceleratedConjunctionAdapter<T extends MemWrapper> extends Acceler
 	protected void initArgumentNames() { initArgumentNames(getArguments(false)); }
 
 	@Override
-	protected void removeDuplicateArguments() { super.removeDuplicateArguments(getArguments(false)); }
+	protected void removeDuplicateArguments() { setArguments(removeDuplicateArguments(getArguments(false))); }
 
 	@Override
 	public List<Argument<? extends MemWrapper>> getArguments() { return getArguments(true); }
@@ -95,7 +95,7 @@ public class AcceleratedConjunctionAdapter<T extends MemWrapper> extends Acceler
 					.forEach(all::add);
 		}
 
-		return all;
+		return removeDuplicateArguments(all);
 	}
 
 	@Override
