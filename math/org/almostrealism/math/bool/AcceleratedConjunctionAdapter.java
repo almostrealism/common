@@ -87,6 +87,7 @@ public class AcceleratedConjunctionAdapter<T extends MemWrapper> extends Acceler
 			conjuncts.stream()
 					.map(AcceleratedConditionalStatement::getArguments)
 					.flatMap(List::stream)
+					.filter(Objects::nonNull)
 					.filter(v -> !all.contains(v))
 					.forEach(all::add);
 		}
