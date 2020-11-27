@@ -4,6 +4,7 @@ import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorProducer;
+import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayFromVectors;
 import org.almostrealism.graph.mesh.DefaultVertexData;
 import org.almostrealism.graph.mesh.Mesh;
@@ -11,8 +12,12 @@ import org.almostrealism.graph.mesh.MeshData;
 import org.almostrealism.graph.mesh.TriangleData;
 import org.almostrealism.graph.mesh.TriangleIntersectAt;
 import org.almostrealism.hardware.HardwareFeatures;
+import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.relation.Producer;
 import org.almostrealism.util.CodeFeatures;
+import org.almostrealism.util.DynamicProducer;
+import org.almostrealism.util.DynamicProducerForMemWrapper;
 import org.almostrealism.util.PassThroughEvaluable;
 import org.junit.Assert;
 import org.junit.Before;
@@ -164,5 +169,13 @@ public class MeshIntersectionTest implements HardwareFeatures, CodeFeatures {
 		data2.evaluateIntersectionKernel(compileProducer(ray), distances, new MemoryBank[0]);
 		System.out.println("distance = " + distances.get(0).getValue());
 		Assert.assertEquals(1.0, distances.get(0).getValue(), Math.pow(10, -10));
+	}
+
+	@Test
+	public void intersectionKernel3() {
+		KernelizedEvaluable<Ray> ray = new DynamicProducerForMemWrapper<>(args -> ray(i -> Math.random()).get().evaluate()).get();
+		ScalarBank distances = new ScalarBank(100);
+		data2.evaluateIntersectionKernel(ray, distances, new MemoryBank[0]);
+		// TODO  Assertions
 	}
 }

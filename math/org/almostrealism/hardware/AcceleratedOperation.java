@@ -157,7 +157,7 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 
 				operator.accept(input);
 			} else {
-				throw new HardwareException("Kernel not supported", null);
+				throw new HardwareException("Kernel not supported");
 			}
 		} catch (CLException e) {
 			throw new HardwareException("Could not evaluate AcceleratedOperation", e);

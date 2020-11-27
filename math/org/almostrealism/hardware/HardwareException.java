@@ -21,6 +21,14 @@ import org.jocl.CLException;
 public class HardwareException extends RuntimeException {
 	private String program;
 
+	public HardwareException(String message) {
+		super(message);
+	}
+
+	public HardwareException(String message, UnsupportedOperationException cause) {
+		super(message, cause);
+	}
+
 	public HardwareException(String message, CLException cause) {
 		super(message, cause);
 	}

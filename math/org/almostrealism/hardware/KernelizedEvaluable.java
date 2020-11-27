@@ -53,6 +53,8 @@ public interface KernelizedEvaluable<T extends MemWrapper> extends Evaluable<T> 
 				if (r == null) r = replaceNull(o);
 
 				destination.set(i, r);
+			} catch (UnsupportedOperationException e) {
+				throw new HardwareException("i = " + i + " of " + destination.getCount() + ", r = " + r, e);
 			} catch (CLException e) {
 				throw new HardwareException("i = " + i + " of " + destination.getCount() + ", r = " + r, e);
 			}

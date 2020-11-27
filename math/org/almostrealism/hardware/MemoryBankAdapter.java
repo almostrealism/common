@@ -19,6 +19,7 @@ package org.almostrealism.hardware;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -115,7 +116,7 @@ public abstract class MemoryBankAdapter<T extends MemWrapper> extends MemWrapper
 	@Override
 	public T get(int index) {
 		if (cacheLevel == CacheLevel.ALL) {
-			return entriesList.get(index);
+			return Optional.ofNullable(index < entriesList.size() ? entriesList.get(index) : null).orElseThrow(UnsupportedOperationException::new);
 		} else if (cacheLevel == CacheLevel.ACCESSED) {
 			T value = entriesMap.get(Integer.valueOf(index));
 			if (value == null) {
