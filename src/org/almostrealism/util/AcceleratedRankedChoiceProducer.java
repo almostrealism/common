@@ -285,8 +285,8 @@ public class AcceleratedRankedChoiceProducer<T extends MemWrapper> extends Dynam
 
 	private static <T> Supplier[] generateArgs(List<ProducerWithRank<T>> values, Supplier<Evaluable<? extends T>> defaultValue) {
 		List<Supplier> args = new ArrayList<>();
-		values.stream().map(ProducerWithRank::getRank).map(p -> (Supplier) () -> p).forEach(args::add);
-		values.stream().map(ProducerWithRank::getProducer).map(p -> (Supplier) () -> p).forEach(args::add);
+		values.stream().map(ProducerWithRank::getRank).forEach(args::add);
+		values.stream().map(ProducerWithRank::getProducer).forEach(args::add);
 		args.add(defaultValue);
 		return args.toArray(new Supplier[0]);
 	}

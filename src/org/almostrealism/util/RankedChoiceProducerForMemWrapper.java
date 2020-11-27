@@ -20,6 +20,7 @@ import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.relation.Evaluable;
+import org.almostrealism.relation.Producer;
 
 import java.util.function.IntFunction;
 
@@ -32,8 +33,8 @@ public abstract class RankedChoiceProducerForMemWrapper<T extends MemWrapper> ex
 		super(e, tolerateNull);
 	}
 
-	public AcceleratedRankedChoiceProducer<T> getAccelerated(int memLength, Evaluable<T> blankValue, IntFunction<MemoryBank<T>> forKernel) {
-		return new AcceleratedRankedChoiceProducer(memLength, () -> blankValue, forKernel, this,
-												() -> blankValue, getEpsilon(), blankValue::evaluate);
+	public AcceleratedRankedChoiceProducer<T> getAccelerated(int memLength, Producer<T> blankValue, IntFunction<MemoryBank<T>> forKernel) {
+		return new AcceleratedRankedChoiceProducer(memLength, blankValue, forKernel, this,
+												blankValue, getEpsilon(), blankValue.get()::evaluate);
 	}
 }
