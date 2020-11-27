@@ -81,12 +81,17 @@ public abstract class DynamicAcceleratedOperation<T extends MemWrapper> extends 
 	protected String getFunctionArgsDefinition() {
 		StringBuffer buf = new StringBuffer();
 
-		for (int i = 0; i < getArguments().size(); i++) {
+		List<Argument<? extends T>> args = getArguments();
+
+		for (int i = 0; i < args.size(); i++) {
 			buf.append("__global ");
 			if (i != 0) buf.append("const ");
 			buf.append(getNumberType());
 			buf.append(" *");
-			if (getArguments().get(i).getName() == null) {
+
+			if (args.get(i) == null) {
+				throw new IllegalArgumentException("Null Argument (" + i + ")");
+			} else if (args.get(i).getName() == null) {
 				throw new IllegalArgumentException("Null name for Argument " + i);
 			}
 
