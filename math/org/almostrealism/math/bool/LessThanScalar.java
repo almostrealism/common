@@ -37,10 +37,10 @@ public class LessThanScalar extends LessThan<Scalar> implements AcceleratedCondi
 	}
 
 	public LessThanScalar(
-			Supplier<Evaluable> leftOperand,
-			Supplier<Evaluable> rightOperand,
-			Supplier<Evaluable<Scalar>> trueValue,
-			Supplier<Evaluable<Scalar>> falseValue) {
+			Supplier leftOperand,
+			Supplier rightOperand,
+			Supplier trueValue,
+			Supplier falseValue) {
 		this(leftOperand, rightOperand, trueValue, falseValue, false);
 	}
 

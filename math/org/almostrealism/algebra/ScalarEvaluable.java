@@ -35,7 +35,7 @@ public interface ScalarEvaluable extends Evaluable<Scalar>, ScalarFeatures {
 	}
 
 	default ScalarEvaluable add(Scalar value) {
-		return add(StaticEvaluable.of(value));
+		return add(StaticEvaluable.of(value).get());
 	}
 
 	default ScalarEvaluable add(double value) {
@@ -55,7 +55,7 @@ public interface ScalarEvaluable extends Evaluable<Scalar>, ScalarFeatures {
 	}
 
 	default ScalarEvaluable multiply(Scalar value) {
-		return multiply(StaticEvaluable.of(value));
+		return multiply(StaticEvaluable.of(value).get());
 	}
 
 	default ScalarEvaluable multiply(double value) {
@@ -67,11 +67,11 @@ public interface ScalarEvaluable extends Evaluable<Scalar>, ScalarFeatures {
 	}
 
 	default ProducerComputation<Scalar> divide(Supplier<Evaluable<? extends Scalar>> value) {
-		return multiply(new ScalarPow(value, () -> StaticEvaluable.of(-1.0)));
+		return multiply(new ScalarPow(value, StaticEvaluable.of(-1.0)));
 	}
 
 	default ScalarEvaluable divide(Scalar value) {
-		return divide(StaticEvaluable.of(value));
+		return divide(StaticEvaluable.of(value).get());
 	}
 
 	default ScalarEvaluable divide(double value) {

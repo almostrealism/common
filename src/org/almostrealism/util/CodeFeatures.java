@@ -102,6 +102,10 @@ public interface CodeFeatures extends ScalarFeatures, PairFeatures, TriangleData
 
 	default VectorProducer vector(double v[]) { return vector(v[0], v[1], v[2]); }
 
+	default VectorProducer vector(IntFunction<Double> values) {
+		return vector(values.apply(0), values.apply(1), values.apply(2));
+	}
+
 	default Producer<Vector> vector() { return Vector.blank(); }
 
 	default VectorProducer value(Vector value) {

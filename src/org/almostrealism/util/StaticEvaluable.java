@@ -18,19 +18,24 @@ package org.almostrealism.util;
 
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairEvaluable;
+import org.almostrealism.algebra.PairProducer;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarEvaluable;
+import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorEvaluable;
+import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.algebra.computations.DefaultPairEvaluable;
 import org.almostrealism.algebra.computations.DefaultScalarEvaluable;
 import org.almostrealism.algebra.computations.DefaultVectorEvaluable;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.computations.DefaultRGBEvaluable;
 import org.almostrealism.color.computations.RGBEvaluable;
+import org.almostrealism.color.computations.RGBProducer;
 import org.almostrealism.geometry.DefaultRayEvaluable;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayEvaluable;
+import org.almostrealism.geometry.RayProducer;
 import org.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
@@ -39,25 +44,25 @@ public interface StaticEvaluable<T> extends Evaluable<T>, Supplier<T> {
 	@Override
 	default T evaluate(Object[] args) { return get(); }
 
-	static ScalarEvaluable of(double value) { return of(new Scalar(value)); }
+	static ScalarProducer of(double value) { return of(new Scalar(value)); }
 
-	static ScalarEvaluable of(Scalar value) {
-		return new DefaultScalarEvaluable(new AcceleratedStaticScalarComputation(value, Scalar.blank()));
+	static ScalarProducer of(Scalar value) {
+		return new AcceleratedStaticScalarComputation(value, Scalar.blank());
 	}
 
-	static PairEvaluable of(Pair value) {
-		return new DefaultPairEvaluable(new AcceleratedStaticPairComputation(value, Pair.empty()));
+	static PairProducer of(Pair value) {
+		return new AcceleratedStaticPairComputation(value, Pair.empty());
 	}
 
-	static VectorEvaluable of(Vector value) {
-		return new DefaultVectorEvaluable(new AcceleratedStaticVectorComputation(value, Vector.blank()));
+	static VectorProducer of(Vector value) {
+		return new AcceleratedStaticVectorComputation(value, Vector.blank());
 	}
 
-	static RayEvaluable of(Ray value) {
-		return new DefaultRayEvaluable(new AcceleratedStaticRayComputation(value, Ray.blank()));
+	static RayProducer of(Ray value) {
+		return new AcceleratedStaticRayComputation(value, Ray.blank());
 	}
 
-	static RGBEvaluable of(RGB value) {
-		return new DefaultRGBEvaluable(new AcceleratedStaticRGBComputation(value, RGB.blank()));
+	static RGBProducer of(RGB value) {
+		return new AcceleratedStaticRGBComputation(value, RGB.blank());
 	}
 }

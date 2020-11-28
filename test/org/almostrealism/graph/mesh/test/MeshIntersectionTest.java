@@ -11,9 +11,11 @@ import org.almostrealism.graph.mesh.Mesh;
 import org.almostrealism.graph.mesh.MeshData;
 import org.almostrealism.graph.mesh.TriangleData;
 import org.almostrealism.graph.mesh.TriangleIntersectAt;
+import org.almostrealism.hardware.DynamicAcceleratedOperation;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.math.bool.AcceleratedConjunctionScalar;
 import org.almostrealism.relation.Producer;
 import org.almostrealism.util.CodeFeatures;
 import org.almostrealism.util.DynamicProducer;
@@ -22,6 +24,8 @@ import org.almostrealism.util.PassThroughEvaluable;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
+
+import static org.almostrealism.util.Ops.ops;
 
 public class MeshIntersectionTest implements HardwareFeatures, CodeFeatures {
 	private VectorProducer origin1 = vector(0.0, 1.0, 1.0);
@@ -89,6 +93,59 @@ public class MeshIntersectionTest implements HardwareFeatures, CodeFeatures {
 												TriangleIntersectAt.h(def(data1), direction1),
 												f.pow(-1.0));
 		System.out.println("u = " + u.get().evaluate().getValue());
+	}
+
+	@Test
+	public void conjunction() {
+		System.out.println(def(data1).get().evaluate());
+
+		VectorProducer h = TriangleIntersectAt.h(def(data1), direction1);
+		System.out.println("h = " + h.get().evaluate());
+
+		ScalarProducer f = TriangleIntersectAt.f(abc(data1), h);
+		System.out.println("f = " + f.get().evaluate().getValue());
+
+		VectorProducer s = TriangleIntersectAt.s(jkl(data1), origin1);
+		System.out.println("s = " + s.get().evaluate());
+
+		ScalarProducer u = TriangleIntersectAt.u(s, h, f.pow(-1.0));
+		System.out.println("u = " + u.get().evaluate().getValue());
+
+		ScalarProducer v = TriangleIntersectAt.v(direction1, f,
+							TriangleIntersectAt.q(abc(data1), s));
+		System.out.println("v = " + v.get().evaluate().getValue());
+
+		h.compact();
+		DynamicAcceleratedOperation ho = (DynamicAcceleratedOperation) h.get();
+		System.out.println(ho.getFunctionDefinition());
+		Assert.assertEquals(1, ho.getArgsCount());
+
+		f.compact();
+		DynamicAcceleratedOperation fo = (DynamicAcceleratedOperation) f.get();
+		System.out.println(fo.getFunctionDefinition());
+		Assert.assertEquals(1, fo.getArgsCount());
+
+		u.compact();
+		DynamicAcceleratedOperation uo = (DynamicAcceleratedOperation) u.get();
+		System.out.println(uo.getFunctionDefinition());
+		Assert.assertEquals(1, uo.getArgsCount());
+
+		v.compact();
+		DynamicAcceleratedOperation vo = (DynamicAcceleratedOperation) v.get();
+		System.out.println(vo.getFunctionDefinition());
+		Assert.assertEquals(1, vo.getArgsCount());
+
+		AcceleratedConjunctionScalar acs = new AcceleratedConjunctionScalar(
+				scalar(1.0), scalar(-1.0),
+				u.greaterThan(0.0, true),
+				u.lessThan(1.0, true),
+				v.greaterThan(0.0, true),
+				u.add(v).lessThan(1.0, true));
+
+		acs.compact();
+
+		System.out.println(acs.getFunctionDefinition());
+		Assert.assertEquals(1, acs.getArgsCount());
 	}
 
 	@Test

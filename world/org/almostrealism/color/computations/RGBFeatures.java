@@ -74,7 +74,7 @@ public interface RGBFeatures {
 	}
 
 	default RGBProducer cfromScalar(Scalar value) {
-		return cfromScalar(() -> StaticEvaluable.of(value));
+		return cfromScalar(StaticEvaluable.of(value));
 	}
 
 	default RGBProducer cfromScalar(double value) {

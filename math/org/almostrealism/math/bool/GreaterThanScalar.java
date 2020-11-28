@@ -45,7 +45,16 @@ public class GreaterThanScalar extends GreaterThan<Scalar> implements Accelerate
 			Supplier rightOperand,
 			Supplier trueValue,
 			Supplier falseValue) {
-		super(2, Scalar.blank(), leftOperand, rightOperand, trueValue, falseValue, false);
+		this(leftOperand, rightOperand, trueValue, falseValue, false);
+	}
+
+	public GreaterThanScalar(
+			Supplier leftOperand,
+			Supplier rightOperand,
+			Supplier trueValue,
+			Supplier falseValue,
+			boolean includeEqual) {
+		super(2, Scalar.blank(), leftOperand, rightOperand, trueValue, falseValue, includeEqual);
 	}
 
 	@Override

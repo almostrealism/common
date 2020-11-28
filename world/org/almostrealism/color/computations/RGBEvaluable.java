@@ -41,7 +41,7 @@ public interface RGBEvaluable extends Evaluable<RGB>, RGBFeatures {
 	default RGBEvaluable scalarMultiply(Evaluable<Scalar> operand) { return cscalarMultiply(this, operand); }
 
 	default RGBEvaluable scalarMultiply(Scalar operand) {
-		return scalarMultiply(StaticEvaluable.of(operand));
+		return scalarMultiply(StaticEvaluable.of(operand).get());
 	}
 
 	default RGBEvaluable scalarMultiply(double operand) {

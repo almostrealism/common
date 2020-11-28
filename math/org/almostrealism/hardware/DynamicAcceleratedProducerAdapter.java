@@ -73,7 +73,7 @@ public abstract class DynamicAcceleratedProducerAdapter<I extends MemWrapper, O 
 	}
 
 	public static Expression<Double> getInputProducerValue(Argument arg, int pos) {
-		return ((DynamicAcceleratedProducerAdapter) arg.getProducer()).getValue(pos);
+		return ((MultiExpression) arg.getProducer()).getValue(pos);
 	}
 
 	@Override

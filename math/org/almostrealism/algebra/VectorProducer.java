@@ -65,7 +65,7 @@ public interface VectorProducer extends ProducerComputation<Vector>, VectorFeatu
 	default VectorProducer scalarMultiply(Supplier<Evaluable<? extends Scalar>> operand) { return scalarMultiply(this, operand); }
 
 	default VectorProducer scalarMultiply(Scalar operand) {
-		return scalarMultiply(() -> StaticEvaluable.of(operand));
+		return scalarMultiply(StaticEvaluable.of(operand));
 	}
 
 	default VectorProducer scalarMultiply(double operand) {

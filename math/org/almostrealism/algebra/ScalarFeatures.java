@@ -26,7 +26,7 @@ import org.almostrealism.util.StaticEvaluable;
 import java.util.function.Supplier;
 
 public interface ScalarFeatures {
-	Supplier<Evaluable<? extends Scalar>> minusOne = () -> StaticEvaluable.of(-1.0);
+	Supplier<Evaluable<? extends Scalar>> minusOne = StaticEvaluable.of(-1.0);
 
 	default ScalarEvaluable scalarAdd(Evaluable<Scalar> a, Evaluable<Scalar> b) {
 		return new DefaultScalarEvaluable(scalarAdd(() -> a, () -> b));
@@ -69,11 +69,11 @@ public interface ScalarFeatures {
 	}
 
 	default ScalarEvaluable pow(Evaluable<Scalar> base, Scalar exp) {
-		return pow(base, StaticEvaluable.of(exp));
+		return pow(base, StaticEvaluable.of(exp).get());
 	}
 
 	default ScalarProducer pow(Supplier<Evaluable<? extends Scalar>> base, Scalar exp) {
-		return pow(base, () -> StaticEvaluable.of(exp));
+		return pow(base, StaticEvaluable.of(exp));
 	}
 
 	default ScalarEvaluable pow(Evaluable<Scalar> base, double value) {

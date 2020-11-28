@@ -2,7 +2,11 @@ package org.almostrealism.math.bool.test;
 
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarProducer;
+import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
+import org.almostrealism.hardware.DynamicAcceleratedOperation;
+import org.almostrealism.math.bool.AcceleratedConditionalStatement;
+import org.almostrealism.math.bool.AcceleratedConditionalStatementScalar;
 import org.almostrealism.math.bool.AcceleratedConjunctionScalar;
 import org.almostrealism.math.bool.LessThan;
 import org.almostrealism.relation.Producer;
@@ -69,10 +73,25 @@ public class AcceleratedConditionalStatementTests implements CodeFeatures {
 		lt.compact();
 
 		System.out.println(lt.getFunctionDefinition());
+		Assert.assertEquals(2, lt.getArgsCount());
 
 		double v = lt.evaluate(ray(i -> Math.random()).get().evaluate()).getValue();
 		System.out.println(v);
 		Assert.assertNotEquals(0, v);
+	}
+
+	@Test
+	public void compactWithCrossProduct() {
+		LessThan<Scalar> lt1 = lessThan(ray(i -> Math.random()).oDotd(), oDotd(v(Ray.class, 0)));
+		AcceleratedConditionalStatementScalar lt2 = vector(i -> Math.random()).crossProduct(v(Vector.class, 1))
+														.length().lessThan(() -> lt1, v(1), v(2));
+		lt2.compact();
+
+		System.out.println(((DynamicAcceleratedOperation) lt2).getFunctionDefinition());
+
+		double v = lt2.evaluate(ray(i -> Math.random()).get().evaluate(), vector(i -> Math.random()).get().evaluate()).getValue();
+		System.out.println(v);
+		assert v == 1.0 || v == 2.0;
 	}
 
 	private void check(LessThan lt, Scalar a, Scalar b) {

@@ -62,7 +62,7 @@ public interface VectorEvaluable extends VectorFeatures, Evaluable<Vector> {
     default VectorEvaluable scalarMultiply(Evaluable<Scalar> operand) { return scalarMultiply(this, operand); }
 
     default VectorEvaluable scalarMultiply(Scalar operand) {
-        return scalarMultiply(StaticEvaluable.of(operand));
+        return scalarMultiply(StaticEvaluable.of(operand).get());
     }
 
     default VectorEvaluable scalarMultiply(double operand) {

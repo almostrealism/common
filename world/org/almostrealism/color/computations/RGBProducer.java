@@ -41,7 +41,7 @@ public interface RGBProducer extends ProducerComputation<RGB>, RGBFeatures {
 	default RGBProducer scalarMultiply(Supplier<Evaluable<? extends Scalar>> operand) { return cscalarMultiply(this, operand); }
 
 	default RGBProducer scalarMultiply(Scalar operand) {
-		return scalarMultiply(() -> StaticEvaluable.of(operand));
+		return scalarMultiply(StaticEvaluable.of(operand));
 	}
 
 	default RGBProducer scalarMultiply(double operand) {
