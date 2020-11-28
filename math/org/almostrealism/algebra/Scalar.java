@@ -32,7 +32,14 @@ public class Scalar extends Pair implements Comparable<Scalar> {
 
 	protected Scalar(MemWrapper delegate, int delegateOffset) {
 		super(delegate, delegateOffset);
-		setCertainty(1.0);
+	}
+
+	@Override
+	protected void init() {
+		super.init();
+		// TODO  Need to determine if certainty should be set to 1.0
+		//       based on conditions such as whether we reserved a
+		//       delegate from the pool
 	}
 
 	public Scalar setValue(double v) { setLeft(v); return this; }

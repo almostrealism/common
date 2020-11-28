@@ -21,6 +21,7 @@ import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarEvaluable;
 import org.almostrealism.hardware.AcceleratedComputationProducer;
 import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.hardware.MemoryBankAdapter;
 import org.almostrealism.relation.Computation;
 
 public class DefaultScalarEvaluable extends AcceleratedComputationProducer<Scalar> implements ScalarEvaluable {
@@ -31,6 +32,6 @@ public class DefaultScalarEvaluable extends AcceleratedComputationProducer<Scala
 
 	@Override
 	public MemoryBank<Scalar> createKernelDestination(int size) {
-		return new ScalarBank(size);
+		return new ScalarBank(size, MemoryBankAdapter.CacheLevel.ACCESSED);
 	}
 }
