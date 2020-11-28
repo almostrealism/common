@@ -47,6 +47,7 @@ import org.almostrealism.space.ShadableSurface;
 import org.almostrealism.space.ShadableSurfaceWrapper;
 import org.almostrealism.space.SpacePartition;
 import org.almostrealism.space.BoundingSolid;
+import org.almostrealism.util.DimensionAwareKernel;
 
 // TODO  Add bounding solid to make intersection calc faster.
 
@@ -658,7 +659,7 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 		CachedMeshIntersectionKernel kernel =
 				new CachedMeshIntersectionKernel(getMeshData(), (KernelizedEvaluable) tray.get());
 
-		return new ShadableIntersection(ray, () -> kernel.getClosestNormal(), () -> kernel);
+		return new ShadableIntersection(ray, () -> kernel.getClosestNormal(), new DimensionAwareKernel<>(kernel));
 	}
 
 	private void removeBackFaces(Ray r) {
