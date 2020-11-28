@@ -154,6 +154,10 @@ public interface ScalarProducer extends ProducerComputation<Scalar>, ScalarFeatu
 		return lessThan(() -> operand, includeEqual);
 	}
 
+	default AcceleratedConditionalStatementScalar lessThan(Supplier operand) {
+		return lessThan(operand, false);
+	}
+
 	default AcceleratedConditionalStatementScalar lessThan(Supplier operand, boolean includeEqual) {
 		return lessThan(operand, null, null, includeEqual);
 	}
