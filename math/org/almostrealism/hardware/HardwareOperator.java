@@ -28,6 +28,10 @@ import java.util.function.Consumer;
  * @param <T> Return type
  */
 public class HardwareOperator<T extends MemWrapper> implements Consumer<Object[]>, Factory<cl_kernel> {
+	public static boolean enableVerboseLog;
+
+	private static long totalInvocations;
+
 	private static Pointer zero = Pointer.to(new int[]{0});
 
 	private cl_program prog;
@@ -78,33 +82,8 @@ public class HardwareOperator<T extends MemWrapper> implements Consumer<Object[]
 		if (kernel == null) kernel = construct();
 
 		int index = 0;
+		long id = totalInvocations;
 
-//		TODO  Remove legacy custom code for dealing with scalars, which are really just Pairs (and so are already MemWrapper implementors just like Vectors)
-//		if (scalar) {
-//			try {
-//				CL.clSetKernelArg(kernel, index, Sizeof.cl_double, Pointer.to(result.getMem())); // Result
-//				index++;
-//
-//				for (int i = 0; i < argCount; i++) {
-//					CL.clSetKernelArg(kernel, index, Sizeof.cl_mem, Pointer.to(((MemWrapper) args[i]).getMem()));
-//					index++;
-//				}
-//
-//				for (int i = 0; i < argCount; i++) {
-//					CL.clSetKernelArg(kernel, index, Sizeof.cl_int, Pointer.to(new int[]{0})); // Offset
-//					index++;
-//				}
-//			} catch (CLException e) {
-//				throw new RuntimeException(e.getMessage() + " index = " + index + " argCount = " + argCount);
-//			}
-//
-//			long gws[] = new long[] { 1, 1 };
-//
-//			CL.clEnqueueNDRangeKernel(Hardware.getLocalHardware().getQueue(), kernel, 1, null,
-//									gws, null, 0, null, null);
-//
-//			return (T) result;
-//		} else {
 		try {
 			for (int i = 0; i < argCount; i++) {
 				if (args[i] == null) {
@@ -115,22 +94,32 @@ public class HardwareOperator<T extends MemWrapper> implements Consumer<Object[]
 					throw new IllegalArgumentException("argument " + i + " to function " + name + " is not a MemWrapper");
 				}
 
+				if (enableVerboseLog) System.out.println(id + ": clSetKernelArg(0) start");
 				CL.clSetKernelArg(kernel, index++, Sizeof.cl_mem, Pointer.to(((MemWrapper) args[i]).getMem()));
+				if (enableVerboseLog) System.out.println(id + ": clSetKernelArg(0) end");
 			}
 
 			for (int i = 0; i < argCount; i++) {
+				if (enableVerboseLog) System.out.println(id + ": clSetKernelArg(1) start");
 				CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
 						Pointer.to(new int[] { ((MemWrapper) args[i]).getOffset() })); // Offset
+				if (enableVerboseLog) System.out.println(id + ": clSetKernelArg(1) end");
 			}
 
 			for (int i = 0; i < argCount; i++) {
+				if (enableVerboseLog) System.out.println(id + ": clSetKernelArg(2) start");
 				CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
 						Pointer.to(new int[] { ((MemWrapper) args[i]).getAtomicMemLength() })); // Size
+				if (enableVerboseLog) System.out.println(id + ": clSetKernelArg(2) end");
 			}
 
+			if (enableVerboseLog) System.out.println(id + ": clEnqueueNDRangeKernel start");
 			CL.clEnqueueNDRangeKernel(Hardware.getLocalHardware().getQueue(), kernel, 1,
 					new long[] { globalWorkOffset }, new long[] { globalWorkSize },
 					null, 0, null, null);
+			if (enableVerboseLog) System.out.println(id + ": clEnqueueNDRangeKernel end");
+
+			totalInvocations++;
 		} catch (CLException e) {
 			// TODO  This should use the exception processor also, but theres no way to pass the message details
 			throw new HardwareException(e.getMessage() + " for function " + name +
