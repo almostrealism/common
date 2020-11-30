@@ -25,7 +25,7 @@ import org.almostrealism.relation.Producer;
 
 import java.util.ArrayList;
 
-public class RankedChoiceProducer<T> extends ArrayList<ProducerWithRank<T>> implements Evaluable<T> {
+public class RankedChoiceProducer<T> extends ArrayList<ProducerWithRank<T>> implements Evaluable<T>, Compactable {
 	protected double e;
 	protected boolean tolerateNull;
 
@@ -88,4 +88,7 @@ public class RankedChoiceProducer<T> extends ArrayList<ProducerWithRank<T>> impl
 
 		return best == null ? null : best.get().evaluate(args);
 	}
+
+	@Override
+	public void compact() { forEach(ProducerWithRank::compact); }
 }
