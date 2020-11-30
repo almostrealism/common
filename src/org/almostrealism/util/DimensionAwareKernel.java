@@ -42,4 +42,11 @@ public class DimensionAwareKernel<T extends MemWrapper> implements Producer<T>, 
 	public void setDimensions(int width, int height, int ssw, int ssh) {
 		((DimensionAware) k).setDimensions(width, height, ssw, ssh);
 	}
+
+	@Override
+	public void compact() {
+		if (k instanceof Compactable) {
+			((Compactable) k).compact();
+		}
+	}
 }
