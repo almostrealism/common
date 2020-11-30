@@ -118,10 +118,6 @@ public class HardwareOperator<T extends MemWrapper> implements Consumer<Object[]
 					new long[] { globalWorkOffset }, new long[] { globalWorkSize },
 					null, 0, null, null);
 			if (enableVerboseLog) System.out.println(id + ": clEnqueueNDRangeKernel end");
-
-			if (id >= 24252) {
-				System.out.println("!");
-			}
 		} catch (CLException e) {
 			// TODO  This should use the exception processor also, but theres no way to pass the message details
 			throw new HardwareException(e.getMessage() + " for function " + name +
