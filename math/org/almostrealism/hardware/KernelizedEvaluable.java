@@ -38,7 +38,7 @@ public interface KernelizedEvaluable<T extends MemWrapper> extends Evaluable<T> 
 		String name = this instanceof Named ? ((Named) this).getName() : OperationAdapter.operationName(getClass(), "function");
 		if (KernelizedOperation.enableKernelLog) System.out.println("KernelizedProducer: Evaluating " + name + " kernel...");
 
-		boolean enableLog = name.equals("LightingEngineAggregator");
+		boolean enableLog = false; // name.equals("LightingEngineAggregator");
 
 		for (int i = 0; i < destination.getCount(); i++) {
 			T r = null;
@@ -59,7 +59,7 @@ public interface KernelizedEvaluable<T extends MemWrapper> extends Evaluable<T> 
 				throw new HardwareException("i = " + i + " of " + destination.getCount() + ", r = " + r, e);
 			}
 
-			if (enableLog && (i + 1) % 100 == 0) System.out.println((i + 1) + " lighting engine aggregator results collected");
+			if (enableLog && (i + 1) % 100 == 0) System.out.println((i + 1) + " kernel results collected");
 		}
 	}
 
