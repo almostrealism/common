@@ -82,7 +82,7 @@ public class HardwareOperator<T extends MemWrapper> implements Consumer<Object[]
 		if (kernel == null) kernel = construct();
 
 		int index = 0;
-		long id = totalInvocations;
+		long id = totalInvocations++;
 
 		try {
 			for (int i = 0; i < argCount; i++) {
@@ -119,7 +119,9 @@ public class HardwareOperator<T extends MemWrapper> implements Consumer<Object[]
 					null, 0, null, null);
 			if (enableVerboseLog) System.out.println(id + ": clEnqueueNDRangeKernel end");
 
-			totalInvocations++;
+			if (id >= 24252) {
+				System.out.println("!");
+			}
 		} catch (CLException e) {
 			// TODO  This should use the exception processor also, but theres no way to pass the message details
 			throw new HardwareException(e.getMessage() + " for function " + name +
