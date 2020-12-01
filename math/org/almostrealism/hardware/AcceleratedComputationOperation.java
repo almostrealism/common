@@ -81,13 +81,17 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	@Override
-	public String getVariableValueName(Variable v, int pos, boolean assignment, int kernelIndex) {
+	public String getVariableValueName(Variable v, String pos, boolean assignment, int kernelIndex) {
 		return getValueName(v, pos, assignment, (enableKernel && isKernel()) ? kernelIndex : -1);
 	}
 
 	@Override
 	public Scope<T> compile(NameProvider p) {
-		return compile(p, ((OperationAdapter) getComputation()).getArgument(0));
+		if (getComputation() instanceof OperationAdapter) {
+			return compile(p, ((OperationAdapter) getComputation()).getArgument(0));
+		} else {
+			return compile(p, null);
+		}
 	}
 
 	public Scope<T> compile(Variable<T> outputVariable) {
@@ -95,7 +99,7 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	public Scope<T> compile(NameProvider p, Variable<T> outputVariable) {
-		Scope<T> scope = getComputation().getScope(p.withOutputVariable(outputVariable));
+		Scope<T> scope = outputVariable == null ? getComputation().getScope(p) : getComputation().getScope(p.withOutputVariable(outputVariable));
 		setArguments(scope.getArguments());
 		return scope;
 	}

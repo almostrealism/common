@@ -38,6 +38,7 @@ import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.relation.Evaluable;
 import org.almostrealism.relation.Producer;
 import org.almostrealism.relation.ProducerComputation;
+import org.almostrealism.time.CursorPair;
 
 import java.util.function.Function;
 import java.util.function.IntFunction;
@@ -51,6 +52,10 @@ public interface CodeFeatures extends ScalarFeatures, PairFeatures, TriangleData
 	default ScalarProducer v(Scalar value) { return value(value); }
 
 	default PairProducer v(Pair value) { return value(value); }
+
+	default Producer<CursorPair> v(CursorPair p) {
+		throw new UnsupportedOperationException();
+	}
 
 	default VectorProducer v(Vector value) { return value(value); }
 

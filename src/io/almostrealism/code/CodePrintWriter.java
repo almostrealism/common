@@ -24,6 +24,13 @@ import java.util.List;
  */
 public interface CodePrintWriter {
 	/**
+	 * This is used to write explicit scopes, but should be discouraged.
+	 * @param s
+	 */
+	@Deprecated
+	void println(String s);
+
+	/**
 	 * Write the specified {@link Variable} (name of the variable and the data).
 	 * This method should assume that the variable is to be created.
 	 *

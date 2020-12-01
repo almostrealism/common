@@ -40,8 +40,12 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 	protected abstract String nameForType(Class<?> type);
 
 	@Override
+	@Deprecated
+	public void println(String s) { p.println(s); }
+
+	@Override
 	public void println(Scope s) {
-		beginScope(s.getName(), new ArrayList<>());
+		beginScope(s.getName(), s.getArguments());
 		s.write(this);
 		endScope();
 	}

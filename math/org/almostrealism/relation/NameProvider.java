@@ -56,7 +56,39 @@ public interface NameProvider {
 		return getVariableValueName(v, pos, false, kernelIndex);
 	}
 
-	String getVariableValueName(Variable v, int pos, boolean assignment, int kernelIndex);
+	default String getArgumentValueName(int index, String pos) {
+		return getArgumentValueName(index, pos, 0);
+	}
+
+	default String getArgumentValueName(int index, String pos, boolean assignment) {
+		return getArgumentValueName(index, pos, assignment, 0);
+	}
+
+	default String getArgumentValueName(int index, String pos, int kernelIndex) {
+		return getArgumentValueName(index, pos, true, kernelIndex);
+	}
+
+	default String getArgumentValueName(int index, String pos, boolean assignment, int kernelIndex) {
+		return getVariableValueName(getArgument(index), pos, assignment, kernelIndex);
+	}
+
+	default String getVariableValueName(Variable v, String pos) {
+		return getVariableValueName(v, pos, 0);
+	}
+
+	default String getVariableValueName(Variable v, String pos, boolean assignment) {
+		return getVariableValueName(v, pos, assignment, 0);
+	}
+
+	default String getVariableValueName(Variable v, String pos, int kernelIndex) {
+		return getVariableValueName(v, pos, false, kernelIndex);
+	}
+
+	default String getVariableValueName(Variable v, int pos, boolean assignment, int kernelIndex) {
+		return getVariableValueName(v, String.valueOf(pos), assignment, kernelIndex);
+	}
+
+	String getVariableValueName(Variable v, String pos, boolean assignment, int kernelIndex);
 
 	default NameProvider withOutputVariable(Variable outputVariable) {
 		NameProvider p = this;
@@ -73,7 +105,7 @@ public interface NameProvider {
 			}
 
 			@Override
-			public String getVariableValueName(Variable v, int pos, boolean assignment, int kernelIndex) {
+			public String getVariableValueName(Variable v, String pos, boolean assignment, int kernelIndex) {
 				return p.getVariableValueName(v, pos, assignment, kernelIndex);
 			}
 		};

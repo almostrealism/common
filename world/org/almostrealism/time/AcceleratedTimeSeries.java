@@ -22,6 +22,7 @@ import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.relation.Producer;
+import org.almostrealism.time.computations.AcceleratedTimeSeriesPurge;
 import org.almostrealism.util.AcceleratedAssignment;
 import org.almostrealism.util.CodeFeatures;
 import org.almostrealism.util.DynamicProducer;
@@ -32,7 +33,7 @@ import java.util.function.Supplier;
 public class AcceleratedTimeSeries extends TemporalScalarBank implements CodeFeatures, HardwareFeatures {
 
 	public AcceleratedTimeSeries(int maxEntries) {
-		super(maxEntries, CacheLevel.NONE);
+		super(maxEntries, CacheLevel.ALL);
 		setBeginCursorIndex(1);
 		setEndCursorIndex(1);
 	}
@@ -50,8 +51,8 @@ public class AcceleratedTimeSeries extends TemporalScalarBank implements CodeFea
 			throw new RuntimeException("AcceleratedTimeSeries is full");
 		}
 
-		setEndCursorIndex(getEndCursorIndex() + 1);
 		set(getEndCursorIndex(), value);
+		setEndCursorIndex(getEndCursorIndex() + 1);
 	}
 
 	@Deprecated
@@ -75,10 +76,8 @@ public class AcceleratedTimeSeries extends TemporalScalarBank implements CodeFea
 		});
 	}
 
-	public Supplier<Runnable> purge(Evaluable<CursorPair> time) {
-		AcceleratedOperation op = new AcceleratedOperation<MemWrapper>("prg", false, p(this), () -> time);
-		op.setSourceClass(AcceleratedTimeSeries.class);
-		return () -> op;
+	public Supplier<Runnable> purge(Producer<CursorPair> time) {
+		return new AcceleratedTimeSeriesPurge(p(this), time);
 	}
 
 	public Evaluable<Scalar> valueAt(Evaluable<CursorPair> cursor) {
@@ -94,7 +93,7 @@ public class AcceleratedTimeSeries extends TemporalScalarBank implements CodeFea
 		i: for (int i = getBeginCursorIndex(); i < getEndCursorIndex(); i++) {
 			TemporalScalar v = get(i);
 			if (v.getTime() >= time) {
-				left = i > getBeginCursorIndex() ? get(i - 1) : null;
+				left = i > getBeginCursorIndex() ? get(i - 1) : (v.getTime() == time ? get(i) : null);
 				right = get(i);
 				break i;
 			}
@@ -109,7 +108,10 @@ public class AcceleratedTimeSeries extends TemporalScalarBank implements CodeFea
 		double t1 = time - left.getTime();
 		double t2 = right.getTime() - left.getTime();
 
-		TemporalScalar s = new TemporalScalar(time, v1 + (t1 / t2) * (v2 - v1));
-		return s;
+		if (t2 == 0) {
+			return new TemporalScalar(time, v1);
+		} else {
+			return new TemporalScalar(time, v1 + (t1 / t2) * (v2 - v1));
+		}
 	}
 }

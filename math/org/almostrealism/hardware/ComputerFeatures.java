@@ -26,11 +26,11 @@ public interface ComputerFeatures extends HardwareFeatures, NameProvider {
 	default Variable getOutputVariable() { return getArgument(0); }
 
 	@Override
-	default String getVariableValueName(Variable v, int pos, boolean assignment, int kernelIndex) {
+	default String getVariableValueName(Variable v, String pos, boolean assignment, int kernelIndex) {
 		return getValueName(v, pos, assignment, enableKernel ? kernelIndex : -1);
 	}
 
-	default String getValueName(Variable v, int pos, boolean assignment, int kernelIndex) {
+	default String getValueName(Variable v, String pos, boolean assignment, int kernelIndex) {
 		String name;
 
 		if (v instanceof Argument) {
@@ -38,13 +38,13 @@ public interface ComputerFeatures extends HardwareFeatures, NameProvider {
 				String kernelOffset = kernelIndex < 0 ? "" :
 						("get_global_id(" + kernelIndex + ") * " + v.getName() + "Size + ");
 
-				if (pos == 0) {
+				if (pos.equals("0")) {
 					name = v.getName() + "[" + kernelOffset + v.getName() + "Offset]";
 				} else {
 					name = v.getName() + "[" + kernelOffset + v.getName() + "Offset + " + pos + "]";
 				}
 			} else {
-				if (pos == 0) {
+				if (pos.equals("0")) {
 					name = v.getName() + "[" + v.getName() + "Offset]";
 				} else {
 					name = v.getName() + "[" + v.getName() + "Offset + " + pos + "]";
