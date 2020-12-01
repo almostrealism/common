@@ -16,7 +16,7 @@
 
 package org.almostrealism.algebra.computations;
 
-import io.almostrealism.code.Expression;
+import io.almostrealism.code.expressions.Expression;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairProducer;
 import org.almostrealism.algebra.Scalar;

@@ -18,8 +18,8 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.Argument;
 import io.almostrealism.code.ComputationProducerAdapter;
-import io.almostrealism.code.InstanceReference;
-import io.almostrealism.code.Expression;
+import io.almostrealism.code.expressions.InstanceReference;
+import io.almostrealism.code.expressions.Expression;
 import io.almostrealism.code.MultiExpression;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.Scope;
@@ -66,14 +66,6 @@ public abstract class DynamicAcceleratedProducerAdapter<I extends MemWrapper, O 
 
 	public OperationAdapter getInputProducer(int index) {
 		return (OperationAdapter) getArguments().get(index).getProducer();
-	}
-
-	public Expression<Double> getInputProducerValue(int index, int pos) {
-		return getInputProducerValue(getArguments().get(index), pos);
-	}
-
-	public static Expression<Double> getInputProducerValue(Argument arg, int pos) {
-		return ((MultiExpression) arg.getProducer()).getValue(pos);
 	}
 
 	@Override

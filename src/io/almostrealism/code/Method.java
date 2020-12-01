@@ -16,13 +16,11 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.code.expressions.Expression;
 import org.almostrealism.util.Nameable;
 
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 /**
  * A {@link Method} is included in a {@link Scope} to indicate that a function should

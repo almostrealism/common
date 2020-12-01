@@ -16,6 +16,7 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.code.expressions.Expression;
 import org.almostrealism.relation.Computation;
 import org.almostrealism.relation.NameProvider;
 import org.almostrealism.util.Compactable;
@@ -30,6 +31,14 @@ public abstract class ComputationOperationAdapter<I, O> extends OperationAdapter
 
 	@Override
 	public Argument getArgument(int index) { return getArguments().get(index); }
+
+	public Expression<Double> getInputProducerValue(int index, int pos) {
+		return getInputProducerValue(getArguments().get(index), pos);
+	}
+
+	public static Expression<Double> getInputProducerValue(Argument arg, int pos) {
+		return ((MultiExpression) arg.getProducer()).getValue(pos);
+	}
 
 	@Override
 	public Scope<O> getScope(NameProvider provider) {

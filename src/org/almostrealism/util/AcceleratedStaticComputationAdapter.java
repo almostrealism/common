@@ -16,7 +16,7 @@
 
 package org.almostrealism.util;
 
-import io.almostrealism.code.Expression;
+import io.almostrealism.code.expressions.Expression;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.hardware.MemWrapper;

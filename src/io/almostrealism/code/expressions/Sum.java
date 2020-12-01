@@ -14,18 +14,10 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.code;
+package io.almostrealism.code.expressions;
 
-import io.almostrealism.code.expressions.Expression;
-import org.almostrealism.relation.NameProvider;
-
-import java.util.function.IntFunction;
-
-public interface MultiExpression<T> extends NameProvider {
-
-	default IntFunction<Variable<T>> getAssignmentFunction(Variable<?> outputVariable) {
-		return i -> new Variable<>(getVariableValueName(outputVariable, i, true), false, getValue(i), outputVariable);
+public class Sum extends Expression<Double> {
+	public Sum(Expression<Double> a, Expression<Double> b) {
+		super(Double.class, "(" + a.getExpression() + ") + (" + b.getExpression() + ")", a, b);
 	}
-
-	Expression<T> getValue(int pos);
 }

@@ -14,7 +14,10 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.code;
+package io.almostrealism.code.expressions;
+
+import io.almostrealism.code.CodePrintWriter;
+import io.almostrealism.code.Variable;
 
 /**
  * {@link InstanceReference} is used to reference a previously declared
@@ -26,12 +29,12 @@ public class InstanceReference<T> extends Expression<T> {
 	private Variable var;
 
 	public InstanceReference(Variable<T> v) {
-		this(v.getType(), v.getName());
+		this(v.getType(), v.getName(), v);
 		this.var = v;
 	}
 
-	public InstanceReference(Class<T> type, String varName) {
-		super(type, varName);
+	public InstanceReference(Class<T> type, String varName, Variable... dependencies) {
+		super(type, varName, dependencies);
 	}
 
 	public Variable getReferent() { return var; }

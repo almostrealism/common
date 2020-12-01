@@ -19,10 +19,13 @@ package org.almostrealism.time;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.relation.Evaluable;
+import org.almostrealism.relation.Producer;
+import org.almostrealism.time.computations.CursorPairIncrement;
+import org.almostrealism.util.CodeFeatures;
 
 import java.util.function.Supplier;
 
-public class CursorPair extends Pair {
+public class CursorPair extends Pair implements CodeFeatures {
 	public CursorPair() { super(0, 0); }
 
 	public void setCursor(double v) { setA(v); }
@@ -35,11 +38,7 @@ public class CursorPair extends Pair {
 
 	public double getDelayCursor() { return getB(); }
 
-	public Supplier<Runnable> increment(Evaluable<Scalar> value) {
-		return () -> () -> {
-			double v = value.evaluate().getValue();
-			setCursor(getCursor() + v);
-			setDelayCursor(getDelayCursor() + v);
-		};
+	public Supplier<Runnable> increment(Producer<Scalar> value) {
+		return new CursorPairIncrement(p(this), value);
 	}
 }

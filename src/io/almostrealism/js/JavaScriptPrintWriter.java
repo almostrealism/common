@@ -17,6 +17,7 @@
 package io.almostrealism.js;
 
 import io.almostrealism.code.*;
+import io.almostrealism.code.expressions.InstanceReference;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.io.PrintWriter;
 import org.almostrealism.io.Resource;

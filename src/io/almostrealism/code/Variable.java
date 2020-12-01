@@ -16,6 +16,7 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.code.expressions.Expression;
 import org.almostrealism.util.Nameable;
 import org.almostrealism.relation.Evaluable;
 import org.almostrealism.util.Provider;
@@ -68,6 +69,10 @@ public class Variable<T> implements Nameable {
 
 	public Variable(String name, T value) {
 		this(name, true, (Expression) null, ops().v(value));
+	}
+
+	public Variable(String name, boolean declaration, Variable dependsOn) {
+		this(name, declaration, (Expression) null, dependsOn);
 	}
 
 	public Variable(String name, String annotation, Supplier<Evaluable<? extends T>> producer) {
@@ -138,12 +143,15 @@ public class Variable<T> implements Nameable {
 
 	public Supplier<Evaluable<? extends T>> getProducer() { return producer; }
 
-	public Class<T> getType() { return getExpression().getType(); }
+	public Class<T> getType() { return getExpression() == null ? null : getExpression().getType(); }
 	public Method<T> getGenerator() { return getExpression().getGenerator(); }
 	public List<Variable<?>> getDependencies() {
 		List<Variable<?>> deps = new ArrayList<>();
 		if (dependsOn != null) deps.add(dependsOn);
-		deps.addAll(getExpression().getDependencies());
+		if (getExpression() != null) {
+			deps.addAll(getExpression().getDependencies());
+		}
+
 		return deps;
 	}
 

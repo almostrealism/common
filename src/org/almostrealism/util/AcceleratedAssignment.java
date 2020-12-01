@@ -16,7 +16,7 @@
 
 package org.almostrealism.util;
 
-import io.almostrealism.code.Expression;
+import io.almostrealism.code.expressions.Expression;
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;
 import org.almostrealism.hardware.DynamicAcceleratedOperationAdapter;

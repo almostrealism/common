@@ -3,11 +3,10 @@ package io.almostrealism.code.test;
 import java.util.ArrayList;
 import java.util.List;
 
-import io.almostrealism.code.Expression;
+import io.almostrealism.code.expressions.Expression;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.io.PrintStreamPrintWriter;
-import org.junit.Test;
 
 import io.almostrealism.code.CodePrintWriter;
 import io.almostrealism.code.Method;

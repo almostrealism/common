@@ -17,7 +17,7 @@
 package org.almostrealism.geometry;
 
 import io.almostrealism.code.Argument;
-import io.almostrealism.code.Expression;
+import io.almostrealism.code.expressions.Expression;
 import org.almostrealism.algebra.TransformMatrix;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorProducer;

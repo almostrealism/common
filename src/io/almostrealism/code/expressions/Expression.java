@@ -14,10 +14,12 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.code;
+package io.almostrealism.code.expressions;
+
+import io.almostrealism.code.Method;
+import io.almostrealism.code.Variable;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;

@@ -16,6 +16,7 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.code.expressions.ArgumentReference;
 import org.almostrealism.graph.ParameterizedGraph;
 import org.almostrealism.graph.Parent;
 import org.almostrealism.util.Nameable;
@@ -24,9 +25,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 /**
  * A {@link Scope} is the container for {@link Variable}s, {@link Method}s, and other {@link Scope}s.

@@ -16,7 +16,7 @@
 
 package org.almostrealism.color.computations;
 
-import io.almostrealism.code.Expression;
+import io.almostrealism.code.expressions.Expression;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.color.RGB;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;

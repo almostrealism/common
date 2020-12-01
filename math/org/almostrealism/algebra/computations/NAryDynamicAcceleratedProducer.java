@@ -17,7 +17,7 @@
 package org.almostrealism.algebra.computations;
 
 import io.almostrealism.code.Argument;
-import io.almostrealism.code.Expression;
+import io.almostrealism.code.expressions.Expression;
 import io.almostrealism.code.Variable;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.hardware.ComputerFeatures;

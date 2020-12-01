@@ -17,7 +17,7 @@
 package io.almostrealism.c;
 
 import io.almostrealism.code.CodePrintWriterAdapter;
-import io.almostrealism.code.Expression;
+import io.almostrealism.code.expressions.Expression;
 import io.almostrealism.code.Method;
 import io.almostrealism.code.ResourceVariable;
 import io.almostrealism.code.Variable;

@@ -1,6 +1,6 @@
 package org.almostrealism.algebra.computations;
 
-import io.almostrealism.code.Expression;
+import io.almostrealism.code.expressions.Expression;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
