@@ -16,9 +16,7 @@
 
 package org.almostrealism.time.computations;
 
-import io.almostrealism.code.Argument;
 import io.almostrealism.code.Variable;
-import io.almostrealism.code.expressions.ArgumentReference;
 import io.almostrealism.code.expressions.InstanceReference;
 import io.almostrealism.code.expressions.Sum;
 import org.almostrealism.algebra.Scalar;

@@ -16,17 +16,30 @@
 
 package org.almostrealism.graph.computations;
 
+import io.almostrealism.code.Variable;
+import io.almostrealism.code.expressions.InstanceReference;
+import io.almostrealism.code.expressions.Sum;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.graph.SummationCell;
 import org.almostrealism.hardware.AcceleratedOperation;
+import org.almostrealism.hardware.DynamicAcceleratedOperationAdapter;
 import org.almostrealism.relation.Evaluable;
+import org.almostrealism.time.CursorPair;
+
 import static org.almostrealism.util.Ops.*;
 
 import java.util.function.Supplier;
 
-public class SummationCellOperation extends AcceleratedOperation<Scalar> {
-
+public class SummationCellOperation extends DynamicAcceleratedOperationAdapter<Scalar> {
 	public SummationCellOperation(SummationCell cell, Supplier<Evaluable<? extends Scalar>> protein) {
-		super("push", false, ops().p(cell.getCachedValue()), protein);
+		super(ops().p(cell.getCachedValue()), protein);
+	}
+
+	@Override
+	public void init() {
+		super.init();
+		addVariable(new Variable(getArgumentValueName(0, 0), false,
+				new Sum(new InstanceReference<>(new Variable<>(getArgumentValueName(0, 0), false, getArgument(0))),
+						new InstanceReference(new Variable<>(getArgumentValueName(1, 0), false, getArgument(1))))));
 	}
 }

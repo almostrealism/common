@@ -26,6 +26,6 @@ import java.util.function.Supplier;
 public class SummationCell extends ScalarCachedStateCell {
 	@Override
 	public Supplier<Runnable> push(Producer<Scalar> protein) {
-		return () -> new SummationCellOperation(this, protein);
+		return new SummationCellOperation(this, protein);
 	}
 }
