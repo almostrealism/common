@@ -22,17 +22,21 @@ import org.almostrealism.relation.Evaluable;
 import java.util.function.Supplier;
 
 public class ScalarCachedStateCell extends CachedStateCell<Scalar> {
+	private static Scalar zero = new Scalar();
+
 	public ScalarCachedStateCell() {
 		super(Scalar.blank().get());
 	}
 
 	@Override
 	protected Supplier<Runnable> assign(Supplier<Evaluable<? extends Scalar>> out, Supplier<Evaluable<? extends Scalar>> in) {
-		return () -> () -> out.get().evaluate().setValue(in.get().evaluate().getValue());
+		// return () -> () -> out.get().evaluate().setValue(in.get().evaluate().getValue());
+		return a(2, out, in);
 	}
 
 	@Override
 	public Supplier<Runnable> reset(Supplier<Evaluable<? extends Scalar>> out) {
-		return () -> () -> out.get().evaluate().setMem(new double[] { 0.0, 1.0 });
+		// return () -> () -> out.get().evaluate().setMem(new double[] { 0.0, 1.0 });
+		return a(2, out, v(zero));
 	}
 }
