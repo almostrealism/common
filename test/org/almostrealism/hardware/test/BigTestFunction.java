@@ -22,8 +22,12 @@ import org.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 
-public class TestKernel extends AcceleratedProducer<Ray, Ray> {
-	public TestKernel(Supplier<Evaluable<? extends Ray>> blank, Supplier<Evaluable<? extends Ray>>... inputArgs) {
-		super("testKernel", true, blank, inputArgs);
+public class BigTestFunction extends AcceleratedProducer<Ray, Ray> {
+	public BigTestFunction() {
+		super("f_operationList_155", false, Ray.blank(), generateEmptyArgs());
+	}
+
+	protected static Supplier[] generateEmptyArgs() {
+		return null;
 	}
 }

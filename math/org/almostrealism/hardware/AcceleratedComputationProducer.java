@@ -19,11 +19,11 @@ package org.almostrealism.hardware;
 import org.almostrealism.relation.Computation;
 
 public class AcceleratedComputationProducer<T extends MemWrapper> extends AcceleratedComputationOperation implements KernelizedEvaluable<T> {
-	public AcceleratedComputationProducer(Computation c) {
+	public AcceleratedComputationProducer(Computation<T> c) {
 		this(c, true);
 	}
 
-	public AcceleratedComputationProducer(Computation c, boolean kernel) {
+	public AcceleratedComputationProducer(Computation<T> c, boolean kernel) {
 		super(c, kernel);
 	}
 

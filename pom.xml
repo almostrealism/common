@@ -21,6 +21,7 @@
 					<include>local32.cl</include>
 					<include>local64.cl</include>
 					<include>org/almostrealism/hardware/test/TestKernel.cl</include>
+					<include>org/almostrealism/hardware/test/BigTestFunction.cl</include>
 				</includes>
 			</resource>
 		</resources>

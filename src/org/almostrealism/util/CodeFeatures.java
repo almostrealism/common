@@ -39,6 +39,8 @@ import org.almostrealism.relation.Evaluable;
 import org.almostrealism.relation.Producer;
 import org.almostrealism.relation.ProducerComputation;
 import org.almostrealism.time.CursorPair;
+import org.almostrealism.time.TemporalScalarProducer;
+import org.almostrealism.time.computations.TemporalScalarFromScalars;
 
 import java.util.function.Function;
 import java.util.function.IntFunction;
@@ -142,6 +144,10 @@ public interface CodeFeatures extends ScalarFeatures, PairFeatures, TriangleData
 
 	default RGBProducer value(RGB value) {
 		return new AcceleratedStaticRGBComputation(value, RGB.blank());
+	}
+
+	default TemporalScalarProducer temporal(Supplier<Evaluable<? extends Scalar>> time, Supplier<Evaluable<? extends Scalar>> value) {
+		return new TemporalScalarFromScalars(time, value);
 	}
 
 	default <T> Producer<T> value(T v) {

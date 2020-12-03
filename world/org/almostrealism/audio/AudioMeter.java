@@ -17,53 +17,52 @@
 
 package org.almostrealism.audio;
 
+import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.audio.computations.ClipCounter;
+import org.almostrealism.audio.computations.SilenceDurationComputation;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.relation.Evaluable;
 import org.almostrealism.relation.Producer;
+import org.almostrealism.util.CodeFeatures;
+import org.almostrealism.util.OperationList;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-public class AudioMeter implements Receptor<Scalar> {
+public class AudioMeter implements Receptor<Scalar>, CodeFeatures {
 	private Receptor<Scalar> forwarding;
-	private int freq = 1;
-	private int count = 0;
 	
-	private long clipCount;
-	private double clipMax = 1.0;
-	private double clipMin = -1.0;
+	private Scalar clipCount = new Scalar();
+	private Pair clipSettings = new Pair(-1.0, 1.0);
 	
-	private double silenceValue = 0;
-	private long silenceDuration;
-	
-	private boolean outEnabled = false;
+	private Scalar silenceValue = new Scalar();
+	private Scalar silenceDuration = new Scalar();
 
 	private List<Consumer<Scalar>> listeners;
 	
 	public AudioMeter() {
 		listeners = new ArrayList<>();
 	}
-	
-	public void setTextOutputEnabled(boolean enabled) { this.outEnabled = enabled; }
-	
-	public void setReportingFrequency(int msec) {
-		this.freq = (int) ((msec / 1000d) * OutputLine.sampleRate);
-	}
-	
+//
+//	public void setTextOutputEnabled(boolean enabled) { this.outEnabled = enabled; }
+//
+//	public void setReportingFrequency(int msec) {
+//		this.freq = (int) ((msec / 1000d) * OutputLine.sampleRate);
+//	}
+//
 	public void setForwarding(Receptor<Scalar> r) { this.forwarding = r; }
 	
-	public void setSilenceValue(double value) { this.silenceValue = value; }
+	public void setSilenceValue(double value) { this.silenceValue.setA(value); }
 	
-	public long getSilenceDuration() { return this.silenceDuration; }
-	
-	public void setClipMaxValue(long value) { this.clipMax = value; }
+	public long getSilenceDuration() { return (long) this.silenceDuration.getValue(); }
 
-	public void setClipMinValue(long value) { this.clipMin = value; }
+	public void setClipMinValue(double value) { this.clipSettings.setA(value); }
+	public void setClipMaxValue(double value) { this.clipSettings.setB(value); }
 	
-	public long getClipCount() { return clipCount; }
+	public long getClipCount() { return (long) clipCount.getValue(); }
 
 	public void addListener(Consumer<Scalar> listener) {
 		listeners.add(listener);
@@ -75,29 +74,15 @@ public class AudioMeter implements Receptor<Scalar> {
 
 	@Override
 	public Supplier<Runnable> push(Producer<Scalar> protein) {
-		Supplier<Runnable> f = forwarding == null ? null : forwarding.push(protein);
+		OperationList push = new OperationList();
+		push.add(new ClipCounter(p(clipCount), v(clipSettings), protein));
+		push.add(new SilenceDurationComputation(p(silenceDuration), v(silenceValue), protein));
+		if (forwarding != null) push.add(forwarding.push(protein));
+		if (!listeners.isEmpty()) {
+			// push.add(() -> () -> listeners.forEach(listener -> listener.accept(p)));
+			throw new UnsupportedOperationException();
+		}
 
-		return () -> () -> {
-			Scalar p = protein.get().evaluate();
-
-			if (outEnabled) {
-				if (count == 0) {
-					System.out.println(p);
-				} else if (p.getValue() != 0) {
-					System.out.println(p + " [Frame " + count + " of " + freq + "]");
-				}
-			}
-
-			count++;
-			count = count % freq;
-
-			if (p.getValue() >= clipMax || p.getValue() <= clipMin) clipCount++;
-			if (p.getValue() > silenceValue) silenceDuration = 0;
-			if (p.getValue() <= silenceValue) silenceDuration++;
-
-			if (f != null) f.get().run();
-
-			listeners.forEach(listener -> listener.accept(p));
-		};
+		return push;
 	}
 }

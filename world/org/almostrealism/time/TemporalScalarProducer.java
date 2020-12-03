@@ -14,16 +14,13 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.hardware.test;
+package org.almostrealism.time;
 
-import org.almostrealism.geometry.Ray;
-import org.almostrealism.hardware.AcceleratedProducer;
+import org.almostrealism.hardware.AcceleratedComputationProducer;
 import org.almostrealism.relation.Evaluable;
+import org.almostrealism.relation.ProducerComputation;
 
-import java.util.function.Supplier;
-
-public class TestKernel extends AcceleratedProducer<Ray, Ray> {
-	public TestKernel(Supplier<Evaluable<? extends Ray>> blank, Supplier<Evaluable<? extends Ray>>... inputArgs) {
-		super("testKernel", true, blank, inputArgs);
-	}
+public interface TemporalScalarProducer extends ProducerComputation<TemporalScalar>, TemporalFeatures {
+	@Override
+	default Evaluable<TemporalScalar> get() { return new AcceleratedComputationProducer<>(this); }
 }

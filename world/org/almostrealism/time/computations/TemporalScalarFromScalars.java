@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.algebra.computations;
+package org.almostrealism.time.computations;
 
 import io.almostrealism.code.expressions.Expression;
 import org.almostrealism.algebra.Pair;
@@ -22,15 +22,17 @@ import org.almostrealism.algebra.PairProducer;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.relation.Evaluable;
+import org.almostrealism.time.TemporalScalar;
+import org.almostrealism.time.TemporalScalarProducer;
 
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public class PairFromScalars extends DynamicAcceleratedProducerAdapter<Scalar, Pair> implements PairProducer {
+public class TemporalScalarFromScalars extends DynamicAcceleratedProducerAdapter<Scalar, TemporalScalar> implements TemporalScalarProducer {
 	private Expression<Double> value[];
 
-	public PairFromScalars(Supplier<Evaluable<? extends Scalar>> x, Supplier<Evaluable<? extends Scalar>> y) {
-		super(2, Pair.empty(), x, y);
+	public TemporalScalarFromScalars(Supplier<Evaluable<? extends Scalar>> time, Supplier<Evaluable<? extends Scalar>> value) {
+		super(2, TemporalScalar.blank(), time, value);
 	}
 
 	@Override
