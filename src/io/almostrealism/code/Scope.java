@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.Iterator;
 import java.util.List;
 
 /**
@@ -72,7 +73,27 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 				.map(Scope::getArguments)
 				.flatMap(List::stream)
 				.forEach(arg -> args.add((Argument<A>) arg));
-		sortArguments(args);
+		List<Argument<? extends A>> result = removeDuplicateArguments(args);
+		sortArguments(result);
+		return result;
+	}
+
+	public static <T> List<Argument<? extends T>> removeDuplicateArguments(List<Argument<? extends T>> arguments) {
+		List<Argument<? extends T>> args = new ArrayList<>();
+		args.addAll(arguments);
+
+		List<String> names = new ArrayList<>();
+		Iterator<Argument<? extends T>> itr = args.iterator();
+
+		while (itr.hasNext()) {
+			Argument arg = itr.next();
+			if (names.contains(arg.getName())) {
+				itr.remove();
+			} else {
+				names.add(arg.getName());
+			}
+		}
+
 		return args;
 	}
 

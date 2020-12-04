@@ -17,6 +17,7 @@
 package org.almostrealism.math.bool;
 
 import io.almostrealism.code.Argument;
+import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.AcceleratedProducer;
@@ -76,7 +77,7 @@ public class AcceleratedConjunctionAdapter<T extends MemWrapper> extends Acceler
 	protected void initArgumentNames() { initArgumentNames(getArguments(false)); }
 
 	@Override
-	protected void removeDuplicateArguments() { setArguments(removeDuplicateArguments(getArguments(false))); }
+	protected void removeDuplicateArguments() { setArguments(Scope.removeDuplicateArguments(getArguments(false))); }
 
 	@Override
 	public List<Argument<? extends MemWrapper>> getArguments() { return getArguments(true); }
@@ -97,7 +98,7 @@ public class AcceleratedConjunctionAdapter<T extends MemWrapper> extends Acceler
 					.forEach(all::add);
 		}
 
-		return removeDuplicateArguments(all);
+		return Scope.removeDuplicateArguments(all);
 	}
 
 	@Override

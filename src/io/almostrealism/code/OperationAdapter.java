@@ -181,26 +181,7 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 		return args;
 	}
 
-	protected void removeDuplicateArguments() { setArguments(removeDuplicateArguments(getArguments())); }
-
-	protected List<Argument<? extends T>> removeDuplicateArguments(List<Argument<? extends T>> arguments) {
-		List<Argument<? extends T>> args = new ArrayList<>();
-		args.addAll(arguments);
-
-		List<String> names = new ArrayList<>();
-		Iterator<Argument<? extends T>> itr = args.iterator();
-
-		while (itr.hasNext()) {
-			Argument arg = itr.next();
-			if (names.contains(arg.getName())) {
-				itr.remove();
-			} else {
-				names.add(arg.getName());
-			}
-		}
-
-		return args;
-	}
+	protected void removeDuplicateArguments() { setArguments(Scope.removeDuplicateArguments(getArguments())); }
 
 	@Override
 	public synchronized void compact() {

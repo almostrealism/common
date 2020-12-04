@@ -21,6 +21,7 @@ import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.relation.Computation;
 import org.almostrealism.relation.NameProvider;
 import org.almostrealism.relation.OperationComputation;
+import org.almostrealism.relation.ScopeInputManager;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -49,6 +50,12 @@ public class OperationList extends ArrayList<Supplier<Runnable>> implements Oper
 		}).sum();
 
 		return nonComputations == 0;
+	}
+
+	@Override
+	public void prepareScope(ScopeInputManager manager) {
+		stream().map(o -> o instanceof Computation ? (Computation) o : null)
+				.filter(Objects::nonNull).forEach(c -> c.prepareScope(manager));
 	}
 
 	@Override

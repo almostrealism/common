@@ -23,6 +23,7 @@ import org.almostrealism.hardware.DynamicAcceleratedOperationAdapter;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.relation.Evaluable;
 import org.almostrealism.relation.NameProvider;
+import org.almostrealism.relation.ScopeInputManager;
 
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
@@ -36,7 +37,9 @@ public class AcceleratedAssignment<T extends MemWrapper> extends DynamicAccelera
 	}
 
 	@Override
-	public Scope<Void> compile(NameProvider provider) {
+	public void prepareScope(ScopeInputManager manager) {
+		super.prepareScope(manager);
+
 		purgeVariables();
 
 		IntStream.range(0, memLength)
@@ -45,12 +48,5 @@ public class AcceleratedAssignment<T extends MemWrapper> extends DynamicAccelera
 							new Expression<>(Double.class,
 									getVariableValueName(getArgument(1), i), getArgument(1)), getArgument(0)))
 				.forEach(this::addVariable);
-
-		return super.getScope(provider);
-	}
-
-	@Override
-	public Scope<Void> getScope(NameProvider provider) {
-		return compile(provider);
 	}
 }

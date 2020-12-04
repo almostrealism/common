@@ -24,6 +24,7 @@ import org.almostrealism.graph.SummationCell;
 import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.DynamicAcceleratedOperationAdapter;
 import org.almostrealism.relation.Evaluable;
+import org.almostrealism.relation.ScopeInputManager;
 import org.almostrealism.time.CursorPair;
 
 import static org.almostrealism.util.Ops.*;
@@ -31,15 +32,20 @@ import static org.almostrealism.util.Ops.*;
 import java.util.function.Supplier;
 
 public class SummationCellOperation extends DynamicAcceleratedOperationAdapter<Scalar> {
+	private boolean prepared;
+
 	public SummationCellOperation(SummationCell cell, Supplier<Evaluable<? extends Scalar>> protein) {
 		super(ops().p(cell.getCachedValue()), protein);
 	}
 
 	@Override
-	public void init() {
-		super.init();
+	public void prepareScope(ScopeInputManager manager) {
+		super.prepareScope(manager);
+		if (prepared) return;
 		addVariable(new Variable(getArgumentValueName(0, 0), false,
 				new Sum(new InstanceReference<>(new Variable<>(getArgumentValueName(0, 0), false, getArgument(0))),
 						new InstanceReference(new Variable<>(getArgumentValueName(1, 0), false, getArgument(1))))));
+
+		prepared = true;
 	}
 }

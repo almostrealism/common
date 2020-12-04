@@ -22,24 +22,31 @@ import io.almostrealism.code.expressions.Sum;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.DynamicAcceleratedOperationAdapter;
 import org.almostrealism.relation.Evaluable;
+import org.almostrealism.relation.ScopeInputManager;
 import org.almostrealism.time.CursorPair;
 
 import java.util.function.Supplier;
 
 public class CursorPairIncrement extends DynamicAcceleratedOperationAdapter {
+	private boolean prepared = false;
+
 	public CursorPairIncrement(Supplier<Evaluable<? extends CursorPair>> cursors,
 							   Supplier<Evaluable<? extends Scalar>> increment) {
 		super(new Supplier[] { cursors, increment });
 	}
 
 	@Override
-	public void init() {
-		super.init();
+	public void prepareScope(ScopeInputManager manager) {
+		super.prepareScope(manager);
+		if (prepared) return;
+
 		addVariable(new Variable(getArgumentValueName(0, 0), false,
 				new Sum(new InstanceReference<>(new Variable<>(getArgumentValueName(0, 0), false, getArgument(0))),
 						new InstanceReference(new Variable<>(getArgumentValueName(1, 0), false, getArgument(1))))));
 		addVariable(new Variable(getArgumentValueName(0, 1), false,
 				new Sum(new InstanceReference(new Variable<>(getArgumentValueName(0, 1), false, getArgument(0))),
 						new InstanceReference(new Variable<>(getArgumentValueName(1, 0), false, getArgument(1))))));
+
+		prepared = true;
 	}
 }
