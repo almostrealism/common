@@ -29,6 +29,7 @@ import org.almostrealism.relation.Computation;
 import org.almostrealism.relation.NameProvider;
 import org.almostrealism.util.Compactable;
 import org.almostrealism.util.Named;
+import org.almostrealism.util.ProviderAwareArgumentMap;
 
 import java.util.List;
 
@@ -88,7 +89,7 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	protected void prepareScope() {
-		SupplierArgumentMap<?, ?> argumentMap = new SupplierArgumentMap<>();
+		SupplierArgumentMap<?, ?> argumentMap = new ProviderAwareArgumentMap<>();
 		getComputation().prepareScope(argumentMap.getScopeInputManager());
 	}
 
