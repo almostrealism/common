@@ -37,14 +37,15 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 
 	private String function;
 
+	private List<Supplier<Evaluable<? extends T>>> inputs;
 	private List<Argument<? extends T>> arguments;
 
 	private Map<Supplier<Evaluable>, List<Variable<?>>> variables;
 	private List<Supplier<Evaluable>> variableOrder;
 	private List<String> variableNames;
 
-	public OperationAdapter(Supplier<Evaluable<? extends T>>... args) {
-		setArguments(Arrays.asList(arguments(args)));
+	public OperationAdapter(Supplier<Evaluable<? extends T>>... input) {
+		setInputs(Arrays.asList(input));
 	}
 
 	public OperationAdapter(Argument<? extends T>... args) {
@@ -61,6 +62,10 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 
 	public int getArgsCount() { return getArguments().size(); }
 
+	protected void setInputs(List<Supplier<Evaluable<? extends T>>> inputs) { this.inputs = inputs; }
+
+	public List<Supplier<Evaluable<? extends T>>> getInputs() { return inputs; }
+
 	protected void setArguments(List<Argument<? extends T>> arguments) { this.arguments = arguments; }
 
 	public List<Argument<? extends T>> getArguments() {
@@ -68,24 +73,35 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 		return arguments;
 	}
 
-	public List<Supplier<? extends Evaluable<? extends T>>> getArgumentProducers() {
-		return getArguments().stream().map(arg -> arg == null ? null : arg.getProducer()).collect(Collectors.toList());
+	public Argument getArgumentForInput(Supplier<Evaluable<? extends T>> input) {
+		for (Argument arg : getArguments()) {
+			if (arg.getProducer() == input) {
+				return arg;
+			}
+		}
+
+		return null;
 	}
 
-	public Supplier<? extends Evaluable<? extends T>> getArgumentProducer(int argIndex) {
-		return getArguments().get(argIndex).getProducer();
-	}
 
 	public void init() {
 		if (function == null) setFunctionName(functionName(getClass()));
 		purgeVariables();
-		initArgumentNames();
+		// initArgumentNames();
 	}
 
+	/**
+	 * @deprecated  {@link org.almostrealism.relation.ScopeInputManager} should determine names.
+	 */
+	@Deprecated
 	protected void initArgumentNames() {
 		initArgumentNames(getArguments());
 	}
 
+	/**
+	 * @deprecated  {@link org.almostrealism.relation.ScopeInputManager} should determine names.
+	 */
+	@Deprecated
 	protected void initArgumentNames(List<Argument<? extends T>> args) {
 		int i = 0;
 		for (Argument arg : args) {
@@ -188,7 +204,7 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 
 	@Override
 	public synchronized void compact() {
-		getArgumentProducers().stream().filter(p -> p instanceof Compactable).forEach(p -> ((Compactable) p).compact());
+		getInputs().stream().filter(p -> p instanceof Compactable).forEach(p -> ((Compactable) p).compact());
 	}
 
 	protected static String functionName(Class c) {

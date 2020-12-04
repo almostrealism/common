@@ -17,6 +17,8 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.Argument;
+import io.almostrealism.code.ArgumentProvider;
+import io.almostrealism.code.DefaultScopeInputManager;
 import io.almostrealism.code.OperationAdapter;
 import org.almostrealism.relation.Computation;
 import org.almostrealism.util.Compactable;
@@ -31,6 +33,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter<T> implements Function<Object[], Object[]>, Runnable,
 														KernelizedOperation, Compactable, ComputerFeatures {
@@ -40,16 +43,37 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 
 	private Class cls;
 
-	public AcceleratedOperation(String function, boolean kernel, Supplier<Evaluable<? extends T>>... args) {
+	protected AcceleratedOperation(boolean kernel, Supplier<Evaluable<? extends T>>... args) {
 		super(args);
+		this.kernel = kernel;
+	}
+
+	public AcceleratedOperation(String function, boolean kernel, Supplier<Evaluable<? extends T>>... args) {
+		this(kernel, args);
 		setFunctionName(function);
+		initArguments(DefaultScopeInputManager.getInstance());
+	}
+
+	protected AcceleratedOperation(boolean kernel, Argument<T>... args) {
+		super(args);
 		this.kernel = kernel;
 	}
 
 	public AcceleratedOperation(String function, boolean kernel, Argument<T>... args) {
-		super(args);
+		this(kernel, args);
 		setFunctionName(function);
-		this.kernel = kernel;
+	}
+
+	public void init() {
+		super.init();
+		initArguments(DefaultScopeInputManager.getInstance());
+	}
+
+	protected void initArguments(ArgumentProvider provider) {
+		if (getArguments() != null) return;
+
+		setArguments(getInputs().stream()
+				.map(provider.argumentForInput(this)).collect(Collectors.toList()));
 	}
 
 	public void setSourceClass(Class cls) { this.cls = cls; }

@@ -17,8 +17,6 @@
 package org.almostrealism.time.computations;
 
 import io.almostrealism.code.expressions.Expression;
-import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.PairProducer;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.relation.Evaluable;
@@ -52,8 +50,8 @@ public class TemporalScalarFromScalars extends DynamicAcceleratedProducerAdapter
 
 		if (value == null && isCompletelyValueOnly()) {
 			value = new Expression[] {
-					getInputProducerValue(1, 0),
-					getInputProducerValue(2, 0)
+					getInputValue(1, 0),
+					getInputValue(2, 0)
 			};
 
 			for (int i = 1; i <= 2; i++) {

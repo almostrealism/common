@@ -79,15 +79,15 @@ public class Transform extends DynamicAcceleratedProducerAdapter<Vector, Vector>
 
 			for (int i = 0; i < value.length; i++) {
 				List<Product> sum = new ArrayList<>();
-				sum.add(new Product(new Number(getInputProducerValue(2, 4 * i), getInputProducer(2).isStatic()),
-									new Number(getInputProducerValue(1, 0), getInputProducer(1).isStatic())));
-				sum.add(new Product(new Number(getInputProducerValue(2, 4 * i + 1), getInputProducer(2).isStatic()),
-									new Number(getInputProducerValue(1, 1), getInputProducer(1).isStatic())));
-				sum.add(new Product(new Number(getInputProducerValue(2, 4 * i + 2), getInputProducer(2).isStatic()),
-									new Number(getInputProducerValue(1, 2), getInputProducer(1).isStatic())));
+				sum.add(new Product(new Number(getInputValue(2, 4 * i), getInputProducer(2).isStatic()),
+									new Number(getInputValue(1, 0), getInputProducer(1).isStatic())));
+				sum.add(new Product(new Number(getInputValue(2, 4 * i + 1), getInputProducer(2).isStatic()),
+									new Number(getInputValue(1, 1), getInputProducer(1).isStatic())));
+				sum.add(new Product(new Number(getInputValue(2, 4 * i + 2), getInputProducer(2).isStatic()),
+									new Number(getInputValue(1, 2), getInputProducer(1).isStatic())));
 
 				if (includeTranslation) {
-					sum.add(new Product(new Number(getInputProducerValue(2, 4 * i + 3),
+					sum.add(new Product(new Number(getInputValue(2, 4 * i + 3),
 													getInputProducer(2).isStatic()),
 										new Number(1.0)));
 				}

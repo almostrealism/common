@@ -14,20 +14,18 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.relation;
+package io.almostrealism.code;
 
-import io.almostrealism.code.Scope;
-import io.almostrealism.code.Variable;
+import org.almostrealism.relation.Evaluable;
+import org.almostrealism.relation.NameProvider;
 
-public interface Computation<T> {
-	default void prepareScope(ScopeInputManager manager) {
+import java.util.function.Function;
+import java.util.function.Supplier;
+
+public interface ArgumentProvider {
+	<T> Argument<T> getArgument(NameProvider p, Supplier<Evaluable<? extends T>> input);
+
+	default <T> Function<Supplier<Evaluable<? extends T>>, Argument<T>> argumentForInput(NameProvider p) {
+		return input -> input == null ? null : getArgument(p, input);
 	}
-
-	/**
-	 * Return a {@link Scope} containing the {@link Variable}s
-	 * and {@link io.almostrealism.code.Method}s necessary to compute the output of
-	 * this {@link Computation}. {@link Variable}s and {@link io.almostrealism.code.Method}s
-	 * introduced should be named using the specified {@link NameProvider}.
-	 */
-	Scope<T> getScope(NameProvider provider);
 }

@@ -50,8 +50,8 @@ public class PairFromScalars extends DynamicAcceleratedProducerAdapter<Scalar, P
 
 		if (value == null && isCompletelyValueOnly()) {
 			value = new Expression[] {
-					getInputProducerValue(1, 0),
-					getInputProducerValue(2, 0)
+					getInputValue(1, 0),
+					getInputValue(2, 0)
 			};
 
 			for (int i = 1; i <= 2; i++) {

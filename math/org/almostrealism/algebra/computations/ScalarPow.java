@@ -48,12 +48,12 @@ public class ScalarPow extends DynamicAcceleratedProducerAdapter<Scalar, Scalar>
 
 			// TODO  Certainty of exponent is ignored
 			value = new Expression[] {
-					new Expression<>(Double.class, "pow(" + getInputProducerValue(1, 0).getExpression() +
-							", " + getInputProducerValue(2, 0).getExpression() + ")",
-							getInputProducerValue(1, 0), getInputProducerValue(2, 0)),
-					new Expression<>(Double.class, "pow(" + getInputProducerValue(1, 1).getExpression() +
-							", " + getInputProducerValue(2, 0).getExpression() + ")",
-							getInputProducerValue(1, 1), getInputProducerValue(2, 0))
+					new Expression<>(Double.class, "pow(" + getInputValue(1, 0).getExpression() +
+							", " + getInputValue(2, 0).getExpression() + ")",
+							getInputValue(1, 0), getInputValue(2, 0)),
+					new Expression<>(Double.class, "pow(" + getInputValue(1, 1).getExpression() +
+							", " + getInputValue(2, 0).getExpression() + ")",
+							getInputValue(1, 1), getInputValue(2, 0))
 			};
 
 			for (int i = 0; i < value.length; i++) {

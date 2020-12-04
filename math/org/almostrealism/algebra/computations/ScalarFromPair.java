@@ -63,7 +63,7 @@ public class ScalarFromPair extends DynamicAcceleratedProducerAdapter<Pair, Scal
 		super.compact();
 
 		if (value == null && isCompletelyValueOnly()) {
-			value = getInputProducerValue(1, coordinate);
+			value = getInputValue(1, coordinate);
 			if (value.getExpression().contains("Infinity")) {
 				throw new IllegalArgumentException("Infinity is not supported");
 			}

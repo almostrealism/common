@@ -16,18 +16,7 @@
 
 package org.almostrealism.relation;
 
-import io.almostrealism.code.Scope;
-import io.almostrealism.code.Variable;
+import io.almostrealism.code.ArgumentProvider;
 
-public interface Computation<T> {
-	default void prepareScope(ScopeInputManager manager) {
-	}
-
-	/**
-	 * Return a {@link Scope} containing the {@link Variable}s
-	 * and {@link io.almostrealism.code.Method}s necessary to compute the output of
-	 * this {@link Computation}. {@link Variable}s and {@link io.almostrealism.code.Method}s
-	 * introduced should be named using the specified {@link NameProvider}.
-	 */
-	Scope<T> getScope(NameProvider provider);
+public interface ScopeInputManager extends ArgumentProvider {
 }

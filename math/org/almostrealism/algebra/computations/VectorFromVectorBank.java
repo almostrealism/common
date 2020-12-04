@@ -59,7 +59,7 @@ public class VectorFromVectorBank<T extends VectorBank> extends DynamicAccelerat
 			value = new Expression[3];
 
 			for (int i = 0; i < value.length; i++) {
-				value[i] = getInputProducerValue(1, position + i);
+				value[i] = getInputValue(1, position + i);
 				if (value[i].getExpression().contains("Infinity")) {
 					throw new IllegalArgumentException("Infinity is not supported");
 				}

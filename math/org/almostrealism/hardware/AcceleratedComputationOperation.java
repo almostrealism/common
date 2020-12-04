@@ -18,9 +18,11 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.c.OpenCLPrintWriter;
 import io.almostrealism.code.Argument;
+import io.almostrealism.code.DefaultScopeInputManager;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.ScopeEncoder;
+import io.almostrealism.code.SupplierArgumentMap;
 import io.almostrealism.code.Variable;
 import org.almostrealism.io.PrintWriter;
 import org.almostrealism.relation.Computation;
@@ -85,8 +87,15 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 		return getValueName(v, pos, assignment, (enableKernel && isKernel()) ? kernelIndex : -1);
 	}
 
+	protected void prepareScope() {
+		SupplierArgumentMap<?, ?> argumentMap = new SupplierArgumentMap<>();
+		getComputation().prepareScope(argumentMap.getScopeInputManager());
+	}
+
 	@Override
 	public Scope<T> compile(NameProvider p) {
+		prepareScope();
+
 		if (getComputation() instanceof OperationAdapter) {
 			return compile(p, ((OperationAdapter) getComputation()).getArgument(0));
 		} else {
@@ -95,11 +104,13 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	public Scope<T> compile(Variable<T> outputVariable) {
+		prepareScope();
 		return compile(this, outputVariable);
 	}
 
 	public Scope<T> compile(NameProvider p, Variable<T> outputVariable) {
-		Scope<T> scope = outputVariable == null ? getComputation().getScope(p) : getComputation().getScope(p.withOutputVariable(outputVariable));
+		Computation<T> c = getComputation();
+		Scope<T> scope = outputVariable == null ? c.getScope(p) : c.getScope(p.withOutputVariable(outputVariable));
 		setArguments(scope.getArguments());
 		return scope;
 	}

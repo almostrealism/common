@@ -50,9 +50,9 @@ public class VectorFromScalars extends DynamicAcceleratedProducerAdapter<Scalar,
 
 		if (value == null && isCompletelyValueOnly()) {
 			value = new Expression[] {
-					getInputProducerValue(1, 0),
-					getInputProducerValue(2, 0),
-					getInputProducerValue(3, 0)
+					getInputValue(1, 0),
+					getInputValue(2, 0),
+					getInputValue(3, 0)
 			};
 
 			for (int i = 0; i < value.length; i++) {

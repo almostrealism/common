@@ -19,9 +19,12 @@ package io.almostrealism.code;
 import io.almostrealism.code.expressions.Expression;
 import org.almostrealism.relation.Computation;
 import org.almostrealism.relation.NameProvider;
+import org.almostrealism.relation.ScopeInputManager;
 import org.almostrealism.util.Compactable;
 
+import java.util.Objects;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 public abstract class ComputationOperationAdapter<I, O> extends OperationAdapter<I> implements Computation<O>, Compactable {
 
@@ -29,15 +32,23 @@ public abstract class ComputationOperationAdapter<I, O> extends OperationAdapter
 		super(new Supplier[0]);
 	}
 
+	public void prepareScope(ScopeInputManager manager) {
+		if (getArguments() != null) return;
+
+		setArguments(getInputs().stream()
+				.map(manager.argumentForInput(this)).collect(Collectors.toList()));
+
+		getInputs().stream()
+				.map(in -> in instanceof Computation ? (Computation) in : null)
+				.filter(Objects::nonNull)
+				.forEach(c -> c.prepareScope(manager));
+	}
+
 	@Override
 	public Argument getArgument(int index) { return getArguments().get(index); }
 
-	public Expression<Double> getInputProducerValue(int index, int pos) {
-		return getInputProducerValue(getArguments().get(index), pos);
-	}
-
-	public static Expression<Double> getInputProducerValue(Argument arg, int pos) {
-		return ((MultiExpression) arg.getProducer()).getValue(pos);
+	public Expression<Double> getInputValue(int index, int pos) {
+		return getExpression(getArguments().get(index), pos);
 	}
 
 	@Override
@@ -50,7 +61,8 @@ public abstract class ComputationOperationAdapter<I, O> extends OperationAdapter
 	@Override
 	public void compact() {
 		super.compact();
-		compileArguments();
+		prepareScope(DefaultScopeInputManager.getInstance());
+//		compileArguments();
 	}
 
 	/**
@@ -62,6 +74,8 @@ public abstract class ComputationOperationAdapter<I, O> extends OperationAdapter
 	 * Part of why it is not ideal is that if it is executed before
 	 * {@link #compact()} is executed on the {@link OperationAdapter}s,
 	 * their arguments may not be valid after executing {@link #compact()}.
+	 *
+	 * TODO  Now that prepareScope is available, perhaps this can be included.
 	 */
 	public void compileArguments() {
 		for (Argument arg : getArguments()) {
@@ -69,5 +83,9 @@ public abstract class ComputationOperationAdapter<I, O> extends OperationAdapter
 				((OperationAdapter) arg.getProducer()).compile();
 			}
 		}
+	}
+
+	public static Expression<Double> getExpression(Argument arg, int pos) {
+		return ((MultiExpression) arg.getProducer()).getValue(pos);
 	}
 }

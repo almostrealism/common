@@ -26,6 +26,7 @@ import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;
 import org.almostrealism.relation.NameProvider;
 import org.almostrealism.relation.Evaluable;
+import org.almostrealism.relation.ScopeInputManager;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -44,16 +45,22 @@ public abstract class DynamicAcceleratedProducerAdapter<I extends MemWrapper, O 
 
 	public DynamicAcceleratedProducerAdapter(int memLength, Supplier<Evaluable<? extends O>> result, Supplier<Evaluable<? extends I>>[] inputArgs, Object[] additionalArguments) {
 		this.memLength = memLength;
-		this.setArguments(Arrays.asList(arguments(
+		this.setInputs(Arrays.asList(
 				AcceleratedProducer.includeResult(result,
-						AcceleratedProducer.producers(inputArgs, additionalArguments)))));
+						AcceleratedProducer.producers(inputArgs, additionalArguments))));
 		init();
-
-		// Result should always be first
-		if (getArgument(0) != null) getArgument(0).setSortHint(-1);
 	}
 
 	public int getMemLength() { return memLength; }
+
+	@Override
+	public void prepareScope(ScopeInputManager manager) {
+		super.prepareScope(manager);
+
+		// Result should always be first
+		Argument arg = getArgumentForInput(getInputs().get(0));
+		if (arg != null) arg.setSortHint(-1);
+	}
 
 	@Override
 	public Scope<O> getScope(NameProvider provider) {
@@ -98,9 +105,9 @@ public abstract class DynamicAcceleratedProducerAdapter<I extends MemWrapper, O 
 			if (getArguments().get(i) == null)
 				throw new IllegalArgumentException("Null input producer");
 
-			if (getArgumentProducer(i) instanceof DynamicAcceleratedProducerAdapter == false)
+			if (getInputs().get(i) instanceof DynamicAcceleratedProducerAdapter == false)
 				return false;
-			if (!((DynamicAcceleratedProducerAdapter) getArgumentProducer(i)).isValueOnly())
+			if (!((DynamicAcceleratedProducerAdapter) getInputs().get(i)).isValueOnly())
 				return false;
 		}
 

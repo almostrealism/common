@@ -84,7 +84,7 @@ public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> exten
 
 					for (int i = 0; i < staticProducers.size(); i++) {
 						staticProduct = combine(staticProduct,
-								doubleForString(getInputProducerValue(staticProducers.get(i), pos).getExpression()));
+								doubleForString(getExpression(staticProducers.get(i), pos).getExpression()));
 					}
 
 					Double replace = isReplaceAll(staticProduct);
@@ -105,7 +105,7 @@ public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> exten
 				List<Variable<?>> deps = new ArrayList<>();
 
 				for (int i = 0; i < dynamicProducers.size(); i++) {
-					Expression e = getInputProducerValue(dynamicProducers.get(i), pos);
+					Expression e = getExpression(dynamicProducers.get(i), pos);
 					deps.addAll(e.getDependencies());
 
 					absorbVariables(dynamicProducers.get(i).getProducer());

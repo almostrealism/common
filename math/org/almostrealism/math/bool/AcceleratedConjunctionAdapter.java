@@ -82,6 +82,8 @@ public class AcceleratedConjunctionAdapter<T extends MemWrapper> extends Acceler
 	public List<Argument<? extends MemWrapper>> getArguments() { return getArguments(true); }
 
 	protected List<Argument<? extends MemWrapper>> getArguments(boolean includeConjuncts) {
+		if (super.getArguments() == null) return null;
+
 		List<Argument<? extends MemWrapper>> all = new ArrayList<>();
 		all.addAll(super.getArguments());
 

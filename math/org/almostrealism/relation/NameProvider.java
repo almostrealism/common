@@ -21,6 +21,7 @@ public interface NameProvider {
 	Variable getOutputVariable();
 
 	default String getArgumentName(int index) {
+		if (getFunctionName() == null) throw new UnsupportedOperationException();
 		return getFunctionName() + "_v" + index;
 	}
 

@@ -52,7 +52,7 @@ public class RayDirection extends DynamicAcceleratedProducerAdapter<Ray, Vector>
 			value = new Expression[3];
 
 			for (int i = 0; i < value.length; i++) {
-				value[i] = getInputProducerValue(1, i + 3);
+				value[i] = getInputValue(1, i + 3);
 				if (value[i].getExpression().contains("Infinity")) {
 					throw new IllegalArgumentException("Infinity is not supported");
 				}

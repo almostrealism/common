@@ -28,11 +28,11 @@ public abstract class DynamicAcceleratedOperation<T extends MemWrapper> extends 
 	private HardwareOperatorMap operators;
 
 	public DynamicAcceleratedOperation(boolean kernel, Supplier<Evaluable<? extends T>>... args) {
-		super(null, kernel, args);
+		super(kernel, args);
 	}
 
 	public DynamicAcceleratedOperation(boolean kernel, Argument<T>... args) {
-		super(null, kernel, args);
+		super(kernel, args);
 	}
 
 	@Override
@@ -115,6 +115,9 @@ public abstract class DynamicAcceleratedOperation<T extends MemWrapper> extends 
 
 		return buf.toString();
 	}
+
+	@Override
+	public Argument getArgument(int index) { return getArguments().get(index); }
 
 	public abstract String getBody(Variable<T> outputVariable, List<Variable<?>> existingVariables);
 }

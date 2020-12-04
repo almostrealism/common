@@ -60,11 +60,11 @@ public class DotProduct extends DynamicAcceleratedProducerAdapter<Vector, Scalar
 
 		if (value == null && isCompletelyValueOnly()) {
 			value = new Expression[2];
-			value[0] = new Expression<>(Double.class, "(" + getInputProducerValue(1, 0).getExpression() + ") * (" + getInputProducerValue(2, 0).getExpression() + ") + " +
-					"(" + getInputProducerValue(1, 1).getExpression() + ") * (" + getInputProducerValue(2, 1).getExpression() + ") + " +
-					"(" + getInputProducerValue(1, 2).getExpression() + ") * (" + getInputProducerValue(2, 2).getExpression() + ")",
-					getInputProducerValue(1, 0), getInputProducerValue(1, 1), getInputProducerValue(1, 2),
-					getInputProducerValue(2, 0), getInputProducerValue(2, 1), getInputProducerValue(2, 2));
+			value[0] = new Expression<>(Double.class, "(" + getInputValue(1, 0).getExpression() + ") * (" + getInputValue(2, 0).getExpression() + ") + " +
+					"(" + getInputValue(1, 1).getExpression() + ") * (" + getInputValue(2, 1).getExpression() + ") + " +
+					"(" + getInputValue(1, 2).getExpression() + ") * (" + getInputValue(2, 2).getExpression() + ")",
+					getInputValue(1, 0), getInputValue(1, 1), getInputValue(1, 2),
+					getInputValue(2, 0), getInputValue(2, 1), getInputValue(2, 2));
 			value[1] = new Expression<>(Double.class, stringForDouble(1.0));
 
 			if (value[0].getExpression().contains("Infinity")) {

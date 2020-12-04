@@ -68,12 +68,12 @@ public class RayFromVectors extends DynamicAcceleratedProducerAdapter<Vector, Ra
 
 			value = new Expression[6];
 
-			value[0] = getInputProducerValue(1, 0);
-			value[1] = getInputProducerValue(1, 1);
-			value[2] = getInputProducerValue(1, 2);
-			value[3] = getInputProducerValue(2, 0);
-			value[4] = getInputProducerValue(2, 1);
-			value[5] = getInputProducerValue(2, 2);
+			value[0] = getInputValue(1, 0);
+			value[1] = getInputValue(1, 1);
+			value[2] = getInputValue(1, 2);
+			value[3] = getInputValue(2, 0);
+			value[4] = getInputValue(2, 1);
+			value[5] = getInputValue(2, 2);
 
 			for (int i = 0; i < value.length; i++) {
 				if (value[i].getExpression().trim().length() <= 0) {
