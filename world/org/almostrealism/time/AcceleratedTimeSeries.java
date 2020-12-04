@@ -22,6 +22,7 @@ import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.relation.Producer;
+import org.almostrealism.time.computations.AcceleratedTimeSeriesAdd;
 import org.almostrealism.time.computations.AcceleratedTimeSeriesPurge;
 import org.almostrealism.util.AcceleratedAssignment;
 import org.almostrealism.util.CodeFeatures;
@@ -66,14 +67,7 @@ public class AcceleratedTimeSeries extends TemporalScalarBank implements CodeFea
 	}
 
 	public Supplier<Runnable> add(Producer<TemporalScalar> value) {
-		return new AcceleratedAssignment<>(2, head(), value);
-	}
-
-	protected Producer<TemporalScalar> head() {
-		return new DynamicProducer<>(args -> {
-			setEndCursorIndex(getEndCursorIndex() + 1);
-			return get(getEndCursorIndex());
-		});
+		return new AcceleratedTimeSeriesAdd(p(this), value);
 	}
 
 	public Supplier<Runnable> purge(Producer<CursorPair> time) {
