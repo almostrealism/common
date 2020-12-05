@@ -1,15 +1,18 @@
 package org.almostrealism.time.computations.test;
 
+import org.almostrealism.algebra.Scalar;
+import org.almostrealism.hardware.AcceleratedComputationProducer;
 import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.time.CursorPair;
 import org.almostrealism.time.TemporalScalar;
+import org.almostrealism.time.computations.AcceleratedTimeSeriesValueAt;
 import org.almostrealism.util.CodeFeatures;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.function.Supplier;
 
-public class AcceleratedTimeSeriesPurgeTest implements CodeFeatures {
+public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures {
 	protected AcceleratedTimeSeries series() {
 		AcceleratedTimeSeries series = new AcceleratedTimeSeries(100);
 		series.add(new TemporalScalar(1.0, 10));
@@ -37,6 +40,20 @@ public class AcceleratedTimeSeriesPurgeTest implements CodeFeatures {
 		r.get().run();
 
 		Assert.assertEquals(3, series.getLength());
+		valueAtAssertions(series);
+	}
+
+	@Test
+	public void valueAt() {
+		AcceleratedTimeSeries series = series();
+		AcceleratedTimeSeriesValueAt valueAt = new AcceleratedTimeSeriesValueAt(p(series), p(cursors(3.25)));
+		AcceleratedComputationProducer<Scalar> compiled = (AcceleratedComputationProducer) valueAt.get();
+		System.out.println(compiled.getFunctionDefinition());
+
+		Assert.assertEquals(series.valueAt(3.25).getValue(), compiled.evaluate().getValue(), Math.pow(10, -10));
+	}
+
+	protected void valueAtAssertions(AcceleratedTimeSeries series) {
 		Assert.assertEquals(15.0, series.valueAt(3.0).getValue(), Math.pow(10, -10));
 		Assert.assertEquals(15.5, series.valueAt(3.25).getValue(), Math.pow(10, -10));
 		Assert.assertEquals(24.0, series.valueAt(4.999999).getValue(), Math.pow(10, -5));

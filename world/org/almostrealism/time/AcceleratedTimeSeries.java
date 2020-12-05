@@ -24,6 +24,7 @@ import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.relation.Producer;
 import org.almostrealism.time.computations.AcceleratedTimeSeriesAdd;
 import org.almostrealism.time.computations.AcceleratedTimeSeriesPurge;
+import org.almostrealism.time.computations.AcceleratedTimeSeriesValueAt;
 import org.almostrealism.util.AcceleratedAssignment;
 import org.almostrealism.util.CodeFeatures;
 import org.almostrealism.util.DynamicProducer;
@@ -74,10 +75,8 @@ public class AcceleratedTimeSeries extends TemporalScalarBank implements CodeFea
 		return new AcceleratedTimeSeriesPurge(p(this), time);
 	}
 
-	public Evaluable<Scalar> valueAt(Evaluable<CursorPair> cursor) {
-		AcceleratedProducer op = new AcceleratedProducer<MemWrapper, TemporalScalar>("vat", TemporalScalar.blank(), p(this), () -> cursor);
-		op.setSourceClass(AcceleratedTimeSeries.class);
-		return op;
+	public Producer<Scalar> valueAt(Producer<CursorPair> cursor) {
+		return new AcceleratedTimeSeriesValueAt(p(this), cursor);
 	}
 
 	public TemporalScalar valueAt(double time) {
