@@ -45,7 +45,7 @@ public abstract class ComputationOperationAdapter<I, O> extends OperationAdapter
 	}
 
 	@Override
-	public Argument getArgument(int index) { return getArguments().get(index); }
+	public ArrayVariable getArgument(int index) { return getArguments().get(index); }
 
 	public Expression<Double> getInputValue(int index, int pos) {
 		return getExpression(getArguments().get(index), pos);
@@ -62,30 +62,9 @@ public abstract class ComputationOperationAdapter<I, O> extends OperationAdapter
 	public void compact() {
 		super.compact();
 		prepareScope(DefaultScopeInputManager.getInstance());
-//		compileArguments();
 	}
 
-	/**
-	 * This is not ideal, but for now it is used to make sure that
-	 * {@link Scope} generation has occurred for all {@link Argument}s
-	 * to this operation. It is required because that process is
-	 * what properly sets up the {@link Argument}s of those
-	 * {@link OperationAdapter}s that this operation depends on.
-	 * Part of why it is not ideal is that if it is executed before
-	 * {@link #compact()} is executed on the {@link OperationAdapter}s,
-	 * their arguments may not be valid after executing {@link #compact()}.
-	 *
-	 * TODO  Now that prepareScope is available, perhaps this can be included.
-	 */
-	public void compileArguments() {
-		for (Argument arg : getArguments()) {
-			if (arg.getProducer() instanceof OperationAdapter) {
-				((OperationAdapter) arg.getProducer()).compile();
-			}
-		}
-	}
-
-	public static Expression<Double> getExpression(Argument arg, int pos) {
+	public static Expression<Double> getExpression(ArrayVariable arg, int pos) {
 		return ((MultiExpression) arg.getProducer()).getValue(pos);
 	}
 }

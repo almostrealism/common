@@ -16,7 +16,7 @@
 
 package org.almostrealism.geometry;
 
-import io.almostrealism.code.Argument;
+import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.expressions.Expression;
 import org.almostrealism.algebra.TransformMatrix;
 import org.almostrealism.algebra.Vector;
@@ -138,12 +138,12 @@ public class Transform extends DynamicAcceleratedProducerAdapter<Vector, Vector>
 
 			// TODO  If both are static, this should be marked as static
 			if (!getInputProducer(1).isStatic()) {
-				List<Argument<? extends Vector>> args = AcceleratedProducer.excludeResult(getInputProducer(1).getArguments());
+				List<ArrayVariable<? extends Vector>> args = AcceleratedProducer.excludeResult(getInputProducer(1).getArguments());
 				for (Expression e : value) e.getDependencies().addAll(args);
 			}
 
 			if (!getInputProducer(2).isStatic()) {
-				List<Argument<? extends Vector>> args = AcceleratedProducer.excludeResult(getInputProducer(2).getArguments());
+				List<ArrayVariable<? extends Vector>> args = AcceleratedProducer.excludeResult(getInputProducer(2).getArguments());
 				for (Expression e : value) e.getDependencies().addAll(args);
 			}
 

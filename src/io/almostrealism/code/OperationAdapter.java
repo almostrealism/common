@@ -38,7 +38,7 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 	private String function;
 
 	private List<Supplier<Evaluable<? extends T>>> inputs;
-	private List<Argument<? extends T>> arguments;
+	private List<ArrayVariable<? extends T>> arguments;
 
 	private Map<Supplier<Evaluable>, List<Variable<?>>> variables;
 	private List<Supplier<Evaluable>> variableOrder;
@@ -48,7 +48,7 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 		setInputs(Arrays.asList(input));
 	}
 
-	public OperationAdapter(Argument<? extends T>... args) {
+	public OperationAdapter(ArrayVariable<? extends T>... args) {
 		if (args.length > 0) setArguments(Arrays.asList(args));
 	}
 
@@ -66,15 +66,15 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 
 	public List<Supplier<Evaluable<? extends T>>> getInputs() { return inputs; }
 
-	protected void setArguments(List<Argument<? extends T>> arguments) { this.arguments = arguments; }
+	protected void setArguments(List<ArrayVariable<? extends T>> arguments) { this.arguments = arguments; }
 
-	public List<Argument<? extends T>> getArguments() {
+	public List<ArrayVariable<? extends T>> getArguments() {
 		Scope.sortArguments(arguments);
 		return arguments;
 	}
 
-	public Argument getArgumentForInput(Supplier<Evaluable<? extends T>> input) {
-		for (Argument arg : getArguments()) {
+	public ArrayVariable getArgumentForInput(Supplier<Evaluable<? extends T>> input) {
+		for (ArrayVariable arg : getArguments()) {
 			if (arg.getProducer() == input) {
 				return arg;
 			}
@@ -102,9 +102,9 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 	 * @deprecated  {@link org.almostrealism.relation.ScopeInputManager} should determine names.
 	 */
 	@Deprecated
-	protected void initArgumentNames(List<Argument<? extends T>> args) {
+	protected void initArgumentNames(List<ArrayVariable<? extends T>> args) {
 		int i = 0;
-		for (Argument arg : args) {
+		for (ArrayVariable arg : args) {
 			if (arg != null) {
 				arg.setName(getArgumentName(i));
 				arg.setAnnotation(getDefaultAnnotation());
@@ -168,14 +168,14 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 		this.variableNames = new ArrayList<>();
 	}
 
-	protected static <T> Argument<T>[] arguments(Supplier<Evaluable<? extends T>>... producers) {
-		Argument args[] = new Argument[producers.length];
+	protected <T> ArrayVariable<T>[] arguments(Supplier<Evaluable<? extends T>>... producers) {
+		ArrayVariable args[] = new ArrayVariable[producers.length];
 		for (int i = 0; i < args.length; i++) {
 			if (!enableNullInputs && producers[i] == null) {
 				throw new IllegalArgumentException("Null argument at index " + i);
 			}
 
-			args[i] = producers[i] == null ? null : new Argument(producers[i]);
+			args[i] = producers[i] == null ? null : new ArrayVariable(this, null, null, null, producers[i]);
 		}
 
 		return args;

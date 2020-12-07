@@ -27,21 +27,21 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 public class SupplierArgumentMap<S, A> {
-	private Map<Supplier<S>, Argument<A>> arguments;
+	private Map<Supplier<S>, ArrayVariable<A>> arguments;
 
 	public SupplierArgumentMap() {
 		this.arguments = new HashMap<>();
 	}
 	
-	public void put(Supplier<S> key, Argument<A> value) {
+	public void put(Supplier<S> key, ArrayVariable<A> value) {
 		arguments.put(key, value);
 	}
 
-	public Argument<A> get(Supplier key) {
+	public ArrayVariable<A> get(Supplier key) {
 		return arguments.get(key);
 	}
 
-	protected Optional<Argument<A>> get(Predicate<Supplier> filter) {
+	protected Optional<ArrayVariable<A>> get(Predicate<Supplier> filter) {
 		Optional<Supplier<S>> existing = arguments.keySet().stream().filter(filter).findAny();
 		if (existing.isEmpty()) return Optional.empty();
 		return Optional.of(get(existing.get()));
@@ -50,12 +50,12 @@ public class SupplierArgumentMap<S, A> {
 	public ScopeInputManager getScopeInputManager() {
 		return new ScopeInputManager() {
 			@Override
-			public <T> Argument<T> getArgument(NameProvider p, Supplier<Evaluable<? extends T>> input) {
-				Argument arg = get(input);
+			public <T> ArrayVariable<T> getArgument(NameProvider p, Supplier<Evaluable<? extends T>> input) {
+				ArrayVariable arg = get(input);
 				if (arg != null) return arg;
 
-				arguments.put((Supplier) input, (Argument) DefaultScopeInputManager.getInstance().getArgument(p, input));
-				return (Argument) get(input);
+				arguments.put((Supplier) input, (ArrayVariable) DefaultScopeInputManager.getInstance().getArgument(p, input));
+				return (ArrayVariable) get(input);
 			}
 		};
 	}

@@ -58,7 +58,7 @@ public class JavaScriptPrintWriter extends CodePrintWriterAdapter {
 	}
 
 	@Override
-	public void beginScope(String name, List<Argument<?>> arguments) {
+	public void beginScope(String name, List<ArrayVariable<?>> arguments) {
 		if (name == null) {
 			p.println("{");
 		} else {
@@ -152,7 +152,7 @@ public class JavaScriptPrintWriter extends CodePrintWriterAdapter {
 		for (int i = 0; i < arguments.size(); i++) {
 			Variable<?> v = arguments.get(i);
 
-			if (v instanceof ResourceArgument) {
+			if (v instanceof ResourceVariable) {
 				buf.append(toJson(v));
 			} else if (v.getGenerator() != null) {
 				buf.append(toString(v));

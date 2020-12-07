@@ -16,7 +16,7 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.code.Argument;
+import io.almostrealism.code.ArrayVariable;
 import org.almostrealism.util.CollectionUtils;
 import org.almostrealism.relation.Evaluable;
 
@@ -95,14 +95,14 @@ public class AcceleratedProducer<I extends MemWrapper, O extends MemWrapper> ext
 		return CollectionUtils.include(new MemoryBank[0], res, p);
 	}
 
-	public static <T> List<Argument<? extends T>> excludeResult(List<Argument<? extends T>> p) {
-		List<Argument<? extends T>> r = new ArrayList<>();
+	public static <T> List<ArrayVariable<? extends T>> excludeResult(List<ArrayVariable<? extends T>> p) {
+		List<ArrayVariable<? extends T>> r = new ArrayList<>();
 		for (int i = 1; i < p.size(); i++) r.add(p.get(i));
 		return r;
 	}
 
-	public static Argument[] excludeResult(Argument... p) {
-		Argument q[] = new Argument[p.length - 1];
+	public static ArrayVariable[] excludeResult(ArrayVariable... p) {
+		ArrayVariable q[] = new ArrayVariable[p.length - 1];
 		for (int i = 1; i < p.length; i++) q[i - 1] = p[i];
 		return q;
 	}

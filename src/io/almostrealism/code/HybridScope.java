@@ -41,8 +41,8 @@ public class HybridScope<T> extends Scope<T> {
 	public Consumer<String> code() { return explicit.code(); }
 
 	@Override
-	public List<Argument<?>> getArguments() {
-		List<Argument<?>> args = new ArrayList<>();
+	public List<ArrayVariable<?>> getArguments() {
+		List<ArrayVariable<?>> args = new ArrayList<>();
 		args.addAll(super.getArguments());
 		args.addAll(explicit.getArguments());
 		return removeDuplicateArguments(args);

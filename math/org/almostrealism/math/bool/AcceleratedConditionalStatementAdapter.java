@@ -16,7 +16,7 @@
 
 package org.almostrealism.math.bool;
 
-import io.almostrealism.code.Argument;
+import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.MultiExpression;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.Variable;
@@ -128,18 +128,18 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrappe
 			return buf.toString();
 		};
 
-		List<Argument<? extends MemWrapper>> newArgs = new ArrayList<>();
+		List<ArrayVariable<? extends MemWrapper>> newArgs = new ArrayList<>();
 		if (getArguments().get(0) != null) newArgs.add(getArguments().get(0));
-		getOperands().stream().map(Argument::getProducer).map(Supplier::get)
+		getOperands().stream().map(ArrayVariable::getProducer).map(Supplier::get)
 				.filter(p -> p instanceof OperationAdapter)
 				.map(p -> {
 					((OperationAdapter) p).compile();
 					return AcceleratedProducer.excludeResult(((OperationAdapter) p).getArguments());
 				})
 				.flatMap(List::stream)
-				.forEach(arg -> newArgs.add((Argument) arg));
+				.forEach(arg -> newArgs.add((ArrayVariable) arg));
 		getOperands().stream()
-				.map(Argument::getProducer)
+				.map(ArrayVariable::getProducer)
 				.forEach(this::absorbVariables);
 
 		if (trueOperation != null) {
@@ -163,7 +163,7 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrappe
 			return false;
 		if (getFalseValue() != null && getFalseValue().getProducer().get() instanceof DynamicAcceleratedOperation == false)
 			return false;
-		for (Argument a : getOperands()) {
+		for (ArrayVariable a : getOperands()) {
 			if (a.getProducer() instanceof MultiExpression == false)
 				return false;
 		}

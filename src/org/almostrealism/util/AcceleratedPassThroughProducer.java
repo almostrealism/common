@@ -16,7 +16,7 @@
 
 package org.almostrealism.util;
 
-import io.almostrealism.code.Argument;
+import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.expressions.Expression;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.hardware.MemWrapper;
@@ -41,10 +41,10 @@ public class AcceleratedPassThroughProducer<T extends MemWrapper>
 		this.argIndex = argIndex;
 		this.kernelIndex = kernelIndex;
 
-		Argument result = new Argument("");
+		ArrayVariable result = new ArrayVariable(this, "", null);
 		result.setSortHint(-1);
 
-		List<Argument<? extends T>> args = new ArrayList<>();
+		List<ArrayVariable<? extends T>> args = new ArrayList<>();
 		args.add(result);
 		args.addAll(Arrays.asList(arguments(this)));
 		setArguments(args);

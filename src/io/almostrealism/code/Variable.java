@@ -17,8 +17,10 @@
 package io.almostrealism.code;
 
 import io.almostrealism.code.expressions.Expression;
+import org.almostrealism.color.computations.GeneratedColorProducer;
 import org.almostrealism.util.Nameable;
 import org.almostrealism.relation.Evaluable;
+import org.almostrealism.util.ProducerWithRank;
 import org.almostrealism.util.Provider;
 
 import java.util.ArrayList;
@@ -36,6 +38,7 @@ import static org.almostrealism.util.Ops.*;
 public class Variable<T> implements Nameable {
 	private String name, annotation;
 	private boolean declaration;
+	private int sortHint;
 
 	private Expression<T> expression;
 
@@ -133,9 +136,26 @@ public class Variable<T> implements Nameable {
 	public void setExpression(Expression<T> value) { this.expression = value; }
 	public Expression<T> getExpression() { return expression; }
 
+	public void setSortHint(int hint) { this.sortHint = hint; }
+	public int getSortHint() { return sortHint; }
+
 	public void setProducer(Supplier<Evaluable<? extends T>> producer) {
+		w: while (producer instanceof ProducerWithRank || producer instanceof GeneratedColorProducer) {
+			if (producer instanceof ProducerWithRank) {
+				if (((ProducerWithRank<T>) producer).getProducer() == producer) {
+					break w;
+				}
+
+				producer = ((ProducerWithRank)  producer).getProducer();
+			}
+
+			if (producer instanceof GeneratedColorProducer) {
+				producer = ((GeneratedColorProducer) producer).getProducer();
+			}
+		}
+
 		if (producer instanceof Provider) {
-			throw new IllegalArgumentException("Provider does not supply a Producer");
+			throw new IllegalArgumentException("Provider is Evaluable, it does not supply an Evaluable");
 		}
 
 		this.producer = producer;

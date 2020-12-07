@@ -16,7 +16,7 @@
 
 package org.almostrealism.algebra.computations;
 
-import io.almostrealism.code.Argument;
+import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.expressions.Expression;
 import io.almostrealism.code.Variable;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
@@ -45,7 +45,7 @@ public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> exten
 			if (value == null || value[pos] == null) {
 				StringBuffer buf = new StringBuffer();
 
-				List<Argument> deps = new ArrayList<>();
+				List<ArrayVariable> deps = new ArrayList<>();
 				for (int i = 1; i < getArgsCount(); i++) {
 					buf.append(getArgumentValueName(i, pos));
 					if (i < (getArgsCount() - 1)) buf.append(" " + operator + " ");
@@ -67,10 +67,10 @@ public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> exten
 		if (value == null && isCompletelyValueOnly()) {
 			value = new Expression[getMemLength()];
 
-			List<Argument<? extends T>> p = getArguments();
+			List<ArrayVariable<? extends T>> p = getArguments();
 
-			List<Argument<? extends T>> staticProducers = extractStaticProducers(p);
-			List<Argument<? extends T>> dynamicProducers = extractDynamicProducers(p);
+			List<ArrayVariable<? extends T>> staticProducers = extractStaticProducers(p);
+			List<ArrayVariable<? extends T>> dynamicProducers = extractDynamicProducers(p);
 
 			boolean valueStatic[] = new boolean[value.length];
 

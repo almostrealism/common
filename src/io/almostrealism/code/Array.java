@@ -16,16 +16,8 @@
 
 package io.almostrealism.code;
 
-import org.almostrealism.relation.Evaluable;
-import org.almostrealism.relation.NameProvider;
+import io.almostrealism.code.expressions.InstanceReference;
 
-import java.util.function.Function;
-import java.util.function.Supplier;
-
-public interface ArgumentProvider {
-	<T> ArrayVariable<T> getArgument(NameProvider p, Supplier<Evaluable<? extends T>> input);
-
-	default <T> Function<Supplier<Evaluable<? extends T>>, ArrayVariable<T>> argumentForInput(NameProvider p) {
-		return input -> input == null ? null : getArgument(p, input);
-	}
+public interface Array<T> {
+	InstanceReference<T> get(int pos);
 }

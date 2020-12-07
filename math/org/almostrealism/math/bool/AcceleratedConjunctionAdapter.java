@@ -16,7 +16,7 @@
 
 package org.almostrealism.math.bool;
 
-import io.almostrealism.code.Argument;
+import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.Scalar;
@@ -35,7 +35,7 @@ import java.util.stream.Collectors;
 
 public class AcceleratedConjunctionAdapter<T extends MemWrapper> extends AcceleratedConditionalStatementAdapter<T> {
 	private List<AcceleratedConditionalStatement<? extends T>> conjuncts;
-	private Argument trueValue, falseValue;
+	private ArrayVariable trueValue, falseValue;
 
 	public AcceleratedConjunctionAdapter(int memLength,
 											 Function<Integer, Supplier<Evaluable<? extends T>>> blankValue) {
@@ -60,14 +60,14 @@ public class AcceleratedConjunctionAdapter<T extends MemWrapper> extends Acceler
 	}
 
 	protected void initArguments(Supplier<Evaluable<? extends T>> trueValue, Supplier<Evaluable<? extends T>> falseValue) {
-		List<Argument<? extends MemWrapper>> args = new ArrayList<>();
+		List<ArrayVariable<? extends MemWrapper>> args = new ArrayList<>();
 		args.add(getArguments(false).get(0));
 		args.addAll(getOperands());
 
-		this.trueValue = new Argument(getArgumentName(1), trueValue);
+		this.trueValue = new ArrayVariable(this, getArgumentName(1), trueValue);
 		args.add(this.trueValue);
 
-		this.falseValue = new Argument(getArgumentName(2), falseValue);
+		this.falseValue = new ArrayVariable(this, getArgumentName(2), falseValue);
 		args.add(this.falseValue);
 		
 		setArguments(args);
@@ -80,12 +80,12 @@ public class AcceleratedConjunctionAdapter<T extends MemWrapper> extends Acceler
 	protected void removeDuplicateArguments() { setArguments(Scope.removeDuplicateArguments(getArguments(false))); }
 
 	@Override
-	public List<Argument<? extends MemWrapper>> getArguments() { return getArguments(true); }
+	public List<ArrayVariable<? extends MemWrapper>> getArguments() { return getArguments(true); }
 
-	protected List<Argument<? extends MemWrapper>> getArguments(boolean includeConjuncts) {
+	protected List<ArrayVariable<? extends MemWrapper>> getArguments(boolean includeConjuncts) {
 		if (super.getArguments() == null) return null;
 
-		List<Argument<? extends MemWrapper>> all = new ArrayList<>();
+		List<ArrayVariable<? extends MemWrapper>> all = new ArrayList<>();
 		all.addAll(super.getArguments());
 
 		if (includeConjuncts) {
@@ -129,15 +129,15 @@ public class AcceleratedConjunctionAdapter<T extends MemWrapper> extends Acceler
 	}
 
 	@Override
-	public List<Argument<Scalar>> getOperands() {
+	public List<ArrayVariable<Scalar>> getOperands() {
 		return conjuncts.stream().flatMap(c -> c.getOperands().stream()).collect(Collectors.toList());
 	}
 
 	@Override
-	public Argument getTrueValue() { return trueValue; }
+	public ArrayVariable getTrueValue() { return trueValue; }
 
 	@Override
-	public Argument getFalseValue() { return falseValue; }
+	public ArrayVariable getFalseValue() { return falseValue; }
 
 	@Override
 	public void compact() {

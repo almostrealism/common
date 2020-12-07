@@ -16,7 +16,7 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.code.Argument;
+import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.Variable;
 import org.almostrealism.relation.NameProvider;
 
@@ -33,7 +33,7 @@ public interface ComputerFeatures extends HardwareFeatures, NameProvider {
 	default String getValueName(Variable v, String pos, boolean assignment, int kernelIndex) {
 		String name;
 
-		if (v instanceof Argument) {
+		if (v instanceof ArrayVariable) {
 			if (enableKernel) {
 				String kernelOffset = kernelIndex < 0 ? "" :
 						("get_global_id(" + kernelIndex + ") * " + v.getName() + "Size + ");

@@ -16,7 +16,7 @@
 
 package io.almostrealism.c;
 
-import io.almostrealism.code.Argument;
+import io.almostrealism.code.ArrayVariable;
 import org.almostrealism.io.PrintWriter;
 
 import java.util.List;
@@ -29,7 +29,7 @@ public class OpenCLPrintWriter extends CPrintWriter {
 		setScopePrefix("__kernel void");
 	}
 
-	protected void renderArguments(List<Argument<?>> arguments, Consumer<String> out) {
+	protected void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out) {
 		if (!arguments.isEmpty()) {
 			renderArguments(arguments, out, true, null, "*", "");
 			out.accept(", ");
@@ -39,7 +39,7 @@ public class OpenCLPrintWriter extends CPrintWriter {
 		}
 	}
 
-	private void renderArguments(List<Argument<?>> arguments, Consumer<String> out, boolean enableAnnotation, Class replaceType, String prefix, String suffix) {
+	private void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out, boolean enableAnnotation, Class replaceType, String prefix, String suffix) {
 		for (int i = 0; i < arguments.size(); i++) {
 			if (enableAnnotation && arguments.get(i).getAnnotation() != null) {
 				out.accept(arguments.get(i).getAnnotation());

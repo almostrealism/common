@@ -28,9 +28,8 @@ public class DefaultScopeInputManager implements ScopeInputManager {
 	private int counter;
 
 	@Override
-	public <T> Argument<T> getArgument(NameProvider p, Supplier<Evaluable<? extends T>> input) {
-		Argument arg = new Argument(input);
-		arg.setName(p.getArgumentName(counter++));
+	public <T> ArrayVariable<T> getArgument(NameProvider p, Supplier<Evaluable<? extends T>> input) {
+		ArrayVariable arg = new ArrayVariable(p, p.getArgumentName(counter++), input);
 		arg.setAnnotation(p.getDefaultAnnotation());
 		arg.getExpression().setType(Double.class);
 		return arg;

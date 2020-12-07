@@ -16,7 +16,7 @@
 
 package io.almostrealism.code;
 
-import io.almostrealism.code.expressions.ArgumentReference;
+import io.almostrealism.code.expressions.InstanceReference;
 import org.almostrealism.graph.ParameterizedGraph;
 import org.almostrealism.graph.Parent;
 import org.almostrealism.util.Nameable;
@@ -60,33 +60,33 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 	@Override
 	public void setName(String name) { this.name = name; }
 
-	public <A> List<Argument<? extends A>> getArguments() {
-		List<Argument<? extends A>> args = new ArrayList<>();
+	public <A> List<ArrayVariable<? extends A>> getArguments() {
+		List<ArrayVariable<? extends A>> args = new ArrayList<>();
 		extractArgumentDependencies(variables).forEach(args::add);
 		methods.stream()
 				.map(Method::getArguments)
 				.flatMap(List::stream)
-				.filter(v -> v instanceof ArgumentReference)
-				.map(v -> ((ArgumentReference) v).getReferent())
-				.forEach(v -> args.add((Argument) v));
+				.filter(v -> v instanceof InstanceReference)
+				.map(v -> ((InstanceReference<?>) v).getReferent())
+				.forEach(v -> args.add((ArrayVariable) v));
 		this.stream()
 				.map(Scope::getArguments)
 				.flatMap(List::stream)
-				.forEach(arg -> args.add((Argument<A>) arg));
-		List<Argument<? extends A>> result = removeDuplicateArguments(args);
+				.forEach(arg -> args.add((ArrayVariable<A>) arg));
+		List<ArrayVariable<? extends A>> result = removeDuplicateArguments(args);
 		sortArguments(result);
 		return result;
 	}
 
-	public static <T> List<Argument<? extends T>> removeDuplicateArguments(List<Argument<? extends T>> arguments) {
-		List<Argument<? extends T>> args = new ArrayList<>();
+	public static <T> List<ArrayVariable<? extends T>> removeDuplicateArguments(List<ArrayVariable<? extends T>> arguments) {
+		List<ArrayVariable<? extends T>> args = new ArrayList<>();
 		args.addAll(arguments);
 
 		List<String> names = new ArrayList<>();
-		Iterator<Argument<? extends T>> itr = args.iterator();
+		Iterator<ArrayVariable<? extends T>> itr = args.iterator();
 
 		while (itr.hasNext()) {
-			Argument arg = itr.next();
+			ArrayVariable arg = itr.next();
 			if (names.contains(arg.getName())) {
 				itr.remove();
 			} else {
@@ -97,19 +97,21 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 		return args;
 	}
 
-	private static List<Argument> extractArgumentDependencies(Collection<Variable<?>> vars) {
-		List<Argument> args = new ArrayList<>();
+	private static List<ArrayVariable> extractArgumentDependencies(Collection<Variable<?>> vars) {
+		List<ArrayVariable> args = new ArrayList<>();
 
 		v:  for (Variable<?> var : vars) {
 			if (var == null) continue v;
 
-			if (var instanceof Argument && !args.contains(var)) {
-				args.add((Argument) var);
+			if (var instanceof ArrayVariable && !args.contains(var)) {
+				args.add((ArrayVariable) var);
 			}
 
-			if (var.getExpression() instanceof ArgumentReference &&
-					!args.contains(((ArgumentReference) var.getExpression()).getReferent())) {
-				args.add(((ArgumentReference) var.getExpression()).getReferent());
+			if (var.getExpression() instanceof InstanceReference &&
+					!args.contains(((InstanceReference) var.getExpression()).getReferent())) {
+				if (((InstanceReference) var.getExpression()).getReferent() instanceof ArrayVariable) {
+					args.add((ArrayVariable) ((InstanceReference) var.getExpression()).getReferent());
+				}
 			}
 
 			extractArgumentDependencies(var.getDependencies()).stream()
@@ -149,7 +151,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 		w.flush();
 	}
 
-	public static <T> void sortArguments(List<Argument<? extends T>> arguments) {
+	public static <T> void sortArguments(List<ArrayVariable<? extends T>> arguments) {
 		if (arguments != null) {
 			Collections.sort(arguments, Comparator.comparing(v -> v == null ? Integer.MAX_VALUE : v.getSortHint()));
 		}

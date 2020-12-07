@@ -16,8 +16,8 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.code.Argument;
 import io.almostrealism.code.ArgumentProvider;
+import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.DefaultScopeInputManager;
 import io.almostrealism.code.OperationAdapter;
 import org.almostrealism.relation.Computation;
@@ -54,12 +54,12 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 		initArguments(DefaultScopeInputManager.getInstance());
 	}
 
-	protected AcceleratedOperation(boolean kernel, Argument<T>... args) {
+	protected AcceleratedOperation(boolean kernel, ArrayVariable<T>... args) {
 		super(args);
 		this.kernel = kernel;
 	}
 
-	public AcceleratedOperation(String function, boolean kernel, Argument<T>... args) {
+	public AcceleratedOperation(String function, boolean kernel, ArrayVariable<T>... args) {
 		this(kernel, args);
 		setFunctionName(function);
 	}
@@ -149,7 +149,7 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 		return allArgs;
 	}
 
-	private int getProducerArgumentReferenceIndex(Argument<?> arg) {
+	private int getProducerArgumentReferenceIndex(ArrayVariable<?> arg) {
 		if (arg.getProducer() instanceof ProducerArgumentReference) {
 			return ((ProducerArgumentReference) arg.getProducer()).getReferencedArgumentIndex();
 		}
@@ -217,7 +217,7 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 	public boolean isKernel() { return kernel; }
 
 	public boolean isInputKernel() {
-		for (Argument arg : getArguments()) {
+		for (ArrayVariable arg : getArguments()) {
 			if (arg.getProducer() instanceof AcceleratedProducer == false) return false;
 			if (!((AcceleratedProducer) arg.getProducer()).isKernel()) return false;
 		}
@@ -225,7 +225,7 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 		return false;
 	}
 
-	protected static <T> MemoryBank[] getKernelArgs(List<Argument<? extends T>> arguments, MemoryBank args[], int passThroughLength) {
+	protected static <T> MemoryBank[] getKernelArgs(List<ArrayVariable<? extends T>> arguments, MemoryBank args[], int passThroughLength) {
 		MemoryBank kernelArgs[] = new MemoryBank[arguments.size()];
 
 		for (int i = 0; i < passThroughLength; i++) {

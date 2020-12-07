@@ -16,15 +16,15 @@
 
 package org.almostrealism.util;
 
-import io.almostrealism.code.Argument;
+import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.SupplierArgumentMap;
 
 import java.util.function.Supplier;
 
 public class ProviderAwareArgumentMap<S, A> extends SupplierArgumentMap<S, A> {
 	@Override
-	public Argument<A> get(Supplier key) {
-		Argument<A> arg = super.get(key);
+	public ArrayVariable<A> get(Supplier key) {
+		ArrayVariable<A> arg = super.get(key);
 		if (arg != null) return arg;
 
 		Object provider = key.get();

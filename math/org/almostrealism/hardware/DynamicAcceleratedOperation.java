@@ -16,7 +16,7 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.code.Argument;
+import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.Variable;
 import org.almostrealism.relation.Evaluable;
 
@@ -31,7 +31,7 @@ public abstract class DynamicAcceleratedOperation<T extends MemWrapper> extends 
 		super(kernel, args);
 	}
 
-	public DynamicAcceleratedOperation(boolean kernel, Argument<T>... args) {
+	public DynamicAcceleratedOperation(boolean kernel, ArrayVariable<T>... args) {
 		super(kernel, args);
 	}
 
@@ -81,7 +81,7 @@ public abstract class DynamicAcceleratedOperation<T extends MemWrapper> extends 
 	protected String getFunctionArgsDefinition() {
 		StringBuffer buf = new StringBuffer();
 
-		List<Argument<? extends T>> args = getArguments();
+		List<ArrayVariable<? extends T>> args = getArguments();
 
 		for (int i = 0; i < args.size(); i++) {
 			buf.append("__global ");
@@ -117,7 +117,7 @@ public abstract class DynamicAcceleratedOperation<T extends MemWrapper> extends 
 	}
 
 	@Override
-	public Argument getArgument(int index) { return getArguments().get(index); }
+	public ArrayVariable getArgument(int index) { return getArguments().get(index); }
 
 	public abstract String getBody(Variable<T> outputVariable, List<Variable<?>> existingVariables);
 }

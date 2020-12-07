@@ -16,7 +16,7 @@
 
 package org.almostrealism.math.bool;
 
-import io.almostrealism.code.Argument;
+import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.MultiExpression;
 import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.Scalar;
@@ -30,8 +30,8 @@ import java.util.function.Supplier;
 
 public abstract class AcceleratedBinaryConditionAdapter<T extends MemWrapper> extends AcceleratedConditionalStatementAdapter<T> {
 	private String operator;
-	private Argument leftOperand, rightOperand;
-	private Argument trueValue, falseValue;
+	private ArrayVariable leftOperand, rightOperand;
+	private ArrayVariable trueValue, falseValue;
 
 	private String condition;
 
@@ -81,15 +81,15 @@ public abstract class AcceleratedBinaryConditionAdapter<T extends MemWrapper> ex
 	}
 
 	@Override
-	public List<Argument<Scalar>> getOperands() {
+	public List<ArrayVariable<Scalar>> getOperands() {
 		return Arrays.asList(leftOperand, rightOperand);
 	}
 
 	@Override
-	public Argument getTrueValue() { return trueValue; }
+	public ArrayVariable getTrueValue() { return trueValue; }
 
 	@Override
-	public Argument getFalseValue() { return falseValue; }
+	public ArrayVariable getFalseValue() { return falseValue; }
 
 	@Override
 	public boolean isCompacted() {
@@ -101,7 +101,7 @@ public abstract class AcceleratedBinaryConditionAdapter<T extends MemWrapper> ex
 		super.compact();
 		
 		if (super.isCompacted() && condition == null) {
-			List<Argument<Scalar>> operands = getOperands();
+			List<ArrayVariable<Scalar>> operands = getOperands();
 
 			MultiExpression op1 = (MultiExpression) operands.get(0).getProducer();
 			MultiExpression op2 = (MultiExpression) operands.get(1).getProducer();

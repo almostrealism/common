@@ -21,7 +21,7 @@ import java.util.function.Consumer;
 
 public class ExplicitScope<T> extends Scope<T> {
 	private StringBuffer code;
-	private List<Argument<?>> arguments;
+	private List<ArrayVariable<?>> arguments;
 
 	public ExplicitScope(OperationAdapter op) {
 		this(op.getFunctionName());
@@ -38,9 +38,9 @@ public class ExplicitScope<T> extends Scope<T> {
 		if (code != null) this.code.append(code);
 	}
 
-	public void setArguments(List<Argument<?>> arguments) { this.arguments = arguments; }
+	public void setArguments(List<ArrayVariable<?>> arguments) { this.arguments = arguments; }
 
-	public List<Argument<?>> getArguments() {
+	public List<ArrayVariable<?>> getArguments() {
 		return arguments == null ? super.getArguments() : arguments;
 	}
 

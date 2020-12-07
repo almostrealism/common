@@ -61,7 +61,7 @@ public interface CodePrintWriter {
 	 * Begin a named scope. Most {@link CodePrintWriter} implementations support
 	 * null for the name.
 	 */
-	void beginScope(String name, List<Argument<?>> arguments);
+	void beginScope(String name, List<ArrayVariable<?>> arguments);
 
 	/**
 	 * End a scope which was introduced with {@link #beginScope(String, List)}.

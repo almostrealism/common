@@ -54,7 +54,7 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 	public void flush() { }
 
 	@Override
-	public void beginScope(String name, List<Argument<?>> arguments) {
+	public void beginScope(String name, List<ArrayVariable<?>> arguments) {
 		StringBuffer buf = new StringBuffer();
 
 		if (name != null) {
@@ -76,7 +76,7 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 		p.println(buf.toString());
 	}
 
-	protected void renderArguments(List<Argument<?>> arguments, Consumer<String> out) {
+	protected void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out) {
 		for (int i = 0; i < arguments.size(); i++) {
 			if (arguments.get(i).getAnnotation() != null) {
 				out.accept(arguments.get(i).getAnnotation());

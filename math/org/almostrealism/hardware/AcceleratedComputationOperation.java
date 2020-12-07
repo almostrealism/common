@@ -17,7 +17,7 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.c.OpenCLPrintWriter;
-import io.almostrealism.code.Argument;
+import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.DefaultScopeInputManager;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.Scope;
@@ -37,7 +37,7 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	private Computation<T> computation;
 
 	public AcceleratedComputationOperation(Computation<T> c, boolean kernel) {
-		super(kernel, new Argument[0]);
+		super(kernel, new ArrayVariable[0]);
 		this.computation = c;
 		init();
 	}

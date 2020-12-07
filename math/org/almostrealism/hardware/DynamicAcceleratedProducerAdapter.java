@@ -16,7 +16,7 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.code.Argument;
+import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.ComputationProducerAdapter;
 import io.almostrealism.code.expressions.InstanceReference;
 import io.almostrealism.code.expressions.Expression;
@@ -58,7 +58,7 @@ public abstract class DynamicAcceleratedProducerAdapter<I extends MemWrapper, O 
 		super.prepareScope(manager);
 
 		// Result should always be first
-		Argument arg = getArgumentForInput(getInputs().get(0));
+		ArrayVariable arg = getArgumentForInput(getInputs().get(0));
 		if (arg != null) arg.setSortHint(-1);
 	}
 
@@ -116,8 +116,8 @@ public abstract class DynamicAcceleratedProducerAdapter<I extends MemWrapper, O 
 
 	public String getDefaultAnnotation() { return "__global"; }
 
-	protected static <T> List<Argument<? extends T>> extractStaticProducers(List<Argument<? extends T>> args) {
-		List<Argument<? extends T>> staticProducers = new ArrayList<>();
+	protected static <T> List<ArrayVariable<? extends T>> extractStaticProducers(List<ArrayVariable<? extends T>> args) {
+		List<ArrayVariable<? extends T>> staticProducers = new ArrayList<>();
 
 		for (int i = 1; i < args.size(); i++) {
 			if (args.get(i).getProducer() instanceof DynamicAcceleratedProducerAdapter &&
@@ -129,8 +129,8 @@ public abstract class DynamicAcceleratedProducerAdapter<I extends MemWrapper, O 
 		return staticProducers;
 	}
 
-	protected static <T> List<Argument<? extends T>> extractDynamicProducers(List<Argument<? extends T>> args) {
-		List<Argument<? extends T>> dynamicProducers = new ArrayList<>();
+	protected static <T> List<ArrayVariable<? extends T>> extractDynamicProducers(List<ArrayVariable<? extends T>> args) {
+		List<ArrayVariable<? extends T>> dynamicProducers = new ArrayList<>();
 
 		for (int i = 1; i < args.size(); i++) {
 			if (args.get(i).getProducer() instanceof DynamicAcceleratedProducerAdapter == false ||
