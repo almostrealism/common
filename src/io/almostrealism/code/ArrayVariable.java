@@ -39,7 +39,7 @@ public class ArrayVariable<T> extends Variable implements Array<T> {
 	}
 
 	@Override
-	public InstanceReference<T> get(int pos) {
+	public InstanceReference<T> get(String pos) {
 		return new InstanceReference(new Variable<T>(names.getVariableValueName(this, pos), false, this));
 	}
 }

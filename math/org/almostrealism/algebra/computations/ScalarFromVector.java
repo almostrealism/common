@@ -46,7 +46,7 @@ public class ScalarFromVector extends DynamicAcceleratedProducerAdapter<Vector, 
 		return pos -> {
 			if (value == null) {
 				if (pos == 0) {
-					return new Expression<>(Double.class, getArgumentValueName(1, coordinate), getArgument(1));
+					return getArgument(1).get(coordinate);
 				} else if (pos == 1) {
 					return new Expression(Double.class, stringForDouble(1.0));
 				} else {

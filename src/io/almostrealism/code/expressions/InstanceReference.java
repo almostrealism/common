@@ -38,4 +38,8 @@ public class InstanceReference<T> extends Expression<T> {
 	}
 
 	public Variable getReferent() { return var; }
+
+	public Variable assign(Expression exp) {
+		return new Variable(getExpression(), false, exp);
+	}
 }

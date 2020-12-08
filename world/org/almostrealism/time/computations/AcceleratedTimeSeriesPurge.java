@@ -35,10 +35,10 @@ public class AcceleratedTimeSeriesPurge extends DynamicAcceleratedOperationAdapt
 	public Scope<Void> getScope(NameProvider provider) {
 		ExplicitScope<Void> scope = new ExplicitScope<>(this);
 
-		String bank0 = getArgumentValueName(0, 0); // "bank[bankOffset]";
-		String bank1 = getArgumentValueName(0, 1); // "bank[bankOffset + 1]";
-		String banki = getArgumentValueName(0, "2 * i"); // "bank[2 * i]";
-		String cursor0 = getArgumentValueName(1, 0); // "cursors[cursorsOffset]";
+		String bank0 = getArgument(0).get(0).getExpression();
+		String bank1 = getArgument(0).get(1).getExpression();
+		String banki = getArgument(0).get("2 * i").getExpression();
+		String cursor0 = getArgument(1).get(0).getExpression();
 
 		Consumer<String> code = scope.code();
 		code.accept("if (" + bank1 + " - " + bank0 + " <= 0) return;\n");

@@ -41,7 +41,7 @@ public class VectorFromVectorBank<T extends VectorBank> extends DynamicAccelerat
 		return pos -> {
 			if (value == null) {
 				if (pos >= 0 && pos < 3) {
-					return new Expression<>(Double.class, getArgumentValueName(1, position + pos), getArgument(1));
+					return getArgument(1).get(position + pos);
 				} else {
 					throw new IllegalArgumentException(String.valueOf(pos));
 				}

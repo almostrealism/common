@@ -42,9 +42,7 @@ public class SummationCellOperation extends DynamicAcceleratedOperationAdapter<S
 	public void prepareScope(ScopeInputManager manager) {
 		super.prepareScope(manager);
 		if (prepared) return;
-		addVariable(new Variable(getArgumentValueName(0, 0), false,
-				new Sum(new InstanceReference<>(new Variable<>(getArgumentValueName(0, 0), false, getArgument(0))),
-						new InstanceReference(new Variable<>(getArgumentValueName(1, 0), false, getArgument(1))))));
+		addVariable(getArgument(0).get(0).assign(new Sum(getArgument(0).get(0), getArgument(1).get(0))));
 
 		prepared = true;
 	}

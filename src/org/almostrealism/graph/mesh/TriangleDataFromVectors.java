@@ -42,9 +42,7 @@ public class TriangleDataFromVectors extends DynamicAcceleratedProducerAdapter<V
 	public IntFunction<Expression<Double>> getValueFunction() {
 		return pos -> {
 			if (value == null || value[pos] == null) {
-				return new Expression<>(Double.class,
-										getArgumentValueName((pos / 3) + 1, pos % 3),
-										getArgument((pos / 3) + 1));
+				return getArgument((pos / 3) + 1).get(pos % 3);
 			} else {
 				return value[pos];
 			}

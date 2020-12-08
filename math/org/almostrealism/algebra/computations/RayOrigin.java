@@ -38,7 +38,7 @@ import java.util.function.Supplier;
 	public IntFunction<Expression<Double>> getValueFunction() {
 		return pos -> {
 			if (value == null) {
-				return new Expression(Double.class, getArgumentValueName(1, pos), getArgument(1));
+				return getArgument(1).get(pos);
 			} else {
 				return value[pos];
 			}

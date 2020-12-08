@@ -57,15 +57,15 @@ public class AcceleratedTimeSeriesValueAt extends DynamicAcceleratedProducerAdap
 		scope.getVariables().add(new Variable<>(t1, new Expression<>(Double.class, "0.0")));
 		scope.getVariables().add(new Variable<>(t2, new Expression<>(Double.class, "0.0")));
 
-		String res = getArgumentValueName(0, 0);
-		String bank0 = getArgumentValueName(1, 0);
-		String bank1 = getArgumentValueName(1, 1);
-		String banki = getArgumentValueName(1, "2 * i");
-		String bankl0 = getArgumentValueName(1, "2 * " + left);
-		String bankl1 = getArgumentValueName(1, "2 * " + left + " + 1");
-		String bankr0 = getArgumentValueName(1, "2 * " + right);
-		String bankr1 = getArgumentValueName(1, "2 * " + right + " + 1");
-		String cursor0 = getArgumentValueName(2, 0);
+		String res = getArgument(0).get(0).getExpression();
+		String bank0 = getArgument(1).get(0).getExpression();
+		String bank1 = getArgument(1).get(1).getExpression();
+		String banki = getArgument(1).get("2 * i").getExpression();
+		String bankl0 = getArgument(1).get("2 * " + left).getExpression();
+		String bankl1 = getArgument(1).get("2 * " + left + " + 1").getExpression();
+		String bankr0 = getArgument(1).get("2 * " + right).getExpression();
+		String bankr1 = getArgument(1).get("2 * " + right + " + 1").getExpression();
+		String cursor0 = getArgument(2).get(0).getExpression();
 
 		Consumer<String> code = scope.code();
 		code.accept("for (int i = " + bank0 + "; i < " + bank1 + "; i++) {\n");

@@ -19,5 +19,9 @@ package io.almostrealism.code;
 import io.almostrealism.code.expressions.InstanceReference;
 
 public interface Array<T> {
-	InstanceReference<T> get(int pos);
+	default InstanceReference<T> get(int pos) {
+		return get(String.valueOf(pos));
+	}
+
+	InstanceReference<T> get(String pos);
 }
