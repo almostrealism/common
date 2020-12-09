@@ -16,8 +16,16 @@
 
 package io.almostrealism.code.expressions;
 
-public class Sum extends NAryExpression {
-	public Sum(Expression<Double>... values) {
-		super("+", values);
+import java.util.stream.Stream;
+
+public class NAryExpression extends Expression<Double> {
+	public NAryExpression(String operator, Expression<Double>... values) {
+		super(Double.class, concat(operator, Stream.of(values).map(Expression::getExpression).map(s -> "(" + s + ")")), values);
+	}
+
+	private static String concat(String separator, Stream<String> values) {
+		StringBuffer buf = new StringBuffer();
+		values.map(s -> " " + separator + " " + s).forEach(buf::append);
+		return buf.toString().substring(separator.length() + 2);
 	}
 }

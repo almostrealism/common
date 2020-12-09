@@ -16,8 +16,8 @@
 
 package io.almostrealism.code.expressions;
 
-public class Sum extends NAryExpression {
-	public Sum(Expression<Double>... values) {
-		super("+", values);
+public class Product extends NAryExpression {
+	public Product(Expression<Double>... values) {
+		super("*", values);
 	}
 }

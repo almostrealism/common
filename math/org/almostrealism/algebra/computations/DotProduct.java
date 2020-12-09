@@ -39,10 +39,9 @@ public class DotProduct extends DynamicAcceleratedProducerAdapter<Vector, Scalar
 		return pos -> {
 			if (value == null) {
 				if (pos == 0) {
-					return new Expression(Double.class, getArgumentValueName(1, 0) + " * " + getArgumentValueName(2, 0) + " + " +
-							getArgumentValueName(1, 1) + " * " + getArgumentValueName(2, 1) + " + " +
-							getArgumentValueName(1, 2) + " * " + getArgumentValueName(2, 2),
-							getArgument(1), getArgument(2));
+					return getArgument(1).get(0).multiply(getArgument(2).get(0)).add(
+							getArgument(1).get(1).multiply(getArgument(2).get(1))).add(
+							getArgument(1).get(2).multiply(getArgument(2).get(2)));
 				} else if (pos == 1) {
 					return new Expression(Double.class, stringForDouble(1.0));
 				} else {
