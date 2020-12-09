@@ -36,17 +36,17 @@ public class RayFromVectors extends DynamicAcceleratedProducerAdapter<Vector, Ra
 		return pos -> {
 			if (value == null) {
 				if (pos == 0) {
-					return new Expression<>(Double.class, getArgumentValueName(1, 0), getArgument(1));
+					return getArgument(1).get(0);
 				} else if (pos == 1) {
-					return new Expression<>(Double.class, getArgumentValueName(1, 1), getArgument(1));
+					return getArgument(1).get(1);
 				} else if (pos == 2) {
-					return new Expression<>(Double.class, getArgumentValueName(1, 2), getArgument(1));
+					return getArgument(1).get(2);
 				} else if (pos == 3) {
-					return new Expression<>(Double.class, getArgumentValueName(2, 0), getArgument(2));
+					return getArgument(2).get(0);
 				} else if (pos == 4) {
-					return new Expression<>(Double.class, getArgumentValueName(2, 1), getArgument(2));
+					return getArgument(2).get(1);
 				} else if (pos == 5) {
-					return new Expression<>(Double.class, getArgumentValueName(2, 2), getArgument(2));
+					return getArgument(2).get(2);
 				} else {
 					throw new IllegalArgumentException("Position " + pos + " is not valid");
 				}

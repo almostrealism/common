@@ -38,12 +38,11 @@ public class AcceleratedTimeSeriesAdd extends DynamicAcceleratedOperationAdapter
 	public Scope<Void> getScope(NameProvider provider) {
 		ExplicitScope<Void> scope = new ExplicitScope<>(this);
 
-		String bank0 = getArgumentValueName(0, 0);
-		String bank1 = getArgumentValueName(0, 1);
-		String banklast0 = getArgumentValueName(0, "2 * (int)" + bank1);
-		String banklast1 = getArgumentValueName(0, "2 * (int)" + bank1 + " + 1");
-		String input0 = getArgumentValueName(1, 0);
-		String input1 = getArgumentValueName(1, 1);
+		String bank1 = getArgument(0).get(1).getExpression();
+		String banklast0 = getArgument(0).get("2 * (int)" + bank1).getExpression();
+		String banklast1 = getArgument(0).get("2 * (int)" + bank1 + " + 1").getExpression();
+		String input0 = getArgument(1).get(0).getExpression();
+		String input1 = getArgument(1).get(1).getExpression();
 
 		Consumer<String> code = scope.code();
 		code.accept(bank1 + " = " + bank1 + " + 1;\n");

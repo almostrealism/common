@@ -36,10 +36,10 @@ public class ClipCounter extends DynamicAcceleratedOperationAdapter {
 	public Scope<Void> getScope(NameProvider provider) {
 		ExplicitScope<Void> scope = new ExplicitScope<>(this);
 
-		String value = getArgumentValueName(2, 0);
-		String min = getArgumentValueName(1, 0);
-		String max = getArgumentValueName(1, 1);
-		String count = getArgumentValueName(0, 0);
+		String value = getArgument(2).get(0).getExpression();
+		String min = getArgument(1).get(0).getExpression();
+		String max = getArgument(1).get(1).getExpression();
+		String count = getArgument(0).get(0).getExpression();
 
 		Consumer<String> code = scope.code();
 		code.accept("if (" + value + " >= " + max + " || " + value

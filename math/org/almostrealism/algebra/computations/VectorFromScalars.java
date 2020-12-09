@@ -37,7 +37,7 @@ public class VectorFromScalars extends DynamicAcceleratedProducerAdapter<Scalar,
 	public IntFunction<Expression<Double>> getValueFunction() {
 		return pos -> {
 			if (value == null) {
-				return new Expression(Double.class, getArgumentValueName(pos + 1, 0), getArgument(pos + 1));
+				return getArgument(pos + 1).get(0);
 			} else {
 				return value[pos];
 			}

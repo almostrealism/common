@@ -35,9 +35,9 @@ public class SilenceDurationComputation extends DynamicAcceleratedOperationAdapt
 	public Scope<Void> getScope(NameProvider provider) {
 		ExplicitScope<Void> scope = new ExplicitScope<>(this);
 
-		String value = getArgumentValueName(2, 0);
-		String min = getArgumentValueName(1, 0);
-		String duration = getArgumentValueName(0, 0);
+		String value = getArgument(2).get(0).getExpression();
+		String min = getArgument(1).get(0).getExpression();
+		String duration = getArgument(0).get(0).getExpression();
 
 		Consumer<String> code = scope.code();
 		code.accept("if (" + value + " > " + min + ") " + duration + " = 0;\n");

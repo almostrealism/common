@@ -420,15 +420,6 @@ public class RGB implements Triple, MemWrapper, Externalizable, Cloneable {
 	    this.data.scale(1, 1.0 / rgb.getGreen());
 	    this.data.scale(2, 1.0 / rgb.getBlue());
 	}
-
-	// @Override
-	public Scope getScope(NameProvider p) {
-		Scope<Variable<Double>> s = new Scope<>();
-		s.getVariables().add(new Variable<>(p.getArgumentValueName(0, 0), getRed()));
-		s.getVariables().add(new Variable<>(p.getArgumentValueName(0, 1), getGreen()));
-		s.getVariables().add(new Variable<>(p.getArgumentValueName(0, 2), getBlue()));
-		return s;
-	}
 	
 	/**
 	 * Returns true if the color represented by this RGB object is the same as the color
