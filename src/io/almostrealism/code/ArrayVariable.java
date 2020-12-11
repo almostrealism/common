@@ -25,6 +25,9 @@ import java.util.function.Supplier;
 public class ArrayVariable<T> extends Variable implements Array<T> {
 	private NameProvider names;
 
+	private ArrayVariable<T> delegate;
+	private int delegateOffset;
+
 	public ArrayVariable(NameProvider np, String name, Supplier<Evaluable<? extends T>> producer) {
 		this(np, name, null, null, producer);
 	}
@@ -34,8 +37,18 @@ public class ArrayVariable<T> extends Variable implements Array<T> {
 		this.names = np;
 	}
 
+	public ArrayVariable<T> getDelegate() { return delegate; }
+	public void setDelegate(ArrayVariable<T> delegate) { this.delegate = delegate; }
+
+	public int getDelegateOffset() { return delegateOffset; }
+	public void setDelegateOffset(int delegateOffset) { this.delegateOffset = delegateOffset; }
+
 	@Override
 	public InstanceReference<T> get(String pos) {
-		return new InstanceReference(new Variable<T>(names.getVariableValueName(this, pos), false, this));
+		if (getDelegate() == null) {
+			return new InstanceReference(new Variable<T>(names.getVariableValueName(this, pos), false, this));
+		} else {
+			return getDelegate().get(pos + " + " + getDelegateOffset());
+		}
 	}
 }
