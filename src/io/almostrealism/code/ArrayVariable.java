@@ -32,10 +32,6 @@ public class ArrayVariable<T> extends Variable implements Array<T> {
 	public ArrayVariable(NameProvider np, String name, String annotation, Class<T> type, Supplier<Evaluable<? extends T>> p) {
 		super(name, annotation, type, p);
 		this.names = np;
-
-		if ("f_scalarFromVector_2_l1".equals(name)) {
-			System.out.println("!");
-		}
 	}
 
 	@Override
