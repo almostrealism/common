@@ -1,6 +1,7 @@
 package org.almostrealism.time.computations.test;
 
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.AcceleratedComputationProducer;
 import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.time.CursorPair;
@@ -32,15 +33,20 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures {
 
 	@Test
 	public void purge() {
-		CursorPair cursors = cursors(3.2);
-		AcceleratedTimeSeries series = series();
-		Assert.assertEquals(5, series.getLength());
+		for (int i = 0; i < 2; i++) {
+			CursorPair cursors = cursors(3.2);
+			AcceleratedTimeSeries series = series();
+			Assert.assertEquals(5, series.getLength());
 
-		Supplier<Runnable> r = series.purge(p(cursors));
-		r.get().run();
+			Supplier<Runnable> r = series.purge(p(cursors));
+			AcceleratedComputationOperation op = (AcceleratedComputationOperation) r.get();
+			System.out.println(op.getFunctionDefinition());
 
-		Assert.assertEquals(3, series.getLength());
-		valueAtAssertions(series);
+			op.run();
+
+			Assert.assertEquals(3, series.getLength());
+			valueAtAssertions(series);
+		}
 	}
 
 	@Test

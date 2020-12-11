@@ -18,6 +18,7 @@ package io.almostrealism.code;
 
 import java.util.List;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 public class ExplicitScope<T> extends Scope<T> {
 	private StringBuffer code;
@@ -41,7 +42,7 @@ public class ExplicitScope<T> extends Scope<T> {
 	public void setArguments(List<ArrayVariable<?>> arguments) { this.arguments = arguments; }
 
 	public List<ArrayVariable<?>> getArguments() {
-		return arguments == null ? super.getArguments() : arguments;
+		return arguments == null ? super.getArguments() : arguments.stream().map(ArrayVariable::getRootDelegate).collect(Collectors.toList());
 	}
 
 	public Consumer<String> code() { return code::append; }

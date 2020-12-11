@@ -23,9 +23,9 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 public interface ArgumentProvider {
-	<T> ArrayVariable<T> getArgument(NameProvider p, Supplier<Evaluable<? extends T>> input);
+	<T> ArrayVariable<T> getArgument(NameProvider p, Supplier<Evaluable<? extends T>> input, ArrayVariable<T> delegate, int delegateOffset);
 
 	default <T> Function<Supplier<Evaluable<? extends T>>, ArrayVariable<T>> argumentForInput(NameProvider p) {
-		return input -> input == null ? null : getArgument(p, input);
+		return input -> input == null ? null : getArgument(p, input, null, -1);
 	}
 }

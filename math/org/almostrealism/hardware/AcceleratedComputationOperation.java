@@ -18,7 +18,6 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.c.OpenCLPrintWriter;
 import io.almostrealism.code.ArrayVariable;
-import io.almostrealism.code.DefaultScopeInputManager;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.ScopeEncoder;
@@ -29,7 +28,6 @@ import org.almostrealism.relation.Computation;
 import org.almostrealism.relation.NameProvider;
 import org.almostrealism.util.Compactable;
 import org.almostrealism.util.Named;
-import org.almostrealism.util.ProviderAwareArgumentMap;
 
 import java.util.List;
 
@@ -89,7 +87,7 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	protected void prepareScope() {
-		SupplierArgumentMap<?, ?> argumentMap = new ProviderAwareArgumentMap<>();
+		SupplierArgumentMap<?, ?> argumentMap = new MemWrapperArgumentMap<>();
 		getComputation().prepareScope(argumentMap.getScopeInputManager());
 	}
 

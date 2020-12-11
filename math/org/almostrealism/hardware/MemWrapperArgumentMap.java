@@ -14,15 +14,26 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.util;
+package org.almostrealism.hardware;
 
 import io.almostrealism.code.ArrayVariable;
-import io.almostrealism.code.SupplierArgumentMap;
 import org.almostrealism.relation.NameProvider;
+import org.almostrealism.util.CodeFeatures;
+import org.almostrealism.util.Provider;
+import org.almostrealism.util.ProviderAwareArgumentMap;
+import org.jocl.cl_mem;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.function.Supplier;
 
-public class ProviderAwareArgumentMap<S, A> extends SupplierArgumentMap<S, A> {
+public class MemWrapperArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> implements CodeFeatures {
+	private Map<cl_mem, ArrayVariable<A>> mems;
+
+	public MemWrapperArgumentMap() {
+		mems = new HashMap<>();
+	}
+
 	@Override
 	public ArrayVariable<A> get(Supplier key, NameProvider p) {
 		ArrayVariable<A> arg = super.get(key, p);
@@ -30,13 +41,15 @@ public class ProviderAwareArgumentMap<S, A> extends SupplierArgumentMap<S, A> {
 
 		Object provider = key.get();
 		if (provider instanceof Provider == false) return null;
+		if (((Provider) provider).get() instanceof MemWrapper == false) return null;
 
-		Object value = ((Provider) provider).get();
-
-		return get((Supplier supplier) -> {
-			Object v = supplier.get();
-			if (v instanceof Provider == false) return false;
-			return ((Provider) v).get() == value;
-		}, p).orElse(null);
+		MemWrapper mw = (MemWrapper) ((Provider) provider).get();
+		if (mems.containsKey(mw.getMem())) {
+			return delegateProvider.getArgument(p, key, mems.get(mw.getMem()), mw.getOffset());
+		} else {
+			ArrayVariable var = delegateProvider.getArgument(p, p(mw), null, -1);
+			mems.put(mw.getMem(), var);
+			return delegateProvider.getArgument(p, key, var, mw.getOffset());
+		}
 	}
 }

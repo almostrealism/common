@@ -43,6 +43,10 @@ public class ArrayVariable<T> extends Variable implements Array<T> {
 	public int getDelegateOffset() { return delegateOffset; }
 	public void setDelegateOffset(int delegateOffset) { this.delegateOffset = delegateOffset; }
 
+	public ArrayVariable<T> getRootDelegate() {
+		return delegate == null ? this : delegate.getRootDelegate();
+	}
+
 	@Override
 	public InstanceReference<T> get(String pos) {
 		if (getDelegate() == null) {

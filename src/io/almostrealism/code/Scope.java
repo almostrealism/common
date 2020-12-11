@@ -27,6 +27,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * A {@link Scope} is the container for {@link Variable}s, {@link Method}s, and other {@link Scope}s.
@@ -73,7 +74,8 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 				.map(Scope::getArguments)
 				.flatMap(List::stream)
 				.forEach(arg -> args.add((ArrayVariable<A>) arg));
-		List<ArrayVariable<? extends A>> result = removeDuplicateArguments(args);
+		List<ArrayVariable<? extends A>> result = args.stream().map(ArrayVariable::getRootDelegate).collect(Collectors.toList());
+		result = removeDuplicateArguments(result);
 		sortArguments(result);
 		return result;
 	}
