@@ -19,6 +19,8 @@ package org.almostrealism.math.bool;
 import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;
+import io.almostrealism.code.expressions.Expression;
+import io.almostrealism.code.expressions.NAryExpression;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.hardware.MemWrapper;
@@ -114,18 +116,10 @@ public class AcceleratedConjunctionAdapter<T extends MemWrapper> extends Acceler
 	}
 
 	@Override
-	public String getCondition() {
-		StringBuffer buf = new StringBuffer();
-
-		for (int i = 0; i < conjuncts.size(); i++) {
-			buf.append("(");
-			buf.append(conjuncts.get(i).getCondition());
-			buf.append(")");
-
-			if (i < (conjuncts.size() - 1)) buf.append(" & ");
-		}
-
-		return buf.toString();
+	public Expression getCondition() {
+		return new NAryExpression(Boolean.class, "&",
+				conjuncts.stream().map(AcceleratedConditionalStatement::getCondition)
+						.collect(Collectors.toList()));
 	}
 
 	@Override

@@ -16,11 +16,16 @@
 
 package io.almostrealism.code.expressions;
 
+import java.util.List;
 import java.util.stream.Stream;
 
-public class NAryExpression extends Expression<Double> {
-	public NAryExpression(String operator, Expression<Double>... values) {
-		super(Double.class, concat(operator, Stream.of(values).map(Expression::getExpression).map(s -> "(" + s + ")")), values);
+public class NAryExpression<T> extends Expression<T> {
+	public NAryExpression(Class<T> type, String operator, List<Expression<?>> values) {
+		this(type, operator, values.toArray(new Expression[0]));
+	}
+
+	public NAryExpression(Class<T> type, String operator, Expression<?>... values) {
+		super(type, concat(operator, Stream.of(values).map(Expression::getExpression).map(s -> "(" + s + ")")), values);
 	}
 
 	private static String concat(String separator, Stream<String> values) {

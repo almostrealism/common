@@ -19,6 +19,9 @@ package org.almostrealism.math.bool;
 import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.MultiExpression;
 import io.almostrealism.code.Variable;
+import io.almostrealism.code.expressions.Expression;
+import io.almostrealism.code.expressions.InstanceReference;
+import io.almostrealism.code.expressions.NAryExpression;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.relation.Evaluable;
@@ -33,7 +36,7 @@ public abstract class AcceleratedBinaryConditionAdapter<T extends MemWrapper> ex
 	private ArrayVariable leftOperand, rightOperand;
 	private ArrayVariable trueValue, falseValue;
 
-	private String condition;
+	private Expression condition;
 
 	public AcceleratedBinaryConditionAdapter(String operator, int memLength,
 											 Function<Integer, Supplier<Evaluable<? extends T>>> blankValue) {
@@ -66,15 +69,9 @@ public abstract class AcceleratedBinaryConditionAdapter<T extends MemWrapper> ex
 	}
 
 	@Override
-	public String getCondition() {
+	public Expression getCondition() {
 		if (condition == null) {
-			StringBuffer buf = new StringBuffer();
-			buf.append(getArgumentValueName(1, 0));
-			buf.append(" ");
-			buf.append(operator);
-			buf.append(" ");
-			buf.append(getArgumentValueName(2, 0));
-			return buf.toString();
+			return new NAryExpression(Boolean.class, operator, getArgument(1).get(0), getArgument(2).get(0));
 		} else {
 			return condition;
 		}
@@ -106,16 +103,13 @@ public abstract class AcceleratedBinaryConditionAdapter<T extends MemWrapper> ex
 			MultiExpression op1 = (MultiExpression) operands.get(0).getProducer();
 			MultiExpression op2 = (MultiExpression) operands.get(1).getProducer();
 
-			addVariable(new Variable<>(getVariableName(0), true, op1.getValue(0), operands.get(0).getProducer()));
-			addVariable(new Variable<>(getVariableName(1), true, op2.getValue(0), operands.get(1).getProducer()));
+			Variable v0 = new Variable<>(getVariableName(0), true, op1.getValue(0), operands.get(0).getProducer());
+			Variable v1 = new Variable<>(getVariableName(1), true, op2.getValue(0), operands.get(1).getProducer());
 
-			StringBuffer buf = new StringBuffer();
-			buf.append(getVariableName(0));
-			buf.append(" ");
-			buf.append(operator);
-			buf.append(" ");
-			buf.append(getVariableName(1));
-			condition = buf.toString();
+			addVariable(v0);
+			addVariable(v1);
+
+			condition = new NAryExpression(Boolean.class, operator, new InstanceReference<>(v0), new InstanceReference<>(v1));
 		}
 	}
 }

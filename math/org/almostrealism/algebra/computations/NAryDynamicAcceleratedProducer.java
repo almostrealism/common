@@ -19,6 +19,7 @@ package org.almostrealism.algebra.computations;
 import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.expressions.Expression;
 import io.almostrealism.code.Variable;
+import io.almostrealism.code.expressions.NAryExpression;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.hardware.ComputerFeatures;
 import org.almostrealism.hardware.MemWrapper;
@@ -43,16 +44,13 @@ public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> exten
 	public IntFunction<Expression<Double>> getValueFunction() {
 		return pos -> {
 			if (value == null || value[pos] == null) {
-				StringBuffer buf = new StringBuffer();
+				List<Expression<Double>> params = new ArrayList<>();
 
-				List<ArrayVariable> deps = new ArrayList<>();
 				for (int i = 1; i < getArgsCount(); i++) {
-					buf.append(getArgumentValueName(i, pos));
-					if (i < (getArgsCount() - 1)) buf.append(" " + operator + " ");
-					deps.add(getArgument(i));
+					params.add(getArgument(i).get(pos));
 				}
 
-				return new Expression(Double.class, buf.toString(), deps.toArray(new Variable[0]));
+				return new NAryExpression(Double.class, operator, params);
 			} else {
 				return value[pos];
 			}

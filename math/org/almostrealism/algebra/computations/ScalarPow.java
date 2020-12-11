@@ -1,5 +1,6 @@
 package org.almostrealism.algebra.computations;
 
+import io.almostrealism.code.expressions.Exponent;
 import io.almostrealism.code.expressions.Expression;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarProducer;
@@ -21,14 +22,10 @@ public class ScalarPow extends DynamicAcceleratedProducerAdapter<Scalar, Scalar>
 		return pos -> {
 			if (value == null) {
 				if (pos == 0) {
-					return new Expression<>(Double.class, "pow(" + getArgumentValueName(1, 0) +
-							", " + getArgumentValueName(2, 0) + ")",
-							getArgument(1), getArgument(2));
+					return new Exponent(getArgument(1).get(0), getArgument(2).get(0));
 				} else if (pos == 1) {
 					// TODO  Certainty of exponent is ignored
-					return new Expression<>(Double.class, "pow(" + getArgumentValueName(1, 1) +
-							", " + getArgumentValueName(2, 0) + ")",
-							getArgument(1), getArgument(2));
+					return new Exponent(getArgument(1).get(1), getArgument(2).get(0));
 				} else {
 					throw new IllegalArgumentException(String.valueOf(pos));
 				}

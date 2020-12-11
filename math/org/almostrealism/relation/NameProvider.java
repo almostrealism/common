@@ -43,10 +43,6 @@ public interface NameProvider {
 		return getFunctionName() + "_l" + index;
 	}
 
-	default String getArgumentValueName(int index, int pos) {
-		return getArgumentValueName(index, pos, 0);
-	}
-
 	default String getArgumentValueName(int index, int pos, boolean assignment) {
 		return getArgumentValueName(index, pos, assignment, 0);
 	}
@@ -71,14 +67,6 @@ public interface NameProvider {
 		return getVariableValueName(v, pos, false, kernelIndex);
 	}
 
-	default String getArgumentValueName(int index, String pos) {
-		return getArgumentValueName(index, pos, 0);
-	}
-
-	default String getArgumentValueName(int index, String pos, boolean assignment) {
-		return getArgumentValueName(index, pos, assignment, 0);
-	}
-
 	default String getArgumentValueName(int index, String pos, int kernelIndex) {
 		return getArgumentValueName(index, pos, true, kernelIndex);
 	}
@@ -89,10 +77,6 @@ public interface NameProvider {
 
 	default String getVariableValueName(Variable v, String pos) {
 		return getVariableValueName(v, pos, 0);
-	}
-
-	default String getVariableValueName(Variable v, String pos, boolean assignment) {
-		return getVariableValueName(v, pos, assignment, 0);
 	}
 
 	default String getVariableValueName(Variable v, String pos, int kernelIndex) {

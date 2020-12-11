@@ -29,6 +29,7 @@ import org.almostrealism.relation.Evaluable;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
@@ -64,7 +65,7 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrappe
 			writeVariables(buf::append, existingVariables);
 
 			buf.append("if (");
-			buf.append(getCondition());
+			buf.append(getCondition().getExpression());
 			buf.append(") {\n");
 
 			for (int i = 0; i < getMemLength(); i++) {
@@ -114,7 +115,7 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrappe
 			allVariables.addAll(getVariables());
 
 			buf.append("if (");
-			buf.append(getCondition());
+			buf.append(getCondition().getExpression());
 			buf.append(") {\n");
 			if (trueOperation != null) {
 				buf.append(trueOperation.getBody(outputVariable, allVariables));

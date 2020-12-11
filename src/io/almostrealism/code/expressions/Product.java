@@ -16,8 +16,8 @@
 
 package io.almostrealism.code.expressions;
 
-public class Product extends NAryExpression {
+public class Product extends NAryExpression<Double> {
 	public Product(Expression<Double>... values) {
-		super("*", values);
+		super(Double.class, "*", values);
 	}
 }

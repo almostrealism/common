@@ -18,6 +18,7 @@ package org.almostrealism.math.bool;
 
 import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.Variable;
+import io.almostrealism.code.expressions.Expression;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.relation.Producer;
@@ -27,7 +28,7 @@ import org.almostrealism.relation.Evaluable;
 import java.util.List;
 
 public interface AcceleratedConditionalStatement<T extends MemWrapper> extends Evaluable<T>, Producer<T>, Compactable {
-	String getCondition();
+	Expression getCondition();
 
 	List<ArrayVariable<? extends MemWrapper>> getArguments();
 	List<Variable<?>> getVariables();
