@@ -47,9 +47,17 @@ public class MemWrapperArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 		if (mems.containsKey(mw.getMem())) {
 			return delegateProvider.getArgument(p, key, mems.get(mw.getMem()), mw.getOffset());
 		} else {
-			ArrayVariable var = delegateProvider.getArgument(p, p(mw), null, -1);
+			ArrayVariable var = delegateProvider.getArgument(p, p(rootDelegate(mw)), null, -1);
 			mems.put(mw.getMem(), var);
 			return delegateProvider.getArgument(p, key, var, mw.getOffset());
+		}
+	}
+
+	protected MemWrapper rootDelegate(MemWrapper mw) {
+		if (mw.getDelegate() == null) {
+			return mw;
+		} else {
+			return rootDelegate(mw.getDelegate());
 		}
 	}
 }
