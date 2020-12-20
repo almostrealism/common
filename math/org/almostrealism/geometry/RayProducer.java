@@ -18,13 +18,8 @@ package org.almostrealism.geometry;
 
 import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.algebra.VectorProducer;
-import org.almostrealism.algebra.computations.DirectionDotDirection;
-import org.almostrealism.algebra.computations.OriginDotDirection;
-import org.almostrealism.algebra.computations.OriginDotOrigin;
-import org.almostrealism.relation.ProducerComputation;
-import org.almostrealism.relation.Evaluable;
-
-import java.util.function.Supplier;
+import io.almostrealism.relation.ProducerComputation;
+import io.almostrealism.relation.Evaluable;
 
 public interface RayProducer extends ProducerComputation<Ray>, RayFeatures {
 	@Override

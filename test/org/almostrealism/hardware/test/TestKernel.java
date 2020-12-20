@@ -18,7 +18,7 @@ package org.almostrealism.hardware.test;
 
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.hardware.AcceleratedProducer;
-import org.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 

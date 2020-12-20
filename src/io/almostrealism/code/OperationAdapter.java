@@ -16,15 +16,15 @@
 
 package io.almostrealism.code;
 
-import org.almostrealism.relation.NameProvider;
+import io.almostrealism.relation.NameProvider;
+import io.almostrealism.relation.ScopeInputManager;
 import org.almostrealism.util.Compactable;
 import org.almostrealism.util.Named;
-import org.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Evaluable;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
@@ -91,7 +91,7 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 	}
 
 	/**
-	 * @deprecated  {@link org.almostrealism.relation.ScopeInputManager} should determine names.
+	 * @deprecated  {@link ScopeInputManager} should determine names.
 	 */
 	@Deprecated
 	protected void initArgumentNames() {
@@ -99,7 +99,7 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 	}
 
 	/**
-	 * @deprecated  {@link org.almostrealism.relation.ScopeInputManager} should determine names.
+	 * @deprecated  {@link ScopeInputManager} should determine names.
 	 */
 	@Deprecated
 	protected void initArgumentNames(List<ArrayVariable<? extends T>> args) {

@@ -18,7 +18,7 @@ package org.almostrealism.physics;
 
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.time.Clock;
-import org.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Evaluable;
 
 /**
  * An Absorber instance represents a solid object that absorbs and emits energy

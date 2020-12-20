@@ -19,8 +19,8 @@ package org.almostrealism.color.computations;
 import io.almostrealism.code.Scope;
 import org.almostrealism.color.RGB;
 import org.almostrealism.heredity.Gene;
-import org.almostrealism.relation.NameProvider;
-import org.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.NameProvider;
+import io.almostrealism.relation.Evaluable;
 
 /**
  * TODO  Accept a {@link Gene}.

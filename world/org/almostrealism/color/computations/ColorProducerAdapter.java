@@ -18,7 +18,7 @@ package org.almostrealism.color.computations;
 
 import org.almostrealism.algebra.Triple;
 import org.almostrealism.color.RGB;
-import org.almostrealism.relation.TripleFunction;
+import io.almostrealism.relation.TripleFunction;
 
 public abstract class ColorProducerAdapter implements RGBProducer, TripleFunction<Triple, RGB> {
 	@Override

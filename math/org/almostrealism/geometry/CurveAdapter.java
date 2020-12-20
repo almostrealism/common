@@ -17,7 +17,7 @@
 package org.almostrealism.geometry;
 
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.relation.Producer;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.util.CodeFeatures;
 
 public abstract class CurveAdapter<T> implements Curve<T>, CodeFeatures {

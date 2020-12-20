@@ -17,8 +17,8 @@
 package org.almostrealism.algebra;
 
 import org.almostrealism.algebra.computations.DefaultPairEvaluable;
-import org.almostrealism.relation.ProducerComputation;
-import org.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.ProducerComputation;
+import io.almostrealism.relation.Evaluable;
 
 public interface PairProducer extends ProducerComputation<Pair>, PairFeatures {
 	@Override

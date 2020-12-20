@@ -16,7 +16,7 @@
 
 package org.almostrealism.heredity;
 
-import org.almostrealism.relation.Producer;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.util.Defaults;
 import org.almostrealism.util.DynamicProducer;
 

@@ -18,7 +18,7 @@ package org.almostrealism.space;
 
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.color.Light;
-import org.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Evaluable;
 
 import java.util.ArrayList;
 import java.util.List;

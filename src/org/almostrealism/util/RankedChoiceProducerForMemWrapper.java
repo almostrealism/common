@@ -19,8 +19,7 @@ package org.almostrealism.util;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.hardware.MemoryBank;
-import org.almostrealism.relation.Evaluable;
-import org.almostrealism.relation.Producer;
+import io.almostrealism.relation.Producer;
 
 import java.util.function.IntFunction;
 

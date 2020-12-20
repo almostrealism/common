@@ -19,8 +19,6 @@ package org.almostrealism.util;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.graph.RayField;
-import org.almostrealism.relation.Evaluable;
-import org.almostrealism.relation.Producer;
 import org.almostrealism.space.BoundingSolid;
 
 import java.util.*;

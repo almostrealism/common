@@ -17,8 +17,8 @@
 package org.almostrealism.algebra;
 
 import org.almostrealism.algebra.computations.DefaultTransformMatrixEvaluable;
-import org.almostrealism.relation.Evaluable;
-import org.almostrealism.relation.ProducerComputation;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.ProducerComputation;
 
 public interface TransformMatrixProducer extends ProducerComputation<TransformMatrix>, TransformMatrixFeatures {
 	@Override

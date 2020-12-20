@@ -17,7 +17,7 @@
 package org.almostrealism.color;
 
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.relation.Producer;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.texture.Texture;
 
 /**

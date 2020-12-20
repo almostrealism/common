@@ -21,7 +21,7 @@ import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.hardware.MemWrapperAdapter;
-import org.almostrealism.relation.Producer;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.util.CodeFeatures;
 import org.almostrealism.util.Defaults;
 import org.almostrealism.util.DynamicProducer;

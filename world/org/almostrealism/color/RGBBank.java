@@ -17,7 +17,7 @@
 package org.almostrealism.color;
 
 import org.almostrealism.hardware.MemoryBankAdapter;
-import org.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Evaluable;
 
 /**
  * A collection of {@link RGB}s of a fixed length, that is contiguous in

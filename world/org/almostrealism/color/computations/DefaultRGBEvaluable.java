@@ -20,7 +20,7 @@ import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBBank;
 import org.almostrealism.hardware.AcceleratedComputationProducer;
 import org.almostrealism.hardware.MemoryBank;
-import org.almostrealism.relation.Computation;
+import io.almostrealism.relation.Computation;
 
 public class DefaultRGBEvaluable extends AcceleratedComputationProducer<RGB> implements RGBEvaluable {
 

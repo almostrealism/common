@@ -16,7 +16,7 @@
 
 package org.almostrealism.io;
 
-import io.almostrealism.js.JsonResource;
+import org.almostrealism.js.JsonResource;
 import org.almostrealism.graph.mesh.MeshResource;
 import org.almostrealism.graph.io.GtsResource;
 import org.almostrealism.graph.io.ObjResource;

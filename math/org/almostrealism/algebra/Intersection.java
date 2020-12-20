@@ -17,12 +17,10 @@
 package org.almostrealism.algebra;
 
 import java.util.Arrays;
-import java.util.function.Supplier;
 
 import org.almostrealism.graph.PathElement;
-import org.almostrealism.relation.Producer;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.util.DimensionAware;
-import org.almostrealism.relation.Evaluable;
 
 /**
  * An Intersection object stores data for the intersections between a ray and a surface.

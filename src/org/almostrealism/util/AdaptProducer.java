@@ -17,9 +17,9 @@
 package org.almostrealism.util;
 
 import org.almostrealism.algebra.Triple;
-import org.almostrealism.relation.Evaluable;
-import org.almostrealism.relation.Producer;
-import org.almostrealism.relation.TripleFunction;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
+import io.almostrealism.relation.TripleFunction;
 
 /**
  * The {@link AdaptProducer} provides a way for a {@link Producer}

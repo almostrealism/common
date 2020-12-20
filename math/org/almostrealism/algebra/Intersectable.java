@@ -17,8 +17,8 @@
 package org.almostrealism.algebra;
 
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.relation.Operator;
-import org.almostrealism.relation.Producer;
+import io.almostrealism.relation.Operator;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.uml.Function;
 
 import java.util.concurrent.Future;

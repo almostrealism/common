@@ -17,18 +17,12 @@
 package org.almostrealism.time;
 
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.hardware.AcceleratedOperation;
-import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.hardware.HardwareFeatures;
-import org.almostrealism.hardware.MemWrapper;
-import org.almostrealism.relation.Producer;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.time.computations.AcceleratedTimeSeriesAdd;
 import org.almostrealism.time.computations.AcceleratedTimeSeriesPurge;
 import org.almostrealism.time.computations.AcceleratedTimeSeriesValueAt;
-import org.almostrealism.util.AcceleratedAssignment;
 import org.almostrealism.util.CodeFeatures;
-import org.almostrealism.util.DynamicProducer;
-import org.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 

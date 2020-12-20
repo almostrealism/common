@@ -2,9 +2,9 @@ package org.almostrealism.math.bool.test;
 
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.math.bool.AcceleratedConjunctionScalar;
-import org.almostrealism.math.bool.LessThan;
-import org.almostrealism.relation.Producer;
+import org.almostrealism.bool.AcceleratedConjunctionScalar;
+import org.almostrealism.bool.LessThan;
+import io.almostrealism.relation.Producer;
 import org.junit.Assert;
 import org.junit.Test;
 

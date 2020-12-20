@@ -15,17 +15,13 @@ import org.almostrealism.hardware.DynamicAcceleratedOperation;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
-import org.almostrealism.math.bool.AcceleratedConjunctionScalar;
-import org.almostrealism.relation.Producer;
+import org.almostrealism.bool.AcceleratedConjunctionScalar;
 import org.almostrealism.util.CodeFeatures;
-import org.almostrealism.util.DynamicProducer;
 import org.almostrealism.util.DynamicProducerForMemWrapper;
 import org.almostrealism.util.PassThroughEvaluable;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
-
-import static org.almostrealism.util.Ops.ops;
 
 public class MeshIntersectionTest implements HardwareFeatures, CodeFeatures {
 	private VectorProducer origin1 = vector(0.0, 1.0, 1.0);

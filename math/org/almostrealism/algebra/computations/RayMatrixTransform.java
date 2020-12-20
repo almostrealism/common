@@ -21,7 +21,7 @@ import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayFromVectors;
 import org.almostrealism.geometry.TransformAsLocation;
 import org.almostrealism.geometry.TransformAsOffset;
-import org.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 

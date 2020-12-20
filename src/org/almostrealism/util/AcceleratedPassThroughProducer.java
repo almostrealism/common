@@ -20,7 +20,7 @@ import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.expressions.Expression;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.hardware.MemWrapper;
-import org.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Evaluable;
 
 import java.util.ArrayList;
 import java.util.Arrays;

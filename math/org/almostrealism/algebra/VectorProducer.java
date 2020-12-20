@@ -17,8 +17,8 @@
 package org.almostrealism.algebra;
 
 import org.almostrealism.algebra.computations.DefaultVectorEvaluable;
-import org.almostrealism.relation.ProducerComputation;
-import org.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.ProducerComputation;
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.util.StaticEvaluable;
 
 import java.util.function.Supplier;

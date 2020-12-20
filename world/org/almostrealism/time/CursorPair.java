@@ -18,8 +18,7 @@ package org.almostrealism.time;
 
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.relation.Evaluable;
-import org.almostrealism.relation.Producer;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.time.computations.CursorPairIncrement;
 import org.almostrealism.util.CodeFeatures;
 

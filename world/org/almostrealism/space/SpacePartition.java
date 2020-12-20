@@ -19,7 +19,7 @@ package org.almostrealism.space;
 import org.almostrealism.algebra.*;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.graph.mesh.Triangle;
-import org.almostrealism.relation.Producer;
+import io.almostrealism.relation.Producer;
 
 public class SpacePartition<T extends ShadableSurface> extends SurfaceGroup<T> {
 	public static int l, r, s;

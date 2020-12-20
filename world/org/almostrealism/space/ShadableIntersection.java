@@ -23,14 +23,13 @@ import org.almostrealism.algebra.ContinuousField;
 import org.almostrealism.algebra.Intersection;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.geometry.DefaultRayEvaluable;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.algebra.computations.RayDirection;
 import org.almostrealism.algebra.computations.RayPointAt;
 import org.almostrealism.geometry.RayFromVectors;
-import org.almostrealism.relation.Producer;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.util.CodeFeatures;
-import org.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.util.ProducerWithRankAdapter;
 
 /**

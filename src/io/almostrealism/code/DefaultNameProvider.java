@@ -16,7 +16,7 @@
 
 package io.almostrealism.code;
 
-import org.almostrealism.relation.NameProvider;
+import io.almostrealism.relation.NameProvider;
 
 public class DefaultNameProvider implements NameProvider {
 	private String function;

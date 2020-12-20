@@ -2,7 +2,7 @@ package org.almostrealism.algebra;
 
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.graph.NodeList;
-import org.almostrealism.relation.Producer;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.space.Gradient;
 
 /**

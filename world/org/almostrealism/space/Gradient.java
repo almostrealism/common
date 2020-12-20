@@ -16,14 +16,15 @@
 
 package org.almostrealism.space;
 
+import io.almostrealism.relation.TripleFunction;
 import org.almostrealism.algebra.Differentiable;
 import org.almostrealism.algebra.Triple;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.relation.Producer;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.uml.Function;
 
 /**
- * A {@link Gradient} represents any continuously evaluable {@link org.almostrealism.relation.TripleFunction}
+ * A {@link Gradient} represents any continuously evaluable {@link TripleFunction}
  * that has a normal {@link Vector} for each {@link org.almostrealism.algebra.Triple}.
  * 
  * @author  Michael Murray

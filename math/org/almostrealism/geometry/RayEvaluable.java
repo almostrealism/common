@@ -17,7 +17,7 @@
 package org.almostrealism.geometry;
 
 import org.almostrealism.algebra.VectorEvaluable;
-import org.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Evaluable;
 
 public interface RayEvaluable extends Evaluable<Ray>, RayFeatures {
 	default VectorEvaluable origin() { return origin(this); }

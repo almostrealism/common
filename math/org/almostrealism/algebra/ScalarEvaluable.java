@@ -19,11 +19,11 @@ package org.almostrealism.algebra;
 import org.almostrealism.algebra.computations.DefaultScalarEvaluable;
 import org.almostrealism.algebra.computations.ScalarPow;
 import org.almostrealism.algebra.computations.ScalarProduct;
-import org.almostrealism.math.bool.AcceleratedConditionalStatementVector;
-import org.almostrealism.math.bool.GreaterThanVector;
-import org.almostrealism.math.bool.LessThanVector;
-import org.almostrealism.relation.ProducerComputation;
-import org.almostrealism.relation.Evaluable;
+import org.almostrealism.bool.AcceleratedConditionalStatementVector;
+import org.almostrealism.bool.GreaterThanVector;
+import org.almostrealism.bool.LessThanVector;
+import io.almostrealism.relation.ProducerComputation;
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.util.StaticEvaluable;
 
 import java.util.function.Supplier;

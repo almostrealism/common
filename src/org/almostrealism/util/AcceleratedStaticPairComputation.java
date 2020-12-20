@@ -18,7 +18,7 @@ package org.almostrealism.util;
 
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairProducer;
-import org.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 

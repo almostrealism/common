@@ -22,8 +22,8 @@ import io.almostrealism.code.Scope;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.DynamicAcceleratedOperationAdapter;
-import org.almostrealism.relation.NameProvider;
-import org.almostrealism.relation.Producer;
+import io.almostrealism.relation.NameProvider;
+import io.almostrealism.relation.Producer;
 
 import java.util.function.Consumer;
 

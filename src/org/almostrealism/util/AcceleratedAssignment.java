@@ -19,8 +19,8 @@ package org.almostrealism.util;
 import io.almostrealism.code.Variable;
 import org.almostrealism.hardware.DynamicAcceleratedOperationAdapter;
 import org.almostrealism.hardware.MemWrapper;
-import org.almostrealism.relation.Evaluable;
-import org.almostrealism.relation.ScopeInputManager;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.ScopeInputManager;
 
 import java.util.function.Supplier;
 import java.util.stream.IntStream;

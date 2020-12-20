@@ -17,7 +17,7 @@
 package org.almostrealism.time;
 
 import org.almostrealism.hardware.MemoryBankAdapter;
-import org.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Evaluable;
 
 /**
  * A collection of {@link TemporalScalar}s of a fixed length, that is contiguous in

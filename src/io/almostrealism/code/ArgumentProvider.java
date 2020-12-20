@@ -16,8 +16,8 @@
 
 package io.almostrealism.code;
 
-import org.almostrealism.relation.Evaluable;
-import org.almostrealism.relation.NameProvider;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.NameProvider;
 
 import java.util.function.Function;
 import java.util.function.Supplier;

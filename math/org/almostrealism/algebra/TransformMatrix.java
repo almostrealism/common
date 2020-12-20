@@ -30,11 +30,11 @@ import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.hardware.MemWrapperAdapter;
 import org.almostrealism.hardware.PooledMem;
-import org.almostrealism.relation.Producer;
-import org.almostrealism.relation.TripleFunction;
+import io.almostrealism.relation.Producer;
+import io.almostrealism.relation.TripleFunction;
 import org.almostrealism.util.CodeFeatures;
 import org.almostrealism.util.DynamicProducer;
-import org.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.util.Provider;
 
 import java.util.function.Supplier;

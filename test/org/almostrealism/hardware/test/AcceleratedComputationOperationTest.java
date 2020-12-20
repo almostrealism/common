@@ -7,7 +7,7 @@ import org.almostrealism.hardware.AcceleratedComputationProducer;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.util.CodeFeatures;
 import org.almostrealism.util.PassThroughEvaluable;
-import org.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Evaluable;
 import org.junit.Test;
 
 import java.util.function.Supplier;

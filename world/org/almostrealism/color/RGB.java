@@ -21,15 +21,11 @@ import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 
-import io.almostrealism.code.Scope;
-import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.Triple;
 import org.almostrealism.hardware.MemWrapper;
-import org.almostrealism.relation.NameProvider;
-import org.almostrealism.relation.Producer;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.util.Defaults;
 import org.almostrealism.util.DynamicRGBProducer;
-import org.almostrealism.relation.Evaluable;
 import org.jocl.cl_mem;
 
 /**

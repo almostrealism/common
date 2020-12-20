@@ -18,7 +18,7 @@ package org.almostrealism.util;
 
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.computations.RGBProducer;
-import org.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 

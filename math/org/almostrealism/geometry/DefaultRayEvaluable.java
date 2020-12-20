@@ -18,7 +18,7 @@ package org.almostrealism.geometry;
 
 import org.almostrealism.hardware.AcceleratedComputationProducer;
 import org.almostrealism.hardware.MemoryBank;
-import org.almostrealism.relation.Computation;
+import io.almostrealism.relation.Computation;
 
 public class DefaultRayEvaluable extends AcceleratedComputationProducer<Ray> implements RayEvaluable {
 

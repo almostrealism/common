@@ -17,10 +17,8 @@
 package org.almostrealism.util;
 
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.relation.Evaluable;
-import org.almostrealism.relation.Producer;
-
-import java.util.function.Supplier;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 
 public class ProducerWithRankAdapter<T> implements ProducerWithRank<T> {
 	private Producer<T> p;

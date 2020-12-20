@@ -21,7 +21,7 @@ import org.almostrealism.algebra.PairBank;
 import org.almostrealism.algebra.PairEvaluable;
 import org.almostrealism.hardware.AcceleratedComputationProducer;
 import org.almostrealism.hardware.MemoryBank;
-import org.almostrealism.relation.Computation;
+import io.almostrealism.relation.Computation;
 
 public class DefaultPairEvaluable extends AcceleratedComputationProducer<Pair> implements PairEvaluable {
 

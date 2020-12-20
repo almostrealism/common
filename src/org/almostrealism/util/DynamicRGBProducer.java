@@ -17,15 +17,10 @@
 package org.almostrealism.util;
 
 import io.almostrealism.code.Scope;
-import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBBank;
 import org.almostrealism.color.computations.RGBProducer;
-import org.almostrealism.hardware.KernelizedEvaluable;
-import org.almostrealism.hardware.MemoryBank;
-import org.almostrealism.relation.Evaluable;
-import org.almostrealism.relation.NameProvider;
+import io.almostrealism.relation.NameProvider;
 
 import java.util.function.Function;
 

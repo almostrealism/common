@@ -17,7 +17,7 @@
 package org.almostrealism.algebra;
 
 import org.almostrealism.hardware.MemWrapper;
-import org.almostrealism.relation.TripleFunction;
+import io.almostrealism.relation.TripleFunction;
 import org.almostrealism.util.AcceleratedStaticVectorComputation;
 
 public class ImmutableVector extends AcceleratedStaticVectorComputation implements TripleFunction<Triple, Vector> {

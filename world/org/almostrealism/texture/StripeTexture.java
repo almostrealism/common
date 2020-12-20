@@ -16,17 +16,15 @@
 
 package org.almostrealism.texture;
 
-import io.almostrealism.code.Scope;
 import org.almostrealism.algebra.Triple;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.color.computations.ColorEvaluable;
 import org.almostrealism.color.computations.GeneratedColorProducer;
 import org.almostrealism.color.RGB;
-import org.almostrealism.relation.NameProvider;
-import org.almostrealism.relation.Producer;
-import org.almostrealism.relation.TripleFunction;
+import io.almostrealism.relation.Producer;
+import io.almostrealism.relation.TripleFunction;
 import org.almostrealism.util.Editable;
-import org.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Evaluable;
 
 // TODO  Add vector direction in place of axis selection.
 

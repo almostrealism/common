@@ -30,9 +30,9 @@ import org.almostrealism.color.ShaderContext;
 import org.almostrealism.geometry.ClosestIntersection;
 import org.almostrealism.graph.mesh.Mesh;
 import org.almostrealism.graph.mesh.Triangle;
-import org.almostrealism.relation.Constant;
-import org.almostrealism.relation.Producer;
-import org.almostrealism.relation.Operator;
+import io.almostrealism.relation.Constant;
+import io.almostrealism.relation.Producer;
+import io.almostrealism.relation.Operator;
 
 /**
  * A {@link SurfaceGroup} object allows {@link ShadableSurface} objects to be grouped together.

@@ -16,7 +16,7 @@
 
 package org.almostrealism.util;
 
-import org.almostrealism.relation.Producer;
+import io.almostrealism.relation.Producer;
 
 public class Input {
 	private Input() { }

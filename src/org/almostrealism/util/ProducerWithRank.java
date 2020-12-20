@@ -17,7 +17,7 @@
 package org.almostrealism.util;
 
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.relation.Producer;
+import io.almostrealism.relation.Producer;
 
 public interface ProducerWithRank<T> extends Producer<T> {
 

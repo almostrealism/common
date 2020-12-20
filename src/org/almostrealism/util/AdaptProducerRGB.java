@@ -20,8 +20,8 @@ import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBBank;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
-import org.almostrealism.relation.Evaluable;
-import org.almostrealism.relation.Producer;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 
 public class AdaptProducerRGB extends AdaptProducer<RGB> {
 	public AdaptProducerRGB(Producer<RGB> p, Producer... args) {

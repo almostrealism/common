@@ -19,7 +19,7 @@ package org.almostrealism.geometry;
 import org.almostrealism.algebra.Triple;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorEvaluable;
-import org.almostrealism.relation.TripleFunction;
+import io.almostrealism.relation.TripleFunction;
 
 public class UniformSphericalRandom implements VectorEvaluable, TripleFunction<Triple, Vector> {
 	private static UniformSphericalRandom local = new UniformSphericalRandom();

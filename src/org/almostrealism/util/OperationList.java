@@ -18,10 +18,10 @@ package org.almostrealism.util;
 
 import io.almostrealism.code.Scope;
 import org.almostrealism.hardware.HardwareFeatures;
-import org.almostrealism.relation.Computation;
-import org.almostrealism.relation.NameProvider;
-import org.almostrealism.relation.OperationComputation;
-import org.almostrealism.relation.ScopeInputManager;
+import io.almostrealism.relation.Computation;
+import io.almostrealism.relation.NameProvider;
+import io.almostrealism.relation.OperationComputation;
+import io.almostrealism.relation.ScopeInputManager;
 
 import java.util.ArrayList;
 import java.util.List;

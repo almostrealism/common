@@ -17,7 +17,7 @@
 package org.almostrealism.algebra;
 
 import org.almostrealism.uml.Function;
-import org.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.util.StaticEvaluable;
 
 /**

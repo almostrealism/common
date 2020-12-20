@@ -17,8 +17,8 @@
 package io.almostrealism.code;
 
 import io.almostrealism.code.expressions.InstanceReference;
-import org.almostrealism.relation.Evaluable;
-import org.almostrealism.relation.NameProvider;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.NameProvider;
 
 import java.util.function.Supplier;
 

@@ -24,8 +24,8 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.hardware.MemWrapper;
-import org.almostrealism.relation.NameProvider;
-import org.almostrealism.relation.Producer;
+import io.almostrealism.relation.NameProvider;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.time.CursorPair;
 

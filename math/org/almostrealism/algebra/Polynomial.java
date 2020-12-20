@@ -25,13 +25,13 @@ import java.util.concurrent.TimeoutException;
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.relation.Constant;
-import org.almostrealism.relation.NameProvider;
-import org.almostrealism.relation.Operator;
-import org.almostrealism.relation.Producer;
+import io.almostrealism.relation.Constant;
+import io.almostrealism.relation.NameProvider;
+import io.almostrealism.relation.Operator;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.space.AbstractSurface;
 import org.almostrealism.space.ShadableIntersection;
-import org.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Evaluable;
 
 /** A {@link Polynomial} represents a 3d polynomial surface. */
 public class Polynomial extends AbstractSurface {

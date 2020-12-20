@@ -17,9 +17,9 @@
 package io.almostrealism.code;
 
 import io.almostrealism.code.expressions.Expression;
-import org.almostrealism.relation.Computation;
-import org.almostrealism.relation.NameProvider;
-import org.almostrealism.relation.ScopeInputManager;
+import io.almostrealism.relation.Computation;
+import io.almostrealism.relation.NameProvider;
+import io.almostrealism.relation.ScopeInputManager;
 import org.almostrealism.util.Compactable;
 
 import java.util.Objects;

@@ -18,7 +18,7 @@ package org.almostrealism.util;
 
 import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.SupplierArgumentMap;
-import org.almostrealism.relation.NameProvider;
+import io.almostrealism.relation.NameProvider;
 
 import java.util.function.Supplier;
 

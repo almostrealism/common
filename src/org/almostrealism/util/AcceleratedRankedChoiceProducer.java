@@ -8,7 +8,7 @@ import org.almostrealism.hardware.DynamicAcceleratedMultiProducer;
 import org.almostrealism.hardware.DynamicAcceleratedProducer;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.hardware.MemoryBank;
-import org.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Evaluable;
 
 import java.util.ArrayList;
 import java.util.List;

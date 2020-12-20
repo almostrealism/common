@@ -21,9 +21,9 @@ import io.almostrealism.code.expressions.Expression;
 import io.almostrealism.code.Variable;
 import io.almostrealism.code.expressions.NAryExpression;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
-import org.almostrealism.hardware.ComputerFeatures;
+import io.almostrealism.code.ComputerFeatures;
 import org.almostrealism.hardware.MemWrapper;
-import org.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Evaluable;
 
 import java.util.ArrayList;
 import java.util.List;

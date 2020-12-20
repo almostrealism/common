@@ -19,7 +19,7 @@ package org.almostrealism.algebra;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.hardware.MemWrapperAdapter;
 import org.almostrealism.hardware.PooledMem;
-import org.almostrealism.relation.Producer;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.util.Defaults;
 import org.almostrealism.util.DynamicProducer;
 

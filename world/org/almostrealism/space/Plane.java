@@ -21,14 +21,12 @@ import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.*;
 import org.almostrealism.color.RGB;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.relation.Constant;
-import org.almostrealism.relation.NameProvider;
-import org.almostrealism.relation.Operator;
-import org.almostrealism.relation.Evaluable;
-import org.almostrealism.relation.Producer;
+import io.almostrealism.relation.Constant;
+import io.almostrealism.relation.NameProvider;
+import io.almostrealism.relation.Operator;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.util.CodeFeatures;
-
-import static org.almostrealism.util.Ops.*;
 
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;

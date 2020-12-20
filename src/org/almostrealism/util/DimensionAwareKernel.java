@@ -18,8 +18,8 @@ package org.almostrealism.util;
 
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemWrapper;
-import org.almostrealism.relation.Evaluable;
-import org.almostrealism.relation.Producer;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 
 public class DimensionAwareKernel<T extends MemWrapper> implements Producer<T>, DimensionAware {
 	private KernelizedEvaluable<T> k;

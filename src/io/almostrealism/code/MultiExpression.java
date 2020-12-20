@@ -17,7 +17,7 @@
 package io.almostrealism.code;
 
 import io.almostrealism.code.expressions.Expression;
-import org.almostrealism.relation.NameProvider;
+import io.almostrealism.relation.NameProvider;
 
 import java.util.function.IntFunction;
 

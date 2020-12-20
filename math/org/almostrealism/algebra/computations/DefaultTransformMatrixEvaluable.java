@@ -21,7 +21,7 @@ import org.almostrealism.algebra.TransformMatrixBank;
 import org.almostrealism.algebra.TransformMatrixEvaluable;
 import org.almostrealism.hardware.AcceleratedComputationProducer;
 import org.almostrealism.hardware.MemoryBank;
-import org.almostrealism.relation.Computation;
+import io.almostrealism.relation.Computation;
 
 public class DefaultTransformMatrixEvaluable extends AcceleratedComputationProducer<TransformMatrix> implements TransformMatrixEvaluable {
 

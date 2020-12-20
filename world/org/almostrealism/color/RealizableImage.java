@@ -21,8 +21,8 @@ import org.almostrealism.algebra.PairBank;
 import org.almostrealism.hardware.KernelizedOperation;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
-import org.almostrealism.relation.Producer;
-import org.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
+import io.almostrealism.relation.Evaluable;
 
 public class RealizableImage implements Producer<RGB[][]> {
 	private Producer<RGB> source;

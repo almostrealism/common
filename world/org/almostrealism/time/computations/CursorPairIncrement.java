@@ -16,13 +16,11 @@
 
 package org.almostrealism.time.computations;
 
-import io.almostrealism.code.Variable;
-import io.almostrealism.code.expressions.InstanceReference;
 import io.almostrealism.code.expressions.Sum;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.DynamicAcceleratedOperationAdapter;
-import org.almostrealism.relation.Evaluable;
-import org.almostrealism.relation.ScopeInputManager;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.ScopeInputManager;
 import org.almostrealism.time.CursorPair;
 
 import java.util.function.Supplier;

@@ -21,7 +21,7 @@ import org.almostrealism.algebra.VectorBank;
 import org.almostrealism.algebra.VectorEvaluable;
 import org.almostrealism.hardware.AcceleratedComputationProducer;
 import org.almostrealism.hardware.MemoryBank;
-import org.almostrealism.relation.Computation;
+import io.almostrealism.relation.Computation;
 
 public class DefaultVectorEvaluable extends AcceleratedComputationProducer<Vector> implements VectorEvaluable {
 

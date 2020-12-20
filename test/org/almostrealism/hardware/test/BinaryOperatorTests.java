@@ -17,7 +17,7 @@
 package org.almostrealism.hardware.test;
 
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.math.bool.GreaterThan;
+import org.almostrealism.bool.GreaterThan;
 import org.almostrealism.util.CodeFeatures;
 import org.almostrealism.util.DynamicProducer;
 import org.junit.Test;

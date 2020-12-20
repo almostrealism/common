@@ -16,8 +16,8 @@
 
 package org.almostrealism.color;
 
-import org.almostrealism.relation.Producer;
-import org.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
+import io.almostrealism.relation.Evaluable;
 
 /**
  * @author  Michael Murray

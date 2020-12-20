@@ -19,7 +19,7 @@ package org.almostrealism.time.computations;
 import io.almostrealism.code.expressions.Expression;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
-import org.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.time.TemporalScalar;
 import org.almostrealism.time.TemporalScalarProducer;
 

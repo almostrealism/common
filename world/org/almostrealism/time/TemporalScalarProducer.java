@@ -17,8 +17,8 @@
 package org.almostrealism.time;
 
 import org.almostrealism.hardware.AcceleratedComputationProducer;
-import org.almostrealism.relation.Evaluable;
-import org.almostrealism.relation.ProducerComputation;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.ProducerComputation;
 
 public interface TemporalScalarProducer extends ProducerComputation<TemporalScalar>, TemporalFeatures {
 	@Override

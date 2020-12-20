@@ -20,8 +20,8 @@ import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.hardware.MemWrapper;
-import org.almostrealism.relation.Evaluable;
-import org.almostrealism.relation.Producer;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 
 import java.util.function.Function;
 

@@ -18,7 +18,7 @@ package org.almostrealism.util;
 
 import org.almostrealism.algebra.TransformMatrix;
 import org.almostrealism.hardware.AcceleratedComputationProducer;
-import org.almostrealism.relation.Computation;
+import io.almostrealism.relation.Computation;
 
 public class DefaultTransformMatrixProducer extends AcceleratedComputationProducer<TransformMatrix> {
 

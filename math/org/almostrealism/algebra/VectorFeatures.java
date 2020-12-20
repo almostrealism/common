@@ -24,7 +24,7 @@ import org.almostrealism.algebra.computations.ScalarFromVector;
 import org.almostrealism.algebra.computations.VectorFromScalars;
 import org.almostrealism.algebra.computations.VectorProduct;
 import org.almostrealism.algebra.computations.VectorSum;
-import org.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.util.StaticEvaluable;
 
 import java.util.function.Supplier;
