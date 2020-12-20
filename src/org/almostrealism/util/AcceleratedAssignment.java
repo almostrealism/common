@@ -16,13 +16,10 @@
 
 package org.almostrealism.util;
 
-import io.almostrealism.code.expressions.Expression;
-import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;
 import org.almostrealism.hardware.DynamicAcceleratedOperationAdapter;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.relation.Evaluable;
-import org.almostrealism.relation.NameProvider;
 import org.almostrealism.relation.ScopeInputManager;
 
 import java.util.function.Supplier;
@@ -44,9 +41,8 @@ public class AcceleratedAssignment<T extends MemWrapper> extends DynamicAccelera
 
 		IntStream.range(0, memLength)
 				.mapToObj(i ->
-						new Variable(getVariableValueName(getArgument(0), i), false,
-							new Expression<>(Double.class,
-									getVariableValueName(getArgument(1), i), getArgument(1)), getArgument(0)))
+						new Variable(getArgument(0).get(i).getExpression(), false,
+									getArgument(1).get(i), getArgument(0)))
 				.forEach(this::addVariable);
 	}
 }
