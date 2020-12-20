@@ -67,14 +67,6 @@ public interface NameProvider {
 		return getVariableValueName(v, pos, false, kernelIndex);
 	}
 
-	default String getArgumentValueName(int index, String pos, int kernelIndex) {
-		return getArgumentValueName(index, pos, true, kernelIndex);
-	}
-
-	default String getArgumentValueName(int index, String pos, boolean assignment, int kernelIndex) {
-		return getVariableValueName(getArgument(index), pos, assignment, kernelIndex);
-	}
-
 	default String getVariableValueName(Variable v, String pos) {
 		return getVariableValueName(v, pos, 0);
 	}
