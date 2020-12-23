@@ -19,7 +19,7 @@ package org.almostrealism.hardware.test;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.bool.GreaterThan;
 import org.almostrealism.util.CodeFeatures;
-import io.almostrealism.relation.DynamicProducer;
+import org.almostrealism.geometry.Ray;
 import org.junit.Test;
 
 public class BinaryOperatorTests implements CodeFeatures {
