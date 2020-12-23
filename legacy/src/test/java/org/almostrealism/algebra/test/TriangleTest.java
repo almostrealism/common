@@ -18,9 +18,8 @@ package org.almostrealism.algebra.test;
 
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.graph.mesh.Triangle;
+import org.almostrealism.space.Triangle;
 import org.almostrealism.util.CodeFeatures;
-import org.almostrealism.util.Provider;
 import org.junit.Assert;
 import org.junit.Test;
 

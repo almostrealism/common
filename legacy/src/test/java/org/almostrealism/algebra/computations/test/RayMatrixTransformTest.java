@@ -16,8 +16,8 @@
 
 package org.almostrealism.algebra.computations.test;
 
-import org.almostrealism.algebra.TransformMatrix;
-import org.almostrealism.algebra.computations.RayMatrixTransform;
+import org.almostrealism.geometry.TransformMatrix;
+import org.almostrealism.geometry.computations.RayMatrixTransform;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayProducer;
 import org.almostrealism.hardware.HardwareFeatures;

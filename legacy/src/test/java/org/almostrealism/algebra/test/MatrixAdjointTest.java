@@ -16,10 +16,9 @@
 
 package org.almostrealism.algebra.test;
 
-import org.almostrealism.algebra.computations.MatrixAdjoint;
-import org.almostrealism.algebra.TransformMatrix;
+import org.almostrealism.geometry.computations.MatrixAdjoint;
+import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.util.CodeFeatures;
-import org.almostrealism.util.Provider;
 import org.junit.Test;
 
 public class MatrixAdjointTest implements CodeFeatures {

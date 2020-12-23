@@ -9,7 +9,7 @@ import org.almostrealism.bool.AcceleratedConditionalStatementScalar;
 import org.almostrealism.bool.LessThan;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.util.CodeFeatures;
-import org.almostrealism.util.PassThroughEvaluable;
+import org.almostrealism.hardware.PassThroughEvaluable;
 import org.junit.Assert;
 import org.junit.Test;
 

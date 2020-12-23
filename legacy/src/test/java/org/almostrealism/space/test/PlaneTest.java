@@ -17,17 +17,17 @@
 package org.almostrealism.space.test;
 
 import org.almostrealism.algebra.computations.DefaultScalarEvaluable;
-import org.almostrealism.algebra.computations.RayMatrixTransform;
+import org.almostrealism.geometry.computations.RayMatrixTransform;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.hardware.HardwareFeatures;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.space.Plane;
-import org.almostrealism.space.ShadableIntersection;
+import org.almostrealism.geometry.ShadableIntersection;
 import org.almostrealism.util.CodeFeatures;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.util.Provider;
+import io.almostrealism.relation.Provider;
 import org.junit.Assert;
 import org.junit.Test;
 

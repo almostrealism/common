@@ -11,7 +11,7 @@ import org.almostrealism.io.PrintStreamPrintWriter;
 import io.almostrealism.code.CodePrintWriter;
 import io.almostrealism.code.Method;
 import io.almostrealism.code.Variable;
-import org.almostrealism.js.JavaScriptPrintWriter;
+import org.almostrealism.util.JavaScriptPrintWriter;
 
 public class CodePrintWriterTest {
 	// @Test

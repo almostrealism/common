@@ -18,11 +18,11 @@ package org.almostrealism.geometry.test;
 
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.algebra.computations.RayCopy;
-import org.almostrealism.algebra.computations.RayPointAt;
+import org.almostrealism.geometry.computations.RayCopy;
+import org.almostrealism.geometry.computations.RayPointAt;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.util.CodeFeatures;
-import org.almostrealism.util.Provider;
+import io.almostrealism.relation.Provider;
 import org.junit.Assert;
 import org.junit.Test;
 

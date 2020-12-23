@@ -7,7 +7,7 @@ import org.almostrealism.hardware.AcceleratedComputationProducer;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.util.CodeFeatures;
-import org.almostrealism.util.PassThroughEvaluable;
+import org.almostrealism.hardware.PassThroughEvaluable;
 import org.junit.Assert;
 import org.junit.Test;
 
