@@ -13,6 +13,14 @@
     <orderEntry type="module" module-name="space" />
     <orderEntry type="module" module-name="graph" />
     <orderEntry type="module" module-name="geometry" />
+    <orderEntry type="module" module-name="time" />
+    <orderEntry type="module" module-name="physics" />
+    <orderEntry type="module" module-name="color" />
+    <orderEntry type="module" module-name="stats" />
+    <orderEntry type="module" module-name="audio" />
+    <orderEntry type="module" module-name="chemistry" />
+    <orderEntry type="module" module-name="heredity" />
+    <orderEntry type="module" module-name="economics" />
     <orderEntry type="module" module-name="algebra" />
     <orderEntry type="module" module-name="hardware" />
     <orderEntry type="module" module-name="code" />
@@ -20,11 +28,6 @@
     <orderEntry type="module" module-name="uml" />
     <orderEntry type="module" module-name="io" />
     <orderEntry type="library" name="Maven: org.jocl:jocl:2.0.2" level="project" />
-    <orderEntry type="module" module-name="time" />
-    <orderEntry type="module" module-name="heredity" />
-    <orderEntry type="module" module-name="physics" />
-    <orderEntry type="module" module-name="color" />
-    <orderEntry type="module" module-name="stats" />
     <orderEntry type="library" name="Maven: com.fasterxml.jackson.core:jackson-databind:2.8.3" level="project" />
     <orderEntry type="library" name="Maven: com.fasterxml.jackson.core:jackson-annotations:2.8.0" level="project" />
     <orderEntry type="library" name="Maven: com.fasterxml.jackson.core:jackson-core:2.8.3" level="project" />
