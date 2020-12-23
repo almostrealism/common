@@ -26,7 +26,7 @@ public class BinaryOperatorTests implements CodeFeatures {
 	@Test
 	public void greaterThan() {
 		GreaterThan<Vector> operation = new GreaterThan(
-				3, DynamicProducer.forMemLength(),
+				3, i -> Ray.blank(),
 				scalar(2.0),
 				scalar(3.0),
 				vector(1.0, 2.0, 3.0),
