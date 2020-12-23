@@ -33,20 +33,6 @@
 	<packaging>pom</packaging>
 
     <build>
-		<testSourceDirectory>test</testSourceDirectory>
-
-		<resources>
-			<resource>
-				<directory>resources</directory>
-				<includes>
-					<include>local32.cl</include>
-					<include>local64.cl</include>
-					<include>org/almostrealism/hardware/test/TestKernel.cl</include>
-					<include>org/almostrealism/hardware/test/BigTestFunction.cl</include>
-				</includes>
-			</resource>
-		</resources>
-
 		<plugins>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
