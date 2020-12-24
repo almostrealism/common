@@ -30,7 +30,7 @@ public class AcceleratedConjunctionScalar extends AcceleratedConjunctionAdapter<
 
 	public AcceleratedConjunctionScalar(Supplier trueValue, Supplier falseValue,
 										AcceleratedConditionalStatement<Scalar>... conjuncts) {
-		super(2, Scalar.blank(), trueValue, falseValue, conjuncts);
+		super(2, (Supplier<Scalar>) Scalar::new, trueValue, falseValue, conjuncts);
 	}
 
 	@Override

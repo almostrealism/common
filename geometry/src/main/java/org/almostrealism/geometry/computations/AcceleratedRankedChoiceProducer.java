@@ -40,12 +40,12 @@ public class AcceleratedRankedChoiceProducer<T extends MemWrapper> extends Dynam
 	private List<ArrayVariable<T>> choices;
 	private ArrayVariable defaultValue;
 
-	public AcceleratedRankedChoiceProducer(int memLength, Supplier<Evaluable<? extends T>> blank, IntFunction<MemoryBank<T>> forKernel,
+	public AcceleratedRankedChoiceProducer(int memLength, Supplier<T> blank, IntFunction<MemoryBank<T>> forKernel,
 										   List<ProducerWithRank<T, Scalar>> values, Supplier<Evaluable<? extends T>> defaultValue, double e) {
 		this(memLength, blank, forKernel, values, defaultValue, e, null);
 	}
 
-	public AcceleratedRankedChoiceProducer(int memLength, Supplier<Evaluable<? extends T>> blank, IntFunction<MemoryBank<T>> forKernel,
+	public AcceleratedRankedChoiceProducer(int memLength, Supplier<T> blank, IntFunction<MemoryBank<T>> forKernel,
 										   List<ProducerWithRank<T, Scalar>> values, Supplier<Evaluable<? extends T>> defaultValue,
 										   double e, Supplier<T> onNull) {
 		super(blank, generateArgs(values, defaultValue));

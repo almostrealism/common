@@ -37,20 +37,16 @@ public class LessThanScalar extends LessThan<Scalar> implements AcceleratedCondi
 	}
 
 	public LessThanScalar(
-			Supplier leftOperand,
-			Supplier rightOperand,
-			Supplier trueValue,
-			Supplier falseValue) {
+			Supplier leftOperand, Supplier rightOperand,
+			Supplier trueValue, Supplier falseValue) {
 		this(leftOperand, rightOperand, trueValue, falseValue, false);
 	}
 
 	public LessThanScalar(
-			Supplier leftOperand,
-			Supplier rightOperand,
-			Supplier trueValue,
-			Supplier falseValue,
+			Supplier leftOperand, Supplier rightOperand,
+			Supplier trueValue, Supplier falseValue,
 			boolean includeEqual) {
-		super(2, Scalar.blank(), leftOperand, rightOperand, trueValue, falseValue, includeEqual);
+		super(2, Scalar::new, leftOperand, rightOperand, trueValue, falseValue, includeEqual);
 	}
 
 	@Override

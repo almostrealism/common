@@ -18,27 +18,40 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.Variable;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-public abstract class DynamicAcceleratedProducer<I extends MemWrapper, O extends MemWrapper> extends DynamicAcceleratedOperation<MemWrapper> implements KernelizedEvaluable<O> {
-	public DynamicAcceleratedProducer(Supplier<Evaluable<? extends O>> result, Supplier<Evaluable<? extends I>> inputArgs[], Object additionalArguments[]) {
-		this(result, AcceleratedProducer.producers(inputArgs, additionalArguments));
+public abstract class DynamicAcceleratedProducer<I extends MemWrapper, O extends MemWrapper>
+		extends DynamicAcceleratedOperation<MemWrapper>
+		implements KernelizedEvaluable<O>, DestinationSupport<O> {
+	private Supplier<O> destination;
+
+	public DynamicAcceleratedProducer(Supplier<O> destination,
+									  Supplier<Evaluable<? extends I>> inputArgs[],
+									  Object additionalArguments[]) {
+		this(destination, AcceleratedProducer.producers(inputArgs, additionalArguments));
 	}
 
-	public DynamicAcceleratedProducer(Supplier<Evaluable<? extends O>> result, Supplier... inputArgs) {
-		this(true, result, inputArgs);
+	public DynamicAcceleratedProducer(Supplier<O> destination, Supplier... inputArgs) {
+		this(true, destination, inputArgs);
 	}
 
-	public DynamicAcceleratedProducer(boolean kernel, Supplier<Evaluable<? extends O>> result, Supplier<Evaluable<? extends I>> inputArgs[], Object additionalArguments[]) {
-		this(kernel, result, AcceleratedProducer.producers(inputArgs, additionalArguments));
+	public DynamicAcceleratedProducer(boolean kernel, Supplier<O> destination,
+									  Supplier<Evaluable<? extends I>> inputArgs[],
+									  Object additionalArguments[]) {
+		this(kernel, destination, AcceleratedProducer.producers(inputArgs, additionalArguments));
 	}
 
-	public DynamicAcceleratedProducer(boolean kernel, Supplier<Evaluable<? extends O>> result, Supplier<Evaluable<? extends I>>... inputArgs) {
-		super(kernel, AcceleratedProducer.includeResult(result, inputArgs));
+	public DynamicAcceleratedProducer(boolean kernel, Supplier<O> destination,
+									  Supplier<Evaluable<? extends I>>... inputArgs) {
+		super(kernel, new Supplier[0]);
+		setInputs(AcceleratedProducer.includeResult((Producer) () -> args ->
+				getDestination() == null ? destination.get() : getDestination().get(), inputArgs));
 		init();
 	}
 
@@ -51,7 +64,7 @@ public abstract class DynamicAcceleratedProducer<I extends MemWrapper, O extends
 
 	protected void writeVariables(Consumer<String> out, List<Variable<?>> existingVariables) {
 		getVariables().stream()
-				.filter(v -> !existingVariables.contains(v)).forEach((Consumer<Variable<?>>) var -> {
+				.filter(v -> !existingVariables.contains(v)).forEach(var -> {
 			if (var.getAnnotation() != null) {
 				out.accept(var.getAnnotation());
 				out.accept(" ");
@@ -96,6 +109,12 @@ public abstract class DynamicAcceleratedProducer<I extends MemWrapper, O extends
 	protected MemoryBank[] getKernelArgs(MemoryBank args[]) {
 		return getKernelArgs(getArguments(), args, 1);
 	}
+
+	@Override
+	public void setDestination(Supplier<O> destination) { this.destination = destination; }
+
+	@Override
+	public Supplier<O> getDestination() { return this.destination; }
 
 	@Override
 	public MemoryBank<O> createKernelDestination(int size) {

@@ -38,13 +38,13 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrappe
 
 	private BiFunction<Variable<MemWrapper>, List<Variable<?>>, String> compacted;
 
-	public AcceleratedConditionalStatementAdapter(int memLength, Supplier<Evaluable<? extends T>> blankValue) {
+	public AcceleratedConditionalStatementAdapter(int memLength, Supplier<T> blankValue) {
 		super(blankValue);
 		this.memLength = memLength;
 	}
 
 	public AcceleratedConditionalStatementAdapter(int memLength,
-												  Supplier<Evaluable<? extends T>> blankValue,
+												  Supplier<T> blankValue,
 												  Supplier<Evaluable> leftOperand,
 												  Supplier<Evaluable> rightOperand,
 												  Supplier<Evaluable<? extends T>> trueValue,

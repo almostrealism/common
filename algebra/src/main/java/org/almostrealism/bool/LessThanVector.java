@@ -31,6 +31,6 @@ public class LessThanVector extends LessThan<Vector> implements AcceleratedCondi
 			Supplier rightOperand,
 			Supplier<Evaluable<Vector>> trueValue,
 			Supplier<Evaluable<Vector>> falseValue) {
-		super(3, Vector.blank(), leftOperand, rightOperand, trueValue, falseValue, false);
+		super(3, Vector::new, leftOperand, rightOperand, trueValue, falseValue, false);
 	}
 }

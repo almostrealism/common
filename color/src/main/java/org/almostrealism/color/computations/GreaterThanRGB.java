@@ -33,7 +33,7 @@ public class GreaterThanRGB extends GreaterThan<RGB> {
 			Supplier rightOperand,
 			Supplier trueValue,
 			Supplier falseValue) {
-		super(3, RGB.blank(), leftOperand, rightOperand, trueValue, falseValue, false);
+		super(3, RGB::new, leftOperand, rightOperand, trueValue, falseValue, false);
 	}
 
 	@Override

@@ -24,12 +24,12 @@ import java.util.function.Supplier;
 
 public class LessThan<T extends MemWrapper> extends AcceleratedBinaryConditionAdapter<T> {
 	public LessThan(int memLength,
-					   Function<Integer, Supplier<Evaluable<? extends T>>> blankValue) {
+					   Function<Integer, Supplier<T>> blankValue) {
 		this(memLength, blankValue, null, null, null, null);
 	}
 
 	public LessThan(int memLength,
-					Function<Integer, Supplier<Evaluable<? extends T>>> blankValue,
+					Function<Integer, Supplier<T>> blankValue,
 					Supplier<Evaluable> leftOperand,
 					Supplier<Evaluable> rightOperand,
 					Supplier<Evaluable<? extends T>> trueValue,
@@ -38,7 +38,7 @@ public class LessThan<T extends MemWrapper> extends AcceleratedBinaryConditionAd
 	}
 
 	public LessThan(int memLength,
-					Supplier<Evaluable<? extends T>> blankValue,
+					Supplier<T> blankValue,
 					Supplier leftOperand,
 					Supplier rightOperand,
 					Supplier trueValue,

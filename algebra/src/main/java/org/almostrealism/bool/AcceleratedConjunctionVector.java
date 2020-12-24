@@ -32,7 +32,7 @@ public class AcceleratedConjunctionVector extends AcceleratedConjunctionAdapter<
 	public AcceleratedConjunctionVector(Supplier<Evaluable<? extends Vector>> trueValue,
 										Supplier<Evaluable<? extends Vector>> falseValue,
 										AcceleratedConditionalStatement<Vector>... conjuncts) {
-		super(3, Vector.blank(), trueValue, falseValue, conjuncts);
+		super(3, (Supplier<Vector>) Vector::new, trueValue, falseValue, conjuncts);
 	}
 
 	@Override

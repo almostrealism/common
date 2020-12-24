@@ -43,7 +43,7 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 	private List<String> variableNames;
 
 	public OperationAdapter(Supplier<Evaluable<? extends T>>... input) {
-		setInputs(Arrays.asList(input));
+		setInputs(input);
 	}
 
 	public OperationAdapter(ArrayVariable<? extends T>... args) {
@@ -60,6 +60,7 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 
 	public int getArgsCount() { return getArguments().size(); }
 
+	protected void setInputs(Supplier<Evaluable<? extends T>>... input) { setInputs(Arrays.asList(input)); }
 	protected void setInputs(List<Supplier<Evaluable<? extends T>>> inputs) { this.inputs = inputs; }
 
 	public List<Supplier<Evaluable<? extends T>>> getInputs() { return inputs; }

@@ -43,7 +43,7 @@ public class AcceleratedConditionalStatementTests implements CodeFeatures {
 	}
 
 	protected LessThan<Scalar> lessThan(Producer<Scalar> a, Producer<Scalar> b) {
-		return new LessThan<>(2, Scalar.blank(), a, b, a, b, false);
+		return new LessThan<>(2, Scalar::new, a, b, a, b, false);
 	}
 
 	@Test

@@ -33,7 +33,7 @@ public class GreaterThanVector extends GreaterThan<Vector> implements Accelerate
 			Supplier rightOperand,
 			Supplier<Evaluable<? extends Vector>> trueValue,
 			Supplier<Evaluable<? extends Vector>> falseValue) {
-		super(3, Vector.blank(), leftOperand, rightOperand, trueValue, falseValue, false);
+		super(3, Vector::new, leftOperand, rightOperand, trueValue, falseValue, false);
 	}
 
 	@Override

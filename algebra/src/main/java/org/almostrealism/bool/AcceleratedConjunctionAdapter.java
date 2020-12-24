@@ -40,19 +40,19 @@ public class AcceleratedConjunctionAdapter<T extends MemWrapper> extends Acceler
 	private ArrayVariable trueValue, falseValue;
 
 	public AcceleratedConjunctionAdapter(int memLength,
-											 Function<Integer, Supplier<Evaluable<? extends T>>> blankValue) {
+											 Function<Integer, Supplier<T>> blankValue) {
 		this(memLength, blankValue, null, null);
 	}
 
 	public AcceleratedConjunctionAdapter(int memLength,
-										 Function<Integer, Supplier<Evaluable<? extends T>>> blankValue,
+										 Function<Integer, Supplier<T>> blankValue,
 										 Supplier<Evaluable<? extends T>> trueValue, Supplier<Evaluable<? extends T>> falseValue,
 										 AcceleratedConditionalStatement<? extends T>... conjuncts) {
 		this(memLength, blankValue.apply(memLength), trueValue, falseValue, conjuncts);
 	}
 
 	public AcceleratedConjunctionAdapter(int memLength,
-										 	Supplier<Evaluable<? extends T>> blankValue,
+										 	Supplier<T> blankValue,
 										 	Supplier<Evaluable<? extends T>> trueValue,
 										 	Supplier<Evaluable<? extends T>> falseValue,
 										 	AcceleratedConditionalStatement<? extends T>... conjuncts) {
