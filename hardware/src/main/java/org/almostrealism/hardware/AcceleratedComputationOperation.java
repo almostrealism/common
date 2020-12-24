@@ -17,6 +17,7 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.Computation;
+import io.almostrealism.code.DefaultScopeInputManager;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Named;
@@ -33,6 +34,8 @@ import org.almostrealism.io.PrintWriter;
 import java.util.List;
 
 public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperation<MemWrapper> implements NameProvider {
+	public static final boolean enableArgumentMapping = false;
+
 	private Computation<T> computation;
 
 	public AcceleratedComputationOperation(Computation<T> c, boolean kernel) {
@@ -88,8 +91,12 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	protected void prepareScope() {
-		 SupplierArgumentMap<?, ?> argumentMap = new MemWrapperArgumentMap<>();
-		 getComputation().prepareScope(argumentMap.getScopeInputManager());
+		if (enableArgumentMapping) {
+			SupplierArgumentMap<?, ?> argumentMap = new MemWrapperArgumentMap<>();
+			getComputation().prepareScope(argumentMap.getScopeInputManager());
+		} else {
+			getComputation().prepareScope(DefaultScopeInputManager.getInstance());
+		}
 	}
 
 	@Override
