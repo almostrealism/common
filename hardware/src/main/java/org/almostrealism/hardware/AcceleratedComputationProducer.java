@@ -43,7 +43,7 @@ public class AcceleratedComputationProducer<T extends MemWrapper> extends Accele
 	}
 
 	@Override
-	protected MemoryBank[] getKernelArgs(MemoryBank args[]) {
+	protected MemWrapper[] getKernelArgs(MemoryBank args[]) {
 		return getKernelArgs(getArguments(), args, 1);
 	}
 

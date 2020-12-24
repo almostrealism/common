@@ -34,7 +34,7 @@ public interface ComputerFeatures extends HardwareFeatures, NameProvider {
 		String name;
 
 		if (v instanceof ArrayVariable) {
-			if (enableKernel) {
+			if (enableKernel && v.getProducer() instanceof KernelizedEvaluable) {
 				String kernelOffset = kernelIndex < 0 ? "" :
 						("get_global_id(" + kernelIndex + ") * " + v.getName() + "Size + ");
 

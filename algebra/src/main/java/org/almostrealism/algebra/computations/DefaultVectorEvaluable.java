@@ -22,6 +22,7 @@ import org.almostrealism.algebra.VectorBank;
 import org.almostrealism.algebra.VectorEvaluable;
 import org.almostrealism.hardware.AcceleratedComputationProducer;
 import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.hardware.MemoryBankAdapter;
 
 public class DefaultVectorEvaluable extends AcceleratedComputationProducer<Vector> implements VectorEvaluable {
 
@@ -31,6 +32,6 @@ public class DefaultVectorEvaluable extends AcceleratedComputationProducer<Vecto
 
 	@Override
 	public MemoryBank<Vector> createKernelDestination(int size) {
-		return new VectorBank(size);
+		return new VectorBank(size, MemoryBankAdapter.CacheLevel.ACCESSED);
 	}
 }

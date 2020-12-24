@@ -173,7 +173,7 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 				operator.setGlobalWorkSize(args[0].getCount());
 
 				if (enableKernelLog) System.out.println("AcceleratedOperation: Preparing " + name + " kernel...");
-				MemoryBank input[] = getKernelArgs(args);
+				MemWrapper input[] = getKernelArgs(args);
 
 				if (enableKernelLog) System.out.println("AcceleratedOperation: Evaluating " + name + " kernel...");
 
@@ -186,7 +186,7 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 		}
 	}
 
-	protected MemoryBank[] getKernelArgs(MemoryBank args[]) {
+	protected MemWrapper[] getKernelArgs(MemoryBank args[]) {
 		return getKernelArgs(getArguments(), args, 0);
 	}
 
@@ -223,8 +223,8 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 		return false;
 	}
 
-	protected static <T> MemoryBank[] getKernelArgs(List<ArrayVariable<? extends T>> arguments, MemoryBank args[], int passThroughLength) {
-		MemoryBank kernelArgs[] = new MemoryBank[arguments.size()];
+	protected static <T> MemWrapper[] getKernelArgs(List<ArrayVariable<? extends T>> arguments, MemoryBank args[], int passThroughLength) {
+		MemWrapper kernelArgs[] = new MemWrapper[arguments.size()];
 
 		for (int i = 0; i < passThroughLength; i++) {
 			kernelArgs[i] = args[i];
@@ -239,23 +239,27 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 				continue i;
 			}
 
-			Supplier<? extends Evaluable<? extends T>> c = arguments.get(i).getProducer();
+			Evaluable<T> c = (Evaluable<T>) arguments.get(i).getProducer().get();
 
-			if (c.get() instanceof ProducerArgumentReference) {
-				int argIndex = ((ProducerArgumentReference) c.get()).getReferencedArgumentIndex();
+			if (c instanceof ProducerArgumentReference) {
+				int argIndex = ((ProducerArgumentReference) c).getReferencedArgumentIndex();
 				kernelArgs[i] = args[passThroughLength + argIndex];
-			} else if (c.get() instanceof KernelizedEvaluable) {
+			} else if (c instanceof KernelizedEvaluable) {
 				MemoryBank downstreamArgs[] = new MemoryBank[args.length - passThroughLength];
 				for (int j = passThroughLength; j < args.length; j++) {
 					downstreamArgs[j - passThroughLength] = args[j];
 				}
 
-				KernelizedEvaluable kp = (KernelizedEvaluable) arguments.get(i).getProducer().get();
+				KernelizedEvaluable kp = (KernelizedEvaluable) c;
 				kernelArgs[i] = kp.createKernelDestination(args[0].getCount());
-				kp.kernelEvaluate(kernelArgs[i], downstreamArgs);
+				kp.kernelEvaluate((MemoryBank) kernelArgs[i], downstreamArgs);
 			} else {
-				throw new IllegalArgumentException(c.get().getClass().getSimpleName() +
-						" is not a ProducerArgumentReference or KernelizedProducer");
+				MemoryBank downstreamArgs[] = new MemoryBank[args.length - passThroughLength];
+				for (int j = passThroughLength; j < args.length; j++) {
+					downstreamArgs[j - passThroughLength] = args[j];
+				}
+
+				kernelArgs[i] = (MemWrapper) c.evaluate(downstreamArgs);
 			}
 		}
 

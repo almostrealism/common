@@ -17,10 +17,8 @@
 package io.almostrealism.relation;
 
 /**
- * The Producer interface is implemented by classes that represent a
+ * The {@link Evaluable} interface is implemented by classes that represent a
  * repeatedly evaluated function.
- * 
- * @see org.almostrealism.util.Editable
  *
  * @author  Michael Murray
  */

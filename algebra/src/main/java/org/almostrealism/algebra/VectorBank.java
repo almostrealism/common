@@ -32,6 +32,11 @@ public class VectorBank extends MemoryBankAdapter<Vector> {
 				new Vector(delegateSpec.getDelegate(), delegateSpec.getOffset()));
 	}
 
+	public VectorBank(int count, CacheLevel cacheLevel) {
+		super(3, count, delegateSpec ->
+				new Vector(delegateSpec.getDelegate(), delegateSpec.getOffset()), cacheLevel);
+	}
+
 	protected VectorBank(int count, MemWrapper delegate, int delegateOffset) {
 		super(3, count, delegateSpec ->
 				new Vector(delegateSpec.getDelegate(), delegateSpec.getOffset()),

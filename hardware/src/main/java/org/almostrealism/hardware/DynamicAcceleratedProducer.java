@@ -106,7 +106,7 @@ public abstract class DynamicAcceleratedProducer<I extends MemWrapper, O extends
 	}
 
 	@Override
-	protected MemoryBank[] getKernelArgs(MemoryBank args[]) {
+	protected MemWrapper[] getKernelArgs(MemoryBank args[]) {
 		return getKernelArgs(getArguments(), args, 1);
 	}
 

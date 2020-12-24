@@ -59,7 +59,7 @@ public class AcceleratedProducer<I extends MemWrapper, O extends MemWrapper> ext
 	}
 
 	@Override
-	protected MemoryBank[] getKernelArgs(MemoryBank args[]) {
+	protected MemWrapper[] getKernelArgs(MemoryBank args[]) {
 		return getKernelArgs(getArguments(), args, 1);
 	}
 
