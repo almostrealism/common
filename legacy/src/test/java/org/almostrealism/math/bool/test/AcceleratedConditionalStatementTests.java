@@ -118,9 +118,9 @@ public class AcceleratedConditionalStatementTests implements CodeFeatures {
 			ScalarProducer pc = scalar(c);
 			ScalarProducer pd = scalar(d);
 
-			LessThan lt1 = new LessThan(2, Scalar.blank(), pa, pb, pa, pb, false);
-			LessThan lt2 = new LessThan(2, Scalar.blank(), pb, pc, lt1, scalar(-a), false);
-			LessThan lt3 = new LessThan(2, Scalar.blank(), pc, pd, lt2, scalar(-b), false);
+			LessThan lt1 = new LessThan(2, Scalar::new, pa, pb, pa, pb, false);
+			LessThan lt2 = new LessThan(2, Scalar::new, pb, pc, lt1, scalar(-a), false);
+			LessThan lt3 = new LessThan(2, Scalar::new, pc, pd, lt2, scalar(-b), false);
 
 			LessThan top = lt3;
 
