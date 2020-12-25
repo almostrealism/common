@@ -50,8 +50,8 @@ public abstract class DynamicAcceleratedProducer<I extends MemWrapper, O extends
 	public DynamicAcceleratedProducer(boolean kernel, Supplier<O> destination,
 									  Supplier<Evaluable<? extends I>>... inputArgs) {
 		super(kernel, new Supplier[0]);
-		setInputs(AcceleratedProducer.includeResult((Producer) () -> args ->
-				getDestination() == null ? destination.get() : getDestination().get(), inputArgs));
+		setInputs(AcceleratedProducer.includeResult(new DynamicProducerForMemWrapper(args ->
+				getDestination() == null ? destination.get() : getDestination().get()), inputArgs));
 		init();
 	}
 
