@@ -19,6 +19,7 @@ package org.almostrealism.algebra;
 import io.almostrealism.relation.DynamicProducer;
 import io.almostrealism.relation.Producer;
 
+import org.almostrealism.hardware.DynamicProducerForMemWrapper;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.hardware.MemWrapperAdapter;
@@ -174,7 +175,7 @@ public class Pair extends MemWrapperAdapter {
 	}
 
 	public static Producer<Pair> empty() {
-		return new DynamicProducer<>(args -> new Pair());
+		return new DynamicProducerForMemWrapper<>(args -> new Pair());
 	}
 
 	// TODO  This could be faster by moving directly between cl_mems

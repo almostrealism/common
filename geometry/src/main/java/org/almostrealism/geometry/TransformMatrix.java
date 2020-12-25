@@ -32,6 +32,7 @@ import org.almostrealism.geometry.computations.MatrixTranspose;
 import org.almostrealism.geometry.computations.RayMatrixTransform;
 import org.almostrealism.geometry.computations.TransformAsLocation;
 import org.almostrealism.geometry.computations.TransformAsOffset;
+import org.almostrealism.hardware.DynamicProducerForMemWrapper;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.MemWrapper;
@@ -383,7 +384,7 @@ public class TransformMatrix extends MemWrapperAdapter implements TripleFunction
 	}
 
 	public static Producer<TransformMatrix> blank() {
-		return new DynamicProducer<>(args ->
+		return new DynamicProducerForMemWrapper<>(args ->
 				new TransformMatrix(false, null, 0));
 	}
 

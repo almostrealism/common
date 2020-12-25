@@ -26,6 +26,7 @@ import io.almostrealism.relation.Generated;
 import org.almostrealism.algebra.Triple;
 import org.almostrealism.color.RGB;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.hardware.DynamicProducerForMemWrapper;
 
 public class GeneratedColorProducer<T> extends ColorProducerAdapter implements Generated<T, Producer<RGB>> {
 	private Producer<RGB> p;
@@ -54,7 +55,7 @@ public class GeneratedColorProducer<T> extends ColorProducerAdapter implements G
 	}
 
 	public static <T> GeneratedColorProducer<T> fromFunction(T generator, TripleFunction<Triple, RGB> t) {
-		return new GeneratedColorProducer(generator, new DynamicProducer<>(args ->
+		return new GeneratedColorProducer(generator, new DynamicProducerForMemWrapper<>(args ->
 				t.operate(args.length > 0 ? (Triple) args[0] : new Vector(1.0, 1.0, 1.0))));
 	}
 

@@ -18,6 +18,7 @@ package org.almostrealism.graph.mesh;
 
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorBank;
+import org.almostrealism.hardware.DynamicProducerForMemWrapper;
 import org.almostrealism.hardware.MemWrapper;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.DynamicProducer;
@@ -42,6 +43,6 @@ public class TriangleData extends VectorBank {
 	public Vector getNormal() { return get(3); }
 
 	public static Producer<TriangleData> blank() {
-		return new DynamicProducer(args -> new TriangleData());
+		return new DynamicProducerForMemWrapper<>(args -> new TriangleData());
 	}
 }

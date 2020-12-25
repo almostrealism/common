@@ -21,6 +21,7 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.computations.RayPointAt;
 import org.almostrealism.hardware.AcceleratedEvaluable;
+import org.almostrealism.hardware.DynamicProducerForMemWrapper;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.hardware.MemWrapperAdapter;
 import io.almostrealism.relation.Producer;
@@ -202,6 +203,6 @@ public class Ray extends MemWrapperAdapter implements RayFeatures, Cloneable {
 	}
 
 	public static Producer<Ray> blank() {
-		return new DynamicProducer<>(args -> new Ray());
+		return new DynamicProducerForMemWrapper<>(args -> new Ray());
 	}
 }

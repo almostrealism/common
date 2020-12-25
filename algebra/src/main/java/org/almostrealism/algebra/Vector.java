@@ -18,6 +18,7 @@ package org.almostrealism.algebra;
 
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.DynamicProducer;
+import org.almostrealism.hardware.DynamicProducerForMemWrapper;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.hardware.MemWrapperAdapter;
@@ -434,7 +435,7 @@ public class Vector extends MemWrapperAdapter implements Triple, VectorFeatures,
 	}
 
 	public static Producer<Vector> blank() {
-		return new DynamicProducer<>(args -> new Vector());
+		return new DynamicProducerForMemWrapper<>(args -> new Vector());
 	}
 
 	/**
