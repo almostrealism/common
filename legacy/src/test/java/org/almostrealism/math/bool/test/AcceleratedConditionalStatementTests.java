@@ -21,7 +21,7 @@ public class AcceleratedConditionalStatementTests implements CodeFeatures {
 		ScalarProducer a = scalar(Math.random());
 		ScalarProducer b = scalar(Math.random());
 
-		LessThan lt = new LessThan(2, Scalar.blank(), a, b, a, b, false);
+		LessThan lt = new LessThan(2, Scalar::new, a, b, a, b, false);
 
 		lt.compact();
 		System.out.println(lt.getFunctionDefinition());
