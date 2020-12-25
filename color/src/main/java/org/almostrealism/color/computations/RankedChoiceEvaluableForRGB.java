@@ -19,15 +19,15 @@ package org.almostrealism.color.computations;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBBank;
 import org.almostrealism.geometry.computations.AcceleratedRankedChoiceEvaluable;
-import org.almostrealism.geometry.computations.RankedChoiceProducerForMemWrapper;
+import org.almostrealism.geometry.computations.RankedChoiceEvaluableForMemWrapper;
 import org.almostrealism.hardware.MemoryBank;
 
-public class RankedChoiceProducerForRGB extends RankedChoiceProducerForMemWrapper<RGB> {
-	public RankedChoiceProducerForRGB(double e) {
+public class RankedChoiceEvaluableForRGB extends RankedChoiceEvaluableForMemWrapper<RGB> {
+	public RankedChoiceEvaluableForRGB(double e) {
 		super(e);
 	}
 
-	public RankedChoiceProducerForRGB(double e, boolean tolerateNull) {
+	public RankedChoiceEvaluableForRGB(double e, boolean tolerateNull) {
 		super(e, tolerateNull);
 	}
 

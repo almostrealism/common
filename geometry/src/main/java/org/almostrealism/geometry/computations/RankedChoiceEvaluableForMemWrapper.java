@@ -24,12 +24,12 @@ import org.almostrealism.hardware.MemoryBank;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public abstract class RankedChoiceProducerForMemWrapper<T extends MemWrapper> extends RankedChoiceProducer<T> implements KernelizedEvaluable<T> {
-	public RankedChoiceProducerForMemWrapper(double e) {
+public abstract class RankedChoiceEvaluableForMemWrapper<T extends MemWrapper> extends RankedChoiceEvaluable<T> implements KernelizedEvaluable<T> {
+	public RankedChoiceEvaluableForMemWrapper(double e) {
 		super(e);
 	}
 
-	public RankedChoiceProducerForMemWrapper(double e, boolean tolerateNull) {
+	public RankedChoiceEvaluableForMemWrapper(double e, boolean tolerateNull) {
 		super(e, tolerateNull);
 	}
 

@@ -98,7 +98,7 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemWrapper> extends Dyna
 //			buf.append("printf(\"rank = %f, choice = %f\\n\", " +
 //					getHighestRankResultVariable().getName() + "[0], " +
 //					getHighestRankResultVariable().getName() + "[1]);\n");
-//			buf.append("printf(\" \");\n");
+			buf.append("printf(\"\");\n");
 		}
 		writeOutputAssignments(buf::append, variables);
 
@@ -141,9 +141,9 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemWrapper> extends Dyna
 			output.accept(getHighestRankResultVariable().getName());
 			output.accept("[1]) {\n");
 
-			if (enableOpenClKernelWorkaround) {
-				output.accept("printf(\"assigning choice " + i + "\\n\");\n");
-			}
+//			if (enableOpenClKernelWorkaround) {
+//				output.accept("printf(\"assigning choice " + i + "\\n\");\n");
+//			}
 
 			writeOutputAssignments(output, i, existingVariables);
 			output.accept("}");
@@ -174,11 +174,11 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemWrapper> extends Dyna
 				output.accept(getArgumentValueName(indexOfChoice().applyAsInt(index), i, false));
 				output.accept(";\n");
 
-				if (enableOpenClKernelWorkaround) {
-					output.accept("printf(\"value[" + i + "] = %f\\n\", ");
-					output.accept(getArgumentValueName(indexOfChoice().applyAsInt(index), i, false));
-					output.accept(");\n");
-				}
+//				if (enableOpenClKernelWorkaround) {
+//					output.accept("printf(\"value[" + i + "] = %f\\n\", ");
+//					output.accept(getArgumentValueName(indexOfChoice().applyAsInt(index), i, false));
+//					output.accept(");\n");
+//				}
 			});
 		} else {
 			output.accept(compactedChoices[index].apply(existingVariables));

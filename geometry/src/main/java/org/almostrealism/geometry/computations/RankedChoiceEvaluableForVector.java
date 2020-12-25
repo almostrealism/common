@@ -20,12 +20,12 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorBank;
 import org.almostrealism.hardware.MemoryBank;
 
-public class RankedChoiceProducerForVector extends RankedChoiceProducerForMemWrapper<Vector> {
-	public RankedChoiceProducerForVector(double e) {
+public class RankedChoiceEvaluableForVector extends RankedChoiceEvaluableForMemWrapper<Vector> {
+	public RankedChoiceEvaluableForVector(double e) {
 		super(e);
 	}
 
-	public RankedChoiceProducerForVector(double e, boolean tolerateNull) {
+	public RankedChoiceEvaluableForVector(double e, boolean tolerateNull) {
 		super(e, tolerateNull);
 	}
 

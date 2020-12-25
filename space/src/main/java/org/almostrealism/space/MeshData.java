@@ -22,14 +22,13 @@ import org.almostrealism.algebra.PairBank;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayBank;
-import org.almostrealism.geometry.Intersection;
 import org.almostrealism.graph.mesh.TriangleDataBank;
 import org.almostrealism.hardware.KernelizedOperation;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryBankAdapter;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.geometry.computations.RankedChoiceProducer;
+import org.almostrealism.geometry.computations.RankedChoiceEvaluable;
 
 public class MeshData extends TriangleDataBank {
 	/**
@@ -54,7 +53,7 @@ public class MeshData extends TriangleDataBank {
 
 		in.set(0, ray.evaluate(args));
 		Triangle.intersectAt.kernelEvaluate(distances, new MemoryBank[] { in, this });
-		RankedChoiceProducer.highestRank.kernelEvaluate(out, new MemoryBank[] { distances, conf });
+		RankedChoiceEvaluable.highestRank.kernelEvaluate(out, new MemoryBank[] { distances, conf });
 		return out.get(0);
 	}
 
@@ -87,7 +86,7 @@ public class MeshData extends TriangleDataBank {
 			for (int i = 0; i < rays.getCount(); i++) {
 				in.set(0, rays.get(i));
 				Triangle.intersectAt.kernelEvaluate(distances, new MemoryBank[] { in, this, dim });
-				RankedChoiceProducer.highestRank.kernelEvaluate(out, new MemoryBank[] { distances, conf });
+				RankedChoiceEvaluable.highestRank.kernelEvaluate(out, new MemoryBank[] { distances, conf });
 				destination.set(i, out.get(0));
 			}
 

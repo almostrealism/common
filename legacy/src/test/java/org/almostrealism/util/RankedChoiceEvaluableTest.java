@@ -25,8 +25,8 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.computations.AcceleratedRankedChoiceEvaluable;
-import org.almostrealism.geometry.computations.RankedChoiceProducer;
-import org.almostrealism.geometry.computations.RankedChoiceProducerForVector;
+import org.almostrealism.geometry.computations.RankedChoiceEvaluable;
+import org.almostrealism.geometry.computations.RankedChoiceEvaluableForVector;
 import org.almostrealism.hardware.DynamicAcceleratedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryBankAdapter;
@@ -37,11 +37,11 @@ import org.junit.Test;
 import java.util.Arrays;
 import java.util.List;
 
-public class RankedChoiceProducerTest implements CodeFeatures {
+public class RankedChoiceEvaluableTest implements CodeFeatures {
 	@Test
 	public void highestRank() {
 		Scalar in = new Scalar(1.0);
-		Pair out = RankedChoiceProducer.highestRank.evaluate(
+		Pair out = RankedChoiceEvaluable.highestRank.evaluate(
 				new Object[] { in, new Pair(3, Intersection.e) });
 
 		System.out.println("rank = " + out.getA());
@@ -61,13 +61,13 @@ public class RankedChoiceProducerTest implements CodeFeatures {
 		PairBank conf = new PairBank(1);
 		conf.set(0, new Pair(4, Intersection.e));
 
-		RankedChoiceProducer.highestRank.kernelEvaluate(out, new MemoryBank[] { in, conf });
+		RankedChoiceEvaluable.highestRank.kernelEvaluate(out, new MemoryBank[] { in, conf });
 
 		System.out.println("rank = " + out.get(0).getA());
 		Assert.assertEquals(1.0, out.get(0).getA(), Math.pow(10, -10));
 	}
 
-	protected RankedChoiceProducerForVector getRankedChoiceProducer1() {
+	protected RankedChoiceEvaluableForVector getRankedChoiceProducer1() {
 		ProducerWithRank<Vector, Scalar> v1 =
 				new ProducerWithRankAdapter<>(vector(1, 2, 3),
 						scalar(2));
@@ -78,14 +78,14 @@ public class RankedChoiceProducerTest implements CodeFeatures {
 				new ProducerWithRankAdapter<>(vector(7, 8, 9),
 						scalar(3));
 
-		RankedChoiceProducerForVector rcp = new RankedChoiceProducerForVector(Intersection.e);
+		RankedChoiceEvaluableForVector rcp = new RankedChoiceEvaluableForVector(Intersection.e);
 		rcp.add(v1);
 		rcp.add(v2);
 		rcp.add(v3);
 		return rcp;
 	}
 
-	protected RankedChoiceProducerForVector getRankedChoiceProducer2() {
+	protected RankedChoiceEvaluableForVector getRankedChoiceProducer2() {
 		ProducerWithRank<Vector, Scalar> v1 =
 				new ProducerWithRankAdapter<>(vector(0.7034, 0.7034, 0.7034),
 						scalar(0.9002));
@@ -93,7 +93,7 @@ public class RankedChoiceProducerTest implements CodeFeatures {
 				new ProducerWithRankAdapter<>(vector(0.0, 0.0, 0.0),
 						scalar(-17.274));
 
-		RankedChoiceProducerForVector rcp = new RankedChoiceProducerForVector(Intersection.e);
+		RankedChoiceEvaluableForVector rcp = new RankedChoiceEvaluableForVector(Intersection.e);
 		rcp.add(v1);
 		rcp.add(v2);
 		return rcp;
@@ -101,7 +101,7 @@ public class RankedChoiceProducerTest implements CodeFeatures {
 
 	@Test
 	public void rankedChoice1() {
-		RankedChoiceProducerForVector rcp = getRankedChoiceProducer1();
+		RankedChoiceEvaluableForVector rcp = getRankedChoiceProducer1();
 		DynamicAcceleratedEvaluable<Vector, Vector> acc = rcp.getAccelerated();
 		System.out.println(acc.getFunctionDefinition());
 
@@ -112,7 +112,7 @@ public class RankedChoiceProducerTest implements CodeFeatures {
 
 	@Test
 	public void rankedChoice2() {
-		RankedChoiceProducerForVector rcp = getRankedChoiceProducer2();
+		RankedChoiceEvaluableForVector rcp = getRankedChoiceProducer2();
 		DynamicAcceleratedEvaluable<Vector, Vector> acc = rcp.getAccelerated();
 		System.out.println(acc.getFunctionDefinition());
 
@@ -123,7 +123,7 @@ public class RankedChoiceProducerTest implements CodeFeatures {
 
 	@Test
 	public void rankedChoiceCompact1() {
-		RankedChoiceProducerForVector rcp = getRankedChoiceProducer1();
+		RankedChoiceEvaluableForVector rcp = getRankedChoiceProducer1();
 		DynamicAcceleratedEvaluable<Vector, Vector> acc = rcp.getAccelerated();
 		acc.compact();
 		System.out.println(acc.getFunctionDefinition());
@@ -171,7 +171,7 @@ public class RankedChoiceProducerTest implements CodeFeatures {
 
 		Assert.assertEquals(0.0, output.get(0).getValue(), Math.pow(10, -10));
 
-		count = 10;
+		count = 1000;
 
 		System.out.println("RankedChoiceProducerTest: Preparing random input...");
 

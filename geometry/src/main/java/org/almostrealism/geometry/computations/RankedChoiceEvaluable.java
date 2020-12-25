@@ -28,7 +28,7 @@ import io.almostrealism.relation.Compactable;
 
 import java.util.ArrayList;
 
-public class RankedChoiceProducer<T> extends ArrayList<ProducerWithRank<T, Scalar>> implements Evaluable<T>, Compactable {
+public class RankedChoiceEvaluable<T> extends ArrayList<ProducerWithRank<T, Scalar>> implements Evaluable<T>, Compactable {
 	protected double e;
 	protected boolean tolerateNull;
 
@@ -43,9 +43,9 @@ public class RankedChoiceProducer<T> extends ArrayList<ProducerWithRank<T, Scala
 				PassThroughEvaluable.of(Pair.class, 1));
 	}
 
-	public RankedChoiceProducer(double e) { this(e, true); }
+	public RankedChoiceEvaluable(double e) { this(e, true); }
 
-	public RankedChoiceProducer(double e, boolean tolerateNull) { this.e = e; this.tolerateNull = tolerateNull; }
+	public RankedChoiceEvaluable(double e, boolean tolerateNull) { this.e = e; this.tolerateNull = tolerateNull; }
 
 	public double getEpsilon() { return e; }
 
