@@ -20,6 +20,7 @@ import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.MultiExpression;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.Variable;
+import io.almostrealism.relation.Compactable;
 import org.almostrealism.hardware.AcceleratedProducer;
 import org.almostrealism.hardware.DynamicAcceleratedOperation;
 import org.almostrealism.hardware.DynamicAcceleratedProducer;
@@ -28,6 +29,7 @@ import io.almostrealism.relation.Evaluable;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
@@ -102,6 +104,9 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrappe
 				(DynamicAcceleratedOperation) (getTrueValue() == null ? null : getTrueValue().getProducer().get());
 		DynamicAcceleratedOperation falseOperation =
 				(DynamicAcceleratedOperation) (getFalseValue() == null ? null : getFalseValue().getProducer().get());
+
+		if (trueOperation != null) trueOperation.compact();
+		if (falseOperation != null) falseOperation.compact();
 
 		compacted = (outputVariable, existingVariables) -> {
 			StringBuffer buf = new StringBuffer();
