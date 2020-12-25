@@ -20,7 +20,7 @@ import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.computations.RayPointAt;
-import org.almostrealism.hardware.AcceleratedProducer;
+import org.almostrealism.hardware.AcceleratedEvaluable;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.hardware.MemWrapperAdapter;
 import io.almostrealism.relation.Producer;
@@ -111,7 +111,7 @@ public class Ray extends MemWrapperAdapter implements RayFeatures, Cloneable {
 	 */
 	public Evaluable<Scalar> oDoto() {
 		// TODO  Cache
-		return new AcceleratedProducer<>("rayODotO", false, Scalar.blank(),
+		return new AcceleratedEvaluable<>("rayODotO", false, Scalar.blank(),
 										new Supplier[0], new Object[] { this });
 	}
 	
@@ -120,7 +120,7 @@ public class Ray extends MemWrapperAdapter implements RayFeatures, Cloneable {
 	 */
 	public Evaluable<Scalar> dDotd() {
 		// TODO  Cache
-		return new AcceleratedProducer<>("rayDDotD", false, Scalar.blank(),
+		return new AcceleratedEvaluable<>("rayDDotD", false, Scalar.blank(),
 										new Supplier[0], new Object[] { this });
 	}
 	
@@ -129,7 +129,7 @@ public class Ray extends MemWrapperAdapter implements RayFeatures, Cloneable {
 	 */
 	public Evaluable<Scalar> oDotd() {
 		// TODO  Cache
-		return new AcceleratedProducer<>("rayODotD", false, Scalar.blank(),
+		return new AcceleratedEvaluable<>("rayODotD", false, Scalar.blank(),
 										new Supplier[0], new Object[] { this });
 	}
 	

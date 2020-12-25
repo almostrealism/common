@@ -18,9 +18,6 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.expressions.Expression;
-import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
-import org.almostrealism.hardware.MemWrapper;
-import io.almostrealism.relation.Evaluable;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -28,7 +25,8 @@ import java.util.List;
 import java.util.function.IntFunction;
 
 public class AcceleratedPassThroughProducer<T extends MemWrapper>
-		extends DynamicAcceleratedProducerAdapter<T, T> implements ProducerArgumentReference {
+		extends DynamicAcceleratedProducerAdapter<T, T>
+		implements ProducerArgumentReference {
 	private int argIndex;
 	private int kernelIndex;
 
@@ -52,15 +50,7 @@ public class AcceleratedPassThroughProducer<T extends MemWrapper>
 	}
 
 	@Override
-	public Evaluable<T> get() { return compileProducer(this); }
-//
-//	/**
-//	 * Returns an empty scope, as this is not intended to be converted.
-//	 */
-//	@Override
-//	public Scope<T> getScope(NameProvider p) {
-//		return new Scope<>();
-//	}
+	public KernelizedEvaluable<T> get() { return compileProducer(this); }
 
 	@Override
 	public void compact() {

@@ -16,11 +16,13 @@
 
 package org.almostrealism.time;
 
-import org.almostrealism.hardware.AcceleratedComputationProducer;
+import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.code.ProducerComputation;
+import org.almostrealism.hardware.KernelizedEvaluable;
+import org.almostrealism.hardware.KernelizedProducer;
 
-public interface TemporalScalarProducer extends ProducerComputation<TemporalScalar>, TemporalFeatures {
+public interface TemporalScalarProducer extends ProducerComputation<TemporalScalar>, KernelizedProducer<TemporalScalar>, TemporalFeatures {
 	@Override
-	default Evaluable<TemporalScalar> get() { return new AcceleratedComputationProducer<>(this); }
+	default KernelizedEvaluable<TemporalScalar> get() { return new AcceleratedComputationEvaluable<>(this); }
 }

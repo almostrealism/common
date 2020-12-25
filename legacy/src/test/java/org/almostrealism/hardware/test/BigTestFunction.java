@@ -17,11 +17,11 @@
 package org.almostrealism.hardware.test;
 
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.hardware.AcceleratedProducer;
+import org.almostrealism.hardware.AcceleratedEvaluable;
 
 import java.util.function.Supplier;
 
-public class BigTestFunction extends AcceleratedProducer<Ray, Ray> {
+public class BigTestFunction extends AcceleratedEvaluable<Ray, Ray> {
 	public BigTestFunction() {
 		super("f_operationList_155", false, Ray.blank(), generateEmptyArgs());
 	}

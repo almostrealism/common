@@ -19,11 +19,11 @@ package org.almostrealism.geometry.computations;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.geometry.TransformMatrixBank;
 import org.almostrealism.geometry.TransformMatrixEvaluable;
-import org.almostrealism.hardware.AcceleratedComputationProducer;
+import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import io.almostrealism.code.Computation;
 
-public class DefaultTransformMatrixEvaluable extends AcceleratedComputationProducer<TransformMatrix> implements TransformMatrixEvaluable {
+public class DefaultTransformMatrixEvaluable extends AcceleratedComputationEvaluable<TransformMatrix> implements TransformMatrixEvaluable {
 
 	public DefaultTransformMatrixEvaluable(Computation<TransformMatrix> c) {
 		super(c);

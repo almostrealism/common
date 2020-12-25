@@ -17,9 +17,11 @@
 package org.almostrealism.color.computations;
 
 import io.almostrealism.code.Scope;
+import org.almostrealism.color.DynamicRGBProducer;
 import org.almostrealism.color.RGB;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.hardware.KernelizedEvaluable;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -52,8 +54,8 @@ public class AverageColor extends ColorProducerAdapter {
 	public void setInvert(boolean invert) { this.invert = invert; }
 
 	@Override
-	public Evaluable<RGB> get() {
-		return args -> {
+	public KernelizedEvaluable<RGB> get() {
+		return new DynamicRGBProducer(args -> {
 			RGB c = new RGB(0.0, 0.0, 0.0);
 			Iterator itr = this.colors.iterator();
 
@@ -65,7 +67,7 @@ public class AverageColor extends ColorProducerAdapter {
 			}
 
 			return c;
-		};
+		}).get();
 	}
 
 	@Override

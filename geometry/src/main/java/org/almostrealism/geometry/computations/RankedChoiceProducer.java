@@ -18,7 +18,7 @@ package org.almostrealism.geometry.computations;
 
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.hardware.AcceleratedProducer;
+import org.almostrealism.hardware.AcceleratedEvaluable;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.PassThroughEvaluable;
 import io.almostrealism.relation.ProducerWithRank;
@@ -35,7 +35,7 @@ public class RankedChoiceProducer<T> extends ArrayList<ProducerWithRank<T, Scala
 	public static final KernelizedEvaluable<Pair> highestRank;
 
 	static {
-		highestRank = new AcceleratedProducer<>(
+		highestRank = new AcceleratedEvaluable<>(
 				"highestRank",
 				true,
 				Pair.empty(),

@@ -26,20 +26,20 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-public class AcceleratedProducer<I extends MemWrapper, O extends MemWrapper> extends AcceleratedOperation implements KernelizedEvaluable<O> {
-	public AcceleratedProducer(String function, Supplier<Evaluable<? extends O>> result, Supplier<Evaluable<? extends I>>... inputArgs) {
+public class AcceleratedEvaluable<I extends MemWrapper, O extends MemWrapper> extends AcceleratedOperation implements KernelizedEvaluable<O> {
+	public AcceleratedEvaluable(String function, Supplier<Evaluable<? extends O>> result, Supplier<Evaluable<? extends I>>... inputArgs) {
 		this(function, false, result, inputArgs, new Object[0]);
 	}
 
-	public AcceleratedProducer(String function, Supplier<Evaluable<? extends O>> result, Supplier<Evaluable<? extends I>> inputArgs[], Object additionalArguments[]) {
+	public AcceleratedEvaluable(String function, Supplier<Evaluable<? extends O>> result, Supplier<Evaluable<? extends I>> inputArgs[], Object additionalArguments[]) {
 		this(function, false, result, inputArgs, additionalArguments);
 	}
 
-	public AcceleratedProducer(String function, boolean kernel, Supplier<Evaluable<? extends O>> result, Supplier<Evaluable<? extends I>> inputArgs[], Object additionalArguments[]) {
+	public AcceleratedEvaluable(String function, boolean kernel, Supplier<Evaluable<? extends O>> result, Supplier<Evaluable<? extends I>> inputArgs[], Object additionalArguments[]) {
 		this(function, kernel, result, producers(inputArgs, additionalArguments));
 	}
 
-	public AcceleratedProducer(String function, boolean kernel, Supplier<Evaluable<? extends O>> result, Supplier<Evaluable<? extends I>>... inputArgs) {
+	public AcceleratedEvaluable(String function, boolean kernel, Supplier<Evaluable<? extends O>> result, Supplier<Evaluable<? extends I>>... inputArgs) {
 		super(function, kernel, includeResult(result, inputArgs));
 	}
 

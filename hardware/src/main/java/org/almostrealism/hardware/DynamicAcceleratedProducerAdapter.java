@@ -35,7 +35,9 @@ import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
-public abstract class DynamicAcceleratedProducerAdapter<I extends MemWrapper, O extends MemWrapper> extends ComputationProducerAdapter<I, O> implements MemWrapperComputation<O>, MultiExpression<Double>, ComputerFeatures {
+public abstract class DynamicAcceleratedProducerAdapter<I extends MemWrapper, O extends MemWrapper>
+		extends ComputationProducerAdapter<I, O>
+		implements MemWrapperComputation<O>, KernelizedProducer<O>, MultiExpression<Double>, ComputerFeatures {
 	private int memLength;
 	private IntFunction<InstanceReference> variableRef;
 
@@ -46,8 +48,8 @@ public abstract class DynamicAcceleratedProducerAdapter<I extends MemWrapper, O 
 	public DynamicAcceleratedProducerAdapter(int memLength, Supplier<Evaluable<? extends O>> result, Supplier<Evaluable<? extends I>>[] inputArgs, Object[] additionalArguments) {
 		this.memLength = memLength;
 		this.setInputs(Arrays.asList(
-				AcceleratedProducer.includeResult(result,
-						AcceleratedProducer.producers(inputArgs, additionalArguments))));
+				AcceleratedEvaluable.includeResult(result,
+						AcceleratedEvaluable.producers(inputArgs, additionalArguments))));
 		init();
 	}
 

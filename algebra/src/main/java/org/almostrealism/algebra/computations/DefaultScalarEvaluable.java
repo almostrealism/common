@@ -19,12 +19,12 @@ package org.almostrealism.algebra.computations;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarEvaluable;
-import org.almostrealism.hardware.AcceleratedComputationProducer;
+import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryBankAdapter;
 import io.almostrealism.code.Computation;
 
-public class DefaultScalarEvaluable extends AcceleratedComputationProducer<Scalar> implements ScalarEvaluable {
+public class DefaultScalarEvaluable extends AcceleratedComputationEvaluable<Scalar> implements ScalarEvaluable {
 
 	public DefaultScalarEvaluable(Computation<Scalar> c) {
 		super(c);

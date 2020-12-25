@@ -29,7 +29,7 @@ public class RankedChoiceProducerForVector extends RankedChoiceProducerForMemWra
 		super(e, tolerateNull);
 	}
 
-	public AcceleratedRankedChoiceProducer<Vector> getAccelerated() {
+	public AcceleratedRankedChoiceEvaluable<Vector> getAccelerated() {
 		return getAccelerated(3, Vector::new, VectorBank::new);
 	}
 

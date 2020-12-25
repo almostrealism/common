@@ -19,11 +19,11 @@ package org.almostrealism.algebra.computations;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairBank;
 import org.almostrealism.algebra.PairEvaluable;
-import org.almostrealism.hardware.AcceleratedComputationProducer;
+import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import io.almostrealism.code.Computation;
 
-public class DefaultPairEvaluable extends AcceleratedComputationProducer<Pair> implements PairEvaluable {
+public class DefaultPairEvaluable extends AcceleratedComputationEvaluable<Pair> implements PairEvaluable {
 
 	public DefaultPairEvaluable(Computation<Pair> c) {
 		super(c);

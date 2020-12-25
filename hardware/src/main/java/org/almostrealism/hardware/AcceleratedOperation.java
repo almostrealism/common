@@ -80,7 +80,7 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 
 	public HardwareOperator getOperator() {
 		// TODO  This needs to be by class in addition to function, as function names may collide
-		synchronized (AcceleratedProducer.class) {
+		synchronized (AcceleratedEvaluable.class) {
 			if (operators.get(getFunctionName()) == null) {
 				operators.put(getFunctionName(), new ThreadLocal<>());
 			}
@@ -216,8 +216,8 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 
 	public boolean isInputKernel() {
 		for (ArrayVariable arg : getArguments()) {
-			if (arg.getProducer() instanceof AcceleratedProducer == false) return false;
-			if (!((AcceleratedProducer) arg.getProducer()).isKernel()) return false;
+			if (arg.getProducer() instanceof AcceleratedEvaluable == false) return false;
+			if (!((AcceleratedEvaluable) arg.getProducer()).isKernel()) return false;
 		}
 
 		return false;

@@ -25,25 +25,25 @@ import java.util.List;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
-public abstract class DynamicAcceleratedMultiProducer<I extends MemWrapper, O extends MemWrapper>
-		extends DynamicAcceleratedProducer<I, O>
+public abstract class DynamicAcceleratedMultiEvaluable<I extends MemWrapper, O extends MemWrapper>
+		extends DynamicAcceleratedEvaluable<I, O>
 		implements KernelizedEvaluable<O>, MultiExpression<Double> {
 	private int memLength;
 
-	public DynamicAcceleratedMultiProducer(int memLength, Supplier<O> destination, Supplier<Evaluable<? extends I>> inputArgs[], Object additionalArguments[]) {
-		this(memLength, destination, AcceleratedProducer.producers(inputArgs, additionalArguments));
+	public DynamicAcceleratedMultiEvaluable(int memLength, Supplier<O> destination, Supplier<Evaluable<? extends I>> inputArgs[], Object additionalArguments[]) {
+		this(memLength, destination, AcceleratedEvaluable.producers(inputArgs, additionalArguments));
 	}
 
-	public DynamicAcceleratedMultiProducer(int memLength, Supplier<O> destination, Supplier<Evaluable<? extends I>>... inputArgs) {
+	public DynamicAcceleratedMultiEvaluable(int memLength, Supplier<O> destination, Supplier<Evaluable<? extends I>>... inputArgs) {
 		this(memLength, true, destination, inputArgs);
 	}
 
-	public DynamicAcceleratedMultiProducer(int memLength, boolean kernel, Supplier<O> destination,
-										   Supplier<Evaluable<?>> inputArgs[], Object additionalArguments[]) {
-		this(memLength, kernel, destination, AcceleratedProducer.producers(inputArgs, additionalArguments));
+	public DynamicAcceleratedMultiEvaluable(int memLength, boolean kernel, Supplier<O> destination,
+											Supplier<Evaluable<?>> inputArgs[], Object additionalArguments[]) {
+		this(memLength, kernel, destination, AcceleratedEvaluable.producers(inputArgs, additionalArguments));
 	}
 
-	public DynamicAcceleratedMultiProducer(int memLength, boolean kernel, Supplier<O> destination, Supplier<Evaluable<? extends I>>... inputArgs) {
+	public DynamicAcceleratedMultiEvaluable(int memLength, boolean kernel, Supplier<O> destination, Supplier<Evaluable<? extends I>>... inputArgs) {
 		super(kernel, destination, inputArgs);
 		this.memLength = memLength;
 	}

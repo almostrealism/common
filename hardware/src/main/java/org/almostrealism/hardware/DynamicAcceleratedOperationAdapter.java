@@ -29,7 +29,7 @@ public abstract class DynamicAcceleratedOperationAdapter<T> extends ComputationO
 	}
 
 	public DynamicAcceleratedOperationAdapter(Supplier<Evaluable<? extends T>>[] inputArgs, Object[] additionalArguments) {
-		this.setInputs(Arrays.asList(AcceleratedProducer.producers(inputArgs, additionalArguments)));
+		this.setInputs(Arrays.asList(AcceleratedEvaluable.producers(inputArgs, additionalArguments)));
 		init();
 	}
 

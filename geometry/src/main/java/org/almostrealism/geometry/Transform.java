@@ -20,7 +20,7 @@ import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.expressions.Expression;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorProducer;
-import org.almostrealism.hardware.AcceleratedProducer;
+import org.almostrealism.hardware.AcceleratedEvaluable;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import io.almostrealism.relation.Evaluable;
 
@@ -137,12 +137,12 @@ public class Transform extends DynamicAcceleratedProducerAdapter<Vector, Vector>
 
 			// TODO  If both are static, this should be marked as static
 			if (!getInputProducer(1).isStatic()) {
-				List<ArrayVariable<? extends Vector>> args = AcceleratedProducer.excludeResult(getInputProducer(1).getArguments());
+				List<ArrayVariable<? extends Vector>> args = AcceleratedEvaluable.excludeResult(getInputProducer(1).getArguments());
 				for (Expression e : value) e.getDependencies().addAll(args);
 			}
 
 			if (!getInputProducer(2).isStatic()) {
-				List<ArrayVariable<? extends Vector>> args = AcceleratedProducer.excludeResult(getInputProducer(2).getArguments());
+				List<ArrayVariable<? extends Vector>> args = AcceleratedEvaluable.excludeResult(getInputProducer(2).getArguments());
 				for (Expression e : value) e.getDependencies().addAll(args);
 			}
 

@@ -24,10 +24,10 @@ import org.almostrealism.algebra.PairBank;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.geometry.computations.AcceleratedRankedChoiceProducer;
+import org.almostrealism.geometry.computations.AcceleratedRankedChoiceEvaluable;
 import org.almostrealism.geometry.computations.RankedChoiceProducer;
 import org.almostrealism.geometry.computations.RankedChoiceProducerForVector;
-import org.almostrealism.hardware.DynamicAcceleratedProducer;
+import org.almostrealism.hardware.DynamicAcceleratedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryBankAdapter;
 import org.almostrealism.hardware.PassThroughEvaluable;
@@ -102,7 +102,7 @@ public class RankedChoiceProducerTest implements CodeFeatures {
 	@Test
 	public void rankedChoice1() {
 		RankedChoiceProducerForVector rcp = getRankedChoiceProducer1();
-		DynamicAcceleratedProducer<Vector, Vector> acc = rcp.getAccelerated();
+		DynamicAcceleratedEvaluable<Vector, Vector> acc = rcp.getAccelerated();
 		System.out.println(acc.getFunctionDefinition());
 
 		Vector result = acc.evaluate();
@@ -113,7 +113,7 @@ public class RankedChoiceProducerTest implements CodeFeatures {
 	@Test
 	public void rankedChoice2() {
 		RankedChoiceProducerForVector rcp = getRankedChoiceProducer2();
-		DynamicAcceleratedProducer<Vector, Vector> acc = rcp.getAccelerated();
+		DynamicAcceleratedEvaluable<Vector, Vector> acc = rcp.getAccelerated();
 		System.out.println(acc.getFunctionDefinition());
 
 		Vector result = acc.evaluate();
@@ -124,7 +124,7 @@ public class RankedChoiceProducerTest implements CodeFeatures {
 	@Test
 	public void rankedChoiceCompact1() {
 		RankedChoiceProducerForVector rcp = getRankedChoiceProducer1();
-		DynamicAcceleratedProducer<Vector, Vector> acc = rcp.getAccelerated();
+		DynamicAcceleratedEvaluable<Vector, Vector> acc = rcp.getAccelerated();
 		acc.compact();
 		System.out.println(acc.getFunctionDefinition());
 
@@ -143,8 +143,8 @@ public class RankedChoiceProducerTest implements CodeFeatures {
 				new ProducerWithRankAdapter<>(PassThroughEvaluable.of(Scalar.class, 4),
 										PassThroughEvaluable.of(Scalar.class, 5)));
 
-		AcceleratedRankedChoiceProducer<Scalar> acc =
-				new AcceleratedRankedChoiceProducer<>(2, Scalar::new, ScalarBank::new,
+		AcceleratedRankedChoiceEvaluable<Scalar> acc =
+				new AcceleratedRankedChoiceEvaluable<>(2, Scalar::new, ScalarBank::new,
 													values, Scalar.blank(), Intersection.e, Scalar.blank().get()::evaluate);
 
 		System.out.println(acc.getFunctionDefinition());
@@ -171,12 +171,12 @@ public class RankedChoiceProducerTest implements CodeFeatures {
 
 		Assert.assertEquals(0.0, output.get(0).getValue(), Math.pow(10, -10));
 
-		count = 1000;
+		count = 10;
 
 		System.out.println("RankedChoiceProducerTest: Preparing random input...");
 
 		input = new ScalarBank[] { new ScalarBank(count), new ScalarBank(count), new ScalarBank(count),
-												new ScalarBank(count), new ScalarBank(count), new ScalarBank(count) };
+								new ScalarBank(count), new ScalarBank(count), new ScalarBank(count) };
 
 		for (int i = 0; i < input.length; i++) {
 			for (int j = 0; j < input[i].getCount(); j++) {

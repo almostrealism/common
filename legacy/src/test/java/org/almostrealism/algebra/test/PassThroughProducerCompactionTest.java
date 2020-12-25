@@ -3,7 +3,7 @@ package org.almostrealism.algebra.test;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.computations.ScalarProduct;
 import org.almostrealism.algebra.computations.ScalarSum;
-import org.almostrealism.hardware.AcceleratedComputationProducer;
+import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.util.CodeFeatures;
@@ -25,8 +25,8 @@ public class PassThroughProducerCompactionTest implements HardwareFeatures, Code
 		Assert.assertEquals(3.0, s.getValue(), Math.pow(10, -10));
 	}
 
-	protected AcceleratedComputationProducer<Scalar> product() {
-		return (AcceleratedComputationProducer)
+	protected AcceleratedComputationEvaluable<Scalar> product() {
+		return (AcceleratedComputationEvaluable)
 				new ScalarProduct(sum(),
 					PassThroughEvaluable.of(Scalar.class, 2)).get();
 	}
@@ -41,7 +41,7 @@ public class PassThroughProducerCompactionTest implements HardwareFeatures, Code
 
 	@Test
 	public void applyProductCompact() {
-		AcceleratedComputationProducer<Scalar> p = product();
+		AcceleratedComputationEvaluable<Scalar> p = product();
 		p.compact();
 		System.out.println(p.getFunctionDefinition());
 

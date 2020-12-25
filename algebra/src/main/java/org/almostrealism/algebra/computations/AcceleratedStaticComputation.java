@@ -16,6 +16,7 @@
 
 package org.almostrealism.algebra.computations;
 
+import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemWrapper;
 import io.almostrealism.relation.Evaluable;
 
@@ -27,5 +28,5 @@ public class AcceleratedStaticComputation<T extends MemWrapper> extends Accelera
 	}
 
 	@Override
-	public Evaluable<T> get() { return compileProducer(this); }
+	public KernelizedEvaluable<T> get() { return compileProducer(this); }
 }

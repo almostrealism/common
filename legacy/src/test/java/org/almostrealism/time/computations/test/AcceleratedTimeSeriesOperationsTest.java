@@ -2,7 +2,7 @@ package org.almostrealism.time.computations.test;
 
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
-import org.almostrealism.hardware.AcceleratedComputationProducer;
+import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.time.CursorPair;
 import org.almostrealism.time.TemporalScalar;
@@ -53,7 +53,7 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures {
 	public void valueAt() {
 		AcceleratedTimeSeries series = series();
 		AcceleratedTimeSeriesValueAt valueAt = new AcceleratedTimeSeriesValueAt(p(series), p(cursors(3.25)));
-		AcceleratedComputationProducer<Scalar> compiled = (AcceleratedComputationProducer) valueAt.get();
+		AcceleratedComputationEvaluable<Scalar> compiled = (AcceleratedComputationEvaluable) valueAt.get();
 		System.out.println(compiled.getFunctionDefinition());
 
 		Assert.assertEquals(series.valueAt(3.25).getValue(), compiled.evaluate().getValue(), Math.pow(10, -10));

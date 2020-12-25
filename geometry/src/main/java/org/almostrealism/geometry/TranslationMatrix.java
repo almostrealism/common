@@ -17,12 +17,12 @@
 package org.almostrealism.geometry;
 
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.hardware.AcceleratedProducer;
+import org.almostrealism.hardware.AcceleratedEvaluable;
 import io.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 
-public class TranslationMatrix extends AcceleratedProducer<Vector, TransformMatrix> {
+public class TranslationMatrix extends AcceleratedEvaluable<Vector, TransformMatrix> {
 	public TranslationMatrix(Supplier<Evaluable<? extends Vector>> t) {
 		super("translationMatrix", () -> new IdentityMatrix(), t);
 	}

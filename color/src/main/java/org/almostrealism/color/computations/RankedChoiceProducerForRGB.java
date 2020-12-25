@@ -18,7 +18,7 @@ package org.almostrealism.color.computations;
 
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBBank;
-import org.almostrealism.geometry.computations.AcceleratedRankedChoiceProducer;
+import org.almostrealism.geometry.computations.AcceleratedRankedChoiceEvaluable;
 import org.almostrealism.geometry.computations.RankedChoiceProducerForMemWrapper;
 import org.almostrealism.hardware.MemoryBank;
 
@@ -31,7 +31,7 @@ public class RankedChoiceProducerForRGB extends RankedChoiceProducerForMemWrappe
 		super(e, tolerateNull);
 	}
 
-	public AcceleratedRankedChoiceProducer<RGB> getAccelerated() {
+	public AcceleratedRankedChoiceEvaluable<RGB> getAccelerated() {
 		return getAccelerated(3, RGB::new, RGBBank::new);
 	}
 

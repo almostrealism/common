@@ -18,12 +18,13 @@ package org.almostrealism.graph.mesh;
 
 import org.almostrealism.algebra.VectorProducer;
 import io.almostrealism.code.ProducerComputation;
-import io.almostrealism.relation.Evaluable;
+import org.almostrealism.hardware.KernelizedEvaluable;
+import org.almostrealism.hardware.KernelizedProducer;
 
-public interface TriangleDataProducer extends ProducerComputation<TriangleData>, TriangleDataFeatures {
+public interface TriangleDataProducer extends ProducerComputation<TriangleData>, KernelizedProducer<TriangleData>, TriangleDataFeatures {
 
 	@Override
-	default Evaluable<TriangleData> get() { return new DefaultTriangleDataProducer(this); }
+	default KernelizedEvaluable<TriangleData> get() { return new DefaultTriangleDataEvaluable(this); }
 
 	default VectorProducer abc() { return abc(this); }
 

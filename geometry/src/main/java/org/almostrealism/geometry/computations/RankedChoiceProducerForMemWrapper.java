@@ -16,10 +16,10 @@
 
 package org.almostrealism.geometry.computations;
 
+import org.almostrealism.hardware.DynamicProducerForMemWrapper;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.hardware.MemoryBank;
-import io.almostrealism.relation.Producer;
 
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
@@ -33,8 +33,9 @@ public abstract class RankedChoiceProducerForMemWrapper<T extends MemWrapper> ex
 		super(e, tolerateNull);
 	}
 
-	public AcceleratedRankedChoiceProducer<T> getAccelerated(int memLength, Supplier<T> blankValue, IntFunction<MemoryBank<T>> forKernel) {
-		return new AcceleratedRankedChoiceProducer(memLength, blankValue, forKernel, this,
-												blankValue, getEpsilon(), blankValue);
+	public AcceleratedRankedChoiceEvaluable<T> getAccelerated(int memLength, Supplier<T> blankValue, IntFunction<MemoryBank<T>> forKernel) {
+		return new AcceleratedRankedChoiceEvaluable(memLength, blankValue, forKernel, this,
+												new DynamicProducerForMemWrapper<>(blankValue),
+												getEpsilon(), blankValue);
 	}
 }

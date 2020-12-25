@@ -4,10 +4,9 @@ import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.computations.TransformAsLocation;
 import org.almostrealism.geometry.TranslationMatrix;
-import org.almostrealism.hardware.AcceleratedComputationProducer;
+import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.util.CodeFeatures;
-import io.almostrealism.relation.Provider;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -16,8 +15,8 @@ public class TransformTest implements HardwareFeatures, CodeFeatures {
 		return new TranslationMatrix(vector(0.0, 10.0, 0.0)).evaluate();
 	}
 
-	protected AcceleratedComputationProducer<Vector> transformAsLocation() {
-		return (AcceleratedComputationProducer<Vector>) compileProducer(
+	protected AcceleratedComputationEvaluable<Vector> transformAsLocation() {
+		return (AcceleratedComputationEvaluable<Vector>) compileProducer(
 				new TransformAsLocation(matrix(),
 						vector(1.0, 2.0, 3.0)));
 	}
@@ -30,7 +29,7 @@ public class TransformTest implements HardwareFeatures, CodeFeatures {
 
 	@Test
 	public void applyAsLocationCompact() {
-		AcceleratedComputationProducer<Vector> t = transformAsLocation();
+		AcceleratedComputationEvaluable<Vector> t = transformAsLocation();
 		t.compact();
 
 		System.out.println(t.getFunctionDefinition());

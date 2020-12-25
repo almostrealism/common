@@ -20,10 +20,12 @@ import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.algebra.VectorProducer;
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.hardware.KernelizedEvaluable;
+import org.almostrealism.hardware.KernelizedProducer;
 
-public interface RayProducer extends ProducerComputation<Ray>, RayFeatures {
+public interface RayProducer extends ProducerComputation<Ray>, KernelizedProducer<Ray>, RayFeatures {
 	@Override
-	default Evaluable<Ray> get() { return new DefaultRayEvaluable(this); }
+	default KernelizedEvaluable<Ray> get() { return new DefaultRayEvaluable(this); }
 
 	default VectorProducer origin() { return origin(this); }
 

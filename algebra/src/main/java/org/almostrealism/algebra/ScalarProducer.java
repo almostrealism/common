@@ -13,12 +13,14 @@ import org.almostrealism.bool.GreaterThanScalar;
 import org.almostrealism.bool.GreaterThanVector;
 import org.almostrealism.bool.LessThanScalar;
 import org.almostrealism.bool.LessThanVector;
+import org.almostrealism.hardware.KernelizedEvaluable;
+import org.almostrealism.hardware.KernelizedProducer;
 
 import java.util.function.Supplier;
 
-public interface ScalarProducer extends ProducerComputation<Scalar>, ScalarFeatures {
+public interface ScalarProducer extends ProducerComputation<Scalar>, KernelizedProducer<Scalar>, ScalarFeatures {
 	@Override
-	default Evaluable<Scalar> get() { return new DefaultScalarEvaluable(this); }
+	default KernelizedEvaluable<Scalar> get() { return new DefaultScalarEvaluable(this); }
 
 	default ScalarProducer add(Supplier<Evaluable<? extends Scalar>> value) {
 		return scalarAdd(this, value);

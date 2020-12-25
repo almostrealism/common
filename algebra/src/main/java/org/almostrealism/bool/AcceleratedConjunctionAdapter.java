@@ -24,7 +24,7 @@ import io.almostrealism.code.expressions.NAryExpression;
 import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.hardware.AcceleratedProducer;
+import org.almostrealism.hardware.AcceleratedEvaluable;
 import org.almostrealism.hardware.MemWrapper;
 
 import java.util.ArrayList;
@@ -93,7 +93,7 @@ public class AcceleratedConjunctionAdapter<T extends MemWrapper> extends Acceler
 		if (includeConjuncts) {
 			conjuncts.stream()
 					.map(AcceleratedConditionalStatement::getArguments)
-					.map(AcceleratedProducer::excludeResult)
+					.map(AcceleratedEvaluable::excludeResult)
 					.flatMap(List::stream)
 					.filter(Objects::nonNull)
 					.filter(v -> !all.contains(v))

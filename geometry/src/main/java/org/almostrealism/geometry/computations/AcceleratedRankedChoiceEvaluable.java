@@ -4,9 +4,9 @@ import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.geometry.DimensionAware;
-import org.almostrealism.hardware.AcceleratedProducer;
-import org.almostrealism.hardware.DynamicAcceleratedMultiProducer;
-import org.almostrealism.hardware.DynamicAcceleratedProducer;
+import org.almostrealism.hardware.AcceleratedEvaluable;
+import org.almostrealism.hardware.DynamicAcceleratedMultiEvaluable;
+import org.almostrealism.hardware.DynamicAcceleratedEvaluable;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.hardware.MemoryBank;
 import io.almostrealism.relation.Evaluable;
@@ -22,7 +22,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-public class AcceleratedRankedChoiceProducer<T extends MemWrapper> extends DynamicAcceleratedProducer<T, T> implements DimensionAware {
+public class AcceleratedRankedChoiceEvaluable<T extends MemWrapper> extends DynamicAcceleratedEvaluable<T, T> implements DimensionAware {
 	public static final boolean enableCompaction = true;
 	public static final boolean enableOpenClKernelWorkaround = true;
 
@@ -40,14 +40,14 @@ public class AcceleratedRankedChoiceProducer<T extends MemWrapper> extends Dynam
 	private List<ArrayVariable<T>> choices;
 	private ArrayVariable defaultValue;
 
-	public AcceleratedRankedChoiceProducer(int memLength, Supplier<T> blank, IntFunction<MemoryBank<T>> forKernel,
-										   List<ProducerWithRank<T, Scalar>> values, Supplier<Evaluable<? extends T>> defaultValue, double e) {
+	public AcceleratedRankedChoiceEvaluable(int memLength, Supplier<T> blank, IntFunction<MemoryBank<T>> forKernel,
+											List<ProducerWithRank<T, Scalar>> values, Supplier<Evaluable<? extends T>> defaultValue, double e) {
 		this(memLength, blank, forKernel, values, defaultValue, e, null);
 	}
 
-	public AcceleratedRankedChoiceProducer(int memLength, Supplier<T> blank, IntFunction<MemoryBank<T>> forKernel,
-										   List<ProducerWithRank<T, Scalar>> values, Supplier<Evaluable<? extends T>> defaultValue,
-										   double e, Supplier<T> onNull) {
+	public AcceleratedRankedChoiceEvaluable(int memLength, Supplier<T> blank, IntFunction<MemoryBank<T>> forKernel,
+											List<ProducerWithRank<T, Scalar>> values, Supplier<Evaluable<? extends T>> defaultValue,
+											double e, Supplier<T> onNull) {
 		super(blank, generateArgs(values, defaultValue));
 		this.memLength = memLength;
 		this.forKernel = forKernel;
@@ -80,6 +80,8 @@ public class AcceleratedRankedChoiceProducer<T extends MemWrapper> extends Dynam
 		List<Variable<?>> variables = new ArrayList<>();
 		variables.addAll(existingVariables);
 
+		// if (enableOpenClKernelWorkaround) buf.append("printf(\"Starting method...\\n\");\n");
+
 		writeVariables(buf::append, variables);
 		variables.addAll(getVariables());
 
@@ -91,11 +93,13 @@ public class AcceleratedRankedChoiceProducer<T extends MemWrapper> extends Dynam
 		buf.append(", ");
 		buf.append(getHighestRankConfVariable().getName());
 		buf.append(", 0, 0, 0, 2, 2, 2);\n");
-//		writeHighestRank(buf::append);
-//		buf.append("printf(\"rank = %f, choice = %f\\n\", " +
-//				getHighestRankResultVariable() + "[0]," +
-//				getHighestRankResultVariable() + "[1]);\n");
-		if (enableOpenClKernelWorkaround) buf.append("printf(\"\");\n");
+		if (enableOpenClKernelWorkaround) {
+//			writeHighestRank(buf::append);
+//			buf.append("printf(\"rank = %f, choice = %f\\n\", " +
+//					getHighestRankResultVariable().getName() + "[0], " +
+//					getHighestRankResultVariable().getName() + "[1]);\n");
+//			buf.append("printf(\" \");\n");
+		}
 		writeOutputAssignments(buf::append, variables);
 
 		return buf.toString();
@@ -136,6 +140,11 @@ public class AcceleratedRankedChoiceProducer<T extends MemWrapper> extends Dynam
 			output.accept(" == ");
 			output.accept(getHighestRankResultVariable().getName());
 			output.accept("[1]) {\n");
+
+			if (enableOpenClKernelWorkaround) {
+				output.accept("printf(\"assigning choice " + i + "\\n\");\n");
+			}
+
 			writeOutputAssignments(output, i, existingVariables);
 			output.accept("}");
 			output.accept(" else ");
@@ -164,6 +173,12 @@ public class AcceleratedRankedChoiceProducer<T extends MemWrapper> extends Dynam
 				output.accept(" = ");
 				output.accept(getArgumentValueName(indexOfChoice().applyAsInt(index), i, false));
 				output.accept(";\n");
+
+				if (enableOpenClKernelWorkaround) {
+					output.accept("printf(\"value[" + i + "] = %f\\n\", ");
+					output.accept(getArgumentValueName(indexOfChoice().applyAsInt(index), i, false));
+					output.accept(");\n");
+				}
 			});
 		} else {
 			output.accept(compactedChoices[index].apply(existingVariables));
@@ -227,15 +242,15 @@ public class AcceleratedRankedChoiceProducer<T extends MemWrapper> extends Dynam
 			List<ArrayVariable<Scalar>> ranks = getRanks();
 			compactedRanks = new Function[ranks.size()];
 			IntStream.range(0, compactedRanks.length).forEach(i -> {
-				if (ranks.get(i).getProducer() instanceof DynamicAcceleratedMultiProducer) {
-					DynamicAcceleratedMultiProducer p = (DynamicAcceleratedMultiProducer) ranks.get(i).getProducer();
+				if (ranks.get(i).getProducer() instanceof DynamicAcceleratedMultiEvaluable) {
+					DynamicAcceleratedMultiEvaluable p = (DynamicAcceleratedMultiEvaluable) ranks.get(i).getProducer();
 					compactedRanks[i] = ev -> {
 						String s = p.getBody(getHighestRankInputVariable(), ev);
 						ev.addAll(p.getVariables());
 						return s;
 					};
 
-					newArgs.addAll(AcceleratedProducer.excludeResult(p.getArguments()));
+					newArgs.addAll(AcceleratedEvaluable.excludeResult(p.getArguments()));
 				} else {
 					newArgs.add(ranks.get(i));
 				}
@@ -244,30 +259,30 @@ public class AcceleratedRankedChoiceProducer<T extends MemWrapper> extends Dynam
 			List<ArrayVariable<T>> choices = getChoices();
 			compactedChoices = new Function[choices.size()];
 			IntStream.range(0, compactedChoices.length).forEach(i -> {
-				if (choices.get(i).getProducer() instanceof DynamicAcceleratedMultiProducer) {
-					DynamicAcceleratedMultiProducer p = (DynamicAcceleratedMultiProducer) choices.get(i).getProducer();
+				if (choices.get(i).getProducer() instanceof DynamicAcceleratedMultiEvaluable) {
+					DynamicAcceleratedMultiEvaluable p = (DynamicAcceleratedMultiEvaluable) choices.get(i).getProducer();
 					compactedChoices[i] = ev -> {
 						String s = p.getBody(getOutputVariable(), ev);
 						ev.addAll(p.getVariables());
 						return s;
 					};
 
-					newArgs.addAll(AcceleratedProducer.excludeResult(p.getArguments()));
+					newArgs.addAll(AcceleratedEvaluable.excludeResult(p.getArguments()));
 				} else {
 					newArgs.add(choices.get(i));
 				}
 			});
 
 			ArrayVariable defaultValue = getDefaultValue();
-			if (defaultValue.getProducer() instanceof DynamicAcceleratedMultiProducer) {
-				DynamicAcceleratedMultiProducer p = (DynamicAcceleratedMultiProducer) defaultValue.getProducer();
+			if (defaultValue.getProducer() instanceof DynamicAcceleratedMultiEvaluable) {
+				DynamicAcceleratedMultiEvaluable p = (DynamicAcceleratedMultiEvaluable) defaultValue.getProducer();
 				compactedDefaultValue = ev -> {
 					String s = p.getBody(getOutputVariable(), ev);
 					ev.addAll(p.getVariables());
 					return s;
 				};
 
-				newArgs.addAll(AcceleratedProducer.excludeResult(p.getArguments()));
+				newArgs.addAll(AcceleratedEvaluable.excludeResult(p.getArguments()));
 			} else {
 				newArgs.add(defaultValue);
 			}

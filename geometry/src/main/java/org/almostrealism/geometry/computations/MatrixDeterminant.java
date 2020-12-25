@@ -19,11 +19,11 @@ package org.almostrealism.geometry.computations;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.geometry.TransformMatrix;
-import org.almostrealism.hardware.AcceleratedProducer;
+import org.almostrealism.hardware.AcceleratedEvaluable;
 
 import java.util.function.Supplier;
 
-public class MatrixDeterminant extends AcceleratedProducer<TransformMatrix, Scalar> {
+public class MatrixDeterminant extends AcceleratedEvaluable<TransformMatrix, Scalar> {
 	public MatrixDeterminant(Supplier<Evaluable<? extends TransformMatrix>> m) {
 		super("matrixDeterminant", Scalar.blank(), m);
 	}

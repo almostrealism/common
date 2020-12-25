@@ -20,11 +20,11 @@ import io.almostrealism.code.Computation;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorBank;
 import org.almostrealism.algebra.VectorEvaluable;
-import org.almostrealism.hardware.AcceleratedComputationProducer;
+import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryBankAdapter;
 
-public class DefaultVectorEvaluable extends AcceleratedComputationProducer<Vector> implements VectorEvaluable {
+public class DefaultVectorEvaluable extends AcceleratedComputationEvaluable<Vector> implements VectorEvaluable {
 
 	public DefaultVectorEvaluable(Computation<Vector> c) {
 		super(c);

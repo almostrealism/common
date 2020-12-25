@@ -87,6 +87,10 @@ public class TriangleIntersectAt extends LessThanScalar {
 						ScalarFeatures.getInstance().scalar(-1.0)), true);
 	}
 
+	public void compact() {
+		super.compact();
+	}
+
 	// TODO  Make private
 	public static VectorProducer h(VectorProducer def, VectorProducer direction) {
 		return direction.crossProduct(def);

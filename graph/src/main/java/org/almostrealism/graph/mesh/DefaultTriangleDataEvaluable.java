@@ -14,14 +14,20 @@
  * limitations under the License.
  */
 
-package org.almostrealism.geometry;
+package org.almostrealism.graph.mesh;
 
-import org.almostrealism.hardware.AcceleratedComputationProducer;
+import org.almostrealism.hardware.AcceleratedComputationEvaluable;
+import org.almostrealism.hardware.MemoryBank;
 import io.almostrealism.code.Computation;
 
-public class DefaultTransformMatrixProducer extends AcceleratedComputationProducer<TransformMatrix> {
+public class DefaultTriangleDataEvaluable extends AcceleratedComputationEvaluable<TriangleData> implements TriangleDataEvaluable {
 
-	public DefaultTransformMatrixProducer(Computation<TransformMatrix> c) {
+	public DefaultTriangleDataEvaluable(Computation<TriangleData> c) {
 		super(c);
+	}
+
+	@Override
+	public MemoryBank<TriangleData> createKernelDestination(int size) {
+		return new TriangleDataBank(size);
 	}
 }

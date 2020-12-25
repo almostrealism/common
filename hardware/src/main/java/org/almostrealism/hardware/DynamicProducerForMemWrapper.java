@@ -5,10 +5,15 @@ import io.almostrealism.relation.Evaluable;
 
 import java.util.function.Function;
 import java.util.function.IntFunction;
+import java.util.function.Supplier;
 
 public class DynamicProducerForMemWrapper<T extends MemWrapper> extends DynamicProducer<T> {
 
 	private IntFunction<MemoryBank<T>> kernelDestination;
+
+	public DynamicProducerForMemWrapper(Supplier<T> supplier) {
+		this(args -> supplier.get());
+	}
 
 	public DynamicProducerForMemWrapper(Function<Object[], T> function) {
 		this(function, null);

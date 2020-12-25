@@ -19,11 +19,11 @@ package org.almostrealism.color.computations;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBBank;
 import org.almostrealism.color.RGBEvaluable;
-import org.almostrealism.hardware.AcceleratedComputationProducer;
+import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import io.almostrealism.code.Computation;
 
-public class DefaultRGBEvaluable extends AcceleratedComputationProducer<RGB> implements RGBEvaluable {
+public class DefaultRGBEvaluable extends AcceleratedComputationEvaluable<RGB> implements RGBEvaluable {
 
 	public DefaultRGBEvaluable(Computation<RGB> c) {
 		super(c);

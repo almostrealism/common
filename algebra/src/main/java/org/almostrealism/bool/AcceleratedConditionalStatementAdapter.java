@@ -20,21 +20,19 @@ import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.MultiExpression;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.Variable;
-import io.almostrealism.relation.Compactable;
-import org.almostrealism.hardware.AcceleratedProducer;
+import org.almostrealism.hardware.AcceleratedEvaluable;
 import org.almostrealism.hardware.DynamicAcceleratedOperation;
-import org.almostrealism.hardware.DynamicAcceleratedProducer;
+import org.almostrealism.hardware.DynamicAcceleratedEvaluable;
 import org.almostrealism.hardware.MemWrapper;
 import io.almostrealism.relation.Evaluable;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
 public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrapper>
-											extends DynamicAcceleratedProducer<MemWrapper, T>
+											extends DynamicAcceleratedEvaluable<MemWrapper, T>
 											implements AcceleratedConditionalStatement<T> {
 	private int memLength;
 
@@ -138,7 +136,7 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrappe
 				.filter(p -> p instanceof OperationAdapter)
 				.map(p -> {
 					((OperationAdapter) p).compile();
-					return AcceleratedProducer.excludeResult(((OperationAdapter) p).getArguments());
+					return AcceleratedEvaluable.excludeResult(((OperationAdapter) p).getArguments());
 				})
 				.flatMap(List::stream)
 				.forEach(arg -> newArgs.add((ArrayVariable) arg));
@@ -148,12 +146,12 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrappe
 
 		if (trueOperation != null) {
 			trueOperation.compile();
-			newArgs.addAll(AcceleratedProducer.excludeResult(trueOperation.getArguments()));
+			newArgs.addAll(AcceleratedEvaluable.excludeResult(trueOperation.getArguments()));
 		}
 
 		if (falseOperation != null) {
 			falseOperation.compile();
-			newArgs.addAll(AcceleratedProducer.excludeResult(falseOperation.getArguments()));
+			newArgs.addAll(AcceleratedEvaluable.excludeResult(falseOperation.getArguments()));
 		}
 
 		setArguments(newArgs);

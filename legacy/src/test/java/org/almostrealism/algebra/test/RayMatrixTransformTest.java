@@ -5,18 +5,18 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.computations.RayMatrixTransform;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.TranslationMatrix;
-import org.almostrealism.hardware.AcceleratedComputationProducer;
+import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.util.CodeFeatures;
 import org.junit.Assert;
 import org.junit.Test;
 
 public class RayMatrixTransformTest implements HardwareFeatures, CodeFeatures {
-	protected AcceleratedComputationProducer<Ray> transform() {
+	protected AcceleratedComputationEvaluable<Ray> transform() {
 		TransformMatrix m = new TranslationMatrix(vector(0.0, -10.0, 0.0)).evaluate();
 
 		Ray r = new Ray(new Vector(1.0, 2.0, 3.0), new Vector(4.0, 5.0, 6.0));
-		return (AcceleratedComputationProducer) compileProducer(new RayMatrixTransform(m.getInverse(), v(r)));
+		return (AcceleratedComputationEvaluable) compileProducer(new RayMatrixTransform(m.getInverse(), v(r)));
 	}
 
 	@Test
@@ -27,7 +27,7 @@ public class RayMatrixTransformTest implements HardwareFeatures, CodeFeatures {
 
 	@Test
 	public void applyCompact() {
-		AcceleratedComputationProducer<Ray> t = transform();
+		AcceleratedComputationEvaluable<Ray> t = transform();
 		t.compact();
 
 		System.out.println(t.getFunctionDefinition());

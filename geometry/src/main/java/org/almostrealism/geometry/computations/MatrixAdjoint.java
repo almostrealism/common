@@ -17,12 +17,12 @@
 package org.almostrealism.geometry.computations;
 
 import org.almostrealism.geometry.TransformMatrix;
-import org.almostrealism.hardware.AcceleratedProducer;
+import org.almostrealism.hardware.AcceleratedEvaluable;
 import io.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 
-public class MatrixAdjoint extends AcceleratedProducer<TransformMatrix, TransformMatrix> {
+public class MatrixAdjoint extends AcceleratedEvaluable<TransformMatrix, TransformMatrix> {
 	public MatrixAdjoint(Supplier<Evaluable<? extends TransformMatrix>> m) {
 		super("matrixAdjoint", TransformMatrix.blank(), m);
 	}

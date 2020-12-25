@@ -17,10 +17,12 @@
 package org.almostrealism.color.computations;
 
 import io.almostrealism.code.Scope;
+import org.almostrealism.color.DynamicRGBProducer;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBProducer;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.hardware.KernelizedEvaluable;
 
 /**
  * TODO  Accept a {@link Gene}.
@@ -46,8 +48,8 @@ public class RandomColorGenerator extends ColorProducerAdapter {
 	public RGBProducer getOffsetRGB() { return this.offsetRGB; }
 
 	@Override
-	public Evaluable<RGB> get() {
-		return args -> {
+	public KernelizedEvaluable<RGB> get() {
+		return new DynamicRGBProducer(args -> {
 			RGB base = this.baseRGB.get().evaluate(args);
 			RGB off = this.offsetRGB.get().evaluate(args);
 
@@ -56,7 +58,7 @@ public class RandomColorGenerator extends ColorProducerAdapter {
 			base.setBlue(base.getBlue() + Math.random() * off.getBlue());
 
 			return base;
-		};
+		}).get();
 	}
 
 	@Override

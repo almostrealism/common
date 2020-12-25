@@ -16,12 +16,12 @@
 
 package org.almostrealism.geometry;
 
-import org.almostrealism.hardware.AcceleratedProducer;
+import org.almostrealism.hardware.AcceleratedEvaluable;
 import io.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 
-public class IdentityMatrix extends AcceleratedProducer<TransformMatrix, TransformMatrix> {
+public class IdentityMatrix extends AcceleratedEvaluable<TransformMatrix, TransformMatrix> {
 	public IdentityMatrix() { this(TransformMatrix.blank()); }
 
 	public IdentityMatrix(Supplier<Evaluable<? extends TransformMatrix>> newMatrix) {

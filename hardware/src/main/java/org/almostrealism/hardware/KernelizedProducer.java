@@ -14,17 +14,19 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.algebra;
+package org.almostrealism.hardware;
 
-import org.almostrealism.algebra.computations.DefaultPairEvaluable;
-import io.almostrealism.code.ProducerComputation;
-import org.almostrealism.hardware.KernelizedEvaluable;
-import org.almostrealism.hardware.KernelizedProducer;
+import io.almostrealism.relation.Producer;
 
-public interface PairProducer extends ProducerComputation<Pair>, KernelizedProducer<Pair>, PairFeatures {
+/**
+ * A {@link KernelizedProducer} is a {@link Producer} that can be evaluated
+ * for a {@link MemoryBank} with one operation.
+ *
+ * @see  KernelizedEvaluable
+ *
+ * @author  Michael Murray
+ */
+public interface KernelizedProducer<T extends MemWrapper> extends Producer<T> {
 	@Override
-	default KernelizedEvaluable<Pair> get() { return new DefaultPairEvaluable(this); }
-
-	default ScalarProducer x() { return l(this); }
-	default ScalarProducer y() { return r(this); }
+	KernelizedEvaluable<T> get();
 }

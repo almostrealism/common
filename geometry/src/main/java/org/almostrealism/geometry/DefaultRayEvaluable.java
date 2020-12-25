@@ -17,10 +17,10 @@
 package org.almostrealism.geometry;
 
 import io.almostrealism.code.Computation;
-import org.almostrealism.hardware.AcceleratedComputationProducer;
+import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 
-public class DefaultRayEvaluable extends AcceleratedComputationProducer<Ray> implements RayEvaluable {
+public class DefaultRayEvaluable extends AcceleratedComputationEvaluable<Ray> implements RayEvaluable {
 
 	public DefaultRayEvaluable(Computation<Ray> c) {
 		super(c);

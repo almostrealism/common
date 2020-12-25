@@ -31,7 +31,7 @@ public class DefaultComputer implements Computer<MemWrapper> {
 
 	@Override
 	public <T extends MemWrapper> Evaluable<T> compileProducer(Computation<T> c) {
-		return new AcceleratedComputationProducer<>(c);
+		return new AcceleratedComputationEvaluable<>(c);
 	}
 
 	@Override
@@ -45,8 +45,8 @@ public class DefaultComputer implements Computer<MemWrapper> {
 
 	@Override
 	public <T> Optional<Computation<T>> decompile(Evaluable<T> p) {
-		if (p instanceof AcceleratedComputationProducer) {
-			return Optional.of(((AcceleratedComputationProducer) p).getComputation());
+		if (p instanceof AcceleratedComputationEvaluable) {
+			return Optional.of(((AcceleratedComputationEvaluable) p).getComputation());
 		} else {
 			return Optional.empty();
 		}

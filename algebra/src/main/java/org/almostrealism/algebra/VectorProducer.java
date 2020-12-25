@@ -20,13 +20,15 @@ import org.almostrealism.algebra.computations.DefaultVectorEvaluable;
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.StaticEvaluable;
+import org.almostrealism.hardware.KernelizedEvaluable;
+import org.almostrealism.hardware.KernelizedProducer;
 
 import java.util.function.Supplier;
 
-public interface VectorProducer extends ProducerComputation<Vector>, VectorFeatures {
+public interface VectorProducer extends ProducerComputation<Vector>, KernelizedProducer<Vector>, VectorFeatures {
 
 	@Override
-	default Evaluable<Vector> get() { return new DefaultVectorEvaluable(this); }
+	default KernelizedEvaluable<Vector> get() { return new DefaultVectorEvaluable(this); }
 
 	default ScalarProducer x() {
 		return x(this);

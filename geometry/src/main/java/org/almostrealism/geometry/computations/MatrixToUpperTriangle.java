@@ -18,13 +18,13 @@ package org.almostrealism.geometry.computations;
 
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.geometry.TransformMatrix;
-import org.almostrealism.hardware.AcceleratedProducer;
+import org.almostrealism.hardware.AcceleratedEvaluable;
 import org.almostrealism.hardware.MemWrapper;
 import io.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 
-public class MatrixToUpperTriangle extends AcceleratedProducer<MemWrapper, TransformMatrix> {
+public class MatrixToUpperTriangle extends AcceleratedEvaluable<MemWrapper, TransformMatrix> {
 	public MatrixToUpperTriangle(Supplier<Evaluable<? extends MemWrapper>> m) {
 		super("matrixToUpperTriangle", TransformMatrix.blank(),
 				(Supplier) Scalar.blank(), m);

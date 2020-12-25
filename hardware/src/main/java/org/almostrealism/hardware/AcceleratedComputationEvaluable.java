@@ -18,12 +18,12 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.Computation;
 
-public class AcceleratedComputationProducer<T extends MemWrapper> extends AcceleratedComputationOperation implements KernelizedEvaluable<T> {
-	public AcceleratedComputationProducer(Computation<T> c) {
+public class AcceleratedComputationEvaluable<T extends MemWrapper> extends AcceleratedComputationOperation implements KernelizedEvaluable<T> {
+	public AcceleratedComputationEvaluable(Computation<T> c) {
 		this(c, true);
 	}
 
-	public AcceleratedComputationProducer(Computation<T> c, boolean kernel) {
+	public AcceleratedComputationEvaluable(Computation<T> c, boolean kernel) {
 		super(c, kernel);
 	}
 
@@ -39,7 +39,7 @@ public class AcceleratedComputationProducer<T extends MemWrapper> extends Accele
 	 */
 	@Override
 	public void kernelEvaluate(MemoryBank destination, MemoryBank args[]) {
-		AcceleratedProducer.kernelEvaluate(this, destination, args, isKernel());
+		AcceleratedEvaluable.kernelEvaluate(this, destination, args, isKernel());
 	}
 
 	@Override

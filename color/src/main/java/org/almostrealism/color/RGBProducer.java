@@ -20,14 +20,15 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.StaticEvaluable;
 import org.almostrealism.color.computations.DefaultRGBEvaluable;
+import org.almostrealism.hardware.KernelizedEvaluable;
+import org.almostrealism.hardware.KernelizedProducer;
 
 import java.util.function.Supplier;
 
-public interface RGBProducer extends ProducerComputation<RGB>, RGBFeatures {
+public interface RGBProducer extends ProducerComputation<RGB>, KernelizedProducer<RGB>, RGBFeatures {
 	@Override
-	default Evaluable<RGB> get() { return new DefaultRGBEvaluable(this); }
+	default KernelizedEvaluable<RGB> get() { return new DefaultRGBEvaluable(this); }
 
 	default RGBProducer add(Supplier<Evaluable<? extends RGB>> operand) {
 		return cadd(this, operand);

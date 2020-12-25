@@ -17,10 +17,11 @@
 package org.almostrealism.geometry;
 
 import io.almostrealism.code.ProducerComputation;
-import io.almostrealism.relation.Evaluable;
 import org.almostrealism.geometry.computations.DefaultTransformMatrixEvaluable;
+import org.almostrealism.hardware.KernelizedEvaluable;
+import org.almostrealism.hardware.KernelizedProducer;
 
-public interface TransformMatrixProducer extends ProducerComputation<TransformMatrix>, TransformMatrixFeatures {
+public interface TransformMatrixProducer extends ProducerComputation<TransformMatrix>, KernelizedProducer<TransformMatrix>, TransformMatrixFeatures {
 	@Override
-	default Evaluable<TransformMatrix> get() { return new DefaultTransformMatrixEvaluable(this); }
+	default KernelizedEvaluable<TransformMatrix> get() { return new DefaultTransformMatrixEvaluable(this); }
 }
