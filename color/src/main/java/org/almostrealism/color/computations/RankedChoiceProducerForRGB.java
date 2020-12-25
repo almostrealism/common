@@ -32,7 +32,7 @@ public class RankedChoiceProducerForRGB extends RankedChoiceProducerForMemWrappe
 	}
 
 	public AcceleratedRankedChoiceProducer<RGB> getAccelerated() {
-		return getAccelerated(3, RGB.blank(), RGBBank::new);
+		return getAccelerated(3, RGB::new, RGBBank::new);
 	}
 
 	@Override
