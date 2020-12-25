@@ -69,7 +69,7 @@ public class PlyResource extends UnicodeResource {
 				}
 			}
 
-			System.out.println("PlyResoure: " + pointCount + " points loaded");
+			System.out.println("PlyResource: " + pointCount + " points loaded");
 
 			i: for (int i = 0; i < triangleCount; ) {
 				line = in.readLine();
@@ -87,7 +87,7 @@ public class PlyResource extends UnicodeResource {
 				}
 			}
 
-			System.out.println("PlyResoure: " + triangleCount + " triangles loaded");
+			System.out.println("PlyResource: " + triangleCount + " triangles loaded");
 
 			return new MeshResource(new Mesh(data));
 		}
