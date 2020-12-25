@@ -91,7 +91,9 @@ public class HardwareOperator<T extends MemWrapper> implements Consumer<Object[]
 				}
 
 				if (args[i] instanceof MemWrapper == false) {
-					throw new IllegalArgumentException("argument " + i + " to function " + name + " is not a MemWrapper");
+					throw new IllegalArgumentException("argument " + i + "(" +
+							args[i].getClass().getSimpleName() + ") to function " +
+							name + " is not a MemWrapper");
 				}
 
 				if (enableVerboseLog) System.out.println(id + ": clSetKernelArg(0) start");
