@@ -32,7 +32,7 @@ public interface ShadableSurface extends ShadableCurve, Intersectable<Scalar> {
 	/**
 	 * Returns true if the front side of this Surface object should be shaded.
 	 * The "front side" is the side that the Vector object returned by the
-	 * {@link #getNormalAt(Evaluable)} method for this
+	 * {@link #getNormalAt(io.almostrealism.relation.Producer)} method for this
 	 * {@link ShadableSurface} points outward from.
 	 */
 	boolean getShadeFront();
@@ -40,7 +40,7 @@ public interface ShadableSurface extends ShadableCurve, Intersectable<Scalar> {
 	/**
 	 * Returns true if the back side of this Surface object should be shaded.
 	 * The "back side" is the side that the vector opposite the Vector object
-	 * returned by the {@link #getNormalAt(Evaluable)}
+	 * returned by the {@link #getNormalAt(io.almostrealism.relation.Producer)}
 	 * method for this {@link ShadableSurface} points outward from.
 	 */
 	boolean getShadeBack();
