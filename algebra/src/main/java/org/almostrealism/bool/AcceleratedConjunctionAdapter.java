@@ -35,7 +35,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-public class AcceleratedConjunctionAdapter<T extends MemWrapper> extends AcceleratedConditionalStatementAdapter<T> {
+public abstract class AcceleratedConjunctionAdapter<T extends MemWrapper> extends AcceleratedConditionalStatementAdapter<T> {
 	private List<AcceleratedConditionalStatement<? extends T>> conjuncts;
 	private ArrayVariable trueValue, falseValue;
 

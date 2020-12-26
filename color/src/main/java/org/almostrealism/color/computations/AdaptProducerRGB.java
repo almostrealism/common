@@ -20,11 +20,12 @@ import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBBank;
 import org.almostrealism.algebra.AdaptProducer;
 import org.almostrealism.hardware.KernelizedEvaluable;
+import org.almostrealism.hardware.KernelizedProducer;
 import org.almostrealism.hardware.MemoryBank;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 
-public class AdaptProducerRGB extends AdaptProducer<RGB> {
+public class AdaptProducerRGB extends AdaptProducer<RGB> implements KernelizedProducer<RGB> {
 	public AdaptProducerRGB(Producer<RGB> p, Producer... args) {
 		super(p, args);
 	}
