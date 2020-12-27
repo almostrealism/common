@@ -19,6 +19,7 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.DefaultScopeInputManager;
 import io.almostrealism.code.NameProvider;
+import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Named;
 import org.almostrealism.c.OpenCLPrintWriter;
@@ -34,7 +35,9 @@ import org.almostrealism.io.PrintWriter;
 import java.util.List;
 
 public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperation<MemWrapper> implements NameProvider {
-	public static final boolean enableArgumentMapping = false;
+	public static final boolean enableDestinationConsolidation = true;
+	public static final boolean enableArgumentMapping = true;
+	public static final boolean enableCompaction = true;
 
 	private Computation<T> computation;
 
@@ -91,18 +94,29 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	protected void prepareScope() {
-		if (enableArgumentMapping) {
-			SupplierArgumentMap<?, ?> argumentMap = new MemWrapperArgumentMap<>();
-			getComputation().prepareScope(argumentMap.getScopeInputManager());
-		} else {
-			getComputation().prepareScope(DefaultScopeInputManager.getInstance());
+		SupplierArgumentMap argumentMap = null;
+
+		if (enableDestinationConsolidation) {
+			argumentMap = new DestinationConsolidationArgumentMap<>();
+		} else if (enableArgumentMapping) {
+			argumentMap = new MemWrapperArgumentMap<>();
 		}
+
+		if (argumentMap != null) {
+			getComputation().prepareArguments(argumentMap);
+		}
+
+		getComputation().prepareScope(argumentMap == null ?
+				DefaultScopeInputManager.getInstance() : argumentMap.getScopeInputManager());
+	}
+
+	protected void preCompile() {
+		prepareScope();
+		if (enableCompaction) compact();
 	}
 
 	@Override
 	public Scope<T> compile(NameProvider p) {
-		prepareScope();
-
 		if (getComputation() instanceof OperationAdapter) {
 			return compile(p, ((OperationAdapter) getComputation()).getArgument(0));
 		} else {
@@ -111,11 +125,11 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	public Scope<T> compile(Variable<T> outputVariable) {
-		prepareScope();
 		return compile(this, outputVariable);
 	}
 
 	public Scope<T> compile(NameProvider p, Variable<T> outputVariable) {
+		preCompile();
 		Computation<T> c = getComputation();
 		Scope<T> scope = outputVariable == null ? c.getScope(p) : c.getScope(p.withOutputVariable(outputVariable));
 		setArguments(scope.getArguments());

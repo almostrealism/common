@@ -65,7 +65,9 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 
 	public List<Supplier<Evaluable<? extends T>>> getInputs() { return inputs; }
 
-	protected void setArguments(List<ArrayVariable<? extends T>> arguments) { this.arguments = arguments; }
+	protected void setArguments(List<ArrayVariable<? extends T>> arguments) {
+		this.arguments = arguments;
+	}
 
 	public List<ArrayVariable<? extends T>> getArguments() {
 		Scope.sortArguments(arguments);

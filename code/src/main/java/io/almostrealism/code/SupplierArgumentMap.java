@@ -24,7 +24,7 @@ import java.util.Optional;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
-public class SupplierArgumentMap<S, A> {
+public class SupplierArgumentMap<S, A> implements ArgumentMap<Supplier, ArrayVariable<A>> {
 	protected ArgumentProvider delegateProvider = DefaultScopeInputManager.getInstance();
 	private Map<Supplier<S>, ArrayVariable<A>> arguments;
 
@@ -35,6 +35,8 @@ public class SupplierArgumentMap<S, A> {
 	public void put(Supplier<S> key, ArrayVariable<A> value) {
 		arguments.put(key, value);
 	}
+
+	public void add(Supplier key) { }
 
 	public ArrayVariable<A> get(Supplier key, NameProvider p) {
 		return arguments.get(key);

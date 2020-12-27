@@ -18,6 +18,7 @@ package io.almostrealism.code;
 
 import io.almostrealism.code.expressions.Expression;
 import io.almostrealism.relation.Compactable;
+import io.almostrealism.relation.Evaluable;
 
 import java.util.Objects;
 import java.util.function.Supplier;
@@ -29,6 +30,18 @@ public abstract class ComputationOperationAdapter<I, O> extends OperationAdapter
 		super(new Supplier[0]);
 	}
 
+
+	@Override
+	public void prepareArguments(ArgumentMap map) {
+		if (getArguments() != null) return;
+		getInputs().stream()
+				.map(c -> c instanceof Computation ? (Computation) c : null)
+				.filter(Objects::nonNull)
+				.forEach(c -> c.prepareArguments(map));
+		getInputs().stream().forEach(map::add);
+	}
+
+	@Override
 	public void prepareScope(ScopeInputManager manager) {
 		if (getArguments() != null) return;
 
@@ -58,7 +71,7 @@ public abstract class ComputationOperationAdapter<I, O> extends OperationAdapter
 	@Override
 	public void compact() {
 		super.compact();
-		prepareScope(DefaultScopeInputManager.getInstance());
+		// prepareScope(DefaultScopeInputManager.getInstance());
 	}
 
 	public static Expression<Double> getExpression(ArrayVariable arg, int pos) {

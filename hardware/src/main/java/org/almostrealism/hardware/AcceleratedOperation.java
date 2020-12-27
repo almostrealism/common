@@ -112,16 +112,17 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 	}
 
 	protected Object[] getAllArgs(Object args[]) {
-		Object allArgs[] = new Object[getArguments().size()];
+		List<ArrayVariable<? extends T>> arguments = getArguments();
+		Object allArgs[] = new Object[arguments.size()];
 
-		for (int i = 0; i < getArguments().size(); i++) {
+		for (int i = 0; i < arguments.size(); i++) {
 			try {
-				if (getArguments().get(i) == null) {
+				if (arguments.get(i) == null) {
 					allArgs[i] = replaceNull(i);
-				} else if (getArguments().get(i).getProducer() == null) {
-					throw new IllegalArgumentException("No Producer for " + getArguments().get(i).getName());
+				} else if (arguments.get(i).getProducer() == null) {
+					throw new IllegalArgumentException("No Producer for " + arguments.get(i).getName());
 				} else {
-					int argRef = getProducerArgumentReferenceIndex(getArguments().get(i));
+					int argRef = getProducerArgumentReferenceIndex(arguments.get(i));
 
 					if (argRef >= args.length) {
 						throw new IllegalArgumentException("Not enough arguments were supplied for evaluation");
@@ -130,7 +131,7 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 					if (argRef >= 0) {
 						allArgs[i] = args[argRef];
 					} else {
-						allArgs[i] = ProducerCache.evaluate(getArguments().get(i).getProducer(), args);
+						allArgs[i] = ProducerCache.evaluate(arguments.get(i).getProducer(), args);
 					}
 				}
 
@@ -140,7 +141,7 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 			} catch (Exception e) {
 				throw new RuntimeException("Function \"" + getFunctionName() +
 						"\" could not complete due to exception evaluating argument " + i +
-						" (" + getArguments().get(i).getProducer().getClass() + ")", e);
+						" (" + arguments.get(i).getProducer().getClass() + ")", e);
 			}
 		}
 

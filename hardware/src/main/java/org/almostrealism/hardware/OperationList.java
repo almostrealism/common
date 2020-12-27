@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.NameProvider;
@@ -50,6 +51,12 @@ public class OperationList extends ArrayList<Supplier<Runnable>> implements Oper
 		}).sum();
 
 		return nonComputations == 0;
+	}
+
+	@Override
+	public void prepareArguments(ArgumentMap manager) {
+		stream().map(o -> o instanceof Computation ? (Computation) o : null)
+				.filter(Objects::nonNull).forEach(c -> c.prepareArguments(manager));
 	}
 
 	@Override
