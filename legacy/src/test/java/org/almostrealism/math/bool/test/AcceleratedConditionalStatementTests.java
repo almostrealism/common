@@ -68,7 +68,7 @@ public class AcceleratedConditionalStatementTests implements CodeFeatures {
 	@Test
 	public void compactWithDotProduct() {
 		LessThan<Scalar> lt = lessThan(ray(i -> Math.random()).oDotd(), oDotd(v(Ray.class, 0)));
-		lt.compact();
+		// lt.compact();
 
 		System.out.println(lt.getFunctionDefinition());
 		Assert.assertEquals(2, lt.getArgsCount());
@@ -83,7 +83,7 @@ public class AcceleratedConditionalStatementTests implements CodeFeatures {
 		LessThan<Scalar> lt1 = lessThan(ray(i -> Math.random()).oDotd(), oDotd(v(Ray.class, 0)));
 		AcceleratedConditionalStatementScalar lt2 = vector(i -> Math.random()).crossProduct(v(Vector.class, 1))
 														.length().lessThan(() -> lt1, v(1), v(2));
-		lt2.compact();
+		// lt2.compact();
 
 		System.out.println(((DynamicAcceleratedOperation) lt2).getFunctionDefinition());
 

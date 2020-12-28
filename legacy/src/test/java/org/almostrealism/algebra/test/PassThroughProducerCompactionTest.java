@@ -42,7 +42,7 @@ public class PassThroughProducerCompactionTest implements HardwareFeatures, Code
 	@Test
 	public void applyProductCompact() {
 		AcceleratedComputationEvaluable<Scalar> p = product();
-		p.compact();
+		// p.compact();
 		System.out.println(p.getFunctionDefinition());
 
 		Scalar s = p.evaluate(new Object[] { new Scalar(1.0),

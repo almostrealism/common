@@ -87,7 +87,7 @@ public class TriangleDataTest implements CodeFeatures {
 		Producer<TriangleData> td = triangle(v(points.get(0).getP1()),
 				v(points.get(0).getP2()),
 				v(points.get(0).getP3()));
-		td.compact();
+		// td.compact();
 		triangleDataAssertions(td.get().evaluate());
 	}
 
@@ -95,7 +95,7 @@ public class TriangleDataTest implements CodeFeatures {
 	public void triangleDataKernel() {
 		MeshPointData points = points();
 		Producer<TriangleData> td = triangle(points(0));
-		td.compact();
+		// td.compact();
 
 		MeshData output = new MeshData(1);
 		((KernelizedEvaluable) td.get()).kernelEvaluate(output, new MemoryBank[] { points });

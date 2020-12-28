@@ -33,7 +33,7 @@ public class VectorMathTest implements CodeFeatures {
 		VectorProducer a = vector(1.0, 2.0, 3.0);
 		VectorProducer b = vector(4.0, 5.0, 6.0);
 		ScalarProducer s = a.y().multiply(b.z());
-		s.compact();
+		// s.compact();
 		DynamicAcceleratedOperation so = (DynamicAcceleratedOperation) s.get();
 		System.out.println(so.getFunctionDefinition());
 		Assert.assertEquals(1, so.getArgsCount());
@@ -44,7 +44,7 @@ public class VectorMathTest implements CodeFeatures {
 		VectorProducer a = vector(1.0, 2.0, 3.0);
 		VectorProducer b = vector(4.0, 5.0, 6.0);
 		ScalarProducer s = a.y().multiply(b.z()).add(1);
-		s.compact();
+		// s.compact();
 		DynamicAcceleratedOperation so = (DynamicAcceleratedOperation) s.get();
 		System.out.println(so.getFunctionDefinition());
 		Assert.assertEquals(1, so.getArgsCount());
@@ -55,7 +55,7 @@ public class VectorMathTest implements CodeFeatures {
 		VectorProducer a = vector(1.0, 2.0, 3.0);
 		VectorProducer b = vector(4.0, 5.0, 6.0);
 		ScalarProducer s = a.y().multiply(b.z()).subtract(1);
-		s.compact();
+		// s.compact();
 		DynamicAcceleratedOperation so = (DynamicAcceleratedOperation) s.get();
 		System.out.println(so.getFunctionDefinition());
 		Assert.assertEquals(1, so.getArgsCount());
@@ -67,7 +67,7 @@ public class VectorMathTest implements CodeFeatures {
 		VectorProducer b = vector(4.0, 5.0, 6.0);
 		ScalarProducer s = ops().y(a).multiply(ops().z(b))
 				.subtract(ops().z(a).multiply(ops().y(b)));
-		s.compact();
+		// s.compact();
 		DynamicAcceleratedOperation so = (DynamicAcceleratedOperation) s.get();
 		System.out.println(so.getFunctionDefinition());
 		Assert.assertEquals(1, so.getArgsCount());
@@ -94,7 +94,7 @@ public class VectorMathTest implements CodeFeatures {
 	public void crossProductCompact() {
 		VectorProducer cp = crossProduct(vector(100.0, -200.0, 0.0));
 
-		cp.compact();
+		// cp.compact();
 		DynamicAcceleratedOperation cpo = (DynamicAcceleratedOperation) cp.get();
 		System.out.println(cpo.getFunctionDefinition());
 		Assert.assertEquals(1, cpo.getArgsCount());

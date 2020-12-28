@@ -55,7 +55,7 @@ public class PlaneTest implements HardwareFeatures, CodeFeatures {
 		ShadableIntersection intersection = test1();
 
 		Producer<Scalar> p = (Producer<Scalar>) intersection.getDistance();
-		p.compact();
+		// p.compact();
 
 		System.out.println(((DefaultScalarEvaluable) p.get()).getFunctionDefinition());
 

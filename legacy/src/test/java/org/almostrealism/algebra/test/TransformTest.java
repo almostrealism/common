@@ -30,7 +30,7 @@ public class TransformTest implements HardwareFeatures, CodeFeatures {
 	@Test
 	public void applyAsLocationCompact() {
 		AcceleratedComputationEvaluable<Vector> t = transformAsLocation();
-		t.compact();
+		// t.compact();
 
 		System.out.println(t.getFunctionDefinition());
 

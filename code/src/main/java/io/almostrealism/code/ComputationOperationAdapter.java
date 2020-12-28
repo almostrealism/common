@@ -58,6 +58,10 @@ public abstract class ComputationOperationAdapter<I, O> extends OperationAdapter
 	public ArrayVariable getArgument(int index) { return getArguments().get(index); }
 
 	public Expression<Double> getInputValue(int index, int pos) {
+		if (getArguments() == null) {
+			throw new IllegalArgumentException("Input value cannot be obtained before arguments are determined");
+		}
+
 		return getExpression(getArguments().get(index), pos);
 	}
 

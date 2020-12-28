@@ -111,22 +111,22 @@ public class MeshIntersectionTest implements HardwareFeatures, CodeFeatures {
 							TriangleIntersectAt.q(abc(data1), s));
 		System.out.println("v = " + v.get().evaluate().getValue());
 
-		h.compact();
+		// h.compact();
 		DynamicAcceleratedOperation ho = (DynamicAcceleratedOperation) h.get();
 		System.out.println(ho.getFunctionDefinition());
 		Assert.assertEquals(1, ho.getArgsCount());
 
-		f.compact();
+		// f.compact();
 		DynamicAcceleratedOperation fo = (DynamicAcceleratedOperation) f.get();
 		System.out.println(fo.getFunctionDefinition());
 		Assert.assertEquals(1, fo.getArgsCount());
 
-		u.compact();
+		// u.compact();
 		DynamicAcceleratedOperation uo = (DynamicAcceleratedOperation) u.get();
 		System.out.println(uo.getFunctionDefinition());
 		Assert.assertEquals(1, uo.getArgsCount());
 
-		v.compact();
+		// v.compact();
 		DynamicAcceleratedOperation vo = (DynamicAcceleratedOperation) v.get();
 		System.out.println(vo.getFunctionDefinition());
 		Assert.assertEquals(1, vo.getArgsCount());
@@ -138,7 +138,7 @@ public class MeshIntersectionTest implements HardwareFeatures, CodeFeatures {
 				v.greaterThan(0.0, true),
 				u.add(v).lessThan(1.0, true));
 
-		acs.compact();
+		// acs.compact();
 
 		System.out.println(acs.getFunctionDefinition());
 		Assert.assertEquals(1, acs.getArgsCount());
@@ -184,7 +184,7 @@ public class MeshIntersectionTest implements HardwareFeatures, CodeFeatures {
 	@Test
 	public void intersectAtCompact1() {
 		TriangleIntersectAt intersect = intersection();
-		intersect.compact();
+		// intersect.compact();
 		System.out.println(intersect.getFunctionDefinition());
 		evaluate(intersect, true);
 	}
@@ -200,7 +200,7 @@ public class MeshIntersectionTest implements HardwareFeatures, CodeFeatures {
 	public void intersectionKernel1() {
 		ScalarBank distances = new ScalarBank(1);
 		RayFromVectors ray = new RayFromVectors(origin1, direction1);
-		ray.compact();
+		// ray.compact();
 		data1.evaluateIntersectionKernel(compileProducer(ray), distances, new MemoryBank[0]);
 		System.out.println("distance = " + distances.get(0).getValue());
 		Assert.assertEquals(1.0, distances.get(0).getValue(), Math.pow(10, -10));
@@ -218,7 +218,7 @@ public class MeshIntersectionTest implements HardwareFeatures, CodeFeatures {
 	public void intersectionKernel2() {
 		ScalarBank distances = new ScalarBank(1);
 		RayFromVectors ray = new RayFromVectors(origin2, direction2);
-		ray.compact();
+		// ray.compact();
 		data2.evaluateIntersectionKernel(compileProducer(ray), distances, new MemoryBank[0]);
 		System.out.println("distance = " + distances.get(0).getValue());
 		Assert.assertEquals(1.0, distances.get(0).getValue(), Math.pow(10, -10));

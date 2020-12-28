@@ -26,7 +26,7 @@ public class AcceleratedComputationEvaluableTests implements HardwareFeatures, C
 	public void scalarFromVector() {
 		AcceleratedComputationEvaluable<Scalar> res = (AcceleratedComputationEvaluable) new ScalarFromVector(vector(0.0, 1.0, 2.0), ScalarFromVector.Y).get();
 		System.out.println(res.getFunctionDefinition());
-		Scalar s = res.evaluate(new Object[0]);
+		Scalar s = res.evaluate();
 		System.out.println(s.getValue());
 		assert s.getValue() == 1.0;
 	}
@@ -34,7 +34,7 @@ public class AcceleratedComputationEvaluableTests implements HardwareFeatures, C
 	@Test
 	public void compactScalarFromVector() {
 		ScalarFromVector res = new ScalarFromVector(vector(0.0, 1.0, 2.0), ScalarFromVector.Y);
-		res.compact();
+		// res.compact();
 		Scalar s = compileProducer(res).evaluate();
 		System.out.println(s.getValue());
 		assert s.getValue() == 1.0;
