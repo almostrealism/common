@@ -117,6 +117,8 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 
 	@Override
 	public Scope<T> compile(NameProvider p) {
+		preCompile();
+
 		if (getComputation() instanceof OperationAdapter) {
 			return compile(p, ((OperationAdapter) getComputation()).getArgument(0));
 		} else {
@@ -125,11 +127,11 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	public Scope<T> compile(Variable<T> outputVariable) {
+		preCompile();
 		return compile(this, outputVariable);
 	}
 
 	public Scope<T> compile(NameProvider p, Variable<T> outputVariable) {
-		preCompile();
 		Computation<T> c = getComputation();
 		Scope<T> scope = outputVariable == null ? c.getScope(p) : c.getScope(p.withOutputVariable(outputVariable));
 		setArguments(scope.getArguments());

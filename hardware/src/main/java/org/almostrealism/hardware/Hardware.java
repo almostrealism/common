@@ -40,7 +40,7 @@ public final class Hardware {
 		if (memScale == null) memScale = System.getenv("AR_HARDWARE_MEMORY_SCALE");
 		MEMORY_SCALE = memScale == null ? 4 : Integer.parseInt(memScale);
 
-		local = new Hardware(false);
+		local = new Hardware(gpu);
 	}
 
 	private final boolean enableGpu;
