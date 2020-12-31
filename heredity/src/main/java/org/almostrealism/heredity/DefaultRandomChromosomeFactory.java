@@ -38,13 +38,13 @@ public class DefaultRandomChromosomeFactory implements ChromosomeFactory<Long> {
 	}
 	
 	public Chromosome<Long> generateChromosome(double arg) {
-		ArrayListChromosome<Long> c = new ArrayListChromosome<Long>();
+		ArrayListChromosome<Long> c = new ArrayListChromosome<>();
 		
 		for (int i = 0; i < genes; i++) {
-			ArrayListGene<Long> g = new ArrayListGene<Long>();
+			ArrayListGene<Long> g = new ArrayListGene<>();
 			
 			for (int j = 0; j < factors; j++) {
-				g.add(new NewLongScaleFactor(min + StrictMath.random() * arg * (max - min)));
+				g.add(new LongScaleFactor(min + StrictMath.random() * arg * (max - min)));
 			}
 			
 			c.add(g);
