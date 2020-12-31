@@ -16,14 +16,22 @@
 
 package org.almostrealism.geometry;
 
+import io.almostrealism.code.DefaultScopeInputManager;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.hardware.AcceleratedEvaluable;
 import io.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 
+/**
+ * The reason this is deprecated is mostly because it should be an operation
+ * rather than an evaluable, and because confusion like that has led to a
+ * shortcut of invoking prepareScope in the constructor which is a bad idea.
+ */
+@Deprecated
 public class ScaleMatrix extends AcceleratedEvaluable<Vector, TransformMatrix> {
 	public ScaleMatrix(Supplier<Evaluable<? extends Vector>> s) {
 		super("scaleMatrix", () -> new IdentityMatrix(), s);
+		prepareScope(DefaultScopeInputManager.getInstance());
 	}
 }

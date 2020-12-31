@@ -16,10 +16,14 @@
 
 package org.almostrealism.geometry;
 
+import io.almostrealism.code.MultiExpression;
+import io.almostrealism.code.Variable;
+import io.almostrealism.code.expressions.Expression;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.DynamicProducer;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
+import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Triple;
 import org.almostrealism.algebra.TripleFunction;
 import org.almostrealism.algebra.Vector;
@@ -39,6 +43,7 @@ import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.hardware.MemWrapperAdapter;
 import org.almostrealism.hardware.PooledMem;
 
+import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
 /**
@@ -140,15 +145,19 @@ public class TransformMatrix extends MemWrapperAdapter implements TripleFunction
 
 	/**
 	 * This method is slow.
+	 * Also, it might be more valuable to have an {@link Expression}
+	 * which represents the value, which can be obtained via
+	 * {@link #getValue(int)}.
 	 *
 	 * @param r  Matrix row.
 	 * @param c  Matrix column.
 	 *
 	 * @return  Value from matrix.
 	 */
+	// TODO  Modify to return an Expression(?)
 	@Deprecated
 	public double getValue(int r, int c) { return this.toArray()[r * 4 + c]; }
-	
+
 	/**
 	 * Multiplies the matrix represented by this {@link TransformMatrix} with the specified
 	 * double value and returns the result as a {@link TransformMatrix}.

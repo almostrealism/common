@@ -16,6 +16,8 @@
 
 package org.almostrealism.space;
 
+import io.almostrealism.code.OperationAdapter;
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairBank;
 import org.almostrealism.algebra.Vector;
@@ -24,6 +26,9 @@ import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBBank;
 import org.almostrealism.graph.mesh.MeshPointData;
 import org.almostrealism.geometry.ContinuousField;
+import org.almostrealism.graph.mesh.TriangleDataFromVectors;
+import org.almostrealism.graph.mesh.TrianglePointData;
+import org.almostrealism.graph.mesh.TrianglePointDataFromVectors;
 
 public class DefaultVertexData implements Mesh.VertexData {
 	private VectorBank vertices;
@@ -89,11 +94,16 @@ public class DefaultVertexData implements Mesh.VertexData {
 	public MeshPointData getMeshPointData() {
 		MeshPointData points = new MeshPointData(getTriangleCount());
 
+		TrianglePointDataFromVectors producer =
+				new TrianglePointDataFromVectors(
+						() -> args -> vertices.get(((int[]) args[0])[0]),
+						() -> args -> vertices.get(((int[]) args[0])[1]),
+						() -> args -> vertices.get(((int[]) args[0])[2]));
+		Evaluable<TrianglePointData> ev = producer.get();
+		((OperationAdapter) ev).compile();
+
 		for (int i = 0; i < triangles.length; i++) {
-			points.set(i,
-					getX(triangles[i][0]), getY(triangles[i][0]), getZ(triangles[i][0]),
-					getX(triangles[i][1]), getY(triangles[i][1]), getZ(triangles[i][1]),
-					getX(triangles[i][2]), getY(triangles[i][2]), getZ(triangles[i][2]));
+			points.set(i, ev.evaluate(triangles[i]));
 		}
 
 		return points;

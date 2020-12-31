@@ -32,9 +32,8 @@ public class DestinationConsolidationArgumentMap<S, A> extends MemWrapperArgumen
 
 	@Override
 	public void add(Supplier key) {
-		System.out.println("DestinationConsolidationArgumentMap: add - " + key);
-
 		if (key instanceof DestinationSupport) {
+			System.out.println("DestinationConsolidationArgumentMap: add - " + key);
 			keys.add((DestinationSupport) key);
 		}
 	}

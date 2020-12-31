@@ -16,7 +16,9 @@ public class AcceleratedConjunctionTests extends AcceleratedConditionalStatement
 			Producer<Scalar> c, Producer<Scalar> d) {
 		LessThan l1 = lessThan(a, b);
 		LessThan l2 = lessThan(c, d);
-		return new AcceleratedConjunctionScalar(a, b, l1, l2);
+		AcceleratedConjunctionScalar acs = new AcceleratedConjunctionScalar(a, b, l1, l2);
+		acs.compile();
+		return acs;
 	}
 
 	protected Runnable conjunctionTest(double a, double b, double c, double d) {
@@ -48,7 +50,6 @@ public class AcceleratedConjunctionTests extends AcceleratedConditionalStatement
 	@Test
 	public void dotProductInConjunction() {
 		AcceleratedConjunctionScalar c = dotProductConjunction(v(Ray.class, 0));
-		// c.compact();
 
 		System.out.println(c.getFunctionDefinition());
 		Assert.assertEquals(2, c.getArgsCount());
@@ -63,7 +64,6 @@ public class AcceleratedConjunctionTests extends AcceleratedConditionalStatement
 		AcceleratedConjunctionScalar c = dotProductConjunction(ray(i -> Math.random()));
 		c = conjunction(c, v(Scalar.class, 0),
 				v(Math.random()), v(Math.random()));
-		// c.compact();
 
 		System.out.println(c.getFunctionDefinition());
 
@@ -77,7 +77,6 @@ public class AcceleratedConjunctionTests extends AcceleratedConditionalStatement
 	public void dotProductInNestedConjunction2() {
 		AcceleratedConjunctionScalar c = dotProductConjunction(ray(i -> Math.random()));
 		c = conjunction(c, v(Math.random()), v(Scalar.class, 0), v(Math.random()));
-		// c.compact();
 
 		System.out.println(c.getFunctionDefinition());
 
@@ -92,7 +91,6 @@ public class AcceleratedConjunctionTests extends AcceleratedConditionalStatement
 		AcceleratedConjunctionScalar c = dotProductConjunction(v(Ray.class, 0));
 		c = conjunction(c, v(Math.random()),
 				v(Math.random()), v(Math.random()));
-		// c.compact();
 
 		System.out.println(c.getFunctionDefinition());
 
@@ -107,7 +105,6 @@ public class AcceleratedConjunctionTests extends AcceleratedConditionalStatement
 		AcceleratedConjunctionScalar c = dotProductConjunction(v(Ray.class, 0));
 		c = conjunction(c, v(Scalar.class, 1),
 				v(Math.random()), v(Scalar.class, 2));
-		// c.compact();
 
 		System.out.println(c.getFunctionDefinition());
 

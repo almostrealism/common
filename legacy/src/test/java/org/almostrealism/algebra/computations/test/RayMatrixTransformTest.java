@@ -42,7 +42,7 @@ public class RayMatrixTransformTest implements HardwareFeatures, CodeFeatures {
 	@Test
 	public void scaleAndTranslate() {
 		RayMatrixTransform transform = new RayMatrixTransform(getMatrix(), getRay1());
-		Ray r = compileProducer(transform).evaluate();
+		Ray r = transform.get().evaluate();
 		System.out.println(r);
 		Assert.assertEquals(0.25, r.getOrigin().getX(), Math.pow(10, -7));
 		Assert.assertEquals(3.9, r.getOrigin().getY(), Math.pow(10, -7));

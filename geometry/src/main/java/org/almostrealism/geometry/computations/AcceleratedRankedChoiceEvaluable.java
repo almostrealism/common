@@ -54,6 +54,12 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemWrapper> extends Dyna
 		this.valueCount = values.size();
 		this.e = e;
 		this.onNull = onNull;
+	}
+
+	@Override
+	protected void prepareScope() {
+		super.prepareScope();
+
 		this.ranks = getRanks();
 		this.choices = getChoices();
 		this.defaultValue = getDefaultValue();

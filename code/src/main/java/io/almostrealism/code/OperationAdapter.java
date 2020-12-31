@@ -19,12 +19,14 @@ package io.almostrealism.code;
 import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Named;
+import io.almostrealism.relation.Provider;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -76,7 +78,7 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 
 	public ArrayVariable getArgumentForInput(Supplier<Evaluable<? extends T>> input) {
 		for (ArrayVariable arg : getArguments()) {
-			if (arg.getProducer() == input) {
+			if (arg != null && arg.getProducer() == input) {
 				return arg;
 			}
 		}
@@ -88,7 +90,6 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 	public void init() {
 		if (function == null) setFunctionName(functionName(getClass()));
 		purgeVariables();
-		// initArgumentNames();
 	}
 
 	/**
@@ -117,7 +118,37 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 
 	public Scope compile() { return compile(this); }
 
-	public Scope compile(NameProvider p) { return null; }
+	/**
+	 * Presently this serves a dual purpose: to do actual compilation of Scope
+	 * from Computation in implementors that facilitate the invocation of a
+	 * Computation, but also to do necessary initialization even in cases where
+	 * a Computatation is not being prepared for invocation. This is likely
+	 * adding to the confusion of having a shared parent between the two types
+	 * of accelerated operations (those compiling a Computation vs those that
+	 * simply execute code). There seems to be no reason to deal with this now,
+	 * as there will eventually be no need for accelerated operations which
+	 * are not Computation based (especially considering the introduction of
+	 * ExplicitScope), so when that process is over one of the two roles this
+	 * methods plays wont exist and it will be clear what it is for.
+	 */
+	public abstract Scope compile(NameProvider p);
+
+	/**
+	 * Take care of anything necessary after compilation. This may be called
+	 * when a parent operation (one that cites this as an argument, for example)
+	 * is compiled and the compile method was not called, but some work may
+	 * still need to be done. This implementation identifies any arguments that
+	 * are {@link OperationAdapter}s and calls their {@link #postCompile()}
+	 * method, so it should be delegated to in the case that this method is
+	 * overridden to do something else.
+	 */
+	public void postCompile() {
+		getArguments().stream()
+				.map(Variable::getProducer)
+				.map(arg -> arg instanceof OperationAdapter ? (OperationAdapter) arg : null)
+				.filter(Objects::nonNull)
+				.forEach(OperationAdapter::postCompile);
+	}
 
 	public void addVariable(Variable v) {
 		List<Variable<?>> existing = variables.get(v.getProducer());
@@ -154,13 +185,15 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 	public void absorbVariables(Supplier peer) {
 		if (peer instanceof OperationAdapter) {
 			absorbVariables((OperationAdapter) peer);
+		} else if (peer.get() instanceof Provider) {
+			return; // Providers do not have variables to absorb
 		} else {
 			throw new IllegalArgumentException(peer + " is not a OperationAdapter");
 		}
 	}
 
 	public void absorbVariables(OperationAdapter peer) {
-		peer.getVariables().forEach(v -> addVariable((Variable) v));
+		if (peer != null) peer.getVariables().forEach(v -> addVariable((Variable) v));
 	}
 
 	public void purgeVariables() {

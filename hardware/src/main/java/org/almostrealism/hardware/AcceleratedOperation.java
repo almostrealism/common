@@ -16,11 +16,17 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.DefaultScopeInputManager;
+import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.OperationAdapter;
+import io.almostrealism.code.Scope;
+import io.almostrealism.code.ScopeInputManager;
+import io.almostrealism.code.ScopeLifecycle;
+import io.almostrealism.code.SupplierArgumentMap;
 import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Named;
@@ -34,7 +40,11 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter<T> implements Function<Object[], Object[]>, Runnable,
-														KernelizedOperation, Compactable, ComputerFeatures {
+														KernelizedOperation, Compactable, ScopeLifecycle, ComputerFeatures {
+	public static final boolean enableDestinationConsolidation = true;
+	public static final boolean enableArgumentMapping = true;
+	public static final boolean enableCompaction = true;
+
 	private static Map<String, ThreadLocal<HardwareOperator>> operators = new HashMap<>();
 
 	private boolean kernel;
@@ -49,7 +59,6 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 	public AcceleratedOperation(String function, boolean kernel, Supplier<Evaluable<? extends T>>... args) {
 		this(kernel, args);
 		setFunctionName(function);
-		initArguments(DefaultScopeInputManager.getInstance());
 	}
 
 	protected AcceleratedOperation(boolean kernel, ArrayVariable<T>... args) {
@@ -60,18 +69,6 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 	public AcceleratedOperation(String function, boolean kernel, ArrayVariable<T>... args) {
 		this(kernel, args);
 		setFunctionName(function);
-	}
-
-	public void init() {
-		super.init();
-		initArguments(DefaultScopeInputManager.getInstance());
-	}
-
-	protected void initArguments(ArgumentProvider provider) {
-		if (getArguments() != null) return;
-
-		setArguments(getInputs().stream()
-				.map(provider.argumentForInput(this)).collect(Collectors.toList()));
 	}
 
 	public void setSourceClass(Class cls) { this.cls = cls; }
@@ -94,11 +91,56 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 		return operators.get(getFunctionName()).get();
 	}
 
+	protected void prepareScope() {
+		SupplierArgumentMap argumentMap = null;
+
+		if (enableDestinationConsolidation) {
+			argumentMap = new DestinationConsolidationArgumentMap<>();
+		} else if (enableArgumentMapping) {
+			argumentMap = new MemWrapperArgumentMap<>();
+		}
+
+		if (argumentMap != null) {
+			prepareArguments(argumentMap);
+		}
+
+		prepareScope(argumentMap == null ?
+				DefaultScopeInputManager.getInstance() : argumentMap.getScopeInputManager());
+	}
+
+	@Override
+	public Scope<?> compile(NameProvider p) {
+		prepareScope();
+		if (enableCompaction) compact();
+		return null;
+	}
+
+	@Override
+	public void prepareArguments(ArgumentMap map) {
+		if (getInputs() != null) ScopeLifecycle.prepareArguments(getInputs().stream(), map);
+	}
+
+	@Override
+	public void prepareScope(ScopeInputManager manager) {
+		if (getArguments() != null) return;
+
+		if (getInputs() != null) {
+			setArguments(getInputs().stream()
+					.map(manager.argumentForInput(this)).collect(Collectors.toList()));
+			ScopeLifecycle.prepareScope(getInputs().stream(), manager);
+		}
+	}
+
 	@Override
 	public void run() { apply(new Object[0]); }
 
 	@Override
 	public synchronized Object[] apply(Object[] args) {
+		if (getArguments() == null) {
+			System.out.println("WARN: AcceleratedOperation was not compiled ahead of time");
+			compile();
+		}
+
 		HardwareOperator op = getOperator();
 
 		Object allArgs[] = getAllArgs(args);
@@ -166,6 +208,11 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 	@Override
 	public void kernelOperate(MemoryBank[] args) {
 		String name = this instanceof Named ? ((Named) this).getName() : OperationAdapter.operationName(getClass(), "function");
+
+		if (getArguments() == null) {
+			System.out.println("WARN: " + name + " was not compiled ahead of time");
+			compile();
+		}
 
 		try {
 			if (isKernel() && enableKernel) {
@@ -240,7 +287,7 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 				continue i;
 			}
 
-			Evaluable<T> c = (Evaluable<T>) arguments.get(i).getProducer().get();
+			Evaluable<T> c = (Evaluable<T>) ProducerCache.getEvaluableForSupplier(arguments.get(i).getProducer());
 
 			if (c instanceof ProducerArgumentReference) {
 				int argIndex = ((ProducerArgumentReference) c).getReferencedArgumentIndex();

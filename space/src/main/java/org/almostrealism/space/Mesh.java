@@ -42,6 +42,7 @@ import org.almostrealism.graph.Automata;
 import org.almostrealism.graph.KdTree;
 import org.almostrealism.graph.mesh.MeshPointData;
 import org.almostrealism.hardware.KernelizedEvaluable;
+import org.almostrealism.hardware.KernelizedProducer;
 import org.almostrealism.hardware.MemoryBank;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.code.Operator;
@@ -657,12 +658,10 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 		if (this.isTreeLoaded()) return super.intersectAt(ray);
 
 		TransformMatrix t = getTransform(true);
-		Producer<Ray> tray = ray;
+		KernelizedProducer<Ray> tray = (KernelizedProducer<Ray>) ray;
 		if (t != null) tray = t.getInverse().transform(tray);
 
-		CachedMeshIntersectionKernel kernel =
-				new CachedMeshIntersectionKernel(getMeshData(), (KernelizedEvaluable) tray.get());
-
+		CachedMeshIntersectionKernel kernel = new CachedMeshIntersectionKernel(getMeshData(), tray);
 		return new ShadableIntersection(ray, () -> kernel.getClosestNormal(), new DimensionAwareKernel<>(kernel));
 	}
 

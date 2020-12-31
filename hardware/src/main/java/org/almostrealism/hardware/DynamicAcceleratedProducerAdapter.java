@@ -27,6 +27,7 @@ import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Provider;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -68,13 +69,29 @@ public abstract class DynamicAcceleratedProducerAdapter<I extends MemWrapper, O 
 	public Scope<O> getScope(NameProvider provider) {
 		Scope<O> scope = super.getScope(provider);
 		IntStream.range(0, memLength)
-				.mapToObj(getAssignmentFunction(provider.getOutputVariable()))
+				.mapToObj(getAssignmentFunction(provider, provider.getOutputVariable()))
 				.forEach(v -> scope.getVariables().add((Variable) v));
 		return scope;
 	}
 
 	public OperationAdapter getInputProducer(int index) {
-		return (OperationAdapter) getArguments().get(index).getProducer();
+		if (getInputs().get(index) instanceof OperationAdapter) {
+			return (OperationAdapter) getInputs().get(index);
+		}
+
+		return null;
+	}
+
+	public boolean isInputProducerStatic(int index) {
+		Supplier<Evaluable<? extends I>> producer = getInputs().get(index);
+		if (producer instanceof OperationAdapter) {
+			return ((OperationAdapter) producer).isStatic();
+		}
+
+		Evaluable<? extends I> evaluable = producer.get();
+		if (evaluable instanceof Provider) return true;
+
+		return false;
 	}
 
 	@Override
@@ -104,14 +121,24 @@ public abstract class DynamicAcceleratedProducerAdapter<I extends MemWrapper, O 
 	protected boolean isCompletelyValueOnly() {
 		List<Supplier<Evaluable<? extends I>>> inputs = getInputs();
 		// Confirm that all inputs are themselves dynamic accelerated adapters
-		for (int i = 1; i < inputs.size(); i++) {
+		i: for (int i = 1; i < inputs.size(); i++) {
 			if (inputs.get(i) == null)
 				throw new IllegalArgumentException("Null input producer");
 
-			if (inputs.get(i) instanceof DynamicAcceleratedProducerAdapter == false)
-				return false;
-			if (!((DynamicAcceleratedProducerAdapter) inputs.get(i)).isValueOnly())
-				return false;
+			Supplier<Evaluable<? extends I>> supplier = inputs.get(i);
+
+			// A "value only" producer is acceptable
+			if (supplier instanceof DynamicAcceleratedProducerAdapter
+					&& ((DynamicAcceleratedProducerAdapter) supplier).isValueOnly()) {
+				continue i;
+			}
+
+			// A Provider is always "value only"
+			if (supplier.get() instanceof Provider) {
+				continue i;
+			}
+
+			return false;
 		}
 
 		return true;

@@ -16,6 +16,7 @@
 
 package org.almostrealism.geometry.computations;
 
+import io.almostrealism.code.DefaultScopeInputManager;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.geometry.TransformMatrix;
@@ -23,8 +24,15 @@ import org.almostrealism.hardware.AcceleratedEvaluable;
 
 import java.util.function.Supplier;
 
+/**
+ * The reason this is deprecated is mostly because it should be an operation
+ * rather than an evaluable, and because confusion like that has led to a
+ * shortcut of invoking prepareScope in the constructor which is a bad idea.
+ */
+@Deprecated
 public class MatrixDeterminant extends AcceleratedEvaluable<TransformMatrix, Scalar> {
 	public MatrixDeterminant(Supplier<Evaluable<? extends TransformMatrix>> m) {
 		super("matrixDeterminant", Scalar.blank(), m);
+		prepareScope(DefaultScopeInputManager.getInstance());
 	}
 }

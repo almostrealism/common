@@ -27,6 +27,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
@@ -82,7 +83,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 
 	public static <T> List<ArrayVariable<? extends T>> removeDuplicateArguments(List<ArrayVariable<? extends T>> arguments) {
 		List<ArrayVariable<? extends T>> args = new ArrayList<>();
-		args.addAll(arguments);
+		arguments.stream().filter(Objects::nonNull).forEach(args::add);
 
 		List<String> names = new ArrayList<>();
 		Iterator<ArrayVariable<? extends T>> itr = args.iterator();

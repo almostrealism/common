@@ -16,6 +16,7 @@
 
 package org.almostrealism.space;
 
+import io.almostrealism.code.OperationAdapter;
 import org.almostrealism.algebra.*;
 import org.almostrealism.color.RGB;
 import org.almostrealism.geometry.Intersection;
@@ -66,9 +67,11 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 	static {
 		TriangleDataProducer triangle = TriangleDataFeatures.getInstance().triangle(PassThroughEvaluable.of(TrianglePointData.class, 0));
 		dataProducer = triangle.get();
+		((OperationAdapter) dataProducer).compile();
 
 		intersectAt = new TriangleIntersectAt(PassThroughEvaluable.of(TriangleData.class, 1),
 							PassThroughEvaluable.of(Ray.class, 0, -1));
+		((OperationAdapter) intersectAt).compile();
 	}
 
 	/**

@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.relation.Evaluable;
 
 import java.util.HashMap;
@@ -32,7 +33,8 @@ import java.util.function.Supplier;
  * @author  Michael Murray
  */
 public class ProducerCache {
-	private static ThreadLocal<Map<Supplier, Object>> cache = new ThreadLocal<>();
+	private static ThreadLocal<Map<Supplier, Object>> resultCache = new ThreadLocal<>();
+	private static ThreadLocal<Map<Supplier, Evaluable>> evaluableCache = new ThreadLocal<>();
 
 	private static ThreadLocal<Object[]> lastParameter = new ThreadLocal<>();
 
@@ -44,21 +46,49 @@ public class ProducerCache {
 	public static <T> T evaluate(Supplier<Evaluable<? extends T>> p, Object args[]) {
 		checkArgs(args);
 
-		if (getCache().containsKey(p)) {
-			return (T) getCache().get(p);
+		// If the result is already known, return it
+		// TODO  There should be a way to indicate that
+		//       a producer is not cacheable (if its
+		//       results are non-deterministic or
+		//       random, etc).
+		if (getResultCache().containsKey(p)) {
+			return (T) getResultCache().get(p);
 		}
 
 		try {
-			T result = p.get().evaluate(args);
+			T result = getEvaluableForSupplier(p).evaluate(args);
 
-			getCache().put(p, result);
+			getResultCache().put(p, result);
 			return result;
 		} catch (ClassCastException e) {
 			throw new IllegalArgumentException(String.valueOf(p.get().getClass()), e);
 		}
 	}
 
-	public static void clear() { getCache().clear(); }
+	/**
+	 * This provides a way to obtain an already available {@link Evaluable} for
+	 * the given {@link Supplier}. The {@link Evaluable} is not to be used with
+	 * other {@link Thread}s and callers of this method can be sure that the
+	 * returned {@link Evaluable} will not have been returned for any other
+	 * {@link Thread} than the current one. If an {@link Evaluable} for this
+	 * {@link Thread} has not already been obtained, the {@link Supplier#get()}
+	 * method will be used to obtain one, and it will be kept to later be
+	 * returned by this method if it is called again.
+	 */
+	public static <T> Evaluable<? extends T> getEvaluableForSupplier(Supplier<Evaluable<? extends T>> producer) {
+		if (!getEvaluableCache().containsKey(producer)) {
+			Evaluable ev = producer.get();
+			if (ev instanceof OperationAdapter) {
+				((OperationAdapter) ev).compile();
+			}
+
+			getEvaluableCache().put(producer, producer.get());
+		}
+
+		return getEvaluableCache().get(producer);
+	}
+
+	public static void clear() { getResultCache().clear(); }
 
 	private static void checkArgs(Object args[]) {
 		if (lastParameter.get() != args) {
@@ -67,11 +97,19 @@ public class ProducerCache {
 		}
 	}
 
-	private static Map<Supplier, Object> getCache() {
-		if (cache.get() == null) {
-			cache.set(new HashMap<>());
+	private static Map<Supplier, Object> getResultCache() {
+		if (resultCache.get() == null) {
+			resultCache.set(new HashMap<>());
 		}
 
-		return cache.get();
+		return resultCache.get();
+	}
+
+	private static Map<Supplier, Evaluable> getEvaluableCache() {
+		if (evaluableCache.get() == null) {
+			evaluableCache.set(new HashMap<>());
+		}
+
+		return evaluableCache.get();
 	}
 }

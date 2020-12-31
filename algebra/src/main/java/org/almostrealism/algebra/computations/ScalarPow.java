@@ -40,8 +40,8 @@ public class ScalarPow extends DynamicAcceleratedProducerAdapter<Scalar, Scalar>
 		super.compact();
 
 		if (value == null && isCompletelyValueOnly()) {
-			absorbVariables(getInputProducer(1));
-			absorbVariables(getInputProducer(2));
+			absorbVariables(getInputs().get(1));
+			absorbVariables(getInputs().get(2));
 
 			// TODO  Certainty of exponent is ignored
 			value = new Expression[] {

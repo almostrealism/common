@@ -17,6 +17,8 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.ArrayVariable;
+import io.almostrealism.code.NameProvider;
+import io.almostrealism.code.Scope;
 import io.almostrealism.code.expressions.Expression;
 
 import java.util.ArrayList;
@@ -38,7 +40,11 @@ public class AcceleratedPassThroughProducer<T extends MemWrapper>
 		super(memLength, null);
 		this.argIndex = argIndex;
 		this.kernelIndex = kernelIndex;
+		compile(this);
+	}
 
+	@Override
+	public Scope compile(NameProvider p) {
 		ArrayVariable result = new ArrayVariable(this, "", null);
 		result.setSortHint(-1);
 
@@ -47,6 +53,16 @@ public class AcceleratedPassThroughProducer<T extends MemWrapper>
 		args.addAll(Arrays.asList(arguments(this)));
 		setArguments(args);
 		initArgumentNames();
+
+		return null;
+	}
+
+	/**
+	 * This overrides the parent method to prevent recursion,
+	 * since the argument is a reference back to this producer.
+	 */
+	public void postCompile() {
+		// Do nothing
 	}
 
 	@Override

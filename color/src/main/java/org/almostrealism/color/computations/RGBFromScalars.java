@@ -56,7 +56,7 @@ public class RGBFromScalars extends DynamicAcceleratedProducerAdapter<Scalar, RG
 			};
 
 			for (int i = 1; i <= 3; i++) {
-				absorbVariables(getInputProducer(i));
+				absorbVariables(getInputs().get(i));
 			}
 		}
 

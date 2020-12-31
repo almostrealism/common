@@ -16,13 +16,17 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.ArrayVariable;
+import io.almostrealism.code.ScopeInputManager;
+import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.code.Variable;
 import io.almostrealism.relation.Evaluable;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
+import java.util.stream.Stream;
 
 public abstract class DynamicAcceleratedOperation<T extends MemWrapper> extends AcceleratedOperation<T> {
 	private HardwareOperatorMap operators;

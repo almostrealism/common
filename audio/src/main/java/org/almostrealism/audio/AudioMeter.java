@@ -55,7 +55,8 @@ public class AudioMeter implements Receptor<Scalar>, ScalarFeatures, PairFeature
 //	}
 //
 	public void setForwarding(Receptor<Scalar> r) { this.forwarding = r; }
-	
+	public Receptor<Scalar> getForwarding() { return this.forwarding; }
+
 	public void setSilenceValue(double value) { this.silenceValue.setA(value); }
 	
 	public long getSilenceDuration() { return (long) this.silenceDuration.getValue(); }

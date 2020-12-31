@@ -16,9 +16,15 @@
 
 package org.almostrealism.algebra;
 
+import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.code.ScopeInputManager;
+import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.relation.DynamicProducer;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+
+import java.util.Objects;
+import java.util.stream.Stream;
 
 /**
  * The {@link AdaptProducer} provides a way for a {@link Producer}
@@ -30,13 +36,25 @@ import io.almostrealism.relation.Producer;
  *
  * @author  Michael Murray
  */
-public class AdaptProducer<T> implements Producer<T> {
+public class AdaptProducer<T> implements Producer<T>, ScopeLifecycle {
 	private Producer<T> p;
 	private Producer args[];
 
 	public AdaptProducer(Producer<T> p, Producer... args) {
 		this.p = p;
 		this.args = args;
+	}
+
+	@Override
+	public void prepareArguments(ArgumentMap map) {
+		ScopeLifecycle.prepareArguments(Stream.of(p), map);
+		ScopeLifecycle.prepareArguments(Stream.of(args), map);
+	}
+
+	@Override
+	public void prepareScope(ScopeInputManager manager) {
+		ScopeLifecycle.prepareScope(Stream.of(p), manager);
+		ScopeLifecycle.prepareScope(Stream.of(args), manager);
 	}
 
 	@Override

@@ -33,13 +33,11 @@ import io.almostrealism.code.Variable;
 import org.almostrealism.io.PrintWriter;
 
 import java.util.List;
+import java.util.Objects;
 
 public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperation<MemWrapper> implements NameProvider {
-	public static final boolean enableDestinationConsolidation = true;
-	public static final boolean enableArgumentMapping = true;
-	public static final boolean enableCompaction = true;
-
 	private Computation<T> computation;
+	private Scope<T> scope;
 
 	public AcceleratedComputationOperation(Computation<T> c, boolean kernel) {
 		super(kernel, new ArrayVariable[0]);
@@ -94,6 +92,8 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	protected void prepareScope() {
+		super.prepareScope();
+
 		SupplierArgumentMap argumentMap = null;
 
 		if (enableDestinationConsolidation) {
@@ -133,14 +133,20 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 
 	public Scope<T> compile(NameProvider p, Variable<T> outputVariable) {
 		Computation<T> c = getComputation();
-		Scope<T> scope = outputVariable == null ? c.getScope(p) : c.getScope(p.withOutputVariable(outputVariable));
-		setArguments(scope.getArguments());
+		scope = outputVariable == null ? c.getScope(p) : c.getScope(p.withOutputVariable(outputVariable));
+		postCompile();
 		return scope;
 	}
 
 	@Override
+	public void postCompile() {
+		setArguments(scope.getArguments());
+		super.postCompile();
+	}
+
+	@Override
 	public String getFunctionDefinition() {
-		Scope<T> scope = compile();
+		if (scope == null) compile();
 		ScopeEncoder encoder = new ScopeEncoder(OpenCLPrintWriter::new);
 		return encoder.apply(scope);
 	}

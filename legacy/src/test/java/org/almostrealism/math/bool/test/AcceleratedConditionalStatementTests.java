@@ -1,5 +1,6 @@
 package org.almostrealism.math.bool.test;
 
+import io.almostrealism.code.OperationAdapter;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.algebra.Vector;
@@ -22,8 +23,7 @@ public class AcceleratedConditionalStatementTests implements CodeFeatures {
 		ScalarProducer b = scalar(Math.random());
 
 		LessThan lt = new LessThan(2, Scalar::new, a, b, a, b, false);
-
-		lt.compact();
+		lt.compile();
 		System.out.println(lt.getFunctionDefinition());
 
 		Scalar s = (Scalar) lt.evaluate();
@@ -39,7 +39,9 @@ public class AcceleratedConditionalStatementTests implements CodeFeatures {
 	protected LessThan<Scalar> lessThan() {
 		Producer<Scalar> one = PassThroughEvaluable.of(Scalar.class, 0);
 		Producer<Scalar> two = PassThroughEvaluable.of(Scalar.class, 1);
-		return lessThan(one, two);
+		LessThan<Scalar> lt = lessThan(one, two);
+		lt.compile();
+		return lt;
 	}
 
 	protected LessThan<Scalar> lessThan(Producer<Scalar> a, Producer<Scalar> b) {
@@ -61,15 +63,13 @@ public class AcceleratedConditionalStatementTests implements CodeFeatures {
 		Scalar b = scalar(Math.random()).get().evaluate();
 
 		LessThan lt = lessThan();
-		lt.compact();
 		check(lt, a, b);
 	}
 
 	@Test
 	public void compactWithDotProduct() {
 		LessThan<Scalar> lt = lessThan(ray(i -> Math.random()).oDotd(), oDotd(v(Ray.class, 0)));
-		// lt.compact();
-
+		lt.compile();
 		System.out.println(lt.getFunctionDefinition());
 		Assert.assertEquals(2, lt.getArgsCount());
 
@@ -83,7 +83,7 @@ public class AcceleratedConditionalStatementTests implements CodeFeatures {
 		LessThan<Scalar> lt1 = lessThan(ray(i -> Math.random()).oDotd(), oDotd(v(Ray.class, 0)));
 		AcceleratedConditionalStatementScalar lt2 = vector(i -> Math.random()).crossProduct(v(Vector.class, 1))
 														.length().lessThan(() -> lt1, v(1), v(2));
-		// lt2.compact();
+		((OperationAdapter) lt2).compile();
 
 		System.out.println(((DynamicAcceleratedOperation) lt2).getFunctionDefinition());
 
@@ -124,7 +124,7 @@ public class AcceleratedConditionalStatementTests implements CodeFeatures {
 
 			LessThan top = lt3;
 
-			top.compact();
+			top.compile();
 			System.out.println(top.getFunctionDefinition());
 
 			Scalar s = (Scalar) top.evaluate();

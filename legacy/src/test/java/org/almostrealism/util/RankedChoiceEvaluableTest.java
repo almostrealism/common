@@ -103,6 +103,7 @@ public class RankedChoiceEvaluableTest implements CodeFeatures {
 	public void rankedChoice1() {
 		RankedChoiceEvaluableForVector rcp = getRankedChoiceProducer1();
 		DynamicAcceleratedEvaluable<Vector, Vector> acc = rcp.getAccelerated();
+		acc.compile();
 		System.out.println(acc.getFunctionDefinition());
 
 		Vector result = acc.evaluate();
@@ -114,6 +115,7 @@ public class RankedChoiceEvaluableTest implements CodeFeatures {
 	public void rankedChoice2() {
 		RankedChoiceEvaluableForVector rcp = getRankedChoiceProducer2();
 		DynamicAcceleratedEvaluable<Vector, Vector> acc = rcp.getAccelerated();
+		acc.compile();
 		System.out.println(acc.getFunctionDefinition());
 
 		Vector result = acc.evaluate();
@@ -125,7 +127,7 @@ public class RankedChoiceEvaluableTest implements CodeFeatures {
 	public void rankedChoiceCompact1() {
 		RankedChoiceEvaluableForVector rcp = getRankedChoiceProducer1();
 		DynamicAcceleratedEvaluable<Vector, Vector> acc = rcp.getAccelerated();
-		acc.compact();
+		acc.compile();
 		System.out.println(acc.getFunctionDefinition());
 
 		Vector result = acc.evaluate();
@@ -146,7 +148,7 @@ public class RankedChoiceEvaluableTest implements CodeFeatures {
 		AcceleratedRankedChoiceEvaluable<Scalar> acc =
 				new AcceleratedRankedChoiceEvaluable<>(2, Scalar::new, ScalarBank::new,
 													values, Scalar.blank(), Intersection.e, Scalar.blank().get()::evaluate);
-
+		acc.compile();
 		System.out.println(acc.getFunctionDefinition());
 
 		Scalar result = acc.evaluate(new Object[] { new Scalar(1), new Scalar(0), new Scalar(2),

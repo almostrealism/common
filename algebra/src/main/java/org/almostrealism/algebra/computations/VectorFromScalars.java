@@ -62,7 +62,7 @@ public class VectorFromScalars extends DynamicAcceleratedProducerAdapter<Scalar,
 			}
 
 			for (int i = 1; i <= 3; i++) {
-				absorbVariables(getInputProducer(i));
+				absorbVariables(getInputs().get(i));
 			}
 		}
 	}

@@ -70,8 +70,8 @@ public class DotProduct extends DynamicAcceleratedProducerAdapter<Vector, Scalar
 				throw new IllegalArgumentException("Infinity is not supported");
 			}
 
-			absorbVariables(getInputProducer(1));
-			absorbVariables(getInputProducer(2));
+			absorbVariables(getInputs().get(1));
+			absorbVariables(getInputs().get(2));
 		}
 
 		convertToVariableRef();

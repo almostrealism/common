@@ -78,16 +78,16 @@ public class Transform extends DynamicAcceleratedProducerAdapter<Vector, Vector>
 
 			for (int i = 0; i < value.length; i++) {
 				List<Product> sum = new ArrayList<>();
-				sum.add(new Product(new Number(getInputValue(2, 4 * i), getInputProducer(2).isStatic()),
-									new Number(getInputValue(1, 0), getInputProducer(1).isStatic())));
-				sum.add(new Product(new Number(getInputValue(2, 4 * i + 1), getInputProducer(2).isStatic()),
-									new Number(getInputValue(1, 1), getInputProducer(1).isStatic())));
-				sum.add(new Product(new Number(getInputValue(2, 4 * i + 2), getInputProducer(2).isStatic()),
-									new Number(getInputValue(1, 2), getInputProducer(1).isStatic())));
+				sum.add(new Product(new Number(getInputValue(2, 4 * i), isInputProducerStatic(2)),
+									new Number(getInputValue(1, 0), isInputProducerStatic(1))));
+				sum.add(new Product(new Number(getInputValue(2, 4 * i + 1), isInputProducerStatic(2)),
+									new Number(getInputValue(1, 1), isInputProducerStatic(1))));
+				sum.add(new Product(new Number(getInputValue(2, 4 * i + 2), isInputProducerStatic(2)),
+									new Number(getInputValue(1, 2), isInputProducerStatic(1))));
 
 				if (includeTranslation) {
 					sum.add(new Product(new Number(getInputValue(2, 4 * i + 3),
-													getInputProducer(2).isStatic()),
+													isInputProducerStatic(2)),
 										new Number(1.0)));
 				}
 
@@ -141,7 +141,7 @@ public class Transform extends DynamicAcceleratedProducerAdapter<Vector, Vector>
 				for (Expression e : value) e.getDependencies().addAll(args);
 			}
 
-			if (!getInputProducer(2).isStatic()) {
+			if (!isInputProducerStatic(2)) {
 				List<ArrayVariable<? extends Vector>> args = AcceleratedEvaluable.excludeResult(getInputProducer(2).getArguments());
 				for (Expression e : value) e.getDependencies().addAll(args);
 			}

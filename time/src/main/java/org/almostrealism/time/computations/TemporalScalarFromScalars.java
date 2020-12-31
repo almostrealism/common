@@ -55,7 +55,7 @@ public class TemporalScalarFromScalars extends DynamicAcceleratedProducerAdapter
 			};
 
 			for (int i = 1; i <= 2; i++) {
-				if (!getInputProducer(i).isStatic()) {
+				if (!isInputProducerStatic(i)) {
 					absorbVariables(getInputProducer(i));
 				}
 			}

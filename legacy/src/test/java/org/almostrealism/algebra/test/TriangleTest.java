@@ -26,8 +26,6 @@ import org.junit.Test;
 public class TriangleTest implements CodeFeatures {
 	@Test
 	public void test() {
-		System.out.println(Triangle.intersectAt.getFunctionDefinition());
-
 		Triangle t = new Triangle(new Vector(1.0, 1.0, -1.0),
 									new Vector(-1.0, 1.0, -1.0),
 									new Vector(0.0, -1.0, -1.0));

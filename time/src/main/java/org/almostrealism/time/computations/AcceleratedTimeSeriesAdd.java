@@ -18,6 +18,7 @@ package org.almostrealism.time.computations;
 
 import io.almostrealism.code.ExplicitScope;
 import io.almostrealism.code.Scope;
+import io.almostrealism.code.ScopeInputManager;
 import org.almostrealism.hardware.DynamicAcceleratedOperationAdapter;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.relation.Producer;

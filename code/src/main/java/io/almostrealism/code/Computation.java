@@ -16,13 +16,7 @@
 
 package io.almostrealism.code;
 
-public interface Computation<T> {
-	default void prepareArguments(ArgumentMap map) {
-	}
-
-	default void prepareScope(ScopeInputManager manager) {
-	}
-
+public interface Computation<T> extends ScopeLifecycle {
 	/**
 	 * Return a {@link Scope} containing the {@link Variable}s
 	 * and {@link io.almostrealism.code.Method}s necessary to compute the output of

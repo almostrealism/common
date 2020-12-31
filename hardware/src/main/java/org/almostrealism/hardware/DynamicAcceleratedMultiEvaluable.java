@@ -54,7 +54,7 @@ public abstract class DynamicAcceleratedMultiEvaluable<I extends MemWrapper, O e
 		StringBuffer buf = new StringBuffer();
 		writeVariables(buf::append, existingVariables);
 		IntStream.range(0, memLength)
-				.mapToObj(getAssignmentFunction(outputVariable))
+				.mapToObj(getAssignmentFunction(this, outputVariable))
 				.map(v -> OpenCLPrintWriter.renderAssignment((Variable) v))
 				.map(s -> s + "\n")
 				.forEach(buf::append);

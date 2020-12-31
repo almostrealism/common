@@ -16,13 +16,17 @@
 
 package org.almostrealism.bool;
 
+import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.Scope;
+import io.almostrealism.code.ScopeInputManager;
+import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.code.Variable;
 import io.almostrealism.code.expressions.Expression;
 import io.almostrealism.code.expressions.NAryExpression;
 import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.AcceleratedEvaluable;
 import org.almostrealism.hardware.MemWrapper;
@@ -34,10 +38,12 @@ import java.util.Objects;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public abstract class AcceleratedConjunctionAdapter<T extends MemWrapper> extends AcceleratedConditionalStatementAdapter<T> {
 	private List<AcceleratedConditionalStatement<? extends T>> conjuncts;
-	private ArrayVariable trueValue, falseValue;
+	private Supplier<Evaluable<? extends T>> trueValue, falseValue;
+	private ArrayVariable<T> trueVar, falseVar;
 
 	public AcceleratedConjunctionAdapter(int memLength,
 											 Function<Integer, Supplier<T>> blankValue) {
@@ -57,22 +63,9 @@ public abstract class AcceleratedConjunctionAdapter<T extends MemWrapper> extend
 										 	Supplier<Evaluable<? extends T>> falseValue,
 										 	AcceleratedConditionalStatement<? extends T>... conjuncts) {
 		super(memLength, blankValue);
+		this.trueValue = trueValue;
+		this.falseValue = falseValue;
 		this.conjuncts = Arrays.asList(conjuncts);
-		initArguments(trueValue, falseValue);
-	}
-
-	protected void initArguments(Supplier<Evaluable<? extends T>> trueValue, Supplier<Evaluable<? extends T>> falseValue) {
-		List<ArrayVariable<? extends MemWrapper>> args = new ArrayList<>();
-		args.add(getArguments(false).get(0));
-		args.addAll(getOperands());
-
-		this.trueValue = new ArrayVariable(this, getArgumentName(1), trueValue);
-		args.add(this.trueValue);
-
-		this.falseValue = new ArrayVariable(this, getArgumentName(2), falseValue);
-		args.add(this.falseValue);
-		
-		setArguments(args);
 	}
 
 	@Override
@@ -80,6 +73,34 @@ public abstract class AcceleratedConjunctionAdapter<T extends MemWrapper> extend
 
 	@Override
 	protected void removeDuplicateArguments() { setArguments(Scope.removeDuplicateArguments(getArguments(false))); }
+
+	@Override
+	public void prepareArguments(ArgumentMap map) {
+		super.prepareArguments(map);
+		ScopeLifecycle.prepareArguments(conjuncts.stream(), map);
+		ScopeLifecycle.prepareArguments(Stream.of(trueValue), map);
+		ScopeLifecycle.prepareArguments(Stream.of(falseValue), map);
+	}
+
+	@Override
+	public void prepareScope(ScopeInputManager manager) {
+		super.prepareScope(manager);
+		ScopeLifecycle.prepareScope(conjuncts.stream(), manager);
+		ScopeLifecycle.prepareScope(Stream.of(trueValue), manager);
+		ScopeLifecycle.prepareScope(Stream.of(falseValue), manager);
+
+		List<ArrayVariable<? extends MemWrapper>> args = new ArrayList<>();
+		args.add(getArguments(false).get(0));
+		args.addAll(getOperands());
+
+		this.trueVar = new ArrayVariable(this, getArgumentName(1), trueValue);
+		args.add(this.trueVar);
+
+		this.falseVar = new ArrayVariable(this, getArgumentName(2), falseValue);
+		args.add(this.falseVar);
+
+		setArguments(args);
+	}
 
 	@Override
 	public List<ArrayVariable<? extends MemWrapper>> getArguments() { return getArguments(true); }
@@ -128,10 +149,10 @@ public abstract class AcceleratedConjunctionAdapter<T extends MemWrapper> extend
 	}
 
 	@Override
-	public ArrayVariable getTrueValue() { return trueValue; }
+	public ArrayVariable getTrueValue() { return trueVar; }
 
 	@Override
-	public ArrayVariable getFalseValue() { return falseValue; }
+	public ArrayVariable getFalseValue() { return falseVar; }
 
 	@Override
 	public void compact() {

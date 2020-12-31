@@ -16,12 +16,14 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.MultiExpression;
+import io.almostrealism.code.expressions.Expression;
 import org.jocl.CL;
 import org.jocl.CLException;
 import org.jocl.Pointer;
 import org.jocl.cl_mem;
 
-public interface MemWrapper {
+public interface MemWrapper extends MultiExpression<Double> {
 	int sizeOf = Hardware.getLocalHardware().getNumberSize();
 
 	cl_mem getMem();
@@ -33,6 +35,7 @@ public interface MemWrapper {
 			return getDelegateOffset() + getDelegate().getOffset();
 		}
 	}
+
 	int getMemLength();
 
 	default int getAtomicMemLength() {
@@ -53,6 +56,19 @@ public interface MemWrapper {
 	MemWrapper getDelegate();
 
 	int getDelegateOffset();
+
+	@Override
+	default Expression<Double> getValue(int pos) {
+		double out[] = new double[1];
+		getMem(pos, out, 0, 1);
+
+		String s = Hardware.getLocalHardware().stringForDouble(out[0]);
+		if (s.contains("Infinity")) {
+			throw new IllegalArgumentException("Infinity is not supported");
+		}
+
+		return new Expression<>(Double.class, s);
+	}
 
 	default void setMem(double[] source) {
 		setMem(0, source, 0, getMemLength());

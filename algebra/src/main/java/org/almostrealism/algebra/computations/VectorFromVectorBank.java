@@ -65,7 +65,7 @@ public class VectorFromVectorBank<T extends VectorBank> extends DynamicAccelerat
 				}
 			}
 
-			absorbVariables(getInputProducer(1));
+			absorbVariables(getInputs().get(1));
 		}
 	}
 }

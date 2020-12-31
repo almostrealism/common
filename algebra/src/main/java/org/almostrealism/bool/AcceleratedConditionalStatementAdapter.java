@@ -103,9 +103,6 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrappe
 		DynamicAcceleratedOperation falseOperation =
 				(DynamicAcceleratedOperation) (getFalseValue() == null ? null : getFalseValue().getProducer().get());
 
-		if (trueOperation != null) trueOperation.compact();
-		if (falseOperation != null) falseOperation.compact();
-
 		compacted = (outputVariable, existingVariables) -> {
 			StringBuffer buf = new StringBuffer();
 

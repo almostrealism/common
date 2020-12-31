@@ -20,6 +20,8 @@ import org.jocl.CL;
 import org.jocl.CLException;
 import org.jocl.cl_program;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
@@ -30,10 +32,13 @@ public class HardwareOperatorMap<T extends MemWrapper> implements BiFunction<Str
 	private cl_program prog;
 	private String src;
 
+	private ThreadLocal<Map<String, HardwareOperator<T>>> operators;
+
 	protected HardwareOperatorMap() { }
 
 	public HardwareOperatorMap(Hardware h, String src) {
 		this.src = src;
+		this.operators = new ThreadLocal<>();
 		init(h);
 	}
 
@@ -57,9 +62,24 @@ public class HardwareOperatorMap<T extends MemWrapper> implements BiFunction<Str
 		}
 	}
 
-	public HardwareOperator<T> get(String key) { return new HardwareOperator<>(prog, key, 2, this); }
+	public HardwareOperator<T> get(String key) {
+		return get(key, 2);
+	}
 
-	public HardwareOperator<T> get(String key, int argCount) { return new HardwareOperator<>(prog, key, argCount, this); }
+	public HardwareOperator<T> get(String key, int argCount) {
+		Map<String, HardwareOperator<T>> ops = operators.get();
+
+		if (ops == null) {
+			ops = new HashMap<>();
+			operators.set(ops);
+		}
+
+		if (!ops.containsKey(key)) {
+			ops.put(key, new HardwareOperator<>(prog, key, argCount, this));
+		}
+
+		return ops.get(key);
+	}
 
 	@Override
 	public HardwareException apply(String name, CLException e) {

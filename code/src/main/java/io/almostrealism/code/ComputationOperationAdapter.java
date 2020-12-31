@@ -19,6 +19,8 @@ package io.almostrealism.code;
 import io.almostrealism.code.expressions.Expression;
 import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Provider;
+import io.almostrealism.relation.StaticEvaluable;
 
 import java.util.Objects;
 import java.util.function.Supplier;
@@ -30,14 +32,17 @@ public abstract class ComputationOperationAdapter<I, O> extends OperationAdapter
 		super(new Supplier[0]);
 	}
 
+	@Override
+	public Scope compile(NameProvider p) {
+		System.out.println("WARN: Attempting to compile a Computation, " +
+							"rather than an Evaluable container for one");
+		return null;
+	}
 
 	@Override
 	public void prepareArguments(ArgumentMap map) {
 		if (getArguments() != null) return;
-		getInputs().stream()
-				.map(c -> c instanceof Computation ? (Computation) c : null)
-				.filter(Objects::nonNull)
-				.forEach(c -> c.prepareArguments(map));
+		ScopeLifecycle.prepareArguments(getInputs().stream(), map);
 		getInputs().stream().forEach(map::add);
 	}
 
@@ -48,10 +53,7 @@ public abstract class ComputationOperationAdapter<I, O> extends OperationAdapter
 		setArguments(getInputs().stream()
 				.map(manager.argumentForInput(this)).collect(Collectors.toList()));
 
-		getInputs().stream()
-				.map(in -> in instanceof Computation ? (Computation) in : null)
-				.filter(Objects::nonNull)
-				.forEach(c -> c.prepareScope(manager));
+		ScopeLifecycle.prepareScope(getInputs().stream(), manager);
 	}
 
 	@Override
@@ -72,13 +74,20 @@ public abstract class ComputationOperationAdapter<I, O> extends OperationAdapter
 		return scope;
 	}
 
-	@Override
-	public void compact() {
-		super.compact();
-		// prepareScope(DefaultScopeInputManager.getInstance());
+	public static Expression<Double> getExpression(ArrayVariable arg, int pos) {
+		return getExpression(arg.getProducer()).getValue(pos);
 	}
 
-	public static Expression<Double> getExpression(ArrayVariable arg, int pos) {
-		return ((MultiExpression) arg.getProducer()).getValue(pos);
+	public static <T> MultiExpression getExpression(Supplier<Evaluable<? extends T>> producer) {
+		if (producer instanceof MultiExpression) {
+			return (MultiExpression) producer;
+		}
+
+		Evaluable<? extends T> evaluable = producer.get();
+		if (evaluable instanceof Provider && ((Provider) evaluable).get() instanceof MultiExpression) {
+			return (MultiExpression) ((Provider) evaluable).get();
+		}
+
+		throw new UnsupportedOperationException();
 	}
 }

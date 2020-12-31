@@ -1,5 +1,8 @@
 package org.almostrealism.graph.mesh.test;
 
+import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.code.DefaultScopeInputManager;
+import io.almostrealism.code.SupplierArgumentMap;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.algebra.Vector;
@@ -137,9 +140,7 @@ public class MeshIntersectionTest implements HardwareFeatures, CodeFeatures {
 				u.lessThan(1.0, true),
 				v.greaterThan(0.0, true),
 				u.add(v).lessThan(1.0, true));
-
-		// acs.compact();
-
+		acs.compile();
 		System.out.println(acs.getFunctionDefinition());
 		Assert.assertEquals(1, acs.getArgsCount());
 	}
@@ -184,7 +185,7 @@ public class MeshIntersectionTest implements HardwareFeatures, CodeFeatures {
 	@Test
 	public void intersectAtCompact1() {
 		TriangleIntersectAt intersect = intersection();
-		// intersect.compact();
+		intersect.compile();
 		System.out.println(intersect.getFunctionDefinition());
 		evaluate(intersect, true);
 	}
@@ -201,7 +202,7 @@ public class MeshIntersectionTest implements HardwareFeatures, CodeFeatures {
 		ScalarBank distances = new ScalarBank(1);
 		RayFromVectors ray = new RayFromVectors(origin1, direction1);
 		// ray.compact();
-		data1.evaluateIntersectionKernel(compileProducer(ray), distances, new MemoryBank[0]);
+		data1.evaluateIntersectionKernel(ray.get(), distances, new MemoryBank[0]);
 		System.out.println("distance = " + distances.get(0).getValue());
 		Assert.assertEquals(1.0, distances.get(0).getValue(), Math.pow(10, -10));
 	}

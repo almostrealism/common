@@ -16,6 +16,7 @@
 
 package org.almostrealism.space;
 
+import io.almostrealism.code.OperationAdapter;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairBank;
 import org.almostrealism.algebra.Scalar;
@@ -25,6 +26,7 @@ import org.almostrealism.algebra.VectorBank;
 import org.almostrealism.algebra.ZeroVector;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.hardware.KernelizedEvaluable;
+import org.almostrealism.hardware.KernelizedProducer;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.geometry.DimensionAware;
 import io.almostrealism.relation.Evaluable;
@@ -37,9 +39,10 @@ public class CachedMeshIntersectionKernel implements KernelizedEvaluable<Scalar>
 
 	private int width = -1, height = -1, ssw = -1, ssh = -1;
 
-	public CachedMeshIntersectionKernel(MeshData data, KernelizedEvaluable<Ray> ray) {
+	public CachedMeshIntersectionKernel(MeshData data, KernelizedProducer<Ray> ray) {
 		this.data = data;
-		this.ray = ray;
+		this.ray = ray.get();
+		((OperationAdapter) this.ray).compile();
 	}
 
 	@Override

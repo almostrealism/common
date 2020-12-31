@@ -17,11 +17,13 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.OperationComputation;
 import io.almostrealism.code.ScopeInputManager;
+import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.relation.Compactable;
 
 import java.util.ArrayList;
@@ -34,7 +36,9 @@ public class OperationList extends ArrayList<Supplier<Runnable>> implements Oper
 	@Override
 	public Runnable get() {
 		if (isComputation()) {
-			return compileRunnable(this);
+			OperationAdapter op = (OperationAdapter) compileRunnable(this);
+			op.compile();
+			return (Runnable) op;
 		} else {
 			List<Runnable> run = stream().map(Supplier::get).collect(Collectors.toList());
 			return () -> run.forEach(Runnable::run);
@@ -54,15 +58,13 @@ public class OperationList extends ArrayList<Supplier<Runnable>> implements Oper
 	}
 
 	@Override
-	public void prepareArguments(ArgumentMap manager) {
-		stream().map(o -> o instanceof Computation ? (Computation) o : null)
-				.filter(Objects::nonNull).forEach(c -> c.prepareArguments(manager));
+	public void prepareArguments(ArgumentMap map) {
+		ScopeLifecycle.prepareArguments(stream(), map);
 	}
 
 	@Override
 	public void prepareScope(ScopeInputManager manager) {
-		stream().map(o -> o instanceof Computation ? (Computation) o : null)
-				.filter(Objects::nonNull).forEach(c -> c.prepareScope(manager));
+		ScopeLifecycle.prepareScope(stream(), manager);
 	}
 
 	@Override

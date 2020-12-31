@@ -16,8 +16,12 @@
 
 package org.almostrealism.bool;
 
+import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.ArrayVariable;
+import io.almostrealism.code.DefaultScopeInputManager;
 import io.almostrealism.code.MultiExpression;
+import io.almostrealism.code.ScopeInputManager;
+import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.code.Variable;
 import io.almostrealism.code.expressions.Expression;
 import io.almostrealism.code.expressions.InstanceReference;
@@ -26,17 +30,21 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.MemWrapper;
 import io.almostrealism.relation.Evaluable;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.Stream;
 
 public abstract class AcceleratedBinaryConditionAdapter<T extends MemWrapper> extends AcceleratedConditionalStatementAdapter<T> {
 	private String operator;
-	private ArrayVariable leftOperand, rightOperand;
-	private ArrayVariable trueValue, falseValue;
-
 	private Expression condition;
+
+	private Supplier<Evaluable<? extends MemWrapper>> leftOperand, rightOperand;
+	private Supplier<Evaluable<? extends MemWrapper>> trueValue, falseValue;
+	private ArrayVariable<T> leftOpVar, rightOpVar;
+	private ArrayVariable<T> trueVar, falseVar;
 
 	public AcceleratedBinaryConditionAdapter(String operator, int memLength,
 											 Function<Integer, Supplier<T>> blankValue) {
@@ -62,10 +70,31 @@ public abstract class AcceleratedBinaryConditionAdapter<T extends MemWrapper> ex
 											 Supplier<Evaluable<? extends T>> falseValue) {
 		super(memLength, blankValue, leftOperand, rightOperand, trueValue, falseValue);
 		this.operator = operator;
-		this.leftOperand = getArguments().get(1);
-		this.rightOperand = getArguments().get(2);
-		this.trueValue = getArguments().get(3);
-		this.falseValue = getArguments().get(4);
+		this.leftOperand = getInputs().get(1);
+		this.rightOperand = getInputs().get(2);
+		this.trueValue = getInputs().get(3);
+		this.falseValue = getInputs().get(4);
+	}
+
+	@Override
+	public void prepareArguments(ArgumentMap map) {
+		super.prepareArguments(map);
+		ScopeLifecycle.prepareArguments(getOperands().stream(), map);
+		ScopeLifecycle.prepareArguments(Stream.of(trueValue), map);
+		ScopeLifecycle.prepareArguments(Stream.of(falseValue), map);
+	}
+
+	@Override
+	public void prepareScope(ScopeInputManager manager) {
+		super.prepareScope(manager);
+		ScopeLifecycle.prepareScope(getOperands().stream(), manager);
+		ScopeLifecycle.prepareScope(Stream.of(trueValue), manager);
+		ScopeLifecycle.prepareScope(Stream.of(falseValue), manager);
+
+		this.leftOpVar = getArgumentForInput(leftOperand);
+		this.rightOpVar = getArgumentForInput(rightOperand);
+		this.trueVar = getArgumentForInput(trueValue);
+		this.falseVar = getArgumentForInput(falseValue);
 	}
 
 	@Override
@@ -79,19 +108,17 @@ public abstract class AcceleratedBinaryConditionAdapter<T extends MemWrapper> ex
 
 	@Override
 	public List<ArrayVariable<Scalar>> getOperands() {
-		return Arrays.asList(leftOperand, rightOperand);
+		return Arrays.asList((ArrayVariable<Scalar>) leftOpVar, (ArrayVariable<Scalar>) rightOpVar);
 	}
 
 	@Override
-	public ArrayVariable getTrueValue() { return trueValue; }
+	public ArrayVariable getTrueValue() { return trueVar; }
 
 	@Override
-	public ArrayVariable getFalseValue() { return falseValue; }
+	public ArrayVariable getFalseValue() { return falseVar; }
 
 	@Override
-	public boolean isCompacted() {
-		return super.isCompacted() && condition != null;
-	}
+	public boolean isCompacted() { return super.isCompacted() && condition != null; }
 
 	@Override
 	public void compact() {
