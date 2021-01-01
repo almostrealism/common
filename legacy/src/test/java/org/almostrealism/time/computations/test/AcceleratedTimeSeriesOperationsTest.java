@@ -3,6 +3,7 @@ package org.almostrealism.time.computations.test;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
+import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.time.CursorPair;
 import org.almostrealism.time.TemporalScalar;
@@ -13,7 +14,7 @@ import org.junit.Test;
 
 import java.util.function.Supplier;
 
-public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures {
+public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures, HardwareFeatures {
 	protected AcceleratedTimeSeries series() {
 		AcceleratedTimeSeries series = new AcceleratedTimeSeries(100);
 		series.add(new TemporalScalar(1.0, 10));
@@ -33,18 +34,28 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures {
 
 	@Test
 	public void add() {
+		CursorPair cursors = cursors(5);
 		AcceleratedTimeSeries series = series();
 
-		Supplier<Runnable> r = series.add(temporal(v(6), v(30)));
-		AcceleratedComputationOperation op = (AcceleratedComputationOperation) r.get();
-		op.compile();
-		System.out.println(op.getFunctionDefinition());
+		Scalar value = new Scalar();
 
-		op.run();
+		Supplier<Runnable> r = series.add(temporal(r(p(cursors)), v(30)));
+		AcceleratedComputationOperation opr = (AcceleratedComputationOperation) r.get();
+		opr.compile();
+		System.out.println(opr.getFunctionDefinition());
+
+		Supplier<Runnable> a = a(2, p(value), series.valueAt(p(cursors(6))));
+		AcceleratedComputationOperation opa = (AcceleratedComputationOperation) a.get();
+		opa.compile();
+		System.out.println(opa.getFunctionDefinition());
+
+		opr.run();
+		opa.run();
 
 		Assert.assertEquals(6, series.getLength());
 		valueAtAssertions(series);
 		Assert.assertEquals(30.0, series.valueAt(6.0).getValue(), Math.pow(10, -10));
+		Assert.assertEquals(30.0, value.getValue(), Math.pow(10, -10));
 	}
 
 	@Test
