@@ -16,7 +16,6 @@
 
 package org.almostrealism.graph;
 
-import io.almostrealism.relation.Provider;
 import org.almostrealism.time.Temporal;
 import org.almostrealism.hardware.OperationList;
 

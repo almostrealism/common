@@ -16,5 +16,18 @@
 
 package org.almostrealism.graph;
 
-public interface Cell<T> extends Transmitter<T>, Receptor<T> {
+import io.almostrealism.relation.Producer;
+
+import java.util.function.Supplier;
+
+public class ReceptorCell<T> implements Cell<T> {
+	private Receptor<T> r;
+
+	public ReceptorCell(Receptor<T> r) { this.r = r; }
+
+	@Override
+	public Supplier<Runnable> push(Producer<T> protein) { return r.push(protein); }
+
+	@Override
+	public void setReceptor(Receptor<T> r) { }
 }
