@@ -32,6 +32,22 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures {
 	}
 
 	@Test
+	public void add() {
+		AcceleratedTimeSeries series = series();
+
+		Supplier<Runnable> r = series.add(temporal(v(6), v(30)));
+		AcceleratedComputationOperation op = (AcceleratedComputationOperation) r.get();
+		op.compile();
+		System.out.println(op.getFunctionDefinition());
+
+		op.run();
+
+		Assert.assertEquals(6, series.getLength());
+		valueAtAssertions(series);
+		Assert.assertEquals(30.0, series.valueAt(6.0).getValue(), Math.pow(10, -10));
+	}
+
+	@Test
 	public void purge() {
 		for (int i = 0; i < 2; i++) {
 			CursorPair cursors = cursors(3.2);
@@ -40,6 +56,7 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures {
 
 			Supplier<Runnable> r = series.purge(p(cursors));
 			AcceleratedComputationOperation op = (AcceleratedComputationOperation) r.get();
+			op.compile();
 			System.out.println(op.getFunctionDefinition());
 
 			op.run();
@@ -54,6 +71,7 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures {
 		AcceleratedTimeSeries series = series();
 		AcceleratedTimeSeriesValueAt valueAt = new AcceleratedTimeSeriesValueAt(p(series), p(cursors(3.25)));
 		AcceleratedComputationEvaluable<Scalar> compiled = (AcceleratedComputationEvaluable) valueAt.get();
+		compiled.compile();
 		System.out.println(compiled.getFunctionDefinition());
 
 		Assert.assertEquals(series.valueAt(3.25).getValue(), compiled.evaluate().getValue(), Math.pow(10, -10));

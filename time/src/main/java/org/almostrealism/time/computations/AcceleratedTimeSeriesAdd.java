@@ -44,9 +44,9 @@ public class AcceleratedTimeSeriesAdd extends DynamicAcceleratedOperationAdapter
 		String input1 = getArgument(1).get(1).getExpression();
 
 		Consumer<String> code = scope.code();
-		code.accept(bank1 + " = " + bank1 + " + 1;\n");
 		code.accept(banklast0 + " = " + input0 + ";\n");
 		code.accept(banklast1 + " = " + input1 + ";\n");
+		code.accept(bank1 + " = " + bank1 + " + 1;\n");
 		return scope;
 	}
 }
