@@ -15,6 +15,7 @@ import org.junit.Before;
 import org.junit.Test;
 
 import java.util.function.Supplier;
+import java.util.stream.IntStream;
 
 public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures, HardwareFeatures {
 	private CursorPair cursors;
@@ -160,10 +161,12 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures, Hardwa
 		AcceleratedComputationOperation op = (AcceleratedComputationOperation) opl.get();
 		op.compile();
 
-		op.run();
+		IntStream.range(0, 25).forEach(i -> {
+			op.run();
 
-		Assert.assertEquals(24.0, value.getValue(), Math.pow(10, -10));
-		Assert.assertEquals(30.0, series.valueAt(6.0).getValue(), Math.pow(10, -10));
-		Assert.assertEquals(30.0, series.valueAt(p(cursors)).get().evaluate().getValue(), Math.pow(10, -10));
+			Assert.assertEquals(i == 0 ? 24.0 : 30, value.getValue(), Math.pow(10, -10));
+			Assert.assertEquals(30.0, series.valueAt(i + 6.0).getValue(), Math.pow(10, -10));
+			Assert.assertEquals(30.0, series.valueAt(p(cursors)).get().evaluate().getValue(), Math.pow(10, -10));
+		});
 	}
 }

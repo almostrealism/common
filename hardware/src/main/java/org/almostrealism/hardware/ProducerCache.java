@@ -33,6 +33,8 @@ import java.util.function.Supplier;
  * @author  Michael Murray
  */
 public class ProducerCache {
+	public static boolean enableResultCache = false;
+
 	private static ThreadLocal<Map<Supplier, Object>> resultCache = new ThreadLocal<>();
 	private static ThreadLocal<Map<Supplier, Evaluable>> evaluableCache = new ThreadLocal<>();
 
@@ -51,14 +53,14 @@ public class ProducerCache {
 		//       a producer is not cacheable (if its
 		//       results are non-deterministic or
 		//       random, etc).
-		if (getResultCache().containsKey(p)) {
+		if (enableResultCache && getResultCache().containsKey(p)) {
 			return (T) getResultCache().get(p);
 		}
 
 		try {
 			T result = getEvaluableForSupplier(p).evaluate(args);
 
-			getResultCache().put(p, result);
+			if (enableResultCache) getResultCache().put(p, result);
 			return result;
 		} catch (ClassCastException e) {
 			throw new IllegalArgumentException(String.valueOf(p.get().getClass()), e);
