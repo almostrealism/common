@@ -36,16 +36,19 @@ import org.junit.Test;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.IntStream;
 
 public class RankedChoiceEvaluableTest implements CodeFeatures {
 	@Test
 	public void highestRank() {
-		Scalar in = new Scalar(1.0);
-		Pair out = RankedChoiceEvaluable.highestRank.evaluate(
-				new Object[] { in, new Pair(3, Intersection.e) });
+		IntStream.range(0, 5).forEach(i -> {
+			Scalar in = new Scalar(1.0);
+			Pair out = RankedChoiceEvaluable.highestRank.evaluate(
+					new Object[]{in, new Pair(3, Intersection.e)});
 
-		System.out.println("rank = " + out.getA());
-		Assert.assertEquals(1.0, out.getA(), Math.pow(10, -10));
+			System.out.println("rank = " + out.getA());
+			Assert.assertEquals(1.0, out.getA(), Math.pow(10, -10));
+		});
 	}
 
 	@Test
