@@ -82,7 +82,7 @@ public class ProducerCache {
 				((OperationAdapter) ev).compile();
 			}
 
-			getEvaluableCache().put(producer, producer.get());
+			getEvaluableCache().put(producer, ev);
 		}
 
 		return getEvaluableCache().get(producer);
