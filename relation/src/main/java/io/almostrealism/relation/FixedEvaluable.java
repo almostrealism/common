@@ -18,7 +18,7 @@ package io.almostrealism.relation;
 
 import java.util.function.Supplier;
 
-public interface StaticEvaluable<T> extends Evaluable<T>, Supplier<T> {
+public interface FixedEvaluable<T> extends Evaluable<T>, Supplier<T> {
 	@Override
 	default T evaluate(Object[] args) { return get(); }
 }

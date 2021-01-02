@@ -16,7 +16,7 @@
 
 package io.almostrealism.relation;
 
-public class Provider<T> implements StaticEvaluable<T> {
+public class Provider<T> implements FixedEvaluable<T> {
 	private T value;
 
 	public Provider(T v) {

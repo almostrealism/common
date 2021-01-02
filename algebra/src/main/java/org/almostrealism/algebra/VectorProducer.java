@@ -19,7 +19,6 @@ package org.almostrealism.algebra;
 import org.almostrealism.algebra.computations.DefaultVectorEvaluable;
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.StaticEvaluable;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.KernelizedProducer;
 

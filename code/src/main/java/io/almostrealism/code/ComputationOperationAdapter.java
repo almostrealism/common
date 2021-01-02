@@ -20,9 +20,7 @@ import io.almostrealism.code.expressions.Expression;
 import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
-import io.almostrealism.relation.StaticEvaluable;
 
-import java.util.Objects;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 

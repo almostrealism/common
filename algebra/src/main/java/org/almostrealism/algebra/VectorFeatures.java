@@ -18,7 +18,6 @@ package org.almostrealism.algebra;
 
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.relation.StaticEvaluable;
 
 import org.almostrealism.algebra.computations.AcceleratedStaticVectorComputation;
 import org.almostrealism.algebra.computations.CrossProduct;

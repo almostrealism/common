@@ -39,6 +39,16 @@ import java.util.stream.IntStream;
 public abstract class DynamicAcceleratedProducerAdapter<I extends MemWrapper, O extends MemWrapper>
 		extends ComputationProducerAdapter<I, O>
 		implements MemWrapperComputation<O>, KernelizedProducer<O>, MultiExpression<Double>, ComputerFeatures {
+	/**
+	 * If set to true, then {@link Provider}s are treated as static for
+	 * compaction. This is often desirable, because Providers may not
+	 * change, but it is also likely to make many types of operations
+	 * that update Provider values in place only execute properly the
+	 * first time, since the original Provider value will be reused on
+	 * the next run of the operation.
+	 */
+	public static boolean enableStaticProviders = false;
+
 	private int memLength;
 	private IntFunction<InstanceReference> variableRef;
 
@@ -134,7 +144,7 @@ public abstract class DynamicAcceleratedProducerAdapter<I extends MemWrapper, O 
 			}
 
 			// A Provider is always "value only"
-			if (supplier.get() instanceof Provider) {
+			if (enableStaticProviders && supplier.get() instanceof Provider) {
 				continue i;
 			}
 

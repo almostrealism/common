@@ -33,14 +33,24 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 public class OperationList extends ArrayList<Supplier<Runnable>> implements OperationComputation<Void>, HardwareFeatures {
+	private boolean enableCompilation;
+
+	public OperationList() { this(true); }
+
+	public OperationList(boolean enableCompilation) { this.enableCompilation = enableCompilation; }
+
 	@Override
 	public Runnable get() {
-		if (isComputation()) {
+		if (enableCompilation && isComputation()) {
 			OperationAdapter op = (OperationAdapter) compileRunnable(this);
 			op.compile();
 			return (Runnable) op;
 		} else {
 			List<Runnable> run = stream().map(Supplier::get).collect(Collectors.toList());
+			run.stream()
+					.map(r -> r instanceof OperationAdapter ? (OperationAdapter) r : null)
+					.filter(Objects::nonNull)
+					.forEach(OperationAdapter::compile);
 			return () -> run.forEach(Runnable::run);
 		}
 	}

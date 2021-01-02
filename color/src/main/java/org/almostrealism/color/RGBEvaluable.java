@@ -19,8 +19,6 @@ package org.almostrealism.color;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.StaticEvaluable;
-import org.almostrealism.color.computations.AcceleratedStaticRGBComputation;
 
 /**
  * {@link RGBEvaluable} is implemented by any class that can produce an {@link RGB} object

@@ -1,6 +1,9 @@
 package org.almostrealism.time.computations.test;
 
+import io.almostrealism.code.ArrayVariable;
+import io.almostrealism.code.OperationAdapter;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.algebra.computations.ScalarFromPair;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.HardwareFeatures;
@@ -9,6 +12,7 @@ import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.time.CursorPair;
 import org.almostrealism.time.TemporalScalar;
 import org.almostrealism.time.computations.AcceleratedTimeSeriesValueAt;
+import org.almostrealism.time.computations.TemporalScalarFromScalars;
 import org.almostrealism.util.CodeFeatures;
 import org.junit.Assert;
 import org.junit.Before;
@@ -106,46 +110,62 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures, Hardwa
 		AcceleratedComputationOperation opr = (AcceleratedComputationOperation) r.get();
 		opr.compile();
 
+		opr.run();
+		cursors.setCursor(6);
+		cursors.setDelayCursor(7);
+
+		TemporalScalarFromScalars t = (TemporalScalarFromScalars) ((ArrayVariable) opr.getArguments().get(1)).getProducer();
+		ScalarFromPair s = (ScalarFromPair) t.getArguments().get(1).getProducer();
+		AcceleratedComputationEvaluable ev = (AcceleratedComputationEvaluable) s.get();
+		System.out.println(ev.getFunctionDefinition());
+		Assert.assertEquals(7.0, s.get().evaluate().getValue(), Math.pow(10, -10));
+		// Assert.assertEquals(7.0, t.get().evaluate().getTime(), Math.pow(10, -10));
+
+		opr.run();
+		Assert.assertEquals(7.0, series.get(series.getLength()).getTime(), Math.pow(10, -10));
+	}
+
+	public void runAllOperations(int index) {
+		Supplier<Runnable> r = add();
 		Supplier<Runnable> a = assign();
+		Supplier<Runnable> p = purge();
+		Supplier<Runnable> i = increment();
+
+		AcceleratedComputationOperation opr = (AcceleratedComputationOperation) r.get();
+		opr.compile();
+
 		AcceleratedComputationOperation opa = (AcceleratedComputationOperation) a.get();
 		opa.compile();
 
-		opr.run();
-		opa.run();
-
-		Assert.assertEquals(6, series.getLength());
-		valueAtAssertions(series);
-		Assert.assertEquals(30.0, series.valueAt(6.0).getValue(), Math.pow(10, -10));
-		Assert.assertEquals(24.0, value.getValue(), Math.pow(10, -10));
-	}
-
-	@Test
-	public void addAndPurgeTest() {
-		addTest();
-
-		Supplier<Runnable> p = purge();
 		AcceleratedComputationOperation opp = (AcceleratedComputationOperation) p.get();
 		opp.compile();
 
-		Assert.assertEquals(30.0, series.valueAt(6.0).getValue(), Math.pow(10, -10));
-	}
-
-	@Test
-	public void addPurgeAndIncrementTest() {
-		addAndPurgeTest();
-
-		Supplier<Runnable> i = increment();
 		AcceleratedComputationOperation opi = (AcceleratedComputationOperation) i.get();
 		opi.compile();
 
+		opr.run();
+		opa.run();
+		opp.run();
 		opi.run();
 
-		Assert.assertEquals(30.0, series.valueAt(6.0).getValue(), Math.pow(10, -10));
+		postPurgeAssertions(index);
+	}
+
+	protected void postPurgeAssertions(int index) {
+		Assert.assertEquals(2, series.getLength());
+		Assert.assertEquals(30.0, series.valueAt(index + 6.0).getValue(), Math.pow(10, -10));
 		Assert.assertEquals(30.0, series.valueAt(p(cursors)).get().evaluate().getValue(), Math.pow(10, -10));
 	}
 
-	protected OperationList operationList() {
-		OperationList op = new OperationList();
+	@Test
+	public void allOperationsTest() {
+		init();
+		IntStream.range(0, 25).forEach(this::runAllOperations);
+		System.out.println(cursors);
+	}
+
+	protected OperationList operationList(boolean enableCompilation) {
+		OperationList op = new OperationList(enableCompilation);
 		op.add(add());
 		op.add(assign());
 		op.add(purge());
@@ -153,20 +173,26 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures, Hardwa
 		return op;
 	}
 
-	@Test
-	public void operationListTest() {
-		init();
-		OperationList opl = operationList();
-
-		AcceleratedComputationOperation op = (AcceleratedComputationOperation) opl.get();
-		op.compile();
+	protected void operationListAssertions(OperationList opl) {
+		Runnable op = opl.get();
+		if (op instanceof OperationAdapter)
+			((OperationAdapter) op).compile();
 
 		IntStream.range(0, 25).forEach(i -> {
 			op.run();
-
-			Assert.assertEquals(i == 0 ? 24.0 : 30, value.getValue(), Math.pow(10, -10));
-			Assert.assertEquals(30.0, series.valueAt(i + 6.0).getValue(), Math.pow(10, -10));
-			Assert.assertEquals(30.0, series.valueAt(p(cursors)).get().evaluate().getValue(), Math.pow(10, -10));
+			postPurgeAssertions(i);
 		});
+	}
+
+	@Test
+	public void operationListTest() {
+		init();
+		operationListAssertions(operationList(false));
+	}
+
+	@Test
+	public void operationListCompiledTest() {
+		init();
+		operationListAssertions(operationList(true));
 	}
 }

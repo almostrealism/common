@@ -20,7 +20,6 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.algebra.ScalarEvaluable;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.StaticEvaluable;
 import org.almostrealism.color.computations.AcceleratedStaticRGBComputation;
 import org.almostrealism.color.computations.ColorProduct;
 import org.almostrealism.color.computations.ColorSum;

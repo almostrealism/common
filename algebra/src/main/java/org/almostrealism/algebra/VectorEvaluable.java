@@ -18,8 +18,6 @@ package org.almostrealism.algebra;
 
 import io.almostrealism.uml.Function;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.StaticEvaluable;
-import org.almostrealism.algebra.computations.AcceleratedStaticVectorComputation;
 
 /**
  * {@link VectorEvaluable} is implemented by any class that can produce an {@link Vector} object

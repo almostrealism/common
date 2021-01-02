@@ -2,7 +2,6 @@ package org.almostrealism.algebra;
 
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.StaticEvaluable;
 
 import org.almostrealism.algebra.computations.DefaultScalarEvaluable;
 import org.almostrealism.algebra.computations.ScalarPow;

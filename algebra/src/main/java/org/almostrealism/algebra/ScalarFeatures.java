@@ -22,7 +22,6 @@ import org.almostrealism.algebra.computations.ScalarPow;
 import org.almostrealism.algebra.computations.ScalarProduct;
 import org.almostrealism.algebra.computations.ScalarSum;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.StaticEvaluable;
 
 import java.util.function.Supplier;
 
