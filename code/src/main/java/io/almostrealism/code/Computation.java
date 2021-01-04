@@ -20,8 +20,11 @@ public interface Computation<T> extends ScopeLifecycle {
 	/**
 	 * Return a {@link Scope} containing the {@link Variable}s
 	 * and {@link io.almostrealism.code.Method}s necessary to compute the output of
-	 * this {@link Computation}. {@link Variable}s and {@link io.almostrealism.code.Method}s
-	 * introduced should be named using the specified {@link NameProvider}.
+	 * this {@link Computation}.
 	 */
-	Scope<T> getScope(NameProvider provider);
+	Scope<T> getScope();
+
+	default void setOutputVariable(Variable out) {
+
+	}
 }

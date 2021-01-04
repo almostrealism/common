@@ -38,8 +38,8 @@ public class AcceleratedTimeSeriesValueAt extends DynamicAcceleratedProducerAdap
 	}
 
 	@Override
-	public Scope<Scalar> getScope(NameProvider provider) {
-		Scope parentScope = super.getScope(provider);
+	public Scope<Scalar> getScope() {
+		Scope parentScope = super.getScope();
 		HybridScope<Scalar> scope = new HybridScope<>(this);
 		scope.getVariables().add((Variable) parentScope.getVariables().get(1));
 

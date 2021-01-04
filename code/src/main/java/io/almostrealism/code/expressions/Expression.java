@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,7 +16,6 @@
 
 package io.almostrealism.code.expressions;
 
-import io.almostrealism.code.Method;
 import io.almostrealism.code.Variable;
 
 import java.util.ArrayList;
@@ -30,21 +29,11 @@ import java.util.stream.Stream;
 public class Expression<T> {
 	private Class<T> type;
 	private Supplier<String> expression;
-	private Method<T> generator;
 	private List<Variable<?>> dependencies = new ArrayList<>();
 	private int arraySize = -1;
 
 	public Expression(Class<T> type) {
 		setType(type);
-	}
-
-	public Expression(Method<T> generator) {
-		this(null, generator);
-	}
-
-	public Expression(Class<T> type, Method<T> generator) {
-		setType(type);
-		this.generator = generator;
 	}
 
 	public Expression(Class<T> type, String expression) {
@@ -90,9 +79,6 @@ public class Expression<T> {
 	public void setType(Class<T> t) { this.type = t; }
 	public Class<T> getType() { return this.type; }
 
-	public void setGenerator(Method<T> generator) { this.generator = generator; }
-	public Method<T> getGenerator() { return this.generator; }
-
 	public String getExpression() { return expression == null ? null : expression.get(); }
 	public void setExpression(String expression) { this.expression = () -> expression; }
 	public void setExpression(Supplier<String> expression) { this.expression = expression; }
@@ -120,7 +106,6 @@ public class Expression<T> {
 		Expression v = (Expression) obj;
 		if (!Objects.equals(type, v.getType())) return false;
 		if (!Objects.equals(expression, v.expression)) return false;
-		if (!Objects.equals(generator, v.getGenerator())) return false;
 		if (!Objects.equals(dependencies, v.getDependencies())) return false;
 
 		return true;

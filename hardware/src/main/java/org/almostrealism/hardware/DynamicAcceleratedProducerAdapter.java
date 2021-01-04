@@ -51,6 +51,7 @@ public abstract class DynamicAcceleratedProducerAdapter<I extends MemWrapper, O 
 
 	private int memLength;
 	private IntFunction<InstanceReference> variableRef;
+	private Variable outputVariable;
 
 	public DynamicAcceleratedProducerAdapter(int memLength, Supplier<Evaluable<? extends O>> result, Supplier<Evaluable<? extends I>>... inputArgs) {
 		this(memLength, result, inputArgs, new Evaluable[0]);
@@ -76,10 +77,16 @@ public abstract class DynamicAcceleratedProducerAdapter<I extends MemWrapper, O 
 	}
 
 	@Override
-	public Scope<O> getScope(NameProvider provider) {
-		Scope<O> scope = super.getScope(provider);
+	public void setOutputVariable(Variable out) { this.outputVariable = out; }
+
+	@Override
+	public Variable getOutputVariable() { return outputVariable == null ? getArgument(0) : outputVariable; }
+
+	@Override
+	public Scope<O> getScope() {
+		Scope<O> scope = super.getScope();
 		IntStream.range(0, memLength)
-				.mapToObj(getAssignmentFunction(provider, provider.getOutputVariable()))
+				.mapToObj(getAssignmentFunction(this, getOutputVariable()))
 				.forEach(v -> scope.getVariables().add((Variable) v));
 		return scope;
 	}

@@ -1,9 +1,5 @@
 package io.almostrealism.code;
 
-import io.almostrealism.code.NameProvider;
-import io.almostrealism.code.Scope;
-import io.almostrealism.code.Variable;
-
 public class Constant<T> implements Operator<T> {
 	private T v;
 
@@ -15,9 +11,9 @@ public class Constant<T> implements Operator<T> {
 	}
 
 	@Override
-	public Scope<T> getScope(NameProvider p) {
+	public Scope<T> getScope() {
 		Scope s = new Scope();
-		s.getVariables().add(new Variable(p.getFunctionName() + v.getClass().getSimpleName(), v));
+		s.getVariables().add(new Variable(v.getClass().getSimpleName(), v));
 		return s;
 	}
 }

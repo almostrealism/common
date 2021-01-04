@@ -32,7 +32,7 @@ public class DynamicScalarProducer extends DynamicProducerForMemWrapper<Scalar> 
 	}
 
 	@Override
-	public Scope<Scalar> getScope(NameProvider provider) {
+	public Scope<Scalar> getScope() {
 		throw new RuntimeException("Not implemented");
 	}
 }

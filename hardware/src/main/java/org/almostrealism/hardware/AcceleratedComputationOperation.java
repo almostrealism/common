@@ -133,7 +133,8 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 
 	public Scope<T> compile(NameProvider p, Variable<T> outputVariable) {
 		Computation<T> c = getComputation();
-		scope = outputVariable == null ? c.getScope(p) : c.getScope(p.withOutputVariable(outputVariable));
+		if (outputVariable != null) c.setOutputVariable(outputVariable);
+		scope = c.getScope();
 		postCompile();
 		return scope;
 	}

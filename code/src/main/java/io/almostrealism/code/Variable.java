@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -94,14 +94,6 @@ public class Variable<T> implements Nameable {
 		setAnnotation(annotation);
 	}
 
-	public Variable(String name, Method<T> generator) {
-		this(name, null, generator);
-	}
-	
-	public Variable(String name, Class<T> type, Method<T> generator) {
-		this(name, new Expression(type, generator));
-	}
-
 	public Variable(String name, String expression) {
 		this(name, null, expression);
 	}
@@ -123,7 +115,9 @@ public class Variable<T> implements Nameable {
 		this(name, true, new Expression(type, expression, arraySize), producer);
 	}
 
+	@Override
 	public void setName(String n) { this.name = n; }
+	@Override
 	public String getName() { return this.name; }
 
 	public void setAnnotation(String a) { this.annotation = a; }
@@ -163,7 +157,7 @@ public class Variable<T> implements Nameable {
 	public Supplier<Evaluable<? extends T>> getProducer() { return producer; }
 
 	public Class<T> getType() { return getExpression() == null ? null : getExpression().getType(); }
-	public Method<T> getGenerator() { return getExpression().getGenerator(); }
+
 	public List<Variable<?>> getDependencies() {
 		List<Variable<?>> deps = new ArrayList<>();
 		if (dependsOn != null) deps.add(dependsOn);

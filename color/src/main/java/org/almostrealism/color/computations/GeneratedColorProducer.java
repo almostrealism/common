@@ -50,9 +50,7 @@ public class GeneratedColorProducer<T> extends ColorProducerAdapter implements G
 	public Producer<RGB> getGenerated() { return p; }
 
 	@Override
-	public Scope<RGB> getScope(NameProvider provider) {
-		return ((Computation) p).getScope(provider);
-	}
+	public Scope<RGB> getScope() { return ((Computation) p).getScope(); }
 
 	public static <T> GeneratedColorProducer<T> fromFunction(T generator, TripleFunction<Triple, RGB> t) {
 		return new GeneratedColorProducer(generator, new DynamicProducerForMemWrapper<>(args ->

@@ -29,7 +29,7 @@ public class DynamicRGBProducer extends DynamicProducerForMemWrapper<RGB> implem
 	}
 
 	@Override
-	public Scope<RGB> getScope(NameProvider provider) {
+	public Scope<RGB> getScope() {
 		throw new RuntimeException("Not implemented");
 	}
 }

@@ -32,7 +32,7 @@ public class AcceleratedTimeSeriesPurge extends DynamicAcceleratedOperationAdapt
 	}
 
 	@Override
-	public Scope<Void> getScope(NameProvider provider) {
+	public Scope<Void> getScope() {
 		ExplicitScope<Void> scope = new ExplicitScope<>(this);
 
 		String bank0 = getArgument(0).get(0).getExpression();

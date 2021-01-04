@@ -33,16 +33,23 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 public class OperationList extends ArrayList<Supplier<Runnable>> implements OperationComputation<Void>, HardwareFeatures {
+	private static int functionCount = 0;
+
 	private boolean enableCompilation;
+	private String functionName;
 
 	public OperationList() { this(true); }
 
-	public OperationList(boolean enableCompilation) { this.enableCompilation = enableCompilation; }
+	public OperationList(boolean enableCompilation) {
+		this.enableCompilation = enableCompilation;
+		this.functionName = "operations_" + functionCount;
+	}
 
 	@Override
 	public Runnable get() {
 		if (enableCompilation && isComputation()) {
 			OperationAdapter op = (OperationAdapter) compileRunnable(this);
+			op.setFunctionName(functionName);
 			op.compile();
 			return (Runnable) op;
 		} else {
@@ -78,13 +85,13 @@ public class OperationList extends ArrayList<Supplier<Runnable>> implements Oper
 	}
 
 	@Override
-	public Scope<Void> getScope(NameProvider provider) {
+	public Scope<Void> getScope() {
 		if (!isComputation()) {
 			throw new IllegalArgumentException("OperationList cannot be compiled to a Scope unless all embedded Operations are Computations");
 		}
 
-		Scope scope = new Scope(provider.getFunctionName());
-		stream().map(o -> ((Computation) o).getScope(provider)).forEach(scope::add);
+		Scope scope = new Scope(functionName);
+		stream().map(o -> ((Computation) o).getScope()).forEach(scope::add);
 		return scope;
 	}
 

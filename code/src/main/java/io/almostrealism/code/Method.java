@@ -17,10 +17,12 @@
 package io.almostrealism.code;
 
 import io.almostrealism.code.expressions.Expression;
+import io.almostrealism.code.expressions.InstanceReference;
 import io.almostrealism.relation.Nameable;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.Supplier;
 
 /**
  * A {@link Method} is included in a {@link Scope} to indicate that a function should
@@ -28,26 +30,38 @@ import java.util.List;
  * 
  * T is the type of the return value of the method.
  */
-public class Method<T> implements Nameable {
+public class Method<T> extends Expression<T> implements Nameable {
 	private String member, name;
 	private List<Expression<?>> arguments;
 
-	public Method(String name, List<Expression<?>> arguments) {
-		this(null, name, arguments);
+	public Method(Class<T> type, String name, List<Expression<?>> arguments) {
+		this(type, null, name, arguments);
 	}
 
-	public Method(String member, String name, List<Expression<?>> arguments) {
+	public Method(Class<T> type, String member, String name, List<Expression<?>> arguments) {
+		super(type, null, arguments.toArray(new Expression[0]));
 		this.member = member;
 		this.name = name;
 		this.arguments = arguments;
+		setExpression(text());
 	}
 
-	public Method(String name, Expression<?>... v) {
-		this(null, name, v);
+	public Method(Class<T> type, String name, Expression<?>... v) {
+		this(type, null, name, v);
 	}
 
-	public Method(String member, String name, Expression<?>... v) {
-		this(member, name, Arrays.asList(v));
+	public Method(Class<T> type, String member, String name, Expression<?>... v) {
+		this(type, member, name, Arrays.asList(v));
+	}
+
+	protected Supplier<String> text() {
+		return () -> {
+			if (getMember() == null) {
+				return getName() + "(" + toString(getArguments()) + ")";
+			} else {
+				return getMember() + "." + getName() + "(" + toString(getArguments()) + ")";
+			}
+		};
 	}
 
 	@Override
@@ -59,4 +73,19 @@ public class Method<T> implements Nameable {
 	public String getMember() { return this.member; }
 
 	public List<Expression<?>> getArguments() { return arguments; }
+
+	protected static String toString(List<Expression<?>> arguments) {
+		StringBuffer buf = new StringBuffer();
+
+		for (int i = 0; i < arguments.size(); i++) {
+			Expression<?> v = arguments.get(i);
+			buf.append(v.getExpression());
+
+			if (i < (arguments.size() - 1)) {
+				buf.append(", ");
+			}
+		}
+
+		return buf.toString();
+	}
 }

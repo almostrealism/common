@@ -66,8 +66,8 @@ public abstract class ComputationOperationAdapter<I, O> extends OperationAdapter
 	}
 
 	@Override
-	public Scope<O> getScope(NameProvider provider) {
-		Scope<O> scope = new Scope<>(provider.getFunctionName());
+	public Scope<O> getScope() {
+		Scope<O> scope = new Scope<>(getFunctionName());
 		scope.getVariables().addAll(getVariables());
 		return scope;
 	}

@@ -34,7 +34,7 @@ public class AcceleratedTimeSeriesAdd extends DynamicAcceleratedOperationAdapter
 	}
 
 	@Override
-	public Scope<Void> getScope(NameProvider provider) {
+	public Scope<Void> getScope() {
 		ExplicitScope<Void> scope = new ExplicitScope<>(this);
 
 		String bank1 = getArgument(0).get(1).getExpression();

@@ -22,14 +22,14 @@ public class CodePrintWriterTest {
 		args.add(new Expression<>(Double.class, Hardware.getLocalHardware().stringForDouble(1)));
 		
 		p.beginScope("test", new ArrayList<>());
-		p.println(new Variable<>("v", Scalar.class, new Method<>(null, "func", args)));
+		p.println(new Variable<>("v", new Method<>(Scalar.class, null, "func", args)));
 		p.endScope();
 
 		args = new ArrayList<>();
-		args.add(new Expression<>(new Method<>(null, "test", new ArrayList<>())));
+		args.add(new Method<>(Scalar.class, null, "test", new ArrayList<>()));
 		
 		p.beginScope("next", new ArrayList<>());
-		p.println(new Variable<>("v", Scalar.class, new Method<>(null, "func", args)));
+		p.println(new Variable<>("v", new Method<>(Scalar.class, null, "func", args)));
 		p.endScope();
 		
 		p.flush();

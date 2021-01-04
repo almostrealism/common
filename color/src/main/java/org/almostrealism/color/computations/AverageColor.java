@@ -71,7 +71,7 @@ public class AverageColor extends ColorProducerAdapter {
 	}
 
 	@Override
-	public Scope<RGB> getScope(NameProvider provider) {
+	public Scope<RGB> getScope() {
 		throw new RuntimeException("Not implemented");
 	}
 

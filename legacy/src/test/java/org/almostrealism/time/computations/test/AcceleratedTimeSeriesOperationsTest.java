@@ -2,6 +2,7 @@ package org.almostrealism.time.computations.test;
 
 import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.OperationAdapter;
+import io.almostrealism.code.Scope;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.computations.ScalarFromPair;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
@@ -108,7 +109,6 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures, Hardwa
 
 		Supplier<Runnable> r = add();
 		AcceleratedComputationOperation opr = (AcceleratedComputationOperation) r.get();
-		opr.compile();
 
 		opr.run();
 		cursors.setCursor(6);
@@ -123,6 +123,17 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures, Hardwa
 
 		opr.run();
 		Assert.assertEquals(7.0, series.get(series.getLength()).getTime(), Math.pow(10, -10));
+	}
+
+	@Test
+	public void addTestWithScopeExpansion() {
+		init();
+
+		Supplier<Runnable> r = add();
+		AcceleratedComputationOperation opr = (AcceleratedComputationOperation) r.get();
+		Scope s = opr.compile();
+		s.convertArgumentsToRequiredScopes();
+		System.out.println(opr.getFunctionDefinition());
 	}
 
 	public void runAllOperations(int index) {

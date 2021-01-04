@@ -39,6 +39,9 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 	private String name;
 	private List<Variable<?>> variables;
 	private List<Method> methods;
+	private List<Scope> required;
+
+	private List inputs;
 
 	/**
 	 * Creates an empty {@link Scope}.
@@ -46,6 +49,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 	public Scope() {
 		this.variables = new ArrayList<>();
 		this.methods = new ArrayList<>();
+		this.required = new ArrayList<>();
 	}
 
 	/**
@@ -62,8 +66,48 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 	@Override
 	public void setName(String name) { this.name = name; }
 
+	/**
+	 * @return  The {@link Variable}s in this {@link Scope}.
+	 */
+	public List<Variable<?>> getVariables() { return variables; }
+
+	/**
+	 * @return  The {@link Method}s in this {@link Scope}.
+	 */
+	public List<Method> getMethods() { return methods; }
+
+	/**
+	 * @return  The inner {@link Scope}s contained by this {@link Scope}.
+	 */
+	@Override
+	public List<Scope<T>> getChildren() { return this; }
+
+	/**
+	 * @return  The {@link Scope}s that are required by this {@link Scope}.
+	 */
+	public List<Scope> getRequiredScopes() { return required; }
+
+	public <A> List<ArrayVariable<? extends A>> getFinalArguments() {
+		List<ArrayVariable<? extends A>> args = new ArrayList<>();
+
+		if (inputs == null) {
+			args.addAll(getArguments());
+		} else {
+			inputs.forEach(in -> {
+				if (in instanceof Variable) {
+					args.add((ArrayVariable<? extends A>) in);
+				} else {
+					args.addAll(((Scope) in).getArguments());
+				}
+			});
+		}
+
+		return args;
+	}
+
 	public <A> List<ArrayVariable<? extends A>> getArguments() {
 		List<ArrayVariable<? extends A>> args = new ArrayList<>();
+
 		extractArgumentDependencies(variables).forEach(args::add);
 		methods.stream()
 				.map(Method::getArguments)
@@ -75,6 +119,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 				.map(Scope::getArguments)
 				.flatMap(List::stream)
 				.forEach(arg -> args.add((ArrayVariable<A>) arg));
+
 		List<ArrayVariable<? extends A>> result = args.stream().map(ArrayVariable::getRootDelegate).collect(Collectors.toList());
 		result = removeDuplicateArguments(result);
 		sortArguments(result);
@@ -124,21 +169,19 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 		return args;
 	}
 
-	/**
-	 * @return  The {@link Variable}s in this {@link Scope}.
-	 */
-	public List<Variable<?>> getVariables() { return variables; }
+	public void convertArgumentsToRequiredScopes() {
+		inputs = getArguments().stream()
+				.map(arg -> {
+					if (arg.getProducer() instanceof Computation) {
+						Scope s = ((Computation) arg.getProducer()).getScope();
+						required.add(s);
+						return s;
+					} else {
+						return arg;
+					}
+				}).collect(Collectors.toList());
 
-	/**
-	 * @return  The {@link Method}s in this {@link Scope}.
-	 */
-	public List<Method> getMethods() { return methods; }
-
-	/**
-	 * @return  The inner {@link Scope}s contained by this {@link Scope}.
-	 */
-	@Override
-	public List<Scope<T>> getChildren() { return this; }
+	}
 
 	/**
 	 * Writes the {@link Variable}s and {@link Method}s for this {@link Scope}

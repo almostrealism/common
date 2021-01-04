@@ -19,7 +19,9 @@ public class ScopeEncoder implements Function<Scope, String>, PrintWriter {
 	public String apply(Scope scope) {
 		this.result = new StringBuffer();
 
-		output.beginScope(scope.getName(), scope.getArguments());
+		scope.getRequiredScopes().stream().map(this).forEach(result::append);
+
+		output.beginScope(scope.getName(), scope.getFinalArguments());
 		scope.write(output);
 		output.endScope();
 

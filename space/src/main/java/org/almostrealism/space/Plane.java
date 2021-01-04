@@ -187,10 +187,10 @@ public class Plane extends AbstractSurface implements ParticleGroup, RayFeatures
 					return null;
 			}
 
-			@Override public Scope<Scalar> getScope(NameProvider p) {
+			@Override public Scope<Scalar> getScope() {
 				// TODO  Not sure this is correct
 				Scope s = new Scope();
-				s.getVariables().add(new Variable(p.getFunctionName() + "scalar", evaluate(new Object[0])));
+				s.getVariables().add(new Variable("scalar", evaluate(new Object[0])));
 				return s;
 			}
 		};

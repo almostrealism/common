@@ -75,8 +75,8 @@ public class JavaScriptPrintWriter extends CodePrintWriterAdapter {
 	protected static String toString(Variable v) {
 		if (v instanceof ResourceVariable) {
 			return toJson((ResourceVariable) v);
-		} else if (v.getGenerator() != null) {
-			Method m = v.getGenerator();
+		} else if (v.getExpression() instanceof Method) {
+			Method m = (Method) v.getExpression();
 			
 			StringBuffer b = new StringBuffer();
 			if (m.getMember() != null)
@@ -153,7 +153,7 @@ public class JavaScriptPrintWriter extends CodePrintWriterAdapter {
 
 			if (v instanceof ResourceVariable) {
 				buf.append(toJson(v));
-			} else if (v.getGenerator() != null) {
+			} else if (v.getExpression() instanceof Method) {
 				buf.append(toString(v));
 			} else if (v.getExpression() instanceof InstanceReference) {
 				buf.append(v.getProducer().get().evaluate()); // TODO  This cant be right...
