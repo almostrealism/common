@@ -17,6 +17,7 @@
 package org.almostrealism.geometry;
 
 import io.almostrealism.code.DefaultScopeInputManager;
+import io.almostrealism.code.ScopeInputManager;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.hardware.AcceleratedEvaluable;
 import io.almostrealism.relation.Evaluable;
@@ -32,6 +33,5 @@ import java.util.function.Supplier;
 public class TranslationMatrix extends AcceleratedEvaluable<Vector, TransformMatrix> {
 	public TranslationMatrix(Supplier<Evaluable<? extends Vector>> t) {
 		super("translationMatrix", () -> new IdentityMatrix(), t);
-		prepareScope(DefaultScopeInputManager.getInstance());
 	}
 }

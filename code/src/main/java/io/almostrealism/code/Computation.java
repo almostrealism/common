@@ -27,4 +27,8 @@ public interface Computation<T> extends ScopeLifecycle {
 	default void setOutputVariable(Variable out) {
 
 	}
+
+	default Variable getOutputVariable() {
+		return null;
+	}
 }

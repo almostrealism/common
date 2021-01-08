@@ -130,11 +130,11 @@ public class TriangleDataTest implements CodeFeatures {
 		Assert.assertEquals(0, data.get(0).getNormal().getX(), Math.pow(10, -10));
 		Assert.assertEquals(0, data.get(0).getNormal().getY(), Math.pow(10, -10));
 		Assert.assertEquals(1, data.get(0).getNormal().getZ(), Math.pow(10, -10));
-		Assert.assertEquals(-2.0 / 3.0, data.get(1).getNormal().getX(), Math.pow(10, -10));
-		Assert.assertEquals(1.0 / 3.0, data.get(1).getNormal().getY(), Math.pow(10, -10));
-		Assert.assertEquals(2.0 / 3.0, data.get(1).getNormal().getZ(), Math.pow(10, -10));
-		Assert.assertEquals(2.0 / 3.0, data.get(2).getNormal().getX(), Math.pow(10, -10));
-		Assert.assertEquals(1.0 / 3.0, data.get(2).getNormal().getY(), Math.pow(10, -10));
-		Assert.assertEquals(2.0 / 3.0, data.get(2).getNormal().getZ(), Math.pow(10, -10));
+		assertEquals(-2.0 / 3.0, data.get(1).getNormal().getX());
+		assertEquals(1.0 / 3.0, data.get(1).getNormal().getY());
+		assertEquals(2.0 / 3.0, data.get(1).getNormal().getZ());
+		assertEquals(2.0 / 3.0, data.get(2).getNormal().getX());
+		assertEquals(1.0 / 3.0, data.get(2).getNormal().getY());
+		assertEquals(2.0 / 3.0, data.get(2).getNormal().getZ());
 	}
 }

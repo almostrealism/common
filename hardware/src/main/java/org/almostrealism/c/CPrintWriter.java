@@ -59,7 +59,7 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 
 	@Override
 	public void println(Method method) {
-		this.p.println(method.getName());
+		this.p.println(method.getExpression() + ";");
 	}
 
 	public static String renderAssignment(Variable<?> var) {

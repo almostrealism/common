@@ -16,8 +16,11 @@
 
 package org.almostrealism.algebra.test;
 
+import io.almostrealism.code.OperationAdapter;
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
+import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.space.Triangle;
 import org.almostrealism.util.CodeFeatures;
 import org.junit.Assert;
@@ -29,7 +32,12 @@ public class TriangleTest implements CodeFeatures {
 		Triangle t = new Triangle(new Vector(1.0, 1.0, -1.0),
 									new Vector(-1.0, 1.0, -1.0),
 									new Vector(0.0, -1.0, -1.0));
-		Ray r = t.intersectAt(ray(0.0, 0.0, 0.0, 0.0, 0.0, -1.0)).get(0).get().evaluate();
+		Evaluable<Ray> ev = t.intersectAt(ray(0.0, 0.0, 0.0, 0.0, 0.0, -1.0)).get(0).get();
+		((OperationAdapter) ev).compile();
+		System.out.println(((AcceleratedComputationEvaluable) ev).getFunctionDefinition());
+
+		Ray r = ev.evaluate();
+		System.out.println(r);
 		Assert.assertTrue(r.equals(new Ray(new Vector(0.0, 0.0, -1.0), new Vector(0.0, 0.0, 1.0))));
 	}
 }

@@ -91,6 +91,9 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 		return operators.get(getFunctionName()).get();
 	}
 
+	@Override
+	public String getDefaultAnnotation() { return "__global"; }
+
 	protected void prepareScope() {
 		SupplierArgumentMap argumentMap = null;
 
@@ -125,9 +128,9 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 		if (getArguments() != null) return;
 
 		if (getInputs() != null) {
+			ScopeLifecycle.prepareScope(getInputs().stream(), manager);
 			setArguments(getInputs().stream()
 					.map(manager.argumentForInput(this)).collect(Collectors.toList()));
-			ScopeLifecycle.prepareScope(getInputs().stream(), manager);
 		}
 	}
 

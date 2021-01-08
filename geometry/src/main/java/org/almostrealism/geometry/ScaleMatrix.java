@@ -32,6 +32,5 @@ import java.util.function.Supplier;
 public class ScaleMatrix extends AcceleratedEvaluable<Vector, TransformMatrix> {
 	public ScaleMatrix(Supplier<Evaluable<? extends Vector>> s) {
 		super("scaleMatrix", () -> new IdentityMatrix(), s);
-		prepareScope(DefaultScopeInputManager.getInstance());
 	}
 }

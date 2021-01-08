@@ -29,9 +29,9 @@ public class AcceleratedConjunctionTests extends AcceleratedConditionalStatement
 			double t = s.evaluate(v(b).get().evaluate(), v(d).get().evaluate()).getValue();
 
 			if (a < b && c < d) {
-				Assert.assertEquals(a, t, Math.pow(10, -10));
+				assertEquals(a, t);
 			} else {
-				Assert.assertEquals(b, t, Math.pow(10, -10));
+				assertEquals(b, t);
 			}
 		};
 	}

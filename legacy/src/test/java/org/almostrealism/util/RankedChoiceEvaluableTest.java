@@ -28,6 +28,7 @@ import org.almostrealism.geometry.computations.AcceleratedRankedChoiceEvaluable;
 import org.almostrealism.geometry.computations.RankedChoiceEvaluable;
 import org.almostrealism.geometry.computations.RankedChoiceEvaluableForVector;
 import org.almostrealism.hardware.DynamicAcceleratedEvaluable;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryBankAdapter;
 import org.almostrealism.hardware.PassThroughEvaluable;
@@ -39,6 +40,8 @@ import java.util.List;
 import java.util.stream.IntStream;
 
 public class RankedChoiceEvaluableTest implements CodeFeatures {
+	private double gap = Hardware.getLocalHardware().isDoublePrecision() ? Math.pow(10, -10) : Math.pow(10, -6);
+
 	@Test
 	public void highestRank() {
 		IntStream.range(0, 5).forEach(i -> {
@@ -199,7 +202,7 @@ public class RankedChoiceEvaluableTest implements CodeFeatures {
 		for (int i = 0; i < output.getCount(); i++) {
 			Scalar value = acc.evaluate(new Object[] { input[0].get(i), input[1].get(i), input[2].get(i),
 													input[3].get(i), input[4].get(i), input[5].get(i) });
-			if (Math.abs(value.getValue() - output.get(i).getValue()) > Math.pow(10, -10)) {
+			if (Math.abs(value.getValue() - output.get(i).getValue()) > gap) {
 				System.out.println(i + ": [" + input[0].get(i).getValue() + ", " + input[1].get(i).getValue() + "]" +
 									"[" + input[2].get(i).getValue() + ", " + input[3].get(i).getValue() + "]" +
 									"[" + input[4].get(i).getValue() + ", " + input[5].get(i).getValue() + "] = " +

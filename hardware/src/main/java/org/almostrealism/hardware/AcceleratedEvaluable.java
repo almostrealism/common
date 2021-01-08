@@ -17,6 +17,7 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.ArrayVariable;
+import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
 
@@ -41,6 +42,15 @@ public class AcceleratedEvaluable<I extends MemWrapper, O extends MemWrapper> ex
 
 	public AcceleratedEvaluable(String function, boolean kernel, Supplier<Evaluable<? extends O>> result, Supplier<Evaluable<? extends I>>... inputArgs) {
 		super(function, kernel, includeResult(result, inputArgs));
+	}
+
+	@Override
+	public void prepareScope(ScopeInputManager manager) {
+		super.prepareScope(manager);
+
+		// Result should always be first
+		ArrayVariable arg = getArgumentForInput((Supplier) getInputs().get(0));
+		if (arg != null) arg.setSortHint(-1);
 	}
 
 	@Override

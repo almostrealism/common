@@ -16,6 +16,7 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.code.expressions.Expression;
 import io.almostrealism.code.expressions.InstanceReference;
 
 import io.almostrealism.relation.Parent;
@@ -102,6 +103,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 			});
 		}
 
+		sortArguments(args);
 		return args;
 	}
 
@@ -120,10 +122,42 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 				.flatMap(List::stream)
 				.forEach(arg -> args.add((ArrayVariable<A>) arg));
 
-		List<ArrayVariable<? extends A>> result = args.stream().map(ArrayVariable::getRootDelegate).collect(Collectors.toList());
+		List<ArrayVariable<? extends A>> result = args.stream()
+				.map(ArrayVariable::getRootDelegate).collect(Collectors.toList());
 		result = removeDuplicateArguments(result);
 		sortArguments(result);
 		return result;
+	}
+
+	public void convertArgumentsToRequiredScopes() {
+		inputs = getArguments().stream()
+				.map(arg -> {
+					if (arg.getProducer() instanceof Computation) {
+						Scope s = ((Computation) arg.getProducer()).getScope();
+						required.add(s);
+						List<Expression> args = new ArrayList<>();
+						s.getArguments().forEach(a -> args.add(new InstanceReference((Variable) a)));
+						methods.add(new Method(null, s.getName(), args));
+						return s;
+					} else {
+						return arg;
+					}
+				}).collect(Collectors.toList());
+
+	}
+
+	/**
+	 * Writes the {@link Method}s and {@link Variable}s for this {@link Scope}
+	 * to the specified {@link CodePrintWriter}, then writes any {@link Scope}s
+	 * included as children of this {@link Scope}, in that order.
+	 *
+	 * @param w  {@link CodePrintWriter} to use for encoding the {@link Scope}.
+	 */
+	public void write(CodePrintWriter w) {
+		for (Method m : getMethods()) { w.println(m); }
+		for (Variable v : getVariables()) { w.println(v); }
+		for (Scope s : getChildren()) { s.write(w); }
+		w.flush();
 	}
 
 	public static <T> List<ArrayVariable<? extends T>> removeDuplicateArguments(List<ArrayVariable<? extends T>> arguments) {
@@ -143,6 +177,14 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 		}
 
 		return args;
+	}
+
+	public static <T> void sortArguments(List<ArrayVariable<? extends T>> arguments) {
+		if (arguments != null) {
+			Comparator<ArrayVariable> c = Comparator.comparing(v -> v == null ? Integer.MAX_VALUE : v.getSortHint());
+			// c = c.thenComparing(v -> v == null ? "" : v.getName());
+			Collections.sort(arguments, c);
+		}
 	}
 
 	private static List<ArrayVariable> extractArgumentDependencies(Collection<Variable<?>> vars) {
@@ -167,39 +209,5 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 		}
 
 		return args;
-	}
-
-	public void convertArgumentsToRequiredScopes() {
-		inputs = getArguments().stream()
-				.map(arg -> {
-					if (arg.getProducer() instanceof Computation) {
-						Scope s = ((Computation) arg.getProducer()).getScope();
-						required.add(s);
-						return s;
-					} else {
-						return arg;
-					}
-				}).collect(Collectors.toList());
-
-	}
-
-	/**
-	 * Writes the {@link Variable}s and {@link Method}s for this {@link Scope}
-	 * to the specified {@link CodePrintWriter}, then writes any {@link Scope}s
-	 * included as children of this {@link Scope}.
-	 *
-	 * @param w  {@link CodePrintWriter} to use for encoding the {@link Scope}.
-	 */
-	public void write(CodePrintWriter w) {
-		for (Variable v : getVariables()) { w.println(v); }
-		for (Method m : getMethods()) { w.println(m); }
-		for (Scope s : getChildren()) { s.write(w); }
-		w.flush();
-	}
-
-	public static <T> void sortArguments(List<ArrayVariable<? extends T>> arguments) {
-		if (arguments != null) {
-			Collections.sort(arguments, Comparator.comparing(v -> v == null ? Integer.MAX_VALUE : v.getSortHint()));
-		}
 	}
 }

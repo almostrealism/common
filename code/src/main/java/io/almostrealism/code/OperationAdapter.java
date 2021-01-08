@@ -209,7 +209,7 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 				throw new IllegalArgumentException("Null argument at index " + i);
 			}
 
-			args[i] = producers[i] == null ? null : new ArrayVariable(this, null, null, null, producers[i]);
+			args[i] = producers[i] == null ? null : new ArrayVariable(this, null, getDefaultAnnotation(), null, producers[i]);
 		}
 
 		return args;

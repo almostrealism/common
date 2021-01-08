@@ -36,6 +36,8 @@ import java.util.List;
 import java.util.Objects;
 
 public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperation<MemWrapper> implements NameProvider {
+	public static boolean enableRequiredScopes = false;
+
 	private Computation<T> computation;
 	private Scope<T> scope;
 
@@ -63,9 +65,6 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 			return super.getName();
 		}
 	}
-
-	@Override
-	public String getDefaultAnnotation() { return "__global"; }
 
 	@Override
 	public void addVariable(Variable v) {
@@ -135,13 +134,14 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 		Computation<T> c = getComputation();
 		if (outputVariable != null) c.setOutputVariable(outputVariable);
 		scope = c.getScope();
+		if (enableRequiredScopes) scope.convertArgumentsToRequiredScopes();
 		postCompile();
 		return scope;
 	}
 
 	@Override
 	public void postCompile() {
-		setArguments(scope.getArguments());
+		setArguments(scope.getFinalArguments());
 		super.postCompile();
 	}
 

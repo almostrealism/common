@@ -48,21 +48,31 @@ public abstract class ComputationOperationAdapter<I, O> extends OperationAdapter
 	public void prepareScope(ScopeInputManager manager) {
 		if (getArguments() != null) return;
 
+		ScopeLifecycle.prepareScope(getInputs().stream(), manager);
+
 		setArguments(getInputs().stream()
 				.map(manager.argumentForInput(this)).collect(Collectors.toList()));
-
-		ScopeLifecycle.prepareScope(getInputs().stream(), manager);
 	}
 
 	@Override
-	public ArrayVariable getArgument(int index) { return getArguments().get(index); }
+	public ArrayVariable getArgument(int index) {
+		if (index >= getInputs().size()) {
+			throw new IllegalArgumentException("Invalid input (" + index + ")");
+		}
+
+		return getArgumentForInput(getInputs().get(index));
+	}
+
+	/** @return  null */
+	@Override
+	public Variable getOutputVariable() { return null; }
 
 	public Expression<Double> getInputValue(int index, int pos) {
 		if (getArguments() == null) {
 			throw new IllegalArgumentException("Input value cannot be obtained before arguments are determined");
 		}
 
-		return getExpression(getArguments().get(index), pos);
+		return getExpression(getArgumentForInput(getInputs().get(index)), pos);
 	}
 
 	@Override

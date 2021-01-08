@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -68,9 +68,25 @@ public class AcceleratedPassThroughProducer<T extends MemWrapper>
 	@Override
 	public KernelizedEvaluable<T> get() { return compileProducer(this); }
 
+	/**
+	 * To avoid infinite regress (since pass through has itself as
+	 * an argument), this method does nothing.
+	 */
 	@Override
 	public void compact() {
 		// Avoid recursion, do not compact children
+	}
+
+	/**
+	 * Since the normal {@link #getArgument(int)} method returns
+	 * the {@link ArrayVariable} for the specified input index,
+	 * and this {@link io.almostrealism.relation.Producer} does
+	 * not use inputs in the conventional way, this method returns
+	 * the indexed {@link ArrayVariable} directly from the list
+	 * of arguments.
+	 */
+	public ArrayVariable getArgument(int index) {
+		return getArguments().get(index);
 	}
 
 	@Override

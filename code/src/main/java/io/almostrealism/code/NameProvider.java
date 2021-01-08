@@ -19,7 +19,9 @@ package io.almostrealism.code;
 public interface NameProvider {
 	String getFunctionName();
 
-	default String getDefaultAnnotation() { return null; }
+	default String getDefaultAnnotation() {
+		return null;
+	}
 
 	default ArrayVariable getArgument(int index) {
 		return new ArrayVariable(this, getArgumentName(index), getDefaultAnnotation(), Double.class, null);

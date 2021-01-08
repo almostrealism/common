@@ -133,15 +133,15 @@ public class AcceleratedConditionalStatementTests implements CodeFeatures {
 			if (c < d) {
 				if (b < c) {
 					if (a < b) {
-						Assert.assertEquals(a, s.getValue(), Math.pow(10, -10));
+						assertEquals(a, s.getValue());
 					} else {
-						Assert.assertEquals(b, s.getValue(), Math.pow(10, -10));
+						assertEquals(b, s.getValue());
 					}
 				} else {
-					Assert.assertEquals(-a, s.getValue(), Math.pow(10, -10));
+					assertEquals(-a, s.getValue());
 				}
 			} else {
-				Assert.assertEquals(-b, s.getValue(), Math.pow(10, -10));
+				assertEquals(-b, s.getValue());
 			}
 		});
 	}

@@ -33,6 +33,5 @@ import java.util.function.Supplier;
 public class MatrixDeterminant extends AcceleratedEvaluable<TransformMatrix, Scalar> {
 	public MatrixDeterminant(Supplier<Evaluable<? extends TransformMatrix>> m) {
 		super("matrixDeterminant", Scalar.blank(), m);
-		prepareScope(DefaultScopeInputManager.getInstance());
 	}
 }

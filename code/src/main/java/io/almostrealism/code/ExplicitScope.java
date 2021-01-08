@@ -49,6 +49,7 @@ public class ExplicitScope<T> extends Scope<T> {
 
 	@Override
 	public void write(CodePrintWriter w) {
+		super.write(w);
 		w.println(code.toString());
 	}
 }

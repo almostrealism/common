@@ -25,6 +25,18 @@ public interface ArgumentProvider {
 	<T> ArrayVariable<T> getArgument(NameProvider p, Supplier<Evaluable<? extends T>> input, ArrayVariable<T> delegate, int delegateOffset);
 
 	default <T> Function<Supplier<Evaluable<? extends T>>, ArrayVariable<T>> argumentForInput(NameProvider p) {
-		return input -> input == null ? null : getArgument(p, input, null, -1);
+		return input -> {
+			if (input == null) {
+				return null;
+			} else {
+				ArrayVariable<T> arg = getArgument(p, input, null, -1);
+
+				if (input instanceof Computation && ((Computation) input).getOutputVariable() != null) {
+					arg.setName(((Computation) input).getOutputVariable().getName());
+				}
+
+				return arg;
+			}
+		};
 	}
 }

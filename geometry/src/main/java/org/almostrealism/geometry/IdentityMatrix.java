@@ -33,6 +33,5 @@ public class IdentityMatrix extends AcceleratedEvaluable<TransformMatrix, Transf
 
 	public IdentityMatrix(Supplier<Evaluable<? extends TransformMatrix>> newMatrix) {
 		super("identityMatrix", newMatrix);
-		prepareScope(DefaultScopeInputManager.getInstance());
 	}
 }

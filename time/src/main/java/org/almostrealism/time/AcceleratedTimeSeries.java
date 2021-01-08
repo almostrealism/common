@@ -29,7 +29,7 @@ import java.util.function.Supplier;
 public class AcceleratedTimeSeries extends TemporalScalarBank implements HardwareFeatures {
 
 	public AcceleratedTimeSeries(int maxEntries) {
-		super(maxEntries, CacheLevel.NONE);
+		super(maxEntries, CacheLevel.ALL);
 		setBeginCursorIndex(1);
 		setEndCursorIndex(1);
 	}

@@ -17,10 +17,15 @@
 package org.almostrealism.c;
 
 import io.almostrealism.code.ArrayVariable;
+import io.almostrealism.code.Method;
+import io.almostrealism.code.Variable;
+import io.almostrealism.code.expressions.Expression;
+import io.almostrealism.code.expressions.InstanceReference;
 import org.almostrealism.io.PrintWriter;
 
 import java.util.List;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 public class OpenCLPrintWriter extends CPrintWriter {
 
@@ -29,25 +34,52 @@ public class OpenCLPrintWriter extends CPrintWriter {
 		setScopePrefix("__kernel void");
 	}
 
-	protected void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out) {
+	@Override
+	public void println(Method method) {
+		p.print(method.getName());
+		p.print("(");
+		renderParameters(method.getArguments(), p::print);
+		p.println(");");
+	}
+
+	protected void renderParameters(List<Expression> parameters, Consumer<String> out) {
+		List<ArrayVariable<?>> arguments = parameters.stream()
+				.map(exp -> (InstanceReference) exp)
+				.map(InstanceReference::getReferent)
+				.map(v -> (ArrayVariable<?>) v)
+				.collect(Collectors.toList());
+
 		if (!arguments.isEmpty()) {
-			renderArguments(arguments, out, true, null, "*", "");
+			renderArguments(arguments, out, false, false, null, "", "");
 			out.accept(", ");
-			renderArguments(arguments, out, false, Integer.class, "", "Offset");
+			renderArguments(arguments, out, false, false, Integer.class, "", "Offset");
 			out.accept(", ");
-			renderArguments(arguments, out, false, Integer.class, "", "Size");
+			renderArguments(arguments, out, false, false, Integer.class, "", "Size");
 		}
 	}
 
-	private void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out, boolean enableAnnotation, Class replaceType, String prefix, String suffix) {
+	protected void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out) {
+		if (!arguments.isEmpty()) {
+			renderArguments(arguments, out, true, true, null, "*", "");
+			out.accept(", ");
+			renderArguments(arguments, out, true, false, Integer.class, "", "Offset");
+			out.accept(", ");
+			renderArguments(arguments, out, true, false, Integer.class, "", "Size");
+		}
+	}
+
+	private void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out, boolean enableType, boolean enableAnnotation, Class replaceType, String prefix, String suffix) {
 		for (int i = 0; i < arguments.size(); i++) {
 			if (enableAnnotation && arguments.get(i).getAnnotation() != null) {
 				out.accept(arguments.get(i).getAnnotation());
 				out.accept(" ");
 			}
 
-			out.accept(nameForType(replaceType == null ? arguments.get(i).getType() : replaceType));
-			out.accept(" ");
+			if (enableType) {
+				out.accept(nameForType(replaceType == null ? arguments.get(i).getType() : replaceType));
+				out.accept(" ");
+			}
+
 			out.accept(prefix);
 			out.accept(arguments.get(i).getName());
 			out.accept(suffix);
