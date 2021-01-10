@@ -58,7 +58,7 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 	public String getFunctionName() { return function; }
 
 	@Override
-	public String getName() { return operationName(getClass(), getFunctionName()); }
+	public String getName() { return operationName(null, getClass(), getFunctionName()); }
 
 	public int getArgsCount() { return getArguments().size(); }
 
@@ -86,43 +86,16 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 		return null;
 	}
 
-
 	public void init() {
 		if (function == null) setFunctionName(functionName(getClass()));
 		purgeVariables();
 	}
 
 	/**
-	 * @deprecated  {@link ScopeInputManager} should determine names.
-	 */
-	@Deprecated
-	protected void initArgumentNames() {
-		initArgumentNames(getArguments());
-	}
-
-	/**
-	 * @deprecated  {@link ScopeInputManager} should determine names.
-	 */
-	@Deprecated
-	protected void initArgumentNames(List<ArrayVariable<? extends T>> args) {
-		int i = 0;
-		for (ArrayVariable arg : args) {
-			if (arg != null) {
-				arg.setName(getArgumentName(i));
-				arg.setAnnotation(getDefaultAnnotation());
-				arg.getExpression().setType(Double.class);
-			}
-			i++;
-		}
-	}
-
-	public Scope compile() { return compile(this); }
-
-	/**
 	 * Presently this serves a dual purpose: to do actual compilation of Scope
 	 * from Computation in implementors that facilitate the invocation of a
 	 * Computation, but also to do necessary initialization even in cases where
-	 * a Computatation is not being prepared for invocation. This is likely
+	 * a Computation is not being prepared for invocation. This is likely
 	 * adding to the confusion of having a shared parent between the two types
 	 * of accelerated operations (those compiling a Computation vs those that
 	 * simply execute code). There seems to be no reason to deal with this now,
@@ -131,7 +104,7 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 	 * ExplicitScope), so when that process is over one of the two roles this
 	 * methods plays wont exist and it will be clear what it is for.
 	 */
-	public abstract Scope compile(NameProvider p);
+	public abstract Scope compile();
 
 	/**
 	 * Take care of anything necessary after compilation. This may be called
@@ -202,19 +175,6 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 		this.variableNames = new ArrayList<>();
 	}
 
-	protected <T> ArrayVariable<T>[] arguments(Supplier<Evaluable<? extends T>>... producers) {
-		ArrayVariable args[] = new ArrayVariable[producers.length];
-		for (int i = 0; i < args.length; i++) {
-			if (!enableNullInputs && producers[i] == null) {
-				throw new IllegalArgumentException("Null argument at index " + i);
-			}
-
-			args[i] = producers[i] == null ? null : new ArrayVariable(this, null, getDefaultAnnotation(), null, producers[i]);
-		}
-
-		return args;
-	}
-
 	protected void removeDuplicateArguments() { setArguments(Scope.removeDuplicateArguments(getArguments())); }
 
 	@Override
@@ -235,7 +195,11 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 		return "f_" + s.substring(0, 1).toLowerCase() + s.substring(1) + "_" + functionId++;
 	}
 
-	public static String operationName(Class c, String functionName) {
+	public static String operationName(Named named, Class c, String functionName) {
+		if (named != null && named.getName() != null) {
+			return named.getName();
+		}
+
 		String name = c.getSimpleName();
 		if (name == null || name.trim().length() <= 0) name = "anonymous";
 		if (name.equals("AcceleratedOperation") || name.equals("AcceleratedProducer")) name = functionName;

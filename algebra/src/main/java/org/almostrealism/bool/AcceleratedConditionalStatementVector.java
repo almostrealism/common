@@ -18,11 +18,12 @@ package org.almostrealism.bool;
 
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorEvaluable;
+import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.hardware.CollectionUtils;
 
 import java.util.function.Supplier;
 
-public interface AcceleratedConditionalStatementVector extends AcceleratedConditionalStatement<Vector>, VectorEvaluable {
+public interface AcceleratedConditionalStatementVector extends AcceleratedConditionalStatement<Vector>, VectorProducer {
 	default AcceleratedConjunctionVector and(AcceleratedConditionalStatement<Vector> operand, Supplier trueValue, Supplier falseValue) {
 		return and(trueValue, falseValue, operand);
 	}

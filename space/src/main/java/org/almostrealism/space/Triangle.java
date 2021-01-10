@@ -16,6 +16,7 @@
 
 package org.almostrealism.space;
 
+import io.almostrealism.code.AdaptEvaluable;
 import io.almostrealism.code.OperationAdapter;
 import org.almostrealism.algebra.*;
 import org.almostrealism.color.RGB;
@@ -62,7 +63,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 
 	protected static final KernelizedEvaluable<TriangleData> dataProducer;
 
-	public static final TriangleIntersectAt intersectAt;
+	public static final KernelizedEvaluable<Scalar> intersectAt;
 	
 	static {
 		TriangleDataProducer triangle = TriangleDataFeatures.getInstance().triangle(PassThroughEvaluable.of(TrianglePointData.class, 0));
@@ -70,7 +71,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 		((OperationAdapter) dataProducer).compile();
 
 		intersectAt = new TriangleIntersectAt(PassThroughEvaluable.of(TriangleData.class, 1),
-							PassThroughEvaluable.of(Ray.class, 0, -1));
+							PassThroughEvaluable.of(Ray.class, 0, -1)).get();
 		((OperationAdapter) intersectAt).compile();
 	}
 
@@ -407,12 +408,13 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 		if (ut) r = t.getInverse().transform(ray);
 
 		if (enableHardwareOperator) {
+			Evaluable<Ray> er = r.get();
 			// TODO  Perhaps r should be ray...
-			return new ShadableIntersection(this, r, new AdaptProducer<>(intersectAt, r, () -> new Provider<>(data)));
+			return new ShadableIntersection(this, r, () -> new AdaptEvaluable<>(intersectAt, er, new Provider<>(data)));
 		} else {
 			final Supplier<Evaluable<? extends Ray>> fr = r;
 
-			Producer<Scalar> s = new Producer<Scalar>() {
+			Producer<Scalar> s = new Producer<>() {
 				@Override
 				public Evaluable<Scalar> get() {
 					return args -> {

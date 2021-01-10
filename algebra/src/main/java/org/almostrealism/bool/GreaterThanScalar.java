@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -23,21 +23,10 @@ import org.almostrealism.hardware.MemoryBank;
 import java.util.function.Supplier;
 
 public class GreaterThanScalar extends GreaterThan<Scalar> implements AcceleratedConditionalStatementScalar {
-	public GreaterThanScalar() {
-		this(null, null, null, null);
-	}
-
 	public GreaterThanScalar(
 			Supplier leftOperand,
 			Supplier rightOperand) {
-		super(2, Scalar::new, leftOperand, rightOperand, null, null, false);
-	}
-
-	public GreaterThanScalar(
-			Supplier leftOperand,
-			Supplier rightOperand,
-			boolean includeEqual) {
-		super(2, Scalar::new, leftOperand, rightOperand, null, null, includeEqual);
+		super(2, Scalar::new, ScalarBank::new, leftOperand, rightOperand, null, null, false);
 	}
 
 	public GreaterThanScalar(
@@ -54,9 +43,8 @@ public class GreaterThanScalar extends GreaterThan<Scalar> implements Accelerate
 			Supplier trueValue,
 			Supplier falseValue,
 			boolean includeEqual) {
-		super(2, Scalar::new, leftOperand, rightOperand, trueValue, falseValue, includeEqual);
+		super(2, Scalar::new, ScalarBank::new,
+				leftOperand, rightOperand,
+				trueValue, falseValue, includeEqual);
 	}
-
-	@Override
-	public MemoryBank<Scalar> createKernelDestination(int size) { return new ScalarBank(size); }
 }

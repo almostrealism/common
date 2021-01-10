@@ -32,6 +32,8 @@ public class HybridScope<T> extends Scope<T> {
 		this.explicit = explicit;
 	}
 
+	public void setArguments(List<ArrayVariable<?>> arguments) { explicit.setArguments(arguments); }
+
 	@Override
 	public void write(CodePrintWriter w) {
 		super.write(w);
@@ -45,6 +47,7 @@ public class HybridScope<T> extends Scope<T> {
 		List<ArrayVariable<?>> args = new ArrayList<>();
 		args.addAll(super.getArguments());
 		args.addAll(explicit.getArguments());
+		Scope.sortArguments(args);
 		return removeDuplicateArguments(args);
 	}
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,22 +14,22 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.bool;
+package org.almostrealism.util;
 
+import io.almostrealism.code.test.TestSettings;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarBank;
-import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.HardwareFeatures;
+import org.junit.Assert;
 
-import java.util.function.Supplier;
+public interface TestFeatures extends CodeFeatures, HardwareFeatures, TestSettings {
 
-public class AcceleratedConjunctionScalar extends AcceleratedConjunctionAdapter<Scalar>
-		implements AcceleratedConditionalStatementScalar {
-	public AcceleratedConjunctionScalar() {
-		this(null, null);
+	default void assertEquals(Scalar a, Scalar b) {
+		assertEquals(a.getValue(), b.getValue());
 	}
 
-	public AcceleratedConjunctionScalar(Supplier trueValue, Supplier falseValue,
-										AcceleratedConditionalStatement<Scalar>... conjuncts) {
-		super(2, Scalar::new, ScalarBank::new, trueValue, falseValue, conjuncts);
+	default void assertEquals(double a, double b) {
+		double gap = Hardware.getLocalHardware().isDoublePrecision() ? Math.pow(10, -10) : Math.pow(10, -6);
+		Assert.assertEquals(a, b, gap);
 	}
 }

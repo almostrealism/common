@@ -80,14 +80,12 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemWrapper> extends Dyna
 	}
 
 	@Override
-	public String getBody(Variable<MemWrapper> outputVariable, List<Variable<?>> existingVariables) {
+	public String getBody(Variable<MemWrapper> outputVariable) {
 		StringBuffer buf = new StringBuffer();
-
-		List<Variable<?>> variables = new ArrayList<>();
-		variables.addAll(existingVariables);
 
 		// if (enableOpenClKernelWorkaround) buf.append("printf(\"Starting method...\\n\");\n");
 
+		List<Variable<?>> variables = new ArrayList<>();
 		writeVariables(buf::append, variables);
 		variables.addAll(getVariables());
 
@@ -251,7 +249,7 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemWrapper> extends Dyna
 				if (ranks.get(i).getProducer() instanceof DynamicAcceleratedMultiEvaluable) {
 					DynamicAcceleratedMultiEvaluable p = (DynamicAcceleratedMultiEvaluable) ranks.get(i).getProducer();
 					compactedRanks[i] = ev -> {
-						String s = p.getBody(getHighestRankInputVariable(), ev);
+						String s = p.getBody(getHighestRankInputVariable());
 						ev.addAll(p.getVariables());
 						return s;
 					};
@@ -268,7 +266,7 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemWrapper> extends Dyna
 				if (choices.get(i).getProducer() instanceof DynamicAcceleratedMultiEvaluable) {
 					DynamicAcceleratedMultiEvaluable p = (DynamicAcceleratedMultiEvaluable) choices.get(i).getProducer();
 					compactedChoices[i] = ev -> {
-						String s = p.getBody(getOutputVariable(), ev);
+						String s = p.getBody(getOutputVariable());
 						ev.addAll(p.getVariables());
 						return s;
 					};
@@ -283,7 +281,7 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemWrapper> extends Dyna
 			if (defaultValue.getProducer() instanceof DynamicAcceleratedMultiEvaluable) {
 				DynamicAcceleratedMultiEvaluable p = (DynamicAcceleratedMultiEvaluable) defaultValue.getProducer();
 				compactedDefaultValue = ev -> {
-					String s = p.getBody(getOutputVariable(), ev);
+					String s = p.getBody(getOutputVariable());
 					ev.addAll(p.getVariables());
 					return s;
 				};

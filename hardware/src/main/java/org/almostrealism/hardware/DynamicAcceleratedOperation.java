@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,14 +17,12 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.ArrayVariable;
-import io.almostrealism.code.Variable;
 import io.almostrealism.relation.Evaluable;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
 
-public abstract class DynamicAcceleratedOperation<T extends MemWrapper> extends AcceleratedOperation<T> {
+public abstract class DynamicAcceleratedOperation<T extends MemWrapper> extends AcceleratedOperation<T> implements ExplictBody<T> {
 	private HardwareOperatorMap operators;
 
 	public DynamicAcceleratedOperation(boolean kernel, Supplier<Evaluable<? extends T>>... args) {
@@ -73,7 +71,7 @@ public abstract class DynamicAcceleratedOperation<T extends MemWrapper> extends 
 		buf.append("__kernel void " + getFunctionName() + "(");
 		buf.append(getFunctionArgsDefinition());
 		buf.append(") {\n");
-		buf.append(getBody(getOutputVariable(), new ArrayList<>()));
+		buf.append(getBody(getOutputVariable()));
 		buf.append("}");
 		return buf.toString();
 	}
@@ -118,6 +116,4 @@ public abstract class DynamicAcceleratedOperation<T extends MemWrapper> extends 
 
 	@Override
 	public ArrayVariable getArgument(int index) { return getArguments().get(index); }
-
-	public abstract String getBody(Variable<T> outputVariable, List<Variable<?>> existingVariables);
 }

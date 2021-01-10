@@ -18,19 +18,16 @@ package org.almostrealism.bool;
 
 import org.almostrealism.algebra.Vector;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.algebra.VectorBank;
 
 import java.util.function.Supplier;
 
 public class LessThanVector extends LessThan<Vector> implements AcceleratedConditionalStatementVector {
-	public LessThanVector() {
-		this(null, null, null, null);
-	}
-
 	public LessThanVector(
 			Supplier leftOperand,
 			Supplier rightOperand,
 			Supplier<Evaluable<Vector>> trueValue,
 			Supplier<Evaluable<Vector>> falseValue) {
-		super(3, Vector::new, leftOperand, rightOperand, trueValue, falseValue, false);
+		super(3, Vector::new, VectorBank::new, leftOperand, rightOperand, trueValue, falseValue, false);
 	}
 }

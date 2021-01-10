@@ -19,11 +19,9 @@ package org.almostrealism.algebra;
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
-import io.almostrealism.relation.DynamicProducer;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 
-import java.util.Objects;
 import java.util.stream.Stream;
 
 /**
@@ -36,6 +34,7 @@ import java.util.stream.Stream;
  *
  * @author  Michael Murray
  */
+// TODO  Move to code
 public class AdaptProducer<T> implements Producer<T>, ScopeLifecycle {
 	private Producer<T> p;
 	private Producer args[];
@@ -73,9 +72,5 @@ public class AdaptProducer<T> implements Producer<T>, ScopeLifecycle {
 	public void compact() {
 		this.p.compact();
 		for (Producer arg : args) arg.compact();
-	}
-
-	public static <T extends Triple, V> AdaptProducer<V> fromFunction(TripleFunction<T, V> f, Producer<? extends Triple> in) {
-		return new AdaptProducer<>(new DynamicProducer<>(args -> f.operate((T) args[0])), in);
 	}
 }

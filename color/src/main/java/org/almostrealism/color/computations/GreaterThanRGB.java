@@ -18,24 +18,19 @@ package org.almostrealism.color.computations;
 
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBBank;
+import org.almostrealism.color.RGBProducer;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.bool.GreaterThan;
 
 import java.util.function.Supplier;
 
-public class GreaterThanRGB extends GreaterThan<RGB> {
-	public GreaterThanRGB() {
-		this(null, null, null, null);
-	}
-
+public class GreaterThanRGB extends GreaterThan<RGB> implements RGBProducer {
 	public GreaterThanRGB(
 			Supplier leftOperand,
 			Supplier rightOperand,
 			Supplier trueValue,
 			Supplier falseValue) {
-		super(3, RGB::new, leftOperand, rightOperand, trueValue, falseValue, false);
+		super(3, RGB::new, RGBBank::new, leftOperand, rightOperand,
+				trueValue, falseValue, false);
 	}
-
-	@Override
-	public MemoryBank<RGB> createKernelDestination(int size) { return new RGBBank(size); }
 }

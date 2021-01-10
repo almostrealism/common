@@ -64,6 +64,7 @@ public class DotProduct extends DynamicAcceleratedProducerAdapter<Vector, Scalar
 					"(" + getInputValue(1, 2).getExpression() + ") * (" + getInputValue(2, 2).getExpression() + ")",
 					getInputValue(1, 0), getInputValue(1, 1), getInputValue(1, 2),
 					getInputValue(2, 0), getInputValue(2, 1), getInputValue(2, 2));
+
 			value[1] = new Expression<>(Double.class, stringForDouble(1.0));
 
 			if (value[0].getExpression().contains("Infinity")) {

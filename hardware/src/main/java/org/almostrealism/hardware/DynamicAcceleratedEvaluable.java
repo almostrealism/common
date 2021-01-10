@@ -56,10 +56,12 @@ public abstract class DynamicAcceleratedEvaluable<I extends MemWrapper, O extend
 	@Override
 	public O evaluate(Object... args) { return (O) apply(args)[0]; }
 
+	@Deprecated
 	protected void writeVariables(Consumer<String> out) {
 		writeVariables(out, new ArrayList<>());
 	}
 
+	@Deprecated
 	protected void writeVariables(Consumer<String> out, List<Variable<?>> existingVariables) {
 		getVariables().stream()
 				.filter(v -> !existingVariables.contains(v)).forEach(var -> {

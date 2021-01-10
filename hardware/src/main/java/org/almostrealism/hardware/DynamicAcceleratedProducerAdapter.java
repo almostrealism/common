@@ -51,7 +51,6 @@ public abstract class DynamicAcceleratedProducerAdapter<I extends MemWrapper, O 
 
 	private int memLength;
 	private IntFunction<InstanceReference> variableRef;
-	private Variable outputVariable;
 
 	public DynamicAcceleratedProducerAdapter(int memLength, Supplier<Evaluable<? extends O>> result, Supplier<Evaluable<? extends I>>... inputArgs) {
 		this(memLength, result, inputArgs, new Evaluable[0]);
@@ -75,12 +74,6 @@ public abstract class DynamicAcceleratedProducerAdapter<I extends MemWrapper, O 
 		ArrayVariable arg = getArgumentForInput(getInputs().get(0));
 		if (arg != null) arg.setSortHint(-1);
 	}
-
-	@Override
-	public void setOutputVariable(Variable out) { this.outputVariable = out; }
-
-	@Override
-	public Variable getOutputVariable() { return outputVariable == null ? getArgument(0) : outputVariable; }
 
 	@Override
 	public Scope<O> getScope() {

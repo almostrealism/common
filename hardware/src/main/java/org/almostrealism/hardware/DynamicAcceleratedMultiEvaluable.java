@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
+@Deprecated
 public abstract class DynamicAcceleratedMultiEvaluable<I extends MemWrapper, O extends MemWrapper>
 		extends DynamicAcceleratedEvaluable<I, O>
 		implements KernelizedEvaluable<O>, MultiExpression<Double> {
@@ -50,9 +51,9 @@ public abstract class DynamicAcceleratedMultiEvaluable<I extends MemWrapper, O e
 
 	public int getMemLength() { return memLength; }
 
-	public String getBody(Variable<MemWrapper> outputVariable, List<Variable<?>> existingVariables) {
+	public String getBody(Variable<MemWrapper> outputVariable) {
 		StringBuffer buf = new StringBuffer();
-		writeVariables(buf::append, existingVariables);
+		// TODO  Variables?
 		IntStream.range(0, memLength)
 				.mapToObj(getAssignmentFunction(this, outputVariable))
 				.map(v -> OpenCLPrintWriter.renderAssignment((Variable) v))

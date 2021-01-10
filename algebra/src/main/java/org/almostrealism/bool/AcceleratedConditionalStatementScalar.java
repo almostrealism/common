@@ -18,12 +18,13 @@ package org.almostrealism.bool;
 
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarEvaluable;
+import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.hardware.CollectionUtils;
 import io.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 
-public interface AcceleratedConditionalStatementScalar extends AcceleratedConditionalStatement<Scalar>, ScalarEvaluable {
+public interface AcceleratedConditionalStatementScalar extends AcceleratedConditionalStatement<Scalar>, ScalarProducer {
 	default AcceleratedConjunctionScalar and(AcceleratedConditionalStatement<Scalar> operand, Supplier<Evaluable<Scalar>> trueValue, Supplier<Evaluable<Scalar>> falseValue) {
 		return and(trueValue, falseValue, operand);
 	}

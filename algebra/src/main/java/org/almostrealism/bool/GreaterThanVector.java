@@ -24,18 +24,11 @@ import io.almostrealism.relation.Evaluable;
 import java.util.function.Supplier;
 
 public class GreaterThanVector extends GreaterThan<Vector> implements AcceleratedConditionalStatementVector {
-	public GreaterThanVector() {
-		this(null, null, null, null);
-	}
-
 	public GreaterThanVector(
 			Supplier leftOperand,
 			Supplier rightOperand,
 			Supplier<Evaluable<? extends Vector>> trueValue,
 			Supplier<Evaluable<? extends Vector>> falseValue) {
-		super(3, Vector::new, leftOperand, rightOperand, trueValue, falseValue, false);
+		super(3, Vector::new, VectorBank::new, leftOperand, rightOperand, trueValue, falseValue, false);
 	}
-
-	@Override
-	public MemoryBank<Vector> createKernelDestination(int size) { return new VectorBank(size); }
 }

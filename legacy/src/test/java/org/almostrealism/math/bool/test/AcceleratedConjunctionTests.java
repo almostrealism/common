@@ -1,31 +1,54 @@
+/*
+ * Copyright 2021 Michael Murray
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
 package org.almostrealism.math.bool.test;
 
+import io.almostrealism.code.OperationAdapter;
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.bool.AcceleratedConjunctionScalar;
 import org.almostrealism.bool.LessThan;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.hardware.AcceleratedComputationEvaluable;
+import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.stream.IntStream;
 
 public class AcceleratedConjunctionTests extends AcceleratedConditionalStatementTests {
-	protected AcceleratedConjunctionScalar conjunction(
+	protected AcceleratedComputationEvaluable<Scalar> conjunction(
 			Producer<Scalar> a, Producer<Scalar> b,
 			Producer<Scalar> c, Producer<Scalar> d) {
 		LessThan l1 = lessThan(a, b);
 		LessThan l2 = lessThan(c, d);
 		AcceleratedConjunctionScalar acs = new AcceleratedConjunctionScalar(a, b, l1, l2);
-		acs.compile();
-		return acs;
+		AcceleratedComputationEvaluable<Scalar> ev = (AcceleratedComputationEvaluable<Scalar>) acs.get();
+		ev.compile();
+		return ev;
 	}
 
 	protected Runnable conjunctionTest(double a, double b, double c, double d) {
-		AcceleratedConjunctionScalar s = conjunction(v(a), v(Scalar.class, 0),
+		Evaluable<Scalar> s = conjunction(v(a), v(Scalar.class, 0),
 				v(c), v(Scalar.class, 1));
 
 		return () -> {
+			System.out.println(((AcceleratedComputationEvaluable) s).getFunctionDefinition());
+
 			double t = s.evaluate(v(b).get().evaluate(), v(d).get().evaluate()).getValue();
 
 			if (a < b && c < d) {
@@ -43,16 +66,14 @@ public class AcceleratedConjunctionTests extends AcceleratedConditionalStatement
 				.forEach(Runnable::run);
 	}
 
-	protected AcceleratedConjunctionScalar dotProductConjunction(Producer<Ray> r) {
+	protected AcceleratedComputationEvaluable<Scalar> dotProductConjunction(Producer<Ray> r) {
 		return conjunction(ray(i -> Math.random()).oDotd(), v(1), oDotd(v(Ray.class, 0)), v(1));
 	}
 
 	@Test
 	public void dotProductInConjunction() {
-		AcceleratedConjunctionScalar c = dotProductConjunction(v(Ray.class, 0));
-
-		System.out.println(c.getFunctionDefinition());
-		Assert.assertEquals(2, c.getArgsCount());
+		Evaluable<Scalar> c = dotProductConjunction(v(Ray.class, 0));
+		if (enableArgumentCountAssertions) Assert.assertEquals(2, ((OperationAdapter) c).getArgsCount());
 
 		double v = c.evaluate(ray(i -> Math.random()).get().evaluate()).getValue();
 		System.out.println(v);
@@ -61,11 +82,9 @@ public class AcceleratedConjunctionTests extends AcceleratedConditionalStatement
 
 	@Test
 	public void dotProductInNestedConjunction1() {
-		AcceleratedConjunctionScalar c = dotProductConjunction(ray(i -> Math.random()));
-		c = conjunction(c, v(Scalar.class, 0),
+		AcceleratedComputationEvaluable<Scalar> c = dotProductConjunction(ray(i -> Math.random()));
+		c = conjunction(c.getComputation(), v(Scalar.class, 0),
 				v(Math.random()), v(Math.random()));
-
-		System.out.println(c.getFunctionDefinition());
 
 		double v = c.evaluate(v(Math.random()).get().evaluate()).getValue();
 
@@ -75,10 +94,8 @@ public class AcceleratedConjunctionTests extends AcceleratedConditionalStatement
 
 	@Test
 	public void dotProductInNestedConjunction2() {
-		AcceleratedConjunctionScalar c = dotProductConjunction(ray(i -> Math.random()));
-		c = conjunction(c, v(Math.random()), v(Scalar.class, 0), v(Math.random()));
-
-		System.out.println(c.getFunctionDefinition());
+		AcceleratedComputationEvaluable<Scalar> c = dotProductConjunction(ray(i -> Math.random()));
+		c = conjunction(c.getComputation(), v(Math.random()), v(Scalar.class, 0), v(Math.random()));
 
 		double v = c.evaluate(v(Math.random()).get().evaluate()).getValue();
 
@@ -88,11 +105,9 @@ public class AcceleratedConjunctionTests extends AcceleratedConditionalStatement
 
 	@Test
 	public void dotProductInNestedConjunction3() {
-		AcceleratedConjunctionScalar c = dotProductConjunction(v(Ray.class, 0));
-		c = conjunction(c, v(Math.random()),
+		AcceleratedComputationEvaluable<Scalar> c = dotProductConjunction(v(Ray.class, 0));
+		c = conjunction(c.getComputation(), v(Math.random()),
 				v(Math.random()), v(Math.random()));
-
-		System.out.println(c.getFunctionDefinition());
 
 		double v = c.evaluate(ray(i -> Math.random()).get().evaluate()).getValue();
 
@@ -102,11 +117,9 @@ public class AcceleratedConjunctionTests extends AcceleratedConditionalStatement
 
 	@Test
 	public void dotProductInNestedConjunction4() {
-		AcceleratedConjunctionScalar c = dotProductConjunction(v(Ray.class, 0));
-		c = conjunction(c, v(Scalar.class, 1),
+		AcceleratedComputationEvaluable<Scalar> c = dotProductConjunction(v(Ray.class, 0));
+		c = conjunction(c.getComputation(), v(Scalar.class, 1),
 				v(Math.random()), v(Scalar.class, 2));
-
-		System.out.println(c.getFunctionDefinition());
 
 		double v = c.evaluate(ray(i -> Math.random()).get().evaluate(),
 							v(Math.random()).get().evaluate(),

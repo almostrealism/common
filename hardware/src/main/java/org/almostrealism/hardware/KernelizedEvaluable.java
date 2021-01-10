@@ -35,7 +35,7 @@ import java.util.stream.Stream;
  */
 public interface KernelizedEvaluable<T extends MemWrapper> extends Evaluable<T> {
 	default void kernelEvaluate(MemoryBank destination, MemoryBank args[]) {
-		String name = this instanceof Named ? ((Named) this).getName() : OperationAdapter.operationName(getClass(), "function");
+		String name = this instanceof Named ? ((Named) this).getName() : OperationAdapter.operationName(this instanceof Named ? (Named) this : null, getClass(), "function");
 		if (KernelizedOperation.enableKernelLog) System.out.println("KernelizedProducer: Evaluating " + name + " kernel...");
 
 		boolean enableLog = false; // name.equals("LightingEngineAggregator");

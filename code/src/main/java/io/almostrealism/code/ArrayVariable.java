@@ -28,7 +28,7 @@ public class ArrayVariable<T> extends Variable implements Array<T> {
 	private int delegateOffset;
 
 	public ArrayVariable(NameProvider np, String name, Supplier<Evaluable<? extends T>> producer) {
-		this(np, name, np.getDefaultAnnotation(), null, producer);
+		this(np, name, np.getDefaultAnnotation(), (Class<T>) Double.class, producer);
 	}
 
 	public ArrayVariable(NameProvider np, String name, String annotation, Class<T> type, Supplier<Evaluable<? extends T>> p) {

@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,50 +17,78 @@
 package org.almostrealism.bool;
 
 import io.almostrealism.code.ArrayVariable;
+import io.almostrealism.code.ComputationProducerAdapter;
+import io.almostrealism.code.HybridScope;
 import io.almostrealism.code.MultiExpression;
-import io.almostrealism.code.OperationAdapter;
+import io.almostrealism.code.Scope;
+import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.Variable;
-import org.almostrealism.hardware.AcceleratedEvaluable;
-import org.almostrealism.hardware.DynamicAcceleratedOperation;
-import org.almostrealism.hardware.DynamicAcceleratedEvaluable;
+import org.almostrealism.hardware.ComputerFeatures;
+import org.almostrealism.hardware.DynamicProducerForMemWrapper;
+import org.almostrealism.hardware.ExplictBody;
 import org.almostrealism.hardware.MemWrapper;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.hardware.MemoryBank;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.BiFunction;
+import java.util.function.Function;
+import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
 public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrapper>
-											extends DynamicAcceleratedEvaluable<MemWrapper, T>
-											implements AcceleratedConditionalStatement<T> {
+											extends ComputationProducerAdapter<MemWrapper, T>
+											implements AcceleratedConditionalStatement<T>,
+													ExplictBody<T>, ComputerFeatures {
+	public static boolean enableCompaction = false;
+
 	private int memLength;
 
-	private BiFunction<Variable<MemWrapper>, List<Variable<?>>, String> compacted;
+	private Function<Variable<T>, String> compacted;
 
-	public AcceleratedConditionalStatementAdapter(int memLength, Supplier<T> blankValue) {
-		super(blankValue);
-		this.memLength = memLength;
+	public AcceleratedConditionalStatementAdapter(int memLength, Supplier<T> blankValue, IntFunction<MemoryBank<T>> kernelDestination) {
+		this(memLength, blankValue, kernelDestination, null, null, null, null);
 	}
 
 	public AcceleratedConditionalStatementAdapter(int memLength,
 												  Supplier<T> blankValue,
+												  IntFunction<MemoryBank<T>> kernelDestination,
 												  Supplier<Evaluable> leftOperand,
 												  Supplier<Evaluable> rightOperand,
 												  Supplier<Evaluable<? extends T>> trueValue,
 												  Supplier<Evaluable<? extends T>> falseValue) {
-		super(blankValue, leftOperand, rightOperand, trueValue, falseValue);
 		this.memLength = memLength;
+
+		List inputs = new ArrayList();
+		inputs.add(new DynamicProducerForMemWrapper(args -> blankValue.get(), kernelDestination));
+		inputs.add(leftOperand);
+		inputs.add(rightOperand);
+		inputs.add(trueValue);
+		inputs.add(falseValue);
+		this.setInputs(inputs);
+
+		init();
 	}
 
 	public int getMemLength() { return memLength; }
 
+	/**
+	 * @return  "__global"
+	 */
+	public String getDefaultAnnotation() { return "__global"; }
+
 	@Override
-	public String getBody(Variable<MemWrapper> outputVariable, List<Variable<?>> existingVariables) {
+	public void prepareScope(ScopeInputManager manager) {
+		super.prepareScope(manager);
+
+		// Result should always be first
+		ArrayVariable arg = getArgumentForInput(getInputs().get(0));
+		if (arg != null) arg.setSortHint(-1);
+	}
+
+	public String getBody(Variable<T> outputVariable) {
 		if (compacted == null) {
 			StringBuffer buf = new StringBuffer();
-
-			writeVariables(buf::append, existingVariables);
 
 			buf.append("if (");
 			buf.append(getCondition().getExpression());
@@ -88,79 +116,58 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrappe
 
 			return buf.toString();
 		} else {
-			return compacted.apply(outputVariable, existingVariables);
+			return compacted.apply(outputVariable);
 		}
+	}
+
+	@Override
+	public Scope<T> getScope() {
+		HybridScope<T> scope = new HybridScope<>(this);
+		scope.getVariables().addAll(getVariables());
+		scope.code().accept(getBody(getOutputVariable()));
+		return scope;
 	}
 
 	@Override
 	public void compact() {
 		super.compact();
 
-		if (!isCompactable()) return;
+		if (!enableCompaction || !isCompactable()) return;
 
-		DynamicAcceleratedOperation trueOperation =
-				(DynamicAcceleratedOperation) (getTrueValue() == null ? null : getTrueValue().getProducer().get());
-		DynamicAcceleratedOperation falseOperation =
-				(DynamicAcceleratedOperation) (getFalseValue() == null ? null : getFalseValue().getProducer().get());
+		ExplictBody trueOperation =
+				(ExplictBody) (getTrueValue() == null ? null : getTrueValue().getProducer().get());
+		ExplictBody falseOperation =
+				(ExplictBody) (getFalseValue() == null ? null : getFalseValue().getProducer().get());
 
-		compacted = (outputVariable, existingVariables) -> {
+		compacted = outputVariable -> {
 			StringBuffer buf = new StringBuffer();
-
-			writeVariables(buf::append, existingVariables);
-
-			List<Variable> allVariables = new ArrayList<>();
-			allVariables.addAll(existingVariables);
-			allVariables.addAll(getVariables());
 
 			buf.append("if (");
 			buf.append(getCondition().getExpression());
 			buf.append(") {\n");
 			if (trueOperation != null) {
-				buf.append(trueOperation.getBody(outputVariable, allVariables));
+				buf.append(trueOperation.getBody(outputVariable));
 			}
 			buf.append("} else {\n");
 			if (falseOperation != null) {
-				buf.append(falseOperation.getBody(outputVariable, allVariables));
+				buf.append(falseOperation.getBody(outputVariable));
 			}
 			buf.append("}\n");
 
 			return buf.toString();
 		};
 
-		List<ArrayVariable<? extends MemWrapper>> newArgs = new ArrayList<>();
-		if (getArguments().get(0) != null) newArgs.add(getArguments().get(0));
-		getOperands().stream().map(ArrayVariable::getProducer).map(Supplier::get)
-				.filter(p -> p instanceof OperationAdapter)
-				.map(p -> {
-					((OperationAdapter) p).compile();
-					return AcceleratedEvaluable.excludeResult(((OperationAdapter) p).getArguments());
-				})
-				.flatMap(List::stream)
-				.forEach(arg -> newArgs.add((ArrayVariable) arg));
 		getOperands().stream()
 				.map(ArrayVariable::getProducer)
 				.forEach(this::absorbVariables);
-
-		if (trueOperation != null) {
-			trueOperation.compile();
-			newArgs.addAll(AcceleratedEvaluable.excludeResult(trueOperation.getArguments()));
-		}
-
-		if (falseOperation != null) {
-			falseOperation.compile();
-			newArgs.addAll(AcceleratedEvaluable.excludeResult(falseOperation.getArguments()));
-		}
-
-		setArguments(newArgs);
-		removeDuplicateArguments();
 	}
 
 	protected boolean isCompactable() {
 		if (compacted != null) return false;
 
-		if (getTrueValue() != null && getTrueValue().getProducer().get() instanceof DynamicAcceleratedOperation == false)
+		if (getTrueValue() != null && getTrueValue().getProducer().get() instanceof ExplictBody == false)
 			return false;
-		if (getFalseValue() != null && getFalseValue().getProducer().get() instanceof DynamicAcceleratedOperation == false)
+		if (getFalseValue() != null && getFalseValue().getProducer().get() instanceof ExplictBody == false)
 			return false;
 		for (ArrayVariable a : getOperands()) {
 			if (a.getProducer() instanceof MultiExpression == false)

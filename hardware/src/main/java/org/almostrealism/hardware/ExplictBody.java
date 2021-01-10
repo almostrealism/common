@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,14 +14,10 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.code;
+package org.almostrealism.hardware;
 
-public abstract class ComputationProducerAdapter<I, O> extends ComputationOperationAdapter<I, O> implements ProducerComputation<O> {
-	private Variable outputVariable;
+import io.almostrealism.code.Variable;
 
-	@Override
-	public void setOutputVariable(Variable out) { this.outputVariable = out; }
-
-	@Override
-	public Variable getOutputVariable() { return outputVariable == null ? getArgument(0) : outputVariable; }
+public interface ExplictBody<T> {
+	String getBody(Variable<T> outputVariable);
 }

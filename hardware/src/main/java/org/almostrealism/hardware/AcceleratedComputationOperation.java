@@ -115,22 +115,17 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	@Override
-	public Scope<T> compile(NameProvider p) {
+	public Scope<T> compile() {
 		preCompile();
 
 		if (getComputation() instanceof OperationAdapter) {
-			return compile(p, ((OperationAdapter) getComputation()).getArgument(0));
+			return compile(((OperationAdapter) getComputation()).getArgument(0));
 		} else {
-			return compile(p, null);
+			return compile(null);
 		}
 	}
 
 	public Scope<T> compile(Variable<T> outputVariable) {
-		preCompile();
-		return compile(this, outputVariable);
-	}
-
-	public Scope<T> compile(NameProvider p, Variable<T> outputVariable) {
 		Computation<T> c = getComputation();
 		if (outputVariable != null) c.setOutputVariable(outputVariable);
 		scope = c.getScope();
@@ -153,7 +148,7 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	@Override
-	public String getBody(Variable<MemWrapper> outputVariable, List<Variable<?>> existingVariables) {
+	public String getBody(Variable<MemWrapper> outputVariable) {
 		Scope<T> scope = compile((Variable<T>) outputVariable);
 		StringBuffer buf = new StringBuffer();
 		scope.write(new OpenCLPrintWriter(PrintWriter.of(buf::append)));

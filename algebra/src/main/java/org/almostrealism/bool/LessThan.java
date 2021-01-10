@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,33 +17,18 @@
 package org.almostrealism.bool;
 
 import org.almostrealism.hardware.MemWrapper;
-import io.almostrealism.relation.Evaluable;
+import org.almostrealism.hardware.MemoryBank;
 
-import java.util.function.Function;
+import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public class LessThan<T extends MemWrapper> extends AcceleratedBinaryConditionAdapter<T> {
-	public LessThan(int memLength,
-					   Function<Integer, Supplier<T>> blankValue) {
-		this(memLength, blankValue, null, null, null, null);
-	}
-
-	public LessThan(int memLength,
-					Function<Integer, Supplier<T>> blankValue,
-					Supplier<Evaluable> leftOperand,
-					Supplier<Evaluable> rightOperand,
-					Supplier<Evaluable<? extends T>> trueValue,
-					Supplier<Evaluable<? extends T>> falseValue) {
-		this(memLength, blankValue.apply(memLength), leftOperand, rightOperand, trueValue, falseValue, false);
-	}
-
+public abstract class LessThan<T extends MemWrapper> extends AcceleratedBinaryConditionAdapter<T> {
 	public LessThan(int memLength,
 					Supplier<T> blankValue,
-					Supplier leftOperand,
-					Supplier rightOperand,
-					Supplier trueValue,
-					Supplier falseValue,
+					IntFunction<MemoryBank<T>> kernelDestination,
+					Supplier leftOperand, Supplier rightOperand,
+					Supplier trueValue, Supplier falseValue,
 					boolean includeEqual) {
-		super(includeEqual ? "<=" : "<", memLength, blankValue, leftOperand, rightOperand, trueValue, falseValue);
+		super(includeEqual ? "<=" : "<", memLength, blankValue, kernelDestination, leftOperand, rightOperand, trueValue, falseValue);
 	}
 }

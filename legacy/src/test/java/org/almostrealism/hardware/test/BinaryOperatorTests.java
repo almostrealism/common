@@ -18,6 +18,7 @@ package org.almostrealism.hardware.test;
 
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.bool.GreaterThan;
+import org.almostrealism.bool.GreaterThanVector;
 import org.almostrealism.util.CodeFeatures;
 import org.almostrealism.geometry.Ray;
 import org.junit.Test;
@@ -25,8 +26,7 @@ import org.junit.Test;
 public class BinaryOperatorTests implements CodeFeatures {
 	@Test
 	public void greaterThan() {
-		GreaterThan<Vector> operation = new GreaterThan(
-				3, i -> Ray.blank(),
+		GreaterThan<Vector> operation = new GreaterThanVector(
 				scalar(2.0),
 				scalar(3.0),
 				vector(1.0, 2.0, 3.0),
@@ -34,6 +34,5 @@ public class BinaryOperatorTests implements CodeFeatures {
 
 		// TODO Assertions
 		operation.compile();
-		System.out.println(operation.getFunctionDefinition());
 	}
 }

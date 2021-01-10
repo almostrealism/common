@@ -105,14 +105,5 @@ public interface ScalarFeatures {
 		return pow(base, new Scalar(value));
 	}
 
-	default void assertEquals(Scalar a, Scalar b) {
-		assertEquals(a.getValue(), b.getValue());
-	}
-
-	default void assertEquals(double a, double b) {
-		double gap = Hardware.getLocalHardware().isDoublePrecision() ? Math.pow(10, -10) : Math.pow(10, -6);
-		assert Math.abs(a - b) < gap;
-	}
-
 	static ScalarFeatures getInstance() { return new ScalarFeatures() { }; }
 }

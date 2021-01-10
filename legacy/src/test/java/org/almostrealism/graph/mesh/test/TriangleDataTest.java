@@ -28,10 +28,11 @@ import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.util.CodeFeatures;
+import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
 
-public class TriangleDataTest implements CodeFeatures {
+public class TriangleDataTest implements TestFeatures {
 	protected Mesh.VertexData data() {
 		DefaultVertexData data = new DefaultVertexData(5, 3);
 		data.getVertices().set(0, new Vector(0.0, 1.0, 0.0));

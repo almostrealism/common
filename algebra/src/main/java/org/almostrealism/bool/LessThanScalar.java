@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,18 +24,6 @@ import io.almostrealism.relation.Evaluable;
 import java.util.function.Supplier;
 
 public class LessThanScalar extends LessThan<Scalar> implements AcceleratedConditionalStatementScalar {
-	public LessThanScalar() {
-		this(null, null, null, null);
-	}
-
-	public LessThanScalar(Supplier<Evaluable> leftOperand, Supplier<Evaluable> rightOperand) {
-		this(leftOperand, rightOperand, null, null);
-	}
-
-	public LessThanScalar(Supplier leftOperand, Supplier rightOperand, boolean includeEqual) {
-		this(leftOperand, rightOperand, null, null, includeEqual);
-	}
-
 	public LessThanScalar(
 			Supplier leftOperand, Supplier rightOperand,
 			Supplier trueValue, Supplier falseValue) {
@@ -46,9 +34,9 @@ public class LessThanScalar extends LessThan<Scalar> implements AcceleratedCondi
 			Supplier leftOperand, Supplier rightOperand,
 			Supplier trueValue, Supplier falseValue,
 			boolean includeEqual) {
-		super(2, Scalar::new, leftOperand, rightOperand, trueValue, falseValue, includeEqual);
+		super(2, Scalar::new, ScalarBank::new,
+				leftOperand, rightOperand,
+				trueValue, falseValue,
+				includeEqual);
 	}
-
-	@Override
-	public MemoryBank<Scalar> createKernelDestination(int size) { return new ScalarBank(size); }
 }

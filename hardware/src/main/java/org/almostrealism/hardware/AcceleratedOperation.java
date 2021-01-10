@@ -32,6 +32,7 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Named;
 import org.jocl.CLException;
 
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -44,6 +45,7 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 	public static final boolean enableDestinationConsolidation = true;
 	public static final boolean enableArgumentMapping = true;
 	public static final boolean enableCompaction = true;
+	public static final boolean enableInputLogging = true;
 
 	private static Map<String, ThreadLocal<HardwareOperator>> operators = new HashMap<>();
 
@@ -112,7 +114,7 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 	}
 
 	@Override
-	public Scope<?> compile(NameProvider p) {
+	public Scope<?> compile() {
 		prepareScope();
 		if (enableCompaction) compact();
 		return null;
@@ -140,7 +142,7 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 	@Override
 	public synchronized Object[] apply(Object[] args) {
 		if (getArguments() == null) {
-			System.out.println("WARN: AcceleratedOperation was not compiled ahead of time");
+			System.out.println("WARN: " + getName() + " was not compiled ahead of time");
 			compile();
 		}
 
@@ -152,7 +154,13 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 			if (allArgs[i] == null) return new Object[] { handleNull(i) };
 		}
 
+		String before = Arrays.toString(allArgs);
+
 		op.accept(allArgs);
+
+		if (enableInputLogging) {
+			System.out.println(getName() + ": " + before + " -> " + Arrays.toString(allArgs));
+		}
 		return allArgs;
 	}
 
@@ -210,10 +218,8 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 
 	@Override
 	public void kernelOperate(MemoryBank[] args) {
-		String name = this instanceof Named ? ((Named) this).getName() : OperationAdapter.operationName(getClass(), "function");
-
 		if (getArguments() == null) {
-			System.out.println("WARN: " + name + " was not compiled ahead of time");
+			System.out.println("WARN: " + getName() + " was not compiled ahead of time");
 			compile();
 		}
 
@@ -223,10 +229,10 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 				operator.setGlobalWorkOffset(0);
 				operator.setGlobalWorkSize(args[0].getCount());
 
-				if (enableKernelLog) System.out.println("AcceleratedOperation: Preparing " + name + " kernel...");
+				if (enableKernelLog) System.out.println("AcceleratedOperation: Preparing " + getName() + " kernel...");
 				MemWrapper input[] = getKernelArgs(args);
 
-				if (enableKernelLog) System.out.println("AcceleratedOperation: Evaluating " + name + " kernel...");
+				if (enableKernelLog) System.out.println("AcceleratedOperation: Evaluating " + getName() + " kernel...");
 
 				operator.accept(input);
 			} else {

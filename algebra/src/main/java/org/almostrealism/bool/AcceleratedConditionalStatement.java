@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@ import io.almostrealism.relation.Evaluable;
 
 import java.util.List;
 
-public interface AcceleratedConditionalStatement<T extends MemWrapper> extends Evaluable<T>, Producer<T>, Compactable {
+public interface AcceleratedConditionalStatement<T extends MemWrapper> extends Producer<T>, Compactable {
 	Expression getCondition();
 
 	List<ArrayVariable<? extends MemWrapper>> getArguments();
@@ -37,9 +37,4 @@ public interface AcceleratedConditionalStatement<T extends MemWrapper> extends E
 
 	ArrayVariable<T> getTrueValue();
 	ArrayVariable<T> getFalseValue();
-
-	@Override
-	default Evaluable<T> get() {
-		return this;
-	}
 }

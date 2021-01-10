@@ -1,8 +1,24 @@
+/*
+ * Copyright 2021 Michael Murray
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
 package org.almostrealism.graph.mesh.test;
 
-import io.almostrealism.code.ArgumentMap;
-import io.almostrealism.code.DefaultScopeInputManager;
-import io.almostrealism.code.SupplierArgumentMap;
+import io.almostrealism.code.OperationAdapter;
+import io.almostrealism.relation.Evaluable;
+import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.algebra.Vector;
@@ -15,18 +31,17 @@ import org.almostrealism.space.MeshData;
 import org.almostrealism.graph.mesh.TriangleData;
 import org.almostrealism.graph.mesh.TriangleIntersectAt;
 import org.almostrealism.hardware.DynamicAcceleratedOperation;
-import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.bool.AcceleratedConjunctionScalar;
-import org.almostrealism.util.CodeFeatures;
 import org.almostrealism.hardware.DynamicProducerForMemWrapper;
 import org.almostrealism.hardware.PassThroughEvaluable;
+import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
-public class MeshIntersectionTest implements HardwareFeatures, CodeFeatures {
+public class MeshIntersectionTest implements TestFeatures {
 	private VectorProducer origin1 = vector(0.0, 1.0, 1.0);
 	private VectorProducer direction1 = vector(0.0, 0.0, -1.0);
 	private VectorProducer origin2 = vector( -0.1, -1.0, 1.0);
@@ -114,22 +129,18 @@ public class MeshIntersectionTest implements HardwareFeatures, CodeFeatures {
 							TriangleIntersectAt.q(abc(data1), s));
 		System.out.println("v = " + v.get().evaluate().getValue());
 
-		// h.compact();
 		DynamicAcceleratedOperation ho = (DynamicAcceleratedOperation) h.get();
 		System.out.println(ho.getFunctionDefinition());
 		Assert.assertEquals(1, ho.getArgsCount());
 
-		// f.compact();
 		DynamicAcceleratedOperation fo = (DynamicAcceleratedOperation) f.get();
 		System.out.println(fo.getFunctionDefinition());
 		Assert.assertEquals(1, fo.getArgsCount());
 
-		// u.compact();
 		DynamicAcceleratedOperation uo = (DynamicAcceleratedOperation) u.get();
 		System.out.println(uo.getFunctionDefinition());
 		Assert.assertEquals(1, uo.getArgsCount());
 
-		// v.compact();
 		DynamicAcceleratedOperation vo = (DynamicAcceleratedOperation) v.get();
 		System.out.println(vo.getFunctionDefinition());
 		Assert.assertEquals(1, vo.getArgsCount());
@@ -140,9 +151,9 @@ public class MeshIntersectionTest implements HardwareFeatures, CodeFeatures {
 				u.lessThan(1.0, true),
 				v.greaterThan(0.0, true),
 				u.add(v).lessThan(1.0, true));
-		acs.compile();
-		System.out.println(acs.getFunctionDefinition());
-		Assert.assertEquals(1, acs.getArgsCount());
+		Evaluable<Scalar> evs = acs.get();
+		((OperationAdapter) evs).compile();
+		if (enableArgumentCountAssertions) Assert.assertEquals(1, ((OperationAdapter) evs).getArgsCount());
 	}
 
 	@Test
@@ -186,22 +197,22 @@ public class MeshIntersectionTest implements HardwareFeatures, CodeFeatures {
 	public void intersectAtCompact1() {
 		TriangleIntersectAt intersect = intersection();
 		intersect.compile();
-		System.out.println(intersect.getFunctionDefinition());
 		evaluate(intersect, true);
 	}
 
 	protected void evaluate(TriangleIntersectAt intersect, boolean assertions) {
-		double distance = intersect.evaluate(new Object[] {
+		Evaluable<Scalar> ev = intersect.get();
+		((OperationAdapter) ev).compile();
+		double distance = ev.evaluate(new Object[] {
 				data1.get(0), origin1.get().evaluate(), direction1.get().evaluate() }).getValue();
 		System.out.println("distance = " + distance);
-		if (assertions) Assert.assertEquals(1.0, distance, Math.pow(10, -10));
+		if (assertions) assertEquals(1.0, distance);
 	}
 
 	@Test
 	public void intersectionKernel1() {
 		ScalarBank distances = new ScalarBank(1);
 		RayFromVectors ray = new RayFromVectors(origin1, direction1);
-		// ray.compact();
 		data1.evaluateIntersectionKernel(ray.get(), distances, new MemoryBank[0]);
 		System.out.println("distance = " + distances.get(0).getValue());
 		Assert.assertEquals(1.0, distances.get(0).getValue(), Math.pow(10, -10));
@@ -209,7 +220,7 @@ public class MeshIntersectionTest implements HardwareFeatures, CodeFeatures {
 
 	@Test
 	public void intersectAt2() {
-		double distance = intersection().evaluate(
+		double distance = intersection().get().evaluate(
 				data2.get(0), origin2.get().evaluate(), direction2.get().evaluate()).getValue();
 		System.out.println("distance = " + distance);
 		Assert.assertEquals(1.0, distance, Math.pow(10, -10));
@@ -219,7 +230,6 @@ public class MeshIntersectionTest implements HardwareFeatures, CodeFeatures {
 	public void intersectionKernel2() {
 		ScalarBank distances = new ScalarBank(1);
 		RayFromVectors ray = new RayFromVectors(origin2, direction2);
-		// ray.compact();
 		data2.evaluateIntersectionKernel(compileProducer(ray), distances, new MemoryBank[0]);
 		System.out.println("distance = " + distances.get(0).getValue());
 		Assert.assertEquals(1.0, distances.get(0).getValue(), Math.pow(10, -10));

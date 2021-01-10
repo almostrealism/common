@@ -17,6 +17,7 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.Computation;
+import io.almostrealism.code.ProducerComputation;
 
 import java.util.List;
 
@@ -42,6 +43,11 @@ public class AcceleratedComputationEvaluable<T extends MemWrapper> extends Accel
 	@Override
 	public void kernelEvaluate(MemoryBank destination, MemoryBank args[]) {
 		AcceleratedEvaluable.kernelEvaluate(this, destination, args, isKernel());
+	}
+
+	@Override
+	public ProducerComputation<T> getComputation() {
+		return (ProducerComputation<T>) super.getComputation();
 	}
 
 	@Override

@@ -19,12 +19,15 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.Scope;
+import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.expressions.Expression;
+import io.almostrealism.relation.Evaluable;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.IntFunction;
+import java.util.function.Supplier;
 
 public class AcceleratedPassThroughProducer<T extends MemWrapper>
 		extends DynamicAcceleratedProducerAdapter<T, T>
@@ -40,21 +43,15 @@ public class AcceleratedPassThroughProducer<T extends MemWrapper>
 		super(memLength, null);
 		this.argIndex = argIndex;
 		this.kernelIndex = kernelIndex;
-		compile(this);
 	}
 
 	@Override
-	public Scope compile(NameProvider p) {
-		ArrayVariable result = new ArrayVariable(this, "", null);
-		result.setSortHint(-1);
+	public void prepareScope(ScopeInputManager manager) {
+		super.prepareScope(manager);
 
 		List<ArrayVariable<? extends T>> args = new ArrayList<>();
-		args.add(result);
-		args.addAll(Arrays.asList(arguments(this)));
+		args.add(manager.argumentForInput(this).apply((Supplier) this));
 		setArguments(args);
-		initArgumentNames();
-
-		return null;
 	}
 
 	/**
@@ -91,7 +88,7 @@ public class AcceleratedPassThroughProducer<T extends MemWrapper>
 
 	@Override
 	public IntFunction<Expression<Double>> getValueFunction() {
-		return pos -> new Expression<>(Double.class, getArgumentValueName(1, pos, kernelIndex), getArgument(1));
+		return pos -> new Expression<>(Double.class, getArgumentValueName(0, pos, kernelIndex), getArgument(0));
 	}
 
 	@Override

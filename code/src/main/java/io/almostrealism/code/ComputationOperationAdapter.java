@@ -31,7 +31,7 @@ public abstract class ComputationOperationAdapter<I, O> extends OperationAdapter
 	}
 
 	@Override
-	public Scope compile(NameProvider p) {
+	public Scope compile() {
 		System.out.println("WARN: Attempting to compile a Computation, " +
 							"rather than an Evaluable container for one");
 		return null;
