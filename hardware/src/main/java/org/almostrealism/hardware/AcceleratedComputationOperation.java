@@ -36,7 +36,7 @@ import java.util.List;
 import java.util.Objects;
 
 public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperation<MemWrapper> implements NameProvider {
-	public static boolean enableRequiredScopes = false;
+	public static boolean enableRequiredScopes = true;
 
 	private Computation<T> computation;
 	private Scope<T> scope;

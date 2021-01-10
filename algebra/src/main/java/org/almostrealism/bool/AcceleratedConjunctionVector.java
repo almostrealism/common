@@ -18,7 +18,6 @@ package org.almostrealism.bool;
 
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorBank;
-import org.almostrealism.hardware.MemoryBank;
 import io.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
@@ -29,8 +28,8 @@ public class AcceleratedConjunctionVector extends AcceleratedConjunctionAdapter<
 		this(null, null);
 	}
 
-	public AcceleratedConjunctionVector(Supplier<Evaluable<? extends Vector>> trueValue,
-										Supplier<Evaluable<? extends Vector>> falseValue,
+	public AcceleratedConjunctionVector(Supplier<Evaluable<?>> trueValue,
+										Supplier<Evaluable<?>> falseValue,
 										AcceleratedConditionalStatement<Vector>... conjuncts) {
 		super(3, Vector::new, VectorBank::new, trueValue, falseValue, conjuncts);
 	}

@@ -19,6 +19,7 @@ package io.almostrealism.code;
 import io.almostrealism.code.expressions.Expression;
 import io.almostrealism.code.expressions.InstanceReference;
 
+import io.almostrealism.relation.DynamicProducer;
 import io.almostrealism.relation.Parent;
 import io.almostrealism.relation.Nameable;
 
@@ -103,8 +104,9 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 			});
 		}
 
-		sortArguments(args);
-		return args;
+		List<ArrayVariable<? extends A>> result = removeDuplicateArguments(args);
+		sortArguments(result);
+		return result;
 	}
 
 	public <A> List<ArrayVariable<? extends A>> getArguments() {
@@ -132,7 +134,8 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 	public void convertArgumentsToRequiredScopes() {
 		inputs = getArguments().stream()
 				.map(arg -> {
-					if (arg.getProducer() instanceof Computation) {
+					if (arg.getProducer() instanceof Computation
+							&& arg.getProducer() instanceof DynamicProducer == false) {
 						Scope s = ((Computation) arg.getProducer()).getScope();
 						required.add(s);
 						List<Expression> args = new ArrayList<>();

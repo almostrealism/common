@@ -18,7 +18,6 @@ package org.almostrealism.bool;
 
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
-import org.almostrealism.hardware.MemoryBank;
 
 import java.util.function.Supplier;
 

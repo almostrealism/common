@@ -114,13 +114,6 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures, Hardwa
 		cursors.setCursor(6);
 		cursors.setDelayCursor(7);
 
-		TemporalScalarFromScalars t = (TemporalScalarFromScalars) ((ArrayVariable) opr.getArguments().get(1)).getProducer();
-		ScalarFromPair s = (ScalarFromPair) t.getArguments().get(1).getProducer();
-		AcceleratedComputationEvaluable<Scalar> ev = (AcceleratedComputationEvaluable) s.get();
-		System.out.println(ev.getFunctionDefinition());
-		Assert.assertEquals(7.0, ev.evaluate().getValue(), Math.pow(10, -10));
-		Assert.assertEquals(7.0, t.get().evaluate().getTime(), Math.pow(10, -10));
-
 		opr.run();
 		Assert.assertEquals(7.0, series.get(series.getLength()).getTime(), Math.pow(10, -10));
 	}

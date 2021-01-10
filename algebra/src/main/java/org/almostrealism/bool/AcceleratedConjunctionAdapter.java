@@ -42,15 +42,15 @@ import java.util.stream.Stream;
 
 public abstract class AcceleratedConjunctionAdapter<T extends MemWrapper> extends AcceleratedConditionalStatementAdapter<T> {
 	private List<AcceleratedConditionalStatement<? extends T>> conjuncts;
-	private Supplier<Evaluable<? extends T>> trueValue, falseValue;
-	private ArrayVariable<T> trueVar, falseVar;
+	private Supplier<Evaluable<?>> trueValue, falseValue;
+	private ArrayVariable<?> trueVar, falseVar;
 
 	public AcceleratedConjunctionAdapter(int memLength,
-										 	Supplier<T> blankValue,
-										 	IntFunction<MemoryBank<T>> kernelDestination,
-										 	Supplier<Evaluable<? extends T>> trueValue,
-										 	Supplier<Evaluable<? extends T>> falseValue,
-										 	AcceleratedConditionalStatement<? extends T>... conjuncts) {
+										 Supplier<T> blankValue,
+										 IntFunction<MemoryBank<T>> kernelDestination,
+										 Supplier<Evaluable<?>> trueValue,
+										 Supplier<Evaluable<?>> falseValue,
+										 AcceleratedConditionalStatement<? extends T>... conjuncts) {
 		super(memLength, blankValue, kernelDestination);
 		this.trueValue = trueValue;
 		this.falseValue = falseValue;
@@ -79,11 +79,11 @@ public abstract class AcceleratedConjunctionAdapter<T extends MemWrapper> extend
 		args.add(getArguments(false).get(0));
 		args.addAll(getOperands());
 
-		this.trueVar = new ArrayVariable(this, getArgumentName(1), trueValue);
-		args.add(this.trueVar);
+		this.trueVar = manager.argumentForInput(this).apply(trueValue);
+		args.add((ArrayVariable<? extends MemWrapper>) this.trueVar);
 
-		this.falseVar = new ArrayVariable(this, getArgumentName(2), falseValue);
-		args.add(this.falseVar);
+		this.falseVar = manager.argumentForInput(this).apply(falseValue);
+		args.add((ArrayVariable<? extends MemWrapper>) this.falseVar);
 
 		setArguments(args);
 	}

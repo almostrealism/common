@@ -17,7 +17,6 @@
 package org.almostrealism.bool;
 
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorEvaluable;
 import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.hardware.CollectionUtils;
 
