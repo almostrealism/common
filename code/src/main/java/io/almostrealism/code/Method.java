@@ -34,8 +34,16 @@ public class Method<T> extends Expression<T> implements Nameable {
 	private String member, name;
 	private List<Expression<?>> arguments;
 
+	public Method(String name, List<Expression<?>> arguments) {
+		this((Class<T>) String.class, name, arguments);
+	}
+
 	public Method(Class<T> type, String name, List<Expression<?>> arguments) {
 		this(type, null, name, arguments);
+	}
+
+	public Method(String member, String name, List<Expression<?>> arguments) {
+		this((Class<T>) String.class, member, name, arguments);
 	}
 
 	public Method(Class<T> type, String member, String name, List<Expression<?>> arguments) {
@@ -46,8 +54,16 @@ public class Method<T> extends Expression<T> implements Nameable {
 		setExpression(text());
 	}
 
+	public Method(String name, Expression<?>... v) {
+		this((Class<T>) String.class, name, v);
+	}
+
 	public Method(Class<T> type, String name, Expression<?>... v) {
 		this(type, null, name, v);
+	}
+
+	public Method(String member, String name, Expression<?>... v) {
+		this((Class<T>) String.class, member, name, v);
 	}
 
 	public Method(Class<T> type, String member, String name, Expression<?>... v) {

@@ -140,7 +140,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 						required.add(s);
 						List<Expression> args = new ArrayList<>();
 						s.getArguments().forEach(a -> args.add(new InstanceReference((Variable) a)));
-						methods.add(new Method(null, s.getName(), args));
+						methods.add(new Method((Class) null, s.getName(), args));
 						return s;
 					} else {
 						return arg;

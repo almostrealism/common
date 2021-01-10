@@ -45,7 +45,7 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 	public static final boolean enableDestinationConsolidation = true;
 	public static final boolean enableArgumentMapping = true;
 	public static final boolean enableCompaction = true;
-	public static final boolean enableInputLogging = true;
+	public static final boolean enableInputLogging = false;
 
 	private static Map<String, ThreadLocal<HardwareOperator>> operators = new HashMap<>();
 
