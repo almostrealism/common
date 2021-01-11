@@ -394,7 +394,8 @@ public class TransformMatrix extends MemWrapperAdapter implements TripleFunction
 
 	public static Producer<TransformMatrix> blank() {
 		return new DynamicProducerForMemWrapper<>(args ->
-				new TransformMatrix(false, null, 0));
+				new TransformMatrix(false, null, 0),
+				TransformMatrixBank::new);
 	}
 
 	/**

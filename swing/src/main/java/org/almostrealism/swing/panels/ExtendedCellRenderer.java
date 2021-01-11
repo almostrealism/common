@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,7 +29,7 @@ import org.almostrealism.color.RGB;
 import org.almostrealism.texture.GraphicsConverter;
 
 /**
- * An ExtendedCellRenderer object can be used to render values in a table
+ * An {@link ExtendedCellRenderer} can be used to render values in a table
  * including instances of RGB and Class.
  */
 public class ExtendedCellRenderer extends DefaultTableCellRenderer {

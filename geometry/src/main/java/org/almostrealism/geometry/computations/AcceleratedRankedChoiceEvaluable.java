@@ -48,7 +48,7 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemWrapper> extends Dyna
 	public AcceleratedRankedChoiceEvaluable(int memLength, Supplier<T> blank, IntFunction<MemoryBank<T>> forKernel,
 											List<ProducerWithRank<T, Scalar>> values, Supplier<Evaluable<? extends T>> defaultValue,
 											double e, Supplier<T> onNull) {
-		super(blank, generateArgs(values, defaultValue));
+		super(blank, forKernel, generateArgs(values, defaultValue));
 		this.memLength = memLength;
 		this.forKernel = forKernel;
 		this.valueCount = values.size();

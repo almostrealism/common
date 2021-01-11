@@ -175,7 +175,7 @@ public class Pair extends MemWrapperAdapter {
 	}
 
 	public static Producer<Pair> empty() {
-		return new DynamicProducerForMemWrapper<>(args -> new Pair());
+		return new DynamicProducerForMemWrapper<>(Pair::new, PairBank::new);
 	}
 
 	// TODO  This could be faster by moving directly between cl_mems

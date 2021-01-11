@@ -27,7 +27,9 @@ import org.almostrealism.hardware.MemWrapperAdapter;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.DynamicProducer;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.hardware.MemoryBank;
 
+import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
 /**
@@ -67,7 +69,7 @@ public class Ray extends MemWrapperAdapter implements RayFeatures, Cloneable {
 		this();
 		this.setMem(0, source, 0, 6);
 	}
-	
+
 	/**
 	 * Sets the origin of this {@link Ray} to the specified origin {@link Vector}.
 	 */
@@ -203,6 +205,8 @@ public class Ray extends MemWrapperAdapter implements RayFeatures, Cloneable {
 	}
 
 	public static Producer<Ray> blank() {
-		return new DynamicProducerForMemWrapper<>(args -> new Ray());
+		Supplier<Ray> r = Ray::new;
+		IntFunction<MemoryBank<Ray>> b = RayBank::new;
+		return new DynamicProducerForMemWrapper<>(r, b);
 	}
 }

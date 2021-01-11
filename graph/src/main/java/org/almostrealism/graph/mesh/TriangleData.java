@@ -43,6 +43,6 @@ public class TriangleData extends VectorBank {
 	public Vector getNormal() { return get(3); }
 
 	public static Producer<TriangleData> blank() {
-		return new DynamicProducerForMemWrapper<>(args -> new TriangleData());
+		return new DynamicProducerForMemWrapper<>(TriangleData::new, TriangleDataBank::new);
 	}
 }

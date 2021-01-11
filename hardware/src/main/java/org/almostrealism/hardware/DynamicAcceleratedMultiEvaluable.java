@@ -22,6 +22,7 @@ import io.almostrealism.code.Variable;
 import io.almostrealism.relation.Evaluable;
 
 import java.util.List;
+import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
@@ -31,21 +32,29 @@ public abstract class DynamicAcceleratedMultiEvaluable<I extends MemWrapper, O e
 		implements KernelizedEvaluable<O>, MultiExpression<Double> {
 	private int memLength;
 
-	public DynamicAcceleratedMultiEvaluable(int memLength, Supplier<O> destination, Supplier<Evaluable<? extends I>> inputArgs[], Object additionalArguments[]) {
-		this(memLength, destination, AcceleratedEvaluable.producers(inputArgs, additionalArguments));
+	public DynamicAcceleratedMultiEvaluable(int memLength, Supplier<O> destination,
+											IntFunction<MemoryBank<O>> kernelDestination,
+											Supplier<Evaluable<? extends I>> inputArgs[],
+											Object additionalArguments[]) {
+		this(memLength, destination, kernelDestination, AcceleratedEvaluable.producers(inputArgs, additionalArguments));
 	}
 
-	public DynamicAcceleratedMultiEvaluable(int memLength, Supplier<O> destination, Supplier<Evaluable<? extends I>>... inputArgs) {
-		this(memLength, true, destination, inputArgs);
+	public DynamicAcceleratedMultiEvaluable(int memLength, Supplier<O> destination,
+											IntFunction<MemoryBank<O>> kernelDestination,
+											Supplier<Evaluable<? extends I>>... inputArgs) {
+		this(memLength, true, destination, kernelDestination, inputArgs);
 	}
 
 	public DynamicAcceleratedMultiEvaluable(int memLength, boolean kernel, Supplier<O> destination,
+											IntFunction<MemoryBank<O>> kernelDestination,
 											Supplier<Evaluable<?>> inputArgs[], Object additionalArguments[]) {
-		this(memLength, kernel, destination, AcceleratedEvaluable.producers(inputArgs, additionalArguments));
+		this(memLength, kernel, destination, kernelDestination, AcceleratedEvaluable.producers(inputArgs, additionalArguments));
 	}
 
-	public DynamicAcceleratedMultiEvaluable(int memLength, boolean kernel, Supplier<O> destination, Supplier<Evaluable<? extends I>>... inputArgs) {
-		super(kernel, destination, inputArgs);
+	public DynamicAcceleratedMultiEvaluable(int memLength, boolean kernel, Supplier<O> destination,
+											IntFunction<MemoryBank<O>> kernelDestination,
+											Supplier<Evaluable<? extends I>>... inputArgs) {
+		super(kernel, destination, kernelDestination, inputArgs);
 		this.memLength = memLength;
 	}
 

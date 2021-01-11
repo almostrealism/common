@@ -49,6 +49,6 @@ public class TemporalScalar extends Pair {
 	}
 
 	public static Producer<TemporalScalar> blank() {
-		return new DynamicProducerForMemWrapper<>(args -> new TemporalScalar());
+		return new DynamicProducerForMemWrapper<>(TemporalScalar::new, TemporalScalarBank::new);
 	}
 }

@@ -23,6 +23,10 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.hardware.MemWrapperAdapter;
 import org.almostrealism.hardware.HardwareOperator;
+import org.almostrealism.hardware.MemoryBank;
+
+import java.util.function.IntFunction;
+import java.util.function.Supplier;
 
 /**
  * A {@link Vector} represents a 3d vector. It stores three coordinates, x, y, z
@@ -435,7 +439,9 @@ public class Vector extends MemWrapperAdapter implements Triple, VectorFeatures,
 	}
 
 	public static Producer<Vector> blank() {
-		return new DynamicProducerForMemWrapper<>(args -> new Vector());
+		Supplier<Vector> s = Vector::new;
+		IntFunction<MemoryBank<Vector>> b = VectorBank::new;
+		return new DynamicProducerForMemWrapper<>(s, b);
 	}
 
 	/**

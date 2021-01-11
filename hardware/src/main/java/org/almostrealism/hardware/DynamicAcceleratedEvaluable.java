@@ -22,6 +22,7 @@ import io.almostrealism.relation.Evaluable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
+import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
 public abstract class DynamicAcceleratedEvaluable<I extends MemWrapper, O extends MemWrapper>
@@ -30,26 +31,31 @@ public abstract class DynamicAcceleratedEvaluable<I extends MemWrapper, O extend
 	private Supplier<O> destination;
 
 	public DynamicAcceleratedEvaluable(Supplier<O> destination,
+									   IntFunction<MemoryBank<O>> kernelDestination,
 									   Supplier<Evaluable<? extends I>> inputArgs[],
 									   Object additionalArguments[]) {
-		this(destination, AcceleratedEvaluable.producers(inputArgs, additionalArguments));
+		this(destination, kernelDestination, AcceleratedEvaluable.producers(inputArgs, additionalArguments));
 	}
 
-	public DynamicAcceleratedEvaluable(Supplier<O> destination, Supplier... inputArgs) {
-		this(true, destination, inputArgs);
+	public DynamicAcceleratedEvaluable(Supplier<O> destination,
+									   IntFunction<MemoryBank<O>> kernelDestination,
+									   Supplier... inputArgs) {
+		this(true, destination, kernelDestination, inputArgs);
 	}
 
 	public DynamicAcceleratedEvaluable(boolean kernel, Supplier<O> destination,
+									   IntFunction<MemoryBank<O>> kernelDestination,
 									   Supplier<Evaluable<? extends I>> inputArgs[],
 									   Object additionalArguments[]) {
-		this(kernel, destination, AcceleratedEvaluable.producers(inputArgs, additionalArguments));
+		this(kernel, destination, kernelDestination, AcceleratedEvaluable.producers(inputArgs, additionalArguments));
 	}
 
 	public DynamicAcceleratedEvaluable(boolean kernel, Supplier<O> destination,
+									   IntFunction<MemoryBank<O>> kernelDestination,
 									   Supplier<Evaluable<? extends I>>... inputArgs) {
 		super(kernel, new Supplier[0]);
 		setInputs(AcceleratedEvaluable.includeResult(new DynamicProducerForMemWrapper(args ->
-				getDestination() == null ? destination.get() : getDestination().get()), inputArgs));
+				getDestination() == null ? destination.get() : getDestination().get(), kernelDestination), inputArgs));
 		init();
 	}
 

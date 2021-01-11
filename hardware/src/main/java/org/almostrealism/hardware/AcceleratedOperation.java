@@ -154,7 +154,8 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 			if (allArgs[i] == null) return new Object[] { handleNull(i) };
 		}
 
-		String before = Arrays.toString(allArgs);
+		String before = null;
+		if (enableInputLogging) before = Arrays.toString(allArgs);
 
 		op.accept(allArgs);
 
