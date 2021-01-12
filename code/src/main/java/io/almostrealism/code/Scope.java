@@ -90,23 +90,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 	public List<Scope> getRequiredScopes() { return required; }
 
 	public <A> List<ArrayVariable<? extends A>> getFinalArguments() {
-		List<ArrayVariable<? extends A>> args = new ArrayList<>();
-
-		if (inputs == null) {
-			args.addAll(getArguments());
-		} else {
-			inputs.forEach(in -> {
-				if (in instanceof Variable) {
-					args.add((ArrayVariable<? extends A>) in);
-				} else {
-					args.addAll(((Scope) in).getArguments());
-				}
-			});
-		}
-
-		List<ArrayVariable<? extends A>> result = removeDuplicateArguments(args);
-		sortArguments(result);
-		return result;
+		return getArguments();
 	}
 
 	public <A> List<ArrayVariable<? extends A>> getArguments() {
@@ -119,6 +103,10 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 				.filter(v -> v instanceof InstanceReference)
 				.map(v -> ((InstanceReference<?>) v).getReferent())
 				.forEach(v -> args.add((ArrayVariable) v));
+		getRequiredScopes().stream()
+				.map(Scope::getArguments)
+				.flatMap(List::stream)
+				.forEach(arg -> args.add((ArrayVariable<A>) arg));
 		this.stream()
 				.map(Scope::getArguments)
 				.flatMap(List::stream)
