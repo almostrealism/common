@@ -17,6 +17,7 @@
 package org.almostrealism.time.computations;
 
 import io.almostrealism.code.ExplicitScope;
+import io.almostrealism.code.HybridScope;
 import io.almostrealism.code.Scope;
 import org.almostrealism.hardware.DynamicAcceleratedOperationAdapter;
 import io.almostrealism.code.NameProvider;
@@ -33,7 +34,7 @@ public class AcceleratedTimeSeriesPurge extends DynamicAcceleratedOperationAdapt
 
 	@Override
 	public Scope<Void> getScope() {
-		ExplicitScope<Void> scope = new ExplicitScope<>(this);
+		HybridScope<Void> scope = new HybridScope<>(this);
 
 		String bank0 = getArgument(0).get(0).getExpression();
 		String bank1 = getArgument(0).get(1).getExpression();

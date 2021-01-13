@@ -136,7 +136,8 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 
 	@Override
 	public void postCompile() {
-		setArguments(scope.getFinalArguments());
+		setInputs(scope.getInputs());
+		setArguments(scope.getArguments());
 		super.postCompile();
 	}
 

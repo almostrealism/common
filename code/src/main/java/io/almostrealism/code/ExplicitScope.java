@@ -18,6 +18,7 @@ package io.almostrealism.code;
 
 import java.util.List;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public class ExplicitScope<T> extends Scope<T> {
@@ -41,8 +42,10 @@ public class ExplicitScope<T> extends Scope<T> {
 
 	public void setArguments(List<ArrayVariable<?>> arguments) { this.arguments = arguments; }
 
-	public List<ArrayVariable<?>> getArguments() {
-		return arguments == null ? super.getArguments() : arguments.stream().map(ArrayVariable::getRootDelegate).collect(Collectors.toList());
+	@Override
+	protected <T> List<T> arguments(Function<ArrayVariable<?>, T> mapper) {
+		return arguments == null ? super.arguments(mapper) :
+				arguments.stream().map(ArrayVariable::getRootDelegate).map(mapper).collect(Collectors.toList());
 	}
 
 	public Consumer<String> code() { return code::append; }

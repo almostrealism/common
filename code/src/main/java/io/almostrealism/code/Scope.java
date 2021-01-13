@@ -20,6 +20,7 @@ import io.almostrealism.code.expressions.Expression;
 import io.almostrealism.code.expressions.InstanceReference;
 
 import io.almostrealism.relation.DynamicProducer;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Parent;
 import io.almostrealism.relation.Nameable;
 
@@ -30,6 +31,9 @@ import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 /**
@@ -43,7 +47,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 	private List<Method> methods;
 	private List<Scope> required;
 
-	private List inputs;
+	private List<ArrayVariable<?>> arguments;
 
 	/**
 	 * Creates an empty {@link Scope}.
@@ -89,52 +93,79 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 	 */
 	public List<Scope> getRequiredScopes() { return required; }
 
-	public <A> List<ArrayVariable<? extends A>> getFinalArguments() {
-		return getArguments();
+	public <T> List<Supplier<Evaluable<? extends T>>> getInputs() {
+		return arguments(arg -> arg.getProducer());
 	}
 
 	public <A> List<ArrayVariable<? extends A>> getArguments() {
-		List<ArrayVariable<? extends A>> args = new ArrayList<>();
-
-		extractArgumentDependencies(variables).forEach(args::add);
-		methods.stream()
-				.map(Method::getArguments)
-				.flatMap(List::stream)
-				.filter(v -> v instanceof InstanceReference)
-				.map(v -> ((InstanceReference<?>) v).getReferent())
-				.forEach(v -> args.add((ArrayVariable) v));
-		getRequiredScopes().stream()
-				.map(Scope::getArguments)
-				.flatMap(List::stream)
-				.forEach(arg -> args.add((ArrayVariable<A>) arg));
-		this.stream()
-				.map(Scope::getArguments)
-				.flatMap(List::stream)
-				.forEach(arg -> args.add((ArrayVariable<A>) arg));
-
-		List<ArrayVariable<? extends A>> result = args.stream()
-				.map(ArrayVariable::getRootDelegate).collect(Collectors.toList());
-		result = removeDuplicateArguments(result);
+		List<ArrayVariable<? extends A>> result = arguments(arg -> (ArrayVariable<? extends A>) arg);
 		sortArguments(result);
 		return result;
 	}
 
+	protected List<ArrayVariable<?>> arguments() { return arguments(arg -> arg); }
+
+	protected <T> List<T> arguments(Function<ArrayVariable<?>, T> mapper) {
+		List<ArrayVariable<?>> args = new ArrayList<>();
+
+		if (arguments == null) {
+			extractArgumentDependencies(variables).stream().forEach(args::add);
+			sortArguments(args);
+
+			this.stream()
+					.map(Scope::arguments)
+					.flatMap(List::stream)
+					.forEach(args::add);
+
+			methods.stream()
+					.map(Method::getArguments)
+					.flatMap(List::stream)
+					.filter(v -> v instanceof InstanceReference)
+					.map(v -> ((InstanceReference<?>) v).getReferent())
+					.forEach(v -> args.add((ArrayVariable<?>) v));
+		} else {
+			args.addAll(arguments);
+		}
+
+		getRequiredScopes().stream()
+				.map(Scope::arguments)
+				.flatMap(List::stream)
+				.forEach(v -> args.add((ArrayVariable<?>) v));
+
+		List<ArrayVariable<?>> result = args.stream()
+				.map(ArrayVariable::getRootDelegate)
+				.collect(Collectors.toList());
+		result = removeDuplicateArguments(result);
+		return result.stream().map(mapper).collect(Collectors.toList());
+	}
+
 	public void convertArgumentsToRequiredScopes() {
-		inputs = getArguments().stream()
+		if (this.arguments != null) {
+			return;
+		}
+
+		this.arguments = getArguments()
+				.stream()
 				.map(arg -> {
-					if (arg.getProducer() instanceof Computation
-							&& arg.getProducer() instanceof DynamicProducer == false) {
-						Scope s = ((Computation) arg.getProducer()).getScope();
-						required.add(s);
-						List<Expression> args = new ArrayList<>();
-						s.getArguments().forEach(a -> args.add(new InstanceReference((Variable) a)));
-						methods.add(new Method((Class) null, s.getName(), args));
-						return s;
-					} else {
+					if (arg.getProducer() instanceof Computation == false
+							|| arg.getProducer() instanceof DynamicProducer
+							|| arg.getProducer() instanceof ProducerArgumentReference) {
 						return arg;
 					}
-				}).collect(Collectors.toList());
 
+					if (arg.getProducer().getClass().getName().contains("TimeSeriesAdd")) {
+						System.out.println("!");
+					}
+					Scope s = ((Computation) arg.getProducer()).getScope();
+					s.convertArgumentsToRequiredScopes();
+					required.add(s);
+					List<Expression> args = new ArrayList<>();
+					s.getArguments().forEach(a -> args.add(new InstanceReference((Variable) a)));
+					Method m = new Method((Class) null, s.getName(), args);
+					methods.add(m);
+					// System.out.println("Scope: required - " + describeMethod(m));
+					return null;
+				}).filter(Objects::nonNull).collect(Collectors.toList());
 	}
 
 	/**
@@ -200,5 +231,48 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 		}
 
 		return args;
+	}
+
+	private String describeMethod(Method method) {
+		StringBuffer buf = new StringBuffer();
+		buf.append(method.getName());
+		buf.append("(");
+		renderParameters(method.getArguments(), buf::append);
+		buf.append(");");
+		return buf.toString();
+	}
+
+	private void renderParameters(List<Expression> parameters, Consumer<String> out) {
+		List<ArrayVariable<?>> arguments = parameters.stream()
+				.map(exp -> (InstanceReference) exp)
+				.map(InstanceReference::getReferent)
+				.map(v -> (ArrayVariable<?>) v)
+				.collect(Collectors.toList());
+
+		if (!arguments.isEmpty()) {
+			renderArguments(arguments, out, false, false, null, "", "");
+		}
+	}
+
+	private void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out, boolean enableType, boolean enableAnnotation, Class replaceType, String prefix, String suffix) {
+		for (int i = 0; i < arguments.size(); i++) {
+			if (enableAnnotation && arguments.get(i).getAnnotation() != null) {
+				out.accept(arguments.get(i).getAnnotation());
+				out.accept(" ");
+			}
+
+			if (enableType) {
+				out.accept(arguments.get(i).getType().getSimpleName());
+				out.accept(" ");
+			}
+
+			out.accept(prefix);
+			out.accept(arguments.get(i).getName());
+			out.accept(suffix);
+
+			if (i < arguments.size() - 1) {
+				out.accept(", ");
+			}
+		}
 	}
 }

@@ -118,23 +118,6 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures, Hardwa
 		Assert.assertEquals(7.0, series.get(series.getLength()).getTime(), Math.pow(10, -10));
 	}
 
-	@Test
-	public void addTestWithScopeExpansion() {
-		init();
-
-		Supplier<Runnable> r = add();
-		AcceleratedComputationOperation opr = (AcceleratedComputationOperation) r.get();
-		opr.compile();
-		System.out.println(opr.getFunctionDefinition());
-
-		opr.run();
-		cursors.setCursor(6);
-		cursors.setDelayCursor(7);
-		opr.run();
-
-		Assert.assertEquals(7.0, series.get(series.getLength()).getTime(), Math.pow(10, -10));
-	}
-
 	public void runAllOperations(int index) {
 		Supplier<Runnable> r = add();
 		Supplier<Runnable> a = assign();

@@ -31,7 +31,15 @@ public class AcceleratedComputationEvaluable<T extends MemWrapper> extends Accel
 	}
 
 	@Override
-	public T evaluate(Object... args) { return (T) apply(args)[0]; }
+	public T evaluate(Object... args) {
+		if (getArguments() == null) {
+			System.out.println("WARN: " + getName() + " was not compiled ahead of time");
+			compile();
+		}
+
+		int outputArgIndex = getArguments().indexOf(getArgument(0));
+		return (T) apply(args)[outputArgIndex];
+	}
 
 	/**
 	 * If {@link #isKernel()} returns true, this method will pass the

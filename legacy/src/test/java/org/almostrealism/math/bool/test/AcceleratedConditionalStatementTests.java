@@ -8,6 +8,7 @@ import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.bool.LessThanScalar;
 import org.almostrealism.geometry.Ray;
+import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.DynamicAcceleratedOperation;
 import org.almostrealism.bool.AcceleratedConditionalStatementScalar;
 import org.almostrealism.bool.LessThan;
@@ -22,21 +23,30 @@ import java.util.stream.IntStream;
 
 public class AcceleratedConditionalStatementTests implements TestFeatures {
 	@Test
-	public void compact() {
-		ScalarProducer a = scalar(Math.random());
-		ScalarProducer b = scalar(Math.random());
+	public void randomLessThan() {
+		// TODO  This test fails because sort hint is set equivalently for
+		//       all potential "outputs", even those that are associated
+		//       with required scopes. Either the sort hint needs to be made
+		//       higher with each level of nesting, or a new way to sort
+		//       arguments needs to be introduced
+		IntStream.range(1, 6).forEach(i -> {
+			ScalarProducer a = scalar(i * Math.random());
+			ScalarProducer b = scalar(i * Math.random());
 
-		LessThan lt = new LessThanScalar(a, b, a, b, false);
-		lt.compile();
+			AcceleratedComputationEvaluable<Scalar> lt =
+					(AcceleratedComputationEvaluable<Scalar>) new LessThanScalar(a, b, a, b, false).get();
+			lt.compile();
+			System.out.println(lt.getFunctionDefinition());
 
-		Scalar s = (Scalar) lt.get().evaluate();
-		System.out.println(s.getValue());
+			Scalar s = lt.evaluate();
+			System.out.println("lessThan = " + s.getValue());
 
-		if (a.get().evaluate().getValue() < b.get().evaluate().getValue()) {
-			Assert.assertEquals(a.get().evaluate().getValue(), s.getValue(), Math.pow(10, -10));
-		} else {
-			Assert.assertEquals(b.get().evaluate().getValue(), s.getValue(), Math.pow(10, -10));
-		}
+			if (a.get().evaluate().getValue() < b.get().evaluate().getValue()) {
+				assertEquals(a.get().evaluate().getValue(), s.getValue());
+			} else {
+				assertEquals(b.get().evaluate().getValue(), s.getValue());
+			}
+		});
 	}
 
 	protected LessThan<Scalar> lessThan() {

@@ -17,19 +17,17 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.ArgumentMap;
-import io.almostrealism.code.ArgumentProvider;
 import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.DefaultScopeInputManager;
-import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.OperationAdapter;
+import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.code.SupplierArgumentMap;
 import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Named;
 import org.jocl.CLException;
 
 import java.util.Arrays;

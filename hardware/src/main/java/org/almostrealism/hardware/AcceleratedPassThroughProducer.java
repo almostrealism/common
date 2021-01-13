@@ -17,14 +17,11 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.ArrayVariable;
-import io.almostrealism.code.NameProvider;
-import io.almostrealism.code.Scope;
+import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.expressions.Expression;
-import io.almostrealism.relation.Evaluable;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;

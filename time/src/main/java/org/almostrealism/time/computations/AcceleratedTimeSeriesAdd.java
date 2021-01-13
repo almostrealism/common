@@ -16,11 +16,9 @@
 
 package org.almostrealism.time.computations;
 
-import io.almostrealism.code.ExplicitScope;
+import io.almostrealism.code.HybridScope;
 import io.almostrealism.code.Scope;
-import io.almostrealism.code.ScopeInputManager;
 import org.almostrealism.hardware.DynamicAcceleratedOperationAdapter;
-import io.almostrealism.code.NameProvider;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.time.TemporalScalar;
@@ -35,7 +33,7 @@ public class AcceleratedTimeSeriesAdd extends DynamicAcceleratedOperationAdapter
 
 	@Override
 	public Scope<Void> getScope() {
-		ExplicitScope<Void> scope = new ExplicitScope<>(this);
+		HybridScope<Void> scope = new HybridScope<>(this);
 
 		String bank1 = getArgument(0).get(1).getExpression();
 		String banklast0 = getArgument(0).get("2 * (int)" + bank1).getExpression();

@@ -36,10 +36,16 @@ public class OpenCLPrintWriter extends CPrintWriter {
 
 	@Override
 	public void println(Method method) {
-		p.print(method.getName());
-		p.print("(");
-		renderParameters(method.getArguments(), p::print);
-		p.println(");");
+		p.println(renderMethod(method));
+	}
+
+	public String renderMethod(Method method) {
+		StringBuffer buf = new StringBuffer();
+		buf.append(method.getName());
+		buf.append("(");
+		renderParameters(method.getArguments(), buf::append);
+		buf.append(");");
+		return buf.toString();
 	}
 
 	protected void renderParameters(List<Expression> parameters, Consumer<String> out) {

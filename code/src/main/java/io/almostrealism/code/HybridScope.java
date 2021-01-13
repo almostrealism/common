@@ -19,6 +19,8 @@ package io.almostrealism.code;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 public class HybridScope<T> extends Scope<T> {
 	private ExplicitScope<T> explicit;
@@ -43,11 +45,10 @@ public class HybridScope<T> extends Scope<T> {
 	public Consumer<String> code() { return explicit.code(); }
 
 	@Override
-	public List<ArrayVariable<?>> getArguments() {
+	protected <T> List<T> arguments(Function<ArrayVariable<?>, T> mapper) {
 		List<ArrayVariable<?>> args = new ArrayList<>();
-		args.addAll(super.getArguments());
-		args.addAll(explicit.getArguments());
-		Scope.sortArguments(args);
-		return removeDuplicateArguments(args);
+		args.addAll(explicit.arguments(arg -> arg));
+		args.addAll(super.arguments(arg -> arg));
+		return removeDuplicateArguments(args).stream().map(mapper).collect(Collectors.toList());
 	}
 }

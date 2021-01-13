@@ -1,4 +1,4 @@
-package org.almostrealism.hardware;
+package io.almostrealism.code;
 
 public interface ProducerArgumentReference {
 	int getReferencedArgumentIndex();

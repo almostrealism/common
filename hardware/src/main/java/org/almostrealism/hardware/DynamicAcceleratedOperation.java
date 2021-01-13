@@ -115,5 +115,7 @@ public abstract class DynamicAcceleratedOperation<T extends MemWrapper> extends 
 	}
 
 	@Override
-	public ArrayVariable getArgument(int index) { return getArguments().get(index); }
+	public ArrayVariable getArgument(int index) {
+		return getInputs() == null ? getArguments().get(index) : getArgumentForInput(getInputs().get(index));
+	}
 }

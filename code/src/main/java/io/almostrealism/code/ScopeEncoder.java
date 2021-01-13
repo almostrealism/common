@@ -41,7 +41,7 @@ public class ScopeEncoder implements Function<Scope, String>, PrintWriter {
 				.filter(Objects::nonNull)
 				.forEach(result::append);
 
-		output.beginScope(scope.getName(), scope.getFinalArguments());
+		output.beginScope(scope.getName(), scope.getArguments());
 		scope.write(output);
 		output.endScope();
 

@@ -129,7 +129,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 			points.setP1(p1);
 			points.setP2(p2);
 			points.setP3(p3);
-			this.data = dataProducer.evaluate(new Object[] { points });
+			this.data = dataProducer.evaluate(points);
 		} else {
 			this.p1 = p1;
 			this.p2 = p2;
