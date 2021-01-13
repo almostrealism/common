@@ -40,13 +40,13 @@ import java.util.function.Supplier;
  */
 public interface VectorFeatures {
 	static VectorProducer of(Vector value) {
-		return new AcceleratedStaticVectorComputation(value, Vector.blank());
+		return new AcceleratedStaticVectorComputation(value);
 	}
 
 	default VectorProducer v(Vector value) { return value(value); }
 
 	default VectorProducer value(Vector value) {
-		return new AcceleratedStaticVectorComputation(value, Vector.blank());
+		return new AcceleratedStaticVectorComputation(value);
 	}
 
 	default VectorProducer vector(double x, double y, double z) { return value(new Vector(x, y, z)); }

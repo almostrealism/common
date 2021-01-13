@@ -35,7 +35,7 @@ public class TriangleDataFromVectors extends DynamicAcceleratedProducerAdapter<V
 
 	public TriangleDataFromVectors(Supplier<Evaluable<? extends Vector>> abc, Supplier<Evaluable<? extends Vector>> def,
 								   Supplier<Evaluable<? extends Vector>> jkl, Supplier<Evaluable<? extends Vector>> normal) {
-		super(12, TriangleData.blank(), abc, def, jkl, normal);
+		super(12, TriangleData.blank(), TriangleDataBank::new, abc, def, jkl, normal);
 	}
 
 	@Override

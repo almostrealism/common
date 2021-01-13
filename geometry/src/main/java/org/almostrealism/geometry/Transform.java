@@ -19,6 +19,7 @@ package org.almostrealism.geometry;
 import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.expressions.Expression;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.algebra.VectorBank;
 import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.hardware.AcceleratedEvaluable;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
@@ -36,7 +37,7 @@ public class Transform extends DynamicAcceleratedProducerAdapter<Vector, Vector>
 	private Expression<Double> value[];
 
 	public Transform(TransformMatrix t, Supplier<Evaluable<? extends Vector>> v, boolean includeTranslation) {
-		super(3, Vector.blank(), new Supplier[] { v }, new Object[] { t });
+		super(3, Vector.blank(), VectorBank::new, new Supplier[] { v }, new Object[] { t });
 		this.includeTranslation = includeTranslation;
 	}
 

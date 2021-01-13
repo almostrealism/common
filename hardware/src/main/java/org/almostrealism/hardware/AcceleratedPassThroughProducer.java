@@ -37,7 +37,7 @@ public class AcceleratedPassThroughProducer<T extends MemWrapper>
 	}
 
 	public AcceleratedPassThroughProducer(int memLength, int argIndex, int kernelIndex) {
-		super(memLength, null);
+		super(memLength, null, null);
 		this.argIndex = argIndex;
 		this.kernelIndex = kernelIndex;
 	}

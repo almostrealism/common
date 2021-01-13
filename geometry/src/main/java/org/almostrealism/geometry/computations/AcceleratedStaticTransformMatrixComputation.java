@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,15 +16,13 @@
 
 package org.almostrealism.geometry.computations;
 
-import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.computations.AcceleratedStaticComputationAdapter;
 import org.almostrealism.geometry.TransformMatrix;
+import org.almostrealism.geometry.TransformMatrixBank;
 import org.almostrealism.geometry.TransformMatrixProducer;
 
-import java.util.function.Supplier;
-
 public class AcceleratedStaticTransformMatrixComputation extends AcceleratedStaticComputationAdapter<TransformMatrix> implements TransformMatrixProducer {
-	public AcceleratedStaticTransformMatrixComputation(TransformMatrix value, Supplier<Evaluable<? extends TransformMatrix>> output) {
-		super(value, output);
+	public AcceleratedStaticTransformMatrixComputation(TransformMatrix value) {
+		super(value, TransformMatrix.blank(), TransformMatrixBank::new);
 	}
 }

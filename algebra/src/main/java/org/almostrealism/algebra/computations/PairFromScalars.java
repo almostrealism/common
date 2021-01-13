@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package org.almostrealism.algebra.computations;
 
 import io.almostrealism.code.expressions.Expression;
 import org.almostrealism.algebra.Pair;
+import org.almostrealism.algebra.PairBank;
 import org.almostrealism.algebra.PairProducer;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
@@ -30,7 +31,7 @@ public class PairFromScalars extends DynamicAcceleratedProducerAdapter<Scalar, P
 	private Expression<Double> value[];
 
 	public PairFromScalars(Supplier<Evaluable<? extends Scalar>> x, Supplier<Evaluable<? extends Scalar>> y) {
-		super(2, Pair.empty(), x, y);
+		super(2, Pair.empty(), PairBank::new, x, y);
 	}
 
 	@Override

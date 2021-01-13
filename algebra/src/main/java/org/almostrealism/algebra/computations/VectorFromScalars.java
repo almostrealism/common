@@ -19,6 +19,7 @@ package org.almostrealism.algebra.computations;
 import io.almostrealism.code.expressions.Expression;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.algebra.VectorBank;
 import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import io.almostrealism.relation.Evaluable;
@@ -30,7 +31,7 @@ public class VectorFromScalars extends DynamicAcceleratedProducerAdapter<Scalar,
 	private Expression<Double> value[];
 
 	public VectorFromScalars(Supplier<Evaluable<? extends Scalar>> x, Supplier<Evaluable<? extends Scalar>> y, Supplier<Evaluable<? extends Scalar>> z) {
-		super(3, Vector.blank(), x, y, z);
+		super(3, Vector.blank(), VectorBank::new, x, y, z);
 	}
 
 	@Override

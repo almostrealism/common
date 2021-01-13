@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ import org.almostrealism.color.RGBEvaluable;
 public class RGBBlack extends AcceleratedStaticRGBComputation {
 	private static RGBBlack local = new RGBBlack();
 
-	public RGBBlack() { super(new RGB(), RGB.blank()); }
+	public RGBBlack() { super(new RGB()); }
 
 	public static RGBBlack getInstance() { return local; }
 

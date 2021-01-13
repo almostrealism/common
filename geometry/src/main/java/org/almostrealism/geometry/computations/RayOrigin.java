@@ -18,6 +18,7 @@ package org.almostrealism.geometry.computations;
 
 import io.almostrealism.code.expressions.Expression;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.algebra.VectorBank;
 import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
@@ -31,7 +32,7 @@ import java.util.function.Supplier;
 	private boolean isStatic;
 
 	public RayOrigin(Supplier<Evaluable<? extends Ray>> r) {
-		super(3, Vector.blank(), r);
+		super(3, Vector.blank(), VectorBank::new, r);
 	}
 
 	@Override

@@ -19,6 +19,7 @@ package org.almostrealism.algebra.computations;
 import io.almostrealism.code.expressions.Expression;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
@@ -31,7 +32,7 @@ public class DotProduct extends DynamicAcceleratedProducerAdapter<Vector, Scalar
 	private Expression<Double> value[];
 
 	public DotProduct(Supplier<Evaluable<? extends Vector>> a, Supplier<Evaluable<? extends Vector>> b) {
-		super(2, Scalar.blank(), a, b);
+		super(2, Scalar.blank(), ScalarBank::new, a, b);
 	}
 
 	@Override

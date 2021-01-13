@@ -21,6 +21,7 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.time.TemporalScalar;
+import org.almostrealism.time.TemporalScalarBank;
 import org.almostrealism.time.TemporalScalarProducer;
 
 import java.util.function.IntFunction;
@@ -30,7 +31,7 @@ public class TemporalScalarFromScalars extends DynamicAcceleratedProducerAdapter
 	private Expression<Double> value[];
 
 	public TemporalScalarFromScalars(Supplier<Evaluable<? extends Scalar>> time, Supplier<Evaluable<? extends Scalar>> value) {
-		super(2, TemporalScalar.blank(), time, value);
+		super(2, TemporalScalar.blank(), TemporalScalarBank::new, time, value);
 	}
 
 	@Override

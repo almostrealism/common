@@ -81,15 +81,15 @@ public interface CodeFeatures extends ScalarFeatures, PairFeatures, TriangleData
 
 	default <T> Producer<T> value(T v) {
 		if (v instanceof Scalar) {
-			return (ProducerComputation<T>) new AcceleratedStaticScalarComputation((Scalar) v, Scalar.blank());
+			return (ProducerComputation<T>) new AcceleratedStaticScalarComputation((Scalar) v);
 		} else if (v instanceof Pair) {
-			return (ProducerComputation<T>) new AcceleratedStaticPairComputation((Pair) v, Pair.empty());
+			return (ProducerComputation<T>) new AcceleratedStaticPairComputation((Pair) v);
 		} else if (v instanceof Vector) {
-			return (ProducerComputation<T>) new AcceleratedStaticVectorComputation((Vector) v, Vector.blank());
+			return (ProducerComputation<T>) new AcceleratedStaticVectorComputation((Vector) v);
 		} else if (v instanceof Ray) {
-			return (ProducerComputation<T>) new AcceleratedStaticRayComputation((Ray) v, Ray.blank());
+			return (ProducerComputation<T>) new AcceleratedStaticRayComputation((Ray) v);
 		} else if (v instanceof TransformMatrix) {
-			return (ProducerComputation<T>) new AcceleratedStaticTransformMatrixComputation((TransformMatrix) v, TransformMatrix.blank());
+			return (ProducerComputation<T>) new AcceleratedStaticTransformMatrixComputation((TransformMatrix) v);
 		} else if (v == null) {
 			return null;
 		} else {

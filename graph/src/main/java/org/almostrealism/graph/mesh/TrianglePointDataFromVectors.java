@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,6 @@ package org.almostrealism.graph.mesh;
 
 import io.almostrealism.code.expressions.Expression;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import io.almostrealism.relation.Evaluable;
 
@@ -30,7 +29,7 @@ public class TrianglePointDataFromVectors extends DynamicAcceleratedProducerAdap
 
 	public TrianglePointDataFromVectors(Supplier<Evaluable<? extends Vector>> p1, Supplier<Evaluable<? extends Vector>> p2,
 								   Supplier<Evaluable<? extends Vector>> p3) {
-		super(9, TrianglePointData.blank(), p1, p2, p3);
+		super(9, TrianglePointData.blank(), TrianglePointDataBank::new, p1, p2, p3);
 	}
 
 	@Override

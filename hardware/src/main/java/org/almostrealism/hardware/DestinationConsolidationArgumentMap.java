@@ -40,6 +40,10 @@ public class DestinationConsolidationArgumentMap<S, A> extends MemWrapperArgumen
 
 	@Override
 	public ArrayVariable<A> get(Supplier key, NameProvider p) {
+		if (key instanceof DestinationSupport) {
+
+		}
+
 		return super.get(key, p);
 	}
 }

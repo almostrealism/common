@@ -23,7 +23,7 @@ import io.almostrealism.relation.Evaluable;
 public interface RayEvaluable extends Evaluable<Ray>, RayFeatures {
 
 	static RayProducer of(Ray value) {
-		return new AcceleratedStaticRayComputation(value, Ray.blank());
+		return new AcceleratedStaticRayComputation(value);
 	}
 
 	default VectorEvaluable origin() { return origin(this); }

@@ -18,6 +18,7 @@ package org.almostrealism.algebra.computations;
 
 import io.almostrealism.code.expressions.Expression;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
@@ -37,7 +38,7 @@ public class ScalarFromVector extends DynamicAcceleratedProducerAdapter<Vector, 
 	private Expression<Double> value;
 
 	public ScalarFromVector(Supplier<Evaluable<? extends Vector>> vector, int coordinate) {
-		super(2, Scalar.blank(), vector);
+		super(2, Scalar.blank(), ScalarBank::new, vector);
 		this.coordinate = coordinate;
 	}
 

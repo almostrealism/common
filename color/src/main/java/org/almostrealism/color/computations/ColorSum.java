@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ package org.almostrealism.color.computations;
 import org.almostrealism.algebra.computations.NAryDynamicAcceleratedProducer;
 import org.almostrealism.color.RGB;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.color.RGBBank;
 import org.almostrealism.color.RGBProducer;
 
 import java.util.function.Supplier;
@@ -37,7 +38,7 @@ import java.util.function.Supplier;
  */
 public class ColorSum extends NAryDynamicAcceleratedProducer<RGB> implements RGBProducer {
 	public ColorSum(Supplier<Evaluable<? extends RGB>>... producers) {
-		super("+", 3, RGB.blank(), producers);
+		super("+", 3, RGB.blank(), RGBBank::new, producers);
 	}
 
 	@Override

@@ -3,6 +3,7 @@ package org.almostrealism.algebra.computations;
 import io.almostrealism.code.expressions.Exponent;
 import io.almostrealism.code.expressions.Expression;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import io.almostrealism.relation.Evaluable;
@@ -14,7 +15,7 @@ public class ScalarPow extends DynamicAcceleratedProducerAdapter<Scalar, Scalar>
 	private Expression<Double> value[];
 
 	public ScalarPow(Supplier<Evaluable<? extends Scalar>> base, Supplier<Evaluable<? extends Scalar>> exponent) {
-		super(2, Scalar.blank(), base, exponent);
+		super(2, Scalar.blank(), ScalarBank::new, base, exponent);
 	}
 
 	@Override

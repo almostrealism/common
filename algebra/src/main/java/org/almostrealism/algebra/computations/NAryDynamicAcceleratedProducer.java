@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,6 +24,7 @@ import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import org.almostrealism.hardware.ComputerFeatures;
 import org.almostrealism.hardware.MemWrapper;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.hardware.MemoryBank;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -35,8 +36,10 @@ public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> exten
 	private Expression<Double> value[];
 	private boolean isStatic;
 
-	public NAryDynamicAcceleratedProducer(String operator, int memLength, Supplier<Evaluable<? extends T>> blank, Supplier<Evaluable<? extends T>>... producers) {
-		super(memLength, blank, producers);
+	public NAryDynamicAcceleratedProducer(String operator, int memLength, Supplier<Evaluable<? extends T>> blank,
+										  IntFunction<MemoryBank<T>> kernelDestination,
+										  Supplier<Evaluable<? extends T>>... producers) {
+		super(memLength, blank, kernelDestination, producers);
 		this.operator = operator;
 	}
 

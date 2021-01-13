@@ -37,7 +37,7 @@ public interface RayFeatures {
 	default RayProducer v(Ray value) { return value(value); }
 
 	default RayProducer value(Ray value) {
-		return new AcceleratedStaticRayComputation(value, Ray.blank());
+		return new AcceleratedStaticRayComputation(value);
 	}
 
 	default RayProducer ray(double x, double y, double z, double dx, double dy, double dz) {

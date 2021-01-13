@@ -32,7 +32,7 @@ public interface ScalarFeatures {
 	static ScalarProducer of(double value) { return of(new Scalar(value)); }
 
 	static ScalarProducer of(Scalar value) {
-		return new AcceleratedStaticScalarComputation(value, Scalar.blank());
+		return new AcceleratedStaticScalarComputation(value);
 	}
 
 	default ScalarProducer v(double value) { return value(new Scalar(value)); }
@@ -42,7 +42,7 @@ public interface ScalarFeatures {
 	default ScalarProducer scalar(double value) { return value(new Scalar(value)); }
 
 	default ScalarProducer value(Scalar value) {
-		return new AcceleratedStaticScalarComputation(value, Scalar.blank());
+		return new AcceleratedStaticScalarComputation(value);
 	}
 
 	default ScalarProducer scalar() {

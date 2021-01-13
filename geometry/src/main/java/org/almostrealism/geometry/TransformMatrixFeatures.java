@@ -22,6 +22,6 @@ public interface TransformMatrixFeatures {
 	default TransformMatrixProducer v(TransformMatrix v) { return value(v); }
 
 	default TransformMatrixProducer value(TransformMatrix v) {
-		return new AcceleratedStaticTransformMatrixComputation((TransformMatrix) v, TransformMatrix.blank());
+		return new AcceleratedStaticTransformMatrixComputation(v);
 	}
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,15 +16,13 @@
 
 package org.almostrealism.color.computations;
 
-import io.almostrealism.relation.Evaluable;
 import org.almostrealism.color.RGB;
+import org.almostrealism.color.RGBBank;
 import org.almostrealism.color.RGBProducer;
 import org.almostrealism.algebra.computations.AcceleratedStaticComputationAdapter;
 
-import java.util.function.Supplier;
-
 public class AcceleratedStaticRGBComputation extends AcceleratedStaticComputationAdapter<RGB> implements RGBProducer {
-	public AcceleratedStaticRGBComputation(RGB value, Supplier<Evaluable<? extends RGB>> output) {
-		super(value, output);
+	public AcceleratedStaticRGBComputation(RGB value) {
+		super(value, RGB.blank(), RGBBank::new);
 	}
 }

@@ -19,12 +19,13 @@ package org.almostrealism.geometry.computations;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.computations.AcceleratedStaticComputationAdapter;
 import org.almostrealism.geometry.Ray;
+import org.almostrealism.geometry.RayBank;
 import org.almostrealism.geometry.RayProducer;
 
 import java.util.function.Supplier;
 
 public class AcceleratedStaticRayComputation extends AcceleratedStaticComputationAdapter<Ray> implements RayProducer {
-	public AcceleratedStaticRayComputation(Ray value, Supplier<Evaluable<? extends Ray>> output) {
-		super(value, output);
+	public AcceleratedStaticRayComputation(Ray value) {
+		super(value, Ray.blank(), RayBank::new);
 	}
 }

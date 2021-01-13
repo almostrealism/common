@@ -38,7 +38,8 @@ import java.util.stream.IntStream;
 
 public abstract class DynamicAcceleratedProducerAdapter<I extends MemWrapper, O extends MemWrapper>
 		extends ComputationProducerAdapter<I, O>
-		implements MemWrapperComputation<O>, KernelizedProducer<O>, MultiExpression<Double>, ComputerFeatures {
+		implements MemWrapperComputation<O>, KernelizedProducer<O>,
+		DestinationSupport<O>, MultiExpression<Double>, ComputerFeatures {
 	/**
 	 * If set to true, then {@link Provider}s are treated as static for
 	 * compaction. This is often desirable, because Providers may not
@@ -51,20 +52,34 @@ public abstract class DynamicAcceleratedProducerAdapter<I extends MemWrapper, O 
 
 	private int memLength;
 	private IntFunction<InstanceReference> variableRef;
+	private Supplier<O> destination;
 
-	public DynamicAcceleratedProducerAdapter(int memLength, Supplier<Evaluable<? extends O>> result, Supplier<Evaluable<? extends I>>... inputArgs) {
-		this(memLength, result, inputArgs, new Evaluable[0]);
+	public DynamicAcceleratedProducerAdapter(int memLength, Supplier<Evaluable<? extends O>> result,
+											 IntFunction<MemoryBank<O>> kernelDestination,
+											 Supplier<Evaluable<? extends I>>... inputArgs) {
+		this(memLength, result, kernelDestination, inputArgs, new Evaluable[0]);
 	}
 
-	public DynamicAcceleratedProducerAdapter(int memLength, Supplier<Evaluable<? extends O>> result, Supplier<Evaluable<? extends I>>[] inputArgs, Object[] additionalArguments) {
+	public DynamicAcceleratedProducerAdapter(int memLength, Supplier<Evaluable<? extends O>> result,
+											 IntFunction<MemoryBank<O>> kernelDestination,
+											 Supplier<Evaluable<? extends I>>[] inputArgs,
+											 Object[] additionalArguments) {
 		this.memLength = memLength;
+		this.destination = () -> (O) result.get().evaluate();
 		this.setInputs(Arrays.asList(
-				AcceleratedEvaluable.includeResult(result,
+				AcceleratedEvaluable.includeResult(
+						new DynamicProducerForMemWrapper(args -> getDestination().get(), kernelDestination),
 						AcceleratedEvaluable.producers(inputArgs, additionalArguments))));
 		init();
 	}
 
 	public int getMemLength() { return memLength; }
+
+	@Override
+	public void setDestination(Supplier<O> destination) { this.destination = destination; }
+
+	@Override
+	public Supplier<O> getDestination() { return destination; }
 
 	@Override
 	public void prepareScope(ScopeInputManager manager) {

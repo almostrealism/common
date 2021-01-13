@@ -32,7 +32,7 @@ public class VectorFromVectorBank<T extends VectorBank> extends DynamicAccelerat
 	private Expression<Double> value[];
 
 	public VectorFromVectorBank(Supplier<Evaluable<? extends T>> bank, int position) {
-		super(3, Vector.blank(), bank);
+		super(3, Vector.blank(), VectorBank::new, bank);
 		this.position = position * 3;
 	}
 

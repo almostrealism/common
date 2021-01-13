@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,13 +17,11 @@
 package org.almostrealism.algebra.computations;
 
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.algebra.VectorBank;
 import org.almostrealism.algebra.VectorProducer;
-import io.almostrealism.relation.Evaluable;
-
-import java.util.function.Supplier;
 
 public class AcceleratedStaticVectorComputation extends AcceleratedStaticComputationAdapter<Vector> implements VectorProducer {
-	public AcceleratedStaticVectorComputation(Vector value, Supplier<Evaluable<? extends Vector>> output) {
-		super(value, output);
+	public AcceleratedStaticVectorComputation(Vector value) {
+		super(value, Vector.blank(), VectorBank::new);
 	}
 }

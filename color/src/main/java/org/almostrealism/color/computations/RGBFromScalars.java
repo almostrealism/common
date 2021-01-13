@@ -19,6 +19,7 @@ package org.almostrealism.color.computations;
 import io.almostrealism.code.expressions.Expression;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.color.RGB;
+import org.almostrealism.color.RGBBank;
 import org.almostrealism.color.RGBProducer;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
 import io.almostrealism.relation.Evaluable;
@@ -30,7 +31,7 @@ public class RGBFromScalars extends DynamicAcceleratedProducerAdapter<Scalar, RG
 	private Expression<Double> value[];
 
 	public RGBFromScalars(Supplier<Evaluable<? extends Scalar>> r, Supplier<Evaluable<? extends Scalar>> g, Supplier<Evaluable<? extends Scalar>> b) {
-		super(3, RGB.blank(), r, g, b);
+		super(3, RGB.blank(), RGBBank::new, r, g, b);
 	}
 
 	@Override

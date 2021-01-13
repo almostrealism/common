@@ -32,7 +32,7 @@ public interface PairFeatures {
 	default PairProducer v(Pair value) { return value(value); }
 
 	default PairProducer value(Pair value) {
-		return new AcceleratedStaticPairComputation(value, Pair.empty());
+		return new AcceleratedStaticPairComputation(value);
 	}
 
 	default ScalarEvaluable l(Evaluable<Pair> p) {

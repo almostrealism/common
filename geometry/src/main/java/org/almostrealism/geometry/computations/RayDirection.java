@@ -18,6 +18,7 @@ package org.almostrealism.geometry.computations;
 
 import io.almostrealism.code.expressions.Expression;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.algebra.VectorBank;
 import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
@@ -30,7 +31,7 @@ public class RayDirection extends DynamicAcceleratedProducerAdapter<Ray, Vector>
 	private Expression<Double> value[];
 
 	public RayDirection(Supplier<Evaluable<? extends Ray>> r) {
-		super(3, Vector.blank(), r);
+		super(3, Vector.blank(), VectorBank::new, r);
 	}
 
 	@Override

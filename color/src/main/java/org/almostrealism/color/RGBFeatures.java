@@ -31,7 +31,7 @@ import java.util.function.Supplier;
 public interface RGBFeatures {
 
 	static RGBProducer of(RGB value) {
-		return new AcceleratedStaticRGBComputation(value, RGB.blank());
+		return new AcceleratedStaticRGBComputation(value);
 	}
 
 	default RGBProducer v(RGB value) { return value(value); }
@@ -43,7 +43,7 @@ public interface RGBFeatures {
 	default RGBProducer rgb(double v) { return cfromScalar(v); }
 
 	default RGBProducer value(RGB value) {
-		return new AcceleratedStaticRGBComputation(value, RGB.blank());
+		return new AcceleratedStaticRGBComputation(value);
 	}
 
 	default RGBEvaluable cadd(Evaluable<RGB> value, Evaluable<RGB> operand) {

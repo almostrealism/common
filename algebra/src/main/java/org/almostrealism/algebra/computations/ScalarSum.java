@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package org.almostrealism.algebra.computations;
 
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarProducer;
 import io.almostrealism.relation.Evaluable;
 
@@ -24,7 +25,7 @@ import java.util.function.Supplier;
 
 public class ScalarSum extends NAryDynamicAcceleratedProducer<Scalar> implements ScalarProducer {
 	public ScalarSum(Supplier<Evaluable<? extends Scalar>>... producers) {
-		super("+", 2, Scalar.blank(), producers);
+		super("+", 2, Scalar.blank(), ScalarBank::new, producers);
 	}
 
 	@Override

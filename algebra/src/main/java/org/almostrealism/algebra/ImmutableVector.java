@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,22 +16,21 @@
 
 package org.almostrealism.algebra;
 
-import org.almostrealism.algebra.TripleFunction;
 import org.almostrealism.algebra.computations.AcceleratedStaticVectorComputation;
 import org.almostrealism.hardware.MemWrapper;
 
 public class ImmutableVector extends AcceleratedStaticVectorComputation implements TripleFunction<Triple, Vector> {
 	public ImmutableVector() {
-		super(new Data(), Vector.blank());
+		super(new Data());
 	}
 
 	public ImmutableVector(double x, double y, double z) {
-		super(new Data(), Vector.blank());
+		super(new Data());
 		setValue(new Vector(x, y, z));
 	}
 
 	public ImmutableVector(Vector v) {
-		super(new Data(), Vector.blank());
+		super(new Data());
 		setValue(v);
 	}
 

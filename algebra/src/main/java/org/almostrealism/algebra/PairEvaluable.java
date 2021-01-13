@@ -21,7 +21,7 @@ import org.almostrealism.algebra.computations.AcceleratedStaticPairComputation;
 
 public interface PairEvaluable extends Evaluable<Pair>, PairFeatures {
 	static PairProducer of(Pair value) {
-		return new AcceleratedStaticPairComputation(value, Pair.empty());
+		return new AcceleratedStaticPairComputation(value);
 	}
 
 	default ScalarEvaluable x() { return l(this); }
