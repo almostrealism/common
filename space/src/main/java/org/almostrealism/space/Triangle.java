@@ -54,6 +54,8 @@ import java.util.function.Supplier;
 public class Triangle extends AbstractSurface implements ParticleGroup, TriangleDataFeatures {
 	public static boolean enableHardwareOperator = true;
 
+	private static TriangleDataFeatures triangleFeat = TriangleDataFeatures.getInstance();
+
 	private Mesh.VertexData vertexData;
 	private int ind1, ind2, ind3;
 	
@@ -66,7 +68,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 	public static final KernelizedEvaluable<Scalar> intersectAt;
 	
 	static {
-		TriangleDataProducer triangle = TriangleDataFeatures.getInstance().triangle(PassThroughEvaluable.of(TrianglePointData.class, 0));
+		TriangleDataProducer triangle = triangleFeat.triangle(PassThroughEvaluable.of(TrianglePointData.class, 0));
 		dataProducer = triangle.get();
 		((OperationAdapter) dataProducer).compile();
 

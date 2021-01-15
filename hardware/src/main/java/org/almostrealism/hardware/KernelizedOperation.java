@@ -17,7 +17,7 @@
 package org.almostrealism.hardware;
 
 public interface KernelizedOperation {
-	boolean enableKernelLog = false;
+	boolean enableKernelLog = true;
 
 	void kernelOperate(MemoryBank args[]);
 }

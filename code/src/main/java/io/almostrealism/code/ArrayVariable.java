@@ -34,10 +34,6 @@ public class ArrayVariable<T> extends Variable implements Array<T> {
 	public ArrayVariable(NameProvider np, String name, String annotation, Class<T> type, Supplier<Evaluable<? extends T>> p) {
 		super(name, annotation, type, p);
 		this.names = np;
-
-		if ("f_acceleratedConjunctionScalar_7_v1".equals(name)) {
-			System.out.println("!");
-		}
 	}
 
 	public ArrayVariable<T> getDelegate() { return delegate; }

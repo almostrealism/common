@@ -65,7 +65,7 @@ public interface TriangleDataFeatures extends VectorFeatures {
 	}
 
 	default TriangleDataProducer triangle(Supplier<Evaluable<? extends Vector>> p1, Supplier<Evaluable<? extends Vector>> p2, Supplier<Evaluable<? extends Vector>> p3) {
-		return new TriangleDataFromVectors(VectorFeatures.getInstance().subtract(p2, p1), VectorFeatures.getInstance().subtract(p3, p1), p1);
+		return new TriangleDataFromVectors(subtract(p2, p1), subtract(p3, p1), p1);
 	}
 
 	static TriangleDataFeatures getInstance() {

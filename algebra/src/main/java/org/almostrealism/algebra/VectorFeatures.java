@@ -39,6 +39,9 @@ import java.util.function.Supplier;
  * @author  Michael Murray
  */
 public interface VectorFeatures {
+	Scalar half = new Scalar(0.5);
+	Scalar two = new Scalar(2.0);
+
 	static VectorProducer of(Vector value) {
 		return new AcceleratedStaticVectorComputation(value);
 	}
@@ -160,15 +163,15 @@ public interface VectorFeatures {
 	}
 
 	default ScalarProducer length(Supplier<Evaluable<? extends Vector>> v) {
-		return x(v).pow(2.0).add(y(v).pow(2.0)).add(z(v).pow(2.0)).pow(0.5);
+		return x(v).pow(two).add(y(v).pow(two)).add(z(v).pow(two)).pow(half);
 	}
 
 	default ScalarEvaluable lengthSq(Evaluable<Vector> v) {
-		return x(v).pow(2.0).add(y(v).pow(2.0)).add(z(v).pow(2.0));
+		return x(v).pow(two).add(y(v).pow(two)).add(z(v).pow(two));
 	}
 
 	default ScalarProducer lengthSq(Supplier<Evaluable<? extends Vector>> v) {
-		return x(v).pow(2.0).add(y(v).pow(2.0)).add(z(v).pow(2.0));
+		return x(v).pow(two).add(y(v).pow(two)).add(z(v).pow(two));
 	}
 
 	default VectorEvaluable normalize(Evaluable<Vector> p) {
@@ -176,7 +179,7 @@ public interface VectorFeatures {
 	}
 
 	default VectorProducer normalize(Supplier<Evaluable<? extends Vector>> p) {
-		ScalarProducer oneOverLength = length(p).pow(-1.0);
+		ScalarProducer oneOverLength = length(p).pow(ScalarFeatures.minusOne);
 		return fromScalars(x(p).multiply(oneOverLength),
 				y(p).multiply(oneOverLength),
 				z(p).multiply(oneOverLength));

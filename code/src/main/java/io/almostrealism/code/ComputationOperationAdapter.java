@@ -60,7 +60,13 @@ public abstract class ComputationOperationAdapter<I, O> extends OperationAdapter
 			throw new IllegalArgumentException("Invalid input (" + index + ")");
 		}
 
-		return getArgumentForInput(getInputs().get(index));
+		ArrayVariable v = getArgumentForInput(getInputs().get(index));
+		if (v == null) {
+			throw new IllegalArgumentException("Input " + index +
+					" does not appear to have a corresponding argument");
+		}
+
+		return v;
 	}
 
 	/** @return  null */

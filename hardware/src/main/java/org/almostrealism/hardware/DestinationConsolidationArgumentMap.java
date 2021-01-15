@@ -18,6 +18,7 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.NameProvider;
+import io.almostrealism.relation.Evaluable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -33,17 +34,42 @@ public class DestinationConsolidationArgumentMap<S, A> extends MemWrapperArgumen
 	@Override
 	public void add(Supplier key) {
 		if (key instanceof DestinationSupport) {
-			System.out.println("DestinationConsolidationArgumentMap: add - " + key);
+			// System.out.println("DestinationConsolidationArgumentMap: add - " + key);
 			keys.add((DestinationSupport) key);
 		}
 	}
 
 	@Override
 	public ArrayVariable<A> get(Supplier key, NameProvider p) {
-		if (key instanceof DestinationSupport) {
+		ArrayVariable<A> var = super.get(key, p);
 
+		if (key instanceof DestinationSupport) {
+			DestinationSupport producer = (DestinationSupport) key;
+			producer.setDestination(new DestinationThreadLocal<>(producer.getDestination()));
 		}
 
-		return super.get(key, p);
+		return var;
+	}
+
+	protected static class DestinationThreadLocal<T> implements Supplier<T> {
+		private Supplier<T> supplier;
+		private ThreadLocal<T> local;
+
+		public DestinationThreadLocal(Supplier<T> supplier) {
+			this.supplier = supplier;
+			this.local = new ThreadLocal<>();
+		}
+
+		@Override
+		public T get() {
+			T value = local.get();
+
+			if (value == null) {
+				value = supplier.get();
+				local.set(value);
+			}
+
+			return value;
+		}
 	}
 }

@@ -41,6 +41,7 @@ public class Variable<T> implements Nameable {
 
 	private Expression<T> expression;
 
+	private Supplier<Evaluable<? extends T>> originalProducer;
 	private Supplier<Evaluable<? extends T>> producer;
 	private Variable<?> dependsOn;
 
@@ -65,7 +66,7 @@ public class Variable<T> implements Nameable {
 	public Variable(String name, boolean declaration, Expression<T> expression, Supplier<Evaluable<? extends T>> producer) {
 		setName(name);
 		setExpression(expression);
-		setProducer(producer);
+		setOriginalProducer(producer);
 		this.declaration = declaration;
 	}
 
@@ -132,7 +133,13 @@ public class Variable<T> implements Nameable {
 	public void setSortHint(int hint) { this.sortHint = hint; }
 	public int getSortHint() { return sortHint; }
 
-	public void setProducer(Supplier<Evaluable<? extends T>> producer) {
+	protected void setProducer(Supplier<Evaluable<? extends T>> producer) {
+		this.producer = producer;
+	}
+
+	protected void setOriginalProducer(Supplier<Evaluable<? extends T>> producer) {
+		this.originalProducer = producer;
+
 		w: while (producer instanceof ProducerWithRank || producer instanceof Generated) {
 			if (producer instanceof ProducerWithRank) {
 				if (((ProducerWithRank<T, ?>) producer).getProducer() == producer) {
@@ -151,10 +158,12 @@ public class Variable<T> implements Nameable {
 			throw new IllegalArgumentException("Provider is Evaluable, it does not supply an Evaluable");
 		}
 
-		this.producer = producer;
+		setProducer(producer);
 	}
 
 	public Supplier<Evaluable<? extends T>> getProducer() { return producer; }
+
+	public Supplier<Evaluable<? extends T>> getOriginalProducer() { return originalProducer; }
 
 	public Class<T> getType() { return getExpression() == null ? null : getExpression().getType(); }
 

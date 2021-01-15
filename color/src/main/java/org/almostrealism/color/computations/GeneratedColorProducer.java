@@ -16,9 +16,12 @@
 
 package org.almostrealism.color.computations;
 
+import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.NameProvider;
+import io.almostrealism.code.ScopeInputManager;
+import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.TripleFunction;
 import io.almostrealism.relation.DynamicProducer;
@@ -48,6 +51,16 @@ public class GeneratedColorProducer<T> extends ColorProducerAdapter implements G
 	}
 
 	public Producer<RGB> getGenerated() { return p; }
+
+	@Override
+	public void prepareArguments(ArgumentMap map) {
+		((Computation) p).prepareArguments(map);
+	}
+
+	@Override
+	public void prepareScope(ScopeInputManager manager) {
+		((Computation) p).prepareScope(manager);
+	}
 
 	@Override
 	public Scope<RGB> getScope() { return ((Computation) p).getScope(); }
