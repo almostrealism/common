@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -35,10 +35,6 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 
 	@Override
 	public void println(Variable<?> variable) {
-		if ("f_rayDirection_108_l0".equals(variable.getName())) {
-			System.out.println("!");
-		}
-
 		if (variable.isDeclaration()) {
 			if (variable.getProducer() == null) {
 				if (variable.getExpression() == null) {
