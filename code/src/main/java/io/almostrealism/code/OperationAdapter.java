@@ -77,6 +77,10 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 	}
 
 	public ArrayVariable getArgumentForInput(Supplier<Evaluable<? extends T>> input) {
+		if (getArguments() == null) {
+			throw new IllegalArgumentException(getName() + " is not compiled");
+		}
+
 		for (ArrayVariable arg : getArguments()) {
 			if (arg != null && arg.getOriginalProducer() == input) {
 				return arg;

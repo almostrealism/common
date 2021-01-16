@@ -153,9 +153,6 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 						return arg;
 					}
 
-					if (arg.getProducer().getClass().getName().contains("TimeSeriesAdd")) {
-						System.out.println("!");
-					}
 					Scope s = ((Computation) arg.getProducer()).getScope();
 					s.convertArgumentsToRequiredScopes();
 					required.add(s);
