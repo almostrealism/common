@@ -50,6 +50,16 @@ public abstract class DynamicAcceleratedProducerAdapter<I extends MemWrapper, O 
 	 */
 	public static boolean enableStaticProviders = false;
 
+	/**
+	 * If set to true, then {@link #convertToVariableRef()} can be used
+	 * to take the {@link Expression} from {@link #getValueFunction()} to
+	 * a local variable in the rendered code. This can prevent
+	 * {@link Expression}s from growing too large during compaction, when
+	 * values are repeatedly embedded to form bigger and bigger
+	 * {@link Expression}s.
+	 */
+	public static boolean enableVariableRefConversion = false;
+
 	private int memLength;
 	private IntFunction<InstanceReference> variableRef;
 	private Supplier<O> destination;
@@ -129,7 +139,7 @@ public abstract class DynamicAcceleratedProducerAdapter<I extends MemWrapper, O 
 	public boolean isVariableRef() { return variableRef != null;}
 
 	public void convertToVariableRef() {
-		if (variableRef == null) {
+		if (enableVariableRefConversion && variableRef == null) {
 			IntStream.range(0, memLength)
 					.mapToObj(variableForIndex(getValueFunction()))
 					.forEach(this::addVariable);
