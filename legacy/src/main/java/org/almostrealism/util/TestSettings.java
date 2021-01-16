@@ -1,4 +1,4 @@
-package io.almostrealism.code.test;
+package org.almostrealism.util;
 
 public interface TestSettings {
 	boolean enableArgumentCountAssertions = false;

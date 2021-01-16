@@ -16,11 +16,9 @@
 
 package org.almostrealism.util;
 
-import io.almostrealism.code.test.TestSettings;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareFeatures;
-import org.junit.Assert;
 
 public interface TestFeatures extends CodeFeatures, HardwareFeatures, TestSettings {
 
@@ -30,6 +28,6 @@ public interface TestFeatures extends CodeFeatures, HardwareFeatures, TestSettin
 
 	default void assertEquals(double a, double b) {
 		double gap = Hardware.getLocalHardware().isDoublePrecision() ? Math.pow(10, -10) : Math.pow(10, -6);
-		Assert.assertEquals(a, b, gap);
+		assert Math.abs(a - b) < gap;
 	}
 }

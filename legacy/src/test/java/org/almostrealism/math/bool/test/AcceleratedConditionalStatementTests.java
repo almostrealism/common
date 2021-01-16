@@ -1,7 +1,7 @@
 package org.almostrealism.math.bool.test;
 
 import io.almostrealism.code.OperationAdapter;
-import io.almostrealism.code.test.TestSettings;
+import org.almostrealism.util.TestSettings;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarProducer;
@@ -13,7 +13,6 @@ import org.almostrealism.hardware.DynamicAcceleratedOperation;
 import org.almostrealism.bool.AcceleratedConditionalStatementScalar;
 import org.almostrealism.bool.LessThan;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.util.CodeFeatures;
 import org.almostrealism.hardware.PassThroughEvaluable;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
