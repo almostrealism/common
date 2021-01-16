@@ -16,6 +16,7 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.code.expressions.Expression;
 import io.almostrealism.code.expressions.InstanceReference;
 import io.almostrealism.relation.Evaluable;
 
@@ -49,7 +50,7 @@ public class ArrayVariable<T> extends Variable implements Array<T> {
 	@Override
 	public InstanceReference<T> get(String pos) {
 		if (getDelegate() == null) {
-			return new InstanceReference(new Variable<T>(names.getVariableValueName(this, pos), false, this));
+			return new InstanceReference(new Variable<T>(names.getVariableValueName(this, pos), false, new Expression(getType()), this));
 		} else {
 			return getDelegate().get(pos + " + " + getDelegateOffset());
 		}

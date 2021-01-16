@@ -35,6 +35,10 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 
 	@Override
 	public void println(Variable<?> variable) {
+		if ("f_rayDirection_108_l0".equals(variable.getName())) {
+			System.out.println("!");
+		}
+
 		if (variable.isDeclaration()) {
 			if (variable.getProducer() == null) {
 				if (variable.getExpression() == null) {

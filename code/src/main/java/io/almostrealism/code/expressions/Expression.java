@@ -45,6 +45,10 @@ public class Expression<T> {
 	}
 
 	public Expression(Class<T> type, String expression, Variable<?>... dependencies) {
+		if (type == null) {
+			throw new IllegalArgumentException("Type is required");
+		}
+
 		setType(type);
 		this.expression = () -> expression;
 		this.dependencies = new ArrayList<>();

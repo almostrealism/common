@@ -158,7 +158,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 					required.add(s);
 					List<Expression> args = new ArrayList<>();
 					s.getArguments().forEach(a -> args.add(new InstanceReference((Variable) a)));
-					Method m = new Method((Class) null, s.getName(), args);
+					Method m = new Method(Double.class, s.getName(), args);
 					methods.add(m);
 					// System.out.println("Scope: required - " + describeMethod(m));
 					return null;
