@@ -31,8 +31,8 @@ public interface ArgumentProvider {
 			} else {
 				ArrayVariable<T> arg = getArgument(p, input, null, -1);
 
-				if (input instanceof Computation && ((Computation) input).getOutputVariable() != null) {
-					arg.setName(((Computation) input).getOutputVariable().getName());
+				if (arg.getProducer() instanceof Computation && ((Computation) arg.getProducer()).getOutputVariable() != null) {
+					arg.setName(((Computation) arg.getProducer()).getOutputVariable().getName());
 				}
 
 				return arg;
