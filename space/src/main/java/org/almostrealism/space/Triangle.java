@@ -22,7 +22,6 @@ import org.almostrealism.algebra.*;
 import org.almostrealism.color.RGB;
 import org.almostrealism.geometry.Intersection;
 import org.almostrealism.geometry.TransformMatrix;
-import org.almostrealism.geometry.Positioned;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import io.almostrealism.code.Operator;
@@ -35,10 +34,8 @@ import org.almostrealism.graph.mesh.TriangleDataProducer;
 import org.almostrealism.graph.mesh.TriangleIntersectAt;
 import org.almostrealism.geometry.ShadableIntersection;
 import org.almostrealism.geometry.ContinuousField;
-import org.almostrealism.algebra.AdaptProducer;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.PassThroughEvaluable;
-import io.almostrealism.code.Constant;
 import io.almostrealism.relation.Provider;
 
 import java.util.concurrent.ExecutionException;

@@ -14,11 +14,8 @@
  * limitations under the License.
  */
 
-package org.almostrealism.algebra;
+package io.almostrealism.code;
 
-import io.almostrealism.code.ArgumentMap;
-import io.almostrealism.code.ScopeInputManager;
-import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 
@@ -34,7 +31,6 @@ import java.util.stream.Stream;
  *
  * @author  Michael Murray
  */
-// TODO  Move to code
 public class AdaptProducer<T> implements Producer<T>, ScopeLifecycle {
 	private Producer<T> p;
 	private Producer args[];
@@ -58,13 +54,15 @@ public class AdaptProducer<T> implements Producer<T>, ScopeLifecycle {
 
 	@Override
 	public Evaluable<T> get() {
+		Evaluable<T> ev = p.get();
+
 		return arguments -> {
 			Object values[] = new Object[args.length];
 			for (int i = 0; i < args.length; i++) {
 				values[i] = args[i].get().evaluate(arguments);
 			}
 
-			return p.get().evaluate(values);
+			return ev.evaluate(values);
 		};
 	}
 

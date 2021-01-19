@@ -30,16 +30,18 @@ import org.almostrealism.algebra.Triple;
 import org.almostrealism.color.RGB;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.hardware.DynamicProducerForMemWrapper;
+import org.almostrealism.hardware.KernelizedEvaluable;
+import org.almostrealism.hardware.KernelizedProducer;
 
 public class GeneratedColorProducer<T> extends ColorProducerAdapter implements Generated<T, Producer<RGB>> {
-	private Producer<RGB> p;
+	private KernelizedProducer<RGB> p;
 	private T generator;
 
 	protected GeneratedColorProducer(T generator) {
 		this.generator = generator;
 	}
 
-	protected GeneratedColorProducer(T generator, Producer<RGB> p) {
+	protected GeneratedColorProducer(T generator, KernelizedProducer<RGB> p) {
 		this.generator = generator;
 		this.p = p;
 	}
@@ -54,28 +56,33 @@ public class GeneratedColorProducer<T> extends ColorProducerAdapter implements G
 
 	@Override
 	public void prepareArguments(ArgumentMap map) {
-		((Computation) p).prepareArguments(map);
+		if (p instanceof Computation) {
+			((Computation) p).prepareArguments(map);
+		}
 	}
 
 	@Override
 	public void prepareScope(ScopeInputManager manager) {
-		((Computation) p).prepareScope(manager);
+		if (p instanceof Computation) {
+			((Computation) p).prepareScope(manager);
+		}
 	}
 
 	@Override
 	public Scope<RGB> getScope() { return ((Computation) p).getScope(); }
+
+	@Override
+	public void compact() { p.compact(); }
+
+	@Override
+	public KernelizedEvaluable<RGB> get() { return p.get(); }
 
 	public static <T> GeneratedColorProducer<T> fromFunction(T generator, TripleFunction<Triple, RGB> t) {
 		return new GeneratedColorProducer(generator, new DynamicProducerForMemWrapper<>(args ->
 				t.operate(args.length > 0 ? (Triple) args[0] : new Vector(1.0, 1.0, 1.0))));
 	}
 
-	public static <T> GeneratedColorProducer<T> fromProducer(T generator, Producer<? extends RGB> p) {
+	public static <T> GeneratedColorProducer<T> fromProducer(T generator, KernelizedProducer<? extends RGB> p) {
 		return new GeneratedColorProducer(generator, p);
-	}
-
-	@Override
-	public void compact() {
-		p.compact();
 	}
 }

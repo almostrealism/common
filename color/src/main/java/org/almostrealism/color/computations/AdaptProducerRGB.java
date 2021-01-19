@@ -18,7 +18,7 @@ package org.almostrealism.color.computations;
 
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBBank;
-import org.almostrealism.algebra.AdaptProducer;
+import io.almostrealism.code.AdaptProducer;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.KernelizedProducer;
 import org.almostrealism.hardware.MemoryBank;

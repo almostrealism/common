@@ -22,6 +22,7 @@ import java.io.ObjectInput;
 import java.io.ObjectOutput;
 
 import org.almostrealism.algebra.Triple;
+import org.almostrealism.hardware.KernelizedProducer;
 import org.almostrealism.hardware.MemWrapper;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Defaults;
@@ -560,7 +561,7 @@ public class RGB implements Triple, MemWrapper, Externalizable, Cloneable {
 	@Override
 	public void destroy() { data.destroy(); }
 
-	public static Producer<RGB> blank() {
+	public static KernelizedProducer<RGB> blank() {
 		return new DynamicRGBProducer(args -> new RGB(defaultDepth, 0, 0, 0, false));
 	}
 
