@@ -19,6 +19,7 @@ package io.almostrealism.code;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 /**
@@ -55,11 +56,14 @@ public class AdaptProducer<T> implements Producer<T>, ScopeLifecycle {
 	@Override
 	public Evaluable<T> get() {
 		Evaluable<T> ev = p.get();
+		Evaluable ar[] = new Evaluable[args.length];
+
+		IntStream.range(0, ar.length).forEach(i -> ar[i] = args[i].get());
 
 		return arguments -> {
 			Object values[] = new Object[args.length];
 			for (int i = 0; i < args.length; i++) {
-				values[i] = args[i].get().evaluate(arguments);
+				values[i] = ar[i].evaluate(arguments);
 			}
 
 			return ev.evaluate(values);

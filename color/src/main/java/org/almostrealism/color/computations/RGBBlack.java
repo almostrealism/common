@@ -21,10 +21,11 @@ import org.almostrealism.color.RGBEvaluable;
 
 public class RGBBlack extends AcceleratedStaticRGBComputation {
 	private static RGBBlack local = new RGBBlack();
+	private static RGBEvaluable evaluable = new DefaultRGBEvaluable(getInstance());
 
 	public RGBBlack() { super(new RGB()); }
 
 	public static RGBBlack getInstance() { return local; }
 
-	public static RGBEvaluable getEvaluable() { return new DefaultRGBEvaluable(getInstance()); }
+	public static RGBEvaluable getEvaluable() { return  evaluable; }
 }
