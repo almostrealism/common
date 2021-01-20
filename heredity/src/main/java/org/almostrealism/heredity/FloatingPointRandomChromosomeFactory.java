@@ -16,7 +16,9 @@
 
 package org.almostrealism.heredity;
 
-public class FloatingPointRandomChromosomeFactory implements ChromosomeFactory<Double> {
+import org.almostrealism.algebra.Scalar;
+
+public class FloatingPointRandomChromosomeFactory implements ChromosomeFactory<Scalar> {
 	private int genes, factors;
 	
 	public FloatingPointRandomChromosomeFactory setChromosomeSize(int genes, int factors) {
@@ -25,14 +27,14 @@ public class FloatingPointRandomChromosomeFactory implements ChromosomeFactory<D
 		return this;
 	}
 	
-	public Chromosome<Double> generateChromosome(double arg) {
-		ArrayListChromosome<Double> c = new ArrayListChromosome<Double>();
+	public Chromosome<Scalar> generateChromosome(double arg) {
+		ArrayListChromosome<Scalar> c = new ArrayListChromosome<>();
 		
 		for (int i = 0; i < genes; i++) {
-			ArrayListGene<Double> g = new ArrayListGene<Double>();
+			ArrayListGene<Scalar> g = new ArrayListGene<>();
 			
 			for (int j = 0; j < factors; j++) {
-				g.add(new DoubleScaleFactor(StrictMath.random() * arg));
+				g.add(new ScalarScaleFactor(StrictMath.random() * arg));
 			}
 			
 			c.add(g);

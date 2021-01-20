@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,6 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Defaults;
 import io.almostrealism.relation.DynamicProducer;
 
-// TODO  Rename
 public class LongScaleFactor implements ScaleFactor<Long> {
 	private double scale;
 
@@ -30,7 +29,8 @@ public class LongScaleFactor implements ScaleFactor<Long> {
 
 	@Override
 	public Producer<Long> getResultant(Producer<Long> value) {
-		return new DynamicProducer<>(args -> (long) (value.get().evaluate(args) * scale));
+		return new DynamicProducer<>(args ->
+				(long) (value.get().evaluate(args) * scale));
 	}
 
 	@Override

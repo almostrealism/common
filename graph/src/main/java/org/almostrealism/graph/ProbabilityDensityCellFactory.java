@@ -18,22 +18,23 @@ package org.almostrealism.graph;
 
 import java.util.Random;
 
+import org.almostrealism.algebra.Scalar;
 import org.almostrealism.heredity.Gene;
 import io.almostrealism.relation.Provider;
 
-public class ProbabilityDensityCellFactory<T> implements CellFactory<Double, T> {
+public class ProbabilityDensityCellFactory<T> implements CellFactory<Scalar, T> {
 	private Random rand = new Random();
 	
-	private CellFactory<Double, T> choices[];
+	private CellFactory<Scalar, T> choices[];
 	private double bias[];
 	private double jitter;
 	private int factorIndex;
 	
-	public ProbabilityDensityCellFactory(CellFactory<Double, T> choices[], int factorIndex) {
+	public ProbabilityDensityCellFactory(CellFactory<Scalar, T> choices[], int factorIndex) {
 		this(choices, factorIndex, null);
 	}
 	
-	public ProbabilityDensityCellFactory(CellFactory<Double, T> choices[], int factorIndex, double biasFactors[]) {
+	public ProbabilityDensityCellFactory(CellFactory<Scalar, T> choices[], int factorIndex, double biasFactors[]) {
 		this.choices = choices;
 		this.bias = biasFactors;
 		this.factorIndex = factorIndex;
@@ -47,8 +48,8 @@ public class ProbabilityDensityCellFactory<T> implements CellFactory<Double, T> 
 	public void setJitter(double jitterIntensity) { this.jitter = jitterIntensity; }
 
 	@Override
-	public Cell<T> generateCell(Gene<Double> g) {
-		double arg = g.getFactor(factorIndex).getResultant(() -> new Provider<>(Double.valueOf(1.0))).get().evaluate().doubleValue();
+	public Cell<T> generateCell(Gene<Scalar> g) {
+		double arg = g.getFactor(factorIndex).getResultant(() -> new Provider<>(new Scalar(1.0))).get().evaluate().getValue();
 
 		// Pick a point in N-Space, starting
 		// with the bias values initially

@@ -16,6 +16,7 @@
 
 package org.almostrealism.chem;
 
+import org.almostrealism.algebra.Scalar;
 import org.almostrealism.heredity.ArrayListGene;
 import org.almostrealism.heredity.Gene;
 import org.almostrealism.physics.Atom;
@@ -30,7 +31,7 @@ public class Alloy extends ProbabilisticFactory<Atom> implements Atomic {
         this(components, new ArrayListGene<>(g));
     }
 
-    public Alloy(List<Atomic> components, Gene<Double> composition) {
+    public Alloy(List<Atomic> components, Gene<Scalar> composition) {
         super(components, composition);
     }
 }

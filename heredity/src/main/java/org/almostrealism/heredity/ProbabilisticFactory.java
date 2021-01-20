@@ -22,6 +22,7 @@ import java.util.List;
 import io.almostrealism.relation.Factory;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Defaults;
+import org.almostrealism.algebra.Scalar;
 
 public class ProbabilisticFactory<V> extends HashMap<Factory<V>, Double> implements Factory<V> {
 	/** Constructs an empty {@link ProbabilisticFactory}. */
@@ -33,9 +34,9 @@ public class ProbabilisticFactory<V> extends HashMap<Factory<V>, Double> impleme
 	 * {@link Gene}. The value 1.0 is used as an argument, making it convenient to use
 	 * the {@link DoubleScaleFactor} to specify scalar probability values.
 	 */
-	public ProbabilisticFactory(List<? extends Factory<V>> factories, Gene<Double> probabilities) {
+	public ProbabilisticFactory(List<? extends Factory<V>> factories, Gene<Scalar> probabilities) {
 		for (int i = 0; i < factories.size(); i++) {
-			put(factories.get(i), probabilities.getFactor(i).getResultant(() -> new Provider<>(Double.valueOf(1.0))).get().evaluate());
+			put(factories.get(i), ((Scalar) probabilities.getFactor(i).getResultant(() -> new Provider(new Scalar(1.0))).get().evaluate()).getValue());
 		}
 	}
 	
