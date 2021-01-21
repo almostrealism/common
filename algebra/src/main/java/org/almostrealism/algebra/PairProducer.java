@@ -25,6 +25,9 @@ public interface PairProducer extends ProducerComputation<Pair>, KernelizedProdu
 	@Override
 	default KernelizedEvaluable<Pair> get() { return new DefaultPairEvaluable(this); }
 
+	default ScalarProducer l() { return l(this); }
+	default ScalarProducer r() { return r(this); }
+
 	default ScalarProducer x() { return l(this); }
 	default ScalarProducer y() { return r(this); }
 }
