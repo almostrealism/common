@@ -31,6 +31,6 @@ public class AdjustmentCell<A, R> extends CellAdapter<R> {
 
 	@Override
 	public Supplier<Runnable> push(Producer<R> protein) {
-		return () -> () -> adjust.adjust(cell);
+		return adjust.adjust(cell);
 	}
 }

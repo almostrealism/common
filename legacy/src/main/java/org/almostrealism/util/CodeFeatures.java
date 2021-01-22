@@ -41,6 +41,7 @@ import org.almostrealism.graph.mesh.TrianglePointData;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.code.ProducerComputation;
+import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.time.CursorPair;
 import org.almostrealism.time.TemporalScalarProducer;
 import org.almostrealism.time.computations.TemporalScalarFromScalars;
@@ -48,7 +49,7 @@ import org.almostrealism.time.computations.TemporalScalarFromScalars;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-public interface CodeFeatures extends ScalarFeatures, PairFeatures, TriangleDataFeatures, RayFeatures, TransformMatrixFeatures, RGBFeatures {
+public interface CodeFeatures extends ScalarFeatures, PairFeatures, TriangleDataFeatures, RayFeatures, TransformMatrixFeatures, RGBFeatures, HardwareFeatures {
 	default <T> Producer<T> p(T value) { return () -> new Provider<>(value); }
 
 	default Producer<CursorPair> v(CursorPair p) {

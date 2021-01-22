@@ -23,7 +23,7 @@ public class ArrayListGene<T> extends ArrayList<Factor<T>> implements Gene<T> {
 
 	public ArrayListGene(double... f) {
 		for (double d : f) {
-			add((Factor<T>) new DoubleScaleFactor(d));
+			add((Factor<T>) new ScalarScaleFactor(d));
 		}
 	}
 

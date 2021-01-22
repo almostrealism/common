@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,6 +16,10 @@
 
 package org.almostrealism.graph;
 
+import io.almostrealism.relation.Producer;
+
+import java.util.function.Supplier;
+
 public interface Adjustable<T> {
-	void setAdjustment(T value);
+	Supplier<Runnable> updateAdjustment(Producer<T> value);
 }
