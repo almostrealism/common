@@ -34,10 +34,11 @@ public class CodeFeaturesTests implements TestFeatures {
 		Runnable r = s.get();
 		((OperationAdapter) r).compile();
 		r.run();
-		assertEquals(3.0, dest.getValue());
+		System.out.println(dest.getValue());
+		assertEquals(1.5, dest.getValue());
 
 		value.setValue(3);
 		r.run();
-		assertEquals(4.0, dest.getValue());
+		assertEquals(2.0, dest.getValue());
 	}
 }
