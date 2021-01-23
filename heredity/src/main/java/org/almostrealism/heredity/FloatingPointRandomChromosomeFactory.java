@@ -34,7 +34,7 @@ public class FloatingPointRandomChromosomeFactory implements ChromosomeFactory<S
 			ArrayListGene<Scalar> g = new ArrayListGene<>();
 			
 			for (int j = 0; j < factors; j++) {
-				g.add(new ScalarScaleFactor(StrictMath.random() * arg));
+				g.add(new ScaleFactor(StrictMath.random() * arg));
 			}
 			
 			c.add(g);

@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,9 @@
 
 package org.almostrealism.heredity;
 
-public class DefaultRandomChromosomeFactory implements ChromosomeFactory<Long> {
+import org.almostrealism.algebra.Scalar;
+
+public class DefaultRandomChromosomeFactory implements ChromosomeFactory<Scalar> {
 	private double min, max;
 	private int genes, factors;
 	
@@ -37,14 +39,14 @@ public class DefaultRandomChromosomeFactory implements ChromosomeFactory<Long> {
 		return this;
 	}
 	
-	public Chromosome<Long> generateChromosome(double arg) {
-		ArrayListChromosome<Long> c = new ArrayListChromosome<>();
+	public Chromosome<Scalar> generateChromosome(double arg) {
+		ArrayListChromosome<Scalar> c = new ArrayListChromosome<>();
 		
 		for (int i = 0; i < genes; i++) {
-			ArrayListGene<Long> g = new ArrayListGene<>();
+			ArrayListGene<Scalar> g = new ArrayListGene<>();
 			
 			for (int j = 0; j < factors; j++) {
-				g.add(new LongScaleFactor(min + StrictMath.random() * arg * (max - min)));
+				g.add(new ScaleFactor(min + StrictMath.random() * arg * (max - min)));
 			}
 			
 			c.add(g);
