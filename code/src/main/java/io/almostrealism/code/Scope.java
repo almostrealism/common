@@ -155,14 +155,18 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 
 					Scope s = ((Computation) arg.getProducer()).getScope();
 					s.convertArgumentsToRequiredScopes();
+
 					required.add(s);
-					List<Expression> args = new ArrayList<>();
-					s.getArguments().forEach(a -> args.add(new InstanceReference((Variable) a)));
-					Method m = new Method(Double.class, s.getName(), args);
-					methods.add(m);
-					// System.out.println("Scope: required - " + describeMethod(m));
+					methods.add(s.call());
+
 					return null;
 				}).filter(Objects::nonNull).collect(Collectors.toList());
+	}
+
+	public Method<?> call() {
+		List<Expression> args = new ArrayList<>();
+		getArguments().forEach(a -> args.add(new InstanceReference((Variable) a)));
+		return new Method(Double.class, getName(), args);
 	}
 
 	/**

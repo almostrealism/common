@@ -18,6 +18,7 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.hardware.computations.Assignment;
 
 import java.util.Optional;
 import java.util.function.Supplier;
@@ -60,6 +61,6 @@ public interface HardwareFeatures {
 	}
 
 	default <T extends MemWrapper> Supplier<Runnable> a(int memLength, Supplier<Evaluable<? extends T>> result, Supplier<Evaluable<? extends T>> value) {
-		return new AcceleratedAssignment<>(memLength, result, value);
+		return new Assignment<>(memLength, result, value);
 	}
 }

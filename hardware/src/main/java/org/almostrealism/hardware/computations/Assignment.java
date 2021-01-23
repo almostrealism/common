@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,19 +14,21 @@
  * limitations under the License.
  */
 
-package org.almostrealism.hardware;
+package org.almostrealism.hardware.computations;
 
 import io.almostrealism.code.Variable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.code.ScopeInputManager;
+import org.almostrealism.hardware.DynamicAcceleratedOperationAdapter;
+import org.almostrealism.hardware.MemWrapper;
 
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
-public class AcceleratedAssignment<T extends MemWrapper> extends DynamicAcceleratedOperationAdapter<T> {
+public class Assignment<T extends MemWrapper> extends DynamicAcceleratedOperationAdapter<T> {
 	private int memLength;
 
-	public AcceleratedAssignment(int memLength, Supplier<Evaluable<? extends T>> result, Supplier<Evaluable<? extends T>> value) {
+	public Assignment(int memLength, Supplier<Evaluable<? extends T>> result, Supplier<Evaluable<? extends T>> value) {
 		super(result, value);
 		this.memLength = memLength;
 	}
