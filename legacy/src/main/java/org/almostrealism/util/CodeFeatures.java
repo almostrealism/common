@@ -16,6 +16,7 @@
 
 package org.almostrealism.util;
 
+import io.almostrealism.code.Computation;
 import io.almostrealism.relation.DynamicProducer;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Pair;
@@ -42,6 +43,7 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.code.ProducerComputation;
 import org.almostrealism.hardware.HardwareFeatures;
+import org.almostrealism.hardware.computations.Loop;
 import org.almostrealism.time.CursorPair;
 import org.almostrealism.time.TemporalScalarProducer;
 import org.almostrealism.time.computations.TemporalScalarFromScalars;
@@ -101,6 +103,10 @@ public interface CodeFeatures extends ScalarFeatures, PairFeatures, TriangleData
 	default <T> Producer<T> value(Class<T> type, int argIndex) {
 		return Input.value(type, argIndex);
 	}
+
+	default Loop loop(Computation<Void> c, int iterations) { return new Loop(c, iterations); }
+
+	default Loop lp(Computation<Void> c, int iterations) { return loop(c, iterations); }
 
 	default Ops o() { return Ops.ops(); }
 }

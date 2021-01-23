@@ -119,7 +119,8 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	public Scope<T> compile() {
 		preCompile();
 
-		if (getComputation() instanceof OperationAdapter) {
+		if (getComputation() instanceof OperationAdapter
+				&& ((OperationAdapter) getComputation()).getArgsCount() > 0) {
 			return compile(((OperationAdapter) getComputation()).getArgument(0));
 		} else {
 			return compile(null);

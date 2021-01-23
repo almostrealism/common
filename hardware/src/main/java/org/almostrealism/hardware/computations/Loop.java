@@ -52,9 +52,9 @@ public class Loop extends DynamicAcceleratedOperationAdapter<Void> {
 		scope.getRequiredScopes().add(atomScope);
 
 		String i = getFunctionName() + "_i";
-		scope.code().accept("for (int " + i + " = 0; " + i + " < " + iterations +"; " + i + "++) {");
-		scope.code().accept(atomScope.call().getExpression() + ";");
-		scope.code().accept("}");
+		scope.code().accept("for (int " + i + " = 0; " + i + " < " + iterations +"; " + i + "++) {\n");
+		scope.code().accept("    " + atomScope.call().getExpression() + "\n");
+		scope.code().accept("}\n");
 		return scope;
 	}
 }
