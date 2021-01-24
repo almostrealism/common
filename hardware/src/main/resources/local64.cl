@@ -1,5 +1,20 @@
 #pragma OPENCL EXTENSION cl_khr_fp64 : enable
 
+__kernel void scalarCopy_local(__local double *res, __local const double *m, const int resOffset, const int mOffset) {
+    res[resOffset]     = m[mOffset];
+    res[resOffset + 1] = m[mOffset + 1];
+}
+
+__kernel void scalarCopy_localToGlobal(__global double *res, __local const double *m, const int resOffset, const int mOffset) {
+    res[resOffset]     = m[mOffset];
+    res[resOffset + 1] = m[mOffset + 1];
+}
+
+__kernel void scalarCopy_globalToLocal(__local double *res, __global const double *m, const int resOffset, const int mOffset) {
+    res[resOffset]     = m[mOffset];
+    res[resOffset + 1] = m[mOffset + 1];
+}
+
 __kernel void rayCopy_local(__local double *res, __local const double *m, const int resOffset, const int mOffset) {
     res[resOffset]     = m[mOffset];
     res[resOffset + 1] = m[mOffset + 1];
