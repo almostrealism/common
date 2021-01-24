@@ -1,5 +1,6 @@
 package org.almostrealism.util;
 
+import io.almostrealism.code.Computation;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -29,6 +30,24 @@ public class CodeFeaturesTests implements TestFeatures {
 		Scalar value = new Scalar(1.0);
 		Scalar dest = new Scalar(0.0);
 		Supplier<Runnable> s = a(2, p(dest), v(1).add(p(value)).divide(2.0));
+		value.setValue(2);
+
+		Runnable r = s.get();
+		((OperationAdapter) r).compile();
+		r.run();
+		System.out.println(dest.getValue());
+		assertEquals(1.5, dest.getValue());
+
+		value.setValue(3);
+		r.run();
+		assertEquals(2.0, dest.getValue());
+	}
+
+	@Test
+	public void loop() {
+		Scalar value = new Scalar(1.0);
+		Scalar dest = new Scalar(0.0);
+		Supplier<Runnable> s = loop(a(2, p(dest), v(1).add(p(value)).divide(2.0)), 2);
 		value.setValue(2);
 
 		Runnable r = s.get();

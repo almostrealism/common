@@ -104,9 +104,5 @@ public interface CodeFeatures extends ScalarFeatures, PairFeatures, TriangleData
 		return Input.value(type, argIndex);
 	}
 
-	default Loop loop(Computation<Void> c, int iterations) { return new Loop(c, iterations); }
-
-	default Loop lp(Computation<Void> c, int iterations) { return loop(c, iterations); }
-
 	default Ops o() { return Ops.ops(); }
 }

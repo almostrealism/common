@@ -19,6 +19,7 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.Computation;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.computations.Assignment;
+import org.almostrealism.hardware.computations.Loop;
 
 import java.util.Optional;
 import java.util.function.Supplier;
@@ -56,11 +57,15 @@ public interface HardwareFeatures {
 		return Hardware.getLocalHardware().isGPU() && Hardware.getLocalHardware().isDoublePrecision();
 	}
 
-	default <T extends MemWrapper> Supplier<Runnable> a(int memLength, Evaluable<T> result, Evaluable<T> value) {
+	default <T extends MemWrapper> Assignment<T> a(int memLength, Evaluable<T> result, Evaluable<T> value) {
 		return a(memLength, () -> result, () -> value);
 	}
 
-	default <T extends MemWrapper> Supplier<Runnable> a(int memLength, Supplier<Evaluable<? extends T>> result, Supplier<Evaluable<? extends T>> value) {
+	default <T extends MemWrapper> Assignment<T> a(int memLength, Supplier<Evaluable<? extends T>> result, Supplier<Evaluable<? extends T>> value) {
 		return new Assignment<>(memLength, result, value);
 	}
+
+	default Loop loop(Computation<Void> c, int iterations) { return new Loop(c, iterations); }
+
+	default Loop lp(Computation<Void> c, int iterations) { return loop(c, iterations); }
 }
