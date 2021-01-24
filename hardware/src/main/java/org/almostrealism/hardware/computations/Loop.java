@@ -21,6 +21,7 @@ import io.almostrealism.code.Computation;
 import io.almostrealism.code.HybridScope;
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.ScopeInputManager;
+import org.almostrealism.c.OpenCLPrintWriter;
 import org.almostrealism.hardware.DynamicAcceleratedOperationAdapter;
 
 public class Loop extends DynamicAcceleratedOperationAdapter<Void> {
@@ -53,7 +54,7 @@ public class Loop extends DynamicAcceleratedOperationAdapter<Void> {
 
 		String i = getFunctionName() + "_i";
 		scope.code().accept("for (int " + i + " = 0; " + i + " < " + iterations +"; " + i + "++) {\n");
-		scope.code().accept("    " + atomScope.call().getExpression() + "\n");
+		scope.code().accept("    " + new OpenCLPrintWriter(null).renderMethod(atomScope.call()) + "\n");
 		scope.code().accept("}\n");
 		return scope;
 	}
