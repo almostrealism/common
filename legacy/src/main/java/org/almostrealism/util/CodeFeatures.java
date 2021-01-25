@@ -16,26 +16,24 @@
 
 package org.almostrealism.util;
 
-import io.almostrealism.code.Computation;
 import io.almostrealism.relation.DynamicProducer;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairFeatures;
-import org.almostrealism.algebra.PairProducer;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.algebra.ScalarProducer;
-import org.almostrealism.algebra.computations.AcceleratedStaticPairComputation;
-import org.almostrealism.algebra.computations.AcceleratedStaticScalarComputation;
-import org.almostrealism.algebra.computations.AcceleratedStaticVectorComputation;
+import org.almostrealism.algebra.computations.StaticPairComputation;
+import org.almostrealism.algebra.computations.StaticScalarComputation;
+import org.almostrealism.algebra.computations.StaticVectorComputation;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.color.RGBFeatures;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayFeatures;
 import org.almostrealism.geometry.TransformMatrixFeatures;
-import org.almostrealism.geometry.computations.AcceleratedStaticRayComputation;
-import org.almostrealism.geometry.computations.AcceleratedStaticTransformMatrixComputation;
+import org.almostrealism.geometry.computations.StaticRayComputation;
+import org.almostrealism.geometry.computations.StaticTransformMatrixComputation;
 import org.almostrealism.graph.mesh.TriangleData;
 import org.almostrealism.graph.mesh.TriangleDataFeatures;
 import org.almostrealism.graph.mesh.TrianglePointData;
@@ -43,7 +41,6 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.code.ProducerComputation;
 import org.almostrealism.hardware.HardwareFeatures;
-import org.almostrealism.hardware.computations.Loop;
 import org.almostrealism.time.CursorPair;
 import org.almostrealism.time.TemporalScalarProducer;
 import org.almostrealism.time.computations.TemporalScalarFromScalars;
@@ -84,15 +81,15 @@ public interface CodeFeatures extends ScalarFeatures, PairFeatures, TriangleData
 
 	default <T> Producer<T> value(T v) {
 		if (v instanceof Scalar) {
-			return (ProducerComputation<T>) new AcceleratedStaticScalarComputation((Scalar) v);
+			return (ProducerComputation<T>) new StaticScalarComputation((Scalar) v);
 		} else if (v instanceof Pair) {
-			return (ProducerComputation<T>) new AcceleratedStaticPairComputation((Pair) v);
+			return (ProducerComputation<T>) new StaticPairComputation((Pair) v);
 		} else if (v instanceof Vector) {
-			return (ProducerComputation<T>) new AcceleratedStaticVectorComputation((Vector) v);
+			return (ProducerComputation<T>) new StaticVectorComputation((Vector) v);
 		} else if (v instanceof Ray) {
-			return (ProducerComputation<T>) new AcceleratedStaticRayComputation((Ray) v);
+			return (ProducerComputation<T>) new StaticRayComputation((Ray) v);
 		} else if (v instanceof TransformMatrix) {
-			return (ProducerComputation<T>) new AcceleratedStaticTransformMatrixComputation((TransformMatrix) v);
+			return (ProducerComputation<T>) new StaticTransformMatrixComputation((TransformMatrix) v);
 		} else if (v == null) {
 			return null;
 		} else {

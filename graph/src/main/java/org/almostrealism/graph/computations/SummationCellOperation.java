@@ -19,14 +19,14 @@ package org.almostrealism.graph.computations;
 import io.almostrealism.code.expressions.Sum;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.graph.SummationCell;
-import org.almostrealism.hardware.DynamicAcceleratedOperationAdapter;
+import org.almostrealism.hardware.DynamicOperationComputationAdapter;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.code.ScopeInputManager;
 
 import java.util.function.Supplier;
 
-public class SummationCellOperation extends DynamicAcceleratedOperationAdapter<Scalar> {
+public class SummationCellOperation extends DynamicOperationComputationAdapter<Scalar> {
 	private boolean prepared;
 
 	public SummationCellOperation(SummationCell cell, Supplier<Evaluable<? extends Scalar>> protein) {

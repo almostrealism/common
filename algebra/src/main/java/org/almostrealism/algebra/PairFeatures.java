@@ -20,7 +20,7 @@ import org.almostrealism.algebra.computations.DefaultPairEvaluable;
 import org.almostrealism.algebra.computations.DefaultScalarEvaluable;
 import org.almostrealism.algebra.computations.PairFromScalars;
 import org.almostrealism.algebra.computations.ScalarFromPair;
-import org.almostrealism.algebra.computations.AcceleratedStaticPairComputation;
+import org.almostrealism.algebra.computations.StaticPairComputation;
 import io.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
@@ -32,7 +32,7 @@ public interface PairFeatures {
 	default PairProducer v(Pair value) { return value(value); }
 
 	default PairProducer value(Pair value) {
-		return new AcceleratedStaticPairComputation(value);
+		return new StaticPairComputation(value);
 	}
 
 	default ScalarEvaluable l(Evaluable<Pair> p) {

@@ -19,7 +19,7 @@ package org.almostrealism.algebra;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 
-import org.almostrealism.algebra.computations.AcceleratedStaticVectorComputation;
+import org.almostrealism.algebra.computations.StaticVectorComputation;
 import org.almostrealism.algebra.computations.CrossProduct;
 import org.almostrealism.algebra.computations.DefaultScalarEvaluable;
 import org.almostrealism.algebra.computations.DefaultVectorEvaluable;
@@ -43,13 +43,13 @@ public interface VectorFeatures {
 	Scalar two = new Scalar(2.0);
 
 	static VectorProducer of(Vector value) {
-		return new AcceleratedStaticVectorComputation(value);
+		return new StaticVectorComputation(value);
 	}
 
 	default VectorProducer v(Vector value) { return value(value); }
 
 	default VectorProducer value(Vector value) {
-		return new AcceleratedStaticVectorComputation(value);
+		return new StaticVectorComputation(value);
 	}
 
 	default VectorProducer vector(double x, double y, double z) { return value(new Vector(x, y, z)); }

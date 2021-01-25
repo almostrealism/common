@@ -17,8 +17,7 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.ArrayVariable;
-import io.almostrealism.code.ComputationProducerAdapter;
-import io.almostrealism.code.NameProvider;
+import io.almostrealism.code.ProducerComputationAdapter;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.expressions.InstanceReference;
 import io.almostrealism.code.expressions.Expression;
@@ -36,8 +35,8 @@ import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
-public abstract class DynamicAcceleratedProducerAdapter<I extends MemWrapper, O extends MemWrapper>
-		extends ComputationProducerAdapter<I, O>
+public abstract class DynamicProducerComputationAdapter<I extends MemWrapper, O extends MemWrapper>
+		extends ProducerComputationAdapter<I, O>
 		implements MemWrapperComputation<O>, KernelizedProducer<O>,
 		DestinationSupport<O>, MultiExpression<Double>, ComputerFeatures {
 	/**
@@ -64,13 +63,13 @@ public abstract class DynamicAcceleratedProducerAdapter<I extends MemWrapper, O 
 	private IntFunction<InstanceReference> variableRef;
 	private Supplier<O> destination;
 
-	public DynamicAcceleratedProducerAdapter(int memLength, Supplier<Evaluable<? extends O>> result,
+	public DynamicProducerComputationAdapter(int memLength, Supplier<Evaluable<? extends O>> result,
 											 IntFunction<MemoryBank<O>> kernelDestination,
 											 Supplier<Evaluable<? extends I>>... inputArgs) {
 		this(memLength, result, kernelDestination, inputArgs, new Evaluable[0]);
 	}
 
-	public DynamicAcceleratedProducerAdapter(int memLength, Supplier<Evaluable<? extends O>> result,
+	public DynamicProducerComputationAdapter(int memLength, Supplier<Evaluable<? extends O>> result,
 											 IntFunction<MemoryBank<O>> kernelDestination,
 											 Supplier<Evaluable<? extends I>>[] inputArgs,
 											 Object[] additionalArguments) {
@@ -163,8 +162,8 @@ public abstract class DynamicAcceleratedProducerAdapter<I extends MemWrapper, O 
 			Supplier<Evaluable<? extends I>> supplier = inputs.get(i);
 
 			// A "value only" producer is acceptable
-			if (supplier instanceof DynamicAcceleratedProducerAdapter
-					&& ((DynamicAcceleratedProducerAdapter) supplier).isValueOnly()) {
+			if (supplier instanceof DynamicProducerComputationAdapter
+					&& ((DynamicProducerComputationAdapter) supplier).isValueOnly()) {
 				continue i;
 			}
 
@@ -185,8 +184,8 @@ public abstract class DynamicAcceleratedProducerAdapter<I extends MemWrapper, O 
 		List<ArrayVariable<? extends T>> staticProducers = new ArrayList<>();
 
 		for (int i = 1; i < args.size(); i++) {
-			if (args.get(i).getProducer() instanceof DynamicAcceleratedProducerAdapter &&
-					((DynamicAcceleratedProducerAdapter) args.get(i).getProducer()).isStatic()) {
+			if (args.get(i).getProducer() instanceof DynamicProducerComputationAdapter &&
+					((DynamicProducerComputationAdapter) args.get(i).getProducer()).isStatic()) {
 				staticProducers.add(args.get(i));
 			}
 		}
@@ -198,8 +197,8 @@ public abstract class DynamicAcceleratedProducerAdapter<I extends MemWrapper, O 
 		List<ArrayVariable<? extends T>> dynamicProducers = new ArrayList<>();
 
 		for (int i = 1; i < args.size(); i++) {
-			if (args.get(i).getProducer() instanceof DynamicAcceleratedProducerAdapter == false ||
-					!((DynamicAcceleratedProducerAdapter) args.get(i).getProducer()).isStatic()) {
+			if (args.get(i).getProducer() instanceof DynamicProducerComputationAdapter == false ||
+					!((DynamicProducerComputationAdapter) args.get(i).getProducer()).isStatic()) {
 				dynamicProducers.add(args.get(i));
 			}
 		}

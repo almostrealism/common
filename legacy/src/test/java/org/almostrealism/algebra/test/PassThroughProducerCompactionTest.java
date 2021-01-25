@@ -4,7 +4,7 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.computations.ScalarProduct;
 import org.almostrealism.algebra.computations.ScalarSum;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
-import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
+import org.almostrealism.hardware.DynamicProducerComputationAdapter;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.util.CodeFeatures;
 import org.almostrealism.hardware.PassThroughEvaluable;
@@ -12,7 +12,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 public class PassThroughProducerCompactionTest implements HardwareFeatures, CodeFeatures {
-	protected DynamicAcceleratedProducerAdapter<Scalar, Scalar> sum() {
+	protected DynamicProducerComputationAdapter<Scalar, Scalar> sum() {
 		return new ScalarSum(
 				PassThroughEvaluable.of(Scalar.class, 0),
 				PassThroughEvaluable.of(Scalar.class, 1));

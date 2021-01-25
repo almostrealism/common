@@ -16,12 +16,12 @@
 
 package org.almostrealism.algebra.computations;
 
-import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarBank;
-import org.almostrealism.algebra.ScalarProducer;
+import org.almostrealism.algebra.Pair;
+import org.almostrealism.algebra.PairBank;
+import org.almostrealism.algebra.PairProducer;
 
-public class AcceleratedStaticScalarComputation extends AcceleratedStaticComputationAdapter<Scalar> implements ScalarProducer {
-	public AcceleratedStaticScalarComputation(Scalar value) {
-		super(value, Scalar.blank(), ScalarBank::new);
+public class StaticPairComputation extends StaticComputationAdapter<Pair> implements PairProducer {
+	public StaticPairComputation(Pair value) {
+		super(value, Pair.empty(), PairBank::new);
 	}
 }

@@ -17,7 +17,7 @@
 package org.almostrealism.bool;
 
 import io.almostrealism.code.ArrayVariable;
-import io.almostrealism.code.ComputationProducerAdapter;
+import io.almostrealism.code.ProducerComputationAdapter;
 import io.almostrealism.code.HybridScope;
 import io.almostrealism.code.MultiExpression;
 import io.almostrealism.code.Scope;
@@ -37,7 +37,7 @@ import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
 public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrapper>
-											extends ComputationProducerAdapter<MemWrapper, T>
+											extends ProducerComputationAdapter<MemWrapper, T>
 											implements AcceleratedConditionalStatement<T>,
 													ExplictBody<T>, ComputerFeatures {
 	public static boolean enableCompaction = false;

@@ -46,7 +46,7 @@ public class PassThroughEvaluable<T> implements Evaluable<T>, ProducerArgumentRe
 		if (MemWrapper.class.isAssignableFrom(type)) {
 			try {
 				MemWrapper m = (MemWrapper) type.getConstructor().newInstance();
-				return new AcceleratedPassThroughProducer(m.getMemLength(), index, kernelDimension);
+				return new PassThroughProducer(m.getMemLength(), index, kernelDimension);
 			} catch (InstantiationException | IllegalAccessException |
 					InvocationTargetException | NoSuchMethodException e) {
 				System.out.println("WARN: Unable to determine memory length for " + type.getName());

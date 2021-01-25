@@ -16,19 +16,19 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.code.ComputationOperationAdapter;
+import io.almostrealism.code.OperationComputationAdapter;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Operation;
 
 import java.util.Arrays;
 import java.util.function.Supplier;
 
-public abstract class DynamicAcceleratedOperationAdapter<T> extends ComputationOperationAdapter<T, Void> implements Operation, ComputerFeatures {
-	public DynamicAcceleratedOperationAdapter(Supplier<Evaluable<? extends T>>... inputArgs) {
+public abstract class DynamicOperationComputationAdapter<T> extends OperationComputationAdapter<T, Void> implements Operation, ComputerFeatures {
+	public DynamicOperationComputationAdapter(Supplier<Evaluable<? extends T>>... inputArgs) {
 		this(inputArgs, new Object[0]);
 	}
 
-	public DynamicAcceleratedOperationAdapter(Supplier<Evaluable<? extends T>>[] inputArgs, Object[] additionalArguments) {
+	public DynamicOperationComputationAdapter(Supplier<Evaluable<? extends T>>[] inputArgs, Object[] additionalArguments) {
 		this.setInputs(Arrays.asList(AcceleratedEvaluable.producers(inputArgs, additionalArguments)));
 		init();
 	}

@@ -16,18 +16,16 @@
 
 package org.almostrealism.time.computations;
 
-import io.almostrealism.code.ExplicitScope;
 import io.almostrealism.code.HybridScope;
 import io.almostrealism.code.Scope;
-import org.almostrealism.hardware.DynamicAcceleratedOperationAdapter;
-import io.almostrealism.code.NameProvider;
+import org.almostrealism.hardware.DynamicOperationComputationAdapter;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.time.CursorPair;
 
 import java.util.function.Consumer;
 
-public class AcceleratedTimeSeriesPurge extends DynamicAcceleratedOperationAdapter {
+public class AcceleratedTimeSeriesPurge extends DynamicOperationComputationAdapter {
 	public AcceleratedTimeSeriesPurge(Producer<AcceleratedTimeSeries> series, Producer<CursorPair> cursors) {
 		super(new Producer[] { series, cursors });
 	}

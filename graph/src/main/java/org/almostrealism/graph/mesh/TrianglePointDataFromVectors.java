@@ -18,13 +18,13 @@ package org.almostrealism.graph.mesh;
 
 import io.almostrealism.code.expressions.Expression;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
+import org.almostrealism.hardware.DynamicProducerComputationAdapter;
 import io.almostrealism.relation.Evaluable;
 
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public class TrianglePointDataFromVectors extends DynamicAcceleratedProducerAdapter<Vector, TrianglePointData> implements TrianglePointDataProducer {
+public class TrianglePointDataFromVectors extends DynamicProducerComputationAdapter<Vector, TrianglePointData> implements TrianglePointDataProducer {
 	private Expression<Double> value[];
 
 	public TrianglePointDataFromVectors(Supplier<Evaluable<? extends Vector>> p1, Supplier<Evaluable<? extends Vector>> p2,
@@ -52,11 +52,11 @@ public class TrianglePointDataFromVectors extends DynamicAcceleratedProducerAdap
 
 			i: for (int i = 1; i < getArguments().size(); i++) {
 				// Ignore those that are not of a compactable kind
-				if (getArguments().get(i).getProducer() instanceof DynamicAcceleratedProducerAdapter == false) {
+				if (getArguments().get(i).getProducer() instanceof DynamicProducerComputationAdapter == false) {
 					continue i;
 				}
 
-				DynamicAcceleratedProducerAdapter child = (DynamicAcceleratedProducerAdapter) getArguments().get(i).getProducer();
+				DynamicProducerComputationAdapter child = (DynamicProducerComputationAdapter) getArguments().get(i).getProducer();
 
 				// Ignore those that are more than just a value returned from getValue
 				if (!child.isValueOnly()) {

@@ -23,7 +23,7 @@ import io.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 
-public class VectorSum extends NAryDynamicAcceleratedProducer<Vector> implements VectorProducer {
+public class VectorSum extends NAryDynamicProducer<Vector> implements VectorProducer {
 	public VectorSum(Supplier<Evaluable<? extends Vector>>... producers) {
 		super("+", 3, Vector.blank(), VectorBank::new, producers);
 	}

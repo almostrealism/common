@@ -18,7 +18,7 @@ package org.almostrealism.time.computations;
 
 import io.almostrealism.code.expressions.Expression;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
+import org.almostrealism.hardware.DynamicProducerComputationAdapter;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.time.TemporalScalar;
 import org.almostrealism.time.TemporalScalarBank;
@@ -27,7 +27,7 @@ import org.almostrealism.time.TemporalScalarProducer;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public class TemporalScalarFromScalars extends DynamicAcceleratedProducerAdapter<Scalar, TemporalScalar> implements TemporalScalarProducer {
+public class TemporalScalarFromScalars extends DynamicProducerComputationAdapter<Scalar, TemporalScalar> implements TemporalScalarProducer {
 	private Expression<Double> value[];
 
 	public TemporalScalarFromScalars(Supplier<Evaluable<? extends Scalar>> time, Supplier<Evaluable<? extends Scalar>> value) {

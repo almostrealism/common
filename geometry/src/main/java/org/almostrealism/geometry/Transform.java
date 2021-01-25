@@ -22,7 +22,7 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorBank;
 import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.hardware.AcceleratedEvaluable;
-import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
+import org.almostrealism.hardware.DynamicProducerComputationAdapter;
 import io.almostrealism.relation.Evaluable;
 
 import java.util.ArrayList;
@@ -31,7 +31,7 @@ import java.util.List;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public class Transform extends DynamicAcceleratedProducerAdapter<Vector, Vector> implements VectorProducer {
+public class Transform extends DynamicProducerComputationAdapter<Vector, Vector> implements VectorProducer {
 	private boolean includeTranslation;
 
 	private Expression<Double> value[];

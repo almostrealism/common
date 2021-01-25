@@ -14,15 +14,14 @@
  * limitations under the License.
  */
 
-package org.almostrealism.color.computations;
+package org.almostrealism.algebra.computations;
 
-import org.almostrealism.color.RGB;
-import org.almostrealism.color.RGBBank;
-import org.almostrealism.color.RGBProducer;
-import org.almostrealism.algebra.computations.AcceleratedStaticComputationAdapter;
+import org.almostrealism.algebra.Vector;
+import org.almostrealism.algebra.VectorBank;
+import org.almostrealism.algebra.VectorProducer;
 
-public class AcceleratedStaticRGBComputation extends AcceleratedStaticComputationAdapter<RGB> implements RGBProducer {
-	public AcceleratedStaticRGBComputation(RGB value) {
-		super(value, RGB.blank(), RGBBank::new);
+public class StaticVectorComputation extends StaticComputationAdapter<Vector> implements VectorProducer {
+	public StaticVectorComputation(Vector value) {
+		super(value, Vector.blank(), VectorBank::new);
 	}
 }

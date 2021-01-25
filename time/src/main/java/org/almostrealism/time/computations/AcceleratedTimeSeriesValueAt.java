@@ -23,9 +23,8 @@ import io.almostrealism.code.expressions.Expression;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarProducer;
-import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
+import org.almostrealism.hardware.DynamicProducerComputationAdapter;
 import org.almostrealism.hardware.MemWrapper;
-import io.almostrealism.code.NameProvider;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.time.CursorPair;
@@ -33,7 +32,7 @@ import org.almostrealism.time.CursorPair;
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
 
-public class AcceleratedTimeSeriesValueAt extends DynamicAcceleratedProducerAdapter<MemWrapper, Scalar> implements ScalarProducer {
+public class AcceleratedTimeSeriesValueAt extends DynamicProducerComputationAdapter<MemWrapper, Scalar> implements ScalarProducer {
 	public AcceleratedTimeSeriesValueAt(Producer<AcceleratedTimeSeries> series, Producer<CursorPair> cursors) {
 		super(2, Scalar.blank(), ScalarBank::new, new Producer[] { series, cursors });
 	}

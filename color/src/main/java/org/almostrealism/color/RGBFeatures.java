@@ -20,7 +20,7 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.algebra.ScalarEvaluable;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.color.computations.AcceleratedStaticRGBComputation;
+import org.almostrealism.color.computations.StaticRGBComputation;
 import org.almostrealism.color.computations.ColorProduct;
 import org.almostrealism.color.computations.ColorSum;
 import org.almostrealism.color.computations.DefaultRGBEvaluable;
@@ -31,7 +31,7 @@ import java.util.function.Supplier;
 public interface RGBFeatures {
 
 	static RGBProducer of(RGB value) {
-		return new AcceleratedStaticRGBComputation(value);
+		return new StaticRGBComputation(value);
 	}
 
 	default RGBProducer v(RGB value) { return value(value); }
@@ -43,7 +43,7 @@ public interface RGBFeatures {
 	default RGBProducer rgb(double v) { return cfromScalar(v); }
 
 	default RGBProducer value(RGB value) {
-		return new AcceleratedStaticRGBComputation(value);
+		return new StaticRGBComputation(value);
 	}
 
 	default RGBEvaluable cadd(Evaluable<RGB> value, Evaluable<RGB> operand) {

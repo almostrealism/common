@@ -14,14 +14,15 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.algebra.computations;
+package org.almostrealism.geometry.computations;
 
-import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.PairBank;
-import org.almostrealism.algebra.PairProducer;
+import org.almostrealism.algebra.computations.StaticComputationAdapter;
+import org.almostrealism.geometry.TransformMatrix;
+import org.almostrealism.geometry.TransformMatrixBank;
+import org.almostrealism.geometry.TransformMatrixProducer;
 
-public class AcceleratedStaticPairComputation extends AcceleratedStaticComputationAdapter<Pair> implements PairProducer {
-	public AcceleratedStaticPairComputation(Pair value) {
-		super(value, Pair.empty(), PairBank::new);
+public class StaticTransformMatrixComputation extends StaticComputationAdapter<TransformMatrix> implements TransformMatrixProducer {
+	public StaticTransformMatrixComputation(TransformMatrix value) {
+		super(value, TransformMatrix.blank(), TransformMatrixBank::new);
 	}
 }

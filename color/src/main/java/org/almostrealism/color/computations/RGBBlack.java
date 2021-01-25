@@ -19,7 +19,7 @@ package org.almostrealism.color.computations;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBEvaluable;
 
-public class RGBBlack extends AcceleratedStaticRGBComputation {
+public class RGBBlack extends StaticRGBComputation {
 	private static RGBBlack local = new RGBBlack();
 	private static RGBEvaluable evaluable = new DefaultRGBEvaluable(getInstance());
 

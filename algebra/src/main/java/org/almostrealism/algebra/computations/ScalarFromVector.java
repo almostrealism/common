@@ -21,14 +21,14 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
+import org.almostrealism.hardware.DynamicProducerComputationAdapter;
 import org.almostrealism.hardware.ComputerFeatures;
 import io.almostrealism.relation.Evaluable;
 
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public class ScalarFromVector extends DynamicAcceleratedProducerAdapter<Vector, Scalar> implements ScalarProducer, ComputerFeatures {
+public class ScalarFromVector extends DynamicProducerComputationAdapter<Vector, Scalar> implements ScalarProducer, ComputerFeatures {
 	public static final int X = 0;
 	public static final int Y = 1;
 	public static final int Z = 2;

@@ -24,9 +24,9 @@ import io.almostrealism.relation.Provider;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-public abstract class ComputationOperationAdapter<I, O> extends OperationAdapter<I> implements Computation<O>, Compactable {
+public abstract class OperationComputationAdapter<I, O> extends OperationAdapter<I> implements Computation<O>, Compactable {
 
-	public ComputationOperationAdapter() {
+	public OperationComputationAdapter() {
 		super(new Supplier[0]);
 	}
 

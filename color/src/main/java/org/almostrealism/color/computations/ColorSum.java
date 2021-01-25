@@ -16,7 +16,7 @@
 
 package org.almostrealism.color.computations;
 
-import org.almostrealism.algebra.computations.NAryDynamicAcceleratedProducer;
+import org.almostrealism.algebra.computations.NAryDynamicProducer;
 import org.almostrealism.color.RGB;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.color.RGBBank;
@@ -36,7 +36,7 @@ import java.util.function.Supplier;
 /**
  * @author  Michael Murray
  */
-public class ColorSum extends NAryDynamicAcceleratedProducer<RGB> implements RGBProducer {
+public class ColorSum extends NAryDynamicProducer<RGB> implements RGBProducer {
 	public ColorSum(Supplier<Evaluable<? extends RGB>>... producers) {
 		super("+", 3, RGB.blank(), RGBBank::new, producers);
 	}

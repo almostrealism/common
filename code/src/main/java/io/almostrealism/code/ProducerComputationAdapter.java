@@ -16,7 +16,7 @@
 
 package io.almostrealism.code;
 
-public abstract class ComputationProducerAdapter<I, O> extends ComputationOperationAdapter<I, O> implements ProducerComputation<O> {
+public abstract class ProducerComputationAdapter<I, O> extends OperationComputationAdapter<I, O> implements ProducerComputation<O> {
 	private Variable outputVariable;
 
 	@Override

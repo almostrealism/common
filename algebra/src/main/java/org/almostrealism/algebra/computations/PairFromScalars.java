@@ -21,13 +21,13 @@ import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairBank;
 import org.almostrealism.algebra.PairProducer;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
+import org.almostrealism.hardware.DynamicProducerComputationAdapter;
 import io.almostrealism.relation.Evaluable;
 
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public class PairFromScalars extends DynamicAcceleratedProducerAdapter<Scalar, Pair> implements PairProducer {
+public class PairFromScalars extends DynamicProducerComputationAdapter<Scalar, Pair> implements PairProducer {
 	private Expression<Double> value[];
 
 	public PairFromScalars(Supplier<Evaluable<? extends Scalar>> x, Supplier<Evaluable<? extends Scalar>> y) {

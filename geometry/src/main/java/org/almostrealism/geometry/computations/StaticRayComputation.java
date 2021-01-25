@@ -16,16 +16,13 @@
 
 package org.almostrealism.geometry.computations;
 
-import io.almostrealism.relation.Evaluable;
-import org.almostrealism.algebra.computations.AcceleratedStaticComputationAdapter;
+import org.almostrealism.algebra.computations.StaticComputationAdapter;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayBank;
 import org.almostrealism.geometry.RayProducer;
 
-import java.util.function.Supplier;
-
-public class AcceleratedStaticRayComputation extends AcceleratedStaticComputationAdapter<Ray> implements RayProducer {
-	public AcceleratedStaticRayComputation(Ray value) {
+public class StaticRayComputation extends StaticComputationAdapter<Ray> implements RayProducer {
+	public StaticRayComputation(Ray value) {
 		super(value, Ray.blank(), RayBank::new);
 	}
 }

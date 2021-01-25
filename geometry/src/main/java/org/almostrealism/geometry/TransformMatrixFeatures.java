@@ -16,12 +16,12 @@
 
 package org.almostrealism.geometry;
 
-import org.almostrealism.geometry.computations.AcceleratedStaticTransformMatrixComputation;
+import org.almostrealism.geometry.computations.StaticTransformMatrixComputation;
 
 public interface TransformMatrixFeatures {
 	default TransformMatrixProducer v(TransformMatrix v) { return value(v); }
 
 	default TransformMatrixProducer value(TransformMatrix v) {
-		return new AcceleratedStaticTransformMatrixComputation(v);
+		return new StaticTransformMatrixComputation(v);
 	}
 }

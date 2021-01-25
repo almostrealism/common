@@ -16,10 +16,10 @@
 
 package org.almostrealism.algebra;
 
-import org.almostrealism.algebra.computations.AcceleratedStaticVectorComputation;
+import org.almostrealism.algebra.computations.StaticVectorComputation;
 import org.almostrealism.hardware.MemWrapper;
 
-public class ImmutableVector extends AcceleratedStaticVectorComputation implements TripleFunction<Triple, Vector> {
+public class ImmutableVector extends StaticVectorComputation implements TripleFunction<Triple, Vector> {
 	public ImmutableVector() {
 		super(new Data());
 	}

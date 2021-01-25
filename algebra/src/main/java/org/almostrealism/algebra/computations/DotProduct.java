@@ -22,13 +22,13 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
+import org.almostrealism.hardware.DynamicProducerComputationAdapter;
 import org.almostrealism.hardware.ComputerFeatures;
 
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public class DotProduct extends DynamicAcceleratedProducerAdapter<Vector, Scalar> implements ScalarProducer, ComputerFeatures {
+public class DotProduct extends DynamicProducerComputationAdapter<Vector, Scalar> implements ScalarProducer, ComputerFeatures {
 	private Expression<Double> value[];
 
 	public DotProduct(Supplier<Evaluable<? extends Vector>> a, Supplier<Evaluable<? extends Vector>> b) {

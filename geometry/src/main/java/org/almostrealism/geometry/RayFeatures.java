@@ -21,7 +21,7 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorEvaluable;
 import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.algebra.computations.DefaultVectorEvaluable;
-import org.almostrealism.geometry.computations.AcceleratedStaticRayComputation;
+import org.almostrealism.geometry.computations.StaticRayComputation;
 import org.almostrealism.geometry.computations.DirectionDotDirection;
 import org.almostrealism.geometry.computations.OriginDotDirection;
 import org.almostrealism.geometry.computations.OriginDotOrigin;
@@ -37,7 +37,7 @@ public interface RayFeatures {
 	default RayProducer v(Ray value) { return value(value); }
 
 	default RayProducer value(Ray value) {
-		return new AcceleratedStaticRayComputation(value);
+		return new StaticRayComputation(value);
 	}
 
 	default RayProducer ray(double x, double y, double z, double dx, double dy, double dz) {

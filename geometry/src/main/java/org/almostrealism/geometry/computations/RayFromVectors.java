@@ -21,13 +21,13 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayBank;
 import org.almostrealism.geometry.RayProducer;
-import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
+import org.almostrealism.hardware.DynamicProducerComputationAdapter;
 import io.almostrealism.relation.Evaluable;
 
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public class RayFromVectors extends DynamicAcceleratedProducerAdapter<Vector, Ray> implements RayProducer {
+public class RayFromVectors extends DynamicProducerComputationAdapter<Vector, Ray> implements RayProducer {
 	private Expression<Double> value[];
 	
 	public RayFromVectors(Supplier<Evaluable<? extends Vector>> origin, Supplier<Evaluable<? extends Vector>> direction) {

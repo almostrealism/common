@@ -19,13 +19,13 @@ package org.almostrealism.hardware.computations;
 import io.almostrealism.code.Variable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.code.ScopeInputManager;
-import org.almostrealism.hardware.DynamicAcceleratedOperationAdapter;
+import org.almostrealism.hardware.DynamicOperationComputationAdapter;
 import org.almostrealism.hardware.MemWrapper;
 
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
-public class Assignment<T extends MemWrapper> extends DynamicAcceleratedOperationAdapter<T> {
+public class Assignment<T extends MemWrapper> extends DynamicOperationComputationAdapter<T> {
 	private int memLength;
 
 	public Assignment(int memLength, Supplier<Evaluable<? extends T>> result, Supplier<Evaluable<? extends T>> value) {

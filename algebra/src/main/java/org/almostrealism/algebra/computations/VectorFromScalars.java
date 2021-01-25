@@ -21,13 +21,13 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorBank;
 import org.almostrealism.algebra.VectorProducer;
-import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
+import org.almostrealism.hardware.DynamicProducerComputationAdapter;
 import io.almostrealism.relation.Evaluable;
 
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public class VectorFromScalars extends DynamicAcceleratedProducerAdapter<Scalar, Vector> implements VectorProducer {
+public class VectorFromScalars extends DynamicProducerComputationAdapter<Scalar, Vector> implements VectorProducer {
 	private Expression<Double> value[];
 
 	public VectorFromScalars(Supplier<Evaluable<? extends Scalar>> x, Supplier<Evaluable<? extends Scalar>> y, Supplier<Evaluable<? extends Scalar>> z) {

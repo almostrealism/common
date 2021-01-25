@@ -14,15 +14,14 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.geometry.computations;
+package org.almostrealism.algebra.computations;
 
-import org.almostrealism.algebra.computations.AcceleratedStaticComputationAdapter;
-import org.almostrealism.geometry.TransformMatrix;
-import org.almostrealism.geometry.TransformMatrixBank;
-import org.almostrealism.geometry.TransformMatrixProducer;
+import org.almostrealism.algebra.Scalar;
+import org.almostrealism.algebra.ScalarBank;
+import org.almostrealism.algebra.ScalarProducer;
 
-public class AcceleratedStaticTransformMatrixComputation extends AcceleratedStaticComputationAdapter<TransformMatrix> implements TransformMatrixProducer {
-	public AcceleratedStaticTransformMatrixComputation(TransformMatrix value) {
-		super(value, TransformMatrix.blank(), TransformMatrixBank::new);
+public class StaticScalarComputation extends StaticComputationAdapter<Scalar> implements ScalarProducer {
+	public StaticScalarComputation(Scalar value) {
+		super(value, Scalar.blank(), ScalarBank::new);
 	}
 }

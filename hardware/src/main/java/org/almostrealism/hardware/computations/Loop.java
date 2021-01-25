@@ -22,9 +22,9 @@ import io.almostrealism.code.HybridScope;
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.ScopeInputManager;
 import org.almostrealism.c.OpenCLPrintWriter;
-import org.almostrealism.hardware.DynamicAcceleratedOperationAdapter;
+import org.almostrealism.hardware.DynamicOperationComputationAdapter;
 
-public class Loop extends DynamicAcceleratedOperationAdapter<Void> {
+public class Loop extends DynamicOperationComputationAdapter<Void> {
 	private Computation atom;
 	private int iterations;
 

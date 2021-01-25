@@ -20,7 +20,7 @@ import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.expressions.Expression;
 import io.almostrealism.code.Variable;
 import io.almostrealism.code.expressions.NAryExpression;
-import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
+import org.almostrealism.hardware.DynamicProducerComputationAdapter;
 import org.almostrealism.hardware.ComputerFeatures;
 import org.almostrealism.hardware.MemWrapper;
 import io.almostrealism.relation.Evaluable;
@@ -31,14 +31,14 @@ import java.util.List;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public abstract class NAryDynamicAcceleratedProducer<T extends MemWrapper> extends DynamicAcceleratedProducerAdapter<T, T> implements ComputerFeatures {
+public abstract class NAryDynamicProducer<T extends MemWrapper> extends DynamicProducerComputationAdapter<T, T> implements ComputerFeatures {
 	private String operator;
 	private Expression<Double> value[];
 	private boolean isStatic;
 
-	public NAryDynamicAcceleratedProducer(String operator, int memLength, Supplier<Evaluable<? extends T>> blank,
-										  IntFunction<MemoryBank<T>> kernelDestination,
-										  Supplier<Evaluable<? extends T>>... producers) {
+	public NAryDynamicProducer(String operator, int memLength, Supplier<Evaluable<? extends T>> blank,
+							   IntFunction<MemoryBank<T>> kernelDestination,
+							   Supplier<Evaluable<? extends T>>... producers) {
 		super(memLength, blank, kernelDestination, producers);
 		this.operator = operator;
 	}

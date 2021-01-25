@@ -26,17 +26,17 @@ import java.util.List;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public class AcceleratedPassThroughProducer<T extends MemWrapper>
-		extends DynamicAcceleratedProducerAdapter<T, T>
+public class PassThroughProducer<T extends MemWrapper>
+		extends DynamicProducerComputationAdapter<T, T>
 		implements ProducerArgumentReference {
 	private int argIndex;
 	private int kernelIndex;
 
-	public AcceleratedPassThroughProducer(int memLength, int argIndex) {
+	public PassThroughProducer(int memLength, int argIndex) {
 		this(memLength, argIndex, 0);
 	}
 
-	public AcceleratedPassThroughProducer(int memLength, int argIndex, int kernelIndex) {
+	public PassThroughProducer(int memLength, int argIndex, int kernelIndex) {
 		super(memLength, null, null);
 		this.argIndex = argIndex;
 		this.kernelIndex = kernelIndex;

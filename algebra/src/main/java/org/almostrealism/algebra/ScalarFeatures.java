@@ -16,13 +16,12 @@
 
 package org.almostrealism.algebra;
 
-import org.almostrealism.algebra.computations.AcceleratedStaticScalarComputation;
+import org.almostrealism.algebra.computations.StaticScalarComputation;
 import org.almostrealism.algebra.computations.DefaultScalarEvaluable;
 import org.almostrealism.algebra.computations.ScalarPow;
 import org.almostrealism.algebra.computations.ScalarProduct;
 import org.almostrealism.algebra.computations.ScalarSum;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.hardware.Hardware;
 
 import java.util.function.Supplier;
 
@@ -32,7 +31,7 @@ public interface ScalarFeatures {
 	static ScalarProducer of(double value) { return of(new Scalar(value)); }
 
 	static ScalarProducer of(Scalar value) {
-		return new AcceleratedStaticScalarComputation(value);
+		return new StaticScalarComputation(value);
 	}
 
 	default ScalarProducer v(double value) { return value(new Scalar(value)); }
@@ -42,7 +41,7 @@ public interface ScalarFeatures {
 	default ScalarProducer scalar(double value) { return value(new Scalar(value)); }
 
 	default ScalarProducer value(Scalar value) {
-		return new AcceleratedStaticScalarComputation(value);
+		return new StaticScalarComputation(value);
 	}
 
 	default ScalarProducer scalar() {

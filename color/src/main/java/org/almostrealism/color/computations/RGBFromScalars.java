@@ -21,13 +21,13 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBBank;
 import org.almostrealism.color.RGBProducer;
-import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
+import org.almostrealism.hardware.DynamicProducerComputationAdapter;
 import io.almostrealism.relation.Evaluable;
 
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public class RGBFromScalars extends DynamicAcceleratedProducerAdapter<Scalar, RGB> implements RGBProducer {
+public class RGBFromScalars extends DynamicProducerComputationAdapter<Scalar, RGB> implements RGBProducer {
 	private Expression<Double> value[];
 
 	public RGBFromScalars(Supplier<Evaluable<? extends Scalar>> r, Supplier<Evaluable<? extends Scalar>> g, Supplier<Evaluable<? extends Scalar>> b) {

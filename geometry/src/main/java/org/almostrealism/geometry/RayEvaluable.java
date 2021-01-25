@@ -17,13 +17,13 @@
 package org.almostrealism.geometry;
 
 import org.almostrealism.algebra.VectorEvaluable;
-import org.almostrealism.geometry.computations.AcceleratedStaticRayComputation;
+import org.almostrealism.geometry.computations.StaticRayComputation;
 import io.almostrealism.relation.Evaluable;
 
 public interface RayEvaluable extends Evaluable<Ray>, RayFeatures {
 
 	static RayProducer of(Ray value) {
-		return new AcceleratedStaticRayComputation(value);
+		return new StaticRayComputation(value);
 	}
 
 	default VectorEvaluable origin() { return origin(this); }

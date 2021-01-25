@@ -16,7 +16,7 @@
 
 package org.almostrealism.color.computations;
 
-import org.almostrealism.algebra.computations.NAryDynamicAcceleratedProducer;
+import org.almostrealism.algebra.computations.NAryDynamicProducer;
 import org.almostrealism.color.RGB;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.color.RGBBank;
@@ -24,7 +24,7 @@ import org.almostrealism.color.RGBProducer;
 
 import java.util.function.Supplier;
 
-public class ColorProduct extends NAryDynamicAcceleratedProducer<RGB> implements RGBProducer {
+public class ColorProduct extends NAryDynamicProducer<RGB> implements RGBProducer {
 	public ColorProduct(Supplier<Evaluable<? extends RGB>>... producers) {
 		super("*", 3, RGB.blank(), RGBBank::new, producers);
 	}

@@ -20,13 +20,13 @@ import io.almostrealism.code.expressions.Expression;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorBank;
 import org.almostrealism.algebra.VectorProducer;
-import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
+import org.almostrealism.hardware.DynamicProducerComputationAdapter;
 import io.almostrealism.relation.Evaluable;
 
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public class VectorFromVectorBank<T extends VectorBank> extends DynamicAcceleratedProducerAdapter<T, Vector> implements VectorProducer {
+public class VectorFromVectorBank<T extends VectorBank> extends DynamicProducerComputationAdapter<T, Vector> implements VectorProducer {
 	private int position;
 
 	private Expression<Double> value[];

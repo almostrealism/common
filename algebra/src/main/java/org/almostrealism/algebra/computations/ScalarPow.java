@@ -5,13 +5,13 @@ import io.almostrealism.code.expressions.Expression;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarProducer;
-import org.almostrealism.hardware.DynamicAcceleratedProducerAdapter;
+import org.almostrealism.hardware.DynamicProducerComputationAdapter;
 import io.almostrealism.relation.Evaluable;
 
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public class ScalarPow extends DynamicAcceleratedProducerAdapter<Scalar, Scalar> implements ScalarProducer {
+public class ScalarPow extends DynamicProducerComputationAdapter<Scalar, Scalar> implements ScalarProducer {
 	private Expression<Double> value[];
 
 	public ScalarPow(Supplier<Evaluable<? extends Scalar>> base, Supplier<Evaluable<? extends Scalar>> exponent) {
