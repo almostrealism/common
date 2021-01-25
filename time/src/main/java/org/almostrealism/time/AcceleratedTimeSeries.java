@@ -27,9 +27,10 @@ import org.almostrealism.time.computations.AcceleratedTimeSeriesValueAt;
 import java.util.function.Supplier;
 
 public class AcceleratedTimeSeries extends TemporalScalarBank implements HardwareFeatures {
+	public static CacheLevel defaultCacheLevel = CacheLevel.NONE;
 
 	public AcceleratedTimeSeries(int maxEntries) {
-		super(maxEntries, CacheLevel.NONE);
+		super(maxEntries, defaultCacheLevel);
 		setBeginCursorIndex(1);
 		setEndCursorIndex(1);
 	}
