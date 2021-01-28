@@ -48,6 +48,7 @@ public class Loop extends DynamicOperationComputationAdapter<Void> {
 	@Override
 	public Scope<Void> getScope() {
 		Scope<Void> atomScope = atom.getScope();
+		atomScope.convertArgumentsToRequiredScopes();
 
 		HybridScope<Void> scope = new HybridScope<>(this);
 		scope.getRequiredScopes().add(atomScope);

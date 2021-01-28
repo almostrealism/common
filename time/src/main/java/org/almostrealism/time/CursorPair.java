@@ -17,9 +17,11 @@
 package org.almostrealism.time;
 
 import org.almostrealism.algebra.Pair;
+import org.almostrealism.algebra.PairPool;
 import org.almostrealism.algebra.Scalar;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
+import org.almostrealism.hardware.PooledMem;
 import org.almostrealism.time.computations.CursorPairIncrement;
 
 import java.util.function.Supplier;
@@ -32,6 +34,10 @@ public class CursorPair extends Pair {
 
 	public void setDelayCursor(double v) {
 		setB(v);
+		// TODO  This is due to a CL "bug" (or something), it should be removed
+		if (Math.abs(getB() - v) > 1) {
+			throw new UnsupportedOperationException();
+		}
 		if (getDelayCursor() <= getCursor()) setDelayCursor(getCursor() + 1);
 	}
 
@@ -40,4 +46,7 @@ public class CursorPair extends Pair {
 	public Supplier<Runnable> increment(Producer<Scalar> value) {
 		return new CursorPairIncrement(() -> new Provider<>(this), value);
 	}
+
+	@Override
+	public PooledMem getDefaultDelegate() { return null; }
 }

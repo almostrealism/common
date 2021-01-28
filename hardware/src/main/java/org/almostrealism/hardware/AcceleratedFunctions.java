@@ -16,6 +16,8 @@
 
 package org.almostrealism.hardware;
 
+import org.almostrealism.hardware.cl.HardwareOperatorMap;
+
 import java.io.InputStream;
 import java.util.HashMap;
 import java.util.Map;

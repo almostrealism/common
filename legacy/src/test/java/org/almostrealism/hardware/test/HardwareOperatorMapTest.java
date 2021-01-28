@@ -1,8 +1,7 @@
 package org.almostrealism.hardware.test;
 
 import org.almostrealism.hardware.Hardware;
-import org.almostrealism.hardware.HardwareOperatorMap;
-import org.junit.Test;
+import org.almostrealism.hardware.cl.HardwareOperatorMap;
 
 public class HardwareOperatorMapTest {
 	public static final String LARGE_FUNCTION =

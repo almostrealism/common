@@ -14,8 +14,11 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.hardware;
+package org.almostrealism.hardware.cl;
 
+import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.HardwareException;
+import org.almostrealism.hardware.MemWrapper;
 import org.jocl.CL;
 import org.jocl.CLException;
 import org.jocl.cl_program;
@@ -23,7 +26,6 @@ import org.jocl.cl_program;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.BiFunction;
-import java.util.function.Function;
 
 /**
  * Wrapper for a cl_program that contains the accelerated functions used in the running application.

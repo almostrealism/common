@@ -17,12 +17,11 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.relation.Producer;
-import io.almostrealism.relation.DynamicProducer;
 import org.almostrealism.hardware.DynamicProducerForMemWrapper;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.hardware.MemWrapperAdapter;
-import org.almostrealism.hardware.HardwareOperator;
+import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.hardware.MemoryBank;
 
 import java.util.function.IntFunction;

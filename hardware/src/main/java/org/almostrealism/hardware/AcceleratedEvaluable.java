@@ -20,6 +20,7 @@ import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
+import org.almostrealism.hardware.cl.HardwareOperator;
 
 import java.util.ArrayList;
 import java.util.List;

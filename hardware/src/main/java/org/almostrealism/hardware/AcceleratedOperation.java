@@ -28,6 +28,7 @@ import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.code.SupplierArgumentMap;
 import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.hardware.cl.HardwareOperator;
 import org.jocl.CLException;
 
 import java.util.Arrays;

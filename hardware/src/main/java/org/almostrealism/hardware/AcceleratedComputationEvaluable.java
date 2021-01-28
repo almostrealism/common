@@ -18,8 +18,7 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ProducerComputation;
-
-import java.util.List;
+import org.almostrealism.hardware.cl.HardwareOperator;
 
 public class AcceleratedComputationEvaluable<T extends MemWrapper> extends AcceleratedComputationOperation implements KernelizedEvaluable<T> {
 	public AcceleratedComputationEvaluable(Computation<T> c) {

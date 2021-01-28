@@ -14,9 +14,12 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.hardware;
+package org.almostrealism.hardware.cl;
 
 import io.almostrealism.relation.Factory;
+import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.HardwareException;
+import org.almostrealism.hardware.MemWrapper;
 import org.jocl.*;
 
 import java.util.function.BiFunction;

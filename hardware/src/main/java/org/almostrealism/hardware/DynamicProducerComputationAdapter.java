@@ -77,7 +77,7 @@ public abstract class DynamicProducerComputationAdapter<I extends MemWrapper, O 
 		this.destination = () -> (O) result.get().evaluate();
 		this.setInputs(Arrays.asList(
 				AcceleratedEvaluable.includeResult(
-						new DynamicProducerForMemWrapper(args -> getDestination().get(), kernelDestination),
+						new MemWrapperDestination(this, kernelDestination),
 						AcceleratedEvaluable.producers(inputArgs, additionalArguments))));
 		init();
 	}
