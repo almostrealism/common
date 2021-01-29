@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -20,12 +20,24 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryPool;
 
 public class TemporalScalarPool extends MemoryPool<TemporalScalar> {
-	private static final TemporalScalarPool local =
-			new TemporalScalarPool(32 * Hardware.getLocalHardware().getDefaultPoolSize());
+	private static TemporalScalarPool local;
 
 	protected TemporalScalarPool(int size) {
 		super(2, size);
 	}
 
-	public static TemporalScalarPool getLocal() { return local; }
+	public static TemporalScalarPool getLocal() {
+		initPool();
+		return local;
+	}
+
+	private static void initPool() {
+		if (local != null) return;
+		doInitPool();
+	}
+
+	private static synchronized void doInitPool() {
+		int size = 32 * Hardware.getLocalHardware().getDefaultPoolSize();
+		if (size > 0) local = new TemporalScalarPool(size);
+	}
 }

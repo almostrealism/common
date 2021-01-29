@@ -29,6 +29,7 @@ public final class Hardware {
 	public static boolean enableVerbose = false;
 
 	protected static final int MEMORY_SCALE;
+	protected static final boolean ENABLE_POOLING;
 
 	private static Hardware local;
 
@@ -39,6 +40,10 @@ public final class Hardware {
 		String memScale = System.getProperty("AR_HARDWARE_MEMORY_SCALE");
 		if (memScale == null) memScale = System.getenv("AR_HARDWARE_MEMORY_SCALE");
 		MEMORY_SCALE = memScale == null ? 4 : Integer.parseInt(memScale);
+
+		String pooling = System.getProperty("AR_HARDWARE_MEMORY_MODE");
+		if (pooling == null) pooling = System.getenv("AR_HARDWARE_MEMORY_MODE");
+		ENABLE_POOLING = "pool".equalsIgnoreCase(pooling);
 
 		local = new Hardware(gpu);
 	}
@@ -144,7 +149,7 @@ public final class Hardware {
 
 	public int getMemoryScale() { return MEMORY_SCALE; }
 
-	public int getDefaultPoolSize() { return 6250 * (int) Math.pow(2, MEMORY_SCALE); }
+	public int getDefaultPoolSize() { return ENABLE_POOLING ? 6250 * (int) Math.pow(2, MEMORY_SCALE) : -1; }
 
 	public String stringForDouble(double d) {
 		if (isGPU()) {

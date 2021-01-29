@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -20,12 +20,24 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryPool;
 
 public class RGBData192Pool extends MemoryPool<RGBData192> {
-	private static final RGBData192Pool local =
-			new RGBData192Pool(4 * Hardware.getLocalHardware().getDefaultPoolSize());
+	private static RGBData192Pool local;
 
 	public RGBData192Pool(int size) {
 		super(3, size);
 	}
 
-	public static RGBData192Pool getLocal() { return local; }
+	public static RGBData192Pool getLocal() {
+		initPool();
+		return local;
+	}
+
+	private static void initPool() {
+		if (local != null) return;
+		doInitPool();
+	}
+
+	private static synchronized void doInitPool() {
+		int size = 4 * Hardware.getLocalHardware().getDefaultPoolSize();
+		if (size > 0) local = new RGBData192Pool(size);
+	}
 }

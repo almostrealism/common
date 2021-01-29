@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -21,12 +21,24 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryPool;
 
 public class TransformMatrixPool extends MemoryPool<Pair> {
-	private static final TransformMatrixPool local =
-			new TransformMatrixPool(Hardware.getLocalHardware().getDefaultPoolSize() / 4);
+	private static TransformMatrixPool local;
 
 	public TransformMatrixPool(int size) {
 		super(16, size);
 	}
 
-	public static TransformMatrixPool getLocal() { return local; }
+	public static TransformMatrixPool getLocal() {
+		initPool();
+		return local;
+	}
+
+	private static void initPool() {
+		if (local != null) return;
+		doInitPool();
+	}
+
+	private static synchronized void doInitPool() {
+		int size = Hardware.getLocalHardware().getDefaultPoolSize() / 4;
+		if (size > 0) local = new TransformMatrixPool(size);
+	}
 }

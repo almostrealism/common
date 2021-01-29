@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -20,12 +20,24 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryPool;
 
 public class PairPool extends MemoryPool<Pair> {
-	private static final PairPool local =
-			new PairPool(5 * Hardware.getLocalHardware().getDefaultPoolSize());
+	private static PairPool local;
 
 	public PairPool(int size) {
 		super(2, size);
 	}
 
-	public static PairPool getLocal() { return local; }
+	public static PairPool getLocal() {
+		initPool();
+		return local;
+	}
+
+	private static void initPool() {
+		if (local != null) return;
+		doInitPool();
+	}
+
+	private static synchronized void doInitPool() {
+		int size = 5 * Hardware.getLocalHardware().getDefaultPoolSize();
+		if (size > 0) local = new PairPool(size);
+	}
 }
