@@ -16,7 +16,7 @@
 
 package org.almostrealism.algebra;
 
-import org.almostrealism.hardware.MemoryPool;
+import org.almostrealism.hardware.mem.MemoryPool;
 
 public class ScalarBankPool extends MemoryPool<ScalarBank> {
 	public ScalarBankPool(int count, int size) {

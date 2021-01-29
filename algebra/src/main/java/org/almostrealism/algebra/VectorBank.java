@@ -17,7 +17,7 @@
 package org.almostrealism.algebra;
 
 import org.almostrealism.hardware.MemWrapper;
-import org.almostrealism.hardware.MemoryBankAdapter;
+import org.almostrealism.hardware.mem.MemoryBankAdapter;
 import io.almostrealism.relation.Evaluable;
 
 /**

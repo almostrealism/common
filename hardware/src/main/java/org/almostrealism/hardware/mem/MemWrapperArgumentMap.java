@@ -14,11 +14,13 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.hardware;
+package org.almostrealism.hardware.mem;
 
 import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.relation.Provider;
+import org.almostrealism.hardware.MemWrapper;
+import org.almostrealism.hardware.ProviderAwareArgumentMap;
 import org.jocl.cl_mem;
 
 import java.util.HashMap;

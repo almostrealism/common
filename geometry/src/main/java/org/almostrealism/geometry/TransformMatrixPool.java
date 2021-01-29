@@ -18,7 +18,7 @@ package org.almostrealism.geometry;
 
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.hardware.Hardware;
-import org.almostrealism.hardware.MemoryPool;
+import org.almostrealism.hardware.mem.MemoryPool;
 
 public class TransformMatrixPool extends MemoryPool<Pair> {
 	private static TransformMatrixPool local;

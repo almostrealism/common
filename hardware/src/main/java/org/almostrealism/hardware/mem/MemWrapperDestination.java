@@ -14,7 +14,12 @@
  * limitations under the License.
  */
 
-package org.almostrealism.hardware;
+package org.almostrealism.hardware.mem;
+
+import org.almostrealism.hardware.DestinationSupport;
+import org.almostrealism.hardware.DynamicProducerForMemWrapper;
+import org.almostrealism.hardware.MemWrapper;
+import org.almostrealism.hardware.MemoryBank;
 
 import java.util.function.IntFunction;
 

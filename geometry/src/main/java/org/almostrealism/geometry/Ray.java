@@ -23,9 +23,8 @@ import org.almostrealism.geometry.computations.RayPointAt;
 import org.almostrealism.hardware.AcceleratedEvaluable;
 import org.almostrealism.hardware.DynamicProducerForMemWrapper;
 import org.almostrealism.hardware.MemWrapper;
-import org.almostrealism.hardware.MemWrapperAdapter;
+import org.almostrealism.hardware.mem.MemWrapperAdapter;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.relation.DynamicProducer;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.MemoryBank;
 

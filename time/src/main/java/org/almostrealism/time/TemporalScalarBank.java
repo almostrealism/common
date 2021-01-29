@@ -16,7 +16,7 @@
 
 package org.almostrealism.time;
 
-import org.almostrealism.hardware.MemoryBankAdapter;
+import org.almostrealism.hardware.mem.MemoryBankAdapter;
 import io.almostrealism.relation.Evaluable;
 
 /**

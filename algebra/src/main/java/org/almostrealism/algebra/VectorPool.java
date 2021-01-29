@@ -17,7 +17,7 @@
 package org.almostrealism.algebra;
 
 import org.almostrealism.hardware.Hardware;
-import org.almostrealism.hardware.MemoryPool;
+import org.almostrealism.hardware.mem.MemoryPool;
 
 public class VectorPool extends MemoryPool<Pair> {
 	private static VectorPool local;

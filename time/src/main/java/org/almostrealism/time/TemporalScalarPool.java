@@ -17,7 +17,7 @@
 package org.almostrealism.time;
 
 import org.almostrealism.hardware.Hardware;
-import org.almostrealism.hardware.MemoryPool;
+import org.almostrealism.hardware.mem.MemoryPool;
 
 public class TemporalScalarPool extends MemoryPool<TemporalScalar> {
 	private static TemporalScalarPool local;

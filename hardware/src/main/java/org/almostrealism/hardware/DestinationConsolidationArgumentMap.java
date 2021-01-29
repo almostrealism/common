@@ -18,7 +18,7 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.NameProvider;
-import io.almostrealism.relation.Evaluable;
+import org.almostrealism.hardware.mem.MemWrapperArgumentMap;
 
 import java.util.ArrayList;
 import java.util.List;

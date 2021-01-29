@@ -31,6 +31,8 @@ public final class Hardware {
 	protected static final int MEMORY_SCALE;
 	protected static final boolean ENABLE_POOLING;
 
+	protected static final int timeSeriesSize;
+
 	private static Hardware local;
 
 	static {
@@ -44,6 +46,11 @@ public final class Hardware {
 		String pooling = System.getProperty("AR_HARDWARE_MEMORY_MODE");
 		if (pooling == null) pooling = System.getenv("AR_HARDWARE_MEMORY_MODE");
 		ENABLE_POOLING = "pool".equalsIgnoreCase(pooling);
+
+		String tsSize = System.getProperty("AR_HARDWARE_TIMESERIES_SIZE");
+		if (tsSize == null) tsSize = System.getenv("AR_HARDWARE_TIMESERIES_SIZE");
+
+		timeSeriesSize = tsSize == null ? -1 : (int) (100000 * Double.parseDouble(tsSize));
 
 		local = new Hardware(gpu);
 	}
@@ -150,6 +157,8 @@ public final class Hardware {
 	public int getMemoryScale() { return MEMORY_SCALE; }
 
 	public int getDefaultPoolSize() { return ENABLE_POOLING ? 6250 * (int) Math.pow(2, MEMORY_SCALE) : -1; }
+
+	public int getTimeSeriesSize() { return timeSeriesSize; }
 
 	public String stringForDouble(double d) {
 		if (isGPU()) {

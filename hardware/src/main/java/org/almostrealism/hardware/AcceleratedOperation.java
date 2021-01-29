@@ -29,6 +29,7 @@ import io.almostrealism.code.SupplierArgumentMap;
 import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.cl.HardwareOperator;
+import org.almostrealism.hardware.mem.MemWrapperArgumentMap;
 import org.jocl.CLException;
 
 import java.util.Arrays;

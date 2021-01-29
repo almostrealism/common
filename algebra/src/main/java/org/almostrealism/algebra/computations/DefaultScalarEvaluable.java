@@ -21,7 +21,7 @@ import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarEvaluable;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.MemoryBank;
-import org.almostrealism.hardware.MemoryBankAdapter;
+import org.almostrealism.hardware.mem.MemoryBankAdapter;
 import io.almostrealism.code.Computation;
 
 public class DefaultScalarEvaluable extends AcceleratedComputationEvaluable<Scalar> implements ScalarEvaluable {

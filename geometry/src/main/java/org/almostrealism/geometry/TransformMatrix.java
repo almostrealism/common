@@ -36,7 +36,7 @@ import org.almostrealism.hardware.DynamicProducerForMemWrapper;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.hardware.MemWrapper;
-import org.almostrealism.hardware.MemWrapperAdapter;
+import org.almostrealism.hardware.mem.MemWrapperAdapter;
 import org.almostrealism.hardware.PooledMem;
 
 import java.util.function.Supplier;

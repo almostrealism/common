@@ -14,7 +14,10 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.hardware;
+package org.almostrealism.hardware.mem;
+
+import org.almostrealism.hardware.MemWrapper;
+import org.almostrealism.hardware.PooledMem;
 
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;

@@ -17,7 +17,7 @@
 package org.almostrealism.color;
 
 import org.almostrealism.hardware.Hardware;
-import org.almostrealism.hardware.MemoryPool;
+import org.almostrealism.hardware.mem.MemoryPool;
 
 public class RGBData192Pool extends MemoryPool<RGBData192> {
 	private static RGBData192Pool local;

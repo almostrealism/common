@@ -27,6 +27,7 @@ import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
+import org.almostrealism.hardware.mem.MemWrapperDestination;
 
 import java.util.ArrayList;
 import java.util.Arrays;

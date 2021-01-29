@@ -20,7 +20,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.hardware.DynamicProducerForMemWrapper;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemWrapper;
-import org.almostrealism.hardware.MemWrapperAdapter;
+import org.almostrealism.hardware.mem.MemWrapperAdapter;
 import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.hardware.MemoryBank;
 

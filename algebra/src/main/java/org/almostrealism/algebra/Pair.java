@@ -16,13 +16,12 @@
 
 package org.almostrealism.algebra;
 
-import io.almostrealism.relation.DynamicProducer;
 import io.almostrealism.relation.Producer;
 
 import org.almostrealism.hardware.DynamicProducerForMemWrapper;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemWrapper;
-import org.almostrealism.hardware.MemWrapperAdapter;
+import org.almostrealism.hardware.mem.MemWrapperAdapter;
 import org.almostrealism.hardware.PooledMem;
 import org.jocl.CL;
 import org.jocl.Pointer;

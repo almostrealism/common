@@ -16,11 +16,9 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.DefaultScopeInputManager;
 import io.almostrealism.code.NameProvider;
-import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Named;
 import org.almostrealism.c.OpenCLPrintWriter;
@@ -31,10 +29,10 @@ import io.almostrealism.code.ScopeEncoder;
 import io.almostrealism.code.SupplierArgumentMap;
 import io.almostrealism.code.Variable;
 
+import org.almostrealism.hardware.mem.MemWrapperArgumentMap;
 import org.almostrealism.io.PrintWriter;
 
 import java.util.List;
-import java.util.Objects;
 
 public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperation<MemWrapper> implements NameProvider {
 	public static boolean enableRequiredScopes = true;
