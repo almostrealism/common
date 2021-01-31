@@ -120,4 +120,14 @@ public abstract class DynamicAcceleratedOperation<T extends MemWrapper> extends 
 	public ArrayVariable getArgument(int index) {
 		return getInputs() == null ? getArguments().get(index) : getArgumentForInput(getInputs().get(index));
 	}
+
+	@Override
+	public void destroy() {
+		super.destroy();
+
+		if (operators != null) {
+			operators.destroy();
+			operators = null;
+		}
+	}
 }
