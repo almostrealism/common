@@ -83,7 +83,7 @@ public interface RGBFeatures {
 	}
 
 	default RGBProducer cminus(Supplier<Evaluable<? extends RGB>> p) {
-		return cmultiply(p, cfromScalar(ScalarEvaluable.minusOne));
+		return cmultiply(p, cfromScalar(ScalarFeatures.minusOne()));
 	}
 
 	default RGBEvaluable cfromScalar(Evaluable<Scalar> value) {

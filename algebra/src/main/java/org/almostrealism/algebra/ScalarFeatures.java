@@ -26,7 +26,9 @@ import io.almostrealism.relation.Evaluable;
 import java.util.function.Supplier;
 
 public interface ScalarFeatures {
-	Supplier<Evaluable<? extends Scalar>> minusOne = of(-1.0);
+	// Supplier<Evaluable<? extends Scalar>> minusOne = of(-1.0);
+
+	static Supplier<Evaluable<? extends Scalar>> minusOne() { return of(-1.0); }
 
 	static ScalarProducer of(double value) { return of(new Scalar(value)); }
 
@@ -77,7 +79,7 @@ public interface ScalarFeatures {
 	}
 
 	default ScalarProducer scalarMinus(Supplier<Evaluable<? extends Scalar>> v) {
-		return new ScalarProduct(minusOne, v);
+		return new ScalarProduct(ScalarFeatures.minusOne(), v);
 	}
 
 	default ScalarEvaluable pow(Evaluable<Scalar> base, Evaluable<Scalar> exponent) {
