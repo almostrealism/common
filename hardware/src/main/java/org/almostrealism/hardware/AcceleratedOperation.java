@@ -32,6 +32,7 @@ import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.hardware.mem.MemWrapperArgumentMap;
 import org.jocl.CLException;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -50,12 +51,14 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 	private static Map<String, ThreadLocal<HardwareOperator>> operators = new HashMap<>();
 
 	private boolean kernel;
-
 	private Class cls;
+
+	protected List<ArgumentMap> argumentMaps;
 
 	protected AcceleratedOperation(boolean kernel, Supplier<Evaluable<? extends T>>... args) {
 		super(args);
 		this.kernel = kernel;
+		this.argumentMaps = new ArrayList<>();
 	}
 
 	public AcceleratedOperation(String function, boolean kernel, Supplier<Evaluable<? extends T>>... args) {
@@ -66,6 +69,7 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 	protected AcceleratedOperation(boolean kernel, ArrayVariable<T>... args) {
 		super(args);
 		this.kernel = kernel;
+		this.argumentMaps = new ArrayList<>();
 	}
 
 	public AcceleratedOperation(String function, boolean kernel, ArrayVariable<T>... args) {
@@ -107,6 +111,7 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 
 		if (argumentMap != null) {
 			prepareArguments(argumentMap);
+			argumentMaps.add(argumentMap);
 		}
 
 		prepareScope(argumentMap == null ?
@@ -279,6 +284,11 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 		}
 
 		return false;
+	}
+
+	public void destroy() {
+		argumentMaps.stream().forEach(ArgumentMap::destroy);
+		argumentMaps = new ArrayList<>();
 	}
 
 	protected static <T> MemWrapper[] getKernelArgs(List<ArrayVariable<? extends T>> arguments, MemoryBank args[], int passThroughLength) {
