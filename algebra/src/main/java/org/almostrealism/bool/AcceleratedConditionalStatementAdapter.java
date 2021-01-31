@@ -29,6 +29,7 @@ import org.almostrealism.hardware.ExplictBody;
 import org.almostrealism.hardware.MemWrapper;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.hardware.ProducerCache;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -178,4 +179,10 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrappe
 	}
 
 	protected boolean isCompacted() { return compacted != null; }
+
+	@Override
+	public void destroy() {
+		super.destroy();
+		ProducerCache.purgeEvaluableCache(this);
+	}
 }
