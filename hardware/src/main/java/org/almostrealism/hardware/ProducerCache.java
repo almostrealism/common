@@ -16,7 +16,6 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.relation.Evaluable;
 
 import java.util.HashMap;
@@ -34,6 +33,7 @@ import java.util.function.Supplier;
  */
 public class ProducerCache {
 	public static boolean enableResultCache = false;
+	public static boolean enableEvaluableCache = true;
 
 	private static ThreadLocal<Map<Supplier, Object>> resultCache = new ThreadLocal<>();
 	private static ThreadLocal<Map<Supplier, Evaluable>> evaluableCache = new ThreadLocal<>();
@@ -78,19 +78,26 @@ public class ProducerCache {
 	 * returned by this method if it is called again.
 	 */
 	public static <T> Evaluable<? extends T> getEvaluableForSupplier(Supplier<Evaluable<? extends T>> producer) {
-		if (!getEvaluableCache().containsKey(producer)) {
-			Evaluable ev = producer.get();
-			if (ev instanceof OperationAdapter) {
-				((OperationAdapter) ev).compile();
-			}
-
-			getEvaluableCache().put(producer, ev);
+		if (enableEvaluableCache && !getEvaluableCache().containsKey(producer)) {
+			getEvaluableCache().put(producer, producer.get());
 		}
 
-		return getEvaluableCache().get(producer);
+		return enableEvaluableCache ? getEvaluableCache().get(producer) : producer.get();
+	}
+
+	public static <T> void purgeEvaluableCache(Supplier<Evaluable<? extends T>> producer) {
+		if (enableEvaluableCache) {
+			getEvaluableCache().remove(producer);
+		}
 	}
 
 	public static void clear() { getResultCache().clear(); }
+
+	public static void destroyEvaluableCache() {
+		getEvaluableCache().clear();
+		evaluableCache.remove();
+		evaluableCache = new ThreadLocal<>();
+	}
 
 	private static void checkArgs(Object args[]) {
 		if (lastParameter.get() != args) {
