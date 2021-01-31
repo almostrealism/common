@@ -27,11 +27,13 @@ import java.io.InputStreamReader;
 /** An interface to OpenCL. */
 public final class Hardware {
 	public static boolean enableVerbose = false;
+	public static boolean enableMultiThreading = true;
 
 	protected static final int MEMORY_SCALE;
 	protected static final boolean ENABLE_POOLING;
 
 	protected static final int timeSeriesSize;
+	protected static final int timeSeriesCount;
 
 	private static Hardware local;
 
@@ -50,7 +52,11 @@ public final class Hardware {
 		String tsSize = System.getProperty("AR_HARDWARE_TIMESERIES_SIZE");
 		if (tsSize == null) tsSize = System.getenv("AR_HARDWARE_TIMESERIES_SIZE");
 
+		String tsCount = System.getProperty("AR_HARDWARE_TIMESERIES_COUNT");
+		if (tsCount == null) tsCount = System.getenv("AR_HARDWARE_TIMESERIES_COUNT");
+
 		timeSeriesSize = tsSize == null ? -1 : (int) (100000 * Double.parseDouble(tsSize));
+		timeSeriesCount = tsCount == null ? 30 : Integer.parseInt(tsCount);
 
 		local = new Hardware(gpu);
 	}
@@ -109,7 +115,7 @@ public final class Hardware {
 		CL.clGetPlatformIDs(platforms.length, platforms, null);
 		cl_platform_id platform = platforms[platformIndex];
 
-		System.out.println("Hardware[" + name + "]: Using platform " + platformIndex + " -- " + platform);
+		if (enableVerbose) System.out.println("Hardware[" + name + "]: Using platform " + platformIndex + " -- " + platform);
 
 		cl_context_properties contextProperties = new cl_context_properties();
 		contextProperties.addProperty(CL.CL_CONTEXT_PLATFORM, platform);
@@ -140,6 +146,11 @@ public final class Hardware {
 
 		computer = new DefaultComputer();
 		if (enableVerbose) System.out.println("Hardware[" + name + "]: Created DefaultComputer");
+
+		if (timeSeriesSize > 0) {
+			System.out.println("Hardware[" + name + "]: " + timeSeriesCount + " x " +
+					(2 * timeSeriesSize * getNumberSize() / 1024) + "kb timeseries(s) available");
+		}
 	}
 
 	public static Hardware getLocalHardware() { return local; }
@@ -159,6 +170,8 @@ public final class Hardware {
 	public int getDefaultPoolSize() { return ENABLE_POOLING ? 6250 * (int) Math.pow(2, MEMORY_SCALE) : -1; }
 
 	public int getTimeSeriesSize() { return timeSeriesSize; }
+
+	public int getTimeSeriesCount() { return timeSeriesCount; }
 
 	public String stringForDouble(double d) {
 		if (isGPU()) {
