@@ -26,15 +26,16 @@ import java.util.function.Supplier;
 
 public class DestinationConsolidationArgumentMap<S, A> extends MemWrapperArgumentMap<S, A> {
 	private List<DestinationSupport> keys;
+	private List<DestinationThreadLocal> destinations;
 
 	public DestinationConsolidationArgumentMap() {
 		keys = new ArrayList<>();
+		destinations = new ArrayList<>();
 	}
 
 	@Override
 	public void add(Supplier key) {
 		if (key instanceof DestinationSupport) {
-			// System.out.println("DestinationConsolidationArgumentMap: add - " + key);
 			keys.add((DestinationSupport) key);
 		}
 	}
@@ -51,25 +52,54 @@ public class DestinationConsolidationArgumentMap<S, A> extends MemWrapperArgumen
 		return var;
 	}
 
-	protected static class DestinationThreadLocal<T> implements Supplier<T> {
+	@Override
+	public void destroy() {
+		destinations.stream().forEach(DestinationThreadLocal::destroy);
+	}
+
+	protected class DestinationThreadLocal<T> implements Supplier<T> {
 		private Supplier<T> supplier;
-		private ThreadLocal<T> local;
+		private ThreadLocal<T> localByThread;
+		private T local;
 
 		public DestinationThreadLocal(Supplier<T> supplier) {
 			this.supplier = supplier;
-			this.local = new ThreadLocal<>();
+
+			if (Hardware.enableMultiThreading) {
+				this.localByThread = new ThreadLocal<>();
+			}
+
+			destinations.add(this);
 		}
 
 		@Override
 		public T get() {
-			T value = local.get();
+			T value = Hardware.enableMultiThreading ? localByThread.get() : local;
 
 			if (value == null) {
 				value = supplier.get();
-				local.set(value);
+
+				if (Hardware.enableMultiThreading) {
+					localByThread.set(value);
+				} else {
+					local = value;
+				}
 			}
 
 			return value;
+		}
+
+		/**
+		 * Remove data for the current thread and eliminate
+		 * the {@link ThreadLocal} storage.
+		 */
+		public void destroy() {
+			if (Hardware.enableMultiThreading) {
+				localByThread.remove();
+				localByThread = new ThreadLocal<>();
+			} else {
+				local = null;
+			}
 		}
 	}
 }
