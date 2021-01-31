@@ -62,4 +62,10 @@ public class DynamicProducerForMemWrapper<T extends MemWrapper> extends DynamicP
 			public T evaluate(Object... args) { return e.evaluate(args); }
 		};
 	}
+
+	@Override
+	public void destroy() {
+		super.destroy();
+		ProducerCache.purgeEvaluableCache(this);
+	}
 }
