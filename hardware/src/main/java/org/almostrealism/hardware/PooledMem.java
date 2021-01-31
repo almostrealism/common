@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,6 +16,12 @@
 
 package org.almostrealism.hardware;
 
+/**
+ * A {@link MemWrapper} that allows a segment to be reserved for use via
+ * {@link #reserveOffset(MemWrapper)}.
+ *
+ * @author  Michael Murray
+ */
 public interface PooledMem<T extends MemWrapper> extends MemWrapper {
 	int reserveOffset(T owner);
 }
