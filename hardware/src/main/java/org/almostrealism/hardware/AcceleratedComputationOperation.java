@@ -89,6 +89,8 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 		return getValueName(v, pos, assignment, (enableKernel && isKernel()) ? kernelIndex : -1);
 	}
 
+	// TODO  This can probably be removed, with the superclass method used instead by simply
+	//       making prepareArguments and prepareScope delegate to the computation
 	protected void prepareScope() {
 		super.prepareScope();
 
@@ -102,6 +104,7 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 
 		if (argumentMap != null) {
 			getComputation().prepareArguments(argumentMap);
+			this.argumentMaps.add(argumentMap);
 		}
 
 		getComputation().prepareScope(argumentMap == null ?
@@ -166,5 +169,12 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	@Override
 	public boolean isStatic() {
 		return getComputation() instanceof Compactable && ((Compactable) getComputation()).isStatic();
+	}
+
+	public void destroy() {
+		super.destroy();
+		if (getComputation() instanceof OperationAdapter) {
+			((OperationAdapter) getComputation()).destroy();
+		}
 	}
 }
