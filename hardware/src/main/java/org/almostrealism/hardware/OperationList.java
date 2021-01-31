@@ -100,4 +100,13 @@ public class OperationList extends ArrayList<Supplier<Runnable>> implements Oper
 		stream().map(o -> o instanceof Compactable ? (Compactable) o : null)
 				.filter(Objects::nonNull).forEach(Compactable::compact);
 	}
+
+	public void destroy() {
+		stream().map(o -> o instanceof OperationAdapter ? (OperationAdapter) o : null)
+				.filter(Objects::nonNull)
+				.forEach(OperationAdapter::destroy);
+		stream().map(o -> o instanceof OperationList ? (OperationList) o : null)
+				.filter(Objects::nonNull)
+				.forEach(OperationList::destroy);
+	}
 }
