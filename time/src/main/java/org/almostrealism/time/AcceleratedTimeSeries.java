@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package org.almostrealism.time;
 
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareFeatures;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
@@ -28,6 +29,10 @@ import java.util.function.Supplier;
 
 public class AcceleratedTimeSeries extends TemporalScalarBank implements HardwareFeatures {
 	public static CacheLevel defaultCacheLevel = CacheLevel.NONE;
+
+	public AcceleratedTimeSeries() {
+		super(Hardware.getLocalHardware().getTimeSeriesSize(), AcceleratedTimeSeriesPool.getLocal(), defaultCacheLevel);
+	}
 
 	public AcceleratedTimeSeries(int maxEntries) {
 		super(maxEntries, defaultCacheLevel);
@@ -101,5 +106,9 @@ public class AcceleratedTimeSeries extends TemporalScalarBank implements Hardwar
 		} else {
 			return new TemporalScalar(time, v1 + (t1 / t2) * (v2 - v1));
 		}
+	}
+
+	public static AcceleratedTimeSeries defaultSeries() {
+		return Hardware.getLocalHardware().getTimeSeriesSize() > 0 ? new AcceleratedTimeSeries() : new AcceleratedTimeSeries(100000);
 	}
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package org.almostrealism.time;
 
+import org.almostrealism.hardware.PooledMem;
 import org.almostrealism.hardware.mem.MemoryBankAdapter;
 import io.almostrealism.relation.Evaluable;
 
@@ -34,6 +35,12 @@ public class TemporalScalarBank extends MemoryBankAdapter<TemporalScalar> {
 	public TemporalScalarBank(int count, CacheLevel cacheLevel) {
 		super(2, count, delegateSpec ->
 				new TemporalScalar(delegateSpec.getDelegate(), delegateSpec.getOffset()), cacheLevel);
+	}
+
+	protected TemporalScalarBank(int count, PooledMem pool, CacheLevel cacheLevel) {
+		super(2, count, delegateSpec ->
+				new TemporalScalar(delegateSpec.getDelegate(), delegateSpec.getOffset()),
+				pool, cacheLevel);
 	}
 
 	public static TemporalScalarBank fromProducer(Evaluable<TemporalScalar> producer, int count) {
