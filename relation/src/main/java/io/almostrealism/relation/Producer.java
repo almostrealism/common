@@ -24,4 +24,6 @@ public interface Producer<T> extends Supplier<Evaluable<? extends T>>, Compactab
 
 	@Override
 	default void compact() { }
+
+	default void destroy() { }
 }
