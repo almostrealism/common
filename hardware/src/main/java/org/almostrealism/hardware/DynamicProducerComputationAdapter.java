@@ -181,6 +181,15 @@ public abstract class DynamicProducerComputationAdapter<I extends MemWrapper, O 
 
 	public String getDefaultAnnotation() { return "__global"; }
 
+	@Override
+	public void destroy() {
+		super.destroy();
+		ProducerCache.purgeEvaluableCache(this);
+		if (destination instanceof DestinationConsolidationArgumentMap.DestinationThreadLocal) {
+			((DestinationConsolidationArgumentMap.DestinationThreadLocal) destination).destroy();
+		}
+	}
+
 	protected static <T> List<ArrayVariable<? extends T>> extractStaticProducers(List<ArrayVariable<? extends T>> args) {
 		List<ArrayVariable<? extends T>> staticProducers = new ArrayList<>();
 
