@@ -33,14 +33,13 @@ import java.io.OutputStream;
  * OutputStream. The implementing class should provide some obvious way to load the
  * state of a stored instance (usually by a static method or constructor).
  * 
- * @author Mike Murray
+ * @author  Michael Murray
  */
 public interface Storable {
 	/**
 	 * Persist the contents of this Storable instance.
 	 * 
 	 * @param out  Stream to write contents to.
-	 * @return  True if succesfully stored, false otherwise.
 	 */
-	boolean store(OutputStream out);
+	void store(OutputStream out);
 }
