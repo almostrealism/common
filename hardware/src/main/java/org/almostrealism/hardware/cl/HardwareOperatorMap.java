@@ -28,7 +28,10 @@ import java.util.Map;
 import java.util.function.BiFunction;
 
 /**
- * Wrapper for a cl_program that contains the accelerated functions used in the running application.
+ * Wrapper for a {@link cl_program} that contains the {@link HardwareOperator}s
+ * used by {@link org.almostrealism.hardware.AcceleratedFunctions}.
+ *
+ * @author  Michael Murray
  */
 public class HardwareOperatorMap<T extends MemWrapper> implements BiFunction<String, CLException, HardwareException> {
 	private cl_program prog;
@@ -92,6 +95,17 @@ public class HardwareOperatorMap<T extends MemWrapper> implements BiFunction<Str
 		}
 	}
 
+	/**
+	 * Release the {@link cl_program} and the {@link ThreadLocal}
+	 * that stores the {@link HardwareOperator}s.
+	 */
+	public void destroy() {
+		CL.clReleaseProgram(prog);
+		operators.remove();
+		operators = null;
+	}
+
+	/** Delegates to {@link #destroy}. */
 	@Override
-	public void finalize() { CL.clReleaseProgram(prog); }
+	public void finalize() { destroy(); }
 }

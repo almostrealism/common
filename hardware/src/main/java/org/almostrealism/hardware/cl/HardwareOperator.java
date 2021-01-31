@@ -35,8 +35,6 @@ public class HardwareOperator<T extends MemWrapper> implements Consumer<Object[]
 
 	private static long totalInvocations;
 
-	private static Pointer zero = Pointer.to(new int[]{0});
-
 	private cl_program prog;
 	private String name;
 
