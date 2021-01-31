@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -26,13 +26,26 @@ import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.stream.IntStream;
 
+/**
+ * A {@link MemoryPool} is the standard implementation of {@link PooledMem},
+ * which uses {@link WeakReference}s to determine if a segment of the reserved
+ * memory can be reused.
+ *
+ * @author  Michael Murray
+ */
 public class MemoryPool<T extends MemWrapper> extends MemoryBankAdapter<T> implements PooledMem<T> {
-	public static boolean enableLog = false;
+	public static boolean enableLog = true;
 
 	private ArrayBlockingQueue<Integer> available;
 	private List<Owner> owners;
 	private int defaultGc;
 
+	/**
+	 * Create a {@link MemoryPool}.
+	 *
+	 * @param memLength  The size of the reservable segments.
+	 * @param size  The number of reservable segments.
+	 */
 	public MemoryPool(int memLength, int size) {
 		super(memLength, size, null, CacheLevel.NONE);
 		defaultGc = size > 200 ? size / 200 : 1;
@@ -49,6 +62,13 @@ public class MemoryPool<T extends MemWrapper> extends MemoryBankAdapter<T> imple
 		startGcThread();
 	}
 
+	/**
+	 * Reserve a segment of memory.
+	 *
+	 * @param owner  The referencer that should be used to determine when
+	 *               the memory segment will be available for reuse.
+	 * @return  The index of the start of the reserved segment.
+	 */
 	@Override
 	public synchronized int reserveOffset(T owner) {
 		Owner o = owner(owner);
@@ -56,7 +76,7 @@ public class MemoryPool<T extends MemWrapper> extends MemoryBankAdapter<T> imple
 		return o.offset;
 	}
 
-	public synchronized Owner owner(T owner) {
+	protected synchronized Owner owner(T owner) {
 		try {
 			Owner o = new Owner();
 			o.reference = new WeakReference<>(owner);
