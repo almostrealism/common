@@ -19,6 +19,7 @@ package io.almostrealism.code;
 import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Named;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 
 import java.util.ArrayList;
@@ -184,6 +185,12 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 	@Override
 	public synchronized void compact() {
 		getInputs().stream().filter(p -> p instanceof Compactable).forEach(p -> ((Compactable) p).compact());
+	}
+
+	public void destroy() {
+		getInputs().stream().map(in -> in instanceof Producer ? (Producer) in : null)
+				.filter(Objects::nonNull)
+				.forEach(Producer::destroy);
 	}
 
 	protected static String functionName(Class c) {
