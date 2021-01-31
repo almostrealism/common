@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,8 +16,10 @@
 
 package org.almostrealism.hardware.mem;
 
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.hardware.PooledMem;
 
 import java.util.HashMap;
 import java.util.List;
@@ -48,9 +50,10 @@ public abstract class MemoryBankAdapter<T extends MemWrapper> extends MemWrapper
 
 	/**
 	 * Initialize RAM with room for the indicated number of items,
-	 * each of the indicated size. Units are all in the size of
-	 * {@link org.jocl.Sizeof#cl_double}. The specified {@link Supplier}
-	 * is used to generated new instances of the target type.
+	 * each of the indicated size. Units are all in the size
+	 * determined by {@link Hardware#getNumberSize()}. The specified
+	 * {@link Supplier} is used to generated new instances of the
+	 * target type.
 	 * This uses {@link CacheLevel#ALL}.
 	 */
 	protected MemoryBankAdapter(int memLength, int count, Function<DelegateSpec, T> supply) {
@@ -59,9 +62,10 @@ public abstract class MemoryBankAdapter<T extends MemWrapper> extends MemWrapper
 
 	/**
 	 * Initialize RAM with room for the indicated number of items,
-	 * each of the indicated size. Units are all in the size of
-	 * {@link org.jocl.Sizeof#cl_double}. The specified {@link Supplier}
-	 * is used to generated new instances of the target type.
+	 * each of the indicated size. Units are all in the size
+	 * determined by {@link Hardware#getNumberSize()}. The specified
+	 * {@link Supplier} is used to generated new instances of the
+	 * target type.
 	 */
 	protected MemoryBankAdapter(int memLength, int count, Function<DelegateSpec, T> supply, CacheLevel cacheLevel) {
 		this.memLength = memLength;
@@ -74,9 +78,10 @@ public abstract class MemoryBankAdapter<T extends MemWrapper> extends MemWrapper
 
 	/**
 	 * Initialize RAM with room for the indicated number of items,
-	 * each of the indicated size. Units are all in the size of
-	 * {@link org.jocl.Sizeof#cl_double}. The specified {@link Supplier}
-	 * is used to generated new instances of the target type.
+	 * each of the indicated size. Units are all in the size
+	 * determined by {@link Hardware#getNumberSize()}. The specified
+	 * {@link Supplier} is used to generated new instances of the
+	 * target type.
 	 * This uses {@link CacheLevel#ALL}.
 	 */
 	protected MemoryBankAdapter(int memLength, int count, Function<DelegateSpec, T> supply,
@@ -87,8 +92,9 @@ public abstract class MemoryBankAdapter<T extends MemWrapper> extends MemWrapper
 	/**
 	 * Initialize RAM with room for the indicated number of items,
 	 * each of the indicated size. Units are all in the size of
-	 * {@link org.jocl.Sizeof#cl_double}. The specified {@link Supplier}
-	 * is used to generated new instances of the target type.
+	 * determined by {@link Hardware#getNumberSize()}. The specified
+	 * {@link Supplier} is used to generated new instances of the
+	 * target type.
 	 */
 	protected MemoryBankAdapter(int memLength, int count, Function<DelegateSpec, T> supply,
 								MemWrapper delegate, int delegateOffset, CacheLevel cacheLevel) {
@@ -98,6 +104,26 @@ public abstract class MemoryBankAdapter<T extends MemWrapper> extends MemWrapper
 		this.supply = supply;
 		this.cacheLevel = cacheLevel;
 		setDelegate(delegate, delegateOffset);
+		init();
+	}
+
+	protected MemoryBankAdapter(int memLength, int count, Function<DelegateSpec, T> supply,
+								PooledMem pool, CacheLevel cacheLevel) {
+		if (count < 0 || memLength < 0) {
+			throw new IllegalArgumentException();
+		}
+
+		this.memLength = memLength;
+		this.count = count;
+		this.totalMemLength = memLength * count;
+		this.supply = supply;
+		this.cacheLevel = cacheLevel;
+
+		if (pool != null) {
+			setDelegate(pool, pool.reserveOffset(this));
+			setMem(new double[getMemLength()]);
+		}
+
 		init();
 	}
 
