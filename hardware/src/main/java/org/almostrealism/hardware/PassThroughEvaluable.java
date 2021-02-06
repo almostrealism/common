@@ -38,10 +38,12 @@ public class PassThroughEvaluable<T> implements Evaluable<T>, ProducerArgumentRe
 	@Override
 	public int getReferencedArgumentIndex() { return argIndex; }
 
+	// TODO  Move to PassThroughProducer
 	public static <T> Producer<T> of(Class<? extends T> type, int index) {
 		return of(type, index, 0);
 	}
 
+	// TODO  Move to PassThroughProducer
 	public static <T> Producer<T> of(Class<? extends T> type, int index, int kernelDimension) {
 		if (MemWrapper.class.isAssignableFrom(type)) {
 			try {

@@ -109,6 +109,6 @@ public class AcceleratedTimeSeries extends TemporalScalarBank implements Hardwar
 	}
 
 	public static AcceleratedTimeSeries defaultSeries() {
-		return Hardware.getLocalHardware().getTimeSeriesSize() > 0 ? new AcceleratedTimeSeries() : new AcceleratedTimeSeries(100000);
+		return Hardware.getLocalHardware().getTimeSeriesSize() > 0 ? new AcceleratedTimeSeries() : new AcceleratedTimeSeries(10000000);
 	}
 }

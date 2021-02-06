@@ -16,7 +16,6 @@
 
 package org.almostrealism.geometry.computations;
 
-import io.almostrealism.code.DefaultScopeInputManager;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.hardware.AcceleratedEvaluable;
 import io.almostrealism.relation.Evaluable;

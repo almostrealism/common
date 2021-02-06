@@ -55,7 +55,7 @@ public class AcceleratedEvaluable<I extends MemWrapper, O extends MemWrapper> ex
 	}
 
 	@Override
-	public O evaluate(Object[] args) { return (O) apply(args)[0]; }
+	public O evaluate(Object... args) { return (O) apply(args)[0]; }
 
 	/**
 	 * If {@link #isKernel()} returns true, this method will pass the

@@ -36,9 +36,37 @@ public class ScalarBank extends MemoryBankAdapter<Scalar> {
 				new Scalar(delegateSpec.getDelegate(), delegateSpec.getOffset()), cacheLevel);
 	}
 
+	// TODO  Need to respect CacheLevel, but the parent constructor that does
+	//       respect cache level does this init stuff that we don't want
 	public ScalarBank(int count, MemWrapper delegate, int delegateOffset, CacheLevel cacheLevel) {
-		super(3, count, delegateSpec ->
+		super(2, count, delegateSpec ->
 						new Scalar(delegateSpec.getDelegate(), delegateSpec.getOffset()),
 				delegate, delegateOffset);
+	}
+
+	// TODO  Add unit tests for this
+	public ScalarBank range(int offset, int length) {
+		return new ScalarBank(length, this, offset * getAtomicMemLength(), null);
+	}
+
+	// TODO  Use cl_mem copy
+	public void copyFromVec(ScalarBank bank) {
+		assert (getCount() == bank.getCount());
+
+		for (int i = 0; i < getCount(); i++)
+			set(i, bank.get(i));
+	}
+
+	public void applyFloor(double floor) {
+		for (int i = 0; i < getCount(); i++) {
+			double v = get(i).getValue();
+			if (v < floor) set(i, floor);
+		}
+	}
+
+	public void applyLog() {
+		for (int i = 0; i < getCount(); i++) {
+			set(i, Math.log(get(i).getValue()));
+		}
 	}
 }

@@ -16,6 +16,7 @@
 
 package org.almostrealism.algebra;
 
+import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
@@ -66,6 +67,23 @@ public class Tensor<T> implements HTMLContent {
 		if (o instanceof LinkedList) return null;
 		if (o == null) return null;
 		return ((Leaf<T>) o).get();
+	}
+
+	public int length(int... loc) {
+		LinkedList l = top;
+
+		for (int i = 0; i < loc.length; i++) {
+			l = get(l, loc[i], false);
+			if (l == null) return 0;
+		}
+
+		return l.size();
+	}
+
+	public void trim(int... max) {
+		// throw new UnsupportedOperationException();
+		System.out.println("WARN: Wanted to trim to dimensions "
+				+ Arrays.toString(max) + ", but it is not implemented");
 	}
 	
 	public String toHTML() {
