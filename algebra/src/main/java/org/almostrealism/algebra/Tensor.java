@@ -81,9 +81,15 @@ public class Tensor<T> implements HTMLContent {
 	}
 
 	public void trim(int... max) {
-		// throw new UnsupportedOperationException();
-		System.out.println("WARN: Wanted to trim to dimensions "
-				+ Arrays.toString(max) + ", but it is not implemented");
+		trim(top, max, 0);
+	}
+
+	private void trim(LinkedList l, int max[], int indexInMax) {
+		while (l.size() > max[indexInMax]) l.removeLast();
+
+		if (indexInMax < max.length - 1) {
+			l.forEach(v -> trim((LinkedList) v, max, indexInMax + 1));
+		}
 	}
 	
 	public String toHTML() {

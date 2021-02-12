@@ -144,6 +144,10 @@ public abstract class MemoryBankAdapter<T extends MemWrapper> extends MemWrapper
 
 	@Override
 	public T get(int index) {
+		if (index >= getCount()) {
+			throw new IllegalArgumentException(index + " is beyond the range of this bank");
+		}
+
 		if (cacheLevel == CacheLevel.ALL) {
 			return Optional.ofNullable(index < entriesList.size() ? entriesList.get(index) : null).orElseThrow(UnsupportedOperationException::new);
 		} else if (cacheLevel == CacheLevel.ACCESSED) {

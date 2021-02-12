@@ -19,6 +19,8 @@ package org.almostrealism.algebra;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.hardware.mem.MemoryBankAdapter;
 
+import java.util.stream.IntStream;
+
 /**
  * A collection of {@link Scalar}s of a fixed length, that is contiguous in
  * RAM and usable for kernel methods.
@@ -46,7 +48,18 @@ public class ScalarBank extends MemoryBankAdapter<Scalar> {
 
 	// TODO  Add unit tests for this
 	public ScalarBank range(int offset, int length) {
+		if (offset * getAtomicMemLength() >= getMemLength()) {
+			throw new IllegalArgumentException("Range extends beyond the length of this bank");
+		}
 		return new ScalarBank(length, this, offset * getAtomicMemLength(), null);
+	}
+
+	// TODO  Accelerated version
+	public Scalar sum() {
+		return new Scalar(IntStream.range(0, getCount())
+				.mapToObj(this::get)
+				.mapToDouble(Scalar::getValue)
+				.sum());
 	}
 
 	// TODO  Use cl_mem copy
@@ -55,6 +68,12 @@ public class ScalarBank extends MemoryBankAdapter<Scalar> {
 
 		for (int i = 0; i < getCount(); i++)
 			set(i, bank.get(i));
+	}
+
+	public void copyColFromMat(Tensor<Scalar> mat, int col) {
+		assert(col < mat.length(0));
+		assert(getCount() == mat.length());
+		for (int i = 0; i < getCount(); i++) set(i, mat.get(i, col));
 	}
 
 	public void applyFloor(double floor) {

@@ -91,6 +91,8 @@ public class Pair extends MemWrapperAdapter {
 	public double right() { return getY(); }
 	public double theta() { return getX(); }
 	public double phi() { return getY(); }
+	public double r() { return getX(); }
+	public double i() { return getY(); }
 	public double _1() { return getX(); }
 	public double _2() { return getY(); }
 
@@ -103,6 +105,15 @@ public class Pair extends MemWrapperAdapter {
 		return new Pair(d1[0] + d2[0], d1[1] + d2[1]);
 	}
 
+	public Pair subtract(Pair p) {
+		// TODO  Fast version
+		double d1[] = new double[2];
+		double d2[] = new double[2];
+		getMem(d1, 0);
+		p.getMem(d2, 0);
+		return new Pair(d1[0] - d2[0], d1[1] - d2[1]);
+	}
+
 	public Pair multiply(Pair p) {
 		// TODO  Fast version
 		double d1[] = new double[2];
@@ -112,11 +123,49 @@ public class Pair extends MemWrapperAdapter {
 		return new Pair(d1[0] * d2[0], d1[1] * d2[1]);
 	}
 
+	// TODO  Unit test
+	public Pair multiplyComplex(Pair c) {
+		// TODO  Fast version
+		double d1[] = new double[2];
+		double d2[] = new double[2];
+		getMem(d1, 0);
+		c.getMem(d2, 0);
+		double p = d1[0];
+		double q = d1[1];
+		double r = d2[0];
+		double s = d2[1];
+		return new Pair(p * r - q * s, p * s + q * r);
+	}
+
+	// TODO  Unit test
+	public Pair invertComplex() {
+		// TODO  Fast version
+		double d1[] = new double[2];
+		getMem(d1, 0);
+		double p = d1[0];
+		double q = d1[1];
+		double sq = p * p + q * q;
+		return new Pair(p / sq, -q / sq);
+	}
+
 	public Pair multiply(double d) {
 		// TODO  Fast version
 		double d1[] = new double[2];
 		getMem(d1, 0);
 		return new Pair(d1[0] * d, d1[1] * d);
+	}
+
+	public Pair divide(double d) {
+		// TODO  Fast version
+		double d1[] = new double[2];
+		getMem(d1, 0);
+		return new Pair(d1[0] / d, d1[1] / d);
+	}
+
+	// TODO  Unit test
+	public Pair divideComplex(Pair c) {
+		// TODO  Fast version
+		return multiply(c.invertComplex());
 	}
 
 	public void multiplyBy(double d) {
