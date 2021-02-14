@@ -41,6 +41,9 @@ public final class Hardware {
 		boolean gpu = "gpu".equalsIgnoreCase(System.getenv("AR_HARDWARE_PLATFORM")) ||
 				"gpu".equalsIgnoreCase(System.getProperty("AR_HARDWARE_PLATFORM"));
 
+		boolean sp = "32".equalsIgnoreCase(System.getenv("AR_HARDWARE_PRECISION")) ||
+				"32".equalsIgnoreCase(System.getProperty("AR_HARDWARE_PRECISION"));
+
 		String memScale = System.getProperty("AR_HARDWARE_MEMORY_SCALE");
 		if (memScale == null) memScale = System.getenv("AR_HARDWARE_MEMORY_SCALE");
 		MEMORY_SCALE = memScale == null ? 4 : Integer.parseInt(memScale);
@@ -58,7 +61,11 @@ public final class Hardware {
 		timeSeriesSize = tsSize == null ? -1 : (int) (100000 * Double.parseDouble(tsSize));
 		timeSeriesCount = tsCount == null ? 30 : Integer.parseInt(tsCount);
 
-		local = new Hardware(gpu);
+		if (sp) {
+			local = new Hardware(gpu, false);
+		} else {
+			local = new Hardware(gpu);
+		}
 	}
 
 	private final boolean enableGpu;

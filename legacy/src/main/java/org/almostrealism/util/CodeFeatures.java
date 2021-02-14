@@ -63,6 +63,10 @@ public interface CodeFeatures extends ScalarFeatures, PairFeatures, TriangleData
 		return value(type, argIndex);
 	}
 
+	default <T> Producer<T> v(int memLength, int argIndex) {
+		return value(memLength, argIndex);
+	}
+
 	default <T> Producer<T> v(Function<Object[], T> function) {
 		return new DynamicProducer<>(function);
 	}
@@ -99,6 +103,10 @@ public interface CodeFeatures extends ScalarFeatures, PairFeatures, TriangleData
 
 	default <T> Producer<T> value(Class<T> type, int argIndex) {
 		return Input.value(type, argIndex);
+	}
+
+	default <T> Producer<T> value(int memLength, int argIndex) {
+		return Input.value(memLength, argIndex);
 	}
 
 	default Ops o() { return Ops.ops(); }

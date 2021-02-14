@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,20 +14,14 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.util;
+package org.almostrealism.algebra;
 
-import io.almostrealism.relation.Producer;
-import org.almostrealism.hardware.PassThroughEvaluable;
-import org.almostrealism.hardware.PassThroughProducer;
+import io.almostrealism.code.ProducerComputation;
+import org.almostrealism.algebra.computations.DefaultScalarBankEvaluable;
+import org.almostrealism.hardware.KernelizedEvaluable;
+import org.almostrealism.hardware.KernelizedProducer;
 
-public class Input {
-	private Input() { }
-
-	public static <T> Producer<T> value(Class<T> type, int argIndex) {
-		return PassThroughEvaluable.of(type, argIndex);
-	}
-
-	public static <T> Producer<T> value(int memLength, int argIndex) {
-		return new PassThroughProducer(memLength, argIndex);
-	}
+public interface ScalarBankProducer extends ProducerComputation<ScalarBank>, KernelizedProducer<ScalarBank>, ScalarFeatures {
+	@Override
+	default KernelizedEvaluable<ScalarBank> get() { return new DefaultScalarBankEvaluable(this); }
 }

@@ -19,6 +19,7 @@ package org.almostrealism.algebra;
 import org.almostrealism.algebra.computations.DefaultPairEvaluable;
 import org.almostrealism.algebra.computations.DefaultScalarEvaluable;
 import org.almostrealism.algebra.computations.PairFromScalars;
+import org.almostrealism.algebra.computations.RandomPair;
 import org.almostrealism.algebra.computations.ScalarFromPair;
 import org.almostrealism.algebra.computations.StaticPairComputation;
 import io.almostrealism.relation.Evaluable;
@@ -51,11 +52,19 @@ public interface PairFeatures {
 		return new ScalarFromPair(p, ScalarFromPair.Y);
 	}
 
+	default Supplier<Evaluable<? extends Pair>> rand() {
+		return () -> new RandomPair();
+	}
+
 	default PairEvaluable fromScalars(Evaluable<Scalar> x, Evaluable<Scalar> y) {
 		return new DefaultPairEvaluable(fromScalars(() -> x, () -> y));
 	}
 
 	default PairProducer fromScalars(Supplier<Evaluable<? extends Scalar>> x, Supplier<Evaluable<? extends Scalar>> y) {
 		return new PairFromScalars(x, y);
+	}
+
+	static PairFeatures getInstance() {
+		return new PairFeatures() { };
 	}
 }

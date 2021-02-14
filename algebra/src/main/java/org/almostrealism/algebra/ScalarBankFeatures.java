@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,21 +14,7 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.geometry;
+package org.almostrealism.algebra;
 
-import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.PairEvaluable;
-
-public class RandomPair implements PairEvaluable {
-	/**
-	 * Produce a {@link Pair} with all values randomly selected
-	 * between 0 and 1.
-	 */
-	@Override
-	public Pair evaluate(Object[] args) {
-		Pair r = new Pair();
-		r.setMem(new double[] {
-				Math.random(), Math.random() });
-		return r;
-	}
+public interface ScalarBankFeatures {
 }

@@ -16,7 +16,12 @@
 
 package org.almostrealism.algebra;
 
+import io.almostrealism.code.AdaptEvaluable;
+import io.almostrealism.relation.Evaluable;
+import org.almostrealism.algebra.computations.ScalarBankAdd;
 import org.almostrealism.hardware.MemWrapper;
+import org.almostrealism.hardware.PassThroughEvaluable;
+import org.almostrealism.hardware.PassThroughProducer;
 import org.almostrealism.hardware.mem.MemoryBankAdapter;
 
 import java.util.stream.IntStream;
@@ -28,14 +33,18 @@ import java.util.stream.IntStream;
  * @author  Michael Murray
  */
 public class ScalarBank extends MemoryBankAdapter<Scalar> {
+	private Evaluable<ScalarBank> addTo;
+
 	public ScalarBank(int count) {
 		super(2, count, delegateSpec ->
 				new Scalar(delegateSpec.getDelegate(), delegateSpec.getOffset()));
+		initFunctions();
 	}
 
 	public ScalarBank(int count, CacheLevel cacheLevel) {
 		super(2, count, delegateSpec ->
 				new Scalar(delegateSpec.getDelegate(), delegateSpec.getOffset()), cacheLevel);
+		initFunctions();
 	}
 
 	// TODO  Need to respect CacheLevel, but the parent constructor that does
@@ -44,6 +53,13 @@ public class ScalarBank extends MemoryBankAdapter<Scalar> {
 		super(2, count, delegateSpec ->
 						new Scalar(delegateSpec.getDelegate(), delegateSpec.getOffset()),
 				delegate, delegateOffset);
+		initFunctions();
+	}
+
+	private void initFunctions() {
+		this.addTo = new ScalarBankAdd(getCount(),
+				new PassThroughProducer<>(getMemLength(),0),
+				PassThroughEvaluable.of(Scalar.class, 1)).get();
 	}
 
 	// TODO  Add unit tests for this
@@ -53,6 +69,10 @@ public class ScalarBank extends MemoryBankAdapter<Scalar> {
 		}
 		return new ScalarBank(length, this, offset * getAtomicMemLength(), null);
 	}
+
+	public ScalarBank add(double s) { return add(new Scalar(s)); }
+
+	public ScalarBank add(Scalar s) { return addTo.evaluate(this, s); }
 
 	// TODO  Accelerated version
 	public Scalar sum() {

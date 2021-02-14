@@ -14,20 +14,21 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.util;
+package org.almostrealism.algebra.computations;
 
-import io.almostrealism.relation.Producer;
-import org.almostrealism.hardware.PassThroughEvaluable;
-import org.almostrealism.hardware.PassThroughProducer;
+import org.almostrealism.algebra.Pair;
+import org.almostrealism.algebra.PairEvaluable;
 
-public class Input {
-	private Input() { }
-
-	public static <T> Producer<T> value(Class<T> type, int argIndex) {
-		return PassThroughEvaluable.of(type, argIndex);
-	}
-
-	public static <T> Producer<T> value(int memLength, int argIndex) {
-		return new PassThroughProducer(memLength, argIndex);
+public class RandomPair implements PairEvaluable {
+	/**
+	 * Produce a {@link Pair} with all values randomly selected
+	 * between 0 and 1.
+	 */
+	@Override
+	public Pair evaluate(Object[] args) {
+		Pair r = new Pair();
+		r.setMem(new double[] {
+				Math.random(), Math.random() });
+		return r;
 	}
 }
