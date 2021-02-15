@@ -21,9 +21,11 @@ import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairFeatures;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.algebra.computations.StaticPairComputation;
+import org.almostrealism.algebra.computations.StaticScalarBankComputation;
 import org.almostrealism.algebra.computations.StaticScalarComputation;
 import org.almostrealism.algebra.computations.StaticVectorComputation;
 import org.almostrealism.geometry.TransformMatrix;
@@ -79,6 +81,8 @@ public interface CodeFeatures extends ScalarFeatures, PairFeatures, TriangleData
 
 	default Supplier<Evaluable<? extends Vector>> vector(int argIndex) { return value(Vector.class, argIndex); }
 
+	default Supplier<Evaluable<? extends ScalarBank>> scalars(ScalarBank s) { return value(s); }
+
 	default Supplier<Evaluable<? extends TriangleData>> triangle(int argIndex) { return value(TriangleData.class, argIndex); }
 
 	default Supplier<Evaluable<? extends TrianglePointData>> points(int argIndex) { return value(TrianglePointData.class, argIndex); }
@@ -86,6 +90,8 @@ public interface CodeFeatures extends ScalarFeatures, PairFeatures, TriangleData
 	default <T> Producer<T> value(T v) {
 		if (v instanceof Scalar) {
 			return (ProducerComputation<T>) new StaticScalarComputation((Scalar) v);
+		} else if (v instanceof ScalarBank) {
+			return (ProducerComputation<T>) new StaticScalarBankComputation((ScalarBank) v);
 		} else if (v instanceof Pair) {
 			return (ProducerComputation<T>) new StaticPairComputation((Pair) v);
 		} else if (v instanceof Vector) {

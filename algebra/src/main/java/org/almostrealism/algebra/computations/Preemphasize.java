@@ -17,6 +17,8 @@
 package org.almostrealism.algebra.computations;
 
 import io.almostrealism.code.expressions.Expression;
+import io.almostrealism.code.expressions.Minus;
+import io.almostrealism.code.expressions.Product;
 import io.almostrealism.code.expressions.Sum;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
@@ -27,17 +29,26 @@ import org.almostrealism.hardware.DynamicProducerComputationAdapter;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public class ScalarBankAdd extends DynamicProducerComputationAdapter<ScalarBank, ScalarBank> implements ScalarBankProducer {
-	public ScalarBankAdd(int count, Supplier<Evaluable<? extends ScalarBank>> input,
-						 Supplier<Evaluable<? extends Scalar>> value) {
+public class Preemphasize extends DynamicProducerComputationAdapter<ScalarBank, ScalarBank> implements ScalarBankProducer {
+	public Preemphasize(int count, Supplier<Evaluable<? extends ScalarBank>> input,
+				  Supplier<Evaluable<? extends Scalar>> coeff) {
 		super(count * 2, () -> args -> new ScalarBank(count),
 				i -> { throw new UnsupportedOperationException(); },
-				input, (Supplier) value);
+				input, (Supplier) coeff);
 	}
 
 	@Override
 	public IntFunction<Expression<Double>> getValueFunction() {
-		return i -> (i % 2) == 0 ? new Sum(getArgument(1).get(i), getArgument(2).get(0))
-									: getArgument(1).get(i);
+		return i -> {
+			if (i == 0) {
+				return new Sum(getArgument(1).get(i),
+						new Minus(new Product(getArgument(2).get(0), getArgument(1).get(i))));
+			} else if (i % 2 == 0) {
+				return new Sum(getArgument(1).get(i),
+						new Minus(new Product(getArgument(2).get(0), getArgument(1).get(i - 2))));
+			} else {
+				return getArgument(1).get(i);
+			}
+		};
 	}
 }

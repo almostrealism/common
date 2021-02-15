@@ -40,6 +40,7 @@ public abstract class DynamicProducerComputationAdapter<I extends MemWrapper, O 
 		extends ProducerComputationAdapter<I, O>
 		implements MemWrapperComputation<O>, KernelizedProducer<O>,
 		DestinationSupport<O>, MultiExpression<Double>, ComputerFeatures {
+
 	/**
 	 * If set to true, then {@link Provider}s are treated as static for
 	 * compaction. This is often desirable, because Providers may not
