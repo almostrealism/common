@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package io.almostrealism.code.expressions;
 
 import io.almostrealism.code.CodePrintWriter;
+import io.almostrealism.code.CollectionUtils;
 import io.almostrealism.code.Variable;
 
 /**
@@ -30,6 +31,11 @@ public class InstanceReference<T> extends Expression<T> {
 
 	public InstanceReference(Variable<T> v) {
 		this(v.getType(), v.getName(), v);
+		this.var = v;
+	}
+
+	public InstanceReference(Variable<T> v, Variable... dependencies) {
+		this(v.getType(), v.getName(), CollectionUtils.include(new Variable[0], v, dependencies));
 		this.var = v;
 	}
 

@@ -18,7 +18,7 @@ package org.almostrealism.bool;
 
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorProducer;
-import org.almostrealism.hardware.CollectionUtils;
+import io.almostrealism.code.CollectionUtils;
 
 import java.util.function.Supplier;
 

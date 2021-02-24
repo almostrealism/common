@@ -17,6 +17,7 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.ArrayVariable;
+import io.almostrealism.code.CollectionUtils;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;

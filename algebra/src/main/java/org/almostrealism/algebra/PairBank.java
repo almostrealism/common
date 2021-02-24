@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package org.almostrealism.algebra;
 
+import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.hardware.mem.MemoryBankAdapter;
 import io.almostrealism.relation.Evaluable;
 
@@ -29,6 +30,23 @@ public class PairBank extends MemoryBankAdapter<Pair> {
 	public PairBank(int count) {
 		super(2, count, delegateSpec ->
 				new Pair(delegateSpec.getDelegate(), delegateSpec.getOffset()));
+	}
+
+	// TODO  Need to respect CacheLevel, but the parent constructor that does
+	//       respect cache level does this init stuff that we don't want
+	public PairBank(int count, MemWrapper delegate, int delegateOffset, CacheLevel cacheLevel) {
+		super(2, count, delegateSpec ->
+						new Scalar(delegateSpec.getDelegate(), delegateSpec.getOffset()),
+				delegate, delegateOffset);
+	}
+
+	// TODO  Add unit tests for this
+	public PairBank range(int offset, int length) {
+		if (offset * getAtomicMemLength() >= getMemLength()) {
+			throw new IllegalArgumentException("Range extends beyond the length of this bank");
+		}
+
+		return new PairBank(length, this, offset * getAtomicMemLength(), null);
 	}
 
 	public static PairBank fromProducer(Evaluable<Pair> producer, int count) {

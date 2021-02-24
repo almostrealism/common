@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -49,7 +49,7 @@ public abstract class DynamicProducerComputationAdapter<I extends MemWrapper, O 
 	 * first time, since the original Provider value will be reused on
 	 * the next run of the operation.
 	 */
-	public static boolean enableStaticProviders = false;
+	public static final boolean enableStaticProviders = false;
 
 	/**
 	 * If set to true, then {@link #convertToVariableRef()} can be used
@@ -59,9 +59,9 @@ public abstract class DynamicProducerComputationAdapter<I extends MemWrapper, O 
 	 * values are repeatedly embedded to form bigger and bigger
 	 * {@link Expression}s.
 	 */
-	public static boolean enableVariableRefConversion = false;
+	public static final boolean enableVariableRefConversion = false;
 
-	private int memLength;
+	private final int memLength;
 	private IntFunction<InstanceReference> variableRef;
 	private Supplier<O> destination;
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,11 +16,16 @@
 
 package org.almostrealism.algebra;
 
+import org.almostrealism.algebra.computations.ComplexProduct;
 import org.almostrealism.algebra.computations.DefaultPairEvaluable;
 import org.almostrealism.algebra.computations.DefaultScalarEvaluable;
 import org.almostrealism.algebra.computations.PairFromScalars;
+import org.almostrealism.algebra.computations.PairProduct;
+import org.almostrealism.algebra.computations.PairSum;
 import org.almostrealism.algebra.computations.RandomPair;
 import org.almostrealism.algebra.computations.ScalarFromPair;
+import org.almostrealism.algebra.computations.ScalarProduct;
+import org.almostrealism.algebra.computations.ScalarSum;
 import org.almostrealism.algebra.computations.StaticPairComputation;
 import io.almostrealism.relation.Evaluable;
 
@@ -50,6 +55,46 @@ public interface PairFeatures {
 
 	default ScalarProducer r(Supplier<Evaluable<? extends Pair>> p) {
 		return new ScalarFromPair(p, ScalarFromPair.Y);
+	}
+
+	default PairEvaluable pairAdd(Evaluable<Scalar> a, Evaluable<Scalar> b) {
+		return new DefaultPairEvaluable(pairAdd(() -> a, () -> b));
+	}
+
+	default PairProducer pairAdd(Supplier<Evaluable<? extends Pair>> a, Supplier<Evaluable<? extends Pair>> b) {
+		return new PairSum(a, b);
+	}
+
+	default PairEvaluable pairSubtract(Evaluable<Scalar> a, Evaluable<Scalar> b) {
+		return new DefaultPairEvaluable(pairSubtract(() -> a, () -> b));
+	}
+
+	default PairProducer pairSubtract(Supplier<Evaluable<? extends Pair>> a, Supplier<Evaluable<? extends Pair>> b) {
+		return new PairSum(a, pairMinus(b));
+	}
+
+	default PairEvaluable pairsMultiply(Evaluable<Scalar> a, Evaluable<Scalar> b) {
+		return new DefaultPairEvaluable(pairsMultiply(() -> a, () -> b));
+	}
+
+	default PairProducer pairsMultiply(Supplier<Evaluable<? extends Pair>> a, Supplier<Evaluable<? extends Pair>> b) {
+		return new PairProduct(a, b);
+	}
+
+	default PairEvaluable multiplyComplex(Evaluable<Scalar> a, Evaluable<Scalar> b) {
+		return new DefaultPairEvaluable(multiplyComplex(() -> a, () -> b));
+	}
+
+	default PairProducer multiplyComplex(Supplier<Evaluable<? extends Pair>> a, Supplier<Evaluable<? extends Pair>> b) {
+		return new ComplexProduct(a, b);
+	}
+
+	default PairEvaluable pairMinus(Evaluable<Scalar> v) {
+		return new DefaultPairEvaluable(pairMinus(() -> v));
+	}
+
+	default PairProducer pairMinus(Supplier<Evaluable<? extends Pair>> v) {
+		return new PairProduct(v(new Pair(-1.0, -1.0)), v);
 	}
 
 	default Supplier<Evaluable<? extends Pair>> rand() {

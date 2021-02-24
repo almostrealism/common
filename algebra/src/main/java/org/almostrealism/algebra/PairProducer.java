@@ -16,10 +16,13 @@
 
 package org.almostrealism.algebra;
 
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.computations.DefaultPairEvaluable;
 import io.almostrealism.code.ProducerComputation;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.KernelizedProducer;
+
+import java.util.function.Supplier;
 
 public interface PairProducer extends ProducerComputation<Pair>, KernelizedProducer<Pair>, PairFeatures {
 	@Override
@@ -30,4 +33,8 @@ public interface PairProducer extends ProducerComputation<Pair>, KernelizedProdu
 
 	default ScalarProducer x() { return l(this); }
 	default ScalarProducer y() { return r(this); }
+
+	default PairProducer multiplyComplex(Supplier<Evaluable<? extends Pair>> p) {
+		return multiplyComplex(this, p);
+	}
 }

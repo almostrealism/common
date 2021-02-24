@@ -31,7 +31,7 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.code.Operator;
 import org.almostrealism.texture.Texture;
 import org.almostrealism.color.computations.AdaptProducerRGB;
-import org.almostrealism.hardware.CollectionUtils;
+import io.almostrealism.code.CollectionUtils;
 import org.almostrealism.geometry.TransformMatrix;
 
 /**

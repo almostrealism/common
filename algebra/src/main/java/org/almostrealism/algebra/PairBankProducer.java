@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,14 +14,14 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.code;
+package org.almostrealism.algebra;
 
-import io.almostrealism.code.expressions.InstanceReference;
+import io.almostrealism.code.ProducerComputation;
+import org.almostrealism.algebra.computations.DefaultPairBankEvaluable;
+import org.almostrealism.hardware.KernelizedEvaluable;
+import org.almostrealism.hardware.KernelizedProducer;
 
-public interface Array<T> {
-	default InstanceReference<T> get(int pos) {
-		return get(String.valueOf(pos));
-	}
-
-	InstanceReference<T> get(String pos, Variable... dependencies);
+public interface PairBankProducer extends ProducerComputation<PairBank>, KernelizedProducer<PairBank>, PairFeatures {
+	@Override
+	default KernelizedEvaluable<PairBank> get() { return new DefaultPairBankEvaluable(this); }
 }

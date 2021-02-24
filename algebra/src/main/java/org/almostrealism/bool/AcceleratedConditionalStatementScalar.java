@@ -17,9 +17,8 @@
 package org.almostrealism.bool;
 
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarEvaluable;
 import org.almostrealism.algebra.ScalarProducer;
-import org.almostrealism.hardware.CollectionUtils;
+import io.almostrealism.code.CollectionUtils;
 import io.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;

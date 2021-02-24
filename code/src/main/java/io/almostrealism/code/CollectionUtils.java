@@ -16,12 +16,33 @@
 
 package io.almostrealism.code;
 
-import io.almostrealism.code.expressions.InstanceReference;
+import java.util.ArrayList;
+import java.util.List;
 
-public interface Array<T> {
-	default InstanceReference<T> get(int pos) {
-		return get(String.valueOf(pos));
+public class CollectionUtils {
+	public static <T> T[] include(T[] empty, T r, T... p) {
+		List<T> res = new ArrayList<>();
+		res.add(r);
+
+		for (int i = 0; i < p.length; i++) {
+			res.add(p[i]);
+		}
+
+		return res.toArray(empty);
 	}
 
-	InstanceReference<T> get(String pos, Variable... dependencies);
+	/**
+	 * Returns a {@link List} with the specified element removed.
+	 */
+	public static <T> List<T> separate(T element, Iterable<T> all) {
+		ArrayList<T> difference = new ArrayList<>();
+
+		for (T o : all) {
+			if (element != o) {
+				difference.add(o);
+			}
+		}
+
+		return difference;
+	}
 }
