@@ -25,7 +25,7 @@
 		<module>physics</module>
 		<module>space</module>
 		<module>time</module>
-		<module>legacy</module>
+		<module>utils</module>
 	</modules>
 
 	<!-- Output to jar format -->

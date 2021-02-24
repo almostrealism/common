@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <module org.jetbrains.idea.maven.project.MavenProjectsManager.isMavenModule="true" type="JAVA_MODULE" version="4">
   <component name="NewModuleRootManager" LANGUAGE_LEVEL="JDK_14">
-    <output url="file://$MODULE_DIR$/target/classes" />
-    <output-test url="file://$MODULE_DIR$/target/test-classes" />
-    <content url="file://$MODULE_DIR$">
-      <sourceFolder url="file://$MODULE_DIR$/src/main/java" isTestSource="false" />
-      <sourceFolder url="file://$MODULE_DIR$/src/test/java" isTestSource="true" />
-      <sourceFolder url="file://$MODULE_DIR$/src/test/resources" type="java-test-resource" />
-      <sourceFolder url="file://$MODULE_DIR$/src/main/resources" type="java-resource" />
-      <excludeFolder url="file://$MODULE_DIR$/target" />
+    <output url="file://$MODULE_DIR$/../utils/target/classes" />
+    <output-test url="file://$MODULE_DIR$/../utils/target/test-classes" />
+    <content url="file://$MODULE_DIR$/../utils">
+      <sourceFolder url="file://$MODULE_DIR$/../utils/src/main/java" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/../utils/src/test/java" isTestSource="true" />
+      <sourceFolder url="file://$MODULE_DIR$/../utils/src/test/resources" type="java-test-resource" />
+      <sourceFolder url="file://$MODULE_DIR$/../utils/src/main/resources" type="java-resource" />
+      <excludeFolder url="file://$MODULE_DIR$/../utils/target" />
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
@@ -20,7 +20,13 @@
     <orderEntry type="module" module-name="color" />
     <orderEntry type="module" module-name="stats" />
     <orderEntry type="module" module-name="chemistry" />
-    <orderEntry type="module" module-name="heredity" />
+    <orderEntry type="library" name="Maven: org.almostrealism:heredity:0.13" level="project" />
+    <orderEntry type="library" name="Maven: org.almostrealism:algebra:0.13" level="project" />
+    <orderEntry type="library" name="Maven: org.almostrealism:hardware:0.13" level="project" />
+    <orderEntry type="library" name="Maven: org.almostrealism:code:0.13" level="project" />
+    <orderEntry type="library" name="Maven: org.almostrealism:relation:0.13" level="project" />
+    <orderEntry type="library" name="Maven: org.almostrealism:uml:0.13" level="project" />
+    <orderEntry type="library" name="Maven: org.almostrealism:io:0.13" level="project" />
     <orderEntry type="module" module-name="economics" />
     <orderEntry type="module" module-name="algebra" />
     <orderEntry type="module" module-name="hardware" />

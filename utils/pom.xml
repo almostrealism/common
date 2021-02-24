@@ -9,7 +9,7 @@
 	</parent>
 	<modelVersion>4.0.0</modelVersion>
 
-	<artifactId>legacy</artifactId>
+	<artifactId>ar-utils</artifactId>
 
 	<properties>
 		<maven.compiler.source>14</maven.compiler.source>
@@ -19,17 +19,17 @@
 	<dependencies>
 		<dependency>
 			<groupId>org.almostrealism</groupId>
-			<artifactId>space</artifactId>
+			<artifactId>ar-space</artifactId>
 			<version>0.13</version>
 		</dependency>
 		<dependency>
 			<groupId>org.almostrealism</groupId>
-			<artifactId>chemistry</artifactId>
+			<artifactId>ar-chemistry</artifactId>
 			<version>0.13</version>
 		</dependency>
 		<dependency>
 			<groupId>org.almostrealism</groupId>
-			<artifactId>economics</artifactId>
+			<artifactId>ar-economics</artifactId>
 			<version>0.13</version>
 		</dependency>
 	</dependencies>
