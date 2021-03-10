@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,20 +14,20 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.algebra.computations;
+package io.almostrealism.code.expressions;
 
-import org.almostrealism.algebra.Vector;
-import io.almostrealism.relation.Evaluable;
+public class ExpressionArray<T> {
+	private Expression<T> data[];
 
-// TODO  Use assignment instead...
-@Deprecated
-public class VectorCopy implements Evaluable<Vector> {
-	private Evaluable<Vector> v;
-
-	public VectorCopy(Evaluable<Vector> v) {
-		this.v = v;
+	public ExpressionArray(int count) {
+		data = new Expression[count];
 	}
 
-	@Override
-	public Vector evaluate(Object args[]) { return new Vector(v.evaluate(args)); }
+	public Expression<T> get(int index) {
+		return data[index];
+	}
+
+	public void set(int index, Expression<T> value) {
+		this.data[index] = value;
+	}
 }
