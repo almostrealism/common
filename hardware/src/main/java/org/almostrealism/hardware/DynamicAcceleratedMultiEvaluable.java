@@ -17,11 +17,10 @@
 package org.almostrealism.hardware;
 
 import org.almostrealism.c.OpenCLPrintWriter;
-import io.almostrealism.code.MultiExpression;
+import io.almostrealism.code.expressions.MultiExpression;
 import io.almostrealism.code.Variable;
 import io.almostrealism.relation.Evaluable;
 
-import java.util.List;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;

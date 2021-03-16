@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,17 +14,27 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.code;
+package org.almostrealism.algebra.expressions;
 
 import io.almostrealism.code.expressions.Expression;
+import io.almostrealism.code.expressions.ExpressionArray;
+import io.almostrealism.code.expressions.MultiExpression;
 
 import java.util.function.IntFunction;
 
-public interface MultiExpression<T> {
-
-	default IntFunction<Variable<T>> getAssignmentFunction(NameProvider p, Variable<?> outputVariable) {
-		return i -> new Variable<>(p.getVariableValueName(outputVariable, i, true), false, getValue(i), outputVariable);
+public class PairExpression extends ExpressionArray<Double> {
+	public PairExpression() {
+		super(2);
 	}
 
-	Expression<T> getValue(int pos);
+	public static PairExpression from(MultiExpression exp) {
+		return from((IntFunction<Expression<Double>>) exp::getValue);
+	}
+
+	public static PairExpression from(IntFunction<Expression<Double>> exp) {
+		PairExpression res = new PairExpression();
+		res.set(0, exp.apply(0));
+		res.set(1, exp.apply(1));
+		return res;
+	}
 }

@@ -21,7 +21,7 @@ import io.almostrealism.code.ProducerComputationAdapter;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.expressions.InstanceReference;
 import io.almostrealism.code.expressions.Expression;
-import io.almostrealism.code.MultiExpression;
+import io.almostrealism.code.expressions.MultiExpression;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;

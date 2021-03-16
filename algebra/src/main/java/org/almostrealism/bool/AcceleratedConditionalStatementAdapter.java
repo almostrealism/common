@@ -19,7 +19,7 @@ package org.almostrealism.bool;
 import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.ProducerComputationAdapter;
 import io.almostrealism.code.HybridScope;
-import io.almostrealism.code.MultiExpression;
+import io.almostrealism.code.expressions.MultiExpression;
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.Variable;

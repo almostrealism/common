@@ -16,7 +16,7 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.code.MultiExpression;
+import io.almostrealism.code.expressions.MultiExpression;
 import io.almostrealism.code.expressions.Expression;
 import org.jocl.CL;
 import org.jocl.CLException;

@@ -22,4 +22,9 @@ public class PairBankExpression extends ExpressionArray<Double> {
 	public PairBankExpression(int count) {
 		super(2 * count);
 	}
+
+	public void set(int index, PairExpression exp) {
+		set(index * 2, exp.get(0));
+		set(index * 2 + 1, exp.get(1));
+	}
 }

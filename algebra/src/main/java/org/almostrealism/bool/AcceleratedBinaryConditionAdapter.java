@@ -17,7 +17,7 @@
 package org.almostrealism.bool;
 
 import io.almostrealism.code.ArrayVariable;
-import io.almostrealism.code.MultiExpression;
+import io.almostrealism.code.expressions.MultiExpression;
 import io.almostrealism.code.Variable;
 import io.almostrealism.code.expressions.Expression;
 import io.almostrealism.code.expressions.InstanceReference;
@@ -29,7 +29,6 @@ import org.almostrealism.hardware.MemoryBank;
 
 import java.util.Arrays;
 import java.util.List;
-import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 

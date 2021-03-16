@@ -24,16 +24,22 @@ import org.almostrealism.algebra.computations.PairProduct;
 import org.almostrealism.algebra.computations.PairSum;
 import org.almostrealism.algebra.computations.RandomPair;
 import org.almostrealism.algebra.computations.ScalarFromPair;
+import org.almostrealism.algebra.computations.ScalarPow;
 import org.almostrealism.algebra.computations.ScalarProduct;
 import org.almostrealism.algebra.computations.ScalarSum;
 import org.almostrealism.algebra.computations.StaticPairComputation;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.algebra.computations.StaticScalarComputation;
 
 import java.util.function.Supplier;
 
 public interface PairFeatures {
 
 	default PairProducer pair(double x, double y) { return value(new Pair(x, y)); }
+
+	default PairProducer pair(Supplier<Evaluable<? extends Scalar>> x, Supplier<Evaluable<? extends Scalar>> y) {
+		return new PairFromScalars(x, y);
+	}
 
 	default PairProducer v(Pair value) { return value(value); }
 
@@ -73,7 +79,7 @@ public interface PairFeatures {
 		return new PairSum(a, pairMinus(b));
 	}
 
-	default PairEvaluable pairsMultiply(Evaluable<Scalar> a, Evaluable<Scalar> b) {
+	default PairEvaluable pairsMultiply(Evaluable<Pair> a, Evaluable<Pair> b) {
 		return new DefaultPairEvaluable(pairsMultiply(() -> a, () -> b));
 	}
 
@@ -87,6 +93,23 @@ public interface PairFeatures {
 
 	default PairProducer multiplyComplex(Supplier<Evaluable<? extends Pair>> a, Supplier<Evaluable<? extends Pair>> b) {
 		return new ComplexProduct(a, b);
+	}
+
+	default PairEvaluable pairDivide(Evaluable<Pair> a, Evaluable<Scalar> b) {
+		return new DefaultPairEvaluable(pairDivide(() -> a, () -> b));
+	}
+
+	default PairProducer pairDivide(Supplier<Evaluable<? extends Pair>> a, Supplier<Evaluable<? extends Scalar>> b) {
+		ScalarProducer v = new ScalarPow(b, new StaticScalarComputation(new Scalar(-1.0)));
+		return new PairProduct(a, pair(v, v));
+	}
+
+	default PairEvaluable pairsDivide(Evaluable<Pair> a, Evaluable<Pair> b) {
+		return new DefaultPairEvaluable(pairsDivide(() -> a, () -> b));
+	}
+
+	default PairProducer pairsDivide(Supplier<Evaluable<? extends Pair>> a, Supplier<Evaluable<? extends Pair>> b) {
+		return new PairProduct(a, pair(r(b).pow(-1.0), l(b).pow(-1.0)));
 	}
 
 	default PairEvaluable pairMinus(Evaluable<Scalar> v) {

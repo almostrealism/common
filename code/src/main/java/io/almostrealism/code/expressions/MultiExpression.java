@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,18 +16,17 @@
 
 package io.almostrealism.code.expressions;
 
-public class ExpressionArray<T> {
-	private Expression<T> data[];
+import io.almostrealism.code.NameProvider;
+import io.almostrealism.code.Variable;
+import io.almostrealism.code.expressions.Expression;
 
-	public ExpressionArray(int count) {
-		data = new Expression[count];
+import java.util.function.IntFunction;
+
+public interface MultiExpression<T> {
+
+	default IntFunction<Variable<T>> getAssignmentFunction(NameProvider p, Variable<?> outputVariable) {
+		return i -> new Variable<>(p.getVariableValueName(outputVariable, i, true), false, getValue(i), outputVariable);
 	}
 
-	public Expression<T> get(int index) {
-		return data[index];
-	}
-
-	public void set(int index, Expression<T> value) {
-		data[index] = value;
-	}
+	Expression<T> getValue(int pos);
 }
