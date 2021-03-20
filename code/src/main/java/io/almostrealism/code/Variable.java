@@ -17,6 +17,7 @@
 package io.almostrealism.code;
 
 import io.almostrealism.code.expressions.Expression;
+import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Generated;
 import io.almostrealism.relation.Nameable;
@@ -164,6 +165,11 @@ public class Variable<T> implements Nameable {
 	public Supplier<Evaluable<? extends T>> getProducer() { return producer; }
 
 	public Supplier<Evaluable<? extends T>> getOriginalProducer() { return originalProducer; }
+
+	public boolean isStatic() {
+		if (getProducer() instanceof Compactable == false) return false;
+		return ((Compactable) getProducer()).isStatic();
+	}
 
 	public Class<T> getType() { return getExpression() == null ? null : getExpression().getType(); }
 

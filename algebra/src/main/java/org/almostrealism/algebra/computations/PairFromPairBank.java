@@ -36,9 +36,17 @@ public class PairFromPairBank extends DynamicProducerComputationAdapter<PairBank
 	public IntFunction<Expression<Double>> getValueFunction() {
 		return pos -> {
 			if (pos == 0) {
-				return getArgument(1).get("(2 * (int) " + getArgument(2).get(0).getExpression() + ")", getArgument(2));
+				if (getArgument(2).isStatic()) {
+					return getArgument(1).get("(2 * (int) " + getInputValue(2, 0).getExpression() + ")");
+				} else {
+					return getArgument(1).get("(2 * (int) " + getInputValue(2, 0).getExpression() + ")", getArgument(2));
+				}
 			} else if (pos == 1) {
-				return getArgument(1).get("(2 * (int) " + getArgument(2).get(0).getExpression() + " + 1)", getArgument(2));
+				if (getArgument(2).isStatic()) {
+					return getArgument(1).get("(2 * (int) " + getInputValue(2, 0).getExpression() + " + 1)");
+				} else {
+					return getArgument(1).get("(2 * (int) " + getInputValue(2, 0).getExpression() + " + 1)", getArgument(2));
+				}
 			} else {
 				throw new IllegalArgumentException();
 			}

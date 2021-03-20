@@ -16,16 +16,27 @@
 
 package org.almostrealism.algebra.computations;
 
+import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.code.ScopeInputManager;
+import io.almostrealism.code.ScopeLifecycle;
+import io.almostrealism.code.expressions.Expression;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Factory;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairBank;
+import org.almostrealism.hardware.DynamicProducerComputationAdapter;
+import org.almostrealism.hardware.KernelizedEvaluable;
 
-public class PairBankFromPairsBuilder implements Producer<PairBank>, Factory<PairBankFromPairs> {
+import java.util.function.IntFunction;
+import java.util.stream.Stream;
+
+public class PairBankFromPairsBuilder extends DynamicProducerComputationAdapter<Pair, PairBank>
+									implements Factory<PairBankFromPairs> {
 	private Producer<Pair> producers[];
 
 	public PairBankFromPairsBuilder(int count) {
+		super(2 * count, null, null, new Producer[0]);
 		producers = new Producer[count];
 	}
 
@@ -40,8 +51,28 @@ public class PairBankFromPairsBuilder implements Producer<PairBank>, Factory<Pai
 	public int getCount() { return producers.length; }
 
 	@Override
-	public PairBankFromPairs construct() { return new PairBankFromPairs(producers); }
+	public void prepareArguments(ArgumentMap map) {
+		super.prepareArguments(map);
+		ScopeLifecycle.prepareArguments(Stream.of(producers), map);
+	}
 
 	@Override
-	public Evaluable<PairBank> get() { return construct().get(); }
+	public void prepareScope(ScopeInputManager manager) {
+		super.prepareScope(manager);
+		ScopeLifecycle.prepareScope(Stream.of(producers), manager);
+	}
+
+	@Override
+	public KernelizedEvaluable<PairBank> get() { return construct().get(); }
+
+	@Override
+	public PairBankFromPairs construct() { return new PairBankFromPairs(producers); }
+
+	private int arg(int index) { return index / 2; }
+	private int pos(int index) { return index % 2; }
+
+	@Override
+	public IntFunction<Expression<Double>> getValueFunction() {
+		return i -> ((DynamicProducerComputationAdapter) producers[arg(i)]).getValue(pos(i));
+	}
 }

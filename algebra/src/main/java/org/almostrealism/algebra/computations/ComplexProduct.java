@@ -38,10 +38,10 @@ public class ComplexProduct extends DynamicProducerComputationAdapter<Pair, Pair
 	@Override
 	public IntFunction<Expression<Double>> getValueFunction() {
 		return i -> {
-			Expression p = getArgument(1).get(0);
-			Expression q = getArgument(1).get(1);
-			Expression r = getArgument(2).get(0);
-			Expression s = getArgument(2).get(1);
+			Expression p = getInputValue(1, 0);
+			Expression q = getInputValue(1, 1);
+			Expression r = getInputValue(2, 0);
+			Expression s = getInputValue(2, 1);
 
 			if (i == 0) {
 				return new Sum(new Product(p, r), new Minus(new Product(q, s)));

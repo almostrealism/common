@@ -35,8 +35,15 @@ public class ComplexFromAngle extends DynamicProducerComputationAdapter<Scalar, 
 
 	@Override
 	public IntFunction<Expression<Double>> getValueFunction() {
-		return i -> new Expression<>(Double.class, (i == 0 ? "cos(" : "sin(") +
-											getArgument(1).get(0).getExpression() + ")",
-											getArgument(1));
+		return i -> {
+			Expression<Double> exp = getInputValue(1, 0);
+
+			if (getArgument(1).isStatic()) {
+				return new Expression<>(Double.class, (i == 0 ? "cos(" : "sin(") + exp.getExpression() + ")");
+			} else {
+				return new Expression<>(Double.class, (i == 0 ? "cos(" : "sin(") + exp.getExpression() + ")",
+						getArgument(1));
+			}
+		};
 	}
 }
