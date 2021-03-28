@@ -20,7 +20,7 @@ import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.code.expressions.Expression;
-import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Factory;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Pair;
@@ -28,6 +28,7 @@ import org.almostrealism.algebra.PairBank;
 import org.almostrealism.hardware.DynamicProducerComputationAdapter;
 import org.almostrealism.hardware.KernelizedEvaluable;
 
+import java.util.Objects;
 import java.util.function.IntFunction;
 import java.util.stream.Stream;
 
@@ -36,7 +37,7 @@ public class PairBankFromPairsBuilder extends DynamicProducerComputationAdapter<
 	private Producer<Pair> producers[];
 
 	public PairBankFromPairsBuilder(int count) {
-		super(2 * count, null, null, new Producer[0]);
+		super(2 * count, () -> args -> new PairBank(count), null, new Producer[0]);
 		producers = new Producer[count];
 	}
 
@@ -63,6 +64,11 @@ public class PairBankFromPairsBuilder extends DynamicProducerComputationAdapter<
 	}
 
 	@Override
+	public synchronized void compact() {
+		Stream.of(producers).filter(Objects::nonNull).forEach(p -> ((Compactable) p).compact());
+	}
+
+	@Override
 	public KernelizedEvaluable<PairBank> get() { return construct().get(); }
 
 	@Override
@@ -73,6 +79,6 @@ public class PairBankFromPairsBuilder extends DynamicProducerComputationAdapter<
 
 	@Override
 	public IntFunction<Expression<Double>> getValueFunction() {
-		return i -> ((DynamicProducerComputationAdapter) producers[arg(i)]).getValue(pos(i));
+		return i -> getExpression(producers[arg(i)]).getValue(pos(i));
 	}
 }

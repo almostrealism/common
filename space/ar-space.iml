@@ -11,6 +11,20 @@
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
+    <orderEntry type="module" module-name="ar-graph" />
+    <orderEntry type="module" module-name="ar-geometry" />
+    <orderEntry type="module" module-name="ar-algebra" />
+    <orderEntry type="module" module-name="ar-hardware" />
+    <orderEntry type="module" module-name="ar-code" />
+    <orderEntry type="module" module-name="ar-relation" />
+    <orderEntry type="module" module-name="ar-uml" />
+    <orderEntry type="module" module-name="ar-io" />
+    <orderEntry type="library" name="Maven: org.jocl:jocl:2.0.2" level="project" />
+    <orderEntry type="module" module-name="ar-time" />
+    <orderEntry type="module" module-name="ar-heredity" />
+    <orderEntry type="module" module-name="ar-physics" />
+    <orderEntry type="module" module-name="ar-color" />
+    <orderEntry type="module" module-name="ar-stats" />
     <orderEntry type="library" name="Maven: com.fasterxml.jackson.core:jackson-databind:2.8.3" level="project" />
     <orderEntry type="library" name="Maven: com.fasterxml.jackson.core:jackson-annotations:2.8.0" level="project" />
     <orderEntry type="library" name="Maven: com.fasterxml.jackson.core:jackson-core:2.8.3" level="project" />

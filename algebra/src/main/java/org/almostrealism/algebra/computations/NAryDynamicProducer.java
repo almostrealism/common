@@ -30,12 +30,15 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 public abstract class NAryDynamicProducer<T extends MemWrapper> extends DynamicProducerComputationAdapter<T, T> implements ComputerFeatures {
-	private String operator;
+	private final String operator;
 	private Expression<Double> value[];
 	private boolean isStatic;
 
+	@SafeVarargs
 	public NAryDynamicProducer(String operator, int memLength, Supplier<Evaluable<? extends T>> blank,
 							   IntFunction<MemoryBank<T>> kernelDestination,
 							   Supplier<Evaluable<? extends T>>... producers) {
@@ -60,10 +63,13 @@ public abstract class NAryDynamicProducer<T extends MemWrapper> extends DynamicP
 		};
 	}
 
-	// TODO  Combine ScalarProducts that are equal by converting to ScalarPow
 	@Override
 	public void compact() {
 		super.compact();
+
+		if ("f_scalarProduct_8".equals(getName())) {
+			System.out.println("!");
+		}
 
 		if (value == null && isCompletelyValueOnly()) {
 			value = new Expression[getMemLength()];
@@ -141,6 +147,7 @@ public abstract class NAryDynamicProducer<T extends MemWrapper> extends DynamicP
 	 * {@link Evaluable} is static. If so, this method returns
 	 * true.
 	 */
+	@Override
 	public boolean isStatic() { return !isVariableRef() && isStatic; }
 
 	/**

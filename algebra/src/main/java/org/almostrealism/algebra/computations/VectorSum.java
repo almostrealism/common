@@ -37,5 +37,6 @@ public class VectorSum extends NAryDynamicProducer<Vector> implements VectorProd
 	/**
 	 * Returns true if the specified value is 0.0, false otherwise.
 	 */
+	@Override
 	public boolean isRemove(double value) { return value == 0.0; }
 }

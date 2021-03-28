@@ -37,6 +37,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -55,23 +56,27 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 
 	protected List<ArgumentMap> argumentMaps;
 
+	@SafeVarargs
 	protected AcceleratedOperation(boolean kernel, Supplier<Evaluable<? extends T>>... args) {
 		super(args);
 		this.kernel = kernel;
 		this.argumentMaps = new ArrayList<>();
 	}
 
+	@SafeVarargs
 	public AcceleratedOperation(String function, boolean kernel, Supplier<Evaluable<? extends T>>... args) {
 		this(kernel, args);
 		setFunctionName(function);
 	}
 
+	@SafeVarargs
 	protected AcceleratedOperation(boolean kernel, ArrayVariable<T>... args) {
 		super(args);
 		this.kernel = kernel;
 		this.argumentMaps = new ArrayList<>();
 	}
 
+	@SafeVarargs
 	public AcceleratedOperation(String function, boolean kernel, ArrayVariable<T>... args) {
 		this(kernel, args);
 		setFunctionName(function);
@@ -79,7 +84,10 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 
 	public void setSourceClass(Class cls) { this.cls = cls; }
 
-	public Class getSourceClass() { return cls == null ? getClass() : cls; }
+	public Class getSourceClass() {
+		if (cls != null) return cls;
+		return getClass();
+	}
 
 	public HardwareOperator getOperator() {
 		// TODO  This needs to be by class in addition to function, as function names may collide
@@ -212,7 +220,7 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 			return ((ProducerArgumentReference) arg.getProducer()).getReferencedArgumentIndex();
 		}
 
-		if (arg.getProducer() instanceof AcceleratedComputationOperation == false) return -1;
+		if (!(arg.getProducer() instanceof AcceleratedComputationOperation)) return -1;
 
 		Computation c = ((AcceleratedComputationOperation) arg.getProducer()).getComputation();
 		if (c instanceof ProducerArgumentReference) {

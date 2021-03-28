@@ -17,6 +17,7 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.ArrayVariable;
+import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.code.ProducerComputationAdapter;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.expressions.InstanceReference;
@@ -32,6 +33,7 @@ import org.almostrealism.hardware.mem.MemWrapperDestination;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
@@ -65,6 +67,7 @@ public abstract class DynamicProducerComputationAdapter<I extends MemWrapper, O 
 	private IntFunction<InstanceReference> variableRef;
 	private Supplier<O> destination;
 
+	@SafeVarargs
 	public DynamicProducerComputationAdapter(int memLength, Supplier<Evaluable<? extends O>> result,
 											 IntFunction<MemoryBank<O>> kernelDestination,
 											 Supplier<Evaluable<? extends I>>... inputArgs) {
@@ -75,8 +78,12 @@ public abstract class DynamicProducerComputationAdapter<I extends MemWrapper, O 
 											 IntFunction<MemoryBank<O>> kernelDestination,
 											 Supplier<Evaluable<? extends I>>[] inputArgs,
 											 Object[] additionalArguments) {
+		if (result == null && this instanceof ProducerArgumentReference == false) {
+			throw new IllegalArgumentException();
+		}
+
 		this.memLength = memLength;
-		this.destination = () -> (O) result.get().evaluate();
+		this.destination = () -> (O) Objects.requireNonNull(result).get().evaluate();
 		this.setInputs(Arrays.asList(
 				AcceleratedEvaluable.includeResult(
 						new MemWrapperDestination(this, kernelDestination),
@@ -84,6 +91,7 @@ public abstract class DynamicProducerComputationAdapter<I extends MemWrapper, O 
 		init();
 	}
 
+	@Override
 	public int getMemLength() { return memLength; }
 
 	@Override

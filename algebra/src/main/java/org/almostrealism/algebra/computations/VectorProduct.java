@@ -37,10 +37,12 @@ public class VectorProduct extends NAryDynamicProducer<Vector> implements Vector
 	/**
 	 * Returns 0.0 if the specified value is zero, false otherwise.
 	 */
+	@Override
 	public Double isReplaceAll(double value) { return value == 0.0 ? 0.0 : null; }
 
 	/**
 	 * Returns true if the specified value is 1.0, false otherwise.
 	 */
+	@Override
 	public boolean isRemove(double value) { return value == 1.0; }
 }

@@ -38,20 +38,20 @@ public interface ComputerFeatures extends HardwareFeatures, NameProvider {
 				String kernelOffset = kernelIndex < 0 ? "" :
 						("get_global_id(" + kernelIndex + ") * " + v.getName() + "Size + ");
 
-				if (pos.equals("0")) {
+				if (pos.equals("0") || pos.equals("(0)")) {
 					name = v.getName() + "[" + kernelOffset + v.getName() + "Offset]";
 				} else {
-					name = v.getName() + "[" + kernelOffset + v.getName() + "Offset + " + pos + "]";
+					name = v.getName() + "[" + kernelOffset + v.getName() + "Offset + (int) (" + pos + ")]";
 				}
 			} else {
 				if (pos.equals("0")) {
 					name = v.getName() + "[" + v.getName() + "Offset]";
 				} else {
-					name = v.getName() + "[" + v.getName() + "Offset + " + pos + "]";
+					name = v.getName() + "[" + v.getName() + "Offset + (int) (" + pos + ")]";
 				}
 			}
 		} else {
-			name = v.getName() + "[" + pos + "]";
+			name = v.getName() + "[(int) (" + pos + ")]";
 		}
 
 		if (isCastEnabled() && !assignment) {

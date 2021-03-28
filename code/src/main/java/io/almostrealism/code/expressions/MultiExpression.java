@@ -18,7 +18,6 @@ package io.almostrealism.code.expressions;
 
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.Variable;
-import io.almostrealism.code.expressions.Expression;
 
 import java.util.function.IntFunction;
 

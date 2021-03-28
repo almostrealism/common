@@ -31,6 +31,7 @@ public class PairBankFromPairs extends DynamicProducerComputationAdapter<Pair, P
 								implements PairBankProducer {
 	private Expression<Double> value[];
 
+	@SafeVarargs
 	public PairBankFromPairs(Supplier<Evaluable<? extends Pair>>... input) {
 		super(2 * input.length, () -> args -> new PairBank(input.length),
 				i -> { throw new UnsupportedOperationException(); }, input);
@@ -59,11 +60,9 @@ public class PairBankFromPairs extends DynamicProducerComputationAdapter<Pair, P
 					.mapToObj(i -> getInputValue(arg(i), pos(i)))
 					.toArray(Expression[]::new);
 
-			IntStream.range(1, getArgsCount()).forEach(i -> {
-				if (!getInputProducer(i).isStatic()) {
-					absorbVariables(getInputProducer(i));
-				}
-			});
+			IntStream.range(1, getArgsCount())
+					.filter(i -> !getInputProducer(i).isStatic())
+					.forEach(i -> absorbVariables(getInputProducer(i)));
 		}
 	}
 }

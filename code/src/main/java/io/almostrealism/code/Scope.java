@@ -25,6 +25,7 @@ import io.almostrealism.relation.Parent;
 import io.almostrealism.relation.Nameable;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -35,6 +36,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 /**
  * A {@link Scope} is the container for {@link Variable}s, {@link Method}s, and other {@link Scope}s.
@@ -103,7 +105,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 		return result;
 	}
 
-	protected List<ArrayVariable<?>> arguments() { return arguments(arg -> arg); }
+	protected List<ArrayVariable<?>> arguments() { return arguments(Function.identity()); }
 
 	protected <T> List<T> arguments(Function<ArrayVariable<?>, T> mapper) {
 		List<ArrayVariable<?>> args = new ArrayList<>();
@@ -144,29 +146,56 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 			return;
 		}
 
-		this.arguments = getArguments()
+		List<ArrayVariable<?>> args = new ArrayList<>();
+
+		getArguments()
 				.stream()
 				.map(arg -> {
-					if (arg.getProducer() instanceof Computation == false
+					if (!(arg.getProducer() instanceof Computation)
 							|| arg.getProducer() instanceof DynamicProducer
 							|| arg.getProducer() instanceof ProducerArgumentReference) {
-						return arg;
+						return Collections.singletonList(arg);
 					}
 
 					Scope s = ((Computation) arg.getProducer()).getScope();
 					s.convertArgumentsToRequiredScopes();
 
-					required.add(s);
-					methods.add(s.call());
+					// Attempt to simply include the scope
+					// inline, otherwise introduce a method
+					if (tryAbsorb(s)) {
+						return s.getArguments();
+					} else {
+						required.add(s);
+						methods.add(s.call());
+						return Collections.emptyList();
+					}
+				})
+				.flatMap(List::stream)
+				.forEach(arg -> args.add((ArrayVariable<?>) arg));
 
-					return null;
-				}).filter(Objects::nonNull).collect(Collectors.toList());
+		this.arguments = args;
 	}
 
 	public Method<?> call() {
-		List<Expression> args = new ArrayList<>();
-		getArguments().forEach(a -> args.add(new InstanceReference((Variable) a)));
+		List<Expression> args = getArguments().stream()
+				.map(a -> new InstanceReference((Variable) a)).collect(Collectors.toList());
 		return new Method(Double.class, getName(), args);
+	}
+
+	/**
+	 * Attempt to inline the specified {@link Scope}. This will only be
+	 * successful if the specified {@link Scope} contains nothing but
+	 * variable assignments; any {@link Scope} with child {@link Scope}s
+	 * or method references will not be inlined.
+	 *
+	 * @return  True if the {@link Scope} was inlined, false otherwise.
+	 */
+	public boolean tryAbsorb(Scope<T> s) {
+		if (!s.getChildren().isEmpty()) return false;
+		if (!s.getMethods().isEmpty()) return false;
+
+		IntStream.range(0, s.getVariables().size()).forEach(i -> variables.add(i, s.getVariables().get(i)));
+		return true;
 	}
 
 	/**
@@ -191,7 +220,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 		Iterator<ArrayVariable<? extends T>> itr = args.iterator();
 
 		while (itr.hasNext()) {
-			ArrayVariable arg = itr.next();
+			ArrayVariable<? extends T> arg = itr.next();
 			if (names.contains(arg.getName())) {
 				itr.remove();
 			} else {

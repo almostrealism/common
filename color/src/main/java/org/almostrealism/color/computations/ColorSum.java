@@ -50,5 +50,6 @@ public class ColorSum extends NAryDynamicProducer<RGB> implements RGBProducer {
 	/**
 	 * Returns true if the specified value is 0.0, false otherwise.
 	 */
+	@Override
 	public boolean isRemove(double value) { return value == 0.0; }
 }
