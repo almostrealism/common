@@ -16,11 +16,11 @@
     <orderEntry type="module" module-name="graph" />
     <orderEntry type="module" module-name="geometry" />
     <orderEntry type="module" module-name="time" />
+    <orderEntry type="module" module-name="heredity" />
     <orderEntry type="module" module-name="physics" />
     <orderEntry type="module" module-name="color" />
     <orderEntry type="module" module-name="stats" />
     <orderEntry type="module" module-name="chemistry" />
-    <orderEntry type="module" module-name="heredity" />
     <orderEntry type="module" module-name="economics" />
     <orderEntry type="module" module-name="algebra" />
     <orderEntry type="module" module-name="hardware" />
