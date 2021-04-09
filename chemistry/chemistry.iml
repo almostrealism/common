@@ -11,18 +11,18 @@
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
-    <orderEntry type="library" name="Maven: org.almostrealism:ar-physics:0.14" level="project" />
-    <orderEntry type="library" name="Maven: org.almostrealism:ar-time:0.14" level="project" />
-    <orderEntry type="library" name="Maven: org.almostrealism:ar-color:0.14" level="project" />
+    <orderEntry type="module" module-name="physics" />
+    <orderEntry type="module" module-name="time" />
+    <orderEntry type="module" module-name="color" />
     <orderEntry type="module" module-name="geometry" />
-    <orderEntry type="library" name="Maven: org.almostrealism:ar-stats:0.14" level="project" />
+    <orderEntry type="module" module-name="stats" />
     <orderEntry type="module" module-name="heredity" />
     <orderEntry type="module" module-name="algebra" />
-    <orderEntry type="library" name="Maven: org.almostrealism:ar-hardware:0.14" level="project" />
-    <orderEntry type="library" name="Maven: org.almostrealism:ar-code:0.14" level="project" />
+    <orderEntry type="module" module-name="hardware" />
+    <orderEntry type="module" module-name="code" />
     <orderEntry type="module" module-name="relation" />
-    <orderEntry type="library" name="Maven: org.almostrealism:ar-uml:0.14" level="project" />
-    <orderEntry type="library" name="Maven: org.almostrealism:ar-io:0.14" level="project" />
+    <orderEntry type="module" module-name="uml" />
+    <orderEntry type="module" module-name="io" />
     <orderEntry type="library" name="Maven: org.jocl:jocl:2.0.2" level="project" />
     <orderEntry type="library" name="Maven: com.fasterxml.jackson.core:jackson-databind:2.8.3" level="project" />
     <orderEntry type="library" name="Maven: com.fasterxml.jackson.core:jackson-annotations:2.8.0" level="project" />

@@ -44,6 +44,8 @@ import java.util.stream.IntStream;
  * @param <T>  The type of the value returned by this {@link Scope}.
  */
 public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<Scope<T>, T>, Parent<Scope<T>>, Nameable {
+	public static final boolean enableInlining = false;
+
 	private String name;
 	private List<Variable<?>> variables;
 	private List<Method> methods;
@@ -191,6 +193,8 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 	 * @return  True if the {@link Scope} was inlined, false otherwise.
 	 */
 	public boolean tryAbsorb(Scope<T> s) {
+		if (!enableInlining) return false;
+
 		if (!s.getChildren().isEmpty()) return false;
 		if (!s.getMethods().isEmpty()) return false;
 
