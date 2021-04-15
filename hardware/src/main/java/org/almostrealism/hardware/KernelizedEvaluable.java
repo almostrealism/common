@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -36,7 +36,7 @@ import java.util.stream.Stream;
 public interface KernelizedEvaluable<T extends MemWrapper> extends Evaluable<T> {
 	default void kernelEvaluate(MemoryBank destination, MemoryBank args[]) {
 		String name = this instanceof Named ? ((Named) this).getName() : OperationAdapter.operationName(this instanceof Named ? (Named) this : null, getClass(), "function");
-		if (KernelizedOperation.enableKernelLog) System.out.println("KernelizedProducer: Evaluating " + name + " kernel...");
+		if (KernelizedOperation.enableKernelLog) System.out.println("KernelizedEvaluable: Evaluating " + name + " kernel...");
 
 		boolean enableLog = false; // name.equals("LightingEngineAggregator");
 
@@ -46,8 +46,7 @@ public interface KernelizedEvaluable<T extends MemWrapper> extends Evaluable<T> 
 			try {
 				final int fi = i;
 				Object o[] = Stream.of(args)
-						.map(arg -> arg.get(fi))
-						.collect(Collectors.toList()).toArray();
+						.map(arg -> arg.get(fi)).toArray();
 
 				r = evaluate(o);
 				if (r == null) r = replaceNull(o);

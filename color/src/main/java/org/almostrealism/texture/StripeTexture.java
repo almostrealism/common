@@ -130,6 +130,7 @@ public class StripeTexture implements Texture, Editable {
 	 * 
 	 * @see ColorEvaluable#evaluate(java.lang.Object[])
 	 */
+	@Override
 	public RGB evaluate(Object args[]) {
 		System.out.println("StripeTexture.evaluate");
 	    if (!(args[0] instanceof Vector)) throw new IllegalArgumentException("Illegal argument: " + args[0]);

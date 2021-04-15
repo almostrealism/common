@@ -40,7 +40,6 @@ public class PairBank extends MemoryBankAdapter<Pair> {
 				delegate, delegateOffset);
 	}
 
-	// TODO  Add unit tests for this
 	public PairBank range(int offset, int length) {
 		if (offset * getAtomicMemLength() >= getMemLength()) {
 			throw new IllegalArgumentException("Range extends beyond the length of this bank");

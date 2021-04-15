@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -27,9 +27,11 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class AcceleratedEvaluable<I extends MemWrapper, O extends MemWrapper> extends AcceleratedOperation implements KernelizedEvaluable<O> {
+	@SafeVarargs
 	public AcceleratedEvaluable(String function, Supplier<Evaluable<? extends O>> result, Supplier<Evaluable<? extends I>>... inputArgs) {
 		this(function, false, result, inputArgs, new Object[0]);
 	}
@@ -42,6 +44,7 @@ public class AcceleratedEvaluable<I extends MemWrapper, O extends MemWrapper> ex
 		this(function, kernel, result, producers(inputArgs, additionalArguments));
 	}
 
+	@SafeVarargs
 	public AcceleratedEvaluable(String function, boolean kernel, Supplier<Evaluable<? extends O>> result, Supplier<Evaluable<? extends I>>... inputArgs) {
 		super(function, kernel, includeResult(result, inputArgs));
 	}
@@ -88,11 +91,10 @@ public class AcceleratedEvaluable<I extends MemWrapper, O extends MemWrapper> ex
 				final int fi = i;
 				destination.set(i,
 						((Evaluable<MemWrapper>) operation).evaluate(Stream.of(args)
-								.map(arg -> arg.get(fi))
-								.collect(Collectors.toList()).toArray()));
+								.map(arg -> arg.get(fi)).toArray()));
 			}
 		} else {
-			// This will produce an error, but thats the correct outcome
+			// This will produce an error, but that's the correct outcome
 			operation.kernelOperate(includeResult(destination, args));
 		}
 	}
@@ -106,9 +108,7 @@ public class AcceleratedEvaluable<I extends MemWrapper, O extends MemWrapper> ex
 	}
 
 	public static <T> List<ArrayVariable<? extends T>> excludeResult(List<ArrayVariable<? extends T>> p) {
-		List<ArrayVariable<? extends T>> r = new ArrayList<>();
-		for (int i = 1; i < p.size(); i++) r.add(p.get(i));
-		return r;
+		return IntStream.range(1, p.size()).mapToObj(p::get).collect(Collectors.toList());
 	}
 
 	public static ArrayVariable[] excludeResult(ArrayVariable... p) {
