@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -20,13 +20,25 @@ import io.almostrealism.relation.Producer;
 
 import java.util.function.Supplier;
 
-public class AdjustmentCell<A, R> extends CellAdapter<R> {
-	private Adjustable<A> cell;
-	private Adjustment<A> adjust;
+public class AdjustmentCell<A, R> extends CellAdapter<R> implements Adjustable<R> {
+	private final Adjustable<A> cell;
+	private final Adjustment<A> adjust;
 	
 	public AdjustmentCell(Adjustable<A> cell, Adjustment<A> adjustment) {
 		this.cell = cell;
 		this.adjust = adjustment;
+	}
+
+	@Override
+	public Supplier<Runnable> updateAdjustment(Producer<R> value) {
+		if (adjust instanceof Adjustable) {
+			return ((Adjustable) adjust).updateAdjustment(value);
+		} else {
+			System.out.println("WARN: " + adjust.getClass().getSimpleName() + " is not Adjustable, " +
+								"but the AdjustmentCell it is used by should be adjusted by " +
+								value.getClass().getSimpleName());
+			return () -> () -> { };
+		}
 	}
 
 	@Override

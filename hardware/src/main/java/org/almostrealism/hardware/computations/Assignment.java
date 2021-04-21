@@ -26,7 +26,7 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public class Assignment<T extends MemWrapper> extends DynamicOperationComputationAdapter<T> {
-	private int memLength;
+	private final int memLength;
 
 	public Assignment(int memLength, Supplier<Evaluable<? extends T>> result, Supplier<Evaluable<? extends T>> value) {
 		super(result, value);

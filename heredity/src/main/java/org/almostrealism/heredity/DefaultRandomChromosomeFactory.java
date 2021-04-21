@@ -33,12 +33,14 @@ public class DefaultRandomChromosomeFactory implements ChromosomeFactory<Scalar>
 		this.max = largestScale;
 	}
 	
+	@Override
 	public DefaultRandomChromosomeFactory setChromosomeSize(int genes, int factors) {
 		this.genes = genes;
 		this.factors = factors;
 		return this;
 	}
 	
+	@Override
 	public Chromosome<Scalar> generateChromosome(double arg) {
 		ArrayListChromosome<Scalar> c = new ArrayListChromosome<>();
 		

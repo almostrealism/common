@@ -21,22 +21,25 @@ import org.almostrealism.algebra.Scalar;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-public class FloatingPointRandomChromosomeFactory implements ChromosomeFactory<Scalar> {
+public class FixedValueChromosomeFactory implements ChromosomeFactory<Scalar> {
 	private int genes, factors;
-	
+	private final Gene<Scalar> gene;
+
+	public FixedValueChromosomeFactory(Gene<Scalar> gene) {
+		this.gene = gene;
+	}
+
 	@Override
-	public FloatingPointRandomChromosomeFactory setChromosomeSize(int genes, int factors) {
+	public FixedValueChromosomeFactory setChromosomeSize(int genes, int factors) {
 		this.genes = genes;
-		this.factors = factors;
+		if (factors != gene.length()) throw new IllegalArgumentException();
 		return this;
 	}
-	
+
 	@Override
 	public Chromosome<Scalar> generateChromosome(double arg) {
 		return IntStream.range(0, genes)
-				.mapToObj(i -> IntStream.range(0, factors)
-						.mapToObj(j -> new ScaleFactor(StrictMath.random() * arg))
-						.collect(Collectors.toCollection(ArrayListGene::new)))
+				.mapToObj(i -> gene)
 				.collect(Collectors.toCollection(ArrayListChromosome::new));
 	}
 }

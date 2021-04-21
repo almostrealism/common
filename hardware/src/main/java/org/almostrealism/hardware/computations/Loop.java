@@ -25,8 +25,8 @@ import org.almostrealism.c.OpenCLPrintWriter;
 import org.almostrealism.hardware.DynamicOperationComputationAdapter;
 
 public class Loop extends DynamicOperationComputationAdapter<Void> {
-	private Computation atom;
-	private int iterations;
+	private final Computation atom;
+	private final int iterations;
 
 	public Loop(Computation<Void> atom, int iterations) {
 		this.atom = atom;
