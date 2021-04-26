@@ -26,6 +26,7 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.hardware.DynamicProducerComputationAdapter;
+import org.almostrealism.hardware.Hardware;
 
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
@@ -37,6 +38,8 @@ public class GaussRandom extends DynamicProducerComputationAdapter<Pair, Scalar>
 
 	@Override
 	public Scope<Scalar> getScope() {
+		String pi = Hardware.getLocalHardware().isDoublePrecision() ? "M_PI" : "M_PI_F";
+
 		HybridScope<Scalar> scope = new HybridScope<>(this);
 
 		String randx = getArgument(1).get(0).getExpression();
@@ -44,20 +47,22 @@ public class GaussRandom extends DynamicProducerComputationAdapter<Pair, Scalar>
 		String result = ((ArrayVariable) getOutputVariable()).get(0).getExpression();
 
 		Consumer<String> code = scope.code();
-		code.accept(result + " = sqrt(-2 * log(" + randx + ")) * cos(2 * M_PI * " + randy + ");\n");
+		code.accept(result + " = sqrt(-2 * log(" + randx + ")) * cos(2 * " + pi + " * " + randy + ");\n");
 
 		return scope;
 	}
 
 	@Override
 	public IntFunction<Expression<Double>> getValueFunction() {
+		String pi = Hardware.getLocalHardware().isDoublePrecision() ? "M_PI" : "M_PI_F";
+
 		String randx = getArgument(1).get(0).getExpression();
 		String randy = getArgument(1).get(1).getExpression();
 
 		return i -> i == 0 ?
 				new Expression<>(Double.class,
-						"sqrt(-2 * log(" + randx + ")) * cos(2 * M_PI * " + randy + ")",
+						"sqrt(-2 * log(" + randx + ")) * cos(2 * " + pi + " * " + randy + ")",
 							getArgument(0), getArgument(1))
-				: new Expression<Double>(Double.class, "1.0");
+				: new Expression<>(Double.class, stringForDouble(1.0));
 	}
 }
