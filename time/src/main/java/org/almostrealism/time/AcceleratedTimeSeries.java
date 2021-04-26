@@ -59,7 +59,7 @@ public class AcceleratedTimeSeries extends TemporalScalarBank implements Hardwar
 
 	@Deprecated
 	public void add(double time, double value) {
-		if (getEndCursorIndex() >= (getCount() - 1)) {
+		if (getEndCursorIndex() >= getCount() - 1) {
 			throw new RuntimeException("AcceleratedTimeSeries is full");
 		}
 
@@ -109,6 +109,6 @@ public class AcceleratedTimeSeries extends TemporalScalarBank implements Hardwar
 	}
 
 	public static AcceleratedTimeSeries defaultSeries() {
-		return Hardware.getLocalHardware().getTimeSeriesSize() > 0 ? new AcceleratedTimeSeries() : new AcceleratedTimeSeries(10000000);
+		return Hardware.getLocalHardware().getTimeSeriesSize() > 0 ? new AcceleratedTimeSeries() : new AcceleratedTimeSeries(20000000);
 	}
 }

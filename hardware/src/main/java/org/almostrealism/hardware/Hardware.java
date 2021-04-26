@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,7 +17,14 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.Computer;
-import org.jocl.*;
+import org.jocl.CL;
+import org.jocl.Sizeof;
+import org.jocl.cl_command_queue;
+import org.jocl.cl_context;
+import org.jocl.cl_context_properties;
+import org.jocl.cl_device_id;
+import org.jocl.cl_mem;
+import org.jocl.cl_platform_id;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -73,11 +80,11 @@ public final class Hardware {
 
 	private long memoryMax, memoryUsed;
 
-	private cl_context context;
-	private cl_command_queue queue;
+	private final cl_context context;
+	private final cl_command_queue queue;
 
-	private AcceleratedFunctions functions;
-	private Computer computer;
+	private final AcceleratedFunctions functions;
+	private final Computer computer;
 	
 	private Hardware(boolean enableGpu) {
 		this(enableGpu, !enableGpu);
@@ -92,7 +99,7 @@ public final class Hardware {
 	}
 
 	private Hardware(String name, boolean enableGpu, boolean enableDoublePrecision) {
-		this.memoryMax = ((long) Math.pow(2, getMemoryScale()) * 256l * 1000l * 1000l);
+		this.memoryMax = (long) Math.pow(2, getMemoryScale()) * 256L * 1000L * 1000L;
 		if (enableDoublePrecision) memoryMax = memoryMax * 2;
 		this.enableGpu = enableGpu;
 		this.enableDoublePrecision = enableDoublePrecision;
@@ -180,7 +187,13 @@ public final class Hardware {
 
 	public int getTimeSeriesCount() { return timeSeriesCount; }
 
+	public long getAllocatedMemory() { return memoryUsed; }
+
 	public String stringForDouble(double d) {
+		return "(" + getNumberTypeName() + ") " + rawStringForDouble(d);
+	}
+
+	private String rawStringForDouble(double d) {
 		if (isGPU()) {
 			Float f = (float) d;
 			if (f.isInfinite()) {
@@ -200,10 +213,6 @@ public final class Hardware {
 
 			return String.valueOf(d);
 		}
-	}
-
-	public String getNumberType() {
-		return Hardware.getLocalHardware().isDoublePrecision() ? "double" : "float";
 	}
 
 	protected double doubleForString(String s) {
@@ -226,7 +235,7 @@ public final class Hardware {
 	public AcceleratedFunctions getFunctions() { return functions; }
 
 	public cl_mem allocate(int size) {
-		long sizeOf = size * getNumberSize();
+		long sizeOf = (long) size * getNumberSize();
 
 		if (memoryUsed + sizeOf > memoryMax) {
 			throw new RuntimeException("Hardware: Memory Max Reached");
@@ -240,7 +249,7 @@ public final class Hardware {
 
 	public void deallocate(int size, cl_mem mem) {
 		CL.clReleaseMemObject(mem);
-		memoryUsed = memoryUsed - size * getNumberSize();
+		memoryUsed = memoryUsed - (long) size * getNumberSize();
 	}
 
 	private static String deviceName(long type) {
@@ -270,7 +279,7 @@ public final class Hardware {
 			throw new IllegalArgumentException("InputStream is null");
 		}
 
-		StringBuffer buf = new StringBuffer();
+		StringBuilder buf = new StringBuilder();
 
 		if (includeLocal) {
 			buf.append(loadSource());

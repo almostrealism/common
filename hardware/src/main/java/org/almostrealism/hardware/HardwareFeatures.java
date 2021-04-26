@@ -49,8 +49,8 @@ public interface HardwareFeatures {
 		return Hardware.getLocalHardware().doubleForString(value);
 	}
 
-	default String getNumberType() {
-		return Hardware.getLocalHardware().getNumberType();
+	default String getNumberTypeName() {
+		return Hardware.getLocalHardware().getNumberTypeName();
 	}
 
 	default boolean isCastEnabled() {

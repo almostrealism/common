@@ -77,7 +77,7 @@ public abstract class DynamicAcceleratedEvaluable<I extends MemWrapper, O extend
 				out.accept(" ");
 			}
 
-			out.accept(getNumberType());
+			out.accept(getNumberTypeName());
 			out.accept(" ");
 			out.accept(var.getName());
 

@@ -86,7 +86,7 @@ public abstract class DynamicAcceleratedOperation<T extends MemWrapper> extends 
 		for (int i = 0; i < args.size(); i++) {
 			buf.append("__global ");
 			if (i != 0) buf.append("const ");
-			buf.append(getNumberType());
+			buf.append(getNumberTypeName());
 			buf.append(" *");
 
 			if (args.get(i) == null) {
