@@ -26,7 +26,7 @@
     <orderEntry type="module" module-name="hardware" />
     <orderEntry type="module" module-name="code" />
     <orderEntry type="module" module-name="relation" />
-    <orderEntry type="module" module-name="uml" />
+    <orderEntry type="library" name="Maven: org.almostrealism:ar-uml:0.16" level="project" />
     <orderEntry type="module" module-name="io" />
     <orderEntry type="library" name="Maven: org.jocl:jocl:2.0.2" level="project" />
     <orderEntry type="library" name="Maven: com.fasterxml.jackson.core:jackson-databind:2.8.3" level="project" />
