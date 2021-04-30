@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.OperationComputationAdapter;
+import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Operation;
 
@@ -24,6 +25,7 @@ import java.util.Arrays;
 import java.util.function.Supplier;
 
 public abstract class DynamicOperationComputationAdapter<T> extends OperationComputationAdapter<T, Void> implements Operation, ComputerFeatures {
+	@SafeVarargs
 	public DynamicOperationComputationAdapter(Supplier<Evaluable<? extends T>>... inputArgs) {
 		this(inputArgs, new Object[0]);
 	}
@@ -33,8 +35,11 @@ public abstract class DynamicOperationComputationAdapter<T> extends OperationCom
 		init();
 	}
 
+	/**
+	 * @return  GLOBAL
+	 */
 	@Override
-	public String getDefaultAnnotation() { return "__global"; }
+	public PhysicalScope getDefaultPhysicalScope() { return PhysicalScope.GLOBAL; }
 
 	@Override
 	public Runnable get() { return compileRunnable(this); }

@@ -22,12 +22,19 @@ import io.almostrealism.code.Method;
 import io.almostrealism.code.ResourceVariable;
 import io.almostrealism.code.Variable;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.io.PrintStreamPrintWriter;
 import org.almostrealism.io.PrintWriter;
 
+import java.io.OutputStream;
+import java.io.PrintStream;
 import java.util.List;
 import java.util.Map;
 
 public class CPrintWriter extends CodePrintWriterAdapter {
+	public CPrintWriter(OutputStream out) {
+		this(new PrintStreamPrintWriter(new PrintStream(out)));
+	}
+
 	public CPrintWriter(PrintWriter p) {
 		super(p);
 		setScopePrefix("void");
@@ -38,13 +45,13 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 		if (variable.isDeclaration()) {
 			if (variable.getProducer() == null) {
 				if (variable.getExpression() == null) {
-					this.p.println(typePrefix(variable.getType()) + variable.getName());
+					this.p.println(annotationForVariable(variable) + typePrefix(variable.getType()) + variable.getName());
 				} else {
-					this.p.println(typePrefix(variable.getType()) + variable.getName() +
+					this.p.println(annotationForVariable(variable) + typePrefix(variable.getType()) + variable.getName() +
 									" = " + variable.getExpression().getValue() + ";");
 				}
 			} else {
-				this.p.println(typePrefix(variable.getType()) + variable.getName() +
+				this.p.println(annotationForVariable(variable) + typePrefix(variable.getType()) + variable.getName() +
 								" = " + encode(variable.getExpression()) + ";");
 			}
 		} else {
@@ -74,6 +81,15 @@ public class CPrintWriter extends CodePrintWriterAdapter {
  		}
 	}
 
+	protected String annotationForVariable(Variable<?> var) {
+		if (annotationForPhysicalScope(var.getPhysicalScope()) != null) {
+			return annotationForPhysicalScope(var.getPhysicalScope()) + " ";
+		}
+
+		return "";
+	}
+
+	@Override
 	protected String nameForType(Class<?> type) { return typeString(type); }
 
 	protected static String typeString(Class type) {
@@ -97,16 +113,16 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 	}
 
 	protected static String toString(Map<String, Variable> args, List<String> argumentOrder) {
-		StringBuffer buf = new StringBuffer();
+		StringBuilder buf = new StringBuilder();
 
-		i: for (int i = 0; i < argumentOrder.size(); i++) {
+		for (int i = 0; i < argumentOrder.size(); i++) {
 			Variable v = args.get(argumentOrder.get(i));
 
 			if (v instanceof ResourceVariable) {
 				buf.append(encode(v.getProducer()));
 			}
 
-			if (i < (argumentOrder.size() - 1)) {
+			if (i < argumentOrder.size() - 1) {
 				buf.append(", ");
 			}
 		}

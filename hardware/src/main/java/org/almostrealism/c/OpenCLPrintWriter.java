@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ package org.almostrealism.c;
 
 import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.Method;
-import io.almostrealism.code.Variable;
+import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.expressions.Expression;
 import io.almostrealism.code.expressions.InstanceReference;
 import org.almostrealism.io.PrintWriter;
@@ -39,15 +39,13 @@ public class OpenCLPrintWriter extends CPrintWriter {
 		p.println(renderMethod(method));
 	}
 
-	public String renderMethod(Method method) {
-		StringBuffer buf = new StringBuffer();
-		buf.append(method.getName());
-		buf.append("(");
-		renderParameters(method.getArguments(), buf::append);
-		buf.append(");");
-		return buf.toString();
+	@Override
+	protected String annotationForPhysicalScope(PhysicalScope scope) {
+		if (scope != null) return scope == PhysicalScope.LOCAL ? "__local" : "__global";
+		return null;
 	}
 
+	@Override
 	protected void renderParameters(List<Expression> parameters, Consumer<String> out) {
 		List<ArrayVariable<?>> arguments = parameters.stream()
 				.map(exp -> (InstanceReference) exp)
@@ -64,6 +62,7 @@ public class OpenCLPrintWriter extends CPrintWriter {
 		}
 	}
 
+	@Override
 	protected void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out) {
 		if (!arguments.isEmpty()) {
 			renderArguments(arguments, out, true, true, null, "*", "");
@@ -71,28 +70,6 @@ public class OpenCLPrintWriter extends CPrintWriter {
 			renderArguments(arguments, out, true, false, Integer.class, "", "Offset");
 			out.accept(", ");
 			renderArguments(arguments, out, true, false, Integer.class, "", "Size");
-		}
-	}
-
-	private void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out, boolean enableType, boolean enableAnnotation, Class replaceType, String prefix, String suffix) {
-		for (int i = 0; i < arguments.size(); i++) {
-			if (enableAnnotation && arguments.get(i).getAnnotation() != null) {
-				out.accept(arguments.get(i).getAnnotation());
-				out.accept(" ");
-			}
-
-			if (enableType) {
-				out.accept(nameForType(replaceType == null ? arguments.get(i).getType() : replaceType));
-				out.accept(" ");
-			}
-
-			out.accept(prefix);
-			out.accept(arguments.get(i).getName());
-			out.accept(suffix);
-
-			if (i < arguments.size() - 1) {
-				out.accept(", ");
-			}
 		}
 	}
 }

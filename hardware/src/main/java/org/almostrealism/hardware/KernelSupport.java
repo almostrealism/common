@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,17 +16,11 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.relation.Producer;
+public interface KernelSupport {
+	default boolean isKernelEnabled() { return true; }
 
-/**
- * A {@link KernelizedProducer} is a {@link Producer} that can be evaluated
- * for a {@link MemoryBank} with one operation.
- *
- * @see  KernelizedEvaluable
- *
- * @author  Michael Murray
- */
-public interface KernelizedProducer<T extends MemWrapper> extends Producer<T>, KernelSupport {
-	@Override
-	KernelizedEvaluable<T> get();
+	default String getKernelIndex(String variableName, int kernelIndex) {
+		return kernelIndex < 0 ? "" :
+				"get_global_id(" + kernelIndex + ") * " + variableName + "Size + ";
+	}
 }

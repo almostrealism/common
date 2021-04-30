@@ -31,7 +31,7 @@ public class DefaultScopeInputManager implements ScopeInputManager {
 		ArrayVariable arg = new ArrayVariable(p, p.getArgumentName(counter++), input);
 		arg.setDelegate(delegate);
 		arg.setDelegateOffset(delegateOffset);
-		arg.setAnnotation(p.getDefaultAnnotation());
+		arg.setPhysicalScope(p.getDefaultPhysicalScope());
 		arg.getExpression().setType(Double.class);
 		return arg;
 	}

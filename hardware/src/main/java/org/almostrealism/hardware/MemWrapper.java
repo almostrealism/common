@@ -137,17 +137,17 @@ public interface MemWrapper extends MultiExpression<Double> {
 
 	static void getMem(cl_mem mem, int sOffset, double out[], int oOffset, int length) {
 		if (Hardware.getLocalHardware().isDoublePrecision()) {
-			Pointer dst = Pointer.to(out).withByteOffset(oOffset * sizeOf);
+			Pointer dst = Pointer.to(out).withByteOffset((long) oOffset * sizeOf);
 			CL.clEnqueueReadBuffer(Hardware.getLocalHardware().getQueue(), mem,
-					CL.CL_TRUE, sOffset * sizeOf,
-					length * sizeOf, dst, 0,
+					CL.CL_TRUE, (long) sOffset * sizeOf,
+					(long) length * sizeOf, dst, 0,
 					null, null);
 		} else {
 			float f[] = new float[length];
 			Pointer dst = Pointer.to(f).withByteOffset(0);
 			CL.clEnqueueReadBuffer(Hardware.getLocalHardware().getQueue(), mem,
-					CL.CL_TRUE, sOffset * sizeOf,
-					length * sizeOf, dst, 0,
+					CL.CL_TRUE, (long) sOffset * sizeOf,
+					(long) length * sizeOf, dst, 0,
 					null, null);
 			for (int i = 0; i < f.length; i++) out[oOffset + i] = f[i];
 		}

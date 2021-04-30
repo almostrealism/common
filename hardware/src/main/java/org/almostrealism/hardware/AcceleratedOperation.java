@@ -21,6 +21,7 @@ import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.DefaultScopeInputManager;
 import io.almostrealism.code.OperationAdapter;
+import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.ScopeInputManager;
@@ -105,8 +106,11 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 		return operators.get(getFunctionName()).get();
 	}
 
+	/**
+	 * @return  GLOBAL
+	 */
 	@Override
-	public String getDefaultAnnotation() { return "__global"; }
+	public PhysicalScope getDefaultPhysicalScope() { return PhysicalScope.GLOBAL; }
 
 	protected void prepareScope() {
 		SupplierArgumentMap argumentMap = null;

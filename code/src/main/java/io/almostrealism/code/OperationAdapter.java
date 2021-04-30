@@ -45,10 +45,12 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 	private List<Supplier<Evaluable>> variableOrder;
 	private List<String> variableNames;
 
+	@SafeVarargs
 	public OperationAdapter(Supplier<Evaluable<? extends T>>... input) {
 		setInputs(input);
 	}
 
+	@SafeVarargs
 	public OperationAdapter(ArrayVariable<? extends T>... args) {
 		if (args.length > 0) setArguments(Arrays.asList(args));
 	}

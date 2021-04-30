@@ -17,6 +17,7 @@
 package org.almostrealism.algebra.computations;
 
 import io.almostrealism.code.HybridScope;
+import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerComputationAdapter;
 import io.almostrealism.code.Scope;
 import io.almostrealism.relation.Evaluable;
@@ -28,7 +29,7 @@ import org.almostrealism.hardware.ComputerFeatures;
 import java.util.function.Supplier;
 
 public class ScalarBankSum extends ProducerComputationAdapter<ScalarBank, Scalar> implements ScalarProducer, ComputerFeatures {
-	private int count;
+	private final int count;
 
 	public ScalarBankSum(int count, Supplier<Evaluable<? extends ScalarBank>> input) {
 		this.count = count;
@@ -37,15 +38,16 @@ public class ScalarBankSum extends ProducerComputationAdapter<ScalarBank, Scalar
 	}
 
 	/**
-	 * @return  "__global"
+	 * @return  GLOBAL
 	 */
-	public String getDefaultAnnotation() { return "__global"; }
+	@Override
+	public PhysicalScope getDefaultPhysicalScope() { return PhysicalScope.GLOBAL; }
 
 	@Override
 	public Scope<Scalar> getScope() {
 		HybridScope<Scalar> scope = new HybridScope<>(this);
 
-		String i = getFunctionName() + "_i";
+		String i = getVariablePrefix() + "_i";
 		String result = getArgument(0).get(0).getExpression();
 		String value = getArgument(1).get("2 * " + i).getExpression();
 

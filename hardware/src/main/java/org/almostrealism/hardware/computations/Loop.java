@@ -53,7 +53,7 @@ public class Loop extends DynamicOperationComputationAdapter<Void> {
 		HybridScope<Void> scope = new HybridScope<>(this);
 		scope.getRequiredScopes().add(atomScope);
 
-		String i = getFunctionName() + "_i";
+		String i = getVariablePrefix() + "_i";
 		scope.code().accept("for (int " + i + " = 0; " + i + " < " + iterations +"; " + i + "++) {\n");
 		scope.code().accept("    " + new OpenCLPrintWriter(null).renderMethod(atomScope.call()) + "\n");
 		scope.code().accept("}\n");

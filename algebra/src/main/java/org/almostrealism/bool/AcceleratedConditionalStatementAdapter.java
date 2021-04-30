@@ -17,6 +17,7 @@
 package org.almostrealism.bool;
 
 import io.almostrealism.code.ArrayVariable;
+import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerComputationAdapter;
 import io.almostrealism.code.HybridScope;
 import io.almostrealism.code.expressions.MultiExpression;
@@ -74,9 +75,10 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrappe
 	public int getMemLength() { return memLength; }
 
 	/**
-	 * @return  "__global"
+	 * @return  GLOBAL
 	 */
-	public String getDefaultAnnotation() { return "__global"; }
+	@Override
+	public PhysicalScope getDefaultPhysicalScope() { return PhysicalScope.GLOBAL; }
 
 	@Override
 	public void prepareScope(ScopeInputManager manager) {

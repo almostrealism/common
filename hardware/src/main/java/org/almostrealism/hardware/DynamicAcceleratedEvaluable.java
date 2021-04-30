@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.Variable;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.cl.HardwareOperator;
@@ -51,12 +52,13 @@ public abstract class DynamicAcceleratedEvaluable<I extends MemWrapper, O extend
 		this(kernel, destination, kernelDestination, AcceleratedEvaluable.producers(inputArgs, additionalArguments));
 	}
 
+	@SafeVarargs
 	public DynamicAcceleratedEvaluable(boolean kernel, Supplier<O> destination,
 									   IntFunction<MemoryBank<O>> kernelDestination,
 									   Supplier<Evaluable<? extends I>>... inputArgs) {
 		super(kernel, new Supplier[0]);
 		setInputs(AcceleratedEvaluable.includeResult(new DynamicProducerForMemWrapper(args ->
-				getDestination() == null ? destination.get() : getDestination().get(), kernelDestination), inputArgs));
+				(getDestination() == null ? destination : getDestination()).get(), kernelDestination), inputArgs));
 		init();
 	}
 
@@ -72,8 +74,8 @@ public abstract class DynamicAcceleratedEvaluable<I extends MemWrapper, O extend
 	protected void writeVariables(Consumer<String> out, List<Variable<?>> existingVariables) {
 		getVariables().stream()
 				.filter(v -> !existingVariables.contains(v)).forEach(var -> {
-			if (var.getAnnotation() != null) {
-				out.accept(var.getAnnotation());
+			if (var.getPhysicalScope() != null) {
+				out.accept(var.getPhysicalScope() == PhysicalScope.LOCAL ? "__local" : "__global");
 				out.accept(" ");
 			}
 

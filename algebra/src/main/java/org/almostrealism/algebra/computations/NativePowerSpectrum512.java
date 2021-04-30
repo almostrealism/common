@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,19 +14,11 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.hardware;
+package org.almostrealism.algebra.computations;
 
-import io.almostrealism.relation.Producer;
+public class NativePowerSpectrum512 extends NativePowerSpectrum {
+	public NativePowerSpectrum512() { super(512); }
 
-/**
- * A {@link KernelizedProducer} is a {@link Producer} that can be evaluated
- * for a {@link MemoryBank} with one operation.
- *
- * @see  KernelizedEvaluable
- *
- * @author  Michael Murray
- */
-public interface KernelizedProducer<T extends MemWrapper> extends Producer<T>, KernelSupport {
 	@Override
-	KernelizedEvaluable<T> get();
+	public native void apply(long[] pointers, int[] offsets, int[] sizes, int count);
 }

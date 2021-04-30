@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,19 +14,15 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.hardware;
+package org.almostrealism.hardware.jni;
 
-import io.almostrealism.relation.Producer;
+import io.almostrealism.code.Computation;
+import org.almostrealism.hardware.AcceleratedComputationOperation;
+import org.almostrealism.hardware.Compilation;
 
-/**
- * A {@link KernelizedProducer} is a {@link Producer} that can be evaluated
- * for a {@link MemoryBank} with one operation.
- *
- * @see  KernelizedEvaluable
- *
- * @author  Michael Murray
- */
-public interface KernelizedProducer<T extends MemWrapper> extends Producer<T>, KernelSupport {
-	@Override
-	KernelizedEvaluable<T> get();
+public class NativeComputationOperation<T> extends AcceleratedComputationOperation<T> {
+	public NativeComputationOperation(Computation<T> c) {
+		super(c, false);
+		setCompilation(Compilation.JNI);
+	}
 }

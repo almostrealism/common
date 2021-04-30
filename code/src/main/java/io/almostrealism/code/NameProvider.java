@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,27 +19,27 @@ package io.almostrealism.code;
 public interface NameProvider {
 	String getFunctionName();
 
-	default String getDefaultAnnotation() {
-		return null;
-	}
+	default String getVariablePrefix() { return getFunctionName(); }
+
+	default PhysicalScope getDefaultPhysicalScope() { return null; }
 
 	default ArrayVariable getArgument(int index) {
-		return new ArrayVariable(this, getArgumentName(index), getDefaultAnnotation(), Double.class, null);
+		return new ArrayVariable(this, getArgumentName(index), getDefaultPhysicalScope(), Double.class, null);
 	}
 
 	default Variable getVariable(int index) {
-		return new Variable<>(getVariableName(index), getDefaultAnnotation(), Double.class, null);
+		return new Variable<>(getVariableName(index), getDefaultPhysicalScope(), Double.class, null);
 	}
 
 	Variable getOutputVariable();
 
 	default String getArgumentName(int index) {
-		if (getFunctionName() == null) throw new UnsupportedOperationException();
-		return getFunctionName() + "_v" + index;
+		if (getVariablePrefix() == null) throw new UnsupportedOperationException();
+		return getVariablePrefix() + "_v" + index;
 	}
 
 	default String getVariableName(int index) {
-		return getFunctionName() + "_l" + index;
+		return getVariablePrefix() + "_l" + index;
 	}
 
 	default String getArgumentValueName(int index, int pos, boolean assignment) {

@@ -1,6 +1,7 @@
 package org.almostrealism.geometry.computations;
 
 import io.almostrealism.code.ArrayVariable;
+import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.Variable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.geometry.DimensionAware;
@@ -63,9 +64,9 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemWrapper> extends Dyna
 		this.ranks = getRanks();
 		this.choices = getChoices();
 		this.defaultValue = getDefaultValue();
-		addVariable(new Variable(getHighestRankResultVariable().getName(), () -> this, 2, "__local"));
-		addVariable(new Variable(getHighestRankInputVariable().getName(), () -> this, 2 * valueCount, "__local"));
-		addVariable(new Variable(getHighestRankConfVariable().getName(), () -> this, 2, "__local"));
+		addVariable(new Variable(getHighestRankResultVariable().getName(), () -> this, 2, PhysicalScope.LOCAL));
+		addVariable(new Variable(getHighestRankInputVariable().getName(), () -> this, 2 * valueCount, PhysicalScope.LOCAL));
+		addVariable(new Variable(getHighestRankConfVariable().getName(), () -> this, 2, PhysicalScope.LOCAL));
 	}
 
 	@Override
@@ -81,7 +82,7 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemWrapper> extends Dyna
 
 	@Override
 	public String getBody(Variable<MemWrapper> outputVariable) {
-		StringBuffer buf = new StringBuffer();
+		StringBuilder buf = new StringBuilder();
 
 		// if (enableOpenClKernelWorkaround) buf.append("printf(\"Starting method...\\n\");\n");
 

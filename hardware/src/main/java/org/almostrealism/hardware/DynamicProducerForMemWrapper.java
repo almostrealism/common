@@ -25,7 +25,7 @@ import java.util.function.Supplier;
 
 public class DynamicProducerForMemWrapper<T extends MemWrapper> extends DynamicProducer<T> implements KernelizedProducer<T> {
 
-	private IntFunction<MemoryBank<T>> kernelDestination;
+	private final IntFunction<MemoryBank<T>> kernelDestination;
 
 	public DynamicProducerForMemWrapper(Supplier<T> supplier) {
 		this(args -> supplier.get());

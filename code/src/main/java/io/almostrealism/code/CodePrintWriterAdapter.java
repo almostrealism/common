@@ -16,11 +16,14 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.code.expressions.Expression;
+import io.almostrealism.code.expressions.InstanceReference;
 import org.almostrealism.io.PrintWriter;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 	protected PrintWriter p;
@@ -39,6 +42,10 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 
 	protected abstract String nameForType(Class<?> type);
 
+	protected String annotationForPhysicalScope(PhysicalScope scope) {
+		return null;
+	}
+
 	@Override
 	@Deprecated
 	public void println(String s) { p.println(s); }
@@ -55,7 +62,7 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 
 	@Override
 	public void beginScope(String name, List<ArrayVariable<?>> arguments) {
-		StringBuffer buf = new StringBuffer();
+		StringBuilder buf = new StringBuilder();
 
 		if (name != null) {
 			if (scopePrefix != null) { buf.append(scopePrefix); buf.append(" "); }
@@ -76,16 +83,46 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 		p.println(buf.toString());
 	}
 
+	public String renderMethod(Method method) {
+		StringBuilder buf = new StringBuilder();
+		buf.append(method.getName());
+		buf.append("(");
+		renderParameters(method.getArguments(), buf::append);
+		buf.append(");");
+		return buf.toString();
+	}
+
+	protected void renderParameters(List<Expression> parameters, Consumer<String> out) {
+		List<ArrayVariable<?>> arguments = parameters.stream()
+				.map(exp -> (InstanceReference) exp)
+				.map(InstanceReference::getReferent)
+				.map(v -> (ArrayVariable<?>) v)
+				.collect(Collectors.toList());
+
+		renderArguments(arguments, out, false, false, null, "", "");
+	}
+
 	protected void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out) {
+		renderArguments(arguments, out, true, true, null, "", "");
+	}
+
+	protected void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out, boolean enableType, boolean enableAnnotation, Class replaceType, String prefix, String suffix) {
 		for (int i = 0; i < arguments.size(); i++) {
-			if (arguments.get(i).getAnnotation() != null) {
-				out.accept(arguments.get(i).getAnnotation());
+			ArrayVariable<?> arg = arguments.get(i);
+
+			if (enableAnnotation && annotationForPhysicalScope(arg.getPhysicalScope()) != null) {
+				out.accept(annotationForPhysicalScope(arg.getPhysicalScope()));
 				out.accept(" ");
 			}
 
-			out.accept(nameForType(arguments.get(i).getType()));
-			out.accept(" ");
+			if (enableType) {
+				out.accept(nameForType(replaceType == null ? arguments.get(i).getType() : replaceType));
+				out.accept(" ");
+			}
+
+			out.accept(prefix);
 			out.accept(arguments.get(i).getName());
+			out.accept(suffix);
 
 			if (i < arguments.size() - 1) {
 				out.accept(", ");

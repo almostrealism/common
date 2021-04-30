@@ -17,6 +17,7 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.ArrayVariable;
+import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.code.ProducerComputationAdapter;
 import io.almostrealism.code.ScopeInputManager;
@@ -188,7 +189,11 @@ public abstract class DynamicProducerComputationAdapter<I extends MemWrapper, O 
 		return true;
 	}
 
-	public String getDefaultAnnotation() { return "__global"; }
+	/**
+	 * @return  GLOBAL
+	 */
+	@Override
+	public PhysicalScope getDefaultPhysicalScope() { return PhysicalScope.GLOBAL; }
 
 	@Override
 	public void destroy() {

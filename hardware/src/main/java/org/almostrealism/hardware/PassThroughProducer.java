@@ -79,6 +79,7 @@ public class PassThroughProducer<T extends MemWrapper>
 	 * the indexed {@link ArrayVariable} directly from the list
 	 * of arguments.
 	 */
+	@Override
 	public ArrayVariable getArgument(int index) {
 		return getArguments().get(index);
 	}

@@ -36,7 +36,8 @@ import java.util.function.Supplier;
  * @param <T>  Type of the underlying data.
  */
 public class Variable<T> implements Nameable {
-	private String name, annotation;
+	private String name;
+	private PhysicalScope physicalScope;
 	private boolean declaration;
 	private int sortHint;
 
@@ -79,8 +80,8 @@ public class Variable<T> implements Nameable {
 		this(name, declaration, (Expression) null, dependsOn);
 	}
 
-	public Variable(String name, String annotation, Supplier<Evaluable<? extends T>> producer) {
-		this(name, annotation, (Class) null, producer);
+	public Variable(String name, PhysicalScope scope, Supplier<Evaluable<? extends T>> producer) {
+		this(name, scope, (Class) null, producer);
 	}
 
 	public Variable(String name, Class<T> type, T value) {
@@ -91,9 +92,9 @@ public class Variable<T> implements Nameable {
 		this(name, true, new Expression(type), producer);
 	}
 
-	public Variable(String name, String annotation, Class<T> type, Supplier<Evaluable<? extends T>> producer) {
+	public Variable(String name, PhysicalScope scope, Class<T> type, Supplier<Evaluable<? extends T>> producer) {
 		this(name, type, producer);
-		setAnnotation(annotation);
+		setPhysicalScope(scope);
 	}
 
 	public Variable(String name, String expression) {
@@ -108,9 +109,9 @@ public class Variable<T> implements Nameable {
 		this(name, true, new Expression(type, expression, arraySize), producer);
 	}
 
-	public Variable(String name, Supplier<Evaluable<? extends T>> producer, int arraySize, String annotation) {
+	public Variable(String name, Supplier<Evaluable<? extends T>> producer, int arraySize, PhysicalScope scope) {
 		this(name, null, (Supplier) null, producer, arraySize);
-		setAnnotation(annotation);
+		setPhysicalScope(scope);
 	}
 
 	public Variable(String name, Class<T> type, Supplier<String> expression, Supplier<Evaluable<? extends T>> producer, int arraySize) {
@@ -122,8 +123,8 @@ public class Variable<T> implements Nameable {
 	@Override
 	public String getName() { return this.name; }
 
-	public void setAnnotation(String a) { this.annotation = a; }
-	public String getAnnotation() { return this.annotation; }
+	public void setPhysicalScope(PhysicalScope physicalScope) { this.physicalScope = physicalScope; }
+	public PhysicalScope getPhysicalScope() { return physicalScope; }
 
 	public void setDeclaration(boolean declaration) { this.declaration = declaration; }
 	public boolean isDeclaration() { return declaration; }
@@ -167,8 +168,7 @@ public class Variable<T> implements Nameable {
 	public Supplier<Evaluable<? extends T>> getOriginalProducer() { return originalProducer; }
 
 	public boolean isStatic() {
-		if (getProducer() instanceof Compactable == false) return false;
-		return ((Compactable) getProducer()).isStatic();
+		return getProducer() instanceof Compactable && ((Compactable) getProducer()).isStatic();
 	}
 
 	public Class<T> getType() { return getExpression() == null ? null : getExpression().getType(); }
@@ -187,11 +187,11 @@ public class Variable<T> implements Nameable {
 
 	@Override
 	public boolean equals(Object obj) {
-		if (obj instanceof Variable == false) return false;
+		if (!(obj instanceof Variable)) return false;
 
 		Variable v = (Variable) obj;
 		if (!Objects.equals(name, v.name)) return false;
-		if (!Objects.equals(annotation, v.getAnnotation())) return false;
+		if (!Objects.equals(physicalScope, v.getPhysicalScope())) return false;
 		if (!Objects.equals(expression, v.getExpression())) return false;
 		if (!Objects.equals(producer, v.getProducer())) return false;
 		if (!Objects.equals(dependsOn, v.dependsOn)) return false;

@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -37,15 +37,18 @@ import java.util.List;
 public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperation<MemWrapper> implements NameProvider {
 	public static boolean enableRequiredScopes = true;
 
+	private Compilation compilation;
 	private Computation<T> computation;
 	private Scope<T> scope;
 
 	public AcceleratedComputationOperation(Computation<T> c, boolean kernel) {
 		super(kernel, new ArrayVariable[0]);
+		this.compilation = Compilation.CL;
 		this.computation = c;
 		init();
 	}
 
+	@Override
 	public void init() {
 		if (getComputation() instanceof NameProvider) {
 			setFunctionName(((NameProvider) getComputation()).getFunctionName());
@@ -64,6 +67,10 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 			return super.getName();
 		}
 	}
+
+	public void setCompilation(Compilation c) { this.compilation = c; }
+
+	public Compilation getCompilation() { return compilation; }
 
 	@Override
 	public void addVariable(Variable v) {
@@ -86,11 +93,12 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 
 	@Override
 	public String getVariableValueName(Variable v, String pos, boolean assignment, int kernelIndex) {
-		return getValueName(v, pos, assignment, (enableKernel && isKernel()) ? kernelIndex : -1);
+		return getValueName(v, pos, assignment, enableKernel && isKernel() ? kernelIndex : -1);
 	}
 
 	// TODO  This can probably be removed, with the superclass method used instead by simply
 	//       making prepareArguments and prepareScope delegate to the computation
+	@Override
 	protected void prepareScope() {
 		super.prepareScope();
 
@@ -147,7 +155,7 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	@Override
 	public String getFunctionDefinition() {
 		if (scope == null) compile();
-		ScopeEncoder encoder = new ScopeEncoder(OpenCLPrintWriter::new);
+		ScopeEncoder encoder = new ScopeEncoder(compilation.getGenerator());
 		return encoder.apply(scope);
 	}
 
@@ -171,6 +179,7 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 		return getComputation() instanceof Compactable && ((Compactable) getComputation()).isStatic();
 	}
 
+	@Override
 	public void destroy() {
 		super.destroy();
 		if (getComputation() instanceof OperationAdapter) {

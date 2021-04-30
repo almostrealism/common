@@ -246,7 +246,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 	private static List<ArrayVariable> extractArgumentDependencies(Collection<Variable<?>> vars) {
 		List<ArrayVariable> args = new ArrayList<>();
 
-		v:  for (Variable<?> var : vars) {
+		v: for (Variable<?> var : vars) {
 			if (var == null) continue v;
 
 			if (var instanceof ArrayVariable && !args.contains(var)) {
@@ -267,8 +267,9 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 		return args;
 	}
 
+	/*
 	private String describeMethod(Method method) {
-		StringBuffer buf = new StringBuffer();
+		StringBuilder buf = new StringBuilder();
 		buf.append(method.getName());
 		buf.append("(");
 		renderParameters(method.getArguments(), buf::append);
@@ -288,7 +289,8 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 		}
 	}
 
-	private void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out, boolean enableType, boolean enableAnnotation, Class replaceType, String prefix, String suffix) {
+	private void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out, boolean enableType,
+								 boolean enableAnnotation, Class replaceType, String prefix, String suffix) {
 		for (int i = 0; i < arguments.size(); i++) {
 			if (enableAnnotation && arguments.get(i).getAnnotation() != null) {
 				out.accept(arguments.get(i).getAnnotation());
@@ -309,4 +311,5 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 			}
 		}
 	}
+	 */
 }

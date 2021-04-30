@@ -23,17 +23,17 @@ import io.almostrealism.relation.Evaluable;
 import java.util.function.Supplier;
 
 public class ArrayVariable<T> extends Variable implements Array<T> {
-	private NameProvider names;
+	private final NameProvider names;
 
 	private ArrayVariable<T> delegate;
 	private int delegateOffset;
 
 	public ArrayVariable(NameProvider np, String name, Supplier<Evaluable<? extends T>> producer) {
-		this(np, name, np.getDefaultAnnotation(), (Class<T>) Double.class, producer);
+		this(np, name, np.getDefaultPhysicalScope(), (Class<T>) Double.class, producer);
 	}
 
-	public ArrayVariable(NameProvider np, String name, String annotation, Class<T> type, Supplier<Evaluable<? extends T>> p) {
-		super(name, annotation, type, p);
+	public ArrayVariable(NameProvider np, String name, PhysicalScope scope, Class<T> type, Supplier<Evaluable<? extends T>> p) {
+		super(name, scope, type, p);
 		this.names = np;
 	}
 

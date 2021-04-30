@@ -30,6 +30,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.util.Optional;
 
 /** An interface to OpenCL. */
 public final class Hardware {
@@ -48,12 +49,16 @@ public final class Hardware {
 		boolean gpu = "gpu".equalsIgnoreCase(System.getenv("AR_HARDWARE_PLATFORM")) ||
 				"gpu".equalsIgnoreCase(System.getProperty("AR_HARDWARE_PLATFORM"));
 
+		String kernelsEnv = System.getenv("AR_HARDWARE_KERNELS");
+		boolean disableKernels = kernelsEnv != null && !"enabled".equalsIgnoreCase(kernelsEnv) ||
+				!"enabled".equalsIgnoreCase(System.getProperty("AR_HARDWARE_KERNELS", "enabled"));
+
 		boolean sp = "32".equalsIgnoreCase(System.getenv("AR_HARDWARE_PRECISION")) ||
 				"32".equalsIgnoreCase(System.getProperty("AR_HARDWARE_PRECISION"));
 
 		String memScale = System.getProperty("AR_HARDWARE_MEMORY_SCALE");
 		if (memScale == null) memScale = System.getenv("AR_HARDWARE_MEMORY_SCALE");
-		MEMORY_SCALE = memScale == null ? 4 : Integer.parseInt(memScale);
+		MEMORY_SCALE = Optional.ofNullable(memScale).map(Integer::parseInt).orElse(4);
 
 		String pooling = System.getProperty("AR_HARDWARE_MEMORY_MODE");
 		if (pooling == null) pooling = System.getenv("AR_HARDWARE_MEMORY_MODE");
@@ -65,18 +70,19 @@ public final class Hardware {
 		String tsCount = System.getProperty("AR_HARDWARE_TIMESERIES_COUNT");
 		if (tsCount == null) tsCount = System.getenv("AR_HARDWARE_TIMESERIES_COUNT");
 
-		timeSeriesSize = tsSize == null ? -1 : (int) (100000 * Double.parseDouble(tsSize));
-		timeSeriesCount = tsCount == null ? 30 : Integer.parseInt(tsCount);
+		timeSeriesSize = Optional.ofNullable(tsSize).map(size -> (int) (100000 * Double.parseDouble(size))).orElse(-1);
+		timeSeriesCount = Optional.ofNullable(tsCount).map(Integer::parseInt).orElse(30);
 
 		if (sp) {
-			local = new Hardware(gpu, false);
+			local = new Hardware(gpu, !disableKernels, false);
 		} else {
-			local = new Hardware(gpu);
+			local = new Hardware(gpu, !disableKernels);
 		}
 	}
 
 	private final boolean enableGpu;
 	private final boolean enableDoublePrecision;
+	private final boolean enableKernel;
 
 	private long memoryMax, memoryUsed;
 
@@ -86,23 +92,24 @@ public final class Hardware {
 	private final AcceleratedFunctions functions;
 	private final Computer computer;
 	
-	private Hardware(boolean enableGpu) {
-		this(enableGpu, !enableGpu);
+	private Hardware(boolean enableGpu, boolean enableKernels) {
+		this(enableGpu, enableKernels, !enableGpu);
 	}
 
-	private Hardware(boolean enableGpu, boolean enableDoublePrecision) {
-		this(enableDoublePrecision ? "local64" : "local32", enableGpu, enableDoublePrecision);
+	private Hardware(boolean enableGpu, boolean enableKernels, boolean enableDoublePrecision) {
+		this(enableDoublePrecision ? "local64" : "local32", enableGpu, enableKernels, enableDoublePrecision);
 	}
 
-	private Hardware(String name, boolean enableGpu) {
-		this(name, enableGpu, !enableGpu);
+	private Hardware(String name, boolean enableGpu, boolean enableKernels) {
+		this(name, enableGpu, enableKernels, !enableGpu);
 	}
 
-	private Hardware(String name, boolean enableGpu, boolean enableDoublePrecision) {
+	private Hardware(String name, boolean enableGpu, boolean enableKernels, boolean enableDoublePrecision) {
 		this.memoryMax = (long) Math.pow(2, getMemoryScale()) * 256L * 1000L * 1000L;
 		if (enableDoublePrecision) memoryMax = memoryMax * 2;
 		this.enableGpu = enableGpu;
 		this.enableDoublePrecision = enableDoublePrecision;
+		this.enableKernel = enableKernels;
 
 		final int platformIndex = 0;
 		final int deviceIndex = 0;
@@ -117,7 +124,7 @@ public final class Hardware {
 		}
 
 		System.out.println("Hardware[" + name + "]: Max Off Heap RAM is " +
-						(memoryMax / 1000000) + " Megabytes");
+				memoryMax / 1000000 + " Megabytes");
 
 		int numPlatformsArray[] = new int[1];
 		CL.clGetPlatformIDs(0, null, numPlatformsArray);
@@ -174,6 +181,8 @@ public final class Hardware {
 	public boolean isGPU() { return enableGpu; }
 
 	public boolean isDoublePrecision() { return enableDoublePrecision; }
+
+	public boolean isKernelSupported() { return enableKernel; }
 
 	public String getNumberTypeName() { return isDoublePrecision() ? "double" : "float"; }
 

@@ -16,13 +16,10 @@
 
 package org.almostrealism.algebra.computations;
 
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarBankEvaluable;
-import org.almostrealism.algebra.ScalarEvaluable;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.MemoryBank;
-import org.almostrealism.hardware.mem.MemoryBankAdapter;
 import io.almostrealism.code.Computation;
 
 public class DefaultScalarBankEvaluable extends AcceleratedComputationEvaluable<ScalarBank> implements ScalarBankEvaluable {

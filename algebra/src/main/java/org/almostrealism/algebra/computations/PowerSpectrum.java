@@ -24,12 +24,14 @@ import org.almostrealism.algebra.PairBank;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarBankProducer;
 import org.almostrealism.hardware.DynamicProducerComputationAdapter;
+import org.almostrealism.hardware.KernelizedEvaluable;
+import org.almostrealism.hardware.jni.NativeComputationEvaluable;
+import org.almostrealism.hardware.jni.NativeSupport;
 
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
 public class PowerSpectrum extends DynamicProducerComputationAdapter<PairBank, ScalarBank> implements ScalarBankProducer {
-
 	public PowerSpectrum(int count, Supplier<Evaluable<? extends PairBank>> input) {
 		super(2 * (count / 2 + 1), () -> args -> new ScalarBank(count),
 				i -> { throw new UnsupportedOperationException(); }, input);

@@ -21,15 +21,19 @@ import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.computations.DefaultScalarBankEvaluable;
+import org.almostrealism.algebra.computations.NativePowerSpectrum512;
+import org.almostrealism.algebra.computations.PowerSpectrum;
 import org.almostrealism.algebra.computations.Preemphasize;
+import org.almostrealism.hardware.ComputerFeatures;
 import org.almostrealism.hardware.DynamicAcceleratedEvaluable;
+import org.almostrealism.hardware.jni.NativeComputationEvaluable;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
 import java.util.stream.IntStream;
 
-public class PreemphasizeTest implements TestFeatures {
-	public static final int SIZE = 25;
+public class PowerSpectrumTest implements TestFeatures {
+	public static final int SIZE = 512;
 
 	public ScalarBank window() {
 		ScalarBank window = new ScalarBank(SIZE);
@@ -38,15 +42,13 @@ public class PreemphasizeTest implements TestFeatures {
 	}
 
 	@Test
-	public void preemphasize() {
-		Evaluable<ScalarBank> ev = new Preemphasize(SIZE,
-				v(2 * SIZE, 0),
-				v(Scalar.class, 1)).get();
+	public void nativePowerSpectrum512() {
+		Evaluable<ScalarBank> ev = new NativePowerSpectrum512().get();
 
 		((OperationAdapter) ev).compile();
-		System.out.println(((DefaultScalarBankEvaluable) ev).getFunctionDefinition());
+		System.out.println(((NativeComputationEvaluable) ev).getFunctionDefinition());
 
-		ScalarBank b = ev.evaluate(window(), new Scalar(0.1));
-		IntStream.range(0, b.getCount()).mapToObj(b::get).forEach(System.out::println);
+		// ScalarBank b = ev.evaluate(window(), new Scalar(0.1));
+		// IntStream.range(0, b.getCount()).mapToObj(b::get).forEach(System.out::println);
 	}
 }

@@ -21,7 +21,7 @@ import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.Variable;
 
 public interface ComputerFeatures extends HardwareFeatures, NameProvider {
-	boolean enableKernel = true;
+	boolean enableKernel = Hardware.getLocalHardware().isKernelSupported();
 
 	@Override
 	default Variable getOutputVariable() { return getArgument(0); }
@@ -35,9 +35,9 @@ public interface ComputerFeatures extends HardwareFeatures, NameProvider {
 		String name;
 
 		if (v instanceof ArrayVariable) {
-			if (enableKernel && v.getProducer() instanceof KernelizedProducer) {
-				String kernelOffset = kernelIndex < 0 ? "" :
-						("get_global_id(" + kernelIndex + ") * " + v.getName() + "Size + ");
+			if (enableKernel && v.getProducer() instanceof KernelSupport
+					&& ((KernelSupport) v.getProducer()).isKernelEnabled()) {
+				String kernelOffset = ((KernelSupport) v.getProducer()).getKernelIndex(v.getName(), kernelIndex);
 
 				if (pos.equals("0") || pos.equals("(0)")) {
 					name = v.getName() + "[" + kernelOffset + v.getName() + "Offset]";

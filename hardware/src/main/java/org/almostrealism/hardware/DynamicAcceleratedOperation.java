@@ -27,10 +27,12 @@ import java.util.function.Supplier;
 public abstract class DynamicAcceleratedOperation<T extends MemWrapper> extends AcceleratedOperation<T> implements ExplictBody<T> {
 	private HardwareOperatorMap operators;
 
+	@SafeVarargs
 	public DynamicAcceleratedOperation(boolean kernel, Supplier<Evaluable<? extends T>>... args) {
 		super(kernel, args);
 	}
 
+	@SafeVarargs
 	public DynamicAcceleratedOperation(boolean kernel, ArrayVariable<T>... args) {
 		super(kernel, args);
 	}
@@ -69,17 +71,15 @@ public abstract class DynamicAcceleratedOperation<T extends MemWrapper> extends 
 	}
 
 	public String getFunctionDefinition() {
-		StringBuffer buf = new StringBuffer();
-		buf.append("__kernel void " + getFunctionName() + "(");
-		buf.append(getFunctionArgsDefinition());
-		buf.append(") {\n");
-		buf.append(getBody(getOutputVariable()));
-		buf.append("}");
-		return buf.toString();
+		return "__kernel void " + getFunctionName() + "(" +
+				getFunctionArgsDefinition() +
+				") {\n" +
+				getBody(getOutputVariable()) +
+				"}";
 	}
 
 	protected String getFunctionArgsDefinition() {
-		StringBuffer buf = new StringBuffer();
+		StringBuilder buf = new StringBuilder();
 
 		List<ArrayVariable<? extends T>> args = getArguments();
 
@@ -110,7 +110,7 @@ public abstract class DynamicAcceleratedOperation<T extends MemWrapper> extends 
 			buf.append("const int ");
 			buf.append(getArguments().get(i).getName());
 			buf.append("Size");
-			if (i < (getArgsCount() - 1)) buf.append(", ");
+			if (i < getArgsCount() - 1) buf.append(", ");
 		}
 
 		return buf.toString();
