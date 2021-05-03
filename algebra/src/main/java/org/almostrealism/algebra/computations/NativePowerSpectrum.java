@@ -17,21 +17,21 @@
 package org.almostrealism.algebra.computations;
 
 import org.almostrealism.algebra.ScalarBank;
-import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.PassThroughProducer;
 import org.almostrealism.hardware.jni.NativeComputationEvaluable;
 import org.almostrealism.hardware.jni.NativeSupport;
 
-public abstract class NativePowerSpectrum extends PowerSpectrum implements NativeSupport {
+public abstract class NativePowerSpectrum extends PowerSpectrum implements NativeSupport<NativeComputationEvaluable> {
 	public NativePowerSpectrum(int count) {
 		super(count, new PassThroughProducer(2 * count, 0));
 		setFunctionName("Java_" +
 				getClass().getName().replaceAll("\\.", "_") +
 				"_apply");
+		initNative();
 	}
 
 	@Override
-	public KernelizedEvaluable<ScalarBank> get() {
+	public NativeComputationEvaluable<ScalarBank> get() {
 		return new NativeComputationEvaluable<>(this);
 	}
 }

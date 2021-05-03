@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,6 +28,8 @@ import java.io.ObjectOutput;
  * @author  Michael Murray
  */
 public class JobOutput implements Externalizable {
+	public static final String ENTRY_SEPARATOR = "::";
+
 	private String taskId;
   	private String user, passwd, output;
   	private long time;
@@ -60,19 +62,16 @@ public class JobOutput implements Externalizable {
     public long getTime() { return this.time; }
     
     public String encode() {
-    		StringBuffer b = new StringBuffer();
-    		b.append(this.getClass().getName() + ":");
-    		b.append(this.taskId + ":");
-    		b.append(this.user + ":");
-    		b.append(this.passwd + ":");
-    		b.append(this.time + ":");
-    		b.append(this.getOutput());
-    		
-    		return b.toString();
+		return this.getClass().getName() + ENTRY_SEPARATOR +
+				this.taskId + ENTRY_SEPARATOR +
+				this.user + ENTRY_SEPARATOR +
+				this.passwd + ENTRY_SEPARATOR +
+				this.time + ENTRY_SEPARATOR +
+				this.getOutput();
     }
     
     public static JobOutput decode(String data) {
-		int index = data.indexOf(":");
+		int index = data.indexOf(ENTRY_SEPARATOR);
 		String className = data.substring(0, index);
 		
 		JobOutput j = null;
@@ -83,10 +82,10 @@ public class JobOutput implements Externalizable {
 			boolean end = false;
 			
 			i: for (int i = 0; !end && i <= 4; i++) {
-				data = data.substring(index + 1);
-				index = data.indexOf(":");
+				data = data.substring(index + ENTRY_SEPARATOR.length());
+				index = data.indexOf(ENTRY_SEPARATOR);
 				
-				if (data.charAt(index + 1) == '/') index = data.indexOf(":", index + 1);
+				if (data.charAt(index + ENTRY_SEPARATOR.length()) == '/') index = data.indexOf(ENTRY_SEPARATOR, index + ENTRY_SEPARATOR.length());
 				
 				String s = null;
 				

@@ -183,7 +183,11 @@ public class Variable<T> implements Nameable {
 		return deps;
 	}
 
-	public int getArraySize() { return getExpression().getArraySize(); }
+	public Expression<Integer> getArraySize() {
+		if (getExpression() == null) return null;
+		if (getExpression().getArraySize() <= 0) return null;
+		return new Expression<>(Integer.class, String.valueOf(getExpression().getArraySize()));
+	}
 
 	@Override
 	public boolean equals(Object obj) {

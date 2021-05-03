@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import io.almostrealism.code.expressions.Expression;
 import io.almostrealism.code.expressions.InstanceReference;
 import io.almostrealism.relation.Evaluable;
 
+import java.util.Optional;
 import java.util.function.Supplier;
 
 public class ArrayVariable<T> extends Variable implements Array<T> {
@@ -27,6 +28,13 @@ public class ArrayVariable<T> extends Variable implements Array<T> {
 
 	private ArrayVariable<T> delegate;
 	private int delegateOffset;
+	private Expression<Integer> arraySize;
+
+	public ArrayVariable(NameProvider np, String name, Expression<Integer> arraySize) {
+		super(name, true, (Expression) null);
+		this.names = np;
+		setArraySize(arraySize);
+	}
 
 	public ArrayVariable(NameProvider np, String name, Supplier<Evaluable<? extends T>> producer) {
 		this(np, name, np.getDefaultPhysicalScope(), (Class<T>) Double.class, producer);
@@ -35,6 +43,16 @@ public class ArrayVariable<T> extends Variable implements Array<T> {
 	public ArrayVariable(NameProvider np, String name, PhysicalScope scope, Class<T> type, Supplier<Evaluable<? extends T>> p) {
 		super(name, scope, type, p);
 		this.names = np;
+	}
+
+	public NameProvider getNameProvider() { return names; }
+
+	public void setArraySize(Expression<Integer> arraySize) { this.arraySize = arraySize; }
+
+	@Override
+	public Expression<Integer> getArraySize() {
+		if (arraySize != null) return arraySize;
+		return super.getArraySize();
 	}
 
 	public ArrayVariable<T> getDelegate() { return delegate; }
@@ -51,6 +69,8 @@ public class ArrayVariable<T> extends Variable implements Array<T> {
 	public InstanceReference<T> get(String pos, Variable... dependencies) {
 		if (getDelegate() == null) {
 			return new InstanceReference(new Variable<T>(names.getVariableValueName(this, pos), false, new Expression(getType()), this), dependencies);
+		} else if (getDelegate() == this) {
+			throw new IllegalArgumentException("Circular delegate reference");
 		} else {
 			return getDelegate().get(pos + " + " + getDelegateOffset());
 		}

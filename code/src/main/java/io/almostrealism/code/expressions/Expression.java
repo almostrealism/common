@@ -19,9 +19,11 @@ package io.almostrealism.code.expressions;
 import io.almostrealism.code.Variable;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
@@ -52,7 +54,7 @@ public class Expression<T> {
 		setType(type);
 		this.expression = () -> expression;
 		this.dependencies = new ArrayList<>();
-		Stream.of(dependencies).forEach(this.dependencies::add);
+		this.dependencies.addAll(Arrays.asList(dependencies));
 	}
 
 	public Expression(Class<T> type, String expression, int arraySize) {
@@ -83,7 +85,10 @@ public class Expression<T> {
 	public void setType(Class<T> t) { this.type = t; }
 	public Class<T> getType() { return this.type; }
 
-	public String getExpression() { return expression == null ? null : expression.get(); }
+	public String getExpression() {
+		if (expression != null) return expression.get();
+		return null;
+	}
 	public void setExpression(String expression) { this.expression = () -> expression; }
 	public void setExpression(Supplier<String> expression) { this.expression = expression; }
 
@@ -105,10 +110,10 @@ public class Expression<T> {
 
 	@Override
 	public boolean equals(Object obj) {
-		if (obj instanceof Expression == false) return false;
+		if (!(obj instanceof Expression)) return false;
 
 		Expression v = (Expression) obj;
-		if (!Objects.equals(type, v.getType())) return false;
+		if (type != v.getType()) return false;
 		if (!Objects.equals(expression, v.expression)) return false;
 		if (!Objects.equals(dependencies, v.getDependencies())) return false;
 

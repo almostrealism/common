@@ -21,7 +21,7 @@ import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.Compilation;
 import org.almostrealism.hardware.MemWrapper;
 
-public class NativeComputationEvaluable<T extends MemWrapper> extends AcceleratedComputationEvaluable<T> {
+public class NativeComputationEvaluable<T extends MemWrapper> extends AcceleratedComputationEvaluable<T> implements NativeLibrary {
 	public NativeComputationEvaluable(Computation<T> c) {
 		super(c, false);
 		setCompilation(Compilation.JNI);

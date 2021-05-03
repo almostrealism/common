@@ -20,5 +20,5 @@ public class NativePowerSpectrum512 extends NativePowerSpectrum {
 	public NativePowerSpectrum512() { super(512); }
 
 	@Override
-	public native void apply(long[] pointers, int[] offsets, int[] sizes, int count);
+	public native void apply(long commandQueue, long[] arg, int[] offset, int[] size, int count);
 }

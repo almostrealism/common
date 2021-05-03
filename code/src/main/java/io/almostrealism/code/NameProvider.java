@@ -16,6 +16,8 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.code.expressions.Expression;
+
 public interface NameProvider {
 	String getFunctionName();
 
@@ -23,12 +25,26 @@ public interface NameProvider {
 
 	default PhysicalScope getDefaultPhysicalScope() { return null; }
 
+	/**
+	 * Specifying the size is preferred, see {@link #getArgument(int, int)}.
+	 */
+	@Deprecated
 	default ArrayVariable getArgument(int index) {
 		return new ArrayVariable(this, getArgumentName(index), getDefaultPhysicalScope(), Double.class, null);
 	}
 
 	default Variable getVariable(int index) {
 		return new Variable<>(getVariableName(index), getDefaultPhysicalScope(), Double.class, null);
+	}
+
+	default ArrayVariable getArgument(int index, int size) {
+		return getArgument(index, new Expression<>(Integer.class, String.valueOf(size)));
+	}
+
+	default ArrayVariable getArgument(int index, Expression<Integer> size) {
+		ArrayVariable v = new ArrayVariable(this, getArgumentName(index), getDefaultPhysicalScope(), Double.class, null);
+		v.setArraySize(size);
+		return v;
 	}
 
 	Variable getOutputVariable();

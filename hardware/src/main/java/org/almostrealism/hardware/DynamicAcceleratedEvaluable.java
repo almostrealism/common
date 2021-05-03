@@ -84,13 +84,13 @@ public abstract class DynamicAcceleratedEvaluable<I extends MemWrapper, O extend
 			out.accept(var.getName());
 
 			if (var.getExpression().getExpression() == null) {
-				if (var.getArraySize() >= 0) {
+				if (var.getArraySize() != null) {
 					out.accept("[");
-					out.accept(String.valueOf(var.getArraySize()));
+					out.accept(var.getArraySize().getExpression());
 					out.accept("]");
 				}
 			} else {
-				if (var.getArraySize() >= 0) {
+				if (var.getArraySize() != null) {
 					throw new RuntimeException("Not implemented");
 				} else {
 					out.accept(" = ");

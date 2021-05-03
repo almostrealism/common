@@ -17,6 +17,9 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.Computer;
+import org.almostrealism.hardware.jni.NativeCompiler;
+import org.almostrealism.hardware.jni.NativeLibrary;
+import org.almostrealism.hardware.jni.NativeSupport;
 import org.jocl.CL;
 import org.jocl.Sizeof;
 import org.jocl.cl_command_queue;
@@ -30,6 +33,8 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 /** An interface to OpenCL. */
@@ -40,10 +45,13 @@ public final class Hardware {
 	protected static final int MEMORY_SCALE;
 	protected static final boolean ENABLE_POOLING;
 
+	protected static final String LIB_FORMAT;
+
 	protected static final int timeSeriesSize;
 	protected static final int timeSeriesCount;
 
-	private static Hardware local;
+	private static final Hardware local;
+	private static final List<Class> libs = new ArrayList<>();
 
 	static {
 		boolean gpu = "gpu".equalsIgnoreCase(System.getenv("AR_HARDWARE_PLATFORM")) ||
@@ -64,25 +72,38 @@ public final class Hardware {
 		if (pooling == null) pooling = System.getenv("AR_HARDWARE_MEMORY_MODE");
 		ENABLE_POOLING = "pool".equalsIgnoreCase(pooling);
 
+		String libFormat = System.getProperty("AR_HARDWARE_LIB_FORMAT");
+		if (libFormat == null) libFormat = System.getenv("AR_HARDWARE_LIB_FORMAT");
+		LIB_FORMAT = Optional.ofNullable(libFormat).orElse("lib%NAME%.so");
+
 		String tsSize = System.getProperty("AR_HARDWARE_TIMESERIES_SIZE");
 		if (tsSize == null) tsSize = System.getenv("AR_HARDWARE_TIMESERIES_SIZE");
 
 		String tsCount = System.getProperty("AR_HARDWARE_TIMESERIES_COUNT");
 		if (tsCount == null) tsCount = System.getenv("AR_HARDWARE_TIMESERIES_COUNT");
 
+		String nativeCompiler = System.getProperty("AR_HARDWARE_NATIVE_COMPILER");
+		if (nativeCompiler == null) nativeCompiler = System.getenv("AR_HARDWARE_NATIVE_COMPILER");
+
+		String libDir = System.getProperty("AR_HARDWARE_NATIVE_LIBS");
+		if (libDir == null) libDir = System.getenv("AR_HARDWARE_NATIVE_LIBS");
+
 		timeSeriesSize = Optional.ofNullable(tsSize).map(size -> (int) (100000 * Double.parseDouble(size))).orElse(-1);
 		timeSeriesCount = Optional.ofNullable(tsCount).map(Integer::parseInt).orElse(30);
 
 		if (sp) {
-			local = new Hardware(gpu, !disableKernels, false);
+			local = new Hardware(nativeCompiler, libDir, gpu, !disableKernels, false);
 		} else {
-			local = new Hardware(gpu, !disableKernels);
+			local = new Hardware(nativeCompiler, libDir, gpu, !disableKernels);
 		}
 	}
 
 	private final boolean enableGpu;
 	private final boolean enableDoublePrecision;
 	private final boolean enableKernel;
+
+	private final String nativeCompiler;
+	private final String libDir;
 
 	private long memoryMax, memoryUsed;
 
@@ -92,24 +113,26 @@ public final class Hardware {
 	private final AcceleratedFunctions functions;
 	private final Computer computer;
 	
-	private Hardware(boolean enableGpu, boolean enableKernels) {
-		this(enableGpu, enableKernels, !enableGpu);
+	private Hardware(String nativeCompiler, String libDir, boolean enableGpu, boolean enableKernels) {
+		this(nativeCompiler, libDir, enableGpu, enableKernels, !enableGpu);
 	}
 
-	private Hardware(boolean enableGpu, boolean enableKernels, boolean enableDoublePrecision) {
-		this(enableDoublePrecision ? "local64" : "local32", enableGpu, enableKernels, enableDoublePrecision);
+	private Hardware(String nativeCompiler, String libDir, boolean enableGpu, boolean enableKernels, boolean enableDoublePrecision) {
+		this(enableDoublePrecision ? "local64" : "local32", nativeCompiler, libDir, enableGpu, enableKernels, enableDoublePrecision);
 	}
 
-	private Hardware(String name, boolean enableGpu, boolean enableKernels) {
-		this(name, enableGpu, enableKernels, !enableGpu);
+	private Hardware(String name, String nativeCompiler, String libDir, boolean enableGpu, boolean enableKernels) {
+		this(name, nativeCompiler, libDir, enableGpu, enableKernels, !enableGpu);
 	}
 
-	private Hardware(String name, boolean enableGpu, boolean enableKernels, boolean enableDoublePrecision) {
+	private Hardware(String name, String nativeCompiler, String libDir, boolean enableGpu, boolean enableKernels, boolean enableDoublePrecision) {
 		this.memoryMax = (long) Math.pow(2, getMemoryScale()) * 256L * 1000L * 1000L;
 		if (enableDoublePrecision) memoryMax = memoryMax * 2;
 		this.enableGpu = enableGpu;
 		this.enableDoublePrecision = enableDoublePrecision;
 		this.enableKernel = enableKernels;
+		this.nativeCompiler = nativeCompiler;
+		this.libDir = libDir;
 
 		final int platformIndex = 0;
 		final int deviceIndex = 0;
@@ -170,13 +193,22 @@ public final class Hardware {
 
 		if (timeSeriesSize > 0) {
 			System.out.println("Hardware[" + name + "]: " + timeSeriesCount + " x " +
-					(2 * timeSeriesSize * getNumberSize() / 1024) + "kb timeseries(s) available");
+					2 * timeSeriesSize * getNumberSize() / 1024 + "kb timeseries(s) available");
 		}
 	}
 
 	public static Hardware getLocalHardware() { return local; }
 
 	public Computer getComputer() { return computer; }
+
+	public NativeCompiler getNativeCompiler() { return new NativeCompiler(nativeCompiler, libDir, LIB_FORMAT); }
+
+	public synchronized void loadNative(NativeSupport lib) throws IOException, InterruptedException {
+		if (libs.contains(lib.getClass())) return;
+
+		getNativeCompiler().compileAndLoad(lib.getClass(), lib.get());
+		libs.add(lib.getClass());
+	}
 
 	public boolean isGPU() { return enableGpu; }
 

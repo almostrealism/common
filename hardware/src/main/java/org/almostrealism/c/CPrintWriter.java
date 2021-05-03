@@ -44,8 +44,14 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 	public void println(Variable<?> variable) {
 		if (variable.isDeclaration()) {
 			if (variable.getProducer() == null) {
-				if (variable.getExpression() == null) {
-					this.p.println(annotationForVariable(variable) + typePrefix(variable.getType()) + variable.getName());
+				if (variable.getExpression() == null || variable.getExpression().getExpression() == null) {
+					if (variable.getArraySize() == null) {
+						this.p.println(annotationForVariable(variable) + typePrefix(variable.getType()) +
+										variable.getName());
+					} else {
+						this.p.println(annotationForVariable(variable) + typePrefix(variable.getType()) +
+								variable.getName() + "[" + variable.getArraySize().getExpression() + "];");
+					}
 				} else {
 					this.p.println(annotationForVariable(variable) + typePrefix(variable.getType()) + variable.getName() +
 									" = " + variable.getExpression().getValue() + ";");

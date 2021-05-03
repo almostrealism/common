@@ -48,7 +48,7 @@ public class PowerSpectrumTest implements TestFeatures {
 		((OperationAdapter) ev).compile();
 		System.out.println(((NativeComputationEvaluable) ev).getFunctionDefinition());
 
-		// ScalarBank b = ev.evaluate(window(), new Scalar(0.1));
-		// IntStream.range(0, b.getCount()).mapToObj(b::get).forEach(System.out::println);
+		ScalarBank b = ev.evaluate(window(), new Scalar(0.1));
+		IntStream.range(0, b.getCount()).mapToObj(b::get).forEach(System.out::println);
 	}
 }
