@@ -18,12 +18,14 @@ package org.almostrealism.hardware.jni;
 
 import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.Method;
+import io.almostrealism.code.Variable;
 import io.almostrealism.code.expressions.Expression;
 import io.almostrealism.code.expressions.InstanceReference;
 import org.almostrealism.c.CPrintWriter;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.io.PrintWriter;
 import org.jocl.cl_command_queue;
+import org.jocl.cl_event;
 import org.jocl.cl_mem;
 
 import java.util.List;
@@ -59,12 +61,28 @@ public class JNIPrintWriter extends CPrintWriter {
 	}
 
 	protected void renderArgumentReads(List<ArrayVariable<?>> arguments) {
+		println(new Variable<>("*argArr", long[].class, "(*env)->GetLongArrayElements(env, arg, 0)"));
+		println(new Variable<>("*offsetArr", int[].class, "(*env)->GetIntArrayElements(env, offset, 0)"));
+		println(new Variable<>("*sizeArr", int[].class, "(*env)->GetIntArrayElements(env, size, 0)"));
+
+		String numberType = Hardware.getLocalHardware().getNumberTypeName();
+		int numberSize = Hardware.getLocalHardware().getNumberSize();
+
 		IntStream.range(0, arguments.size())
-				.mapToObj(i -> {
-					ArrayVariable<Double> v = new ArrayVariable(arguments.get(i).getNameProvider(), arguments.get(i).getName(), new Expression<>(Integer.class, "size[" + i + "]"));
-					v.setExpression(new Expression<>(Double.class, (String) null));
-					return v;
-				}).forEach(this::println);
+				.mapToObj(i -> new Variable("*" + arguments.get(i).getName(),
+						new Expression<>(Double.class, "(" + numberType + "*) malloc("
+											+ numberSize + " * sizeArr[" + i + "])")))
+				.forEach(this::println);
+		IntStream.range(0, arguments.size())
+				.mapToObj(i -> new Variable<>(arguments.get(i).getName() + "Offset",
+						Integer.class, "offsetArr[" + i + "]"))
+				.forEach(this::println);
+		IntStream.range(0, arguments.size())
+				.mapToObj(i -> new Variable<>(arguments.get(i).getName() + "Size",
+						Integer.class, "sizeArr[" + i + "]"))
+				.forEach(this::println);
+		println(new Variable("*nativeEventWaitList", cl_event.class, "NULL"));
+		println(new Variable("*nativeEventPointer", cl_event.class, "NULL"));
 		IntStream.range(0, arguments.size())
 				.mapToObj(i -> clEnqueueBuffer(i, arguments.get(i), false))
 				.forEach(this::println);
@@ -82,20 +100,22 @@ public class JNIPrintWriter extends CPrintWriter {
 		Expression<cl_command_queue> nativeCommandQueue =
 				new Expression<>(cl_command_queue.class, "(cl_command_queue) commandQueue");
 		Expression<cl_mem> nativeBuffer =
-				new Expression<>(cl_mem.class, "(cl_mem) arg[" + index + "]");
+				new Expression<>(cl_mem.class, "(cl_mem) argArr[" + index + "]");
 		Expression<Boolean> nativeBlocking =
-				new Expression<>(Boolean.class, "CL_TRUE");
+				new Expression<>(Boolean.class, "(cl_bool) CL_TRUE");
 		Expression<Integer> nativeOffset =
-				new Expression<>(Integer.class, size + " * offset[" + index + "]");
+				new Expression<>(Integer.class, size + " * (size_t) offsetArr[" + index + "]");
 		Expression<Integer> nativeCb =
-				new Expression<>(Integer.class, size + " * size[" + index + "]");
+				new Expression<>(Integer.class, size + " * (size_t) sizeArr[" + index + "]");
 		Expression<Integer> nativeNumEvents =
-				new Expression<>(Integer.class, "0");
-		Expression<Object> nullExp = new Expression<>(Object.class, "NULL");
+				new Expression<>(Integer.class, "(cl_uint) 0");
+		Expression<cl_event> nativeEventWaitList = new Expression<>(cl_event.class, "nativeEventWaitList");
+		Expression<cl_event> nativeEventPointer = new Expression<>(cl_event.class, "nativeEventPointer");
 
 		String method = write ? "clEnqueueWriteBuffer" : "clEnqueueReadBuffer";
 		return new Method<>(Void.class, method, nativeCommandQueue,
 				nativeBuffer, nativeBlocking, nativeOffset, nativeCb,
-				new InstanceReference<>(variable), nativeNumEvents, nullExp, nullExp);
+				new InstanceReference<>(variable), nativeNumEvents,
+				nativeEventWaitList, nativeEventPointer);
 	}
 }

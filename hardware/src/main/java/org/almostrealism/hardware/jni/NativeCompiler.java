@@ -17,7 +17,6 @@
 package org.almostrealism.hardware.jni;
 
 import java.io.BufferedWriter;
-import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
@@ -26,6 +25,14 @@ import java.util.List;
 
 public class NativeCompiler {
 	public static final String LIB_NAME_REPLACE = "%NAME%";
+
+	private static final String STDIO = "#include <stdio.h>\n";
+	private static final String STDLIB = "#include <stdlib.h>\n";
+	private static final String JNI = "#include <jni.h>\n";
+	private static final String OPENCL = System.getProperty("os.name").toLowerCase().startsWith("mac os") ?
+								"#include <OpenCL/cl.h>\n" : "#include <cl.h>";
+
+	private static final String HEADER = STDIO + STDLIB + JNI + OPENCL + "\n";
 
 	private final String executable;
 	private final String compiler;
@@ -72,6 +79,7 @@ public class NativeCompiler {
 
 		try (FileOutputStream out = new FileOutputStream(getInputFile(name));
 				BufferedWriter buf = new BufferedWriter(new OutputStreamWriter(out))) {
+			buf.write(HEADER);
 			buf.write(code);
 		}
 

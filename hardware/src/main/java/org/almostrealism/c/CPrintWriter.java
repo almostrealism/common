@@ -24,6 +24,7 @@ import io.almostrealism.code.Variable;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.io.PrintStreamPrintWriter;
 import org.almostrealism.io.PrintWriter;
+import org.jocl.cl_event;
 
 import java.io.OutputStream;
 import java.io.PrintStream;
@@ -75,6 +76,13 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 		this.p.println(method.getExpression() + ";");
 	}
 
+	protected void printf(String format, String arg) {
+		printf(format, arg, true);
+	}
+	protected void printf(String format, String arg, boolean newLine) {
+		println("printf(\"" + format + (newLine ? "\\n\", " : "\", ") + arg + ");");
+	}
+
 	public static String renderAssignment(Variable<?> var) {
 		return var.getName() + " = " + var.getExpression().getValue() + ";";
 	}
@@ -103,8 +111,12 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 
 		if (type == Double.class) {
 			return Hardware.getLocalHardware().getNumberTypeName();
-		} else if (type == Integer.class) {
-			return "int";
+		} else if (type == Integer.class || type == int[].class) {
+			return "jint";
+		} else if (type == Long.class || type == long[].class) {
+			return "jlong";
+		} else if (type == cl_event.class) {
+			return "cl_event";
 		} else {
 			throw new IllegalArgumentException("Unable to encode " + type);
 		}

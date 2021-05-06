@@ -43,12 +43,22 @@ public class PowerSpectrumTest implements TestFeatures {
 
 	@Test
 	public void nativePowerSpectrum512() {
-		Evaluable<ScalarBank> ev = new NativePowerSpectrum512().get();
+		Evaluable<ScalarBank> ev = new PowerSpectrum(512, v(512, 0)).get();
 
 		((OperationAdapter) ev).compile();
-		System.out.println(((NativeComputationEvaluable) ev).getFunctionDefinition());
+		// System.out.println(((NativeComputationEvaluable) ev).getFunctionDefinition());
 
-		ScalarBank b = ev.evaluate(window(), new Scalar(0.1));
-		IntStream.range(0, b.getCount()).mapToObj(b::get).forEach(System.out::println);
+		ScalarBank given = ev.evaluate(window(), new Scalar(0.1));
+		IntStream.range(0, given.getCount()).mapToObj(given::get).forEach(System.out::println);
+
+		ev = new NativePowerSpectrum512().get();
+
+		((OperationAdapter) ev).compile();
+		// System.out.println(((NativeComputationEvaluable) ev).getFunctionDefinition());
+
+		ScalarBank test = ev.evaluate(window(), new Scalar(0.1));
+		IntStream.range(0, test.getCount()).mapToObj(test::get).forEach(System.out::println);
+
+		IntStream.range(0, SIZE).forEach(i -> assertEquals(given.get(i), test.get(i)));
 	}
 }

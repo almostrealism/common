@@ -19,10 +19,21 @@ package org.almostrealism.hardware.jni;
 import io.almostrealism.code.Computation;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.Compilation;
+import org.almostrealism.hardware.MemWrapper;
+import org.jocl.cl_mem;
+
+import java.util.stream.Stream;
 
 public class NativeComputationOperation<T> extends AcceleratedComputationOperation<T> {
 	public NativeComputationOperation(Computation<T> c) {
 		super(c, false);
 		setCompilation(Compilation.JNI);
+	}
+
+	@Override
+	public Object[] apply(Object[] args) {
+		((NativeSupport) getComputation()).apply(
+				Stream.of(args).map(o -> (MemWrapper) o).toArray(MemWrapper[]::new));
+		return args;
 	}
 }
