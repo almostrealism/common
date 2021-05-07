@@ -32,6 +32,7 @@ public class NativeComputationOperation<T> extends AcceleratedComputationOperati
 
 	@Override
 	public Object[] apply(Object[] args) {
+		args = getAllArgs(args);
 		((NativeSupport) getComputation()).apply(
 				Stream.of(args).map(o -> (MemWrapper) o).toArray(MemWrapper[]::new));
 		return args;

@@ -56,6 +56,17 @@ public class JNIPrintWriter extends CPrintWriter {
 	}
 
 	@Override
+	protected String nameForType(Class<?> type) {
+		if (type == Integer.class || type == int[].class) {
+			return "jint";
+		} else if (type == Long.class || type == long[].class) {
+			return "jlong";
+		} else {
+			return super.nameForType(type);
+		}
+	}
+
+	@Override
 	protected void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out) {
 		out.accept("JNIEnv *env, jobject obj, jlong commandQueue, jlongArray arg, jintArray offset, jintArray size, jint count");
 	}
@@ -73,9 +84,8 @@ public class JNIPrintWriter extends CPrintWriter {
 						new Expression<>(Double.class, "(" + numberType + "*) malloc("
 											+ numberSize + " * sizeArr[" + i + "])")))
 				.forEach(this::println);
-		IntStream.range(0, arguments.size())
-				.mapToObj(i -> new Variable<>(arguments.get(i).getName() + "Offset",
-						Integer.class, "offsetArr[" + i + "]"))
+		arguments.stream().map(argument -> new Variable<>(argument.getName() + "Offset",
+				Integer.class, "0"))
 				.forEach(this::println);
 		IntStream.range(0, arguments.size())
 				.mapToObj(i -> new Variable<>(arguments.get(i).getName() + "Size",

@@ -31,6 +31,7 @@ public class NativeComputationEvaluable<T extends MemWrapper> extends Accelerate
 
 	@Override
 	public Object[] apply(Object[] args) {
+		args = getAllArgs(args);
 		((NativeSupport) getComputation()).apply(
 				Stream.of(args).map(o -> (MemWrapper) o).toArray(MemWrapper[]::new));
 		return args;

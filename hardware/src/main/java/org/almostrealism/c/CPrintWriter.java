@@ -87,14 +87,6 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 		return var.getName() + " = " + var.getExpression().getValue() + ";";
 	}
 
-	protected static String typePrefix(Class type) {
-		if (type == null) {
-			return "";
-		} else {
-			return typeString(type) + " ";
- 		}
-	}
-
 	protected String annotationForVariable(Variable<?> var) {
 		if (annotationForPhysicalScope(var.getPhysicalScope()) != null) {
 			return annotationForPhysicalScope(var.getPhysicalScope()) + " ";
@@ -106,15 +98,15 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 	@Override
 	protected String nameForType(Class<?> type) { return typeString(type); }
 
-	protected static String typeString(Class type) {
+	private static String typeString(Class type) {
 		if (type == null) return "";
 
 		if (type == Double.class) {
 			return Hardware.getLocalHardware().getNumberTypeName();
 		} else if (type == Integer.class || type == int[].class) {
-			return "jint";
+			return "int";
 		} else if (type == Long.class || type == long[].class) {
-			return "jlong";
+			return "long";
 		} else if (type == cl_event.class) {
 			return "cl_event";
 		} else {

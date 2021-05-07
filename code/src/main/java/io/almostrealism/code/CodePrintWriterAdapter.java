@@ -40,6 +40,14 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 	protected void setScopeSuffix(String suffix) { this.scopeSuffix = suffix; }
 	protected void setScopeClose(String close) { this.scopeClose = close; }
 
+	protected String typePrefix(Class type) {
+		if (type == null) {
+			return "";
+		} else {
+			return nameForType(type) + " ";
+		}
+	}
+
 	protected abstract String nameForType(Class<?> type);
 
 	protected String annotationForPhysicalScope(PhysicalScope scope) {

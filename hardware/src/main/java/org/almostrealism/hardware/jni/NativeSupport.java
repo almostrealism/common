@@ -24,6 +24,7 @@ import org.almostrealism.hardware.MemWrapper;
 import org.jocl.cl_mem;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.stream.Stream;
 
 public interface NativeSupport<T extends NativeLibrary> extends KernelSupport, NameProvider { // Supplier<T> {
@@ -64,6 +65,9 @@ public interface NativeSupport<T extends NativeLibrary> extends KernelSupport, N
 	}
 
 	default void apply(cl_mem args[], int offsets[], int sizes[]) {
+		System.out.println("apply: " +
+				Arrays.toString(Stream.of(args).mapToLong(cl_mem::getNativePointer).toArray()));
+
 		apply(Hardware.getLocalHardware().getQueue().getNativePointer(),
 				Stream.of(args).mapToLong(cl_mem::getNativePointer).toArray(),
 				offsets, sizes, args.length);

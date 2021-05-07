@@ -18,6 +18,7 @@ package org.almostrealism.algebra.computations.test;
 
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.algebra.PairBank;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.computations.DefaultScalarBankEvaluable;
@@ -35,28 +36,30 @@ import java.util.stream.IntStream;
 public class PowerSpectrumTest implements TestFeatures {
 	public static final int SIZE = 512;
 
-	public ScalarBank window() {
-		ScalarBank window = new ScalarBank(SIZE);
-		IntStream.range(0, 25).forEach(i -> window.set(i, i * 10, 1.0));
+	public PairBank window() {
+		PairBank window = new PairBank(SIZE);
+		IntStream.range(0, SIZE).forEach(i -> window.set(i, i * 4, i * 10));
 		return window;
 	}
 
 	@Test
 	public void nativePowerSpectrum512() {
-		Evaluable<ScalarBank> ev = new PowerSpectrum(512, v(512, 0)).get();
+		assert SIZE == 512;
+
+		Evaluable<ScalarBank> ev = new PowerSpectrum(SIZE, v(2 * SIZE, 0)).get();
 
 		((OperationAdapter) ev).compile();
 		// System.out.println(((NativeComputationEvaluable) ev).getFunctionDefinition());
 
-		ScalarBank given = ev.evaluate(window(), new Scalar(0.1));
+		ScalarBank given = ev.evaluate(window());
 		IntStream.range(0, given.getCount()).mapToObj(given::get).forEach(System.out::println);
 
 		ev = new NativePowerSpectrum512().get();
 
 		((OperationAdapter) ev).compile();
-		// System.out.println(((NativeComputationEvaluable) ev).getFunctionDefinition());
+		System.out.println(((NativeComputationEvaluable) ev).getFunctionDefinition());
 
-		ScalarBank test = ev.evaluate(window(), new Scalar(0.1));
+		ScalarBank test = ev.evaluate(window());
 		IntStream.range(0, test.getCount()).mapToObj(test::get).forEach(System.out::println);
 
 		IntStream.range(0, SIZE).forEach(i -> assertEquals(given.get(i), test.get(i)));
