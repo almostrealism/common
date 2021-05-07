@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,6 @@
 
 package org.almostrealism.algebra;
 
-import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
@@ -33,7 +32,7 @@ import io.almostrealism.html.HTMLString;
  * @author  Michael Murray
  */
 public class Tensor<T> implements HTMLContent {
-	private LinkedList top;
+	private final LinkedList top;
 	
 	public Tensor() { top = new LinkedList(); }
 	
@@ -41,11 +40,13 @@ public class Tensor<T> implements HTMLContent {
 		LinkedList l = top;
 		
 		for (int i = 0; i < loc.length - 1; i++) {
+			assert l != null;
 			l = get(l, loc[i], true);
 		}
 		
 		int newLocation = loc[loc.length - 1];
-		
+
+		assert l != null;
 		if (l.size() <= newLocation) {
 			for (int j = l.size(); j <= newLocation; j++) {
 				l.add(new Leaf(null));
@@ -72,8 +73,8 @@ public class Tensor<T> implements HTMLContent {
 	public int length(int... loc) {
 		LinkedList l = top;
 
-		for (int i = 0; i < loc.length; i++) {
-			l = get(l, loc[i], false);
+		for (int j : loc) {
+			l = get(l, j, false);
 			if (l == null) return 0;
 		}
 
@@ -92,6 +93,7 @@ public class Tensor<T> implements HTMLContent {
 		}
 	}
 	
+	@Override
 	public String toHTML() {
 		Div d = new Div();
 		d.addStyleClass("tensor-table");
@@ -113,6 +115,16 @@ public class Tensor<T> implements HTMLContent {
 					cell.addStyleClass("tensor-cell");
 					cell.add(new HTMLString((String) o));
 					row.add(cell);
+				} else if (o instanceof Scalar) {
+					Div cell = new Div();
+					cell.addStyleClass("tensor-cell");
+					cell.add(new HTMLString(String.valueOf(((Scalar) o).getValue())));
+					row.add(cell);
+				} else {
+					Div cell = new Div();
+					cell.addStyleClass("tensor-cell");
+					cell.add(new HTMLString(o.getClass().getSimpleName()));
+					row.add(cell);
 				}
 			}
 			
@@ -123,9 +135,11 @@ public class Tensor<T> implements HTMLContent {
 	}
 	
 	private static class Leaf<T> implements Future<T> {
-		private T o;
+		private final T o;
+
 		public Leaf(T o) { this.o = o; }
-		public T get() { return o; }
+
+		@Override public T get() { return o; }
 		
 		@Override
 		public T get(long timeout, TimeUnit unit) throws InterruptedException, ExecutionException, TimeoutException {

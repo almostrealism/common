@@ -65,9 +65,6 @@ public interface NativeSupport<T extends NativeLibrary> extends KernelSupport, N
 	}
 
 	default void apply(cl_mem args[], int offsets[], int sizes[]) {
-		System.out.println("apply: " +
-				Arrays.toString(Stream.of(args).mapToLong(cl_mem::getNativePointer).toArray()));
-
 		apply(Hardware.getLocalHardware().getQueue().getNativePointer(),
 				Stream.of(args).mapToLong(cl_mem::getNativePointer).toArray(),
 				offsets, sizes, args.length);

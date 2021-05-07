@@ -20,7 +20,6 @@ import io.almostrealism.code.Computation;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.Compilation;
 import org.almostrealism.hardware.MemWrapper;
-import org.jocl.cl_mem;
 
 import java.util.stream.Stream;
 

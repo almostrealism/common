@@ -216,6 +216,8 @@ public final class Hardware {
 
 	public boolean isKernelSupported() { return enableKernel; }
 
+	public boolean isNativeSupported() { return nativeCompiler != null && libDir != null && LIB_FORMAT != null; }
+
 	public String getNumberTypeName() { return isDoublePrecision() ? "double" : "float"; }
 
 	public int getNumberSize() { return isDoublePrecision() ? Sizeof.cl_double : Sizeof.cl_float; }
