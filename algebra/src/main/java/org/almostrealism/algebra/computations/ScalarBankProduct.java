@@ -26,12 +26,13 @@ import org.almostrealism.hardware.DynamicProducerComputationAdapter;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public class ScalarBankMultiply extends DynamicProducerComputationAdapter<ScalarBank, ScalarBank> implements ScalarBankProducer {
-	public ScalarBankMultiply(int count, Supplier<Evaluable<? extends ScalarBank>> input,
-						 Supplier<Evaluable<? extends ScalarBank>> value) {
+// TODO  Shouldn't this extend NAryDynamicProducer?
+public class ScalarBankProduct extends DynamicProducerComputationAdapter<ScalarBank, ScalarBank> implements ScalarBankProducer {
+	public ScalarBankProduct(int count, Supplier<Evaluable<? extends ScalarBank>> a,
+							 Supplier<Evaluable<? extends ScalarBank>> b) {
 		super(count * 2, () -> args -> new ScalarBank(count),
 				i -> { throw new UnsupportedOperationException(); },
-				input, value);
+				a, b);
 	}
 
 	@Override

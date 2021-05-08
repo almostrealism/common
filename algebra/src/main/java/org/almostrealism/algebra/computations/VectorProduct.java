@@ -24,6 +24,7 @@ import io.almostrealism.relation.Evaluable;
 import java.util.function.Supplier;
 
 public class VectorProduct extends NAryDynamicProducer<Vector> implements VectorProducer {
+	@SafeVarargs
 	public VectorProduct(Supplier<Evaluable<? extends Vector>>... producers) {
 		super("*", 3, Vector.blank(), VectorBank::new, producers);
 	}
