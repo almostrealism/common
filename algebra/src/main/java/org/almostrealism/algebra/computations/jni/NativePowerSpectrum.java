@@ -14,22 +14,22 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.algebra.computations;
+package org.almostrealism.algebra.computations.jni;
 
-import org.almostrealism.algebra.Scalar;
+import org.almostrealism.algebra.ScalarBank;
+import org.almostrealism.algebra.computations.PowerSpectrum;
 import org.almostrealism.hardware.PassThroughProducer;
 import org.almostrealism.hardware.jni.NativeComputationEvaluable;
 import org.almostrealism.hardware.jni.NativeSupport;
 
-public abstract class NativeScalarBankDotProduct extends ScalarBankDotProduct implements NativeSupport<NativeComputationEvaluable> {
-	public NativeScalarBankDotProduct(int count) {
-		super(count, new PassThroughProducer(2 * count, 0),
-				new PassThroughProducer<>(2 * count, 1));
+public abstract class NativePowerSpectrum extends PowerSpectrum implements NativeSupport<NativeComputationEvaluable> {
+	public NativePowerSpectrum(int count) {
+		super(count, new PassThroughProducer(2 * count, 0));
 		initNative();
 	}
 
 	@Override
-	public NativeComputationEvaluable<Scalar> get() {
+	public NativeComputationEvaluable<ScalarBank> get() {
 		return new NativeComputationEvaluable<>(this);
 	}
 }

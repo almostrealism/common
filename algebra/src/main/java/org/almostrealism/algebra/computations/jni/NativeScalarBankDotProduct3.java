@@ -14,10 +14,12 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.algebra.computations;
+package org.almostrealism.algebra.computations.jni;
 
-public class NativePowerSpectrum512 extends NativePowerSpectrum {
-	public NativePowerSpectrum512() { super(512); }
+public class NativeScalarBankDotProduct3 extends NativeScalarBankDotProduct {
+	public NativeScalarBankDotProduct3() {
+		super(3);
+	}
 
 	@Override
 	public native void apply(long commandQueue, long[] arg, int[] offset, int[] size, int count);
