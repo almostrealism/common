@@ -136,7 +136,7 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 		}
 	}
 
-	public Scope<T> compile(Variable<T> outputVariable) {
+	public synchronized Scope<T> compile(Variable<T> outputVariable) {
 		Computation<T> c = getComputation();
 		if (outputVariable != null) c.setOutputVariable(outputVariable);
 		scope = c.getScope();
