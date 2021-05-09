@@ -24,7 +24,6 @@ import org.almostrealism.hardware.MemWrapper;
 import org.jocl.cl_mem;
 
 import java.io.IOException;
-import java.util.Arrays;
 import java.util.stream.Stream;
 
 public interface NativeSupport<T extends NativeLibrary> extends KernelSupport, NameProvider { // Supplier<T> {
@@ -49,6 +48,8 @@ public interface NativeSupport<T extends NativeLibrary> extends KernelSupport, N
 	default boolean isKernelEnabled() { return false; }
 
 	default void initNative() {
+		initNativeFunctionName();
+
 		try {
 			Hardware.getLocalHardware().loadNative(this);
 		} catch (IOException | InterruptedException e) {
