@@ -20,7 +20,6 @@ import io.almostrealism.code.expressions.Expression;
 import io.almostrealism.code.expressions.InstanceReference;
 import org.almostrealism.io.PrintWriter;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -29,16 +28,30 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 	protected PrintWriter p;
 
 	private String nameSuffix = "";
-	private String scopePrefix;
+	private String scopePrefixExt, scopePrefixInt;
 	private String scopeSuffix = "{";
 	private String scopeClose = "}";
+
+	private boolean enableArrayVariables;
 
 	public CodePrintWriterAdapter(PrintWriter p) { this.p = p; }
 
 	protected void setNameSuffix(String suffix) { this.nameSuffix = suffix; }
-	protected void setScopePrefix(String prefix) { this.scopePrefix = prefix; }
+
+	protected void setScopePrefix(String prefix) {
+		setExternalScopePrefix(prefix);
+		setInternalScopePrefix(prefix);
+	}
+
+	protected void setExternalScopePrefix(String prefix) { this.scopePrefixExt = prefix; }
+	protected void setInternalScopePrefix(String prefix) { this.scopePrefixInt = prefix; }
+
 	protected void setScopeSuffix(String suffix) { this.scopeSuffix = suffix; }
 	protected void setScopeClose(String close) { this.scopeClose = close; }
+
+	protected void setEnableArrayVariables(boolean enableArrayVariables) {
+		this.enableArrayVariables = enableArrayVariables;
+	}
 
 	protected String typePrefix(Class type) {
 		if (type == null) {
@@ -60,7 +73,7 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 
 	@Override
 	public void println(Scope s) {
-		beginScope(s.getName(), s.getArguments());
+		beginScope(s.getName(), s.getArguments(), Accessibility.EXTERNAL);
 		s.write(this);
 		endScope();
 	}
@@ -69,8 +82,10 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 	public void flush() { }
 
 	@Override
-	public void beginScope(String name, List<ArrayVariable<?>> arguments) {
+	public void beginScope(String name, List<ArrayVariable<?>> arguments, Accessibility access) {
 		StringBuilder buf = new StringBuilder();
+
+		String scopePrefix = access == Accessibility.EXTERNAL ? scopePrefixExt : scopePrefixInt;
 
 		if (name != null) {
 			if (scopePrefix != null) { buf.append(scopePrefix); buf.append(" "); }
@@ -82,7 +97,7 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 			}
 
 			buf.append("(");
-			renderArguments(arguments, buf::append);
+			renderArguments(arguments, buf::append, access);
 			buf.append(")");
 		}
 
@@ -107,14 +122,35 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 				.map(v -> (ArrayVariable<?>) v)
 				.collect(Collectors.toList());
 
-		renderArguments(arguments, out, false, false, null, "", "");
+		if (enableArrayVariables) {
+			if (!arguments.isEmpty()) {
+				renderArguments(arguments, out, false, false, null, "", "");
+				out.accept(", ");
+				renderArguments(arguments, out, false, false, Integer.class, "", "Offset");
+				out.accept(", ");
+				renderArguments(arguments, out, false, false, Integer.class, "", "Size");
+			}
+		} else {
+			renderArguments(arguments, out, false, false, null, "", "");
+		}
 	}
 
-	protected void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out) {
-		renderArguments(arguments, out, true, true, null, "", "");
+	protected void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out, Accessibility access) {
+		if (enableArrayVariables) {
+			if (!arguments.isEmpty()) {
+				renderArguments(arguments, out, true, true, null, "*", "");
+				out.accept(", ");
+				renderArguments(arguments, out, true, false, Integer.class, "", "Offset");
+				out.accept(", ");
+				renderArguments(arguments, out, true, false, Integer.class, "", "Size");
+			}
+		} else {
+			renderArguments(arguments, out, true, true, null, "", "");
+		}
 	}
 
-	protected void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out, boolean enableType, boolean enableAnnotation, Class replaceType, String prefix, String suffix) {
+	protected void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out, boolean enableType,
+								   boolean enableAnnotation, Class replaceType, String prefix, String suffix) {
 		for (int i = 0; i < arguments.size(); i++) {
 			ArrayVariable<?> arg = arguments.get(i);
 

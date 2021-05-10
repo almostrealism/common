@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.DefaultScopeInputManager;
 import io.almostrealism.code.NameProvider;
@@ -155,14 +156,14 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	@Override
 	public String getFunctionDefinition() {
 		if (scope == null) compile();
-		ScopeEncoder encoder = new ScopeEncoder(compilation.getGenerator());
+		ScopeEncoder encoder = new ScopeEncoder(compilation.getGenerator(), Accessibility.EXTERNAL);
 		return encoder.apply(scope);
 	}
 
 	@Override
 	public String getBody(Variable<MemWrapper> outputVariable) {
 		Scope<T> scope = compile((Variable<T>) outputVariable);
-		StringBuffer buf = new StringBuffer();
+		StringBuilder buf = new StringBuilder();
 		scope.write(new OpenCLPrintWriter(PrintWriter.of(buf::append)));
 		return buf.toString();
 	}

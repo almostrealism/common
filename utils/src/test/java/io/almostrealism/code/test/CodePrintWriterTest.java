@@ -3,6 +3,7 @@ package io.almostrealism.code.test;
 import java.util.ArrayList;
 import java.util.List;
 
+import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.expressions.Expression;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.Hardware;
@@ -21,14 +22,14 @@ public class CodePrintWriterTest {
 		List<Expression<?>> args = new ArrayList<>();
 		args.add(new Expression<>(Double.class, Hardware.getLocalHardware().stringForDouble(1)));
 		
-		p.beginScope("test", new ArrayList<>());
+		p.beginScope("test", new ArrayList<>(), Accessibility.EXTERNAL);
 		p.println(new Variable<>("v", new Method<>(Scalar.class, null, "func", args)));
 		p.endScope();
 
 		args = new ArrayList<>();
 		args.add(new Method<>(Scalar.class, null, "test", new ArrayList<>()));
 		
-		p.beginScope("next", new ArrayList<>());
+		p.beginScope("next", new ArrayList<>(), Accessibility.EXTERNAL);
 		p.println(new Variable<>("v", new Method<>(Scalar.class, null, "func", args)));
 		p.endScope();
 		

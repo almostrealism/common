@@ -16,13 +16,21 @@
 
 package org.almostrealism.algebra.computations.jni;
 
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.computations.ScalarBankDotProduct;
 import org.almostrealism.hardware.PassThroughProducer;
 import org.almostrealism.hardware.jni.NativeComputationEvaluable;
 import org.almostrealism.hardware.jni.NativeSupport;
 
+import java.lang.reflect.InvocationTargetException;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.function.Supplier;
+
 public abstract class NativeScalarBankDotProduct extends ScalarBankDotProduct implements NativeSupport<NativeComputationEvaluable> {
+	private static final Map<Integer, Evaluable<? extends Scalar>> evaluables = new HashMap<>();
+
 	public NativeScalarBankDotProduct(int count) {
 		super(count, new PassThroughProducer(2 * count, 0),
 				new PassThroughProducer<>(2 * count, 1));
@@ -32,5 +40,20 @@ public abstract class NativeScalarBankDotProduct extends ScalarBankDotProduct im
 	@Override
 	public NativeComputationEvaluable<Scalar> get() {
 		return new NativeComputationEvaluable<>(this);
+	}
+
+	public synchronized static Evaluable<? extends Scalar> get(int count) {
+		if (!evaluables.containsKey(count)) {
+			try {
+				Object c = Class.forName(NativeScalarBankDotProduct.class.getName() + count)
+						.getConstructor().newInstance();
+				evaluables.put(count, ((Supplier<Evaluable<? extends Scalar>>) c).get());
+			} catch (ClassNotFoundException | NoSuchMethodException | InstantiationException |
+						IllegalAccessException | InvocationTargetException e) {
+				e.printStackTrace();
+			}
+		}
+
+		return evaluables.get(count);
 	}
 }

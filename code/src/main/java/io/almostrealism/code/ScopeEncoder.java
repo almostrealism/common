@@ -8,20 +8,26 @@ import java.util.Objects;
 import java.util.function.Function;
 
 public class ScopeEncoder implements Function<Scope, String>, PrintWriter {
-	private Function<PrintWriter, CodePrintWriter> generator;
-	private CodePrintWriter output;
+	private final Function<PrintWriter, CodePrintWriter> generator;
+	private final Accessibility access;
+
+	private final CodePrintWriter output;
 	private StringBuffer result;
 
-	private List<String> functionsWritten;
+	private final List<String> functionsWritten;
 
 	private int indent = 0;
 
-	public ScopeEncoder(Function<PrintWriter, CodePrintWriter> generator) {
-		this(generator, new ArrayList<>());
+	public ScopeEncoder(Function<PrintWriter, CodePrintWriter> generator,
+						Accessibility access) {
+		this(generator, access, new ArrayList<>());
 	}
 
-	protected ScopeEncoder(Function<PrintWriter, CodePrintWriter> generator, List<String> functionsWritten) {
+	protected ScopeEncoder(Function<PrintWriter, CodePrintWriter> generator,
+						   Accessibility access,
+						   List<String> functionsWritten) {
 		this.generator = generator;
+		this.access = access;
 		this.output = generator.apply(this);
 		this.functionsWritten = functionsWritten;
 	}
@@ -37,11 +43,11 @@ public class ScopeEncoder implements Function<Scope, String>, PrintWriter {
 		this.result = new StringBuffer();
 
 		scope.getRequiredScopes().stream()
-				.map(new ScopeEncoder(generator, functionsWritten))
+				.map(new ScopeEncoder(generator, Accessibility.INTERNAL, functionsWritten))
 				.filter(Objects::nonNull)
 				.forEach(result::append);
 
-		output.beginScope(scope.getName(), scope.getArguments());
+		output.beginScope(scope.getName(), scope.getArguments(), access);
 		scope.write(output);
 		output.endScope();
 

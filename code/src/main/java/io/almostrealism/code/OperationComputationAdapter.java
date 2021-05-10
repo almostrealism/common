@@ -42,7 +42,7 @@ public abstract class OperationComputationAdapter<I, O> extends OperationAdapter
 	public void prepareArguments(ArgumentMap map) {
 		if (getArguments() != null) return;
 		ScopeLifecycle.prepareArguments(getInputs().stream(), map);
-		getInputs().stream().forEach(map::add);
+		getInputs().forEach(map::add);
 	}
 
 	@Override

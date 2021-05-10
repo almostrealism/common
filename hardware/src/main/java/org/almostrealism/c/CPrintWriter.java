@@ -39,6 +39,7 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 	public CPrintWriter(PrintWriter p) {
 		super(p);
 		setScopePrefix("void");
+		setEnableArrayVariables(false);
 	}
 
 	@Override

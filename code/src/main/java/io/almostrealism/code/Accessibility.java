@@ -14,28 +14,8 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.c;
+package io.almostrealism.code;
 
-import io.almostrealism.code.Method;
-import io.almostrealism.code.PhysicalScope;
-import org.almostrealism.io.PrintWriter;
-
-public class OpenCLPrintWriter extends CPrintWriter {
-
-	public OpenCLPrintWriter(PrintWriter p) {
-		super(p);
-		setScopePrefix("__kernel void");
-		setEnableArrayVariables(true);
-	}
-
-	@Override
-	public void println(Method method) {
-		p.println(renderMethod(method));
-	}
-
-	@Override
-	protected String annotationForPhysicalScope(PhysicalScope scope) {
-		if (scope != null) return scope == PhysicalScope.LOCAL ? "__local" : "__global";
-		return null;
-	}
+public enum Accessibility {
+	EXTERNAL, INTERNAL
 }

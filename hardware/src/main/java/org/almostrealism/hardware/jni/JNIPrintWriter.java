@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware.jni;
 
+import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.Method;
 import io.almostrealism.code.Variable;
@@ -34,25 +35,43 @@ import java.util.function.Consumer;
 import java.util.stream.IntStream;
 
 public class JNIPrintWriter extends CPrintWriter {
-	Stack<List<ArrayVariable<?>>> argumentStack;
+	private final Stack<Accessibility> accessStack;
+	private final Stack<List<ArrayVariable<?>>> argumentStack;
 
 	public JNIPrintWriter(PrintWriter p) {
 		super(p);
-		setScopePrefix("JNIEXPORT void JNICALL");
+		setExternalScopePrefix("JNIEXPORT void JNICALL");
+		setEnableArrayVariables(true);
+		accessStack = new Stack<>();
 		argumentStack = new Stack<>();
 	}
 
 	@Override
-	public void beginScope(String name, List<ArrayVariable<?>> arguments) {
-		super.beginScope(name, arguments);
-		renderArgumentReads(arguments);
+	public void beginScope(String name, List<ArrayVariable<?>> arguments, Accessibility access) {
+		super.beginScope(name, arguments, access);
+
+		if (access == Accessibility.EXTERNAL) {
+			renderArgumentReads(arguments);
+		}
+
+		accessStack.push(access);
 		argumentStack.push(arguments);
 	}
 
 	@Override
 	public void endScope() {
-		renderArgumentWrites(argumentStack.pop());
+		if (accessStack.pop() == Accessibility.EXTERNAL) {
+			renderArgumentWrites(argumentStack.pop());
+		} else {
+			argumentStack.pop();
+		}
+
 		super.endScope();
+	}
+
+	@Override
+	public void println(Method method) {
+		p.println(renderMethod(method));
 	}
 
 	@Override
@@ -67,8 +86,12 @@ public class JNIPrintWriter extends CPrintWriter {
 	}
 
 	@Override
-	protected void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out) {
-		out.accept("JNIEnv *env, jobject obj, jlong commandQueue, jlongArray arg, jintArray offset, jintArray size, jint count");
+	protected void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out, Accessibility access) {
+		if (access == Accessibility.EXTERNAL) {
+			out.accept("JNIEnv *env, jobject obj, jlong commandQueue, jlongArray arg, jintArray offset, jintArray size, jint count");
+		} else {
+			super.renderArguments(arguments, out, access);
+		}
 	}
 
 	protected void renderArgumentReads(List<ArrayVariable<?>> arguments) {
@@ -95,13 +118,13 @@ public class JNIPrintWriter extends CPrintWriter {
 		println(new Variable("*nativeEventPointer", cl_event.class, "NULL"));
 		IntStream.range(0, arguments.size())
 				.mapToObj(i -> clEnqueueBuffer(i, arguments.get(i), false))
-				.forEach(this::println);
+				.forEach(super::println);
 	}
 
 	protected void renderArgumentWrites(List<ArrayVariable<?>> arguments) {
 		IntStream.range(0, arguments.size())
 				.mapToObj(i -> clEnqueueBuffer(i, arguments.get(i), true))
-				.forEach(this::println);
+				.forEach(super::println);
 	}
 
 	protected Method<Void> clEnqueueBuffer(int index, ArrayVariable<?> variable, boolean write) {

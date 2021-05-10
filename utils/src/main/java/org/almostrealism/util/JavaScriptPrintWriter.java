@@ -57,7 +57,7 @@ public class JavaScriptPrintWriter extends CodePrintWriterAdapter {
 	}
 
 	@Override
-	public void beginScope(String name, List<ArrayVariable<?>> arguments) {
+	public void beginScope(String name, List<ArrayVariable<?>> arguments, Accessibility access) {
 		if (name == null) {
 			p.println("{");
 		} else {
