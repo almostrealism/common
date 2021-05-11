@@ -73,7 +73,7 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 
 	@Override
 	public void println(Scope s) {
-		beginScope(s.getName(), s.getArguments(), Accessibility.EXTERNAL);
+		beginScope(s.getName(), s.getArgumentVariables(), Accessibility.EXTERNAL);
 		s.write(this);
 		endScope();
 	}

@@ -16,6 +16,8 @@
 
 package org.almostrealism.bool;
 
+import io.almostrealism.code.Argument;
+import io.almostrealism.code.Argument.Expectation;
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.Scope;
@@ -26,6 +28,7 @@ import io.almostrealism.code.expressions.Expression;
 import io.almostrealism.code.expressions.NAryExpression;
 import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Named;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.AcceleratedEvaluable;
 import org.almostrealism.hardware.MemWrapper;
@@ -45,6 +48,7 @@ public abstract class AcceleratedConjunctionAdapter<T extends MemWrapper> extend
 	private Supplier<Evaluable<?>> trueValue, falseValue;
 	private ArrayVariable<?> trueVar, falseVar;
 
+	@SafeVarargs
 	public AcceleratedConjunctionAdapter(int memLength,
 										 Supplier<T> blankValue,
 										 IntFunction<MemoryBank<T>> kernelDestination,
@@ -58,7 +62,7 @@ public abstract class AcceleratedConjunctionAdapter<T extends MemWrapper> extend
 	}
 
 	@Override
-	protected void removeDuplicateArguments() { setArguments(Scope.removeDuplicateArguments(getArguments(false))); }
+	protected void removeDuplicateArguments() { setArguments(Named.removeDuplicates(getArguments(false))); }
 
 	@Override
 	public void prepareArguments(ArgumentMap map) {
@@ -76,7 +80,7 @@ public abstract class AcceleratedConjunctionAdapter<T extends MemWrapper> extend
 		ScopeLifecycle.prepareScope(Stream.of(falseValue), manager);
 
 		List<ArrayVariable<? extends MemWrapper>> args = new ArrayList<>();
-		args.add(getArguments(false).get(0));
+		args.add((ArrayVariable<? extends MemWrapper>) getArguments(false).get(0).getVariable());
 		args.addAll(getOperands());
 
 		this.trueVar = manager.argumentForInput(this).apply(trueValue);
@@ -85,17 +89,19 @@ public abstract class AcceleratedConjunctionAdapter<T extends MemWrapper> extend
 		this.falseVar = manager.argumentForInput(this).apply(falseValue);
 		args.add((ArrayVariable<? extends MemWrapper>) this.falseVar);
 
-		setArguments(args);
+		setArguments(args.stream()
+				.map(var -> new Argument<>(var, Expectation.EVALUATE_AHEAD))
+				.map(arg -> (Argument<? extends MemWrapper>) arg)
+				.collect(Collectors.toList()));
 	}
 
 	@Override
-	public List<ArrayVariable<? extends MemWrapper>> getArguments() { return getArguments(true); }
+	public List<Argument<? extends MemWrapper>> getArguments() { return getArguments(true); }
 
-	protected List<ArrayVariable<? extends MemWrapper>> getArguments(boolean includeConjuncts) {
+	protected List<Argument<? extends MemWrapper>> getArguments(boolean includeConjuncts) {
 		if (super.getArguments() == null) return null;
 
-		List<ArrayVariable<? extends MemWrapper>> all = new ArrayList<>();
-		all.addAll(super.getArguments());
+		List<Argument<? extends MemWrapper>> all = new ArrayList<>(super.getArguments());
 
 		if (includeConjuncts) {
 			conjuncts.stream()
@@ -108,7 +114,7 @@ public abstract class AcceleratedConjunctionAdapter<T extends MemWrapper> extend
 					.forEach(all::add);
 		}
 
-		return Scope.removeDuplicateArguments(all);
+		return Named.removeDuplicates(all);
 	}
 
 	@Override

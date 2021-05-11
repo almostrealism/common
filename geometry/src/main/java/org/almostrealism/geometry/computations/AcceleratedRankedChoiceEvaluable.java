@@ -221,16 +221,16 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemWrapper> extends Dyna
 	protected Variable<Double> getHighestRankResultVariable() { return getVariable(0); }
 	protected Variable<Double> getHighestRankInputVariable() { return getVariable(1); }
 	protected Variable<Double> getHighestRankConfVariable() { return getVariable(2); }
-	public int getDefaultValueIndex() { return getArguments().size() - 1; }
+	public int getDefaultValueIndex() { return getArgumentVariables().size() - 1; }
 
 	public List<ArrayVariable<Scalar>> getRanks() { return ranks == null ? getArguments(i -> i + 1) : ranks; }
 	public List<ArrayVariable<T>> getChoices() { return choices == null ? getArguments(indexOfChoice()) : choices; }
-	public ArrayVariable getDefaultValue() { return defaultValue == null ? getArguments().get(getArguments().size() - 1) : defaultValue; }
+	public ArrayVariable getDefaultValue() { return defaultValue == null ? getArgumentVariables().get(getArgumentVariables().size() - 1) : defaultValue; }
 
 	private <T> List<ArrayVariable<T>> getArguments(IntUnaryOperator index) {
 		return IntStream.range(0, valueCount)
 				.map(index)
-				.mapToObj(i -> (ArrayVariable<T>) getArguments().get(i))
+				.mapToObj(i -> (ArrayVariable<T>) getArgumentVariables().get(i))
 				.collect(Collectors.toList());
 	}
 
@@ -242,7 +242,7 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemWrapper> extends Dyna
 
 		if (enableCompaction && (compactedRanks == null || compactedChoices == null)) {
 			List<ArrayVariable> newArgs = new ArrayList<>();
-			newArgs.add(getArguments().get(0));
+			newArgs.add(getArgumentVariables().get(0));
 
 			List<ArrayVariable<Scalar>> ranks = getRanks();
 			compactedRanks = new Function[ranks.size()];
@@ -255,7 +255,7 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemWrapper> extends Dyna
 						return s;
 					};
 
-					newArgs.addAll(AcceleratedEvaluable.excludeResult(p.getArguments()));
+					newArgs.addAll(AcceleratedEvaluable.excludeResult(p.getArgumentVariables()));
 				} else {
 					newArgs.add(ranks.get(i));
 				}
@@ -272,7 +272,7 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemWrapper> extends Dyna
 						return s;
 					};
 
-					newArgs.addAll(AcceleratedEvaluable.excludeResult(p.getArguments()));
+					newArgs.addAll(AcceleratedEvaluable.excludeResult(p.getArgumentVariables()));
 				} else {
 					newArgs.add(choices.get(i));
 				}
@@ -287,7 +287,7 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemWrapper> extends Dyna
 					return s;
 				};
 
-				newArgs.addAll(AcceleratedEvaluable.excludeResult(p.getArguments()));
+				newArgs.addAll(AcceleratedEvaluable.excludeResult(p.getArgumentVariables()));
 			} else {
 				newArgs.add(defaultValue);
 			}

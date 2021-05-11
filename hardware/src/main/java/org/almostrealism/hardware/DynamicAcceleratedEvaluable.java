@@ -116,7 +116,7 @@ public abstract class DynamicAcceleratedEvaluable<I extends MemWrapper, O extend
 
 	@Override
 	protected MemWrapper[] getKernelArgs(MemoryBank args[]) {
-		return getKernelArgs(getArguments(), args, 1);
+		return getKernelArgs(getArgumentVariables(), args, 1);
 	}
 
 	@Override

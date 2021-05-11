@@ -77,9 +77,8 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 		this.p.println(method.getExpression() + ";");
 	}
 
-	protected void printf(String format, String arg) {
-		printf(format, arg, true);
-	}
+	protected void printf(String format, String arg) { printf(format, arg, true); }
+
 	protected void printf(String format, String arg, boolean newLine) {
 		println("printf(\"" + format + (newLine ? "\\n\", " : "\", ") + arg + ");");
 	}

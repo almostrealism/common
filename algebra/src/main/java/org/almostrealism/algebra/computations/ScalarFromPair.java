@@ -70,7 +70,7 @@ public class ScalarFromPair extends DynamicProducerComputationAdapter<Pair, Scal
 			}
 
 			// TODO  Probably should check if supplier itself is static...
-			if (((Producer) getArguments().get(1).getProducer()).isStatic()) {
+			if (((Producer) getArgumentVariables().get(1).getProducer()).isStatic()) {
 				isStatic = true;
 			}
 

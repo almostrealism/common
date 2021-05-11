@@ -138,12 +138,12 @@ public class Transform extends DynamicProducerComputationAdapter<Vector, Vector>
 
 			// TODO  If both are static, this should be marked as static
 			if (!getInputProducer(1).isStatic()) {
-				List<ArrayVariable<? extends Vector>> args = AcceleratedEvaluable.excludeResult(getInputProducer(1).getArguments());
+				List<ArrayVariable<? extends Vector>> args = AcceleratedEvaluable.excludeResult(getInputProducer(1).getArgumentVariables());
 				for (Expression e : value) e.getDependencies().addAll(args);
 			}
 
 			if (!isInputProducerStatic(2)) {
-				List<ArrayVariable<? extends Vector>> args = AcceleratedEvaluable.excludeResult(getInputProducer(2).getArguments());
+				List<ArrayVariable<? extends Vector>> args = AcceleratedEvaluable.excludeResult(getInputProducer(2).getArgumentVariables());
 				for (Expression e : value) e.getDependencies().addAll(args);
 			}
 

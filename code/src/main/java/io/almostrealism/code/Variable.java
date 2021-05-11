@@ -24,6 +24,7 @@ import io.almostrealism.relation.Nameable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.ProducerWithRank;
 import io.almostrealism.relation.Provider;
+import io.almostrealism.relation.Sortable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -35,7 +36,7 @@ import java.util.function.Supplier;
  *
  * @param <T>  Type of the underlying data.
  */
-public class Variable<T> implements Nameable {
+public class Variable<T> implements Nameable, Sortable {
 	private String name;
 	private PhysicalScope physicalScope;
 	private boolean declaration;
@@ -133,6 +134,7 @@ public class Variable<T> implements Nameable {
 	public Expression<T> getExpression() { return expression; }
 
 	public void setSortHint(int hint) { this.sortHint = hint; }
+	@Override
 	public int getSortHint() { return sortHint; }
 
 	protected void setProducer(Supplier<Evaluable<? extends T>> producer) {

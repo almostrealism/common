@@ -16,6 +16,8 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.Argument;
+import io.almostrealism.code.Argument.Expectation;
 import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.code.ScopeInputManager;
@@ -46,8 +48,8 @@ public class PassThroughProducer<T extends MemWrapper>
 	public void prepareScope(ScopeInputManager manager) {
 		super.prepareScope(manager);
 
-		List<ArrayVariable<? extends T>> args = new ArrayList<>();
-		args.add(manager.argumentForInput(this).apply((Supplier) this));
+		List<Argument<? extends T>> args = new ArrayList<>();
+		args.add(new Argument<>(manager.argumentForInput(this).apply((Supplier) this), Expectation.NOT_ALTERED));
 		setArguments(args);
 	}
 
@@ -55,6 +57,7 @@ public class PassThroughProducer<T extends MemWrapper>
 	 * This overrides the parent method to prevent recursion,
 	 * since the argument is a reference back to this producer.
 	 */
+	@Override
 	public void postCompile() {
 		// Do nothing
 	}
@@ -81,7 +84,7 @@ public class PassThroughProducer<T extends MemWrapper>
 	 */
 	@Override
 	public ArrayVariable getArgument(int index) {
-		return getArguments().get(index);
+		return getArgumentVariables().get(index);
 	}
 
 	@Override

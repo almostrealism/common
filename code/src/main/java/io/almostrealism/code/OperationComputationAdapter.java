@@ -16,12 +16,14 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.code.Argument.Expectation;
 import io.almostrealism.code.expressions.Expression;
 import io.almostrealism.code.expressions.MultiExpression;
 import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
 
+import java.util.Optional;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -40,19 +42,25 @@ public abstract class OperationComputationAdapter<I, O> extends OperationAdapter
 
 	@Override
 	public void prepareArguments(ArgumentMap map) {
-		if (getArguments() != null) return;
+		if (getArgumentVariables() != null) return;
 		ScopeLifecycle.prepareArguments(getInputs().stream(), map);
 		getInputs().forEach(map::add);
 	}
 
 	@Override
 	public void prepareScope(ScopeInputManager manager) {
-		if (getArguments() != null) return;
+		if (getArgumentVariables() != null) return;
 
 		ScopeLifecycle.prepareScope(getInputs().stream(), manager);
 
 		setArguments(getInputs().stream()
-				.map(manager.argumentForInput(this)).collect(Collectors.toList()));
+				.map(manager.argumentForInput(this))
+				.map(var ->
+						Optional.ofNullable(var).map(v ->
+								new Argument<>(v, Expectation.EVALUATE_AHEAD))
+								.orElse(null))
+				.map(arg -> (Argument<? extends I>) arg)
+				.collect(Collectors.toList()));
 	}
 
 	@Override
@@ -75,7 +83,7 @@ public abstract class OperationComputationAdapter<I, O> extends OperationAdapter
 	public Variable getOutputVariable() { return null; }
 
 	public Expression<Double> getInputValue(int index, int pos) {
-		if (getArguments() == null) {
+		if (getArgumentVariables() == null) {
 			throw new IllegalArgumentException("Input value cannot be obtained before arguments are determined");
 		}
 

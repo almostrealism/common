@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,13 +17,14 @@
 package io.almostrealism.code;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public class ExplicitScope<T> extends Scope<T> {
 	private StringBuffer code;
-	private List<ArrayVariable<?>> arguments;
+	private List<Argument<?>> arguments;
 
 	public ExplicitScope(OperationAdapter op) {
 		this(op.getFunctionName());
@@ -40,12 +41,21 @@ public class ExplicitScope<T> extends Scope<T> {
 		if (code != null) this.code.append(code);
 	}
 
-	public void setArguments(List<ArrayVariable<?>> arguments) { this.arguments = arguments; }
+	public void setArguments(List<Argument<?>> arguments) { this.arguments = arguments; }
 
 	@Override
-	protected <T> List<T> arguments(Function<ArrayVariable<?>, T> mapper) {
-		return arguments == null ? super.arguments(mapper) :
-				arguments.stream().map(ArrayVariable::getRootDelegate).map(mapper).collect(Collectors.toList());
+	protected <T> List<T> arguments(Function<Argument<?>, T> mapper) {
+		List<T> result = null;
+
+		if (arguments != null) {
+			result = arguments.stream()
+					.map(Argument::getRootDelegate)
+					.map(mapper)
+					.collect(Collectors.toList());
+		}
+
+		if (result == null) return super.arguments(mapper);
+		return result;
 	}
 
 	public Consumer<String> code() { return code::append; }

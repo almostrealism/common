@@ -18,12 +18,13 @@ package io.almostrealism.code;
 
 import io.almostrealism.code.expressions.Expression;
 import io.almostrealism.code.expressions.InstanceReference;
+import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 
 import java.util.Optional;
 import java.util.function.Supplier;
 
-public class ArrayVariable<T> extends Variable implements Array<T> {
+public class ArrayVariable<T> extends Variable implements Array<T>, Delegated<ArrayVariable<T>> {
 	private final NameProvider names;
 
 	private ArrayVariable<T> delegate;
@@ -55,15 +56,12 @@ public class ArrayVariable<T> extends Variable implements Array<T> {
 		return super.getArraySize();
 	}
 
+	@Override
 	public ArrayVariable<T> getDelegate() { return delegate; }
 	public void setDelegate(ArrayVariable<T> delegate) { this.delegate = delegate; }
 
 	public int getDelegateOffset() { return delegateOffset; }
 	public void setDelegateOffset(int delegateOffset) { this.delegateOffset = delegateOffset; }
-
-	public ArrayVariable<T> getRootDelegate() {
-		return delegate == null ? this : delegate.getRootDelegate();
-	}
 
 	@Override
 	public InstanceReference<T> get(String pos, Variable... dependencies) {

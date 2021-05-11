@@ -21,7 +21,7 @@ import io.almostrealism.relation.Evaluable;
 import java.util.function.Supplier;
 
 public class DefaultScopeInputManager implements ScopeInputManager {
-	private static DefaultScopeInputManager instance = new DefaultScopeInputManager();
+	private static final DefaultScopeInputManager instance = new DefaultScopeInputManager();
 
 	private int counter;
 

@@ -28,6 +28,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -39,7 +40,7 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 	private String function;
 
 	private List<Supplier<Evaluable<? extends T>>> inputs;
-	private List<ArrayVariable<? extends T>> arguments;
+	private List<Argument<? extends T>> arguments;
 
 	private Map<Supplier<Evaluable>, List<Variable<?>>> variables;
 	private List<Supplier<Evaluable>> variableOrder;
@@ -51,7 +52,7 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 	}
 
 	@SafeVarargs
-	public OperationAdapter(ArrayVariable<? extends T>... args) {
+	public OperationAdapter(Argument<? extends T>... args) {
 		if (args.length > 0) setArguments(Arrays.asList(args));
 	}
 
@@ -63,34 +64,41 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 	@Override
 	public String getName() { return operationName(null, getClass(), getFunctionName()); }
 
-	public int getArgsCount() { return getArguments().size(); }
+	public int getArgsCount() { return getArgumentVariables().size(); }
 
-	protected void setInputs(Supplier<Evaluable<? extends T>>... input) { setInputs(Arrays.asList(input)); }
+	@SafeVarargs
+	protected final void setInputs(Supplier<Evaluable<? extends T>>... input) { setInputs(Arrays.asList(input)); }
 	protected void setInputs(List<Supplier<Evaluable<? extends T>>> inputs) { this.inputs = inputs; }
 
 	public List<Supplier<Evaluable<? extends T>>> getInputs() { return inputs; }
 
-	protected void setArguments(List<ArrayVariable<? extends T>> arguments) {
+	protected void setArguments(List<Argument<? extends T>> arguments) {
 		this.arguments = arguments;
 	}
 
-	public List<ArrayVariable<? extends T>> getArguments() {
+	public List<Argument<? extends T>> getArguments() {
 		Scope.sortArguments(arguments);
 		return arguments;
 	}
 
+	public List<ArrayVariable<? extends T>> getArgumentVariables() {
+		if (getArguments() == null) return null;
+
+		return getArguments().stream()
+				.map(arg -> Optional.ofNullable(arg).map(Argument::getVariable).orElse(null))
+				.map(var -> (ArrayVariable<? extends T>) var)
+				.collect(Collectors.toList());
+	}
+
 	public ArrayVariable getArgumentForInput(Supplier<Evaluable<? extends T>> input) {
-		if (getArguments() == null) {
+		if (getArgumentVariables() == null) {
 			throw new IllegalArgumentException(getName() + " is not compiled");
 		}
 
-		for (ArrayVariable arg : getArguments()) {
-			if (arg != null && arg.getOriginalProducer() == input) {
-				return arg;
-			}
-		}
+		return getArgumentVariables().stream()
+				.filter(arg -> arg != null && arg.getOriginalProducer() == input)
+				.findFirst().orElse(null);
 
-		return null;
 	}
 
 	public void init() {
@@ -123,7 +131,7 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 	 * overridden to do something else.
 	 */
 	public void postCompile() {
-		getArguments().stream()
+		getArgumentVariables().stream()
 				.map(Variable::getProducer)
 				.map(arg -> arg instanceof OperationAdapter ? (OperationAdapter) arg : null)
 				.filter(Objects::nonNull)
@@ -182,7 +190,7 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 		this.variableNames = new ArrayList<>();
 	}
 
-	protected void removeDuplicateArguments() { setArguments(Scope.removeDuplicateArguments(getArguments())); }
+	protected void removeDuplicateArguments() { setArguments(Named.removeDuplicates(getArguments())); }
 
 	@Override
 	public synchronized void compact() {

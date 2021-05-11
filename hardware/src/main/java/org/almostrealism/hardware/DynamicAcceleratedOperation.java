@@ -81,7 +81,7 @@ public abstract class DynamicAcceleratedOperation<T extends MemWrapper> extends 
 	protected String getFunctionArgsDefinition() {
 		StringBuilder buf = new StringBuilder();
 
-		List<ArrayVariable<? extends T>> args = getArguments();
+		List<ArrayVariable<? extends T>> args = getArgumentVariables();
 
 		for (int i = 0; i < args.size(); i++) {
 			buf.append("__global ");
@@ -95,20 +95,20 @@ public abstract class DynamicAcceleratedOperation<T extends MemWrapper> extends 
 				throw new IllegalArgumentException("Null name for Argument " + i);
 			}
 
-			buf.append(getArguments().get(i).getName());
+			buf.append(getArgumentVariables().get(i).getName());
 			buf.append(", ");
 		}
 
-		for (int i = 0; i < getArguments().size(); i++) {
+		for (int i = 0; i < getArgumentVariables().size(); i++) {
 			buf.append("const int ");
-			buf.append(getArguments().get(i).getName());
+			buf.append(getArgumentVariables().get(i).getName());
 			buf.append("Offset");
 			buf.append(", ");
 		}
 
-		for (int i = 0; i < getArguments().size(); i++) {
+		for (int i = 0; i < getArgumentVariables().size(); i++) {
 			buf.append("const int ");
-			buf.append(getArguments().get(i).getName());
+			buf.append(getArgumentVariables().get(i).getName());
 			buf.append("Size");
 			if (i < getArgsCount() - 1) buf.append(", ");
 		}
@@ -118,7 +118,7 @@ public abstract class DynamicAcceleratedOperation<T extends MemWrapper> extends 
 
 	@Override
 	public ArrayVariable getArgument(int index) {
-		return getInputs() == null ? getArguments().get(index) : getArgumentForInput(getInputs().get(index));
+		return getInputs() == null ? getArgumentVariables().get(index) : getArgumentForInput(getInputs().get(index));
 	}
 
 	@Override

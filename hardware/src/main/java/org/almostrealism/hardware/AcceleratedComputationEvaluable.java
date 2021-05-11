@@ -31,12 +31,12 @@ public class AcceleratedComputationEvaluable<T extends MemWrapper> extends Accel
 
 	@Override
 	public T evaluate(Object... args) {
-		if (getArguments() == null) {
+		if (getArgumentVariables() == null) {
 			System.out.println("WARN: " + getName() + " was not compiled ahead of time");
 			compile();
 		}
 
-		int outputArgIndex = getArguments().indexOf(getArgument(0));
+		int outputArgIndex = getArgumentVariables().indexOf(getArgument(0));
 		return (T) apply(args)[outputArgIndex];
 	}
 
@@ -59,7 +59,7 @@ public class AcceleratedComputationEvaluable<T extends MemWrapper> extends Accel
 
 	@Override
 	protected MemWrapper[] getKernelArgs(MemoryBank args[]) {
-		return getKernelArgs(getArguments(), args, 1);
+		return getKernelArgs(getArgumentVariables(), args, 1);
 	}
 
 	@Override

@@ -16,23 +16,25 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.code.Argument.Expectation;
 import io.almostrealism.code.expressions.Expression;
 import io.almostrealism.code.expressions.InstanceReference;
 
+import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.DynamicProducer;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Named;
 import io.almostrealism.relation.Parent;
 import io.almostrealism.relation.Nameable;
+import io.almostrealism.relation.Sortable;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
-import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -47,11 +49,11 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 	public static final boolean enableInlining = false;
 
 	private String name;
-	private List<Variable<?>> variables;
-	private List<Method> methods;
-	private List<Scope> required;
+	private final List<Variable<?>> variables;
+	private final List<Method> methods;
+	private final List<Scope> required;
 
-	private List<ArrayVariable<?>> arguments;
+	private List<Argument<?>> arguments;
 
 	/**
 	 * Creates an empty {@link Scope}.
@@ -98,22 +100,30 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 	public List<Scope> getRequiredScopes() { return required; }
 
 	public <T> List<Supplier<Evaluable<? extends T>>> getInputs() {
-		return arguments(arg -> arg.getProducer());
+		return arguments(arg -> ((ArrayVariable<? extends T>) arg.getVariable()).getProducer());
 	}
 
-	public <A> List<ArrayVariable<? extends A>> getArguments() {
-		List<ArrayVariable<? extends A>> result = arguments(arg -> (ArrayVariable<? extends A>) arg);
+	public <A> List<Argument<? extends A>> getArguments() {
+		List<Argument<? extends A>> result = arguments(arg -> (Argument<? extends A>) arg);
 		sortArguments(result);
 		return result;
 	}
 
-	protected List<ArrayVariable<?>> arguments() { return arguments(Function.identity()); }
+	public <A> List<ArrayVariable<? extends A>> getArgumentVariables() {
+		List<ArrayVariable<? extends A>> result = arguments(arg -> (ArrayVariable<? extends A>) arg.getVariable());
+		sortArguments(result);
+		return result;
+	}
 
-	protected <T> List<T> arguments(Function<ArrayVariable<?>, T> mapper) {
-		List<ArrayVariable<?>> args = new ArrayList<>();
+	protected List<Argument<?>> arguments() { return arguments(Function.identity()); }
+
+	protected <T> List<T> arguments(Function<Argument<?>, T> mapper) {
+		List<Argument<?>> args = new ArrayList<>();
 
 		if (arguments == null) {
-			extractArgumentDependencies(variables).stream().forEach(args::add);
+			extractArgumentDependencies(variables).stream()
+					.map(v -> new Argument(v, Expectation.EVALUATE_AHEAD))
+					.forEach(args::add);
 			sortArguments(args);
 
 			this.stream()
@@ -126,20 +136,22 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 					.flatMap(List::stream)
 					.filter(v -> v instanceof InstanceReference)
 					.map(v -> ((InstanceReference<?>) v).getReferent())
-					.forEach(v -> args.add((ArrayVariable<?>) v));
+					.forEach(v -> args.add(new Argument((Variable) v, Expectation.EVALUATE_AHEAD)));
 		} else {
-			args.addAll(arguments);
+			args.addAll(arguments.stream()
+					.map(arg -> (Argument<?>) arg)
+					.collect(Collectors.toList()));
 		}
 
 		getRequiredScopes().stream()
 				.map(Scope::arguments)
 				.flatMap(List::stream)
-				.forEach(v -> args.add((ArrayVariable<?>) v));
+				.forEach(v -> args.add((Argument<?>) v));
 
-		List<ArrayVariable<?>> result = args.stream()
-				.map(ArrayVariable::getRootDelegate)
+		List<Argument<?>> result = args.stream()
+				.map(Delegated::getRootDelegate)
 				.collect(Collectors.toList());
-		result = removeDuplicateArguments(result);
+		result = Named.removeDuplicates(result);
 		return result.stream().map(mapper).collect(Collectors.toList());
 	}
 
@@ -148,9 +160,9 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 			return;
 		}
 
-		List<ArrayVariable<?>> args = new ArrayList<>();
+		List<Argument<?>> args = new ArrayList<>();
 
-		getArguments()
+		getArgumentVariables()
 				.stream()
 				.map(arg -> {
 					if (!(arg.getProducer() instanceof Computation)
@@ -165,7 +177,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 					// Attempt to simply include the scope
 					// inline, otherwise introduce a method
 					if (tryAbsorb(s)) {
-						return s.getArguments();
+						return s.getArgumentVariables();
 					} else {
 						required.add(s);
 						methods.add(s.call());
@@ -173,13 +185,14 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 					}
 				})
 				.flatMap(List::stream)
-				.forEach(arg -> args.add((ArrayVariable<?>) arg));
+				.map(var -> new Argument<>((ArrayVariable<?>) var, Expectation.WILL_EVALUATE))
+				.forEach(arg -> args.add((Argument<?>) arg));
 
 		this.arguments = args;
 	}
 
 	public Method<?> call() {
-		List<Expression> args = getArguments().stream()
+		List<Expression> args = getArgumentVariables().stream()
 				.map(a -> new InstanceReference((Variable) a)).collect(Collectors.toList());
 		return new Method(Double.class, getName(), args);
 	}
@@ -216,30 +229,11 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 		w.flush();
 	}
 
-	public static <T> List<ArrayVariable<? extends T>> removeDuplicateArguments(List<ArrayVariable<? extends T>> arguments) {
-		List<ArrayVariable<? extends T>> args = new ArrayList<>();
-		arguments.stream().filter(Objects::nonNull).forEach(args::add);
-
-		List<String> names = new ArrayList<>();
-		Iterator<ArrayVariable<? extends T>> itr = args.iterator();
-
-		while (itr.hasNext()) {
-			ArrayVariable<? extends T> arg = itr.next();
-			if (names.contains(arg.getName())) {
-				itr.remove();
-			} else {
-				names.add(arg.getName());
-			}
-		}
-
-		return args;
-	}
-
-	public static <T> void sortArguments(List<ArrayVariable<? extends T>> arguments) {
+	public static <T extends Sortable> void sortArguments(List<T> arguments) {
 		if (arguments != null) {
-			Comparator<ArrayVariable> c = Comparator.comparing(v -> v == null ? Integer.MAX_VALUE : v.getSortHint());
+			Comparator<T> c = Comparator.comparing(v -> v == null ? Integer.MAX_VALUE : v.getSortHint());
 			// c = c.thenComparing(v -> v == null ? "" : v.getName());
-			Collections.sort(arguments, c);
+			arguments.sort(c);
 		}
 	}
 
@@ -266,50 +260,4 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 
 		return args;
 	}
-
-	/*
-	private String describeMethod(Method method) {
-		StringBuilder buf = new StringBuilder();
-		buf.append(method.getName());
-		buf.append("(");
-		renderParameters(method.getArguments(), buf::append);
-		buf.append(");");
-		return buf.toString();
-	}
-
-	private void renderParameters(List<Expression> parameters, Consumer<String> out) {
-		List<ArrayVariable<?>> arguments = parameters.stream()
-				.map(exp -> (InstanceReference) exp)
-				.map(InstanceReference::getReferent)
-				.map(v -> (ArrayVariable<?>) v)
-				.collect(Collectors.toList());
-
-		if (!arguments.isEmpty()) {
-			renderArguments(arguments, out, false, false, null, "", "");
-		}
-	}
-
-	private void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out, boolean enableType,
-								 boolean enableAnnotation, Class replaceType, String prefix, String suffix) {
-		for (int i = 0; i < arguments.size(); i++) {
-			if (enableAnnotation && arguments.get(i).getAnnotation() != null) {
-				out.accept(arguments.get(i).getAnnotation());
-				out.accept(" ");
-			}
-
-			if (enableType) {
-				out.accept(arguments.get(i).getType().getSimpleName());
-				out.accept(" ");
-			}
-
-			out.accept(prefix);
-			out.accept(arguments.get(i).getName());
-			out.accept(suffix);
-
-			if (i < arguments.size() - 1) {
-				out.accept(", ");
-			}
-		}
-	}
-	 */
 }

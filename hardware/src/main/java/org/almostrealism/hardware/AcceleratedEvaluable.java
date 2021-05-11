@@ -23,7 +23,6 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.hardware.cl.HardwareOperator;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -75,7 +74,7 @@ public class AcceleratedEvaluable<I extends MemWrapper, O extends MemWrapper> ex
 
 	@Override
 	protected MemWrapper[] getKernelArgs(MemoryBank args[]) {
-		return getKernelArgs(getArguments(), args, 1);
+		return getKernelArgs(getArgumentVariables(), args, 1);
 	}
 
 	@Override
@@ -107,7 +106,7 @@ public class AcceleratedEvaluable<I extends MemWrapper, O extends MemWrapper> ex
 		return CollectionUtils.include(new MemoryBank[0], res, p);
 	}
 
-	public static <T> List<ArrayVariable<? extends T>> excludeResult(List<ArrayVariable<? extends T>> p) {
+	public static <T> List<T> excludeResult(List<T> p) {
 		return IntStream.range(1, p.size()).mapToObj(p::get).collect(Collectors.toList());
 	}
 

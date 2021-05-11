@@ -16,6 +16,30 @@
 
 package io.almostrealism.relation;
 
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Objects;
+
 public interface Named {
 	String getName();
+
+	static <T extends Named> List<T> removeDuplicates(List<T> list) {
+		List<T> values = new ArrayList<>();
+		list.stream().filter(Objects::nonNull).forEach(values::add);
+
+		List<String> names = new ArrayList<>();
+		Iterator<T> itr = values.iterator();
+
+		while (itr.hasNext()) {
+			T value = itr.next();
+			if (names.contains(value.getName())) {
+				itr.remove();
+			} else {
+				names.add(value.getName());
+			}
+		}
+
+		return values;
+	}
 }

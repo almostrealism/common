@@ -89,9 +89,10 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrappe
 		if (arg != null) arg.setSortHint(-1);
 	}
 
+	@Override
 	public String getBody(Variable<T> outputVariable) {
 		if (compacted == null) {
-			StringBuffer buf = new StringBuffer();
+			StringBuilder buf = new StringBuilder();
 
 			buf.append("if (");
 			buf.append(getCondition().getExpression());

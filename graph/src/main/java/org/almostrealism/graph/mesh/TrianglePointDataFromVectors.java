@@ -50,13 +50,13 @@ public class TrianglePointDataFromVectors extends DynamicProducerComputationAdap
 		if (value == null) {
 			value = new Expression[12];
 
-			i: for (int i = 1; i < getArguments().size(); i++) {
+			i: for (int i = 1; i < getArgumentVariables().size(); i++) {
 				// Ignore those that are not of a compactable kind
-				if (getArguments().get(i).getProducer() instanceof DynamicProducerComputationAdapter == false) {
+				if (getArgumentVariables().get(i).getProducer() instanceof DynamicProducerComputationAdapter == false) {
 					continue i;
 				}
 
-				DynamicProducerComputationAdapter child = (DynamicProducerComputationAdapter) getArguments().get(i).getProducer();
+				DynamicProducerComputationAdapter child = (DynamicProducerComputationAdapter) getArgumentVariables().get(i).getProducer();
 
 				// Ignore those that are more than just a value returned from getValue
 				if (!child.isValueOnly()) {

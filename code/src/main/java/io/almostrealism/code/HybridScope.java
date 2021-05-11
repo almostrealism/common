@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,6 +16,8 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.relation.Named;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
@@ -23,7 +25,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 public class HybridScope<T> extends Scope<T> {
-	private ExplicitScope<T> explicit;
+	private final ExplicitScope<T> explicit;
 
 	public HybridScope(OperationAdapter operation) {
 		super(operation.getFunctionName());
@@ -34,7 +36,7 @@ public class HybridScope<T> extends Scope<T> {
 		this.explicit = explicit;
 	}
 
-	public void setArguments(List<ArrayVariable<?>> arguments) { explicit.setArguments(arguments); }
+	public void setArguments(List<Argument<?>> arguments) { explicit.setArguments(arguments); }
 
 	@Override
 	public void write(CodePrintWriter w) {
@@ -45,10 +47,10 @@ public class HybridScope<T> extends Scope<T> {
 	public Consumer<String> code() { return explicit.code(); }
 
 	@Override
-	protected <T> List<T> arguments(Function<ArrayVariable<?>, T> mapper) {
-		List<ArrayVariable<?>> args = new ArrayList<>();
-		args.addAll(explicit.arguments(arg -> arg));
-		args.addAll(super.arguments(arg -> arg));
-		return removeDuplicateArguments(args).stream().map(mapper).collect(Collectors.toList());
+	protected <T> List<T> arguments(Function<Argument<?>, T> mapper) {
+		List<Argument<?>> args = new ArrayList<>();
+		args.addAll(explicit.arguments(Function.identity()));
+		args.addAll(super.arguments(Function.identity()));
+		return Named.removeDuplicates(args).stream().map(mapper).collect(Collectors.toList());
 	}
 }

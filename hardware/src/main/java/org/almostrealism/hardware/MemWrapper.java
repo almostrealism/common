@@ -18,12 +18,13 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.expressions.MultiExpression;
 import io.almostrealism.code.expressions.Expression;
+import io.almostrealism.relation.Delegated;
 import org.jocl.CL;
 import org.jocl.CLException;
 import org.jocl.Pointer;
 import org.jocl.cl_mem;
 
-public interface MemWrapper extends MultiExpression<Double> {
+public interface MemWrapper extends MultiExpression<Double>, Delegated<MemWrapper> {
 	int sizeOf = Hardware.getLocalHardware().getNumberSize();
 
 	cl_mem getMem();
@@ -53,6 +54,7 @@ public interface MemWrapper extends MultiExpression<Double> {
 	 */
 	void setDelegate(MemWrapper m, int offset);
 
+	@Override
 	MemWrapper getDelegate();
 
 	int getDelegateOffset();

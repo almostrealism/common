@@ -252,5 +252,6 @@ public class ProbabilityDistribution implements Nameable {
 	}
 	
 	public void setName(String s) { this.name = s; }
+	@Override
 	public String getName() { return this.name; }
 }

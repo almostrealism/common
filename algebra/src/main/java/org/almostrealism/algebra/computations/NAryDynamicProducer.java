@@ -30,8 +30,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 public abstract class NAryDynamicProducer<T extends MemWrapper> extends DynamicProducerComputationAdapter<T, T> implements ComputerFeatures {
 	private final String operator;
@@ -74,7 +72,7 @@ public abstract class NAryDynamicProducer<T extends MemWrapper> extends DynamicP
 		if (value == null && isCompletelyValueOnly()) {
 			value = new Expression[getMemLength()];
 
-			List<ArrayVariable<? extends T>> p = getArguments();
+			List<ArrayVariable<? extends T>> p = getArgumentVariables();
 
 			List<ArrayVariable<? extends T>> staticProducers = extractStaticProducers(p);
 			List<ArrayVariable<? extends T>> dynamicProducers = extractDynamicProducers(p);

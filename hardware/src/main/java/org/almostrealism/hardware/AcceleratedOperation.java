@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,6 +16,8 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.Argument;
+import io.almostrealism.code.Argument.Expectation;
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.Computation;
@@ -38,7 +40,6 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -50,9 +51,9 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 	public static final boolean enableCompaction = true;
 	public static final boolean enableInputLogging = false;
 
-	private static Map<String, ThreadLocal<HardwareOperator>> operators = new HashMap<>();
+	private static final Map<String, ThreadLocal<HardwareOperator>> operators = new HashMap<>();
 
-	private boolean kernel;
+	private final boolean kernel;
 	private Class cls;
 
 	protected List<ArgumentMap> argumentMaps;
@@ -72,7 +73,7 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 
 	@SafeVarargs
 	protected AcceleratedOperation(boolean kernel, ArrayVariable<T>... args) {
-		super(args);
+		super(Arrays.stream(args).map(var -> new Argument(var, Expectation.EVALUATE_AHEAD)).toArray(Argument[]::new));
 		this.kernel = kernel;
 		this.argumentMaps = new ArrayList<>();
 	}
@@ -144,12 +145,15 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 
 	@Override
 	public void prepareScope(ScopeInputManager manager) {
-		if (getArguments() != null) return;
+		if (getArgumentVariables() != null) return;
 
 		if (getInputs() != null) {
 			ScopeLifecycle.prepareScope(getInputs().stream(), manager);
 			setArguments(getInputs().stream()
-					.map(manager.argumentForInput(this)).collect(Collectors.toList()));
+					.map(manager.argumentForInput(this))
+					.map(var -> new Argument(var, Expectation.EVALUATE_AHEAD))
+					.map(arg -> (Argument<? extends T>) arg)
+					.collect(Collectors.toList()));
 		}
 	}
 
@@ -158,7 +162,7 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 
 	@Override
 	public synchronized Object[] apply(Object[] args) {
-		if (getArguments() == null) {
+		if (getArgumentVariables() == null) {
 			System.out.println("WARN: " + getName() + " was not compiled ahead of time");
 			compile();
 		}
@@ -183,7 +187,7 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 	}
 
 	protected Object[] getAllArgs(Object args[]) {
-		List<ArrayVariable<? extends T>> arguments = getArguments();
+		List<ArrayVariable<? extends T>> arguments = getArgumentVariables();
 		Object allArgs[] = new Object[arguments.size()];
 
 		for (int i = 0; i < arguments.size(); i++) {
@@ -236,7 +240,7 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 
 	@Override
 	public void kernelOperate(MemoryBank[] args) {
-		if (getArguments() == null) {
+		if (getArgumentVariables() == null) {
 			System.out.println("WARN: " + getName() + " was not compiled ahead of time");
 			compile();
 		}
@@ -262,7 +266,7 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 	}
 
 	protected MemWrapper[] getKernelArgs(MemoryBank args[]) {
-		return getKernelArgs(getArguments(), args, 0);
+		return getKernelArgs(getArgumentVariables(), args, 0);
 	}
 
 	/**
@@ -290,25 +294,25 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 	public boolean isKernel() { return kernel; }
 
 	public boolean isInputKernel() {
-		for (ArrayVariable arg : getArguments()) {
-			if (arg.getProducer() instanceof AcceleratedEvaluable == false) return false;
+		for (ArrayVariable arg : getArgumentVariables()) {
+			if (!(arg.getProducer() instanceof AcceleratedEvaluable)) return false;
 			if (!((AcceleratedEvaluable) arg.getProducer()).isKernel()) return false;
 		}
 
 		return false;
 	}
 
+	@Override
 	public void destroy() {
-		argumentMaps.stream().forEach(ArgumentMap::destroy);
+		argumentMaps.forEach(ArgumentMap::destroy);
 		argumentMaps = new ArrayList<>();
 	}
 
 	protected static <T> MemWrapper[] getKernelArgs(List<ArrayVariable<? extends T>> arguments, MemoryBank args[], int passThroughLength) {
 		MemWrapper kernelArgs[] = new MemWrapper[arguments.size()];
 
-		for (int i = 0; i < passThroughLength; i++) {
-			kernelArgs[i] = args[i];
-		}
+		if (passThroughLength >= 0)
+			System.arraycopy(args, 0, kernelArgs, 0, passThroughLength);
 
 		i: for (int i = passThroughLength; i < arguments.size(); i++) {
 			if (arguments.get(i) == null) continue i;
@@ -326,20 +330,18 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 				kernelArgs[i] = args[passThroughLength + argIndex];
 			} else if (c instanceof KernelizedEvaluable) {
 				MemoryBank downstreamArgs[] = new MemoryBank[args.length - passThroughLength];
-				for (int j = passThroughLength; j < args.length; j++) {
-					downstreamArgs[j - passThroughLength] = args[j];
-				}
+				if (args.length - passThroughLength >= 0)
+					System.arraycopy(args, passThroughLength, downstreamArgs, 0, args.length - passThroughLength);
 
 				KernelizedEvaluable kp = (KernelizedEvaluable) c;
 				kernelArgs[i] = kp.createKernelDestination(args[0].getCount());
 				kp.kernelEvaluate((MemoryBank) kernelArgs[i], downstreamArgs);
 			} else {
 				MemoryBank downstreamArgs[] = new MemoryBank[args.length - passThroughLength];
-				for (int j = passThroughLength; j < args.length; j++) {
-					downstreamArgs[j - passThroughLength] = args[j];
-				}
+				if (args.length - passThroughLength >= 0)
+					System.arraycopy(args, passThroughLength, downstreamArgs, 0, args.length - passThroughLength);
 
-				kernelArgs[i] = (MemWrapper) c.evaluate(downstreamArgs);
+				kernelArgs[i] = (MemWrapper) c.evaluate((Object[]) downstreamArgs);
 			}
 		}
 
