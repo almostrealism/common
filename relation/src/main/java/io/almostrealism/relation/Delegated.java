@@ -16,10 +16,12 @@
 
 package io.almostrealism.relation;
 
-public interface Delegated<T extends Delegated> {
+public interface Delegated<T> {
 	T getDelegate();
 
 	default T getRootDelegate() {
-		return (T) (getDelegate() == null ? this : getDelegate().getRootDelegate());
+		if (getDelegate() == null) return (T) this;
+		if (getDelegate() instanceof Delegated) return (T) ((Delegated) getDelegate()).getRootDelegate();
+		return getDelegate();
 	}
 }

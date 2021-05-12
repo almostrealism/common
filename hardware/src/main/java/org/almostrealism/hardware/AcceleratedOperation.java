@@ -25,12 +25,16 @@ import io.almostrealism.code.DefaultScopeInputManager;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerArgumentReference;
+import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.code.SupplierArgumentMap;
+import io.almostrealism.code.Variable;
 import io.almostrealism.relation.Compactable;
+import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Provider;
 import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.hardware.mem.MemWrapperArgumentMap;
 import org.jocl.CLException;
@@ -187,17 +191,19 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 	}
 
 	protected Object[] getAllArgs(Object args[]) {
-		List<ArrayVariable<? extends T>> arguments = getArgumentVariables();
+		List<Argument<? extends T>> arguments = getArguments();
 		Object allArgs[] = new Object[arguments.size()];
 
 		for (int i = 0; i < arguments.size(); i++) {
+			Argument<? extends T> arg = arguments.get(i);
+
 			try {
-				if (arguments.get(i) == null) {
+				if (arg == null) {
 					allArgs[i] = replaceNull(i);
-				} else if (arguments.get(i).getProducer() == null) {
-					throw new IllegalArgumentException("No Producer for " + arguments.get(i).getName());
+				} else if (arg.getVariable().getProducer() == null) {
+					throw new IllegalArgumentException("No Producer for " + arg.getName());
 				} else {
-					int argRef = getProducerArgumentReferenceIndex(arguments.get(i));
+					int argRef = getProducerArgumentReferenceIndex(arg.getVariable());
 
 					if (argRef >= args.length) {
 						throw new IllegalArgumentException("Not enough arguments were supplied for evaluation");
@@ -205,8 +211,23 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 
 					if (argRef >= 0) {
 						allArgs[i] = args[argRef];
+					} else if (arg.getExpectation() == Expectation.EVALUATE_AHEAD) {
+						allArgs[i] = ProducerCache.evaluate(arg.getVariable().getProducer(), args);
+					} else if (arg.getVariable().getProducer() instanceof Delegated &&
+							((Delegated) arg.getVariable().getProducer()).getDelegate() instanceof DestinationSupport) {
+						DestinationSupport dest = (DestinationSupport) ((Delegated) arg.getVariable().getProducer()).getDelegate();
+						allArgs[i] = dest.getDestination().get();
+					} else if (arg.getVariable().getProducer() instanceof Delegated &&
+							((Delegated) arg.getVariable().getProducer()).getDelegate() instanceof Provider) {
+						Provider dest = (Provider) ((Delegated) arg.getVariable().getProducer()).getDelegate();
+						allArgs[i] = dest.get();
+					} else if (arg.getVariable().getProducer() instanceof ProducerComputation) {
+						Variable var = ((ProducerComputation) arg.getVariable().getProducer()).getOutputVariable();
+						allArgs[i] = ProducerCache.evaluate(var.getProducer(), args);
+					} else if (arg.getVariable().getProducer().get() instanceof Provider) {
+						allArgs[i] = ((Provider) arg.getVariable().getProducer().get()).get();
 					} else {
-						allArgs[i] = ProducerCache.evaluate(arguments.get(i).getProducer(), args);
+						throw new IllegalArgumentException("Argument Expectation requires access to destination or output variable");
 					}
 				}
 
@@ -216,14 +237,14 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 			} catch (Exception e) {
 				throw new RuntimeException("Function \"" + getFunctionName() +
 						"\" could not complete due to exception evaluating argument " + i +
-						" (" + arguments.get(i).getProducer().getClass() + ")", e);
+						" (" + arguments.get(i).getVariable().getProducer().getClass() + ")", e);
 			}
 		}
 
 		return allArgs;
 	}
 
-	private int getProducerArgumentReferenceIndex(ArrayVariable<?> arg) {
+	private int getProducerArgumentReferenceIndex(Variable<?> arg) {
 		if (arg.getProducer() instanceof ProducerArgumentReference) {
 			return ((ProducerArgumentReference) arg.getProducer()).getReferencedArgumentIndex();
 		}

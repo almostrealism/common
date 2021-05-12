@@ -261,7 +261,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 					RGB dc = dcp.get().evaluate(args);
 
 					Vector triple = point.get().evaluate(args);
-					if (dc.length() < (Intersection.e * 100)) return new RGB(0.0, 0.0, 0.0);
+					if (dc.length() < Intersection.e * 100) return new RGB(0.0, 0.0, 0.0);
 
 					Vector abc = data.getABC();
 					Vector def = data.getDEF();

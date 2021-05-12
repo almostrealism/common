@@ -16,14 +16,17 @@
 
 package org.almostrealism.hardware.mem;
 
+import io.almostrealism.relation.Delegated;
 import org.almostrealism.hardware.DestinationSupport;
 import org.almostrealism.hardware.DynamicProducerForMemWrapper;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.hardware.MemoryBank;
 
 import java.util.function.IntFunction;
+import java.util.function.Supplier;
 
-public class MemWrapperDestination<T extends MemWrapper> extends DynamicProducerForMemWrapper<T> {
+public class MemWrapperDestination<T extends MemWrapper> extends DynamicProducerForMemWrapper<T> implements Delegated<DestinationSupport<T>> {
+	private final DestinationSupport<T> destination;
 
 	public MemWrapperDestination(DestinationSupport<T> destination) {
 		this(destination, null);
@@ -31,5 +34,9 @@ public class MemWrapperDestination<T extends MemWrapper> extends DynamicProducer
 
 	public MemWrapperDestination(DestinationSupport<T> destination, IntFunction<MemoryBank<T>> kernelDestination) {
 		super(args -> destination.getDestination().get(), kernelDestination);
+		this.destination = destination;
 	}
+
+	@Override
+	public DestinationSupport<T> getDelegate() { return destination; }
 }

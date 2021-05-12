@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@ package io.almostrealism.relation;
 import java.util.function.Function;
 
 public class DynamicProducer<T> implements Producer<T> {
-	private Function<Object[], T> function;
+	private final Function<Object[], T> function;
 
 	public DynamicProducer(Function<Object[], T> function) {
 		this.function = function;
@@ -29,7 +29,7 @@ public class DynamicProducer<T> implements Producer<T> {
 	 * Applies the {@link Function}.
 	 */
 	@Override
-	public Evaluable<T> get() { return args -> function.apply(args); }
+	public Evaluable<T> get() { return function::apply; }
 
 	/**
 	 * Does nothing.

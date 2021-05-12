@@ -16,10 +16,15 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.relation.Delegated;
+
 import java.util.function.Supplier;
 
-public interface DestinationSupport<T extends MemWrapper> {
+public interface DestinationSupport<T extends MemWrapper> extends Delegated<DestinationSupport<T>> {
 	void setDestination(Supplier<T> destination);
 
 	Supplier<T> getDestination();
+
+	@Override
+	default DestinationSupport<T> getDelegate() { return null; }
 }

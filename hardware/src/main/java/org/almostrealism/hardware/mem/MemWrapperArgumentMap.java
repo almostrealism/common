@@ -18,6 +18,8 @@ package org.almostrealism.hardware.mem;
 
 import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.NameProvider;
+import io.almostrealism.relation.Delegated;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.hardware.MemWrapper;
 import org.almostrealism.hardware.ProviderAwareArgumentMap;
@@ -40,14 +42,14 @@ public class MemWrapperArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 		if (arg != null) return arg;
 
 		Object provider = key.get();
-		if (provider instanceof Provider == false) return null;
-		if (((Provider) provider).get() instanceof MemWrapper == false) return null;
+		if (!(provider instanceof Provider)) return null;
+		if (!(((Provider) provider).get() instanceof MemWrapper)) return null;
 
 		MemWrapper mw = (MemWrapper) ((Provider) provider).get();
 		if (mems.containsKey(mw.getMem())) {
 			return delegateProvider.getArgument(p, key, mems.get(mw.getMem()), mw.getOffset());
 		} else {
-			ArrayVariable var = delegateProvider.getArgument(p, () -> new Provider<>(rootDelegate(mw)), null, -1);
+			ArrayVariable var = delegateProvider.getArgument(p, new RootDelegateProviderSupplier(mw), null, -1);
 			mems.put(mw.getMem(), var);
 			return delegateProvider.getArgument(p, key, var, mw.getOffset());
 		}
@@ -59,5 +61,19 @@ public class MemWrapperArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 		} else {
 			return rootDelegate(mw.getDelegate());
 		}
+	}
+
+	protected class RootDelegateProviderSupplier implements Supplier<Evaluable<? extends MemWrapper>>, Delegated<Provider> {
+		private final Provider provider;
+
+		public RootDelegateProviderSupplier(MemWrapper mem) {
+			this.provider = new Provider<>(rootDelegate(mem));
+		}
+
+		@Override
+		public Evaluable<? extends MemWrapper> get() { return provider; }
+
+		@Override
+		public Provider getDelegate() { return provider; }
 	}
 }

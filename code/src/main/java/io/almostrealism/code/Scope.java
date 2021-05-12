@@ -54,6 +54,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 	private final List<Scope> required;
 
 	private List<Argument<?>> arguments;
+	private boolean embedded;
 
 	/**
 	 * Creates an empty {@link Scope}.
@@ -93,6 +94,10 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 	 */
 	@Override
 	public List<Scope<T>> getChildren() { return this; }
+
+	public boolean isEmbedded() { return embedded; }
+
+	public void setEmbedded(boolean embedded) { this.embedded = embedded; }
 
 	/**
 	 * @return  The {@link Scope}s that are required by this {@link Scope}.
@@ -164,36 +169,40 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 
 		getArgumentVariables()
 				.stream()
-				.map(arg -> {
-					if (!(arg.getProducer() instanceof Computation)
-							|| arg.getProducer() instanceof DynamicProducer
-							|| arg.getProducer() instanceof ProducerArgumentReference) {
-						return Collections.singletonList(arg);
+				.map(var -> {
+					if (!(var.getProducer() instanceof Computation)
+							|| var.getProducer() instanceof DynamicProducer
+							|| var.getProducer() instanceof ProducerArgumentReference) {
+						return Collections.singletonList(new Argument(var, Expectation.EVALUATE_AHEAD));
 					}
 
-					Scope s = ((Computation) arg.getProducer()).getScope();
+					Scope s = ((Computation) var.getProducer()).getScope();
 					s.convertArgumentsToRequiredScopes();
 
 					// Attempt to simply include the scope
 					// inline, otherwise introduce a method
 					if (tryAbsorb(s)) {
-						return s.getArgumentVariables();
+						return s.getArgumentVariables().stream()
+								.map(v -> new Argument<>((ArrayVariable<?>) v, Expectation.WILL_EVALUATE))
+								.collect(Collectors.toList());
 					} else {
+						s.setEmbedded(true);
 						required.add(s);
 						methods.add(s.call());
 						return Collections.emptyList();
 					}
 				})
+				.map(list -> (List<Argument<?>>) list)
 				.flatMap(List::stream)
-				.map(var -> new Argument<>((ArrayVariable<?>) var, Expectation.WILL_EVALUATE))
-				.forEach(arg -> args.add((Argument<?>) arg));
+				.forEach(args::add);
 
 		this.arguments = args;
 	}
 
 	public Method<?> call() {
 		List<Expression> args = getArgumentVariables().stream()
-				.map(a -> new InstanceReference((Variable) a)).collect(Collectors.toList());
+				.map(a -> new InstanceReference((Variable) a))
+				.collect(Collectors.toList());
 		return new Method(Double.class, getName(), args);
 	}
 
