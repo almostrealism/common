@@ -71,7 +71,7 @@ public abstract class DynamicAcceleratedEvaluable<I extends MemWrapper, O extend
 	}
 
 	@Deprecated
-	protected void writeVariables(Consumer<String> out, List<Variable<?>> existingVariables) {
+	protected void writeVariables(Consumer<String> out, List<Variable<?, ?>> existingVariables) {
 		getVariables().stream()
 				.filter(v -> !existingVariables.contains(v)).forEach(var -> {
 			if (var.getPhysicalScope() != null) {

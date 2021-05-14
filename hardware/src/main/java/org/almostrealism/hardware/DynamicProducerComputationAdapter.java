@@ -157,7 +157,7 @@ public abstract class DynamicProducerComputationAdapter<I extends MemWrapper, O 
 		}
 	}
 
-	protected IntFunction<Variable<Double>> variableForIndex(IntFunction<Expression<Double>> valueFunction) {
+	protected IntFunction<Variable<Double, ?>> variableForIndex(IntFunction<Expression<Double>> valueFunction) {
 		return i -> new Variable(getVariableName(i), true, valueFunction.apply(i), this);
 	}
 

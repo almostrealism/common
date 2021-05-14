@@ -62,7 +62,7 @@ public abstract class AcceleratedConjunctionAdapter<T extends MemWrapper> extend
 	}
 
 	@Override
-	protected void removeDuplicateArguments() { setArguments(Named.removeDuplicates(getArguments(false))); }
+	protected void removeDuplicateArguments() { setArguments(Scope.removeDuplicateArguments(getArguments(false))); }
 
 	@Override
 	public void prepareArguments(ArgumentMap map) {
@@ -114,12 +114,12 @@ public abstract class AcceleratedConjunctionAdapter<T extends MemWrapper> extend
 					.forEach(all::add);
 		}
 
-		return Named.removeDuplicates(all);
+		return Scope.removeDuplicateArguments(all);
 	}
 
 	@Override
-	public List<Variable<?>> getVariables() {
-		List<Variable<?>> all = new ArrayList<>();
+	public List<Variable<?, ?>> getVariables() {
+		List<Variable<?, ?>> all = new ArrayList<>();
 		all.addAll(super.getVariables());
 		conjuncts.stream()
 				.map(AcceleratedConditionalStatement::getVariables)

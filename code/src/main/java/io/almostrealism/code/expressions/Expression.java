@@ -31,7 +31,7 @@ import java.util.stream.Stream;
 public class Expression<T> {
 	private Class<T> type;
 	private Supplier<String> expression;
-	private List<Variable<?>> dependencies = new ArrayList<>();
+	private List<Variable<?, ?>> dependencies = new ArrayList<>();
 	private int arraySize = -1;
 
 	public Expression(Class<T> type) {
@@ -46,7 +46,7 @@ public class Expression<T> {
 		this(type, expression, dependencies(dependencies));
 	}
 
-	public Expression(Class<T> type, String expression, Variable<?>... dependencies) {
+	public Expression(Class<T> type, String expression, Variable<?, ?>... dependencies) {
 		if (type == null) {
 			throw new IllegalArgumentException("Type is required");
 		}
@@ -92,7 +92,7 @@ public class Expression<T> {
 	public void setExpression(String expression) { this.expression = () -> expression; }
 	public void setExpression(Supplier<String> expression) { this.expression = expression; }
 
-	public List<Variable<?>> getDependencies() { return dependencies; }
+	public List<Variable<?, ?>> getDependencies() { return dependencies; }
 
 	public int getArraySize() { return arraySize; }
 	public void setArraySize(int arraySize) { this.arraySize = arraySize; }
@@ -124,7 +124,7 @@ public class Expression<T> {
 	public int hashCode() { return getValue().hashCode(); }
 
 	private static Variable[] dependencies(Expression expressions[]) {
-		Set<Variable<?>> dependencies = new HashSet<>();
+		Set<Variable<?, ?>> dependencies = new HashSet<>();
 		for (Expression e : expressions) dependencies.addAll(e.getDependencies());
 		return dependencies.toArray(new Variable[0]);
 	}

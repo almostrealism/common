@@ -32,7 +32,7 @@ public interface AcceleratedConditionalStatement<T extends MemWrapper> extends P
 	Expression getCondition();
 
 	List<Argument<? extends MemWrapper>> getArguments();
-	List<Variable<?>> getVariables();
+	List<Variable<?, ?>> getVariables();
 
 	List<ArrayVariable<Scalar>> getOperands();
 

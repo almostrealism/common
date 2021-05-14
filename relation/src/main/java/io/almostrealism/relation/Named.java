@@ -17,29 +17,38 @@
 package io.almostrealism.relation;
 
 import java.util.ArrayList;
-import java.util.Iterator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.function.BiFunction;
+import java.util.stream.Collectors;
 
 public interface Named {
 	String getName();
 
 	static <T extends Named> List<T> removeDuplicates(List<T> list) {
+		return removeDuplicates(list, (a, b) -> a);
+	}
+
+	static <T extends Named> List<T> removeDuplicates(List<T> list, BiFunction<T, T, T> chooser) {
 		List<T> values = new ArrayList<>();
 		list.stream().filter(Objects::nonNull).forEach(values::add);
 
 		List<String> names = new ArrayList<>();
-		Iterator<T> itr = values.iterator();
+		Map<String, T> chosen = new HashMap<>();
 
-		while (itr.hasNext()) {
-			T value = itr.next();
-			if (names.contains(value.getName())) {
-				itr.remove();
+		values.forEach(v -> {
+			String name = v.getName();
+
+			if (names.contains(name)) {
+				chosen.put(name, chooser.apply(chosen.get(name), v));
 			} else {
-				names.add(value.getName());
+				names.add(name);
+				chosen.put(name, v);
 			}
-		}
+		});
 
-		return values;
+		return names.stream().map(chosen::get).collect(Collectors.toList());
 	}
 }

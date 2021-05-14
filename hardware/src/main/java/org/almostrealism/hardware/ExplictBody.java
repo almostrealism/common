@@ -19,5 +19,5 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.Variable;
 
 public interface ExplictBody<T> {
-	String getBody(Variable<T> outputVariable);
+	String getBody(Variable<T, ?> outputVariable);
 }

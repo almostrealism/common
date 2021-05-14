@@ -23,8 +23,8 @@ import java.util.function.IntFunction;
 
 public interface MultiExpression<T> {
 
-	default IntFunction<Variable<T>> getAssignmentFunction(NameProvider p, Variable<?> outputVariable) {
-		return i -> new Variable<>(p.getVariableValueName(outputVariable, i, true), false, getValue(i), outputVariable);
+	default IntFunction<Variable<T, ?>> getAssignmentFunction(NameProvider p, Variable<?, ?> outputVariable) {
+		return i -> new Variable(p.getVariableValueName(outputVariable, i, true), false, getValue(i), outputVariable);
 	}
 
 	Expression<T> getValue(int pos);

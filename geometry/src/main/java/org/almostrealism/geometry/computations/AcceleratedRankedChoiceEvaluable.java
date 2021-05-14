@@ -33,9 +33,9 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemWrapper> extends Dyna
 	private Supplier<T> onNull;
 	private IntFunction<MemoryBank<T>> forKernel;
 
-	private Function<List<Variable<?>>, String> compactedRanks[];
-	private Function<List<Variable<?>>, String> compactedChoices[];
-	private Function<List<Variable<?>>, String> compactedDefaultValue;
+	private Function<List<Variable<?, ?>>, String> compactedRanks[];
+	private Function<List<Variable<?, ?>>, String> compactedChoices[];
+	private Function<List<Variable<?, ?>>, String> compactedDefaultValue;
 
 	private List<ArrayVariable<Scalar>> ranks;
 	private List<ArrayVariable<T>> choices;
@@ -81,12 +81,12 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemWrapper> extends Dyna
 	}
 
 	@Override
-	public String getBody(Variable<MemWrapper> outputVariable) {
+	public String getBody(Variable<MemWrapper, ?> outputVariable) {
 		StringBuilder buf = new StringBuilder();
 
 		// if (enableOpenClKernelWorkaround) buf.append("printf(\"Starting method...\\n\");\n");
 
-		List<Variable<?>> variables = new ArrayList<>();
+		List<Variable<?, ?>> variables = new ArrayList<>();
 		writeVariables(buf::append, variables);
 		variables.addAll(getVariables());
 
@@ -110,7 +110,7 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemWrapper> extends Dyna
 		return buf.toString();
 	}
 
-	protected void writeInputAssignments(Consumer<String> output, List<Variable<?>> existingVariables) {
+	protected void writeInputAssignments(Consumer<String> output, List<Variable<?, ?>> existingVariables) {
 		List<ArrayVariable<Scalar>> ranks = getRanks();
 
 		IntStream.range(0, ranks.size()).forEach(i -> {
@@ -137,7 +137,7 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemWrapper> extends Dyna
 		output.accept(";\n");
 	}
 
-	protected void writeOutputAssignments(Consumer<String> output, List<Variable<?>> existingVariables) {
+	protected void writeOutputAssignments(Consumer<String> output, List<Variable<?, ?>> existingVariables) {
 		List<ArrayVariable<T>> choices = getChoices();
 		IntStream.range(0, choices.size()).forEach(i -> {
 			output.accept("if (");
@@ -160,7 +160,7 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemWrapper> extends Dyna
 		output.accept("}\n");
 	}
 
-	protected void writeOutputAssignments(Consumer<String> output, int index, List<Variable<?>> existingVariables) {
+	protected void writeOutputAssignments(Consumer<String> output, int index, List<Variable<?, ?>> existingVariables) {
 		if (index < 0) {
 			if (compactedDefaultValue == null) {
 				IntStream.range(0, memLength).forEach(i -> {
@@ -218,9 +218,9 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemWrapper> extends Dyna
 		output.accept("[1] = closestIndex;\n");
 	}
 
-	protected Variable<Double> getHighestRankResultVariable() { return getVariable(0); }
-	protected Variable<Double> getHighestRankInputVariable() { return getVariable(1); }
-	protected Variable<Double> getHighestRankConfVariable() { return getVariable(2); }
+	protected Variable<Double, ?> getHighestRankResultVariable() { return getVariable(0); }
+	protected Variable<Double, ?> getHighestRankInputVariable() { return getVariable(1); }
+	protected Variable<Double, ?> getHighestRankConfVariable() { return getVariable(2); }
 	public int getDefaultValueIndex() { return getArgumentVariables().size() - 1; }
 
 	public List<ArrayVariable<Scalar>> getRanks() { return ranks == null ? getArguments(i -> i + 1) : ranks; }

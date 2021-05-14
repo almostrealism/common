@@ -43,7 +43,7 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 	}
 
 	@Override
-	public void println(Variable<?> variable) {
+	public void println(Variable<?, ?> variable) {
 		if (variable.isDeclaration()) {
 			if (variable.getProducer() == null) {
 				if (variable.getExpression() == null || variable.getExpression().getExpression() == null) {
@@ -83,11 +83,11 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 		println("printf(\"" + format + (newLine ? "\\n\", " : "\", ") + arg + ");");
 	}
 
-	public static String renderAssignment(Variable<?> var) {
+	public static String renderAssignment(Variable<?, ?> var) {
 		return var.getName() + " = " + var.getExpression().getValue() + ";";
 	}
 
-	protected String annotationForVariable(Variable<?> var) {
+	protected String annotationForVariable(Variable<?, ?> var) {
 		if (annotationForPhysicalScope(var.getPhysicalScope()) != null) {
 			return annotationForPhysicalScope(var.getPhysicalScope()) + " ";
 		}

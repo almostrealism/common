@@ -29,12 +29,12 @@ import io.almostrealism.code.Variable;
 public class InstanceReference<T> extends Expression<T> {
 	private Variable var;
 
-	public InstanceReference(Variable<T> v) {
+	public InstanceReference(Variable<T, ?> v) {
 		this(v.getType(), v.getName(), v);
 		this.var = v;
 	}
 
-	public InstanceReference(Variable<T> v, Variable... dependencies) {
+	public InstanceReference(Variable<T, ?> v, Variable... dependencies) {
 		this(v.getType(), v.getName(), CollectionUtils.include(new Variable[0], v, dependencies));
 		this.var = v;
 	}

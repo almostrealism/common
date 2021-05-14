@@ -18,16 +18,13 @@ package io.almostrealism.code;
 
 import io.almostrealism.code.expressions.Expression;
 import io.almostrealism.code.expressions.InstanceReference;
-import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 
-import java.util.Optional;
 import java.util.function.Supplier;
 
-public class ArrayVariable<T> extends Variable implements Array<T>, Delegated<ArrayVariable<T>> {
+public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements Array<T, ArrayVariable<T>> {
 	private final NameProvider names;
 
-	private ArrayVariable<T> delegate;
 	private int delegateOffset;
 	private Expression<Integer> arraySize;
 
@@ -56,17 +53,13 @@ public class ArrayVariable<T> extends Variable implements Array<T>, Delegated<Ar
 		return super.getArraySize();
 	}
 
-	@Override
-	public ArrayVariable<T> getDelegate() { return delegate; }
-	public void setDelegate(ArrayVariable<T> delegate) { this.delegate = delegate; }
-
 	public int getDelegateOffset() { return delegateOffset; }
 	public void setDelegateOffset(int delegateOffset) { this.delegateOffset = delegateOffset; }
 
 	@Override
 	public InstanceReference<T> get(String pos, Variable... dependencies) {
 		if (getDelegate() == null) {
-			return new InstanceReference(new Variable<T>(names.getVariableValueName(this, pos), false, new Expression(getType()), this), dependencies);
+			return new InstanceReference(new Variable<>(names.getVariableValueName(this, pos), false, new Expression(getType()), this), dependencies);
 		} else if (getDelegate() == this) {
 			throw new IllegalArgumentException("Circular delegate reference");
 		} else {

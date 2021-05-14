@@ -65,10 +65,6 @@ public abstract class NAryDynamicProducer<T extends MemWrapper> extends DynamicP
 	public void compact() {
 		super.compact();
 
-		if ("f_scalarProduct_8".equals(getName())) {
-			System.out.println("!");
-		}
-
 		if (value == null && isCompletelyValueOnly()) {
 			value = new Expression[getMemLength()];
 
@@ -107,7 +103,7 @@ public abstract class NAryDynamicProducer<T extends MemWrapper> extends DynamicP
 					}
 				}
 
-				List<Variable<?>> deps = new ArrayList<>();
+				List<Variable<?, ?>> deps = new ArrayList<>();
 
 				for (int i = 0; i < dynamicProducers.size(); i++) {
 					Expression e = getExpression(dynamicProducers.get(i), pos);
@@ -117,7 +113,7 @@ public abstract class NAryDynamicProducer<T extends MemWrapper> extends DynamicP
 					buf.append("(");
 					buf.append(e.getExpression());
 					buf.append(")");
-					if (i < (dynamicProducers.size() - 1)) buf.append(" " + operator + " ");
+					if (i < dynamicProducers.size() - 1) buf.append(" ").append(operator).append(" ");
 				}
 
 				value[pos] = new Expression<>(Double.class, buf.length() > 0 ? buf.toString() : removed, deps.toArray(new Variable[0]));

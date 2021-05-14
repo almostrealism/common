@@ -38,6 +38,6 @@ public class TriangleTest implements CodeFeatures {
 
 		Ray r = ev.evaluate();
 		System.out.println(r);
-		Assert.assertTrue(r.equals(new Ray(new Vector(0.0, 0.0, -1.0), new Vector(0.0, 0.0, 1.0))));
+		Assert.assertEquals(r, new Ray(new Vector(0.0, 0.0, -1.0), new Vector(0.0, 0.0, 1.0)));
 	}
 }

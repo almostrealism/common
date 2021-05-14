@@ -146,10 +146,10 @@ public class JavaScriptPrintWriter extends CodePrintWriterAdapter {
 	}
 
 	protected static String toString(List<Variable> arguments) {
-		StringBuffer buf = new StringBuffer();
+		StringBuilder buf = new StringBuilder();
 
 		for (int i = 0; i < arguments.size(); i++) {
-			Variable<?> v = arguments.get(i);
+			Variable<?, ?> v = arguments.get(i);
 
 			if (v instanceof ResourceVariable) {
 				buf.append(toJson(v));
@@ -161,7 +161,7 @@ public class JavaScriptPrintWriter extends CodePrintWriterAdapter {
 				buf.append(toJson(v.getProducer()));
 			}
 
-			if (i < (arguments.size() - 1)) {
+			if (i < arguments.size() - 1) {
 				buf.append(", ");
 			}
 		}

@@ -83,7 +83,7 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	@Override
-	public List<Variable<?>> getVariables() {
+	public List<Variable<?, ?>> getVariables() {
 		return ((OperationAdapter) getComputation()).getVariables();
 	}
 
@@ -137,7 +137,7 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 		}
 	}
 
-	public synchronized Scope<T> compile(Variable<T> outputVariable) {
+	public synchronized Scope<T> compile(Variable<T, ?> outputVariable) {
 		Computation<T> c = getComputation();
 		if (outputVariable != null) c.setOutputVariable(outputVariable);
 		scope = c.getScope();
@@ -161,8 +161,8 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	@Override
-	public String getBody(Variable<MemWrapper> outputVariable) {
-		Scope<T> scope = compile((Variable<T>) outputVariable);
+	public String getBody(Variable<MemWrapper, ?> outputVariable) {
+		Scope<T> scope = compile((Variable<T, ?>) outputVariable);
 		StringBuilder buf = new StringBuilder();
 		scope.write(new OpenCLPrintWriter(PrintWriter.of(buf::append)));
 		return buf.toString();

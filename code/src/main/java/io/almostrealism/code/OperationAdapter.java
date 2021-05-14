@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.BiFunction;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -42,7 +43,7 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 	private List<Supplier<Evaluable<? extends T>>> inputs;
 	private List<Argument<? extends T>> arguments;
 
-	private Map<Supplier<Evaluable>, List<Variable<?>>> variables;
+	private Map<Supplier<Evaluable>, List<Variable<?, ?>>> variables;
 	private List<Supplier<Evaluable>> variableOrder;
 	private List<String> variableNames;
 
@@ -96,7 +97,7 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 		}
 
 		return getArgumentVariables().stream()
-				.filter(arg -> arg != null && arg.getOriginalProducer() == input)
+				.filter(arg -> arg != null && arg.getOriginalProducer() == (Supplier) input)
 				.findFirst().orElse(null);
 
 	}
@@ -139,7 +140,7 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 	}
 
 	public void addVariable(Variable v) {
-		List<Variable<?>> existing = variables.get(v.getProducer());
+		List<Variable<?, ?>> existing = variables.get(v.getProducer());
 		if (existing == null) {
 			existing = new ArrayList<>();
 			variables.put(v.getProducer(), existing);
@@ -163,7 +164,7 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 		return getVariables().contains(v);
 	}
 
-	public List<Variable<?>> getVariables() {
+	public List<Variable<?, ?>> getVariables() {
 		return variableOrder.stream()
 				.map(variables::get)
 				.flatMap(List::stream)
@@ -190,7 +191,7 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 		this.variableNames = new ArrayList<>();
 	}
 
-	protected void removeDuplicateArguments() { setArguments(Named.removeDuplicates(getArguments())); }
+	protected void removeDuplicateArguments() { setArguments(Scope.removeDuplicateArguments(getArguments())); }
 
 	@Override
 	public synchronized void compact() {

@@ -35,7 +35,7 @@ public interface CodePrintWriter {
 	 *
 	 * @param v  Variable to print.
 	 */
-	void println(Variable<?> v);
+	void println(Variable<?, ?> v);
 
 	/**
 	 * Write a call to the function represented by the specified {@link Method}.

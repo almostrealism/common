@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,8 +22,8 @@ package io.almostrealism.code;
  *
  * @param <T>  Type of the underlying data.
  */
-public class ResourceVariable<T> extends Variable<T> {
-	private Resource<T> res;
+public class ResourceVariable<T> extends Variable<T, Variable<T, ?>> {
+	private final Resource<T> res;
 
 	/**
 	 * Create a {@link ResourceVariable} using the data from the specified {@link Resource}.

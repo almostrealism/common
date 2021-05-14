@@ -244,7 +244,7 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 		return allArgs;
 	}
 
-	private int getProducerArgumentReferenceIndex(Variable<?> arg) {
+	private int getProducerArgumentReferenceIndex(Variable<?, ?> arg) {
 		if (arg.getProducer() instanceof ProducerArgumentReference) {
 			return ((ProducerArgumentReference) arg.getProducer()).getReferencedArgumentIndex();
 		}

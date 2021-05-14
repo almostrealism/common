@@ -46,7 +46,7 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrappe
 
 	private int memLength;
 
-	private Function<Variable<T>, String> compacted;
+	private Function<Variable<T, ?>, String> compacted;
 
 	public AcceleratedConditionalStatementAdapter(int memLength, Supplier<T> blankValue, IntFunction<MemoryBank<T>> kernelDestination) {
 		this(memLength, blankValue, kernelDestination, null, null, null, null);
@@ -90,7 +90,7 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrappe
 	}
 
 	@Override
-	public String getBody(Variable<T> outputVariable) {
+	public String getBody(Variable<T, ?> outputVariable) {
 		if (compacted == null) {
 			StringBuilder buf = new StringBuilder();
 

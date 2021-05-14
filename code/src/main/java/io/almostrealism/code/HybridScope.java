@@ -47,10 +47,10 @@ public class HybridScope<T> extends Scope<T> {
 	public Consumer<String> code() { return explicit.code(); }
 
 	@Override
-	protected <T> List<T> arguments(Function<Argument<?>, T> mapper) {
+	protected <A> List<A> arguments(Function<Argument<?>, A> mapper) {
 		List<Argument<?>> args = new ArrayList<>();
 		args.addAll(explicit.arguments(Function.identity()));
 		args.addAll(super.arguments(Function.identity()));
-		return Named.removeDuplicates(args).stream().map(mapper).collect(Collectors.toList());
+		return Scope.removeDuplicateArguments(args).stream().map(mapper).collect(Collectors.toList());
 	}
 }

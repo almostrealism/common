@@ -38,6 +38,7 @@ public abstract class DynamicAcceleratedMultiEvaluable<I extends MemWrapper, O e
 		this(memLength, destination, kernelDestination, AcceleratedEvaluable.producers(inputArgs, additionalArguments));
 	}
 
+	@SafeVarargs
 	public DynamicAcceleratedMultiEvaluable(int memLength, Supplier<O> destination,
 											IntFunction<MemoryBank<O>> kernelDestination,
 											Supplier<Evaluable<? extends I>>... inputArgs) {
@@ -50,6 +51,7 @@ public abstract class DynamicAcceleratedMultiEvaluable<I extends MemWrapper, O e
 		this(memLength, kernel, destination, kernelDestination, AcceleratedEvaluable.producers(inputArgs, additionalArguments));
 	}
 
+	@SafeVarargs
 	public DynamicAcceleratedMultiEvaluable(int memLength, boolean kernel, Supplier<O> destination,
 											IntFunction<MemoryBank<O>> kernelDestination,
 											Supplier<Evaluable<? extends I>>... inputArgs) {
@@ -59,8 +61,9 @@ public abstract class DynamicAcceleratedMultiEvaluable<I extends MemWrapper, O e
 
 	public int getMemLength() { return memLength; }
 
-	public String getBody(Variable<MemWrapper> outputVariable) {
-		StringBuffer buf = new StringBuffer();
+	@Override
+	public String getBody(Variable<MemWrapper, ?> outputVariable) {
+		StringBuilder buf = new StringBuilder();
 		// TODO  Variables?
 		IntStream.range(0, memLength)
 				.mapToObj(getAssignmentFunction(this, outputVariable))

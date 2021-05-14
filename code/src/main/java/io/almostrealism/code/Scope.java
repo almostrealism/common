@@ -49,7 +49,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 	public static final boolean enableInlining = false;
 
 	private String name;
-	private final List<Variable<?>> variables;
+	private final List<Variable<?, ?>> variables;
 	private final List<Method> methods;
 	private final List<Scope> required;
 
@@ -82,7 +82,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 	/**
 	 * @return  The {@link Variable}s in this {@link Scope}.
 	 */
-	public List<Variable<?>> getVariables() { return variables; }
+	public List<Variable<?, ?>> getVariables() { return variables; }
 
 	/**
 	 * @return  The {@link Method}s in this {@link Scope}.
@@ -104,8 +104,8 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 	 */
 	public List<Scope> getRequiredScopes() { return required; }
 
-	public <T> List<Supplier<Evaluable<? extends T>>> getInputs() {
-		return arguments(arg -> ((ArrayVariable<? extends T>) arg.getVariable()).getProducer());
+	public <A> List<Supplier<Evaluable<? extends A>>> getInputs() {
+		return arguments(arg -> ((ArrayVariable) arg.getVariable()).getProducer());
 	}
 
 	public <A> List<Argument<? extends A>> getArguments() {
@@ -122,13 +122,11 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 
 	protected List<Argument<?>> arguments() { return arguments(Function.identity()); }
 
-	protected <T> List<T> arguments(Function<Argument<?>, T> mapper) {
+	protected <A> List<A> arguments(Function<Argument<?>, A> mapper) {
 		List<Argument<?>> args = new ArrayList<>();
 
 		if (arguments == null) {
-			extractArgumentDependencies(variables).stream()
-					.map(v -> new Argument(v, Expectation.EVALUATE_AHEAD))
-					.forEach(args::add);
+			args.addAll(extractArgumentDependencies(variables));
 			sortArguments(args);
 
 			this.stream()
@@ -156,7 +154,9 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 		List<Argument<?>> result = args.stream()
 				.map(Delegated::getRootDelegate)
 				.collect(Collectors.toList());
-		result = Named.removeDuplicates(result);
+
+		result = removeDuplicateArguments(result);
+
 		return result.stream().map(mapper).collect(Collectors.toList());
 	}
 
@@ -167,13 +167,15 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 
 		List<Argument<?>> args = new ArrayList<>();
 
-		getArgumentVariables()
+		getArguments()
 				.stream()
-				.map(var -> {
+				.map(arg -> {
+					Variable<?, ?> var = arg.getVariable();
+
 					if (!(var.getProducer() instanceof Computation)
 							|| var.getProducer() instanceof DynamicProducer
 							|| var.getProducer() instanceof ProducerArgumentReference) {
-						return Collections.singletonList(new Argument(var, Expectation.EVALUATE_AHEAD));
+						return Collections.singletonList(arg);
 					}
 
 					Scope s = ((Computation) var.getProducer()).getScope();
@@ -182,9 +184,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 					// Attempt to simply include the scope
 					// inline, otherwise introduce a method
 					if (tryAbsorb(s)) {
-						return s.getArgumentVariables().stream()
-								.map(v -> new Argument<>((ArrayVariable<?>) v, Expectation.WILL_EVALUATE))
-								.collect(Collectors.toList());
+						return s.getArguments();
 					} else {
 						s.setEmbedded(true);
 						required.add(s);
@@ -246,24 +246,49 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 		}
 	}
 
-	private static List<ArrayVariable> extractArgumentDependencies(Collection<Variable<?>> vars) {
-		List<ArrayVariable> args = new ArrayList<>();
-
-		v: for (Variable<?> var : vars) {
-			if (var == null) continue v;
-
-			if (var instanceof ArrayVariable && !args.contains(var)) {
-				args.add((ArrayVariable) var);
+	public static <T> List<Argument<? extends T>> removeDuplicateArguments(List<Argument<? extends T>> args) {
+		return Named.removeDuplicates(args, (a, b) -> {
+			if (a.getExpectation() == Expectation.WILL_EVALUATE) {
+				return a;
+			} else if (b.getExpectation() == Expectation.WILL_EVALUATE) {
+				return b;
 			}
 
-			if (var.getExpression() instanceof InstanceReference &&
-					!args.contains(((InstanceReference) var.getExpression()).getReferent())) {
-				if (((InstanceReference) var.getExpression()).getReferent() instanceof ArrayVariable) {
-					args.add((ArrayVariable) ((InstanceReference) var.getExpression()).getReferent());
+			return a;
+		});
+	}
+
+
+	private static List<Argument<?>> extractArgumentDependencies(Collection<Variable<?, ?>> vars) {
+		return extractArgumentDependencies(vars, true);
+	}
+
+	private static List<Argument<?>> extractArgumentDependencies(Collection<Variable<?, ?>> vars, boolean top) {
+		List<Argument<?>> args = new ArrayList<>();
+
+		v: for (Variable<?, ?> var : vars) {
+			Variable v = var;
+
+			if (v == null) continue v;
+			if (v.getDelegate() != null) v = v.getDelegate();
+
+			if (v instanceof ArrayVariable) {
+				Argument<?> arg = new Argument(v, top ? Expectation.WILL_EVALUATE : Expectation.EVALUATE_AHEAD);
+
+				if (!args.contains(arg)) {
+					args.add(arg);
 				}
 			}
 
-			extractArgumentDependencies(var.getDependencies()).stream()
+			if (var.getExpression() instanceof InstanceReference) {
+				Argument<?> arg = new Argument(((InstanceReference) var.getExpression()).getReferent(),
+												Expectation.EVALUATE_AHEAD);
+				if (arg.getVariable() instanceof ArrayVariable && !args.contains(arg)) {
+					args.add(arg);
+				}
+			}
+
+			extractArgumentDependencies(var.getDependencies(), false).stream()
 					.filter(a -> !args.contains(a)).forEach(args::add);
 		}
 

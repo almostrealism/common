@@ -20,15 +20,17 @@ import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Named;
 import io.almostrealism.relation.Sortable;
 
+import java.util.Objects;
+
 public class Argument<T> implements Named, Sortable, Delegated<Argument<T>> {
 	public enum Expectation {
 		EVALUATE_AHEAD, WILL_EVALUATE, WILL_ALTER, NOT_ALTERED
 	}
 
-	private final Variable<T> variable;
+	private final Variable<T, ?> variable;
 	private final Expectation expect;
 
-	public Argument(Variable<T> variable, Expectation expectation) {
+	public Argument(Variable<T, ?> variable, Expectation expectation) {
 		if (variable == null || expectation == null) throw new IllegalArgumentException();
 
 		this.variable = variable;
@@ -41,9 +43,22 @@ public class Argument<T> implements Named, Sortable, Delegated<Argument<T>> {
 	@Override
 	public int getSortHint() { return getVariable().getSortHint(); }
 
-	public Variable<T> getVariable() { return variable; }
+	public Variable<T, ?> getVariable() { return variable; }
 
 	public Expectation getExpectation() { return expect; }
+
+	@Override
+	public boolean equals(Object o) {
+		if (this == o) return true;
+		if (!(o instanceof Argument)) return false;
+		Argument<?> argument = (Argument<?>) o;
+		return Objects.equals(variable, argument.variable) && expect == argument.expect;
+	}
+
+	@Override
+	public int hashCode() {
+		return Objects.hash(variable);
+	}
 
 	@Override
 	public Argument<T> getDelegate() {

@@ -18,6 +18,7 @@ package io.almostrealism.code;
 
 import io.almostrealism.code.expressions.Expression;
 import io.almostrealism.relation.Compactable;
+import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Generated;
 import io.almostrealism.relation.Nameable;
@@ -36,7 +37,7 @@ import java.util.function.Supplier;
  *
  * @param <T>  Type of the underlying data.
  */
-public class Variable<T> implements Nameable, Sortable {
+public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable, Delegated<V> {
 	private String name;
 	private PhysicalScope physicalScope;
 	private boolean declaration;
@@ -46,24 +47,26 @@ public class Variable<T> implements Nameable, Sortable {
 
 	private Supplier<Evaluable<? extends T>> originalProducer;
 	private Supplier<Evaluable<? extends T>> producer;
-	private Variable<?> dependsOn;
+
+	private V delegate;
+	private Variable<?, ?> dependsOn;
 
 	public Variable(String name, Expression<T> expression) {
 		this(name, true, expression, (Supplier<Evaluable<? extends T>>) null);
 	}
 
-	public Variable(String name, Expression<T> expression, Variable<?> dependsOn) {
-		this(name, true, expression, dependsOn);
+	public Variable(String name, Expression<T> expression, V delegate) {
+		this(name, true, expression, delegate);
 	}
 
 	public Variable(String name, boolean declaration, Expression<T> expression) {
-		this(name, declaration, expression, (Variable) null);
+		this(name, declaration, expression, (V) null);
 	}
 
-	public Variable(String name, boolean declaration, Expression<T> expression, Variable<?> dependsOn) {
+	public Variable(String name, boolean declaration, Expression<T> expression, V delegate) {
 		this(name, expression);
 		this.declaration = declaration;
-		this.dependsOn = dependsOn;
+		this.delegate = delegate;
 	}
 
 	public Variable(String name, boolean declaration, Expression<T> expression, Supplier<Evaluable<? extends T>> producer) {
@@ -77,8 +80,8 @@ public class Variable<T> implements Nameable, Sortable {
 		this(name, true, (Expression) null, () -> new Provider<>(value));
 	}
 
-	public Variable(String name, boolean declaration, Variable dependsOn) {
-		this(name, declaration, (Expression) null, dependsOn);
+	public Variable(String name, boolean declaration, V delegate) {
+		this(name, declaration, (Expression) null, delegate);
 	}
 
 	public Variable(String name, PhysicalScope scope, Supplier<Evaluable<? extends T>> producer) {
@@ -126,6 +129,10 @@ public class Variable<T> implements Nameable, Sortable {
 
 	public void setPhysicalScope(PhysicalScope physicalScope) { this.physicalScope = physicalScope; }
 	public PhysicalScope getPhysicalScope() { return physicalScope; }
+
+	@Override
+	public V getDelegate() { return delegate; }
+	public void setDelegate(V delegate) { this.delegate = delegate; }
 
 	public void setDeclaration(boolean declaration) { this.declaration = declaration; }
 	public boolean isDeclaration() { return declaration; }
@@ -175,8 +182,9 @@ public class Variable<T> implements Nameable, Sortable {
 
 	public Class<T> getType() { return getExpression() == null ? null : getExpression().getType(); }
 
-	public List<Variable<?>> getDependencies() {
-		List<Variable<?>> deps = new ArrayList<>();
+	public List<Variable<?, ?>> getDependencies() {
+		List<Variable<?, ?>> deps = new ArrayList<>();
+		if (delegate != null) deps.add(delegate);
 		if (dependsOn != null) deps.add(dependsOn);
 		if (getExpression() != null) {
 			deps.addAll(getExpression().getDependencies());
@@ -201,6 +209,7 @@ public class Variable<T> implements Nameable, Sortable {
 		if (!Objects.equals(expression, v.getExpression())) return false;
 		if (!Objects.equals(producer, v.getProducer())) return false;
 		if (!Objects.equals(dependsOn, v.dependsOn)) return false;
+		if (!Objects.equals(delegate, v.getDelegate())) return false;
 
 		return true;
 	}

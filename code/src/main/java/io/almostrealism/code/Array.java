@@ -17,8 +17,9 @@
 package io.almostrealism.code;
 
 import io.almostrealism.code.expressions.InstanceReference;
+import io.almostrealism.relation.Delegated;
 
-public interface Array<T> {
+public interface Array<T, V extends Array<T, ?>> extends Delegated<V> {
 	default InstanceReference<T> get(int pos) {
 		return get(String.valueOf(pos));
 	}
