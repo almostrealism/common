@@ -23,9 +23,9 @@ import java.io.ObjectOutput;
 
 import org.almostrealism.algebra.Triple;
 import org.almostrealism.hardware.KernelizedProducer;
-import org.almostrealism.hardware.MemWrapper;
-import io.almostrealism.relation.Producer;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.algebra.Defaults;
+import org.almostrealism.hardware.cl.CLMemory;
 import org.jocl.cl_mem;
 
 /**
@@ -33,8 +33,8 @@ import org.jocl.cl_mem;
  * An RGB object stores these channels as double values between 0.0 (no color) and
  * 1.0 (strongest color).
  */
-public class RGB implements Triple, MemWrapper, Externalizable, Cloneable {
-	protected interface Data extends MemWrapper {
+public class RGB implements Triple, MemoryData, Externalizable, Cloneable {
+	protected interface Data extends MemoryData {
 		void set(int i, double r);
 		void add(int i, double r);
 		void scale(int i, double r);
@@ -154,7 +154,7 @@ public class RGB implements Triple, MemWrapper, Externalizable, Cloneable {
 		this.setBlue(this.adjust(b, f));
 	}
 
-	protected RGB(MemWrapper delegate, int delegateOffset) {
+	protected RGB(MemoryData delegate, int delegateOffset) {
 		initColorModule(192, delegate, delegateOffset);
 	}
 
@@ -162,7 +162,7 @@ public class RGB implements Triple, MemWrapper, Externalizable, Cloneable {
 		initColorModule(model, null, 0);
 	}
 
-	private void initColorModule(int model, MemWrapper delegate, int delegateOffset) {
+	private void initColorModule(int model, MemoryData delegate, int delegateOffset) {
 		if (model == 192) {
 			if (delegate == null) {
 				this.data = new RGBData192();
@@ -541,7 +541,7 @@ public class RGB implements Triple, MemWrapper, Externalizable, Cloneable {
 	public double[] toArray() { return new double[] { getRed(), getGreen(), getBlue() }; }
 
 	@Override
-	public cl_mem getMem() { return data.getMem(); }
+	public CLMemory getMem() { return data.getMem(); }
 
 	@Override
 	public int getOffset() { return data.getOffset(); }
@@ -550,10 +550,10 @@ public class RGB implements Triple, MemWrapper, Externalizable, Cloneable {
 	public int getMemLength() { return data.getMemLength(); }
 
 	@Override
-	public void setDelegate(MemWrapper m, int offset) { data.setDelegate(m, offset); }
+	public void setDelegate(MemoryData m, int offset) { data.setDelegate(m, offset); }
 
 	@Override
-	public MemWrapper getDelegate() { return data.getDelegate(); }
+	public MemoryData getDelegate() { return data.getDelegate(); }
 
 	@Override
 	public int getDelegateOffset() { return data.getDelegateOffset(); }

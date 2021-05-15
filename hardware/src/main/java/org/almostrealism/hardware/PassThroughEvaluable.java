@@ -45,9 +45,9 @@ public class PassThroughEvaluable<T> implements Evaluable<T>, ProducerArgumentRe
 
 	// TODO  Move to PassThroughProducer
 	public static <T> Producer<T> of(Class<? extends T> type, int index, int kernelDimension) {
-		if (MemWrapper.class.isAssignableFrom(type)) {
+		if (MemoryData.class.isAssignableFrom(type)) {
 			try {
-				MemWrapper m = (MemWrapper) type.getConstructor().newInstance();
+				MemoryData m = (MemoryData) type.getConstructor().newInstance();
 				return new PassThroughProducer(m.getMemLength(), index, kernelDimension);
 			} catch (InstantiationException | IllegalAccessException |
 					InvocationTargetException | NoSuchMethodException e) {

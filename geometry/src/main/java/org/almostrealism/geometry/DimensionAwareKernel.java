@@ -18,12 +18,10 @@ package org.almostrealism.geometry;
 
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.KernelizedProducer;
-import org.almostrealism.hardware.MemWrapper;
+import org.almostrealism.hardware.MemoryData;
 import io.almostrealism.relation.Compactable;
-import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Producer;
 
-public class DimensionAwareKernel<T extends MemWrapper> implements KernelizedProducer<T>, DimensionAware {
+public class DimensionAwareKernel<T extends MemoryData> implements KernelizedProducer<T>, DimensionAware {
 	private KernelizedEvaluable<T> k;
 
 	public DimensionAwareKernel(KernelizedEvaluable<T> k) {

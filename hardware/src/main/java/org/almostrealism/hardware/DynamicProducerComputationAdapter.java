@@ -39,7 +39,7 @@ import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
-public abstract class DynamicProducerComputationAdapter<I extends MemWrapper, O extends MemWrapper>
+public abstract class DynamicProducerComputationAdapter<I extends MemoryData, O extends MemoryData>
 		extends ProducerComputationAdapter<I, O>
 		implements MemWrapperComputation<O>, KernelizedProducer<O>,
 		DestinationSupport<O>, MultiExpression<Double>, ComputerFeatures {

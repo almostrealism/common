@@ -17,7 +17,7 @@
 package org.almostrealism.algebra;
 
 import org.almostrealism.algebra.computations.DynamicScalarProducer;
-import org.almostrealism.hardware.MemWrapper;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.PooledMem;
 
 public class Scalar extends Pair implements Comparable<Scalar> {
@@ -30,7 +30,7 @@ public class Scalar extends Pair implements Comparable<Scalar> {
 	public Scalar(double v) { setValue(v); setCertainty(1.0); }
 	public Scalar(double v, double c) { setValue(v); setCertainty(c); }
 
-	protected Scalar(MemWrapper delegate, int delegateOffset) {
+	protected Scalar(MemoryData delegate, int delegateOffset) {
 		super(delegate, delegateOffset);
 	}
 

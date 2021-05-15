@@ -27,8 +27,8 @@ import java.util.function.Consumer;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public abstract class DynamicAcceleratedEvaluable<I extends MemWrapper, O extends MemWrapper>
-		extends DynamicAcceleratedOperation<MemWrapper>
+public abstract class DynamicAcceleratedEvaluable<I extends MemoryData, O extends MemoryData>
+		extends DynamicAcceleratedOperation<MemoryData>
 		implements KernelizedEvaluable<O>, DestinationSupport<O> {
 	private Supplier<O> destination;
 
@@ -115,7 +115,7 @@ public abstract class DynamicAcceleratedEvaluable<I extends MemWrapper, O extend
 	}
 
 	@Override
-	protected MemWrapper[] getKernelArgs(MemoryBank args[]) {
+	protected MemoryData[] getKernelArgs(MemoryBank args[]) {
 		return getKernelArgs(getArgumentVariables(), args, 1);
 	}
 

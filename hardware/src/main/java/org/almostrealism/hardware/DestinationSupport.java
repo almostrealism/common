@@ -20,7 +20,7 @@ import io.almostrealism.relation.Delegated;
 
 import java.util.function.Supplier;
 
-public interface DestinationSupport<T extends MemWrapper> extends Delegated<DestinationSupport<T>> {
+public interface DestinationSupport<T extends MemoryData> extends Delegated<DestinationSupport<T>> {
 	void setDestination(Supplier<T> destination);
 
 	Supplier<T> getDestination();

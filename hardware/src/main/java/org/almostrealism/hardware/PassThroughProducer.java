@@ -28,7 +28,7 @@ import java.util.List;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public class PassThroughProducer<T extends MemWrapper>
+public class PassThroughProducer<T extends MemoryData>
 		extends DynamicProducerComputationAdapter<T, T>
 		implements ProducerArgumentReference {
 	private int argIndex;

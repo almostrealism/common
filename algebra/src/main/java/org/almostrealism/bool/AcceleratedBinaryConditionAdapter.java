@@ -23,7 +23,7 @@ import io.almostrealism.code.expressions.Expression;
 import io.almostrealism.code.expressions.InstanceReference;
 import io.almostrealism.code.expressions.NAryExpression;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.hardware.MemWrapper;
+import org.almostrealism.hardware.MemoryData;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.MemoryBank;
 
@@ -32,7 +32,7 @@ import java.util.List;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public abstract class AcceleratedBinaryConditionAdapter<T extends MemWrapper> extends AcceleratedConditionalStatementAdapter<T> {
+public abstract class AcceleratedBinaryConditionAdapter<T extends MemoryData> extends AcceleratedConditionalStatementAdapter<T> {
 	private String operator;
 	private Expression condition;
 

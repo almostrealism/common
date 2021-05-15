@@ -20,19 +20,20 @@ import io.almostrealism.relation.Producer;
 
 import org.almostrealism.hardware.DynamicProducerForMemWrapper;
 import org.almostrealism.hardware.Hardware;
-import org.almostrealism.hardware.MemWrapper;
-import org.almostrealism.hardware.mem.MemWrapperAdapter;
+import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.cl.CLMemory;
+import org.almostrealism.hardware.mem.MemoryDataAdapter;
 import org.almostrealism.hardware.PooledMem;
 import org.jocl.CL;
 import org.jocl.Pointer;
 import org.jocl.cl_mem;
 
-public class Pair extends MemWrapperAdapter {
+public class Pair extends MemoryDataAdapter {
 	public Pair() {
 		init();
 	}
 
-	protected Pair(MemWrapper delegate, int delegateOffset) {
+	protected Pair(MemoryData delegate, int delegateOffset) {
 		setDelegate(delegate, delegateOffset);
 		init();
 	}
@@ -227,7 +228,7 @@ public class Pair extends MemWrapperAdapter {
 	}
 
 	// TODO  This could be faster by moving directly between cl_mems
-	public static Pair fromMem(cl_mem mem, int sOffset, int length) {
+	public static Pair fromMem(CLMemory mem, int sOffset, int length) {
 		if (length != 1 && length != 2) {
 			throw new IllegalArgumentException(String.valueOf(length));
 		}
@@ -235,9 +236,9 @@ public class Pair extends MemWrapperAdapter {
 		if (Hardware.getLocalHardware().isDoublePrecision()) {
 			double out[] = new double[length];
 			Pointer dst = Pointer.to(out).withByteOffset(0);
-			CL.clEnqueueReadBuffer(Hardware.getLocalHardware().getQueue(), mem,
-					CL.CL_TRUE, sOffset * Hardware.getLocalHardware().getNumberSize(),
-					length * Hardware.getLocalHardware().getNumberSize(), dst, 0,
+			CL.clEnqueueReadBuffer(Hardware.getLocalHardware().getQueue(), mem.getMem(),
+					CL.CL_TRUE, (long) sOffset * Hardware.getLocalHardware().getNumberSize(),
+					(long) length * Hardware.getLocalHardware().getNumberSize(), dst, 0,
 					null, null);
 			if (length == 1) {
 				return new Pair(out[0], 0);
@@ -247,9 +248,9 @@ public class Pair extends MemWrapperAdapter {
 		} else {
 			float out[] = new float[length];
 			Pointer dst = Pointer.to(out).withByteOffset(0);
-			CL.clEnqueueReadBuffer(Hardware.getLocalHardware().getQueue(), mem,
-					CL.CL_TRUE, sOffset * Hardware.getLocalHardware().getNumberSize(),
-					length * Hardware.getLocalHardware().getNumberSize(), dst, 0,
+			CL.clEnqueueReadBuffer(Hardware.getLocalHardware().getQueue(), mem.getMem(),
+					CL.CL_TRUE, (long) sOffset * Hardware.getLocalHardware().getNumberSize(),
+					(long) length * Hardware.getLocalHardware().getNumberSize(), dst, 0,
 					null, null);
 			if (length == 1) {
 				return new Pair(out[0], 0);

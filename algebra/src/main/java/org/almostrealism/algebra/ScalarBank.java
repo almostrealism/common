@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,12 +16,7 @@
 
 package org.almostrealism.algebra;
 
-import io.almostrealism.code.AdaptEvaluable;
-import io.almostrealism.relation.Evaluable;
-import org.almostrealism.algebra.computations.ScalarBankAdd;
-import org.almostrealism.hardware.MemWrapper;
-import org.almostrealism.hardware.PassThroughEvaluable;
-import org.almostrealism.hardware.PassThroughProducer;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.MemoryBankAdapter;
 
 import java.util.stream.IntStream;
@@ -45,7 +40,7 @@ public class ScalarBank extends MemoryBankAdapter<Scalar> {
 
 	// TODO  Need to respect CacheLevel, but the parent constructor that does
 	//       respect cache level does this init stuff that we don't want
-	public ScalarBank(int count, MemWrapper delegate, int delegateOffset, CacheLevel cacheLevel) {
+	public ScalarBank(int count, MemoryData delegate, int delegateOffset, CacheLevel cacheLevel) {
 		super(2, count, delegateSpec ->
 						new Scalar(delegateSpec.getDelegate(), delegateSpec.getOffset()),
 				delegate, delegateOffset);

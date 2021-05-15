@@ -19,8 +19,8 @@ package org.almostrealism.algebra;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.hardware.DynamicProducerForMemWrapper;
 import org.almostrealism.hardware.Hardware;
-import org.almostrealism.hardware.MemWrapper;
-import org.almostrealism.hardware.mem.MemWrapperAdapter;
+import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.mem.MemoryDataAdapter;
 import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.hardware.MemoryBank;
 
@@ -31,7 +31,7 @@ import java.util.function.Supplier;
  * A {@link Vector} represents a 3d vector. It stores three coordinates, x, y, z
  * in a buffer maintained by JOCL.
  */
-public class Vector extends MemWrapperAdapter implements Triple, VectorFeatures, Cloneable {
+public class Vector extends MemoryDataAdapter implements Triple, VectorFeatures, Cloneable {
 	public static final int CARTESIAN_COORDINATES = 0;
 	public static final int SPHERICAL_COORDINATES = 1;
 
@@ -52,7 +52,7 @@ public class Vector extends MemWrapperAdapter implements Triple, VectorFeatures,
 		init();
 	}
 
-	public Vector(MemWrapper delegate, int delegateOffset) {
+	public Vector(MemoryData delegate, int delegateOffset) {
 		setDelegate(delegate, delegateOffset);
 		init();
 	}

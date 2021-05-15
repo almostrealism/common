@@ -29,15 +29,15 @@ public interface HardwareFeatures {
 		return Hardware.getLocalHardware().getComputer().compileRunnable(c);
 	}
 
-	default <T extends MemWrapper> KernelizedEvaluable<T> compileProducer(Computation<T> c) {
+	default <T extends MemoryData> KernelizedEvaluable<T> compileProducer(Computation<T> c) {
 		return (KernelizedEvaluable) Hardware.getLocalHardware().getComputer().compileProducer(c);
 	}
 
-	default <T extends MemWrapper> Optional<Computation<T>> decompile(Runnable r) {
+	default <T extends MemoryData> Optional<Computation<T>> decompile(Runnable r) {
 		return Hardware.getLocalHardware().getComputer().decompile(r);
 	}
 
-	default <T extends MemWrapper> Optional<Computation<T>> decompile(Evaluable<T> r) {
+	default <T extends MemoryData> Optional<Computation<T>> decompile(Evaluable<T> r) {
 		return Hardware.getLocalHardware().getComputer().decompile(r);
 	}
 
@@ -57,11 +57,11 @@ public interface HardwareFeatures {
 		return Hardware.getLocalHardware().isGPU() && Hardware.getLocalHardware().isDoublePrecision();
 	}
 
-	default <T extends MemWrapper> Assignment<T> a(int memLength, Evaluable<T> result, Evaluable<T> value) {
+	default <T extends MemoryData> Assignment<T> a(int memLength, Evaluable<T> result, Evaluable<T> value) {
 		return a(memLength, () -> result, () -> value);
 	}
 
-	default <T extends MemWrapper> Assignment<T> a(int memLength, Supplier<Evaluable<? extends T>> result, Supplier<Evaluable<? extends T>> value) {
+	default <T extends MemoryData> Assignment<T> a(int memLength, Supplier<Evaluable<? extends T>> result, Supplier<Evaluable<? extends T>> value) {
 		return new Assignment<>(memLength, result, value);
 	}
 

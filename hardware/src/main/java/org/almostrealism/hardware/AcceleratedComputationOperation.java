@@ -35,7 +35,7 @@ import org.almostrealism.io.PrintWriter;
 
 import java.util.List;
 
-public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperation<MemWrapper> implements NameProvider {
+public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperation<MemoryData> implements NameProvider {
 	public static boolean enableRequiredScopes = true;
 
 	private Compilation compilation;
@@ -161,7 +161,7 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	@Override
-	public String getBody(Variable<MemWrapper, ?> outputVariable) {
+	public String getBody(Variable<MemoryData, ?> outputVariable) {
 		Scope<T> scope = compile((Variable<T, ?>) outputVariable);
 		StringBuilder buf = new StringBuilder();
 		scope.write(new OpenCLPrintWriter(PrintWriter.of(buf::append)));

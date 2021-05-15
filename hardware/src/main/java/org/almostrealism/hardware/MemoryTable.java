@@ -23,7 +23,7 @@ package org.almostrealism.hardware;
  *
  * @author  Michael Murray
  */
-public interface MemoryTable<T extends MemWrapper> extends MemoryBank<MemoryBank<T>> {
+public interface MemoryTable<T extends MemoryData> extends MemoryBank<MemoryBank<T>> {
 	default T get(int r, int c) {
 		return get(r).get(c);
 	}

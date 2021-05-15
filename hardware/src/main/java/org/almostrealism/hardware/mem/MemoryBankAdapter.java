@@ -17,7 +17,7 @@
 package org.almostrealism.hardware.mem;
 
 import org.almostrealism.hardware.Hardware;
-import org.almostrealism.hardware.MemWrapper;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.PooledMem;
 
@@ -32,12 +32,12 @@ import java.util.stream.IntStream;
 
 /**
  * A {@link MemoryBankAdapter} is the default implementation for tracking
- * a section of RAM to store a collection of {@link MemWrapper}s in a
+ * a section of RAM to store a collection of {@link MemoryData}s in a
  * single {@link org.jocl.cl_mem}.
  *
  * @author  Michael Murray
  */
-public abstract class MemoryBankAdapter<T extends MemWrapper> extends MemWrapperAdapter implements MemoryBank<T> {
+public abstract class MemoryBankAdapter<T extends MemoryData> extends MemoryDataAdapter implements MemoryBank<T> {
 	private int memLength, count;
 	private int totalMemLength;
 
@@ -85,7 +85,7 @@ public abstract class MemoryBankAdapter<T extends MemWrapper> extends MemWrapper
 	 * This uses {@link CacheLevel#ALL}.
 	 */
 	protected MemoryBankAdapter(int memLength, int count, Function<DelegateSpec, T> supply,
-								MemWrapper delegate, int delegateOffset) {
+								MemoryData delegate, int delegateOffset) {
 		this(memLength, count, supply, delegate, delegateOffset, CacheLevel.ALL);
 	}
 
@@ -97,7 +97,7 @@ public abstract class MemoryBankAdapter<T extends MemWrapper> extends MemWrapper
 	 * target type.
 	 */
 	protected MemoryBankAdapter(int memLength, int count, Function<DelegateSpec, T> supply,
-								MemWrapper delegate, int delegateOffset, CacheLevel cacheLevel) {
+								MemoryData delegate, int delegateOffset, CacheLevel cacheLevel) {
 		this.memLength = memLength;
 		this.count = count;
 		this.totalMemLength = memLength * count;
@@ -189,7 +189,7 @@ public abstract class MemoryBankAdapter<T extends MemWrapper> extends MemWrapper
 			setOffset(offset);
 		}
 
-		public MemWrapper getDelegate() { return MemoryBankAdapter.this; }
+		public MemoryData getDelegate() { return MemoryBankAdapter.this; }
 
 		public int getOffset() { return offset; }
 		public void setOffset(int offset) { this.offset = offset; }

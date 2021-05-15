@@ -16,13 +16,13 @@
 
 package org.almostrealism.bool;
 
-import org.almostrealism.hardware.MemWrapper;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryBank;
 
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public abstract class LessThan<T extends MemWrapper> extends AcceleratedBinaryConditionAdapter<T> {
+public abstract class LessThan<T extends MemoryData> extends AcceleratedBinaryConditionAdapter<T> {
 	public LessThan(int memLength,
 					Supplier<T> blankValue,
 					IntFunction<MemoryBank<T>> kernelDestination,

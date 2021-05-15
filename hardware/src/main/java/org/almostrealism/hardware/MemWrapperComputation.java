@@ -18,6 +18,6 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.Computation;
 
-public interface MemWrapperComputation<T extends MemWrapper> extends Computation<T> {
+public interface MemWrapperComputation<T extends MemoryData> extends Computation<T> {
 	int getMemLength();
 }

@@ -35,8 +35,8 @@ import org.almostrealism.geometry.computations.TransformAsOffset;
 import org.almostrealism.hardware.DynamicProducerForMemWrapper;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.cl.HardwareOperator;
-import org.almostrealism.hardware.MemWrapper;
-import org.almostrealism.hardware.mem.MemWrapperAdapter;
+import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.mem.MemoryDataAdapter;
 import org.almostrealism.hardware.PooledMem;
 
 import java.util.function.Supplier;
@@ -47,7 +47,7 @@ import java.util.function.Supplier;
  * methods for transforming various types of vectors. The TransformMatrix class also provides
  * some static methods that generate certain useful matrices.
  */
-public class TransformMatrix extends MemWrapperAdapter implements TripleFunction<Triple, Vector>, VectorFeatures, TransformMatrixFeatures, HardwareFeatures {
+public class TransformMatrix extends MemoryDataAdapter implements TripleFunction<Triple, Vector>, VectorFeatures, TransformMatrixFeatures, HardwareFeatures {
 	public static final int TRANSFORM_AS_LOCATION = 1;
 	public static final int TRANSFORM_AS_OFFSET = 2;
 	public static final int TRANSFORM_AS_NORMAL = 4;
@@ -73,11 +73,11 @@ public class TransformMatrix extends MemWrapperAdapter implements TripleFunction
 		this(true, null, 0);
 	}
 
-	protected TransformMatrix(MemWrapper delegate, int delegateOffset) {
+	protected TransformMatrix(MemoryData delegate, int delegateOffset) {
 		this(true, delegate, delegateOffset);
 	}
 
-	private TransformMatrix(boolean identity, MemWrapper delegate, int delegateOffset) {
+	private TransformMatrix(boolean identity, MemoryData delegate, int delegateOffset) {
 		setDelegate(delegate, delegateOffset);
 		initMem(identity);
 	}

@@ -29,7 +29,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-public class AcceleratedEvaluable<I extends MemWrapper, O extends MemWrapper> extends AcceleratedOperation implements KernelizedEvaluable<O> {
+public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> extends AcceleratedOperation implements KernelizedEvaluable<O> {
 	@SafeVarargs
 	public AcceleratedEvaluable(String function, Supplier<Evaluable<? extends O>> result, Supplier<Evaluable<? extends I>>... inputArgs) {
 		this(function, false, result, inputArgs, new Object[0]);
@@ -73,7 +73,7 @@ public class AcceleratedEvaluable<I extends MemWrapper, O extends MemWrapper> ex
 	}
 
 	@Override
-	protected MemWrapper[] getKernelArgs(MemoryBank args[]) {
+	protected MemoryData[] getKernelArgs(MemoryBank args[]) {
 		return getKernelArgs(getArgumentVariables(), args, 1);
 	}
 
@@ -89,7 +89,7 @@ public class AcceleratedEvaluable<I extends MemWrapper, O extends MemWrapper> ex
 			for (int i = 0; i < destination.getCount(); i++) {
 				final int fi = i;
 				destination.set(i,
-						((Evaluable<MemWrapper>) operation).evaluate(Stream.of(args)
+						((Evaluable<MemoryData>) operation).evaluate(Stream.of(args)
 								.map(arg -> arg.get(fi)).toArray()));
 			}
 		} else {

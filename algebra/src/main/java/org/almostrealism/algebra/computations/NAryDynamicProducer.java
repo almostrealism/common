@@ -22,7 +22,7 @@ import io.almostrealism.code.Variable;
 import io.almostrealism.code.expressions.NAryExpression;
 import org.almostrealism.hardware.DynamicProducerComputationAdapter;
 import org.almostrealism.hardware.ComputerFeatures;
-import org.almostrealism.hardware.MemWrapper;
+import org.almostrealism.hardware.MemoryData;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.MemoryBank;
 
@@ -31,7 +31,7 @@ import java.util.List;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public abstract class NAryDynamicProducer<T extends MemWrapper> extends DynamicProducerComputationAdapter<T, T> implements ComputerFeatures {
+public abstract class NAryDynamicProducer<T extends MemoryData> extends DynamicProducerComputationAdapter<T, T> implements ComputerFeatures {
 	private final String operator;
 	private Expression<Double> value[];
 	private boolean isStatic;

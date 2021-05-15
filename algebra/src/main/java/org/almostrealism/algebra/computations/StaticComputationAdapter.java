@@ -19,14 +19,14 @@ package org.almostrealism.algebra.computations;
 import io.almostrealism.code.expressions.Expression;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.hardware.DynamicProducerComputationAdapter;
-import org.almostrealism.hardware.MemWrapper;
+import org.almostrealism.hardware.MemoryData;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.MemoryBank;
 
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public abstract class StaticComputationAdapter<T extends MemWrapper> extends DynamicProducerComputationAdapter<MemWrapper, T> {
+public abstract class StaticComputationAdapter<T extends MemoryData> extends DynamicProducerComputationAdapter<MemoryData, T> {
 	private T value;
 
 	public StaticComputationAdapter(T value, Supplier<Evaluable<? extends T>> output,

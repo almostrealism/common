@@ -19,7 +19,7 @@ package org.almostrealism.hardware.cl;
 import io.almostrealism.relation.Factory;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
-import org.almostrealism.hardware.MemWrapper;
+import org.almostrealism.hardware.MemoryData;
 import org.jocl.*;
 
 import java.util.function.BiFunction;
@@ -30,7 +30,7 @@ import java.util.function.Consumer;
  *
  * @param <T> Return type
  */
-public class HardwareOperator<T extends MemWrapper> implements Consumer<Object[]>, Factory<cl_kernel> {
+public class HardwareOperator<T extends MemoryData> implements Consumer<Object[]>, Factory<cl_kernel> {
 	public static boolean enableVerboseLog;
 
 	private static long totalInvocations;
@@ -91,28 +91,28 @@ public class HardwareOperator<T extends MemWrapper> implements Consumer<Object[]
 					throw new NullPointerException("argument " + i + " to function " + name);
 				}
 
-				if (args[i] instanceof MemWrapper == false) {
+				if (!(args[i] instanceof MemoryData)) {
 					throw new IllegalArgumentException("argument " + i + "(" +
 							args[i].getClass().getSimpleName() + ") to function " +
 							name + " is not a MemWrapper");
 				}
 
 				if (enableVerboseLog) System.out.println(id + ": clSetKernelArg(0) start");
-				CL.clSetKernelArg(kernel, index++, Sizeof.cl_mem, Pointer.to(((MemWrapper) args[i]).getMem()));
+				CL.clSetKernelArg(kernel, index++, Sizeof.cl_mem, Pointer.to(((MemoryData) args[i]).getMem().getMem()));
 				if (enableVerboseLog) System.out.println(id + ": clSetKernelArg(0) end");
 			}
 
 			for (int i = 0; i < argCount; i++) {
 				if (enableVerboseLog) System.out.println(id + ": clSetKernelArg(1) start");
 				CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
-						Pointer.to(new int[] { ((MemWrapper) args[i]).getOffset() })); // Offset
+						Pointer.to(new int[] { ((MemoryData) args[i]).getOffset() })); // Offset
 				if (enableVerboseLog) System.out.println(id + ": clSetKernelArg(1) end");
 			}
 
 			for (int i = 0; i < argCount; i++) {
 				if (enableVerboseLog) System.out.println(id + ": clSetKernelArg(2) start");
 				CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
-						Pointer.to(new int[] { ((MemWrapper) args[i]).getAtomicMemLength() })); // Size
+						Pointer.to(new int[] { ((MemoryData) args[i]).getAtomicMemLength() })); // Size
 				if (enableVerboseLog) System.out.println(id + ": clSetKernelArg(2) end");
 			}
 

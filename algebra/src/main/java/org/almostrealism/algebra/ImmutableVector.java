@@ -17,7 +17,7 @@
 package org.almostrealism.algebra;
 
 import org.almostrealism.algebra.computations.StaticVectorComputation;
-import org.almostrealism.hardware.MemWrapper;
+import org.almostrealism.hardware.MemoryData;
 
 public class ImmutableVector extends StaticVectorComputation implements TripleFunction<Triple, Vector> {
 	public ImmutableVector() {
@@ -54,7 +54,7 @@ public class ImmutableVector extends StaticVectorComputation implements TripleFu
 		}
 
 		@Override
-		public void setMem(int offset, MemWrapper src, int srcOffset, int length) {
+		public void setMem(int offset, MemoryData src, int srcOffset, int length) {
 			if (initialized)
 				throw new RuntimeException("Vector is immutable");
 			else

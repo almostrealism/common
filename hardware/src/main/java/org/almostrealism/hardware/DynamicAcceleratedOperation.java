@@ -24,7 +24,7 @@ import org.almostrealism.hardware.cl.HardwareOperatorMap;
 import java.util.List;
 import java.util.function.Supplier;
 
-public abstract class DynamicAcceleratedOperation<T extends MemWrapper> extends AcceleratedOperation<T> implements ExplictBody<T> {
+public abstract class DynamicAcceleratedOperation<T extends MemoryData> extends AcceleratedOperation<T> implements ExplictBody<T> {
 	private HardwareOperatorMap operators;
 
 	@SafeVarargs

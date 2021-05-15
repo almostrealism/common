@@ -22,8 +22,8 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.computations.RayPointAt;
 import org.almostrealism.hardware.AcceleratedEvaluable;
 import org.almostrealism.hardware.DynamicProducerForMemWrapper;
-import org.almostrealism.hardware.MemWrapper;
-import org.almostrealism.hardware.mem.MemWrapperAdapter;
+import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.mem.MemoryDataAdapter;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.MemoryBank;
@@ -37,7 +37,7 @@ import java.util.function.Supplier;
  * 
  * @author  Michael Murray
  */
-public class Ray extends MemWrapperAdapter implements RayFeatures, Cloneable {
+public class Ray extends MemoryDataAdapter implements RayFeatures, Cloneable {
 	private Ray(double coords[]) {
 		this();
 		this.setMem(coords);
@@ -50,7 +50,7 @@ public class Ray extends MemWrapperAdapter implements RayFeatures, Cloneable {
 		init();
 	}
 
-	protected Ray(MemWrapper delegate, int delegateOffset) {
+	protected Ray(MemoryData delegate, int delegateOffset) {
 		setDelegate(delegate, delegateOffset);
 		init();
 	}

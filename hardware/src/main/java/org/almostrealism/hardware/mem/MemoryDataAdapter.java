@@ -17,14 +17,15 @@
 package org.almostrealism.hardware.mem;
 
 import org.almostrealism.hardware.Hardware;
-import org.almostrealism.hardware.MemWrapper;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.PooledMem;
+import org.almostrealism.hardware.cl.CLMemory;
 import org.jocl.cl_mem;
 
-public abstract class MemWrapperAdapter implements MemWrapper {
-	private cl_mem mem;
+public abstract class MemoryDataAdapter implements MemoryData {
+	private CLMemory mem;
 
-	private MemWrapper delegateMem;
+	private MemoryData delegateMem;
 	private int delegateMemOffset;
 
 	protected void init() {
@@ -32,7 +33,7 @@ public abstract class MemWrapperAdapter implements MemWrapper {
 			PooledMem pool = getDefaultDelegate();
 
 			if (pool == null) {
-				mem = Hardware.getLocalHardware().allocate(getMemLength());
+				mem = Hardware.getLocalHardware().getMemoryProvider().allocate(getMemLength());
 			} else {
 				setDelegate(pool, pool.reserveOffset(this));
 				setMem(new double[getMemLength()]);
@@ -41,10 +42,10 @@ public abstract class MemWrapperAdapter implements MemWrapper {
 	}
 
 	@Override
-	public cl_mem getMem() { return delegateMem == null ? mem : delegateMem.getMem(); }
+	public CLMemory getMem() { return delegateMem == null ? mem : delegateMem.getMem(); }
 
 	@Override
-	public MemWrapper getDelegate() { return delegateMem; }
+	public MemoryData getDelegate() { return delegateMem; }
 
 	@Override
 	public int getDelegateOffset() { return delegateMemOffset; }
@@ -52,12 +53,12 @@ public abstract class MemWrapperAdapter implements MemWrapper {
 	@Override
 	public void destroy() {
 		if (mem == null) return;
-		Hardware.getLocalHardware().deallocate(getMemLength(), mem);
+		Hardware.getLocalHardware().getMemoryProvider().deallocate(getMemLength(), mem);
 		mem = null;
 	}
 
 	@Override
-	public void setDelegate(MemWrapper m, int offset) {
+	public void setDelegate(MemoryData m, int offset) {
 		this.delegateMem = m;
 		this.delegateMemOffset = offset;
 	}

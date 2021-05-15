@@ -14,14 +14,21 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.hardware;
+package org.almostrealism.hardware.cl;
 
-/**
- * A {@link MemoryData} that allows a segment to be reserved for use via
- * {@link #reserveOffset(MemoryData)}.
- *
- * @author  Michael Murray
- */
-public interface PooledMem<T extends MemoryData> extends MemoryData {
-	int reserveOffset(T owner);
+import org.almostrealism.hardware.RAM;
+import org.jocl.cl_mem;
+
+public class CLMemory extends RAM {
+	private final cl_mem mem;
+
+	protected CLMemory(cl_mem mem) {
+		this.mem = mem;
+	}
+
+	// TODO  Make protected
+	public cl_mem getMem() { return mem; }
+
+	@Override
+	public long getNativePointer() { return mem.getNativePointer(); }
 }

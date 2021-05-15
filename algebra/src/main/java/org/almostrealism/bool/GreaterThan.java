@@ -16,15 +16,14 @@
 
 package org.almostrealism.bool;
 
-import org.almostrealism.hardware.MemWrapper;
+import org.almostrealism.hardware.MemoryData;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.MemoryBank;
 
-import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public abstract class GreaterThan<T extends MemWrapper> extends AcceleratedBinaryConditionAdapter<T> {
+public abstract class GreaterThan<T extends MemoryData> extends AcceleratedBinaryConditionAdapter<T> {
 	public GreaterThan(int memLength,
 					   Supplier<T> blankValue,
 					   IntFunction<MemoryBank<T>> kernelDestination,

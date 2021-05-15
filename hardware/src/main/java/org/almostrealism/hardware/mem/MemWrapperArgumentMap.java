@@ -21,8 +21,9 @@ import io.almostrealism.code.NameProvider;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
-import org.almostrealism.hardware.MemWrapper;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.ProviderAwareArgumentMap;
+import org.almostrealism.hardware.cl.CLMemory;
 import org.jocl.cl_mem;
 
 import java.util.HashMap;
@@ -30,7 +31,7 @@ import java.util.Map;
 import java.util.function.Supplier;
 
 public class MemWrapperArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> {
-	private Map<cl_mem, ArrayVariable<A>> mems;
+	private Map<CLMemory, ArrayVariable<A>> mems;
 
 	public MemWrapperArgumentMap() {
 		mems = new HashMap<>();
@@ -43,9 +44,9 @@ public class MemWrapperArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 
 		Object provider = key.get();
 		if (!(provider instanceof Provider)) return null;
-		if (!(((Provider) provider).get() instanceof MemWrapper)) return null;
+		if (!(((Provider) provider).get() instanceof MemoryData)) return null;
 
-		MemWrapper mw = (MemWrapper) ((Provider) provider).get();
+		MemoryData mw = (MemoryData) ((Provider) provider).get();
 		if (mems.containsKey(mw.getMem())) {
 			return delegateProvider.getArgument(p, key, mems.get(mw.getMem()), mw.getOffset());
 		} else {
@@ -55,7 +56,7 @@ public class MemWrapperArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 		}
 	}
 
-	protected MemWrapper rootDelegate(MemWrapper mw) {
+	protected MemoryData rootDelegate(MemoryData mw) {
 		if (mw.getDelegate() == null) {
 			return mw;
 		} else {
@@ -63,15 +64,15 @@ public class MemWrapperArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 		}
 	}
 
-	protected class RootDelegateProviderSupplier implements Supplier<Evaluable<? extends MemWrapper>>, Delegated<Provider> {
+	protected class RootDelegateProviderSupplier implements Supplier<Evaluable<? extends MemoryData>>, Delegated<Provider> {
 		private final Provider provider;
 
-		public RootDelegateProviderSupplier(MemWrapper mem) {
+		public RootDelegateProviderSupplier(MemoryData mem) {
 			this.provider = new Provider<>(rootDelegate(mem));
 		}
 
 		@Override
-		public Evaluable<? extends MemWrapper> get() { return provider; }
+		public Evaluable<? extends MemoryData> get() { return provider; }
 
 		@Override
 		public Provider getDelegate() { return provider; }

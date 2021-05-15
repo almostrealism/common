@@ -21,7 +21,6 @@ import io.almostrealism.relation.Named;
 import io.almostrealism.relation.Evaluable;
 import org.jocl.CLException;
 
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
@@ -33,7 +32,7 @@ import java.util.stream.Stream;
  *
  * @author  Michael Murray
  */
-public interface KernelizedEvaluable<T extends MemWrapper> extends Evaluable<T> {
+public interface KernelizedEvaluable<T extends MemoryData> extends Evaluable<T> {
 	default void kernelEvaluate(MemoryBank destination, MemoryBank args[]) {
 		String name = this instanceof Named ? ((Named) this).getName() : OperationAdapter.operationName(this instanceof Named ? (Named) this : null, getClass(), "function");
 		if (KernelizedOperation.enableKernelLog) System.out.println("KernelizedEvaluable: Evaluating " + name + " kernel...");

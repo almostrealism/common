@@ -28,10 +28,9 @@ import io.almostrealism.code.expressions.Expression;
 import io.almostrealism.code.expressions.NAryExpression;
 import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Named;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.AcceleratedEvaluable;
-import org.almostrealism.hardware.MemWrapper;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryBank;
 
 import java.util.ArrayList;
@@ -43,7 +42,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-public abstract class AcceleratedConjunctionAdapter<T extends MemWrapper> extends AcceleratedConditionalStatementAdapter<T> {
+public abstract class AcceleratedConjunctionAdapter<T extends MemoryData> extends AcceleratedConditionalStatementAdapter<T> {
 	private List<AcceleratedConditionalStatement<? extends T>> conjuncts;
 	private Supplier<Evaluable<?>> trueValue, falseValue;
 	private ArrayVariable<?> trueVar, falseVar;
@@ -79,29 +78,29 @@ public abstract class AcceleratedConjunctionAdapter<T extends MemWrapper> extend
 		ScopeLifecycle.prepareScope(Stream.of(trueValue), manager);
 		ScopeLifecycle.prepareScope(Stream.of(falseValue), manager);
 
-		List<ArrayVariable<? extends MemWrapper>> args = new ArrayList<>();
-		args.add((ArrayVariable<? extends MemWrapper>) getArguments(false).get(0).getVariable());
+		List<ArrayVariable<? extends MemoryData>> args = new ArrayList<>();
+		args.add((ArrayVariable<? extends MemoryData>) getArguments(false).get(0).getVariable());
 		args.addAll(getOperands());
 
 		this.trueVar = manager.argumentForInput(this).apply(trueValue);
-		args.add((ArrayVariable<? extends MemWrapper>) this.trueVar);
+		args.add((ArrayVariable<? extends MemoryData>) this.trueVar);
 
 		this.falseVar = manager.argumentForInput(this).apply(falseValue);
-		args.add((ArrayVariable<? extends MemWrapper>) this.falseVar);
+		args.add((ArrayVariable<? extends MemoryData>) this.falseVar);
 
 		setArguments(args.stream()
 				.map(var -> new Argument<>(var, Expectation.EVALUATE_AHEAD))
-				.map(arg -> (Argument<? extends MemWrapper>) arg)
+				.map(arg -> (Argument<? extends MemoryData>) arg)
 				.collect(Collectors.toList()));
 	}
 
 	@Override
-	public List<Argument<? extends MemWrapper>> getArguments() { return getArguments(true); }
+	public List<Argument<? extends MemoryData>> getArguments() { return getArguments(true); }
 
-	protected List<Argument<? extends MemWrapper>> getArguments(boolean includeConjuncts) {
+	protected List<Argument<? extends MemoryData>> getArguments(boolean includeConjuncts) {
 		if (super.getArguments() == null) return null;
 
-		List<Argument<? extends MemWrapper>> all = new ArrayList<>(super.getArguments());
+		List<Argument<? extends MemoryData>> all = new ArrayList<>(super.getArguments());
 
 		if (includeConjuncts) {
 			conjuncts.stream()

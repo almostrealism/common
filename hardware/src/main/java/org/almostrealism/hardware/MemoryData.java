@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,15 +19,16 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.expressions.MultiExpression;
 import io.almostrealism.code.expressions.Expression;
 import io.almostrealism.relation.Delegated;
+import org.almostrealism.hardware.cl.CLMemory;
 import org.jocl.CL;
 import org.jocl.CLException;
 import org.jocl.Pointer;
 import org.jocl.cl_mem;
 
-public interface MemWrapper extends MultiExpression<Double>, Delegated<MemWrapper> {
+public interface MemoryData extends MultiExpression<Double>, Delegated<MemoryData> {
 	int sizeOf = Hardware.getLocalHardware().getNumberSize();
 
-	cl_mem getMem();
+	CLMemory getMem();
 
 	default int getOffset() {
 		if (getDelegate() == null) {
@@ -52,10 +53,10 @@ public interface MemWrapper extends MultiExpression<Double>, Delegated<MemWrappe
 	 * to skip over to get to the location in the {@link cl_mem} where data should be
 	 * kept.
 	 */
-	void setDelegate(MemWrapper m, int offset);
+	void setDelegate(MemoryData m, int offset);
 
 	@Override
-	MemWrapper getDelegate();
+	MemoryData getDelegate();
 
 	int getDelegateOffset();
 
@@ -88,7 +89,7 @@ public interface MemWrapper extends MultiExpression<Double>, Delegated<MemWrappe
 		}
 	}
 
-	default void setMem(int offset, MemWrapper src, int srcOffset, int length) {
+	default void setMem(int offset, MemoryData src, int srcOffset, int length) {
 		if (getDelegate() == null) {
 			setMem(getMem(), getOffset() + offset, src, srcOffset, length);
 		} else {
@@ -106,28 +107,28 @@ public interface MemWrapper extends MultiExpression<Double>, Delegated<MemWrappe
 
 	default void getMem(double out[], int offset) { getMem(0, out, offset, getMemLength()); }
 
-	static void setMem(cl_mem mem, int offset, double[] source, int srcOffset, int length) {
+	static void setMem(CLMemory mem, int offset, double[] source, int srcOffset, int length) {
 		if (Hardware.getLocalHardware().isDoublePrecision()) {
-			Pointer src = Pointer.to(source).withByteOffset(srcOffset * sizeOf);
-			CL.clEnqueueWriteBuffer(Hardware.getLocalHardware().getQueue(), mem, CL.CL_TRUE,
-					offset * sizeOf, length * sizeOf,
+			Pointer src = Pointer.to(source).withByteOffset((long) srcOffset * sizeOf);
+			CL.clEnqueueWriteBuffer(Hardware.getLocalHardware().getQueue(), mem.getMem(), CL.CL_TRUE,
+					(long) offset * sizeOf, (long) length * sizeOf,
 					src, 0, null, null);
 		} else {
 			float f[] = new float[length];
 			for (int i = 0; i < f.length; i++) f[i] = (float) source[srcOffset + i];
 			Pointer src = Pointer.to(f).withByteOffset(0);
-			CL.clEnqueueWriteBuffer(Hardware.getLocalHardware().getQueue(), mem, CL.CL_TRUE,
-					offset * sizeOf, length * sizeOf,
+			CL.clEnqueueWriteBuffer(Hardware.getLocalHardware().getQueue(), mem.getMem(), CL.CL_TRUE,
+					(long) offset * sizeOf, (long) length * sizeOf,
 					src, 0, null, null);
 		}
 	}
 
-	static void setMem(cl_mem mem, int offset, MemWrapper src, int srcOffset, int length) {
+	static void setMem(CLMemory mem, int offset, MemoryData src, int srcOffset, int length) {
 		if (src.getDelegate() == null) {
 			try {
-				CL.clEnqueueCopyBuffer(Hardware.getLocalHardware().getQueue(), src.getMem(), mem,
-						srcOffset * sizeOf,
-						offset * sizeOf, length * sizeOf,
+				CL.clEnqueueCopyBuffer(Hardware.getLocalHardware().getQueue(), src.getMem().getMem(), mem.getMem(),
+						(long) srcOffset * sizeOf,
+						(long) offset * sizeOf, (long) length * sizeOf,
 						0, null, null);
 			} catch (CLException e) {
 				throw e;
@@ -137,17 +138,17 @@ public interface MemWrapper extends MultiExpression<Double>, Delegated<MemWrappe
 		}
 	}
 
-	static void getMem(cl_mem mem, int sOffset, double out[], int oOffset, int length) {
+	static void getMem(CLMemory mem, int sOffset, double out[], int oOffset, int length) {
 		if (Hardware.getLocalHardware().isDoublePrecision()) {
 			Pointer dst = Pointer.to(out).withByteOffset((long) oOffset * sizeOf);
-			CL.clEnqueueReadBuffer(Hardware.getLocalHardware().getQueue(), mem,
+			CL.clEnqueueReadBuffer(Hardware.getLocalHardware().getQueue(), mem.getMem(),
 					CL.CL_TRUE, (long) sOffset * sizeOf,
 					(long) length * sizeOf, dst, 0,
 					null, null);
 		} else {
 			float f[] = new float[length];
 			Pointer dst = Pointer.to(f).withByteOffset(0);
-			CL.clEnqueueReadBuffer(Hardware.getLocalHardware().getQueue(), mem,
+			CL.clEnqueueReadBuffer(Hardware.getLocalHardware().getQueue(), mem.getMem(),
 					CL.CL_TRUE, (long) sOffset * sizeOf,
 					(long) length * sizeOf, dst, 0,
 					null, null);

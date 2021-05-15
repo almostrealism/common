@@ -20,7 +20,7 @@ import io.almostrealism.code.Computation;
 import io.almostrealism.code.ProducerComputation;
 import org.almostrealism.hardware.cl.HardwareOperator;
 
-public class AcceleratedComputationEvaluable<T extends MemWrapper> extends AcceleratedComputationOperation implements KernelizedEvaluable<T> {
+public class AcceleratedComputationEvaluable<T extends MemoryData> extends AcceleratedComputationOperation implements KernelizedEvaluable<T> {
 	public AcceleratedComputationEvaluable(Computation<T> c) {
 		this(c, true);
 	}
@@ -58,7 +58,7 @@ public class AcceleratedComputationEvaluable<T extends MemWrapper> extends Accel
 	}
 
 	@Override
-	protected MemWrapper[] getKernelArgs(MemoryBank args[]) {
+	protected MemoryData[] getKernelArgs(MemoryBank args[]) {
 		return getKernelArgs(getArgumentVariables(), args, 1);
 	}
 

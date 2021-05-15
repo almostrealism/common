@@ -26,7 +26,7 @@ import io.almostrealism.relation.Producer;
  *
  * @author  Michael Murray
  */
-public interface KernelizedProducer<T extends MemWrapper> extends Producer<T>, KernelSupport {
+public interface KernelizedProducer<T extends MemoryData> extends Producer<T>, KernelSupport {
 	@Override
 	KernelizedEvaluable<T> get();
 }

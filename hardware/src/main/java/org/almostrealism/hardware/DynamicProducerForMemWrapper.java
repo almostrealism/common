@@ -23,7 +23,7 @@ import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public class DynamicProducerForMemWrapper<T extends MemWrapper> extends DynamicProducer<T> implements KernelizedProducer<T> {
+public class DynamicProducerForMemWrapper<T extends MemoryData> extends DynamicProducer<T> implements KernelizedProducer<T> {
 
 	private final IntFunction<MemoryBank<T>> kernelDestination;
 

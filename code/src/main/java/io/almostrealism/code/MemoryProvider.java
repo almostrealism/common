@@ -14,14 +14,10 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.hardware;
+package io.almostrealism.code;
 
-/**
- * A {@link MemoryData} that allows a segment to be reserved for use via
- * {@link #reserveOffset(MemoryData)}.
- *
- * @author  Michael Murray
- */
-public interface PooledMem<T extends MemoryData> extends MemoryData {
-	int reserveOffset(T owner);
+public interface MemoryProvider<T extends Memory> {
+	T allocate(int size);
+
+	void deallocate(int size, T mem);
 }

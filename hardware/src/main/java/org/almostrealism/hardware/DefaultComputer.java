@@ -22,7 +22,7 @@ import io.almostrealism.relation.Evaluable;
 
 import java.util.Optional;
 
-public class DefaultComputer implements Computer<MemWrapper> {
+public class DefaultComputer implements Computer<MemoryData> {
 
 	@Override
 	public Runnable compileRunnable(Computation<Void> c) {
@@ -30,7 +30,7 @@ public class DefaultComputer implements Computer<MemWrapper> {
 	}
 
 	@Override
-	public <T extends MemWrapper> Evaluable<T> compileProducer(Computation<T> c) {
+	public <T extends MemoryData> Evaluable<T> compileProducer(Computation<T> c) {
 		return new AcceleratedComputationEvaluable<>(c);
 	}
 

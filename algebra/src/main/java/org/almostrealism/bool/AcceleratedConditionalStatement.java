@@ -21,17 +21,16 @@ import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.Variable;
 import io.almostrealism.code.expressions.Expression;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.hardware.MemWrapper;
+import org.almostrealism.hardware.MemoryData;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Compactable;
-import io.almostrealism.relation.Evaluable;
 
 import java.util.List;
 
-public interface AcceleratedConditionalStatement<T extends MemWrapper> extends Producer<T>, Compactable {
+public interface AcceleratedConditionalStatement<T extends MemoryData> extends Producer<T>, Compactable {
 	Expression getCondition();
 
-	List<Argument<? extends MemWrapper>> getArguments();
+	List<Argument<? extends MemoryData>> getArguments();
 	List<Variable<?, ?>> getVariables();
 
 	List<ArrayVariable<Scalar>> getOperands();

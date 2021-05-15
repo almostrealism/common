@@ -48,7 +48,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter<T> implements Function<Object[], Object[]>, Runnable,
+public class AcceleratedOperation<T extends MemoryData> extends OperationAdapter<T> implements Function<Object[], Object[]>, Runnable,
 														KernelizedOperation, Compactable, ScopeLifecycle, ComputerFeatures {
 	public static final boolean enableDestinationConsolidation = true;
 	public static final boolean enableArgumentMapping = true;
@@ -273,7 +273,7 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 				operator.setGlobalWorkSize(args[0].getCount());
 
 				if (enableKernelLog) System.out.println("AcceleratedOperation: Preparing " + getName() + " kernel...");
-				MemWrapper input[] = getKernelArgs(args);
+				MemoryData input[] = getKernelArgs(args);
 
 				if (enableKernelLog) System.out.println("AcceleratedOperation: Evaluating " + getName() + " kernel...");
 
@@ -286,7 +286,7 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 		}
 	}
 
-	protected MemWrapper[] getKernelArgs(MemoryBank args[]) {
+	protected MemoryData[] getKernelArgs(MemoryBank args[]) {
 		return getKernelArgs(getArgumentVariables(), args, 0);
 	}
 
@@ -329,8 +329,8 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 		argumentMaps = new ArrayList<>();
 	}
 
-	protected static <T> MemWrapper[] getKernelArgs(List<ArrayVariable<? extends T>> arguments, MemoryBank args[], int passThroughLength) {
-		MemWrapper kernelArgs[] = new MemWrapper[arguments.size()];
+	protected static <T> MemoryData[] getKernelArgs(List<ArrayVariable<? extends T>> arguments, MemoryBank args[], int passThroughLength) {
+		MemoryData kernelArgs[] = new MemoryData[arguments.size()];
 
 		if (passThroughLength >= 0)
 			System.arraycopy(args, 0, kernelArgs, 0, passThroughLength);
@@ -362,7 +362,7 @@ public class AcceleratedOperation<T extends MemWrapper> extends OperationAdapter
 				if (args.length - passThroughLength >= 0)
 					System.arraycopy(args, passThroughLength, downstreamArgs, 0, args.length - passThroughLength);
 
-				kernelArgs[i] = (MemWrapper) c.evaluate((Object[]) downstreamArgs);
+				kernelArgs[i] = (MemoryData) c.evaluate((Object[]) downstreamArgs);
 			}
 		}
 

@@ -8,7 +8,7 @@ import org.almostrealism.geometry.DimensionAware;
 import org.almostrealism.hardware.AcceleratedEvaluable;
 import org.almostrealism.hardware.DynamicAcceleratedMultiEvaluable;
 import org.almostrealism.hardware.DynamicAcceleratedEvaluable;
-import org.almostrealism.hardware.MemWrapper;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryBank;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ProducerWithRank;
@@ -23,7 +23,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-public class AcceleratedRankedChoiceEvaluable<T extends MemWrapper> extends DynamicAcceleratedEvaluable<T, T> implements DimensionAware {
+public class AcceleratedRankedChoiceEvaluable<T extends MemoryData> extends DynamicAcceleratedEvaluable<T, T> implements DimensionAware {
 	public static final boolean enableCompaction = true;
 	public static final boolean enableOpenClKernelWorkaround = true;
 
@@ -81,7 +81,7 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemWrapper> extends Dyna
 	}
 
 	@Override
-	public String getBody(Variable<MemWrapper, ?> outputVariable) {
+	public String getBody(Variable<MemoryData, ?> outputVariable) {
 		StringBuilder buf = new StringBuilder();
 
 		// if (enableOpenClKernelWorkaround) buf.append("printf(\"Starting method...\\n\");\n");

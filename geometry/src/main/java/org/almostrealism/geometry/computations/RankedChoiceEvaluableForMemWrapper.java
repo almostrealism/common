@@ -18,13 +18,13 @@ package org.almostrealism.geometry.computations;
 
 import org.almostrealism.hardware.DynamicProducerForMemWrapper;
 import org.almostrealism.hardware.KernelizedEvaluable;
-import org.almostrealism.hardware.MemWrapper;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryBank;
 
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public abstract class RankedChoiceEvaluableForMemWrapper<T extends MemWrapper> extends RankedChoiceEvaluable<T> implements KernelizedEvaluable<T> {
+public abstract class RankedChoiceEvaluableForMemWrapper<T extends MemoryData> extends RankedChoiceEvaluable<T> implements KernelizedEvaluable<T> {
 	public RankedChoiceEvaluableForMemWrapper(double e) {
 		super(e);
 	}

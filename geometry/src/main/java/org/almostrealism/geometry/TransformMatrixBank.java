@@ -16,7 +16,7 @@
 
 package org.almostrealism.geometry;
 
-import org.almostrealism.hardware.MemWrapper;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.MemoryBankAdapter;
 import io.almostrealism.relation.Evaluable;
 
@@ -32,7 +32,7 @@ public class TransformMatrixBank extends MemoryBankAdapter<TransformMatrix> {
 				new TransformMatrix(delegateSpec.getDelegate(), delegateSpec.getOffset()));
 	}
 
-	protected TransformMatrixBank(int count, MemWrapper delegate, int delegateOffset) {
+	protected TransformMatrixBank(int count, MemoryData delegate, int delegateOffset) {
 		super(16, count, delegateSpec ->
 						new TransformMatrix(delegateSpec.getDelegate(), delegateSpec.getOffset()),
 				delegate, delegateOffset);

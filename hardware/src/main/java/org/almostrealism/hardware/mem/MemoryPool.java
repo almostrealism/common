@@ -16,7 +16,7 @@
 
 package org.almostrealism.hardware.mem;
 
-import org.almostrealism.hardware.MemWrapper;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.PooledMem;
 
 import java.lang.ref.WeakReference;
@@ -33,7 +33,7 @@ import java.util.stream.IntStream;
  *
  * @author  Michael Murray
  */
-public class MemoryPool<T extends MemWrapper> extends MemoryBankAdapter<T> implements PooledMem<T> {
+public class MemoryPool<T extends MemoryData> extends MemoryBankAdapter<T> implements PooledMem<T> {
 	public static boolean enableLog = true;
 
 	private ArrayBlockingQueue<Integer> available;

@@ -16,22 +16,22 @@
 
 package org.almostrealism.color;
 
-import org.almostrealism.hardware.MemWrapper;
-import org.almostrealism.hardware.mem.MemWrapperAdapter;
+import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.mem.MemoryDataAdapter;
 import org.almostrealism.hardware.PooledMem;
 
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 
-public class RGBData192 extends MemWrapperAdapter implements RGB.Data {
+public class RGBData192 extends MemoryDataAdapter implements RGB.Data {
 	public static final int depth = 192;
 
 	public RGBData192() {
 		init();
 	}
 
-	protected RGBData192(MemWrapper delegate, int delegateOffset) {
+	protected RGBData192(MemoryData delegate, int delegateOffset) {
 		setDelegate(delegate, delegateOffset);
 		init();
 	}

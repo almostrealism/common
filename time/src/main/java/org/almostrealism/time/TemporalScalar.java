@@ -18,10 +18,9 @@ package org.almostrealism.time;
 
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.hardware.DynamicProducerForMemWrapper;
-import org.almostrealism.hardware.MemWrapper;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.PooledMem;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.relation.DynamicProducer;
 
 public class TemporalScalar extends Pair {
 	public TemporalScalar() { }
@@ -31,7 +30,7 @@ public class TemporalScalar extends Pair {
 		setValue(value);
 	}
 
-	protected TemporalScalar(MemWrapper delegate, int delegateOffset) {
+	protected TemporalScalar(MemoryData delegate, int delegateOffset) {
 		super(delegate, delegateOffset);
 	}
 

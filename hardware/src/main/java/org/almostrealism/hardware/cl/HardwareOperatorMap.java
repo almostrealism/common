@@ -18,7 +18,7 @@ package org.almostrealism.hardware.cl;
 
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
-import org.almostrealism.hardware.MemWrapper;
+import org.almostrealism.hardware.MemoryData;
 import org.jocl.CL;
 import org.jocl.CLException;
 import org.jocl.cl_program;
@@ -33,7 +33,7 @@ import java.util.function.BiFunction;
  *
  * @author  Michael Murray
  */
-public class HardwareOperatorMap<T extends MemWrapper> implements BiFunction<String, CLException, HardwareException> {
+public class HardwareOperatorMap<T extends MemoryData> implements BiFunction<String, CLException, HardwareException> {
 	private cl_program prog;
 	private String src;
 

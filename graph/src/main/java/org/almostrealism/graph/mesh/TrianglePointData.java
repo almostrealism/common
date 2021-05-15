@@ -19,16 +19,15 @@ package org.almostrealism.graph.mesh;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorBank;
 import org.almostrealism.hardware.DynamicProducerForMemWrapper;
-import org.almostrealism.hardware.MemWrapper;
+import org.almostrealism.hardware.MemoryData;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.relation.DynamicProducer;
 
 public class TrianglePointData extends VectorBank {
 	public TrianglePointData() {
 		super(3);
 	}
 
-	protected TrianglePointData(MemWrapper delegate, int delegateOffset) {
+	protected TrianglePointData(MemoryData delegate, int delegateOffset) {
 		super(3, delegate, delegateOffset);
 	}
 

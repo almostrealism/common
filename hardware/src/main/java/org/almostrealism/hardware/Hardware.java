@@ -17,6 +17,9 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.Computer;
+import io.almostrealism.code.MemoryProvider;
+import org.almostrealism.hardware.cl.CLMemory;
+import org.almostrealism.hardware.cl.CLMemoryProvider;
 import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.jni.NativeLibrary;
 import org.almostrealism.hardware.jni.NativeSupport;
@@ -72,6 +75,10 @@ public final class Hardware {
 		if (pooling == null) pooling = System.getenv("AR_HARDWARE_MEMORY_MODE");
 		ENABLE_POOLING = "pool".equalsIgnoreCase(pooling);
 
+		String memLocation = System.getProperty("AR_HARDWARE_MEMORY_LOCATION");
+		if (memLocation == null) memLocation = System.getenv("AR_HARDWARE_MEMORY_LOCATION");
+		boolean heap = "heap".equalsIgnoreCase(memLocation);
+
 		String libFormat = System.getProperty("AR_HARDWARE_LIB_FORMAT");
 		if (libFormat == null) libFormat = System.getenv("AR_HARDWARE_LIB_FORMAT");
 		LIB_FORMAT = Optional.ofNullable(libFormat).orElse("lib%NAME%.so");
@@ -92,9 +99,9 @@ public final class Hardware {
 		timeSeriesCount = Optional.ofNullable(tsCount).map(Integer::parseInt).orElse(30);
 
 		if (sp) {
-			local = new Hardware(nativeCompiler, libDir, gpu, !disableKernels, false);
+			local = new Hardware(nativeCompiler, libDir, gpu, !disableKernels, false, heap);
 		} else {
-			local = new Hardware(nativeCompiler, libDir, gpu, !disableKernels);
+			local = new Hardware(nativeCompiler, libDir, gpu, !disableKernels, heap);
 		}
 	}
 
@@ -105,29 +112,29 @@ public final class Hardware {
 	private final String nativeCompiler;
 	private final String libDir;
 
-	private long memoryMax, memoryUsed;
-
 	private final cl_context context;
 	private final cl_command_queue queue;
 
 	private final AcceleratedFunctions functions;
 	private final Computer computer;
+	private final CLMemoryProvider ram;
 	
-	private Hardware(String nativeCompiler, String libDir, boolean enableGpu, boolean enableKernels) {
-		this(nativeCompiler, libDir, enableGpu, enableKernels, !enableGpu);
+	private Hardware(String nativeCompiler, String libDir, boolean enableGpu, boolean enableKernels, boolean enableHeap) {
+		this(nativeCompiler, libDir, enableGpu, enableKernels, !enableGpu, enableHeap);
 	}
 
-	private Hardware(String nativeCompiler, String libDir, boolean enableGpu, boolean enableKernels, boolean enableDoublePrecision) {
-		this(enableDoublePrecision ? "local64" : "local32", nativeCompiler, libDir, enableGpu, enableKernels, enableDoublePrecision);
+	private Hardware(String nativeCompiler, String libDir, boolean enableGpu, boolean enableKernels, boolean enableDoublePrecision, boolean enableHeap) {
+		this(enableDoublePrecision ? "local64" : "local32", nativeCompiler, libDir, enableGpu, enableKernels, enableDoublePrecision, enableHeap);
 	}
 
-	private Hardware(String name, String nativeCompiler, String libDir, boolean enableGpu, boolean enableKernels) {
-		this(name, nativeCompiler, libDir, enableGpu, enableKernels, !enableGpu);
+	private Hardware(String name, String nativeCompiler, String libDir, boolean enableGpu, boolean enableKernels, boolean enableHeap) {
+		this(name, nativeCompiler, libDir, enableGpu, enableKernels, !enableGpu, enableHeap);
 	}
 
-	private Hardware(String name, String nativeCompiler, String libDir, boolean enableGpu, boolean enableKernels, boolean enableDoublePrecision) {
-		this.memoryMax = (long) Math.pow(2, getMemoryScale()) * 256L * 1000L * 1000L;
+	private Hardware(String name, String nativeCompiler, String libDir, boolean enableGpu, boolean enableKernels, boolean enableDoublePrecision, boolean enableHeap) {
+		long memoryMax = (long) Math.pow(2, getMemoryScale()) * 256L * 1000L * 1000L;
 		if (enableDoublePrecision) memoryMax = memoryMax * 2;
+
 		this.enableGpu = enableGpu;
 		this.enableDoublePrecision = enableDoublePrecision;
 		this.enableKernel = enableKernels;
@@ -146,8 +153,9 @@ public final class Hardware {
 			System.out.println("Initializing Hardware...");
 		}
 
-		System.out.println("Hardware[" + name + "]: Max Off Heap RAM is " +
+		System.out.println("Hardware[" + name + "]: Max RAM is " +
 				memoryMax / 1000000 + " Megabytes");
+		if (enableHeap) System.out.println("Hardware[" + name + "]: Heap RAM enabled");
 
 		int numPlatformsArray[] = new int[1];
 		CL.clGetPlatformIDs(0, null, numPlatformsArray);
@@ -191,6 +199,9 @@ public final class Hardware {
 		computer = new DefaultComputer();
 		if (enableVerbose) System.out.println("Hardware[" + name + "]: Created DefaultComputer");
 
+		ram = new CLMemoryProvider(getContext(), getNumberSize(), memoryMax, enableHeap);
+		if (enableVerbose) System.out.println("Hardware[" + name + "]: Created MemoryProvider");
+
 		if (timeSeriesSize > 0) {
 			System.out.println("Hardware[" + name + "]: " + timeSeriesCount + " x " +
 					2 * timeSeriesSize * getNumberSize() / 1024 + "kb timeseries(s) available");
@@ -229,8 +240,6 @@ public final class Hardware {
 	public int getTimeSeriesSize() { return timeSeriesSize; }
 
 	public int getTimeSeriesCount() { return timeSeriesCount; }
-
-	public long getAllocatedMemory() { return memoryUsed; }
 
 	public String stringForDouble(double d) {
 		return "(" + getNumberTypeName() + ") " + rawStringForDouble(d);
@@ -277,22 +286,8 @@ public final class Hardware {
 
 	public AcceleratedFunctions getFunctions() { return functions; }
 
-	public cl_mem allocate(int size) {
-		long sizeOf = (long) size * getNumberSize();
-
-		if (memoryUsed + sizeOf > memoryMax) {
-			throw new RuntimeException("Hardware: Memory Max Reached");
-		}
-
-		memoryUsed = memoryUsed + sizeOf;
-		return CL.clCreateBuffer(getContext(),
-				CL.CL_MEM_READ_WRITE, sizeOf,
-				null, null);
-	}
-
-	public void deallocate(int size, cl_mem mem) {
-		CL.clReleaseMemObject(mem);
-		memoryUsed = memoryUsed - (long) size * getNumberSize();
+	public MemoryProvider<CLMemory> getMemoryProvider() {
+		return ram;
 	}
 
 	private static String deviceName(long type) {

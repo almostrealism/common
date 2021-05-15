@@ -26,7 +26,7 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 @Deprecated
-public abstract class DynamicAcceleratedMultiEvaluable<I extends MemWrapper, O extends MemWrapper>
+public abstract class DynamicAcceleratedMultiEvaluable<I extends MemoryData, O extends MemoryData>
 		extends DynamicAcceleratedEvaluable<I, O>
 		implements KernelizedEvaluable<O>, MultiExpression<Double> {
 	private int memLength;
@@ -62,7 +62,7 @@ public abstract class DynamicAcceleratedMultiEvaluable<I extends MemWrapper, O e
 	public int getMemLength() { return memLength; }
 
 	@Override
-	public String getBody(Variable<MemWrapper, ?> outputVariable) {
+	public String getBody(Variable<MemoryData, ?> outputVariable) {
 		StringBuilder buf = new StringBuilder();
 		// TODO  Variables?
 		IntStream.range(0, memLength)

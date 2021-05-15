@@ -18,12 +18,12 @@ package org.almostrealism.hardware;
 
 /**
  * A {@link MemoryBank} tracks a section of RAM that is used to
- * store a collection of {@link MemWrapper}s in a single
+ * store a collection of {@link MemoryData}s in a single
  * {@link org.jocl.cl_mem}.
  *
  * @author  Michael Murray
  */
-public interface MemoryBank<T extends MemWrapper> extends MemWrapper {
+public interface MemoryBank<T extends MemoryData> extends MemoryData {
 	T get(int index);
 	void set(int index, T value);
 	int getCount();

@@ -16,12 +16,10 @@
 
 package org.almostrealism.hardware;
 
-/**
- * A {@link MemoryData} that allows a segment to be reserved for use via
- * {@link #reserveOffset(MemoryData)}.
- *
- * @author  Michael Murray
- */
-public interface PooledMem<T extends MemoryData> extends MemoryData {
-	int reserveOffset(T owner);
+import io.almostrealism.code.Memory;
+
+public class RAM implements Memory {
+	public long getNativePointer() {
+		throw new UnsupportedOperationException();
+	}
 }

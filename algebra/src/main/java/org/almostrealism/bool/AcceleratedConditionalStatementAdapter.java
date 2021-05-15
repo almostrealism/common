@@ -27,7 +27,7 @@ import io.almostrealism.code.Variable;
 import org.almostrealism.hardware.ComputerFeatures;
 import org.almostrealism.hardware.DynamicProducerForMemWrapper;
 import org.almostrealism.hardware.ExplictBody;
-import org.almostrealism.hardware.MemWrapper;
+import org.almostrealism.hardware.MemoryData;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.ProducerCache;
@@ -38,8 +38,8 @@ import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public abstract class AcceleratedConditionalStatementAdapter<T extends MemWrapper>
-											extends ProducerComputationAdapter<MemWrapper, T>
+public abstract class AcceleratedConditionalStatementAdapter<T extends MemoryData>
+											extends ProducerComputationAdapter<MemoryData, T>
 											implements AcceleratedConditionalStatement<T>,
 													ExplictBody<T>, ComputerFeatures {
 	public static boolean enableCompaction = false;
