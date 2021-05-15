@@ -38,6 +38,18 @@ public class HardwareException extends RuntimeException {
 		this.program = program;
 	}
 
+	public HardwareException(CLException e, long bufferSize) {
+		this(messageForBuffer(e, bufferSize), e);
+	}
+
 	public String getProgram() { return program; }
 	public void setProgram(String program) { this.program = program; }
+
+	public static String messageForBuffer(CLException e, long bufferSize) {
+		if ("CL_INVALID_BUFFER_SIZE".equals(e.getMessage())) {
+			return "Buffer size of " + bufferSize + " bytes is invalid";
+		} else {
+			return e.getMessage();
+		}
+	}
 }

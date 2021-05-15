@@ -18,6 +18,7 @@ package org.almostrealism.hardware.cl;
 
 import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.MemoryData;
 import org.jocl.CL;
 import org.jocl.CLException;
@@ -54,7 +55,11 @@ public class CLMemoryProvider implements MemoryProvider<CLMemory> {
 
 	@Override
 	public CLMemory allocate(int size) {
-		return new CLMemory(buffer(size), this);
+		try {
+			return new CLMemory(buffer(size), this);
+		} catch (CLException e) {
+			throw new HardwareException(e, (long) size * getNumberSize());
+		}
 	}
 
 	@Override
@@ -68,7 +73,7 @@ public class CLMemoryProvider implements MemoryProvider<CLMemory> {
 		long sizeOf = (long) len * getNumberSize();
 
 		if (memoryUsed + sizeOf > memoryMax) {
-			throw new RuntimeException("Hardware: Memory Max Reached");
+			throw new HardwareException("Memory Max Reached");
 		}
 
 		PointerAndObject<?> hostPtr = null;
@@ -80,7 +85,7 @@ public class CLMemoryProvider implements MemoryProvider<CLMemory> {
 		}
 
 		cl_mem mem = CL.clCreateBuffer(getContext(),
-				CL.CL_MEM_READ_WRITE + ptrFlag, (long) getNumberSize() * len,
+				CL.CL_MEM_READ_WRITE + ptrFlag, sizeOf,
 				Optional.ofNullable(hostPtr).map(PointerAndObject::getPointer).orElse(null), null);
 
 		memoryUsed = memoryUsed + sizeOf;
