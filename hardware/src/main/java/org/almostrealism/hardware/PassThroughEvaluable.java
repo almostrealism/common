@@ -52,6 +52,7 @@ public class PassThroughEvaluable<T> implements Evaluable<T>, ProducerArgumentRe
 			} catch (InstantiationException | IllegalAccessException |
 					InvocationTargetException | NoSuchMethodException e) {
 				System.out.println("WARN: Unable to determine memory length for " + type.getName());
+				if (e instanceof InvocationTargetException) e.printStackTrace();
 				return () -> new PassThroughEvaluable<>(index);
 			}
 		} else {
