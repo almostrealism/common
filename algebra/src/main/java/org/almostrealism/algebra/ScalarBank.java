@@ -33,18 +33,14 @@ import java.util.stream.IntStream;
  * @author  Michael Murray
  */
 public class ScalarBank extends MemoryBankAdapter<Scalar> {
-	private Evaluable<ScalarBank> addTo;
-
 	public ScalarBank(int count) {
 		super(2, count, delegateSpec ->
 				new Scalar(delegateSpec.getDelegate(), delegateSpec.getOffset()));
-		initFunctions();
 	}
 
 	public ScalarBank(int count, CacheLevel cacheLevel) {
 		super(2, count, delegateSpec ->
 				new Scalar(delegateSpec.getDelegate(), delegateSpec.getOffset()), cacheLevel);
-		initFunctions();
 	}
 
 	// TODO  Need to respect CacheLevel, but the parent constructor that does
@@ -56,12 +52,6 @@ public class ScalarBank extends MemoryBankAdapter<Scalar> {
 		initFunctions();
 	}
 
-	private void initFunctions() {
-		this.addTo = new ScalarBankAdd(getCount(),
-				new PassThroughProducer<>(getMemLength(),0),
-				PassThroughEvaluable.of(Scalar.class, 1)).get();
-	}
-
 	// TODO  Add unit tests for this
 	public ScalarBank range(int offset, int length) {
 		if (offset * getAtomicMemLength() >= getMemLength()) {
@@ -69,10 +59,6 @@ public class ScalarBank extends MemoryBankAdapter<Scalar> {
 		}
 		return new ScalarBank(length, this, offset * getAtomicMemLength(), null);
 	}
-
-	public ScalarBank add(double s) { return add(new Scalar(s)); }
-
-	public ScalarBank add(Scalar s) { return addTo.evaluate(this, s); }
 
 	// TODO  Accelerated version
 	public Scalar sum() {
@@ -84,15 +70,15 @@ public class ScalarBank extends MemoryBankAdapter<Scalar> {
 
 	// TODO  Use cl_mem copy
 	public void copyFromVec(ScalarBank bank) {
-		assert (getCount() == bank.getCount());
+		assert getCount() == bank.getCount();
 
 		for (int i = 0; i < getCount(); i++)
 			set(i, bank.get(i));
 	}
 
 	public void copyColFromMat(Tensor<Scalar> mat, int col) {
-		assert(col < mat.length(0));
-		assert(getCount() == mat.length());
+		assert col < mat.length(0);
+		assert getCount() == mat.length();
 		for (int i = 0; i < getCount(); i++) set(i, mat.get(i, col));
 	}
 
