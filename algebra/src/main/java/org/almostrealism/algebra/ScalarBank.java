@@ -49,7 +49,6 @@ public class ScalarBank extends MemoryBankAdapter<Scalar> {
 		super(2, count, delegateSpec ->
 						new Scalar(delegateSpec.getDelegate(), delegateSpec.getOffset()),
 				delegate, delegateOffset);
-		initFunctions();
 	}
 
 	// TODO  Add unit tests for this
