@@ -21,9 +21,11 @@ import org.jocl.cl_mem;
 
 public class CLMemory extends RAM {
 	private final cl_mem mem;
+	private final CLMemoryProvider provider;
 
-	protected CLMemory(cl_mem mem) {
+	protected CLMemory(cl_mem mem, CLMemoryProvider provider) {
 		this.mem = mem;
+		this.provider = provider;
 	}
 
 	// TODO  Make protected
@@ -31,4 +33,6 @@ public class CLMemory extends RAM {
 
 	@Override
 	public long getNativePointer() { return mem.getNativePointer(); }
+
+	public CLMemoryProvider getProvider() { return provider; }
 }

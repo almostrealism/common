@@ -23,11 +23,6 @@ import java.util.stream.IntStream;
 public class AcceleratedConditionalStatementTests implements TestFeatures {
 	@Test
 	public void randomLessThan() {
-		// TODO  This test fails because sort hint is set equivalently for
-		//       all potential "outputs", even those that are associated
-		//       with required scopes. Either the sort hint needs to be made
-		//       higher with each level of nesting, or a new way to sort
-		//       arguments needs to be introduced
 		IntStream.range(1, 6).forEach(i -> {
 			ScalarProducer a = scalar(i * Math.random());
 			ScalarProducer b = scalar(i * Math.random());
