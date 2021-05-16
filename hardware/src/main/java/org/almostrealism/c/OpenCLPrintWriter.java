@@ -18,6 +18,7 @@ package org.almostrealism.c;
 
 import io.almostrealism.code.Method;
 import io.almostrealism.code.PhysicalScope;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.io.PrintWriter;
 
 public class OpenCLPrintWriter extends CPrintWriter {
@@ -35,7 +36,8 @@ public class OpenCLPrintWriter extends CPrintWriter {
 
 	@Override
 	protected String annotationForPhysicalScope(PhysicalScope scope) {
-		if (scope != null) return scope == PhysicalScope.LOCAL ? "__local" : "__global";
+		String volatilePrefix = Hardware.getLocalHardware().isMemoryVolatile() ? "volatile " : "";
+		if (scope != null) return volatilePrefix + (scope == PhysicalScope.LOCAL ? "__local" : "__global");
 		return null;
 	}
 }

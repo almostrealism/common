@@ -40,6 +40,8 @@ public class TriangleDataTest implements TestFeatures {
 		data.getVertices().set(2, new Vector(1.0, -1.0, 0.0));
 		data.getVertices().set(3, new Vector(-1.0, 1.0, -1.0));
 		data.getVertices().set(4, new Vector(1.0, 1.0, -1.0));
+		assertEquals(-1.0, data.getVertices().get(1).getX());
+
 		data.setTriangle(0, 0, 1, 2);
 		data.setTriangle(1, 3, 1, 0);
 		data.setTriangle(2, 0, 2, 4);

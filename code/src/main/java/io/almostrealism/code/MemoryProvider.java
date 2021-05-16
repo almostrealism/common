@@ -16,8 +16,31 @@
 
 package io.almostrealism.code;
 
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+
 public interface MemoryProvider<T extends Memory> {
 	T allocate(int size);
 
 	void deallocate(int size, T mem);
+
+	default double[] toArray(T mem, int length) {
+		return toArray(mem, 0, length);
+	}
+
+	default double[] toArray(T mem, int offset, int length) {
+		int attempt = 5;
+
+		return IntStream.range(0, attempt).mapToObj(i -> {
+			double d[] = new double[length];
+			getMem(mem, offset, d, 0, length);
+			return d;
+		}).collect(Collectors.toList()).get(attempt - 1);
+	}
+
+	void setMem(T mem, int offset, T source, int srcOffset, int length);
+
+	void setMem(T mem, int offset, double[] source, int srcOffset, int length);
+
+	void getMem(T mem, int sOffset, double out[], int oOffset, int length);
 }

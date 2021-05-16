@@ -17,34 +17,66 @@
 package org.almostrealism.geometry.test;
 
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.geometry.DefaultRayEvaluable;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.computations.RayCopy;
 import org.almostrealism.geometry.computations.RayPointAt;
+import org.almostrealism.geometry.computations.StaticRayComputation;
+import org.almostrealism.hardware.DynamicAcceleratedEvaluable;
+import org.almostrealism.hardware.DynamicAcceleratedOperation;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.util.CodeFeatures;
 import io.almostrealism.relation.Provider;
+import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
 
-public class RayTest implements HardwareFeatures, CodeFeatures {
+public class RayTest implements TestFeatures {
 	@Test
 	public void pointAtTest1() {
 		RayPointAt p = new RayPointAt(ray(0.0, 0.0, 0.0, 0.0, 1.0, 0.5), scalar(10));
-		Assert.assertTrue(p.get().evaluate().equals(new Vector(0.0, 10.0, 5.0)));
-		Assert.assertTrue(p.get().evaluate().equals(new Vector(0.0, 10.0, 5.0)));
+		Assert.assertEquals(p.get().evaluate(), new Vector(0.0, 10.0, 5.0));
+		Assert.assertEquals(p.get().evaluate(), new Vector(0.0, 10.0, 5.0));
 	}
 
 	@Test
 	public void pointAtTest2() {
 		RayPointAt at = new RayPointAt(ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0), scalar(-20));
-		Assert.assertTrue(at.get().evaluate().equals(new Vector(0.0, -10.0, 21.0)));
+		Assert.assertEquals(at.get().evaluate(), new Vector(0.0, -10.0, 21.0));
 	}
 
 	@Test
 	public void copyTest() {
 		RayCopy c = new RayCopy(new Provider<>(new Ray(new Vector(1.0, 2.0, 3.0),
 															new Vector(5.0, 4.0, 3.0))));
-		Assert.assertTrue(c.evaluate(new Object[0]).equals(new Ray(new Vector(1.0, 2.0, 3.0),
-															new Vector(5.0, 4.0, 3.0))));
+		Assert.assertEquals(c.evaluate(), new Ray(new Vector(1.0, 2.0, 3.0),
+										new Vector(5.0, 4.0, 3.0)));
+	}
+
+	@Test
+	public void staticComputation() {
+		StaticRayComputation comp = new StaticRayComputation(
+													new Ray(new Vector(1.0, 2.0, 3.0),
+															new Vector(4.0, 5.0, 6.0)));
+		DefaultRayEvaluable ev = (DefaultRayEvaluable) comp.get();
+		System.out.println(ev.getFunctionDefinition());
+
+		Ray r = ev.evaluate();
+		System.out.println(r);
+
+		double d[] = r.toArray();
+		assertEquals(1.0, d[0]);
+		assertEquals(2.0, d[1]);
+		assertEquals(3.0, d[2]);
+		assertEquals(4.0, d[3]);
+		assertEquals(5.0, d[4]);
+		assertEquals(6.0, d[5]);
+
+		assertEquals(1.0, r.getOrigin().getX());
+		assertEquals(2.0, r.getOrigin().getY());
+		assertEquals(3.0, r.getOrigin().getZ());
+		assertEquals(4.0, r.getDirection().getX());
+		assertEquals(5.0, r.getDirection().getY());
+		assertEquals(6.0, r.getDirection().getZ());
 	}
 }

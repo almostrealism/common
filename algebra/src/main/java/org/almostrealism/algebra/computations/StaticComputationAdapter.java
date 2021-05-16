@@ -40,9 +40,7 @@ public abstract class StaticComputationAdapter<T extends MemoryData> extends Dyn
 	@Override
 	public IntFunction<Expression<Double>> getValueFunction() {
 		return pos -> {
-			Pair p = Pair.fromMem(value.getMem(), value.getOffset() + pos, 1);
-
-			String s = stringForDouble(p.getA());
+			String s = stringForDouble(value.getMem().toArray(value.getOffset() + pos, 1)[0]);
 			if (s.contains("Infinity")) {
 				throw new IllegalArgumentException("Infinity is not supported");
 			}

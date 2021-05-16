@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.Memory;
 import io.almostrealism.code.expressions.MultiExpression;
 import io.almostrealism.code.expressions.Expression;
 import io.almostrealism.relation.Delegated;
@@ -28,7 +29,7 @@ import org.jocl.cl_mem;
 public interface MemoryData extends MultiExpression<Double>, Delegated<MemoryData> {
 	int sizeOf = Hardware.getLocalHardware().getNumberSize();
 
-	CLMemory getMem();
+	Memory getMem();
 
 	default int getOffset() {
 		if (getDelegate() == null) {
@@ -105,21 +106,19 @@ public interface MemoryData extends MultiExpression<Double>, Delegated<MemoryDat
 		}
 	}
 
-	default void getMem(double out[], int offset) { getMem(0, out, offset, getMemLength()); }
-
-	static void setMem(CLMemory mem, int offset, double[] source, int srcOffset, int length) {
+	static void setMem(Memory mem, int offset, double[] source, int srcOffset, int length) {
 		mem.getProvider().setMem(mem, offset, source, srcOffset, length);
 	}
 
-	static void setMem(CLMemory mem, int offset, MemoryData src, int srcOffset, int length) {
+	static void setMem(Memory mem, int offset, MemoryData src, int srcOffset, int length) {
 		if (mem.getProvider() != src.getMem().getProvider()) {
 			throw new IllegalArgumentException("Memory cannot be moved across different MemoryProviders");
 		}
 
-		mem.getProvider().setMem(mem, offset, src, srcOffset, length);
+		mem.getProvider().setMem(mem, offset, src.getMem(), src.getOffset() + srcOffset, length);
 	}
 
-	static void getMem(CLMemory mem, int sOffset, double out[], int oOffset, int length) {
+	static void getMem(Memory mem, int sOffset, double out[], int oOffset, int length) {
 		mem.getProvider().getMem(mem, sOffset, out, oOffset, length);
 	}
 }

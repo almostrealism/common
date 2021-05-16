@@ -17,4 +17,13 @@
 package io.almostrealism.code;
 
 public interface Memory {
+	MemoryProvider getProvider();
+
+	default double[] toArray(int length) {
+		return toArray(0, length);
+	}
+
+	default double[] toArray(int offset, int length) {
+		return getProvider().toArray(this, offset, length);
+	}
 }

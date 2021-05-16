@@ -108,6 +108,7 @@ public final class Hardware {
 	private final boolean enableGpu;
 	private final boolean enableDoublePrecision;
 	private final boolean enableKernel;
+	private final boolean memVolatile;
 
 	private final String nativeCompiler;
 	private final String libDir;
@@ -140,6 +141,7 @@ public final class Hardware {
 		this.enableKernel = enableKernels;
 		this.nativeCompiler = nativeCompiler;
 		this.libDir = libDir;
+		this.memVolatile = enableHeap;
 
 		final int platformIndex = 0;
 		final int deviceIndex = 0;
@@ -229,6 +231,8 @@ public final class Hardware {
 
 	public boolean isNativeSupported() { return nativeCompiler != null && libDir != null && LIB_FORMAT != null; }
 
+	public boolean isMemoryVolatile() { return memVolatile; }
+
 	public String getNumberTypeName() { return isDoublePrecision() ? "double" : "float"; }
 
 	public int getNumberSize() { return isDoublePrecision() ? Sizeof.cl_double : Sizeof.cl_float; }
@@ -286,7 +290,7 @@ public final class Hardware {
 
 	public AcceleratedFunctions getFunctions() { return functions; }
 
-	public MemoryProvider<CLMemory> getMemoryProvider() {
+	public MemoryProvider<RAM> getMemoryProvider() {
 		return ram;
 	}
 

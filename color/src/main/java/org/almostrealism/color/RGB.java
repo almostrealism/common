@@ -21,6 +21,7 @@ import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 
+import io.almostrealism.code.Memory;
 import org.almostrealism.algebra.Triple;
 import org.almostrealism.hardware.KernelizedProducer;
 import org.almostrealism.hardware.MemoryData;
@@ -541,7 +542,7 @@ public class RGB implements Triple, MemoryData, Externalizable, Cloneable {
 	public double[] toArray() { return new double[] { getRed(), getGreen(), getBlue() }; }
 
 	@Override
-	public CLMemory getMem() { return data.getMem(); }
+	public Memory getMem() { return data.getMem(); }
 
 	@Override
 	public int getOffset() { return data.getOffset(); }

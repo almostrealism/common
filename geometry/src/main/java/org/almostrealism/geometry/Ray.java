@@ -30,6 +30,7 @@ import org.almostrealism.hardware.MemoryBank;
 
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
+import java.util.stream.IntStream;
 
 /**
  * A {@link Ray} represents a 3d ray. It stores the origin and direction of a 3d ray,
@@ -89,6 +90,7 @@ public class Ray extends MemoryDataAdapter implements RayFeatures, Cloneable {
 	 * @param tm  TransformMatrix to use.
 	 * @return  {{ox, oy, oz}, {dx, dy, dz}} after transformation.
 	 */
+	@Deprecated
 	public Ray transform(TransformMatrix tm) {
 		// TODO  Hardware accelerate
 
@@ -164,15 +166,10 @@ public class Ray extends MemoryDataAdapter implements RayFeatures, Cloneable {
 
 	@Override
 	public boolean equals(Object o) {
-		if (o instanceof Ray == false) return false;
+		if (!(o instanceof Ray)) return false;
 		double r1[] = this.toArray();
 		double r2[] = ((Ray) o).toArray();
-
-		for (int i = 0; i < 6; i++) {
-			if (r1[i] != r2[i]) return false;
-		}
-
-		return true;
+		return IntStream.range(0, 6).noneMatch(i -> r1[i] != r2[i]);
 	}
 
 	@Override
@@ -185,11 +182,7 @@ public class Ray extends MemoryDataAdapter implements RayFeatures, Cloneable {
 		return new Ray(coords);
 	}
 
-	public double[] toArray() {
-		double coords[] = new double[6];
-		getMem(coords, 0);
-		return coords;
-	}
+	public double[] toArray() { return getMem().toArray(getOffset(), 6); }
 
 	/**
 	 * @return  A String representation of this Ray object.
@@ -197,10 +190,8 @@ public class Ray extends MemoryDataAdapter implements RayFeatures, Cloneable {
 	@Override
 	public String toString() {
 		double coords[] = toArray();
-		String value = "Ray: [" + coords[0] + ", " + coords[1] + ", " + coords[2] +
+		return "Ray: [" + coords[0] + ", " + coords[1] + ", " + coords[2] +
 					"] [" + coords[3] + ", " + coords[4] + ", " + coords[5] + "]";
-		
-		return value;
 	}
 
 	public static Producer<Ray> blank() {

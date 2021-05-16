@@ -28,6 +28,9 @@ import org.jocl.CL;
 import org.jocl.Pointer;
 import org.jocl.cl_mem;
 
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+
 public class Pair extends MemoryDataAdapter {
 	public Pair() {
 		init();
@@ -44,16 +47,14 @@ public class Pair extends MemoryDataAdapter {
 	}
 	
 	public Pair setX(double x) {
-		double d1[] = new double[2];
-		getMem(d1, 0);
+		double d1[] = getMem().toArray(getOffset(), 2);
 		d1[0] = x;
 		setMem(d1);
 		return this;
 	}
 
 	public Pair setY(double y) {
-		double d1[] = new double[2];
-		getMem(d1, 0);
+		double d1[] = getMem().toArray(getOffset(), 2);
 		d1[1] = y;
 		setMem(d1);
 		return this;
@@ -67,15 +68,11 @@ public class Pair extends MemoryDataAdapter {
 	public Pair setPhi(double p) { this.setY(p); return this; }
 
 	public double getX() {
-		double d1[] = new double[2];
-		getMem(d1, 0);
-		return d1[0];
+		return getMem().toArray(getOffset(), 2)[0];
 	}
 
 	public double getY() {
-		double d1[] = new double[2];
-		getMem(d1, 0);
-		return d1[1];
+		return getMem().toArray(getOffset(), 2)[1];
 	}
 
 	public double getA() { return getX(); }
@@ -96,87 +93,6 @@ public class Pair extends MemoryDataAdapter {
 	public double i() { return getY(); }
 	public double _1() { return getX(); }
 	public double _2() { return getY(); }
-
-	public Pair add(Pair p) {
-		// TODO  Fast version
-		double d1[] = new double[2];
-		double d2[] = new double[2];
-		getMem(d1, 0);
-		p.getMem(d2, 0);
-		return new Pair(d1[0] + d2[0], d1[1] + d2[1]);
-	}
-
-	public Pair subtract(Pair p) {
-		// TODO  Fast version
-		double d1[] = new double[2];
-		double d2[] = new double[2];
-		getMem(d1, 0);
-		p.getMem(d2, 0);
-		return new Pair(d1[0] - d2[0], d1[1] - d2[1]);
-	}
-
-	public Pair multiply(Pair p) {
-		// TODO  Fast version
-		double d1[] = new double[2];
-		double d2[] = new double[2];
-		getMem(d1, 0);
-		p.getMem(d2, 0);
-		return new Pair(d1[0] * d2[0], d1[1] * d2[1]);
-	}
-
-	// TODO  Unit test
-	public Pair multiplyComplex(Pair c) {
-		// TODO  Fast version
-		double d1[] = new double[2];
-		double d2[] = new double[2];
-		getMem(d1, 0);
-		c.getMem(d2, 0);
-		double p = d1[0];
-		double q = d1[1];
-		double r = d2[0];
-		double s = d2[1];
-		return new Pair(p * r - q * s, p * s + q * r);
-	}
-
-	// TODO  Unit test
-	public Pair invertComplex() {
-		// TODO  Fast version
-		double d1[] = new double[2];
-		getMem(d1, 0);
-		double p = d1[0];
-		double q = d1[1];
-		double sq = p * p + q * q;
-		return new Pair(p / sq, -q / sq);
-	}
-
-	public Pair multiply(double d) {
-		// TODO  Fast version
-		double d1[] = new double[2];
-		getMem(d1, 0);
-		return new Pair(d1[0] * d, d1[1] * d);
-	}
-
-	public Pair divide(double d) {
-		// TODO  Fast version
-		double d1[] = new double[2];
-		getMem(d1, 0);
-		return new Pair(d1[0] / d, d1[1] / d);
-	}
-
-	// TODO  Unit test
-	public Pair divideComplex(Pair c) {
-		// TODO  Fast version
-		return multiply(c.invertComplex());
-	}
-
-	public void multiplyBy(double d) {
-		// TODO  Fast version
-		double d1[] = new double[2];
-		getMem(d1, 0);
-		d1[0] *= d;
-		d1[1] *= d;
-		this.setMem(d1);
-	}
 
 	/**
 	 * Returns an integer hash code value for this {@link Pair} obtained
@@ -211,52 +127,14 @@ public class Pair extends MemoryDataAdapter {
 	/** @return A String representation of this Vector object. */
 	@Override
 	public String toString() {
-		StringBuffer value = new StringBuffer();
-
-		value.append("[");
-		value.append(Defaults.displayFormat.format(getX()));
-		value.append(", ");
-		value.append(Defaults.displayFormat.format(getY()));
-		value.append("]");
-
-
-		return value.toString();
+		return "[" +
+				Defaults.displayFormat.format(getX()) +
+				", " +
+				Defaults.displayFormat.format(getY()) +
+				"]";
 	}
 
 	public static Producer<Pair> empty() {
 		return new DynamicProducerForMemWrapper<>(Pair::new, PairBank::new);
-	}
-
-	// TODO  This could be faster by moving directly between cl_mems
-	public static Pair fromMem(CLMemory mem, int sOffset, int length) {
-		if (length != 1 && length != 2) {
-			throw new IllegalArgumentException(String.valueOf(length));
-		}
-
-		if (Hardware.getLocalHardware().isDoublePrecision()) {
-			double out[] = new double[length];
-			Pointer dst = Pointer.to(out).withByteOffset(0);
-			CL.clEnqueueReadBuffer(Hardware.getLocalHardware().getQueue(), mem.getMem(),
-					CL.CL_TRUE, (long) sOffset * Hardware.getLocalHardware().getNumberSize(),
-					(long) length * Hardware.getLocalHardware().getNumberSize(), dst, 0,
-					null, null);
-			if (length == 1) {
-				return new Pair(out[0], 0);
-			} else {
-				return new Pair(out[0], out[1]);
-			}
-		} else {
-			float out[] = new float[length];
-			Pointer dst = Pointer.to(out).withByteOffset(0);
-			CL.clEnqueueReadBuffer(Hardware.getLocalHardware().getQueue(), mem.getMem(),
-					CL.CL_TRUE, (long) sOffset * Hardware.getLocalHardware().getNumberSize(),
-					(long) length * Hardware.getLocalHardware().getNumberSize(), dst, 0,
-					null, null);
-			if (length == 1) {
-				return new Pair(out[0], 0);
-			} else {
-				return new Pair(out[0], out[1]);
-			}
-		}
 	}
 }

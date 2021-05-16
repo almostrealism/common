@@ -49,6 +49,7 @@ public class AcceleratedComputationEvaluableTests implements HardwareFeatures, C
 
 		Scalar s = res.evaluate();
 		System.out.println(s.getValue());
+		System.out.println(s.getValue());
 		assert s.getValue() == 1.5;
 	}
 }

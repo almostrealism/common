@@ -63,8 +63,24 @@ public abstract class OperationComputationAdapter<I, O> extends OperationAdapter
 				.collect(Collectors.toList()));
 	}
 
+	@Deprecated
 	@Override
 	public ArrayVariable getArgument(int index) {
+		if (index >= getInputs().size()) {
+			throw new IllegalArgumentException("Invalid input (" + index + ")");
+		}
+
+		ArrayVariable v = getArgumentForInput(getInputs().get(index));
+		if (v == null) {
+			throw new IllegalArgumentException("Input " + index +
+					" does not appear to have a corresponding argument");
+		}
+
+		return v;
+	}
+
+	@Override
+	public ArrayVariable getArgument(int index, int size) {
 		if (index >= getInputs().size()) {
 			throw new IllegalArgumentException("Invalid input (" + index + ")");
 		}

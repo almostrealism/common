@@ -16,14 +16,14 @@
 
 package org.almostrealism.hardware.mem;
 
+import io.almostrealism.code.Memory;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.PooledMem;
-import org.almostrealism.hardware.cl.CLMemory;
-import org.jocl.cl_mem;
+import org.almostrealism.hardware.RAM;
 
 public abstract class MemoryDataAdapter implements MemoryData {
-	private CLMemory mem;
+	private RAM mem;
 
 	private MemoryData delegateMem;
 	private int delegateMemOffset;
@@ -42,7 +42,7 @@ public abstract class MemoryDataAdapter implements MemoryData {
 	}
 
 	@Override
-	public CLMemory getMem() { return delegateMem == null ? mem : delegateMem.getMem(); }
+	public Memory getMem() { return delegateMem == null ? mem : delegateMem.getMem(); }
 
 	@Override
 	public MemoryData getDelegate() { return delegateMem; }

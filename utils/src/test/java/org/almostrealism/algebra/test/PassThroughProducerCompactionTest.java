@@ -36,6 +36,8 @@ public class PassThroughProducerCompactionTest implements HardwareFeatures, Code
 		Scalar s = product().evaluate(v(1.0).get().evaluate(),
 									v(2.0).get().evaluate(),
 									v(3.0).get().evaluate());
+		System.out.println(s.getValue());
+		System.out.println(s.getValue());
 		Assert.assertEquals(9.0, s.getValue(), Math.pow(10, -10));
 	}
 
@@ -45,9 +47,7 @@ public class PassThroughProducerCompactionTest implements HardwareFeatures, Code
 		// p.compact();
 		System.out.println(p.getFunctionDefinition());
 
-		Scalar s = p.evaluate(new Object[] { new Scalar(1.0),
-											new Scalar(2.0),
-											new Scalar(3.0) });
+		Scalar s = p.evaluate(new Scalar(1.0), new Scalar(2.0), new Scalar(3.0));
 		Assert.assertEquals(9.0, s.getValue(), Math.pow(10, -10));
 	}
 }

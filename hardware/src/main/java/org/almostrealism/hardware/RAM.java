@@ -18,7 +18,7 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.Memory;
 
-public class RAM implements Memory {
+public abstract class RAM implements Memory {
 	public long getNativePointer() {
 		throw new UnsupportedOperationException();
 	}

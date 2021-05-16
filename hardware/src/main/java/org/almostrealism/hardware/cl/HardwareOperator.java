@@ -98,7 +98,7 @@ public class HardwareOperator<T extends MemoryData> implements Consumer<Object[]
 				}
 
 				if (enableVerboseLog) System.out.println(id + ": clSetKernelArg(0) start");
-				CL.clSetKernelArg(kernel, index++, Sizeof.cl_mem, Pointer.to(((MemoryData) args[i]).getMem().getMem()));
+				CL.clSetKernelArg(kernel, index++, Sizeof.cl_mem, Pointer.to(((CLMemory) ((MemoryData) args[i]).getMem()).getMem()));
 				if (enableVerboseLog) System.out.println(id + ": clSetKernelArg(0) end");
 			}
 

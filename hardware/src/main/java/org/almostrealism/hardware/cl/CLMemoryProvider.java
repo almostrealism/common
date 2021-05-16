@@ -19,7 +19,7 @@ package org.almostrealism.hardware.cl;
 import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
-import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.RAM;
 import org.jocl.CL;
 import org.jocl.CLException;
 import org.jocl.Pointer;
@@ -28,8 +28,9 @@ import org.jocl.cl_mem;
 
 import java.util.HashMap;
 import java.util.Optional;
+import java.util.stream.IntStream;
 
-public class CLMemoryProvider implements MemoryProvider<CLMemory> {
+public class CLMemoryProvider implements MemoryProvider<RAM> {
 	private final boolean enableHeapStorage;
 
 	private final cl_context context;
@@ -63,7 +64,10 @@ public class CLMemoryProvider implements MemoryProvider<CLMemory> {
 	}
 
 	@Override
-	public void deallocate(int size, CLMemory mem) {
+	public void deallocate(int size, RAM ram) {
+		if (!(ram instanceof CLMemory)) throw new IllegalArgumentException();
+		CLMemory mem = (CLMemory) ram;
+
 		heap.remove(mem.getMem());
 		CL.clReleaseMemObject(mem.getMem());
 		memoryUsed = memoryUsed - (long) size * getNumberSize();
@@ -94,8 +98,11 @@ public class CLMemoryProvider implements MemoryProvider<CLMemory> {
 		return mem;
 	}
 
-	// TODO  Make protected
-	public void setMem(CLMemory mem, int offset, double[] source, int srcOffset, int length) {
+	@Override
+	public void setMem(RAM ram, int offset, double[] source, int srcOffset, int length) {
+		if (!(ram instanceof CLMemory)) throw new IllegalArgumentException();
+		CLMemory mem = (CLMemory) ram;
+
 		if (Hardware.getLocalHardware().isDoublePrecision()) {
 			Pointer src = Pointer.to(source).withByteOffset((long) srcOffset * getNumberSize());
 			CL.clEnqueueWriteBuffer(Hardware.getLocalHardware().getQueue(), mem.getMem(), CL.CL_TRUE,
@@ -111,49 +118,57 @@ public class CLMemoryProvider implements MemoryProvider<CLMemory> {
 		}
 	}
 
-	// TODO  Make protected
-	public void setMem(CLMemory mem, int offset, MemoryData src, int srcOffset, int length) {
-		if (src.getDelegate() == null) {
-			try {
-				CL.clEnqueueCopyBuffer(Hardware.getLocalHardware().getQueue(), src.getMem().getMem(), mem.getMem(),
+	@Override
+	public void setMem(RAM ram, int offset, RAM srcRam, int srcOffset, int length) {
+		if (!(ram instanceof CLMemory)) throw new IllegalArgumentException();
+		if (!(srcRam instanceof CLMemory)) throw new IllegalArgumentException();
+
+		CLMemory mem = (CLMemory) ram;
+		CLMemory src = (CLMemory) srcRam;
+
+		try {
+			CL.clEnqueueCopyBuffer(Hardware.getLocalHardware().getQueue(), src.getMem(), mem.getMem(),
 						(long) srcOffset * getNumberSize(),
 						(long) offset * getNumberSize(), (long) length * getNumberSize(),
 						0, null, null);
-			} catch (CLException e) {
-				throw e;
-			}
-		} else {
-			setMem(mem, offset, src.getDelegate(), src.getDelegateOffset() + srcOffset, length);
+		} catch (CLException e) {
+			throw new HardwareException(e, (long) length * getNumberSize());
 		}
 	}
 
-	// TODO  Make protected
-	public void getMem(CLMemory mem, int sOffset, double out[], int oOffset, int length) {
-		Object heapObj = getHeapData(mem);
+	@Override
+	public void getMem(RAM mem, int sOffset, double out[], int oOffset, int length) {
+		if (!(mem instanceof CLMemory)) throw new IllegalArgumentException();
+		getMem((CLMemory) mem, sOffset, out, oOffset, length, 1);
+	}
 
-		if (heapObj instanceof float[]) {
-			float f[] = (float[]) heapObj;
-			for (int i = 0; i < length; i++) out[oOffset + i] = f[sOffset + i];
-		} else if (heapObj instanceof double[]) {
-			double d[] = (double[]) heapObj;
-			if (length >= 0) System.arraycopy(d, sOffset, out, oOffset, length);
-		} else if (getNumberSize() == 8) {
-			Pointer dst = Pointer.to(out).withByteOffset((long) oOffset * getNumberSize());
-			CL.clEnqueueReadBuffer(Hardware.getLocalHardware().getQueue(), mem.getMem(),
-					CL.CL_TRUE, (long) sOffset * getNumberSize(),
-					(long) length * getNumberSize(), dst, 0,
-					null, null);
-		} else if (getNumberSize() == 4) {
-			float f[] = new float[length];
-			Pointer dst = Pointer.to(f).withByteOffset(0);
-			CL.clEnqueueReadBuffer(Hardware.getLocalHardware().getQueue(), mem.getMem(),
-					CL.CL_TRUE, (long) sOffset * getNumberSize(),
-					(long) length * getNumberSize(), dst, 0,
-					null, null);
-			for (int i = 0; i < f.length; i++) out[oOffset + i] = f[i];
-		} else {
-			throw new IllegalArgumentException();
-		}
+	private void getMem(CLMemory mem, int sOffset, double out[], int oOffset, int length, int retries) {
+		IntStream.range(0, retries).mapToObj(r -> getHeapData(mem)).forEach(heapObj -> {
+			if (heapObj instanceof float[]) {
+				float f[] = (float[]) heapObj;
+				for (int i = 0; i < length; i++) out[oOffset + i] = f[sOffset + i];
+			} else if (heapObj instanceof double[]) {
+				double d[] = (double[]) heapObj;
+				// if (length >= 0) System.arraycopy(d, sOffset, out, oOffset, length);
+				for (int i = 0; i < length; i++) out[oOffset + i] = d[sOffset + i];
+			} else if (getNumberSize() == 8) {
+				Pointer dst = Pointer.to(out).withByteOffset((long) oOffset * getNumberSize());
+				CL.clEnqueueReadBuffer(Hardware.getLocalHardware().getQueue(), mem.getMem(),
+						CL.CL_TRUE, (long) sOffset * getNumberSize(),
+						(long) length * getNumberSize(), dst, 0,
+						null, null);
+			} else if (getNumberSize() == 4) {
+				float f[] = new float[length];
+				Pointer dst = Pointer.to(f).withByteOffset(0);
+				CL.clEnqueueReadBuffer(Hardware.getLocalHardware().getQueue(), mem.getMem(),
+						CL.CL_TRUE, (long) sOffset * getNumberSize(),
+						(long) length * getNumberSize(), dst, 0,
+						null, null);
+				for (int i = 0; i < f.length; i++) out[oOffset + i] = f[i];
+			} else {
+				throw new IllegalArgumentException();
+			}
+		});
 	}
 
 	private Object getHeapData(CLMemory mem) {

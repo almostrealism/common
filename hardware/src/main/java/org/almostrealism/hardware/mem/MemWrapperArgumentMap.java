@@ -17,6 +17,7 @@
 package org.almostrealism.hardware.mem;
 
 import io.almostrealism.code.ArrayVariable;
+import io.almostrealism.code.Memory;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
@@ -31,7 +32,7 @@ import java.util.Map;
 import java.util.function.Supplier;
 
 public class MemWrapperArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> {
-	private Map<CLMemory, ArrayVariable<A>> mems;
+	private Map<Memory, ArrayVariable<A>> mems;
 
 	public MemWrapperArgumentMap() {
 		mems = new HashMap<>();

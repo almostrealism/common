@@ -131,25 +131,19 @@ public class Vector extends MemoryDataAdapter implements Triple, VectorFeatures,
 		this.setMem(2, new Vector(0, 0, z),2,1);
 	}
 
-	/** Returns the X coordinate of this Vector object. */
+	/** Returns the X coordinate of this {@link Vector}. */
 	public double getX() {
-		double d[] = new double[1];
-		getMem(0, d, 0, 1);
-		return d[0];
+		return toArray()[0];
 	}
 
-	/** Returns the Y coordinate of this Vector object. */
+	/** Returns the Y coordinate of this {@link Vector}. */
 	public double getY() {
-		double d[] = new double[1];
-		getMem(1, d, 0, 1);
-		return d[0];
+		return toArray()[1];
 	}
 
-	/** Returns the Z coordinate of this Vector object. */
+	/** Returns the Z coordinate of this {@link Vector}. */
 	public double getZ() {
-		double d[] = new double[1];
-		getMem(2, d, 0, 1);
-		return d[0];
+		return toArray()[2];
 	}
 
 	@Override
@@ -370,9 +364,7 @@ public class Vector extends MemoryDataAdapter implements Triple, VectorFeatures,
 
 	/** This is the fastest way to get access to the data in this {@link Vector}. */
 	public double[] toArray() {
-		double d[] = new double[3];
-		getMem(0, d, 0, 3);
-		return d;
+		return getMem().toArray(getOffset(), 3);
 	}
 
 	/**

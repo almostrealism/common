@@ -28,11 +28,11 @@ public class CLMemory extends RAM {
 		this.provider = provider;
 	}
 
-	// TODO  Make protected
-	public cl_mem getMem() { return mem; }
+	protected cl_mem getMem() { return mem; }
 
 	@Override
 	public long getNativePointer() { return mem.getNativePointer(); }
 
+	@Override
 	public CLMemoryProvider getProvider() { return provider; }
 }
