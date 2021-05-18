@@ -51,7 +51,7 @@ public abstract class NativeScalarBankDotProduct extends ScalarBankDotProduct im
 			} catch (ClassNotFoundException e) {
 				evaluables.put(count, new ScalarBankDotProduct(count,
 						new PassThroughProducer(2 * count, 0),
-						new PassThroughProducer(2 * count, 0)).get());
+						new PassThroughProducer(2 * count, 1)).get());
 			} catch (NoSuchMethodException | InstantiationException |
 						IllegalAccessException | InvocationTargetException e) {
 				e.printStackTrace();
