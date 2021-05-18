@@ -33,7 +33,7 @@ public class NativeCompiler {
 	private static final String MATH = "#include <math.h>\n";
 	private static final String JNI = "#include <jni.h>\n";
 	private static final String OPENCL = System.getProperty("os.name").toLowerCase().startsWith("mac os") ?
-								"#include <OpenCL/cl.h>\n" : "#include <cl.h>";
+								"#include <OpenCL/cl.h>\n" : "#include <cl.h>\n";
 
 	private static final String M_PI = Hardware.getLocalHardware().getNumberTypeName() + " M_PI_F = M_PI;\n";
 
