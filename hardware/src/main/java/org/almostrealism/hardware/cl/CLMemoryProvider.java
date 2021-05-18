@@ -68,7 +68,7 @@ public class CLMemoryProvider implements MemoryProvider<RAM> {
 		if (!(ram instanceof CLMemory)) throw new IllegalArgumentException();
 		CLMemory mem = (CLMemory) ram;
 
-		heap.remove(mem.getMem());
+		if (heap != null) heap.remove(mem.getMem());
 		CL.clReleaseMemObject(mem.getMem());
 		memoryUsed = memoryUsed - (long) size * getNumberSize();
 	}

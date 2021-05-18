@@ -16,6 +16,8 @@
 
 package org.almostrealism.hardware.jni;
 
+import org.almostrealism.hardware.Hardware;
+
 import java.io.BufferedWriter;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -28,11 +30,14 @@ public class NativeCompiler {
 
 	private static final String STDIO = "#include <stdio.h>\n";
 	private static final String STDLIB = "#include <stdlib.h>\n";
+	private static final String MATH = "#include <math.h>\n";
 	private static final String JNI = "#include <jni.h>\n";
 	private static final String OPENCL = System.getProperty("os.name").toLowerCase().startsWith("mac os") ?
 								"#include <OpenCL/cl.h>\n" : "#include <cl.h>";
 
-	private static final String HEADER = STDIO + STDLIB + JNI + OPENCL + "\n";
+	private static final String M_PI = Hardware.getLocalHardware().getNumberTypeName() + " M_PI_F = M_PI;\n";
+
+	private static final String HEADER = STDIO + STDLIB + MATH + JNI + OPENCL + M_PI + "\n";
 
 	private final String executable;
 	private final String compiler;

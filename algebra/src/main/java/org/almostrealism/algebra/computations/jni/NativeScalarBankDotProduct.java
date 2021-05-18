@@ -48,7 +48,11 @@ public abstract class NativeScalarBankDotProduct extends ScalarBankDotProduct im
 				Object c = Class.forName(NativeScalarBankDotProduct.class.getName() + count)
 						.getConstructor().newInstance();
 				evaluables.put(count, ((Supplier<Evaluable<? extends Scalar>>) c).get());
-			} catch (ClassNotFoundException | NoSuchMethodException | InstantiationException |
+			} catch (ClassNotFoundException e) {
+				evaluables.put(count, new ScalarBankDotProduct(count,
+						new PassThroughProducer(2 * count, 0),
+						new PassThroughProducer(2 * count, 0)).get());
+			} catch (NoSuchMethodException | InstantiationException |
 						IllegalAccessException | InvocationTargetException e) {
 				e.printStackTrace();
 			}
