@@ -31,7 +31,11 @@ import java.util.Optional;
 import java.util.stream.IntStream;
 
 public class CLMemoryProvider implements MemoryProvider<RAM> {
-	private final boolean enableHeapStorage;
+	public enum Location {
+		HOST, DEVICE, HEAP
+	}
+
+	private final Location location;
 
 	private final cl_context context;
 	private final int numberSize;
@@ -40,12 +44,12 @@ public class CLMemoryProvider implements MemoryProvider<RAM> {
 
 	private HashMap<cl_mem, PointerAndObject<?>> heap;
 
-	public CLMemoryProvider(cl_context context, int numberSize, long memoryMax, boolean enableHeap) {
+	public CLMemoryProvider(cl_context context, int numberSize, long memoryMax, Location location) {
 		this.context = context;
 		this.numberSize = numberSize;
 		this.memoryMax = memoryMax;
-		this.enableHeapStorage = enableHeap;
-		if (enableHeapStorage) heap = new HashMap<>();
+		this.location = location;
+		if (location == Location.HEAP) heap = new HashMap<>();
 	}
 
 	public int getNumberSize() { return numberSize; }
@@ -83,9 +87,11 @@ public class CLMemoryProvider implements MemoryProvider<RAM> {
 		PointerAndObject<?> hostPtr = null;
 		long ptrFlag = 0;
 
-		if (enableHeapStorage && len < Integer.MAX_VALUE / getNumberSize()) {
+		if (location == Location.HEAP && len < Integer.MAX_VALUE / getNumberSize()) {
 			hostPtr = PointerAndObject.forLength(getNumberSize(), len);
 			ptrFlag = CL.CL_MEM_USE_HOST_PTR;
+		} else if (location == Location.HOST) {
+			ptrFlag = CL.CL_MEM_ALLOC_HOST_PTR;
 		}
 
 		cl_mem mem = CL.clCreateBuffer(getContext(),

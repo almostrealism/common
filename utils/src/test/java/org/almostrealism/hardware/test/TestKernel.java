@@ -23,6 +23,7 @@ import io.almostrealism.relation.Evaluable;
 import java.util.function.Supplier;
 
 public class TestKernel extends AcceleratedEvaluable<Ray, Ray> {
+	@SafeVarargs
 	public TestKernel(Supplier<Evaluable<? extends Ray>> blank, Supplier<Evaluable<? extends Ray>>... inputArgs) {
 		super("testKernel", true, blank, inputArgs);
 	}

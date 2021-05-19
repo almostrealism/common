@@ -65,7 +65,7 @@ public abstract class OperationComputationAdapter<I, O> extends OperationAdapter
 
 	@Deprecated
 	@Override
-	public ArrayVariable getArgument(int index) {
+	public ArrayVariable<Double> getArgument(int index) {
 		if (index >= getInputs().size()) {
 			throw new IllegalArgumentException("Invalid input (" + index + ")");
 		}

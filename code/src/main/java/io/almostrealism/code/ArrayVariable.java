@@ -56,6 +56,14 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 	public int getDelegateOffset() { return delegateOffset; }
 	public void setDelegateOffset(int delegateOffset) { this.delegateOffset = delegateOffset; }
 
+	public int getOffset() {
+		if (getDelegate() == null) {
+			return 0;
+		} else {
+			return getDelegate().getOffset() + getDelegateOffset();
+		}
+	}
+
 	@Override
 	public InstanceReference<T> get(String pos, Variable... dependencies) {
 		if (getDelegate() == null) {

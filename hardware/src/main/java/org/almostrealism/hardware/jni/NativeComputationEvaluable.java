@@ -24,9 +24,25 @@ import org.almostrealism.hardware.MemoryData;
 import java.util.stream.Stream;
 
 public class NativeComputationEvaluable<T extends MemoryData> extends AcceleratedComputationEvaluable<T> implements NativeLibrary {
+
+	private String head;
+
 	public NativeComputationEvaluable(Computation<T> c) {
 		super(c, false);
 		setCompilation(Compilation.JNI);
+	}
+
+	public String getHead() { return head; }
+
+	public void setHead(String head) { this.head = head; }
+
+	@Override
+	public String getFunctionDefinition() {
+		if (getHead() != null) {
+			return getHead() + "\n" + super.getFunctionDefinition();
+		}
+
+		return super.getFunctionDefinition();
 	}
 
 	@Override

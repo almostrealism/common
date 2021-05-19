@@ -57,9 +57,10 @@ public abstract class AcceleratedBinaryConditionAdapter<T extends MemoryData> ex
 		}
 	}
 
+	// TODO  Change to List<ArrayVariable<Double>>
 	@Override
 	public List<ArrayVariable<Scalar>> getOperands() {
-		return Arrays.asList(getArgument(1), getArgument(2));
+		return Arrays.asList((ArrayVariable) getArgument(1), (ArrayVariable) getArgument(2));
 	}
 
 	@Override
