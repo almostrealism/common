@@ -120,13 +120,13 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 				DefaultScopeInputManager.getInstance() : argumentMap.getScopeInputManager());
 	}
 
-	protected void preCompile() {
+	protected synchronized void preCompile() {
 		prepareScope();
 		if (enableCompaction) compact();
 	}
 
 	@Override
-	public Scope<T> compile() {
+	public synchronized Scope<T> compile() {
 		preCompile();
 
 		if (getComputation() instanceof OperationAdapter
@@ -147,7 +147,7 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	@Override
-	public void postCompile() {
+	public synchronized void postCompile() {
 		setInputs(scope.getInputs());
 		setArguments(scope.getArguments());
 		super.postCompile();

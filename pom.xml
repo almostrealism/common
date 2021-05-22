@@ -6,7 +6,7 @@
 
     <groupId>org.almostrealism</groupId>
     <artifactId>Common</artifactId>
-    <version>0.28</version>
+    <version>0.29</version>
 	<modules>
 		<module>relation</module>
 		<module>io</module>

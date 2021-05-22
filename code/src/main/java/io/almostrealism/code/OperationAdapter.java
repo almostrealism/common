@@ -77,12 +77,12 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 		this.arguments = arguments;
 	}
 
-	public List<Argument<? extends T>> getArguments() {
+	public synchronized List<Argument<? extends T>> getArguments() {
 		Scope.sortArguments(arguments);
 		return arguments;
 	}
 
-	public List<ArrayVariable<? extends T>> getArgumentVariables() {
+	public synchronized List<ArrayVariable<? extends T>> getArgumentVariables() {
 		if (getArguments() == null) return null;
 
 		return getArguments().stream()

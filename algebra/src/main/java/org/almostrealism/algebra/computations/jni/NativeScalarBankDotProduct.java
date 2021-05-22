@@ -16,6 +16,7 @@
 
 package org.almostrealism.algebra.computations.jni;
 
+import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.computations.ScalarBankDotProduct;
@@ -56,6 +57,8 @@ public abstract class NativeScalarBankDotProduct extends ScalarBankDotProduct im
 						IllegalAccessException | InvocationTargetException e) {
 				e.printStackTrace();
 			}
+
+			((OperationAdapter) evaluables.get(count)).compile();
 		}
 
 		return evaluables.get(count);
