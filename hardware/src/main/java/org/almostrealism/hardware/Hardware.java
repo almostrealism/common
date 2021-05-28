@@ -18,11 +18,9 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.Computer;
 import io.almostrealism.code.MemoryProvider;
-import org.almostrealism.hardware.cl.CLMemory;
 import org.almostrealism.hardware.cl.CLMemoryProvider;
 import org.almostrealism.hardware.cl.CLMemoryProvider.Location;
 import org.almostrealism.hardware.jni.NativeCompiler;
-import org.almostrealism.hardware.jni.NativeLibrary;
 import org.almostrealism.hardware.jni.NativeSupport;
 import org.jocl.CL;
 import org.jocl.Sizeof;
@@ -30,7 +28,6 @@ import org.jocl.cl_command_queue;
 import org.jocl.cl_context;
 import org.jocl.cl_context_properties;
 import org.jocl.cl_device_id;
-import org.jocl.cl_mem;
 import org.jocl.cl_platform_id;
 
 import java.io.BufferedReader;
@@ -116,7 +113,7 @@ public final class Hardware {
 	private final boolean enableKernel;
 	private final boolean memVolatile;
 
-	private final String nativeCompiler;
+	private final String compilerExec;
 	private final String libDir;
 
 	private final cl_context context;
@@ -124,28 +121,29 @@ public final class Hardware {
 
 	private final AcceleratedFunctions functions;
 	private final Computer computer;
+	private final NativeCompiler nativeCompiler;
 	private final CLMemoryProvider ram;
 	
-	private Hardware(String nativeCompiler, String libDir, boolean enableGpu, boolean enableKernels, Location location) {
-		this(nativeCompiler, libDir, enableGpu, enableKernels, !enableGpu, location);
+	private Hardware(String compilerExec, String libDir, boolean enableGpu, boolean enableKernels, Location location) {
+		this(compilerExec, libDir, enableGpu, enableKernels, !enableGpu, location);
 	}
 
-	private Hardware(String nativeCompiler, String libDir, boolean enableGpu, boolean enableKernels, boolean enableDoublePrecision, Location location) {
-		this(enableDoublePrecision ? "local64" : "local32", nativeCompiler, libDir, enableGpu, enableKernels, enableDoublePrecision, location);
+	private Hardware(String compilerExec, String libDir, boolean enableGpu, boolean enableKernels, boolean enableDoublePrecision, Location location) {
+		this(enableDoublePrecision ? "local64" : "local32", compilerExec, libDir, enableGpu, enableKernels, enableDoublePrecision, location);
 	}
 
-	private Hardware(String name, String nativeCompiler, String libDir, boolean enableGpu, boolean enableKernels, Location location) {
-		this(name, nativeCompiler, libDir, enableGpu, enableKernels, !enableGpu, location);
+	private Hardware(String name, String compilerExec, String libDir, boolean enableGpu, boolean enableKernels, Location location) {
+		this(name, compilerExec, libDir, enableGpu, enableKernels, !enableGpu, location);
 	}
 
-	private Hardware(String name, String nativeCompiler, String libDir, boolean enableGpu, boolean enableKernels, boolean enableDoublePrecision, Location location) {
+	private Hardware(String name, String compilerExec, String libDir, boolean enableGpu, boolean enableKernels, boolean enableDoublePrecision, Location location) {
 		long memoryMax = (long) Math.pow(2, getMemoryScale()) * 256L * 1000L * 1000L;
 		if (enableDoublePrecision) memoryMax = memoryMax * 2;
 
 		this.enableGpu = enableGpu;
 		this.enableDoublePrecision = enableDoublePrecision;
 		this.enableKernel = enableKernels;
-		this.nativeCompiler = nativeCompiler;
+		this.compilerExec = compilerExec;
 		this.libDir = libDir;
 		this.memVolatile = location == Location.HEAP;
 
@@ -208,6 +206,14 @@ public final class Hardware {
 		computer = new DefaultComputer();
 		if (enableVerbose) System.out.println("Hardware[" + name + "]: Created DefaultComputer");
 
+		if (compilerExec != null && libDir != null) {
+			nativeCompiler = new NativeCompiler(this, compilerExec, libDir, LIB_FORMAT);
+		} else {
+			nativeCompiler = null;
+		}
+
+		if (enableVerbose) System.out.println("Hardware[" + name + "]: Created NativeCompiler");
+
 		ram = new CLMemoryProvider(getContext(), getNumberSize(), memoryMax, location);
 		if (enableVerbose) System.out.println("Hardware[" + name + "]: Created MemoryProvider");
 
@@ -221,7 +227,7 @@ public final class Hardware {
 
 	public Computer getComputer() { return computer; }
 
-	public NativeCompiler getNativeCompiler() { return new NativeCompiler(nativeCompiler, libDir, LIB_FORMAT); }
+	public NativeCompiler getNativeCompiler() { return nativeCompiler; }
 
 	public synchronized void loadNative(NativeSupport lib) throws IOException, InterruptedException {
 		if (libs.contains(lib.getClass())) return;
@@ -236,7 +242,7 @@ public final class Hardware {
 
 	public boolean isKernelSupported() { return enableKernel; }
 
-	public boolean isNativeSupported() { return nativeCompiler != null && libDir != null && LIB_FORMAT != null; }
+	public boolean isNativeSupported() { return compilerExec != null && libDir != null && LIB_FORMAT != null; }
 
 	public boolean isMemoryVolatile() { return memVolatile; }
 

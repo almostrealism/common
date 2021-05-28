@@ -191,7 +191,7 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 		this.variableNames = new ArrayList<>();
 	}
 
-	protected void removeDuplicateArguments() { setArguments(Scope.removeDuplicateArguments(getArguments())); }
+	protected synchronized void removeDuplicateArguments() { setArguments(Scope.removeDuplicateArguments(getArguments())); }
 
 	@Override
 	public synchronized void compact() {

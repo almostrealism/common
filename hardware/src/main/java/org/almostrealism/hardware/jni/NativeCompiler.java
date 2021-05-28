@@ -35,20 +35,21 @@ public class NativeCompiler {
 	private static final String OPENCL = System.getProperty("os.name").toLowerCase().startsWith("mac os") ?
 								"#include <OpenCL/cl.h>\n" : "#include <cl.h>\n";
 
-	private static final String M_PI = Hardware.getLocalHardware().getNumberTypeName() + " M_PI_F = M_PI;\n";
-
-	private static final String HEADER = STDIO + STDLIB + MATH + JNI + OPENCL + M_PI + "\n";
-
 	private final String executable;
 	private final String compiler;
 	private final String libDir;
 	private final String libFormat;
 
-	public NativeCompiler(String compiler, String libDir, String libFormat) {
+	private final String header;
+
+	public NativeCompiler(Hardware hardware, String compiler, String libDir, String libFormat) {
 		this.executable = compiler.contains(".") ? compiler.substring(compiler.lastIndexOf(".") + 1) : null;
 		this.compiler = compiler;
 		this.libDir = libDir;
 		this.libFormat = libFormat;
+
+		String pi = hardware.getNumberTypeName() + " M_PI_F = M_PI;";
+		this.header = STDIO + STDLIB + MATH + JNI + OPENCL + pi + "\n";
 	}
 
 	protected String getExecutable() {
@@ -79,12 +80,12 @@ public class NativeCompiler {
 		return command;
 	}
 
-	public String compile(Class target, String code) throws IOException, InterruptedException {
+	public synchronized String compile(Class target, String code) throws IOException, InterruptedException {
 		String name = target.getName();
 
 		try (FileOutputStream out = new FileOutputStream(getInputFile(name));
 				BufferedWriter buf = new BufferedWriter(new OutputStreamWriter(out))) {
-			buf.write(HEADER);
+			buf.write(header);
 			buf.write(code);
 		}
 
@@ -93,11 +94,11 @@ public class NativeCompiler {
 		return name;
 	}
 
-	public void compileAndLoad(Class target, String code) throws IOException, InterruptedException {
+	public synchronized void compileAndLoad(Class target, String code) throws IOException, InterruptedException {
 		System.loadLibrary(compile(target, code));
 	}
 
-	public void compileAndLoad(Class target, NativeLibrary lib) throws IOException, InterruptedException {
+	public synchronized void compileAndLoad(Class target, NativeLibrary lib) throws IOException, InterruptedException {
 		compileAndLoad(target, lib.getFunctionDefinition());
 	}
 }

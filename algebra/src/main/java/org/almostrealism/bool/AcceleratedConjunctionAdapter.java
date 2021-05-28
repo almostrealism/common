@@ -61,7 +61,7 @@ public abstract class AcceleratedConjunctionAdapter<T extends MemoryData> extend
 	}
 
 	@Override
-	protected void removeDuplicateArguments() { setArguments(Scope.removeDuplicateArguments(getArguments(false))); }
+	protected synchronized void removeDuplicateArguments() { setArguments(Scope.removeDuplicateArguments(getArguments(false))); }
 
 	@Override
 	public void prepareArguments(ArgumentMap map) {
@@ -97,7 +97,7 @@ public abstract class AcceleratedConjunctionAdapter<T extends MemoryData> extend
 	@Override
 	public List<Argument<? extends MemoryData>> getArguments() { return getArguments(true); }
 
-	protected List<Argument<? extends MemoryData>> getArguments(boolean includeConjuncts) {
+	protected synchronized List<Argument<? extends MemoryData>> getArguments(boolean includeConjuncts) {
 		if (super.getArguments() == null) return null;
 
 		List<Argument<? extends MemoryData>> all = new ArrayList<>(super.getArguments());
