@@ -18,6 +18,10 @@ package org.almostrealism.graph;
 
 import org.almostrealism.heredity.Gene;
 
-public interface CellFactory<G, T> {
-	Cell<T> generateCell(Gene<G> g);
+public interface CellFactory<G, T, C> {
+	default Cell<T> generateCell(Gene<G> g) {
+		return generateCell(g, null);
+	}
+
+	Cell<T> generateCell(Gene<G> g, C config);
 }
