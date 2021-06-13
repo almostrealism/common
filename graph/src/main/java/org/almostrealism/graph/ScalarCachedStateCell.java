@@ -24,7 +24,7 @@ import org.almostrealism.hardware.HardwareFeatures;
 import java.util.function.Supplier;
 
 public class ScalarCachedStateCell extends CachedStateCell<Scalar> implements HardwareFeatures {
-	private static Scalar zero = new Scalar();
+	private static final Scalar zero = new Scalar();
 
 	public ScalarCachedStateCell() {
 		super(Scalar.blank().get());
@@ -32,13 +32,11 @@ public class ScalarCachedStateCell extends CachedStateCell<Scalar> implements Ha
 
 	@Override
 	protected Supplier<Runnable> assign(Supplier<Evaluable<? extends Scalar>> out, Supplier<Evaluable<? extends Scalar>> in) {
-		// return () -> () -> out.get().evaluate().setValue(in.get().evaluate().getValue());
 		return a(2, out, in);
 	}
 
 	@Override
 	public Supplier<Runnable> reset(Supplier<Evaluable<? extends Scalar>> out) {
-		// return () -> () -> out.get().evaluate().setMem(new double[] { 0.0, 1.0 });
 		return a(2, out, ScalarFeatures.of(zero));
 	}
 }

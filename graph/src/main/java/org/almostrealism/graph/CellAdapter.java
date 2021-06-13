@@ -19,6 +19,7 @@ package org.almostrealism.graph;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.hardware.OperationList;
 
+import java.util.Optional;
 import java.util.function.Supplier;
 
 public abstract class CellAdapter<T> implements Cell<T> {
@@ -50,6 +51,8 @@ public abstract class CellAdapter<T> implements Cell<T> {
 	@Override
 	public String toString() {
 		String className = getClass().getSimpleName();
-		return name == null ? className : (name + " (" + className + ")");
+		return Optional.ofNullable(name)
+				.map(s -> s + " (" + className + ")")
+				.orElse(className);
 	}
 }

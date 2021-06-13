@@ -63,7 +63,7 @@ public interface PairFeatures {
 		return new ScalarFromPair(p, ScalarFromPair.Y);
 	}
 
-	default PairEvaluable pairAdd(Evaluable<Scalar> a, Evaluable<Scalar> b) {
+	default PairEvaluable pairAdd(Evaluable<Pair> a, Evaluable<Pair> b) {
 		return new DefaultPairEvaluable(pairAdd(() -> a, () -> b));
 	}
 
