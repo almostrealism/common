@@ -20,6 +20,7 @@ import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.computations.ScalarBankDotProduct;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.PassThroughProducer;
 import org.almostrealism.hardware.jni.NativeComputationEvaluable;
 import org.almostrealism.hardware.jni.NativeSupport;
@@ -44,6 +45,12 @@ public abstract class NativeScalarBankDotProduct extends ScalarBankDotProduct im
 	}
 
 	public synchronized static Evaluable<? extends Scalar> get(int count) {
+		if (!Hardware.getLocalHardware().isNativeSupported()) {
+			return new ScalarBankDotProduct(count,
+					new PassThroughProducer(2 * count, 0),
+					new PassThroughProducer(2 * count, 1)).get();
+		}
+
 		if (!evaluables.containsKey(count)) {
 			try {
 				Object c = Class.forName(NativeScalarBankDotProduct.class.getName() + count)
