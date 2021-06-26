@@ -26,7 +26,7 @@ import java.util.function.Supplier;
 
 public class SupplierArgumentMap<S, A> implements ArgumentMap<Supplier, ArrayVariable<A>> {
 	protected ArgumentProvider delegateProvider = DefaultScopeInputManager.getInstance();
-	private Map<Supplier<S>, ArrayVariable<A>> arguments;
+	private final Map<Supplier<S>, ArrayVariable<A>> arguments;
 
 	public SupplierArgumentMap() {
 		this.arguments = new HashMap<>();

@@ -30,13 +30,13 @@ public class ProviderAwareArgumentMap<S, A> extends SupplierArgumentMap<S, A> {
 		if (arg != null) return arg;
 
 		Object provider = key.get();
-		if (provider instanceof Provider == false) return null;
+		if (!(provider instanceof Provider)) return null;
 
 		Object value = ((Provider) provider).get();
 
-		return get((Supplier supplier) -> {
+		return get(supplier -> {
 			Object v = supplier.get();
-			if (v instanceof Provider == false) return false;
+			if (!(v instanceof Provider)) return false;
 			return ((Provider) v).get() == value;
 		}, p).orElse(null);
 	}

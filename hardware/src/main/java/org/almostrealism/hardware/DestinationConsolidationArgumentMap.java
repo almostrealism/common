@@ -18,15 +18,17 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.NameProvider;
+import io.almostrealism.relation.Delegated;
 import org.almostrealism.hardware.mem.MemWrapperArgumentMap;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Supplier;
 
 public class DestinationConsolidationArgumentMap<S, A> extends MemWrapperArgumentMap<S, A> {
-	private List<DestinationSupport> keys;
-	private List<DestinationThreadLocal> destinations;
+	private final List<DestinationSupport> keys;
+	private final List<DestinationThreadLocal> destinations;
 
 	public DestinationConsolidationArgumentMap() {
 		keys = new ArrayList<>();
@@ -35,30 +37,43 @@ public class DestinationConsolidationArgumentMap<S, A> extends MemWrapperArgumen
 
 	@Override
 	public void add(Supplier key) {
-		if (key instanceof DestinationSupport) {
-			keys.add((DestinationSupport) key);
-		}
+		super.add(key);
+		keyForSupplier(key).ifPresent(keys::add);
 	}
 
 	@Override
-	public ArrayVariable<A> get(Supplier key, NameProvider p) {
-		ArrayVariable<A> var = super.get(key, p);
+	public ArrayVariable<A> get(Supplier supplier, NameProvider p) {
+		ArrayVariable<A> var = super.get(supplier, p);
 
-		if (key instanceof DestinationSupport) {
-			DestinationSupport producer = (DestinationSupport) key;
-			producer.setDestination(new DestinationThreadLocal<>(producer.getDestination()));
-		}
+		keyForSupplier(supplier)
+				.filter(prod -> !destinations.contains(prod.getDestination()))
+				.ifPresent(producer ->
+			producer.setDestination(new DestinationThreadLocal<>(producer.getDestination())));
 
 		return var;
 	}
 
+	private Optional<DestinationSupport> keyForSupplier(Supplier supplier) {
+		Object key = supplier;
+
+		if (key instanceof Delegated) {
+			key = ((Delegated<?>) key).getRootDelegate();
+		}
+
+		if (key instanceof DestinationSupport) return Optional.of((DestinationSupport) key);
+		return Optional.empty();
+	}
+
+	/**
+	 * Delegate to {@link DestinationThreadLocal#destroy()} for all the destinations.
+	 */
 	@Override
 	public void destroy() {
-		destinations.stream().forEach(DestinationThreadLocal::destroy);
+		destinations.forEach(DestinationThreadLocal::destroy);
 	}
 
 	protected class DestinationThreadLocal<T> implements Supplier<T> {
-		private Supplier<T> supplier;
+		private final Supplier<T> supplier;
 		private ThreadLocal<T> localByThread;
 		private T local;
 

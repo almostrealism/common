@@ -79,7 +79,7 @@ public abstract class DynamicProducerComputationAdapter<I extends MemoryData, O 
 											 IntFunction<MemoryBank<O>> kernelDestination,
 											 Supplier<Evaluable<? extends I>>[] inputArgs,
 											 Object[] additionalArguments) {
-		if (result == null && this instanceof ProducerArgumentReference == false) {
+		if (result == null && !(this instanceof ProducerArgumentReference)) {
 			throw new IllegalArgumentException();
 		}
 

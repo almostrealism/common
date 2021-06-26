@@ -101,8 +101,10 @@ public class HardwareOperatorMap<T extends MemoryData> implements BiFunction<Str
 	 */
 	public void destroy() {
 		CL.clReleaseProgram(prog);
-		operators.remove();
-		operators = null;
+		if (operators != null) {
+			operators.remove();
+			operators = null;
+		}
 	}
 
 	/** Delegates to {@link #destroy}. */
