@@ -16,10 +16,12 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.Method;
 import io.almostrealism.code.OperationComputationAdapter;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Operation;
+import org.almostrealism.c.OpenCLPrintWriter;
 
 import java.util.Arrays;
 import java.util.function.Supplier;
@@ -33,6 +35,10 @@ public abstract class DynamicOperationComputationAdapter<T> extends OperationCom
 	public DynamicOperationComputationAdapter(Supplier<Evaluable<? extends T>>[] inputArgs, Object[] additionalArguments) {
 		this.setInputs(Arrays.asList(AcceleratedEvaluable.producers(inputArgs, additionalArguments)));
 		init();
+	}
+
+	protected String renderMethod(Method method) {
+		return new OpenCLPrintWriter(null).renderMethod(method);
 	}
 
 	/**

@@ -63,7 +63,6 @@ public class Argument<T> implements Named, Sortable, Delegated<Argument<T>> {
 	@Override
 	public Argument<T> getDelegate() {
 		if (getVariable() == null) return null;
-		if (!(getVariable() instanceof Delegated)) return null;
 		if (((Delegated) getVariable()).getDelegate() == null) return null;
 		return new Argument((Variable) ((Delegated) getVariable()).getDelegate(), Expectation.EVALUATE_AHEAD);
 	}
