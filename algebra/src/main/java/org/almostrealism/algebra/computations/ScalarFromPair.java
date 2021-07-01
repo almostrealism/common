@@ -47,7 +47,7 @@ public class ScalarFromPair extends DynamicProducerComputationAdapter<Pair, Scal
 		return pos -> {
 			if (value == null) {
 				if (pos == 0) {
-					return getArgument(1).get(coordinate);
+					return getArgument(1).valueAt(coordinate);
 				} else if (pos == 1) {
 					return new Expression<>(Double.class, stringForDouble(1.0));
 				} else {

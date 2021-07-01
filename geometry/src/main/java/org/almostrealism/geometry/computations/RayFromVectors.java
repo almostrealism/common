@@ -39,17 +39,17 @@ public class RayFromVectors extends DynamicProducerComputationAdapter<Vector, Ra
 		return pos -> {
 			if (value == null) {
 				if (pos == 0) {
-					return getArgument(1).get(0);
+					return getArgument(1).valueAt(0);
 				} else if (pos == 1) {
-					return getArgument(1).get(1);
+					return getArgument(1).valueAt(1);
 				} else if (pos == 2) {
-					return getArgument(1).get(2);
+					return getArgument(1).valueAt(2);
 				} else if (pos == 3) {
-					return getArgument(2).get(0);
+					return getArgument(2).valueAt(0);
 				} else if (pos == 4) {
-					return getArgument(2).get(1);
+					return getArgument(2).valueAt(1);
 				} else if (pos == 5) {
-					return getArgument(2).get(2);
+					return getArgument(2).valueAt(2);
 				} else {
 					throw new IllegalArgumentException("Position " + pos + " is not valid");
 				}

@@ -17,6 +17,7 @@
 package org.almostrealism.heredity;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 
 public class ArrayListGene<T> extends ArrayList<Factor<T>> implements Gene<T> {
 	public ArrayListGene() { }
@@ -27,12 +28,13 @@ public class ArrayListGene<T> extends ArrayList<Factor<T>> implements Gene<T> {
 		}
 	}
 
+	@SafeVarargs
 	public ArrayListGene(Factor<T>... factors) {
-		for (Factor<T> f : factors) add(f);
+		this.addAll(Arrays.asList(factors));
 	}
 
 	@Override
-	public Factor<T> getFactor(int index) { return get(index); }
+	public Factor<T> valueAt(int index) { return get(index); }
 
 	@Override
 	public int length() { return size(); }

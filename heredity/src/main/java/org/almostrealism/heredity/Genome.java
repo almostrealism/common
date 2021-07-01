@@ -16,33 +16,16 @@
 
 package org.almostrealism.heredity;
 
+import io.almostrealism.uml.Plural;
+
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
-public class Genome extends ArrayList<Chromosome<?>> {
-	public Genome() { this(new ArrayList<>()); }
+public interface Genome extends Plural<Chromosome<?>> {
+	Genome getHeadSubset();
 	
-	public Genome(List<Chromosome<?>> somes) { addAll(somes); }
-	
-	public Genome getHeadSubset() {
-		Genome subset = new Genome();
-		Iterator<Chromosome<?>> itr = iterator();
-		
-		while (itr.hasNext()) {
-			Chromosome c = itr.next();
-			if (itr.hasNext()) subset.add(c);
-		}
-		
-		return subset;
-	}
-	
-	public Chromosome getLastChromosome() { return get(size() - 1); }
+	Chromosome getLastChromosome();
 
-	@Override
-	public String toString() {
-		StringBuffer buf = new StringBuffer();
-		stream().map(Chromosome::toString).map(s -> s + "\n").forEach(buf::append);
-		return buf.toString();
-	}
+	int count();
 }

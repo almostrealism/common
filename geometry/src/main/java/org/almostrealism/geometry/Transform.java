@@ -153,11 +153,11 @@ public class Transform extends DynamicProducerComputationAdapter<Vector, Vector>
 	}
 
 	private String t(int pos, int index) {
-		return getArgument(2).get(pos * 4 + index).getExpression();
+		return getArgument(2).valueAt(pos * 4 + index).getExpression();
 	}
 
 	private String v(int index) {
-		return getArgument(1).get(index).getExpression();
+		return getArgument(1).valueAt(index).getExpression();
 	}
 
 	private class Product {

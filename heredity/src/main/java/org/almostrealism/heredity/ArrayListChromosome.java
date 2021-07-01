@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,7 +21,7 @@ import java.util.List;
 
 public class ArrayListChromosome<T> extends ArrayList<Gene<T>> implements Chromosome<T> {
 	@Override
-	public Gene<T> getGene(int index) { return get(index); }
+	public Gene<T> valueAt(int index) { return get(index); }
 
 	@Override
 	public int length() { return size(); }

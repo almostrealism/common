@@ -32,11 +32,11 @@ public class ProbabilisticFactory<V> extends HashMap<Factory<V>, Double> impleme
 	 * Constructs a {@link ProbabilisticFactory} with the specified factories, where
 	 * probabilities are determined by evaluating the {@link Factor}s in the specified
 	 * {@link Gene}. The value 1.0 is used as an argument, making it convenient to use
-	 * the {@link DoubleScaleFactor} to specify scalar probability values.
+	 * the {@link ScaleFactor} to specify scalar probability values.
 	 */
 	public ProbabilisticFactory(List<? extends Factory<V>> factories, Gene<Scalar> probabilities) {
 		for (int i = 0; i < factories.size(); i++) {
-			put(factories.get(i), ((Scalar) probabilities.getFactor(i).getResultant(() -> new Provider(new Scalar(1.0))).get().evaluate()).getValue());
+			put(factories.get(i), ((Scalar) probabilities.valueAt(i).getResultant(() -> new Provider(new Scalar(1.0))).get().evaluate()).getValue());
 		}
 	}
 	

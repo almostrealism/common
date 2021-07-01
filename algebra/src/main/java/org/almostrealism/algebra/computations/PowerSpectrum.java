@@ -24,9 +24,6 @@ import org.almostrealism.algebra.PairBank;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarBankProducer;
 import org.almostrealism.hardware.DynamicProducerComputationAdapter;
-import org.almostrealism.hardware.KernelizedEvaluable;
-import org.almostrealism.hardware.jni.NativeComputationEvaluable;
-import org.almostrealism.hardware.jni.NativeSupport;
 
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
@@ -42,13 +39,13 @@ public class PowerSpectrum extends DynamicProducerComputationAdapter<PairBank, S
 		return i -> {
 			if (i % 2 == 0) {
 				if (i == 0) {
-					return new Product(getArgument(1).get(0), getArgument(1).get(0));
+					return new Product(getArgument(1).valueAt(0), getArgument(1).valueAt(0));
 				} else if (i == getMemLength() - 2) {
-					return new Product(getArgument(1).get(1), getArgument(1).get(1));
+					return new Product(getArgument(1).valueAt(1), getArgument(1).valueAt(1));
 				} else {
 					return new Sum(
-							new Product(getArgument(1).get(i), getArgument(1).get(i)),
-							new Product(getArgument(1).get(i + 1), getArgument(1).get(i + 1)));
+							new Product(getArgument(1).valueAt(i), getArgument(1).valueAt(i)),
+							new Product(getArgument(1).valueAt(i + 1), getArgument(1).valueAt(i + 1)));
 				}
 			} else {
 				return new Expression<>(Double.class, "1.0");

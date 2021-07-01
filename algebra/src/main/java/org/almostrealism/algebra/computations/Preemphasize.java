@@ -41,13 +41,13 @@ public class Preemphasize extends DynamicProducerComputationAdapter<ScalarBank, 
 	public IntFunction<Expression<Double>> getValueFunction() {
 		return i -> {
 			if (i == 0) {
-				return new Sum(getArgument(1).get(i),
-						new Minus(new Product(getArgument(2).get(0), getArgument(1).get(i))));
+				return new Sum(getArgument(1).valueAt(i),
+						new Minus(new Product(getArgument(2).valueAt(0), getArgument(1).valueAt(i))));
 			} else if (i % 2 == 0) {
-				return new Sum(getArgument(1).get(i),
-						new Minus(new Product(getArgument(2).get(0), getArgument(1).get(i - 2))));
+				return new Sum(getArgument(1).valueAt(i),
+						new Minus(new Product(getArgument(2).valueAt(0), getArgument(1).valueAt(i - 2))));
 			} else {
-				return getArgument(1).get(i);
+				return getArgument(1).valueAt(i);
 			}
 		};
 	}

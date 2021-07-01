@@ -38,7 +38,7 @@ public class RayDirection extends DynamicProducerComputationAdapter<Ray, Vector>
 	public IntFunction<Expression<Double>> getValueFunction() {
 		return pos -> {
 			if (value == null) {
-				return getArgument(1).get(pos + 3);
+				return getArgument(1).valueAt(pos + 3);
 			} else {
 				return value[pos];
 			}

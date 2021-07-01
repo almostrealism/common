@@ -16,8 +16,8 @@
 
 package org.almostrealism.heredity;
 
-public interface Gene<T> {
-	Factor<T> getFactor(int index);
-	
+import io.almostrealism.uml.Plural;
+
+public interface Gene<T> extends Plural<Factor<T>> {
 	int length();
 }

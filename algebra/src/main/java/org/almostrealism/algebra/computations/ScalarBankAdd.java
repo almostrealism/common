@@ -37,7 +37,7 @@ public class ScalarBankAdd extends DynamicProducerComputationAdapter<ScalarBank,
 
 	@Override
 	public IntFunction<Expression<Double>> getValueFunction() {
-		return i -> i % 2 == 0 ? new Sum(getArgument(1).get(i), getArgument(2).get(0))
-									: getArgument(1).get(i);
+		return i -> i % 2 == 0 ? new Sum(getArgument(1).valueAt(i), getArgument(2).valueAt(0))
+									: getArgument(1).valueAt(i);
 	}
 }

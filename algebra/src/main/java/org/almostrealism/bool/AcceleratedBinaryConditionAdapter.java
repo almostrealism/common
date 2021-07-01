@@ -51,7 +51,7 @@ public abstract class AcceleratedBinaryConditionAdapter<T extends MemoryData> ex
 	@Override
 	public Expression getCondition() {
 		if (condition == null) {
-			return new NAryExpression(Boolean.class, operator, getArgument(1).get(0), getArgument(2).get(0));
+			return new NAryExpression(Boolean.class, operator, getArgument(1).valueAt(0), getArgument(2).valueAt(0));
 		} else {
 			return condition;
 		}

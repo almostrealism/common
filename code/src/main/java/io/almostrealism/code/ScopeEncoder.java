@@ -42,7 +42,7 @@ public class ScopeEncoder implements Function<Scope, String>, PrintWriter {
 
 		this.result = new StringBuffer();
 
-		scope.getRequiredScopes().stream()
+		scope.getAllRequiredScopes().stream()
 				.map(new ScopeEncoder(generator, Accessibility.INTERNAL, functionsWritten))
 				.filter(Objects::nonNull)
 				.forEach(result::append);

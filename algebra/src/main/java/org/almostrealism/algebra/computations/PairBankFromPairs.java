@@ -44,7 +44,7 @@ public class PairBankFromPairs extends DynamicProducerComputationAdapter<Pair, P
 	public IntFunction<Expression<Double>> getValueFunction() {
 		return pos -> {
 			if (value == null) {
-				return getArgument(arg(pos)).get(pos(pos));
+				return getArgument(arg(pos)).valueAt(pos(pos));
 			} else {
 				return value[pos];
 			}

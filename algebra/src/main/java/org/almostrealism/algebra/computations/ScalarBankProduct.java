@@ -37,6 +37,6 @@ public class ScalarBankProduct extends DynamicProducerComputationAdapter<ScalarB
 
 	@Override
 	public IntFunction<Expression<Double>> getValueFunction() {
-		return i -> new Product(getArgument(1).get(i), getArgument(2).get(i));
+		return i -> new Product(getArgument(1).valueAt(i), getArgument(2).valueAt(i));
 	}
 }

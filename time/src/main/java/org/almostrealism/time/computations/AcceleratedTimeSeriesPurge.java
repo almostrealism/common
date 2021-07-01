@@ -34,10 +34,10 @@ public class AcceleratedTimeSeriesPurge extends DynamicOperationComputationAdapt
 	public Scope<Void> getScope() {
 		HybridScope<Void> scope = new HybridScope<>(this);
 
-		String bank0 = getArgument(0).get(0).getExpression();
-		String bank1 = getArgument(0).get(1).getExpression();
+		String bank0 = getArgument(0).valueAt(0).getExpression();
+		String bank1 = getArgument(0).valueAt(1).getExpression();
 		String banki = getArgument(0).get("2 * i").getExpression();
-		String cursor0 = getArgument(1).get(0).getExpression();
+		String cursor0 = getArgument(1).valueAt(0).getExpression();
 
 		Consumer<String> code = scope.code();
 		code.accept("if (" + bank1 + " - " + bank0 + " <= 0) return;\n");

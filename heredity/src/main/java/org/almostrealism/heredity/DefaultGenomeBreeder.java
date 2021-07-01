@@ -24,15 +24,7 @@ import java.util.stream.IntStream;
 public class DefaultGenomeBreeder implements GenomeBreeder {
 	private static PrintWriter log;
 
-	static {
-//		try {
-//			log = new PrintWriter(new OutputStreamWriter(new FileOutputStream("breeding.log")));
-//		} catch (FileNotFoundException e) {
-//			e.printStackTrace();
-//		}
-	}
-
-	private List<ChromosomeBreeder> breeders;
+	private final List<ChromosomeBreeder> breeders;
 
 	public DefaultGenomeBreeder(ChromosomeBreeder... breeders) {
 		this(Arrays.asList(breeders));
@@ -44,9 +36,9 @@ public class DefaultGenomeBreeder implements GenomeBreeder {
 
 	@Override
 	public Genome combine(Genome g1, Genome g2) {
-		Genome result = new Genome();
+		ArrayListGenome result = new ArrayListGenome();
 		IntStream.range(0, breeders.size()).forEach(i ->
-			result.add(breeders.get(i).combine(g1.get(i), g2.get(i))));
+			result.add(breeders.get(i).combine(g1.valueAt(i), g2.valueAt(i))));
 
 		if (log != null) log.println(g1 + " + " + g2 + " = " + result);
 		return result;

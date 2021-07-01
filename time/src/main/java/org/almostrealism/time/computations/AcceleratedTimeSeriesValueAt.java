@@ -57,15 +57,15 @@ public class AcceleratedTimeSeriesValueAt extends DynamicProducerComputationAdap
 		scope.getVariables().add(new Variable<>(t1, new Expression<>(Double.class, "0.0")));
 		scope.getVariables().add(new Variable<>(t2, new Expression<>(Double.class, "0.0")));
 
-		String res = getArgument(0).get(0).getExpression();
-		String bank0 = getArgument(1).get(0).getExpression();
-		String bank1 = getArgument(1).get(1).getExpression();
+		String res = getArgument(0).valueAt(0).getExpression();
+		String bank0 = getArgument(1).valueAt(0).getExpression();
+		String bank1 = getArgument(1).valueAt(1).getExpression();
 		String banki = getArgument(1).get("2 * i").getExpression();
 		String bankl0 = getArgument(1).get("2 * " + left).getExpression();
 		String bankl1 = getArgument(1).get("2 * " + left + " + 1").getExpression();
 		String bankr0 = getArgument(1).get("2 * " + right).getExpression();
 		String bankr1 = getArgument(1).get("2 * " + right + " + 1").getExpression();
-		String cursor0 = getArgument(2).get(0).getExpression();
+		String cursor0 = getArgument(2).valueAt(0).getExpression();
 
 		Consumer<String> code = scope.code();
 		code.accept("for (int i = " + bank0 + "; i < " + bank1 + "; i++) {\n");

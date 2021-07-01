@@ -36,7 +36,7 @@ public class TrianglePointDataFromVectors extends DynamicProducerComputationAdap
 	public IntFunction<Expression<Double>> getValueFunction() {
 		return pos -> {
 			if (value == null || value[pos] == null) {
-				return getArgument((pos / 3) + 1).get(pos % 3);
+				return getArgument((pos / 3) + 1).valueAt(pos % 3);
 			} else {
 				return value[pos];
 			}

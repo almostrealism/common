@@ -39,13 +39,13 @@ public class PairBankInterleave extends DynamicProducerComputationAdapter<PairBa
 			pos = pos % 4;
 
 			if (pos == 0) {
-				return getArgument(1).get(2 * loc);
+				return getArgument(1).valueAt(2 * loc);
 			} else if (pos == 1) {
-				return getArgument(1).get(2 * loc + 1);
+				return getArgument(1).valueAt(2 * loc + 1);
 			} else if (pos == 2) {
-				return getArgument(2).get(2 * loc);
+				return getArgument(2).valueAt(2 * loc);
 			} else if (pos == 3) {
-				return getArgument(2).get(2 * loc + 1);
+				return getArgument(2).valueAt(2 * loc + 1);
 			} else {
 				throw new IllegalArgumentException();
 			}

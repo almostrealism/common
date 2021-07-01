@@ -100,9 +100,21 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 	public void setEmbedded(boolean embedded) { this.embedded = embedded; }
 
 	/**
-	 * @return  The {@link Scope}s that are required by this {@link Scope}.
+	 * Returns the {@link Scope}s that are required by this {@link Scope},
+	 * a {@link List} that can be modified to add requirements.
 	 */
 	public List<Scope> getRequiredScopes() { return required; }
+
+	/**
+	 * @return  The {@link Scope}s that are required by this {@link Scope},
+	 * and {@link Scope}s it contains, a {@link List} that cannot be modified
+	 * to add requirements.
+	 */
+	public List<Scope> getAllRequiredScopes() {
+		List<Scope> all = new ArrayList<>(required);
+		stream().map(Scope::getAllRequiredScopes).flatMap(List::stream).forEach(all::add);
+		return all;
+	}
 
 	public <A> List<Supplier<Evaluable<? extends A>>> getInputs() {
 		return arguments(arg -> ((ArrayVariable) arg.getVariable()).getProducer());

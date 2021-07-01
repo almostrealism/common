@@ -40,9 +40,9 @@ public class DotProduct extends DynamicProducerComputationAdapter<Vector, Scalar
 		return pos -> {
 			if (value == null) {
 				if (pos == 0) {
-					return getArgument(1).get(0).multiply(getArgument(2).get(0)).add(
-							getArgument(1).get(1).multiply(getArgument(2).get(1))).add(
-							getArgument(1).get(2).multiply(getArgument(2).get(2)));
+					return getArgument(1).valueAt(0).multiply(getArgument(2).valueAt(0)).add(
+							getArgument(1).valueAt(1).multiply(getArgument(2).valueAt(1))).add(
+							getArgument(1).valueAt(2).multiply(getArgument(2).valueAt(2)));
 				} else if (pos == 1) {
 					return new Expression(Double.class, stringForDouble(1.0));
 				} else {

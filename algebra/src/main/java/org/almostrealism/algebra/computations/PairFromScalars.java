@@ -38,7 +38,7 @@ public class PairFromScalars extends DynamicProducerComputationAdapter<Scalar, P
 	public IntFunction<Expression<Double>> getValueFunction() {
 		return pos -> {
 			if (value == null) {
-				return getArgument(pos + 1).get(0);
+				return getArgument(pos + 1).valueAt(0);
 			} else {
 				return value[pos];
 			}

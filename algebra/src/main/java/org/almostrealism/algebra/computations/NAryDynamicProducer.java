@@ -51,7 +51,7 @@ public abstract class NAryDynamicProducer<T extends MemoryData> extends DynamicP
 				List<Expression<Double>> params = new ArrayList<>();
 
 				for (int i = 1; i < getArgsCount(); i++) {
-					params.add(getArgument(i).get(pos));
+					params.add(getArgument(i).valueAt(pos));
 				}
 
 				return new NAryExpression(Double.class, operator, params);

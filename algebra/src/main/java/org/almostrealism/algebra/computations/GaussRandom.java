@@ -42,9 +42,9 @@ public class GaussRandom extends DynamicProducerComputationAdapter<Pair, Scalar>
 
 		HybridScope<Scalar> scope = new HybridScope<>(this);
 
-		String randx = getArgument(1).get(0).getExpression();
-		String randy = getArgument(1).get(1).getExpression();
-		String result = ((ArrayVariable) getOutputVariable()).get(0).getExpression();
+		String randx = getArgument(1).valueAt(0).getExpression();
+		String randy = getArgument(1).valueAt(1).getExpression();
+		String result = ((ArrayVariable) getOutputVariable()).valueAt(0).getExpression();
 
 		Consumer<String> code = scope.code();
 		code.accept(result + " = sqrt(-2 * log(" + randx + ")) * cos(2 * " + pi + " * " + randy + ");\n");
@@ -56,8 +56,8 @@ public class GaussRandom extends DynamicProducerComputationAdapter<Pair, Scalar>
 	public IntFunction<Expression<Double>> getValueFunction() {
 		String pi = Hardware.getLocalHardware().isDoublePrecision() ? "M_PI" : "M_PI_F";
 
-		String randx = getArgument(1).get(0).getExpression();
-		String randy = getArgument(1).get(1).getExpression();
+		String randx = getArgument(1).valueAt(0).getExpression();
+		String randy = getArgument(1).valueAt(1).getExpression();
 
 		return i -> i == 0 ?
 				new Expression<>(Double.class,

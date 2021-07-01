@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,17 +14,8 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.code;
+package io.almostrealism.uml;
 
-import io.almostrealism.code.expressions.InstanceReference;
-import io.almostrealism.relation.Delegated;
-import io.almostrealism.uml.Plural;
-
-public interface Array<T, V extends Array<T, ?>> extends Plural<InstanceReference<T>>, Delegated<V> {
-	@Override
-	default InstanceReference<T> valueAt(int pos) {
-		return get(String.valueOf(pos));
-	}
-
-	InstanceReference<T> get(String pos, Variable... dependencies);
+public interface Plural<T> {
+	T valueAt(int pos);
 }

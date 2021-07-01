@@ -48,7 +48,7 @@ public class ScalarBankSum extends ProducerComputationAdapter<ScalarBank, Scalar
 		HybridScope<Scalar> scope = new HybridScope<>(this);
 
 		String i = getVariablePrefix() + "_i";
-		String result = getArgument(0).get(0).getExpression();
+		String result = getArgument(0).valueAt(0).getExpression();
 		String value = getArgument(1).get("2 * " + i).getExpression();
 
 		scope.code().accept("for (int " + i + " = 0; " + i + " < " + count +"; " + i + "++) {\n");

@@ -18,7 +18,6 @@ package org.almostrealism.algebra.computations;
 
 import io.almostrealism.code.expressions.Expression;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarBankProducer;
 import org.almostrealism.hardware.DynamicProducerComputationAdapter;
@@ -38,7 +37,7 @@ public class ScalarBankPad extends DynamicProducerComputationAdapter<ScalarBank,
 
 	@Override
 	public IntFunction<Expression<Double>> getValueFunction() {
-		return i -> i < total ? getArgument(1).get(i)
+		return i -> i < total ? getArgument(1).valueAt(i)
 				: new Expression<>(Double.class, "0.0");
 	}
 }

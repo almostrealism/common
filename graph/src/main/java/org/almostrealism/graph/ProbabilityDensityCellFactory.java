@@ -49,7 +49,7 @@ public class ProbabilityDensityCellFactory<T, C> implements CellFactory<Scalar, 
 
 	@Override
 	public Cell<T> generateCell(Gene<Scalar> g, C config) {
-		double arg = g.getFactor(factorIndex).getResultant(() -> new Provider<>(new Scalar(1.0))).get().evaluate().getValue();
+		double arg = g.valueAt(factorIndex).getResultant(() -> new Provider<>(new Scalar(1.0))).get().evaluate().getValue();
 
 		// Pick a point in N-Space, starting
 		// with the bias values initially

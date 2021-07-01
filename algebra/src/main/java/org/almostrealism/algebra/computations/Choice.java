@@ -29,28 +29,24 @@ import org.almostrealism.hardware.DynamicOperationComputationAdapter;
 
 import java.util.List;
 import java.util.stream.IntStream;
-import java.util.stream.Stream;
 
-public class Choice extends DynamicOperationComputationAdapter<Void> {
-	private final ProducerComputation<Scalar> decision;
+public class Choice extends DynamicOperationComputationAdapter {
 	private final List<Computation> choices;
 
-	public Choice(ProducerComputation<Scalar> decision, List<Computation> choices) { ;
-		this.decision = decision;
+	public Choice(ProducerComputation<Scalar> decision, List<Computation> choices) {
+		super(new ProducerComputation[] { decision });
 		this.choices = choices;
 	}
 
 	@Override
 	public void prepareArguments(ArgumentMap map) {
 		super.prepareArguments(map);
-		ScopeLifecycle.prepareArguments(Stream.of(decision), map);
 		choices.forEach(c -> c.prepareArguments(map));
 	}
 
 	@Override
 	public void prepareScope(ScopeInputManager manager) {
 		super.prepareScope(manager);
-		ScopeLifecycle.prepareScope(Stream.of(decision), manager);
 		choices.forEach(c -> c.prepareScope(manager));
 	}
 
@@ -60,25 +56,22 @@ public class Choice extends DynamicOperationComputationAdapter<Void> {
 
 		double interval = 1.0 / choices.size();
 
-		Scope<Scalar> decisionScope = decision.getScope();
+		Scope<Scalar> decisionScope = ((ProducerComputation) getInputs().get(0)).getScope();
 		ArrayVariable<?> decisionValue = decisionScope.getArgumentVariables().get(0);
-
-		scope.getRequiredScopes().add(decisionScope);
-		scope.code().accept(renderMethod(decisionScope.call()) + "\n");
 
 		choices.stream().map(Computation::getScope).forEach(atomScope -> {
 			atomScope.convertArgumentsToRequiredScopes();
 			scope.getRequiredScopes().add(atomScope);
 		});
 
-		IntStream.range(1, scope.getRequiredScopes().size()).forEach(i -> {
-			if (i > 1) {
-				scope.code().accept("else ");
+		IntStream.range(0, scope.getRequiredScopes().size()).forEach(i -> {
+			if (i > 0) {
+				scope.code().accept(" else ");
 			}
 
-			double val = i * interval;
+			double val = (i + 1) * interval;
 
-			scope.code().accept("if (" + decisionValue.get(0).getExpression() + " < " + val + ") {\n");
+			scope.code().accept("if (" + decisionValue.valueAt(0).getExpression() + " < " + val + ") {\n");
 			scope.code().accept("\t" + renderMethod(scope.getRequiredScopes().get(i).call()) + "\n");
 			scope.code().accept("}");
 		});

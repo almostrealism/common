@@ -41,7 +41,7 @@ public class VectorFromVectorBank<T extends VectorBank> extends DynamicProducerC
 		return pos -> {
 			if (value == null) {
 				if (pos >= 0 && pos < 3) {
-					return getArgument(1).get(position + pos);
+					return getArgument(1).valueAt(position + pos);
 				} else {
 					throw new IllegalArgumentException(String.valueOf(pos));
 				}

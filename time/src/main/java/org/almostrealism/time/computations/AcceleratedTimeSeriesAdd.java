@@ -35,11 +35,11 @@ public class AcceleratedTimeSeriesAdd extends DynamicOperationComputationAdapter
 	public Scope<Void> getScope() {
 		HybridScope<Void> scope = new HybridScope<>(this);
 
-		String bank1 = getArgument(0).get(1).getExpression();
+		String bank1 = getArgument(0).valueAt(1).getExpression();
 		String banklast0 = getArgument(0).get("2 * (int)" + bank1).getExpression();
 		String banklast1 = getArgument(0).get("2 * (int)" + bank1 + " + 1").getExpression();
-		String input0 = getArgument(1).get(0).getExpression();
-		String input1 = getArgument(1).get(1).getExpression();
+		String input0 = getArgument(1).valueAt(0).getExpression();
+		String input1 = getArgument(1).valueAt(1).getExpression();
 
 		Consumer<String> code = scope.code();
 		code.accept(banklast0 + " = " + input0 + ";\n");
