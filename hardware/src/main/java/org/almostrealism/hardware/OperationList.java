@@ -42,7 +42,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>> implements Oper
 
 	public OperationList(boolean enableCompilation) {
 		this.enableCompilation = enableCompilation;
-		this.functionName = "operations_" + functionCount;
+		this.functionName = "operations_" + functionCount++;
 	}
 
 	@Override
