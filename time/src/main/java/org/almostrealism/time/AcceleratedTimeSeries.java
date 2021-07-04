@@ -16,6 +16,7 @@
 
 package org.almostrealism.time;
 
+import io.almostrealism.uml.Lifecycle;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareFeatures;
@@ -27,7 +28,7 @@ import org.almostrealism.time.computations.AcceleratedTimeSeriesValueAt;
 
 import java.util.function.Supplier;
 
-public class AcceleratedTimeSeries extends TemporalScalarBank implements HardwareFeatures {
+public class AcceleratedTimeSeries extends TemporalScalarBank implements Lifecycle, HardwareFeatures {
 	public static CacheLevel defaultCacheLevel = CacheLevel.NONE;
 
 	public AcceleratedTimeSeries() {
@@ -106,6 +107,13 @@ public class AcceleratedTimeSeries extends TemporalScalarBank implements Hardwar
 		} else {
 			return new TemporalScalar(time, v1 + (t1 / t2) * (v2 - v1));
 		}
+	}
+
+	@Override
+	public void reset() {
+		Lifecycle.super.reset();
+		setBeginCursorIndex(1);
+		setEndCursorIndex(1);
 	}
 
 	public static AcceleratedTimeSeries defaultSeries() {

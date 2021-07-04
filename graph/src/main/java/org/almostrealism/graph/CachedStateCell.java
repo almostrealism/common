@@ -68,4 +68,11 @@ public abstract class CachedStateCell<T> extends FilteredCell<T> implements Fact
 		tick.add(super.push(null));
 		return tick;
 	}
+
+	@Override
+	public void reset() {
+		super.reset();
+		reset(() -> new Provider<>(cachedValue));
+		reset(() -> new Provider<>(outValue));
+	}
 }
