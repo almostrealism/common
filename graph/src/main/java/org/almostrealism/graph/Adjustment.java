@@ -16,8 +16,10 @@
 
 package org.almostrealism.graph;
 
+import io.almostrealism.code.Setup;
+
 import java.util.function.Supplier;
 
-public interface Adjustment<T> {
+public interface Adjustment<T> extends Setup {
 	Supplier<Runnable> adjust(Adjustable<T> toAdjust);
 }

@@ -16,7 +16,8 @@
 
 package org.almostrealism.graph;
 
+import io.almostrealism.code.Setup;
 import io.almostrealism.uml.Lifecycle;
 
-public interface Cell<T> extends Transmitter<T>, Receptor<T>, Lifecycle {
+public interface Cell<T> extends Transmitter<T>, Receptor<T>, Setup, Lifecycle {
 }

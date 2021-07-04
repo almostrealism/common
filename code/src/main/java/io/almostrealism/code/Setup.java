@@ -14,23 +14,10 @@
  * limitations under the License.
  */
 
-package org.almostrealism.graph;
-
-import io.almostrealism.relation.Producer;
+package io.almostrealism.code;
 
 import java.util.function.Supplier;
 
-public class ReceptorCell<T> implements Cell<T> {
-	private final Receptor<T> r;
-
-	public ReceptorCell(Receptor<T> r) { this.r = r; }
-
-	@Override
-	public Supplier<Runnable> setup() { return () -> () -> { }; }
-
-	@Override
-	public Supplier<Runnable> push(Producer<T> protein) { return r.push(protein); }
-
-	@Override
-	public void setReceptor(Receptor<T> r) { }
+public interface Setup {
+	Supplier<Runnable> setup();
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -27,6 +27,9 @@ public class FilteredCell<T> extends CellAdapter<T> {
 	public FilteredCell(Factor<T> filter) { this.filter = filter; }
 	
 	protected void setFilter(Factor<T> filter) { this.filter = filter; }
+
+	@Override
+	public Supplier<Runnable> setup() { return () -> () -> { }; }
 
 	@Override
 	public Supplier<Runnable> push(Producer<T> protein) {

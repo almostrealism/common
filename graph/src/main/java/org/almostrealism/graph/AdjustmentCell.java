@@ -30,6 +30,9 @@ public class AdjustmentCell<A, R> extends CellAdapter<R> implements Adjustable<R
 	}
 
 	@Override
+	public Supplier<Runnable> setup() { return adjust.setup(); }
+
+	@Override
 	public Supplier<Runnable> updateAdjustment(Producer<R> value) {
 		if (adjust instanceof Adjustable) {
 			return ((Adjustable) adjust).updateAdjustment(value);
