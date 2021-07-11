@@ -17,7 +17,7 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.relation.Producer;
-import org.almostrealism.hardware.DynamicProducerForMemWrapper;
+import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.MemoryDataAdapter;
@@ -432,7 +432,7 @@ public class Vector extends MemoryDataAdapter implements Triple, VectorFeatures,
 	public static Producer<Vector> blank() {
 		Supplier<Vector> s = Vector::new;
 		IntFunction<MemoryBank<Vector>> b = VectorBank::new;
-		return new DynamicProducerForMemWrapper<>(s, b);
+		return new DynamicProducerForMemoryData<>(s, b);
 	}
 
 	/**

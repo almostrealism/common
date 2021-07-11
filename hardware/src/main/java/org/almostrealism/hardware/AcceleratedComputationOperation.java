@@ -30,7 +30,7 @@ import io.almostrealism.code.ScopeEncoder;
 import io.almostrealism.code.SupplierArgumentMap;
 import io.almostrealism.code.Variable;
 
-import org.almostrealism.hardware.mem.MemWrapperArgumentMap;
+import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.io.PrintWriter;
 
 import java.util.List;
@@ -106,14 +106,15 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 		SupplierArgumentMap argumentMap = null;
 
 		if (enableDestinationConsolidation) {
-			argumentMap = new DestinationConsolidationArgumentMap<>();
+			argumentMap = new DestinationConsolidationArgumentMap<>(isKernel());
 		} else if (enableArgumentMapping) {
-			argumentMap = new MemWrapperArgumentMap<>();
+			argumentMap = new MemoryDataArgumentMap<>(isKernel());
 		}
 
 		if (argumentMap != null) {
 			getComputation().prepareArguments(argumentMap);
 			this.argumentMaps.add(argumentMap);
+			argumentMap.confirmArguments();
 		}
 
 		getComputation().prepareScope(argumentMap == null ?

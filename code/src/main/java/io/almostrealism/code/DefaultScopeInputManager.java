@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -31,8 +31,12 @@ public class DefaultScopeInputManager implements ScopeInputManager {
 		ArrayVariable arg = new ArrayVariable(p, p.getArgumentName(counter++), input);
 		arg.setDelegate(delegate);
 		arg.setDelegateOffset(delegateOffset);
-		arg.setPhysicalScope(p.getDefaultPhysicalScope());
-		arg.getExpression().setType(Double.class);
+
+		if (delegate == null) {
+			arg.setPhysicalScope(p.getDefaultPhysicalScope());
+			arg.getExpression().setType(Double.class);
+		}
+
 		return arg;
 	}
 

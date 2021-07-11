@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,18 +24,20 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.ProviderAwareArgumentMap;
-import org.almostrealism.hardware.cl.CLMemory;
-import org.jocl.cl_mem;
 
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Supplier;
 
-public class MemWrapperArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> {
-	private Map<Memory, ArrayVariable<A>> mems;
+public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> {
+	public static final boolean enableDestinationDetection = true;
 
-	public MemWrapperArgumentMap() {
-		mems = new HashMap<>();
+	private final Map<Memory, ArrayVariable<A>> mems;
+	private final boolean kernel;
+
+	public MemoryDataArgumentMap(boolean kernel) {
+		this.mems = new HashMap<>();
+		this.kernel = kernel;
 	}
 
 	@Override
@@ -43,16 +45,49 @@ public class MemWrapperArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 		ArrayVariable<A> arg = super.get(key, p);
 		if (arg != null) return arg;
 
-		Object provider = key.get();
-		if (!(provider instanceof Provider)) return null;
-		if (!(((Provider) provider).get() instanceof MemoryData)) return null;
+		MemoryData mw;
 
-		MemoryData mw = (MemoryData) ((Provider) provider).get();
+		// A MemoryDataDestination carries information about how to produce
+		// the data in that destination, along with the MemoryData itself
+		// There needs to be a way to return a delegated variable, as we do
+		// below, but not lose the knowledge that we rely on during the
+		// creation of required scopes, ie the knowledge of how that data
+		// is populated. The root delegate will have no logical way to do
+		// this because it may have many children produced in different
+		// ways, so it probably has to be stored with the Delegated variable,
+		// but it cannot be tracked using the delegate field because that
+		// is already used to point at the root delegate MemoryData
+//		if (key instanceof MemoryDataDestination) {
+//			return null;
+//		}
+
+		if (enableDestinationDetection && !kernel && key instanceof MemoryDataDestination) {
+			Object dest = ((MemoryDataDestination) key).get().evaluate();
+			if (dest != null && !(dest instanceof MemoryData)) {
+				throw new RuntimeException();
+			}
+
+			mw = (MemoryData) dest;
+		} else {
+			Object provider = key.get();
+			if (!(provider instanceof Provider)) return null;
+			if (!(((Provider) provider).get() instanceof MemoryData)) return null;
+
+			mw = (MemoryData) ((Provider) provider).get();
+		}
+
+		if (mw == null) return null;
+
 		if (mems.containsKey(mw.getMem())) {
 			return delegateProvider.getArgument(p, key, mems.get(mw.getMem()), mw.getOffset());
 		} else {
+			// Obtain the array variable for the root delegate of the MemoryData
 			ArrayVariable var = delegateProvider.getArgument(p, new RootDelegateProviderSupplier(mw), null, -1);
+
+			// Record that this MemoryData has var as its root delegate
 			mems.put(mw.getMem(), var);
+
+			// Return an ArrayVariable that delegates to the correct position of the root delegate
 			return delegateProvider.getArgument(p, key, var, mw.getOffset());
 		}
 	}

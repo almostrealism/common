@@ -17,7 +17,6 @@
 package org.almostrealism.geometry;
 
 import io.almostrealism.code.ProducerComputation;
-import org.almostrealism.geometry.computations.DefaultTransformMatrixEvaluable;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.KernelizedProducer;
 

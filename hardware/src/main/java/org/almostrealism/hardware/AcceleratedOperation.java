@@ -36,7 +36,7 @@ import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.hardware.cl.HardwareOperator;
-import org.almostrealism.hardware.mem.MemWrapperArgumentMap;
+import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.jocl.CLException;
 
 import java.util.ArrayList;
@@ -58,6 +58,7 @@ public class AcceleratedOperation<T extends MemoryData> extends OperationAdapter
 	private static final Map<String, ThreadLocal<HardwareOperator>> operators = new HashMap<>();
 
 	private final boolean kernel;
+	private boolean argumentMapping;
 	private Class cls;
 
 	protected List<ArgumentMap> argumentMaps;
@@ -65,6 +66,7 @@ public class AcceleratedOperation<T extends MemoryData> extends OperationAdapter
 	@SafeVarargs
 	protected AcceleratedOperation(boolean kernel, Supplier<Evaluable<? extends T>>... args) {
 		super(args);
+		setArgumentMapping(true);
 		this.kernel = kernel;
 		this.argumentMaps = new ArrayList<>();
 	}
@@ -78,6 +80,7 @@ public class AcceleratedOperation<T extends MemoryData> extends OperationAdapter
 	@SafeVarargs
 	protected AcceleratedOperation(boolean kernel, ArrayVariable<T>... args) {
 		super(Arrays.stream(args).map(var -> new Argument(var, Expectation.EVALUATE_AHEAD)).toArray(Argument[]::new));
+		setArgumentMapping(true);
 		this.kernel = kernel;
 		this.argumentMaps = new ArrayList<>();
 	}
@@ -111,6 +114,10 @@ public class AcceleratedOperation<T extends MemoryData> extends OperationAdapter
 		return operators.get(getFunctionName()).get();
 	}
 
+	protected void setArgumentMapping(boolean enabled) {
+		this.argumentMapping = enabled;
+	}
+
 	/**
 	 * @return  GLOBAL
 	 */
@@ -120,15 +127,18 @@ public class AcceleratedOperation<T extends MemoryData> extends OperationAdapter
 	protected void prepareScope() {
 		SupplierArgumentMap argumentMap = null;
 
-		if (enableDestinationConsolidation) {
-			argumentMap = new DestinationConsolidationArgumentMap<>();
-		} else if (enableArgumentMapping) {
-			argumentMap = new MemWrapperArgumentMap<>();
+		if (argumentMapping) {
+			if (enableDestinationConsolidation) {
+				argumentMap = new DestinationConsolidationArgumentMap<>(isKernel());
+			} else if (enableArgumentMapping) {
+				argumentMap = new MemoryDataArgumentMap<>(isKernel());
+			}
 		}
 
 		if (argumentMap != null) {
 			prepareArguments(argumentMap);
 			argumentMaps.add(argumentMap);
+			argumentMap.confirmArguments();
 		}
 
 		prepareScope(argumentMap == null ?
@@ -247,6 +257,10 @@ public class AcceleratedOperation<T extends MemoryData> extends OperationAdapter
 	private int getProducerArgumentReferenceIndex(Variable<?, ?> arg) {
 		if (arg.getProducer() instanceof ProducerArgumentReference) {
 			return ((ProducerArgumentReference) arg.getProducer()).getReferencedArgumentIndex();
+		}
+
+		if (arg.getProducer() instanceof Delegated && ((Delegated) arg.getProducer()).getDelegate() instanceof ProducerArgumentReference) {
+			return ((ProducerArgumentReference) ((Delegated) arg.getProducer()).getDelegate()).getReferencedArgumentIndex();
 		}
 
 		if (!(arg.getProducer() instanceof AcceleratedComputationOperation)) return -1;

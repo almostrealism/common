@@ -18,25 +18,17 @@ package org.almostrealism.algebra;
 
 import io.almostrealism.relation.Producer;
 
-import org.almostrealism.hardware.DynamicProducerForMemWrapper;
-import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.cl.CLMemory;
 import org.almostrealism.hardware.mem.MemoryDataAdapter;
 import org.almostrealism.hardware.PooledMem;
-import org.jocl.CL;
-import org.jocl.Pointer;
-import org.jocl.cl_mem;
-
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 public class Pair extends MemoryDataAdapter {
 	public Pair() {
 		init();
 	}
 
-	protected Pair(MemoryData delegate, int delegateOffset) {
+	public Pair(MemoryData delegate, int delegateOffset) {
 		setDelegate(delegate, delegateOffset);
 		init();
 	}
@@ -135,6 +127,6 @@ public class Pair extends MemoryDataAdapter {
 	}
 
 	public static Producer<Pair> empty() {
-		return new DynamicProducerForMemWrapper<>(Pair::new, PairBank::new);
+		return new DynamicProducerForMemoryData<>(Pair::new, PairBank::new);
 	}
 }

@@ -22,11 +22,17 @@ import org.almostrealism.color.RGBEvaluable;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import io.almostrealism.code.Computation;
+import org.almostrealism.hardware.MemoryData;
 
 public class DefaultRGBEvaluable extends AcceleratedComputationEvaluable<RGB> implements RGBEvaluable {
 
 	public DefaultRGBEvaluable(Computation<RGB> c) {
 		super(c);
+	}
+
+	@Override
+	protected RGB postProcessOutput(MemoryData output, int offset) {
+		return new RGB(output, offset);
 	}
 
 	@Override

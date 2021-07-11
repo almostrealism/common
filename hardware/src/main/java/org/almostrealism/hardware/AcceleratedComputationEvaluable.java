@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ProducerComputation;
 import org.almostrealism.hardware.cl.HardwareOperator;
@@ -36,8 +37,19 @@ public class AcceleratedComputationEvaluable<T extends MemoryData> extends Accel
 			compile();
 		}
 
-		int outputArgIndex = getArgumentVariables().indexOf(getArgument(0));
-		return (T) apply(args)[outputArgIndex];
+		ArrayVariable outputVariable = (ArrayVariable) getComputation().getOutputVariable();
+		int outputArgIndex = getArgumentVariables().indexOf(outputVariable);
+		return postProcessOutput((MemoryData) apply(args)[outputArgIndex], outputVariable.getOffset());
+	}
+
+	/**
+	 * As the result of an {@link AcceleratedComputationEvaluable} is not guaranteed to be
+	 * of the correct type of {@link MemoryData}, depending on what optimizations
+	 * are used during compilation, subclasses can override this method to ensure that the
+	 * expected type is returned by the {@link #evaluate(Object...)} method.
+	 */
+	protected T postProcessOutput(MemoryData output, int offset) {
+		return (T) output;
 	}
 
 	/**

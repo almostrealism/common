@@ -72,6 +72,10 @@ public interface ScalarFeatures {
 		return new ScalarProduct(a, b);
 	}
 
+	default ScalarProducer scalarsDivide(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
+		return scalarsMultiply(a, pow(b, v(-1.0)));
+	}
+
 	default ScalarEvaluable scalarMinus(Evaluable<Scalar> v) {
 		return new DefaultScalarEvaluable(scalarMinus(() -> v));
 	}

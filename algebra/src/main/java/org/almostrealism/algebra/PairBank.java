@@ -36,7 +36,7 @@ public class PairBank extends MemoryBankAdapter<Pair> {
 	//       respect cache level does this init stuff that we don't want
 	public PairBank(int count, MemoryData delegate, int delegateOffset, CacheLevel cacheLevel) {
 		super(2, count, delegateSpec ->
-						new Scalar(delegateSpec.getDelegate(), delegateSpec.getOffset()),
+						new Pair(delegateSpec.getDelegate(), delegateSpec.getOffset()),
 				delegate, delegateOffset);
 	}
 

@@ -56,13 +56,13 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 
 	@Test
 	public void withPassThrough() {
-		IntStream.range(0, 5).forEach(i -> {
-			Scalar a = scalar(Math.random()).get().evaluate();
-			Scalar b = scalar(Math.random()).get().evaluate();
-
-			LessThan lt = lessThan();
-			check(lt, a, b);
-		});
+		IntStream.range(0, 5)
+				.mapToObj(i -> scalar(Math.random()).get().evaluate())
+				.forEach(a -> {
+					Scalar b = scalar(Math.random()).get().evaluate();
+					LessThan lt = lessThan();
+					check(lt, a, b);
+				});
 	}
 
 	@Test

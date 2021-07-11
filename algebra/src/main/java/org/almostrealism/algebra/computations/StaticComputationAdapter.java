@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@ import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
 public abstract class StaticComputationAdapter<T extends MemoryData> extends DynamicProducerComputationAdapter<MemoryData, T> {
-	private T value;
+	private final T value;
 
 	public StaticComputationAdapter(T value, Supplier<Evaluable<? extends T>> output,
 									IntFunction<MemoryBank<T>> kernelDestination) {
@@ -53,5 +53,5 @@ public abstract class StaticComputationAdapter<T extends MemoryData> extends Dyn
 	 * Returns true.
 	 */
 	@Override
-	public boolean isStatic() { return !isVariableRef() && true; }
+	public boolean isStatic() { return !isVariableRef(); }
 }

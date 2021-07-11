@@ -23,6 +23,7 @@ import org.almostrealism.color.RGB;
 import org.almostrealism.geometry.Intersection;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.geometry.Ray;
+import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import io.almostrealism.code.Operator;
 import io.almostrealism.code.Constant;
@@ -68,6 +69,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 		TriangleDataProducer triangle = triangleFeat.triangle(PassThroughEvaluable.of(TrianglePointData.class, 0));
 		dataProducer = triangle.get();
 		((OperationAdapter) dataProducer).compile();
+		System.out.println(((AcceleratedComputationEvaluable) dataProducer).getFunctionDefinition());
 
 		intersectAt = new TriangleIntersectAt(PassThroughEvaluable.of(TriangleData.class, 1),
 							PassThroughEvaluable.of(Ray.class, 0, -1)).get();

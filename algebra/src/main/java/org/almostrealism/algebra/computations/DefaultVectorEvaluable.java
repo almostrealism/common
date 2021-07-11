@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,8 @@ import org.almostrealism.algebra.VectorBank;
 import org.almostrealism.algebra.VectorEvaluable;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.MemoryBank;
-import org.almostrealism.hardware.mem.MemoryBankAdapter;
+import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.mem.MemoryBankAdapter.CacheLevel;
 
 public class DefaultVectorEvaluable extends AcceleratedComputationEvaluable<Vector> implements VectorEvaluable {
 
@@ -31,7 +32,12 @@ public class DefaultVectorEvaluable extends AcceleratedComputationEvaluable<Vect
 	}
 
 	@Override
+	protected Vector postProcessOutput(MemoryData output, int offset) {
+		return new Vector(output, offset);
+	}
+
+	@Override
 	public MemoryBank<Vector> createKernelDestination(int size) {
-		return new VectorBank(size, MemoryBankAdapter.CacheLevel.ACCESSED);
+		return new VectorBank(size, CacheLevel.ACCESSED);
 	}
 }

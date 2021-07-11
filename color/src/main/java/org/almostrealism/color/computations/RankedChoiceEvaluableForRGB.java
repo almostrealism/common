@@ -19,10 +19,10 @@ package org.almostrealism.color.computations;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBBank;
 import org.almostrealism.geometry.computations.AcceleratedRankedChoiceEvaluable;
-import org.almostrealism.geometry.computations.RankedChoiceEvaluableForMemWrapper;
+import org.almostrealism.geometry.computations.RankedChoiceEvaluableForMemoryData;
 import org.almostrealism.hardware.MemoryBank;
 
-public class RankedChoiceEvaluableForRGB extends RankedChoiceEvaluableForMemWrapper<RGB> {
+public class RankedChoiceEvaluableForRGB extends RankedChoiceEvaluableForMemoryData<RGB> {
 	public RankedChoiceEvaluableForRGB(double e) {
 		super(e);
 	}

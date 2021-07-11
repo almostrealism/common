@@ -22,6 +22,9 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 public interface ArgumentProvider {
+	boolean enableOutputVariableDelegation = true;
+	boolean enableArgumentPostProcessing = false;
+
 	<T> ArrayVariable<T> getArgument(NameProvider p, Supplier<Evaluable<? extends T>> input, ArrayVariable<T> delegate, int delegateOffset);
 
 	default <T> Function<Supplier<Evaluable<? extends T>>, ArrayVariable<T>> argumentForInput(NameProvider p) {
@@ -30,13 +33,25 @@ public interface ArgumentProvider {
 				return null;
 			} else {
 				ArrayVariable<T> arg = getArgument(p, input, null, -1);
-
-				if (arg.getProducer() instanceof Computation && ((Computation) arg.getProducer()).getOutputVariable() != null) {
-					arg.setName(((Computation) arg.getProducer()).getOutputVariable().getName());
-				}
-
+				if (enableArgumentPostProcessing) processOutputVariableDelegation(arg);
 				return arg;
 			}
 		};
+	}
+
+	static void processOutputVariableDelegation(ArrayVariable arg) {
+		if (arg.getProducer() instanceof Computation && ((Computation) arg.getProducer()).getOutputVariable() != null) {
+			Variable<?, ?> output = ((Computation) arg.getProducer()).getOutputVariable();
+
+			// New variables should not be created when referencing the result of another computation
+			// as this introduces the need to copy the result somewhere unnecessarily
+			// Instead the resulting variable will delegate directly to the output variable
+			if (enableOutputVariableDelegation) {
+				arg.setDelegate(((ArrayVariable<?>) output).getRootDelegate());
+				arg.setDelegateOffset(((ArrayVariable<?>) output).getOffset());
+			} else {
+				arg.setName(output.getName());
+			}
+		}
 	}
 }

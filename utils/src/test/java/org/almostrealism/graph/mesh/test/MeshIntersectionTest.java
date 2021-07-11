@@ -34,7 +34,7 @@ import org.almostrealism.hardware.DynamicAcceleratedOperation;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.bool.AcceleratedConjunctionScalar;
-import org.almostrealism.hardware.DynamicProducerForMemWrapper;
+import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.PassThroughEvaluable;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
@@ -203,8 +203,7 @@ public class MeshIntersectionTest implements TestFeatures {
 	protected void evaluate(TriangleIntersectAt intersect, boolean assertions) {
 		Evaluable<Scalar> ev = intersect.get();
 		((OperationAdapter) ev).compile();
-		double distance = ev.evaluate(new Object[] {
-				data1.get(0), origin1.get().evaluate(), direction1.get().evaluate() }).getValue();
+		double distance = ev.evaluate(data1.get(0), origin1.get().evaluate(), direction1.get().evaluate()).getValue();
 		System.out.println("distance = " + distance);
 		if (assertions) assertEquals(1.0, distance);
 	}
@@ -237,7 +236,7 @@ public class MeshIntersectionTest implements TestFeatures {
 
 	@Test
 	public void intersectionKernel3() {
-		KernelizedEvaluable<Ray> ray = new DynamicProducerForMemWrapper<>(args -> ray(i -> Math.random()).get().evaluate()).get();
+		KernelizedEvaluable<Ray> ray = new DynamicProducerForMemoryData<>(args -> ray(i -> Math.random()).get().evaluate()).get();
 		ScalarBank distances = new ScalarBank(100);
 		data2.evaluateIntersectionKernel(ray, distances, new MemoryBank[0]);
 		// TODO  Assertions

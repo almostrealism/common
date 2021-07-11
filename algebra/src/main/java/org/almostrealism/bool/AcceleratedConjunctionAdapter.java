@@ -35,8 +35,10 @@ import org.almostrealism.hardware.MemoryBank;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -69,6 +71,8 @@ public abstract class AcceleratedConjunctionAdapter<T extends MemoryData> extend
 		ScopeLifecycle.prepareArguments(conjuncts.stream(), map);
 		ScopeLifecycle.prepareArguments(Stream.of(trueValue), map);
 		ScopeLifecycle.prepareArguments(Stream.of(falseValue), map);
+		map.add(trueValue);
+		map.add(falseValue);
 	}
 
 	@Override
@@ -79,7 +83,7 @@ public abstract class AcceleratedConjunctionAdapter<T extends MemoryData> extend
 		ScopeLifecycle.prepareScope(Stream.of(falseValue), manager);
 
 		List<ArrayVariable<? extends MemoryData>> args = new ArrayList<>();
-		args.add((ArrayVariable<? extends MemoryData>) getArguments(false).get(0).getVariable());
+		args.add((ArrayVariable<? extends MemoryData>) getOutputVariable());
 		args.addAll(getOperands());
 
 		this.trueVar = manager.argumentForInput(this).apply(trueValue);
@@ -97,6 +101,20 @@ public abstract class AcceleratedConjunctionAdapter<T extends MemoryData> extend
 	@Override
 	public List<Argument<? extends MemoryData>> getArguments() { return getArguments(true); }
 
+	@Override
+	public Variable getOutputVariable() {
+		return getArgumentForInput((List) getArgumentVariables(false), (Supplier) getInputs().get(0));
+	}
+
+	public synchronized List<ArrayVariable<? extends T>> getArgumentVariables(boolean includeConjuncts) {
+		if (super.getArguments() == null) return null;
+
+		return getArguments(includeConjuncts).stream()
+				.map(arg -> Optional.ofNullable(arg).map(Argument::getVariable).orElse(null))
+				.map(var -> (ArrayVariable<? extends T>) var)
+				.collect(Collectors.toList());
+	}
+
 	protected synchronized List<Argument<? extends MemoryData>> getArguments(boolean includeConjuncts) {
 		if (super.getArguments() == null) return null;
 
@@ -106,11 +124,15 @@ public abstract class AcceleratedConjunctionAdapter<T extends MemoryData> extend
 			conjuncts.stream()
 					.map(AcceleratedConditionalStatement::getArguments)
 					.filter(Objects::nonNull)
-					.map(AcceleratedEvaluable::excludeResult)
 					.flatMap(List::stream)
 					.filter(Objects::nonNull)
 					.filter(v -> !all.contains(v))
 					.forEach(all::add);
+
+			// Remove the output variables
+			conjuncts.stream().map(AcceleratedConditionalStatement::getOutputVariable).forEach(var -> {
+				all.removeIf(argument -> argument.getVariable() == var);
+			});
 		}
 
 		return Scope.removeDuplicateArguments(all);

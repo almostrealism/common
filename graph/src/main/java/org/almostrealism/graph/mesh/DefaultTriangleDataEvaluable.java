@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,11 +19,17 @@ package org.almostrealism.graph.mesh;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import io.almostrealism.code.Computation;
+import org.almostrealism.hardware.MemoryData;
 
 public class DefaultTriangleDataEvaluable extends AcceleratedComputationEvaluable<TriangleData> implements TriangleDataEvaluable {
 
 	public DefaultTriangleDataEvaluable(Computation<TriangleData> c) {
 		super(c);
+	}
+
+	@Override
+	protected TriangleData postProcessOutput(MemoryData output, int offset) {
+		return new TriangleData(output, offset);
 	}
 
 	@Override

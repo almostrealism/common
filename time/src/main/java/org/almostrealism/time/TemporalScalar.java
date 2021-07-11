@@ -17,7 +17,7 @@
 package org.almostrealism.time;
 
 import org.almostrealism.algebra.Pair;
-import org.almostrealism.hardware.DynamicProducerForMemWrapper;
+import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.PooledMem;
 import io.almostrealism.relation.Producer;
@@ -48,6 +48,6 @@ public class TemporalScalar extends Pair {
 	}
 
 	public static Producer<TemporalScalar> blank() {
-		return new DynamicProducerForMemWrapper<>(TemporalScalar::new, TemporalScalarBank::new);
+		return new DynamicProducerForMemoryData<>(TemporalScalar::new, TemporalScalarBank::new);
 	}
 }

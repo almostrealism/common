@@ -23,23 +23,23 @@ import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public class DynamicProducerForMemWrapper<T extends MemoryData> extends DynamicProducer<T> implements KernelizedProducer<T> {
+public class DynamicProducerForMemoryData<T extends MemoryData> extends DynamicProducer<T> implements KernelizedProducer<T> {
 
 	private final IntFunction<MemoryBank<T>> kernelDestination;
 
-	public DynamicProducerForMemWrapper(Supplier<T> supplier) {
+	public DynamicProducerForMemoryData(Supplier<T> supplier) {
 		this(args -> supplier.get());
 	}
 
-	public DynamicProducerForMemWrapper(Supplier<T> supplier, IntFunction<MemoryBank<T>> kernelDestination) {
+	public DynamicProducerForMemoryData(Supplier<T> supplier, IntFunction<MemoryBank<T>> kernelDestination) {
 		this(args -> supplier.get(), kernelDestination);
 	}
 
-	public DynamicProducerForMemWrapper(Function<Object[], T> function) {
+	public DynamicProducerForMemoryData(Function<Object[], T> function) {
 		this(function, null);
 	}
 
-	public DynamicProducerForMemWrapper(Function<Object[], T> function, IntFunction<MemoryBank<T>> kernelDestination) {
+	public DynamicProducerForMemoryData(Function<Object[], T> function, IntFunction<MemoryBank<T>> kernelDestination) {
 		super(function);
 		this.kernelDestination = kernelDestination;
 	}

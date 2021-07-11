@@ -28,8 +28,10 @@ import io.almostrealism.relation.Provider;
 import io.almostrealism.relation.Sortable;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Supplier;
 
 /**
@@ -124,6 +126,7 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 
 	@Override
 	public void setName(String n) { this.name = n; }
+
 	@Override
 	public String getName() { return this.name; }
 
@@ -138,9 +141,11 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 	public boolean isDeclaration() { return declaration; }
 
 	public void setExpression(Expression<T> value) { this.expression = value; }
+
 	public Expression<T> getExpression() { return expression; }
 
 	public void setSortHint(int hint) { this.sortHint = hint; }
+
 	@Override
 	public int getSortHint() { return sortHint; }
 
@@ -180,17 +185,21 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 		return getProducer() instanceof Compactable && ((Compactable) getProducer()).isStatic();
 	}
 
-	public Class<T> getType() { return getExpression() == null ? null : getExpression().getType(); }
+	public Class<T> getType() {
+		if (getDelegate() != null && getDelegate().getType() != null) return getDelegate().getType();
+		return getExpression() == null ? null : getExpression().getType();
+	}
 
 	public List<Variable<?, ?>> getDependencies() {
 		List<Variable<?, ?>> deps = new ArrayList<>();
 		if (delegate != null) deps.add(delegate);
 		if (dependsOn != null) deps.add(dependsOn);
-		if (getExpression() != null) {
-			deps.addAll(getExpression().getDependencies());
-		}
-
+		deps.addAll(getExpressionDependencies());
 		return deps;
+	}
+
+	protected List<Variable<?, ?>> getExpressionDependencies() {
+		return Optional.ofNullable(getExpression()).map(Expression::getDependencies).orElse(Collections.emptyList());
 	}
 
 	public Expression<Integer> getArraySize() {
@@ -206,7 +215,7 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 		Variable v = (Variable) obj;
 		if (!Objects.equals(name, v.name)) return false;
 		if (!Objects.equals(physicalScope, v.getPhysicalScope())) return false;
-		if (!Objects.equals(expression, v.getExpression())) return false;
+		if (!Objects.equals(expression, v.expression)) return false;
 		if (!Objects.equals(producer, v.getProducer())) return false;
 		if (!Objects.equals(dependsOn, v.dependsOn)) return false;
 		if (!Objects.equals(delegate, v.getDelegate())) return false;

@@ -41,7 +41,7 @@ import java.util.Optional;
 /** An interface to OpenCL. */
 public final class Hardware {
 	public static boolean enableVerbose = false;
-	public static boolean enableMultiThreading = true;
+	public static final boolean enableMultiThreading = true;
 
 	protected static final int MEMORY_SCALE;
 	protected static final boolean ENABLE_POOLING;

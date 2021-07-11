@@ -20,6 +20,9 @@ import io.almostrealism.code.expressions.Expression;
 import io.almostrealism.code.expressions.InstanceReference;
 import io.almostrealism.relation.Evaluable;
 
+import java.util.Collections;
+import java.util.List;
+import java.util.Optional;
 import java.util.function.Supplier;
 
 public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements Array<T, ArrayVariable<T>> {
@@ -53,6 +56,11 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 		return super.getArraySize();
 	}
 
+	@Override
+	public void setDelegate(ArrayVariable<T> delegate) {
+		super.setDelegate(delegate);
+	}
+
 	public int getDelegateOffset() { return delegateOffset; }
 	public void setDelegateOffset(int delegateOffset) { this.delegateOffset = delegateOffset; }
 
@@ -67,11 +75,33 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 	@Override
 	public InstanceReference<T> get(String pos, Variable... dependencies) {
 		if (getDelegate() == null) {
-			return new InstanceReference(new Variable<>(names.getVariableValueName(this, pos), false, new Expression(getType()), this), dependencies);
+			return new InstanceReference(new Variable<>(names.getVariableValueName(this, pos), false, new Expression(getType()), this),
+											dependencies);
 		} else if (getDelegate() == this) {
 			throw new IllegalArgumentException("Circular delegate reference");
 		} else {
-			return getDelegate().get(pos + " + " + getDelegateOffset());
+			InstanceReference ref = getDelegate().get(pos + " + " + getDelegateOffset(), dependencies);
+			ref.getReferent().setOriginalProducer(getOriginalProducer());
+			return ref;
 		}
+	}
+
+	@Override
+	public void setExpression(Expression<T> value) {
+		if (getDelegate() != null)
+			throw new RuntimeException("The expression should not be referenced directly, as this variable delegates to another variable");
+		super.setExpression(value);
+	}
+
+	@Override
+	public Expression<T> getExpression() {
+		if (getDelegate() == null) return super.getExpression();
+		throw new RuntimeException("The expression should not be referenced directly, as this variable delegates to another variable");
+	}
+
+	@Override
+	protected List<Variable<?, ?>> getExpressionDependencies() {
+		if (getDelegate() == null) return super.getExpressionDependencies();
+		return Collections.emptyList();
 	}
 }

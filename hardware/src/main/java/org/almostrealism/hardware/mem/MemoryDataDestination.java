@@ -18,20 +18,20 @@ package org.almostrealism.hardware.mem;
 
 import io.almostrealism.relation.Delegated;
 import org.almostrealism.hardware.DestinationSupport;
-import org.almostrealism.hardware.DynamicProducerForMemWrapper;
+import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryBank;
 
 import java.util.function.IntFunction;
 
-public class MemWrapperDestination<T extends MemoryData> extends DynamicProducerForMemWrapper<T> implements Delegated<DestinationSupport<T>> {
+public class MemoryDataDestination<T extends MemoryData> extends DynamicProducerForMemoryData<T> implements Delegated<DestinationSupport<T>> {
 	private final DestinationSupport<T> destination;
 
-	public MemWrapperDestination(DestinationSupport<T> destination) {
+	public MemoryDataDestination(DestinationSupport<T> destination) {
 		this(destination, null);
 	}
 
-	public MemWrapperDestination(DestinationSupport<T> destination, IntFunction<MemoryBank<T>> kernelDestination) {
+	public MemoryDataDestination(DestinationSupport<T> destination, IntFunction<MemoryBank<T>> kernelDestination) {
 		super(args -> destination.getDestination().get(), kernelDestination);
 		this.destination = destination;
 	}

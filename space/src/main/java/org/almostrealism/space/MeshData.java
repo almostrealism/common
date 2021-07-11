@@ -29,6 +29,7 @@ import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.mem.MemoryBankAdapter;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.geometry.computations.RankedChoiceEvaluable;
+import org.almostrealism.hardware.mem.MemoryBankAdapter.CacheLevel;
 
 public class MeshData extends TriangleDataBank {
 	/**
@@ -93,7 +94,7 @@ public class MeshData extends TriangleDataBank {
 			if (KernelizedOperation.enableKernelLog) System.out.println(rays.getCount() + " intersection kernels evaluated");
 		} else {
 			ScalarBank distances = new ScalarBank(this.getCount() * rays.getCount(),
-					MemoryBankAdapter.CacheLevel.NONE);
+					CacheLevel.NONE);
 
 			startTime = System.currentTimeMillis();
 			Triangle.intersectAt.kernelEvaluate(distances, new MemoryBank[] { rays, this, dim });

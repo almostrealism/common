@@ -20,6 +20,7 @@ import io.almostrealism.code.Argument.Expectation;
 import io.almostrealism.code.expressions.Expression;
 import io.almostrealism.code.expressions.MultiExpression;
 import io.almostrealism.relation.Compactable;
+import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
 
@@ -50,11 +51,18 @@ public abstract class OperationComputationAdapter<I, O> extends OperationAdapter
 	@Override
 	public void prepareScope(ScopeInputManager manager) {
 		if (getArgumentVariables() != null) return;
-
 		ScopeLifecycle.prepareScope(getInputs().stream(), manager);
+		assignArguments(manager);
+	}
 
+	/**
+	 * Generate {@link ArrayVariable}s for the values available via
+	 * {@link #getInputs()} and store them so they can be retrieved
+	 * via {@link #getArguments()}.
+	 */
+	protected void assignArguments(ArgumentProvider provider) {
 		setArguments(getInputs().stream()
-				.map(manager.argumentForInput(this))
+				.map(provider.argumentForInput(this))
 				.map(var ->
 						Optional.ofNullable(var).map(v ->
 								new Argument<>(v, Expectation.EVALUATE_AHEAD))
@@ -63,20 +71,15 @@ public abstract class OperationComputationAdapter<I, O> extends OperationAdapter
 				.collect(Collectors.toList()));
 	}
 
+	/**
+	 * It is better to use the {@link #getArgument(int, int)} method,
+	 * so that if an {@link ArrayVariable} is created it is the correct
+	 * size.
+	 */
 	@Deprecated
 	@Override
 	public ArrayVariable<Double> getArgument(int index) {
-		if (index >= getInputs().size()) {
-			throw new IllegalArgumentException("Invalid input (" + index + ")");
-		}
-
-		ArrayVariable v = getArgumentForInput(getInputs().get(index));
-		if (v == null) {
-			throw new IllegalArgumentException("Input " + index +
-					" does not appear to have a corresponding argument");
-		}
-
-		return v;
+		return getArgument(index, 0);
 	}
 
 	@Override
@@ -120,6 +123,10 @@ public abstract class OperationComputationAdapter<I, O> extends OperationAdapter
 	public static <T> MultiExpression getExpression(Supplier<Evaluable<? extends T>> producer) {
 		if (producer instanceof MultiExpression) {
 			return (MultiExpression) producer;
+		}
+
+		if (producer instanceof Delegated && ((Delegated) producer).getDelegate() instanceof MultiExpression) {
+			return (MultiExpression) ((Delegated) producer).getDelegate();
 		}
 
 		Evaluable<? extends T> evaluable = producer.get();

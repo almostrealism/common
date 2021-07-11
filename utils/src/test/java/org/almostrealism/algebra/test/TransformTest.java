@@ -1,5 +1,6 @@
 package org.almostrealism.algebra.test;
 
+import org.almostrealism.algebra.computations.DefaultVectorEvaluable;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.computations.TransformAsLocation;
@@ -16,7 +17,7 @@ public class TransformTest implements HardwareFeatures, CodeFeatures {
 	}
 
 	protected AcceleratedComputationEvaluable<Vector> transformAsLocation() {
-		return (AcceleratedComputationEvaluable<Vector>) compileProducer(
+		return new DefaultVectorEvaluable(
 				new TransformAsLocation(matrix(),
 						vector(1.0, 2.0, 3.0)));
 	}

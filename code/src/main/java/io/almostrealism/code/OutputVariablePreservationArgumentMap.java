@@ -16,12 +16,20 @@
 
 package io.almostrealism.code;
 
-public interface ArgumentMap<K, V extends Variable> {
-	void add(K key);
+import java.util.function.Supplier;
 
-	V get(K key, NameProvider p);
+public class OutputVariablePreservationArgumentMap<S, A> extends SupplierArgumentMap<S, A> {
+	/**
+	 * If the provided key is a {@link Computation}, reuse the {@link Variable} it
+	 * exposes via {@link Computation#getOutputVariable()}. Otherwise, delegate to
+	 * the superclass method.
+	 */
+	@Override
+	public ArrayVariable<A> get(Supplier key, NameProvider p) {
+		if (key instanceof Computation) {
+			return (ArrayVariable<A>) ((Computation) key).getOutputVariable();
+		}
 
-	default void confirmArguments() { }
-
-	default void destroy() { }
+		return super.get(key, p);
+	}
 }

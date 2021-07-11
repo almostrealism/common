@@ -21,7 +21,7 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.computations.RayPointAt;
 import org.almostrealism.hardware.AcceleratedEvaluable;
-import org.almostrealism.hardware.DynamicProducerForMemWrapper;
+import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.MemoryDataAdapter;
 import io.almostrealism.relation.Producer;
@@ -51,7 +51,7 @@ public class Ray extends MemoryDataAdapter implements RayFeatures, Cloneable {
 		init();
 	}
 
-	protected Ray(MemoryData delegate, int delegateOffset) {
+	public Ray(MemoryData delegate, int delegateOffset) {
 		setDelegate(delegate, delegateOffset);
 		init();
 	}
@@ -197,6 +197,6 @@ public class Ray extends MemoryDataAdapter implements RayFeatures, Cloneable {
 	public static Producer<Ray> blank() {
 		Supplier<Ray> r = Ray::new;
 		IntFunction<MemoryBank<Ray>> b = RayBank::new;
-		return new DynamicProducerForMemWrapper<>(r, b);
+		return new DynamicProducerForMemoryData<>(r, b);
 	}
 }

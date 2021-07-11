@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarEvaluable;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.MemoryBankAdapter;
 import io.almostrealism.code.Computation;
 
@@ -28,6 +29,11 @@ public class DefaultScalarEvaluable extends AcceleratedComputationEvaluable<Scal
 
 	public DefaultScalarEvaluable(Computation<Scalar> c) {
 		super(c);
+	}
+
+	@Override
+	protected Scalar postProcessOutput(MemoryData output, int offset) {
+		return new Scalar(output, offset);
 	}
 
 	@Override

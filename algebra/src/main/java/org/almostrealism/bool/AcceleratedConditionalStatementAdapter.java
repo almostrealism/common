@@ -24,16 +24,21 @@ import io.almostrealism.code.expressions.MultiExpression;
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.Variable;
+import org.almostrealism.hardware.AcceleratedEvaluable;
 import org.almostrealism.hardware.ComputerFeatures;
-import org.almostrealism.hardware.DynamicProducerForMemWrapper;
+import org.almostrealism.hardware.DestinationSupport;
+import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.ExplictBody;
 import org.almostrealism.hardware.MemoryData;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.ProducerCache;
+import org.almostrealism.hardware.mem.MemoryDataDestination;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
@@ -41,11 +46,13 @@ import java.util.function.Supplier;
 public abstract class AcceleratedConditionalStatementAdapter<T extends MemoryData>
 											extends ProducerComputationAdapter<MemoryData, T>
 											implements AcceleratedConditionalStatement<T>,
-													ExplictBody<T>, ComputerFeatures {
+													ExplictBody<T>, DestinationSupport<MemoryData>,
+													ComputerFeatures {
 	public static boolean enableCompaction = false;
 
-	private int memLength;
+	private final int memLength;
 
+	private Supplier<MemoryData> destination;
 	private Function<Variable<T, ?>, String> compacted;
 
 	public AcceleratedConditionalStatementAdapter(int memLength, Supplier<T> blankValue, IntFunction<MemoryBank<T>> kernelDestination) {
@@ -60,9 +67,10 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemoryDat
 												  Supplier<Evaluable<? extends T>> trueValue,
 												  Supplier<Evaluable<? extends T>> falseValue) {
 		this.memLength = memLength;
+		this.destination = (Supplier) blankValue;
 
 		List inputs = new ArrayList();
-		inputs.add(new DynamicProducerForMemWrapper(args -> blankValue.get(), kernelDestination));
+		inputs.add(new MemoryDataDestination(this, kernelDestination));
 		inputs.add(leftOperand);
 		inputs.add(rightOperand);
 		inputs.add(trueValue);
@@ -81,13 +89,10 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemoryDat
 	public PhysicalScope getDefaultPhysicalScope() { return PhysicalScope.GLOBAL; }
 
 	@Override
-	public void prepareScope(ScopeInputManager manager) {
-		super.prepareScope(manager);
+	public void setDestination(Supplier<MemoryData> destination) { this.destination = destination; }
 
-		// Result should always be first
-		ArrayVariable arg = getArgumentForInput(getInputs().get(0));
-		if (arg != null) arg.setSortHint(-1);
-	}
+	@Override
+	public Supplier<MemoryData> getDestination() { return destination; }
 
 	@Override
 	public String getBody(Variable<T, ?> outputVariable) {

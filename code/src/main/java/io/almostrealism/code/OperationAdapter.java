@@ -17,6 +17,7 @@
 package io.almostrealism.code;
 
 import io.almostrealism.relation.Compactable;
+import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Named;
 import io.almostrealism.relation.Producer;
@@ -96,10 +97,7 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 			throw new IllegalArgumentException(getName() + " is not compiled");
 		}
 
-		return getArgumentVariables().stream()
-				.filter(arg -> arg != null && arg.getOriginalProducer() == (Supplier) input)
-				.findFirst().orElse(null);
-
+		return getArgumentForInput((List) getArgumentVariables(), (Supplier) input);
 	}
 
 	public void init() {
@@ -140,11 +138,11 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 	}
 
 	public void addVariable(Variable v) {
-		List<Variable<?, ?>> existing = variables.get(v.getProducer());
-		if (existing == null) {
-			existing = new ArrayList<>();
-			variables.put(v.getProducer(), existing);
+		if (v instanceof ArrayVariable && v.getDelegate() != null) {
+			throw new IllegalArgumentException("Provided variable delegates to another variable");
 		}
+
+		List<Variable<?, ?>> existing = variables.computeIfAbsent(v.getProducer(), k -> new ArrayList<>());
 
 		if (!variableNames.contains(v.getName())) {
 			variableNames.add(v.getName());
@@ -175,7 +173,9 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 		if (peer instanceof OperationAdapter) {
 			absorbVariables((OperationAdapter) peer);
 		} else if (peer.get() instanceof Provider) {
-			return; // Providers do not have variables to absorb
+			// Providers do not have variables to absorb
+		} else if (peer instanceof Delegated) {
+			absorbVariables((Supplier) ((Delegated) peer).getDelegate());
 		} else {
 			throw new IllegalArgumentException(peer + " is not a OperationAdapter");
 		}
@@ -202,6 +202,24 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 		getInputs().stream().map(in -> in instanceof Producer ? (Producer) in : null)
 				.filter(Objects::nonNull)
 				.forEach(Producer::destroy);
+	}
+
+	public static ArrayVariable getArgumentForInput(List<ArrayVariable> vars, Supplier<Evaluable> input) {
+		// Check for argument variables for which the original producer is
+		// the specified input
+		Optional<ArrayVariable> var = vars.stream()
+				.filter(arg -> arg != null && arg.getOriginalProducer() == (Supplier) input)
+				.findFirst();
+		if (var.isPresent()) return var.get();
+
+		// Additionally, check for variables for which the original producer
+		// delegates to the specified input
+		var = vars.stream()
+				.filter(Objects::nonNull)
+				.filter(arg -> arg.getOriginalProducer() instanceof Delegated)
+				.filter(arg -> ((Delegated) arg.getOriginalProducer()).getDelegate() == (Supplier) input)
+				.findFirst();
+		return var.orElse(null);
 	}
 
 	protected static String functionName(Class c) {

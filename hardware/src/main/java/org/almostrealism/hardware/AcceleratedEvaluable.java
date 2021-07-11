@@ -46,6 +46,7 @@ public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> ex
 	@SafeVarargs
 	public AcceleratedEvaluable(String function, boolean kernel, Supplier<Evaluable<? extends O>> result, Supplier<Evaluable<? extends I>>... inputArgs) {
 		super(function, kernel, includeResult(result, inputArgs));
+		setArgumentMapping(false);
 	}
 
 	@Override

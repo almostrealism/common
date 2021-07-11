@@ -66,7 +66,7 @@ public abstract class DynamicAcceleratedMultiEvaluable<I extends MemoryData, O e
 		StringBuilder buf = new StringBuilder();
 		// TODO  Variables?
 		IntStream.range(0, memLength)
-				.mapToObj(getAssignmentFunction(this, outputVariable))
+				.mapToObj(getAssignmentFunction(outputVariable))
 				.map(v -> OpenCLPrintWriter.renderAssignment((Variable) v))
 				.map(s -> s + "\n")
 				.forEach(buf::append);

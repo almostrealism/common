@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 
 package org.almostrealism.geometry.computations;
 
-import org.almostrealism.hardware.DynamicProducerForMemWrapper;
+import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryBank;
@@ -24,18 +24,18 @@ import org.almostrealism.hardware.MemoryBank;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public abstract class RankedChoiceEvaluableForMemWrapper<T extends MemoryData> extends RankedChoiceEvaluable<T> implements KernelizedEvaluable<T> {
-	public RankedChoiceEvaluableForMemWrapper(double e) {
+public abstract class RankedChoiceEvaluableForMemoryData<T extends MemoryData> extends RankedChoiceEvaluable<T> implements KernelizedEvaluable<T> {
+	public RankedChoiceEvaluableForMemoryData(double e) {
 		super(e);
 	}
 
-	public RankedChoiceEvaluableForMemWrapper(double e, boolean tolerateNull) {
+	public RankedChoiceEvaluableForMemoryData(double e, boolean tolerateNull) {
 		super(e, tolerateNull);
 	}
 
 	public AcceleratedRankedChoiceEvaluable<T> getAccelerated(int memLength, Supplier<T> blankValue, IntFunction<MemoryBank<T>> forKernel) {
 		return new AcceleratedRankedChoiceEvaluable(memLength, blankValue, forKernel, this,
-												new DynamicProducerForMemWrapper<>(blankValue),
+												new DynamicProducerForMemoryData<>(blankValue),
 												getEpsilon(), blankValue);
 	}
 }

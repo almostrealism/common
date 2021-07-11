@@ -20,11 +20,11 @@ import io.almostrealism.code.Scope;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarProducer;
-import org.almostrealism.hardware.DynamicProducerForMemWrapper;
+import org.almostrealism.hardware.DynamicProducerForMemoryData;
 
 import java.util.function.Function;
 
-public class DynamicScalarProducer extends DynamicProducerForMemWrapper<Scalar> implements ScalarProducer {
+public class DynamicScalarProducer extends DynamicProducerForMemoryData<Scalar> implements ScalarProducer {
 
 	public DynamicScalarProducer(Function<Object[], Scalar> function) {
 		super(function, ScalarBank::new);

@@ -24,6 +24,7 @@ import io.almostrealism.relation.Evaluable;
 import java.util.function.Supplier;
 
 public class ScalarSum extends NAryDynamicProducer<Scalar> implements ScalarProducer {
+	@SafeVarargs
 	public ScalarSum(Supplier<Evaluable<? extends Scalar>>... producers) {
 		super("+", 2, Scalar.blank(), ScalarBank::new, producers);
 	}

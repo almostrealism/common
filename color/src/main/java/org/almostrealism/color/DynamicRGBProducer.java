@@ -17,12 +17,11 @@
 package org.almostrealism.color;
 
 import io.almostrealism.code.Scope;
-import io.almostrealism.code.NameProvider;
-import org.almostrealism.hardware.DynamicProducerForMemWrapper;
+import org.almostrealism.hardware.DynamicProducerForMemoryData;
 
 import java.util.function.Function;
 
-public class DynamicRGBProducer extends DynamicProducerForMemWrapper<RGB> implements RGBProducer {
+public class DynamicRGBProducer extends DynamicProducerForMemoryData<RGB> implements RGBProducer {
 
 	public DynamicRGBProducer(Function<Object[], RGB> function) {
 		super(function, RGBBank::new);

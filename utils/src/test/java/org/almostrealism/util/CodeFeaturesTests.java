@@ -6,6 +6,8 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarProducer;
+import org.almostrealism.algebra.computations.DefaultScalarEvaluable;
+import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.junit.Test;
 
 import java.util.function.Supplier;
@@ -17,8 +19,9 @@ public class CodeFeaturesTests implements TestFeatures {
 		ScalarProducer s = v(1).add(p(value));
 		value.setValue(2);
 
-		Evaluable<Scalar> ev = s.get();
-		((OperationAdapter) ev).compile();
+		DefaultScalarEvaluable ev = (DefaultScalarEvaluable) s.get();
+		ev.compile();
+		System.out.println(ev.getFunctionDefinition());
 		assertEquals(3.0, ev.evaluate().getValue());
 
 		value.setValue(3);
@@ -32,8 +35,9 @@ public class CodeFeaturesTests implements TestFeatures {
 		Supplier<Runnable> s = a(2, p(dest), v(1).add(p(value)).divide(2.0));
 		value.setValue(2);
 
-		Runnable r = s.get();
-		((OperationAdapter) r).compile();
+		AcceleratedComputationOperation r = (AcceleratedComputationOperation) s.get();
+		r.compile();
+		System.out.println(r.getFunctionDefinition());
 		r.run();
 		System.out.println(dest.getValue());
 		assertEquals(1.5, dest.getValue());

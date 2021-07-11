@@ -32,7 +32,7 @@ import org.almostrealism.geometry.computations.MatrixTranspose;
 import org.almostrealism.geometry.computations.RayMatrixTransform;
 import org.almostrealism.geometry.computations.TransformAsLocation;
 import org.almostrealism.geometry.computations.TransformAsOffset;
-import org.almostrealism.hardware.DynamicProducerForMemWrapper;
+import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.hardware.MemoryData;
@@ -388,7 +388,7 @@ public class TransformMatrix extends MemoryDataAdapter implements TripleFunction
 	}
 
 	public static Producer<TransformMatrix> blank() {
-		return new DynamicProducerForMemWrapper<>(args ->
+		return new DynamicProducerForMemoryData<>(args ->
 				new TransformMatrix(false, null, 0),
 				TransformMatrixBank::new);
 	}

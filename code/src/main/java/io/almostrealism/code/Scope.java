@@ -32,9 +32,9 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -117,19 +117,42 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 	}
 
 	public <A> List<Supplier<Evaluable<? extends A>>> getInputs() {
-		return arguments(arg -> ((ArrayVariable) arg.getVariable()).getProducer());
+		return getArgumentVariables().stream()
+				.map(var -> (Supplier) var.getProducer())
+				.map(sup -> (Supplier<Evaluable<? extends A>>) sup).collect(Collectors.toList());
 	}
 
-	public <A> List<Argument<? extends A>> getArguments() {
+	public <A> List<Argument<? extends A>> getDependencies() {
 		List<Argument<? extends A>> result = arguments(arg -> (Argument<? extends A>) arg);
 		sortArguments(result);
 		return result;
 	}
 
+	public <A> List<Argument<? extends A>> getArguments() {
+		List<Argument<? extends A>> args = arguments(arg -> {
+			if (arg.getVariable().getDelegate() == null) {
+				return arg.getVariable() instanceof ArrayVariable ? (Argument<? extends A>) arg : null;
+			}
+
+			if (!(arg.getVariable().getRootDelegate() instanceof ArrayVariable)) {
+				throw new IllegalArgumentException("Only ArrayVariables can be used as Arguments");
+			}
+
+			// TODO  The specified Expectation probably is not accurate
+			return new Argument(arg.getVariable().getRootDelegate(), Expectation.EVALUATE_AHEAD);
+		});
+
+		args = removeDuplicateArguments(args);
+		sortArguments(args);
+		return args;
+	}
+
 	public <A> List<ArrayVariable<? extends A>> getArgumentVariables() {
-		List<ArrayVariable<? extends A>> result = arguments(arg -> (ArrayVariable<? extends A>) arg.getVariable());
-		sortArguments(result);
-		return result;
+		return getArguments().stream()
+				.map(Argument::getVariable)
+				.filter(Objects::nonNull)
+				.map(v -> (ArrayVariable<? extends A>) v)
+				.collect(Collectors.toList());
 	}
 
 	protected List<Argument<?>> arguments() { return arguments(Function.identity()); }
@@ -163,13 +186,13 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 				.flatMap(List::stream)
 				.forEach(v -> args.add((Argument<?>) v));
 
-		List<Argument<?>> result = args.stream()
-				.map(Delegated::getRootDelegate)
-				.collect(Collectors.toList());
+//		List<Argument<?>> result = args.stream()
+//				.map(Delegated::getRootDelegate)
+//				.collect(Collectors.toList());
+//
+//		result = removeDuplicateArguments(result);
 
-		result = removeDuplicateArguments(result);
-
-		return result.stream().map(mapper).collect(Collectors.toList());
+		return removeDuplicateArguments(args).stream().map(mapper).collect(Collectors.toList());
 	}
 
 	public void convertArgumentsToRequiredScopes() {
@@ -178,29 +201,75 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 		}
 
 		List<Argument<?>> args = new ArrayList<>();
+		List<Computation> convertedComputations = new ArrayList<>();
 
-		getArguments()
+		getDependencies()
 				.stream()
 				.map(arg -> {
 					Variable<?, ?> var = arg.getVariable();
 
-					if (!(var.getProducer() instanceof Computation)
-							|| var.getProducer() instanceof DynamicProducer
-							|| var.getProducer() instanceof ProducerArgumentReference) {
+					// Argument references may be Computations, but they cannot
+					// by converted to required scopes because they refer directly
+					// to data passed into evaluation of the compiled Scope
+					if (var.getProducer() instanceof ProducerArgumentReference) {
 						return Collections.singletonList(arg);
 					}
 
-					Scope s = ((Computation) var.getProducer()).getScope();
+					Computation computation = null;
+
+					// If the argument variable is produced by a computation, or is
+					// produced by something that delegates to a computation, it
+					// should be converted to a required scope
+					// DynamicProducers are excluded, however, because its not
+					// generally possible to generate a Scope from a producer
+					// that is powered by a Function, as most are
+					if (var.getProducer() instanceof Computation && !(var.getProducer() instanceof DynamicProducer)) {
+						computation = (Computation) var.getProducer();
+					} else if (var.getProducer() instanceof Delegated) {
+						Delegated delegated = (Delegated) var.getProducer();
+						if (delegated.getDelegate() instanceof Computation &&
+								!(delegated.getDelegate() instanceof DynamicProducer) &&
+								!(delegated.getDelegate() instanceof ProducerArgumentReference)) {
+							computation = (Computation) delegated.getDelegate();
+						}
+					}
+
+					if (computation == null) {
+						return Collections.singletonList(arg);
+					} else if (convertedComputations.contains(computation)) {
+						return Collections.emptyList();
+					}
+
+					// If the variable in fact refers to this Scope, it should not be
+					// recursively made into a requirement of itself
+					// Function names are globally unique, making this detection possible
+					// but there is perhaps a better way than string comparison eventually
+					if (getName() != null && computation instanceof NameProvider && getName().equals(((NameProvider) computation).getFunctionName())) {
+						return Collections.singletonList(arg);
+					}
+
+					Scope s = computation.getScope();
+					if (s.getName() != null && s.getName().equals(getName())) {
+						return Collections.singletonList(arg);
+					}
+
+					// Recursively convert the required Scope's arguments
+					// into required scopes themselves
 					s.convertArgumentsToRequiredScopes();
 
 					// Attempt to simply include the scope
 					// inline, otherwise introduce a method
 					if (tryAbsorb(s)) {
-						return s.getArguments();
+						convertedComputations.add(computation);
+						return s.getDependencies();
 					} else {
 						s.setEmbedded(true);
 						required.add(s);
 						methods.add(s.call());
+						convertedComputations.add(computation);
+
+						// Dependencies will be covered by inspecting the required scope,
+						// so no need to add them here
 						return Collections.emptyList();
 					}
 				})
@@ -252,7 +321,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 
 	public static <T extends Sortable> void sortArguments(List<T> arguments) {
 		if (arguments != null) {
-			Comparator<T> c = Comparator.comparing(v -> v == null ? Integer.MAX_VALUE : v.getSortHint());
+			Comparator<T> c = Comparator.comparing(v -> Optional.ofNullable(v).map(Sortable::getSortHint).orElse(Integer.MAX_VALUE));
 			// c = c.thenComparing(v -> v == null ? "" : v.getName());
 			arguments.sort(c);
 		}
@@ -270,7 +339,6 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 		});
 	}
 
-
 	private static List<Argument<?>> extractArgumentDependencies(Collection<Variable<?, ?>> vars) {
 		return extractArgumentDependencies(vars, true);
 	}
@@ -279,27 +347,21 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 		List<Argument<?>> args = new ArrayList<>();
 
 		v: for (Variable<?, ?> var : vars) {
-			Variable v = var;
+			if (var == null) continue v;
 
-			if (v == null) continue v;
-			if (v.getDelegate() != null) v = v.getDelegate();
+			Argument<?> arg = new Argument(var, top ? Expectation.WILL_EVALUATE : Expectation.EVALUATE_AHEAD);
+			if (!args.contains(arg)) args.add(arg);
 
-			if (v instanceof ArrayVariable) {
-				Argument<?> arg = new Argument(v, top ? Expectation.WILL_EVALUATE : Expectation.EVALUATE_AHEAD);
-
+			// When the variable itself is an InstanceReference, the referent is a dependency
+			if (!(var instanceof Array) && var.getExpression() instanceof InstanceReference) {
+				arg = new Argument((Variable) ((InstanceReference) var.getExpression()).getReferent(),
+												Expectation.EVALUATE_AHEAD);
 				if (!args.contains(arg)) {
 					args.add(arg);
 				}
 			}
 
-			if (var.getExpression() instanceof InstanceReference) {
-				Argument<?> arg = new Argument(((InstanceReference) var.getExpression()).getReferent(),
-												Expectation.EVALUATE_AHEAD);
-				if (arg.getVariable() instanceof ArrayVariable && !args.contains(arg)) {
-					args.add(arg);
-				}
-			}
-
+			// Recursive dependencies are computed
 			extractArgumentDependencies(var.getDependencies(), false).stream()
 					.filter(a -> !args.contains(a)).forEach(args::add);
 		}

@@ -30,7 +30,7 @@ public class Scalar extends Pair implements Comparable<Scalar> {
 	public Scalar(double v) { setValue(v); setCertainty(1.0); }
 	public Scalar(double v, double c) { setValue(v); setCertainty(c); }
 
-	protected Scalar(MemoryData delegate, int delegateOffset) {
+	public Scalar(MemoryData delegate, int delegateOffset) {
 		super(delegate, delegateOffset);
 	}
 

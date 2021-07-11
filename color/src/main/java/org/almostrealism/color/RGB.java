@@ -155,7 +155,7 @@ public class RGB implements Triple, MemoryData, Externalizable, Cloneable {
 		this.setBlue(this.adjust(b, f));
 	}
 
-	protected RGB(MemoryData delegate, int delegateOffset) {
+	public RGB(MemoryData delegate, int delegateOffset) {
 		initColorModule(192, delegate, delegateOffset);
 	}
 

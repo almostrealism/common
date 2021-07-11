@@ -49,7 +49,6 @@ public class ExplicitScope<T> extends Scope<T> {
 
 		if (arguments != null) {
 			result = arguments.stream()
-					.map(Argument::getRootDelegate)
 					.map(mapper)
 					.collect(Collectors.toList());
 		}

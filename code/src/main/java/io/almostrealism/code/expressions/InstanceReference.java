@@ -27,7 +27,7 @@ import io.almostrealism.code.Variable;
  * {@link Variable} the text does not appear in quotes.
  */
 public class InstanceReference<T> extends Expression<T> {
-	private Variable var;
+	private Variable<T, ?> var;
 
 	public InstanceReference(Variable<T, ?> v) {
 		this(v.getType(), v.getName(), v);
@@ -43,7 +43,7 @@ public class InstanceReference<T> extends Expression<T> {
 		super(type, varName, dependencies);
 	}
 
-	public Variable getReferent() { return var; }
+	public Variable<T, ?> getReferent() { return var; }
 
 	public Variable assign(Expression exp) {
 		return new Variable(getExpression(), false, exp);

@@ -29,19 +29,21 @@ import io.almostrealism.code.Scope;
 import io.almostrealism.code.Variable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
-import org.almostrealism.hardware.mem.MemWrapperDestination;
+import org.almostrealism.hardware.DestinationConsolidationArgumentMap.DestinationThreadLocal;
+import org.almostrealism.hardware.mem.MemoryDataDestination;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Objects;
+import java.util.Optional;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public abstract class DynamicProducerComputationAdapter<I extends MemoryData, O extends MemoryData>
 		extends ProducerComputationAdapter<I, O>
-		implements MemWrapperComputation<O>, KernelizedProducer<O>,
+		implements MemoryDataComputation<O>, KernelizedProducer<O>,
 		DestinationSupport<O>, MultiExpression<Double>, ComputerFeatures {
 
 	/**
@@ -84,10 +86,10 @@ public abstract class DynamicProducerComputationAdapter<I extends MemoryData, O 
 		}
 
 		this.memLength = memLength;
-		this.destination = () -> (O) Objects.requireNonNull(result).get().evaluate();
+		this.destination = () -> (O) Optional.ofNullable(result).map(Supplier::get).map(Evaluable::evaluate).orElse(null);
 		this.setInputs(Arrays.asList(
 				AcceleratedEvaluable.includeResult(
-						new MemWrapperDestination(this, kernelDestination),
+						new MemoryDataDestination(this, kernelDestination),
 						AcceleratedEvaluable.producers(inputArgs, additionalArguments))));
 		init();
 	}
@@ -106,6 +108,8 @@ public abstract class DynamicProducerComputationAdapter<I extends MemoryData, O 
 		super.prepareScope(manager);
 
 		// Result should always be first
+		// TODO  This causes cascading issues, as the output variable is reused by the referring
+		// TODO  producer and then multiple arguments are sorted to be "first"
 		ArrayVariable arg = getArgumentForInput(getInputs().get(0));
 		if (arg != null) arg.setSortHint(-1);
 	}
@@ -114,7 +118,7 @@ public abstract class DynamicProducerComputationAdapter<I extends MemoryData, O 
 	public Scope<O> getScope() {
 		Scope<O> scope = super.getScope();
 		IntStream.range(0, memLength)
-				.mapToObj(getAssignmentFunction(this, getOutputVariable()))
+				.mapToObj(getAssignmentFunction(getOutputVariable()))
 				.forEach(v -> scope.getVariables().add((Variable) v));
 		return scope;
 	}
@@ -199,34 +203,18 @@ public abstract class DynamicProducerComputationAdapter<I extends MemoryData, O 
 	public void destroy() {
 		super.destroy();
 		ProducerCache.purgeEvaluableCache(this);
-		if (destination instanceof DestinationConsolidationArgumentMap.DestinationThreadLocal) {
-			((DestinationConsolidationArgumentMap.DestinationThreadLocal) destination).destroy();
+		if (destination instanceof DestinationThreadLocal) {
+			((DestinationThreadLocal) destination).destroy();
 		}
 	}
 
 	protected static <T> List<ArrayVariable<? extends T>> extractStaticProducers(List<ArrayVariable<? extends T>> args) {
-		List<ArrayVariable<? extends T>> staticProducers = new ArrayList<>();
-
-		for (int i = 1; i < args.size(); i++) {
-			if (args.get(i).getProducer() instanceof DynamicProducerComputationAdapter &&
-					((DynamicProducerComputationAdapter) args.get(i).getProducer()).isStatic()) {
-				staticProducers.add(args.get(i));
-			}
-		}
-
-		return staticProducers;
+		return IntStream.range(0, args.size()).filter(i -> args.get(i).getProducer() instanceof DynamicProducerComputationAdapter &&
+				((DynamicProducerComputationAdapter) args.get(i).getProducer()).isStatic()).mapToObj(args::get).collect(Collectors.toList());
 	}
 
 	protected static <T> List<ArrayVariable<? extends T>> extractDynamicProducers(List<ArrayVariable<? extends T>> args) {
-		List<ArrayVariable<? extends T>> dynamicProducers = new ArrayList<>();
-
-		for (int i = 1; i < args.size(); i++) {
-			if (args.get(i).getProducer() instanceof DynamicProducerComputationAdapter == false ||
-					!((DynamicProducerComputationAdapter) args.get(i).getProducer()).isStatic()) {
-				dynamicProducers.add(args.get(i));
-			}
-		}
-
-		return dynamicProducers;
+		return IntStream.range(0, args.size()).filter(i -> !(args.get(i).getProducer() instanceof DynamicProducerComputationAdapter) ||
+				!((DynamicProducerComputationAdapter) args.get(i).getProducer()).isStatic()).mapToObj(args::get).collect(Collectors.toList());
 	}
 }

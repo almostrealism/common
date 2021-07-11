@@ -32,6 +32,6 @@ import java.util.function.Supplier;
 @Deprecated
 public class TranslationMatrix extends AcceleratedEvaluable<Vector, TransformMatrix> {
 	public TranslationMatrix(Supplier<Evaluable<? extends Vector>> t) {
-		super("translationMatrix", () -> new IdentityMatrix(), t);
+		super("translationMatrix", IdentityMatrix::new, t);
 	}
 }

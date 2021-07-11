@@ -47,6 +47,8 @@ public class OperationList extends ArrayList<Supplier<Runnable>> implements Oper
 
 	@Override
 	public Runnable get() {
+		if (isEmpty()) return () -> { };
+
 		if (enableCompilation && isComputation()) {
 			OperationAdapter op = (OperationAdapter) compileRunnable(this);
 			op.setFunctionName(functionName);

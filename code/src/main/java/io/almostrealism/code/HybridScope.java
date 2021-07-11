@@ -16,8 +16,6 @@
 
 package io.almostrealism.code;
 
-import io.almostrealism.relation.Named;
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;

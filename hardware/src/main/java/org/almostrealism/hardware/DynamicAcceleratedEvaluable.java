@@ -57,7 +57,7 @@ public abstract class DynamicAcceleratedEvaluable<I extends MemoryData, O extend
 									   IntFunction<MemoryBank<O>> kernelDestination,
 									   Supplier<Evaluable<? extends I>>... inputArgs) {
 		super(kernel, new Supplier[0]);
-		setInputs(AcceleratedEvaluable.includeResult(new DynamicProducerForMemWrapper(args ->
+		setInputs(AcceleratedEvaluable.includeResult(new DynamicProducerForMemoryData(args ->
 				(getDestination() == null ? destination : getDestination()).get(), kernelDestination), inputArgs));
 		init();
 	}

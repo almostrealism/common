@@ -30,6 +30,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 public abstract class NAryDynamicProducer<T extends MemoryData> extends DynamicProducerComputationAdapter<T, T> implements ComputerFeatures {
 	private final String operator;
@@ -48,12 +50,9 @@ public abstract class NAryDynamicProducer<T extends MemoryData> extends DynamicP
 	public IntFunction<Expression<Double>> getValueFunction() {
 		return pos -> {
 			if (value == null || value[pos] == null) {
-				List<Expression<Double>> params = new ArrayList<>();
-
-				for (int i = 1; i < getArgsCount(); i++) {
-					params.add(getArgument(i).valueAt(pos));
-				}
-
+				List<Expression<Double>> params = IntStream.range(1, getArgsCount())
+												.mapToObj(i -> (Expression<Double>) getArgument(i, getMemLength()).valueAt(pos))
+												.collect(Collectors.toList());
 				return new NAryExpression(Double.class, operator, params);
 			} else {
 				return value[pos];
@@ -70,8 +69,12 @@ public abstract class NAryDynamicProducer<T extends MemoryData> extends DynamicP
 
 			List<ArrayVariable<? extends T>> p = getArgumentVariables();
 
+			// One of the arguments is actually the destination
+			p.remove((ArrayVariable) getOutputVariable());
+
 			List<ArrayVariable<? extends T>> staticProducers = extractStaticProducers(p);
 			List<ArrayVariable<? extends T>> dynamicProducers = extractDynamicProducers(p);
+
 
 			boolean valueStatic[] = new boolean[value.length];
 

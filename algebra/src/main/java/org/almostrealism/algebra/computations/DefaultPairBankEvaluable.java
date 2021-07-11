@@ -21,11 +21,17 @@ import org.almostrealism.algebra.PairBankEvaluable;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import io.almostrealism.code.Computation;
+import org.almostrealism.hardware.MemoryData;
 
 public class DefaultPairBankEvaluable extends AcceleratedComputationEvaluable<PairBank> implements PairBankEvaluable {
 
 	public DefaultPairBankEvaluable(Computation<PairBank> c) {
 		super(c);
+	}
+
+	@Override
+	protected PairBank postProcessOutput(MemoryData output, int offset) {
+		return new PairBank(output.getMemLength() / 2, output, offset, null);
 	}
 
 	@Override

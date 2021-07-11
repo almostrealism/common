@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 
 package io.almostrealism.code;
 
-public interface Computation<T> extends ScopeLifecycle {
+public interface Computation<T> extends ScopeLifecycle, OutputSupport {
 	/**
 	 * Return a {@link Scope} containing the {@link Variable}s
 	 * and {@link io.almostrealism.code.Method}s necessary to compute the output of
@@ -26,9 +26,5 @@ public interface Computation<T> extends ScopeLifecycle {
 
 	default void setOutputVariable(Variable out) {
 
-	}
-
-	default Variable getOutputVariable() {
-		return null;
 	}
 }

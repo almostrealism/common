@@ -19,11 +19,17 @@ package org.almostrealism.geometry;
 import io.almostrealism.code.Computation;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.hardware.MemoryData;
 
 public class DefaultRayEvaluable extends AcceleratedComputationEvaluable<Ray> implements RayEvaluable {
 
 	public DefaultRayEvaluable(Computation<Ray> c) {
 		super(c);
+	}
+
+	@Override
+	protected Ray postProcessOutput(MemoryData output, int offset) {
+		return new Ray(output, offset);
 	}
 
 	@Override

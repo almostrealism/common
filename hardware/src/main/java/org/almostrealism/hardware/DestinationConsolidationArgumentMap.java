@@ -19,18 +19,25 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.relation.Delegated;
-import org.almostrealism.hardware.mem.MemWrapperArgumentMap;
+import org.almostrealism.hardware.mem.MemoryBankAdapter;
+import org.almostrealism.hardware.mem.MemoryDataAdapter;
+import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
-public class DestinationConsolidationArgumentMap<S, A> extends MemWrapperArgumentMap<S, A> {
+public class DestinationConsolidationArgumentMap<S, A> extends MemoryDataArgumentMap<S, A> {
 	private final List<DestinationSupport> keys;
 	private final List<DestinationThreadLocal> destinations;
+	private boolean confirmed;
 
-	public DestinationConsolidationArgumentMap() {
+	public DestinationConsolidationArgumentMap(boolean kernel) {
+		super(kernel);
 		keys = new ArrayList<>();
 		destinations = new ArrayList<>();
 	}
@@ -38,19 +45,22 @@ public class DestinationConsolidationArgumentMap<S, A> extends MemWrapperArgumen
 	@Override
 	public void add(Supplier key) {
 		super.add(key);
-		keyForSupplier(key).ifPresent(keys::add);
+		createDestination(key);
 	}
 
 	@Override
 	public ArrayVariable<A> get(Supplier supplier, NameProvider p) {
 		ArrayVariable<A> var = super.get(supplier, p);
+		createDestination(supplier);
+		return var;
+	}
 
+	protected void createDestination(Supplier supplier) {
+		keyForSupplier(supplier).ifPresent(keys::add);
 		keyForSupplier(supplier)
 				.filter(prod -> !destinations.contains(prod.getDestination()))
 				.ifPresent(producer ->
-			producer.setDestination(new DestinationThreadLocal<>(producer.getDestination())));
-
-		return var;
+						producer.setDestination(new DestinationThreadLocal<>(producer.getDestination())));
 	}
 
 	private Optional<DestinationSupport> keyForSupplier(Supplier supplier) {
@@ -64,6 +74,34 @@ public class DestinationConsolidationArgumentMap<S, A> extends MemWrapperArgumen
 		return Optional.empty();
 	}
 
+	@Override
+	public void confirmArguments() {
+		if (confirmed) return;
+
+		super.confirmArguments();
+
+		int total = destinations.stream().map(DestinationThreadLocal::get).filter(Objects::nonNull).mapToInt(MemoryData::getMemLength).sum();
+		if (total <= 0) {
+			confirmed = true;
+			return;
+		}
+
+		DestinationBank bank = new DestinationBank(total);
+		AtomicInteger position = new AtomicInteger();
+
+		destinations.forEach(dest -> {
+			MemoryData data = dest.get();
+			if (data == null) return;
+
+			int pos = position.get();
+			int len = data.getMemLength();
+			dest.set(bank, pos, len);
+			position.set(pos + len);
+		});
+
+		confirmed = true;
+	}
+
 	/**
 	 * Delegate to {@link DestinationThreadLocal#destroy()} for all the destinations.
 	 */
@@ -72,12 +110,14 @@ public class DestinationConsolidationArgumentMap<S, A> extends MemWrapperArgumen
 		destinations.forEach(DestinationThreadLocal::destroy);
 	}
 
-	protected class DestinationThreadLocal<T> implements Supplier<T> {
-		private final Supplier<T> supplier;
+	protected class DestinationThreadLocal<T extends MemoryData> implements Supplier<T> {
+		private Supplier<T> supplier;
 		private ThreadLocal<T> localByThread;
 		private T local;
 
 		public DestinationThreadLocal(Supplier<T> supplier) {
+			if (confirmed) throw new IllegalStateException("New destinations cannot be created after confirmation");
+
 			this.supplier = supplier;
 
 			if (Hardware.enableMultiThreading) {
@@ -85,6 +125,20 @@ public class DestinationConsolidationArgumentMap<S, A> extends MemWrapperArgumen
 			}
 
 			destinations.add(this);
+		}
+
+		public void set(MemoryData delegate, int offset, int length) {
+			set(() -> (T) new AnyMemoryData(delegate, offset, length));
+		}
+
+		public void set(Supplier<T> supplier) {
+			this.supplier = supplier;
+
+			if (Hardware.enableMultiThreading) {
+				this.localByThread.remove();
+			} else {
+				local = null;
+			}
 		}
 
 		@Override
@@ -116,5 +170,23 @@ public class DestinationConsolidationArgumentMap<S, A> extends MemWrapperArgumen
 				local = null;
 			}
 		}
+	}
+
+	private static class DestinationBank extends MemoryBankAdapter<MemoryData> {
+		protected DestinationBank(int length) {
+			super(1, length, null, CacheLevel.NONE);
+		}
+	}
+
+	private static class AnyMemoryData extends MemoryDataAdapter {
+		private final int memLength;
+
+		public AnyMemoryData(MemoryData delegate, int offset, int length) {
+			setDelegate(delegate, offset);
+			memLength = length;
+		}
+
+		@Override
+		public int getMemLength() { return memLength; }
 	}
 }

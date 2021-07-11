@@ -18,12 +18,13 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.NameProvider;
+import io.almostrealism.code.OutputVariablePreservationArgumentMap;
 import io.almostrealism.code.SupplierArgumentMap;
 import io.almostrealism.relation.Provider;
 
 import java.util.function.Supplier;
 
-public class ProviderAwareArgumentMap<S, A> extends SupplierArgumentMap<S, A> {
+public class ProviderAwareArgumentMap<S, A> extends OutputVariablePreservationArgumentMap<S, A> {
 	@Override
 	public ArrayVariable<A> get(Supplier key, NameProvider p) {
 		ArrayVariable<A> arg = super.get(key, p);

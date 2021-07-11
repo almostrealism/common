@@ -18,6 +18,7 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.Argument;
 import io.almostrealism.code.Argument.Expectation;
+import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.code.ScopeInputManager;
@@ -42,6 +43,12 @@ public class PassThroughProducer<T extends MemoryData>
 		super(memLength, null, null);
 		this.argIndex = argIndex;
 		this.kernelIndex = kernelIndex;
+	}
+
+	@Override
+	public void prepareArguments(ArgumentMap map) {
+		super.prepareArguments(map);
+		map.add(this);
 	}
 
 	@Override

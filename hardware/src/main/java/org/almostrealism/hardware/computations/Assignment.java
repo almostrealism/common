@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware.computations;
 
+import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Variable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.code.ScopeInputManager;
@@ -31,6 +32,11 @@ public class Assignment<T extends MemoryData> extends DynamicOperationComputatio
 	public Assignment(int memLength, Supplier<Evaluable<? extends T>> result, Supplier<Evaluable<? extends T>> value) {
 		super(result, value);
 		this.memLength = memLength;
+	}
+
+	@Override
+	public void prepareArguments(ArgumentMap map) {
+		super.prepareArguments(map);
 	}
 
 	@Override

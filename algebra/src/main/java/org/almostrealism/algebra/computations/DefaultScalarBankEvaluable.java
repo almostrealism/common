@@ -21,6 +21,7 @@ import org.almostrealism.algebra.ScalarBankEvaluable;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import io.almostrealism.code.Computation;
+import org.almostrealism.hardware.MemoryData;
 
 public class DefaultScalarBankEvaluable extends AcceleratedComputationEvaluable<ScalarBank> implements ScalarBankEvaluable {
 
@@ -29,8 +30,13 @@ public class DefaultScalarBankEvaluable extends AcceleratedComputationEvaluable<
 	}
 
 	@Override
+	protected ScalarBank postProcessOutput(MemoryData output, int offset) {
+		return new ScalarBank(output.getMemLength() / 2, output, offset, null);
+	}
+
+	@Override
 	public MemoryBank<ScalarBank> createKernelDestination(int size) {
 		// return new ScalarBank(size, MemoryBankAdapter.CacheLevel.ACCESSED);
-		throw new UnsupportedOperationException(); // TODO  ScalarBank..Bank? Tensor?
+		throw new UnsupportedOperationException(); // TODO  ScalarTable
 	}
 }

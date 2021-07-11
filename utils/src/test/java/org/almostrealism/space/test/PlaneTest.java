@@ -17,6 +17,7 @@
 package org.almostrealism.space.test;
 
 import org.almostrealism.algebra.computations.DefaultScalarEvaluable;
+import org.almostrealism.geometry.DefaultRayEvaluable;
 import org.almostrealism.geometry.computations.RayMatrixTransform;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
@@ -63,9 +64,8 @@ public class PlaneTest implements HardwareFeatures, CodeFeatures {
 		System.out.println("distance = " + distance);
 		Assert.assertEquals(-20.0, distance, Math.pow(10, -10));
 
-		Assert.assertTrue(intersection.get(0).get().evaluate().equals(
-				new Ray(new Vector(0.0, -10.0, 21.0),
-						new Vector(0.0, 1.0, 0.0))));
+		Assert.assertEquals(intersection.get(0).get().evaluate(), new Ray(new Vector(0.0, -10.0, 21.0),
+				new Vector(0.0, 1.0, 0.0)));
 	}
 
 	@Test
@@ -82,7 +82,7 @@ public class PlaneTest implements HardwareFeatures, CodeFeatures {
 	@Test
 	public void transformTest() {
 		Provider<Ray> r = new Provider<>(new Ray(new Vector(0.0, 0.0, 1.0),
-															new Vector(0.0, 0.5, -1.0)));
+												new Vector(0.0, 0.5, -1.0)));
 		ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0);
 
 		Plane p = new Plane(Plane.XZ);
@@ -90,15 +90,15 @@ public class PlaneTest implements HardwareFeatures, CodeFeatures {
 
 		RayMatrixTransform t = new RayMatrixTransform(p.getTransform(true),
 					ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0));
-		Assert.assertTrue(compileProducer(t).evaluate().equals(new Ray(new Vector(0.0, -10.0, 1.0),
-																new Vector(0.0, 0.5, -1.0))));
+		Assert.assertEquals(new Ray(new Vector(0.0, -10.0, 1.0),
+				new Vector(0.0, 0.5, -1.0)), new DefaultRayEvaluable(t).evaluate());
 
 		t = new RayMatrixTransform(p.getTransform(true).getInverse(),
 					ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0));
-		Assert.assertTrue(compileProducer(t).evaluate().equals(new Ray(new Vector(0.0, 10.0, 1.0),
-																	new Vector(0.0, 0.5, -1.0))));
+		Assert.assertEquals(new Ray(new Vector(0.0, 10.0, 1.0),
+				new Vector(0.0, 0.5, -1.0)), new DefaultRayEvaluable(t).evaluate());
 
-		Vector v = compileProducer(t).evaluate().pointAt(scalar(-20)).get().evaluate();
-		Assert.assertTrue(v.equals(new Vector(0.0, 0.0, 21.0)));
+		Vector v = new DefaultRayEvaluable(t).evaluate().pointAt(scalar(-20)).get().evaluate();
+		Assert.assertEquals(new Vector(0.0, 0.0, 21.0), v);
 	}
 }

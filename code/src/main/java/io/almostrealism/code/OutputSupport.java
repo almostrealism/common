@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,18 +14,11 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.code.expressions;
+package io.almostrealism.code;
 
-import io.almostrealism.code.ArrayVariable;
-import io.almostrealism.code.Variable;
+public interface OutputSupport {
 
-import java.util.function.IntFunction;
-
-public interface MultiExpression<T> {
-
-	default IntFunction<Variable<T, ?>> getAssignmentFunction(Variable<?, ?> outputVariable) {
-		return i -> new Variable(((ArrayVariable) outputVariable).valueAt(i).getExpression(), false, getValue(i), outputVariable.getRootDelegate());
+	default Variable getOutputVariable() {
+		return null;
 	}
-
-	Expression<T> getValue(int pos);
 }
