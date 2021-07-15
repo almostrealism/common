@@ -200,6 +200,15 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 			return;
 		}
 
+		// Because of the fact that child scopes have dependencies which are included in
+		// the dependencies of the parent scope, this conversion must be depth first.
+		// This gives the scope where the dependency originated the opportunity to
+		// converted it into a dependency, rather than converting everything into a
+		// required scope at the top level which will often not preserve the expected
+		// order of execution of those requirements, unless somehow the dependency list
+		// is coincidentally in the correct order
+		forEach(Scope::convertArgumentsToRequiredScopes);
+
 		List<Argument<?>> args = new ArrayList<>();
 		List<Computation> convertedComputations = new ArrayList<>();
 

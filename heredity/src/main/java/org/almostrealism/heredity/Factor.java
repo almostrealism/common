@@ -18,6 +18,7 @@ package org.almostrealism.heredity;
 
 import io.almostrealism.relation.Producer;
 
+@FunctionalInterface
 public interface Factor<T> {
 	Producer<T> getResultant(Producer<T> value);
 }

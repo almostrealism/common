@@ -18,6 +18,7 @@ package org.almostrealism.algebra.computations.test;
 
 import io.almostrealism.code.Computation;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.hardware.DynamicAcceleratedOperation;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.util.TestFeatures;
@@ -27,11 +28,15 @@ import org.almostrealism.algebra.computations.Choice;
 import java.util.Arrays;
 
 public class ChoiceTest implements TestFeatures {
-	public Choice choice(Scalar output, Scalar decision) {
-		Computation<Void> firstChoice = a(2, p(output), v(2.0));
-		Computation<Void> secondChoice = a(2, p(output), v(4.0));
-		Computation<Void> thirdChoice = a(2, p(output), v(8.0));
-		return new Choice(v(decision), Arrays.asList(firstChoice, secondChoice, thirdChoice));
+	public Choice choice(Scalar output, Scalar decision, Scalar multiplier) {
+		return choice(output, v(decision), v(multiplier));
+	}
+
+	public Choice choice(Scalar output, ScalarProducer decision, ScalarProducer multiplier) {
+		Computation<Void> firstChoice = a(2, p(output), scalarsMultiply(multiplier, v(2.0)));
+		Computation<Void> secondChoice = a(2, p(output), scalarsMultiply(multiplier, v(4.0)));
+		Computation<Void> thirdChoice = a(2, p(output), scalarsMultiply(multiplier, v(8.0)));
+		return new Choice(decision, Arrays.asList(firstChoice, secondChoice, thirdChoice));
 	}
 
 	@Test
@@ -39,7 +44,7 @@ public class ChoiceTest implements TestFeatures {
 		Scalar output = new Scalar(0.0);
 		Scalar decision = new Scalar(0.4);
 
-		Choice choice = choice(output, decision);
+		Choice choice = choice(output, decision, new Scalar(1.0));
 
 		DynamicAcceleratedOperation op = (DynamicAcceleratedOperation) choice.get();
 		System.out.println(op.getFunctionDefinition());
@@ -58,8 +63,8 @@ public class ChoiceTest implements TestFeatures {
 		Scalar decision2 = new Scalar(0.8);
 
 		OperationList list = new OperationList();
-		list.add(choice(output1, decision1));
-		list.add(choice(output2, decision2));
+		list.add(choice(output1, decision1, new Scalar(1.0)));
+		list.add(choice(output2, decision2, new Scalar(1.0)));
 
 		DynamicAcceleratedOperation op = (DynamicAcceleratedOperation) list.get();
 		System.out.println(op.getFunctionDefinition());
@@ -70,5 +75,40 @@ public class ChoiceTest implements TestFeatures {
 
 		assertEquals(new Scalar(4.0), output1);
 		assertEquals(new Scalar(8.0), output2);
+	}
+
+	@Test
+	public void nestedChoiceList() {
+		ScalarProducer multiplier = v(2.0);
+
+		Scalar output1a = new Scalar(0.0);
+		Scalar output1b = new Scalar(0.0);
+		ScalarProducer decisionA = v(0.4);
+		Scalar output2a = new Scalar(0.0);
+		Scalar output2b = new Scalar(0.0);
+		ScalarProducer decisionB = scalarsMultiply(v(0.4), multiplier);
+
+		OperationList embeddedList = new OperationList();
+		embeddedList.add(choice(output2a, decisionA, multiplier));
+		embeddedList.add(choice(output2b, decisionB, v(1.0)));
+
+		OperationList list = new OperationList();
+		list.add(choice(output1a, decisionA, v(1.0)));
+		list.add(choice(output1b, decisionB, multiplier));
+		list.add(embeddedList);
+
+		DynamicAcceleratedOperation op = (DynamicAcceleratedOperation) list.get();
+		System.out.println(op.getFunctionDefinition());
+		op.run();
+
+		System.out.println("first choice A = " + output1a.getValue());
+		System.out.println("first choice B = " + output1b.getValue());
+		System.out.println("second choice A = " + output2a.getValue());
+		System.out.println("second choice B = " + output2b.getValue());
+
+		assertEquals(new Scalar(4.0), output1a);
+		assertEquals(new Scalar(16.0), output1b);
+		assertEquals(new Scalar(8.0), output2a);
+		assertEquals(new Scalar(8.0), output2b);
 	}
 }

@@ -57,7 +57,7 @@ public class Choice extends DynamicOperationComputationAdapter {
 		double interval = 1.0 / choices.size();
 
 		Scope<Scalar> decisionScope = ((ProducerComputation) getInputs().get(0)).getScope();
-		ArrayVariable<?> decisionValue = decisionScope.getArgumentVariables().get(0);
+		ArrayVariable<?> decisionValue = getArgument(0, 2);
 
 		choices.stream().map(Computation::getScope).forEach(atomScope -> {
 			atomScope.convertArgumentsToRequiredScopes();

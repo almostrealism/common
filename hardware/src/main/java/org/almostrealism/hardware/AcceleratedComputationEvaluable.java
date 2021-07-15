@@ -38,7 +38,21 @@ public class AcceleratedComputationEvaluable<T extends MemoryData> extends Accel
 		}
 
 		ArrayVariable outputVariable = (ArrayVariable) getComputation().getOutputVariable();
+
+		// Capture the offset, but ultimately use the root delegate
+		int offset = outputVariable.getOffset();
+		outputVariable = (ArrayVariable) outputVariable.getRootDelegate();
+
+		if (outputVariable == null) {
+			throw new IllegalArgumentException("Cannot capture result, as there is no argument which serves as an output variable");
+		}
+
 		int outputArgIndex = getArgumentVariables().indexOf(outputVariable);
+
+		if (outputArgIndex < 0) {
+			throw new IllegalArgumentException("An output variable does not appear to be one of the arguments to the Evaluable");
+		}
+
 		return postProcessOutput((MemoryData) apply(args)[outputArgIndex], outputVariable.getOffset());
 	}
 
