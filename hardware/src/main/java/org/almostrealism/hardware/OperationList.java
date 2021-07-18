@@ -33,7 +33,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 public class OperationList extends ArrayList<Supplier<Runnable>> implements OperationComputation<Void>, HardwareFeatures {
-	private static int functionCount = 0;
+	private static long functionCount = 0;
 
 	private boolean enableCompilation;
 	private String functionName;
