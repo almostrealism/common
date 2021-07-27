@@ -41,16 +41,17 @@ import org.jocl.CLException;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 public class AcceleratedOperation<T extends MemoryData> extends OperationAdapter<T> implements Function<Object[], Object[]>, Runnable,
 														KernelizedOperation, Compactable, ScopeLifecycle, ComputerFeatures {
-	public static final boolean enableDestinationConsolidation = true;
 	public static final boolean enableArgumentMapping = true;
 	public static final boolean enableCompaction = true;
 	public static final boolean enableInputLogging = false;
@@ -128,7 +129,7 @@ public class AcceleratedOperation<T extends MemoryData> extends OperationAdapter
 		SupplierArgumentMap argumentMap = null;
 
 		if (argumentMapping) {
-			if (enableDestinationConsolidation) {
+			if (Hardware.getLocalHardware().isDestinationConsolidation()) {
 				argumentMap = new DestinationConsolidationArgumentMap<>(isKernel());
 			} else if (enableArgumentMapping) {
 				argumentMap = new MemoryDataArgumentMap<>(isKernel());
@@ -254,7 +255,7 @@ public class AcceleratedOperation<T extends MemoryData> extends OperationAdapter
 		return allArgs;
 	}
 
-	private int getProducerArgumentReferenceIndex(Variable<?, ?> arg) {
+	private static int getProducerArgumentReferenceIndex(Variable<?, ?> arg) {
 		if (arg.getProducer() instanceof ProducerArgumentReference) {
 			return ((ProducerArgumentReference) arg.getProducer()).getReferencedArgumentIndex();
 		}
@@ -274,7 +275,7 @@ public class AcceleratedOperation<T extends MemoryData> extends OperationAdapter
 	}
 
 	@Override
-	public void kernelOperate(MemoryBank[] args) {
+	public void kernelOperate(MemoryBank output, MemoryBank[] args) {
 		if (getArgumentVariables() == null) {
 			System.out.println("WARN: " + getName() + " was not compiled ahead of time");
 			compile();
@@ -284,10 +285,10 @@ public class AcceleratedOperation<T extends MemoryData> extends OperationAdapter
 			if (isKernel() && enableKernel) {
 				HardwareOperator operator = getOperator();
 				operator.setGlobalWorkOffset(0);
-				operator.setGlobalWorkSize(args[0].getCount());
+				operator.setGlobalWorkSize(Optional.ofNullable(output).map(MemoryBank::getCount).orElseGet(() -> args[0].getCount()));
 
 				if (enableKernelLog) System.out.println("AcceleratedOperation: Preparing " + getName() + " kernel...");
-				MemoryData input[] = getKernelArgs(args);
+				MemoryData input[] = getKernelArgs(output, args);
 
 				if (enableKernelLog) System.out.println("AcceleratedOperation: Evaluating " + getName() + " kernel...");
 
@@ -300,8 +301,8 @@ public class AcceleratedOperation<T extends MemoryData> extends OperationAdapter
 		}
 	}
 
-	protected MemoryData[] getKernelArgs(MemoryBank args[]) {
-		return getKernelArgs(getArgumentVariables(), args, 0);
+	protected MemoryData[] getKernelArgs(MemoryBank output, MemoryBank args[]) {
+		return getKernelArgs(getArgumentVariables(), args, Collections.singletonMap((ArrayVariable) getOutputVariable(), output));
 	}
 
 	/**
@@ -334,7 +335,7 @@ public class AcceleratedOperation<T extends MemoryData> extends OperationAdapter
 			if (!((AcceleratedEvaluable) arg.getProducer()).isKernel()) return false;
 		}
 
-		return false;
+		return true;
 	}
 
 	@Override
@@ -343,18 +344,34 @@ public class AcceleratedOperation<T extends MemoryData> extends OperationAdapter
 		argumentMaps = new ArrayList<>();
 	}
 
-	protected static <T> MemoryData[] getKernelArgs(List<ArrayVariable<? extends T>> arguments, MemoryBank args[], int passThroughLength) {
+	protected static <T> MemoryData[] getKernelArgs(List<ArrayVariable<? extends T>> arguments, MemoryBank args[]) {
+		return getKernelArgs(arguments, args, new HashMap<>());
+	}
+
+	protected static <T> MemoryData[] getKernelArgs(List<ArrayVariable<? extends T>> arguments, MemoryBank args[], Map<ArrayVariable<? extends T>, MemoryBank> mappings) {
 		MemoryData kernelArgs[] = new MemoryData[arguments.size()];
 
-		if (passThroughLength >= 0)
-			System.arraycopy(args, 0, kernelArgs, 0, passThroughLength);
+		int kernelSize = 0;
+		if (args.length > 0) {
+			kernelSize = args[0].getCount();
+		} else if (mappings.size() > 0) {
+			kernelSize = mappings.values().iterator().next().getCount();
+		} else {
+			throw new IllegalArgumentException("Cannot determine kernel size");
+		}
 
-		i: for (int i = passThroughLength; i < arguments.size(); i++) {
+		i: for (int i = 0; i < arguments.size(); i++) {
 			if (arguments.get(i) == null) continue i;
 
-			if (arguments.get(i).getProducer() instanceof ProducerArgumentReference) {
-				int argIndex = ((ProducerArgumentReference) arguments.get(i).getProducer()).getReferencedArgumentIndex();
-				kernelArgs[i] = args[passThroughLength + argIndex];
+			if (mappings.containsKey(arguments.get(i))) {
+				kernelArgs[i] = mappings.get(arguments.get(i));
+				continue i;
+			}
+
+			int refIndex = getProducerArgumentReferenceIndex(arguments.get(i));
+
+			if (refIndex >= 0) {
+				kernelArgs[i] = args[refIndex];
 				continue i;
 			}
 
@@ -362,21 +379,13 @@ public class AcceleratedOperation<T extends MemoryData> extends OperationAdapter
 
 			if (c instanceof ProducerArgumentReference) {
 				int argIndex = ((ProducerArgumentReference) c).getReferencedArgumentIndex();
-				kernelArgs[i] = args[passThroughLength + argIndex];
+				kernelArgs[i] = args[argIndex];
 			} else if (c instanceof KernelizedEvaluable) {
-				MemoryBank downstreamArgs[] = new MemoryBank[args.length - passThroughLength];
-				if (args.length - passThroughLength >= 0)
-					System.arraycopy(args, passThroughLength, downstreamArgs, 0, args.length - passThroughLength);
-
 				KernelizedEvaluable kp = (KernelizedEvaluable) c;
-				kernelArgs[i] = kp.createKernelDestination(args[0].getCount());
-				kp.kernelEvaluate((MemoryBank) kernelArgs[i], downstreamArgs);
+				kernelArgs[i] = kp.createKernelDestination(kernelSize);
+				kp.kernelEvaluate((MemoryBank) kernelArgs[i], args);
 			} else {
-				MemoryBank downstreamArgs[] = new MemoryBank[args.length - passThroughLength];
-				if (args.length - passThroughLength >= 0)
-					System.arraycopy(args, passThroughLength, downstreamArgs, 0, args.length - passThroughLength);
-
-				kernelArgs[i] = (MemoryData) c.evaluate((Object[]) downstreamArgs);
+				kernelArgs[i] = (MemoryData) c.evaluate((Object[]) args);
 			}
 		}
 

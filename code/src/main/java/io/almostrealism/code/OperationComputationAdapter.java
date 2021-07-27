@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -71,19 +71,8 @@ public abstract class OperationComputationAdapter<I, O> extends OperationAdapter
 				.collect(Collectors.toList()));
 	}
 
-	/**
-	 * It is better to use the {@link #getArgument(int, int)} method,
-	 * so that if an {@link ArrayVariable} is created it is the correct
-	 * size.
-	 */
-	@Deprecated
 	@Override
-	public ArrayVariable<Double> getArgument(int index) {
-		return getArgument(index, 0);
-	}
-
-	@Override
-	public ArrayVariable getArgument(int index, int size) {
+	public ArrayVariable getArgument(int index, Expression<Integer> size) {
 		if (index >= getInputs().size()) {
 			throw new IllegalArgumentException("Invalid input (" + index + ")");
 		}

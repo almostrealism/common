@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -34,30 +34,25 @@ import java.util.function.BiFunction;
  * @author  Michael Murray
  */
 public class HardwareOperatorMap<T extends MemoryData> implements BiFunction<String, CLException, HardwareException> {
-	private cl_program prog;
-	private String src;
+	private CLProgram prog;
 
 	private ThreadLocal<Map<String, HardwareOperator<T>>> operators;
 
 	protected HardwareOperatorMap() { }
 
 	public HardwareOperatorMap(Hardware h, String src) {
-		this.src = src;
 		this.operators = new ThreadLocal<>();
-		init(h);
+		init(h, src);
 	}
 
-	protected void init(Hardware h) {
-		int[] result = new int[1];
-		prog = CL.clCreateProgramWithSource(h.getContext(), 1, new String[] { src }, null, result);
-		if (result[0] != 0) throw new RuntimeException("Error creating HardwareOperatorMap: " + result[0]);
+	protected void init(Hardware h, String src) {
+		prog = CLProgram.create(h, src);
 
 		RuntimeException ex = null;
 
 		try {
-			int r = CL.clBuildProgram(prog, 0, null, null, null, null);
-			if (r != 0) ex = new RuntimeException("Error building HardwareOperatorMap:" + r);
-		} catch (CLException e) {
+			prog.compile();
+		} catch (RuntimeException e) {
 			ex = e;
 		}
 
@@ -89,9 +84,9 @@ public class HardwareOperatorMap<T extends MemoryData> implements BiFunction<Str
 	@Override
 	public HardwareException apply(String name, CLException e) {
 		if ("CL_INVALID_KERNEL_NAME".equals(e.getMessage())) {
-			return new HardwareException("\"" + name + "\" is not a valid kernel name", e, src);
+			return new HardwareException("\"" + name + "\" is not a valid kernel name", e, prog.getSource());
 		} else {
-			return new HardwareException(e.getMessage(), e, src);
+			return new HardwareException(e.getMessage(), e, prog.getSource());
 		}
 	}
 
@@ -100,7 +95,7 @@ public class HardwareOperatorMap<T extends MemoryData> implements BiFunction<Str
 	 * that stores the {@link HardwareOperator}s.
 	 */
 	public void destroy() {
-		CL.clReleaseProgram(prog);
+		CL.clReleaseProgram(prog.getProgram());
 		if (operators != null) {
 			operators.remove();
 			operators = null;

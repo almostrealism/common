@@ -115,11 +115,6 @@ public abstract class DynamicAcceleratedEvaluable<I extends MemoryData, O extend
 	}
 
 	@Override
-	protected MemoryData[] getKernelArgs(MemoryBank args[]) {
-		return getKernelArgs(getArgumentVariables(), args, 1);
-	}
-
-	@Override
 	public void setDestination(Supplier<O> destination) { this.destination = destination; }
 
 	@Override

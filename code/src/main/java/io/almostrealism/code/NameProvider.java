@@ -30,7 +30,7 @@ public interface NameProvider {
 	 */
 	@Deprecated
 	default ArrayVariable getArgument(int index) {
-		return new ArrayVariable(this, getArgumentName(index), getDefaultPhysicalScope(), Double.class, null);
+		return getArgument(index, null);
 	}
 
 	default Variable getVariable(int index) {

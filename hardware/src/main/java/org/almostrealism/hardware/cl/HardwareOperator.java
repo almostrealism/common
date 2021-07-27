@@ -35,10 +35,10 @@ public class HardwareOperator<T extends MemoryData> implements Consumer<Object[]
 
 	private static long totalInvocations;
 
-	private cl_program prog;
-	private String name;
+	private final CLProgram prog;
+	private final String name;
 
-	private int argCount;
+	private final int argCount;
 
 	private long globalWorkSize = 1;
 	private long globalWorkOffset;
@@ -47,7 +47,7 @@ public class HardwareOperator<T extends MemoryData> implements Consumer<Object[]
 
 	private BiFunction<String, CLException, HardwareException> exceptionProcessor;
 
-	public HardwareOperator(cl_program program, String name, int argCount,
+	public HardwareOperator(CLProgram program, String name, int argCount,
 							BiFunction<String, CLException, HardwareException> exceptionProcessor) {
 		this.prog = program;
 		this.name = name;
@@ -59,7 +59,7 @@ public class HardwareOperator<T extends MemoryData> implements Consumer<Object[]
 	@Override
 	public cl_kernel construct() {
 		try {
-			return CL.clCreateKernel(prog, name, null);
+			return CL.clCreateKernel(prog.getProgram(), name, null);
 		} catch (CLException e) {
 			throw exceptionProcessor == null ? e : exceptionProcessor.apply(name, e);
 		}

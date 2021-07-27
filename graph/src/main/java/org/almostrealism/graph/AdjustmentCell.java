@@ -29,6 +29,10 @@ public class AdjustmentCell<A, R> extends CellAdapter<R> implements Adjustable<R
 		this.adjust = adjustment;
 	}
 
+	public Adjustable<A> getAdjustable() { return cell; }
+
+	public Adjustment<A> getAdjustment() { return adjust; }
+
 	@Override
 	public Supplier<Runnable> setup() { return adjust.setup(); }
 

@@ -59,8 +59,12 @@ public final class Hardware {
 				"gpu".equalsIgnoreCase(System.getProperty("AR_HARDWARE_PLATFORM"));
 
 		String kernelsEnv = System.getenv("AR_HARDWARE_KERNELS");
-		boolean disableKernels = kernelsEnv != null && !"enabled".equalsIgnoreCase(kernelsEnv) ||
-				!"enabled".equalsIgnoreCase(System.getProperty("AR_HARDWARE_KERNELS", "enabled"));
+		boolean enableKernels = "enabled".equalsIgnoreCase(kernelsEnv) ||
+				"enabled".equalsIgnoreCase(System.getProperty("AR_HARDWARE_KERNELS"));
+
+		boolean enableDestinationConsolidation =
+				"enabled".equalsIgnoreCase(System.getenv("AR_HARDWARE_DESTINATION_CONSOLIDATION")) ||
+						"enabled".equalsIgnoreCase(System.getProperty("AR_HARDWARE_DESTINATION_CONSOLIDATION"));
 
 		boolean sp = "32".equalsIgnoreCase(System.getenv("AR_HARDWARE_PRECISION")) ||
 				"32".equalsIgnoreCase(System.getProperty("AR_HARDWARE_PRECISION"));
@@ -102,15 +106,15 @@ public final class Hardware {
 		timeSeriesCount = Optional.ofNullable(tsCount).map(Integer::parseInt).orElse(30);
 
 		if (sp) {
-			local = new Hardware(nativeCompiler, libDir, gpu, !disableKernels, false, location);
+			local = new Hardware(nativeCompiler, libDir, gpu, enableKernels, enableDestinationConsolidation, false, location);
 		} else {
-			local = new Hardware(nativeCompiler, libDir, gpu, !disableKernels, location);
+			local = new Hardware(nativeCompiler, libDir, gpu, enableKernels, enableDestinationConsolidation, location);
 		}
 	}
 
 	private final boolean enableGpu;
 	private final boolean enableDoublePrecision;
-	private final boolean enableKernel;
+	private final boolean enableKernel, enableDestinationConsolidation;
 	private final boolean memVolatile;
 
 	private final String compilerExec;
@@ -124,25 +128,35 @@ public final class Hardware {
 	private final NativeCompiler nativeCompiler;
 	private final CLMemoryProvider ram;
 	
-	private Hardware(String compilerExec, String libDir, boolean enableGpu, boolean enableKernels, Location location) {
-		this(compilerExec, libDir, enableGpu, enableKernels, !enableGpu, location);
+	private Hardware(String compilerExec, String libDir, boolean enableGpu,
+					 boolean enableKernels, boolean enableDestinationConsolidation,
+					 Location location) {
+		this(compilerExec, libDir, enableGpu, enableKernels, enableDestinationConsolidation, !enableGpu, location);
 	}
 
-	private Hardware(String compilerExec, String libDir, boolean enableGpu, boolean enableKernels, boolean enableDoublePrecision, Location location) {
-		this(enableDoublePrecision ? "local64" : "local32", compilerExec, libDir, enableGpu, enableKernels, enableDoublePrecision, location);
+	private Hardware(String compilerExec, String libDir, boolean enableGpu,
+					 boolean enableKernels, boolean enableDestinationConsolidation,
+					 boolean enableDoublePrecision, Location location) {
+		this(enableDoublePrecision ? "local64" : "local32", compilerExec, libDir, enableGpu,
+				enableKernels, enableDestinationConsolidation, enableDoublePrecision, location);
 	}
 
-	private Hardware(String name, String compilerExec, String libDir, boolean enableGpu, boolean enableKernels, Location location) {
-		this(name, compilerExec, libDir, enableGpu, enableKernels, !enableGpu, location);
+	private Hardware(String name, String compilerExec, String libDir, boolean enableGpu,
+					 boolean enableKernels, boolean enableDestinationConsolidation,
+					 Location location) {
+		this(name, compilerExec, libDir, enableGpu, enableKernels, enableDestinationConsolidation, !enableGpu, location);
 	}
 
-	private Hardware(String name, String compilerExec, String libDir, boolean enableGpu, boolean enableKernels, boolean enableDoublePrecision, Location location) {
+	private Hardware(String name, String compilerExec, String libDir, boolean enableGpu,
+					 boolean enableKernels, boolean enableDestinationConsolidation,
+					 boolean enableDoublePrecision, Location location) {
 		long memoryMax = (long) Math.pow(2, getMemoryScale()) * 256L * 1000L * 1000L;
 		if (enableDoublePrecision) memoryMax = memoryMax * 2;
 
 		this.enableGpu = enableGpu;
 		this.enableDoublePrecision = enableDoublePrecision;
 		this.enableKernel = enableKernels;
+		this.enableDestinationConsolidation = enableDestinationConsolidation;
 		this.compilerExec = compilerExec;
 		this.libDir = libDir;
 		this.memVolatile = location == Location.HEAP;
@@ -239,6 +253,8 @@ public final class Hardware {
 	public boolean isGPU() { return enableGpu; }
 
 	public boolean isDoublePrecision() { return enableDoublePrecision; }
+
+	public boolean isDestinationConsolidation() { return enableDestinationConsolidation; }
 
 	public boolean isKernelSupported() { return enableKernel; }
 

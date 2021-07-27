@@ -29,9 +29,12 @@ import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
 public class PowerSpectrum extends DynamicProducerComputationAdapter<PairBank, ScalarBank> implements ScalarBankProducer {
+	public int inputCount;
+
 	public PowerSpectrum(int count, Supplier<Evaluable<? extends PairBank>> input) {
 		super(2 * (count / 2 + 1), () -> args -> new ScalarBank(count),
 				i -> { throw new UnsupportedOperationException(); }, input);
+		this.inputCount = count;
 	}
 
 	@Override
@@ -39,13 +42,13 @@ public class PowerSpectrum extends DynamicProducerComputationAdapter<PairBank, S
 		return i -> {
 			if (i % 2 == 0) {
 				if (i == 0) {
-					return new Product(getArgument(1).valueAt(0), getArgument(1).valueAt(0));
+					return new Product(getArgument(1, inputCount).valueAt(0), getArgument(1, inputCount).valueAt(0));
 				} else if (i == getMemLength() - 2) {
-					return new Product(getArgument(1).valueAt(1), getArgument(1).valueAt(1));
+					return new Product(getArgument(1, inputCount).valueAt(1), getArgument(1, inputCount).valueAt(1));
 				} else {
 					return new Sum(
-							new Product(getArgument(1).valueAt(i), getArgument(1).valueAt(i)),
-							new Product(getArgument(1).valueAt(i + 1), getArgument(1).valueAt(i + 1)));
+							new Product(getArgument(1, inputCount).valueAt(i), getArgument(1, inputCount).valueAt(i)),
+							new Product(getArgument(1, inputCount).valueAt(i + 1), getArgument(1, inputCount).valueAt(i + 1)));
 				}
 			} else {
 				return new Expression<>(Double.class, "1.0");

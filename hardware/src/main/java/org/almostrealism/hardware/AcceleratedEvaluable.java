@@ -19,6 +19,7 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.CollectionUtils;
 import io.almostrealism.code.ScopeInputManager;
+import io.almostrealism.code.expressions.Expression;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.hardware.cl.HardwareOperator;
@@ -50,6 +51,15 @@ public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> ex
 	}
 
 	@Override
+	public ArrayVariable getArgument(int index, Expression<Integer> size) {
+		if (getArguments() != null) {
+			return getArgumentForInput((Supplier<Evaluable>) getInputs().get(index));
+		}
+
+		return super.getArgument(index, size);
+	}
+
+	@Override
 	public void prepareScope(ScopeInputManager manager) {
 		super.prepareScope(manager);
 
@@ -74,18 +84,13 @@ public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> ex
 	}
 
 	@Override
-	protected MemoryData[] getKernelArgs(MemoryBank args[]) {
-		return getKernelArgs(getArgumentVariables(), args, 1);
-	}
-
-	@Override
 	public MemoryBank<O> createKernelDestination(int size) {
 		throw new RuntimeException("Not implemented");
 	}
 
 	public static void kernelEvaluate(KernelizedOperation operation, MemoryBank destination, MemoryBank args[], boolean kernel) {
 		if (kernel && enableKernel) {
-			operation.kernelOperate(includeResult(destination, args));
+			operation.kernelOperate(destination, args);
 		} else if (operation instanceof Evaluable) {
 			for (int i = 0; i < destination.getCount(); i++) {
 				final int fi = i;
@@ -95,7 +100,7 @@ public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> ex
 			}
 		} else {
 			// This will produce an error, but that's the correct outcome
-			operation.kernelOperate(includeResult(destination, args));
+			operation.kernelOperate(destination, args);
 		}
 	}
 

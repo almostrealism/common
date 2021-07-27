@@ -27,7 +27,8 @@ public class OutputVariablePreservationArgumentMap<S, A> extends SupplierArgumen
 	@Override
 	public ArrayVariable<A> get(Supplier key, NameProvider p) {
 		if (key instanceof Computation) {
-			return (ArrayVariable<A>) ((Computation) key).getOutputVariable();
+			ArrayVariable<A> out = (ArrayVariable<A>) ((Computation) key).getOutputVariable();
+			if (out != null) return out;
 		}
 
 		return super.get(key, p);

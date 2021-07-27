@@ -17,10 +17,13 @@
 package io.almostrealism.code;
 
 import io.almostrealism.relation.Delegated;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Named;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Sortable;
 
 import java.util.Objects;
+import java.util.function.Supplier;
 
 public class Argument<T> implements Named, Sortable, Delegated<Argument<T>> {
 	public enum Expectation {
@@ -46,6 +49,8 @@ public class Argument<T> implements Named, Sortable, Delegated<Argument<T>> {
 	public Variable<T, ?> getVariable() { return variable; }
 
 	public Expectation getExpectation() { return expect; }
+
+	public Supplier<Evaluable<? extends T>> getProducer() { return getVariable().getProducer(); }
 
 	@Override
 	public boolean equals(Object o) {

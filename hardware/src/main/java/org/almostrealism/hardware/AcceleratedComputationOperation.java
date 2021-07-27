@@ -105,7 +105,7 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 
 		SupplierArgumentMap argumentMap = null;
 
-		if (enableDestinationConsolidation) {
+		if (Hardware.getLocalHardware().isDestinationConsolidation()) {
 			argumentMap = new DestinationConsolidationArgumentMap<>(isKernel());
 		} else if (enableArgumentMapping) {
 			argumentMap = new MemoryDataArgumentMap<>(isKernel());

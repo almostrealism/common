@@ -25,20 +25,31 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.hardware.ComputerFeatures;
+import org.almostrealism.hardware.DestinationSupport;
+import org.almostrealism.hardware.mem.MemoryDataDestination;
 
 import java.util.function.Supplier;
 
-public class ScalarBankSum extends ProducerComputationAdapter<ScalarBank, Scalar> implements ScalarProducer, ComputerFeatures {
+public class ScalarBankSum extends ProducerComputationAdapter<ScalarBank, Scalar> implements ScalarProducer, DestinationSupport<Scalar>, ComputerFeatures {
 	private final int count;
+
+	private Supplier<Scalar> destination;
 
 	public ScalarBankSum(int count, Supplier<Evaluable<? extends ScalarBank>> input) {
 		this.count = count;
-		this.setInputs((Supplier) Scalar.blank(), input);
+		this.destination = Scalar::new;
+		this.setInputs(new MemoryDataDestination(this, ScalarBank::new), input);
 		init();
 	}
 
+	@Override
+	public void setDestination(Supplier<Scalar> destination) { this.destination = destination; }
+
+	@Override
+	public Supplier<Scalar> getDestination() { return destination; }
+
 	/**
-	 * @return  GLOBAL
+	 * @return  PhysicalScope#GLOBAL
 	 */
 	@Override
 	public PhysicalScope getDefaultPhysicalScope() { return PhysicalScope.GLOBAL; }
@@ -48,8 +59,8 @@ public class ScalarBankSum extends ProducerComputationAdapter<ScalarBank, Scalar
 		HybridScope<Scalar> scope = new HybridScope<>(this);
 
 		String i = getVariablePrefix() + "_i";
-		String result = getArgument(0).valueAt(0).getExpression();
-		String value = getArgument(1).get("2 * " + i).getExpression();
+		String result = getArgument(0, 2).valueAt(0).getExpression();
+		String value = getArgument(1, 2 * count).get("2 * " + i).getExpression();
 
 		scope.code().accept("for (int " + i + " = 0; " + i + " < " + count +"; " + i + "++) {\n");
 		scope.code().accept("    " + result + " = " + result + " + " + value + ";\n");

@@ -31,9 +31,31 @@ public interface TestFeatures extends CodeFeatures, HardwareFeatures, TestSettin
 	}
 
 	default void assertEquals(double a, double b) {
+		assertEquals(a, b, true);
+	}
+
+	default void assertNotEquals(Scalar a, Scalar b) {
+		assertNotEquals(a.getValue(), b.getValue());
+	}
+
+	default void assertNotEquals(double a, Scalar b) {
+		assertNotEquals(a, b.getValue());
+	}
+
+	default void assertNotEquals(double a, double b) {
+		assertEquals(a, b, false);
+	}
+
+	private static void assertEquals(double a, double b, boolean positive) {
 		double gap = Hardware.getLocalHardware().isDoublePrecision() ? Math.pow(10, -10) : Math.pow(10, -6);
+
 		if (Math.abs(a - b) >= gap) {
-			System.err.println("TestFeatures: " + a + " != " + b);
+			if (positive) {
+				System.err.println("TestFeatures: " + a + " != " + b);
+				throw new AssertionError();
+			}
+		} else if (!positive) {
+			System.err.println("TestFeatures: " + a + " == " + b);
 			throw new AssertionError();
 		}
 	}

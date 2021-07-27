@@ -21,6 +21,8 @@ import io.almostrealism.code.Computation;
 import io.almostrealism.code.ProducerComputation;
 import org.almostrealism.hardware.cl.HardwareOperator;
 
+import java.util.Map;
+
 public class AcceleratedComputationEvaluable<T extends MemoryData> extends AcceleratedComputationOperation implements KernelizedEvaluable<T> {
 	public AcceleratedComputationEvaluable(Computation<T> c) {
 		this(c, true);
@@ -53,7 +55,7 @@ public class AcceleratedComputationEvaluable<T extends MemoryData> extends Accel
 			throw new IllegalArgumentException("An output variable does not appear to be one of the arguments to the Evaluable");
 		}
 
-		return postProcessOutput((MemoryData) apply(args)[outputArgIndex], outputVariable.getOffset());
+		return postProcessOutput((MemoryData) apply(args)[outputArgIndex], offset);
 	}
 
 	/**
@@ -81,11 +83,6 @@ public class AcceleratedComputationEvaluable<T extends MemoryData> extends Accel
 	@Override
 	public ProducerComputation<T> getComputation() {
 		return (ProducerComputation<T>) super.getComputation();
-	}
-
-	@Override
-	protected MemoryData[] getKernelArgs(MemoryBank args[]) {
-		return getKernelArgs(getArgumentVariables(), args, 1);
 	}
 
 	@Override
