@@ -25,7 +25,11 @@ import org.almostrealism.hardware.KernelizedProducer;
 
 public interface RayProducer extends ProducerComputation<Ray>, KernelizedProducer<Ray>, RayFeatures {
 	@Override
-	default KernelizedEvaluable<Ray> get() { return new DefaultRayEvaluable(this); }
+	default KernelizedEvaluable<Ray> get() {
+		DefaultRayEvaluable ev = new DefaultRayEvaluable(this);
+		ev.compile();
+		return ev;
+	}
 
 	default VectorProducer origin() { return origin(this); }
 

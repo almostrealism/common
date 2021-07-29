@@ -53,7 +53,7 @@ public interface NativeSupport<T extends NativeLibrary> extends KernelSupport, N
 
 		try {
 			Hardware.getLocalHardware().loadNative(this);
-		} catch (IOException | InterruptedException e) {
+		} catch (UnsatisfiedLinkError | IOException | InterruptedException e) {
 			throw new RuntimeException(e);
 		}
 	}

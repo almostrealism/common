@@ -44,8 +44,6 @@ public class PowerSpectrumTest implements TestFeatures {
 
 		Evaluable<ScalarBank> ev = new PowerSpectrum(SIZE, v(2 * SIZE, 0)).get();
 
-		((OperationAdapter) ev).compile();
-
 		ScalarBank given = ev.evaluate(window());
 		IntStream.range(0, given.getCount()).mapToObj(given::get).forEach(System.out::println);
 
@@ -53,7 +51,6 @@ public class PowerSpectrumTest implements TestFeatures {
 
 		ev = new NativePowerSpectrum512().get();
 
-		((OperationAdapter) ev).compile();
 		System.out.println(((NativeComputationEvaluable) ev).getFunctionDefinition());
 
 		ScalarBank test = ev.evaluate(window());

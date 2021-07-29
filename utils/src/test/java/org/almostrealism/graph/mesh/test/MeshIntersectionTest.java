@@ -153,7 +153,6 @@ public class MeshIntersectionTest implements TestFeatures {
 				v.greaterThan(0.0, true),
 				u.add(v).lessThan(1.0, true));
 		Evaluable<Scalar> evs = acs.get();
-		((OperationAdapter) evs).compile();
 		if (enableArgumentCountAssertions) Assert.assertEquals(1, ((OperationAdapter) evs).getArgsCount());
 	}
 

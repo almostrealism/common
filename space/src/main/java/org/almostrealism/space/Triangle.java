@@ -68,12 +68,10 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 	static {
 		TriangleDataProducer triangle = triangleFeat.triangle(PassThroughEvaluable.of(TrianglePointData.class, 0));
 		dataProducer = triangle.get();
-		((OperationAdapter) dataProducer).compile();
 		System.out.println(((AcceleratedComputationEvaluable) dataProducer).getFunctionDefinition());
 
 		intersectAt = new TriangleIntersectAt(PassThroughEvaluable.of(TriangleData.class, 1),
 							PassThroughEvaluable.of(Ray.class, 0, -1)).get();
-		((OperationAdapter) intersectAt).compile();
 	}
 
 	/**

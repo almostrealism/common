@@ -100,7 +100,6 @@ public class DefaultVertexData implements Mesh.VertexData {
 						() -> args -> vertices.get(((int[]) args[0])[1]),
 						() -> args -> vertices.get(((int[]) args[0])[2]));
 		Evaluable<TrianglePointData> ev = producer.get();
-		((OperationAdapter) ev).compile();
 
 		for (int i = 0; i < triangles.length; i++) {
 			points.set(i, ev.evaluate(triangles[i]));

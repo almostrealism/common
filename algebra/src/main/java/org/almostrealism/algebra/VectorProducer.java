@@ -27,7 +27,11 @@ import java.util.function.Supplier;
 public interface VectorProducer extends ProducerComputation<Vector>, KernelizedProducer<Vector>, VectorFeatures {
 
 	@Override
-	default KernelizedEvaluable<Vector> get() { return new DefaultVectorEvaluable(this); }
+	default KernelizedEvaluable<Vector> get() {
+		DefaultVectorEvaluable ev = new DefaultVectorEvaluable(this);
+		ev.compile();
+		return ev;
+	}
 
 	default ScalarProducer x() {
 		return x(this);

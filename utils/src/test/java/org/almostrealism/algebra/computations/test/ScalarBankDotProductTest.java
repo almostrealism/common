@@ -27,8 +27,6 @@ public class ScalarBankDotProductTest implements TestFeatures {
 		Evaluable<? extends Scalar> ev = new ScalarBankDotProduct(SIZE,
 				v(2 * SIZE, 0), v(2 * SIZE, 0)).get();
 
-		((OperationAdapter) ev).compile();
-
 		Scalar given = ev.evaluate(window(), window());
 		System.out.println(given);
 

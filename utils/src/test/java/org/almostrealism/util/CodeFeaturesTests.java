@@ -18,7 +18,6 @@ public class CodeFeaturesTests implements TestFeatures {
 
 		AcceleratedComputationEvaluable<Scalar> pev = (AcceleratedComputationEvaluable) p.get();
 		AcceleratedComputationEvaluable<Scalar> qev = (AcceleratedComputationEvaluable) q.get();
-		pev.compile();
 
 		assertEquals(2.0, pev.evaluate());
 		assertEquals(7.0, qev.evaluate());
@@ -31,7 +30,6 @@ public class CodeFeaturesTests implements TestFeatures {
 
 		AcceleratedComputationEvaluable<Scalar> pev = (AcceleratedComputationEvaluable) p.get();
 		AcceleratedComputationEvaluable<Scalar> qev = (AcceleratedComputationEvaluable) q.get();
-		qev.compile();
 
 		assertEquals(2.0, pev.evaluate());
 		assertEquals(7.0, qev.evaluate());
@@ -77,7 +75,6 @@ public class CodeFeaturesTests implements TestFeatures {
 		AcceleratedComputationEvaluable<Scalar> pev = (AcceleratedComputationEvaluable) p.get();
 		AcceleratedComputationEvaluable<Scalar> qev = (AcceleratedComputationEvaluable) q.get();
 		AcceleratedComputationEvaluable<Scalar> rev = (AcceleratedComputationEvaluable) r.get();
-		qev.compile();
 
 		assertEquals(2.0, pev.evaluate());
 		assertEquals(7.0, qev.evaluate());
@@ -120,7 +117,6 @@ public class CodeFeaturesTests implements TestFeatures {
 		value.setValue(2);
 
 		DefaultScalarEvaluable ev = (DefaultScalarEvaluable) s.get();
-		ev.compile();
 		System.out.println(ev.getFunctionDefinition());
 		assertEquals(3.0, ev.evaluate().getValue());
 
@@ -136,7 +132,6 @@ public class CodeFeaturesTests implements TestFeatures {
 		value.setValue(2);
 
 		AcceleratedComputationOperation r = (AcceleratedComputationOperation) s.get();
-		r.compile();
 		System.out.println(r.getFunctionDefinition());
 		r.run();
 		System.out.println(dest.getValue());

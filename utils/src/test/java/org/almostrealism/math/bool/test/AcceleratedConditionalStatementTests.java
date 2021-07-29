@@ -29,7 +29,6 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 
 			AcceleratedComputationEvaluable<Scalar> lt =
 					(AcceleratedComputationEvaluable<Scalar>) new LessThanScalar(a, b, a, b, false).get();
-			lt.compile();
 			System.out.println(lt.getFunctionDefinition());
 
 			Scalar s = lt.evaluate();
@@ -68,7 +67,6 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 	@Test
 	public void compactWithDotProduct() {
 		Evaluable<Scalar> lt = lessThan(ray(i -> Math.random()).oDotd(), oDotd(v(Ray.class, 0))).get();
-		((OperationAdapter) lt).compile();
 		if (TestSettings.enableArgumentCountAssertions)
 			Assert.assertEquals(2, ((OperationAdapter) lt).getArgsCount());
 
@@ -82,7 +80,6 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 		LessThan<Scalar> lt1 = lessThan(ray(i -> Math.random()).oDotd(), oDotd(v(Ray.class, 0)));
 		AcceleratedConditionalStatementScalar lt2 = vector(i -> Math.random()).crossProduct(v(Vector.class, 1))
 														.length().lessThan(lt1, v(1), v(2));
-		((OperationAdapter) lt2).compile();
 
 		double v = lt2.get().evaluate(ray(i -> Math.random()).get().evaluate(), vector(i -> Math.random()).get().evaluate()).getValue();
 		System.out.println(v);
@@ -91,7 +88,6 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 
 	private void check(LessThan lt, Scalar a, Scalar b) {
 		Evaluable ev = lt.get();
-		((OperationAdapter) ev).compile();
 		System.out.println(((DynamicAcceleratedOperation) ev).getFunctionDefinition());
 
 		Scalar s = (Scalar) ev.evaluate(a, b);

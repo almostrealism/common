@@ -23,5 +23,9 @@ import org.almostrealism.hardware.KernelizedProducer;
 
 public interface ScalarBankProducer extends ProducerComputation<ScalarBank>, KernelizedProducer<ScalarBank>, ScalarFeatures {
 	@Override
-	default KernelizedEvaluable<ScalarBank> get() { return new DefaultScalarBankEvaluable(this); }
+	default KernelizedEvaluable<ScalarBank> get() {
+		DefaultScalarBankEvaluable ev = new DefaultScalarBankEvaluable(this);
+		ev.compile();
+		return ev;
+	}
 }

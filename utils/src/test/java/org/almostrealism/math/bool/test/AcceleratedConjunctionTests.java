@@ -37,9 +37,7 @@ public class AcceleratedConjunctionTests extends AcceleratedConditionalStatement
 		LessThan l1 = lessThan(a, b);
 		LessThan l2 = lessThan(c, d);
 		AcceleratedConjunctionScalar acs = new AcceleratedConjunctionScalar(a, b, l1, l2);
-		AcceleratedComputationEvaluable<Scalar> ev = (AcceleratedComputationEvaluable<Scalar>) acs.get();
-		ev.compile();
-		return ev;
+		return (AcceleratedComputationEvaluable<Scalar>) acs.get();
 	}
 
 	protected Runnable conjunctionTest(double a, double b, double c, double d) {

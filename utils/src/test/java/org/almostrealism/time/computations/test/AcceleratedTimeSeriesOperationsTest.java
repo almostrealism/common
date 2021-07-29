@@ -53,7 +53,6 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures, Hardwa
 
 			Supplier<Runnable> r = series.purge(p(cursors));
 			AcceleratedComputationOperation op = (AcceleratedComputationOperation) r.get();
-			op.compile();
 			System.out.println(op.getFunctionDefinition());
 
 			op.run();
@@ -68,7 +67,6 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures, Hardwa
 		AcceleratedTimeSeries series = series();
 		AcceleratedTimeSeriesValueAt valueAt = new AcceleratedTimeSeriesValueAt(p(series), p(cursors(3.25)));
 		AcceleratedComputationEvaluable<Scalar> compiled = (AcceleratedComputationEvaluable) valueAt.get();
-		compiled.compile();
 		System.out.println(compiled.getFunctionDefinition());
 
 		Assert.assertEquals(series.valueAt(3.25).getValue(), compiled.evaluate().getValue(), Math.pow(10, -10));
@@ -125,16 +123,9 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures, Hardwa
 		Supplier<Runnable> i = increment();
 
 		AcceleratedComputationOperation opr = (AcceleratedComputationOperation) r.get();
-		opr.compile();
-
 		AcceleratedComputationOperation opa = (AcceleratedComputationOperation) a.get();
-		opa.compile();
-
 		AcceleratedComputationOperation opp = (AcceleratedComputationOperation) p.get();
-		opp.compile();
-
 		AcceleratedComputationOperation opi = (AcceleratedComputationOperation) i.get();
-		opi.compile();
 
 		opr.run();
 		opa.run();
@@ -168,8 +159,6 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures, Hardwa
 
 	protected void operationListAssertions(OperationList opl) {
 		Runnable op = opl.get();
-		if (op instanceof OperationAdapter)
-			((OperationAdapter) op).compile();
 
 		IntStream.range(0, 25).forEach(i -> {
 			op.run();

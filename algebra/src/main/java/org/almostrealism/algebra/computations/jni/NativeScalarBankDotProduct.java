@@ -64,8 +64,6 @@ public abstract class NativeScalarBankDotProduct extends ScalarBankDotProduct im
 						IllegalAccessException | InvocationTargetException e) {
 				e.printStackTrace();
 			}
-
-			((OperationAdapter) evaluables.get(count)).compile();
 		}
 
 		return evaluables.get(count);

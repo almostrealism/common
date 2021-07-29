@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,7 +24,11 @@ import org.almostrealism.hardware.KernelizedProducer;
 public interface TrianglePointDataProducer extends ProducerComputation<TrianglePointData>, KernelizedProducer<TrianglePointData>, TrianglePointDataFeatures {
 
 	@Override
-	default KernelizedEvaluable<TrianglePointData> get() { return new DefaultTrianglePointDataEvaluable(this); }
+	default KernelizedEvaluable<TrianglePointData> get() {
+		DefaultTrianglePointDataEvaluable ev = new DefaultTrianglePointDataEvaluable(this);
+		ev.compile();
+		return ev;
+	}
 
 	default VectorProducer p1() { return p1(this); }
 

@@ -24,5 +24,9 @@ import org.almostrealism.hardware.KernelizedProducer;
 
 public interface TemporalScalarProducer extends ProducerComputation<TemporalScalar>, KernelizedProducer<TemporalScalar>, TemporalFeatures {
 	@Override
-	default KernelizedEvaluable<TemporalScalar> get() { return new AcceleratedComputationEvaluable<>(this); }
+	default KernelizedEvaluable<TemporalScalar> get() {
+		AcceleratedComputationEvaluable ev = new AcceleratedComputationEvaluable<>(this);
+		ev.compile();
+		return ev;
+	}
 }

@@ -28,7 +28,11 @@ import java.util.function.Supplier;
 
 public interface RGBProducer extends ProducerComputation<RGB>, KernelizedProducer<RGB>, RGBFeatures {
 	@Override
-	default KernelizedEvaluable<RGB> get() { return new DefaultRGBEvaluable(this); }
+	default KernelizedEvaluable<RGB> get() {
+		DefaultRGBEvaluable ev = new DefaultRGBEvaluable(this);
+		ev.compile();
+		return ev;
+	}
 
 	default RGBProducer add(Supplier<Evaluable<? extends RGB>> operand) {
 		return cadd(this, operand);

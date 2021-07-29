@@ -28,7 +28,11 @@ import java.util.function.Supplier;
 public interface PairProducer extends ProducerComputation<Pair>, KernelizedProducer<Pair>,
 										MultiExpression<Double>, PairFeatures {
 	@Override
-	default KernelizedEvaluable<Pair> get() { return new DefaultPairEvaluable(this); }
+	default KernelizedEvaluable<Pair> get() {
+		DefaultPairEvaluable ev = new DefaultPairEvaluable(this);
+		ev.compile();
+		return ev;
+	}
 
 	default ScalarProducer l() { return l(this); }
 	default ScalarProducer r() { return r(this); }

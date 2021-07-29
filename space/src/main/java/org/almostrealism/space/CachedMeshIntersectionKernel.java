@@ -42,7 +42,6 @@ public class CachedMeshIntersectionKernel implements KernelizedEvaluable<Scalar>
 	public CachedMeshIntersectionKernel(MeshData data, KernelizedProducer<Ray> ray) {
 		this.data = data;
 		this.ray = ray.get();
-		((OperationAdapter) this.ray).compile();
 	}
 
 	@Override

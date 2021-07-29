@@ -23,5 +23,9 @@ import org.almostrealism.hardware.KernelizedProducer;
 
 public interface PairBankProducer extends ProducerComputation<PairBank>, KernelizedProducer<PairBank>, PairFeatures {
 	@Override
-	default KernelizedEvaluable<PairBank> get() { return new DefaultPairBankEvaluable(this); }
+	default KernelizedEvaluable<PairBank> get() {
+		DefaultPairBankEvaluable ev = new DefaultPairBankEvaluable(this);
+		ev.compile();
+		return ev;
+	}
 }
