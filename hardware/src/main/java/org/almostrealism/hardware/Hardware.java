@@ -243,6 +243,13 @@ public final class Hardware {
 
 	public NativeCompiler getNativeCompiler() { return nativeCompiler; }
 
+	public synchronized void loadNative(Class cls, String code) throws IOException, InterruptedException {
+		if (libs.contains(cls)) return;
+
+		getNativeCompiler().compileAndLoad(cls, code);
+		libs.add(cls);
+	}
+
 	public synchronized void loadNative(NativeSupport lib) throws IOException, InterruptedException {
 		if (libs.contains(lib.getClass())) return;
 
