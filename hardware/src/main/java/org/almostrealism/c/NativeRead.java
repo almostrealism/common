@@ -25,12 +25,14 @@ public class NativeRead extends BaseNative {
 
 	@Override
 	public String getFunctionDefinition() {
-		return "JNIEXPORT void JNICALL " + getFunctionName() +
-				" (JNIEnv* env, jobject thisObject, jlong arg, jint offset, jdoubleArray target, jint toffset, jint len) {\n" +
+		return "JNIEXPORT jdoubleArray JNICALL " + getFunctionName() +
+				" (JNIEnv* env, jobject thisObject, jlong arg, jint offset, jint len) {\n" +
 				"\tdouble* input = (double *) arg;\n" +
+				"\tjdoubleArray output = (*env)->NewDoubleArray(env, (jsize) len);\n" +
 				"\tfor (int i = 0; i < len; i++) {\n" +
-				"\t\t(*env)->SetDoubleArrayRegion(env, target, toffset + i, 1, (const jdouble*)&input[offset + i]);\n" +
-				"\t}" +
+				"\t\t(*env)->SetDoubleArrayRegion(env, output, i, 1, (const jdouble*)&input[offset + i]);\n" +
+				"\t}\n" +
+				"return output;\n" +
 				"}\n";
 	}
 
@@ -47,9 +49,9 @@ public class NativeRead extends BaseNative {
 	}
 
 	public void apply(NativeMemory mem, int offset, double target[], int toffset, int length) {
-		apply(mem.getNativePointer(), offset, target, toffset, length);
+		double out[] = apply(mem.getNativePointer(), offset, length);
+		if (length >= 0) System.arraycopy(out, 0, target, toffset, length);
 	}
 
-	@Override
-	public native void apply(long arg, int offset, double[] target, int toffset, int length);
+	public native double[] apply(long arg, int offset, int length);
 }

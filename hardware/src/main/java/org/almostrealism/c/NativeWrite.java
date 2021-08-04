@@ -51,6 +51,5 @@ public class NativeWrite extends BaseNative {
 		apply(mem.getNativePointer(), offset, target, toffset, length);
 	}
 
-	@Override
 	public native void apply(long arg, int offset, double[] target, int toffset, int length);
 }

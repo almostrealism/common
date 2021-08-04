@@ -1,6 +1,8 @@
 package org.almostrealism.c.test;
 
+import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.c.NativeMemoryProvider;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.RAM;
 import org.junit.Assert;
 import org.junit.Test;
@@ -22,5 +24,22 @@ public class NativeMemoryTests {
 
 		System.out.println(value[0]);
 		Assert.assertEquals(31, value[0], Math.pow(10, -10));
+	}
+
+	@Test
+	public void scalarBank() {
+		assert Hardware.getLocalHardware().getMemoryProvider() instanceof NativeMemoryProvider;
+
+		ScalarBank bank = new ScalarBank(20);
+		bank.set(4, 25);
+		bank.set(5, 30);
+		bank.set(19, 75);
+
+		assert bank.get(0).getValue() == 0;
+		assert bank.get(1).getValue() == 0;
+		assert bank.get(4).getValue() == 25;
+		assert bank.get(5).getValue() == 30;
+		assert bank.get(18).getValue() == 0;
+		assert bank.get(19).getValue() == 75;
 	}
 }

@@ -61,7 +61,7 @@ public class Malloc {
 
 	public String getFunctionDefinition() {
 		return "JNIEXPORT jlong JNICALL " + getFunctionName() + " (JNIEnv* env, jobject thisObject, jint len) {\n" +
-				"\treturn (jlong) malloc((int) len);\n" +
+				"\treturn (jlong) malloc((size_t) len);\n" +
 				"}\n";
 	}
 

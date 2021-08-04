@@ -58,7 +58,7 @@ public class NativeMemoryProvider implements MemoryProvider<RAM> {
 	@Override
 	public void setMem(RAM mem, int offset, RAM source, int srcOffset, int length) {
 		double value[] = new double[length];
-		getMem(source, 0, value, 0, length);
+		getMem(source, srcOffset, value, 0, length);
 		setMem(mem, offset, value, 0, length);
 	}
 

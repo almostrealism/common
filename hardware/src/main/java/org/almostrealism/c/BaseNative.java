@@ -58,6 +58,4 @@ public abstract class BaseNative {
 	protected String getFunctionName() { return functionName; }
 
 	public abstract String getFunctionDefinition();
-
-	public abstract void apply(long arg, int offset, double target[], int toffset, int length);
 }
