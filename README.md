@@ -30,7 +30,7 @@ Add utils:
         <dependency>
             <groupId>org.almostrealism</groupId>
             <artifactId>ar-utils</artifactId>
-            <version>0.35</version>
+            <version>0.36</version>
         </dependency>
 
 ### What are the terms of the LICENSE?
