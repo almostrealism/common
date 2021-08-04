@@ -8,7 +8,7 @@ import org.junit.Test;
 public class NativeMemoryTests {
 	@Test
 	public void readAndWrite() {
-		NativeMemoryProvider provider = new NativeMemoryProvider();
+		NativeMemoryProvider provider = new NativeMemoryProvider(1024);
 		RAM ram = provider.allocate(1);
 
 		System.out.println("memory location = " + ram.getNativePointer());

@@ -17,9 +17,11 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.CodePrintWriter;
+import org.almostrealism.c.CJNIPrintWriter;
 import org.almostrealism.c.CPrintWriter;
+import org.almostrealism.c.NativeMemoryProvider;
 import org.almostrealism.c.OpenCLPrintWriter;
-import org.almostrealism.hardware.jni.JNIPrintWriter;
+import org.almostrealism.hardware.cl.CLJNIPrintWriter;
 import org.almostrealism.io.PrintWriter;
 
 import java.util.function.Function;
@@ -33,7 +35,11 @@ public enum Compilation {
 		} else if (this == CL) {
 			return OpenCLPrintWriter::new;
 		} else if (this == JNI) {
-			return JNIPrintWriter::new;
+			if (Hardware.getLocalHardware().getMemoryProvider() instanceof NativeMemoryProvider) {
+				return CJNIPrintWriter::new;
+			} else {
+				return CLJNIPrintWriter::new;
+			}
 		}
 
 		throw new IllegalArgumentException();

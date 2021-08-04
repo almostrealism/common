@@ -21,13 +21,16 @@ import io.almostrealism.code.PhysicalScope;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.KernelSupport;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.RAM;
 import org.almostrealism.hardware.cl.CLMemory;
+import org.jocl.cl_command_queue;
 import org.jocl.cl_mem;
 
 import java.io.IOException;
+import java.util.Optional;
 import java.util.stream.Stream;
 
-public interface NativeSupport<T extends NativeLibrary> extends KernelSupport, NameProvider { // Supplier<T> {
+public interface NativeSupport<T extends NativeLibrary> extends KernelSupport, NameProvider {
 	default void initNativeFunctionName() {
 		setFunctionName("Java_" +
 				getClass().getName().replaceAll("\\.", "_") +
@@ -61,14 +64,14 @@ public interface NativeSupport<T extends NativeLibrary> extends KernelSupport, N
 	NativeLibrary get();
 
 	default void apply(MemoryData... args) {
-		apply(Stream.of(args).map(MemoryData::getMem).toArray(CLMemory[]::new),
+		apply(Stream.of(args).map(MemoryData::getMem).toArray(RAM[]::new),
 				Stream.of(args).mapToInt(MemoryData::getOffset).toArray(),
 				Stream.of(args).mapToInt(MemoryData::getMemLength).toArray());
 	}
 
-	default void apply(CLMemory args[], int offsets[], int sizes[]) {
-		apply(Hardware.getLocalHardware().getQueue().getNativePointer(),
-				Stream.of(args).mapToLong(CLMemory::getNativePointer).toArray(),
+	default void apply(RAM args[], int offsets[], int sizes[]) {
+		apply(Optional.ofNullable(Hardware.getLocalHardware().getQueue()).map(cl_command_queue::getNativePointer).orElse(-1L),
+				Stream.of(args).mapToLong(RAM::getNativePointer).toArray(),
 				offsets, sizes, args.length);
 	}
 

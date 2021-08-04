@@ -18,6 +18,7 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.Computer;
 import io.almostrealism.code.MemoryProvider;
+import org.almostrealism.c.NativeMemoryProvider;
 import org.almostrealism.hardware.cl.CLMemoryProvider;
 import org.almostrealism.hardware.cl.CLMemoryProvider.Location;
 import org.almostrealism.hardware.jni.NativeCompiler;
@@ -86,6 +87,14 @@ public final class Hardware {
 			location = Location.HOST;
 		}
 
+		String memProvider = System.getProperty("AR_HARDWARE_MEMORY_PROVIDER");
+		if (memProvider == null) memProvider = System.getenv("AR_HARDWARE_MEMORY_PROVIDER");
+		if (memProvider == null) memProvider = "cl";
+		if (memProvider.equalsIgnoreCase("native")) {
+			gpu = false;
+			sp = false;
+		}
+
 		String libFormat = System.getProperty("AR_HARDWARE_LIB_FORMAT");
 		if (libFormat == null) libFormat = System.getenv("AR_HARDWARE_LIB_FORMAT");
 		LIB_FORMAT = Optional.ofNullable(libFormat).orElse("lib%NAME%.so");
@@ -106,9 +115,11 @@ public final class Hardware {
 		timeSeriesCount = Optional.ofNullable(tsCount).map(Integer::parseInt).orElse(30);
 
 		if (sp) {
-			local = new Hardware(nativeCompiler, libDir, gpu, enableKernels, enableDestinationConsolidation, false, location);
+			local = new Hardware(nativeCompiler, libDir, "cl".equalsIgnoreCase(memProvider),
+						gpu, enableKernels, enableDestinationConsolidation, false, location);
 		} else {
-			local = new Hardware(nativeCompiler, libDir, gpu, enableKernels, enableDestinationConsolidation, location);
+			local = new Hardware(nativeCompiler, libDir, "cl".equalsIgnoreCase(memProvider),
+						gpu, enableKernels, enableDestinationConsolidation, location);
 		}
 	}
 
@@ -120,34 +131,34 @@ public final class Hardware {
 	private final String compilerExec;
 	private final String libDir;
 
-	private final cl_context context;
-	private final cl_command_queue queue;
+	private cl_context context;
+	private cl_command_queue queue;
 
-	private final AcceleratedFunctions functions;
+	private AcceleratedFunctions functions;
 	private final Computer computer;
 	private final NativeCompiler nativeCompiler;
-	private final CLMemoryProvider ram;
+	private final MemoryProvider<RAM> ram;
 	
-	private Hardware(String compilerExec, String libDir, boolean enableGpu,
+	private Hardware(String compilerExec, String libDir, boolean enableCl, boolean enableGpu,
 					 boolean enableKernels, boolean enableDestinationConsolidation,
 					 Location location) {
-		this(compilerExec, libDir, enableGpu, enableKernels, enableDestinationConsolidation, !enableGpu, location);
+		this(compilerExec, libDir, enableCl, enableGpu, enableKernels, enableDestinationConsolidation, !enableGpu, location);
 	}
 
-	private Hardware(String compilerExec, String libDir, boolean enableGpu,
+	private Hardware(String compilerExec, String libDir, boolean enableCl, boolean enableGpu,
 					 boolean enableKernels, boolean enableDestinationConsolidation,
 					 boolean enableDoublePrecision, Location location) {
-		this(enableDoublePrecision ? "local64" : "local32", compilerExec, libDir, enableGpu,
+		this(enableDoublePrecision ? "local64" : "local32", compilerExec, libDir, enableCl, enableGpu,
 				enableKernels, enableDestinationConsolidation, enableDoublePrecision, location);
 	}
 
-	private Hardware(String name, String compilerExec, String libDir, boolean enableGpu,
+	private Hardware(String name, String compilerExec, String libDir, boolean enableCl, boolean enableGpu,
 					 boolean enableKernels, boolean enableDestinationConsolidation,
 					 Location location) {
-		this(name, compilerExec, libDir, enableGpu, enableKernels, enableDestinationConsolidation, !enableGpu, location);
+		this(name, compilerExec, libDir, enableCl, enableGpu, enableKernels, enableDestinationConsolidation, !enableGpu, location);
 	}
 
-	private Hardware(String name, String compilerExec, String libDir, boolean enableGpu,
+	private Hardware(String name, String compilerExec, String libDir, boolean enableCl, boolean enableGpu,
 					 boolean enableKernels, boolean enableDestinationConsolidation,
 					 boolean enableDoublePrecision, Location location) {
 		long memoryMax = (long) Math.pow(2, getMemoryScale()) * 256L * 1000L * 1000L;
@@ -161,61 +172,66 @@ public final class Hardware {
 		this.libDir = libDir;
 		this.memVolatile = location == Location.HEAP;
 
-		final int platformIndex = 0;
-		final int deviceIndex = 0;
-		final long deviceType = enableGpu ? CL.CL_DEVICE_TYPE_GPU : CL.CL_DEVICE_TYPE_CPU;
+		if (enableCl) {
+			final int platformIndex = 0;
+			final int deviceIndex = 0;
+			final long deviceType = enableGpu ? CL.CL_DEVICE_TYPE_GPU : CL.CL_DEVICE_TYPE_CPU;
 
-		CL.setExceptionsEnabled(true);
+			CL.setExceptionsEnabled(true);
 
-		if (enableGpu) {
-			System.out.println("Initializing Hardware (GPU Enabled)...");
+			if (enableGpu) {
+				System.out.println("Initializing Hardware (GPU Enabled)...");
+			} else {
+				System.out.println("Initializing Hardware...");
+			}
+
+			System.out.println("Hardware[" + name + "]: Max RAM is " +
+					memoryMax / 1000000 + " Megabytes");
+			if (location == Location.HEAP) System.out.println("Hardware[" + name + "]: Heap RAM enabled");
+			if (location == Location.HOST) System.out.println("Hardware[" + name + "]: Host RAM enabled");
+
+			int numPlatformsArray[] = new int[1];
+			CL.clGetPlatformIDs(0, null, numPlatformsArray);
+			int numPlatforms = numPlatformsArray[0];
+
+			if (enableVerbose) System.out.println("Hardware[" + name + "]: " + numPlatforms + " platforms available");
+
+			cl_platform_id platforms[] = new cl_platform_id[numPlatforms];
+			CL.clGetPlatformIDs(platforms.length, platforms, null);
+			cl_platform_id platform = platforms[platformIndex];
+
+			if (enableVerbose)
+				System.out.println("Hardware[" + name + "]: Using platform " + platformIndex + " -- " + platform);
+
+			cl_context_properties contextProperties = new cl_context_properties();
+			contextProperties.addProperty(CL.CL_CONTEXT_PLATFORM, platform);
+
+			int numDevicesArray[] = new int[1];
+			CL.clGetDeviceIDs(platform, deviceType, 0, null, numDevicesArray);
+			int numDevices = numDevicesArray[0];
+
+			System.out.println("Hardware[" + name + "]: " + numDevices + " " + deviceName(deviceType) + "(s) available");
+
+			cl_device_id devices[] = new cl_device_id[numDevices];
+			CL.clGetDeviceIDs(platform, deviceType, numDevices, devices, null);
+			cl_device_id device = devices[deviceIndex];
+
+			System.out.println("Hardware[" + name + "]: Using " + deviceName(deviceType) + " " + deviceIndex);
+
+			context = CL.clCreateContext(contextProperties, 1, new cl_device_id[]{device},
+					null, null, null);
+			if (enableVerbose) System.out.println("Hardware[" + name + "]: OpenCL context initialized");
+
+			queue = CL.clCreateCommandQueue(context, device, 0, null);
+			if (enableVerbose) System.out.println("Hardware[" + name + "]: OpenCL command queue initialized");
+
+			if (enableVerbose) System.out.println("Hardware[" + name + "]: Loading accelerated functions");
+			functions = new AcceleratedFunctions();
+			functions.init(this, loadSource(name));
+			System.out.println("Hardware[" + name + "]: Accelerated functions loaded for " + name);
 		} else {
 			System.out.println("Initializing Hardware...");
 		}
-
-		System.out.println("Hardware[" + name + "]: Max RAM is " +
-				memoryMax / 1000000 + " Megabytes");
-		if (location == Location.HEAP) System.out.println("Hardware[" + name + "]: Heap RAM enabled");
-		if (location == Location.HOST) System.out.println("Hardware[" + name + "]: Host RAM enabled");
-
-		int numPlatformsArray[] = new int[1];
-		CL.clGetPlatformIDs(0, null, numPlatformsArray);
-		int numPlatforms = numPlatformsArray[0];
-
-		if (enableVerbose) System.out.println("Hardware[" + name + "]: " + numPlatforms + " platforms available");
-
-		cl_platform_id platforms[] = new cl_platform_id[numPlatforms];
-		CL.clGetPlatformIDs(platforms.length, platforms, null);
-		cl_platform_id platform = platforms[platformIndex];
-
-		if (enableVerbose) System.out.println("Hardware[" + name + "]: Using platform " + platformIndex + " -- " + platform);
-
-		cl_context_properties contextProperties = new cl_context_properties();
-		contextProperties.addProperty(CL.CL_CONTEXT_PLATFORM, platform);
-
-		int numDevicesArray[] = new int[1];
-		CL.clGetDeviceIDs(platform, deviceType, 0, null, numDevicesArray);
-		int numDevices = numDevicesArray[0];
-
-		System.out.println("Hardware[" + name + "]: " + numDevices + " " + deviceName(deviceType) + "(s) available");
-
-		cl_device_id devices[] = new cl_device_id[numDevices];
-		CL.clGetDeviceIDs(platform, deviceType, numDevices, devices, null);
-		cl_device_id device = devices[deviceIndex];
-
-		System.out.println("Hardware[" + name + "]: Using " + deviceName(deviceType) + " " + deviceIndex);
-
-		context = CL.clCreateContext(contextProperties, 1, new cl_device_id[] { device },
-								null, null, null);
-		if (enableVerbose) System.out.println("Hardware[" + name + "]: OpenCL context initialized");
-
-		queue = CL.clCreateCommandQueue(context, device, 0, null);
-		if (enableVerbose) System.out.println("Hardware[" + name + "]: OpenCL command queue initialized");
-
-		if (enableVerbose) System.out.println("Hardware[" + name + "]: Loading accelerated functions");
-		functions = new AcceleratedFunctions();
-		functions.init(this, loadSource(name));
-		System.out.println("Hardware[" + name + "]: Accelerated functions loaded for " + name);
 
 		computer = new DefaultComputer();
 		if (enableVerbose) System.out.println("Hardware[" + name + "]: Created DefaultComputer");
@@ -228,7 +244,7 @@ public final class Hardware {
 
 		if (enableVerbose) System.out.println("Hardware[" + name + "]: Created NativeCompiler");
 
-		ram = new CLMemoryProvider(getContext(), getNumberSize(), memoryMax, location);
+		ram = enableCl ? new CLMemoryProvider(getContext(), getNumberSize(), memoryMax, location) : new NativeMemoryProvider(memoryMax);
 		if (enableVerbose) System.out.println("Hardware[" + name + "]: Created MemoryProvider");
 
 		if (timeSeriesSize > 0) {

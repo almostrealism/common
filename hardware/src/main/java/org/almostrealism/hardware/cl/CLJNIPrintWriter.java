@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.hardware.jni;
+package org.almostrealism.hardware.cl;
 
 import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.ArrayVariable;
@@ -34,11 +34,11 @@ import java.util.Stack;
 import java.util.function.Consumer;
 import java.util.stream.IntStream;
 
-public class JNIPrintWriter extends CPrintWriter {
+public class CLJNIPrintWriter extends CPrintWriter {
 	private final Stack<Accessibility> accessStack;
 	private final Stack<List<ArrayVariable<?>>> argumentStack;
 
-	public JNIPrintWriter(PrintWriter p) {
+	public CLJNIPrintWriter(PrintWriter p) {
 		super(p);
 		setExternalScopePrefix("JNIEXPORT void JNICALL");
 		setEnableArrayVariables(true);

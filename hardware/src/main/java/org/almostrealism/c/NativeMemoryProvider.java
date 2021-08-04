@@ -17,27 +17,42 @@
 package org.almostrealism.c;
 
 import io.almostrealism.code.MemoryProvider;
+import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.RAM;
 
 public class NativeMemoryProvider implements MemoryProvider<RAM> {
-	private final Malloc malloc;
-	private final NativeRead read;
-	private final NativeWrite write;
+	private Malloc malloc;
+	private Free free;
+	private NativeRead read;
+	private NativeWrite write;
 
-	public NativeMemoryProvider() {
-		this.malloc = new Malloc();
-		this.read = new NativeRead();
-		this.write = new NativeWrite();
+	private final int numberSize;
+	private final long memoryMax;
+	private long memoryUsed;
+
+	public NativeMemoryProvider(long memoryMax) {
+		this.numberSize = 8;
+		this.memoryMax = memoryMax;
 	}
 
 	@Override
-	public RAM allocate(int size) {
-		return new NativeMemory(this, malloc.apply(8 * size));
+	public NativeMemory allocate(int size) {
+		if (malloc == null) malloc = new Malloc();
+
+		if (memoryUsed + (long) numberSize * size > memoryMax) {
+			throw new HardwareException("Memory max reached");
+		} else {
+			memoryUsed += (long) numberSize * size;
+			return new NativeMemory(this, malloc.apply(numberSize * size));
+		}
 	}
 
 	@Override
 	public void deallocate(int size, RAM mem) {
+		if (free == null) free = new Free();
 
+		free.apply(mem.getNativePointer());
+		memoryUsed -= (long) size * numberSize;
 	}
 
 	@Override
@@ -49,11 +64,13 @@ public class NativeMemoryProvider implements MemoryProvider<RAM> {
 
 	@Override
 	public void setMem(RAM mem, int offset, double[] source, int srcOffset, int length) {
+		if (write == null) write = new NativeWrite();
 		write.apply((NativeMemory) mem, offset, source, srcOffset, length);
 	}
 
 	@Override
 	public void getMem(RAM mem, int sOffset, double[] out, int oOffset, int length) {
+		if (read == null) read = new NativeRead();
 		read.apply((NativeMemory) mem, sOffset, out, oOffset, length);
 	}
 }
