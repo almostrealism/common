@@ -16,9 +16,17 @@
 
 package org.almostrealism.algebra.computations.jni;
 
+import org.almostrealism.algebra.ScalarBank;
+
+import java.util.function.Supplier;
+
 public class NativeScalarBankDotProduct2 extends NativeScalarBankDotProduct {
 	public NativeScalarBankDotProduct2() {
 		super(2);
+	}
+
+	public NativeScalarBankDotProduct2(Supplier<ScalarBank> temp) {
+		super(2, temp);
 	}
 
 	@Override

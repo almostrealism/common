@@ -16,18 +16,14 @@
 
 package org.almostrealism.algebra.computations.jni;
 
-import org.almostrealism.algebra.ScalarBank;
+import org.almostrealism.algebra.Pair;
 
 import java.util.function.Supplier;
 
-public class NativeScalarBankDotProduct26 extends NativeScalarBankDotProduct {
-	public NativeScalarBankDotProduct26() {
-		super(26);
-	}
+public class NativeDither160 extends NativeDither {
+	public NativeDither160() { super(160); }
 
-	public NativeScalarBankDotProduct26(Supplier<ScalarBank> temp) {
-		super(26, temp);
-	}
+	public NativeDither160(Supplier<Pair> randDestination) { super(160, randDestination); }
 
 	@Override
 	public native void apply(long commandQueue, long[] arg, int[] offset, int[] size, int count);

@@ -16,51 +16,16 @@
 
 package org.almostrealism.c;
 
-import org.almostrealism.hardware.Hardware;
-
-import java.io.IOException;
-
-public class Malloc {
-
-	private String head;
-	private String functionName;
+public class Malloc extends BaseNative {
 
 	public Malloc() {
 		initNative();
 	}
 
-	protected void initNativeFunctionName() {
-		functionName = "Java_" +
-				getClass().getName().replaceAll("\\.", "_") +
-				"_apply";
-	}
-
-	protected void initNative() {
-		initNativeFunctionName();
-
-		try {
-			Hardware.getLocalHardware().loadNative(getClass(), getCode());
-		} catch (UnsatisfiedLinkError | IOException | InterruptedException e) {
-			throw new RuntimeException(e);
-		}
-	}
-
-	public String getHead() { return head; }
-
-	public void setHead(String head) { this.head = head; }
-
-	protected String getCode() {
-		if (getHead() == null) {
-			return getFunctionDefinition();
-		} else {
-			return getHead() + "\n" + getFunctionDefinition();
-		}
-	}
-
-	protected String getFunctionName() { return functionName; }
-
+	@Override
 	public String getFunctionDefinition() {
 		return "JNIEXPORT jlong JNICALL " + getFunctionName() + " (JNIEnv* env, jobject thisObject, jint len) {\n" +
+				(enableVerbose ? "\tprintf(\"malloc - %i bytes\\n\", len);\n" : "") +
 				"\treturn (jlong) malloc((size_t) len);\n" +
 				"}\n";
 	}

@@ -21,6 +21,7 @@ import org.almostrealism.hardware.Hardware;
 import java.io.IOException;
 
 public abstract class BaseNative {
+	public static final boolean enableVerbose = false;
 
 	private String head;
 	private String functionName;

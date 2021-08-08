@@ -27,6 +27,7 @@ public class NativeRead extends BaseNative {
 	public String getFunctionDefinition() {
 		return "JNIEXPORT jdoubleArray JNICALL " + getFunctionName() +
 				" (JNIEnv* env, jobject thisObject, jlong arg, jint offset, jint len) {\n" +
+				(enableVerbose ? "\tprintf(\"nativeRead(%lu) - %i values\\n\", arg, len);\n" : "") +
 				"\tdouble* input = (double *) arg;\n" +
 				"\tjdoubleArray output = (*env)->NewDoubleArray(env, (jsize) len);\n" +
 				"\tfor (int i = 0; i < len; i++) {\n" +

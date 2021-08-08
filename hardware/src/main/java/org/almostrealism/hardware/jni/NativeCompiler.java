@@ -26,6 +26,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class NativeCompiler {
+	public static boolean enableVerbose = false;
+
 	public static final String LIB_NAME_REPLACE = "%NAME%";
 
 	private static final String STDIO = "#include <stdio.h>\n";
@@ -81,6 +83,7 @@ public class NativeCompiler {
 	}
 
 	public synchronized String compile(Class target, String code) throws IOException, InterruptedException {
+		if (enableVerbose) System.out.println("NativeCompiler: Compiling native code for " + target.getSimpleName());
 		String name = target.getName();
 
 		try (FileOutputStream out = new FileOutputStream(getInputFile(name));
@@ -91,11 +94,15 @@ public class NativeCompiler {
 
 		Process process = new ProcessBuilder(getCommand(name)).inheritIO().start();
 		process.waitFor();
+		if (enableVerbose) System.out.println("NativeCompiler: Native code compiled for " + target.getSimpleName());
 		return name;
 	}
 
 	public synchronized void compileAndLoad(Class target, String code) throws IOException, InterruptedException {
-		System.loadLibrary(compile(target, code));
+		String name = compile(target, code);
+		if (enableVerbose) System.out.println("NativeCompiler: Loading native library " + name);
+		System.loadLibrary(name);
+		if (enableVerbose) System.out.println("NativeCompiler: Loaded native library " + name);
 	}
 
 	public synchronized void compileAndLoad(Class target, NativeLibrary lib) throws IOException, InterruptedException {

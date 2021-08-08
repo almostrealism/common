@@ -24,6 +24,20 @@ import java.util.function.Supplier;
 public class ScalarBankDotProduct extends ScalarBankSum {
 	public ScalarBankDotProduct(int count, Supplier<Evaluable<? extends ScalarBank>> a,
 								Supplier<Evaluable<? extends ScalarBank>> b) {
-		super(count, new ScalarBankProduct(count, a, b));
+		super(count, product(count, a, b, null));
+	}
+
+	protected ScalarBankDotProduct(int count, Supplier<Evaluable<? extends ScalarBank>> a,
+								   Supplier<Evaluable<? extends ScalarBank>> b,
+								   Supplier<ScalarBank> temp) {
+		super(count, product(count, a, b, temp));
+	}
+
+	private static ScalarBankProduct product(int count, Supplier<Evaluable<? extends ScalarBank>> a,
+											 Supplier<Evaluable<? extends ScalarBank>> b,
+											 Supplier<ScalarBank> temp) {
+		ScalarBankProduct product = new ScalarBankProduct(count, a, b);
+		if (temp != null) product.setDestination(temp);
+		return product;
 	}
 }

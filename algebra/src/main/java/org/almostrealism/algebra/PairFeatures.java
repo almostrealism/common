@@ -121,7 +121,15 @@ public interface PairFeatures {
 	}
 
 	default Supplier<Evaluable<? extends Pair>> rand() {
-		return () -> new RandomPair();
+		return RandomPair::new;
+	}
+
+	default Supplier<Evaluable<? extends Pair>> rand(Supplier<Pair> destination) {
+		return () -> {
+			RandomPair p = new RandomPair();
+			p.setDestination(destination);
+			return p;
+		};
 	}
 
 	default PairEvaluable fromScalars(Evaluable<Scalar> x, Evaluable<Scalar> y) {

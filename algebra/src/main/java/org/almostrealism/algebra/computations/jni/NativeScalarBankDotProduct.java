@@ -16,9 +16,9 @@
 
 package org.almostrealism.algebra.computations.jni;
 
-import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.computations.ScalarBankDotProduct;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.PassThroughProducer;
@@ -29,6 +29,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Supplier;
+import java.util.stream.Stream;
 
 public abstract class NativeScalarBankDotProduct extends ScalarBankDotProduct implements NativeSupport<NativeComputationEvaluable> {
 	private static final Map<Integer, Evaluable<? extends Scalar>> evaluables = new HashMap<>();
@@ -39,33 +40,51 @@ public abstract class NativeScalarBankDotProduct extends ScalarBankDotProduct im
 		initNative();
 	}
 
+	protected NativeScalarBankDotProduct(int count, Supplier<ScalarBank> temp) {
+		super(count, new PassThroughProducer(2 * count, 0),
+				new PassThroughProducer<>(2 * count, 1), temp);
+		initNative();
+	}
+
 	@Override
 	public NativeComputationEvaluable<Scalar> get() {
 		return new NativeComputationEvaluable<>(this);
 	}
 
 	public synchronized static Evaluable<? extends Scalar> get(int count) {
-		if (!Hardware.getLocalHardware().isNativeSupported()) {
-			return new ScalarBankDotProduct(count,
-					new PassThroughProducer(2 * count, 0),
-					new PassThroughProducer(2 * count, 1)).get();
-		}
-
 		if (!evaluables.containsKey(count)) {
-			try {
-				Object c = Class.forName(NativeScalarBankDotProduct.class.getName() + count)
-						.getConstructor().newInstance();
-				evaluables.put(count, ((Supplier<Evaluable<? extends Scalar>>) c).get());
-			} catch (ClassNotFoundException e) {
-				evaluables.put(count, new ScalarBankDotProduct(count,
-						new PassThroughProducer(2 * count, 0),
-						new PassThroughProducer(2 * count, 1)).get());
-			} catch (NoSuchMethodException | InstantiationException |
-						IllegalAccessException | InvocationTargetException e) {
-				e.printStackTrace();
-			}
+			evaluables.put(count, create(count).get());
 		}
 
 		return evaluables.get(count);
+	}
+
+	public static ScalarBankDotProduct create(int count, Object... args) {
+		if (!Hardware.getLocalHardware().isNativeSupported()) {
+			return new ScalarBankDotProduct(count,
+					new PassThroughProducer(2 * count, 0),
+					new PassThroughProducer(2 * count, 1));
+		}
+
+		try {
+			// TODO Class cls[] = Stream.of(args).map(Object::getClass).toArray(Class[]::new);
+			Class cls[] = args.length == 0 ? new Class[0] : new Class[] { Supplier.class };
+			Object c = Class.forName(NativeScalarBankDotProduct.class.getName() + count)
+					.getConstructor(cls).newInstance(args);
+			return (ScalarBankDotProduct) c;
+		} catch (ClassNotFoundException e) {
+			return new ScalarBankDotProduct(count,
+					new PassThroughProducer(2 * count, 0),
+					new PassThroughProducer(2 * count, 1));
+		} catch (NoSuchMethodException | InstantiationException |
+				IllegalAccessException | InvocationTargetException e) {
+			throw new RuntimeException(e);
+		}
+	}
+
+	public static ScalarBankDotProduct create(int count, Supplier<Scalar> destination, Object... args) {
+		ScalarBankDotProduct p = create(count, args);
+		p.setDestination(destination);
+		return p;
 	}
 }

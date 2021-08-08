@@ -31,6 +31,8 @@ import java.util.function.Consumer;
 import java.util.stream.IntStream;
 
 public class CJNIPrintWriter extends CPrintWriter {
+	public static final boolean enableInlineCopy = true;
+
 	private final Stack<Accessibility> accessStack;
 	private final Stack<List<ArrayVariable<?>>> argumentStack;
 
@@ -44,7 +46,7 @@ public class CJNIPrintWriter extends CPrintWriter {
 
 	@Override
 	public void beginScope(String name, List<ArrayVariable<?>> arguments, Accessibility access) {
-		if (access == Accessibility.EXTERNAL) {
+		if (!enableInlineCopy && access == Accessibility.EXTERNAL) {
 			renderReadWrite();
 		}
 
@@ -114,18 +116,27 @@ public class CJNIPrintWriter extends CPrintWriter {
 				.mapToObj(i -> new Variable<>(arguments.get(i).getName() + "Size",
 						Integer.class, "(int) sizeArr[" + i + "]"))
 				.forEach(this::println);
-		IntStream.range(0, arguments.size())
-				.mapToObj(i -> copy(i, arguments.get(i), false))
-				.forEach(super::println);
+
+		if (enableInlineCopy) {
+			IntStream.range(0, arguments.size()).forEach(i -> copyInline(i, arguments.get(i), false));
+		} else {
+			IntStream.range(0, arguments.size())
+					.mapToObj(i -> copyMethod(i, arguments.get(i), false))
+					.forEach(super::println);
+		}
 	}
 
 	protected void renderArgumentWrites(List<ArrayVariable<?>> arguments) {
-		IntStream.range(0, arguments.size())
-				.mapToObj(i -> copy(i, arguments.get(i), true))
-				.forEach(super::println);
+		if (enableInlineCopy) {
+			IntStream.range(0, arguments.size()).forEach(i -> copyInline(i, arguments.get(i), true));
+		} else {
+			IntStream.range(0, arguments.size())
+					.mapToObj(i -> copyMethod(i, arguments.get(i), true))
+					.forEach(super::println);
+		}
 	}
 
-	protected Method<Void> copy(int index, ArrayVariable<?> variable, boolean write) {
+	protected Method<Void> copyMethod(int index, ArrayVariable<?> variable, boolean write) {
 		int size = Hardware.getLocalHardware().getNumberSize();
 
 		Expression<double[]> nativeBuffer =
@@ -140,6 +151,23 @@ public class CJNIPrintWriter extends CPrintWriter {
 		return new Method<>(Void.class, method,
 					nativeBuffer, nativeOffset, nativeCb,
 					new InstanceReference<>(variable));
+	}
+
+	protected void copyInline(int index, ArrayVariable<?> variable, boolean write) {
+		String o = "((double *) argArr[" + index + "])";
+		String offset = "offsetArr[" + index + "]";
+		String size = "sizeArr[" + index + "]";
+		String v = new InstanceReference<>(variable).getExpression();
+
+		if (!write) {
+			println("for (int i = 0; i < " + size + "; i++) {");
+			println("\t" + v + "[i] = " + o + "[" + offset + " + i];");
+			println("}");
+		} else {
+			println("for (int i = 0; i < " + size + "; i++) {");
+			println("\t" + o + "[" + offset + " + i] = " + v + "[i];");
+			println("}");
+		}
 	}
 
 	private void renderReadWrite() {

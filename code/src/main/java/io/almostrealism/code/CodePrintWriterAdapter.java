@@ -21,6 +21,7 @@ import io.almostrealism.code.expressions.InstanceReference;
 import org.almostrealism.io.PrintWriter;
 
 import java.util.List;
+import java.util.Stack;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
@@ -34,7 +35,12 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 
 	private boolean enableArrayVariables;
 
-	public CodePrintWriterAdapter(PrintWriter p) { this.p = p; }
+	private final Stack<String> scopeName;
+
+	public CodePrintWriterAdapter(PrintWriter p) {
+		this.p = p;
+		this.scopeName = new Stack<>();
+	}
 
 	protected void setNameSuffix(String suffix) { this.nameSuffix = suffix; }
 
@@ -61,6 +67,10 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 		}
 	}
 
+	protected String getCurrentScopeName() {
+		return scopeName.peek();
+	}
+
 	protected abstract String nameForType(Class<?> type);
 
 	protected String annotationForPhysicalScope(PhysicalScope scope) {
@@ -83,6 +93,8 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 
 	@Override
 	public void beginScope(String name, List<ArrayVariable<?>> arguments, Accessibility access) {
+		scopeName.push(name);
+
 		StringBuilder buf = new StringBuilder();
 
 		String scopePrefix = access == Accessibility.EXTERNAL ? scopePrefixExt : scopePrefixInt;
@@ -176,6 +188,7 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 
 	@Override
 	public void endScope() {
+		scopeName.pop();
 		p.println();
 		if (scopeClose != null) p.println(scopeClose);
 	}

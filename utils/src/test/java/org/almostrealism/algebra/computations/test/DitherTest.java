@@ -3,8 +3,12 @@ package org.almostrealism.algebra.computations.test;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.computations.Dither;
+import org.almostrealism.algebra.computations.jni.NativeDither160;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
+
+import java.util.Arrays;
+import java.util.stream.IntStream;
 
 public class DitherTest implements TestFeatures {
 	@Test
@@ -12,5 +16,15 @@ public class DitherTest implements TestFeatures {
 		Dither dither = new Dither(200, v(400, 0), v(Scalar.class, 1));
 		ScalarBank result = dither.get().evaluate(new ScalarBank(200), new Scalar(1.0));
 		assertNotEquals(0.0, result.get(20));
+	}
+
+	@Test
+	public void random() {
+		ScalarBank random = new ScalarBank(160);
+		IntStream.range(0, 160).forEach(i ->  random.set(i, 100 * Math.random()));
+		Dither dither = new Dither(160, v(320, 0), v(Scalar.class, 1));
+		ScalarBank out = dither.get().evaluate(random, new Scalar(1.0));
+		System.out.println(Arrays.toString(IntStream.range(0, 160).mapToDouble(i -> out.get(i).getValue()).toArray()));
+		assertNotEquals(0.0, out.get(20));
 	}
 }

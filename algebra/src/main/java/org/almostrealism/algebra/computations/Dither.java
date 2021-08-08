@@ -17,20 +17,29 @@
 package org.almostrealism.algebra.computations;
 
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.algebra.ScalarProducer;
 
+import java.util.Optional;
 import java.util.function.Supplier;
 
 public class Dither extends ScalarBankAdd {
 	public Dither(int count, Supplier<Evaluable<? extends ScalarBank>> input,
 				  Supplier<Evaluable<? extends Scalar>> ditherValue) {
-		super(count, input, gaussRand(ditherValue));
+		this(count, input, ditherValue, null);
 	}
 
-	private static ScalarProducer gaussRand(Supplier<Evaluable<? extends Scalar>> ditherValue) {
-		return ScalarFeatures.getInstance().scalarsMultiply(ditherValue, new GaussRandom());
+	public Dither(int count, Supplier<Evaluable<? extends ScalarBank>> input,
+				  Supplier<Evaluable<? extends Scalar>> ditherValue,
+				  Supplier<Pair> randDestination) {
+		super(count, input, gaussRand(ditherValue, randDestination));
+	}
+
+	private static ScalarProducer gaussRand(Supplier<Evaluable<? extends Scalar>> ditherValue, Supplier<Pair> randDestination) {
+		return ScalarFeatures.getInstance().scalarsMultiply(ditherValue,
+				Optional.ofNullable(randDestination).map(GaussRandom::new).orElseGet(GaussRandom::new));
 	}
 }

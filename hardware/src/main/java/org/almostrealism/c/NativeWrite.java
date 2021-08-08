@@ -27,6 +27,7 @@ public class NativeWrite extends BaseNative {
 	public String getFunctionDefinition() {
 		return "JNIEXPORT void JNICALL " + getFunctionName() +
 				" (JNIEnv* env, jobject thisObject, jlong arg, jint offset, jdoubleArray target, jint toffset, jint len) {\n" +
+				(enableVerbose ? "\tprintf(\"nativeWrite(%lu) - %i values\\n\", arg, len);\n" : "") +
 				"\tdouble* input = (*env)->GetDoubleArrayElements(env, target, 0);\n" +
 				"\tdouble* output = (double *) arg;\n" +
 				"\tfor (int i = 0; i < len; i++) {\n" +
