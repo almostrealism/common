@@ -23,5 +23,6 @@ public class Stylesheet implements HTMLContent {
 	
 	public Stylesheet(String sheet) { css = sheet; }
 	
+	@Override
 	public String toHTML() { return "<link rel=\"stylesheet\" href=\"" + css + "\">"; }
 }

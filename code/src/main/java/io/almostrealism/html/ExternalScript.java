@@ -5,5 +5,6 @@ public class ExternalScript implements HTMLContent {
 	
 	public ExternalScript(String script) { file = script; }
 	
+	@Override
 	public String toHTML() { return "<script src=\"" + file + "\"></script>"; }
 }

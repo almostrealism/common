@@ -29,6 +29,7 @@ public class HTMLFragment extends ArrayList<HTMLContent> implements HTMLContent 
 	
 	public Type getType() { return type; }
 	
+	@Override
 	public String toHTML() {
 		StringBuffer buf = new StringBuffer();
 		

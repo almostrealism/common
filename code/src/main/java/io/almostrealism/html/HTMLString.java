@@ -5,5 +5,6 @@ public class HTMLString implements HTMLContent {
 	
 	public HTMLString(String s) { this.content = s; }
 	
+	@Override
 	public String toHTML() { return content; }
 }
