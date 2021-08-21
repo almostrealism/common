@@ -179,10 +179,12 @@ public final class Hardware {
 
 			CL.setExceptionsEnabled(true);
 
-			if (enableGpu) {
-				System.out.println("Initializing Hardware (GPU Enabled)...");
-			} else {
-				System.out.println("Initializing Hardware...");
+			if (enableVerbose) {
+				if (enableGpu) {
+					System.out.println("Initializing Hardware (GPU Enabled)...");
+				} else {
+					System.out.println("Initializing Hardware...");
+				}
 			}
 
 			System.out.println("Hardware[" + name + "]: Max RAM is " +

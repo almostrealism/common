@@ -19,7 +19,10 @@ package org.almostrealism.algebra;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.MemoryBankAdapter;
 
+import java.util.function.Consumer;
+import java.util.function.IntFunction;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 /**
  * A collection of {@link Scalar}s of a fixed length, that is contiguous in
@@ -46,6 +49,36 @@ public class ScalarBank extends MemoryBankAdapter<Scalar> {
 				delegate, delegateOffset);
 	}
 
+	public void setZero() {
+		int size = getCount();
+		for (int i = 0; i < size; i++) set(i, 0.0, 1.0);
+	}
+
+	// TODO  Accelerated version
+	public void addMatVec(ScalarTable matrix, ScalarBank vector) {
+		int m = matrix.getCount();
+		int n = matrix.getWidth();
+		assert n == vector.getCount();
+
+		for (int i = 0; i < m; i++) {
+			double v = 0;
+
+			for (int j = 0; j < n; j++) {
+				v += matrix.get(i, j).getValue() * vector.get(j).getValue();
+			}
+
+			set(i, v, 1.0);
+		}
+	}
+
+	public void forEach(Consumer<Scalar> consumer) {
+		stream().forEach(consumer);
+	}
+
+	public Stream<Scalar> stream() {
+		return IntStream.range(0, getCount()).mapToObj(this::get);
+	}
+
 	// TODO  Add unit tests for this
 	public ScalarBank range(int offset, int length) {
 		if (offset * getAtomicMemLength() >= getMemLength()) {
@@ -55,11 +88,21 @@ public class ScalarBank extends MemoryBankAdapter<Scalar> {
 	}
 
 	// TODO  Accelerated version
+	@Deprecated
 	public Scalar sum() {
 		return new Scalar(IntStream.range(0, getCount())
 				.mapToObj(this::get)
 				.mapToDouble(Scalar::getValue)
 				.sum());
+	}
+
+	@Deprecated
+	public void mulElements(ScalarBank vals) {
+		int size = getCount();
+		assert size == vals.getCount();
+
+		IntStream.range(0, size)
+				.forEach(i -> set(i, get(i).getValue() * vals.get(i).getValue(), get(i).getCertainty() * vals.get(i).getCertainty()));
 	}
 
 	// TODO  Use cl_mem copy

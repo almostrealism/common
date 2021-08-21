@@ -33,6 +33,7 @@ public class NativeWrite extends BaseNative {
 				"\tfor (int i = 0; i < len; i++) {\n" +
 				"\t\toutput[offset + i] = input[toffset + i];\n" +
 				"\t}" +
+				"\tfree(input);\n" +
 				"}\n";
 	}
 

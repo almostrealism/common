@@ -133,6 +133,34 @@ public class Tensor<T> implements HTMLContent {
 		
 		return d.toHTML();
 	}
+
+	public String toCSV() {
+		StringBuilder buf = new StringBuilder();
+
+		i: for (int i = 0; ; i++) {
+			if (get(i, 0) == null) break i;
+
+			j: for (int j = 0; ; j++) {
+				T o = get(i, j);
+				if (o == null) break j;
+				if (j > 0) buf.append(",");
+
+				if (o instanceof String) {
+					buf.append((String) o);
+				} else if (o instanceof Scalar) {
+					buf.append(((Scalar) o).getValue());
+				} else if (o instanceof Number) {
+					buf.append(o);
+				} else {
+					buf.append(o.getClass().getSimpleName());
+				}
+			}
+
+			buf.append("\n");
+		}
+
+		return buf.toString();
+	}
 	
 	private static class Leaf<T> implements Future<T> {
 		private final T o;

@@ -134,6 +134,15 @@ public class CJNIPrintWriter extends CPrintWriter {
 					.mapToObj(i -> copyMethod(i, arguments.get(i), true))
 					.forEach(super::println);
 		}
+
+		arguments.stream()
+				.map(InstanceReference::new)
+				.map(InstanceReference::getExpression)
+				.map(exp -> "free(" + exp + ");")
+				.forEach(this::println);
+		println("free(argArr);");
+		println("free(offsetArr);");
+		println("free(sizeArr);");
 	}
 
 	protected Method<Void> copyMethod(int index, ArrayVariable<?> variable, boolean write) {
