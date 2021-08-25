@@ -18,7 +18,20 @@ package org.almostrealism.heredity;
 
 import io.almostrealism.relation.Producer;
 
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+
 public class IdentityFactor<T> implements Factor<T> {
 	@Override
 	public Producer<T> getResultant(Producer<T> value) { return value; }
+
+	public static <T> Chromosome<T> chromosome(int genes, int factors) {
+		ArrayListChromosome<T> chrom = new ArrayListChromosome<T>();
+
+		IntStream.range(0, genes).mapToObj(i -> IntStream.range(0, factors)
+				.mapToObj(j -> new IdentityFactor<>()).collect(Collectors.toCollection(ArrayListGene::new)))
+				.forEach(gene -> chrom.add((Gene<T>) gene));
+
+		return chrom;
+	}
 }
