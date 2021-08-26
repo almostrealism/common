@@ -16,20 +16,19 @@
 
 package org.almostrealism.heredity;
 
-import io.almostrealism.uml.Plural;
+import java.util.function.Supplier;
 
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
-
-public interface Genome extends Plural<Chromosome<?>> {
-	Genome getHeadSubset();
+public class GenomeFromChromosomes implements Supplier<Genome> {
+	private ChromosomeFactory factories[];
 	
-	Chromosome getLastChromosome();
+	public GenomeFromChromosomes(ChromosomeFactory... factories) {
+		this.factories = factories;
+	}
 
-	int count();
-
-	static GenomeFromChromosomes fromChromosomes(ChromosomeFactory... factories) {
-		return new GenomeFromChromosomes(factories);
+	@Override
+	public Genome get() {
+		ArrayListGenome g = new ArrayListGenome();
+		for (ChromosomeFactory f : factories) g.add(f.generateChromosome(1.0));
+		return g;
 	}
 }
