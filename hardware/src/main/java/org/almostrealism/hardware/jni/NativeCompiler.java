@@ -17,6 +17,7 @@
 package org.almostrealism.hardware.jni;
 
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.cl.CLMemoryProvider;
 
 import java.io.BufferedWriter;
 import java.io.FileOutputStream;
@@ -51,7 +52,9 @@ public class NativeCompiler {
 		this.libFormat = libFormat;
 
 		String pi = hardware.getNumberTypeName() + " M_PI_F = M_PI;";
-		this.header = STDIO + STDLIB + MATH + JNI + OPENCL + pi + "\n";
+		this.header = STDIO + STDLIB + MATH + JNI +
+				(hardware.getMemoryProvider() instanceof CLMemoryProvider ? OPENCL : "") +
+				pi + "\n";
 	}
 
 	protected String getExecutable() {
