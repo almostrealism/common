@@ -16,6 +16,7 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.code.expressions.Expression;
 import io.almostrealism.code.expressions.InstanceReference;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.uml.Plural;
@@ -24,6 +25,10 @@ public interface Array<T, V extends Array<T, ?>> extends Plural<InstanceReferenc
 	@Override
 	default InstanceReference<T> valueAt(int pos) {
 		return get(String.valueOf(pos));
+	}
+
+	default String ref(int pos) {
+		return valueAt(pos).getExpression();
 	}
 
 	InstanceReference<T> get(String pos, Variable... dependencies);

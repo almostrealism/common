@@ -19,7 +19,7 @@
 	<dependencies>
 		<dependency>
 			<groupId>org.almostrealism</groupId>
-			<artifactId>ar-algebra</artifactId>
+			<artifactId>ar-time</artifactId>
 			<version>0.40</version>
 		</dependency>
 	</dependencies>

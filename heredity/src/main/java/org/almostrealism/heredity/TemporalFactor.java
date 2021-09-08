@@ -16,7 +16,7 @@
 
 package org.almostrealism.heredity;
 
-import java.time.temporal.Temporal;
+import org.almostrealism.time.Temporal;
 
 public interface TemporalFactor<T> extends Factor<T>, Temporal {
 }

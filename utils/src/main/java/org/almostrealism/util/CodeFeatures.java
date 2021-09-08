@@ -16,6 +16,8 @@
 
 package org.almostrealism.util;
 
+import io.almostrealism.code.Variable;
+import io.almostrealism.code.expressions.Expression;
 import io.almostrealism.relation.DynamicProducer;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Pair;
@@ -113,6 +115,14 @@ public interface CodeFeatures extends ScalarFeatures, PairFeatures, TriangleData
 
 	default <T> Producer<T> value(int memLength, int argIndex) {
 		return Input.value(memLength, argIndex);
+	}
+
+	default Expression<Double> e(double value) {
+		return e(stringForDouble(value));
+	}
+
+	default Expression<Double> e(String expression, Variable<?, ?>... dependencies) {
+		return new Expression<>(Double.class, expression, dependencies);
 	}
 
 	default Ops o() { return Ops.ops(); }
