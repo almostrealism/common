@@ -21,4 +21,8 @@ import io.almostrealism.relation.Producer;
 @FunctionalInterface
 public interface Factor<T> {
 	Producer<T> getResultant(Producer<T> value);
+
+	default Factor<T> andThen(Factor<T> next) {
+		return value -> next.getResultant(Factor.this.getResultant(value));
+	}
 }
