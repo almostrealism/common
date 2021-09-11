@@ -22,7 +22,7 @@ import io.almostrealism.code.ProducerComputation;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.KernelizedProducer;
 
-public interface TemporalScalarProducer extends ProducerComputation<TemporalScalar>, KernelizedProducer<TemporalScalar>, TemporalFeatures {
+public interface TemporalScalarProducer extends ProducerComputation<TemporalScalar>, KernelizedProducer<TemporalScalar>, TemporalScalarFeatures {
 	@Override
 	default KernelizedEvaluable<TemporalScalar> get() {
 		AcceleratedComputationEvaluable ev = new AcceleratedComputationEvaluable<>(this);

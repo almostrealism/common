@@ -16,21 +16,5 @@
 
 package org.almostrealism.time;
 
-import io.almostrealism.code.Computation;
-import org.almostrealism.hardware.computations.Loop;
-
-import java.util.function.Supplier;
-import java.util.stream.IntStream;
-
-public interface TemporalFeatures {
-	default Supplier<Runnable> iter(Temporal t, int iter) {
-		Supplier<Runnable> tick = t.tick();
-
-		if (tick instanceof Computation) {
-			return new Loop((Computation<Void>) tick, iter);
-		} else {
-			Runnable r = tick.get();
-			return () -> () -> IntStream.range(0, iter).forEach(i -> r.run());
-		}
-	}
+public interface TemporalScalarFeatures {
 }

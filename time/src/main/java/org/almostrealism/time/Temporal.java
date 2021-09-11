@@ -24,6 +24,10 @@ import java.util.function.Supplier;
  * 
  * @author  Michael Murray
  */
-public interface Temporal {
+public interface Temporal extends TemporalFeatures {
 	Supplier<Runnable> tick();
+
+	default Supplier<Runnable> iter(int iter) {
+		return iter(this, iter);
+	}
 }
