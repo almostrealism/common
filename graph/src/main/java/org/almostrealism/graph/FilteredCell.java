@@ -33,7 +33,7 @@ public class FilteredCell<T> extends CellAdapter<T> implements Temporal {
 
 	@Override
 	public Supplier<Runnable> setup() {
-		if (filter instanceof Setup) {
+		if (filter instanceof Setup && filter != this) {
 			return ((Setup) filter).setup();
 		} else {
 			return new OperationList();
@@ -47,7 +47,7 @@ public class FilteredCell<T> extends CellAdapter<T> implements Temporal {
 
 	@Override
 	public Supplier<Runnable> tick() {
-		if (filter instanceof Temporal) {
+		if (filter instanceof Temporal && filter != this) {
 			return ((Temporal) filter).tick();
 		} else {
 			return new OperationList();
