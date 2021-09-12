@@ -16,12 +16,15 @@
 
 package org.almostrealism.graph;
 
+import io.almostrealism.code.Setup;
+import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.Factor;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.time.Temporal;
 
 import java.util.function.Supplier;
 
-public class FilteredCell<T> extends CellAdapter<T> {
+public class FilteredCell<T> extends CellAdapter<T> implements Temporal {
 	private Factor<T> filter;
 	
 	public FilteredCell(Factor<T> filter) { this.filter = filter; }
@@ -29,10 +32,25 @@ public class FilteredCell<T> extends CellAdapter<T> {
 	protected void setFilter(Factor<T> filter) { this.filter = filter; }
 
 	@Override
-	public Supplier<Runnable> setup() { return () -> () -> { }; }
+	public Supplier<Runnable> setup() {
+		if (filter instanceof Setup) {
+			return ((Setup) filter).setup();
+		} else {
+			return new OperationList();
+		}
+	}
 
 	@Override
 	public Supplier<Runnable> push(Producer<T> protein) {
 		return super.push(filter.getResultant(protein));
+	}
+
+	@Override
+	public Supplier<Runnable> tick() {
+		if (filter instanceof Temporal) {
+			return ((Temporal) filter).tick();
+		} else {
+			return new OperationList();
+		}
 	}
 }

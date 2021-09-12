@@ -17,6 +17,9 @@
 package org.almostrealism.time;
 
 import io.almostrealism.code.Computation;
+import io.almostrealism.code.Setup;
+import io.almostrealism.uml.Lifecycle;
+import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.computations.Loop;
 
 import java.util.function.Supplier;
@@ -24,6 +27,20 @@ import java.util.stream.IntStream;
 
 public interface TemporalFeatures {
 	default Supplier<Runnable> iter(Temporal t, int iter) {
+		Supplier<Runnable> tick = loop(t, iter);
+
+		if (t instanceof Lifecycle || t instanceof Setup) {
+			OperationList o = new OperationList();
+			if (t instanceof Setup) o.add(((Setup) t).setup());
+			o.add(tick);
+			if (t instanceof Lifecycle) o.add(() -> ((Lifecycle) t)::reset);
+			return o;
+		} else {
+			return tick;
+		}
+	}
+
+	default Supplier<Runnable> loop(Temporal t, int iter) {
 		Supplier<Runnable> tick = t.tick();
 
 		if (tick instanceof Computation) {
