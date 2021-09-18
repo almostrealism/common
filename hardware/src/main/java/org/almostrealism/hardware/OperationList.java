@@ -47,7 +47,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>> implements Oper
 
 	@Override
 	public Runnable get() {
-		if (isEmpty()) return () -> { };
+		if (isFunctionallyEmpty()) return () -> { };
 
 		if (enableCompilation && isComputation()) {
 			OperationAdapter op = (OperationAdapter) compileRunnable(this);
@@ -95,6 +95,11 @@ public class OperationList extends ArrayList<Supplier<Runnable>> implements Oper
 		Scope scope = new Scope(functionName);
 		stream().map(o -> ((Computation) o).getScope()).forEach(scope::add);
 		return scope;
+	}
+
+	public boolean isFunctionallyEmpty() {
+		if (isEmpty()) return true;
+		return stream().noneMatch(o -> !(o instanceof OperationList) || !((OperationList) o).isFunctionallyEmpty());
 	}
 
 	@Override
