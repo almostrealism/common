@@ -51,11 +51,11 @@ public interface TestFeatures extends CodeFeatures, HardwareFeatures, TestSettin
 
 		if (Math.abs(a - b) >= gap) {
 			if (positive) {
-				System.err.println("TestFeatures: " + a + " != " + b);
+				System.err.println("TestFeatures: " + b + " != " + a);
 				throw new AssertionError();
 			}
 		} else if (!positive) {
-			System.err.println("TestFeatures: " + a + " == " + b);
+			System.err.println("TestFeatures: " + b + " == " + a);
 			throw new AssertionError();
 		}
 	}
