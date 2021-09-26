@@ -16,13 +16,9 @@
 
 package org.almostrealism.heredity;
 
-import io.almostrealism.relation.Producer;
+import io.almostrealism.code.Setup;
+import io.almostrealism.uml.Lifecycle;
+import org.almostrealism.time.Temporal;
 
-@FunctionalInterface
-public interface Factor<T> {
-	Producer<T> getResultant(Producer<T> value);
-
-	default Factor<T> andThen(Factor<T> next) {
-		return value -> next.getResultant(Factor.this.getResultant(value));
-	}
+public interface TemporalCellular extends Temporal, Setup, Lifecycle {
 }

@@ -28,6 +28,8 @@ public class ScaleFactor implements Factor<Scalar>, ScalarFeatures {
 	
 	public ScaleFactor(double scale) { this.scale = scale; }
 
+	public ScaleFactor(Scalar scale) { this.scale = scale.getValue(); }
+
 	@Override
 	public Producer<Scalar> getResultant(Producer<Scalar> value) {
 		return scalarsMultiply(value, scalar(scale));
