@@ -19,8 +19,12 @@ package org.almostrealism.graph;
 import org.almostrealism.heredity.Factor;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.time.Temporal;
+import org.almostrealism.time.TemporalList;
 
+import java.util.Optional;
 import java.util.function.BiFunction;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 /**
@@ -30,35 +34,47 @@ import java.util.function.Supplier;
  *
  * @param <T>
  */
-public class CellPair<T> implements Receptor<T> {
+public class CellPair<T> implements Receptor<T>, Temporal {
 	private final Cell<T> cellA, cellB;
 	private final Factor<T> factorA, factorB;
 
-	private BiFunction<Producer<T>, Cell<T>, Supplier<Runnable>> adapterA, adapterB;
+	private Function<Cell<T>, Receptor<T>> adapterA, adapterB;
+	private Receptor<T> adA, adB;
+
+	private TemporalList temporals;
 	
 	public CellPair(Cell<T> cellA, Cell<T> cellB, Factor<T> factorA, Factor<T> factorB) {
 		this.cellA = cellA;
 		this.cellB = cellB;
 		this.factorA = factorA;
 		this.factorB = factorB;
-		
-		this.cellA.setReceptor(protein -> push(protein, false, true));
-		this.cellB.setReceptor(protein -> push(protein, true, false));
+		this.temporals = new TemporalList();
 	}
 
-	public BiFunction<Producer<T>, Cell<T>, Supplier<Runnable>> getAdapterA() {
+	public void init() {
+		this.cellA.setReceptor(protein -> push(protein, false, true));
+		this.cellB.setReceptor(protein -> push(protein, true, false));
+
+		this.adA = Optional.ofNullable(adapterA).map(a -> a.apply(cellA)).orElse(null);
+		this.adB = Optional.ofNullable(adapterB).map(a -> a.apply(cellB)).orElse(null);
+
+		if (adA instanceof Temporal) temporals.add((Temporal) adA);
+		if (adB instanceof Temporal) temporals.add((Temporal) adB);
+	}
+
+	public Function<Cell<T>, Receptor<T>> getAdapterA() {
 		return adapterA;
 	}
 
-	public void setAdapterA(BiFunction<Producer<T>, Cell<T>, Supplier<Runnable>> adapterA) {
+	public void setAdapterA(Function<Cell<T>, Receptor<T>> adapterA) {
 		this.adapterA = adapterA;
 	}
 
-	public BiFunction<Producer<T>, Cell<T>, Supplier<Runnable>> getAdapterB() {
+	public Function<Cell<T>, Receptor<T>> getAdapterB() {
 		return adapterB;
 	}
 
-	public void setAdapterB(BiFunction<Producer<T>, Cell<T>, Supplier<Runnable>> adapterB) {
+	public void setAdapterB(Function<Cell<T>, Receptor<T>> adapterB) {
 		this.adapterB = adapterB;
 	}
 
@@ -76,7 +92,7 @@ public class CellPair<T> implements Receptor<T> {
 			if (adapterA == null) {
 				push.add(cellA.push(r));
 			} else {
-				push.add(adapterA.apply(r, cellA));
+				push.add(adA.push(r));
 			}
 		}
 		
@@ -86,10 +102,13 @@ public class CellPair<T> implements Receptor<T> {
 			if (adapterB == null) {
 				push.add(cellB.push(r));
 			} else {
-				push.add(adapterB.apply(r, cellB));
+				push.add(adB.push(r));
 			}
 		}
 		
 		return push;
 	}
+
+	@Override
+	public Supplier<Runnable> tick() { return temporals.tick(); }
 }
