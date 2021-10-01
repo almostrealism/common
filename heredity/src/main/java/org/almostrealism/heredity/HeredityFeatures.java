@@ -23,6 +23,12 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public interface HeredityFeatures {
+	default Chromosome<Scalar> c(Gene<Scalar>... genes) {
+		ArrayListChromosome<Scalar> c = new ArrayListChromosome<>();
+		Stream.of(genes).forEach(c::add);
+		return c;
+	}
+
 	default Gene<Scalar> g(double... factors) {
 		return g(IntStream.range(0, factors.length).mapToObj(i -> new ScaleFactor(factors[i])).toArray(Factor[]::new));
 	}

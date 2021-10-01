@@ -68,12 +68,14 @@ public class MultiCell<T> extends CellAdapter<T> {
 		MultiCell<T> m = new MultiCell<>(destinations, transmission);
 
 		CellPair<T> pair = new CellPair<>(source, m, null, new IdentityFactor<>());
-		pair.setAdapterB(cell -> {
-			adapter.setReceptor(cell);
-			return adapter;
-		});
-		pair.init();
+		if (adapter != null) {
+			pair.setAdapterB(cell -> {
+				adapter.setReceptor(cell);
+				return adapter;
+			});
+		}
 
+		pair.init();
 		return pair;
 	}
 }

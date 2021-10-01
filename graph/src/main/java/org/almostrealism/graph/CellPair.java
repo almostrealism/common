@@ -35,6 +35,8 @@ import java.util.function.Supplier;
  * @param <T>
  */
 public class CellPair<T> implements Receptor<T>, Temporal {
+	public static final boolean enableAdapters = true;
+
 	private final Cell<T> cellA, cellB;
 	private final Factor<T> factorA, factorB;
 
@@ -55,8 +57,10 @@ public class CellPair<T> implements Receptor<T>, Temporal {
 		this.cellA.setReceptor(protein -> push(protein, false, true));
 		this.cellB.setReceptor(protein -> push(protein, true, false));
 
-		this.adA = Optional.ofNullable(adapterA).map(a -> a.apply(cellA)).orElse(null);
-		this.adB = Optional.ofNullable(adapterB).map(a -> a.apply(cellB)).orElse(null);
+		if (enableAdapters) {
+			this.adA = Optional.ofNullable(adapterA).map(a -> a.apply(cellA)).orElse(null);
+			this.adB = Optional.ofNullable(adapterB).map(a -> a.apply(cellB)).orElse(null);
+		}
 
 		if (adA instanceof Temporal) temporals.add((Temporal) adA);
 		if (adB instanceof Temporal) temporals.add((Temporal) adB);
@@ -89,7 +93,7 @@ public class CellPair<T> implements Receptor<T>, Temporal {
 		if (toA && factorA != null) {
 			Producer<T> r = factorA.getResultant(protein);
 
-			if (adapterA == null) {
+			if (adA == null) {
 				push.add(cellA.push(r));
 			} else {
 				push.add(adA.push(r));
@@ -99,7 +103,7 @@ public class CellPair<T> implements Receptor<T>, Temporal {
 		if (toB && factorB != null) {
 			Producer<T> r = factorB.getResultant(protein);
 
-			if (adapterB == null) {
+			if (adB == null) {
 				push.add(cellB.push(r));
 			} else {
 				push.add(adB.push(r));

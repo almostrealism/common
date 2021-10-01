@@ -22,6 +22,8 @@ import io.almostrealism.relation.Producer;
 public interface Factor<T> {
 	Producer<T> getResultant(Producer<T> value);
 
+	// TODO  What if either of the factors involved is Temporal?
+	// TODO  That would not be detected when the factor is used...
 	default Factor<T> andThen(Factor<T> next) {
 		return value -> next.getResultant(Factor.this.getResultant(value));
 	}
