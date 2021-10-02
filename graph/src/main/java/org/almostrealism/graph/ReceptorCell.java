@@ -33,4 +33,6 @@ public class ReceptorCell<T> implements Cell<T> {
 
 	@Override
 	public void setReceptor(Receptor<T> r) { }
+
+	public Receptor<T> getReceptor() { return r; }
 }
