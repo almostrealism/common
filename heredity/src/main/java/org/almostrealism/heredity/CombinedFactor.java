@@ -17,12 +17,29 @@
 package org.almostrealism.heredity;
 
 import io.almostrealism.relation.Producer;
+import org.almostrealism.hardware.OperationList;
+import org.almostrealism.time.Temporal;
 
-@FunctionalInterface
-public interface Factor<T> {
-	Producer<T> getResultant(Producer<T> value);
+import java.util.function.Supplier;
 
-	default Factor<T> andThen(Factor<T> next) {
-		return new CombinedFactor<>(this, next);
+public class CombinedFactor<T> implements TemporalFactor<T> {
+	private Factor<T> a, b;
+
+	public CombinedFactor(Factor<T> a, Factor<T> b) {
+		this.a = a;
+		this.b = b;
+	}
+
+	@Override
+	public Producer<T> getResultant(Producer<T> value) {
+		return b.getResultant(a.getResultant(value));
+	}
+
+	@Override
+	public Supplier<Runnable> tick() {
+		OperationList tick = new OperationList();
+		if (a instanceof Temporal) tick.add(((Temporal) a).tick());
+		if (b instanceof Temporal) tick.add(((Temporal) b).tick());
+		return tick;
 	}
 }

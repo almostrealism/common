@@ -16,27 +16,44 @@
 
 package org.almostrealism.heredity;
 
+import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.algebra.Tensor;
 
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-public class FloatingPointRandomChromosomeFactory implements ChromosomeFactory<Scalar> {
+public class RandomChromosomeFactory implements ChromosomeFactory<Scalar> {
 	private int genes, factors;
+	private Tensor<Pair> ranges;
+
+	public RandomChromosomeFactory() {
+		ranges = new Tensor<>();
+	}
 	
 	@Override
-	public FloatingPointRandomChromosomeFactory setChromosomeSize(int genes, int factors) {
+	public RandomChromosomeFactory setChromosomeSize(int genes, int factors) {
 		this.genes = genes;
 		this.factors = factors;
 		return this;
+	}
+
+	public void setRange(int gene, int factor, Pair range) {
+		ranges.insert(range, gene, factor);
 	}
 	
 	@Override
 	public Chromosome<Scalar> generateChromosome(double arg) {
 		return IntStream.range(0, genes)
 				.mapToObj(i -> IntStream.range(0, factors)
-						.mapToObj(j -> new ScaleFactor(StrictMath.random() * arg))
+						.mapToObj(j -> new ScaleFactor(value(i, j) * arg))
 						.collect(Collectors.toCollection(ArrayListGene::new)))
 				.collect(Collectors.toCollection(ArrayListChromosome::new));
+	}
+
+	protected double value(int gene, int factor) {
+		Pair range = ranges.get(gene, factor);
+		return range == null ? Math.random() :
+				(range.getLeft() + Math.random() * (range.getRight() - range.getLeft()));
 	}
 }
