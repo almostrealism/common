@@ -20,6 +20,7 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.PooledMem;
+import org.almostrealism.hardware.cl.InvalidValueException;
 
 import java.util.HashMap;
 import java.util.List;
@@ -164,9 +165,13 @@ public abstract class MemoryBankAdapter<T extends MemoryData> extends MemoryData
 
 	@Override
 	public void set(int index, T value) {
-		setMem(index * getAtomicMemLength(),
-				value, 0,
-				getAtomicMemLength());
+		try {
+			setMem(index * getAtomicMemLength(),
+					value, 0,
+					getAtomicMemLength());
+		} catch (InvalidValueException e) {
+			throw new InvalidValueException(e, totalMemLength);
+		}
 	}
 
 	public void set(int index, double... values) {

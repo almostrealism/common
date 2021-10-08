@@ -25,6 +25,10 @@ public class HardwareException extends RuntimeException {
 		super(message);
 	}
 
+	public HardwareException(String message, HardwareException cause) {
+		super(message, cause);
+	}
+
 	public HardwareException(String message, UnsupportedOperationException cause) {
 		super(message, cause);
 	}

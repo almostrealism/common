@@ -138,7 +138,8 @@ public class CLMemoryProvider implements MemoryProvider<RAM> {
 						(long) offset * getNumberSize(), (long) length * getNumberSize(),
 						0, null, null);
 		} catch (CLException e) {
-			throw new HardwareException(e, (long) length * getNumberSize());
+			throw InvalidValueException.from(e, srcOffset, offset, length)
+					.orElse(new HardwareException(e, (long) length * getNumberSize()));
 		}
 	}
 
