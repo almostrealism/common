@@ -16,12 +16,11 @@
 
 package org.almostrealism.hardware.cl;
 
-import org.almostrealism.hardware.Hardware;
 import org.jocl.CL;
 import org.jocl.cl_program;
 
 public class CLProgram {
-	private final cl_program prog;
+	private cl_program prog;
 	private final String src;
 
 	private CLProgram(cl_program prog, String src) {
@@ -42,9 +41,14 @@ public class CLProgram {
 		if (r != 0) throw new RuntimeException("Error building CLProgram:" + r);
 	}
 
-	public static CLProgram create(Hardware h, String src) {
+	public void destroy() {
+		CL.clReleaseProgram(prog);
+		prog = null;
+	}
+
+	public static CLProgram create(DefaultComputeContext h, String src) {
 		int[] result = new int[1];
-		cl_program prog = CL.clCreateProgramWithSource(h.getContext(), 1, new String[] { src }, null, result);
+		cl_program prog = CL.clCreateProgramWithSource(h.getCLContext(), 1, new String[] { src }, null, result);
 		if (result[0] != 0) throw new RuntimeException("Error creating HardwareOperatorMap: " + result[0]);
 
 		return new CLProgram(prog, src);

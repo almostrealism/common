@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ import java.util.Map;
 /**
  * A wrapper for kernel programs in JOCL.
  */
+@Deprecated
 public class AcceleratedFunctions {
 	private Hardware hardware;
 	private HardwareOperatorMap base;
@@ -32,7 +33,7 @@ public class AcceleratedFunctions {
 
 	protected synchronized void init(Hardware h, String src) {
 		hardware = h;
-		base = new HardwareOperatorMap(h, src);
+		base = new HardwareOperatorMap(h.getComputeContext(), src);
 		extensions = new HashMap<>();
 	}
 
@@ -44,19 +45,10 @@ public class AcceleratedFunctions {
 			if (in == null) {
 				extensions.put(c, base);
 			} else {
-				extensions.put(c, new HardwareOperatorMap(hardware, Hardware.getLocalHardware().loadSource(in)));
+				extensions.put(c, new HardwareOperatorMap(hardware.getComputeContext(), hardware.loadSource(in)));
 			}
 		}
 
 		return extensions.get(c);
-	}
-
-	public synchronized HardwareOperatorMap getOperators(String source) {
-		StringBuffer buf = new StringBuffer();
-		buf.append(Hardware.getLocalHardware().loadSource());
-		buf.append("\n");
-		buf.append(source);
-
-		return new HardwareOperatorMap(hardware, buf.toString());
 	}
 }

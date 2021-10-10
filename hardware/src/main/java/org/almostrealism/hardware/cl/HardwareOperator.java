@@ -128,4 +128,9 @@ public class HardwareOperator<T extends MemoryData> implements Consumer<Object[]
 		}
 //		}
 	}
+
+	public void destroy() {
+		if (kernel != null) CL.clReleaseKernel(kernel);
+		kernel = null;
+	}
 }

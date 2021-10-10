@@ -7,6 +7,7 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.computations.ScalarFromPair;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.time.AcceleratedTimeSeries;
@@ -46,19 +47,23 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures, Hardwa
 
 	@Test
 	public void purgeTest() {
+		Hardware.enableVerbose = true;
+
 		for (int i = 0; i < 2; i++) {
-			CursorPair cursors = cursors(3.2);
-			AcceleratedTimeSeries series = series();
-			Assert.assertEquals(5, series.getLength());
+			cc(() -> {
+				CursorPair cursors = cursors(3.2);
+				AcceleratedTimeSeries series = series();
+				Assert.assertEquals(5, series.getLength());
 
-			Supplier<Runnable> r = series.purge(p(cursors));
-			AcceleratedComputationOperation op = (AcceleratedComputationOperation) r.get();
-			System.out.println(op.getFunctionDefinition());
+				Supplier<Runnable> r = series.purge(p(cursors));
+				AcceleratedComputationOperation op = (AcceleratedComputationOperation) r.get();
+				System.out.println(op.getFunctionDefinition());
 
-			op.run();
+				op.run();
 
-			Assert.assertEquals(3, series.getLength());
-			valueAtAssertions(series);
+				Assert.assertEquals(3, series.getLength());
+				valueAtAssertions(series);
+			});
 		}
 	}
 

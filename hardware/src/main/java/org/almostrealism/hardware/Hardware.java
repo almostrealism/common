@@ -16,11 +16,13 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.Computer;
 import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.c.NativeMemoryProvider;
 import org.almostrealism.hardware.cl.CLMemoryProvider;
 import org.almostrealism.hardware.cl.CLMemoryProvider.Location;
+import org.almostrealism.hardware.cl.DefaultComputeContext;
 import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.jni.NativeSupport;
 import org.jocl.CL;
@@ -38,6 +40,7 @@ import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.Callable;
 
 /** An interface to OpenCL. */
 public final class Hardware {
@@ -123,6 +126,8 @@ public final class Hardware {
 		}
 	}
 
+	private final String name;
+
 	private final boolean enableGpu;
 	private final boolean enableDoublePrecision;
 	private final boolean enableKernel, enableDestinationConsolidation;
@@ -138,6 +143,8 @@ public final class Hardware {
 	private final Computer computer;
 	private final NativeCompiler nativeCompiler;
 	private final MemoryProvider<RAM> ram;
+
+	private ThreadLocal<DefaultComputeContext> computeContext;
 	
 	private Hardware(String compilerExec, String libDir, boolean enableCl, boolean enableGpu,
 					 boolean enableKernels, boolean enableDestinationConsolidation,
@@ -161,6 +168,8 @@ public final class Hardware {
 	private Hardware(String name, String compilerExec, String libDir, boolean enableCl, boolean enableGpu,
 					 boolean enableKernels, boolean enableDestinationConsolidation,
 					 boolean enableDoublePrecision, Location location) {
+		this.name = name;
+
 		long memoryMax = (long) Math.pow(2, getMemoryScale()) * 256L * 1000L * 1000L;
 		if (enableDoublePrecision) memoryMax = memoryMax * 2;
 
@@ -171,6 +180,7 @@ public final class Hardware {
 		this.compilerExec = compilerExec;
 		this.libDir = libDir;
 		this.memVolatile = location == Location.HEAP;
+		this.computeContext = new ThreadLocal<>();
 
 		if (enableCl) {
 			final int platformIndex = 0;
@@ -226,11 +236,6 @@ public final class Hardware {
 
 			queue = CL.clCreateCommandQueue(context, device, 0, null);
 			if (enableVerbose) System.out.println("Hardware[" + name + "]: OpenCL command queue initialized");
-
-			if (enableVerbose) System.out.println("Hardware[" + name + "]: Loading accelerated functions");
-			functions = new AcceleratedFunctions();
-			functions.init(this, loadSource(name));
-			System.out.println("Hardware[" + name + "]: Accelerated functions loaded for " + name);
 		} else {
 			System.out.println("Initializing Hardware...");
 		}
@@ -246,7 +251,7 @@ public final class Hardware {
 
 		if (enableVerbose) System.out.println("Hardware[" + name + "]: Created NativeCompiler");
 
-		ram = enableCl ? new CLMemoryProvider(getContext(), getNumberSize(), memoryMax, location) : new NativeMemoryProvider(memoryMax);
+		ram = enableCl ? new CLMemoryProvider(context, getNumberSize(), memoryMax, location) : new NativeMemoryProvider(memoryMax);
 		if (enableVerbose) System.out.println("Hardware[" + name + "]: Created MemoryProvider");
 
 		if (timeSeriesSize > 0) {
@@ -254,6 +259,8 @@ public final class Hardware {
 					2 * timeSeriesSize * getNumberSize() / 1024 + "kb timeseries(s) available");
 		}
 	}
+
+	public String getName() { return name; }
 
 	public static Hardware getLocalHardware() { return local; }
 
@@ -338,14 +345,62 @@ public final class Hardware {
 		return Double.parseDouble(s);
 	}
 
-	public cl_context getContext() { return context; }
-
 	public cl_command_queue getQueue() { return queue; }
 
-	public AcceleratedFunctions getFunctions() { return functions; }
+	public synchronized AcceleratedFunctions getFunctions() {
+		if (functions == null) {
+			if (enableVerbose) System.out.println("Hardware[" + getName() + "]: Loading accelerated functions");
+			functions = new AcceleratedFunctions();
+			functions.init(this, loadSource(getName()));
+			System.out.println("Hardware[" + getName() + "]: Accelerated functions loaded for " + getName());
+		}
+
+		return functions;
+	}
 
 	public MemoryProvider<RAM> getMemoryProvider() {
 		return ram;
+	}
+
+	public DefaultComputeContext getComputeContext() {
+		if (computeContext.get() == null) {
+			System.out.println("INFO: No explicit ComputeContext for " + Thread.currentThread().getName());
+			computeContext.set(new DefaultComputeContext(isDoublePrecision(), context));
+		}
+
+		return computeContext.get();
+	}
+
+	protected void setComputeContext(DefaultComputeContext ctx) {
+		if (this.computeContext.get() != null) {
+			this.computeContext.get().destroy();
+		}
+
+		this.computeContext.set(ctx);
+	}
+
+	public <T> T computeContext(Callable<T> exec) {
+		DefaultComputeContext current = computeContext.get();
+		DefaultComputeContext next = new DefaultComputeContext(isDoublePrecision(), context);
+		String ccName = next.toString();
+		if (ccName.contains(".")) {
+			ccName = ccName.substring(ccName.lastIndexOf('.') + 1);
+		}
+
+		try {
+			if (enableVerbose) System.out.println("Hardware[" + getName() + "]: Start " + ccName);
+			computeContext.set(next);
+			return exec.call();
+		} catch (RuntimeException e) {
+			throw e;
+		} catch (Exception e) {
+			throw new RuntimeException(e);
+		} finally {
+			if (enableVerbose) System.out.println("Hardware[" + getName() + "]: End " + ccName);
+			next.destroy();
+			if (enableVerbose) System.out.println("Hardware[" + getName() + "]: Destroyed " + ccName);
+			computeContext.set(current);
+		}
 	}
 
 	private static String deviceName(long type) {

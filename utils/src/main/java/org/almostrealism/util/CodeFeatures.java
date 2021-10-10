@@ -44,11 +44,13 @@ import org.almostrealism.graph.mesh.TrianglePointData;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.code.ProducerComputation;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.time.CursorPair;
 import org.almostrealism.time.TemporalScalarProducer;
 import org.almostrealism.time.computations.TemporalScalarFromScalars;
 
+import java.util.concurrent.Callable;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -123,6 +125,14 @@ public interface CodeFeatures extends ScalarFeatures, PairFeatures, TriangleData
 
 	default Expression<Double> e(String expression, Variable<?, ?>... dependencies) {
 		return new Expression<>(Double.class, expression, dependencies);
+	}
+
+	default void cc(Runnable r) {
+		cc(() -> { r.run(); return null; });
+	}
+
+	default <T> T cc(Callable<T> exec) {
+		return Hardware.getLocalHardware().computeContext(exec);
 	}
 
 	default Ops o() { return Ops.ops(); }

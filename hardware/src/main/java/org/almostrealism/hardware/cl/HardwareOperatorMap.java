@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware.cl;
 
+import io.almostrealism.code.InstructionSet;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.MemoryData;
@@ -23,7 +24,9 @@ import org.jocl.CL;
 import org.jocl.CLException;
 import org.jocl.cl_program;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.BiFunction;
 
@@ -33,19 +36,21 @@ import java.util.function.BiFunction;
  *
  * @author  Michael Murray
  */
-public class HardwareOperatorMap<T extends MemoryData> implements BiFunction<String, CLException, HardwareException> {
+public class HardwareOperatorMap<T extends MemoryData> implements InstructionSet, BiFunction<String, CLException, HardwareException> {
 	private CLProgram prog;
 
 	private ThreadLocal<Map<String, HardwareOperator<T>>> operators;
+	private List<HardwareOperator<T>> allOperators;
 
 	protected HardwareOperatorMap() { }
 
-	public HardwareOperatorMap(Hardware h, String src) {
+	public HardwareOperatorMap(DefaultComputeContext h, String src) {
 		this.operators = new ThreadLocal<>();
+		this.allOperators = new ArrayList<>();
 		init(h, src);
 	}
 
-	protected void init(Hardware h, String src) {
+	protected void init(DefaultComputeContext h, String src) {
 		prog = CLProgram.create(h, src);
 
 		RuntimeException ex = null;
@@ -75,7 +80,9 @@ public class HardwareOperatorMap<T extends MemoryData> implements BiFunction<Str
 		}
 
 		if (!ops.containsKey(key)) {
-			ops.put(key, new HardwareOperator<>(prog, key, argCount, this));
+			HardwareOperator<T> op = new HardwareOperator<>(prog, key, argCount, this);
+			ops.put(key, op);
+			allOperators.add(op);
 		}
 
 		return ops.get(key);
@@ -90,15 +97,30 @@ public class HardwareOperatorMap<T extends MemoryData> implements BiFunction<Str
 		}
 	}
 
+	@Override
+	public boolean isDestroyed() {
+		return operators == null;
+	}
+
 	/**
 	 * Release the {@link cl_program} and the {@link ThreadLocal}
-	 * that stores the {@link HardwareOperator}s.
+	 * that stores the {@link HardwareOperator}s, destroying all
+	 * {@link HardwareOperator}s in the process.
+	 *
+	 * @see  CLProgram#destroy()
+	 * @see  HardwareOperator#destroy()
 	 */
 	public void destroy() {
-		CL.clReleaseProgram(prog.getProgram());
+		if (prog != null) prog.destroy();
+
 		if (operators != null) {
 			operators.remove();
 			operators = null;
+		}
+
+		if (allOperators != null) {
+			allOperators.forEach(HardwareOperator::destroy);
+			allOperators = null;
 		}
 	}
 

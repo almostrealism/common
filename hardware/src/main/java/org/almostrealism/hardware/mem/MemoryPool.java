@@ -34,7 +34,7 @@ import java.util.stream.IntStream;
  * @author  Michael Murray
  */
 public class MemoryPool<T extends MemoryData> extends MemoryBankAdapter<T> implements PooledMem<T> {
-	public static boolean enableLog = true;
+	public static boolean enableLog = false;
 
 	private ArrayBlockingQueue<Integer> available;
 	private List<Owner> owners;

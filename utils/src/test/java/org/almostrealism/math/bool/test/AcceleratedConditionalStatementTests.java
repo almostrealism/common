@@ -119,8 +119,6 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 
 			LessThan top = lt3;
 
-			top.compile();
-
 			Scalar s = (Scalar) top.get().evaluate();
 			System.out.println(s.getValue());
 

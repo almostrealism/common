@@ -46,6 +46,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -99,7 +100,7 @@ public class AcceleratedOperation<T extends MemoryData> extends OperationAdapter
 		return getClass();
 	}
 
-	public HardwareOperator getOperator() {
+	public Consumer<Object[]> getOperator() {
 		// TODO  This needs to be by class in addition to function, as function names may collide
 		synchronized (AcceleratedEvaluable.class) {
 			if (operators.get(getFunctionName()) == null) {
@@ -182,7 +183,7 @@ public class AcceleratedOperation<T extends MemoryData> extends OperationAdapter
 			compile();
 		}
 
-		HardwareOperator op = getOperator();
+		Consumer<Object[]> op = getOperator();
 
 		Object allArgs[] = getAllArgs(args);
 
@@ -283,9 +284,9 @@ public class AcceleratedOperation<T extends MemoryData> extends OperationAdapter
 
 		try {
 			if (isKernel() && enableKernel) {
-				HardwareOperator operator = getOperator();
-				operator.setGlobalWorkOffset(0);
-				operator.setGlobalWorkSize(Optional.ofNullable(output).map(MemoryBank::getCount).orElseGet(() -> args[0].getCount()));
+				Consumer<Object[]> operator = getOperator();
+				((HardwareOperator) operator).setGlobalWorkOffset(0);
+				((HardwareOperator) operator).setGlobalWorkSize(Optional.ofNullable(output).map(MemoryBank::getCount).orElseGet(() -> args[0].getCount()));
 
 				if (enableKernelLog) System.out.println("AcceleratedOperation: Preparing " + getName() + " kernel...");
 				MemoryData input[] = getKernelArgs(output, args);
