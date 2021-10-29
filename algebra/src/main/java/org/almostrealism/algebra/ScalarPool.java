@@ -16,11 +16,14 @@
 
 package org.almostrealism.algebra;
 
+import org.almostrealism.hardware.ContextSpecific;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.mem.MemoryPool;
 
+import java.util.Optional;
+
 public class ScalarPool extends MemoryPool<Scalar> {
-	private static ScalarPool local;
+	private static ContextSpecific<ScalarPool> local;
 
 	public ScalarPool(int size) {
 		super(2, size);
@@ -28,7 +31,7 @@ public class ScalarPool extends MemoryPool<Scalar> {
 
 	public static ScalarPool getLocal() {
 		initPool();
-		return local;
+		return Optional.ofNullable(local).map(ContextSpecific::getValue).orElse(null);
 	}
 
 	private static void initPool() {
@@ -38,6 +41,9 @@ public class ScalarPool extends MemoryPool<Scalar> {
 
 	private static synchronized void doInitPool() {
 		int size = 2 * Hardware.getLocalHardware().getDefaultPoolSize();
-		if (size > 0) local = new ScalarPool(size);
+		if (size > 0) {
+			local = new ContextSpecific<>(() -> new ScalarPool(size), pool -> pool.destroy());
+			local.init();
+		}
 	}
 }

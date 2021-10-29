@@ -17,6 +17,7 @@
 package org.almostrealism.graph;
 
 import io.almostrealism.code.Setup;
+import io.almostrealism.uml.Lifecycle;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.Factor;
 import io.almostrealism.relation.Producer;
@@ -51,6 +52,15 @@ public class FilteredCell<T> extends CellAdapter<T> implements Temporal {
 			return ((Temporal) filter).tick();
 		} else {
 			return new OperationList();
+		}
+	}
+
+	@Override
+	public void reset() {
+		super.reset();
+
+		if (filter instanceof Lifecycle && filter != this) {
+			((Lifecycle) filter).reset();
 		}
 	}
 }

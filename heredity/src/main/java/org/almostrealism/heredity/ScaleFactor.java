@@ -21,24 +21,28 @@ import org.almostrealism.algebra.ScalarFeatures;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Defaults;
 
-public class ScaleFactor implements Factor<Scalar>, ScalarFeatures {
-	private double scale;
-	
-	public ScaleFactor() { }
-	
-	public ScaleFactor(double scale) { this.scale = scale; }
+import java.util.Optional;
 
-	public ScaleFactor(Scalar scale) { this.scale = scale.getValue(); }
+public class ScaleFactor implements Factor<Scalar>, ScalarFeatures {
+	private Scalar scale;
+	
+	public ScaleFactor() { scale = new Scalar(0.0); }
+	
+	public ScaleFactor(double scale) { this.scale = new Scalar(scale); }
+
+	public ScaleFactor(Scalar scale) { this.scale = scale; }
 
 	@Override
 	public Producer<Scalar> getResultant(Producer<Scalar> value) {
-		return scalarsMultiply(value, scalar(scale));
+		return scalarsMultiply(value, v(scale));
 	}
 
-	public void setScale(double s) { this.scale = s; }
+	public void setScaleValue(double s) { this.scale = new Scalar(s); }
 
-	public double getScale() { return scale; }
+	public double getScaleValue() { return Optional.ofNullable(this.scale).map(Scalar::getValue).orElse(0.0); }
+
+	public Scalar getScale() { return scale; }
 
 	@Override
-	public String toString() { return Defaults.displayFormat.format(scale); }
+	public String toString() { return Defaults.displayFormat.format(scale.getValue()); }
 }

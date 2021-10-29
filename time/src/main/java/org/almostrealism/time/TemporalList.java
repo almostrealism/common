@@ -16,17 +16,26 @@
 
 package org.almostrealism.time;
 
+import io.almostrealism.uml.Lifecycle;
 import org.almostrealism.hardware.OperationList;
 
 import java.util.ArrayList;
 import java.util.function.Supplier;
 
-public class TemporalList extends ArrayList<Temporal> implements Temporal {
+public class TemporalList extends ArrayList<Temporal> implements Temporal, Lifecycle {
 
 	@Override
 	public Supplier<Runnable> tick() {
 		OperationList tick = new OperationList();
 		stream().map(Temporal::tick).forEach(tick::add);
 		return tick;
+	}
+
+	@Override
+	public void reset() {
+		Lifecycle.super.reset();
+		forEach(t -> {
+			if (t instanceof Lifecycle) ((Lifecycle) t).reset();
+		});
 	}
 }

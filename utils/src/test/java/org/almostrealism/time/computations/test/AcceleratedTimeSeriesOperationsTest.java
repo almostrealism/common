@@ -49,22 +49,24 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures, Hardwa
 	public void purgeTest() {
 		Hardware.enableVerbose = true;
 
-		for (int i = 0; i < 2; i++) {
-			cc(() -> {
-				CursorPair cursors = cursors(3.2);
-				AcceleratedTimeSeries series = series();
-				Assert.assertEquals(5, series.getLength());
+		dc(() -> {
+			for (int i = 0; i < 2; i++) {
+				cc(() -> {
+					CursorPair cursors = cursors(3.2);
+					AcceleratedTimeSeries series = series();
+					Assert.assertEquals(5, series.getLength());
 
-				Supplier<Runnable> r = series.purge(p(cursors));
-				AcceleratedComputationOperation op = (AcceleratedComputationOperation) r.get();
-				System.out.println(op.getFunctionDefinition());
+					Supplier<Runnable> r = series.purge(p(cursors));
+					AcceleratedComputationOperation op = (AcceleratedComputationOperation) r.get();
+					System.out.println(op.getFunctionDefinition());
 
-				op.run();
+					op.run();
 
-				Assert.assertEquals(3, series.getLength());
-				valueAtAssertions(series);
-			});
-		}
+					Assert.assertEquals(3, series.getLength());
+					valueAtAssertions(series);
+				});
+			}
+		});
 	}
 
 	@Test

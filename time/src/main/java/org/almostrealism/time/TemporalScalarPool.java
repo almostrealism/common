@@ -16,11 +16,14 @@
 
 package org.almostrealism.time;
 
+import org.almostrealism.hardware.ContextSpecific;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.mem.MemoryPool;
 
+import java.util.Optional;
+
 public class TemporalScalarPool extends MemoryPool<TemporalScalar> {
-	private static TemporalScalarPool local;
+	private static ContextSpecific<TemporalScalarPool> local;
 
 	protected TemporalScalarPool(int size) {
 		super(2, size);
@@ -28,7 +31,7 @@ public class TemporalScalarPool extends MemoryPool<TemporalScalar> {
 
 	public static TemporalScalarPool getLocal() {
 		initPool();
-		return local;
+		return Optional.ofNullable(local).map(ContextSpecific::getValue).orElse(null);
 	}
 
 	private static void initPool() {
@@ -38,6 +41,9 @@ public class TemporalScalarPool extends MemoryPool<TemporalScalar> {
 
 	private static synchronized void doInitPool() {
 		int size = 32 * Hardware.getLocalHardware().getDefaultPoolSize();
-		if (size > 0) local = new TemporalScalarPool(size);
+		if (size > 0) {
+			local = new ContextSpecific<>(() -> new TemporalScalarPool(size), pool -> pool.destroy());
+			local.init();
+		}
 	}
 }

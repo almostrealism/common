@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,8 +24,6 @@ import org.almostrealism.hardware.HardwareFeatures;
 import java.util.function.Supplier;
 
 public class ScalarCachedStateCell extends CachedStateCell<Scalar> implements HardwareFeatures {
-	private static final Scalar zero = new Scalar();
-
 	public ScalarCachedStateCell() {
 		super(Scalar.blank().get());
 	}
@@ -37,6 +35,6 @@ public class ScalarCachedStateCell extends CachedStateCell<Scalar> implements Ha
 
 	@Override
 	public Supplier<Runnable> reset(Supplier<Evaluable<? extends Scalar>> out) {
-		return a(2, out, ScalarFeatures.of(zero));
+		return a(2, out, ScalarFeatures.of(0.0));
 	}
 }

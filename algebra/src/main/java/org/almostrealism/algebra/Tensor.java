@@ -161,6 +161,11 @@ public class Tensor<T> implements HTMLContent {
 
 		return buf.toString();
 	}
+
+	@Override
+	public String toString() {
+		return top.toString();
+	}
 	
 	private static class Leaf<T> implements Future<T> {
 		private final T o;
@@ -182,6 +187,11 @@ public class Tensor<T> implements HTMLContent {
 		
 		@Override
 		public boolean isDone() { return true; }
+
+		@Override
+		public String toString() {
+			return o.toString();
+		}
 	}
 	
 	private static LinkedList get(LinkedList l, int i, boolean create) {

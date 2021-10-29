@@ -43,4 +43,6 @@ public interface MemoryProvider<T extends Memory> {
 	void setMem(T mem, int offset, double[] source, int srcOffset, int length);
 
 	void getMem(T mem, int sOffset, double out[], int oOffset, int length);
+
+	void destroy();
 }

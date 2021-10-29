@@ -39,6 +39,8 @@ import java.util.stream.IntStream;
  * @author  Michael Murray
  */
 public abstract class MemoryBankAdapter<T extends MemoryData> extends MemoryDataAdapter implements MemoryBank<T> {
+	public static final CacheLevel defaultCacheLevel = CacheLevel.NONE;
+
 	private int memLength, count;
 	private int totalMemLength;
 
@@ -58,7 +60,7 @@ public abstract class MemoryBankAdapter<T extends MemoryData> extends MemoryData
 	 * This uses {@link CacheLevel#ALL}.
 	 */
 	protected MemoryBankAdapter(int memLength, int count, Function<DelegateSpec, T> supply) {
-		this(memLength, count, supply, CacheLevel.ALL);
+		this(memLength, count, supply, defaultCacheLevel);
 	}
 
 	/**
@@ -87,7 +89,7 @@ public abstract class MemoryBankAdapter<T extends MemoryData> extends MemoryData
 	 */
 	protected MemoryBankAdapter(int memLength, int count, Function<DelegateSpec, T> supply,
 								MemoryData delegate, int delegateOffset) {
-		this(memLength, count, supply, delegate, delegateOffset, CacheLevel.ALL);
+		this(memLength, count, supply, delegate, delegateOffset, defaultCacheLevel);
 	}
 
 	/**

@@ -16,6 +16,7 @@
 
 package org.almostrealism.graph;
 
+import io.almostrealism.code.OperationAdapter;
 import org.almostrealism.heredity.Factor;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
@@ -28,6 +29,8 @@ import java.util.function.Supplier;
 public abstract class CachedStateCell<T> extends FilteredCell<T> implements Factor<T>, Source<T>, Temporal {
 	private final T cachedValue;
 	private final T outValue;
+
+	private Runnable reset;
 
 	public CachedStateCell(Evaluable<T> blank) {
 		super(null);
@@ -66,13 +69,18 @@ public abstract class CachedStateCell<T> extends FilteredCell<T> implements Fact
 		tick.add(assign(() -> new Provider<>(outValue), () -> new Provider<>(cachedValue)));
 		tick.add(reset(() -> new Provider<>(cachedValue)));
 		tick.add(super.push(null));
+
+		OperationList reset = new OperationList();
+		reset.add(reset(() -> new Provider<>(cachedValue)));
+		reset.add(reset(() -> new Provider<>(outValue)));
+		this.reset = reset.get();
+
 		return tick;
 	}
 
 	@Override
 	public void reset() {
 		super.reset();
-		reset(() -> new Provider<>(cachedValue));
-		reset(() -> new Provider<>(outValue));
+		if (reset != null) reset.run();
 	}
 }

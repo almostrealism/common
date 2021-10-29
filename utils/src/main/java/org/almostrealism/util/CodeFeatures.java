@@ -127,12 +127,20 @@ public interface CodeFeatures extends ScalarFeatures, PairFeatures, TriangleData
 		return new Expression<>(Double.class, expression, dependencies);
 	}
 
+	default void dc(Runnable r) {
+		dc(() -> { r.run(); return null; });
+	}
+
+	default <T> T dc(Callable<T> exec) {
+		return Hardware.getLocalHardware().dataContext(exec);
+	}
+
 	default void cc(Runnable r) {
 		cc(() -> { r.run(); return null; });
 	}
 
 	default <T> T cc(Callable<T> exec) {
-		return Hardware.getLocalHardware().computeContext(exec);
+		return Hardware.getLocalHardware().getDataContext().computeContext(exec);
 	}
 
 	default Ops o() { return Ops.ops(); }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,14 +14,12 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.graph;
+package org.almostrealism.hardware;
 
-import org.almostrealism.heredity.Gene;
+import io.almostrealism.code.DataContext;
 
-public interface CellFactory<G, T, C> {
-	default Cell<T> generateCell(Gene<G> g) {
-		return generateCell(g, null);
-	}
+public interface ContextListener {
+	void contextStarted(DataContext ctx);
 
-	Cell<T> generateCell(Gene<G> g, C config);
+	void contextDestroyed(DataContext ctx);
 }

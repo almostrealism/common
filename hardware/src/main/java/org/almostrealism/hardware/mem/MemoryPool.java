@@ -39,6 +39,7 @@ public class MemoryPool<T extends MemoryData> extends MemoryBankAdapter<T> imple
 	private ArrayBlockingQueue<Integer> available;
 	private List<Owner> owners;
 	private int defaultGc;
+	private boolean destroying;
 
 	/**
 	 * Create a {@link MemoryPool}.
@@ -71,6 +72,10 @@ public class MemoryPool<T extends MemoryData> extends MemoryBankAdapter<T> imple
 	 */
 	@Override
 	public synchronized int reserveOffset(T owner) {
+		if (destroying) {
+			throw new UnsupportedOperationException();
+		}
+
 		Owner o = owner(owner);
 		owners.add(o);
 		return o.offset;
@@ -93,6 +98,17 @@ public class MemoryPool<T extends MemoryData> extends MemoryBankAdapter<T> imple
 		} catch (Exception e) {
 			throw new RuntimeException("Pool exhausted", e);
 		}
+	}
+
+	@Override
+	public synchronized void destroy() {
+		destroying = true;
+		owners.forEach(o -> {
+			T target = o.reference.get();
+			if (target != null) target.destroy();
+		});
+		owners.clear();
+		super.destroy();
 	}
 
 	public synchronized void gc() { gc(defaultGc); }
@@ -125,6 +141,10 @@ public class MemoryPool<T extends MemoryData> extends MemoryBankAdapter<T> imple
 				Thread.sleep(30000);
 			} catch (InterruptedException e) {
 				e.printStackTrace();
+			}
+
+			if (destroying) {
+				return;
 			}
 
 			gc();

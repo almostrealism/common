@@ -73,4 +73,9 @@ public class NativeMemoryProvider implements MemoryProvider<RAM> {
 		if (read == null) read = new NativeRead();
 		read.apply((NativeMemory) mem, sOffset, out, oOffset, length);
 	}
+
+	@Override
+	public void destroy() {
+		// TODO  Deallocate everything
+	}
 }

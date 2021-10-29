@@ -16,11 +16,14 @@
 
 package org.almostrealism.time;
 
+import org.almostrealism.hardware.ContextSpecific;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.mem.MemoryPool;
 
+import java.util.Optional;
+
 public class AcceleratedTimeSeriesPool extends MemoryPool<AcceleratedTimeSeries> {
-	private static AcceleratedTimeSeriesPool local;
+	private static ContextSpecific<AcceleratedTimeSeriesPool> local;
 
 	public AcceleratedTimeSeriesPool(int size, int count) {
 		super(2 * size, count);
@@ -28,7 +31,7 @@ public class AcceleratedTimeSeriesPool extends MemoryPool<AcceleratedTimeSeries>
 
 	public static AcceleratedTimeSeriesPool getLocal() {
 		initPool();
-		return local;
+		return Optional.ofNullable(local).map(ContextSpecific::getValue).orElse(null);
 	}
 
 	private static void initPool() {
@@ -39,6 +42,9 @@ public class AcceleratedTimeSeriesPool extends MemoryPool<AcceleratedTimeSeries>
 	private static synchronized void doInitPool() {
 		int size = Hardware.getLocalHardware().getTimeSeriesSize();
 		int count = Hardware.getLocalHardware().getTimeSeriesCount();
-		if (size > 0) local = new AcceleratedTimeSeriesPool(size, count);
+		if (size > 0) {
+			local = new ContextSpecific<>(() -> new AcceleratedTimeSeriesPool(size, count), pool -> pool.destroy());
+			local.init();
+		}
 	}
 }

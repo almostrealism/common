@@ -16,11 +16,14 @@
 
 package org.almostrealism.color;
 
+import org.almostrealism.hardware.ContextSpecific;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.mem.MemoryPool;
 
+import java.util.Optional;
+
 public class RGBData192Pool extends MemoryPool<RGBData192> {
-	private static RGBData192Pool local;
+	private static ContextSpecific<RGBData192Pool> local;
 
 	public RGBData192Pool(int size) {
 		super(3, size);
@@ -28,7 +31,7 @@ public class RGBData192Pool extends MemoryPool<RGBData192> {
 
 	public static RGBData192Pool getLocal() {
 		initPool();
-		return local;
+		return Optional.ofNullable(local).map(ContextSpecific::getValue).orElse(null);
 	}
 
 	private static void initPool() {
@@ -38,6 +41,9 @@ public class RGBData192Pool extends MemoryPool<RGBData192> {
 
 	private static synchronized void doInitPool() {
 		int size = 4 * Hardware.getLocalHardware().getDefaultPoolSize();
-		if (size > 0) local = new RGBData192Pool(size);
+		if (size > 0) {
+			local = new ContextSpecific<>(() -> new RGBData192Pool(size), pool -> pool.destroy());
+			local.init();
+		}
 	}
 }

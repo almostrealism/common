@@ -17,24 +17,26 @@
 package org.almostrealism.graph;
 
 import java.util.Random;
+import java.util.function.Function;
 
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.heredity.Gene;
 import io.almostrealism.relation.Provider;
 
-public class ProbabilityDensityCellFactory<T, C> implements CellFactory<Scalar, T, C> {
+// TODO  This functionality needs to be merged into our Polymorphic cells (or Choice itself)
+public class ProbabilityDensityCellFactory<T> implements Function<Gene<Scalar>, Cell<T>> {
 	private final Random rand = new Random();
 	
-	private final CellFactory<Scalar, T, C>[] choices;
+	private final Function<Gene, Cell<T>>[] choices;
 	private double bias[];
 	private double jitter;
 	private final int factorIndex;
 	
-	public ProbabilityDensityCellFactory(CellFactory<Scalar, T, C> choices[], int factorIndex) {
+	private ProbabilityDensityCellFactory(Function<Gene, Cell<T>> choices[], int factorIndex) {
 		this(choices, factorIndex, null);
 	}
 	
-	public ProbabilityDensityCellFactory(CellFactory<Scalar, T, C> choices[], int factorIndex, double biasFactors[]) {
+	private ProbabilityDensityCellFactory(Function<Gene, Cell<T>> choices[], int factorIndex, double biasFactors[]) {
 		this.choices = choices;
 		this.bias = biasFactors;
 		this.factorIndex = factorIndex;
@@ -48,7 +50,7 @@ public class ProbabilityDensityCellFactory<T, C> implements CellFactory<Scalar, 
 	public void setJitter(double jitterIntensity) { this.jitter = jitterIntensity; }
 
 	@Override
-	public Cell<T> generateCell(Gene<Scalar> g, C config) {
+	public Cell<T> apply(Gene<Scalar> g) {
 		double arg = g.valueAt(factorIndex).getResultant(() -> new Provider<>(new Scalar(1.0))).get().evaluate().getValue();
 
 		// Pick a point in N-Space, starting
@@ -85,7 +87,7 @@ public class ProbabilityDensityCellFactory<T, C> implements CellFactory<Scalar, 
 		// argument to the generateCell method, so that density
 		// cell factories can be daisy chained if desired.
 		// return choices[smallestIndex].generateCell(smallestValue);
-		return choices[smallestIndex].generateCell(g, config);
+		return choices[smallestIndex].apply(g);
 	}
 	
 	private double[] getBias(double centerOfBell) {

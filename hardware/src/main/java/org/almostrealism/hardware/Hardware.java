@@ -16,20 +16,17 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.Computer;
 import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.c.NativeMemoryProvider;
 import org.almostrealism.hardware.cl.CLMemoryProvider;
 import org.almostrealism.hardware.cl.CLMemoryProvider.Location;
 import org.almostrealism.hardware.cl.DefaultComputeContext;
+import org.almostrealism.hardware.cl.DefaultDataContext;
 import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.jni.NativeSupport;
 import org.jocl.CL;
 import org.jocl.Sizeof;
-import org.jocl.cl_command_queue;
-import org.jocl.cl_context;
-import org.jocl.cl_context_properties;
 import org.jocl.cl_device_id;
 import org.jocl.cl_platform_id;
 
@@ -132,19 +129,19 @@ public final class Hardware {
 	private final boolean enableDoublePrecision;
 	private final boolean enableKernel, enableDestinationConsolidation;
 	private final boolean memVolatile;
+	private long memoryMax;
+	private Location location;
 
 	private final String compilerExec;
 	private final String libDir;
 
-	private cl_context context;
-	private cl_command_queue queue;
+	private DefaultDataContext context;
+	private List<ContextListener> contextListeners;
 
 	private AcceleratedFunctions functions;
 	private final Computer computer;
 	private final NativeCompiler nativeCompiler;
-	private final MemoryProvider<RAM> ram;
-
-	private ThreadLocal<DefaultComputeContext> computeContext;
+	private final NativeMemoryProvider nativeRam;
 	
 	private Hardware(String compilerExec, String libDir, boolean enableCl, boolean enableGpu,
 					 boolean enableKernels, boolean enableDestinationConsolidation,
@@ -170,8 +167,10 @@ public final class Hardware {
 					 boolean enableDoublePrecision, Location location) {
 		this.name = name;
 
-		long memoryMax = (long) Math.pow(2, getMemoryScale()) * 256L * 1000L * 1000L;
-		if (enableDoublePrecision) memoryMax = memoryMax * 2;
+		this.memoryMax = (long) Math.pow(2, getMemoryScale()) * 256L * 1000L * 1000L;
+		if (enableDoublePrecision) this.memoryMax = memoryMax * 2;
+
+		this.location = location;
 
 		this.enableGpu = enableGpu;
 		this.enableDoublePrecision = enableDoublePrecision;
@@ -180,13 +179,10 @@ public final class Hardware {
 		this.compilerExec = compilerExec;
 		this.libDir = libDir;
 		this.memVolatile = location == Location.HEAP;
-		this.computeContext = new ThreadLocal<>();
+		this.context = new DefaultDataContext(this, name, enableDoublePrecision, this.memoryMax, this.location);
+		this.contextListeners = new ArrayList<>();
 
 		if (enableCl) {
-			final int platformIndex = 0;
-			final int deviceIndex = 0;
-			final long deviceType = enableGpu ? CL.CL_DEVICE_TYPE_GPU : CL.CL_DEVICE_TYPE_CPU;
-
 			CL.setExceptionsEnabled(true);
 
 			if (enableVerbose) {
@@ -199,43 +195,11 @@ public final class Hardware {
 
 			System.out.println("Hardware[" + name + "]: Max RAM is " +
 					memoryMax / 1000000 + " Megabytes");
-			if (location == Location.HEAP) System.out.println("Hardware[" + name + "]: Heap RAM enabled");
-			if (location == Location.HOST) System.out.println("Hardware[" + name + "]: Host RAM enabled");
+			if (location == CLMemoryProvider.Location.HEAP) System.out.println("Hardware[" + name + "]: Heap RAM enabled");
+			if (location == CLMemoryProvider.Location.HOST) System.out.println("Hardware[" + name + "]: Host RAM enabled");
 
-			int numPlatformsArray[] = new int[1];
-			CL.clGetPlatformIDs(0, null, numPlatformsArray);
-			int numPlatforms = numPlatformsArray[0];
-
-			if (enableVerbose) System.out.println("Hardware[" + name + "]: " + numPlatforms + " platforms available");
-
-			cl_platform_id platforms[] = new cl_platform_id[numPlatforms];
-			CL.clGetPlatformIDs(platforms.length, platforms, null);
-			cl_platform_id platform = platforms[platformIndex];
-
-			if (enableVerbose)
-				System.out.println("Hardware[" + name + "]: Using platform " + platformIndex + " -- " + platform);
-
-			cl_context_properties contextProperties = new cl_context_properties();
-			contextProperties.addProperty(CL.CL_CONTEXT_PLATFORM, platform);
-
-			int numDevicesArray[] = new int[1];
-			CL.clGetDeviceIDs(platform, deviceType, 0, null, numDevicesArray);
-			int numDevices = numDevicesArray[0];
-
-			System.out.println("Hardware[" + name + "]: " + numDevices + " " + deviceName(deviceType) + "(s) available");
-
-			cl_device_id devices[] = new cl_device_id[numDevices];
-			CL.clGetDeviceIDs(platform, deviceType, numDevices, devices, null);
-			cl_device_id device = devices[deviceIndex];
-
-			System.out.println("Hardware[" + name + "]: Using " + deviceName(deviceType) + " " + deviceIndex);
-
-			context = CL.clCreateContext(contextProperties, 1, new cl_device_id[]{device},
-					null, null, null);
-			if (enableVerbose) System.out.println("Hardware[" + name + "]: OpenCL context initialized");
-
-			queue = CL.clCreateCommandQueue(context, device, 0, null);
-			if (enableVerbose) System.out.println("Hardware[" + name + "]: OpenCL command queue initialized");
+			start(context);
+			contextListeners.forEach(l -> l.contextStarted(context));
 		} else {
 			System.out.println("Initializing Hardware...");
 		}
@@ -251,8 +215,12 @@ public final class Hardware {
 
 		if (enableVerbose) System.out.println("Hardware[" + name + "]: Created NativeCompiler");
 
-		ram = enableCl ? new CLMemoryProvider(context, getNumberSize(), memoryMax, location) : new NativeMemoryProvider(memoryMax);
-		if (enableVerbose) System.out.println("Hardware[" + name + "]: Created MemoryProvider");
+		if (!enableCl) {
+			nativeRam = new NativeMemoryProvider(memoryMax);
+			if (enableVerbose) System.out.println("Hardware[" + name + "]: Created NativeMemoryProvider");
+		} else {
+			nativeRam = null;
+		}
 
 		if (timeSeriesSize > 0) {
 			System.out.println("Hardware[" + name + "]: " + timeSeriesCount + " x " +
@@ -280,6 +248,78 @@ public final class Hardware {
 
 		getNativeCompiler().compileAndLoad(lib.getClass(), lib.get());
 		libs.add(lib.getClass());
+	}
+
+	protected void start(DefaultDataContext ctx) {
+		final int platformIndex = 0;
+		final int deviceIndex = 0;
+		final long deviceType = enableGpu ? CL.CL_DEVICE_TYPE_GPU : CL.CL_DEVICE_TYPE_CPU;
+
+		int numPlatformsArray[] = new int[1];
+		CL.clGetPlatformIDs(0, null, numPlatformsArray);
+		int numPlatforms = numPlatformsArray[0];
+
+		if (enableVerbose) System.out.println("Hardware[" + name + "]: " + numPlatforms + " platforms available");
+
+		cl_platform_id platforms[] = new cl_platform_id[numPlatforms];
+		CL.clGetPlatformIDs(platforms.length, platforms, null);
+		cl_platform_id platform = platforms[platformIndex];
+
+		if (enableVerbose)
+			System.out.println("Hardware[" + name + "]: Using platform " + platformIndex + " -- " + platform);
+
+		int numDevicesArray[] = new int[1];
+		CL.clGetDeviceIDs(platform, deviceType, 0, null, numDevicesArray);
+		int numDevices = numDevicesArray[0];
+
+		System.out.println("Hardware[" + name + "]: " + numDevices + " " + deviceName(deviceType) + "(s) available");
+
+		cl_device_id devices[] = new cl_device_id[numDevices];
+		CL.clGetDeviceIDs(platform, deviceType, numDevices, devices, null);
+		cl_device_id device = devices[deviceIndex];
+
+		System.out.println("Hardware[" + name + "]: Using " + deviceName(deviceType) + " " + deviceIndex);
+
+		ctx.init(platform, device);
+	}
+
+	public void addContextListener(ContextListener l) { contextListeners.add(l); }
+
+	public void removeContextListener(ContextListener l) { contextListeners.remove(l); }
+
+	protected void setDataContext(DefaultDataContext ctx) {
+		if (this.context != null) {
+			this.context.destroy();
+		}
+
+		this.context = ctx;
+	}
+
+	public <T> T dataContext(Callable<T> exec) {
+		DefaultDataContext current = context;
+		DefaultDataContext next = new DefaultDataContext(this, getName(), isDoublePrecision(), memoryMax, location);
+		String dcName = next.toString();
+		if (dcName.contains(".")) {
+			dcName = dcName.substring(dcName.lastIndexOf('.') + 1);
+		}
+
+		try {
+			if (Hardware.enableVerbose) System.out.println("Hardware[" + getName() + "]: Start " + dcName);
+			start(next);
+			context = next;
+			contextListeners.forEach(l -> l.contextStarted(context));
+			return exec.call();
+		} catch (RuntimeException e) {
+			throw e;
+		} catch (Exception e) {
+			throw new RuntimeException(e);
+		} finally {
+			if (Hardware.enableVerbose) System.out.println("Hardware[" + getName() + "]: End " + dcName);
+			next.destroy();
+			if (Hardware.enableVerbose) System.out.println("Hardware[" + getName() + "]: Destroyed " + dcName);
+			context = current;
+			contextListeners.forEach(l -> l.contextDestroyed(next));
+		}
 	}
 
 	public boolean isGPU() { return enableGpu; }
@@ -345,8 +385,7 @@ public final class Hardware {
 		return Double.parseDouble(s);
 	}
 
-	public cl_command_queue getQueue() { return queue; }
-
+	@Deprecated
 	public synchronized AcceleratedFunctions getFunctions() {
 		if (functions == null) {
 			if (enableVerbose) System.out.println("Hardware[" + getName() + "]: Loading accelerated functions");
@@ -358,50 +397,11 @@ public final class Hardware {
 		return functions;
 	}
 
-	public MemoryProvider<RAM> getMemoryProvider() {
-		return ram;
-	}
+	public DefaultDataContext getDataContext() { return context; }
 
-	public DefaultComputeContext getComputeContext() {
-		if (computeContext.get() == null) {
-			System.out.println("INFO: No explicit ComputeContext for " + Thread.currentThread().getName());
-			computeContext.set(new DefaultComputeContext(isDoublePrecision(), context));
-		}
+	public DefaultComputeContext getComputeContext() { return getDataContext().getComputeContext(); }
 
-		return computeContext.get();
-	}
-
-	protected void setComputeContext(DefaultComputeContext ctx) {
-		if (this.computeContext.get() != null) {
-			this.computeContext.get().destroy();
-		}
-
-		this.computeContext.set(ctx);
-	}
-
-	public <T> T computeContext(Callable<T> exec) {
-		DefaultComputeContext current = computeContext.get();
-		DefaultComputeContext next = new DefaultComputeContext(isDoublePrecision(), context);
-		String ccName = next.toString();
-		if (ccName.contains(".")) {
-			ccName = ccName.substring(ccName.lastIndexOf('.') + 1);
-		}
-
-		try {
-			if (enableVerbose) System.out.println("Hardware[" + getName() + "]: Start " + ccName);
-			computeContext.set(next);
-			return exec.call();
-		} catch (RuntimeException e) {
-			throw e;
-		} catch (Exception e) {
-			throw new RuntimeException(e);
-		} finally {
-			if (enableVerbose) System.out.println("Hardware[" + getName() + "]: End " + ccName);
-			next.destroy();
-			if (enableVerbose) System.out.println("Hardware[" + getName() + "]: Destroyed " + ccName);
-			computeContext.set(current);
-		}
-	}
+	public MemoryProvider<RAM> getMemoryProvider() { return nativeRam == null ? context.getMemoryProvider() : nativeRam; }
 
 	private static String deviceName(long type) {
 		if (type == CL.CL_DEVICE_TYPE_CPU) {

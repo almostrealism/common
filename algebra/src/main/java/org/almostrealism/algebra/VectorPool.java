@@ -16,11 +16,14 @@
 
 package org.almostrealism.algebra;
 
+import org.almostrealism.hardware.ContextSpecific;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.mem.MemoryPool;
 
+import java.util.Optional;
+
 public class VectorPool extends MemoryPool<Pair> {
-	private static VectorPool local;
+	private static ContextSpecific<VectorPool> local;
 
 	public VectorPool(int size) {
 		super(3, size);
@@ -28,7 +31,7 @@ public class VectorPool extends MemoryPool<Pair> {
 
 	public static VectorPool getLocal() {
 		initPool();
-		return local;
+		return Optional.ofNullable(local).map(ContextSpecific::getValue).orElse(null);
 	}
 
 	private static void initPool() {
@@ -38,6 +41,9 @@ public class VectorPool extends MemoryPool<Pair> {
 
 	private static synchronized void doInitPool() {
 		int size = 2 * Hardware.getLocalHardware().getDefaultPoolSize();
-		if (size > 0) local = new VectorPool(size);
+		if (size > 0) {
+			local = new ContextSpecific<>(() -> new VectorPool(size), pool -> pool.destroy());
+			local.init();
+		}
 	}
 }

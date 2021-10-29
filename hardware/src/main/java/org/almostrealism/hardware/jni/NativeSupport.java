@@ -70,7 +70,8 @@ public interface NativeSupport<T extends NativeLibrary> extends KernelSupport, N
 	}
 
 	default void apply(RAM args[], int offsets[], int sizes[]) {
-		apply(Optional.ofNullable(Hardware.getLocalHardware().getQueue()).map(cl_command_queue::getNativePointer).orElse(-1L),
+		apply(Optional.ofNullable(Hardware.getLocalHardware().getDataContext().getClQueue())
+						.map(cl_command_queue::getNativePointer).orElse(-1L),
 				Stream.of(args).mapToLong(RAM::getNativePointer).toArray(),
 				offsets, sizes, args.length);
 	}

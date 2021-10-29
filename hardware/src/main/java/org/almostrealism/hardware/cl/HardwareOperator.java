@@ -117,7 +117,7 @@ public class HardwareOperator<T extends MemoryData> implements Consumer<Object[]
 			}
 
 			if (enableVerboseLog) System.out.println(id + ": clEnqueueNDRangeKernel start");
-			CL.clEnqueueNDRangeKernel(Hardware.getLocalHardware().getQueue(), kernel, 1,
+			CL.clEnqueueNDRangeKernel(Hardware.getLocalHardware().getDataContext().getClQueue(), kernel, 1,
 					new long[] { globalWorkOffset }, new long[] { globalWorkSize },
 					null, 0, null, null);
 			if (enableVerboseLog) System.out.println(id + ": clEnqueueNDRangeKernel end");

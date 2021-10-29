@@ -16,6 +16,7 @@
 
 package org.almostrealism.graph;
 
+import io.almostrealism.uml.Lifecycle;
 import org.almostrealism.heredity.Factor;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.hardware.OperationList;
@@ -34,7 +35,7 @@ import java.util.function.Supplier;
  *
  * @param <T>
  */
-public class CellPair<T> implements Receptor<T>, Temporal {
+public class CellPair<T> implements Receptor<T>, Temporal, Lifecycle {
 	public static final boolean enableAdapters = true;
 
 	private final Cell<T> cellA, cellB;
@@ -115,4 +116,15 @@ public class CellPair<T> implements Receptor<T>, Temporal {
 
 	@Override
 	public Supplier<Runnable> tick() { return temporals.tick(); }
+
+	@Override
+	public void reset() {
+		Lifecycle.super.reset();
+		cellA.reset();
+		cellB.reset();
+		if (factorA instanceof Lifecycle) ((Lifecycle) factorA).reset();
+		if (factorB instanceof Lifecycle) ((Lifecycle) factorB).reset();
+		if (adA instanceof Lifecycle) ((Lifecycle) adA).reset();
+		if (adB instanceof Lifecycle) ((Lifecycle) adB).reset();
+	}
 }

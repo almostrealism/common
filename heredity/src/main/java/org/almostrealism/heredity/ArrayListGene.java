@@ -18,6 +18,8 @@ package org.almostrealism.heredity;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
+import java.util.Objects;
 
 public class ArrayListGene<T> extends ArrayList<Factor<T>> implements Gene<T> {
 	public ArrayListGene() { }
@@ -31,6 +33,24 @@ public class ArrayListGene<T> extends ArrayList<Factor<T>> implements Gene<T> {
 	@SafeVarargs
 	public ArrayListGene(Factor<T>... factors) {
 		this.addAll(Arrays.asList(factors));
+	}
+
+	@Override
+	public boolean addAll(Collection<? extends Factor<T>> factors) {
+		if (factors.stream().filter(Objects::nonNull).count() != factors.size()) {
+			throw new IllegalArgumentException();
+		}
+
+		return super.addAll(factors);
+	}
+
+	@Override
+	public boolean add(Factor<T> factor) {
+		if (factor == null) {
+			throw new IllegalArgumentException();
+		}
+
+		return super.add(factor);
 	}
 
 	@Override

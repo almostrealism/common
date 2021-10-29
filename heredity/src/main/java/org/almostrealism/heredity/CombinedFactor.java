@@ -17,12 +17,13 @@
 package org.almostrealism.heredity;
 
 import io.almostrealism.relation.Producer;
+import io.almostrealism.uml.Lifecycle;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.time.Temporal;
 
 import java.util.function.Supplier;
 
-public class CombinedFactor<T> implements TemporalFactor<T> {
+public class CombinedFactor<T> implements TemporalFactor<T>, Lifecycle {
 	private Factor<T> a, b;
 
 	public CombinedFactor(Factor<T> a, Factor<T> b) {
@@ -41,5 +42,12 @@ public class CombinedFactor<T> implements TemporalFactor<T> {
 		if (a instanceof Temporal) tick.add(((Temporal) a).tick());
 		if (b instanceof Temporal) tick.add(((Temporal) b).tick());
 		return tick;
+	}
+
+	@Override
+	public void reset() {
+		Lifecycle.super.reset();
+		if (a instanceof Lifecycle) ((Lifecycle) a).reset();
+		if (b instanceof Lifecycle) ((Lifecycle) b).reset();
 	}
 }
