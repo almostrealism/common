@@ -39,7 +39,13 @@ import java.util.stream.IntStream;
  * @author  Michael Murray
  */
 public abstract class MemoryBankAdapter<T extends MemoryData> extends MemoryDataAdapter implements MemoryBank<T> {
-	public static final CacheLevel defaultCacheLevel = CacheLevel.NONE;
+	public static final CacheLevel defaultCacheLevel = CacheLevel.ALL;
+
+	static {
+		if (defaultCacheLevel == CacheLevel.ALL) {
+			System.out.println("WARN: Default CacheLevel is ALL");
+		}
+	}
 
 	private int memLength, count;
 	private int totalMemLength;

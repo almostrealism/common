@@ -26,6 +26,10 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public interface TemporalFeatures {
+	default Frequency bpm(double bpm) {
+		return Frequency.forBPM(bpm);
+	}
+
 	default Supplier<Runnable> iter(Temporal t, int iter) {
 		Supplier<Runnable> tick = loop(t, iter);
 

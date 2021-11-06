@@ -20,7 +20,6 @@ import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.Computation;
-import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.OperationComputation;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
@@ -30,6 +29,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Supplier;
+import java.util.stream.Collector;
 import java.util.stream.Collectors;
 
 public class OperationList extends ArrayList<Supplier<Runnable>> implements OperationComputation<Void>, HardwareFeatures {
@@ -115,5 +115,9 @@ public class OperationList extends ArrayList<Supplier<Runnable>> implements Oper
 		stream().map(o -> o instanceof OperationList ? (OperationList) o : null)
 				.filter(Objects::nonNull)
 				.forEach(OperationList::destroy);
+	}
+
+	public static Collector<Supplier<Runnable>, ?, OperationList> collector() {
+		return Collectors.toCollection(OperationList::new);
 	}
 }

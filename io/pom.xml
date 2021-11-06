@@ -5,7 +5,7 @@
 	<parent>
 		<artifactId>Common</artifactId>
 		<groupId>org.almostrealism</groupId>
-		<version>0.41</version>
+		<version>${common.version}</version>
 	</parent>
 	<modelVersion>4.0.0</modelVersion>
 
