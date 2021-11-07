@@ -17,7 +17,31 @@
 package org.almostrealism.graph;
 
 import io.almostrealism.code.Setup;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.uml.Lifecycle;
+import org.almostrealism.hardware.OperationList;
+
+import java.util.function.Supplier;
 
 public interface Cell<T> extends Transmitter<T>, Receptor<T>, Setup, Lifecycle {
+	static <T> Cell<T> from(Producer<T> p) {
+		return new Cell<T>() {
+			private Receptor<T> r;
+
+			@Override
+			public Supplier<Runnable> setup() {
+				return new OperationList();
+			}
+
+			@Override
+			public Supplier<Runnable> push(Producer<T> protein) {
+				return r == null ? new OperationList() : r.push(p);
+			}
+
+			@Override
+			public void setReceptor(Receptor<T> r) {
+				this.r = r;
+			}
+		};
+	}
 }
