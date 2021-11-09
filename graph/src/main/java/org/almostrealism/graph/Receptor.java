@@ -17,9 +17,15 @@
 package org.almostrealism.graph;
 
 import io.almostrealism.relation.Producer;
+import org.almostrealism.hardware.OperationList;
 
 import java.util.function.Supplier;
+import java.util.stream.Stream;
 
 public interface Receptor<T> {
 	Supplier<Runnable> push(Producer<T> protein);
+
+	static <T> Receptor<T> to(Receptor<T>... downstream) {
+		return protein -> Stream.of(downstream).map(r -> r.push(protein)).collect(OperationList.collector());
+	}
 }
