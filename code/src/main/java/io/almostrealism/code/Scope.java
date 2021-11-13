@@ -46,7 +46,7 @@ import java.util.stream.IntStream;
  * @param <T>  The type of the value returned by this {@link Scope}.
  */
 public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<Scope<T>, T>, Parent<Scope<T>>, Nameable {
-	public static final boolean enableInlining = false;
+	public static final boolean enableInlining = true;
 
 	private String name;
 	private final List<Variable<?, ?>> variables;
@@ -297,6 +297,13 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 	}
 
 	/**
+	 * Subclasses can override this method to indicate that they cannot be inlined.
+	 */
+	public boolean isInlineable() {
+		return true;
+	}
+
+	/**
 	 * Attempt to inline the specified {@link Scope}. This will only be
 	 * successful if the specified {@link Scope} contains nothing but
 	 * variable assignments; any {@link Scope} with child {@link Scope}s
@@ -307,8 +314,10 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 	public boolean tryAbsorb(Scope<T> s) {
 		if (!enableInlining) return false;
 
+		if (!s.isInlineable()) return false;
 		if (!s.getChildren().isEmpty()) return false;
 		if (!s.getMethods().isEmpty()) return false;
+		if (s.getVariables().stream().anyMatch(v -> v.isDeclaration())) return false;
 
 		IntStream.range(0, s.getVariables().size()).forEach(i -> variables.add(i, s.getVariables().get(i)));
 		return true;

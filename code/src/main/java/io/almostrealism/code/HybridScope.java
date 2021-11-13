@@ -44,6 +44,8 @@ public class HybridScope<T> extends Scope<T> {
 
 	public Consumer<String> code() { return explicit.code(); }
 
+	public boolean isInlineable() { return explicit.isInlineable(); }
+
 	@Override
 	protected <A> List<A> arguments(Function<Argument<?>, A> mapper) {
 		List<Argument<?>> args = new ArrayList<>();

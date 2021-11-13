@@ -18,17 +18,17 @@ package org.almostrealism.heredity;
 
 import java.util.function.Supplier;
 
-public class GenomeFromChromosomes implements Supplier<Genome> {
-	private ChromosomeFactory factories[];
+public class GenomeFromChromosomes<T> implements Supplier<Genome<T>> {
+	private ChromosomeFactory<T> factories[];
 	
-	public GenomeFromChromosomes(ChromosomeFactory... factories) {
+	public GenomeFromChromosomes(ChromosomeFactory<T>... factories) {
 		this.factories = factories;
 	}
 
 	@Override
 	public Genome get() {
 		ArrayListGenome g = new ArrayListGenome();
-		for (ChromosomeFactory f : factories) g.add(f.generateChromosome(1.0));
+		for (ChromosomeFactory<T> f : factories) g.add(f.generateChromosome(1.0));
 		return g;
 	}
 }

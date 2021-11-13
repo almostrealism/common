@@ -41,6 +41,10 @@ public class TriangleData extends VectorBank {
 	public Vector getJKL() { return get(2); }
 	public Vector getNormal() { return get(3); }
 
+	public String toString() {
+		return getABC() + " " + getDEF() + " " + getJKL() + " " + getNormal();
+	}
+
 	public static Producer<TriangleData> blank() {
 		return new DynamicProducerForMemoryData<>(TriangleData::new, TriangleDataBank::new);
 	}

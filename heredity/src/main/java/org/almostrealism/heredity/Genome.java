@@ -22,14 +22,22 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
-public interface Genome extends Plural<Chromosome<?>> {
+public interface Genome<T> extends Plural<Chromosome<T>> {
 	Genome getHeadSubset();
 	
 	Chromosome getLastChromosome();
 
 	int count();
 
-	static GenomeFromChromosomes fromChromosomes(ChromosomeFactory... factories) {
+	default Gene<T> valueAt(int chromosome, int gene) {
+		return valueAt(chromosome).valueAt(gene);
+	}
+
+	default Factor<T> valueAt(int chromosome, int gene, int factor) {
+		return valueAt(chromosome).valueAt(gene, factor);
+	}
+
+	static <T> GenomeFromChromosomes<T> fromChromosomes(ChromosomeFactory<T>... factories) {
 		return new GenomeFromChromosomes(factories);
 	}
 }

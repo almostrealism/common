@@ -63,11 +63,21 @@ public class MultiCell<T> extends CellAdapter<T> {
 
 		return push;
 	}
-
 	public static <T> CellPair<T> split(Cell<T> source, Cell<T> adapter, List<Cell<T>> destinations, Gene<T> transmission) {
+		return split(source, adapter, destinations, transmission, null);
+	}
+
+	public static <T> CellPair<T> split(Cell<T> source, Cell<T> adapter, List<Cell<T>> destinations, Gene<T> transmission, Cell<T> passthrough) {
 		MultiCell<T> m = new MultiCell<>(destinations, transmission);
 
-		CellPair<T> pair = new CellPair<>(source, m, null, new IdentityFactor<>());
+		Cell<T> afterPassthrough = source;
+
+		if (passthrough != null) {
+			afterPassthrough = new ReceptorCell<>(null);
+			source.setReceptor(Receptor.to(passthrough, afterPassthrough));
+		}
+
+		CellPair<T> pair = new CellPair<>(afterPassthrough, m, null, new IdentityFactor<>());
 		if (adapter != null) {
 			pair.setAdapterB(cell -> {
 				adapter.setReceptor(cell);

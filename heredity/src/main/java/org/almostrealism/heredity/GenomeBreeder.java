@@ -16,6 +16,6 @@
 
 package org.almostrealism.heredity;
 
-public interface GenomeBreeder {
-	Genome combine(Genome g1, Genome g2);
+public interface GenomeBreeder<T> {
+	Genome combine(Genome<T> g1, Genome<T> g2);
 }

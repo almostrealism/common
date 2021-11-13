@@ -19,12 +19,18 @@ package org.almostrealism.graph;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.graph.computations.SummationCellOperation;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.hardware.OperationList;
 
 import java.util.function.Supplier;
 
-public class SummationCell extends ScalarCachedStateCell {
+public class SummationCell extends ScalarCachedStateCell implements Adjustable<Scalar> {
 	@Override
 	public Supplier<Runnable> push(Producer<Scalar> protein) {
 		return new SummationCellOperation(this, protein);
+	}
+
+	@Override
+	public Supplier<Runnable> updateAdjustment(Producer<Scalar> value) {
+		return new OperationList();
 	}
 }

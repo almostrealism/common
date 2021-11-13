@@ -21,21 +21,21 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.IntStream;
 
-public class DefaultGenomeBreeder implements GenomeBreeder {
+public class DefaultGenomeBreeder<T> implements GenomeBreeder<T> {
 	private static PrintWriter log;
 
-	private final List<ChromosomeBreeder> breeders;
+	private final List<ChromosomeBreeder<T>> breeders;
 
-	public DefaultGenomeBreeder(ChromosomeBreeder... breeders) {
+	public DefaultGenomeBreeder(ChromosomeBreeder<T>... breeders) {
 		this(Arrays.asList(breeders));
 	}
 
-	public DefaultGenomeBreeder(List<ChromosomeBreeder> breeders) {
+	public DefaultGenomeBreeder(List<ChromosomeBreeder<T>> breeders) {
 		this.breeders = breeders;
 	}
 
 	@Override
-	public Genome combine(Genome g1, Genome g2) {
+	public Genome combine(Genome<T> g1, Genome<T> g2) {
 		ArrayListGenome result = new ArrayListGenome();
 		IntStream.range(0, breeders.size()).forEach(i ->
 			result.add(breeders.get(i).combine(g1.valueAt(i), g2.valueAt(i))));

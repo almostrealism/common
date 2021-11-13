@@ -60,6 +60,11 @@ public class ExplicitScope<T> extends Scope<T> {
 	public Consumer<String> code() { return code::append; }
 
 	@Override
+	public boolean isInlineable() {
+		return false;
+	}
+
+	@Override
 	public void write(CodePrintWriter w) {
 		super.write(w);
 		w.println(code.toString());

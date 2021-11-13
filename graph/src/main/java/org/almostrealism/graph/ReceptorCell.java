@@ -17,22 +17,28 @@
 package org.almostrealism.graph;
 
 import io.almostrealism.relation.Producer;
+import org.almostrealism.hardware.OperationList;
 
 import java.util.function.Supplier;
 
-public class ReceptorCell<T> implements Cell<T> {
-	private final Receptor<T> r;
+public class ReceptorCell<T> implements Cell<T>, Adjustable<T> {
+	private Receptor<T> r;
 
 	public ReceptorCell(Receptor<T> r) { this.r = r; }
 
 	@Override
-	public Supplier<Runnable> setup() { return () -> () -> { }; }
+	public Supplier<Runnable> setup() { return new OperationList(); }
 
 	@Override
 	public Supplier<Runnable> push(Producer<T> protein) { return r.push(protein); }
 
 	@Override
-	public void setReceptor(Receptor<T> r) { }
+	public void setReceptor(Receptor<T> r) { this.r = r; }
 
 	public Receptor<T> getReceptor() { return r; }
+
+	@Override
+	public Supplier<Runnable> updateAdjustment(Producer<T> value) {
+		return new OperationList();
+	}
 }

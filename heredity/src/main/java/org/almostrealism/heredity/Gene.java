@@ -18,6 +18,11 @@ package org.almostrealism.heredity;
 
 import io.almostrealism.uml.Plural;
 
-public interface Gene<T> extends Plural<Factor<T>> {
+import java.util.function.IntFunction;
+
+public interface Gene<T> extends Plural<Factor<T>>, IntFunction<Factor<T>> {
+	@Override
+	default Factor<T> apply(int pos) { return valueAt(pos); }
+
 	int length();
 }
