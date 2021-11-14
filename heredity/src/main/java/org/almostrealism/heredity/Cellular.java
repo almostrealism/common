@@ -16,7 +16,8 @@
 
 package org.almostrealism.heredity;
 
-import org.almostrealism.time.Temporal;
+import io.almostrealism.code.Setup;
+import io.almostrealism.uml.Lifecycle;
 
-public interface TemporalCellular extends Temporal, Cellular {
+public interface Cellular extends Setup, Lifecycle {
 }

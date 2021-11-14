@@ -16,7 +16,5 @@
 
 package org.almostrealism.heredity;
 
-import org.almostrealism.time.Temporal;
-
-public interface TemporalCellular extends Temporal, Cellular {
+public interface CellularTemporalFactor<T> extends TemporalFactor<T>, Cellular {
 }

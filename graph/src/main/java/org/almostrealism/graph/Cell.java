@@ -16,14 +16,21 @@
 
 package org.almostrealism.graph;
 
-import io.almostrealism.code.Setup;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.uml.Lifecycle;
+import io.almostrealism.relation.Provider;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.heredity.Cellular;
+import org.almostrealism.heredity.CellularTemporalFactor;
+import org.almostrealism.time.Temporal;
 
+import java.util.function.Function;
 import java.util.function.Supplier;
 
-public interface Cell<T> extends Transmitter<T>, Receptor<T>, Setup, Lifecycle {
+public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
+	default CellularTemporalFactor<T> toFactor(Supplier<T> value, Function<Producer<T>, Receptor<T>> assignment) {
+		return toFactor(this, value, assignment);
+	}
+
 	static <T> Cell<T> from(Producer<T> p) {
 		return new Cell<T>() {
 			private Receptor<T> r;
@@ -41,6 +48,38 @@ public interface Cell<T> extends Transmitter<T>, Receptor<T>, Setup, Lifecycle {
 			@Override
 			public void setReceptor(Receptor<T> r) {
 				this.r = r;
+			}
+		};
+	}
+
+	static <T> CellularTemporalFactor<T> toFactor(Cell<T> c, Supplier<T> value, Function<Producer<T>, Receptor<T>> assignment) {
+		T v = value.get();
+		Producer<T> destination = () -> new Provider<>(v);
+
+		return new CellularTemporalFactor<T>() {
+			@Override
+			public Producer<T> getResultant(Producer<T> value) {
+				c.setReceptor(assignment.apply(destination));
+				return destination;
+			}
+
+			@Override
+			public Supplier<Runnable> setup() {
+				return c.setup();
+			}
+
+			@Override
+			public Supplier<Runnable> tick() {
+				OperationList tick = new OperationList();
+				tick.add(c.push(null));
+				if (c instanceof Temporal) tick.add(((Temporal) c).tick());
+				return tick;
+			}
+
+			@Override
+			public void reset() {
+				CellularTemporalFactor.super.reset();
+				c.reset();
 			}
 		};
 	}
