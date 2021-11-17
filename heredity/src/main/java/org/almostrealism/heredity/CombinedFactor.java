@@ -16,6 +16,7 @@
 
 package org.almostrealism.heredity;
 
+import io.almostrealism.code.Setup;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.uml.Lifecycle;
 import org.almostrealism.hardware.OperationList;
@@ -23,12 +24,20 @@ import org.almostrealism.time.Temporal;
 
 import java.util.function.Supplier;
 
-public class CombinedFactor<T> implements TemporalFactor<T>, Lifecycle {
+public class CombinedFactor<T> implements CellularTemporalFactor<T> {
 	private Factor<T> a, b;
 
 	public CombinedFactor(Factor<T> a, Factor<T> b) {
 		this.a = a;
 		this.b = b;
+	}
+
+	@Override
+	public Supplier<Runnable> setup() {
+		OperationList setup = new OperationList();
+		if (a instanceof Setup) setup.add(((Setup) a).setup());
+		if (b instanceof Setup) setup.add(((Setup) b).setup());
+		return setup;
 	}
 
 	@Override
@@ -46,7 +55,7 @@ public class CombinedFactor<T> implements TemporalFactor<T>, Lifecycle {
 
 	@Override
 	public void reset() {
-		Lifecycle.super.reset();
+		CellularTemporalFactor.super.reset();
 		if (a instanceof Lifecycle) ((Lifecycle) a).reset();
 		if (b instanceof Lifecycle) ((Lifecycle) b).reset();
 	}
