@@ -19,6 +19,7 @@ package org.almostrealism.heredity;
 import io.almostrealism.uml.Plural;
 
 import java.util.function.IntFunction;
+import java.util.stream.IntStream;
 
 public interface Chromosome<T> extends Plural<Gene<T>>, IntFunction<Gene<T>> {
 	int length();
@@ -30,5 +31,11 @@ public interface Chromosome<T> extends Plural<Gene<T>>, IntFunction<Gene<T>> {
 
 	default Factor<T> valueAt(int gene, int factor) {
 		return valueAt(gene).valueAt(factor);
+	}
+
+	default String signature() {
+		StringBuffer buf = new StringBuffer();
+		IntStream.range(0, length()).mapToObj(this::valueAt).map(Gene::signature).forEach(buf::append);
+		return buf.toString();
 	}
 }

@@ -111,7 +111,7 @@ public class Matrix3DSolutionOutput {
 	}
 	
 	public void loadPieceFromGTS(int p, InputStream in) throws IOException {
-		Scene scene = SpatialData.decodeScene(in, SpatialData.GTSEncoding, false, null);
+		Scene scene = ModelData.decodeScene(in, ModelData.GTSEncoding, false, null);
 		Gradient s[] = scene.getSurfaces();
 		
 		boolean piece[][][] = new boolean[this.x][this.y][this.z];

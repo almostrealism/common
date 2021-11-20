@@ -41,7 +41,6 @@ import org.almostrealism.geometry.ContinuousField;
 import org.almostrealism.graph.Automata;
 import org.almostrealism.graph.KdTree;
 import org.almostrealism.graph.mesh.MeshPointData;
-import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.KernelizedProducer;
 import org.almostrealism.hardware.MemoryBank;
 import io.almostrealism.relation.Producer;
@@ -84,7 +83,7 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 					if (this.url != null) {
 						URL url = new URL(this.url + this.name);
 						
-						this.mesh = (Mesh) SpatialData.decodeScene(url.openStream(),
+						this.mesh = (Mesh) ModelData.decodeScene(url.openStream(),
 								this.format, false, null, this.s).getSurfaces()[0];
 					} else {
 						this.mesh = (Mesh) FileDecoder.decodeSurfaceFile(

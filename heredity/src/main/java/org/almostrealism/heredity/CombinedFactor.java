@@ -32,6 +32,10 @@ public class CombinedFactor<T> implements CellularTemporalFactor<T> {
 		this.b = b;
 	}
 
+	public Factor<T> getA() { return a; }
+
+	public Factor<T> getB() { return b; }
+
 	@Override
 	public Supplier<Runnable> setup() {
 		OperationList setup = new OperationList();

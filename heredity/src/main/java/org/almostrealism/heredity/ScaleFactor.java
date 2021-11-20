@@ -21,6 +21,7 @@ import org.almostrealism.algebra.ScalarFeatures;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Defaults;
 
+import java.util.Base64;
 import java.util.Optional;
 
 public class ScaleFactor implements Factor<Scalar>, ScalarFeatures {
@@ -42,6 +43,11 @@ public class ScaleFactor implements Factor<Scalar>, ScalarFeatures {
 	public double getScaleValue() { return Optional.ofNullable(this.scale).map(Scalar::getValue).orElse(0.0); }
 
 	public Scalar getScale() { return scale; }
+
+	@Override
+	public String signature() {
+		return Double.toHexString(scale.getValue());
+	}
 
 	@Override
 	public String toString() { return Defaults.displayFormat.format(scale.getValue()); }

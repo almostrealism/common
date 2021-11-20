@@ -32,7 +32,7 @@ import org.almostrealism.color.RGB;
  * The FileDecoder class provides static methods for decoding scene and surface data
  * that has been stored in a file.
  */
-public class FileDecoder extends SpatialData {
+public class FileDecoder extends ModelData {
   /** The integer code for an XML encoding. */
   public static final int XMLEncoding = 2;
   

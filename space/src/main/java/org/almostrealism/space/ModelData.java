@@ -28,7 +28,7 @@ import org.almostrealism.algebra.Gradient;
 /**
  * @author  Michael Murray
  */
-public class SpatialData {
+public class ModelData {
 	/** The integer code for a GTS encoding. */
 	public static final int GTSEncoding = 8;
 
@@ -40,7 +40,7 @@ public class SpatialData {
 
 	public static Scene decodeScene(InputStream fileIn, int encoding,
 			boolean ui, ExceptionListener listener) throws IOException {
-		return SpatialData.decodeScene(fileIn, encoding, ui, listener, null);
+		return ModelData.decodeScene(fileIn, encoding, ui, listener, null);
 	}
 
 	/**

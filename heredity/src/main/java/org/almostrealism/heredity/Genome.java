@@ -21,6 +21,7 @@ import io.almostrealism.uml.Plural;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.stream.IntStream;
 
 public interface Genome<T> extends Plural<Chromosome<T>> {
 	Genome getHeadSubset();
@@ -28,6 +29,12 @@ public interface Genome<T> extends Plural<Chromosome<T>> {
 	Chromosome getLastChromosome();
 
 	int count();
+
+	default String signature() {
+		StringBuffer buf = new StringBuffer();
+		IntStream.range(0, count()).mapToObj(this::valueAt).map(Chromosome::signature).forEach(buf::append);
+		return buf.toString();
+	}
 
 	default Gene<T> valueAt(int chromosome, int gene) {
 		return valueAt(chromosome).valueAt(gene);

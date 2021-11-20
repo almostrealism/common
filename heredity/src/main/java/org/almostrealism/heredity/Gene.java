@@ -19,10 +19,17 @@ package org.almostrealism.heredity;
 import io.almostrealism.uml.Plural;
 
 import java.util.function.IntFunction;
+import java.util.stream.IntStream;
 
 public interface Gene<T> extends Plural<Factor<T>>, IntFunction<Factor<T>> {
 	@Override
 	default Factor<T> apply(int pos) { return valueAt(pos); }
 
 	int length();
+
+	default String signature() {
+		StringBuffer buf = new StringBuffer();
+		IntStream.range(0, length()).mapToObj(this::valueAt).map(Factor::signature).forEach(buf::append);
+		return buf.toString();
+	}
 }

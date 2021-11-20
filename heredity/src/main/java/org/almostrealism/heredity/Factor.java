@@ -22,7 +22,9 @@ import io.almostrealism.relation.Producer;
 public interface Factor<T> {
 	Producer<T> getResultant(Producer<T> value);
 
-	default Factor<T> andThen(Factor<T> next) {
+	default String signature() { throw new UnsupportedOperationException(); }
+
+	default CellularTemporalFactor<T> andThen(Factor<T> next) {
 		return new CombinedFactor<>(this, next);
 	}
 }
