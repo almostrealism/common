@@ -17,9 +17,11 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.Accessibility;
+import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.DefaultScopeInputManager;
 import io.almostrealism.code.NameProvider;
+import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Named;
 import org.almostrealism.c.OpenCLPrintWriter;
@@ -97,28 +99,16 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 		return getValueName(v, pos, assignment, enableKernel && isKernel() ? kernelIndex : -1);
 	}
 
-	// TODO  This can probably be removed, with the superclass method used instead by simply
-	//       making prepareArguments and prepareScope delegate to the computation
 	@Override
-	protected void prepareScope() {
-		super.prepareScope();
+	public void prepareArguments(ArgumentMap map) {
+		super.prepareArguments(map);
+		getComputation().prepareArguments(map);
+	}
 
-		SupplierArgumentMap argumentMap = null;
-
-		if (Hardware.getLocalHardware().isDestinationConsolidation()) {
-			argumentMap = new DestinationConsolidationArgumentMap<>(isKernel());
-		} else if (enableArgumentMapping) {
-			argumentMap = new MemoryDataArgumentMap<>(isKernel());
-		}
-
-		if (argumentMap != null) {
-			getComputation().prepareArguments(argumentMap);
-			this.argumentMaps.add(argumentMap);
-			argumentMap.confirmArguments();
-		}
-
-		getComputation().prepareScope(argumentMap == null ?
-				DefaultScopeInputManager.getInstance() : argumentMap.getScopeInputManager());
+	@Override
+	public void prepareScope(ScopeInputManager manager) {
+		super.prepareScope(manager);
+		getComputation().prepareScope(manager);
 	}
 
 	protected synchronized void preCompile() {

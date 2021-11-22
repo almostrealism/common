@@ -23,10 +23,10 @@ public class ScalarPow extends DynamicProducerComputationAdapter<Scalar, Scalar>
 		return pos -> {
 			if (value == null) {
 				if (pos == 0) {
-					return new Exponent(getArgument(1).valueAt(0), getArgument(2).valueAt(0));
+					return new Exponent(getArgument(1, 2).valueAt(0), getArgument(2, 2).valueAt(0));
 				} else if (pos == 1) {
 					// TODO  Certainty of exponent is ignored
-					return new Exponent(getArgument(1).valueAt(1), getArgument(2).valueAt(0));
+					return new Exponent(getArgument(1, 2).valueAt(1), getArgument(2, 2).valueAt(0));
 				} else {
 					throw new IllegalArgumentException(String.valueOf(pos));
 				}

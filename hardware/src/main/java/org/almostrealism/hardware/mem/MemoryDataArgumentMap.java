@@ -22,6 +22,7 @@ import io.almostrealism.code.NameProvider;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
+import org.almostrealism.hardware.ContextSpecific;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.ProviderAwareArgumentMap;
 
@@ -31,9 +32,14 @@ import java.util.function.Supplier;
 
 public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> {
 	public static final boolean enableDestinationDetection = true;
+	public static final boolean enableGlobalArgumentMap = false;
+
+	private static ContextSpecific<MemoryDataArgumentMap> globalMaps;
 
 	private final Map<Memory, ArrayVariable<A>> mems;
 	private final boolean kernel;
+
+	public MemoryDataArgumentMap() { this(true); }
 
 	public MemoryDataArgumentMap(boolean kernel) {
 		this.mems = new HashMap<>();
@@ -48,7 +54,7 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 		MemoryData mw;
 
 		// A MemoryDataDestination carries information about how to produce
-		// the data in that destination, along with the MemoryData itself
+		// the data in that destination, along with the MemoryData itself.
 		// There needs to be a way to return a delegated variable, as we do
 		// below, but not lose the knowledge that we rely on during the
 		// creation of required scopes, ie the knowledge of how that data
@@ -57,10 +63,6 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 		// ways, so it probably has to be stored with the Delegated variable,
 		// but it cannot be tracked using the delegate field because that
 		// is already used to point at the root delegate MemoryData
-//		if (key instanceof MemoryDataDestination) {
-//			return null;
-//		}
-
 		if (enableDestinationDetection && !kernel && key instanceof MemoryDataDestination) {
 			Object dest = ((MemoryDataDestination) key).get().evaluate();
 			if (dest != null && !(dest instanceof MemoryData)) {
@@ -112,5 +114,22 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 
 		@Override
 		public Provider getDelegate() { return provider; }
+	}
+
+	public static MemoryDataArgumentMap create(boolean kernel) {
+		if (!enableGlobalArgumentMap || !kernel) {
+			return new MemoryDataArgumentMap(kernel);
+		}
+
+		return getGlobalMaps().getValue();
+	}
+
+	protected synchronized static ContextSpecific<MemoryDataArgumentMap> getGlobalMaps() {
+		if (globalMaps == null) {
+			globalMaps = new ContextSpecific<>(MemoryDataArgumentMap::new, MemoryDataArgumentMap::destroy);
+			globalMaps.init();
+		}
+
+		return globalMaps;
 	}
 }

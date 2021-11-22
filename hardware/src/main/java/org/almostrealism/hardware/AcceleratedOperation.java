@@ -133,7 +133,7 @@ public class AcceleratedOperation<T extends MemoryData> extends OperationAdapter
 			if (Hardware.getLocalHardware().isDestinationConsolidation()) {
 				argumentMap = new DestinationConsolidationArgumentMap<>(isKernel());
 			} else if (enableArgumentMapping) {
-				argumentMap = new MemoryDataArgumentMap<>(isKernel());
+				argumentMap = MemoryDataArgumentMap.create(isKernel());
 			}
 		}
 
