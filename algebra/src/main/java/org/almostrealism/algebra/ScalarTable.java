@@ -56,7 +56,7 @@ public class ScalarTable extends MemoryBankAdapter<ScalarBank> { // implements M
 		return out;
 	}
 
-	// TODO  ...
+	// TODO  ... see above ...
 
 	public static ScalarTable fromProducer(Evaluable<ScalarBank> producer, int width, int count) {
 		ScalarTable table = new ScalarTable(width, count);

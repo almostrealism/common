@@ -19,7 +19,7 @@ package org.almostrealism.hardware;
 /**
  * A {@link MemoryBank} tracks a section of RAM that is used to
  * store a collection of {@link MemoryData}s in a single
- * {@link org.jocl.cl_mem}.
+ * {@link io.almostrealism.code.Memory} instance.
  *
  * @author  Michael Murray
  */

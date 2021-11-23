@@ -20,7 +20,12 @@ import org.almostrealism.algebra.Mat2f;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Vector;
 
-/** Represents a line in 3D space. */
+/**
+ * Represents a line in 3D space.
+ *
+ * @deprecated  Use {@link Ray} instead.
+ */
+@Deprecated
 public class Line {
 	private Vector point;
 
