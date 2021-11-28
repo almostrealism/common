@@ -116,7 +116,7 @@ public class CodeFeaturesTests implements TestFeatures {
 		ScalarProducer s = v(1).add(p(value));
 		value.setValue(2);
 
-		DefaultScalarEvaluable ev = (DefaultScalarEvaluable) s.get();
+		AcceleratedComputationEvaluable<Scalar> ev = (AcceleratedComputationEvaluable<Scalar>) s.get();
 		System.out.println(ev.getFunctionDefinition());
 		assertEquals(3.0, ev.evaluate().getValue());
 

@@ -39,16 +39,12 @@ public class Pair extends MemoryDataAdapter {
 	}
 	
 	public Pair setX(double x) {
-		double d1[] = getMem().toArray(getOffset(), 2);
-		d1[0] = x;
-		setMem(d1);
+		setMem(0, x);
 		return this;
 	}
 
 	public Pair setY(double y) {
-		double d1[] = getMem().toArray(getOffset(), 2);
-		d1[1] = y;
-		setMem(d1);
+		setMem(1, y);
 		return this;
 	}
 

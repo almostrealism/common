@@ -17,13 +17,25 @@
 package org.almostrealism.geometry;
 
 import io.almostrealism.code.ProducerComputation;
+import org.almostrealism.hardware.AcceleratedComputationEvaluable;
+import org.almostrealism.hardware.DefaultComputer;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.KernelizedProducer;
 
 public interface TransformMatrixProducer extends ProducerComputation<TransformMatrix>, KernelizedProducer<TransformMatrix>, TransformMatrixFeatures {
 	@Override
 	default KernelizedEvaluable<TransformMatrix> get() {
-		DefaultTransformMatrixEvaluable ev = new DefaultTransformMatrixEvaluable(this);
+		DefaultComputer computer = Hardware.getLocalHardware().getComputer();
+
+		AcceleratedComputationEvaluable ev;
+
+		if (computer.isNative()) {
+			ev = (AcceleratedComputationEvaluable) computer.compileProducer(this);
+		} else {
+			ev = new DefaultTransformMatrixEvaluable(this);
+		}
+
 		ev.compile();
 		return ev;
 	}

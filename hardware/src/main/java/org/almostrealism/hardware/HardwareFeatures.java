@@ -26,7 +26,7 @@ import java.util.function.Supplier;
 
 public interface HardwareFeatures {
 	default Runnable compileRunnable(Computation<?> c) {
-		return Hardware.getLocalHardware().getComputer().compileRunnable(c);
+		return Hardware.getLocalHardware().getComputer().compileRunnable((Computation<Void>) c);
 	}
 
 	default <T extends MemoryData> KernelizedEvaluable<T> compileProducer(Computation<T> c) {

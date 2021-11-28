@@ -47,7 +47,7 @@ public interface RGBFeatures {
 	}
 
 	default RGBEvaluable cadd(Evaluable<RGB> value, Evaluable<RGB> operand) {
-		return new DefaultRGBEvaluable(cadd(() -> value, () -> operand));
+		return (RGBEvaluable) cadd(() -> value, () -> operand).get();
 	}
 
 	default RGBProducer cadd(Supplier<Evaluable<? extends RGB>> value, Supplier<Evaluable<? extends RGB>> operand) {
@@ -55,7 +55,7 @@ public interface RGBFeatures {
 	}
 
 	default RGBEvaluable csubtract(Evaluable<RGB> value, Evaluable<RGB> operand) {
-		return new DefaultRGBEvaluable(csubtract(() -> value, () -> operand));
+		return (RGBEvaluable) csubtract(() -> value, () -> operand).get();
 	}
 
 	default RGBProducer csubtract(Supplier<Evaluable<? extends RGB>> value, Supplier<Evaluable<? extends RGB>> operand) {
@@ -63,7 +63,7 @@ public interface RGBFeatures {
 	}
 
 	default RGBEvaluable cmultiply(Evaluable<RGB> a, Evaluable<RGB> b) {
-		return new DefaultRGBEvaluable(cmultiply(() -> a, () -> b));
+		return (RGBEvaluable) cmultiply(() -> a, () -> b).get();
 	}
 
 	default RGBProducer cmultiply(Supplier<Evaluable<? extends RGB>> a, Supplier<Evaluable<? extends RGB>> b) {
@@ -71,7 +71,7 @@ public interface RGBFeatures {
 	}
 
 	default RGBEvaluable cscalarMultiply(Evaluable<RGB> a, Evaluable<Scalar> b) {
-		return new DefaultRGBEvaluable(cscalarMultiply(() -> a, () -> b));
+		return (RGBEvaluable) cscalarMultiply(() -> a, () -> b).get();
 	}
 
 	default RGBProducer cscalarMultiply(Supplier<Evaluable<? extends RGB>> a, Supplier<Evaluable<? extends Scalar>> b) {
@@ -79,15 +79,11 @@ public interface RGBFeatures {
 	}
 
 	default RGBEvaluable cminus(Evaluable<RGB> p) {
-		return new DefaultRGBEvaluable(cminus(() -> p));
+		return (RGBEvaluable) cminus(() -> p).get();
 	}
 
 	default RGBProducer cminus(Supplier<Evaluable<? extends RGB>> p) {
 		return cmultiply(p, cfromScalar(ScalarFeatures.minusOne()));
-	}
-
-	default RGBEvaluable cfromScalar(Evaluable<Scalar> value) {
-		return new DefaultRGBEvaluable(cfromScalar(() -> value));
 	}
 
 	default RGBProducer cfromScalar(Supplier<Evaluable<? extends Scalar>> value) {

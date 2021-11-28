@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.code.NamedFunction;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.Computation;
@@ -32,7 +33,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collector;
 import java.util.stream.Collectors;
 
-public class OperationList extends ArrayList<Supplier<Runnable>> implements OperationComputation<Void>, HardwareFeatures {
+public class OperationList extends ArrayList<Supplier<Runnable>> implements OperationComputation<Void>, NamedFunction, HardwareFeatures {
 	private static long functionCount = 0;
 
 	private boolean enableCompilation;
@@ -44,6 +45,12 @@ public class OperationList extends ArrayList<Supplier<Runnable>> implements Oper
 		this.enableCompilation = enableCompilation;
 		this.functionName = "operations_" + functionCount++;
 	}
+
+	@Override
+	public void setFunctionName(String name) { this.functionName = name; }
+
+	@Override
+	public String getFunctionName() { return this.functionName; }
 
 	@Override
 	public Runnable get() {

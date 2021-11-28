@@ -36,7 +36,7 @@ public class BasicGeometry implements Positioned, Oriented, Scaled, DecodePostPr
 	public Vector location;
 	public double size;
 
-	public Vector scale = (Vector) UnityVector.getProducer().evaluate(new Object[0]).clone();
+	public Vector scale = (Vector) UnityVector.getEvaluable().evaluate().clone();
 	public double rotateX, rotateY, rotateZ;
 
 	private TransformMatrix transforms[];
@@ -294,6 +294,7 @@ public class BasicGeometry implements Positioned, Oriented, Scaled, DecodePostPr
 			// TODO  There is probably a better way to handle this exceptional case
 			e.printStackTrace();
 			System.out.println("BasicGeometry: Transformation will be invalid");
+			this.transformCurrent = true;
 		}
 	}
 

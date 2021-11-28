@@ -38,7 +38,7 @@ public abstract class BaseNative {
 		initNativeFunctionName();
 
 		try {
-			Hardware.getLocalHardware().loadNative(getClass(), getCode());
+			Hardware.getLocalHardware().getComputer().loadNative(getClass(), getCode());
 		} catch (UnsatisfiedLinkError | IOException | InterruptedException e) {
 			throw new RuntimeException(e);
 		}

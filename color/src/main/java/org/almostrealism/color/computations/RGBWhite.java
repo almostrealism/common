@@ -25,6 +25,4 @@ public class RGBWhite extends StaticRGBComputation {
 	public RGBWhite() { super(new RGB(1.0, 1.0, 1.0)); }
 
 	public static RGBWhite getInstance() { return local; }
-
-	public static RGBEvaluable getEvaluable() { return new DefaultRGBEvaluable(getInstance()); }
 }

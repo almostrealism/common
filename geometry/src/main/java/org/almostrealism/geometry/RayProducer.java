@@ -20,13 +20,25 @@ import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.algebra.VectorProducer;
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.hardware.AcceleratedComputationEvaluable;
+import org.almostrealism.hardware.DefaultComputer;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.KernelizedProducer;
 
 public interface RayProducer extends ProducerComputation<Ray>, KernelizedProducer<Ray>, RayFeatures {
 	@Override
 	default KernelizedEvaluable<Ray> get() {
-		DefaultRayEvaluable ev = new DefaultRayEvaluable(this);
+		DefaultComputer computer = Hardware.getLocalHardware().getComputer();
+
+		AcceleratedComputationEvaluable ev;
+
+		if (computer.isNative()) {
+			ev = (AcceleratedComputationEvaluable) computer.compileProducer(this);
+		} else {
+			ev = new DefaultRayEvaluable(this);
+		}
+
 		ev.compile();
 		return ev;
 	}

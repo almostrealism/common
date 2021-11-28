@@ -16,6 +16,8 @@
 
 package org.almostrealism.algebra;
 
+import io.almostrealism.relation.Evaluable;
+
 public class ZeroVector extends ImmutableVector {
 	private static ZeroVector local = new ZeroVector();
 
@@ -27,5 +29,5 @@ public class ZeroVector extends ImmutableVector {
 
 	public static ZeroVector getInstance() { return local; }
 
-	public static VectorEvaluable getEvaluable() { return (VectorEvaluable) getInstance().get(); }
+	public static Evaluable<Vector> getEvaluable() { return getInstance().get(); }
 }

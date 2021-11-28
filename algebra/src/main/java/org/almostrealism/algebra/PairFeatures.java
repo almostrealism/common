@@ -48,7 +48,7 @@ public interface PairFeatures {
 	}
 
 	default ScalarEvaluable l(Evaluable<Pair> p) {
-		return new DefaultScalarEvaluable(l(() -> p));
+		return (ScalarEvaluable) l(() -> p).get();
 	}
 
 	default ScalarProducer l(Supplier<Evaluable<? extends Pair>> p) {
@@ -56,7 +56,7 @@ public interface PairFeatures {
 	}
 
 	default ScalarEvaluable r(Evaluable<Pair> p) {
-		return new DefaultScalarEvaluable(r(() -> p));
+		return (ScalarEvaluable) r(() -> p).get();
 	}
 
 	default ScalarProducer r(Supplier<Evaluable<? extends Pair>> p) {
@@ -64,7 +64,7 @@ public interface PairFeatures {
 	}
 
 	default PairEvaluable pairAdd(Evaluable<Pair> a, Evaluable<Pair> b) {
-		return new DefaultPairEvaluable(pairAdd(() -> a, () -> b));
+		return (PairEvaluable) pairAdd(() -> a, () -> b).get();
 	}
 
 	default PairProducer pairAdd(Supplier<Evaluable<? extends Pair>> a, Supplier<Evaluable<? extends Pair>> b) {
@@ -72,7 +72,7 @@ public interface PairFeatures {
 	}
 
 	default PairEvaluable pairSubtract(Evaluable<Scalar> a, Evaluable<Scalar> b) {
-		return new DefaultPairEvaluable(pairSubtract(() -> a, () -> b));
+		return (PairEvaluable) pairSubtract(() -> a, () -> b).get();
 	}
 
 	default PairProducer pairSubtract(Supplier<Evaluable<? extends Pair>> a, Supplier<Evaluable<? extends Pair>> b) {
@@ -80,7 +80,7 @@ public interface PairFeatures {
 	}
 
 	default PairEvaluable pairsMultiply(Evaluable<Pair> a, Evaluable<Pair> b) {
-		return new DefaultPairEvaluable(pairsMultiply(() -> a, () -> b));
+		return (PairEvaluable) pairsMultiply(() -> a, () -> b).get();
 	}
 
 	default PairProducer pairsMultiply(Supplier<Evaluable<? extends Pair>> a, Supplier<Evaluable<? extends Pair>> b) {
@@ -88,7 +88,7 @@ public interface PairFeatures {
 	}
 
 	default PairEvaluable multiplyComplex(Evaluable<Scalar> a, Evaluable<Scalar> b) {
-		return new DefaultPairEvaluable(multiplyComplex(() -> a, () -> b));
+		return (PairEvaluable) multiplyComplex(() -> a, () -> b).get();
 	}
 
 	default PairProducer multiplyComplex(Supplier<Evaluable<? extends Pair>> a, Supplier<Evaluable<? extends Pair>> b) {
@@ -96,7 +96,7 @@ public interface PairFeatures {
 	}
 
 	default PairEvaluable pairDivide(Evaluable<Pair> a, Evaluable<Scalar> b) {
-		return new DefaultPairEvaluable(pairDivide(() -> a, () -> b));
+		return (PairEvaluable) pairDivide(() -> a, () -> b).get();
 	}
 
 	default PairProducer pairDivide(Supplier<Evaluable<? extends Pair>> a, Supplier<Evaluable<? extends Scalar>> b) {
@@ -105,7 +105,7 @@ public interface PairFeatures {
 	}
 
 	default PairEvaluable pairsDivide(Evaluable<Pair> a, Evaluable<Pair> b) {
-		return new DefaultPairEvaluable(pairsDivide(() -> a, () -> b));
+		return (PairEvaluable) pairsDivide(() -> a, () -> b).get();
 	}
 
 	default PairProducer pairsDivide(Supplier<Evaluable<? extends Pair>> a, Supplier<Evaluable<? extends Pair>> b) {
@@ -113,7 +113,7 @@ public interface PairFeatures {
 	}
 
 	default PairEvaluable pairMinus(Evaluable<Scalar> v) {
-		return new DefaultPairEvaluable(pairMinus(() -> v));
+		return (PairEvaluable) pairMinus(() -> v).get();
 	}
 
 	default PairProducer pairMinus(Supplier<Evaluable<? extends Pair>> v) {
@@ -133,7 +133,7 @@ public interface PairFeatures {
 	}
 
 	default PairEvaluable fromScalars(Evaluable<Scalar> x, Evaluable<Scalar> y) {
-		return new DefaultPairEvaluable(fromScalars(() -> x, () -> y));
+		return (PairEvaluable) fromScalars(() -> x, () -> y).get();
 	}
 
 	default PairProducer fromScalars(Supplier<Evaluable<? extends Scalar>> x, Supplier<Evaluable<? extends Scalar>> y) {

@@ -74,12 +74,16 @@ public interface MemoryData extends MultiExpression<Double>, Delegated<MemoryDat
 		return new Expression<>(Double.class, s);
 	}
 
-	default void setMem(double[] source) {
-		setMem(0, source, 0, getMemLength());
+	default void setMem(int offset, double... values) {
+		setMem(offset, values, 0, values.length);
 	}
 
-	default void setMem(double[] source, int offset) {
-		setMem(0, source, offset, getMemLength());
+	default void setMem(double... source) {
+		setMem(0, source, 0, source.length);
+	}
+
+	default void setMem(double[] source, int srcOffset) {
+		setMem(0, source, srcOffset, source.length);
 	}
 
 	default void setMem(int offset, double[] source, int srcOffset, int length) {

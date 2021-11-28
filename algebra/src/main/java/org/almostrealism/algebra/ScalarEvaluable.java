@@ -47,7 +47,7 @@ public interface ScalarEvaluable extends Evaluable<Scalar>, ScalarFeatures {
 	}
 
 	default ScalarEvaluable multiply(Evaluable<Scalar> value) {
-		return new DefaultScalarEvaluable(multiply(() -> value));
+		return (ScalarEvaluable) multiply(() -> value).get();
 	}
 
 	default ProducerComputation<Scalar> multiply(Supplier<Evaluable<? extends Scalar>> value) {
@@ -63,7 +63,7 @@ public interface ScalarEvaluable extends Evaluable<Scalar>, ScalarFeatures {
 	}
 
 	default ScalarEvaluable divide(Evaluable<Scalar> value) {
-		return new DefaultScalarEvaluable(divide(() -> value));
+		return (ScalarEvaluable) divide(() -> value).get();
 	}
 
 	default ProducerComputation<Scalar> divide(Supplier<Evaluable<? extends Scalar>> value) {

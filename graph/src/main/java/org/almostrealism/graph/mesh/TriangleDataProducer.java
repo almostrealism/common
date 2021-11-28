@@ -18,6 +18,9 @@ package org.almostrealism.graph.mesh;
 
 import org.almostrealism.algebra.VectorProducer;
 import io.almostrealism.code.ProducerComputation;
+import org.almostrealism.hardware.AcceleratedComputationEvaluable;
+import org.almostrealism.hardware.DefaultComputer;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.KernelizedProducer;
 
@@ -25,7 +28,16 @@ public interface TriangleDataProducer extends ProducerComputation<TriangleData>,
 
 	@Override
 	default KernelizedEvaluable<TriangleData> get() {
-		DefaultTriangleDataEvaluable ev = new DefaultTriangleDataEvaluable(this);
+		DefaultComputer computer = Hardware.getLocalHardware().getComputer();
+
+		AcceleratedComputationEvaluable ev;
+
+		if (computer.isNative()) {
+			ev = (AcceleratedComputationEvaluable) computer.compileProducer(this);
+		} else {
+			ev = new DefaultTriangleDataEvaluable(this);
+		}
+
 		ev.compile();
 		return ev;
 	}

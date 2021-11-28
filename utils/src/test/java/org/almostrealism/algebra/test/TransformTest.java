@@ -17,9 +17,9 @@ public class TransformTest implements HardwareFeatures, CodeFeatures {
 	}
 
 	protected AcceleratedComputationEvaluable<Vector> transformAsLocation() {
-		return new DefaultVectorEvaluable(
+		return (AcceleratedComputationEvaluable<Vector>)
 				new TransformAsLocation(matrix(),
-						vector(1.0, 2.0, 3.0)));
+						vector(1.0, 2.0, 3.0)).get();
 	}
 
 	@Test

@@ -16,11 +16,15 @@
 
 package org.almostrealism.color;
 
+import io.almostrealism.code.OperationAdapter;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.color.computations.DefaultRGBEvaluable;
+import org.almostrealism.hardware.AcceleratedComputationEvaluable;
+import org.almostrealism.hardware.DefaultComputer;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.KernelizedProducer;
 
@@ -29,7 +33,16 @@ import java.util.function.Supplier;
 public interface RGBProducer extends ProducerComputation<RGB>, KernelizedProducer<RGB>, RGBFeatures {
 	@Override
 	default KernelizedEvaluable<RGB> get() {
-		DefaultRGBEvaluable ev = new DefaultRGBEvaluable(this);
+		DefaultComputer computer = Hardware.getLocalHardware().getComputer();
+
+		AcceleratedComputationEvaluable ev;
+
+		if (computer.isNative()) {
+			ev = (AcceleratedComputationEvaluable) computer.compileProducer(this);
+		} else {
+			ev = new DefaultRGBEvaluable(this);
+		}
+		
 		ev.compile();
 		return ev;
 	}

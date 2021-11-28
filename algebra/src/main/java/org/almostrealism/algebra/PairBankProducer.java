@@ -18,13 +18,25 @@ package org.almostrealism.algebra;
 
 import io.almostrealism.code.ProducerComputation;
 import org.almostrealism.algebra.computations.DefaultPairBankEvaluable;
+import org.almostrealism.hardware.AcceleratedComputationEvaluable;
+import org.almostrealism.hardware.DefaultComputer;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.KernelizedProducer;
 
 public interface PairBankProducer extends ProducerComputation<PairBank>, KernelizedProducer<PairBank>, PairFeatures {
 	@Override
 	default KernelizedEvaluable<PairBank> get() {
-		DefaultPairBankEvaluable ev = new DefaultPairBankEvaluable(this);
+		DefaultComputer computer = Hardware.getLocalHardware().getComputer();
+
+		AcceleratedComputationEvaluable ev;
+
+		if (computer.isNative()) {
+			ev = (AcceleratedComputationEvaluable) computer.compileProducer(this);
+		} else {
+			ev = new DefaultPairBankEvaluable(this);
+		}
+
 		ev.compile();
 		return ev;
 	}

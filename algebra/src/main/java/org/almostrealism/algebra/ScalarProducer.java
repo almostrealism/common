@@ -28,6 +28,9 @@ import org.almostrealism.bool.GreaterThanScalar;
 import org.almostrealism.bool.GreaterThanVector;
 import org.almostrealism.bool.LessThanScalar;
 import org.almostrealism.bool.LessThanVector;
+import org.almostrealism.hardware.AcceleratedComputationEvaluable;
+import org.almostrealism.hardware.DefaultComputer;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.KernelizedProducer;
 
@@ -36,7 +39,16 @@ import java.util.function.Supplier;
 public interface ScalarProducer extends ProducerComputation<Scalar>, KernelizedProducer<Scalar>, ScalarFeatures {
 	@Override
 	default KernelizedEvaluable<Scalar> get() {
-		DefaultScalarEvaluable ev = new DefaultScalarEvaluable(this);
+		DefaultComputer computer = Hardware.getLocalHardware().getComputer();
+
+		AcceleratedComputationEvaluable ev;
+
+		if (computer.isNative()) {
+			ev = (AcceleratedComputationEvaluable) computer.compileProducer(this);
+		} else {
+			ev = new DefaultScalarEvaluable(this);
+		}
+
 		ev.compile();
 		return ev;
 	}

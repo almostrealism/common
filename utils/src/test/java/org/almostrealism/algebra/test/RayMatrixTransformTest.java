@@ -34,7 +34,7 @@ public class RayMatrixTransformTest implements HardwareFeatures, TestFeatures {
 		TransformMatrix m = new TranslationMatrix(vector(0.0, -10.0, 0.0)).evaluate();
 
 		Ray r = new Ray(new Vector(1.0, 2.0, 3.0), new Vector(4.0, 5.0, 6.0));
-		return new DefaultRayEvaluable(new RayMatrixTransform(m.getInverse(), v(r)));
+		return (AcceleratedComputationEvaluable<Ray>) new RayMatrixTransform(m.getInverse(), v(r)).get();
 	}
 
 	@Test

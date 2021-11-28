@@ -22,6 +22,7 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.computations.DefaultScalarBankEvaluable;
 import org.almostrealism.algebra.computations.Preemphasize;
+import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.DynamicAcceleratedEvaluable;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
@@ -44,7 +45,7 @@ public class PreemphasizeTest implements TestFeatures {
 				v(Scalar.class, 1)).get();
 
 		((OperationAdapter) ev).compile();
-		System.out.println(((DefaultScalarBankEvaluable) ev).getFunctionDefinition());
+		System.out.println(((AcceleratedComputationEvaluable) ev).getFunctionDefinition());
 
 		ScalarBank b = ev.evaluate(window(), new Scalar(0.1));
 		IntStream.range(0, b.getCount()).mapToObj(b::get).forEach(System.out::println);

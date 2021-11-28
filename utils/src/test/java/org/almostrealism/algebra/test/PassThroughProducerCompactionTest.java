@@ -37,9 +37,9 @@ public class PassThroughProducerCompactionTest implements HardwareFeatures, Code
 
 	@Test
 	public void applySum() {
-		DefaultScalarEvaluable ev = (DefaultScalarEvaluable) sum().get();
+		AcceleratedComputationEvaluable ev = (AcceleratedComputationEvaluable) sum().get();
 		System.out.println(ev.getFunctionDefinition());
-		Scalar s = ev.evaluate(new Scalar(1.0), new Scalar(2.0));
+		Scalar s = (Scalar) ev.evaluate(new Scalar(1.0), new Scalar(2.0));
 		Assert.assertEquals(3.0, s.getValue(), Math.pow(10, -10));
 	}
 

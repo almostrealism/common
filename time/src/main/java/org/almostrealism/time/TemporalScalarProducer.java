@@ -19,13 +19,24 @@ package org.almostrealism.time;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.code.ProducerComputation;
+import org.almostrealism.hardware.DefaultComputer;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.KernelizedProducer;
 
 public interface TemporalScalarProducer extends ProducerComputation<TemporalScalar>, KernelizedProducer<TemporalScalar>, TemporalScalarFeatures {
 	@Override
 	default KernelizedEvaluable<TemporalScalar> get() {
-		AcceleratedComputationEvaluable ev = new AcceleratedComputationEvaluable<>(this);
+		DefaultComputer computer = Hardware.getLocalHardware().getComputer();
+
+		AcceleratedComputationEvaluable ev;
+
+		if (computer.isNative()) {
+			ev = (AcceleratedComputationEvaluable) computer.compileProducer(this);
+		} else {
+			ev = new AcceleratedComputationEvaluable(this);
+		}
+
 		ev.compile();
 		return ev;
 	}

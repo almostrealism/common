@@ -17,6 +17,7 @@
 package org.almostrealism.hardware.jni;
 
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.cl.CLMemoryProvider;
 
 import java.io.BufferedWriter;
@@ -97,6 +98,11 @@ public class NativeCompiler {
 
 		Process process = new ProcessBuilder(getCommand(name)).inheritIO().start();
 		process.waitFor();
+
+		if (process.exitValue() != 0) {
+			throw new HardwareException("Native compiler failure (" + process.exitValue() + ")");
+		}
+
 		if (enableVerbose) System.out.println("NativeCompiler: Native code compiled for " + target.getSimpleName());
 		return name;
 	}

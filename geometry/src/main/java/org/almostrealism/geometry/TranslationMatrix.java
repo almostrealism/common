@@ -16,8 +16,6 @@
 
 package org.almostrealism.geometry;
 
-import io.almostrealism.code.DefaultScopeInputManager;
-import io.almostrealism.code.ScopeInputManager;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.hardware.AcceleratedEvaluable;
 import io.almostrealism.relation.Evaluable;

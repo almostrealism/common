@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -34,7 +34,7 @@ import java.util.function.BiFunction;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-public abstract class OperationAdapter<T> implements Compactable, NameProvider, Named {
+public abstract class OperationAdapter<T> implements Compactable, NameProvider, NamedFunction, Named {
 	public static final boolean enableNullInputs = true;
 
 	private static long functionId = 0;
@@ -58,6 +58,7 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 		if (args.length > 0) setArguments(Arrays.asList(args));
 	}
 
+	@Override
 	public void setFunctionName(String name) { function = name; }
 
 	@Override

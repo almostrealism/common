@@ -19,6 +19,14 @@ package io.almostrealism.code;
 public interface Memory {
 	MemoryProvider getProvider();
 
+	default void set(double... values) {
+		set(0, values);
+	}
+
+	default void set(int offset, double... values) {
+		getProvider().setMem(this, offset, values, 0, values.length);
+	}
+
 	default double[] toArray(int length) {
 		return toArray(0, length);
 	}

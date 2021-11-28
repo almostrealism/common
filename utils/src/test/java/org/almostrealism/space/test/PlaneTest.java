@@ -91,14 +91,14 @@ public class PlaneTest implements HardwareFeatures, CodeFeatures {
 		RayMatrixTransform t = new RayMatrixTransform(p.getTransform(true),
 					ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0));
 		Assert.assertEquals(new Ray(new Vector(0.0, -10.0, 1.0),
-				new Vector(0.0, 0.5, -1.0)), new DefaultRayEvaluable(t).evaluate());
+				new Vector(0.0, 0.5, -1.0)), t.get().evaluate());
 
 		t = new RayMatrixTransform(p.getTransform(true).getInverse(),
 					ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0));
 		Assert.assertEquals(new Ray(new Vector(0.0, 10.0, 1.0),
-				new Vector(0.0, 0.5, -1.0)), new DefaultRayEvaluable(t).evaluate());
+				new Vector(0.0, 0.5, -1.0)), t.get().evaluate());
 
-		Vector v = new DefaultRayEvaluable(t).evaluate().pointAt(scalar(-20)).get().evaluate();
+		Vector v = t.get().evaluate().pointAt(scalar(-20)).get().evaluate();
 		Assert.assertEquals(new Vector(0.0, 0.0, 21.0), v);
 	}
 }

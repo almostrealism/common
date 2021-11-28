@@ -23,17 +23,23 @@ import org.almostrealism.hardware.MemoryData;
 
 import java.util.stream.Stream;
 
-public class NativeComputationOperation<T> extends AcceleratedComputationOperation<T> {
+public class NativeComputationOperation<T> extends AcceleratedComputationOperation<T> implements NativeLibrary {
+	private NativeSupport<NativeComputationOperation<T>> n;
+
 	public NativeComputationOperation(Computation<T> c) {
+		this(c, (NativeSupport<NativeComputationOperation<T>>) c);
+	}
+
+	public NativeComputationOperation(Computation<T> c, NativeSupport<NativeComputationOperation<T>> n) {
 		super(c, false);
 		setCompilation(Compilation.JNI);
+		this.n = n;
 	}
 
 	@Override
 	public Object[] apply(Object[] args) {
 		args = getAllArgs(args);
-		((NativeSupport) getComputation()).apply(
-				Stream.of(args).map(o -> (MemoryData) o).toArray(MemoryData[]::new));
+		n.apply(Stream.of(args).map(o -> (MemoryData) o).toArray(MemoryData[]::new));
 		return args;
 	}
 }

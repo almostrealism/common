@@ -16,7 +16,7 @@
 
 package org.almostrealism.algebra;
 
-import org.almostrealism.algebra.computations.DefaultVectorEvaluable;
+import io.almostrealism.relation.Evaluable;
 
 public class UnityVector extends ImmutableVector {
 	private static UnityVector local = new UnityVector();
@@ -27,9 +27,7 @@ public class UnityVector extends ImmutableVector {
 
 	public static UnityVector getInstance() { return local; }
 
-	public static VectorEvaluable getProducer() {
-		DefaultVectorEvaluable ev = new DefaultVectorEvaluable(getInstance());
-		ev.compile();
-		return ev;
+	public static Evaluable<Vector> getEvaluable() {
+		return getInstance().get();
 	}
 }

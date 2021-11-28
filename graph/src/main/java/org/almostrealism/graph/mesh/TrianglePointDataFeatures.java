@@ -27,7 +27,7 @@ import java.util.function.Supplier;
 
 public interface TrianglePointDataFeatures extends VectorFeatures {
 	default VectorEvaluable p1(Evaluable<TrianglePointData> t) {
-		return new DefaultVectorEvaluable(p1(() -> t));
+		return (VectorEvaluable) p1(() -> t).get();
 	}
 
 	default VectorProducer p1(Supplier<Evaluable<? extends TrianglePointData>> t) {
@@ -35,7 +35,7 @@ public interface TrianglePointDataFeatures extends VectorFeatures {
 	}
 
 	default VectorEvaluable p2(Evaluable<TrianglePointData> t) {
-		return new DefaultVectorEvaluable(p2(() -> t));
+		return (VectorEvaluable) p2(() -> t).get();
 	}
 
 	default VectorProducer p2(Supplier<Evaluable<? extends TrianglePointData>> t) {
@@ -43,7 +43,7 @@ public interface TrianglePointDataFeatures extends VectorFeatures {
 	}
 
 	default VectorEvaluable p3(Evaluable<TrianglePointData> t) {
-		return new DefaultVectorEvaluable(p3(() -> t));
+		return (VectorEvaluable) p3(() -> t).get();
 	}
 
 	default VectorProducer p3(Supplier<Evaluable<? extends TrianglePointData>> t) {

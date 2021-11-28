@@ -20,6 +20,9 @@ import io.almostrealism.code.expressions.MultiExpression;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.computations.DefaultPairEvaluable;
 import io.almostrealism.code.ProducerComputation;
+import org.almostrealism.hardware.AcceleratedComputationEvaluable;
+import org.almostrealism.hardware.DefaultComputer;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.KernelizedProducer;
 
@@ -29,7 +32,16 @@ public interface PairProducer extends ProducerComputation<Pair>, KernelizedProdu
 										MultiExpression<Double>, PairFeatures {
 	@Override
 	default KernelizedEvaluable<Pair> get() {
-		DefaultPairEvaluable ev = new DefaultPairEvaluable(this);
+		DefaultComputer computer = Hardware.getLocalHardware().getComputer();
+
+		AcceleratedComputationEvaluable ev;
+
+		if (computer.isNative()) {
+			ev = (AcceleratedComputationEvaluable) computer.compileProducer(this);
+		} else {
+			ev = new DefaultPairEvaluable(this);
+		}
+
 		ev.compile();
 		return ev;
 	}

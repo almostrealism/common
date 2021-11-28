@@ -49,7 +49,7 @@ public interface ScalarFeatures {
 	}
 
 	default ScalarEvaluable scalarAdd(Evaluable<Scalar> a, Evaluable<Scalar> b) {
-		return new DefaultScalarEvaluable(scalarAdd(() -> a, () -> b));
+		return (ScalarEvaluable) scalarAdd(() -> a, () -> b).get();
 	}
 
 	default ScalarProducer scalarAdd(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
@@ -57,7 +57,7 @@ public interface ScalarFeatures {
 	}
 
 	default ScalarEvaluable scalarSubtract(Evaluable<Scalar> a, Evaluable<Scalar> b) {
-		return new DefaultScalarEvaluable(scalarSubtract(() -> a, () -> b));
+		return (ScalarEvaluable) scalarSubtract(() -> a, () -> b).get();
 	}
 
 	default ScalarProducer scalarSubtract(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
@@ -65,7 +65,7 @@ public interface ScalarFeatures {
 	}
 
 	default ScalarEvaluable scalarsMultiply(Evaluable<Scalar> a, Evaluable<Scalar> b) {
-		return new DefaultScalarEvaluable(scalarsMultiply(() -> a, () -> b));
+		return (ScalarEvaluable) scalarsMultiply(() -> a, () -> b).get();
 	}
 
 	default ScalarProducer scalarsMultiply(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
@@ -77,7 +77,7 @@ public interface ScalarFeatures {
 	}
 
 	default ScalarEvaluable scalarMinus(Evaluable<Scalar> v) {
-		return new DefaultScalarEvaluable(scalarMinus(() -> v));
+		return (ScalarEvaluable) scalarMinus(() -> v).get();
 	}
 
 	default ScalarProducer scalarMinus(Supplier<Evaluable<? extends Scalar>> v) {
@@ -85,7 +85,7 @@ public interface ScalarFeatures {
 	}
 
 	default ScalarEvaluable pow(Evaluable<Scalar> base, Evaluable<Scalar> exponent) {
-		return new DefaultScalarEvaluable(pow(() -> base, () -> exponent));
+		return (ScalarEvaluable) pow(() -> base, () -> exponent).get();
 	}
 
 	default ScalarProducer pow(Supplier<Evaluable<? extends Scalar>> base, Supplier<Evaluable<? extends Scalar>> exponent) {

@@ -19,6 +19,9 @@ package org.almostrealism.algebra;
 import org.almostrealism.algebra.computations.DefaultVectorEvaluable;
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.hardware.AcceleratedComputationEvaluable;
+import org.almostrealism.hardware.DefaultComputer;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.KernelizedProducer;
 
@@ -28,7 +31,16 @@ public interface VectorProducer extends ProducerComputation<Vector>, KernelizedP
 
 	@Override
 	default KernelizedEvaluable<Vector> get() {
-		DefaultVectorEvaluable ev = new DefaultVectorEvaluable(this);
+		DefaultComputer computer = Hardware.getLocalHardware().getComputer();
+
+		AcceleratedComputationEvaluable ev;
+
+		if (computer.isNative()) {
+			ev = (AcceleratedComputationEvaluable) computer.compileProducer(this);
+		} else {
+			ev = new DefaultVectorEvaluable(this);
+		}
+
 		ev.compile();
 		return ev;
 	}

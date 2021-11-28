@@ -50,7 +50,7 @@ public interface RayFeatures {
 	}
 
 	default VectorEvaluable origin(Evaluable<Ray> r) {
-		return new DefaultVectorEvaluable(origin(() -> r));
+		return (VectorEvaluable) origin(() -> r).get();
 	}
 
 	default VectorProducer origin(Supplier<Evaluable<? extends Ray>> r) {
@@ -58,7 +58,7 @@ public interface RayFeatures {
 	}
 
 	default VectorEvaluable direction(Evaluable<Ray> r) {
-		return new DefaultVectorEvaluable(direction(() -> r));
+		return (VectorEvaluable) direction(() -> r).get();
 	}
 
 	default VectorProducer direction(Supplier<Evaluable<? extends Ray>> r) {

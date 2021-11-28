@@ -26,10 +26,16 @@ import java.util.stream.Stream;
 public class NativeComputationEvaluable<T extends MemoryData> extends AcceleratedComputationEvaluable<T> implements NativeLibrary {
 
 	private String head;
+	private NativeSupport<NativeComputationEvaluable<T>> n;
 
 	public NativeComputationEvaluable(Computation<T> c) {
+		this(c, (NativeSupport<NativeComputationEvaluable<T>>) c);
+	}
+
+	public NativeComputationEvaluable(Computation<T> c, NativeSupport<NativeComputationEvaluable<T>> n) {
 		super(c, false);
 		setCompilation(Compilation.JNI);
+		this.n = n;
 	}
 
 	public String getHead() { return head; }
@@ -48,8 +54,7 @@ public class NativeComputationEvaluable<T extends MemoryData> extends Accelerate
 	@Override
 	public Object[] apply(Object[] args) {
 		args = getAllArgs(args);
-		((NativeSupport) getComputation()).apply(
-				Stream.of(args).map(o -> (MemoryData) o).toArray(MemoryData[]::new));
+		n.apply(Stream.of(args).map(o -> (MemoryData) o).toArray(MemoryData[]::new));
 		return args;
 	}
 }

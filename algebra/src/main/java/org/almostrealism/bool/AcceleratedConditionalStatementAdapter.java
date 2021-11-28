@@ -16,6 +16,7 @@
 
 package org.almostrealism.bool;
 
+import io.almostrealism.code.Argument;
 import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerComputationAdapter;
@@ -104,20 +105,30 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemoryDat
 			buf.append(") {\n");
 
 			for (int i = 0; i < getMemLength(); i++) {
+//				buf.append("\t");
+//				buf.append(getVariableValueName(outputVariable, i, true));
+//				buf.append(" = ");
+//				buf.append(getVariableValueName(getTrueValue(), i));
+//				buf.append(";\n");
 				buf.append("\t");
-				buf.append(getVariableValueName(outputVariable, i, true));
+				buf.append(((ArrayVariable) outputVariable).valueAt(i).getExpression());
 				buf.append(" = ");
-				buf.append(getVariableValueName(getTrueValue(), i));
+				buf.append(getTrueValue().valueAt(i).getExpression());
 				buf.append(";\n");
 			}
 
 			buf.append("} else {\n");
 
 			for (int i = 0; i < getMemLength(); i++) {
+//				buf.append("\t");
+//				buf.append(getVariableValueName(outputVariable, i, true));
+//				buf.append(" = ");
+//				buf.append(getVariableValueName(getFalseValue(), i));
+//				buf.append(";\n");
 				buf.append("\t");
-				buf.append(getVariableValueName(outputVariable, i, true));
+				buf.append(((ArrayVariable) outputVariable).valueAt(i).getExpression());
 				buf.append(" = ");
-				buf.append(getVariableValueName(getFalseValue(), i));
+				buf.append(getFalseValue().valueAt(i).getExpression());
 				buf.append(";\n");
 			}
 

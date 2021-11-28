@@ -22,6 +22,7 @@ import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.computations.RayCopy;
 import org.almostrealism.geometry.computations.RayPointAt;
 import org.almostrealism.geometry.computations.StaticRayComputation;
+import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.DynamicAcceleratedEvaluable;
 import org.almostrealism.hardware.DynamicAcceleratedOperation;
 import org.almostrealism.hardware.HardwareFeatures;
@@ -58,7 +59,7 @@ public class RayTest implements TestFeatures {
 		StaticRayComputation comp = new StaticRayComputation(
 													new Ray(new Vector(1.0, 2.0, 3.0),
 															new Vector(4.0, 5.0, 6.0)));
-		DefaultRayEvaluable ev = (DefaultRayEvaluable) comp.get();
+		AcceleratedComputationEvaluable<Ray> ev = (AcceleratedComputationEvaluable<Ray>) comp.get();
 		System.out.println(ev.getFunctionDefinition());
 
 		Ray r = ev.evaluate();

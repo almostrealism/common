@@ -17,6 +17,7 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.Method;
+import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.OperationComputationAdapter;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.relation.Evaluable;
@@ -48,5 +49,11 @@ public abstract class DynamicOperationComputationAdapter<T> extends OperationCom
 	public PhysicalScope getDefaultPhysicalScope() { return PhysicalScope.GLOBAL; }
 
 	@Override
-	public Runnable get() { return compileRunnable(this); }
+	public Runnable get() {
+		Runnable r = compileRunnable(this);
+		if (r instanceof OperationAdapter) {
+			((OperationAdapter) r).compile();
+		}
+		return r;
+	}
 }

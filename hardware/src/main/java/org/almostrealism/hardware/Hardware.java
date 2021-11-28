@@ -53,7 +53,6 @@ public final class Hardware {
 	protected static final int timeSeriesCount;
 
 	private static final Hardware local;
-	private static final List<Class> libs = new ArrayList<>();
 
 	static {
 		boolean gpu = "gpu".equalsIgnoreCase(System.getenv("AR_HARDWARE_PLATFORM")) ||
@@ -139,8 +138,7 @@ public final class Hardware {
 	private List<ContextListener> contextListeners;
 
 	private AcceleratedFunctions functions;
-	private final Computer computer;
-	private final NativeCompiler nativeCompiler;
+	private final DefaultComputer computer;
 	private final NativeMemoryProvider nativeRam;
 	
 	private Hardware(String compilerExec, String libDir, boolean enableCl, boolean enableGpu,
@@ -204,8 +202,7 @@ public final class Hardware {
 			System.out.println("Initializing Hardware...");
 		}
 
-		computer = new DefaultComputer();
-		if (enableVerbose) System.out.println("Hardware[" + name + "]: Created DefaultComputer");
+		NativeCompiler nativeCompiler;
 
 		if (compilerExec != null && libDir != null) {
 			nativeCompiler = new NativeCompiler(this, compilerExec, libDir, LIB_FORMAT);
@@ -214,6 +211,9 @@ public final class Hardware {
 		}
 
 		if (enableVerbose) System.out.println("Hardware[" + name + "]: Created NativeCompiler");
+
+		computer = new DefaultComputer(nativeCompiler);
+		if (enableVerbose) System.out.println("Hardware[" + name + "]: Created DefaultComputer");
 
 		if (!enableCl) {
 			nativeRam = new NativeMemoryProvider(memoryMax);
@@ -232,25 +232,11 @@ public final class Hardware {
 
 	public static Hardware getLocalHardware() { return local; }
 
-	public Computer getComputer() { return computer; }
-
-	public NativeCompiler getNativeCompiler() { return nativeCompiler; }
-
-	public synchronized void loadNative(Class cls, String code) throws IOException, InterruptedException {
-		if (libs.contains(cls)) return;
-
-		getNativeCompiler().compileAndLoad(cls, code);
-		libs.add(cls);
-	}
-
-	public synchronized void loadNative(NativeSupport lib) throws IOException, InterruptedException {
-		if (libs.contains(lib.getClass())) return;
-
-		getNativeCompiler().compileAndLoad(lib.getClass(), lib.get());
-		libs.add(lib.getClass());
-	}
+	public DefaultComputer getComputer() { return computer; }
 
 	protected void start(DefaultDataContext ctx) {
+		if (computer.isNative()) return;
+
 		final int platformIndex = 0;
 		final int deviceIndex = 0;
 		final long deviceType = enableGpu ? CL.CL_DEVICE_TYPE_GPU : CL.CL_DEVICE_TYPE_CPU;

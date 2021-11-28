@@ -63,7 +63,7 @@ public interface VectorFeatures {
 	default Producer<Vector> vector() { return Vector.blank(); }
 
 	default ScalarEvaluable x(Evaluable<Vector> v) {
-		return new DefaultScalarEvaluable(x(() -> v));
+		return (ScalarEvaluable) x(() -> v).get();
 	}
 
 	default ScalarProducer x(Supplier<Evaluable<? extends Vector>> v) {
@@ -71,7 +71,7 @@ public interface VectorFeatures {
 	}
 
 	default ScalarEvaluable y(Evaluable<Vector> v) {
-		return new DefaultScalarEvaluable(y(() -> v));
+		return (ScalarEvaluable) y(() -> v).get();
 	}
 
 	default ScalarProducer y(Supplier<Evaluable<? extends Vector>> v) {
@@ -79,7 +79,7 @@ public interface VectorFeatures {
 	}
 
 	default ScalarEvaluable z(Evaluable<Vector> v) {
-		return new DefaultScalarEvaluable(z(() -> v));
+		return (ScalarEvaluable) z(() -> v).get();
 	}
 
 	default ScalarProducer z(Supplier<Evaluable<? extends Vector>> v) {
@@ -87,7 +87,7 @@ public interface VectorFeatures {
 	}
 
 	default ScalarEvaluable dotProduct(Evaluable<Vector> a, Evaluable<Vector> b) {
-		return new DefaultScalarEvaluable(dotProduct(() -> a, () -> b));
+		return (ScalarEvaluable) dotProduct(() -> a, () -> b).get();
 	}
 
 	default ScalarProducer dotProduct(Supplier<Evaluable<? extends Vector>> a, Supplier<Evaluable<? extends Vector>> b) {
@@ -95,7 +95,7 @@ public interface VectorFeatures {
 	}
 
 	default VectorEvaluable crossProduct(Evaluable<Vector> a, Evaluable<Vector> b) {
-		return new DefaultVectorEvaluable(crossProduct(() -> a, () -> b));
+		return (VectorEvaluable) crossProduct(() -> a, () -> b).get();
 	}
 
 	default VectorProducer crossProduct(Supplier<Evaluable<? extends Vector>> a, Supplier<Evaluable<? extends Vector>> b) {
@@ -103,7 +103,7 @@ public interface VectorFeatures {
 	}
 
 	default VectorEvaluable add(Evaluable<Vector> value, Evaluable<Vector> operand) {
-		return new DefaultVectorEvaluable(add(() -> value, () -> operand));
+		return (VectorEvaluable) add(() -> value, () -> operand).get();
 	}
 
 	default VectorProducer add(Supplier<Evaluable<? extends Vector>> value, Supplier<Evaluable<? extends Vector>> operand) {
@@ -111,14 +111,14 @@ public interface VectorFeatures {
 	}
 
 	default VectorEvaluable subtract(Evaluable<Vector> value, Evaluable<Vector> operand) {
-		return new DefaultVectorEvaluable(subtract(() -> value, () -> operand));
+		return (VectorEvaluable) subtract(() -> value, () -> operand).get();
 	}
 
 	default VectorProducer subtract(Supplier<Evaluable<? extends Vector>> value, Supplier<Evaluable<? extends Vector>> operand) {
 		return new VectorSum(value, minus(operand));
 	}
 
-	default VectorEvaluable multiply(Evaluable<Vector> a, Evaluable<Vector> b) { return new DefaultVectorEvaluable(multiply(() -> a, () -> b)); }
+	default VectorEvaluable multiply(Evaluable<Vector> a, Evaluable<Vector> b) { return (VectorEvaluable) multiply(() -> a, () -> b).get(); }
 
 	default VectorProducer multiply(Supplier<Evaluable<? extends Vector>> a, Supplier<Evaluable<? extends Vector>> b) {
 		return new VectorProduct(a, b);
@@ -141,7 +141,7 @@ public interface VectorFeatures {
 	}
 
 	default VectorEvaluable scalarMultiply(Evaluable<Vector> a, Evaluable<Scalar> b) {
-		return new DefaultVectorEvaluable(scalarMultiply(() -> a, () -> b));
+		return (VectorEvaluable) scalarMultiply(() -> a, () -> b).get();
 	}
 
 	default VectorProducer scalarMultiply(Supplier<Evaluable<? extends Vector>> a, Supplier<Evaluable<? extends Scalar>> b) {
@@ -149,7 +149,7 @@ public interface VectorFeatures {
 	}
 
 	default VectorEvaluable minus(Evaluable<Vector> p) {
-		return new DefaultVectorEvaluable(minus(() -> p));
+		return (VectorEvaluable) minus(() -> p).get();
 	}
 
 	default VectorProducer minus(Supplier<Evaluable<? extends Vector>> p) {
@@ -159,7 +159,7 @@ public interface VectorFeatures {
 	}
 
 	default ScalarEvaluable length(Evaluable<Vector> v) {
-		return new DefaultScalarEvaluable(length(() -> v));
+		return (ScalarEvaluable) length(() -> v).get();
 	}
 
 	default ScalarProducer length(Supplier<Evaluable<? extends Vector>> v) {
@@ -175,7 +175,7 @@ public interface VectorFeatures {
 	}
 
 	default VectorEvaluable normalize(Evaluable<Vector> p) {
-		return new DefaultVectorEvaluable(normalize(() -> p));
+		return (VectorEvaluable) normalize(() -> p).get();
 	}
 
 	default VectorProducer normalize(Supplier<Evaluable<? extends Vector>> p) {
@@ -186,7 +186,7 @@ public interface VectorFeatures {
 	}
 
 	default VectorEvaluable fromScalars(Evaluable<Scalar> x, Evaluable<Scalar> y, Evaluable<Scalar> z) {
-		return new DefaultVectorEvaluable(fromScalars(() -> x, () -> y, () -> z));
+		return (VectorEvaluable) fromScalars(() -> x, () -> y, () -> z).get();
 	}
 
 	default VectorProducer fromScalars(Supplier<Evaluable<? extends Scalar>> x, Supplier<Evaluable<? extends Scalar>> y, Supplier<Evaluable<? extends Scalar>> z) {
