@@ -97,7 +97,7 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures, Hardwa
 	}
 
 	protected Supplier<Runnable> assign() {
-		return a(2, p(value), series.valueAt(p(cursors)));
+		return a(1, p(value), series.valueAt(p(cursors)));
 	}
 
 	protected Supplier<Runnable> purge() {

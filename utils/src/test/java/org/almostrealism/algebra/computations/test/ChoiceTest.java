@@ -33,9 +33,9 @@ public class ChoiceTest implements TestFeatures {
 	}
 
 	public Choice choice(Scalar output, ScalarProducer decision, ScalarProducer multiplier) {
-		Computation<Void> firstChoice = a(2, p(output), scalarsMultiply(multiplier, v(2.0)));
-		Computation<Void> secondChoice = a(2, p(output), scalarsMultiply(multiplier, v(4.0)));
-		Computation<Void> thirdChoice = a(2, p(output), scalarsMultiply(multiplier, v(8.0)));
+		Computation<Void> firstChoice = a(1, p(output), scalarsMultiply(multiplier, v(2.0)));
+		Computation<Void> secondChoice = a(1, p(output), scalarsMultiply(multiplier, v(4.0)));
+		Computation<Void> thirdChoice = a(1, p(output), scalarsMultiply(multiplier, v(8.0)));
 		return new Choice(decision, Arrays.asList(firstChoice, secondChoice, thirdChoice));
 	}
 

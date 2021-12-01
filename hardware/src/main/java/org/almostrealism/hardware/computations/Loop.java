@@ -21,10 +21,13 @@ import io.almostrealism.code.Computation;
 import io.almostrealism.code.HybridScope;
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.ScopeInputManager;
+import io.almostrealism.relation.Compactable;
 import org.almostrealism.c.OpenCLPrintWriter;
 import org.almostrealism.hardware.DynamicOperationComputationAdapter;
 
 public class Loop extends DynamicOperationComputationAdapter<Void> {
+	public static final boolean enableCompaction = true;
+
 	private final Computation atom;
 	private final int iterations;
 
@@ -58,5 +61,13 @@ public class Loop extends DynamicOperationComputationAdapter<Void> {
 		scope.code().accept("    " + new OpenCLPrintWriter(null).renderMethod(atomScope.call()) + "\n");
 		scope.code().accept("}\n");
 		return scope;
+	}
+
+	@Override
+	public synchronized void compact() {
+		super.compact();
+		if (enableCompaction && atom instanceof Compactable) {
+			((Compactable) atom).compact();
+		}
 	}
 }

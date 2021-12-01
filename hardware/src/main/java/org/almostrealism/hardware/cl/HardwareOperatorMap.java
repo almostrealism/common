@@ -17,10 +17,8 @@
 package org.almostrealism.hardware.cl;
 
 import io.almostrealism.code.InstructionSet;
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.MemoryData;
-import org.jocl.CL;
 import org.jocl.CLException;
 import org.jocl.cl_program;
 
@@ -44,13 +42,13 @@ public class HardwareOperatorMap<T extends MemoryData> implements InstructionSet
 
 	protected HardwareOperatorMap() { }
 
-	public HardwareOperatorMap(DefaultComputeContext h, String src) {
+	public HardwareOperatorMap(CLComputeContext h, String src) {
 		this.operators = new ThreadLocal<>();
 		this.allOperators = new ArrayList<>();
 		init(h, src);
 	}
 
-	protected void init(DefaultComputeContext h, String src) {
+	protected void init(CLComputeContext h, String src) {
 		prog = CLProgram.create(h, src);
 
 		RuntimeException ex = null;

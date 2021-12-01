@@ -74,7 +74,7 @@ public class Transform extends DynamicProducerComputationAdapter<Vector, Vector>
 	public void compact() {
 		super.compact();
 
-		if (value == null && isCompletelyValueOnly()) {
+		if (value == null && isCompletelyValueOnly(false)) {
 			value = new Expression[3];
 
 			for (int i = 0; i < value.length; i++) {

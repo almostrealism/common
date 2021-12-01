@@ -32,7 +32,6 @@ import io.almostrealism.relation.Provider;
 import org.almostrealism.hardware.DestinationConsolidationArgumentMap.DestinationThreadLocal;
 import org.almostrealism.hardware.mem.MemoryDataDestination;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
@@ -47,14 +46,12 @@ public abstract class DynamicProducerComputationAdapter<I extends MemoryData, O 
 		DestinationSupport<O>, MultiExpression<Double>, ComputerFeatures {
 
 	/**
-	 * If set to true, then {@link Provider}s are treated as static for
-	 * compaction. This is often desirable, because Providers may not
-	 * change, but it is also likely to make many types of operations
-	 * that update Provider values in place only execute properly the
-	 * first time, since the original Provider value will be reused on
-	 * the next run of the operation.
+	 * If set to true, then {@link Provider}s are treated as value-only
+	 * for compaction. This is desirable, because otherwise the presence
+	 * of a {@link Provider} will prevent the compaction of an expression
+	 * altogether.
 	 */
-	public static final boolean enableStaticProviders = false;
+	public static final boolean enableValueOnlyProviders = true;
 
 	/**
 	 * If set to true, then {@link #convertToVariableRef()} can be used
@@ -138,7 +135,7 @@ public abstract class DynamicProducerComputationAdapter<I extends MemoryData, O 
 		}
 
 		Evaluable<? extends I> evaluable = producer.get();
-		if (evaluable instanceof Provider) return true;
+		if (enableStaticProviders && evaluable instanceof Provider) return true;
 
 		return false;
 	}
@@ -168,6 +165,10 @@ public abstract class DynamicProducerComputationAdapter<I extends MemoryData, O 
 	public boolean isValueOnly() { return true; }
 
 	protected boolean isCompletelyValueOnly() {
+		return isCompletelyValueOnly(true);
+	}
+
+	protected boolean isCompletelyValueOnly(boolean considerProviders) {
 		List<Supplier<Evaluable<? extends I>>> inputs = getInputs();
 		// Confirm that all inputs are themselves dynamic accelerated adapters
 		i: for (int i = 1; i < inputs.size(); i++) {
@@ -183,7 +184,7 @@ public abstract class DynamicProducerComputationAdapter<I extends MemoryData, O 
 			}
 
 			// A Provider is always "value only"
-			if (enableStaticProviders && supplier.get() instanceof Provider) {
+			if (enableValueOnlyProviders && considerProviders && supplier.get() instanceof Provider) {
 				continue i;
 			}
 

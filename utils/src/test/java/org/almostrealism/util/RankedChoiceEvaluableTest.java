@@ -131,6 +131,7 @@ public class RankedChoiceEvaluableTest implements CodeFeatures {
 	public void rankedChoiceCompact1() {
 		RankedChoiceEvaluableForVector rcp = getRankedChoiceProducer1();
 		DynamicAcceleratedEvaluable<Vector, Vector> acc = rcp.getAccelerated();
+		acc.compile();
 		System.out.println(acc.getFunctionDefinition());
 
 		Vector result = acc.evaluate();

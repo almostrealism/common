@@ -1,7 +1,22 @@
+/*
+ * Copyright 2021 Michael Murray
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 package org.almostrealism.hardware.cl;
 
 import io.almostrealism.code.DataContext;
-import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.RAM;
@@ -14,7 +29,7 @@ import org.jocl.cl_platform_id;
 
 import java.util.concurrent.Callable;
 
-public class DefaultDataContext implements DataContext {
+public class CLDataContext implements DataContext {
 	private final Hardware hardware;
 	private final String name;
 	private final boolean isDoublePrecision;
@@ -25,9 +40,9 @@ public class DefaultDataContext implements DataContext {
 	private cl_command_queue queue;
 	private MemoryProvider<RAM> ram;
 
-	private ThreadLocal<DefaultComputeContext> computeContext;
+	private ThreadLocal<CLComputeContext> computeContext;
 
-	public DefaultDataContext(Hardware hardware, String name, boolean isDoublePrecision, long memoryMax, CLMemoryProvider.Location location) {
+	public CLDataContext(Hardware hardware, String name, boolean isDoublePrecision, long memoryMax, CLMemoryProvider.Location location) {
 		this.hardware = hardware;
 		this.name = name;
 		this.isDoublePrecision = isDoublePrecision;
@@ -60,16 +75,16 @@ public class DefaultDataContext implements DataContext {
 
 	public MemoryProvider<RAM> getMemoryProvider() { return ram; }
 
-	public DefaultComputeContext getComputeContext() {
+	public CLComputeContext getComputeContext() {
 		if (computeContext.get() == null) {
 			System.out.println("INFO: No explicit ComputeContext for " + Thread.currentThread().getName());
-			computeContext.set(new DefaultComputeContext(isDoublePrecision, ctx));
+			computeContext.set(new CLComputeContext(isDoublePrecision, ctx));
 		}
 
 		return computeContext.get();
 	}
 
-	protected void setComputeContext(DefaultComputeContext ctx) {
+	protected void setComputeContext(CLComputeContext ctx) {
 		if (this.computeContext.get() != null) {
 			this.computeContext.get().destroy();
 		}
@@ -78,8 +93,8 @@ public class DefaultDataContext implements DataContext {
 	}
 
 	public <T> T computeContext(Callable<T> exec) {
-		DefaultComputeContext current = computeContext.get();
-		DefaultComputeContext next = new DefaultComputeContext(isDoublePrecision, ctx);
+		CLComputeContext current = computeContext.get();
+		CLComputeContext next = new CLComputeContext(isDoublePrecision, ctx);
 		String ccName = next.toString();
 		if (ccName.contains(".")) {
 			ccName = ccName.substring(ccName.lastIndexOf('.') + 1);

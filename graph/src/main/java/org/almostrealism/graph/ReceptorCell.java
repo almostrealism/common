@@ -17,6 +17,7 @@
 package org.almostrealism.graph;
 
 import io.almostrealism.relation.Producer;
+import io.almostrealism.uml.Lifecycle;
 import org.almostrealism.hardware.OperationList;
 
 import java.util.function.Supplier;
@@ -40,5 +41,13 @@ public class ReceptorCell<T> implements Cell<T>, Adjustable<T> {
 	@Override
 	public Supplier<Runnable> updateAdjustment(Producer<T> value) {
 		return new OperationList();
+	}
+
+	@Override
+	public void reset() {
+		Cell.super.reset();
+		if (r instanceof Lifecycle) {
+			((Lifecycle) r).reset();
+		}
 	}
 }

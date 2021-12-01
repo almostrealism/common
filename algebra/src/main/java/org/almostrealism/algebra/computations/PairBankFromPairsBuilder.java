@@ -79,6 +79,6 @@ public class PairBankFromPairsBuilder extends DynamicProducerComputationAdapter<
 
 	@Override
 	public IntFunction<Expression<Double>> getValueFunction() {
-		return i -> getExpression(producers[arg(i)]).getValue(pos(i));
+		return i -> getExpression(producers[arg(i)]).get().getValue(pos(i));
 	}
 }

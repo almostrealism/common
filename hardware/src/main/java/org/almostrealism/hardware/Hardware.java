@@ -16,15 +16,15 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.code.Computer;
+import io.almostrealism.code.ComputeContext;
+import io.almostrealism.code.DataContext;
 import io.almostrealism.code.MemoryProvider;
-import org.almostrealism.c.NativeMemoryProvider;
 import org.almostrealism.hardware.cl.CLMemoryProvider;
 import org.almostrealism.hardware.cl.CLMemoryProvider.Location;
-import org.almostrealism.hardware.cl.DefaultComputeContext;
-import org.almostrealism.hardware.cl.DefaultDataContext;
+import org.almostrealism.hardware.cl.CLComputeContext;
+import org.almostrealism.hardware.cl.CLDataContext;
 import org.almostrealism.hardware.jni.NativeCompiler;
-import org.almostrealism.hardware.jni.NativeSupport;
+import org.almostrealism.hardware.jni.NativeDataContext;
 import org.jocl.CL;
 import org.jocl.Sizeof;
 import org.jocl.cl_device_id;
@@ -134,12 +134,11 @@ public final class Hardware {
 	private final String compilerExec;
 	private final String libDir;
 
-	private DefaultDataContext context;
+	private DataContext context;
 	private List<ContextListener> contextListeners;
 
 	private AcceleratedFunctions functions;
 	private final DefaultComputer computer;
-	private final NativeMemoryProvider nativeRam;
 	
 	private Hardware(String compilerExec, String libDir, boolean enableCl, boolean enableGpu,
 					 boolean enableKernels, boolean enableDestinationConsolidation,
@@ -177,10 +176,11 @@ public final class Hardware {
 		this.compilerExec = compilerExec;
 		this.libDir = libDir;
 		this.memVolatile = location == Location.HEAP;
-		this.context = new DefaultDataContext(this, name, enableDoublePrecision, this.memoryMax, this.location);
 		this.contextListeners = new ArrayList<>();
 
 		if (enableCl) {
+			this.context = new CLDataContext(this, name, enableDoublePrecision, this.memoryMax, this.location);
+
 			CL.setExceptionsEnabled(true);
 
 			if (enableVerbose) {
@@ -205,7 +205,7 @@ public final class Hardware {
 		NativeCompiler nativeCompiler;
 
 		if (compilerExec != null && libDir != null) {
-			nativeCompiler = new NativeCompiler(this, compilerExec, libDir, LIB_FORMAT);
+			nativeCompiler = new NativeCompiler(this, compilerExec, libDir, LIB_FORMAT, enableCl);
 		} else {
 			nativeCompiler = null;
 		}
@@ -216,10 +216,9 @@ public final class Hardware {
 		if (enableVerbose) System.out.println("Hardware[" + name + "]: Created DefaultComputer");
 
 		if (!enableCl) {
-			nativeRam = new NativeMemoryProvider(memoryMax);
+			this.context = new NativeDataContext(nativeCompiler, name, enableDoublePrecision, this.memoryMax);
+			start(context);
 			if (enableVerbose) System.out.println("Hardware[" + name + "]: Created NativeMemoryProvider");
-		} else {
-			nativeRam = null;
 		}
 
 		if (timeSeriesSize > 0) {
@@ -234,46 +233,48 @@ public final class Hardware {
 
 	public DefaultComputer getComputer() { return computer; }
 
-	protected void start(DefaultDataContext ctx) {
-		if (computer.isNative()) return;
+	protected void start(DataContext ctx) {
+		if (ctx instanceof CLDataContext) {
+			final int platformIndex = 0;
+			final int deviceIndex = 0;
+			final long deviceType = enableGpu ? CL.CL_DEVICE_TYPE_GPU : CL.CL_DEVICE_TYPE_CPU;
 
-		final int platformIndex = 0;
-		final int deviceIndex = 0;
-		final long deviceType = enableGpu ? CL.CL_DEVICE_TYPE_GPU : CL.CL_DEVICE_TYPE_CPU;
+			int numPlatformsArray[] = new int[1];
+			CL.clGetPlatformIDs(0, null, numPlatformsArray);
+			int numPlatforms = numPlatformsArray[0];
 
-		int numPlatformsArray[] = new int[1];
-		CL.clGetPlatformIDs(0, null, numPlatformsArray);
-		int numPlatforms = numPlatformsArray[0];
+			if (enableVerbose) System.out.println("Hardware[" + name + "]: " + numPlatforms + " platforms available");
 
-		if (enableVerbose) System.out.println("Hardware[" + name + "]: " + numPlatforms + " platforms available");
+			cl_platform_id platforms[] = new cl_platform_id[numPlatforms];
+			CL.clGetPlatformIDs(platforms.length, platforms, null);
+			cl_platform_id platform = platforms[platformIndex];
 
-		cl_platform_id platforms[] = new cl_platform_id[numPlatforms];
-		CL.clGetPlatformIDs(platforms.length, platforms, null);
-		cl_platform_id platform = platforms[platformIndex];
+			if (enableVerbose)
+				System.out.println("Hardware[" + name + "]: Using platform " + platformIndex + " -- " + platform);
 
-		if (enableVerbose)
-			System.out.println("Hardware[" + name + "]: Using platform " + platformIndex + " -- " + platform);
+			int numDevicesArray[] = new int[1];
+			CL.clGetDeviceIDs(platform, deviceType, 0, null, numDevicesArray);
+			int numDevices = numDevicesArray[0];
 
-		int numDevicesArray[] = new int[1];
-		CL.clGetDeviceIDs(platform, deviceType, 0, null, numDevicesArray);
-		int numDevices = numDevicesArray[0];
+			System.out.println("Hardware[" + name + "]: " + numDevices + " " + deviceName(deviceType) + "(s) available");
 
-		System.out.println("Hardware[" + name + "]: " + numDevices + " " + deviceName(deviceType) + "(s) available");
+			cl_device_id devices[] = new cl_device_id[numDevices];
+			CL.clGetDeviceIDs(platform, deviceType, numDevices, devices, null);
+			cl_device_id device = devices[deviceIndex];
 
-		cl_device_id devices[] = new cl_device_id[numDevices];
-		CL.clGetDeviceIDs(platform, deviceType, numDevices, devices, null);
-		cl_device_id device = devices[deviceIndex];
+			System.out.println("Hardware[" + name + "]: Using " + deviceName(deviceType) + " " + deviceIndex);
 
-		System.out.println("Hardware[" + name + "]: Using " + deviceName(deviceType) + " " + deviceIndex);
-
-		ctx.init(platform, device);
+			((CLDataContext) ctx).init(platform, device);
+		} else if (ctx instanceof NativeDataContext) {
+			((NativeDataContext) ctx).init();
+		}
 	}
 
 	public void addContextListener(ContextListener l) { contextListeners.add(l); }
 
 	public void removeContextListener(ContextListener l) { contextListeners.remove(l); }
 
-	protected void setDataContext(DefaultDataContext ctx) {
+	protected void setDataContext(CLDataContext ctx) {
 		if (this.context != null) {
 			this.context.destroy();
 		}
@@ -282,8 +283,18 @@ public final class Hardware {
 	}
 
 	public <T> T dataContext(Callable<T> exec) {
-		DefaultDataContext current = context;
-		DefaultDataContext next = new DefaultDataContext(this, getName(), isDoublePrecision(), memoryMax, location);
+		DataContext current, next;
+
+		if (context instanceof CLDataContext) {
+			current = context;
+			next = new CLDataContext(this, getName(), isDoublePrecision(), memoryMax, location);
+		} else if (context instanceof NativeDataContext) {
+			current = context;
+			next = new NativeDataContext(getComputer().getNativeCompiler(), getName(), isDoublePrecision(), memoryMax);
+		} else {
+			return null;
+		}
+
 		String dcName = next.toString();
 		if (dcName.contains(".")) {
 			dcName = dcName.substring(dcName.lastIndexOf('.') + 1);
@@ -383,11 +394,17 @@ public final class Hardware {
 		return functions;
 	}
 
-	public DefaultDataContext getDataContext() { return context; }
+	public DataContext getDataContext() { return context; }
 
-	public DefaultComputeContext getComputeContext() { return getDataContext().getComputeContext(); }
+	public ComputeContext getComputeContext() { return context.getComputeContext(); }
 
-	public MemoryProvider<RAM> getMemoryProvider() { return nativeRam == null ? context.getMemoryProvider() : nativeRam; }
+	public CLDataContext getClDataContext() { return context instanceof CLDataContext ? (CLDataContext) context : null; }
+
+	public CLComputeContext getClComputeContext() {
+		return getClDataContext() instanceof CLDataContext ? getClDataContext().getComputeContext() : null;
+	}
+
+	public MemoryProvider<RAM> getMemoryProvider() { return (MemoryProvider<RAM>) context.getMemoryProvider(); }
 
 	private static String deviceName(long type) {
 		if (type == CL.CL_DEVICE_TYPE_CPU) {

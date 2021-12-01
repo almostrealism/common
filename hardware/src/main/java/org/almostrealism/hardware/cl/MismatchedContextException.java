@@ -20,11 +20,11 @@ import org.almostrealism.hardware.HardwareException;
 import org.jocl.CLException;
 
 public class MismatchedContextException extends HardwareException {
-	public MismatchedContextException(DefaultDataContext targetContext, DefaultDataContext actualContext, CLException cause) {
+	public MismatchedContextException(CLDataContext targetContext, CLDataContext actualContext, CLException cause) {
 		super("Attempting to use " + name(targetContext) + " when " + name(actualContext) + " is in effect", cause);
 	}
 
-	public static String name(DefaultDataContext ctx) {
+	public static String name(CLDataContext ctx) {
 		String name = String.valueOf(ctx.toString());
 		if (name.contains(".")) {
 			name = name.substring(name.lastIndexOf(".") + 1);

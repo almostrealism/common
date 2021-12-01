@@ -30,11 +30,11 @@ public class ScalarCachedStateCell extends CachedStateCell<Scalar> implements Ha
 
 	@Override
 	protected Supplier<Runnable> assign(Supplier<Evaluable<? extends Scalar>> out, Supplier<Evaluable<? extends Scalar>> in) {
-		return a(2, out, in);
+		return a(1, out, in);
 	}
 
 	@Override
 	public Supplier<Runnable> reset(Supplier<Evaluable<? extends Scalar>> out) {
-		return a(2, out, ScalarFeatures.of(0.0));
+		return a(1, out, ScalarFeatures.of(0.0));
 	}
 }

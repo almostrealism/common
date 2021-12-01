@@ -128,7 +128,7 @@ public class CodeFeaturesTests implements TestFeatures {
 	public void addToProviderAndAssign() {
 		Scalar value = new Scalar(1.0);
 		Scalar dest = new Scalar(0.0);
-		Supplier<Runnable> s = a(2, p(dest), v(1).add(p(value)).divide(2.0));
+		Supplier<Runnable> s = a(1, p(dest), v(1).add(p(value)).divide(2.0));
 		value.setValue(2);
 
 		AcceleratedComputationOperation r = (AcceleratedComputationOperation) s.get();
@@ -146,7 +146,7 @@ public class CodeFeaturesTests implements TestFeatures {
 	public void loop() {
 		Scalar value = new Scalar(1.0);
 		Scalar dest = new Scalar(0.0);
-		Supplier<Runnable> s = loop(a(2, p(dest), v(1).add(p(value)).divide(2.0)), 2);
+		Supplier<Runnable> s = loop(a(1, p(dest), v(1).add(p(value)).divide(2.0)), 2);
 		value.setValue(2);
 
 		Runnable r = s.get();

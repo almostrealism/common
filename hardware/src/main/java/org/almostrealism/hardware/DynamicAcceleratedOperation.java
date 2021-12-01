@@ -20,8 +20,6 @@ import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.InstructionSet;
 import io.almostrealism.code.Scope;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.hardware.cl.HardwareOperator;
-import org.almostrealism.hardware.cl.HardwareOperatorMap;
 
 import java.util.List;
 import java.util.function.Consumer;
@@ -67,7 +65,7 @@ public abstract class DynamicAcceleratedOperation<T extends MemoryData> extends 
 	@Override
 	public synchronized Consumer<Object[]> getOperator() {
 		if (operators == null || operators.isDestroyed()) {
-			operators = Hardware.getLocalHardware().getComputeContext().deliver(Scope.verbatim(getFunctionDefinition()));
+			operators = Hardware.getLocalHardware().getClComputeContext().deliver(Scope.verbatim(getFunctionDefinition()));
 		}
 
 		return operators.get(getFunctionName(), getArgsCount());

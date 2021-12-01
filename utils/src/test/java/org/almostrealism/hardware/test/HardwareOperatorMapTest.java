@@ -21,7 +21,7 @@ public class HardwareOperatorMapTest {
 
 	// @Test
 	public void largeFunction() {
-		HardwareOperatorMap map = new HardwareOperatorMap(Hardware.getLocalHardware().getComputeContext(), LARGE_FUNCTION);
+		HardwareOperatorMap map = new HardwareOperatorMap(Hardware.getLocalHardware().getClComputeContext(), LARGE_FUNCTION);
 		assert map.get("f_anonymous_407", 9) != null;
 	}
 }

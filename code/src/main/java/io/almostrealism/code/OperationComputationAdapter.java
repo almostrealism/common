@@ -30,6 +30,16 @@ import java.util.stream.Collectors;
 
 public abstract class OperationComputationAdapter<I, O> extends OperationAdapter<I> implements Computation<O>, Compactable {
 
+	/**
+	 * If set to true, then {@link Provider}s are treated as static for
+	 * compaction. This is often desirable, because Providers may not
+	 * change, but it is also likely to make many types of operations
+	 * that update Provider values in place only execute properly the
+	 * first time, since the original Provider value will be reused on
+	 * the next run of the operation.
+	 */
+	public static final boolean enableStaticProviders = false;
+
 	public OperationComputationAdapter() {
 		super(new Supplier[0]);
 	}
@@ -106,23 +116,29 @@ public abstract class OperationComputationAdapter<I, O> extends OperationAdapter
 	}
 
 	public static Expression<Double> getExpression(ArrayVariable arg, int pos) {
-		return getExpression(arg.getProducer()).getValue(pos);
+		Optional<MultiExpression> exp = getExpression(arg.getProducer());
+
+		if (exp.isPresent()) {
+			return exp.get().getValue(pos);
+		} else {
+			return arg.valueAt(pos);
+		}
 	}
 
-	public static <T> MultiExpression getExpression(Supplier<Evaluable<? extends T>> producer) {
+	public static <T> Optional<MultiExpression> getExpression(Supplier<Evaluable<? extends T>> producer) {
 		if (producer instanceof MultiExpression) {
-			return (MultiExpression) producer;
+			return Optional.of((MultiExpression) producer);
 		}
 
 		if (producer instanceof Delegated && ((Delegated) producer).getDelegate() instanceof MultiExpression) {
-			return (MultiExpression) ((Delegated) producer).getDelegate();
+			return Optional.of((MultiExpression) ((Delegated) producer).getDelegate());
 		}
 
 		Evaluable<? extends T> evaluable = producer.get();
-		if (evaluable instanceof Provider && ((Provider) evaluable).get() instanceof MultiExpression) {
-			return (MultiExpression) ((Provider) evaluable).get();
+		if (enableStaticProviders && evaluable instanceof Provider && ((Provider) evaluable).get() instanceof MultiExpression) {
+			return Optional.of((MultiExpression) ((Provider) evaluable).get());
 		}
 
-		throw new UnsupportedOperationException();
+		return Optional.empty();
 	}
 }

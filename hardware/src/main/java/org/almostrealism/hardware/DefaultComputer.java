@@ -44,6 +44,8 @@ public class DefaultComputer implements Computer<MemoryData> {
 
 	public boolean isNative() { return compiler != null; }
 
+	public NativeCompiler getNativeCompiler() { return compiler; }
+
 	public synchronized void loadNative(Class cls, String code) throws IOException, InterruptedException {
 		if (libs.contains(cls)) return;
 

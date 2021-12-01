@@ -46,7 +46,7 @@ public class NativeCompiler {
 
 	private final String header;
 
-	public NativeCompiler(Hardware hardware, String compiler, String libDir, String libFormat) {
+	public NativeCompiler(Hardware hardware, String compiler, String libDir, String libFormat, boolean cl) {
 		this.executable = compiler.contains(".") ? compiler.substring(compiler.lastIndexOf(".") + 1) : null;
 		this.compiler = compiler;
 		this.libDir = libDir;
@@ -54,7 +54,7 @@ public class NativeCompiler {
 
 		String pi = hardware.getNumberTypeName() + " M_PI_F = M_PI;";
 		this.header = STDIO + STDLIB + MATH + JNI +
-				(hardware.getMemoryProvider() instanceof CLMemoryProvider ? OPENCL : "") +
+				(cl ? OPENCL : "") +
 				pi + "\n";
 	}
 

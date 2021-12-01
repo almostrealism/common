@@ -22,9 +22,8 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.KernelSupport;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.RAM;
-import org.almostrealism.hardware.cl.CLMemory;
+import org.almostrealism.hardware.cl.CLDataContext;
 import org.jocl.cl_command_queue;
-import org.jocl.cl_mem;
 
 import java.io.IOException;
 import java.util.Optional;
@@ -70,7 +69,8 @@ public interface NativeSupport<T extends NativeLibrary> extends KernelSupport, N
 	}
 
 	default void apply(RAM args[], int offsets[], int sizes[]) {
-		apply(Optional.ofNullable(Hardware.getLocalHardware().getDataContext().getClQueue())
+		apply(Optional.ofNullable(Hardware.getLocalHardware().getClDataContext())
+						.map(CLDataContext::getClQueue)
 						.map(cl_command_queue::getNativePointer).orElse(-1L),
 				Stream.of(args).mapToLong(RAM::getNativePointer).toArray(),
 				offsets, sizes, args.length);

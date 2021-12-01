@@ -26,7 +26,7 @@ import org.jocl.cl_context;
 import java.util.ArrayList;
 import java.util.List;
 
-public class DefaultComputeContext implements ComputeContext {
+public class CLComputeContext implements ComputeContext {
 	private static final String fp64 = "#pragma OPENCL EXTENSION cl_khr_fp64 : enable\n";
 
 	private boolean enableFp64;
@@ -34,7 +34,7 @@ public class DefaultComputeContext implements ComputeContext {
 
 	private List<HardwareOperatorMap> instructionSets;
 
-	public DefaultComputeContext(boolean enableFp64, cl_context ctx) {
+	public CLComputeContext(boolean enableFp64, cl_context ctx) {
 		this.enableFp64 = enableFp64;
 		this.ctx = ctx;
 		this.instructionSets = new ArrayList<>();

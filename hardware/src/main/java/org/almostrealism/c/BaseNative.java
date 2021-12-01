@@ -19,6 +19,7 @@ package org.almostrealism.c;
 import org.almostrealism.hardware.Hardware;
 
 import java.io.IOException;
+import java.util.function.LongConsumer;
 
 public abstract class BaseNative {
 	public static final boolean enableVerbose = false;

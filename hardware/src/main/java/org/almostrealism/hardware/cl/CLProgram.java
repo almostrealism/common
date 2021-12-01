@@ -46,7 +46,7 @@ public class CLProgram {
 		prog = null;
 	}
 
-	public static CLProgram create(DefaultComputeContext h, String src) {
+	public static CLProgram create(CLComputeContext h, String src) {
 		int[] result = new int[1];
 		cl_program prog = CL.clCreateProgramWithSource(h.getCLContext(), 1, new String[] { src }, null, result);
 		if (result[0] != 0) throw new RuntimeException("Error creating HardwareOperatorMap: " + result[0]);

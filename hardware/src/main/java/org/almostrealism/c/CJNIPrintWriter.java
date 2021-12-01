@@ -32,6 +32,7 @@ import java.util.stream.IntStream;
 
 public class CJNIPrintWriter extends CPrintWriter {
 	public static final boolean enableInlineCopy = true;
+	public static final boolean enableDirectReferences = true;
 
 	private final Stack<Accessibility> accessStack;
 	private final Stack<List<ArrayVariable<?>>> argumentStack;
@@ -104,13 +105,17 @@ public class CJNIPrintWriter extends CPrintWriter {
 		println(new Variable<>("*offsetArr", int[].class, "(*env)->GetIntArrayElements(env, offset, 0)"));
 		println(new Variable<>("*sizeArr", int[].class, "(*env)->GetIntArrayElements(env, size, 0)"));
 
+		if (!enableDirectReferences) {
+			IntStream.range(0, arguments.size())
+					.mapToObj(i -> new Variable("*" + arguments.get(i).getName(),
+							new Expression<>(Double.class, "(" + numberType + "*) malloc("
+									+ numberSize + " * (int) sizeArr[" + i + "])")))
+					.forEach(this::println);
+		}
+
 		IntStream.range(0, arguments.size())
-				.mapToObj(i -> new Variable("*" + arguments.get(i).getName(),
-						new Expression<>(Double.class, "(" + numberType + "*) malloc("
-								+ numberSize + " * (int) sizeArr[" + i + "])")))
-				.forEach(this::println);
-		arguments.stream().map(argument -> new Variable<>(argument.getName() + "Offset",
-				Integer.class, "0"))
+				.mapToObj(i -> new Variable<>(arguments.get(i).getName() + "Offset",
+						Integer.class, "(int) offsetArr[" + i + "]"))
 				.forEach(this::println);
 		IntStream.range(0, arguments.size())
 				.mapToObj(i -> new Variable<>(arguments.get(i).getName() + "Size",
@@ -135,11 +140,13 @@ public class CJNIPrintWriter extends CPrintWriter {
 					.forEach(super::println);
 		}
 
-		arguments.stream()
-				.map(InstanceReference::new)
-				.map(InstanceReference::getExpression)
-				.map(exp -> "free(" + exp + ");")
-				.forEach(this::println);
+		if (!enableDirectReferences) {
+			arguments.stream()
+					.map(InstanceReference::new)
+					.map(InstanceReference::getExpression)
+					.map(exp -> "free(" + exp + ");")
+					.forEach(this::println);
+		}
 		println("free(argArr);");
 		println("free(offsetArr);");
 		println("free(sizeArr);");
@@ -163,19 +170,32 @@ public class CJNIPrintWriter extends CPrintWriter {
 	}
 
 	protected void copyInline(int index, ArrayVariable<?> variable, boolean write) {
-		String o = "((double *) argArr[" + index + "])";
-		String offset = "offsetArr[" + index + "]";
-		String size = "sizeArr[" + index + "]";
-		String v = new InstanceReference<>(variable).getExpression();
+		if (enableDirectReferences) {
+			String o = "((double *) argArr[" + index + "])";
+			// String offset = "offsetArr[" + index + "]";
+			String size = "sizeArr[" + index + "]";
+			String v = new InstanceReference<>(variable).getExpression();
 
-		if (!write) {
-			println("for (int i = 0; i < " + size + "; i++) {");
-			println("\t" + v + "[i] = " + o + "[" + offset + " + i];");
-			println("}");
+			if (!write) {
+				println("double *" + v + " = " + o + ";");
+			} else {
+				// println(o + " = " + v + ";");
+			}
 		} else {
-			println("for (int i = 0; i < " + size + "; i++) {");
-			println("\t" + o + "[" + offset + " + i] = " + v + "[i];");
-			println("}");
+			String o = "((double *) argArr[" + index + "])";
+			// String offset = "offsetArr[" + index + "]";
+			String size = "sizeArr[" + index + "]";
+			String v = new InstanceReference<>(variable).getExpression();
+
+			if (!write) {
+				println("for (int i = 0; i < " + size + "; i++) {");
+				println("\t" + v + "[i] = " + o + "[i];");
+				println("}");
+			} else {
+				println("for (int i = 0; i < " + size + "; i++) {");
+				println("\t" + o + "[i] = " + v + "[i];");
+				println("}");
+			}
 		}
 	}
 
