@@ -16,6 +16,8 @@
 
 package org.almostrealism.hardware.jni;
 
+import io.almostrealism.code.Computation;
+import org.almostrealism.generated.BaseGeneratedOperation;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.cl.CLMemoryProvider;
@@ -24,6 +26,7 @@ import java.io.BufferedWriter;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
+import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -38,6 +41,8 @@ public class NativeCompiler {
 	private static final String JNI = "#include <jni.h>\n";
 	private static final String OPENCL = System.getProperty("os.name").toLowerCase().startsWith("mac os") ?
 								"#include <OpenCL/cl.h>\n" : "#include <cl.h>\n";
+
+	private static int runnableCount;
 
 	private final String executable;
 	private final String compiler;
@@ -86,7 +91,29 @@ public class NativeCompiler {
 		return command;
 	}
 
-	public synchronized String compile(Class target, String code) throws IOException, InterruptedException {
+	public synchronized BaseGeneratedOperation reserveLibraryTarget() {
+		try {
+			BaseGeneratedOperation gen = (BaseGeneratedOperation)
+					Class.forName("org.almostrealism.generated.GeneratedOperation" + runnableCount++)
+							.getConstructor(Computation.class).newInstance(new Object[] { null });
+			return gen;
+		} catch (InstantiationException | IllegalAccessException | InvocationTargetException
+				| NoSuchMethodException | ClassNotFoundException e) {
+			throw new HardwareException(e.getMessage(), new UnsupportedOperationException(e));
+		}
+	}
+
+	public void compile(NativeInstructionSet target, String code) {
+		try {
+			compileAndLoad(target.getClass(), code);
+		} catch (IOException e) {
+			throw new HardwareException(e.getMessage(), new UnsupportedOperationException(e));
+		} catch (InterruptedException e) {
+			throw new HardwareException(e.getMessage(), new UnsupportedOperationException(e));
+		}
+	}
+
+	public String compile(Class target, String code) throws IOException, InterruptedException {
 		if (enableVerbose) System.out.println("NativeCompiler: Compiling native code for " + target.getSimpleName());
 		String name = target.getName();
 
@@ -107,14 +134,10 @@ public class NativeCompiler {
 		return name;
 	}
 
-	public synchronized void compileAndLoad(Class target, String code) throws IOException, InterruptedException {
+	public void compileAndLoad(Class target, String code) throws IOException, InterruptedException {
 		String name = compile(target, code);
 		if (enableVerbose) System.out.println("NativeCompiler: Loading native library " + name);
 		System.loadLibrary(name);
 		if (enableVerbose) System.out.println("NativeCompiler: Loaded native library " + name);
-	}
-
-	public synchronized void compileAndLoad(Class target, NativeLibrary lib) throws IOException, InterruptedException {
-		compileAndLoad(target, lib.getFunctionDefinition());
 	}
 }

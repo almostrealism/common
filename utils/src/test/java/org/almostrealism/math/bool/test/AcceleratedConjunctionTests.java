@@ -45,8 +45,6 @@ public class AcceleratedConjunctionTests extends AcceleratedConditionalStatement
 				v(c), v(Scalar.class, 1));
 
 		return () -> {
-			System.out.println(((AcceleratedComputationEvaluable) s).getFunctionDefinition());
-
 			double t = s.evaluate(v(b).get().evaluate(), v(d).get().evaluate()).getValue();
 
 			if (a < b && c < d) {

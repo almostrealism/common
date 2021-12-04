@@ -29,7 +29,6 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 
 			AcceleratedComputationEvaluable<Scalar> lt =
 					(AcceleratedComputationEvaluable<Scalar>) new LessThanScalar(a, b, a, b, false).get();
-			System.out.println(lt.getFunctionDefinition());
 
 			Scalar s = lt.evaluate();
 			System.out.println("lessThan = " + s.getValue());
@@ -88,8 +87,6 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 
 	private void check(LessThan lt, Scalar a, Scalar b) {
 		Evaluable ev = lt.get();
-		System.out.println(((DynamicAcceleratedOperation) ev).getFunctionDefinition());
-
 		Scalar s = (Scalar) ev.evaluate(a, b);
 		System.out.println(s.getValue());
 

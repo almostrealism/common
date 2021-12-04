@@ -46,10 +46,6 @@ public class RayMatrixTransformTest implements HardwareFeatures, TestFeatures {
 	@Test
 	public void applyCompact() {
 		AcceleratedComputationEvaluable<Ray> t = transform();
-		// t.compact();
-
-		System.out.println(t.getFunctionDefinition());
-
 		Ray r = t.evaluate();
 		assertions(r);
 	}

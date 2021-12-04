@@ -16,9 +16,12 @@
 
 package org.almostrealism.hardware.cl;
 
+import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.InstructionSet;
 import io.almostrealism.code.Scope;
+import io.almostrealism.code.ScopeEncoder;
+import org.almostrealism.c.OpenCLPrintWriter;
 import org.almostrealism.hardware.VerbatimCodePrintWriter;
 import org.almostrealism.io.PrintWriter;
 import org.jocl.cl_context;
@@ -44,14 +47,16 @@ public class CLComputeContext implements ComputeContext {
 	public InstructionSet deliver(Scope scope) {
 		StringBuffer buf = new StringBuffer();
 		if (enableFp64) buf.append(fp64);
-		scope.write(new VerbatimCodePrintWriter(PrintWriter.of(buf::append)));
+
+		ScopeEncoder enc = new ScopeEncoder(OpenCLPrintWriter::new, Accessibility.EXTERNAL);
+		buf.append(enc.apply(scope));
 
 		HardwareOperatorMap instSet = new HardwareOperatorMap(this, buf.toString());
 		instructionSets.add(instSet);
 		return instSet;
 	}
 
-	public cl_context getCLContext() {
+	protected cl_context getCLContext() {
 		return ctx;
 	}
 

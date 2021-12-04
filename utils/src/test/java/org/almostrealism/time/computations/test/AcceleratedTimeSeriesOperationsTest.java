@@ -58,7 +58,6 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures, Hardwa
 
 					Supplier<Runnable> r = series.purge(p(cursors));
 					AcceleratedComputationOperation op = (AcceleratedComputationOperation) r.get();
-					System.out.println(op.getFunctionDefinition());
 
 					op.run();
 
@@ -74,8 +73,6 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures, Hardwa
 		AcceleratedTimeSeries series = series();
 		AcceleratedTimeSeriesValueAt valueAt = new AcceleratedTimeSeriesValueAt(p(series), p(cursors(3.25)));
 		AcceleratedComputationEvaluable<Scalar> compiled = (AcceleratedComputationEvaluable) valueAt.get();
-		System.out.println(compiled.getFunctionDefinition());
-
 		Assert.assertEquals(series.valueAt(3.25).getValue(), compiled.evaluate().getValue(), Math.pow(10, -10));
 	}
 

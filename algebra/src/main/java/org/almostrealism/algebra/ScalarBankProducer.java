@@ -27,16 +27,7 @@ import org.almostrealism.hardware.KernelizedProducer;
 public interface ScalarBankProducer extends ProducerComputation<ScalarBank>, KernelizedProducer<ScalarBank>, ScalarFeatures {
 	@Override
 	default KernelizedEvaluable<ScalarBank> get() {
-		DefaultComputer computer = Hardware.getLocalHardware().getComputer();
-
-		AcceleratedComputationEvaluable ev;
-
-		if (computer.isNative()) {
-			ev = (AcceleratedComputationEvaluable) computer.compileProducer(this);
-		} else {
-			ev = new DefaultScalarBankEvaluable(this);
-		}
-
+		AcceleratedComputationEvaluable ev = new DefaultScalarBankEvaluable(this);
 		ev.compile();
 		return ev;
 	}

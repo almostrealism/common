@@ -73,7 +73,6 @@ public class TriangleTest implements CodeFeatures {
 		RayOrigin o = originPointProducer();
 		Evaluable<Vector> evo = o.get();
 		((OperationAdapter) evo).compile();
-		System.out.println(((AcceleratedComputationEvaluable) evo).getFunctionDefinition());
 
 		Vector vo = evo.evaluate();
 		System.out.println(vo);
@@ -82,7 +81,6 @@ public class TriangleTest implements CodeFeatures {
 		VectorProduct d = originDirectionProducer();
 		Evaluable<Vector> evd = d.get();
 		((OperationAdapter) evd).compile();
-		System.out.println(((AcceleratedComputationEvaluable) evd).getFunctionDefinition());
 
 		Vector vd = evd.evaluate();
 		System.out.println(vd);
@@ -94,7 +92,6 @@ public class TriangleTest implements CodeFeatures {
 		RayPointAt at = originProducer();
 		Evaluable<Vector> ev = at.get();
 		((OperationAdapter) ev).compile();
-		System.out.println(((AcceleratedComputationEvaluable) ev).getFunctionDefinition());
 
 		Vector p = ev.evaluate();
 		System.out.println(p);
@@ -131,7 +128,6 @@ public class TriangleTest implements CodeFeatures {
 
 		Evaluable<Scalar> ev = gts.get();
 		((OperationAdapter) ev).compile();
-		System.out.println(((AcceleratedComputationEvaluable) ev).getFunctionDefinition());
 
 		Scalar distance = ev.evaluate(in, td);
 		System.out.println(distance);
@@ -156,7 +152,6 @@ public class TriangleTest implements CodeFeatures {
 	public void intersectionTest() {
 		Evaluable<Ray> ev = intersectAt().get();
 		((OperationAdapter) ev).compile();
-		System.out.println(((AcceleratedComputationEvaluable) ev).getFunctionDefinition());
 
 		Ray r = ev.evaluate();
 		System.out.println(r);

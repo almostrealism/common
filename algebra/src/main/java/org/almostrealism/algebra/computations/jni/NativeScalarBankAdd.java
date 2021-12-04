@@ -16,22 +16,13 @@
 
 package org.almostrealism.algebra.computations.jni;
 
-import org.almostrealism.algebra.ScalarBank;
-import org.almostrealism.algebra.computations.Dither;
-import org.almostrealism.algebra.computations.PowerSpectrum;
 import org.almostrealism.algebra.computations.ScalarBankAdd;
 import org.almostrealism.hardware.PassThroughProducer;
-import org.almostrealism.hardware.jni.NativeComputationEvaluable;
-import org.almostrealism.hardware.jni.NativeSupport;
+import org.almostrealism.hardware.jni.NativeInstructionSet;
 
-public abstract class NativeScalarBankAdd extends ScalarBankAdd implements NativeSupport<NativeComputationEvaluable> {
+@Deprecated
+public abstract class NativeScalarBankAdd extends ScalarBankAdd implements NativeInstructionSet {
 	public NativeScalarBankAdd(int count) {
 		super(count, new PassThroughProducer(2 * count, 0), new PassThroughProducer<>(2 * count, 1));
-		initNative();
-	}
-
-	@Override
-	public NativeComputationEvaluable<ScalarBank> get() {
-		return new NativeComputationEvaluable<>(this);
 	}
 }

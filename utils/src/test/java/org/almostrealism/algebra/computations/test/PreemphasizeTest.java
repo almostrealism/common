@@ -45,7 +45,6 @@ public class PreemphasizeTest implements TestFeatures {
 				v(Scalar.class, 1)).get();
 
 		((OperationAdapter) ev).compile();
-		System.out.println(((AcceleratedComputationEvaluable) ev).getFunctionDefinition());
 
 		ScalarBank b = ev.evaluate(window(), new Scalar(0.1));
 		IntStream.range(0, b.getCount()).mapToObj(b::get).forEach(System.out::println);

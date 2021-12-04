@@ -22,33 +22,25 @@ import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.computations.ScalarBankDotProduct;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.PassThroughProducer;
-import org.almostrealism.hardware.jni.NativeComputationEvaluable;
-import org.almostrealism.hardware.jni.NativeSupport;
+import org.almostrealism.hardware.jni.NativeInstructionSet;
 
 import java.lang.reflect.InvocationTargetException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Supplier;
-import java.util.stream.Stream;
 
-public abstract class NativeScalarBankDotProduct extends ScalarBankDotProduct implements NativeSupport<NativeComputationEvaluable> {
+@Deprecated
+public abstract class NativeScalarBankDotProduct extends ScalarBankDotProduct implements NativeInstructionSet {
 	private static final Map<Integer, Evaluable<? extends Scalar>> evaluables = new HashMap<>();
 
 	public NativeScalarBankDotProduct(int count) {
 		super(count, new PassThroughProducer(2 * count, 0),
 				new PassThroughProducer<>(2 * count, 1));
-		initNative();
 	}
 
 	protected NativeScalarBankDotProduct(int count, Supplier<ScalarBank> temp) {
 		super(count, new PassThroughProducer(2 * count, 0),
 				new PassThroughProducer<>(2 * count, 1), temp);
-		initNative();
-	}
-
-	@Override
-	public NativeComputationEvaluable<Scalar> get() {
-		return new NativeComputationEvaluable<>(this);
 	}
 
 	public synchronized static Evaluable<? extends Scalar> get(int count) {

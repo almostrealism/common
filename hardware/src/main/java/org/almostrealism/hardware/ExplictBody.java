@@ -16,8 +16,16 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.InstructionSet;
 import io.almostrealism.code.Variable;
 
+/**
+ * @deprecated  In the process of abstracting the way in which {@link InstructionSet}s
+ *              are created from {@link DynamicAcceleratedOperation}s, this type will
+ *              inevitably become unusable because it does not allow for operations
+ *              which are agnostic to the kind of {@link InstructionSet} ultimate used.
+ */
+@Deprecated
 public interface ExplictBody<T> {
 	String getBody(Variable<T, ?> outputVariable);
 }

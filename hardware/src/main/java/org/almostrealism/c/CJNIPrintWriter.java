@@ -34,11 +34,13 @@ public class CJNIPrintWriter extends CPrintWriter {
 	public static final boolean enableInlineCopy = true;
 	public static final boolean enableDirectReferences = true;
 
+	private final String topLevelMethodName;
 	private final Stack<Accessibility> accessStack;
 	private final Stack<List<ArrayVariable<?>>> argumentStack;
 
-	public CJNIPrintWriter(PrintWriter p) {
+	public CJNIPrintWriter(PrintWriter p, String topLevelMethodName) {
 		super(p);
+		this.topLevelMethodName = topLevelMethodName;
 		setExternalScopePrefix("JNIEXPORT void JNICALL");
 		setEnableArrayVariables(true);
 		accessStack = new Stack<>();
@@ -51,7 +53,11 @@ public class CJNIPrintWriter extends CPrintWriter {
 			renderReadWrite();
 		}
 
-		super.beginScope(name, arguments, access);
+		if (access == Accessibility.EXTERNAL) {
+			super.beginScope(topLevelMethodName, arguments, access);
+		} else {
+			super.beginScope(name, arguments, access);
+		}
 
 		if (access == Accessibility.EXTERNAL) {
 			renderArgumentReads(arguments);

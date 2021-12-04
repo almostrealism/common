@@ -16,20 +16,12 @@
 
 package org.almostrealism.algebra.computations.jni;
 
-import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.computations.PowerSpectrum;
 import org.almostrealism.hardware.PassThroughProducer;
-import org.almostrealism.hardware.jni.NativeComputationEvaluable;
-import org.almostrealism.hardware.jni.NativeSupport;
+import org.almostrealism.hardware.jni.NativeInstructionSet;
 
-public abstract class NativePowerSpectrum extends PowerSpectrum implements NativeSupport<NativeComputationEvaluable> {
+public abstract class NativePowerSpectrum extends PowerSpectrum implements NativeInstructionSet {
 	public NativePowerSpectrum(int count) {
 		super(count, new PassThroughProducer(2 * count, 0));
-		initNative();
-	}
-
-	@Override
-	public NativeComputationEvaluable<ScalarBank> get() {
-		return new NativeComputationEvaluable<>(this);
 	}
 }

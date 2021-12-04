@@ -38,7 +38,6 @@ public class PassThroughProducerCompactionTest implements HardwareFeatures, Code
 	@Test
 	public void applySum() {
 		AcceleratedComputationEvaluable ev = (AcceleratedComputationEvaluable) sum().get();
-		System.out.println(ev.getFunctionDefinition());
 		Scalar s = (Scalar) ev.evaluate(new Scalar(1.0), new Scalar(2.0));
 		Assert.assertEquals(3.0, s.getValue(), Math.pow(10, -10));
 	}
@@ -62,8 +61,6 @@ public class PassThroughProducerCompactionTest implements HardwareFeatures, Code
 	@Test
 	public void applyProductCompact() {
 		AcceleratedComputationEvaluable<Scalar> p = product();
-		// p.compact();
-		System.out.println(p.getFunctionDefinition());
 
 		Scalar s = p.evaluate(new Scalar(1.0), new Scalar(2.0), new Scalar(3.0));
 		Assert.assertEquals(9.0, s.getValue(), Math.pow(10, -10));

@@ -19,42 +19,14 @@ package org.almostrealism.generated;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.NamedFunction;
-import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.Variable;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.jni.NativeComputationOperation;
-import org.almostrealism.hardware.jni.NativeSupport;
+import org.almostrealism.hardware.jni.NativeInstructionSet;
 
-public abstract class BaseGeneratedOperation<T extends MemoryData> implements NativeSupport<NativeComputationOperation<T>> {
-	private Computation<T> computation;
+public abstract class BaseGeneratedOperation<T extends MemoryData> implements NativeInstructionSet {
+	private Computation<T> computation; // TODO  Remove
 
 	public BaseGeneratedOperation(Computation<T> computation) {
 		this.computation = computation;
-		initNative();
-	}
-
-	@Override
-	public void setFunctionName(String name) {
-		((NamedFunction) computation).setFunctionName(name);
-	}
-
-	@Override
-	public String getFunctionName() {
-		return ((NamedFunction) computation).getFunctionName();
-	}
-
-	@Override
-	public Variable getOutputVariable() {
-		return ((NameProvider) computation).getOutputVariable();
-	}
-
-	@Override
-	public String getVariableValueName(Variable v, String pos, boolean assignment, int kernelIndex) {
-		return ((NameProvider) computation).getVariableValueName(v, pos, assignment, kernelIndex);
-	}
-
-	@Override
-	public NativeComputationOperation<T> get() {
-		return new NativeComputationOperation<T>(computation, this);
 	}
 }

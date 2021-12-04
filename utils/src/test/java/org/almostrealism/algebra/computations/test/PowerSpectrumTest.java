@@ -22,8 +22,8 @@ import org.almostrealism.algebra.PairBank;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.computations.jni.NativePowerSpectrum512;
 import org.almostrealism.algebra.computations.PowerSpectrum;
+import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.Hardware;
-import org.almostrealism.hardware.jni.NativeComputationEvaluable;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
@@ -50,8 +50,6 @@ public class PowerSpectrumTest implements TestFeatures {
 		assert Hardware.getLocalHardware().isNativeSupported();
 
 		ev = new NativePowerSpectrum512().get();
-
-		System.out.println(((NativeComputationEvaluable) ev).getFunctionDefinition());
 
 		ScalarBank test = ev.evaluate(window());
 		IntStream.range(0, test.getCount()).mapToObj(test::get).forEach(System.out::println);

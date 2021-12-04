@@ -26,7 +26,7 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 public abstract class DynamicAcceleratedOperation<T extends MemoryData> extends AcceleratedOperation<T> implements ExplictBody<T> {
-	private InstructionSet operators;
+	protected InstructionSet operators;
 
 	@SafeVarargs
 	public DynamicAcceleratedOperation(boolean kernel, Supplier<Evaluable<? extends T>>... args) {
@@ -71,6 +71,13 @@ public abstract class DynamicAcceleratedOperation<T extends MemoryData> extends 
 		return operators.get(getFunctionName(), getArgsCount());
 	}
 
+	/**
+	 * @deprecated  In the process of abstracting the way in which {@link InstructionSet}s
+	 *              are created from {@link DynamicAcceleratedOperation}s, this method will
+	 *              inevitably become unusable because it is specific to a particular kind
+	 *              of {@link InstructionSet} (one that uses JOCL).
+	 */
+	@Deprecated
 	public String getFunctionDefinition() {
 		return "__kernel void " + getFunctionName() + "(" +
 				getFunctionArgsDefinition() +
@@ -79,6 +86,13 @@ public abstract class DynamicAcceleratedOperation<T extends MemoryData> extends 
 				"}";
 	}
 
+	/**
+	 * @deprecated  In the process of abstracting the way in which {@link InstructionSet}s
+	 *              are created from {@link DynamicAcceleratedOperation}s, this method will
+	 *              inevitably become unusable because it is specific to a particular kind
+	 *              of {@link InstructionSet} (one that uses JOCL).
+	 */
+	@Deprecated
 	protected String getFunctionArgsDefinition() {
 		StringBuilder buf = new StringBuilder();
 

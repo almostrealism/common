@@ -58,8 +58,6 @@ public class PlaneTest implements HardwareFeatures, CodeFeatures {
 		Producer<Scalar> p = (Producer<Scalar>) intersection.getDistance();
 		// p.compact();
 
-		System.out.println(((DefaultScalarEvaluable) p.get()).getFunctionDefinition());
-
 		double distance = p.get().evaluate().getValue();
 		System.out.println("distance = " + distance);
 		Assert.assertEquals(-20.0, distance, Math.pow(10, -10));

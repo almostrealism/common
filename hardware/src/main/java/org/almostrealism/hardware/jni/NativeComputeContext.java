@@ -16,18 +16,12 @@
 
 package org.almostrealism.hardware.jni;
 
+import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.InstructionSet;
 import io.almostrealism.code.Scope;
+import io.almostrealism.code.ScopeEncoder;
 import org.almostrealism.c.CJNIPrintWriter;
-import org.almostrealism.hardware.DefaultComputer;
-import org.almostrealism.hardware.VerbatimCodePrintWriter;
-import org.almostrealism.hardware.jni.NativeCompiler;
-import org.almostrealism.io.PrintWriter;
-import org.jocl.cl_context;
-
-import java.util.ArrayList;
-import java.util.List;
 
 public class NativeComputeContext implements ComputeContext {
 	private NativeCompiler compiler;
@@ -39,8 +33,10 @@ public class NativeComputeContext implements ComputeContext {
 	@Override
 	public InstructionSet deliver(Scope scope) {
 		StringBuffer buf = new StringBuffer();
-		scope.write(new CJNIPrintWriter(PrintWriter.of(buf::append)));
-		return null; // TODO  Compile with NativeCompiler
+		NativeInstructionSet target = compiler.reserveLibraryTarget();
+		buf.append(new ScopeEncoder(pw -> new CJNIPrintWriter(pw, target.getFunctionName()), Accessibility.EXTERNAL).apply(scope));
+		compiler.compile(target, buf.toString());
+		return target;
 	}
 
 	@Override

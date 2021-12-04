@@ -46,8 +46,7 @@ public class RayMatrixTransformTest implements TestFeatures {
 	public void scaleAndTranslate() {
 		RayMatrixTransform transform = new RayMatrixTransform(getMatrix(), getRay1());
 		AcceleratedComputationEvaluable<Ray> ace = (AcceleratedComputationEvaluable<Ray>) transform.get();
-		Scope s = ace.compile();
-		System.out.println(ace.getFunctionDefinition());
+		ace.compile();
 		Ray r = ace.evaluate();
 		System.out.println(r);
 		assertEquals(0.25, r.getOrigin().getX());

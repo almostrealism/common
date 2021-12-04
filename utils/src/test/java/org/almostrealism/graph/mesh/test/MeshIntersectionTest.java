@@ -131,19 +131,15 @@ public class MeshIntersectionTest implements TestFeatures {
 		System.out.println("v = " + v.get().evaluate().getValue());
 
 		DynamicAcceleratedOperation ho = (DynamicAcceleratedOperation) h.get();
-		System.out.println(ho.getFunctionDefinition());
 		Assert.assertEquals(1, ho.getArgsCount());
 
 		DynamicAcceleratedOperation fo = (DynamicAcceleratedOperation) f.get();
-		System.out.println(fo.getFunctionDefinition());
 		Assert.assertEquals(1, fo.getArgsCount());
 
 		DynamicAcceleratedOperation uo = (DynamicAcceleratedOperation) u.get();
-		System.out.println(uo.getFunctionDefinition());
 		Assert.assertEquals(1, uo.getArgsCount());
 
 		DynamicAcceleratedOperation vo = (DynamicAcceleratedOperation) v.get();
-		System.out.println(vo.getFunctionDefinition());
 		Assert.assertEquals(1, vo.getArgsCount());
 
 		AcceleratedConjunctionScalar acs = new AcceleratedConjunctionScalar(

@@ -36,6 +36,7 @@ import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.io.PrintWriter;
 
 import java.util.List;
+import java.util.function.Consumer;
 
 public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperation<MemoryData> implements NameProvider {
 	public static boolean enableRequiredScopes = true;
@@ -71,8 +72,20 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 		}
 	}
 
+	/**
+	 * @deprecated  At this level of abstraction, no knowledge of the destination format should
+	 *              exist. Only the {@link io.almostrealism.code.ComputeContext} should be aware
+	 *              of this information, and in fact it is the place where it should be decided.
+	 */
+	@Deprecated
 	public void setCompilation(Compilation c) { this.compilation = c; }
 
+	/**
+	 * @deprecated  At this level of abstraction, no knowledge of the destination format should
+	 *              exist. Only the {@link io.almostrealism.code.ComputeContext} should be aware
+	 *              of this information, and in fact it is the place where it should be decided.
+	 */
+	@Deprecated
 	public Compilation getCompilation() { return compilation; }
 
 	@Override
@@ -142,6 +155,15 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 		setInputs(scope.getInputs());
 		setArguments(scope.getArguments());
 		super.postCompile();
+	}
+
+	@Override
+	public synchronized Consumer<Object[]> getOperator() {
+		if (operators == null || operators.isDestroyed()) {
+			operators = Hardware.getLocalHardware().getComputeContext().deliver(scope);
+		}
+
+		return operators.get(getFunctionName(), getArgsCount());
 	}
 
 	@Override

@@ -26,22 +26,11 @@ import org.almostrealism.io.PrintWriter;
 
 import java.util.function.Function;
 
+@Deprecated
 public enum Compilation {
 	C, CL, JNI;
 
 	public Function<PrintWriter, CodePrintWriter> getGenerator() {
-		if (this == C) {
-			return CPrintWriter::new;
-		} else if (this == CL) {
-			return OpenCLPrintWriter::new;
-		} else if (this == JNI) {
-			if (Hardware.getLocalHardware().getMemoryProvider() instanceof NativeMemoryProvider) {
-				return CJNIPrintWriter::new;
-			} else {
-				return CLJNIPrintWriter::new;
-			}
-		}
-
-		throw new IllegalArgumentException();
+		throw new UnsupportedOperationException();
 	}
 }

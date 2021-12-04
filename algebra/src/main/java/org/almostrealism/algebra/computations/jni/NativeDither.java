@@ -19,26 +19,18 @@ package org.almostrealism.algebra.computations.jni;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.computations.Dither;
-import org.almostrealism.algebra.computations.PowerSpectrum;
 import org.almostrealism.hardware.PassThroughProducer;
-import org.almostrealism.hardware.jni.NativeComputationEvaluable;
-import org.almostrealism.hardware.jni.NativeSupport;
+import org.almostrealism.hardware.jni.NativeInstructionSet;
 
 import java.util.function.Supplier;
 
-public abstract class NativeDither extends Dither implements NativeSupport<NativeComputationEvaluable> {
+@Deprecated
+public abstract class NativeDither extends Dither implements NativeInstructionSet {
 	public NativeDither(int count) {
 		super(count, new PassThroughProducer(2 * count, 0), new PassThroughProducer<>(2, 1));
-		initNative();
 	}
 
 	public NativeDither(int count, Supplier<Pair> randDestination) {
 		super(count, new PassThroughProducer(2 * count, 0), new PassThroughProducer<>(2, 1), randDestination);
-		initNative();
-	}
-
-	@Override
-	public NativeComputationEvaluable<ScalarBank> get() {
-		return new NativeComputationEvaluable<>(this);
 	}
 }

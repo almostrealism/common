@@ -32,8 +32,6 @@ public class ExpressionDelegationTest implements TestFeatures {
 		Scalar b = new Scalar(2.0);
 		AcceleratedComputationEvaluable<Scalar> ev = (AcceleratedComputationEvaluable<Scalar>) r((Supplier) temporal(p(a), p(b))).get();
 
-		System.out.println(ev.getFunctionDefinition());
-
 		Scalar s = ev.evaluate();
 		System.out.println(s);
 		assertEquals(2.0, s);
@@ -49,8 +47,6 @@ public class ExpressionDelegationTest implements TestFeatures {
 		l.add(a(1, p(r), v(a).multiply(p(b))));
 
 		AcceleratedComputationOperation op = (AcceleratedComputationOperation) l.get();
-
-		System.out.println(op.getFunctionDefinition());
 
 		op.run();
 		System.out.println(r);

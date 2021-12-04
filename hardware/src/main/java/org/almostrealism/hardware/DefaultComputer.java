@@ -19,20 +19,16 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.Computer;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.generated.BaseGeneratedProducer;
-import org.almostrealism.generated.BaseGeneratedOperation;
 import org.almostrealism.hardware.jni.NativeCompiler;
-import org.almostrealism.hardware.jni.NativeSupport;
+import org.almostrealism.hardware.jni.NativeInstructionSet;
 
 import java.io.IOException;
-import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
 public class DefaultComputer implements Computer<MemoryData> {
 	private static final List<Class> libs = new ArrayList<>();
-	private static int runnableCount, evaluableCount;
 
 	private NativeCompiler compiler;
 
@@ -53,53 +49,14 @@ public class DefaultComputer implements Computer<MemoryData> {
 		libs.add(cls);
 	}
 
-	public synchronized void loadNative(NativeSupport lib) throws IOException, InterruptedException {
-		if (libs.contains(lib.getClass())) return;
-
-		compiler.compileAndLoad(lib.getClass(), lib.get());
-		libs.add(lib.getClass());
-	}
-
 	@Override
 	public Runnable compileRunnable(Computation<Void> c) {
-		if (compiler == null) {
-			return new AcceleratedComputationOperation<>(c, false);
-		} else {
-			try {
-				BaseGeneratedOperation gen = (BaseGeneratedOperation)
-												Class.forName("org.almostrealism.generated.GeneratedOperation" + runnableCount++)
-													.getConstructor(Computation.class).newInstance(c);
-				return gen.get();
-			} catch (InstantiationException | IllegalAccessException | InvocationTargetException
-					| NoSuchMethodException | ClassNotFoundException e) {
-				throw new HardwareException(e.getMessage(), new UnsupportedOperationException(e));
-			}
-		}
+		return new AcceleratedComputationOperation<>(c, false);
 	}
 
 	@Override
 	public <T extends MemoryData> Evaluable<T> compileProducer(Computation<T> c) {
-		if (compiler == null) {
-			return new AcceleratedComputationEvaluable<>(c);
-		} else {
-			try {
-				BaseGeneratedProducer gen = (BaseGeneratedProducer)
-						Class.forName("org.almostrealism.generated.GeneratedProducer" + evaluableCount++)
-								.getConstructor(Computation.class).newInstance(c);
-				return gen.get();
-			} catch (InvocationTargetException e) {
-				if (e.getCause() instanceof HardwareException) {
-					throw (HardwareException) e.getCause();
-				} else if (e.getCause() != null) {
-					throw new HardwareException(e.getMessage(), new UnsupportedOperationException(e.getCause()));
-				} else {
-					throw new HardwareException(e.getMessage(), new UnsupportedOperationException(e));
-				}
-			} catch (InstantiationException | IllegalAccessException
-					| NoSuchMethodException | ClassNotFoundException e) {
-				throw new HardwareException(e.getMessage(), new UnsupportedOperationException(e));
-			}
-		}
+		return new AcceleratedComputationEvaluable<>(c);
 	}
 
 	@Override

@@ -7,8 +7,8 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.computations.ScalarBankDotProduct;
 import org.almostrealism.algebra.computations.jni.NativeScalarBankDotProduct;
+import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.Hardware;
-import org.almostrealism.hardware.jni.NativeComputationEvaluable;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
@@ -42,7 +42,6 @@ public class ScalarBankDotProductTest implements TestFeatures {
 		ev = NativeScalarBankDotProduct.get(SIZE);
 
 		((OperationAdapter) ev).compile();
-		System.out.println(((NativeComputationEvaluable) ev).getFunctionDefinition());
 
 		test = ev.evaluate(window(), window());
 		System.out.println(test);

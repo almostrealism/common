@@ -19,9 +19,5 @@ public class AcceleratedComputationOperationTest implements HardwareFeatures, Co
 		Supplier<Evaluable<? extends Vector>> in = PassThroughEvaluable.of(Vector.class, 0);
 
 		AcceleratedComputationEvaluable<Vector> s = (AcceleratedComputationEvaluable) compileProducer(new VectorSum(v, in));
-		System.out.println(s.getFunctionDefinition());
-		System.out.println("----------------");
-		// s.setEnableComputationEncoding(true);
-		System.out.println(s.getFunctionDefinition());
 	}
 }

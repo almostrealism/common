@@ -117,7 +117,6 @@ public class CodeFeaturesTests implements TestFeatures {
 		value.setValue(2);
 
 		AcceleratedComputationEvaluable<Scalar> ev = (AcceleratedComputationEvaluable<Scalar>) s.get();
-		System.out.println(ev.getFunctionDefinition());
 		assertEquals(3.0, ev.evaluate().getValue());
 
 		value.setValue(3);
@@ -132,7 +131,6 @@ public class CodeFeaturesTests implements TestFeatures {
 		value.setValue(2);
 
 		AcceleratedComputationOperation r = (AcceleratedComputationOperation) s.get();
-		System.out.println(r.getFunctionDefinition());
 		r.run();
 		System.out.println(dest.getValue());
 		assertEquals(1.5, dest.getValue());

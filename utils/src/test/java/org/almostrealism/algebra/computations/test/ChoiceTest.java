@@ -47,7 +47,6 @@ public class ChoiceTest implements TestFeatures {
 		Choice choice = choice(output, decision, new Scalar(1.0));
 
 		DynamicAcceleratedOperation op = (DynamicAcceleratedOperation) choice.get();
-		System.out.println(op.getFunctionDefinition());
 		op.run();
 
 		System.out.println("chosen = " + output.getValue());
@@ -67,7 +66,6 @@ public class ChoiceTest implements TestFeatures {
 		list.add(choice(output2, decision2, new Scalar(1.0)));
 
 		DynamicAcceleratedOperation op = (DynamicAcceleratedOperation) list.get();
-		System.out.println(op.getFunctionDefinition());
 		op.run();
 
 		System.out.println("first choice = " + output1.getValue());
@@ -98,7 +96,6 @@ public class ChoiceTest implements TestFeatures {
 		list.add(embeddedList);
 
 		DynamicAcceleratedOperation op = (DynamicAcceleratedOperation) list.get();
-		System.out.println(op.getFunctionDefinition());
 		op.run();
 
 		System.out.println("first choice A = " + output1a.getValue());
