@@ -47,11 +47,11 @@ public interface TemporalFeatures {
 	default Supplier<Runnable> loop(Temporal t, int iter) {
 		Supplier<Runnable> tick = t.tick();
 
-		if (tick instanceof Computation) {
-			return new Loop((Computation<Void>) tick, iter);
-		} else {
+		if ((tick instanceof OperationList && !((OperationList) tick).isComputation()) || !(tick instanceof Computation)) {
 			Runnable r = tick.get();
 			return () -> () -> IntStream.range(0, iter).forEach(i -> r.run());
+		} else {
+			return new Loop((Computation<Void>) tick, iter);
 		}
 	}
 }

@@ -29,11 +29,13 @@ import io.almostrealism.relation.Compactable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.OptionalInt;
 import java.util.function.Supplier;
 import java.util.stream.Collector;
 import java.util.stream.Collectors;
 
 public class OperationList extends ArrayList<Supplier<Runnable>> implements OperationComputation<Void>, NamedFunction, HardwareFeatures {
+	private static final int maxDepth = 500;
 	private static long functionCount = 0;
 
 	private boolean enableCompilation;
@@ -72,6 +74,8 @@ public class OperationList extends ArrayList<Supplier<Runnable>> implements Oper
 	}
 
 	public boolean isComputation() {
+		if (getDepth() > maxDepth) return false;
+
 		int nonComputations = stream().mapToInt(o -> {
 			if (o instanceof OperationList) {
 				return ((OperationList) o).isComputation() ? 0 : 1;
@@ -107,6 +111,13 @@ public class OperationList extends ArrayList<Supplier<Runnable>> implements Oper
 	public boolean isFunctionallyEmpty() {
 		if (isEmpty()) return true;
 		return stream().noneMatch(o -> !(o instanceof OperationList) || !((OperationList) o).isFunctionallyEmpty());
+	}
+
+	public int getDepth() {
+		if (isFunctionallyEmpty()) return 0;
+
+		return stream().map(c -> c instanceof OperationList ? (OperationList) c : null).filter(Objects::nonNull)
+				.mapToInt(OperationList::getDepth).max().orElse(0) + 1;
 	}
 
 	@Override

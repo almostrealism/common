@@ -24,6 +24,7 @@ import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.relation.Compactable;
 import org.almostrealism.c.OpenCLPrintWriter;
 import org.almostrealism.hardware.DynamicOperationComputationAdapter;
+import org.almostrealism.hardware.OperationList;
 
 public class Loop extends DynamicOperationComputationAdapter<Void> {
 	public static final boolean enableCompaction = true;

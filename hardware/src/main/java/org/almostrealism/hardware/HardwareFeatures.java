@@ -23,6 +23,7 @@ import org.almostrealism.hardware.computations.Loop;
 
 import java.util.Optional;
 import java.util.function.Supplier;
+import java.util.stream.IntStream;
 
 public interface HardwareFeatures {
 	default Runnable compileRunnable(Computation<?> c) {
@@ -65,7 +66,14 @@ public interface HardwareFeatures {
 		return new Assignment<>(memLength, result, value);
 	}
 
-	default Loop loop(Computation<Void> c, int iterations) { return new Loop(c, iterations); }
+	default Supplier<Runnable> loop(Computation<Void> c, int iterations) {
+		if (c instanceof OperationList && !((OperationList) c).isComputation()) {
+			Runnable r = ((OperationList) c).get();
+			return () -> () -> IntStream.range(0, iterations).forEach(i -> r.run());
+		} else {
+			return new Loop(c, iterations);
+		}
+	}
 
-	default Loop lp(Computation<Void> c, int iterations) { return loop(c, iterations); }
+	default Supplier<Runnable> lp(Computation<Void> c, int iterations) { return loop(c, iterations); }
 }
