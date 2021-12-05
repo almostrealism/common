@@ -42,6 +42,10 @@ public class DefaultComputer implements Computer<MemoryData> {
 
 	public NativeCompiler getNativeCompiler() { return compiler; }
 
+	/**
+	 * @deprecated  Use {@link NativeCompiler} directly.
+	 */
+	@Deprecated
 	public synchronized void loadNative(Class cls, String code) throws IOException, InterruptedException {
 		if (libs.contains(cls)) return;
 

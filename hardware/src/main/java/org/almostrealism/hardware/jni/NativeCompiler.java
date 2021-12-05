@@ -104,37 +104,40 @@ public class NativeCompiler {
 	}
 
 	public void compile(NativeInstructionSet target, String code) {
-		try {
-			compileAndLoad(target.getClass(), code);
-		} catch (IOException e) {
-			throw new HardwareException(e.getMessage(), new UnsupportedOperationException(e));
-		} catch (InterruptedException e) {
-			throw new HardwareException(e.getMessage(), new UnsupportedOperationException(e));
-		}
+		compileAndLoad(target.getClass(), code);
 	}
 
-	public String compile(Class target, String code) throws IOException, InterruptedException {
-		if (enableVerbose) System.out.println("NativeCompiler: Compiling native code for " + target.getSimpleName());
-		String name = target.getName();
+	public String compile(Class target, String code) {
+		return compile(target.getName(), code);
+	}
+
+	public String compile(String name, String code) {
+		if (enableVerbose) System.out.println("NativeCompiler: Compiling native code for " + name);
 
 		try (FileOutputStream out = new FileOutputStream(getInputFile(name));
 				BufferedWriter buf = new BufferedWriter(new OutputStreamWriter(out))) {
 			buf.write(header);
 			buf.write(code);
+		} catch (IOException e) {
+			throw new HardwareException(e.getMessage(), new UnsupportedOperationException(e));
 		}
 
-		Process process = new ProcessBuilder(getCommand(name)).inheritIO().start();
-		process.waitFor();
+		try {
+			Process process = new ProcessBuilder(getCommand(name)).inheritIO().start();
+			process.waitFor();
 
-		if (process.exitValue() != 0) {
-			throw new HardwareException("Native compiler failure (" + process.exitValue() + ")");
+			if (process.exitValue() != 0) {
+				throw new HardwareException("Native compiler failure (" + process.exitValue() + ")");
+			}
+		} catch (IOException | InterruptedException e) {
+			throw new HardwareException(e.getMessage(), new UnsupportedOperationException(e));
 		}
 
-		if (enableVerbose) System.out.println("NativeCompiler: Native code compiled for " + target.getSimpleName());
+		if (enableVerbose) System.out.println("NativeCompiler: Native code compiled for " + name);
 		return name;
 	}
 
-	public void compileAndLoad(Class target, String code) throws IOException, InterruptedException {
+	public void compileAndLoad(Class target, String code) {
 		String name = compile(target, code);
 		if (enableVerbose) System.out.println("NativeCompiler: Loading native library " + name);
 		System.loadLibrary(name);

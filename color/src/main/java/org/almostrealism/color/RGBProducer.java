@@ -33,16 +33,7 @@ import java.util.function.Supplier;
 public interface RGBProducer extends ProducerComputation<RGB>, KernelizedProducer<RGB>, RGBFeatures {
 	@Override
 	default KernelizedEvaluable<RGB> get() {
-		DefaultComputer computer = Hardware.getLocalHardware().getComputer();
-
-		AcceleratedComputationEvaluable ev;
-
-		if (computer.isNative()) {
-			ev = (AcceleratedComputationEvaluable) computer.compileProducer(this);
-		} else {
-			ev = new DefaultRGBEvaluable(this);
-		}
-		
+		AcceleratedComputationEvaluable ev = new DefaultRGBEvaluable(this);
 		ev.compile();
 		return ev;
 	}

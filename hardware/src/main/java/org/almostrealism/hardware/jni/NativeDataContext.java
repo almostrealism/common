@@ -16,10 +16,12 @@
 
 package org.almostrealism.hardware.jni;
 
+import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.DataContext;
 import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.c.NativeMemoryProvider;
 import org.almostrealism.hardware.RAM;
+import org.almostrealism.hardware.external.ExternalComputeContext;
 
 import java.util.concurrent.Callable;
 
@@ -31,14 +33,14 @@ public class NativeDataContext implements DataContext {
 
 	private MemoryProvider<RAM> ram;
 
-	private NativeComputeContext context;
+	private ComputeContext context;
 
-	public NativeDataContext(NativeCompiler compiler, String name, boolean isDoublePrecision, long memoryMax) {
+	public NativeDataContext(NativeCompiler compiler, String name, boolean isDoublePrecision, boolean external, long memoryMax) {
 		this.compiler = compiler;
 		this.name = name;
 		this.isDoublePrecision = isDoublePrecision;
 		this.memoryMax = memoryMax;
-		this.context = new NativeComputeContext(compiler);
+		this.context = external ? new ExternalComputeContext(compiler) : new NativeComputeContext(compiler);
 	}
 
 	public void init() {
@@ -50,17 +52,13 @@ public class NativeDataContext implements DataContext {
 
 	public MemoryProvider<RAM> getMemoryProvider() { return ram; }
 
-	public NativeComputeContext getComputeContext() {
+	public ComputeContext getComputeContext() {
 		if (context == null) {
 			System.out.println("INFO: No explicit ComputeContext for " + Thread.currentThread().getName());
 			context = new NativeComputeContext(compiler);
 		}
 
 		return context;
-	}
-
-	protected void setComputeContext(NativeComputeContext ctx) {
-		this.context = ctx;
 	}
 
 	public <T> T computeContext(Callable<T> exec) {
