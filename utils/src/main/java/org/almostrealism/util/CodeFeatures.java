@@ -140,7 +140,7 @@ public interface CodeFeatures extends ScalarFeatures, PairFeatures, TriangleData
 	}
 
 	default <T> T cc(Callable<T> exec) {
-		return Hardware.getLocalHardware().getClDataContext().computeContext(exec);
+		return Hardware.getLocalHardware().getDataContext().computeContext(exec);
 	}
 
 	default Ops o() { return Ops.ops(); }

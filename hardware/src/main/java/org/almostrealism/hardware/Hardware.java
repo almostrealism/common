@@ -104,8 +104,11 @@ public final class Hardware {
 		String tsCount = System.getProperty("AR_HARDWARE_TIMESERIES_COUNT");
 		if (tsCount == null) tsCount = System.getenv("AR_HARDWARE_TIMESERIES_COUNT");
 
-		String nativeCompiler = System.getProperty("AR_HARDWARE_NATIVE_COMPILER");
-		if (nativeCompiler == null) nativeCompiler = System.getenv("AR_HARDWARE_NATIVE_COMPILER");
+		String libCompiler = System.getProperty("AR_HARDWARE_NATIVE_COMPILER");
+		if (libCompiler == null) libCompiler = System.getenv("AR_HARDWARE_NATIVE_COMPILER");
+
+		String exeCompiler = System.getProperty("AR_HARDWARE_EXTERNAL_COMPILER");
+		if (exeCompiler == null) libCompiler = System.getenv("AR_HARDWARE_EXTERNAL_COMPILER");
 
 		String libDir = System.getProperty("AR_HARDWARE_NATIVE_LIBS");
 		if (libDir == null) libDir = System.getenv("AR_HARDWARE_NATIVE_LIBS");
@@ -113,15 +116,18 @@ public final class Hardware {
 		String exec = System.getProperty("AR_HARDWARE_NATIVE_EXECUTION");
 		if (exec == null) exec = System.getenv("AR_HARDWARE_NATIVE_EXECUTION");
 
+		String data = System.getProperty("AR_HARDWARE_DATA");
+		if (data == null) data = System.getenv("AR_HARDWARE_DATA");
+
 		timeSeriesSize = Optional.ofNullable(tsSize).map(size -> (int) (100000 * Double.parseDouble(size))).orElse(-1);
 		timeSeriesCount = Optional.ofNullable(tsCount).map(Integer::parseInt).orElse(30);
 
 		if (sp) {
-			local = new Hardware(nativeCompiler, libDir, "cl".equalsIgnoreCase(memProvider),
+			local = new Hardware(libCompiler, exeCompiler, libDir, data, "cl".equalsIgnoreCase(memProvider),
 						gpu, enableKernels, enableDestinationConsolidation, false,
 						"external".equalsIgnoreCase(exec), location);
 		} else {
-			local = new Hardware(nativeCompiler, libDir, "cl".equalsIgnoreCase(memProvider),
+			local = new Hardware(libCompiler, exeCompiler, libDir, data, "cl".equalsIgnoreCase(memProvider),
 						gpu, enableKernels, enableDestinationConsolidation,
 						"external".equalsIgnoreCase(exec), location);
 		}
@@ -137,35 +143,32 @@ public final class Hardware {
 	private long memoryMax;
 	private Location location;
 
-	private final String compilerExec;
-	private final String libDir;
-
 	private DataContext context;
 	private List<ContextListener> contextListeners;
 
 	private AcceleratedFunctions functions;
 	private final DefaultComputer computer;
 	
-	private Hardware(String compilerExec, String libDir, boolean enableCl, boolean enableGpu,
+	private Hardware(String libCompiler, String exeCompiler, String libDir, String dataDir, boolean enableCl, boolean enableGpu,
 					 boolean enableKernels, boolean enableDestinationConsolidation, boolean externalNative,
 					 Location location) {
-		this(compilerExec, libDir, enableCl, enableGpu, enableKernels, enableDestinationConsolidation, !enableGpu, externalNative, location);
+		this(libCompiler, exeCompiler, libDir, dataDir, enableCl, enableGpu, enableKernels, enableDestinationConsolidation, !enableGpu, externalNative, location);
 	}
 
-	private Hardware(String compilerExec, String libDir, boolean enableCl, boolean enableGpu,
+	private Hardware(String libCompiler, String exeCompiler, String libDir, String dataDir, boolean enableCl, boolean enableGpu,
 					 boolean enableKernels, boolean enableDestinationConsolidation,
 					 boolean enableDoublePrecision, boolean externalNative, Location location) {
-		this(enableDoublePrecision ? "local64" : "local32", compilerExec, libDir, enableCl, enableGpu,
+		this(enableDoublePrecision ? "local64" : "local32", libCompiler, exeCompiler, libDir, dataDir, enableCl, enableGpu,
 				enableKernels, enableDestinationConsolidation, enableDoublePrecision, externalNative, location);
 	}
 
-	private Hardware(String name, String compilerExec, String libDir, boolean enableCl, boolean enableGpu,
+	private Hardware(String name, String libCompiler, String exeCompiler, String libDir, String dataDir, boolean enableCl, boolean enableGpu,
 					 boolean enableKernels, boolean enableDestinationConsolidation, boolean externalNative,
 					 Location location) {
-		this(name, compilerExec, libDir, enableCl, enableGpu, enableKernels, enableDestinationConsolidation, !enableGpu, externalNative, location);
+		this(name, libCompiler, exeCompiler, libDir, dataDir, enableCl, enableGpu, enableKernels, enableDestinationConsolidation, !enableGpu, externalNative, location);
 	}
 
-	private Hardware(String name, String compilerExec, String libDir, boolean enableCl, boolean enableGpu,
+	private Hardware(String name, String libCompiler, String exeCompiler, String libDir, String dataDir, boolean enableCl, boolean enableGpu,
 					 boolean enableKernels, boolean enableDestinationConsolidation,
 					 boolean enableDoublePrecision, boolean externalNative, Location location) {
 		this.name = name;
@@ -180,8 +183,6 @@ public final class Hardware {
 		this.enableKernel = enableKernels;
 		this.enableDestinationConsolidation = enableDestinationConsolidation;
 		this.externalNative = externalNative;
-		this.compilerExec = compilerExec;
-		this.libDir = libDir;
 		this.memVolatile = location == Location.HEAP;
 		this.contextListeners = new ArrayList<>();
 
@@ -211,8 +212,8 @@ public final class Hardware {
 
 		NativeCompiler nativeCompiler;
 
-		if (compilerExec != null && libDir != null) {
-			nativeCompiler = new NativeCompiler(this, compilerExec, libDir, LIB_FORMAT, enableCl);
+		if (libDir != null) {
+			nativeCompiler = new NativeCompiler(this, libCompiler, exeCompiler, libDir, LIB_FORMAT, dataDir, enableCl);
 		} else {
 			nativeCompiler = null;
 		}
@@ -326,7 +327,7 @@ public final class Hardware {
 
 	public boolean isKernelSupported() { return enableKernel; }
 
-	public boolean isNativeSupported() { return compilerExec != null && libDir != null && LIB_FORMAT != null; }
+	public boolean isNativeSupported() { return computer.isNative(); }
 
 	public boolean isExternalNative() { return externalNative; }
 

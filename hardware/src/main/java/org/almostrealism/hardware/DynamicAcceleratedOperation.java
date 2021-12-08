@@ -39,18 +39,6 @@ public abstract class DynamicAcceleratedOperation<T extends MemoryData> extends 
 	}
 
 	@Override
-	public synchronized Object[] apply(Object[] args) {
-		try {
-			return super.apply(args);
-		} catch (HardwareException e) {
-			String prog = getFunctionDefinition();
-			e.setProgram(prog);
-			System.out.println(prog);
-			throw e;
-		}
-	}
-
-	@Override
 	public void kernelOperate(MemoryBank output, MemoryBank[] args) {
 		try {
 			super.kernelOperate(output, args);

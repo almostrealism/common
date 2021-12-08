@@ -38,8 +38,8 @@ public class CLJNIPrintWriter extends CPrintWriter {
 	private final Stack<Accessibility> accessStack;
 	private final Stack<List<ArrayVariable<?>>> argumentStack;
 
-	public CLJNIPrintWriter(PrintWriter p) {
-		super(p);
+	public CLJNIPrintWriter(PrintWriter p, String topLevelMethodName) {
+		super(p, topLevelMethodName);
 		setExternalScopePrefix("JNIEXPORT void JNICALL");
 		setEnableArrayVariables(true);
 		accessStack = new Stack<>();
@@ -67,11 +67,6 @@ public class CLJNIPrintWriter extends CPrintWriter {
 		}
 
 		super.endScope();
-	}
-
-	@Override
-	public void println(Method method) {
-		p.println(renderMethod(method));
 	}
 
 	@Override

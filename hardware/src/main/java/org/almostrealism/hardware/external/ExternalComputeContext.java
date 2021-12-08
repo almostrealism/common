@@ -21,10 +21,35 @@ import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.InstructionSet;
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.ScopeEncoder;
-import org.almostrealism.c.CJNIPrintWriter;
+import org.almostrealism.c.CPrintWriter;
 import org.almostrealism.hardware.jni.NativeCompiler;
+import org.almostrealism.hardware.jni.NativeInstructionSet;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
 
 public class ExternalComputeContext implements ComputeContext {
+	private static final String externalWrapper;
+
+	static {
+		StringBuffer buf = new StringBuffer();
+
+		try (BufferedReader in =
+					 new BufferedReader(new InputStreamReader(
+							 ExternalComputeContext.class.getClassLoader().getResourceAsStream("external-wrapper.c")))) {
+			String line;
+			while ((line = in.readLine()) != null) {
+				buf.append(line);
+				buf.append("\n");
+			}
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+
+		externalWrapper = buf.toString();
+	}
+
 	private NativeCompiler compiler;
 
 	public ExternalComputeContext(NativeCompiler compiler) {
@@ -34,9 +59,12 @@ public class ExternalComputeContext implements ComputeContext {
 	@Override
 	public InstructionSet deliver(Scope scope) {
 		StringBuffer buf = new StringBuffer();
-		buf.append(new ScopeEncoder(pw -> new CJNIPrintWriter(pw, "apply"), Accessibility.EXTERNAL).apply(scope));
-		String executable = compiler.compile((String) null, buf.toString());
-		return new ExternalInstructionSet(executable);
+		NativeInstructionSet inst = compiler.reserveLibraryTarget();
+		buf.append(new ScopeEncoder(pw -> new CPrintWriter(pw, "apply"), Accessibility.EXTERNAL).apply(scope));
+		buf.append("\n");
+		buf.append(externalWrapper);
+		String executable = compiler.getLibraryDirectory() + "/" + compiler.compile(inst.getClass().getName(), buf.toString(), false);
+		return new ExternalInstructionSet(executable, compiler::reserveDataDirectory);
 	}
 
 	@Override

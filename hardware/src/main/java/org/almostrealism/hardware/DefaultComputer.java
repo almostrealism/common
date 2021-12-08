@@ -20,7 +20,6 @@ import io.almostrealism.code.Computation;
 import io.almostrealism.code.Computer;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.jni.NativeCompiler;
-import org.almostrealism.hardware.jni.NativeInstructionSet;
 
 import java.io.IOException;
 import java.util.ArrayList;

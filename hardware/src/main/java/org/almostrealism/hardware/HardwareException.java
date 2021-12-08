@@ -29,7 +29,7 @@ public class HardwareException extends RuntimeException {
 		super(message, cause);
 	}
 
-	public HardwareException(String message, UnsupportedOperationException cause) {
+	public HardwareException(String message, Exception cause) {
 		super(message, cause);
 	}
 

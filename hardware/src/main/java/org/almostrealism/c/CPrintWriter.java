@@ -16,11 +16,14 @@
 
 package org.almostrealism.c;
 
+import io.almostrealism.code.Accessibility;
+import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.CodePrintWriterAdapter;
 import io.almostrealism.code.expressions.Expression;
 import io.almostrealism.code.Method;
 import io.almostrealism.code.ResourceVariable;
 import io.almostrealism.code.Variable;
+import io.almostrealism.code.expressions.InstanceReference;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.io.PrintStreamPrintWriter;
 import org.almostrealism.io.PrintWriter;
@@ -30,16 +33,88 @@ import java.io.OutputStream;
 import java.io.PrintStream;
 import java.util.List;
 import java.util.Map;
+import java.util.Stack;
+import java.util.function.Consumer;
+import java.util.stream.IntStream;
 
 public class CPrintWriter extends CodePrintWriterAdapter {
-	public CPrintWriter(OutputStream out) {
-		this(new PrintStreamPrintWriter(new PrintStream(out)));
+	private final String topLevelMethodName;
+	private final Stack<Accessibility> accessStack;
+	private final Stack<List<ArrayVariable<?>>> argumentStack;
+
+	public CPrintWriter(OutputStream out, String topLevelMethodName) {
+		this(new PrintStreamPrintWriter(new PrintStream(out)), topLevelMethodName);
 	}
 
-	public CPrintWriter(PrintWriter p) {
+	public CPrintWriter(PrintWriter p, String topLevelMethodName) {
 		super(p);
+		this.topLevelMethodName = topLevelMethodName;
+		this.accessStack = new Stack<>();
+		this.argumentStack = new Stack<>();
 		setScopePrefix("void");
-		setEnableArrayVariables(false);
+		setEnableArrayVariables(true);
+	}
+
+	public String getTopLevelMethodName() { return topLevelMethodName; }
+
+	@Override
+	public void beginScope(String name, List<ArrayVariable<?>> arguments, Accessibility access) {
+		if (access == Accessibility.EXTERNAL && getTopLevelMethodName() != null) {
+			super.beginScope(getTopLevelMethodName(), arguments, access);
+		} else {
+			super.beginScope(name, arguments, access);
+		}
+
+		if (access == Accessibility.EXTERNAL) {
+			renderArgumentReads(arguments);
+		}
+
+		accessStack.push(access);
+		argumentStack.push(arguments);
+	}
+
+	@Override
+	public void endScope() {
+		if (accessStack.pop() == Accessibility.EXTERNAL) {
+			renderArgumentWrites(argumentStack.pop());
+		} else {
+			argumentStack.pop();
+		}
+
+		super.endScope();
+	}
+
+	@Override
+	protected void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out, Accessibility access) {
+		if (access == Accessibility.EXTERNAL) {
+			out.accept("long* argArr, uint32_t* offsetArr, uint32_t* sizeArr, uint32_t count");
+		} else {
+			super.renderArguments(arguments, out, access);
+		}
+	}
+
+	protected void renderArgumentReads(List<ArrayVariable<?>> arguments) {
+		IntStream.range(0, arguments.size())
+				.mapToObj(i -> new Variable<>(arguments.get(i).getName() + "Offset",
+						Integer.class, "(int) offsetArr[" + i + "]"))
+				.forEach(this::println);
+		IntStream.range(0, arguments.size())
+				.mapToObj(i -> new Variable<>(arguments.get(i).getName() + "Size",
+						Integer.class, "(int) sizeArr[" + i + "]"))
+				.forEach(this::println);
+
+		IntStream.range(0, arguments.size()).forEach(i -> copyInline(i, arguments.get(i), false));
+	}
+
+	protected void renderArgumentWrites(List<ArrayVariable<?>> arguments) {
+		IntStream.range(0, arguments.size()).forEach(i -> copyInline(i, arguments.get(i), true));
+	}
+
+	protected void copyInline(int index, ArrayVariable<?> variable, boolean write) {
+		String o = "((double *) argArr[" + index + "])";
+		String v = new InstanceReference<>(variable).getExpression();
+
+		if (!write) println("double *" + v + " = " + o + ";");
 	}
 
 	@Override
@@ -74,7 +149,7 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 
 	@Override
 	public void println(Method method) {
-		this.p.println(method.getExpression() + ";");
+		p.println(renderMethod(method));
 	}
 
 	protected void printf(String format, String arg) { printf(format, arg, true); }

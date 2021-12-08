@@ -24,7 +24,7 @@ import org.almostrealism.io.PrintWriter;
 public class OpenCLPrintWriter extends CPrintWriter {
 
 	public OpenCLPrintWriter(PrintWriter p) {
-		super(p);
+		super(p, null);
 		setScopePrefix("__kernel void");
 		setEnableArrayVariables(true);
 	}

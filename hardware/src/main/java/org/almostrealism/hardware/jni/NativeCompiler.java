@@ -20,9 +20,9 @@ import io.almostrealism.code.Computation;
 import org.almostrealism.generated.BaseGeneratedOperation;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
-import org.almostrealism.hardware.cl.CLMemoryProvider;
 
 import java.io.BufferedWriter;
+import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
@@ -37,57 +37,94 @@ public class NativeCompiler {
 
 	private static final String STDIO = "#include <stdio.h>\n";
 	private static final String STDLIB = "#include <stdlib.h>\n";
+	private static final String STR = "#include <string.h>\n";
 	private static final String MATH = "#include <math.h>\n";
 	private static final String JNI = "#include <jni.h>\n";
 	private static final String OPENCL = System.getProperty("os.name").toLowerCase().startsWith("mac os") ?
 								"#include <OpenCL/cl.h>\n" : "#include <cl.h>\n";
 
 	private static int runnableCount;
+	private static int dataCount;
 
-	private final String executable;
-	private final String compiler;
+	private final String libExecutable, exeExecutable;
+	private final String libCompiler, exeCompiler;
 	private final String libDir;
 	private final String libFormat;
+	private final String dataDir;
 
 	private final String header;
 
-	public NativeCompiler(Hardware hardware, String compiler, String libDir, String libFormat, boolean cl) {
-		this.executable = compiler.contains(".") ? compiler.substring(compiler.lastIndexOf(".") + 1) : null;
-		this.compiler = compiler;
+	public NativeCompiler(Hardware hardware, String libCompiler, String exeCompiler, String libDir, String libFormat, String dataDir, boolean cl) {
+		this.libExecutable = libCompiler.contains(".") ? libCompiler.substring(libCompiler.lastIndexOf(".") + 1) : null;
+		this.exeExecutable = exeCompiler.contains(".") ? exeCompiler.substring(exeCompiler.lastIndexOf(".") + 1) : null;
+		this.libCompiler = libCompiler;
+		this.exeCompiler = exeCompiler;
 		this.libDir = libDir;
 		this.libFormat = libFormat;
+		this.dataDir = dataDir;
+
+		if (this.dataDir != null) {
+			File data = new File(this.dataDir);
+			if (!data.exists()) data.mkdir();
+		}
 
 		String pi = hardware.getNumberTypeName() + " M_PI_F = M_PI;";
-		this.header = STDIO + STDLIB + MATH + JNI +
+		this.header = STDIO + STDLIB + STR + MATH + JNI +
 				(cl ? OPENCL : "") +
 				pi + "\n";
 	}
 
-	protected String getExecutable() {
-		if (executable != null) return executable;
-		return compiler;
+	public String getLibraryDirectory() { return libDir; }
+
+	public String getDataDirectory() { return dataDir; }
+
+	public File reserveDataDirectory() {
+		File data = new File(getDataDirectory() + "/" + dataCount++);
+		if (!data.exists()) {
+			data.mkdir();
+		}
+
+		return data;
+	}
+
+	protected String getExecutable(boolean lib) {
+		if (lib) {
+			if (libExecutable != null) return libExecutable;
+			return libCompiler;
+		} else {
+			if (exeExecutable != null) return exeExecutable;
+			return exeCompiler;
+		}
 	}
 
 	protected String getInputFile(String name) {
 		return libDir + "/" + name + ".c";
 	}
 
-	protected String getOutputFile(String name) {
-		return libDir + "/" + libFormat.replaceAll(LIB_NAME_REPLACE, name);
+	protected String getOutputFile(String name, boolean lib) {
+		if (lib) {
+			return libDir + "/" + libFormat.replaceAll(LIB_NAME_REPLACE, name);
+		} else {
+			return libDir + "/" + name;
+		}
 	}
 
-	protected List<String> getArguments(String name) {
+	protected List<String> getArguments(String name, boolean lib) {
 		List<String> command = new ArrayList<>();
-		if (executable != null) command.add(compiler);
+		if (lib) {
+			if (libExecutable != null) command.add(libCompiler);
+		} else {
+			if (exeExecutable != null) command.add(exeCompiler);
+		}
 		command.add(getInputFile(name));
-		command.add(getOutputFile(name));
+		command.add(getOutputFile(name, lib));
 		return command;
 	}
 
-	protected List<String> getCommand(String name) {
+	protected List<String> getCommand(String name, boolean lib) {
 		List<String> command = new ArrayList<>();
-		command.add(getExecutable());
-		command.addAll(getArguments(name));
+		command.add(getExecutable(lib));
+		command.addAll(getArguments(name, lib));
 		return command;
 	}
 
@@ -108,10 +145,10 @@ public class NativeCompiler {
 	}
 
 	public String compile(Class target, String code) {
-		return compile(target.getName(), code);
+		return compile(target.getName(), code, true);
 	}
 
-	public String compile(String name, String code) {
+	public String compile(String name, String code, boolean lib) {
 		if (enableVerbose) System.out.println("NativeCompiler: Compiling native code for " + name);
 
 		try (FileOutputStream out = new FileOutputStream(getInputFile(name));
@@ -123,7 +160,7 @@ public class NativeCompiler {
 		}
 
 		try {
-			Process process = new ProcessBuilder(getCommand(name)).inheritIO().start();
+			Process process = new ProcessBuilder(getCommand(name, lib)).inheritIO().start();
 			process.waitFor();
 
 			if (process.exitValue() != 0) {

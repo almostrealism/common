@@ -31,51 +31,11 @@ import java.util.function.Consumer;
 import java.util.stream.IntStream;
 
 public class CJNIPrintWriter extends CPrintWriter {
-	public static final boolean enableInlineCopy = true;
-	public static final boolean enableDirectReferences = true;
-
-	private final String topLevelMethodName;
-	private final Stack<Accessibility> accessStack;
-	private final Stack<List<ArrayVariable<?>>> argumentStack;
 
 	public CJNIPrintWriter(PrintWriter p, String topLevelMethodName) {
-		super(p);
-		this.topLevelMethodName = topLevelMethodName;
+		super(p, topLevelMethodName);
 		setExternalScopePrefix("JNIEXPORT void JNICALL");
 		setEnableArrayVariables(true);
-		accessStack = new Stack<>();
-		argumentStack = new Stack<>();
-	}
-
-	@Override
-	public void beginScope(String name, List<ArrayVariable<?>> arguments, Accessibility access) {
-		if (!enableInlineCopy && access == Accessibility.EXTERNAL) {
-			renderReadWrite();
-		}
-
-		if (access == Accessibility.EXTERNAL) {
-			super.beginScope(topLevelMethodName, arguments, access);
-		} else {
-			super.beginScope(name, arguments, access);
-		}
-
-		if (access == Accessibility.EXTERNAL) {
-			renderArgumentReads(arguments);
-		}
-
-		accessStack.push(access);
-		argumentStack.push(arguments);
-	}
-
-	@Override
-	public void endScope() {
-		if (accessStack.pop() == Accessibility.EXTERNAL) {
-			renderArgumentWrites(argumentStack.pop());
-		} else {
-			argumentStack.pop();
-		}
-
-		super.endScope();
 	}
 
 	@Override
@@ -104,118 +64,18 @@ public class CJNIPrintWriter extends CPrintWriter {
 	}
 
 	protected void renderArgumentReads(List<ArrayVariable<?>> arguments) {
-		String numberType = Hardware.getLocalHardware().getNumberTypeName();
-		int numberSize = Hardware.getLocalHardware().getNumberSize();
-
 		println(new Variable<>("*argArr", long[].class, "(*env)->GetLongArrayElements(env, arg, 0)"));
 		println(new Variable<>("*offsetArr", int[].class, "(*env)->GetIntArrayElements(env, offset, 0)"));
 		println(new Variable<>("*sizeArr", int[].class, "(*env)->GetIntArrayElements(env, size, 0)"));
 
-		if (!enableDirectReferences) {
-			IntStream.range(0, arguments.size())
-					.mapToObj(i -> new Variable("*" + arguments.get(i).getName(),
-							new Expression<>(Double.class, "(" + numberType + "*) malloc("
-									+ numberSize + " * (int) sizeArr[" + i + "])")))
-					.forEach(this::println);
-		}
-
-		IntStream.range(0, arguments.size())
-				.mapToObj(i -> new Variable<>(arguments.get(i).getName() + "Offset",
-						Integer.class, "(int) offsetArr[" + i + "]"))
-				.forEach(this::println);
-		IntStream.range(0, arguments.size())
-				.mapToObj(i -> new Variable<>(arguments.get(i).getName() + "Size",
-						Integer.class, "(int) sizeArr[" + i + "]"))
-				.forEach(this::println);
-
-		if (enableInlineCopy) {
-			IntStream.range(0, arguments.size()).forEach(i -> copyInline(i, arguments.get(i), false));
-		} else {
-			IntStream.range(0, arguments.size())
-					.mapToObj(i -> copyMethod(i, arguments.get(i), false))
-					.forEach(super::println);
-		}
+		super.renderArgumentReads(arguments);
 	}
 
 	protected void renderArgumentWrites(List<ArrayVariable<?>> arguments) {
-		if (enableInlineCopy) {
-			IntStream.range(0, arguments.size()).forEach(i -> copyInline(i, arguments.get(i), true));
-		} else {
-			IntStream.range(0, arguments.size())
-					.mapToObj(i -> copyMethod(i, arguments.get(i), true))
-					.forEach(super::println);
-		}
+		super.renderArgumentWrites(arguments);
 
-		if (!enableDirectReferences) {
-			arguments.stream()
-					.map(InstanceReference::new)
-					.map(InstanceReference::getExpression)
-					.map(exp -> "free(" + exp + ");")
-					.forEach(this::println);
-		}
 		println("free(argArr);");
 		println("free(offsetArr);");
 		println("free(sizeArr);");
-	}
-
-	protected Method<Void> copyMethod(int index, ArrayVariable<?> variable, boolean write) {
-		int size = Hardware.getLocalHardware().getNumberSize();
-
-		Expression<double[]> nativeBuffer =
-				new Expression<>(double[].class, "(double *) argArr[" + index + "]");
-		Expression<Integer> nativeOffset =
-				new Expression<>(Integer.class, "offsetArr[" + index + "]");
-		Expression<Integer> nativeCb =
-				new Expression<>(Integer.class, "sizeArr[" + index + "]");
-
-		String method = write ? "write" : "read";
-
-		return new Method<>(Void.class, method,
-					nativeBuffer, nativeOffset, nativeCb,
-					new InstanceReference<>(variable));
-	}
-
-	protected void copyInline(int index, ArrayVariable<?> variable, boolean write) {
-		if (enableDirectReferences) {
-			String o = "((double *) argArr[" + index + "])";
-			// String offset = "offsetArr[" + index + "]";
-			String size = "sizeArr[" + index + "]";
-			String v = new InstanceReference<>(variable).getExpression();
-
-			if (!write) {
-				println("double *" + v + " = " + o + ";");
-			} else {
-				// println(o + " = " + v + ";");
-			}
-		} else {
-			String o = "((double *) argArr[" + index + "])";
-			// String offset = "offsetArr[" + index + "]";
-			String size = "sizeArr[" + index + "]";
-			String v = new InstanceReference<>(variable).getExpression();
-
-			if (!write) {
-				println("for (int i = 0; i < " + size + "; i++) {");
-				println("\t" + v + "[i] = " + o + "[i];");
-				println("}");
-			} else {
-				println("for (int i = 0; i < " + size + "; i++) {");
-				println("\t" + o + "[i] = " + v + "[i];");
-				println("}");
-			}
-		}
-	}
-
-	private void renderReadWrite() {
-		println("void read(double* o, int offset, int size, double* v) {");
-		println("\tfor (int i = 0; i < size; i++) {");
-		println("\t\tv[i] = o[offset + i];");
-		println("\t}");
-		println("}");
-
-		println("void write(double* o, int offset, int size, double* v) {");
-		println("\tfor (int i = 0; i < size; i++) {");
-		println("\t\to[offset + i] = v[i];");
-		println("\t}");
-		println("}");
 	}
 }
