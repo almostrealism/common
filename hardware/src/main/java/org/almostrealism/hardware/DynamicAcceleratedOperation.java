@@ -19,6 +19,7 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.InstructionSet;
 import io.almostrealism.code.Scope;
+import io.almostrealism.code.Variable;
 import io.almostrealism.relation.Evaluable;
 
 import java.util.List;
@@ -36,18 +37,6 @@ public abstract class DynamicAcceleratedOperation<T extends MemoryData> extends 
 	@SafeVarargs
 	public DynamicAcceleratedOperation(boolean kernel, ArrayVariable<T>... args) {
 		super(kernel, args);
-	}
-
-	@Override
-	public void kernelOperate(MemoryBank output, MemoryBank[] args) {
-		try {
-			super.kernelOperate(output, args);
-		} catch (HardwareException e) {
-			String prog = getFunctionDefinition();
-			e.setProgram(prog);
-			System.out.println(prog);
-			throw e;
-		}
 	}
 
 	@Override
@@ -72,6 +61,18 @@ public abstract class DynamicAcceleratedOperation<T extends MemoryData> extends 
 				") {\n" +
 				getBody(getOutputVariable()) +
 				"}";
+	}
+
+	/**
+	 * @deprecated  In the process of abstracting the way in which {@link InstructionSet}s
+	 *              are created from {@link DynamicAcceleratedOperation}s, this method will
+	 *              inevitably become unusable because it is specific to a particular kind
+	 *              of {@link InstructionSet} (one that uses JOCL).
+	 */
+	@Deprecated
+	@Override
+	public String getBody(Variable<T, ?> outputVariable) {
+		throw new UnsupportedOperationException();
 	}
 
 	/**

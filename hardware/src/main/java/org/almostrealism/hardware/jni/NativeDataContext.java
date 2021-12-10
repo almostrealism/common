@@ -18,39 +18,42 @@ package org.almostrealism.hardware.jni;
 
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.DataContext;
+import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.c.NativeMemoryProvider;
 import org.almostrealism.hardware.RAM;
 import org.almostrealism.hardware.external.ExternalComputeContext;
+import org.almostrealism.hardware.jvm.JVMMemoryProvider;
 
 import java.util.concurrent.Callable;
 
 public class NativeDataContext implements DataContext {
 	private final NativeCompiler compiler;
 	private final String name;
-	private final boolean isDoublePrecision;
+	private final boolean isDoublePrecision, isNativeMem;
 	private final long memoryMax;
 
-	private MemoryProvider<RAM> ram;
+	private MemoryProvider<? extends Memory> ram;
 
 	private ComputeContext context;
 
-	public NativeDataContext(NativeCompiler compiler, String name, boolean isDoublePrecision, boolean external, long memoryMax) {
+	public NativeDataContext(NativeCompiler compiler, String name, boolean isDoublePrecision, boolean isNativeMem, boolean external, long memoryMax) {
 		this.compiler = compiler;
 		this.name = name;
 		this.isDoublePrecision = isDoublePrecision;
+		this.isNativeMem = isNativeMem;
 		this.memoryMax = memoryMax;
 		this.context = external ? new ExternalComputeContext(compiler) : new NativeComputeContext(compiler);
 	}
 
 	public void init() {
 		if (ram != null) return;
-		ram = new NativeMemoryProvider(memoryMax);
+		ram = isNativeMem ? new NativeMemoryProvider(memoryMax) : new JVMMemoryProvider();
 	}
 
 	public String getName() { return name; }
 
-	public MemoryProvider<RAM> getMemoryProvider() { return ram; }
+	public MemoryProvider<? extends Memory> getMemoryProvider() { return ram; }
 
 	public ComputeContext getComputeContext() {
 		if (context == null) {

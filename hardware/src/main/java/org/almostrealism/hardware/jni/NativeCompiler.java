@@ -46,7 +46,7 @@ public class NativeCompiler {
 	private static int runnableCount;
 	private static int dataCount;
 
-	private final String libExecutable, exeExecutable;
+	private String libExecutable, exeExecutable;
 	private final String libCompiler, exeCompiler;
 	private final String libDir;
 	private final String libFormat;
@@ -55,8 +55,14 @@ public class NativeCompiler {
 	private final String header;
 
 	public NativeCompiler(Hardware hardware, String libCompiler, String exeCompiler, String libDir, String libFormat, String dataDir, boolean cl) {
-		this.libExecutable = libCompiler.contains(".") ? libCompiler.substring(libCompiler.lastIndexOf(".") + 1) : null;
-		this.exeExecutable = exeCompiler.contains(".") ? exeCompiler.substring(exeCompiler.lastIndexOf(".") + 1) : null;
+		if (libCompiler != null) {
+			this.libExecutable = libCompiler.contains(".") ? libCompiler.substring(libCompiler.lastIndexOf(".") + 1) : null;
+		}
+
+		if (exeCompiler != null) {
+			this.exeExecutable = exeCompiler.contains(".") ? exeCompiler.substring(exeCompiler.lastIndexOf(".") + 1) : null;
+		}
+
 		this.libCompiler = libCompiler;
 		this.exeCompiler = exeCompiler;
 		this.libDir = libDir;

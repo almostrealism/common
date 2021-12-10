@@ -23,7 +23,7 @@ import org.almostrealism.hardware.PooledMem;
 import org.almostrealism.hardware.RAM;
 
 public abstract class MemoryDataAdapter implements MemoryData {
-	private RAM mem;
+	private Memory mem;
 
 	private MemoryData delegateMem;
 	private int delegateMemOffset;

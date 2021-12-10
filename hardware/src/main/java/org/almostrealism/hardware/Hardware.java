@@ -18,6 +18,7 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.DataContext;
+import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.hardware.cl.CLMemoryProvider;
 import org.almostrealism.hardware.cl.CLMemoryProvider.Location;
@@ -86,14 +87,6 @@ public final class Hardware {
 			location = Location.HOST;
 		}
 
-		String memProvider = System.getProperty("AR_HARDWARE_MEMORY_PROVIDER");
-		if (memProvider == null) memProvider = System.getenv("AR_HARDWARE_MEMORY_PROVIDER");
-		if (memProvider == null) memProvider = "cl";
-		if (memProvider.equalsIgnoreCase("native")) {
-			gpu = false;
-			sp = false;
-		}
-
 		String libFormat = System.getProperty("AR_HARDWARE_LIB_FORMAT");
 		if (libFormat == null) libFormat = System.getenv("AR_HARDWARE_LIB_FORMAT");
 		LIB_FORMAT = Optional.ofNullable(libFormat).orElse("lib%NAME%.so");
@@ -108,7 +101,7 @@ public final class Hardware {
 		if (libCompiler == null) libCompiler = System.getenv("AR_HARDWARE_NATIVE_COMPILER");
 
 		String exeCompiler = System.getProperty("AR_HARDWARE_EXTERNAL_COMPILER");
-		if (exeCompiler == null) libCompiler = System.getenv("AR_HARDWARE_EXTERNAL_COMPILER");
+		if (exeCompiler == null) exeCompiler = System.getenv("AR_HARDWARE_EXTERNAL_COMPILER");
 
 		String libDir = System.getProperty("AR_HARDWARE_NATIVE_LIBS");
 		if (libDir == null) libDir = System.getenv("AR_HARDWARE_NATIVE_LIBS");
@@ -119,15 +112,23 @@ public final class Hardware {
 		String data = System.getProperty("AR_HARDWARE_DATA");
 		if (data == null) data = System.getenv("AR_HARDWARE_DATA");
 
+		String memProvider = System.getProperty("AR_HARDWARE_MEMORY_PROVIDER");
+		if (memProvider == null) memProvider = System.getenv("AR_HARDWARE_MEMORY_PROVIDER");
+		if (memProvider == null) memProvider = ("external".equalsIgnoreCase(exec) && exeCompiler != null) ? "jvm" : "cl";
+		if (memProvider.equalsIgnoreCase("native") || memProvider.equalsIgnoreCase("jvm")) {
+			gpu = false;
+			sp = false;
+		}
+
 		timeSeriesSize = Optional.ofNullable(tsSize).map(size -> (int) (100000 * Double.parseDouble(size))).orElse(-1);
 		timeSeriesCount = Optional.ofNullable(tsCount).map(Integer::parseInt).orElse(30);
 
 		if (sp) {
-			local = new Hardware(libCompiler, exeCompiler, libDir, data, "cl".equalsIgnoreCase(memProvider),
+			local = new Hardware(memProvider, libCompiler, exeCompiler, libDir, data, "cl".equalsIgnoreCase(memProvider),
 						gpu, enableKernels, enableDestinationConsolidation, false,
 						"external".equalsIgnoreCase(exec), location);
 		} else {
-			local = new Hardware(libCompiler, exeCompiler, libDir, data, "cl".equalsIgnoreCase(memProvider),
+			local = new Hardware(memProvider, libCompiler, exeCompiler, libDir, data, "cl".equalsIgnoreCase(memProvider),
 						gpu, enableKernels, enableDestinationConsolidation,
 						"external".equalsIgnoreCase(exec), location);
 		}
@@ -138,7 +139,7 @@ public final class Hardware {
 	private final boolean enableGpu;
 	private final boolean enableDoublePrecision;
 	private final boolean enableKernel, enableDestinationConsolidation;
-	private final boolean externalNative;
+	private final boolean externalNative, nativeMemory;
 	private final boolean memVolatile;
 	private long memoryMax;
 	private Location location;
@@ -149,26 +150,26 @@ public final class Hardware {
 	private AcceleratedFunctions functions;
 	private final DefaultComputer computer;
 	
-	private Hardware(String libCompiler, String exeCompiler, String libDir, String dataDir, boolean enableCl, boolean enableGpu,
+	private Hardware(String memProvider, String libCompiler, String exeCompiler, String libDir, String dataDir, boolean enableCl, boolean enableGpu,
 					 boolean enableKernels, boolean enableDestinationConsolidation, boolean externalNative,
 					 Location location) {
-		this(libCompiler, exeCompiler, libDir, dataDir, enableCl, enableGpu, enableKernels, enableDestinationConsolidation, !enableGpu, externalNative, location);
+		this(memProvider, libCompiler, exeCompiler, libDir, dataDir, enableCl, enableGpu, enableKernels, enableDestinationConsolidation, !enableGpu, externalNative, location);
 	}
 
-	private Hardware(String libCompiler, String exeCompiler, String libDir, String dataDir, boolean enableCl, boolean enableGpu,
+	private Hardware(String memProvider, String libCompiler, String exeCompiler, String libDir, String dataDir, boolean enableCl, boolean enableGpu,
 					 boolean enableKernels, boolean enableDestinationConsolidation,
 					 boolean enableDoublePrecision, boolean externalNative, Location location) {
-		this(enableDoublePrecision ? "local64" : "local32", libCompiler, exeCompiler, libDir, dataDir, enableCl, enableGpu,
+		this(enableDoublePrecision ? "local64" : "local32", memProvider, libCompiler, exeCompiler, libDir, dataDir, enableCl, enableGpu,
 				enableKernels, enableDestinationConsolidation, enableDoublePrecision, externalNative, location);
 	}
 
-	private Hardware(String name, String libCompiler, String exeCompiler, String libDir, String dataDir, boolean enableCl, boolean enableGpu,
+	private Hardware(String name, String memProvider, String libCompiler, String exeCompiler, String libDir, String dataDir, boolean enableCl, boolean enableGpu,
 					 boolean enableKernels, boolean enableDestinationConsolidation, boolean externalNative,
 					 Location location) {
-		this(name, libCompiler, exeCompiler, libDir, dataDir, enableCl, enableGpu, enableKernels, enableDestinationConsolidation, !enableGpu, externalNative, location);
+		this(name, memProvider, libCompiler, exeCompiler, libDir, dataDir, enableCl, enableGpu, enableKernels, enableDestinationConsolidation, !enableGpu, externalNative, location);
 	}
 
-	private Hardware(String name, String libCompiler, String exeCompiler, String libDir, String dataDir, boolean enableCl, boolean enableGpu,
+	private Hardware(String name, String memProvider, String libCompiler, String exeCompiler, String libDir, String dataDir, boolean enableCl, boolean enableGpu,
 					 boolean enableKernels, boolean enableDestinationConsolidation,
 					 boolean enableDoublePrecision, boolean externalNative, Location location) {
 		this.name = name;
@@ -183,6 +184,7 @@ public final class Hardware {
 		this.enableKernel = enableKernels;
 		this.enableDestinationConsolidation = enableDestinationConsolidation;
 		this.externalNative = externalNative;
+		this.nativeMemory = "native".equalsIgnoreCase(memProvider);
 		this.memVolatile = location == Location.HEAP;
 		this.contextListeners = new ArrayList<>();
 
@@ -224,7 +226,7 @@ public final class Hardware {
 		if (enableVerbose) System.out.println("Hardware[" + name + "]: Created DefaultComputer");
 
 		if (!enableCl) {
-			this.context = new NativeDataContext(nativeCompiler, name, enableDoublePrecision, externalNative, this.memoryMax);
+			this.context = new NativeDataContext(nativeCompiler, name, enableDoublePrecision, isNativeMemory(), externalNative, this.memoryMax);
 			start(context);
 			if (enableVerbose) System.out.println("Hardware[" + name + "]: Created NativeMemoryProvider");
 		}
@@ -290,7 +292,7 @@ public final class Hardware {
 			next = new CLDataContext(this, getName(), isDoublePrecision(), memoryMax, location);
 		} else if (context instanceof NativeDataContext) {
 			current = context;
-			next = new NativeDataContext(getComputer().getNativeCompiler(), getName(), isDoublePrecision(), isExternalNative(), memoryMax);
+			next = new NativeDataContext(getComputer().getNativeCompiler(), getName(), isDoublePrecision(), isNativeMemory(), isExternalNative(), memoryMax);
 		} else {
 			return null;
 		}
@@ -330,6 +332,8 @@ public final class Hardware {
 	public boolean isNativeSupported() { return computer.isNative(); }
 
 	public boolean isExternalNative() { return externalNative; }
+
+	public boolean isNativeMemory() { return nativeMemory; }
 
 	public boolean isMemoryVolatile() { return memVolatile; }
 
@@ -406,7 +410,7 @@ public final class Hardware {
 		return getClDataContext() instanceof CLDataContext ? getClDataContext().getComputeContext() : null;
 	}
 
-	public MemoryProvider<RAM> getMemoryProvider() { return (MemoryProvider<RAM>) context.getMemoryProvider(); }
+	public MemoryProvider getMemoryProvider() { return context.getMemoryProvider(); }
 
 	private static String deviceName(long type) {
 		if (type == CL.CL_DEVICE_TYPE_CPU) {

@@ -14,23 +14,26 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.hardware;
+package org.almostrealism.hardware.jvm;
 
-import io.almostrealism.code.CodePrintWriter;
-import org.almostrealism.c.CJNIPrintWriter;
-import org.almostrealism.c.CPrintWriter;
-import org.almostrealism.c.NativeMemoryProvider;
-import org.almostrealism.c.OpenCLPrintWriter;
-import org.almostrealism.hardware.cl.CLJNIPrintWriter;
-import org.almostrealism.io.PrintWriter;
+import io.almostrealism.code.Memory;
+import io.almostrealism.code.MemoryProvider;
+import org.almostrealism.hardware.RAM;
+import org.jocl.cl_mem;
 
-import java.util.function.Function;
+public class JVMMemory implements Memory {
+	private JVMMemoryProvider provider;
+	protected double data[];
 
-@Deprecated
-public enum Compilation {
-	C, CL, JNI;
+	public JVMMemory(JVMMemoryProvider provider, int len) {
+		this.provider = provider;
+		this.data = new double[len];
+	}
 
-	public Function<PrintWriter, CodePrintWriter> getGenerator() {
-		throw new UnsupportedOperationException();
+	@Override
+	public MemoryProvider getProvider() { return provider; }
+
+	public void destroy() {
+		this.data = null;
 	}
 }

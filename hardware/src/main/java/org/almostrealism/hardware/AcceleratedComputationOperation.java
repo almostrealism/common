@@ -41,13 +41,11 @@ import java.util.function.Consumer;
 public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperation<MemoryData> implements NameProvider {
 	public static boolean enableRequiredScopes = true;
 
-	private Compilation compilation;
 	private Computation<T> computation;
 	private Scope<T> scope;
 
 	public AcceleratedComputationOperation(Computation<T> c, boolean kernel) {
 		super(kernel, new ArrayVariable[0]);
-		this.compilation = Compilation.CL;
 		this.computation = c;
 		init();
 	}
@@ -71,22 +69,6 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 			return super.getName();
 		}
 	}
-
-	/**
-	 * @deprecated  At this level of abstraction, no knowledge of the destination format should
-	 *              exist. Only the {@link io.almostrealism.code.ComputeContext} should be aware
-	 *              of this information, and in fact it is the place where it should be decided.
-	 */
-	@Deprecated
-	public void setCompilation(Compilation c) { this.compilation = c; }
-
-	/**
-	 * @deprecated  At this level of abstraction, no knowledge of the destination format should
-	 *              exist. Only the {@link io.almostrealism.code.ComputeContext} should be aware
-	 *              of this information, and in fact it is the place where it should be decided.
-	 */
-	@Deprecated
-	public Compilation getCompilation() { return compilation; }
 
 	@Override
 	public void addVariable(Variable v) {
@@ -164,21 +146,6 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 		}
 
 		return operators.get(getFunctionName(), getArgsCount());
-	}
-
-	@Override
-	public String getFunctionDefinition() {
-		if (scope == null) compile();
-		ScopeEncoder encoder = new ScopeEncoder(compilation.getGenerator(), Accessibility.EXTERNAL);
-		return encoder.apply(scope);
-	}
-
-	@Override
-	public String getBody(Variable<MemoryData, ?> outputVariable) {
-		Scope<T> scope = compile((Variable<T, ?>) outputVariable);
-		StringBuilder buf = new StringBuilder();
-		scope.write(new OpenCLPrintWriter(PrintWriter.of(buf::append)));
-		return buf.toString();
 	}
 
 	@Override
