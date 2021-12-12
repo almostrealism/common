@@ -38,6 +38,7 @@ public class CLDataContext implements DataContext {
 
 	private cl_context ctx;
 	private cl_command_queue queue;
+	private cl_command_queue fastQueue;
 	private MemoryProvider<RAM> ram;
 
 	private ThreadLocal<CLComputeContext> computeContext;
@@ -64,6 +65,9 @@ public class CLDataContext implements DataContext {
 		queue = CL.clCreateCommandQueue(ctx, device, 0, null);
 		if (Hardware.enableVerbose) System.out.println("Hardware[" + name + "]: OpenCL command queue initialized");
 
+		fastQueue = CL.clCreateCommandQueue(ctx, device, 0, null);
+		if (Hardware.enableVerbose) System.out.println("Hardware[" + name + "]: OpenCL fast command queue initialized");
+
 		ram = new CLMemoryProvider(this, hardware.getNumberSize(), memoryMax, location);
 	}
 
@@ -72,6 +76,8 @@ public class CLDataContext implements DataContext {
 	public cl_context getClContext() { return ctx; }
 
 	public cl_command_queue getClQueue() { return queue; }
+
+	public cl_command_queue getFastClQueue() { return fastQueue; }
 
 	public MemoryProvider<RAM> getMemoryProvider() { return ram; }
 

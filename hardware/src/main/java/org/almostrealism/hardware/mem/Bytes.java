@@ -21,6 +21,7 @@ public class Bytes extends MemoryDataAdapter {
 
 	public Bytes(int memLength) {
 		this.memLength = memLength;
+		init();
 	}
 
 	@Override

@@ -61,7 +61,10 @@ public class ExplicitScope<T> extends Scope<T> {
 
 	@Override
 	public boolean isInlineable() {
-		return false;
+		if (!getChildren().isEmpty()) return false;
+		if (!getMethods().isEmpty()) return false;
+		if (!getVariables().isEmpty()) return false;
+		return false; // TODO  Maybe it can be inlinable
 	}
 
 	@Override

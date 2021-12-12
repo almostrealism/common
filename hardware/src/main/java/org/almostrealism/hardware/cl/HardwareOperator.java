@@ -94,7 +94,13 @@ public class HardwareOperator<T extends MemoryData> implements Consumer<Object[]
 				if (!(args[i] instanceof MemoryData)) {
 					throw new IllegalArgumentException("argument " + i + "(" +
 							args[i].getClass().getSimpleName() + ") to function " +
-							name + " is not a MemWrapper");
+							name + " is not a MemoryData");
+				}
+
+				if (((MemoryData) args[i]).getMem() instanceof CLMemory == false) {
+					throw new IllegalArgumentException("argument " + i + " (" +
+							args[i].getClass().getSimpleName() + ") to function " +
+							name + " is not associated with CLMemory");
 				}
 
 				if (enableVerboseLog) System.out.println(id + ": clSetKernelArg(0) start");
@@ -117,9 +123,11 @@ public class HardwareOperator<T extends MemoryData> implements Consumer<Object[]
 			}
 
 			if (enableVerboseLog) System.out.println(id + ": clEnqueueNDRangeKernel start");
+			cl_event event = new cl_event();
 			CL.clEnqueueNDRangeKernel(Hardware.getLocalHardware().getClDataContext().getClQueue(), kernel, 1,
 					new long[] { globalWorkOffset }, new long[] { globalWorkSize },
-					null, 0, null, null);
+					null, 0, null, event);
+			CL.clWaitForEvents(1, new cl_event[] { event });
 			if (enableVerboseLog) System.out.println(id + ": clEnqueueNDRangeKernel end");
 		} catch (CLException e) {
 			// TODO  This should use the exception processor also, but theres no way to pass the message details

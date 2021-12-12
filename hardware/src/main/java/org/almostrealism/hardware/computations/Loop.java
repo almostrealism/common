@@ -59,6 +59,7 @@ public class Loop extends DynamicOperationComputationAdapter<Void> {
 
 		String i = getVariablePrefix() + "_i";
 		scope.code().accept("for (int " + i + " = 0; " + i + " < " + iterations +"; " + i + "++) {\n");
+		// TODO  This is CL specific and should be general
 		scope.code().accept("    " + new OpenCLPrintWriter(null).renderMethod(atomScope.call()) + "\n");
 		scope.code().accept("}\n");
 		return scope;

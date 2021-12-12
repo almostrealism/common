@@ -17,6 +17,7 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.code.Memory;
 import io.almostrealism.code.NamedFunction;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.Scope;
@@ -25,17 +26,30 @@ import io.almostrealism.code.OperationComputation;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.relation.Compactable;
+import org.almostrealism.hardware.computations.Abort;
+import org.almostrealism.hardware.mem.Bytes;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.OptionalInt;
 import java.util.function.Supplier;
 import java.util.stream.Collector;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class OperationList extends ArrayList<Supplier<Runnable>> implements OperationComputation<Void>, NamedFunction, HardwareFeatures {
+	private static ThreadLocal<MemoryData> abortFlag;
+	private static boolean abortArgs, abortScope;
+	private static Abort abort;
+
+	static {
+		abortFlag = new ThreadLocal<>();
+	}
+
 	private static final int maxDepth = 500;
+	private static final int abortableDepth = 1000;
 	private static long functionCount = 0;
 
 	private boolean enableCompilation;
@@ -90,11 +104,21 @@ public class OperationList extends ArrayList<Supplier<Runnable>> implements Oper
 	@Override
 	public void prepareArguments(ArgumentMap map) {
 		ScopeLifecycle.prepareArguments(stream(), map);
+		if (abortFlag != null & !abortArgs) {
+			if (abort == null) abort = new Abort(abortFlag::get);
+			abortArgs = true;
+			abort.prepareArguments(map);
+		}
 	}
 
 	@Override
 	public void prepareScope(ScopeInputManager manager) {
 		ScopeLifecycle.prepareScope(stream(), manager);
+		if (!abortScope) {
+			if (abort == null) abort = new Abort(abortFlag::get);
+			abortScope = true;
+			abort.prepareScope(manager);
+		}
 	}
 
 	@Override
@@ -104,7 +128,14 @@ public class OperationList extends ArrayList<Supplier<Runnable>> implements Oper
 		}
 
 		Scope scope = new Scope(functionName);
-		stream().map(o -> ((Computation) o).getScope()).forEach(scope::add);
+
+		if (getDepth() > abortableDepth) {
+			stream().flatMap(c -> Stream.of(c, abort))
+					.map(o -> ((Computation) o).getScope()).forEach(scope::add);
+		} else {
+			stream().map(o -> ((Computation) o).getScope()).forEach(scope::add);
+		}
+
 		return scope;
 	}
 
@@ -138,4 +169,10 @@ public class OperationList extends ArrayList<Supplier<Runnable>> implements Oper
 	public static Collector<Supplier<Runnable>, ?, OperationList> collector() {
 		return Collectors.toCollection(OperationList::new);
 	}
+
+	public static void setAbortFlag(MemoryData flag) { abortFlag.set(flag); }
+
+	public static MemoryData getAbortFlag() { return abortFlag.get(); }
+
+	public static void removeAbortFlag() { abortFlag.remove(); }
 }

@@ -59,6 +59,11 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 
 	@Override
 	public void beginScope(String name, List<ArrayVariable<?>> arguments, Accessibility access) {
+		if (getTopLevelMethodName() == null) {
+			super.beginScope(name, arguments, access);
+			return;
+		}
+
 		if (access == Accessibility.EXTERNAL && getTopLevelMethodName() != null) {
 			super.beginScope(getTopLevelMethodName(), arguments, access);
 		} else {
@@ -75,6 +80,11 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 
 	@Override
 	public void endScope() {
+		if (getTopLevelMethodName() == null) {
+			super.endScope();
+			return;
+		}
+
 		if (accessStack.pop() == Accessibility.EXTERNAL) {
 			renderArgumentWrites(argumentStack.pop());
 		} else {
@@ -86,7 +96,7 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 
 	@Override
 	protected void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out, Accessibility access) {
-		if (access == Accessibility.EXTERNAL) {
+		if (topLevelMethodName != null && access == Accessibility.EXTERNAL) {
 			out.accept("long* argArr, uint32_t* offsetArr, uint32_t* sizeArr, uint32_t count");
 		} else {
 			super.renderArguments(arguments, out, access);
