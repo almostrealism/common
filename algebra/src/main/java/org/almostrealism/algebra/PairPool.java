@@ -26,7 +26,8 @@ public class PairPool extends MemoryPool<Pair> {
 	private static ContextSpecific<PairPool> local;
 
 	public PairPool(int size) {
-		super(2, size);
+		super(2, size, delegateSpec ->
+				new Pair(delegateSpec.getDelegate(), delegateSpec.getOffset()));
 	}
 
 	public static PairPool getLocal() {

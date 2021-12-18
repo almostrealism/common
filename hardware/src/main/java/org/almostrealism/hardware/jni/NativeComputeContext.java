@@ -22,8 +22,12 @@ import io.almostrealism.code.InstructionSet;
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.ScopeEncoder;
 import org.almostrealism.c.CJNIPrintWriter;
+import org.almostrealism.generated.GeneratedOperation48;
 
 public class NativeComputeContext implements ComputeContext {
+	public static boolean enableVerbose = false;
+	protected static long totalInvocations = 0;
+
 	private NativeCompiler compiler;
 
 	public NativeComputeContext(NativeCompiler compiler) {

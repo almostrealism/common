@@ -51,10 +51,10 @@ public class ExternalInstructionSet implements InstructionSet {
 				MemoryData data[] = IntStream.range(0, argCount).mapToObj(i -> (MemoryData) args[i]).toArray(MemoryData[]::new);
 
 				try {
-					writeData(dest, data);
-					writeSizes(dest, data);
-					writeOffsets(dest, data);
-					writeCount(dest, argCount);
+					LocalExternalMemoryProvider.writeData(dest, data);
+					LocalExternalMemoryProvider.writeSizes(dest, data);
+					LocalExternalMemoryProvider.writeOffsets(dest, data);
+					LocalExternalMemoryProvider.writeCount(dest, argCount);
 				} catch (IOException e) {
 					throw new HardwareException("Unable to write binary", e);
 				}
@@ -62,7 +62,7 @@ public class ExternalInstructionSet implements InstructionSet {
 				run(dest.getAbsolutePath());
 
 				try {
-					readData(dest, data);
+					LocalExternalMemoryProvider.readData(dest, data);
 				} catch (IOException e) {
 					throw new HardwareException("Unable to read binary", e);
 				}
@@ -89,7 +89,11 @@ public class ExternalInstructionSet implements InstructionSet {
 
 	protected void deleteData(File data) {
 		if (data.isDirectory()) Stream.of(data.listFiles()).forEach(this::deleteData);
-		data.delete();
+		if (LocalExternalMemoryProvider.enableLazyReading) {
+			data.deleteOnExit();
+		} else {
+			data.delete();
+		}
 	}
 
 	@Override
@@ -97,72 +101,4 @@ public class ExternalInstructionSet implements InstructionSet {
 
 	@Override
 	public void destroy() { }
-
-	protected static void readData(File dest, MemoryData[] args) throws IOException {
-		for (int i = 0; i < args.length; i++) {
-			readBinary(new File(dest, String.valueOf(i)), args[i]);
-		}
-	}
-
-	protected static void writeData(File dest, MemoryData[] args) throws IOException {
-		for (int i = 0; i < args.length; i++) {
-			writeBinary(new File(dest, String.valueOf(i)), args[i]);
-		}
-	}
-
-	protected static void writeSizes(File dest, MemoryData[] args) throws IOException {
-		writeBinary(new File(dest, "sizes"), Stream.of(args).mapToInt(MemoryData::getMemLength).toArray());
-	}
-
-	protected static void writeOffsets(File dest, MemoryData[] args) throws IOException {
-		writeBinary(new File(dest, "offsets"), Stream.of(args).mapToInt(MemoryData::getOffset).toArray());
-	}
-
-	protected static void writeCount(File dest, int count) throws IOException {
-		writeBinary(new File(dest, "count"), new int[]{count});
-	}
-
-	protected static void readBinary(File dest, MemoryData mem) throws IOException {
-		double data[] = new double[mem.getMemLength()];
-		readBinary(dest, data);
-//		System.out.println("readBinary: " + Arrays.toString(data));
-		mem.setMem(data, 0);
-	}
-
-	protected static void writeBinary(File dest, MemoryData mem) throws IOException {
-		double data[] = new double[mem.getMemLength()];
-		mem.getMem(0, data, 0, data.length);
-//		System.out.println("writeBinary: " + Arrays.toString(data));
-		ByteBuffer buf = ByteBuffer.allocate(data.length * 8);
-		for (double d : data) buf.putDouble(d);
-		writeBinary(dest, buf.array());
-	}
-
-	protected static void writeBinary(File dest, int data[]) throws IOException {
-//		System.out.println("writeBinary: " + Arrays.toString(data));
-		ByteBuffer buf = ByteBuffer.allocate(data.length * 8);
-		for (int i : data) buf.putInt(i);
-		writeBinary(dest, buf.array());
-	}
-
-	protected static void readBinary(File dest, double data[]) throws IOException {
-		ByteBuffer buf = ByteBuffer.allocate(8 * data.length);
-		try (InputStream in = new FileInputStream(dest)) {
-			for (int i = 0; i < data.length; i++) {
-				buf.put(in.readNBytes(8));
-			}
-		}
-
-		buf.position(0);
-
-		for (int i = 0; i < data.length; i++) {
-			data[i] = buf.getDouble();
-		}
-	}
-
-	protected static void writeBinary(File dest, byte data[]) throws IOException {
-		try (OutputStream out = new FileOutputStream(dest)) {
-			out.write(data);
-		}
-	}
 }

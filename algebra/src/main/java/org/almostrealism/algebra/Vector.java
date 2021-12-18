@@ -296,12 +296,9 @@ public class Vector extends MemoryDataAdapter implements Triple, VectorFeatures,
 	 *
 	 * @param value The factor to multiply by.
 	 */
+	@Deprecated
 	public synchronized void multiplyBy(double value) {
-		if (multiplyOperator.get() == null) {
-			multiplyOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("multiplyBy", 2));
-		}
-
-		multiplyOperator.get().accept(new Object[] { this, new Vector(value, value, value) });
+		setTo(v(this).multiply(vector(value, value, value)).get().evaluate());
 	}
 
 	/** Returns the quotient of the division of this {@link Vector} by the specified value. */

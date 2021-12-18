@@ -18,6 +18,7 @@ package org.almostrealism.hardware.mem;
 
 import io.almostrealism.code.Memory;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.PooledMem;
 import org.almostrealism.hardware.RAM;
@@ -49,6 +50,15 @@ public abstract class MemoryDataAdapter implements MemoryData {
 
 	@Override
 	public int getDelegateOffset() { return delegateMemOffset; }
+
+	@Override
+	public void reassign(Memory mem) {
+		if (delegateMem != null || mem == null) {
+			throw new HardwareException("Only root memory can be reassigned");
+		}
+
+		this.mem = mem;
+	}
 
 	@Override
 	public void destroy() {

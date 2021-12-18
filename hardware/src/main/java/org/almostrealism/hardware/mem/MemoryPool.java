@@ -24,6 +24,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.function.Function;
 import java.util.stream.IntStream;
 
 /**
@@ -48,7 +49,17 @@ public class MemoryPool<T extends MemoryData> extends MemoryBankAdapter<T> imple
 	 * @param size  The number of reservable segments.
 	 */
 	public MemoryPool(int memLength, int size) {
-		super(memLength, size, null, CacheLevel.NONE);
+		this(memLength, size, null);
+	}
+
+	/**
+	 * Create a {@link MemoryPool}.
+	 *
+	 * @param memLength  The size of the reservable segments.
+	 * @param size  The number of reservable segments.
+	 */
+	protected MemoryPool(int memLength, int size, Function<DelegateSpec, T> supply) {
+		super(memLength, size, supply, CacheLevel.NONE);
 		defaultGc = size > 200 ? size / 200 : 1;
 		initQueue();
 	}

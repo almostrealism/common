@@ -33,7 +33,11 @@ import java.util.stream.IntStream;
 public class CJNIPrintWriter extends CPrintWriter {
 
 	public CJNIPrintWriter(PrintWriter p, String topLevelMethodName) {
-		super(p, topLevelMethodName);
+		this(p, topLevelMethodName, false);
+	}
+
+	public CJNIPrintWriter(PrintWriter p, String topLevelMethodName, boolean verbose) {
+		super(p, topLevelMethodName, verbose);
 		setExternalScopePrefix("JNIEXPORT void JNICALL");
 		setEnableArrayVariables(true);
 	}

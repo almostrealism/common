@@ -41,16 +41,24 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 	private final String topLevelMethodName;
 	private final Stack<Accessibility> accessStack;
 	private final Stack<List<ArrayVariable<?>>> argumentStack;
+	private final boolean verbose;
+	private boolean log;
+	private int logCount;
 
 	public CPrintWriter(OutputStream out, String topLevelMethodName) {
-		this(new PrintStreamPrintWriter(new PrintStream(out)), topLevelMethodName);
+		this(new PrintStreamPrintWriter(new PrintStream(out)), topLevelMethodName, false);
 	}
 
 	public CPrintWriter(PrintWriter p, String topLevelMethodName) {
+		this(p, topLevelMethodName, false);
+	}
+
+	public CPrintWriter(PrintWriter p, String topLevelMethodName, boolean verbose) {
 		super(p);
 		this.topLevelMethodName = topLevelMethodName;
 		this.accessStack = new Stack<>();
 		this.argumentStack = new Stack<>();
+		this.verbose = verbose;
 		setScopePrefix("void");
 		setEnableArrayVariables(true);
 	}
@@ -133,25 +141,25 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 			if (variable.getProducer() == null) {
 				if (variable.getExpression() == null || variable.getExpression().getExpression() == null) {
 					if (variable.getArraySize() == null) {
-						this.p.println(annotationForVariable(variable) + typePrefix(variable.getType()) +
+						println(annotationForVariable(variable) + typePrefix(variable.getType()) +
 										variable.getName());
 					} else {
-						this.p.println(annotationForVariable(variable) + typePrefix(variable.getType()) +
+						println(annotationForVariable(variable) + typePrefix(variable.getType()) +
 								variable.getName() + "[" + variable.getArraySize().getExpression() + "];");
 					}
 				} else {
-					this.p.println(annotationForVariable(variable) + typePrefix(variable.getType()) + variable.getName() +
+					println(annotationForVariable(variable) + typePrefix(variable.getType()) + variable.getName() +
 									" = " + variable.getExpression().getValue() + ";");
 				}
 			} else {
-				this.p.println(annotationForVariable(variable) + typePrefix(variable.getType()) + variable.getName() +
+				println(annotationForVariable(variable) + typePrefix(variable.getType()) + variable.getName() +
 								" = " + encode(variable.getExpression()) + ";");
 			}
 		} else {
 			if (variable.getExpression() == null) {
-				//   this.p.println(variable.getName() + " = null;");
+				// println(variable.getName() + " = null;");
 			} else {
-				this.p.println(variable.getName() + " = " +
+				println(variable.getName() + " = " +
 								encode(variable.getExpression()) + ";");
 			}
 		}
@@ -162,10 +170,33 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 		p.println(renderMethod(method));
 	}
 
+	public void println(String s) {
+		println(s, true);
+	}
+
+	public void println(String s, boolean log) {
+		super.println(s);
+		if (verbose && this.log && log) {
+			if (logCount >= 10 && logCount < 14) {
+				super.println("if (commandQueue > 0)");
+				printf("Reached %i", String.valueOf(logCount++));
+			} else {
+				logCount++;
+			}
+		}
+	}
+
+	protected void log() {
+		if (verbose) {
+			println("if (commandQueue > 0)", false);
+			printf("Reached %i", String.valueOf(logCount++));
+		}
+	}
+
 	protected void printf(String format, String arg) { printf(format, arg, true); }
 
 	protected void printf(String format, String arg, boolean newLine) {
-		println("printf(\"" + format + (newLine ? "\\n\", " : "\", ") + arg + ");");
+		println("printf(\"" + format + (newLine ? "\\n\", " : "\", ") + arg + ");", false);
 	}
 
 	public static String renderAssignment(Variable<?, ?> var) {

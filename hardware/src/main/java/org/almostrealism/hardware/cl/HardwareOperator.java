@@ -103,23 +103,17 @@ public class HardwareOperator<T extends MemoryData> implements Consumer<Object[]
 							name + " is not associated with CLMemory");
 				}
 
-				if (enableVerboseLog) System.out.println(id + ": clSetKernelArg(0) start");
 				CL.clSetKernelArg(kernel, index++, Sizeof.cl_mem, Pointer.to(((CLMemory) ((MemoryData) args[i]).getMem()).getMem()));
-				if (enableVerboseLog) System.out.println(id + ": clSetKernelArg(0) end");
 			}
 
 			for (int i = 0; i < argCount; i++) {
-				if (enableVerboseLog) System.out.println(id + ": clSetKernelArg(1) start");
 				CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
 						Pointer.to(new int[] { ((MemoryData) args[i]).getOffset() })); // Offset
-				if (enableVerboseLog) System.out.println(id + ": clSetKernelArg(1) end");
 			}
 
 			for (int i = 0; i < argCount; i++) {
-				if (enableVerboseLog) System.out.println(id + ": clSetKernelArg(2) start");
 				CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
 						Pointer.to(new int[] { ((MemoryData) args[i]).getAtomicMemLength() })); // Size
-				if (enableVerboseLog) System.out.println(id + ": clSetKernelArg(2) end");
 			}
 
 			if (enableVerboseLog) System.out.println(id + ": clEnqueueNDRangeKernel start");

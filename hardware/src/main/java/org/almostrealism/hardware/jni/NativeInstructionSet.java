@@ -56,15 +56,25 @@ public interface NativeInstructionSet extends InstructionSet, KernelSupport {
 
 
 	default void apply(MemoryData... args) {
+		long id = NativeComputeContext.totalInvocations++;
+
+		if (NativeComputeContext.enableVerbose && id % 100000 == 0) {
+			System.out.println("NativeInstructionSet: " + id);
+		}
+
 		apply(Stream.of(args).map(MemoryData::getMem).toArray(RAM[]::new),
-				Stream.of(args).mapToInt(MemoryData::getOffset).toArray(),
-				Stream.of(args).mapToInt(MemoryData::getMemLength).toArray());
+					Stream.of(args).mapToInt(MemoryData::getOffset).toArray(),
+					Stream.of(args).mapToInt(MemoryData::getMemLength).toArray());
 	}
 
 	default void apply(RAM args[], int offsets[], int sizes[]) {
 		apply(Optional.ofNullable(Hardware.getLocalHardware().getClDataContext())
-						.map(CLDataContext::getClQueue)
-						.map(cl_command_queue::getNativePointer).orElse(-1L),
+				.map(CLDataContext::getClQueue)
+				.map(cl_command_queue::getNativePointer).orElse(-1L), args, offsets, sizes);
+	}
+
+	default void apply(long commandQueue, RAM args[], int offsets[], int sizes[]) {
+		apply(commandQueue,
 				Stream.of(args).mapToLong(RAM::getNativePointer).toArray(),
 				offsets, sizes, args.length);
 	}

@@ -26,7 +26,8 @@ public class ScalarPool extends MemoryPool<Scalar> {
 	private static ContextSpecific<ScalarPool> local;
 
 	public ScalarPool(int size) {
-		super(2, size);
+		super(2, size, delegateSpec ->
+				new Scalar(delegateSpec.getDelegate(), delegateSpec.getOffset()));
 	}
 
 	public static ScalarPool getLocal() {

@@ -31,12 +31,18 @@ import java.util.function.Supplier;
 public class AcceleratedTimeSeries extends TemporalScalarBank implements Lifecycle, HardwareFeatures {
 	public static CacheLevel defaultCacheLevel = CacheLevel.NONE;
 
+	static {
+		if (defaultCacheLevel == CacheLevel.ALL) {
+			System.out.println("WARN: AcceleratedTimeSeries default cache level is ALL");
+		}
+	}
+
 	public AcceleratedTimeSeries() {
 		super(Hardware.getLocalHardware().getTimeSeriesSize(), AcceleratedTimeSeriesPool.getLocal(), defaultCacheLevel);
 	}
 
 	public AcceleratedTimeSeries(int maxEntries) {
-		super(maxEntries, defaultCacheLevel);
+		super(maxEntries + 1, defaultCacheLevel);
 		setBeginCursorIndex(1);
 		setEndCursorIndex(1);
 	}

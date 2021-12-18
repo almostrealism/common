@@ -31,6 +31,8 @@ public interface MemoryData extends MultiExpression<Double>, Delegated<MemoryDat
 
 	Memory getMem();
 
+	void reassign(Memory mem);
+
 	default int getOffset() {
 		if (getDelegate() == null) {
 			return getDelegateOffset();

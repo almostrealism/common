@@ -542,6 +542,9 @@ public class RGB implements Triple, MemoryData, Externalizable, Cloneable {
 	public double[] toArray() { return new double[] { getRed(), getGreen(), getBlue() }; }
 
 	@Override
+	public void reassign(Memory mem) { data.reassign(mem); }
+
+	@Override
 	public Memory getMem() { return data.getMem(); }
 
 	@Override
