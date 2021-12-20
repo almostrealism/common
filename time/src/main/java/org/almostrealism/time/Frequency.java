@@ -25,6 +25,8 @@ public class Frequency {
 
 	public double asHertz() { return hertz; }
 
+	public double asBPM() { return asHertz() * 60; }
+
 	public double getWaveLength() { return 1.0 / asHertz(); }
 
 	public double l(int count) { return count * getWaveLength(); }
