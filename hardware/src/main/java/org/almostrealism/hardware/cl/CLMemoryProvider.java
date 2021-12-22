@@ -117,6 +117,7 @@ public class CLMemoryProvider implements MemoryProvider<RAM> {
 						(long) offset * getNumberSize(), (long) length * getNumberSize(),
 						src, 0, null, event);
 				CL.clWaitForEvents(1, new cl_event[] { event });
+				CL.clReleaseEvent(event);
 			} else {
 				float f[] = new float[length];
 				for (int i = 0; i < f.length; i++) f[i] = (float) source[srcOffset + i];
@@ -126,6 +127,7 @@ public class CLMemoryProvider implements MemoryProvider<RAM> {
 						(long) offset * getNumberSize(), (long) length * getNumberSize(),
 						src, 0, null, event);
 				CL.clWaitForEvents(1, new cl_event[] { event });
+				CL.clReleaseEvent(event);
 			}
 		} catch (CLException e) {
 			throw CLExceptionProcessor.process(e, this, srcOffset, offset, length);
@@ -147,6 +149,7 @@ public class CLMemoryProvider implements MemoryProvider<RAM> {
 						(long) offset * getNumberSize(), (long) length * getNumberSize(),
 						0, null, event);
 			CL.clWaitForEvents(1, new cl_event[] { event });
+			CL.clReleaseEvent(event);
 		} catch (CLException e) {
 			throw CLExceptionProcessor.process(e, this, srcOffset, offset, length);
 		}
@@ -176,6 +179,7 @@ public class CLMemoryProvider implements MemoryProvider<RAM> {
 							(long) length * getNumberSize(), dst, 0,
 							null, event);
 					CL.clWaitForEvents(1, new cl_event[] { event });
+					CL.clReleaseEvent(event);
 				} else if (getNumberSize() == 4) {
 					float f[] = new float[length];
 					Pointer dst = Pointer.to(f).withByteOffset(0);
@@ -185,6 +189,7 @@ public class CLMemoryProvider implements MemoryProvider<RAM> {
 							(long) length * getNumberSize(), dst, 0,
 							null, event);
 					CL.clWaitForEvents(1, new cl_event[] { event });
+					CL.clReleaseEvent(event);
 					for (int i = 0; i < f.length; i++) out[oOffset + i] = f[i];
 				} else {
 					throw new IllegalArgumentException();

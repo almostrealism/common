@@ -122,6 +122,7 @@ public class HardwareOperator<T extends MemoryData> implements Consumer<Object[]
 					new long[] { globalWorkOffset }, new long[] { globalWorkSize },
 					null, 0, null, event);
 			CL.clWaitForEvents(1, new cl_event[] { event });
+			CL.clReleaseEvent(event);
 			if (enableVerboseLog) System.out.println(id + ": clEnqueueNDRangeKernel end");
 		} catch (CLException e) {
 			// TODO  This should use the exception processor also, but theres no way to pass the message details

@@ -143,6 +143,8 @@ public final class Hardware {
 	private final boolean memVolatile;
 	private long memoryMax;
 	private Location location;
+	private cl_platform_id platform;
+	private cl_device_id device;
 
 	private DataContext context;
 	private List<ContextListener> contextListeners;
@@ -205,6 +207,7 @@ public final class Hardware {
 					memoryMax / 1000000 + " Megabytes");
 			if (location == CLMemoryProvider.Location.HEAP) System.out.println("Hardware[" + name + "]: Heap RAM enabled");
 			if (location == CLMemoryProvider.Location.HOST) System.out.println("Hardware[" + name + "]: Host RAM enabled");
+			if (ENABLE_POOLING) System.out.println("Hardware[" + name + "]: Pooling enabled");
 
 			start(context);
 			contextListeners.forEach(l -> l.contextStarted(context));
@@ -216,11 +219,10 @@ public final class Hardware {
 
 		if (libDir != null) {
 			nativeCompiler = new NativeCompiler(this, libCompiler, exeCompiler, libDir, LIB_FORMAT, dataDir, enableCl);
+			if (enableVerbose) System.out.println("Hardware[" + name + "]: Created NativeCompiler");
 		} else {
 			nativeCompiler = null;
 		}
-
-		if (enableVerbose) System.out.println("Hardware[" + name + "]: Created NativeCompiler");
 
 		computer = new DefaultComputer(nativeCompiler);
 		if (enableVerbose) System.out.println("Hardware[" + name + "]: Created DefaultComputer");
@@ -243,37 +245,43 @@ public final class Hardware {
 
 	public DefaultComputer getComputer() { return computer; }
 
-	protected void start(DataContext ctx) {
-		if (ctx instanceof CLDataContext) {
-			final int platformIndex = 0;
-			final int deviceIndex = 0;
-			final long deviceType = enableGpu ? CL.CL_DEVICE_TYPE_GPU : CL.CL_DEVICE_TYPE_CPU;
+	protected void identifyDevice() {
+		if (platform != null && device != null) return;
 
-			int numPlatformsArray[] = new int[1];
-			CL.clGetPlatformIDs(0, null, numPlatformsArray);
-			int numPlatforms = numPlatformsArray[0];
+		final int platformIndex = 0;
+		final int deviceIndex = 0;
+		final long deviceType = enableGpu ? CL.CL_DEVICE_TYPE_GPU : CL.CL_DEVICE_TYPE_CPU;
 
-			if (enableVerbose) System.out.println("Hardware[" + name + "]: " + numPlatforms + " platforms available");
+		int numPlatformsArray[] = new int[1];
+		CL.clGetPlatformIDs(0, null, numPlatformsArray);
+		int numPlatforms = numPlatformsArray[0];
 
-			cl_platform_id platforms[] = new cl_platform_id[numPlatforms];
-			CL.clGetPlatformIDs(platforms.length, platforms, null);
-			cl_platform_id platform = platforms[platformIndex];
+		if (enableVerbose) System.out.println("Hardware[" + name + "]: " + numPlatforms + " platforms available");
 
-			if (enableVerbose)
-				System.out.println("Hardware[" + name + "]: Using platform " + platformIndex + " -- " + platform);
+		cl_platform_id platforms[] = new cl_platform_id[numPlatforms];
+		CL.clGetPlatformIDs(platforms.length, platforms, null);
+		platform = platforms[platformIndex];
 
-			int numDevicesArray[] = new int[1];
-			CL.clGetDeviceIDs(platform, deviceType, 0, null, numDevicesArray);
-			int numDevices = numDevicesArray[0];
+		if (enableVerbose)
+			System.out.println("Hardware[" + name + "]: Using platform " + platformIndex + " -- " + platform);
 
+		int numDevicesArray[] = new int[1];
+		CL.clGetDeviceIDs(platform, deviceType, 0, null, numDevicesArray);
+		int numDevices = numDevicesArray[0];
+
+		if (enableVerbose)
 			System.out.println("Hardware[" + name + "]: " + numDevices + " " + deviceName(deviceType) + "(s) available");
 
-			cl_device_id devices[] = new cl_device_id[numDevices];
-			CL.clGetDeviceIDs(platform, deviceType, numDevices, devices, null);
-			cl_device_id device = devices[deviceIndex];
+		cl_device_id devices[] = new cl_device_id[numDevices];
+		CL.clGetDeviceIDs(platform, deviceType, numDevices, devices, null);
+		device = devices[deviceIndex];
 
-			System.out.println("Hardware[" + name + "]: Using " + deviceName(deviceType) + " " + deviceIndex);
+		System.out.println("Hardware[" + name + "]: Using " + deviceName(deviceType) + " " + deviceIndex);
+	}
 
+	protected void start(DataContext ctx) {
+		if (ctx instanceof CLDataContext) {
+			identifyDevice();
 			((CLDataContext) ctx).init(platform, device);
 		} else if (ctx instanceof NativeDataContext) {
 			((NativeDataContext) ctx).init();

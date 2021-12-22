@@ -20,15 +20,10 @@ import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.ArrayVariable;
 import io.almostrealism.code.Method;
 import io.almostrealism.code.Variable;
-import io.almostrealism.code.expressions.Expression;
-import io.almostrealism.code.expressions.InstanceReference;
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.io.PrintWriter;
 
 import java.util.List;
-import java.util.Stack;
 import java.util.function.Consumer;
-import java.util.stream.IntStream;
 
 public class CJNIPrintWriter extends CPrintWriter {
 

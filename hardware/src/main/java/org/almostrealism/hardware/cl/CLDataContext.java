@@ -124,7 +124,11 @@ public class CLDataContext implements DataContext {
 
 	@Override
 	public void destroy() {
-		// TODO  Destroy all compute contexts
+		// TODO  Destroy any other compute contexts
+		if (computeContext.get() != null) {
+			computeContext.get().destroy();
+			computeContext.remove();
+		}
 
 		CL.clReleaseCommandQueue(queue);
 		queue = null;
