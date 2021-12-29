@@ -19,8 +19,16 @@ package org.almostrealism.algebra;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.MemoryBankAdapter;
 
+import java.util.List;
+import java.util.Set;
+import java.util.function.BiConsumer;
+import java.util.function.BinaryOperator;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.IntFunction;
+import java.util.function.Supplier;
+import java.util.stream.Collector;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
@@ -130,5 +138,44 @@ public class ScalarBank extends MemoryBankAdapter<Scalar> {
 		for (int i = 0; i < getCount(); i++) {
 			set(i, Math.log(get(i).getValue()));
 		}
+	}
+
+	public static Collector<Double, ?, ScalarBank> doubleCollector(int total) {
+		ScalarBank out = new ScalarBank(total);
+		Collector<Double, ?, List<Double>> listCollector = Collectors.toList();
+
+		return new Collector<>() {
+			@Override
+			public Supplier<Object> supplier() {
+				return (Supplier<Object>) listCollector.supplier();
+			}
+
+			@Override
+			public BiConsumer<Object, Double> accumulator() {
+				return (BiConsumer<Object, Double>) listCollector.accumulator();
+			}
+
+			@Override
+			public BinaryOperator<Object> combiner() {
+				return (BinaryOperator<Object>) listCollector.combiner();
+			}
+
+			@Override
+			public Function<Object, ScalarBank> finisher() {
+				return obj -> {
+					List l = (List) ((Function) listCollector.finisher()).apply(obj);
+					for (int i = 0; i < l.size(); i++) {
+						out.set(i, (Double) l.get(i));
+					}
+
+					return out;
+				};
+			}
+
+			@Override
+			public Set<Characteristics> characteristics() {
+				return listCollector.characteristics();
+			}
+		};
 	}
 }

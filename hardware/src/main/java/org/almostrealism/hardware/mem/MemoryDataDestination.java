@@ -17,8 +17,11 @@
 package org.almostrealism.hardware.mem;
 
 import io.almostrealism.relation.Delegated;
+import io.almostrealism.relation.Evaluable;
+import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.DestinationSupport;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
+import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryBank;
 
@@ -38,4 +41,25 @@ public class MemoryDataDestination<T extends MemoryData> extends DynamicProducer
 
 	@Override
 	public DestinationSupport<T> getDelegate() { return destination; }
+
+	@Override
+	public KernelizedEvaluable<T> get() {
+		KernelizedEvaluable<T> e = super.get();
+
+		return new KernelizedEvaluable<T>() {
+			@Override
+			public MemoryBank<T> createKernelDestination(int size) {
+				return e.createKernelDestination(size);
+			}
+
+			@Override
+			public void kernelEvaluate(MemoryBank destination, MemoryBank[] args) {
+//				if (AcceleratedOperation.enableKernelLog)
+//					System.out.println("MemoryDataDestination: Skipping evaluation");
+			}
+
+			@Override
+			public T evaluate(Object... args) { return e.evaluate(args); }
+		};
+	}
 }

@@ -16,12 +16,15 @@
 
 package io.almostrealism.relation;
 
+import io.almostrealism.uml.Function;
+
 /**
  * The {@link Evaluable} interface is implemented by classes that represent a
  * repeatedly evaluated function.
  *
  * @author  Michael Murray
  */
+@Function
 public interface Evaluable<T> {
 	default T evaluate() {
 		return evaluate(new Object[0]);

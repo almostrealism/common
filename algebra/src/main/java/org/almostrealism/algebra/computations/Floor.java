@@ -16,7 +16,6 @@
 
 package org.almostrealism.algebra.computations;
 
-import io.almostrealism.code.expressions.Exponent;
 import io.almostrealism.code.expressions.Expression;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
@@ -27,11 +26,11 @@ import io.almostrealism.relation.Evaluable;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public class ScalarPow extends DynamicProducerComputationAdapter<Scalar, Scalar> implements ScalarProducer {
+public class Floor extends DynamicProducerComputationAdapter<Scalar, Scalar> implements ScalarProducer {
 	private Expression<Double> value[];
 
-	public ScalarPow(Supplier<Evaluable<? extends Scalar>> base, Supplier<Evaluable<? extends Scalar>> exponent) {
-		super(2, Scalar.blank(), ScalarBank::new, base, exponent);
+	public Floor(Supplier<Evaluable<? extends Scalar>> input) {
+		super(2, Scalar.blank(), ScalarBank::new, input);
 	}
 
 	@Override
@@ -39,10 +38,9 @@ public class ScalarPow extends DynamicProducerComputationAdapter<Scalar, Scalar>
 		return pos -> {
 			if (value == null) {
 				if (pos == 0) {
-					return new Exponent(getArgument(1, 2).valueAt(0), getArgument(2, 2).valueAt(0));
+					return new io.almostrealism.code.expressions.Floor(getArgument(1, 2).valueAt(0));
 				} else if (pos == 1) {
-					// TODO  Certainty of exponent is ignored
-					return new Exponent(getArgument(1, 2).valueAt(1), getArgument(2, 2).valueAt(0));
+					return getArgument(1, 2).valueAt(1);
 				} else {
 					throw new IllegalArgumentException(String.valueOf(pos));
 				}
@@ -58,16 +56,10 @@ public class ScalarPow extends DynamicProducerComputationAdapter<Scalar, Scalar>
 
 		if (value == null && isCompletelyValueOnly()) {
 			absorbVariables(getInputs().get(1));
-			absorbVariables(getInputs().get(2));
 
-			// TODO  Certainty of exponent is ignored
 			value = new Expression[] {
-					new Expression<>(Double.class, "pow(" + getInputValue(1, 0).getExpression() +
-							", " + getInputValue(2, 0).getExpression() + ")",
-							getInputValue(1, 0), getInputValue(2, 0)),
-					new Expression<>(Double.class, "pow(" + getInputValue(1, 1).getExpression() +
-							", " + getInputValue(2, 0).getExpression() + ")",
-							getInputValue(1, 1), getInputValue(2, 0))
+					new io.almostrealism.code.expressions.Floor(getInputValue(1, 0)),
+					getInputValue(1, 1)
 			};
 
 			for (int i = 0; i < value.length; i++) {
@@ -76,7 +68,5 @@ public class ScalarPow extends DynamicProducerComputationAdapter<Scalar, Scalar>
 				}
 			}
 		}
-
-		convertToVariableRef();
 	}
 }

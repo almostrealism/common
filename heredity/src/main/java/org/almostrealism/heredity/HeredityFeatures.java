@@ -18,6 +18,9 @@ package org.almostrealism.heredity;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.algebra.ScalarProducer;
+import org.almostrealism.algebra.computations.ScalarPow;
+import org.almostrealism.algebra.computations.StaticScalarComputation;
 
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -45,5 +48,26 @@ public interface HeredityFeatures {
 		ArrayListGene<Scalar> gene = new ArrayListGene<>();
 		IntStream.range(0, factors.length).mapToObj(i -> factors[i]).forEach(gene::add);
 		return gene;
+	}
+
+	default double invertOneToInfinity(double target, double multiplier, double exp) {
+		return Math.pow(1 - (1 / ((target / multiplier) + 1)), 1.0 / exp);
+	}
+
+	default ScalarProducer oneToInfinity(Factor<Scalar> f, double exp) {
+		return oneToInfinity(f.getResultant(new StaticScalarComputation(new Scalar(1.0))), exp);
+	}
+
+	default ScalarProducer oneToInfinity(Producer<Scalar> arg, double exp) {
+		return oneToInfinity(arg, new StaticScalarComputation(new Scalar(exp)));
+	}
+
+	default ScalarProducer oneToInfinity(Producer<Scalar> arg, Producer<Scalar> exp) {
+		ScalarProducer pow = new ScalarPow(arg, exp);
+		return pow.minus().add(1.0).pow(-1.0).subtract(1.0);
+	}
+
+	static HeredityFeatures getInstance() {
+		return new HeredityFeatures() { };
 	}
 }

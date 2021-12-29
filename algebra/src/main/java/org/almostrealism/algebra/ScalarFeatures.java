@@ -16,16 +16,19 @@
 
 package org.almostrealism.algebra;
 
+import org.almostrealism.algebra.computations.Floor;
+import org.almostrealism.algebra.computations.ScalarFromScalarBank;
 import org.almostrealism.algebra.computations.StaticScalarComputation;
-import org.almostrealism.algebra.computations.DefaultScalarEvaluable;
 import org.almostrealism.algebra.computations.ScalarPow;
 import org.almostrealism.algebra.computations.ScalarProduct;
 import org.almostrealism.algebra.computations.ScalarSum;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.hardware.MemoryBank;
 
 import java.util.function.Supplier;
 
 public interface ScalarFeatures {
+
 	static Supplier<Evaluable<? extends Scalar>> minusOne() { return of(-1.0); }
 
 	static ScalarProducer of(double value) { return of(new Scalar(value)); }
@@ -42,6 +45,10 @@ public interface ScalarFeatures {
 
 	default ScalarProducer value(Scalar value) {
 		return new StaticScalarComputation(value);
+	}
+
+	default ScalarProducer scalar(Supplier<Evaluable<? extends MemoryBank<Scalar>>> bank, int index) {
+		return new ScalarFromScalarBank(bank, scalar((double) index));
 	}
 
 	default ScalarProducer scalar() {
@@ -106,6 +113,10 @@ public interface ScalarFeatures {
 
 	default ScalarProducer pow(Supplier<Evaluable<? extends Scalar>> base, double value) {
 		return pow(base, new Scalar(value));
+	}
+
+	default ScalarProducer floor(Supplier<Evaluable<? extends Scalar>> value) {
+		return new Floor(value);
 	}
 
 	static ScalarFeatures getInstance() { return new ScalarFeatures() { }; }

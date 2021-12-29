@@ -14,11 +14,9 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.util;
+package org.almostrealism.hardware;
 
 import io.almostrealism.relation.Producer;
-import org.almostrealism.hardware.PassThroughEvaluable;
-import org.almostrealism.hardware.PassThroughProducer;
 
 public class Input {
 	private Input() { }

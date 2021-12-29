@@ -92,7 +92,7 @@ public class HardwareOperator<T extends MemoryData> implements Consumer<Object[]
 				}
 
 				if (!(args[i] instanceof MemoryData)) {
-					throw new IllegalArgumentException("argument " + i + "(" +
+					throw new IllegalArgumentException("argument " + i + " (" +
 							args[i].getClass().getSimpleName() + ") to function " +
 							name + " is not a MemoryData");
 				}

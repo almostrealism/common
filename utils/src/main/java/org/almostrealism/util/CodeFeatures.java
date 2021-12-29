@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -26,10 +26,12 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.algebra.ScalarProducer;
+import org.almostrealism.algebra.computations.ScalarBankFromScalars;
 import org.almostrealism.algebra.computations.StaticPairComputation;
 import org.almostrealism.algebra.computations.StaticScalarBankComputation;
 import org.almostrealism.algebra.computations.StaticScalarComputation;
 import org.almostrealism.algebra.computations.StaticVectorComputation;
+import org.almostrealism.geometry.GeometryFeatures;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.color.RGBFeatures;
@@ -46,6 +48,7 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.code.ProducerComputation;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareFeatures;
+import org.almostrealism.hardware.Input;
 import org.almostrealism.time.CursorPair;
 import org.almostrealism.time.TemporalScalarProducer;
 import org.almostrealism.time.computations.TemporalScalarFromScalars;
@@ -54,7 +57,8 @@ import java.util.concurrent.Callable;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-public interface CodeFeatures extends ScalarFeatures, PairFeatures, TriangleDataFeatures, RayFeatures, TransformMatrixFeatures, RGBFeatures, HardwareFeatures {
+public interface CodeFeatures extends ScalarFeatures, PairFeatures, TriangleDataFeatures, RayFeatures,
+								TransformMatrixFeatures, RGBFeatures, GeometryFeatures, HardwareFeatures {
 	default <T> Producer<T> p(T value) { return () -> new Provider<>(value); }
 
 	default Producer<CursorPair> v(CursorPair p) {
@@ -86,6 +90,10 @@ public interface CodeFeatures extends ScalarFeatures, PairFeatures, TriangleData
 	default Supplier<Evaluable<? extends Vector>> vector(int argIndex) { return value(Vector.class, argIndex); }
 
 	default Supplier<Evaluable<? extends ScalarBank>> scalars(ScalarBank s) { return value(s); }
+
+	default ScalarBankFromScalars scalars(Supplier<Evaluable<? extends Scalar>>... values) {
+		return new ScalarBankFromScalars(values);
+	}
 
 	default Supplier<Evaluable<? extends TriangleData>> triangle(int argIndex) { return value(TriangleData.class, argIndex); }
 
