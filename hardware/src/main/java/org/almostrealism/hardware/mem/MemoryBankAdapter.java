@@ -26,10 +26,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 /**
  * A {@link MemoryBankAdapter} is the default implementation for tracking
@@ -194,6 +196,14 @@ public abstract class MemoryBankAdapter<T extends MemoryData> extends MemoryData
 
 	@Override
 	public int getCount() { return count; }
+
+	public Stream<T> stream() {
+		return IntStream.range(0, getCount()).mapToObj(this::get);
+	}
+
+	public void forEach(Consumer<T> consumer) {
+		stream().forEach(consumer);
+	}
 
 	public class DelegateSpec {
 		private int offset;

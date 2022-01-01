@@ -24,12 +24,20 @@ import org.almostrealism.hardware.MemoryBank;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Evaluable;
 
+import java.util.function.Function;
+
 public class RealizableImage implements Producer<RGB[][]> {
 	private Producer<RGB> source;
+	private Function<Pair, RGB> func;
 	private Pair dim;
 
 	public RealizableImage(Producer<RGB> source, Pair dimensions) {
 		this.source = source;
+		this.dim = dimensions;
+	}
+
+	public RealizableImage(Function<Pair, RGB> source, Pair dimensions) {
+		this.func = source;
 		this.dim = dimensions;
 	}
 
@@ -55,17 +63,16 @@ public class RealizableImage implements Producer<RGB[][]> {
 			PairBank input = generateKernelInput(x, y, w, h);
 			RGBBank output = new RGBBank(size);
 
-			((KernelizedEvaluable) source.get()).kernelEvaluate(output, new MemoryBank[]{input});
-
-			RGB image[][] = new RGB[w][h];
-
-			for (int i = 0; i < w; i++) {
-				for (int j = 0; j < h; j++) {
-					image[i][j] = output.get(j * w + i);
-				}
+			if (source != null) {
+				((KernelizedEvaluable) source.get()).kernelEvaluate(output, new MemoryBank[]{input});
+			} else if (func != null) {
+				RGB result[] = input.stream().map(func).toArray(RGB[]::new);
+				for (int i = 0; i < result.length; i++) output.set(i, result[i]);
+			} else {
+				throw new UnsupportedOperationException();
 			}
 
-			return image;
+			return processKernelOutput(w, h, output);
 		};
 	}
 
@@ -83,5 +90,17 @@ public class RealizableImage implements Producer<RGB[][]> {
 		}
 
 		return input;
+	}
+
+	public static RGB[][] processKernelOutput(int w, int h, RGBBank output) {
+		RGB image[][] = new RGB[w][h];
+
+		for (int i = 0; i < w; i++) {
+			for (int j = 0; j < h; j++) {
+				image[i][j] = output.get(j * w + i);
+			}
+		}
+
+		return image;
 	}
 }

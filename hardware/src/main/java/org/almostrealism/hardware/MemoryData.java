@@ -26,12 +26,35 @@ import org.jocl.CLException;
 import org.jocl.Pointer;
 import org.jocl.cl_mem;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.ByteBuffer;
+
 public interface MemoryData extends MultiExpression<Double>, Delegated<MemoryData> {
 	int sizeOf = Hardware.getLocalHardware().getNumberSize();
 
 	Memory getMem();
 
 	void reassign(Memory mem);
+
+	default void load(InputStream in) throws IOException {
+		ByteBuffer buf = ByteBuffer.allocate(8 * getMemLength());
+
+		for (int i = 0; i < getMemLength(); i++) {
+			buf.put(in.readNBytes(8));
+		}
+
+		buf.position(0);
+
+		for (int i = 0; i < getMemLength(); i++) {
+			getMem().set(getOffset() + i, buf.getDouble());
+		}
+	}
+
+	default void persist(OutputStream out) throws IOException {
+		out.write(getMem().getBytes(getOffset(), getMemLength()).array());
+	}
 
 	default int getOffset() {
 		if (getDelegate() == null) {
@@ -50,10 +73,10 @@ public interface MemoryData extends MultiExpression<Double>, Delegated<MemoryDat
 	void destroy();
 
 	/**
-	 * If a delegate is set using this method, then the {@link cl_mem} for the delegate
+	 * If a delegate is set using this method, then the {@link Memory} for the delegate
 	 * should be used to store and retrieve data, with the specified offset. The offset
 	 * size is based on the size of a double, it indicates the number of double values
-	 * to skip over to get to the location in the {@link cl_mem} where data should be
+	 * to skip over to get to the location in the {@link Memory} where data should be
 	 * kept.
 	 */
 	void setDelegate(MemoryData m, int offset);

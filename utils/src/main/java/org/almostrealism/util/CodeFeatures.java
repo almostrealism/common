@@ -16,6 +16,7 @@
 
 package org.almostrealism.util;
 
+import io.almostrealism.code.Computation;
 import io.almostrealism.code.Variable;
 import io.almostrealism.code.expressions.Expression;
 import io.almostrealism.relation.DynamicProducer;
@@ -26,6 +27,7 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.algebra.ScalarProducer;
+import org.almostrealism.algebra.computations.Choice;
 import org.almostrealism.algebra.computations.ScalarBankFromScalars;
 import org.almostrealism.algebra.computations.StaticPairComputation;
 import org.almostrealism.algebra.computations.StaticScalarBankComputation;
@@ -53,6 +55,7 @@ import org.almostrealism.time.CursorPair;
 import org.almostrealism.time.TemporalScalarProducer;
 import org.almostrealism.time.computations.TemporalScalarFromScalars;
 
+import java.util.Arrays;
 import java.util.concurrent.Callable;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -125,6 +128,10 @@ public interface CodeFeatures extends ScalarFeatures, PairFeatures, TriangleData
 
 	default <T> Producer<T> value(int memLength, int argIndex) {
 		return Input.value(memLength, argIndex);
+	}
+
+	default <T> Choice choice(ProducerComputation<Scalar> decision, Computation<T>... choices) {
+		return new Choice(decision, Arrays.asList(choices));
 	}
 
 	default Expression<Double> e(double value) {

@@ -79,14 +79,6 @@ public class ScalarBank extends MemoryBankAdapter<Scalar> {
 		}
 	}
 
-	public void forEach(Consumer<Scalar> consumer) {
-		stream().forEach(consumer);
-	}
-
-	public Stream<Scalar> stream() {
-		return IntStream.range(0, getCount()).mapToObj(this::get);
-	}
-
 	// TODO  Add unit tests for this
 	public ScalarBank range(int offset, int length) {
 		if (offset * getAtomicMemLength() >= getMemLength()) {

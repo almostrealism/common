@@ -38,6 +38,10 @@ public interface RGBFeatures {
 
 	default RGBProducer rgb(double r, double g, double b) { return value(new RGB(r, g, b)); }
 
+	default RGBProducer rgb(Supplier<Evaluable<? extends Scalar>> r, Supplier<Evaluable<? extends Scalar>> g, Supplier<Evaluable<? extends Scalar>> b) {
+		return new RGBFromScalars(r, g, b);
+	}
+
 	default RGBProducer rgb(Scalar v) { return cfromScalar(v); }
 
 	default RGBProducer rgb(double v) { return cfromScalar(v); }

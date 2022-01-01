@@ -16,6 +16,8 @@
 
 package io.almostrealism.code;
 
+import java.nio.ByteBuffer;
+
 public interface Memory {
 	MemoryProvider getProvider();
 
@@ -33,5 +35,16 @@ public interface Memory {
 
 	default double[] toArray(int offset, int length) {
 		return getProvider().toArray(this, offset, length);
+	}
+
+	default ByteBuffer getBytes(int length) {
+		return getBytes(0, length);
+	}
+
+	default ByteBuffer getBytes(int offset, int length) {
+		double data[] = toArray(offset, length);
+		ByteBuffer buf = ByteBuffer.allocate(data.length * 8);
+		for (double d : data) buf.putDouble(d);
+		return buf;
 	}
 }

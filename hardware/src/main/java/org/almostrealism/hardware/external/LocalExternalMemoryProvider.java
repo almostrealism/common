@@ -137,15 +137,10 @@ public class LocalExternalMemoryProvider implements MemoryProvider<Memory> {
 	}
 
 	protected static void writeBinary(File dest, Memory mem, int length) throws IOException {
-		double data[] = mem.toArray(length);
-//		System.out.println("writeBinary: " + Arrays.toString(data));
-		ByteBuffer buf = ByteBuffer.allocate(data.length * 8);
-		for (double d : data) buf.putDouble(d);
-		writeBinary(dest, buf.array());
+		writeBinary(dest, mem.getBytes(length).array());
 	}
 
 	protected static void writeBinary(File dest, int data[]) throws IOException {
-//		System.out.println("writeBinary: " + Arrays.toString(data));
 		ByteBuffer buf = ByteBuffer.allocate(data.length * 8);
 		for (int i : data) buf.putInt(i);
 		writeBinary(dest, buf.array());
