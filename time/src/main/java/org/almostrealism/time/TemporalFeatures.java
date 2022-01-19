@@ -31,13 +31,17 @@ public interface TemporalFeatures {
 	}
 
 	default Supplier<Runnable> iter(Temporal t, int iter) {
+		return iter(t, iter, true);
+	}
+
+	default Supplier<Runnable> iter(Temporal t, int iter, boolean resetAfter) {
 		Supplier<Runnable> tick = loop(t, iter);
 
 		if (t instanceof Lifecycle || t instanceof Setup) {
-			OperationList o = new OperationList();
+			OperationList o = new OperationList("TemporalFeature Iteration");
 			if (t instanceof Setup) o.add(((Setup) t).setup());
 			o.add(tick);
-			if (t instanceof Lifecycle) o.add(() -> ((Lifecycle) t)::reset);
+			if (resetAfter && t instanceof Lifecycle) o.add(() -> ((Lifecycle) t)::reset);
 			return o;
 		} else {
 			return tick;

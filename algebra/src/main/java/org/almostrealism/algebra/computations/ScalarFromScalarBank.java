@@ -41,7 +41,7 @@ public class ScalarFromScalarBank<T extends ScalarBank> extends DynamicProducerC
 					return getArgument(1).get("2 * " + getInputValue(2, 0).getExpression(), getArgument(2));
 				}
 			} else if (pos == 1) {
-				return new Expression<>(Double.class, "1.0");
+				return new Expression<>(Double.class, stringForDouble(1.0));
 			} else {
 				throw new IllegalArgumentException();
 			}

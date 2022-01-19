@@ -3,7 +3,6 @@ package org.almostrealism.algebra.computations.test;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.computations.Dither;
-import org.almostrealism.algebra.computations.jni.NativeDither160;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 

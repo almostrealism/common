@@ -61,7 +61,7 @@ public class ChoiceTest implements TestFeatures {
 		Scalar output2 = new Scalar(0.0);
 		Scalar decision2 = new Scalar(0.8);
 
-		OperationList list = new OperationList();
+		OperationList list = new OperationList("Choice List");
 		list.add(choice(output1, decision1, new Scalar(1.0)));
 		list.add(choice(output2, decision2, new Scalar(1.0)));
 
@@ -86,11 +86,11 @@ public class ChoiceTest implements TestFeatures {
 		Scalar output2b = new Scalar(0.0);
 		ScalarProducer decisionB = scalarsMultiply(v(0.4), multiplier);
 
-		OperationList embeddedList = new OperationList();
+		OperationList embeddedList = new OperationList("Embedded Choice List");
 		embeddedList.add(choice(output2a, decisionA, multiplier));
 		embeddedList.add(choice(output2b, decisionB, v(1.0)));
 
-		OperationList list = new OperationList();
+		OperationList list = new OperationList("Choice List");
 		list.add(choice(output1a, decisionA, v(1.0)));
 		list.add(choice(output1b, decisionB, multiplier));
 		list.add(embeddedList);

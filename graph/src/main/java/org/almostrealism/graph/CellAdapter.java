@@ -42,7 +42,7 @@ public abstract class CellAdapter<T> implements Cell<T> {
 	/** Push to the {@link Receptor}. */
 	@Override
 	public Supplier<Runnable> push(Producer<T> protein) {
-		OperationList push = new OperationList();
+		OperationList push = new OperationList("CellAdapter Push");
 		if (meter != null) push.add(meter.push(protein));
 		if (r != null) push.add(r.push(protein));
 		return push;

@@ -42,7 +42,7 @@ public class TimeCell implements Cell<Scalar>, Temporal {
 
 	@Override
 	public Supplier<Runnable> push(Producer<Scalar> protein) {
-		return r == null ? new OperationList() : r.push(() -> new Provider<>(time));
+		return r == null ? new OperationList("TimeCell Push") : r.push(() -> new Provider<>(time));
 	}
 
 	@Override

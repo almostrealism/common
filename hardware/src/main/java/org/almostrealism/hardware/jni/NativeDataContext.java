@@ -21,6 +21,7 @@ import io.almostrealism.code.DataContext;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.c.NativeMemoryProvider;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.RAM;
 import org.almostrealism.hardware.external.ExternalComputeContext;
 import org.almostrealism.hardware.jvm.JVMMemoryProvider;
@@ -57,7 +58,7 @@ public class NativeDataContext implements DataContext {
 
 	public ComputeContext getComputeContext() {
 		if (context == null) {
-			System.out.println("INFO: No explicit ComputeContext for " + Thread.currentThread().getName());
+			if (Hardware.enableVerbose) System.out.println("INFO: No explicit ComputeContext for " + Thread.currentThread().getName());
 			context = new NativeComputeContext(compiler);
 		}
 

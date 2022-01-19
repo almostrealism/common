@@ -50,7 +50,7 @@ public final class Hardware {
 
 	protected static final String LIB_FORMAT;
 
-	protected static final int timeSeriesSize;
+	protected static final long timeSeriesSize;
 	protected static final int timeSeriesCount;
 
 	private static final Hardware local;
@@ -93,9 +93,11 @@ public final class Hardware {
 
 		String tsSize = System.getProperty("AR_HARDWARE_TIMESERIES_SIZE");
 		if (tsSize == null) tsSize = System.getenv("AR_HARDWARE_TIMESERIES_SIZE");
+		if (tsSize == null) tsSize = "100";
 
 		String tsCount = System.getProperty("AR_HARDWARE_TIMESERIES_COUNT");
 		if (tsCount == null) tsCount = System.getenv("AR_HARDWARE_TIMESERIES_COUNT");
+		if (tsCount == null) tsCount = "12";
 
 		String libCompiler = System.getProperty("AR_HARDWARE_NATIVE_COMPILER");
 		if (libCompiler == null) libCompiler = System.getenv("AR_HARDWARE_NATIVE_COMPILER");
@@ -136,7 +138,7 @@ public final class Hardware {
 
 	private final String name;
 
-	private final boolean enableGpu;
+	private final boolean enableGpu, enableKernelQueue = false;
 	private final boolean enableDoublePrecision;
 	private final boolean enableKernel, enableDestinationConsolidation;
 	private final boolean externalNative, nativeMemory;
@@ -144,7 +146,7 @@ public final class Hardware {
 	private long memoryMax;
 	private Location location;
 	private cl_platform_id platform;
-	private cl_device_id device;
+	private cl_device_id device, kernelDevice;
 
 	private DataContext context;
 	private List<ContextListener> contextListeners;
@@ -245,7 +247,9 @@ public final class Hardware {
 
 	public DefaultComputer getComputer() { return computer; }
 
-	protected void identifyDevice() {
+	public void setMaximumOperationDepth(int depth) { OperationList.setMaxDepth(depth); }
+
+	protected void identifyDevices() {
 		if (platform != null && device != null) return;
 
 		final int platformIndex = 0;
@@ -265,6 +269,8 @@ public final class Hardware {
 		if (enableVerbose)
 			System.out.println("Hardware[" + name + "]: Using platform " + platformIndex + " -- " + platform);
 
+		/* Main Device Selection */
+
 		int numDevicesArray[] = new int[1];
 		CL.clGetDeviceIDs(platform, deviceType, 0, null, numDevicesArray);
 		int numDevices = numDevicesArray[0];
@@ -277,12 +283,29 @@ public final class Hardware {
 		device = devices[deviceIndex];
 
 		System.out.println("Hardware[" + name + "]: Using " + deviceName(deviceType) + " " + deviceIndex);
+
+		/* Kernel Device Selection */
+
+		if (enableKernelQueue) {
+			CL.clGetDeviceIDs(platform, CL.CL_DEVICE_TYPE_GPU, 0, null, numDevicesArray);
+			numDevices = numDevicesArray[0];
+
+			if (enableVerbose)
+				System.out.println("Hardware[" + name + "]: " + numDevices + " " + deviceName(CL.CL_DEVICE_TYPE_GPU) + "(s) available for kernels");
+
+			if (numDevices > 0) {
+				CL.clGetDeviceIDs(platform, CL.CL_DEVICE_TYPE_GPU, numDevices, devices, null);
+				kernelDevice = devices[deviceIndex];
+
+				System.out.println("Hardware[" + name + "]: Using " + deviceName(CL.CL_DEVICE_TYPE_GPU) + " " + deviceIndex + " for kernels");
+			}
+		}
 	}
 
 	protected void start(DataContext ctx) {
 		if (ctx instanceof CLDataContext) {
-			identifyDevice();
-			((CLDataContext) ctx).init(platform, device);
+			identifyDevices();
+			((CLDataContext) ctx).init(platform, device, kernelDevice);
 		} else if (ctx instanceof NativeDataContext) {
 			((NativeDataContext) ctx).init();
 		}
@@ -353,7 +376,7 @@ public final class Hardware {
 
 	public int getDefaultPoolSize() { return ENABLE_POOLING ? 6250 * (int) Math.pow(2, MEMORY_SCALE) : -1; }
 
-	public int getTimeSeriesSize() { return timeSeriesSize; }
+	public int getTimeSeriesSize() { return (int) timeSeriesSize; }
 
 	public int getTimeSeriesCount() { return timeSeriesCount; }
 

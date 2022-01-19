@@ -156,7 +156,7 @@ public abstract class MemoryBankAdapter<T extends MemoryData> extends MemoryData
 	@Override
 	public T get(int index) {
 		if (index >= getCount()) {
-			throw new IllegalArgumentException(index + " is beyond the range of this bank");
+			throw new IllegalArgumentException(index + " is beyond the range of this bank (" + getCount() + ")");
 		}
 
 		if (cacheLevel == CacheLevel.ALL) {

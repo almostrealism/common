@@ -41,7 +41,7 @@ public class ScalarPool extends MemoryPool<Scalar> {
 	}
 
 	private static synchronized void doInitPool() {
-		int size = 2 * Hardware.getLocalHardware().getDefaultPoolSize();
+		int size = (int) (1.5 * Hardware.getLocalHardware().getDefaultPoolSize());
 		if (size > 0) {
 			local = new ContextSpecific<>(() -> new ScalarPool(size), pool -> pool.destroy());
 			local.init();

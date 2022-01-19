@@ -18,17 +18,27 @@ package io.almostrealism.code;
 
 import io.almostrealism.relation.Evaluable;
 
+import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
 public class DefaultScopeInputManager implements ScopeInputManager {
 	private static final DefaultScopeInputManager instance = new DefaultScopeInputManager();
 
 	private int counter;
+	private BiFunction<NameProvider, Supplier<Evaluable<?>>, ArrayVariable<?>> variableFactory;
+
+	public DefaultScopeInputManager() {
+		variableFactory = (p, input) -> new ArrayVariable(p, p.getArgumentName(counter++), input);
+	}
+
+	public DefaultScopeInputManager(BiFunction<NameProvider, Supplier<Evaluable<?>>, ArrayVariable<?>> variableFactory) {
+		this.variableFactory = variableFactory;
+	}
 
 	@Override
 	public <T> ArrayVariable<T> getArgument(NameProvider p, Supplier<Evaluable<? extends T>> input,
 											ArrayVariable<T> delegate, int delegateOffset) {
-		ArrayVariable arg = new ArrayVariable(p, p.getArgumentName(counter++), input);
+		ArrayVariable arg = variableFactory.apply(p, (Supplier) input);
 		arg.setDelegate(delegate);
 		arg.setDelegateOffset(delegateOffset);
 

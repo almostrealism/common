@@ -62,7 +62,7 @@ public abstract class CachedStateCell<T> extends FilteredCell<T> implements Fact
 
 	@Override
 	public Supplier<Runnable> setup() {
-		OperationList reset = new OperationList();
+		OperationList reset = new OperationList("CachedStateCell Setup");
 		reset.add(reset(() -> new Provider<>(cachedValue)));
 		reset.add(reset(() -> new Provider<>(outValue)));
 		return reset;
@@ -70,7 +70,7 @@ public abstract class CachedStateCell<T> extends FilteredCell<T> implements Fact
 
 	@Override
 	public Supplier<Runnable> tick() {
-		OperationList tick = new OperationList();
+		OperationList tick = new OperationList("CachedStateCell Tick");
 		tick.add(assign(() -> new Provider<>(outValue), () -> new Provider<>(cachedValue)));
 		tick.add(reset(() -> new Provider<>(cachedValue)));
 		tick.add(super.push(null));

@@ -19,6 +19,14 @@ package io.almostrealism.code;
 import java.util.function.Consumer;
 
 public interface InstructionSet {
+	default Consumer<Object[]> get() {
+		return get("function");
+	}
+
+	default Consumer<Object[]> get(String function) {
+		return get(function, 0);
+	}
+
 	Consumer<Object[]> get(String function, int argCount);
 
 	boolean isDestroyed();

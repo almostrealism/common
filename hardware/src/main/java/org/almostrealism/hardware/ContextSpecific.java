@@ -48,7 +48,12 @@ public class ContextSpecific<T> implements ContextListener {
 
 	@Override
 	public void contextStarted(DataContext ctx) {
-		val.push(supply.get());
+		T v = supply.get();
+		val.push(v);
+
+		if (val.size() > 3) {
+			System.out.println("WARN: " + val.size() + " context layers for " + v.getClass().getSimpleName());
+		}
 	}
 
 	@Override

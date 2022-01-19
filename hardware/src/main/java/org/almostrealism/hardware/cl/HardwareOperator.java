@@ -118,7 +118,7 @@ public class HardwareOperator<T extends MemoryData> implements Consumer<Object[]
 
 			if (enableVerboseLog) System.out.println(id + ": clEnqueueNDRangeKernel start");
 			cl_event event = new cl_event();
-			CL.clEnqueueNDRangeKernel(Hardware.getLocalHardware().getClDataContext().getClQueue(), kernel, 1,
+			CL.clEnqueueNDRangeKernel(Hardware.getLocalHardware().getClDataContext().getClQueue(globalWorkSize > 1), kernel, 1,
 					new long[] { globalWorkOffset }, new long[] { globalWorkSize },
 					null, 0, null, event);
 			CL.clWaitForEvents(1, new cl_event[] { event });

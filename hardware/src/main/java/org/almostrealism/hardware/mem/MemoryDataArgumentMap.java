@@ -35,6 +35,7 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 	public static final boolean enableGlobalArgumentMap = false;
 
 	private static ContextSpecific<MemoryDataArgumentMap> globalMaps;
+	private static ContextSpecific<MemoryDataArgumentMap> globalMapsKernel;
 
 	private final Map<Memory, ArrayVariable<A>> mems;
 	private final boolean kernel;
@@ -117,19 +118,28 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 	}
 
 	public static MemoryDataArgumentMap create(boolean kernel) {
-		if (!enableGlobalArgumentMap || !kernel) {
+		if (!enableGlobalArgumentMap) {
 			return new MemoryDataArgumentMap(kernel);
 		}
 
-		return getGlobalMaps().getValue();
+		return kernel ? getGlobalMapsKernel().getValue() : getGlobalMaps().getValue();
 	}
 
 	protected synchronized static ContextSpecific<MemoryDataArgumentMap> getGlobalMaps() {
 		if (globalMaps == null) {
-			globalMaps = new ContextSpecific<>(MemoryDataArgumentMap::new, MemoryDataArgumentMap::destroy);
+			globalMaps = new ContextSpecific<>(() -> new MemoryDataArgumentMap(false), MemoryDataArgumentMap::destroy);
 			globalMaps.init();
 		}
 
 		return globalMaps;
+	}
+
+	protected synchronized static ContextSpecific<MemoryDataArgumentMap> getGlobalMapsKernel() {
+		if (globalMapsKernel == null) {
+			globalMapsKernel = new ContextSpecific<>(MemoryDataArgumentMap::new, MemoryDataArgumentMap::destroy);
+			globalMapsKernel.init();
+		}
+
+		return globalMapsKernel;
 	}
 }

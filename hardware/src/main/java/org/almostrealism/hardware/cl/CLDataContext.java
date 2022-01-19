@@ -30,6 +30,8 @@ import org.jocl.cl_platform_id;
 import java.util.concurrent.Callable;
 
 public class CLDataContext implements DataContext {
+	public static boolean enableFastQueue = true;
+
 	private final Hardware hardware;
 	private final String name;
 	private final boolean isDoublePrecision;
@@ -39,6 +41,7 @@ public class CLDataContext implements DataContext {
 	private cl_context ctx;
 	private cl_command_queue queue;
 	private cl_command_queue fastQueue;
+	private cl_command_queue kernelQueue;
 	private MemoryProvider<RAM> ram;
 
 	private ThreadLocal<CLComputeContext> computeContext;
@@ -52,21 +55,36 @@ public class CLDataContext implements DataContext {
 		this.computeContext = new ThreadLocal<>();
 	}
 
-	public void init(cl_platform_id platform, cl_device_id device) {
+	public void init(cl_platform_id platform, cl_device_id mainDevice, cl_device_id kernelDevice) {
 		if (ctx != null) return;
 
 		cl_context_properties contextProperties = new cl_context_properties();
 		contextProperties.addProperty(CL.CL_CONTEXT_PLATFORM, platform);
 
-		ctx = CL.clCreateContext(contextProperties, 1, new cl_device_id[]{device},
-				null, null, null);
+		if (kernelDevice == null) {
+			ctx = CL.clCreateContext(contextProperties, 1, new cl_device_id[]{mainDevice},
+					null, null, null);
+		} else {
+			ctx = CL.clCreateContext(contextProperties, 2, new cl_device_id[]{mainDevice, kernelDevice},
+					null, null, null);
+		}
+
 		if (Hardware.enableVerbose) System.out.println("Hardware[" + name + "]: OpenCL context initialized");
 
-		queue = CL.clCreateCommandQueue(ctx, device, 0, null);
+		queue = CL.clCreateCommandQueue(ctx, mainDevice, 0, null);
 		if (Hardware.enableVerbose) System.out.println("Hardware[" + name + "]: OpenCL command queue initialized");
 
-		fastQueue = CL.clCreateCommandQueue(ctx, device, 0, null);
-		if (Hardware.enableVerbose) System.out.println("Hardware[" + name + "]: OpenCL fast command queue initialized");
+		if (enableFastQueue) {
+			fastQueue = CL.clCreateCommandQueue(ctx, mainDevice, 0, null);
+			if (Hardware.enableVerbose)
+				System.out.println("Hardware[" + name + "]: OpenCL fast command queue initialized");
+		}
+
+		if (kernelDevice != null) {
+			kernelQueue = CL.clCreateCommandQueue(ctx, kernelDevice, 0, null);
+			if (Hardware.enableVerbose)
+				System.out.println("Hardware[" + name + "]: OpenCL kernel command queue initialized");
+		}
 
 		ram = new CLMemoryProvider(this, hardware.getNumberSize(), memoryMax, location);
 	}
@@ -77,13 +95,17 @@ public class CLDataContext implements DataContext {
 
 	public cl_command_queue getClQueue() { return queue; }
 
-	public cl_command_queue getFastClQueue() { return fastQueue; }
+	public cl_command_queue getClQueue(boolean kernel) { return kernel ? getKernelClQueue() : getClQueue(); }
+
+	public cl_command_queue getFastClQueue() { return fastQueue == null ? getClQueue() : fastQueue; }
+
+	public cl_command_queue getKernelClQueue() { return kernelQueue == null ? getClQueue() : kernelQueue; }
 
 	public MemoryProvider<RAM> getMemoryProvider() { return ram; }
 
 	public CLComputeContext getComputeContext() {
 		if (computeContext.get() == null) {
-			System.out.println("INFO: No explicit ComputeContext for " + Thread.currentThread().getName());
+			if (Hardware.enableVerbose) System.out.println("INFO: No explicit ComputeContext for " + Thread.currentThread().getName());
 			computeContext.set(new CLComputeContext(isDoublePrecision, ctx));
 		}
 

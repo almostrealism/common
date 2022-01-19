@@ -45,7 +45,7 @@ public abstract class TemporalChromosomeExpansion<T, I, O> implements Chromosome
 	}
 
 	public Supplier<Runnable> expand() {
-		OperationList prepare = new OperationList();
+		OperationList prepare = new OperationList("TemporalChromosome Preparation");
 		prepare.add(setup());
 		prepare.add(() -> () -> {
 			ArrayListChromosome<O> destination = new ArrayListChromosome<>();

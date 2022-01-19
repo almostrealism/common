@@ -153,7 +153,7 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures, Hardwa
 	}
 
 	protected OperationList operationList(boolean enableCompilation) {
-		OperationList op = new OperationList(enableCompilation);
+		OperationList op = new OperationList("Accelerated Time Series Operations Test", enableCompilation);
 		op.add(add());
 		op.add(assign());
 		op.add(purge());

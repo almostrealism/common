@@ -119,6 +119,7 @@ public class MemoryPool<T extends MemoryData> extends MemoryBankAdapter<T> imple
 			if (target != null) target.destroy();
 		});
 		owners.clear();
+		available.clear();
 		super.destroy();
 	}
 

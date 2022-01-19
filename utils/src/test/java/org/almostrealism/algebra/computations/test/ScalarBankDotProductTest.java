@@ -6,7 +6,6 @@ import org.almostrealism.algebra.PairBank;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.computations.ScalarBankDotProduct;
-import org.almostrealism.algebra.computations.jni.NativeScalarBankDotProduct;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.util.TestFeatures;
@@ -35,17 +34,6 @@ public class ScalarBankDotProductTest implements TestFeatures {
 
 		Scalar test = ev.evaluate(window(), window());
 		System.out.println(test);
-		assertEquals(given, test);
-
-		assert Hardware.getLocalHardware().isNativeSupported();
-
-		ev = NativeScalarBankDotProduct.get(SIZE);
-
-		((OperationAdapter) ev).compile();
-
-		test = ev.evaluate(window(), window());
-		System.out.println(test);
-
 		assertEquals(given, test);
 	}
 }

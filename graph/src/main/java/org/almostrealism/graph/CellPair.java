@@ -89,7 +89,7 @@ public class CellPair<T> implements Receptor<T>, Temporal, Lifecycle {
 	}
 	
 	private Supplier<Runnable> push(Producer<T> protein, boolean toA, boolean toB) {
-		OperationList push = new OperationList();
+		OperationList push = new OperationList("CellPair Push");
 
 		if (toA && factorA != null) {
 			Producer<T> r = factorA.getResultant(protein);

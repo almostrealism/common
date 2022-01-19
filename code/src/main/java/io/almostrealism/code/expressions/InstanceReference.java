@@ -27,6 +27,8 @@ import io.almostrealism.code.Variable;
  * {@link Variable} the text does not appear in quotes.
  */
 public class InstanceReference<T> extends Expression<T> {
+	public static boolean enablePassDelegate = true; // TODO  Remove - this should be the standard behavior
+
 	private Variable<T, ?> var;
 
 	public InstanceReference(Variable<T, ?> v) {
@@ -46,6 +48,10 @@ public class InstanceReference<T> extends Expression<T> {
 	public Variable<T, ?> getReferent() { return var; }
 
 	public Variable assign(Expression exp) {
-		return new Variable(getExpression(), false, exp);
+		if (enablePassDelegate) {
+			return new Variable(getExpression(), false, exp, getReferent().getDelegate());
+		} else {
+			return new Variable(getExpression(), false, exp);
+		}
 	}
 }

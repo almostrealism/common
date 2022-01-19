@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,9 +17,9 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.ArgumentMap;
-import io.almostrealism.code.Memory;
 import io.almostrealism.code.NamedFunction;
 import io.almostrealism.code.OperationAdapter;
+import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.Scope;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.OperationComputation;
@@ -27,13 +27,10 @@ import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.relation.Compactable;
 import org.almostrealism.hardware.computations.Abort;
-import org.almostrealism.hardware.mem.Bytes;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
-import java.util.OptionalInt;
 import java.util.function.Supplier;
 import java.util.stream.Collector;
 import java.util.stream.Collectors;
@@ -48,18 +45,23 @@ public class OperationList extends ArrayList<Supplier<Runnable>> implements Oper
 		abortFlag = new ThreadLocal<>();
 	}
 
-	private static final int maxDepth = 500;
-	private static final int abortableDepth = 1000;
+	private static int maxDepth = 500;
+	private static int abortableDepth = 1000;
 	private static long functionCount = 0;
 
 	private boolean enableCompilation;
 	private String functionName;
 
-	public OperationList() { this(true); }
+	private OperationMetadata metadata;
 
-	public OperationList(boolean enableCompilation) {
+	public OperationList() { this(null); }
+
+	public OperationList(String description) { this(description, true); }
+
+	public OperationList(String description, boolean enableCompilation) {
 		this.enableCompilation = enableCompilation;
 		this.functionName = "operations_" + functionCount++;
+		this.metadata = new OperationMetadata(functionName, description);
 	}
 
 	@Override
@@ -67,6 +69,8 @@ public class OperationList extends ArrayList<Supplier<Runnable>> implements Oper
 
 	@Override
 	public String getFunctionName() { return this.functionName; }
+
+	public OperationMetadata getMetadata() { return metadata; }
 
 	@Override
 	public Runnable get() {
@@ -175,4 +179,8 @@ public class OperationList extends ArrayList<Supplier<Runnable>> implements Oper
 	public static MemoryData getAbortFlag() { return abortFlag.get(); }
 
 	public static void removeAbortFlag() { abortFlag.remove(); }
+
+	protected static void setMaxDepth(int depth) { maxDepth = depth; }
+
+	protected static void setAbortableDepth(int depth) { abortableDepth = depth; }
 }

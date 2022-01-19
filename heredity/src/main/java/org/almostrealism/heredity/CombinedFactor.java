@@ -38,7 +38,7 @@ public class CombinedFactor<T> implements CellularTemporalFactor<T> {
 
 	@Override
 	public Supplier<Runnable> setup() {
-		OperationList setup = new OperationList();
+		OperationList setup = new OperationList("CombinedFactor Setup");
 		if (a instanceof Setup) setup.add(((Setup) a).setup());
 		if (b instanceof Setup) setup.add(((Setup) b).setup());
 		return setup;
@@ -51,7 +51,7 @@ public class CombinedFactor<T> implements CellularTemporalFactor<T> {
 
 	@Override
 	public Supplier<Runnable> tick() {
-		OperationList tick = new OperationList();
+		OperationList tick = new OperationList("CombinedFactor Tick");
 		if (a instanceof Temporal) tick.add(((Temporal) a).tick());
 		if (b instanceof Temporal) tick.add(((Temporal) b).tick());
 		return tick;

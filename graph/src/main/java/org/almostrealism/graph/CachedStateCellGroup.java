@@ -25,7 +25,7 @@ import java.util.function.Supplier;
 public class CachedStateCellGroup<T> extends ArrayList<CachedStateCell<T>> implements Temporal {
 	@Override
 	public Supplier<Runnable> tick() {
-		OperationList tick = new OperationList();
+		OperationList tick = new OperationList("CachedStateCellGroup Tick");
 		stream().map(CachedStateCell::tick).forEach(tick::add);
 		return tick;
 	}

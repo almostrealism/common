@@ -31,6 +31,7 @@ public class SummationCellOperation extends DynamicOperationComputationAdapter<S
 
 	public SummationCellOperation(SummationCell cell, Supplier<Evaluable<? extends Scalar>> protein) {
 		super(() -> new Provider<>(cell.getCachedValue()), protein);
+		getMetadata().setShortDescription("SummationCell Push");
 	}
 
 	@Override

@@ -50,6 +50,7 @@ public abstract class MemoryDataTemporalCellularChromosomeExpansion<T extends Me
 														 BiFunction<Integer, Integer, MemoryBank<T>> tableProvider,
 														 int inputGenes, int inputFactors) {
 		super(source);
+		if (inputGenes <= 0) throw new IllegalArgumentException();
 		this.type = type;
 		this.outputMemLength = outputMemLength;
 		this.inputGenes = inputGenes;

@@ -19,7 +19,6 @@ package org.almostrealism.algebra;
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.relation.Evaluable;
 
-import org.almostrealism.algebra.computations.DefaultScalarEvaluable;
 import org.almostrealism.algebra.computations.ScalarPow;
 import org.almostrealism.algebra.computations.ScalarProduct;
 import org.almostrealism.bool.AcceleratedConditionalStatementVector;

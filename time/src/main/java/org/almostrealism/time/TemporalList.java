@@ -26,7 +26,7 @@ public class TemporalList extends ArrayList<Temporal> implements Temporal, Lifec
 
 	@Override
 	public Supplier<Runnable> tick() {
-		OperationList tick = new OperationList();
+		OperationList tick = new OperationList("TemporalList Tick");
 		stream().map(Temporal::tick).forEach(tick::add);
 		return tick;
 	}

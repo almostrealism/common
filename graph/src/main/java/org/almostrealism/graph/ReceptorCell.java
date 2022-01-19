@@ -28,7 +28,7 @@ public class ReceptorCell<T> implements Cell<T>, Adjustable<T> {
 	public ReceptorCell(Receptor<T> r) { this.r = r; }
 
 	@Override
-	public Supplier<Runnable> setup() { return new OperationList(); }
+	public Supplier<Runnable> setup() { return new OperationList("ReceptorCell Setup"); }
 
 	@Override
 	public Supplier<Runnable> push(Producer<T> protein) { return r.push(protein); }
@@ -40,7 +40,7 @@ public class ReceptorCell<T> implements Cell<T>, Adjustable<T> {
 
 	@Override
 	public Supplier<Runnable> updateAdjustment(Producer<T> value) {
-		return new OperationList();
+		return new OperationList("ReceptorCell Adjustment Update");
 	}
 
 	@Override

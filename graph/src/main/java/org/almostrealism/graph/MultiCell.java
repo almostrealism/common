@@ -48,7 +48,7 @@ public class MultiCell<T> extends CellAdapter<T> {
 
 	@Override
 	public Supplier<Runnable> push(Producer<T> protein) {
-		OperationList push = new OperationList();
+		OperationList push = new OperationList("MultiCell Push");
 
 		Iterator<Cell<T>> itr = cells.iterator();
 

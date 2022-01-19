@@ -49,6 +49,7 @@ public class KernelList<T extends MemoryData> implements Supplier<Runnable>, Plu
 	public KernelList(Class<T> type, IntFunction<MemoryBank<T>> bankProvider, BiFunction<Integer, Integer, MemoryBank<? extends MemoryBank<T>>> tableProvider,
 					  BiFunction<Producer<MemoryBank<T>>, Producer<T>, ProducerComputation<T>> computation,
 					  int size, int parameters) {
+		if (size <= 0) throw new IllegalArgumentException();
 		this.tableProvider = tableProvider;
 		this.parameters = parameters > 0 ? bankProvider.apply(parameters) : null;
 		this.computation = computation.apply(() -> new Provider(this.parameters), Input.value(type, 0));
@@ -73,7 +74,7 @@ public class KernelList<T extends MemoryData> implements Supplier<Runnable>, Plu
 	public Runnable get() {
 		KernelizedEvaluable<T> ev = (KernelizedEvaluable<T>) computation.get();
 
-		OperationList op = new OperationList();
+		OperationList op = new OperationList("KernelList Parameter Assignments and Kernel Evaluations");
 		IntStream.range(0, size).forEach(i -> {
 			if (parameterValues.containsKey(i)) op.add(assignParameters(parameterValues.get(i)));
 			op.add(() -> () -> {

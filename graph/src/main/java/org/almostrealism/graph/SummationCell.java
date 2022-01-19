@@ -31,6 +31,6 @@ public class SummationCell extends ScalarCachedStateCell implements Adjustable<S
 
 	@Override
 	public Supplier<Runnable> updateAdjustment(Producer<Scalar> value) {
-		return new OperationList();
+		return new OperationList("SummationCell Adjustment Update");
 	}
 }

@@ -37,7 +37,7 @@ public class FilteredCell<T> extends CellAdapter<T> implements Temporal {
 		if (filter instanceof Setup && filter != this) {
 			return ((Setup) filter).setup();
 		} else {
-			return new OperationList();
+			return new OperationList("FilteredCell Setup");
 		}
 	}
 
@@ -51,7 +51,7 @@ public class FilteredCell<T> extends CellAdapter<T> implements Temporal {
 		if (filter instanceof Temporal && filter != this) {
 			return ((Temporal) filter).tick();
 		} else {
-			return new OperationList();
+			return new OperationList("FilteredCell Tick");
 		}
 	}
 

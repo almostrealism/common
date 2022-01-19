@@ -43,12 +43,12 @@ public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
 
 			@Override
 			public Supplier<Runnable> setup() {
-				return new OperationList();
+				return new OperationList("Cell from " + p.getClass().getSimpleName() + " Setup");
 			}
 
 			@Override
 			public Supplier<Runnable> push(Producer<T> protein) {
-				return r == null ? new OperationList() : r.push(p);
+				return r == null ? new OperationList("Cell from " + p.getClass().getSimpleName() + " Push") : r.push(p);
 			}
 
 			@Override
@@ -82,7 +82,7 @@ public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
 
 			@Override
 			public Supplier<Runnable> tick() {
-				OperationList tick = new OperationList();
+				OperationList tick = new OperationList("CellularTemporalFactor from " + c.getClass().getSimpleName() + " Tick");
 				tick.add(c.push(null));
 				if (c instanceof Temporal) tick.add(((Temporal) c).tick());
 				return tick;

@@ -43,7 +43,7 @@ public class ExpressionDelegationTest implements TestFeatures {
 		Scalar b = new Scalar(2.0);
 		Scalar r = new Scalar(0.0);
 
-		OperationList l = new OperationList();
+		OperationList l = new OperationList("Assignment from product");
 		l.add(a(1, p(r), v(a).multiply(p(b))));
 
 		AcceleratedComputationOperation op = (AcceleratedComputationOperation) l.get();

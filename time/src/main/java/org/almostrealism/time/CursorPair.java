@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -46,7 +46,4 @@ public class CursorPair extends Pair {
 	public Supplier<Runnable> increment(Producer<Scalar> value) {
 		return new CursorPairIncrement(() -> new Provider<>(this), value);
 	}
-
-	@Override
-	public PooledMem getDefaultDelegate() { return null; }
 }
