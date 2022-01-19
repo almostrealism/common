@@ -97,7 +97,7 @@ public final class Hardware {
 
 		String tsCount = System.getProperty("AR_HARDWARE_TIMESERIES_COUNT");
 		if (tsCount == null) tsCount = System.getenv("AR_HARDWARE_TIMESERIES_COUNT");
-		if (tsCount == null) tsCount = "12";
+		if (tsCount == null) tsCount = "24";
 
 		String libCompiler = System.getProperty("AR_HARDWARE_NATIVE_COMPILER");
 		if (libCompiler == null) libCompiler = System.getenv("AR_HARDWARE_NATIVE_COMPILER");

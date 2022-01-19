@@ -67,7 +67,7 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 
 	@Override
 	public void beginScope(String name, List<ArrayVariable<?>> arguments, Accessibility access) {
-		if (arguments.size() > 200) {
+		if (arguments.size() > 100) {
 			System.out.println("WARN: " + arguments.size() + " arguments to generated function");
 		}
 

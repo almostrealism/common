@@ -60,7 +60,10 @@ public class HardwareOperatorMap<T extends MemoryData> implements InstructionSet
 		}
 
 		if (ex != null) {
-			System.out.println("Error compiling:\n" + src);
+			if (HardwareOperator.enableVerboseLog) {
+				System.out.println("Error compiling:\n" + src);
+			}
+
 			throw ex;
 		}
 	}

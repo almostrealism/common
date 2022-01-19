@@ -42,11 +42,17 @@ public class ScalarBank extends MemoryBankAdapter<Scalar> {
 	public ScalarBank(int count) {
 		super(2, count, delegateSpec ->
 				new Scalar(delegateSpec.getDelegate(), delegateSpec.getOffset()));
+		if (count == 1) {
+			System.out.println("WARN: Creating a ScalarBank of a single Scalar");
+		}
 	}
 
 	public ScalarBank(int count, CacheLevel cacheLevel) {
 		super(2, count, delegateSpec ->
 				new Scalar(delegateSpec.getDelegate(), delegateSpec.getOffset()), cacheLevel);
+		if (count == 1) {
+			System.out.println("WARN: Creating a ScalarBank of a single Scalar");
+		}
 	}
 
 	// TODO  Need to respect CacheLevel, but the parent constructor that does

@@ -26,7 +26,7 @@ public class CLExceptionProcessor {
 			if (provider.getContext() == Hardware.getLocalHardware().getClDataContext()) {
 				return new InvalidContextException(provider.getContext().toString(), e);
 			} else {
-				return new MismatchedContextException(provider.getContext(), (CLDataContext) Hardware.getLocalHardware().getClDataContext(), e);
+				return new MismatchedContextException(provider.getContext(), Hardware.getLocalHardware().getClDataContext(), e);
 			}
 		} else if ("CL_INVALID_VALUE".equals(e.getMessage())) {
 			return new InvalidValueException(e, srcIndex, destIndex, length);
