@@ -8,15 +8,19 @@ at runtime with a whole range of different acceleration strategies, so you do no
 a commitment to a particular strategy for production use of your model code ahead of time.
 
 #### Support Accelerators
-    1. Pure JNI Operations via generated .so/.dylib
-    2. External Native Operations via generated executable
+    1. Normal JNI Operations via runtime generated .so/.dylib
+    2. External Native Operations via a generated executable
     3. OpenCL (JNI with JOCL) on CPU
     4. OpenCL (JNI with JOCL) on GPU
     4. TensorFlow Graphs
         a. TensorFlow MKL with JNI
         b. TensorFlow AVX2 with JNI
         c. TensorFlow Metal with JNI using tensorflow-metal
-    
+
+*For more information about Java bindings for OpenCL, visit jocl.org*
+
+*Note: TensorFlow support is still being actively developed and won't be available until late 2022*
+
 ### Why would you want this?
 When choosing Java as your target language, you are normally making a trade-off related to
 leveraging native instruction sets. The assumption is normally that applications can benefit
