@@ -4,7 +4,7 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayBank;
 import org.almostrealism.hardware.MemoryBank;
-import org.almostrealism.util.CodeFeatures;
+import org.almostrealism.CodeFeatures;
 import org.almostrealism.hardware.PassThroughEvaluable;
 import org.junit.Test;
 

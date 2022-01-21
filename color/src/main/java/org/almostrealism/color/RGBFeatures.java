@@ -101,4 +101,6 @@ public interface RGBFeatures {
 	default RGBProducer cfromScalar(double value) {
 		return cfromScalar(new Scalar(value));
 	}
+
+	static RGBFeatures getInstance() { return new RGBFeatures() {}; }
 }

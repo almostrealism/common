@@ -21,11 +21,11 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.hardware.DynamicAcceleratedOperation;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.util.CodeFeatures;
+import org.almostrealism.CodeFeatures;
 import org.junit.Assert;
 import org.junit.Test;
 
-import static org.almostrealism.util.Ops.ops;
+import static org.almostrealism.Ops.ops;
 
 public class VectorMathTest implements CodeFeatures {
 	@Test

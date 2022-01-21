@@ -17,16 +17,11 @@
 package org.almostrealism.geometry.test;
 
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.geometry.DefaultRayEvaluable;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.computations.RayCopy;
 import org.almostrealism.geometry.computations.RayPointAt;
 import org.almostrealism.geometry.computations.StaticRayComputation;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
-import org.almostrealism.hardware.DynamicAcceleratedEvaluable;
-import org.almostrealism.hardware.DynamicAcceleratedOperation;
-import org.almostrealism.hardware.HardwareFeatures;
-import org.almostrealism.util.CodeFeatures;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;

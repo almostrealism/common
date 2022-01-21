@@ -16,8 +16,6 @@
 
 package org.almostrealism.space.test;
 
-import org.almostrealism.algebra.computations.DefaultScalarEvaluable;
-import org.almostrealism.geometry.DefaultRayEvaluable;
 import org.almostrealism.geometry.computations.RayMatrixTransform;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
@@ -26,7 +24,7 @@ import org.almostrealism.hardware.HardwareFeatures;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.space.Plane;
 import org.almostrealism.geometry.ShadableIntersection;
-import org.almostrealism.util.CodeFeatures;
+import org.almostrealism.CodeFeatures;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
 import org.junit.Assert;

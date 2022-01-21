@@ -1,13 +1,12 @@
 package org.almostrealism.algebra.test;
 
-import org.almostrealism.algebra.computations.DefaultVectorEvaluable;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.computations.TransformAsLocation;
 import org.almostrealism.geometry.TranslationMatrix;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.HardwareFeatures;
-import org.almostrealism.util.CodeFeatures;
+import org.almostrealism.CodeFeatures;
 import org.junit.Assert;
 import org.junit.Test;
 

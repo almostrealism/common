@@ -1,10 +1,6 @@
 package org.almostrealism.time.computations.test;
 
-import io.almostrealism.code.ArrayVariable;
-import io.almostrealism.code.OperationAdapter;
-import io.almostrealism.code.Scope;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.computations.ScalarFromPair;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.Hardware;
@@ -14,10 +10,8 @@ import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.time.CursorPair;
 import org.almostrealism.time.TemporalScalar;
 import org.almostrealism.time.computations.AcceleratedTimeSeriesValueAt;
-import org.almostrealism.time.computations.TemporalScalarFromScalars;
-import org.almostrealism.util.CodeFeatures;
+import org.almostrealism.CodeFeatures;
 import org.junit.Assert;
-import org.junit.Before;
 import org.junit.Test;
 
 import java.util.function.Supplier;

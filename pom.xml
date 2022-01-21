@@ -5,12 +5,12 @@
     <modelVersion>4.0.0</modelVersion>
 
 	<properties>
-		<common.version>0.44</common.version>
+		<common.version>0.45</common.version>
 	</properties>
 
     <groupId>org.almostrealism</groupId>
     <artifactId>Common</artifactId>
-    <version>0.44</version>
+    <version>0.45</version>
 	<modules>
 		<module>relation</module>
 		<module>io</module>

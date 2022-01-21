@@ -17,13 +17,12 @@
 package org.almostrealism.algebra.test;
 
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.computations.DefaultScalarEvaluable;
 import org.almostrealism.algebra.computations.ScalarProduct;
 import org.almostrealism.algebra.computations.ScalarSum;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.DynamicProducerComputationAdapter;
 import org.almostrealism.hardware.HardwareFeatures;
-import org.almostrealism.util.CodeFeatures;
+import org.almostrealism.CodeFeatures;
 import org.almostrealism.hardware.PassThroughEvaluable;
 import org.junit.Assert;
 import org.junit.Test;

@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.util;
+package org.almostrealism;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.Variable;
@@ -36,7 +36,6 @@ import org.almostrealism.algebra.computations.StaticVectorComputation;
 import org.almostrealism.geometry.GeometryFeatures;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.color.RGBFeatures;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayFeatures;
 import org.almostrealism.geometry.TransformMatrixFeatures;
@@ -61,7 +60,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 public interface CodeFeatures extends ScalarFeatures, PairFeatures, TriangleDataFeatures, RayFeatures,
-								TransformMatrixFeatures, RGBFeatures, GeometryFeatures, HardwareFeatures {
+								TransformMatrixFeatures, GeometryFeatures, HardwareFeatures {
 	default <T> Producer<T> p(T value) { return () -> new Provider<>(value); }
 
 	default Producer<CursorPair> v(CursorPair p) {

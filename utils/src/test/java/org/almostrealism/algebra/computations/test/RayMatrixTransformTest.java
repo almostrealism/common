@@ -16,16 +16,12 @@
 
 package org.almostrealism.algebra.computations.test;
 
-import io.almostrealism.code.Scope;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.geometry.computations.RayMatrixTransform;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayProducer;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
-import org.almostrealism.hardware.HardwareFeatures;
-import org.almostrealism.util.CodeFeatures;
 import org.almostrealism.util.TestFeatures;
-import org.junit.Assert;
 import org.junit.Test;
 
 public class RayMatrixTransformTest implements TestFeatures {

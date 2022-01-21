@@ -27,7 +27,6 @@ import org.almostrealism.graph.mesh.TriangleDataProducer;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.util.CodeFeatures;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;

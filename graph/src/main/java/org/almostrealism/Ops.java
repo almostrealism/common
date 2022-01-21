@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package org.almostrealism.util;
+package org.almostrealism;
 
 public class Ops implements CodeFeatures {
 	private static Ops ops = new Ops();

@@ -17,6 +17,7 @@
 package org.almostrealism.util;
 
 import io.almostrealism.relation.ProducerWithRank;
+import org.almostrealism.CodeFeatures;
 import org.almostrealism.algebra.computations.ProducerWithRankAdapter;
 import org.almostrealism.geometry.Intersection;
 import org.almostrealism.algebra.Pair;
