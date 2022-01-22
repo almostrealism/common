@@ -1,8 +1,8 @@
 package org.almostrealism.geometry.computations;
 
-import io.almostrealism.code.ArrayVariable;
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.PhysicalScope;
-import io.almostrealism.code.Variable;
+import io.almostrealism.scope.Variable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.geometry.DimensionAware;
 import org.almostrealism.hardware.AcceleratedEvaluable;

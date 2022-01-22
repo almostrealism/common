@@ -16,12 +16,10 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.code.ArrayVariable;
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ProducerComputation;
 import org.almostrealism.hardware.cl.HardwareOperator;
-
-import java.util.Map;
 
 public class AcceleratedComputationEvaluable<T extends MemoryData> extends AcceleratedComputationOperation implements KernelizedEvaluable<T> {
 	public AcceleratedComputationEvaluable(Computation<T> c) {

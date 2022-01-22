@@ -16,7 +16,7 @@
 
 package org.almostrealism.geometry;
 
-import io.almostrealism.code.expressions.Expression;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;

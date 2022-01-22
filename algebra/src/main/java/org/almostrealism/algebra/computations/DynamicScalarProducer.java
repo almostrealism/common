@@ -16,7 +16,7 @@
 
 package org.almostrealism.algebra.computations;
 
-import io.almostrealism.code.Scope;
+import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarProducer;

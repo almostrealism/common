@@ -17,7 +17,7 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.InstructionSet;
-import io.almostrealism.code.Variable;
+import io.almostrealism.scope.Variable;
 
 /**
  * @deprecated  In the process of abstracting the way in which {@link InstructionSet}s

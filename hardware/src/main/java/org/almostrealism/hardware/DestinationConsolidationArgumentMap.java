@@ -16,7 +16,7 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.code.ArrayVariable;
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.relation.Delegated;
 import org.almostrealism.hardware.mem.MemoryBankAdapter;
@@ -28,7 +28,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Function;
 import java.util.function.Supplier;
 
 public class DestinationConsolidationArgumentMap<S, A> extends MemoryDataArgumentMap<S, A> {

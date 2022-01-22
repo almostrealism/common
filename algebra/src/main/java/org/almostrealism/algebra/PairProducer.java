@@ -16,7 +16,7 @@
 
 package org.almostrealism.algebra;
 
-import io.almostrealism.code.expressions.MultiExpression;
+import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.computations.DefaultPairEvaluable;
 import io.almostrealism.code.ProducerComputation;
@@ -32,7 +32,7 @@ public interface PairProducer extends ProducerComputation<Pair>, KernelizedProdu
 										MultiExpression<Double>, PairFeatures {
 	@Override
 	default KernelizedEvaluable<Pair> get() {
-		DefaultComputer computer = Hardware.getLocalHardware().getComputer();
+		DefaultComputer computer = (DefaultComputer) Hardware.getLocalHardware().getComputeContext().getComputer();
 
 		AcceleratedComputationEvaluable ev;
 

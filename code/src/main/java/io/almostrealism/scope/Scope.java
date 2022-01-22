@@ -14,11 +14,18 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.code;
+package io.almostrealism.scope;
 
-import io.almostrealism.code.Argument.Expectation;
-import io.almostrealism.code.expressions.Expression;
-import io.almostrealism.code.expressions.InstanceReference;
+import io.almostrealism.code.Array;
+import io.almostrealism.code.CodePrintWriter;
+import io.almostrealism.code.Computation;
+import io.almostrealism.code.NameProvider;
+import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.code.ParameterizedGraph;
+import io.almostrealism.code.ProducerArgumentReference;
+import io.almostrealism.scope.Argument.Expectation;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.InstanceReference;
 
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.DynamicProducer;
@@ -49,6 +56,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 	public static final boolean enableInlining = true;
 
 	private String name;
+	private OperationMetadata metadata;
 	private final List<Variable<?, ?>> variables;
 	private final List<Method> methods;
 	private final List<Scope> required;
@@ -73,11 +81,28 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 		setName(name);
 	}
 
+	public Scope(String name, OperationMetadata metadata) {
+		this();
+		setName(name);
+		setMetadata(new OperationMetadata(metadata));
+	}
+
 	@Override
 	public String getName() { return name; }
 
 	@Override
 	public void setName(String name) { this.name = name; }
+
+	public OperationMetadata getMetadata() {
+		if (metadata == null) {
+			metadata = new OperationMetadata("Unknown", null);
+		}
+
+		metadata.setChildren(getChildren().stream().map(Scope::getMetadata).collect(Collectors.toList()));
+		return metadata;
+	}
+
+	public void setMetadata(OperationMetadata metadata) { this.metadata = metadata; }
 
 	/**
 	 * @return  The {@link Variable}s in this {@link Scope}.
@@ -331,6 +356,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 	 * @param w  {@link CodePrintWriter} to use for encoding the {@link Scope}.
 	 */
 	public void write(CodePrintWriter w) {
+		w.renderMetadata(getMetadata());
 		for (Method m : getMethods()) { w.println(m); }
 		for (Variable v : getVariables()) { w.println(v); }
 		for (Scope s : getChildren()) { s.write(w); }

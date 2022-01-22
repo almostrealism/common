@@ -16,6 +16,8 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.scope.Variable;
+
 public interface OutputSupport {
 
 	default Variable getOutputVariable() {

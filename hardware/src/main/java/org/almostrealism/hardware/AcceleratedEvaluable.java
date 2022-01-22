@@ -16,10 +16,10 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.code.ArrayVariable;
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.CollectionUtils;
 import io.almostrealism.code.ScopeInputManager;
-import io.almostrealism.code.expressions.Expression;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.hardware.cl.HardwareOperator;

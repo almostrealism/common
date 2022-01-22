@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,13 +16,17 @@
 
 package io.almostrealism.code;
 
-import io.almostrealism.code.Argument.Expectation;
-import io.almostrealism.code.expressions.Expression;
-import io.almostrealism.code.expressions.MultiExpression;
+import io.almostrealism.scope.Argument;
+import io.almostrealism.scope.Argument.Expectation;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
+import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.Scope;
+import io.almostrealism.scope.Variable;
 
 import java.util.Optional;
 import java.util.function.Supplier;
@@ -110,7 +114,7 @@ public abstract class OperationComputationAdapter<I, O> extends OperationAdapter
 
 	@Override
 	public Scope<O> getScope() {
-		Scope<O> scope = new Scope<>(getFunctionName());
+		Scope<O> scope = new Scope<>(getFunctionName(), new OperationMetadata(getFunctionName(), getClass().getSimpleName()));
 		scope.getVariables().addAll(getVariables());
 		return scope;
 	}

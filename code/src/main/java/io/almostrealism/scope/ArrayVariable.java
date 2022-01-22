@@ -14,15 +14,17 @@
  * limitations under the License.
  */
 
-package io.almostrealism.code;
+package io.almostrealism.scope;
 
-import io.almostrealism.code.expressions.Expression;
-import io.almostrealism.code.expressions.InstanceReference;
+import io.almostrealism.code.Array;
+import io.almostrealism.code.NameProvider;
+import io.almostrealism.code.PhysicalScope;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.relation.Evaluable;
 
 import java.util.Collections;
 import java.util.List;
-import java.util.Optional;
 import java.util.function.Supplier;
 
 public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements Array<T, ArrayVariable<T>> {

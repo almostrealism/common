@@ -16,7 +16,7 @@
 
 package org.almostrealism.geometry.computations;
 
-import io.almostrealism.code.expressions.Expression;
+import io.almostrealism.expression.Expression;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayBank;

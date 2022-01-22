@@ -14,11 +14,11 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.code.expressions;
+package io.almostrealism.expression;
 
 import io.almostrealism.code.CodePrintWriter;
 import io.almostrealism.code.CollectionUtils;
-import io.almostrealism.code.Variable;
+import io.almostrealism.scope.Variable;
 
 /**
  * {@link InstanceReference} is used to reference a previously declared

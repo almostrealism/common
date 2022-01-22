@@ -125,6 +125,88 @@ public class MyNativeEnableApplication implements CodeFeatures {
 }
 ```
 
+#### Controlling Execution
+
+It is not normally required to worry about how resources on the underlying system are reserved
+and managed, but in case it is important for your use case there are two **Context** concepts
+that allow for more power over when and how non-JVM resources are allocated. **DataContext**s
+are the top level **Context** concept. No memory can be shared between **DataContext**s, so
+most applications will use a single **DataContext**. However, there may be scenarios where it
+is desirable to wipe all the off-heap data that is used (given that there is no garbage
+collection this actually becomes quite important for longer-running "service" applications).
+
+**DataContext**s are global to the JVM; there is only ever one **DataContext** in effect at a
+time.
+
+```Java
+public class MyNativeEnableApplication implements CodeFeatures {
+	// ....
+
+	public void performThreeExperiments() {
+		for (int i = 0; i < 3; i++) {
+			dc(() -> {
+				// Define argument 0
+				Producer<Scalar> arg = v(Scalar.class, 0);
+
+				// Compose the expression
+				Supplier<Evaluable<Scalar>> constantOperation = v(7.0).multiply(arg);
+
+				// Compile the expression
+				Evaluable<Scalar> compiledOperation = constantOperation.get();
+
+				// Evaluate the expression repeatedly
+				System.out.println("7 * 3 = " + constantOperation.evaluate(new Scalar(3)));
+				System.out.println("7 * 4 = " + constantOperation.evaluate(new Scalar(4)));
+				System.out.println("7 * 5 = " + constantOperation.evaluate(new Scalar(5)));
+			});
+		}
+	}
+}
+```
+
+In this example, our accelerated operations are repeated 3 times. However, after each one, all
+of the resources are destroyed. This corresponds to terminating the cl_context if you are using
+OpenCL, or wiping local storage if you are using an external executable, etc.
+
+
+The other **Context** concept, **ComputeContext**, exists within a particular **DataContext**.
+A **ComputeContext** tracks only the compiled **InstructionSet**s, and memory can be shared
+across different **ComputeContext**s (though obviously not every kind of **ComputeContext**
+can be used with every kind of memory: if you are using **CLDataContext** and memory is stored
+on a GPU device, there is no way to use it with a **ExternalNativeComputeContext**, for
+example).
+
+**ComputeContexts** are global to the **Thread**, a JVM can have multiple **ComputeContexts**
+at once, if multiple **Thread**s were used to create them.
+
+When creating a **ComputeContext**, you can instruct the **DataContext** of your expectations,
+and it will make a best effort to fulfill them. It will not fail when your expectations cannot
+be met, it will just provide something other than what you expected.
+
+```Java
+public class MyNativeEnableApplication implements CodeFeatures {
+	// ....
+
+	public void useJniCLandJniC() {
+		dc(() -> {
+			Scalar result = new Scalar();
+
+			ScalarProducer sum = scalarAdd(v(1.0), v(2.0));
+			ScalarProducer product = scalarsMultiply(v(3.0), v(2.0));
+
+			cc(() -> a(2, p(result), sum).get().run(), ComputeRequirement.CL);
+			System.out.println("Result = " + result.getValue());
+
+			cc(() -> a(2, p(result), product).get().run(), ComputeRequirement.C);
+			System.out.println("Result = " + result.getValue());
+		});
+	}
+}
+```
+
+In this example, we will perform addition using OpenCL, but we will perform multiplication
+using a regular JNI method in a runtime-generated .so or .dylib.
+
 #### Parallelization via Accelerator
 Although you can use the tool with multiple threads (compiled operations are threadsafe),
 you may want to leverage parallelization that cannot be accomplished with Java's Thread

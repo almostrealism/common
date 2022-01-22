@@ -17,8 +17,8 @@
 package org.almostrealism.hardware;
 
 import org.almostrealism.c.OpenCLPrintWriter;
-import io.almostrealism.code.expressions.MultiExpression;
-import io.almostrealism.code.Variable;
+import io.almostrealism.expression.MultiExpression;
+import io.almostrealism.scope.Variable;
 import io.almostrealism.relation.Evaluable;
 
 import java.util.function.IntFunction;

@@ -14,19 +14,17 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.code.expressions;
+package io.almostrealism.expression;
 
-import io.almostrealism.code.Variable;
+import io.almostrealism.scope.Variable;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.function.Supplier;
-import java.util.stream.Stream;
 
 public class Expression<T> {
 	private Class<T> type;

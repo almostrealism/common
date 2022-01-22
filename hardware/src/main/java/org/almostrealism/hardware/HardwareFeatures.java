@@ -27,19 +27,19 @@ import java.util.stream.IntStream;
 
 public interface HardwareFeatures {
 	default Runnable compileRunnable(Computation<?> c) {
-		return Hardware.getLocalHardware().getComputer().compileRunnable((Computation<Void>) c);
+		return Hardware.getLocalHardware().getComputeContext().getComputer().compileRunnable((Computation<Void>) c);
 	}
 
 	default <T extends MemoryData> KernelizedEvaluable<T> compileProducer(Computation<T> c) {
-		return (KernelizedEvaluable) Hardware.getLocalHardware().getComputer().compileProducer(c);
+		return (KernelizedEvaluable) Hardware.getLocalHardware().getComputeContext().getComputer().compileProducer(c);
 	}
 
 	default <T extends MemoryData> Optional<Computation<T>> decompile(Runnable r) {
-		return Hardware.getLocalHardware().getComputer().decompile(r);
+		return Hardware.getLocalHardware().getComputeContext().getComputer().decompile(r);
 	}
 
 	default <T extends MemoryData> Optional<Computation<T>> decompile(Evaluable<T> r) {
-		return Hardware.getLocalHardware().getComputer().decompile(r);
+		return Hardware.getLocalHardware().getComputeContext().getComputer().decompile(r);
 	}
 
 	default String stringForDouble(double value) {

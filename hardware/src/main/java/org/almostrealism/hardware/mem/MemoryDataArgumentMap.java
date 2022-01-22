@@ -16,7 +16,7 @@
 
 package org.almostrealism.hardware.mem;
 
-import io.almostrealism.code.ArrayVariable;
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.relation.Delegated;

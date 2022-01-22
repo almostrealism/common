@@ -16,10 +16,14 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.scope.Method;
+import io.almostrealism.scope.Scope;
+import io.almostrealism.scope.Variable;
+
 public interface Computation<T> extends ScopeLifecycle, OutputSupport {
 	/**
 	 * Return a {@link Scope} containing the {@link Variable}s
-	 * and {@link io.almostrealism.code.Method}s necessary to compute the output of
+	 * and {@link Method}s necessary to compute the output of
 	 * this {@link Computation}.
 	 */
 	Scope<T> getScope();

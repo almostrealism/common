@@ -16,7 +16,7 @@
 
 package org.almostrealism.geometry.computations;
 
-import io.almostrealism.code.expressions.Expression;
+import io.almostrealism.expression.Expression;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarProducer;
@@ -38,7 +38,7 @@ public class Sine extends DynamicProducerComputationAdapter<Scalar, Scalar> impl
 		return pos -> {
 			if (value == null) {
 				if (pos == 0) {
-					return new io.almostrealism.code.expressions.Sine(getArgument(1, 2).valueAt(0));
+					return new io.almostrealism.expression.Sine(getArgument(1, 2).valueAt(0));
 				} else if (pos == 1) {
 					return getArgument(1, 2).valueAt(1);
 				} else {
@@ -58,7 +58,7 @@ public class Sine extends DynamicProducerComputationAdapter<Scalar, Scalar> impl
 			absorbVariables(getInputs().get(1));
 
 			value = new Expression[] {
-					new io.almostrealism.code.expressions.Sine(getInputValue(1, 0)),
+					new io.almostrealism.expression.Sine(getInputValue(1, 0)),
 					getInputValue(1, 1)
 			};
 

@@ -16,6 +16,7 @@
 
 package org.almostrealism.c;
 
+import org.almostrealism.hardware.AbstractComputeContext;
 import org.almostrealism.hardware.Hardware;
 
 import java.io.IOException;
@@ -39,7 +40,9 @@ public abstract class BaseNative {
 		initNativeFunctionName();
 
 		try {
-			Hardware.getLocalHardware().getComputer().loadNative(getClass(), getCode());
+			// TODO  Need to use NativeCompiler directly, and track whether this library has already been loaded here
+			// TODO  instead of in the Computer: the Computer should not be tracking native resources like libs
+			((AbstractComputeContext) Hardware.getLocalHardware().getComputeContext()).getComputer().loadNative(getClass(), getCode());
 		} catch (UnsatisfiedLinkError | IOException | InterruptedException e) {
 			throw new RuntimeException(e);
 		}

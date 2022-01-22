@@ -16,6 +16,8 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.scope.Variable;
+
 /**
  * A {@link ResourceVariable} is a {@link Variable} implementation that takes data
  * from a {@link Resource} and stores it in a variable.

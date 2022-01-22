@@ -16,9 +16,9 @@
 
 package org.almostrealism.algebra.expressions;
 
-import io.almostrealism.code.expressions.Expression;
-import io.almostrealism.code.expressions.ExpressionArray;
-import io.almostrealism.code.expressions.MultiExpression;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.ExpressionArray;
+import io.almostrealism.expression.MultiExpression;
 
 import java.util.function.IntFunction;
 

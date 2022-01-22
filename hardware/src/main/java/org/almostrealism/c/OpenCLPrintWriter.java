@@ -16,7 +16,7 @@
 
 package org.almostrealism.c;
 
-import io.almostrealism.code.Method;
+import io.almostrealism.scope.Method;
 import io.almostrealism.code.PhysicalScope;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.io.PrintWriter;

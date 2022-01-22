@@ -16,10 +16,14 @@
 
 package org.almostrealism.hardware.cl;
 
+import io.almostrealism.code.ComputeContext;
+import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.code.DataContext;
 import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.RAM;
+import org.almostrealism.hardware.jni.NativeCompiler;
+import org.almostrealism.hardware.jni.NativeComputeContext;
 import org.jocl.CL;
 import org.jocl.cl_command_queue;
 import org.jocl.cl_context;
@@ -27,7 +31,9 @@ import org.jocl.cl_context_properties;
 import org.jocl.cl_device_id;
 import org.jocl.cl_platform_id;
 
+import java.util.Optional;
 import java.util.concurrent.Callable;
+import java.util.stream.Stream;
 
 public class CLDataContext implements DataContext {
 	public static boolean enableFastQueue = true;
@@ -42,9 +48,11 @@ public class CLDataContext implements DataContext {
 	private cl_command_queue queue;
 	private cl_command_queue fastQueue;
 	private cl_command_queue kernelQueue;
-	private MemoryProvider<RAM> ram;
 
-	private ThreadLocal<CLComputeContext> computeContext;
+	private MemoryProvider<RAM> ram;
+	private NativeCompiler nativeCompiler;
+
+	private ThreadLocal<ComputeContext> computeContext;
 
 	public CLDataContext(Hardware hardware, String name, boolean isDoublePrecision, long memoryMax, CLMemoryProvider.Location location) {
 		this.hardware = hardware;
@@ -103,26 +111,27 @@ public class CLDataContext implements DataContext {
 
 	public MemoryProvider<RAM> getMemoryProvider() { return ram; }
 
-	public CLComputeContext getComputeContext() {
+	public ComputeContext getComputeContext() {
 		if (computeContext.get() == null) {
 			if (Hardware.enableVerbose) System.out.println("INFO: No explicit ComputeContext for " + Thread.currentThread().getName());
-			computeContext.set(new CLComputeContext(isDoublePrecision, ctx));
+			computeContext.set(new CLComputeContext(hardware, ctx));
 		}
 
 		return computeContext.get();
 	}
 
-	protected void setComputeContext(CLComputeContext ctx) {
-		if (this.computeContext.get() != null) {
-			this.computeContext.get().destroy();
+	public <T> T computeContext(Callable<T> exec, ComputeRequirement... expectations) {
+		Optional<ComputeRequirement> cReq = Stream.of(expectations).filter(ComputeRequirement.C::equals).findAny();
+
+		ComputeContext current = computeContext.get();
+		ComputeContext next;
+
+		if (cReq.isPresent()) {
+			next = new CLNativeComputeContext(hardware);
+		} else {
+			next = new CLComputeContext(hardware, ctx);
 		}
 
-		this.computeContext.set(ctx);
-	}
-
-	public <T> T computeContext(Callable<T> exec) {
-		CLComputeContext current = computeContext.get();
-		CLComputeContext next = new CLComputeContext(isDoublePrecision, ctx);
 		String ccName = next.toString();
 		if (ccName.contains(".")) {
 			ccName = ccName.substring(ccName.lastIndexOf('.') + 1);

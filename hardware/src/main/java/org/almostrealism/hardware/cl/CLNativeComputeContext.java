@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,33 +14,30 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.hardware.jni;
+package org.almostrealism.hardware.cl;
 
 import io.almostrealism.code.Accessibility;
-import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.InstructionSet;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeEncoder;
-import org.almostrealism.c.CJNIPrintWriter;
 import org.almostrealism.hardware.AbstractComputeContext;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.jni.NativeInstructionSet;
 
-public class NativeComputeContext extends AbstractComputeContext {
+public class CLNativeComputeContext extends AbstractComputeContext {
 	public static boolean enableVerbose = false;
 	protected static long totalInvocations = 0;
 
-	private NativeCompiler compiler;
-
-	public NativeComputeContext(Hardware hardware) {
-		super(hardware, false, true);
+	public CLNativeComputeContext(Hardware hardware) {
+		super(hardware, true, true);
 	}
 
 	@Override
 	public InstructionSet deliver(Scope scope) {
 		StringBuffer buf = new StringBuffer();
-		NativeInstructionSet target = compiler.reserveLibraryTarget();
-		buf.append(new ScopeEncoder(pw -> new CJNIPrintWriter(pw, target.getFunctionName()), Accessibility.EXTERNAL).apply(scope));
-		compiler.compile(target, buf.toString());
+		NativeInstructionSet target = getComputer().getNativeCompiler().reserveLibraryTarget();
+		buf.append(new ScopeEncoder(pw -> new CLJNIPrintWriter(pw, target.getFunctionName()), Accessibility.EXTERNAL).apply(scope));
+		getComputer().getNativeCompiler().compile(target, buf.toString());
 		return target;
 	}
 

@@ -16,7 +16,7 @@
 
 package org.almostrealism.graph.mesh;
 
-import io.almostrealism.code.expressions.Expression;
+import io.almostrealism.expression.Expression;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.hardware.DynamicProducerComputationAdapter;

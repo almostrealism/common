@@ -28,7 +28,7 @@ public interface TrianglePointDataProducer extends ProducerComputation<TriangleP
 
 	@Override
 	default KernelizedEvaluable<TrianglePointData> get() {
-		DefaultComputer computer = Hardware.getLocalHardware().getComputer();
+		DefaultComputer computer = (DefaultComputer) Hardware.getLocalHardware().getComputeContext().getComputer();
 
 		AcceleratedComputationEvaluable ev;
 

@@ -16,11 +16,11 @@
 
 package org.almostrealism.bool;
 
-import io.almostrealism.code.Argument;
-import io.almostrealism.code.ArrayVariable;
+import io.almostrealism.scope.Argument;
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.OutputSupport;
-import io.almostrealism.code.Variable;
-import io.almostrealism.code.expressions.Expression;
+import io.almostrealism.scope.Variable;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.MemoryData;

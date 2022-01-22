@@ -17,8 +17,7 @@
 package org.almostrealism.hardware.computations;
 
 import io.almostrealism.code.HybridScope;
-import io.almostrealism.code.Scope;
-import io.almostrealism.relation.Producer;
+import io.almostrealism.scope.Scope;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.hardware.DynamicOperationComputationAdapter;
 import org.almostrealism.hardware.MemoryData;

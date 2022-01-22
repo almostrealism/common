@@ -14,18 +14,10 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.code.expressions;
+package io.almostrealism.expression;
 
-import io.almostrealism.code.ArrayVariable;
-import io.almostrealism.code.Variable;
-
-import java.util.function.IntFunction;
-
-public interface MultiExpression<T> {
-
-	default IntFunction<Variable<T, ?>> getAssignmentFunction(Variable<?, ?> outputVariable) {
-		return i -> new Variable(((ArrayVariable) outputVariable).valueAt(i).getExpression(), false, getValue(i), outputVariable.getRootDelegate());
+public class Product extends NAryExpression<Double> {
+	public Product(Expression<Double>... values) {
+		super(Double.class, "*", values);
 	}
-
-	Expression<T> getValue(int pos);
 }

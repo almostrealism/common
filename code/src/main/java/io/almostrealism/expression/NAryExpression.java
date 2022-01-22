@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.code.expressions;
+package io.almostrealism.expression;
 
 import java.util.List;
 import java.util.stream.Stream;

@@ -16,8 +16,8 @@
 
 package org.almostrealism.algebra.computations;
 
-import io.almostrealism.code.expressions.Expression;
-import io.almostrealism.code.expressions.Sum;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;

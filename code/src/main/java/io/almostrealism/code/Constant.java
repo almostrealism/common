@@ -1,5 +1,8 @@
 package io.almostrealism.code;
 
+import io.almostrealism.scope.Scope;
+import io.almostrealism.scope.Variable;
+
 public class Constant<T> implements Operator<T> {
 	private T v;
 

@@ -16,6 +16,8 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.scope.Variable;
+
 public abstract class ProducerComputationAdapter<I, O> extends OperationComputationAdapter<I, O> implements ProducerComputation<O> {
 	private Variable outputVariable;
 

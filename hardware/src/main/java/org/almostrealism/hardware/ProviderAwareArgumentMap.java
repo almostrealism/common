@@ -16,10 +16,9 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.code.ArrayVariable;
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.OutputVariablePreservationArgumentMap;
-import io.almostrealism.code.SupplierArgumentMap;
 import io.almostrealism.relation.Provider;
 
 import java.util.function.Supplier;

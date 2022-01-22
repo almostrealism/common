@@ -14,10 +14,9 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.code;
+package io.almostrealism.scope;
 
-import io.almostrealism.code.expressions.Expression;
-import io.almostrealism.code.expressions.InstanceReference;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Nameable;
 
 import java.util.Arrays;

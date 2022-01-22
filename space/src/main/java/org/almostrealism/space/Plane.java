@@ -16,8 +16,8 @@
 
 package org.almostrealism.space;
 
-import io.almostrealism.code.Scope;
-import io.almostrealism.code.Variable;
+import io.almostrealism.scope.Scope;
+import io.almostrealism.scope.Variable;
 import org.almostrealism.algebra.*;
 import org.almostrealism.color.RGB;
 import org.almostrealism.geometry.Ray;
@@ -26,7 +26,6 @@ import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.geometry.ContinuousField;
 import org.almostrealism.geometry.ShadableIntersection;
 import io.almostrealism.code.Constant;
-import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.Operator;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;

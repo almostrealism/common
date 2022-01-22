@@ -17,8 +17,6 @@
 package org.almostrealism.hardware.jni;
 
 import io.almostrealism.code.InstructionSet;
-import io.almostrealism.code.NameProvider;
-import io.almostrealism.code.PhysicalScope;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.KernelSupport;
 import org.almostrealism.hardware.MemoryData;
@@ -26,7 +24,6 @@ import org.almostrealism.hardware.RAM;
 import org.almostrealism.hardware.cl.CLDataContext;
 import org.jocl.cl_command_queue;
 
-import java.io.IOException;
 import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
@@ -58,7 +55,7 @@ public interface NativeInstructionSet extends InstructionSet, KernelSupport {
 	default void apply(MemoryData... args) {
 		long id = NativeComputeContext.totalInvocations++;
 
-		if (NativeComputeContext.enableVerbose && id % 100000 == 0) {
+		if (NativeComputeContext.enableVerbose && (id + 1) % 100000 == 0) {
 			System.out.println("NativeInstructionSet: " + id);
 		}
 

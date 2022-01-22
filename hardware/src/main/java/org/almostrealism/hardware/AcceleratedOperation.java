@@ -16,21 +16,21 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.code.Argument;
-import io.almostrealism.code.Argument.Expectation;
+import io.almostrealism.scope.Argument;
+import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.code.ArgumentMap;
-import io.almostrealism.code.ArrayVariable;
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.DefaultScopeInputManager;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.code.ProducerComputation;
-import io.almostrealism.code.Scope;
+import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.code.SupplierArgumentMap;
-import io.almostrealism.code.Variable;
+import io.almostrealism.scope.Variable;
 import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;

@@ -27,7 +27,7 @@ import org.almostrealism.hardware.KernelizedProducer;
 public interface PairBankProducer extends ProducerComputation<PairBank>, KernelizedProducer<PairBank>, PairFeatures {
 	@Override
 	default KernelizedEvaluable<PairBank> get() {
-		DefaultComputer computer = Hardware.getLocalHardware().getComputer();
+		DefaultComputer computer = (DefaultComputer) Hardware.getLocalHardware().getComputeContext().getComputer();
 
 		AcceleratedComputationEvaluable ev;
 

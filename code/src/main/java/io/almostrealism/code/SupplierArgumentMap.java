@@ -17,6 +17,7 @@
 package io.almostrealism.code;
 
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.scope.ArrayVariable;
 
 import java.util.HashMap;
 import java.util.Map;

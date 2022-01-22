@@ -20,7 +20,7 @@ import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.NamedFunction;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.OperationMetadata;
-import io.almostrealism.code.Scope;
+import io.almostrealism.scope.Scope;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.OperationComputation;
 import io.almostrealism.code.ScopeInputManager;
@@ -131,7 +131,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>> implements Oper
 			throw new IllegalArgumentException("OperationList cannot be compiled to a Scope unless all embedded Operations are Computations");
 		}
 
-		Scope scope = new Scope(functionName);
+		Scope scope = new Scope(functionName, getMetadata());
 
 		if (getDepth() > abortableDepth) {
 			stream().flatMap(c -> Stream.of(c, abort))

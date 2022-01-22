@@ -17,9 +17,9 @@
 package org.almostrealism.time.computations;
 
 import io.almostrealism.code.HybridScope;
-import io.almostrealism.code.Scope;
-import io.almostrealism.code.Variable;
-import io.almostrealism.code.expressions.Expression;
+import io.almostrealism.scope.Scope;
+import io.almostrealism.scope.Variable;
+import io.almostrealism.expression.Expression;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarProducer;

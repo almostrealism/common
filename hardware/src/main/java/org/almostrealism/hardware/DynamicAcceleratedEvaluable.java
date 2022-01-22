@@ -17,7 +17,7 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.PhysicalScope;
-import io.almostrealism.code.Variable;
+import io.almostrealism.scope.Variable;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.cl.HardwareOperator;
 

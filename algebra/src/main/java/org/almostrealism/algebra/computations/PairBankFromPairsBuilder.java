@@ -19,7 +19,7 @@ package org.almostrealism.algebra.computations;
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
-import io.almostrealism.code.expressions.Expression;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Factory;
 import io.almostrealism.relation.Producer;

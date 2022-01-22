@@ -26,7 +26,7 @@ import org.almostrealism.hardware.KernelizedProducer;
 public interface TransformMatrixProducer extends ProducerComputation<TransformMatrix>, KernelizedProducer<TransformMatrix>, TransformMatrixFeatures {
 	@Override
 	default KernelizedEvaluable<TransformMatrix> get() {
-		DefaultComputer computer = Hardware.getLocalHardware().getComputer();
+		DefaultComputer computer = (DefaultComputer) Hardware.getLocalHardware().getComputeContext().getComputer();
 
 		AcceleratedComputationEvaluable ev;
 

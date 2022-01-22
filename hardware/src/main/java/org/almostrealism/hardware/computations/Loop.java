@@ -19,12 +19,12 @@ package org.almostrealism.hardware.computations;
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.HybridScope;
-import io.almostrealism.code.Scope;
+import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.relation.Compactable;
 import org.almostrealism.c.OpenCLPrintWriter;
 import org.almostrealism.hardware.DynamicOperationComputationAdapter;
-import org.almostrealism.hardware.OperationList;
 
 public class Loop extends DynamicOperationComputationAdapter<Void> {
 	public static final boolean enableCompaction = true;
@@ -55,6 +55,7 @@ public class Loop extends DynamicOperationComputationAdapter<Void> {
 		atomScope.convertArgumentsToRequiredScopes();
 
 		HybridScope<Void> scope = new HybridScope<>(this);
+		scope.setMetadata(new OperationMetadata(getFunctionName(), "Loop x" + iterations));
 		scope.getRequiredScopes().add(atomScope);
 
 		String i = getVariablePrefix() + "_i";

@@ -16,12 +16,16 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.code.ArrayVariable;
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.NameProvider;
-import io.almostrealism.code.Variable;
+import io.almostrealism.scope.Variable;
 
 public interface ComputerFeatures extends HardwareFeatures, NameProvider {
 	boolean enableKernel = Hardware.getLocalHardware().isKernelSupported();
+
+	default boolean isContextKernelEnabled() {
+		return Hardware.getLocalHardware().getComputeContext().isKernelSupported();
+	}
 
 	@Override
 	default Variable getOutputVariable() { return getArgument(0); }
@@ -35,7 +39,7 @@ public interface ComputerFeatures extends HardwareFeatures, NameProvider {
 		String name;
 
 		if (v instanceof ArrayVariable) {
-			if (enableKernel && v.getProducer() instanceof KernelSupport
+			if (isContextKernelEnabled() && v.getProducer() instanceof KernelSupport
 					&& ((KernelSupport) v.getProducer()).isKernelEnabled()) {
 				String kernelOffset = ((KernelSupport) v.getProducer()).getKernelIndex(v.getName(), kernelIndex);
 

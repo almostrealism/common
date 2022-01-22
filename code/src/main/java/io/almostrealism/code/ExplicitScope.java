@@ -16,8 +16,10 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.scope.Argument;
+import io.almostrealism.scope.Scope;
+
 import java.util.List;
-import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;

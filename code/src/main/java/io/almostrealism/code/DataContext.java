@@ -23,7 +23,7 @@ public interface DataContext {
 
 	MemoryProvider<? extends Memory> getMemoryProvider();
 
-	<T> T computeContext(Callable<T> exec);
+	<T> T computeContext(Callable<T> exec, ComputeRequirement... expectations);
 
 	void destroy();
 }

@@ -29,7 +29,7 @@ import org.almostrealism.hardware.KernelizedProducer;
 public interface RayProducer extends ProducerComputation<Ray>, KernelizedProducer<Ray>, RayFeatures {
 	@Override
 	default KernelizedEvaluable<Ray> get() {
-		DefaultComputer computer = Hardware.getLocalHardware().getComputer();
+		DefaultComputer computer = (DefaultComputer) Hardware.getLocalHardware().getComputeContext().getComputer();
 
 		AcceleratedComputationEvaluable ev;
 

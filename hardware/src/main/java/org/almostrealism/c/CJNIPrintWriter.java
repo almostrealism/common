@@ -17,9 +17,9 @@
 package org.almostrealism.c;
 
 import io.almostrealism.code.Accessibility;
-import io.almostrealism.code.ArrayVariable;
-import io.almostrealism.code.Method;
-import io.almostrealism.code.Variable;
+import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.Method;
+import io.almostrealism.scope.Variable;
 import org.almostrealism.io.PrintWriter;
 
 import java.util.List;

@@ -19,9 +19,11 @@ package org.almostrealism.hardware.external;
 import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.InstructionSet;
-import io.almostrealism.code.Scope;
+import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeEncoder;
 import org.almostrealism.c.CPrintWriter;
+import org.almostrealism.hardware.AbstractComputeContext;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.jni.NativeInstructionSet;
 
@@ -29,7 +31,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 
-public class ExternalComputeContext implements ComputeContext {
+public class ExternalComputeContext extends AbstractComputeContext {
 	private static final String externalWrapper;
 
 	static {
@@ -50,22 +52,23 @@ public class ExternalComputeContext implements ComputeContext {
 		externalWrapper = buf.toString();
 	}
 
-	private NativeCompiler compiler;
-
-	public ExternalComputeContext(NativeCompiler compiler) {
-		this.compiler = compiler;
+	public ExternalComputeContext(Hardware hardware) {
+		super(hardware, false, true);
 	}
 
 	@Override
 	public InstructionSet deliver(Scope scope) {
 		StringBuffer buf = new StringBuffer();
-		NativeInstructionSet inst = compiler.reserveLibraryTarget();
+		NativeInstructionSet inst = getComputer().getNativeCompiler().reserveLibraryTarget();
 		buf.append(new ScopeEncoder(pw -> new CPrintWriter(pw, "apply"), Accessibility.EXTERNAL).apply(scope));
 		buf.append("\n");
 		buf.append(externalWrapper);
-		String executable = compiler.getLibraryDirectory() + "/" + compiler.compile(inst.getClass().getName(), buf.toString(), false);
-		return new ExternalInstructionSet(executable, compiler::reserveDataDirectory);
+		String executable = getComputer().getNativeCompiler().getLibraryDirectory() + "/" + getComputer().getNativeCompiler().compile(inst.getClass().getName(), buf.toString(), false);
+		return new ExternalInstructionSet(executable, getComputer().getNativeCompiler()::reserveDataDirectory);
 	}
+
+	@Override
+	public boolean isKernelSupported() { return false; }
 
 	@Override
 	public void destroy() { }

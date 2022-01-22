@@ -16,8 +16,7 @@
 
 package org.almostrealism.algebra.computations;
 
-import io.almostrealism.code.expressions.Expression;
-import org.almostrealism.algebra.Pair;
+import io.almostrealism.expression.Expression;
 import org.almostrealism.hardware.DynamicProducerComputationAdapter;
 import org.almostrealism.hardware.MemoryData;
 import io.almostrealism.relation.Evaluable;

@@ -17,6 +17,7 @@
 package org.almostrealism.hardware.jni;
 
 import io.almostrealism.code.Computation;
+import io.almostrealism.relation.Factory;
 import org.almostrealism.generated.BaseGeneratedOperation;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
@@ -29,6 +30,7 @@ import java.io.OutputStreamWriter;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 public class NativeCompiler {
 	public static boolean enableVerbose = false;
@@ -170,7 +172,7 @@ public class NativeCompiler {
 			process.waitFor();
 
 			if (process.exitValue() != 0) {
-				throw new HardwareException("Native compiler failure (" + process.exitValue() + ")");
+				throw new HardwareException("Native compiler failure (" + process.exitValue() + ") on " + name);
 			}
 		} catch (IOException | InterruptedException e) {
 			throw new HardwareException(e.getMessage(), new UnsupportedOperationException(e));
@@ -185,5 +187,30 @@ public class NativeCompiler {
 		if (enableVerbose) System.out.println("NativeCompiler: Loading native library " + name);
 		System.loadLibrary(name);
 		if (enableVerbose) System.out.println("NativeCompiler: Loaded native library " + name);
+	}
+
+	public static Factory<NativeCompiler> factory(Hardware hardware, boolean cl) {
+		return () -> {
+			String libFormat = System.getProperty("AR_HARDWARE_LIB_FORMAT");
+			if (libFormat == null) libFormat = System.getenv("AR_HARDWARE_LIB_FORMAT");
+			if (libFormat == null) libFormat = "lib%NAME%.so";
+
+			String libCompiler = System.getProperty("AR_HARDWARE_NATIVE_COMPILER");
+			if (libCompiler == null) libCompiler = System.getenv("AR_HARDWARE_NATIVE_COMPILER");
+
+			String exeCompiler = System.getProperty("AR_HARDWARE_EXTERNAL_COMPILER");
+			if (exeCompiler == null) exeCompiler = System.getenv("AR_HARDWARE_EXTERNAL_COMPILER");
+
+			String libDir = System.getProperty("AR_HARDWARE_NATIVE_LIBS");
+			if (libDir == null) libDir = System.getenv("AR_HARDWARE_NATIVE_LIBS");
+
+			String exec = System.getProperty("AR_HARDWARE_NATIVE_EXECUTION");
+			if (exec == null) exec = System.getenv("AR_HARDWARE_NATIVE_EXECUTION");
+
+			String data = System.getProperty("AR_HARDWARE_DATA");
+			if (data == null) data = System.getenv("AR_HARDWARE_DATA");
+
+			return new NativeCompiler(hardware, libCompiler, exeCompiler, libDir, libFormat, data, cl);
+		};
 	}
 }

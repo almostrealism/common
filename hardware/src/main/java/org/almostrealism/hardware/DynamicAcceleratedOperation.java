@@ -16,10 +16,10 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.code.ArrayVariable;
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.InstructionSet;
-import io.almostrealism.code.Scope;
-import io.almostrealism.code.Variable;
+import io.almostrealism.scope.Scope;
+import io.almostrealism.scope.Variable;
 import io.almostrealism.relation.Evaluable;
 
 import java.util.List;

@@ -17,7 +17,7 @@
 package org.almostrealism.color.computations;
 
 import io.almostrealism.code.ArgumentMap;
-import io.almostrealism.code.Scope;
+import io.almostrealism.scope.Scope;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.relation.Producer;

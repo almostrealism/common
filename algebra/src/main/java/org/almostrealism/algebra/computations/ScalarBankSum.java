@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,9 +17,10 @@
 package org.almostrealism.algebra.computations;
 
 import io.almostrealism.code.HybridScope;
+import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerComputationAdapter;
-import io.almostrealism.code.Scope;
+import io.almostrealism.scope.Scope;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
@@ -57,6 +58,7 @@ public class ScalarBankSum extends ProducerComputationAdapter<ScalarBank, Scalar
 	@Override
 	public Scope<Scalar> getScope() {
 		HybridScope<Scalar> scope = new HybridScope<>(this);
+		scope.setMetadata(new OperationMetadata(getFunctionName(), "ScalarBankSum"));
 
 		String i = getVariablePrefix() + "_i";
 		String result = getArgument(0, 2).valueAt(0).getExpression();

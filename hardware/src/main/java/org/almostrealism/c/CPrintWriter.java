@@ -17,13 +17,14 @@
 package org.almostrealism.c;
 
 import io.almostrealism.code.Accessibility;
-import io.almostrealism.code.ArrayVariable;
+import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.CodePrintWriterAdapter;
-import io.almostrealism.code.expressions.Expression;
-import io.almostrealism.code.Method;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.scope.Method;
 import io.almostrealism.code.ResourceVariable;
-import io.almostrealism.code.Variable;
-import io.almostrealism.code.expressions.InstanceReference;
+import io.almostrealism.scope.Variable;
+import io.almostrealism.expression.InstanceReference;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.io.PrintStreamPrintWriter;
 import org.almostrealism.io.PrintWriter;
@@ -66,20 +67,22 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 	public String getTopLevelMethodName() { return topLevelMethodName; }
 
 	@Override
-	public void beginScope(String name, List<ArrayVariable<?>> arguments, Accessibility access) {
+	public void beginScope(String name, OperationMetadata metadata, List<ArrayVariable<?>> arguments, Accessibility access) {
 		if (arguments.size() > 100) {
 			System.out.println("WARN: " + arguments.size() + " arguments to generated function");
 		}
 
+		renderMetadata(metadata);
+
 		if (getTopLevelMethodName() == null) {
-			super.beginScope(name, arguments, access);
+			super.beginScope(name, metadata, arguments, access);
 			return;
 		}
 
 		if (access == Accessibility.EXTERNAL && getTopLevelMethodName() != null) {
-			super.beginScope(getTopLevelMethodName(), arguments, access);
+			super.beginScope(getTopLevelMethodName(), metadata, arguments, access);
 		} else {
-			super.beginScope(name, arguments, access);
+			super.beginScope(name, metadata, arguments, access);
 		}
 
 		if (access == Accessibility.EXTERNAL) {

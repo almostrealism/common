@@ -14,10 +14,10 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.code.expressions;
+package io.almostrealism.expression;
 
-public class Product extends NAryExpression<Double> {
-	public Product(Expression<Double>... values) {
-		super(Double.class, "*", values);
+public class Exponent extends Expression<Double> {
+	public Exponent(Expression<Double> base, Expression<Double> exponent) {
+		super(Double.class, "pow((" + base.getExpression() + "), (" + exponent.getExpression() + "))", base, exponent);
 	}
 }

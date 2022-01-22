@@ -16,7 +16,7 @@
 
 package org.almostrealism.graph;
 
-import io.almostrealism.code.Setup;
+import io.almostrealism.cycle.Setup;
 import io.almostrealism.uml.Lifecycle;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.Factor;

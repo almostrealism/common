@@ -17,8 +17,11 @@
 package org.almostrealism.util;
 
 import io.almostrealism.code.*;
-import io.almostrealism.code.expressions.InstanceReference;
+import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.Method;
+import io.almostrealism.scope.Variable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.io.PrintWriter;
 import org.almostrealism.js.JsonResource;
@@ -57,7 +60,7 @@ public class JavaScriptPrintWriter extends CodePrintWriterAdapter {
 	}
 
 	@Override
-	public void beginScope(String name, List<ArrayVariable<?>> arguments, Accessibility access) {
+	public void beginScope(String name, OperationMetadata metadata, List<ArrayVariable<?>> arguments, Accessibility access) {
 		if (name == null) {
 			p.println("{");
 		} else {

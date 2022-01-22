@@ -16,12 +16,12 @@
 
 package org.almostrealism.bool;
 
-import io.almostrealism.code.ArrayVariable;
-import io.almostrealism.code.expressions.MultiExpression;
-import io.almostrealism.code.Variable;
-import io.almostrealism.code.expressions.Expression;
-import io.almostrealism.code.expressions.InstanceReference;
-import io.almostrealism.code.expressions.NAryExpression;
+import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.expression.MultiExpression;
+import io.almostrealism.scope.Variable;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.InstanceReference;
+import io.almostrealism.expression.NAryExpression;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.MemoryData;
 import io.almostrealism.relation.Evaluable;

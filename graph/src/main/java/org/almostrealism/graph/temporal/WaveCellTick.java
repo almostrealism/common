@@ -18,7 +18,7 @@ package org.almostrealism.graph.temporal;
 
 import io.almostrealism.code.HybridScope;
 import io.almostrealism.code.ScopeInputManager;
-import io.almostrealism.code.expressions.Sum;
+import io.almostrealism.expression.Sum;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 

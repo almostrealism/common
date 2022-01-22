@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,8 +17,9 @@
 package org.almostrealism;
 
 import io.almostrealism.code.Computation;
-import io.almostrealism.code.Variable;
-import io.almostrealism.code.expressions.Expression;
+import io.almostrealism.code.ComputeRequirement;
+import io.almostrealism.scope.Variable;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.DynamicProducer;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Pair;
@@ -149,12 +150,12 @@ public interface CodeFeatures extends ScalarFeatures, PairFeatures, TriangleData
 		return Hardware.getLocalHardware().dataContext(exec);
 	}
 
-	default void cc(Runnable r) {
-		cc(() -> { r.run(); return null; });
+	default void cc(Runnable r, ComputeRequirement... expectations) {
+		cc(() -> { r.run(); return null; }, expectations);
 	}
 
-	default <T> T cc(Callable<T> exec) {
-		return Hardware.getLocalHardware().getDataContext().computeContext(exec);
+	default <T> T cc(Callable<T> exec, ComputeRequirement... expectations) {
+		return Hardware.getLocalHardware().getDataContext().computeContext(exec, expectations);
 	}
 
 	default Ops o() { return Ops.ops(); }

@@ -1,5 +1,6 @@
 package io.almostrealism.code;
 
+import io.almostrealism.scope.Scope;
 import org.almostrealism.io.PrintWriter;
 
 import java.util.ArrayList;
@@ -47,7 +48,7 @@ public class ScopeEncoder implements Function<Scope, String>, PrintWriter {
 				.filter(Objects::nonNull)
 				.forEach(result::append);
 
-		output.beginScope(scope.getName(), scope.getArgumentVariables(), access);
+		output.beginScope(scope.getName(), scope.getMetadata(), scope.getArgumentVariables(), access);
 		scope.write(output);
 		output.endScope();
 

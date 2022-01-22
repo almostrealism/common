@@ -16,13 +16,13 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.code.Argument;
-import io.almostrealism.code.Argument.Expectation;
+import io.almostrealism.scope.Argument;
+import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.code.ArgumentMap;
-import io.almostrealism.code.ArrayVariable;
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.code.ScopeInputManager;
-import io.almostrealism.code.expressions.Expression;
+import io.almostrealism.expression.Expression;
 
 import java.util.ArrayList;
 import java.util.List;

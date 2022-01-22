@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2020 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,10 +14,10 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.code.expressions;
+package io.almostrealism.expression;
 
-public class Minus extends UnaryExpression<Double> {
-	public Minus(Expression<Double> value) {
-		super(Double.class, "-", value);
+public class Sum extends NAryExpression<Double> {
+	public Sum(Expression<Double>... values) {
+		super(Double.class, "+", values);
 	}
 }

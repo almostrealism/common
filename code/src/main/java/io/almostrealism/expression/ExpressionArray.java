@@ -14,10 +14,20 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.code.expressions;
+package io.almostrealism.expression;
 
-public class Floor extends Expression<Double> {
-	public Floor(Expression<Double> input) {
-		super(Double.class, "floor(" + input.getExpression() + ")", input);
+public class ExpressionArray<T> {
+	private Expression<T> data[];
+
+	public ExpressionArray(int count) {
+		data = new Expression[count];
+	}
+
+	public Expression<T> get(int index) {
+		return data[index];
+	}
+
+	public void set(int index, Expression<T> value) {
+		data[index] = value;
 	}
 }

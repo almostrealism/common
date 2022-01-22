@@ -16,7 +16,7 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.code.Method;
+import io.almostrealism.scope.Method;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.OperationComputationAdapter;
 import io.almostrealism.code.PhysicalScope;

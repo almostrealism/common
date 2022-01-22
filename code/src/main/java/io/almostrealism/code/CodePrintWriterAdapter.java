@@ -16,16 +16,22 @@
 
 package io.almostrealism.code;
 
-import io.almostrealism.code.expressions.Expression;
-import io.almostrealism.code.expressions.InstanceReference;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.InstanceReference;
+import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.Method;
+import io.almostrealism.scope.Scope;
 import org.almostrealism.io.PrintWriter;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.Stack;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 public abstract class CodePrintWriterAdapter implements CodePrintWriter {
+	protected boolean enableWarnOnExplictParams = true;
+
 	protected PrintWriter p;
 
 	private String nameSuffix = "";
@@ -78,12 +84,17 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 	}
 
 	@Override
+	public void comment(String text) {
+		println("// " + text);
+	}
+
+	@Override
 	@Deprecated
 	public void println(String s) { p.println(s); }
 
 	@Override
 	public void println(Scope s) {
-		beginScope(s.getName(), s.getArgumentVariables(), Accessibility.EXTERNAL);
+		beginScope(s.getName(), null, s.getArgumentVariables(), Accessibility.EXTERNAL);
 		s.write(this);
 		endScope();
 	}
@@ -92,7 +103,7 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 	public void flush() { }
 
 	@Override
-	public void beginScope(String name, List<ArrayVariable<?>> arguments, Accessibility access) {
+	public void beginScope(String name, OperationMetadata metadata, List<ArrayVariable<?>> arguments, Accessibility access) {
 		scopeName.push(name);
 
 		StringBuilder buf = new StringBuilder();
@@ -127,7 +138,26 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 		return buf.toString();
 	}
 
+	protected void renderParametersExplicit(List<Expression> parameters, Consumer<String> out) {
+		for (int i = 0; i < parameters.size(); i++) {
+			Expression arg = parameters.get(i);
+
+			out.accept(arg.getExpression());
+
+			if (i < parameters.size() - 1) {
+				out.accept(", ");
+			}
+		}
+	}
+
 	protected void renderParameters(List<Expression> parameters, Consumer<String> out) {
+		Optional<Expression> explicit = parameters.stream().filter(exp -> !(exp instanceof InstanceReference)).findFirst();
+		if (explicit.isPresent()) {
+			if (enableWarnOnExplictParams) System.out.println("WARN: Explicit parameter (" + explicit.get().getExpression() + ") provided to method; falling back to explicit rendering");
+			renderParametersExplicit(parameters, out);
+			return;
+		}
+
 		List<ArrayVariable<?>> arguments = parameters.stream()
 				.map(exp -> (InstanceReference) exp)
 				.map(InstanceReference::getReferent)

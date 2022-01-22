@@ -22,6 +22,10 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Named;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
+import io.almostrealism.scope.Argument;
+import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.Scope;
+import io.almostrealism.scope.Variable;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -30,7 +34,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.function.BiFunction;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 

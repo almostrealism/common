@@ -17,7 +17,7 @@
 package org.almostrealism.time;
 
 import io.almostrealism.code.Computation;
-import io.almostrealism.code.Setup;
+import io.almostrealism.cycle.Setup;
 import io.almostrealism.uml.Lifecycle;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.computations.Loop;

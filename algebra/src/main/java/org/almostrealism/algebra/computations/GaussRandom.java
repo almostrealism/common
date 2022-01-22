@@ -16,10 +16,10 @@
 
 package org.almostrealism.algebra.computations;
 
-import io.almostrealism.code.ArrayVariable;
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.HybridScope;
-import io.almostrealism.code.Scope;
-import io.almostrealism.code.expressions.Expression;
+import io.almostrealism.scope.Scope;
+import io.almostrealism.expression.Expression;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairFeatures;
 import org.almostrealism.algebra.Scalar;

@@ -23,12 +23,11 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 import org.almostrealism.algebra.PolynomialTerm;
-import io.almostrealism.code.Scope;
-import io.almostrealism.code.Variable;
+import io.almostrealism.scope.Scope;
+import io.almostrealism.scope.Variable;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.ShadableIntersection;
 import io.almostrealism.code.Constant;
-import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.Operator;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Evaluable;

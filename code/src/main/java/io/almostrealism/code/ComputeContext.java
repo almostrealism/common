@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,7 +16,11 @@
 
 package io.almostrealism.code;
 
-public interface ComputeContext {
+import io.almostrealism.scope.Scope;
+
+public interface ComputeContext<MEM> {
+	Computer<MEM> getComputer();
+
 	/**
 	 * Deliver the specified {@link Scope} to the compute engine represented by this
 	 * {@link ComputeContext}. The resulting {@link InstructionSet} can be used to
@@ -24,6 +28,8 @@ public interface ComputeContext {
 	 * represented as a unique {@link java.util.function.Consumer}.
 	 */
 	InstructionSet deliver(Scope scope);
+
+	boolean isKernelSupported();
 
 	void destroy();
 }

@@ -16,7 +16,7 @@
 
 package org.almostrealism.graph.computations;
 
-import io.almostrealism.code.expressions.Sum;
+import io.almostrealism.expression.Sum;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.graph.SummationCell;
 import org.almostrealism.hardware.DynamicOperationComputationAdapter;

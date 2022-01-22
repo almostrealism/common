@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -29,7 +29,7 @@ public class NativeMathTest implements TestFeatures {
 	@Test
 	public void add() throws IOException, InterruptedException {
 		ScalarSum sum = new ScalarSum(v(1.0), v(2.0));
-		Evaluable ev = Hardware.getLocalHardware().getComputer().compileProducer(sum);
+		Evaluable ev = Hardware.getLocalHardware().getComputeContext().getComputer().compileProducer(sum);
 		System.out.println(ev.evaluate());
 		assertEquals(3.0, (Scalar) ev.evaluate());
 	}

@@ -14,10 +14,10 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.code.expressions;
+package io.almostrealism.expression;
 
-public class Sine extends Expression<Double> {
-	public Sine(Expression<Double> input) {
-		super(Double.class, "sin(" + input.getExpression() + ")", input);
+public class UnaryExpression<T> extends Expression<T> {
+	public UnaryExpression(Class<T> type, String operator, Expression<?> value) {
+		super(type, operator + "(" + value.getExpression() + ")", value);
 	}
 }

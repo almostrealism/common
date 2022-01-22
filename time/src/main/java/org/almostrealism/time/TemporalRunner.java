@@ -20,14 +20,13 @@ import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.OperationComputation;
-import io.almostrealism.code.Scope;
+import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
-import io.almostrealism.code.Setup;
+import io.almostrealism.cycle.Setup;
 import io.almostrealism.relation.Compactable;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.time.Temporal;
 
 import java.util.Objects;
 import java.util.function.Supplier;

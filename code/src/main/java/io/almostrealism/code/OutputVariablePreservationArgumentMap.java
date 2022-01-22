@@ -16,6 +16,9 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.Variable;
+
 import java.util.function.Supplier;
 
 public class OutputVariablePreservationArgumentMap<S, A> extends SupplierArgumentMap<S, A> {

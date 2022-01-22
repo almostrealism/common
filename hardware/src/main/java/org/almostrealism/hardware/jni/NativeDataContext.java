@@ -17,6 +17,7 @@
 package org.almostrealism.hardware.jni;
 
 import io.almostrealism.code.ComputeContext;
+import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.code.DataContext;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
@@ -29,22 +30,22 @@ import org.almostrealism.hardware.jvm.JVMMemoryProvider;
 import java.util.concurrent.Callable;
 
 public class NativeDataContext implements DataContext {
-	private final NativeCompiler compiler;
 	private final String name;
 	private final boolean isDoublePrecision, isNativeMem;
 	private final long memoryMax;
 
 	private MemoryProvider<? extends Memory> ram;
 
+	private Hardware hardware;
 	private ComputeContext context;
 
-	public NativeDataContext(NativeCompiler compiler, String name, boolean isDoublePrecision, boolean isNativeMem, boolean external, long memoryMax) {
-		this.compiler = compiler;
+	public NativeDataContext(Hardware hardware, String name, boolean isDoublePrecision, boolean isNativeMem, boolean external, long memoryMax) {
+		this.hardware = hardware;
 		this.name = name;
 		this.isDoublePrecision = isDoublePrecision;
 		this.isNativeMem = isNativeMem;
 		this.memoryMax = memoryMax;
-		this.context = external ? new ExternalComputeContext(compiler) : new NativeComputeContext(compiler);
+		this.context = external ? new ExternalComputeContext(hardware) : new NativeComputeContext(hardware);
 	}
 
 	public void init() {
@@ -59,13 +60,13 @@ public class NativeDataContext implements DataContext {
 	public ComputeContext getComputeContext() {
 		if (context == null) {
 			if (Hardware.enableVerbose) System.out.println("INFO: No explicit ComputeContext for " + Thread.currentThread().getName());
-			context = new NativeComputeContext(compiler);
+			context = new NativeComputeContext(hardware);
 		}
 
 		return context;
 	}
 
-	public <T> T computeContext(Callable<T> exec) {
+	public <T> T computeContext(Callable<T> exec, ComputeRequirement... expectations) {
 		try {
 			return exec.call();
 		} catch (RuntimeException e) {

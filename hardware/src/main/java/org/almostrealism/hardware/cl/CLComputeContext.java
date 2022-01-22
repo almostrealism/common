@@ -19,17 +19,17 @@ package org.almostrealism.hardware.cl;
 import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.InstructionSet;
-import io.almostrealism.code.Scope;
+import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeEncoder;
 import org.almostrealism.c.OpenCLPrintWriter;
-import org.almostrealism.hardware.VerbatimCodePrintWriter;
-import org.almostrealism.io.PrintWriter;
+import org.almostrealism.hardware.AbstractComputeContext;
+import org.almostrealism.hardware.Hardware;
 import org.jocl.cl_context;
 
 import java.util.ArrayList;
 import java.util.List;
 
-public class CLComputeContext implements ComputeContext {
+public class CLComputeContext extends AbstractComputeContext {
 	private static final String fp64 = "#pragma OPENCL EXTENSION cl_khr_fp64 : enable\n";
 
 	private boolean enableFp64;
@@ -37,8 +37,9 @@ public class CLComputeContext implements ComputeContext {
 
 	private List<HardwareOperatorMap> instructionSets;
 
-	public CLComputeContext(boolean enableFp64, cl_context ctx) {
-		this.enableFp64 = enableFp64;
+	public CLComputeContext(Hardware hardware, cl_context ctx) {
+		super(hardware, true, false);
+		this.enableFp64 = hardware.isDoublePrecision();
 		this.ctx = ctx;
 		this.instructionSets = new ArrayList<>();
 	}
@@ -55,6 +56,9 @@ public class CLComputeContext implements ComputeContext {
 		instructionSets.add(instSet);
 		return instSet;
 	}
+
+	@Override
+	public boolean isKernelSupported() { return true; }
 
 	protected cl_context getCLContext() {
 		return ctx;

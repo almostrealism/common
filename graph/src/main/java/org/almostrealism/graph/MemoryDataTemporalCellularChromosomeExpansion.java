@@ -16,8 +16,10 @@
 
 package org.almostrealism.graph;
 
+import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.CodeFeatures;
 import org.almostrealism.hardware.KernelList;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
@@ -38,7 +40,7 @@ import java.util.function.Supplier;
 public abstract class MemoryDataTemporalCellularChromosomeExpansion<T extends MemoryBank<O>,
 																	I extends MemoryData,
 																	O extends MemoryData>
-		extends TemporalCellularChromosomeExpansion<T, I, O> {
+		extends TemporalCellularChromosomeExpansion<T, I, O> implements CodeFeatures {
 	private final Class<O> type;
 	private List<KernelOrValue> kernels;
 	private int outputMemLength, inputGenes, inputFactors;
@@ -88,10 +90,11 @@ public abstract class MemoryDataTemporalCellularChromosomeExpansion<T extends Me
 
 	@Override
 	protected Supplier<Runnable> process() {
-		return kernels.stream()
+		OperationList op = kernels.stream()
 				.map(KernelOrValue::getKernels)
 				.filter(Objects::nonNull)
 				.collect(OperationList.collector());
+		return () -> () -> cc(() -> op.get().run(), ComputeRequirement.CL);
 	}
 
 	protected abstract Cell<O> cell(T data);

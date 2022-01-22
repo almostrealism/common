@@ -16,7 +16,9 @@
 
 package io.almostrealism.code;
 
-import io.almostrealism.code.expressions.Expression;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.Variable;
 
 public interface NameProvider {
 	String getFunctionName();

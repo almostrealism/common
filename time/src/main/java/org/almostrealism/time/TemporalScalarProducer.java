@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@ import org.almostrealism.hardware.KernelizedProducer;
 public interface TemporalScalarProducer extends ProducerComputation<TemporalScalar>, KernelizedProducer<TemporalScalar>, TemporalScalarFeatures {
 	@Override
 	default KernelizedEvaluable<TemporalScalar> get() {
-		DefaultComputer computer = Hardware.getLocalHardware().getComputer();
+		DefaultComputer computer = (DefaultComputer) Hardware.getLocalHardware().getComputeContext().getComputer();
 
 		AcceleratedComputationEvaluable ev;
 

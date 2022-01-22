@@ -16,11 +16,9 @@
 
 package org.almostrealism.color.computations;
 
-import io.almostrealism.code.Scope;
+import io.almostrealism.scope.Scope;
 import org.almostrealism.color.DynamicRGBProducer;
 import org.almostrealism.color.RGB;
-import io.almostrealism.code.NameProvider;
-import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.KernelizedEvaluable;
 
 import java.util.ArrayList;

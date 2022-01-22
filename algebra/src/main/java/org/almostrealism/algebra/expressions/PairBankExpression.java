@@ -16,7 +16,7 @@
 
 package org.almostrealism.algebra.expressions;
 
-import io.almostrealism.code.expressions.ExpressionArray;
+import io.almostrealism.expression.ExpressionArray;
 
 public class PairBankExpression extends ExpressionArray<Double> {
 	public PairBankExpression(int count) {

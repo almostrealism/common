@@ -17,6 +17,8 @@
 package io.almostrealism.code;
 
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.Variable;
 
 import java.util.function.Function;
 import java.util.function.Supplier;

@@ -16,26 +16,24 @@
 
 package org.almostrealism.bool;
 
-import io.almostrealism.code.Argument;
-import io.almostrealism.code.Argument.Expectation;
+import io.almostrealism.scope.Argument;
+import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.code.ArgumentMap;
-import io.almostrealism.code.ArrayVariable;
-import io.almostrealism.code.Scope;
+import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
-import io.almostrealism.code.Variable;
-import io.almostrealism.code.expressions.Expression;
-import io.almostrealism.code.expressions.NAryExpression;
+import io.almostrealism.scope.Variable;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.NAryExpression;
 import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.hardware.AcceleratedEvaluable;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryBank;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;

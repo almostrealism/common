@@ -16,19 +16,15 @@
 
 package org.almostrealism.bool;
 
-import io.almostrealism.code.Argument;
-import io.almostrealism.code.ArrayVariable;
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerComputationAdapter;
 import io.almostrealism.code.HybridScope;
-import io.almostrealism.code.expressions.MultiExpression;
-import io.almostrealism.code.Scope;
-import io.almostrealism.code.ScopeInputManager;
-import io.almostrealism.code.Variable;
-import org.almostrealism.hardware.AcceleratedEvaluable;
+import io.almostrealism.expression.MultiExpression;
+import io.almostrealism.scope.Scope;
+import io.almostrealism.scope.Variable;
 import org.almostrealism.hardware.ComputerFeatures;
 import org.almostrealism.hardware.DestinationSupport;
-import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.ExplictBody;
 import org.almostrealism.hardware.MemoryData;
 import io.almostrealism.relation.Evaluable;
@@ -37,9 +33,7 @@ import org.almostrealism.hardware.ProducerCache;
 import org.almostrealism.hardware.mem.MemoryDataDestination;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
-import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;

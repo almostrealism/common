@@ -17,8 +17,8 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.CodePrintWriterAdapter;
-import io.almostrealism.code.Method;
-import io.almostrealism.code.Variable;
+import io.almostrealism.scope.Method;
+import io.almostrealism.scope.Variable;
 import org.almostrealism.io.PrintWriter;
 
 public class VerbatimCodePrintWriter extends CodePrintWriterAdapter {

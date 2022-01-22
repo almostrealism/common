@@ -16,7 +16,13 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.Method;
+import io.almostrealism.scope.Scope;
+import io.almostrealism.scope.Variable;
+
 import java.util.List;
+import java.util.stream.IntStream;
 
 /**
  * A {@link CodePrintWriter} is implemented for each language that a {@link Scope} may be
@@ -60,10 +66,31 @@ public interface CodePrintWriter {
 	 * Begin a named scope. Most {@link CodePrintWriter} implementations support
 	 * null for the name.
 	 */
-	void beginScope(String name, List<ArrayVariable<?>> arguments, Accessibility access);
+	void beginScope(String name, OperationMetadata metadata, List<ArrayVariable<?>> arguments, Accessibility access);
 
 	/**
-	 * End a scope which was introduced with {@link #beginScope(String, List, Accessibility)}.
+	 * End a scope which was introduced with {@link #beginScope(String, OperationMetadata, List, Accessibility)}.
 	 */
 	void endScope();
+
+	default void renderMetadata(OperationMetadata metadata) {
+		renderMetadata(metadata, 0);
+	}
+
+	default void renderMetadata(OperationMetadata metadata, int indent) {
+		if (metadata != null) {
+			StringBuffer indentStr = new StringBuffer();
+			IntStream.range(0, 2 * indent).forEach(i -> indentStr.append(" "));
+
+			comment(indentStr + " - " + metadata.getDisplayName() + ": " + metadata.getShortDescription());
+
+			if (metadata.getLongDescription() != null) {
+				comment(indentStr + "     " + metadata.getLongDescription());
+			}
+
+			metadata.getChildren().forEach(meta -> renderMetadata(meta, indent + 1));
+		}
+	}
+
+	void comment(String text);
 }

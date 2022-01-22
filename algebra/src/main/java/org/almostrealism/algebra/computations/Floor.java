@@ -16,7 +16,7 @@
 
 package org.almostrealism.algebra.computations;
 
-import io.almostrealism.code.expressions.Expression;
+import io.almostrealism.expression.Expression;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarProducer;
@@ -38,7 +38,7 @@ public class Floor extends DynamicProducerComputationAdapter<Scalar, Scalar> imp
 		return pos -> {
 			if (value == null) {
 				if (pos == 0) {
-					return new io.almostrealism.code.expressions.Floor(getArgument(1, 2).valueAt(0));
+					return new io.almostrealism.expression.Floor(getArgument(1, 2).valueAt(0));
 				} else if (pos == 1) {
 					return getArgument(1, 2).valueAt(1);
 				} else {
@@ -58,7 +58,7 @@ public class Floor extends DynamicProducerComputationAdapter<Scalar, Scalar> imp
 			absorbVariables(getInputs().get(1));
 
 			value = new Expression[] {
-					new io.almostrealism.code.expressions.Floor(getInputValue(1, 0)),
+					new io.almostrealism.expression.Floor(getInputValue(1, 0)),
 					getInputValue(1, 1)
 			};
 

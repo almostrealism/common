@@ -16,6 +16,9 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.scope.Argument;
+import io.almostrealism.scope.Scope;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;

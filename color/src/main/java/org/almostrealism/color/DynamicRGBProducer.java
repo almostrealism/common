@@ -16,7 +16,7 @@
 
 package org.almostrealism.color;
 
-import io.almostrealism.code.Scope;
+import io.almostrealism.scope.Scope;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
 
 import java.util.function.Function;

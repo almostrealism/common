@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,10 +14,8 @@
  * limitations under the License.
  */
 
-package org.almostrealism.heredity;
+package io.almostrealism.code;
 
-import io.almostrealism.cycle.Setup;
-import io.almostrealism.uml.Lifecycle;
-
-public interface Cellular extends Setup, Lifecycle {
+public enum ComputeRequirement {
+	C, CL, JNI, EXTERNAL
 }

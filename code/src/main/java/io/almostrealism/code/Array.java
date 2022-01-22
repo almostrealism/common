@@ -16,9 +16,9 @@
 
 package io.almostrealism.code;
 
-import io.almostrealism.code.expressions.Expression;
-import io.almostrealism.code.expressions.InstanceReference;
+import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.relation.Delegated;
+import io.almostrealism.scope.Variable;
 import io.almostrealism.uml.Plural;
 
 public interface Array<T, V extends Array<T, ?>> extends Plural<InstanceReference<T>>, Delegated<V> {

@@ -17,11 +17,12 @@
 package org.almostrealism.hardware.cl;
 
 import io.almostrealism.code.Accessibility;
-import io.almostrealism.code.ArrayVariable;
-import io.almostrealism.code.Method;
-import io.almostrealism.code.Variable;
-import io.almostrealism.code.expressions.Expression;
-import io.almostrealism.code.expressions.InstanceReference;
+import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.Method;
+import io.almostrealism.scope.Variable;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.InstanceReference;
+import org.almostrealism.c.CJNIPrintWriter;
 import org.almostrealism.c.CPrintWriter;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.io.PrintWriter;
@@ -34,39 +35,10 @@ import java.util.Stack;
 import java.util.function.Consumer;
 import java.util.stream.IntStream;
 
-public class CLJNIPrintWriter extends CPrintWriter {
-	private final Stack<Accessibility> accessStack;
-	private final Stack<List<ArrayVariable<?>>> argumentStack;
-
+public class CLJNIPrintWriter extends CJNIPrintWriter {
 	public CLJNIPrintWriter(PrintWriter p, String topLevelMethodName) {
 		super(p, topLevelMethodName);
-		setExternalScopePrefix("JNIEXPORT void JNICALL");
-		setEnableArrayVariables(true);
-		accessStack = new Stack<>();
-		argumentStack = new Stack<>();
-	}
-
-	@Override
-	public void beginScope(String name, List<ArrayVariable<?>> arguments, Accessibility access) {
-		super.beginScope(name, arguments, access);
-
-		if (access == Accessibility.EXTERNAL) {
-			renderArgumentReads(arguments);
-		}
-
-		accessStack.push(access);
-		argumentStack.push(arguments);
-	}
-
-	@Override
-	public void endScope() {
-		if (accessStack.pop() == Accessibility.EXTERNAL) {
-			renderArgumentWrites(argumentStack.pop());
-		} else {
-			argumentStack.pop();
-		}
-
-		super.endScope();
+		enableWarnOnExplictParams = false;
 	}
 
 	@Override
@@ -120,6 +92,12 @@ public class CLJNIPrintWriter extends CPrintWriter {
 		IntStream.range(0, arguments.size())
 				.mapToObj(i -> clEnqueueBuffer(i, arguments.get(i), true))
 				.forEach(super::println);
+		arguments.forEach(arg -> println("free(" + arg.getName() + ");"));
+		super.renderArgumentWrites(arguments);
+	}
+
+	protected Method<Void> free(ArrayVariable<?> variable) {
+		return new Method(Void.class, "free", new InstanceReference<>(variable));
 	}
 
 	protected Method<Void> clEnqueueBuffer(int index, ArrayVariable<?> variable, boolean write) {

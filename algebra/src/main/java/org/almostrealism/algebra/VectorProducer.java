@@ -31,7 +31,7 @@ public interface VectorProducer extends ProducerComputation<Vector>, KernelizedP
 
 	@Override
 	default KernelizedEvaluable<Vector> get() {
-		DefaultComputer computer = Hardware.getLocalHardware().getComputer();
+		DefaultComputer computer = (DefaultComputer) Hardware.getLocalHardware().getComputeContext().getComputer();
 
 		AcceleratedComputationEvaluable ev;
 

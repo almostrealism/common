@@ -17,8 +17,7 @@
 package org.almostrealism.hardware.computations;
 
 import io.almostrealism.code.ArgumentMap;
-import io.almostrealism.code.Variable;
-import io.almostrealism.code.expressions.Expression;
+import io.almostrealism.scope.Variable;
 import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.code.ScopeInputManager;

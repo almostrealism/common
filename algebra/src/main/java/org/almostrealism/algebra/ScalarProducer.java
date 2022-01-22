@@ -39,7 +39,7 @@ import java.util.function.Supplier;
 public interface ScalarProducer extends ProducerComputation<Scalar>, KernelizedProducer<Scalar>, ScalarFeatures {
 	@Override
 	default KernelizedEvaluable<Scalar> get() {
-		DefaultComputer computer = Hardware.getLocalHardware().getComputer();
+		DefaultComputer computer = (DefaultComputer) Hardware.getLocalHardware().getComputeContext().getComputer();
 
 		AcceleratedComputationEvaluable ev;
 

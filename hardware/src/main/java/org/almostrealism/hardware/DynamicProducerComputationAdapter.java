@@ -16,17 +16,17 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.code.ArrayVariable;
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.code.ProducerComputationAdapter;
 import io.almostrealism.code.ScopeInputManager;
-import io.almostrealism.code.expressions.InstanceReference;
-import io.almostrealism.code.expressions.Expression;
-import io.almostrealism.code.expressions.MultiExpression;
+import io.almostrealism.expression.InstanceReference;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.code.OperationAdapter;
-import io.almostrealism.code.Scope;
-import io.almostrealism.code.Variable;
+import io.almostrealism.scope.Scope;
+import io.almostrealism.scope.Variable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.hardware.DestinationConsolidationArgumentMap.DestinationThreadLocal;

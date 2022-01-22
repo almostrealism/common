@@ -17,13 +17,12 @@
 package org.almostrealism.algebra.computations;
 
 import io.almostrealism.code.ArgumentMap;
-import io.almostrealism.code.ArrayVariable;
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.HybridScope;
 import io.almostrealism.code.ProducerComputation;
-import io.almostrealism.code.Scope;
+import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeInputManager;
-import io.almostrealism.code.ScopeLifecycle;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.DynamicOperationComputationAdapter;
 

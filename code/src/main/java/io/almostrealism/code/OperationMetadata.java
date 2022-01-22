@@ -16,12 +16,27 @@
 
 package io.almostrealism.code;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class OperationMetadata {
 	private String displayName, shortDescription, longDescription;
+	private List<OperationMetadata> children;
 
-	protected OperationMetadata() { }
+	protected OperationMetadata() { children = new ArrayList<>(); }
+
+	public OperationMetadata(OperationMetadata from) {
+		this();
+
+		if (from != null) {
+			setDisplayName(from.getDisplayName());
+			setShortDescription(from.getShortDescription());
+			setLongDescription(from.getLongDescription());
+		}
+	}
 
 	public OperationMetadata(String displayName, String shortDescription) {
+		this();
 		setDisplayName(displayName);
 		setShortDescription(shortDescription);
 	}
@@ -48,5 +63,13 @@ public class OperationMetadata {
 
 	public void setLongDescription(String longDescription) {
 		this.longDescription = longDescription;
+	}
+
+	public List<OperationMetadata> getChildren() {
+		return children;
+	}
+
+	public void setChildren(List<OperationMetadata> children) {
+		this.children = children;
 	}
 }

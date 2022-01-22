@@ -14,10 +14,18 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.code.expressions;
+package io.almostrealism.expression;
 
-public class Exponent extends Expression<Double> {
-	public Exponent(Expression<Double> base, Expression<Double> exponent) {
-		super(Double.class, "pow((" + base.getExpression() + "), (" + exponent.getExpression() + "))", base, exponent);
+import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.Variable;
+
+import java.util.function.IntFunction;
+
+public interface MultiExpression<T> {
+
+	default IntFunction<Variable<T, ?>> getAssignmentFunction(Variable<?, ?> outputVariable) {
+		return i -> new Variable(((ArrayVariable) outputVariable).valueAt(i).getExpression(), false, getValue(i), outputVariable.getRootDelegate());
 	}
+
+	Expression<T> getValue(int pos);
 }

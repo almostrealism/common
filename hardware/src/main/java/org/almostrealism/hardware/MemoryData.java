@@ -17,14 +17,9 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.Memory;
-import io.almostrealism.code.expressions.MultiExpression;
-import io.almostrealism.code.expressions.Expression;
+import io.almostrealism.expression.MultiExpression;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Delegated;
-import org.almostrealism.hardware.cl.CLMemory;
-import org.jocl.CL;
-import org.jocl.CLException;
-import org.jocl.Pointer;
-import org.jocl.cl_mem;
 
 import java.io.IOException;
 import java.io.InputStream;

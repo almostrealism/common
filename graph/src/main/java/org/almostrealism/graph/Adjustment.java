@@ -16,7 +16,7 @@
 
 package org.almostrealism.graph;
 
-import io.almostrealism.code.Setup;
+import io.almostrealism.cycle.Setup;
 
 import java.util.function.Supplier;
 
