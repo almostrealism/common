@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -38,8 +38,14 @@ public class CursorPairIncrement extends DynamicOperationComputationAdapter {
 		super.prepareScope(manager);
 		if (prepared) return;
 
-		addVariable(getArgument(0).valueAt(0).assign(new Sum(getArgument(0).valueAt(0), getArgument(1).valueAt(0))));
-		addVariable(getArgument(0).valueAt(1).assign(new Sum(getArgument(0).valueAt(1), getArgument(1).valueAt(0))));
+		if (getArgument(1).isStatic()) {
+			addVariable(getArgument(0).valueAt(0).assign(new Sum(getArgument(0).valueAt(0), getInputValue(1, 0))));
+			addVariable(getArgument(0).valueAt(1).assign(new Sum(getArgument(0).valueAt(1), getInputValue(1, 0))));
+		} else {
+			addVariable(getArgument(0).valueAt(0).assign(new Sum(getArgument(0).valueAt(0), getArgument(1).valueAt(0))));
+			addVariable(getArgument(0).valueAt(1).assign(new Sum(getArgument(0).valueAt(1), getArgument(1).valueAt(0))));
+		}
+
 		prepared = true;
 	}
 }

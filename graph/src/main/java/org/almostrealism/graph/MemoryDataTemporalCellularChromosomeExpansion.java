@@ -20,6 +20,7 @@ import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.KernelList;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
@@ -94,7 +95,14 @@ public abstract class MemoryDataTemporalCellularChromosomeExpansion<T extends Me
 				.map(KernelOrValue::getKernels)
 				.filter(Objects::nonNull)
 				.collect(OperationList.collector());
-		return () -> () -> cc(() -> op.get().run(), ComputeRequirement.CL);
+
+		return () -> () -> {
+			if (cc().isKernelSupported()) {
+				op.get().run();
+			} else {
+				cc(() -> op.get().run(), ComputeRequirement.CL);
+			}
+		};
 	}
 
 	protected abstract Cell<O> cell(T data);

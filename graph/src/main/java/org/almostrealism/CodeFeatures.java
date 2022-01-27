@@ -17,7 +17,9 @@
 package org.almostrealism;
 
 import io.almostrealism.code.Computation;
+import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.ComputeRequirement;
+import io.almostrealism.code.DataContext;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.DynamicProducer;
@@ -142,12 +144,20 @@ public interface CodeFeatures extends ScalarFeatures, PairFeatures, TriangleData
 		return new Expression<>(Double.class, expression, dependencies);
 	}
 
+	default DataContext dc() {
+		return Hardware.getLocalHardware().getDataContext();
+	}
+
 	default void dc(Runnable r) {
 		dc(() -> { r.run(); return null; });
 	}
 
 	default <T> T dc(Callable<T> exec) {
 		return Hardware.getLocalHardware().dataContext(exec);
+	}
+
+	default ComputeContext cc() {
+		return Hardware.getLocalHardware().getComputeContext();
 	}
 
 	default void cc(Runnable r, ComputeRequirement... expectations) {

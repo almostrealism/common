@@ -20,6 +20,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Method;
+import io.almostrealism.scope.Metric;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.io.PrintWriter;
 
@@ -81,6 +82,11 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 
 	protected String annotationForPhysicalScope(PhysicalScope scope) {
 		return null;
+	}
+
+	@Override
+	public void println(Metric m) {
+		m.getVariables().keySet().forEach(this::comment);
 	}
 
 	@Override

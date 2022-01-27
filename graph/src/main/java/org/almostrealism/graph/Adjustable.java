@@ -20,6 +20,7 @@ import io.almostrealism.relation.Producer;
 
 import java.util.function.Supplier;
 
+@Deprecated
 public interface Adjustable<T> {
 	Supplier<Runnable> updateAdjustment(Producer<T> value);
 }

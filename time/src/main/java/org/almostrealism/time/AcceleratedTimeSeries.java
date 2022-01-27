@@ -78,8 +78,10 @@ public class AcceleratedTimeSeries extends TemporalScalarBank implements Lifecyc
 		return new AcceleratedTimeSeriesAdd(() -> new Provider<>(this), value);
 	}
 
-	public Supplier<Runnable> purge(Producer<CursorPair> time) {
-		return new AcceleratedTimeSeriesPurge(() -> new Provider<>(this), time);
+	public Supplier<Runnable> purge(Producer<CursorPair> time) { return purge(time, 1.0); }
+
+	public Supplier<Runnable> purge(Producer<CursorPair> time, double frequency) {
+		return new AcceleratedTimeSeriesPurge(() -> new Provider<>(this), time, frequency);
 	}
 
 	public Producer<Scalar> valueAt(Producer<CursorPair> cursor) {

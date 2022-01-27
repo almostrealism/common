@@ -17,14 +17,12 @@
 package org.almostrealism.hardware.external;
 
 import io.almostrealism.code.Accessibility;
-import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.InstructionSet;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeEncoder;
 import org.almostrealism.c.CPrintWriter;
 import org.almostrealism.hardware.AbstractComputeContext;
 import org.almostrealism.hardware.Hardware;
-import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.jni.NativeInstructionSet;
 
 import java.io.BufferedReader;

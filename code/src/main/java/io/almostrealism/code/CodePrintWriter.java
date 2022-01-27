@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package io.almostrealism.code;
 
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Method;
+import io.almostrealism.scope.Metric;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 
@@ -34,6 +35,11 @@ public interface CodePrintWriter {
 	 */
 	@Deprecated
 	void println(String s);
+
+	/**
+	 * Write the specified {@link Metric}.
+	 */
+	void println(Metric m);
 
 	/**
 	 * Write the specified {@link Variable} (name of the variable and the data).

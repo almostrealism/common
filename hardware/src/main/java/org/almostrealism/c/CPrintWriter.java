@@ -23,6 +23,7 @@ import io.almostrealism.code.CodePrintWriterAdapter;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.Method;
 import io.almostrealism.code.ResourceVariable;
+import io.almostrealism.scope.Metric;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.expression.InstanceReference;
 import org.almostrealism.hardware.Hardware;
@@ -175,6 +176,15 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 	@Override
 	public void println(Method method) {
 		p.println(renderMethod(method));
+	}
+
+	@Override
+	public void println(Metric m) {
+		String ctr = m.getCounter().getExpression();
+		println(ctr + " = fmod(" + ctr + " + 1, " + m.getLogFrequency() + ");");
+		println("if (" + ctr + " == 0) {");
+		m.getVariables().forEach((msg, var) -> printf(msg + ": %f", var.getExpression()));
+		println("}");
 	}
 
 	public void println(String s) {

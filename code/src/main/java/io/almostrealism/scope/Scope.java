@@ -59,6 +59,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 	private OperationMetadata metadata;
 	private final List<Variable<?, ?>> variables;
 	private final List<Method> methods;
+	private final List<Metric> metrics;
 	private final List<Scope> required;
 
 	private List<Argument<?>> arguments;
@@ -70,6 +71,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 	public Scope() {
 		this.variables = new ArrayList<>();
 		this.methods = new ArrayList<>();
+		this.metrics = new ArrayList<>();
 		this.required = new ArrayList<>();
 	}
 
@@ -119,6 +121,8 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 	 */
 	@Override
 	public List<Scope<T>> getChildren() { return this; }
+
+	public List<Metric> getMetrics() { return metrics; }
 
 	public boolean isEmbedded() { return embedded; }
 
@@ -200,6 +204,12 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 					.filter(v -> v instanceof InstanceReference)
 					.map(v -> ((InstanceReference<?>) v).getReferent())
 					.forEach(v -> args.add(new Argument((Variable) v, Expectation.EVALUATE_AHEAD)));
+
+			metrics.stream()
+					.map(Metric::getArguments)
+					.flatMap(List::stream)
+					.map(v -> v.getReferent())
+					.forEach(v -> args.add(new Argument(v, Expectation.WILL_ALTER)));
 		} else {
 			args.addAll(arguments.stream()
 					.map(arg -> (Argument<?>) arg)
@@ -360,6 +370,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 		for (Method m : getMethods()) { w.println(m); }
 		for (Variable v : getVariables()) { w.println(v); }
 		for (Scope s : getChildren()) { s.write(w); }
+		for (Metric m : getMetrics()) { w.println(m); }
 		w.flush();
 	}
 
