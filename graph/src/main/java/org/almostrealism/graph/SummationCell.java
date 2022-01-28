@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -23,14 +23,9 @@ import org.almostrealism.hardware.OperationList;
 
 import java.util.function.Supplier;
 
-public class SummationCell extends ScalarCachedStateCell implements Adjustable<Scalar> {
+public class SummationCell extends ScalarCachedStateCell {
 	@Override
 	public Supplier<Runnable> push(Producer<Scalar> protein) {
 		return new SummationCellOperation(this, protein);
-	}
-
-	@Override
-	public Supplier<Runnable> updateAdjustment(Producer<Scalar> value) {
-		return new OperationList("SummationCell Adjustment Update");
 	}
 }

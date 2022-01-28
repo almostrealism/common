@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ import org.almostrealism.hardware.OperationList;
 
 import java.util.function.Supplier;
 
-public class ReceptorCell<T> implements Cell<T>, Adjustable<T> {
+public class ReceptorCell<T> implements Cell<T> {
 	private Receptor<T> r;
 
 	public ReceptorCell(Receptor<T> r) { this.r = r; }
@@ -37,11 +37,6 @@ public class ReceptorCell<T> implements Cell<T>, Adjustable<T> {
 	public void setReceptor(Receptor<T> r) { this.r = r; }
 
 	public Receptor<T> getReceptor() { return r; }
-
-	@Override
-	public Supplier<Runnable> updateAdjustment(Producer<T> value) {
-		return new OperationList("ReceptorCell Adjustment Update");
-	}
 
 	@Override
 	public void reset() {
