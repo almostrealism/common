@@ -33,7 +33,7 @@ public class AcceleratedFunctions {
 
 	protected synchronized void init(Hardware h, String src) {
 		hardware = h;
-		base = new HardwareOperatorMap(h.getClComputeContext(), src);
+		base = new HardwareOperatorMap(h.getClComputeContext(), src, null);
 		extensions = new HashMap<>();
 	}
 
@@ -45,7 +45,7 @@ public class AcceleratedFunctions {
 			if (in == null) {
 				extensions.put(c, base);
 			} else {
-				extensions.put(c, new HardwareOperatorMap(hardware.getClComputeContext(), hardware.loadSource(in)));
+				extensions.put(c, new HardwareOperatorMap(hardware.getClComputeContext(), hardware.loadSource(in), null));
 			}
 		}
 

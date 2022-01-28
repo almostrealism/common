@@ -19,6 +19,7 @@ package org.almostrealism.hardware.cl;
 import io.almostrealism.code.InstructionSet;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.profile.RunData;
 import org.jocl.CLException;
 import org.jocl.cl_program;
 
@@ -27,6 +28,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BiFunction;
+import java.util.function.Consumer;
 
 /**
  * Wrapper for a {@link cl_program} that contains the {@link HardwareOperator}s
@@ -39,12 +41,12 @@ public class HardwareOperatorMap<T extends MemoryData> implements InstructionSet
 
 	private ThreadLocal<Map<String, HardwareOperator<T>>> operators;
 	private List<HardwareOperator<T>> allOperators;
+	private Consumer<RunData> profile;
 
-	protected HardwareOperatorMap() { }
-
-	public HardwareOperatorMap(CLComputeContext h, String src) {
+	public HardwareOperatorMap(CLComputeContext h, String src, Consumer<RunData> profile) {
 		this.operators = new ThreadLocal<>();
 		this.allOperators = new ArrayList<>();
+		this.profile = profile;
 		init(h, src);
 	}
 
@@ -81,7 +83,7 @@ public class HardwareOperatorMap<T extends MemoryData> implements InstructionSet
 		}
 
 		if (!ops.containsKey(key)) {
-			HardwareOperator<T> op = new HardwareOperator<>(prog, key, argCount, this);
+			HardwareOperator<T> op = new HardwareOperator<>(prog, key, argCount, profile, this);
 			ops.put(key, op);
 			allOperators.add(op);
 		}
@@ -124,8 +126,4 @@ public class HardwareOperatorMap<T extends MemoryData> implements InstructionSet
 			allOperators = null;
 		}
 	}
-
-	/** Delegates to {@link #destroy}. */
-	@Override
-	public void finalize() { destroy(); }
 }

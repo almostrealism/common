@@ -55,7 +55,9 @@ public class AcceleratedTimeSeriesPurge extends DynamicOperationComputationAdapt
 		code.accept("for (int i = " + left + " + 1; i < " + right + "; i++) {\n");
 		code.accept("	if (" + cursor0 + " > " + banki + ") {\n");
 		code.accept("		" + left + " = i;\n");
-		// code.accept("		break;\n");
+		code.accept("	}\n");
+		code.accept("	if (" + cursor0 + " < " + banki + ") {\n");
+		code.accept("		break;\n");
 		code.accept("	}\n");
 		code.accept("}\n");
 		code.accept("}\n");

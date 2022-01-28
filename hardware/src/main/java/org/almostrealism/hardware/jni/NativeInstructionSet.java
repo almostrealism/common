@@ -21,6 +21,7 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.KernelSupport;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.RAM;
+import org.almostrealism.hardware.cl.CLComputeContext;
 import org.almostrealism.hardware.cl.CLDataContext;
 import org.jocl.cl_command_queue;
 
@@ -65,8 +66,8 @@ public interface NativeInstructionSet extends InstructionSet, KernelSupport {
 	}
 
 	default void apply(RAM args[], int offsets[], int sizes[]) {
-		apply(Optional.ofNullable(Hardware.getLocalHardware().getClDataContext())
-				.map(CLDataContext::getClQueue)
+		apply(Optional.ofNullable(Hardware.getLocalHardware().getClComputeContext())
+				.map(CLComputeContext::getClQueue)
 				.map(cl_command_queue::getNativePointer).orElse(-1L), args, offsets, sizes);
 	}
 

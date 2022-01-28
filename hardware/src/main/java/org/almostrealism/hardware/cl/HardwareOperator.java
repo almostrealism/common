@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@ import io.almostrealism.relation.Factory;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.profile.RunData;
 import org.jocl.*;
 
 import java.util.function.BiFunction;
@@ -46,12 +47,14 @@ public class HardwareOperator<T extends MemoryData> implements Consumer<Object[]
 	private cl_kernel kernel;
 
 	private BiFunction<String, CLException, HardwareException> exceptionProcessor;
+	private Consumer<RunData> profile;
 
-	public HardwareOperator(CLProgram program, String name, int argCount,
+	public HardwareOperator(CLProgram program, String name, int argCount, Consumer<RunData> profile,
 							BiFunction<String, CLException, HardwareException> exceptionProcessor) {
 		this.prog = program;
 		this.name = name;
 		this.argCount = argCount;
+		this.profile = profile;
 		this.exceptionProcessor = exceptionProcessor;
 	}
 
@@ -118,11 +121,10 @@ public class HardwareOperator<T extends MemoryData> implements Consumer<Object[]
 
 			if (enableVerboseLog) System.out.println(id + ": clEnqueueNDRangeKernel start");
 			cl_event event = new cl_event();
-			CL.clEnqueueNDRangeKernel(Hardware.getLocalHardware().getClDataContext().getClQueue(globalWorkSize > 1), kernel, 1,
+			CL.clEnqueueNDRangeKernel(Hardware.getLocalHardware().getClComputeContext().getClQueue(globalWorkSize > 1), kernel, 1,
 					new long[] { globalWorkOffset }, new long[] { globalWorkSize },
 					null, 0, null, event);
-			CL.clWaitForEvents(1, new cl_event[] { event });
-			CL.clReleaseEvent(event);
+			Hardware.getLocalHardware().getClComputeContext().processEvent(event, profile);
 			if (enableVerboseLog) System.out.println(id + ": clEnqueueNDRangeKernel end");
 		} catch (CLException e) {
 			// TODO  This should use the exception processor also, but theres no way to pass the message details

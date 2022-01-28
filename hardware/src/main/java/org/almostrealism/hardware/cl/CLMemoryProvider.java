@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -113,21 +113,19 @@ public class CLMemoryProvider implements MemoryProvider<RAM> {
 			if (Hardware.getLocalHardware().isDoublePrecision()) {
 				Pointer src = Pointer.to(source).withByteOffset((long) srcOffset * getNumberSize());
 				cl_event event = new cl_event();
-				CL.clEnqueueWriteBuffer(Hardware.getLocalHardware().getClDataContext().getFastClQueue(), mem.getMem(), CL.CL_TRUE,
+				CL.clEnqueueWriteBuffer(Hardware.getLocalHardware().getClComputeContext().getFastClQueue(), mem.getMem(), CL.CL_TRUE,
 						(long) offset * getNumberSize(), (long) length * getNumberSize(),
 						src, 0, null, event);
-				CL.clWaitForEvents(1, new cl_event[] { event });
-				CL.clReleaseEvent(event);
+				context.getClComputeContext().processEvent(event);
 			} else {
 				float f[] = new float[length];
 				for (int i = 0; i < f.length; i++) f[i] = (float) source[srcOffset + i];
 				Pointer src = Pointer.to(f).withByteOffset(0);
 				cl_event event = new cl_event();
-				CL.clEnqueueWriteBuffer(Hardware.getLocalHardware().getClDataContext().getFastClQueue(), mem.getMem(), CL.CL_TRUE,
+				CL.clEnqueueWriteBuffer(Hardware.getLocalHardware().getClComputeContext().getFastClQueue(), mem.getMem(), CL.CL_TRUE,
 						(long) offset * getNumberSize(), (long) length * getNumberSize(),
 						src, 0, null, event);
-				CL.clWaitForEvents(1, new cl_event[] { event });
-				CL.clReleaseEvent(event);
+				context.getClComputeContext().processEvent(event);
 			}
 		} catch (CLException e) {
 			throw CLExceptionProcessor.process(e, this, srcOffset, offset, length);
@@ -144,12 +142,11 @@ public class CLMemoryProvider implements MemoryProvider<RAM> {
 
 		try {
 			cl_event event = new cl_event();
-			CL.clEnqueueCopyBuffer(Hardware.getLocalHardware().getClDataContext().getFastClQueue(), src.getMem(), mem.getMem(),
+			CL.clEnqueueCopyBuffer(Hardware.getLocalHardware().getClComputeContext().getFastClQueue(), src.getMem(), mem.getMem(),
 						(long) srcOffset * getNumberSize(),
 						(long) offset * getNumberSize(), (long) length * getNumberSize(),
 						0, null, event);
-			CL.clWaitForEvents(1, new cl_event[] { event });
-			CL.clReleaseEvent(event);
+			context.getClComputeContext().processEvent(event);
 		} catch (CLException e) {
 			throw CLExceptionProcessor.process(e, this, srcOffset, offset, length);
 		}
@@ -174,22 +171,20 @@ public class CLMemoryProvider implements MemoryProvider<RAM> {
 				} else if (getNumberSize() == 8) {
 					Pointer dst = Pointer.to(out).withByteOffset((long) oOffset * getNumberSize());
 					cl_event event = new cl_event();
-					CL.clEnqueueReadBuffer(Hardware.getLocalHardware().getClDataContext().getFastClQueue(), mem.getMem(),
+					CL.clEnqueueReadBuffer(Hardware.getLocalHardware().getClComputeContext().getFastClQueue(), mem.getMem(),
 							CL.CL_TRUE, (long) sOffset * getNumberSize(),
 							(long) length * getNumberSize(), dst, 0,
 							null, event);
-					CL.clWaitForEvents(1, new cl_event[] { event });
-					CL.clReleaseEvent(event);
+					context.getClComputeContext().processEvent(event);
 				} else if (getNumberSize() == 4) {
 					float f[] = new float[length];
 					Pointer dst = Pointer.to(f).withByteOffset(0);
 					cl_event event = new cl_event();
-					CL.clEnqueueReadBuffer(Hardware.getLocalHardware().getClDataContext().getFastClQueue(), mem.getMem(),
+					CL.clEnqueueReadBuffer(Hardware.getLocalHardware().getClComputeContext().getFastClQueue(), mem.getMem(),
 							CL.CL_TRUE, (long) sOffset * getNumberSize(),
 							(long) length * getNumberSize(), dst, 0,
 							null, event);
-					CL.clWaitForEvents(1, new cl_event[] { event });
-					CL.clReleaseEvent(event);
+					context.getClComputeContext().processEvent(event);
 					for (int i = 0; i < f.length; i++) out[oOffset + i] = f[i];
 				} else {
 					throw new IllegalArgumentException();

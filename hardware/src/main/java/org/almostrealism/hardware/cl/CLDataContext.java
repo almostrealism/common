@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@ import org.jocl.cl_command_queue;
 import org.jocl.cl_context;
 import org.jocl.cl_context_properties;
 import org.jocl.cl_device_id;
+import org.jocl.cl_event;
 import org.jocl.cl_platform_id;
 
 import java.util.Optional;
@@ -36,28 +37,23 @@ import java.util.concurrent.Callable;
 import java.util.stream.Stream;
 
 public class CLDataContext implements DataContext {
-	public static boolean enableFastQueue = true;
-
 	private final Hardware hardware;
 	private final String name;
-	private final boolean isDoublePrecision;
 	private final long memoryMax;
 	private final CLMemoryProvider.Location location;
 
+	private cl_platform_id platform;
+	private cl_device_id mainDevice;
+	private cl_device_id kernelDevice;
 	private cl_context ctx;
-	private cl_command_queue queue;
-	private cl_command_queue fastQueue;
-	private cl_command_queue kernelQueue;
 
 	private MemoryProvider<RAM> ram;
-	private NativeCompiler nativeCompiler;
 
 	private ThreadLocal<ComputeContext> computeContext;
 
-	public CLDataContext(Hardware hardware, String name, boolean isDoublePrecision, long memoryMax, CLMemoryProvider.Location location) {
+	public CLDataContext(Hardware hardware, String name, long memoryMax, CLMemoryProvider.Location location) {
 		this.hardware = hardware;
 		this.name = name;
-		this.isDoublePrecision = isDoublePrecision;
 		this.memoryMax = memoryMax;
 		this.location = location;
 		this.computeContext = new ThreadLocal<>();
@@ -65,6 +61,10 @@ public class CLDataContext implements DataContext {
 
 	public void init(cl_platform_id platform, cl_device_id mainDevice, cl_device_id kernelDevice) {
 		if (ctx != null) return;
+
+		this.platform = platform;
+		this.mainDevice = mainDevice;
+		this.kernelDevice = kernelDevice;
 
 		cl_context_properties contextProperties = new cl_context_properties();
 		contextProperties.addProperty(CL.CL_CONTEXT_PLATFORM, platform);
@@ -79,58 +79,47 @@ public class CLDataContext implements DataContext {
 
 		if (Hardware.enableVerbose) System.out.println("Hardware[" + name + "]: OpenCL context initialized");
 
-		queue = CL.clCreateCommandQueue(ctx, mainDevice, 0, null);
-		if (Hardware.enableVerbose) System.out.println("Hardware[" + name + "]: OpenCL command queue initialized");
-
-		if (enableFastQueue) {
-			fastQueue = CL.clCreateCommandQueue(ctx, mainDevice, 0, null);
-			if (Hardware.enableVerbose)
-				System.out.println("Hardware[" + name + "]: OpenCL fast command queue initialized");
-		}
-
-		if (kernelDevice != null) {
-			kernelQueue = CL.clCreateCommandQueue(ctx, kernelDevice, 0, null);
-			if (Hardware.enableVerbose)
-				System.out.println("Hardware[" + name + "]: OpenCL kernel command queue initialized");
-		}
-
 		ram = new CLMemoryProvider(this, hardware.getNumberSize(), memoryMax, location);
+	}
+
+	private ComputeContext createContext(ComputeRequirement... expectations) {
+		Optional<ComputeRequirement> cReq = Stream.of(expectations).filter(ComputeRequirement.C::equals).findAny();
+		Optional<ComputeRequirement> pReq = Stream.of(expectations).filter(ComputeRequirement.PROFILING::equals).findAny();
+
+		ComputeContext cc;
+
+		if (cReq.isPresent()) {
+			cc = new CLNativeComputeContext(hardware);
+		} else {
+			cc = new CLComputeContext(hardware, ctx);
+			((CLComputeContext) cc).init(mainDevice, kernelDevice, pReq.isPresent());
+		}
+
+		return cc;
 	}
 
 	public String getName() { return name; }
 
 	public cl_context getClContext() { return ctx; }
 
-	public cl_command_queue getClQueue() { return queue; }
-
-	public cl_command_queue getClQueue(boolean kernel) { return kernel ? getKernelClQueue() : getClQueue(); }
-
-	public cl_command_queue getFastClQueue() { return fastQueue == null ? getClQueue() : fastQueue; }
-
-	public cl_command_queue getKernelClQueue() { return kernelQueue == null ? getClQueue() : kernelQueue; }
-
 	public MemoryProvider<RAM> getMemoryProvider() { return ram; }
 
 	public ComputeContext getComputeContext() {
 		if (computeContext.get() == null) {
 			if (Hardware.enableVerbose) System.out.println("INFO: No explicit ComputeContext for " + Thread.currentThread().getName());
-			computeContext.set(new CLComputeContext(hardware, ctx));
+			computeContext.set(createContext());
 		}
 
 		return computeContext.get();
 	}
 
+	public CLComputeContext getClComputeContext() {
+		return (CLComputeContext) getComputeContext();
+	}
+
 	public <T> T computeContext(Callable<T> exec, ComputeRequirement... expectations) {
-		Optional<ComputeRequirement> cReq = Stream.of(expectations).filter(ComputeRequirement.C::equals).findAny();
-
 		ComputeContext current = computeContext.get();
-		ComputeContext next;
-
-		if (cReq.isPresent()) {
-			next = new CLNativeComputeContext(hardware);
-		} else {
-			next = new CLComputeContext(hardware, ctx);
-		}
+		ComputeContext next = createContext(expectations);
 
 		String ccName = next.toString();
 		if (ccName.contains(".")) {
@@ -160,9 +149,6 @@ public class CLDataContext implements DataContext {
 			computeContext.get().destroy();
 			computeContext.remove();
 		}
-
-		CL.clReleaseCommandQueue(queue);
-		queue = null;
 
 		CL.clReleaseContext(ctx);
 		ctx = null;

@@ -174,7 +174,7 @@ public final class Hardware {
 		this.contextListeners = new ArrayList<>();
 
 		if (enableCl) {
-			this.context = new CLDataContext(this, name, enableDoublePrecision, this.memoryMax, this.location);
+			this.context = new CLDataContext(this, name, this.memoryMax, this.location);
 
 			CL.setExceptionsEnabled(true);
 
@@ -287,7 +287,7 @@ public final class Hardware {
 
 		if (context instanceof CLDataContext) {
 			current = context;
-			next = new CLDataContext(this, getName(), isDoublePrecision(), memoryMax, location);
+			next = new CLDataContext(this, getName(), memoryMax, location);
 		} else if (context instanceof NativeDataContext) {
 			current = context;
 			next = new NativeDataContext(this, getName(), isDoublePrecision(), isNativeMemory(), isExternalNative(), memoryMax);

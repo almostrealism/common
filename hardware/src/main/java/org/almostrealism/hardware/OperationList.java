@@ -76,7 +76,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>> implements Oper
 	public Runnable get() {
 		if (isFunctionallyEmpty()) return () -> { };
 
-		if (enableCompilation && isComputation()) {
+		if (isComputation()) {
 			OperationAdapter op = (OperationAdapter) compileRunnable(this);
 			op.setFunctionName(functionName);
 			op.compile();
@@ -92,6 +92,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>> implements Oper
 	}
 
 	public boolean isComputation() {
+		if (!enableCompilation) return false;
 		if (getDepth() > maxDepth) return false;
 
 		int nonComputations = stream().mapToInt(o -> {
