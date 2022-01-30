@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -41,7 +41,7 @@ import java.util.function.Supplier;
 public abstract class AcceleratedConditionalStatementAdapter<T extends MemoryData>
 											extends ProducerComputationAdapter<MemoryData, T>
 											implements AcceleratedConditionalStatement<T>,
-													ExplictBody<T>, DestinationSupport<MemoryData>,
+													DestinationSupport<MemoryData>,
 													ComputerFeatures {
 	public static boolean enableCompaction = false;
 
@@ -89,8 +89,7 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemoryDat
 	@Override
 	public Supplier<MemoryData> getDestination() { return destination; }
 
-	@Override
-	public String getBody(Variable<T, ?> outputVariable) {
+	private String getBody(Variable<T, ?> outputVariable) {
 		if (compacted == null) {
 			StringBuilder buf = new StringBuilder();
 

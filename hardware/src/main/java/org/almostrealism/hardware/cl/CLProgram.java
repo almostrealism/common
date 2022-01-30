@@ -16,7 +16,9 @@
 
 package org.almostrealism.hardware.cl;
 
+import org.almostrealism.hardware.HardwareException;
 import org.jocl.CL;
+import org.jocl.CLException;
 import org.jocl.cl_program;
 
 public class CLProgram {
@@ -37,8 +39,13 @@ public class CLProgram {
 	}
 
 	public void compile() {
-		int r = CL.clBuildProgram(getProgram(), 0, null, null, null, null);
-		if (r != 0) throw new RuntimeException("Error building CLProgram:" + r);
+		// TODO  CLExceptionProcessor
+		try {
+			int r = CL.clBuildProgram(getProgram(), 0, null, null, null, null);
+			if (r != 0) throw new RuntimeException("Error building CLProgram:" + r);
+		} catch (CLException e) {
+			throw new HardwareException("Error building CLProgram", e, src);
+		}
 	}
 
 	public void destroy() {

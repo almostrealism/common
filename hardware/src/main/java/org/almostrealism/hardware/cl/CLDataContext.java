@@ -79,7 +79,11 @@ public class CLDataContext implements DataContext {
 
 		if (Hardware.enableVerbose) System.out.println("Hardware[" + name + "]: OpenCL context initialized");
 
-		ram = new CLMemoryProvider(this, hardware.getNumberSize(), memoryMax, location);
+		cl_command_queue queue = CL.clCreateCommandQueue(ctx, mainDevice, 0, null);
+		if (Hardware.enableVerbose)
+			System.out.println("Hardware[" + getName() + "]: OpenCL read/write command queue initialized");
+
+		ram = new CLMemoryProvider(this, queue, hardware.getNumberSize(), memoryMax, location);
 	}
 
 	private ComputeContext createContext(ComputeRequirement... expectations) {

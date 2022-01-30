@@ -30,7 +30,7 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.algebra.ScalarProducer;
-import org.almostrealism.algebra.computations.Choice;
+import org.almostrealism.algebra.computations.Switch;
 import org.almostrealism.algebra.computations.ScalarBankFromScalars;
 import org.almostrealism.algebra.computations.StaticPairComputation;
 import org.almostrealism.algebra.computations.StaticScalarBankComputation;
@@ -132,8 +132,8 @@ public interface CodeFeatures extends ScalarFeatures, PairFeatures, TriangleData
 		return Input.value(memLength, argIndex);
 	}
 
-	default <T> Choice choice(ProducerComputation<Scalar> decision, Computation<T>... choices) {
-		return new Choice(decision, Arrays.asList(choices));
+	default <T> Switch choice(ProducerComputation<Scalar> decision, Computation<T>... choices) {
+		return new Switch(decision, Arrays.asList(choices));
 	}
 
 	default Expression<Double> e(double value) {

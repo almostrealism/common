@@ -41,7 +41,7 @@ import java.util.Map;
 import java.util.function.Consumer;
 
 public class CLComputeContext extends AbstractComputeContext {
-	public static boolean enableFastQueue = true;
+	public static boolean enableFastQueue = false;
 
 	private static final String fp64 = "#pragma OPENCL EXTENSION cl_khr_fp64 : enable\n";
 

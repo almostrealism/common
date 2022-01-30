@@ -23,6 +23,7 @@ import org.almostrealism.hardware.RAM;
 import org.jocl.CL;
 import org.jocl.CLException;
 import org.jocl.Pointer;
+import org.jocl.cl_command_queue;
 import org.jocl.cl_event;
 import org.jocl.cl_mem;
 
@@ -38,14 +39,16 @@ public class CLMemoryProvider implements MemoryProvider<RAM> {
 	private final Location location;
 
 	private final CLDataContext context;
+	private final cl_command_queue queue;
 	private final int numberSize;
 	private final long memoryMax;
 	private long memoryUsed;
 
 	private HashMap<cl_mem, PointerAndObject<?>> heap;
 
-	public CLMemoryProvider(CLDataContext context, int numberSize, long memoryMax, Location location) {
+	public CLMemoryProvider(CLDataContext context, cl_command_queue queue, int numberSize, long memoryMax, Location location) {
 		this.context = context;
+		this.queue = queue;
 		this.numberSize = numberSize;
 		this.memoryMax = memoryMax;
 		this.location = location;
@@ -113,19 +116,19 @@ public class CLMemoryProvider implements MemoryProvider<RAM> {
 			if (Hardware.getLocalHardware().isDoublePrecision()) {
 				Pointer src = Pointer.to(source).withByteOffset((long) srcOffset * getNumberSize());
 				cl_event event = new cl_event();
-				CL.clEnqueueWriteBuffer(Hardware.getLocalHardware().getClComputeContext().getFastClQueue(), mem.getMem(), CL.CL_TRUE,
+				CL.clEnqueueWriteBuffer(queue, mem.getMem(), CL.CL_TRUE,
 						(long) offset * getNumberSize(), (long) length * getNumberSize(),
 						src, 0, null, event);
-				context.getClComputeContext().processEvent(event);
+				processEvent(event);
 			} else {
 				float f[] = new float[length];
 				for (int i = 0; i < f.length; i++) f[i] = (float) source[srcOffset + i];
 				Pointer src = Pointer.to(f).withByteOffset(0);
 				cl_event event = new cl_event();
-				CL.clEnqueueWriteBuffer(Hardware.getLocalHardware().getClComputeContext().getFastClQueue(), mem.getMem(), CL.CL_TRUE,
+				CL.clEnqueueWriteBuffer(queue, mem.getMem(), CL.CL_TRUE,
 						(long) offset * getNumberSize(), (long) length * getNumberSize(),
 						src, 0, null, event);
-				context.getClComputeContext().processEvent(event);
+				processEvent(event);
 			}
 		} catch (CLException e) {
 			throw CLExceptionProcessor.process(e, this, srcOffset, offset, length);
@@ -142,11 +145,11 @@ public class CLMemoryProvider implements MemoryProvider<RAM> {
 
 		try {
 			cl_event event = new cl_event();
-			CL.clEnqueueCopyBuffer(Hardware.getLocalHardware().getClComputeContext().getFastClQueue(), src.getMem(), mem.getMem(),
+			CL.clEnqueueCopyBuffer(queue, src.getMem(), mem.getMem(),
 						(long) srcOffset * getNumberSize(),
 						(long) offset * getNumberSize(), (long) length * getNumberSize(),
 						0, null, event);
-			context.getClComputeContext().processEvent(event);
+			processEvent(event);
 		} catch (CLException e) {
 			throw CLExceptionProcessor.process(e, this, srcOffset, offset, length);
 		}
@@ -171,20 +174,20 @@ public class CLMemoryProvider implements MemoryProvider<RAM> {
 				} else if (getNumberSize() == 8) {
 					Pointer dst = Pointer.to(out).withByteOffset((long) oOffset * getNumberSize());
 					cl_event event = new cl_event();
-					CL.clEnqueueReadBuffer(Hardware.getLocalHardware().getClComputeContext().getFastClQueue(), mem.getMem(),
+					CL.clEnqueueReadBuffer(queue, mem.getMem(),
 							CL.CL_TRUE, (long) sOffset * getNumberSize(),
 							(long) length * getNumberSize(), dst, 0,
 							null, event);
-					context.getClComputeContext().processEvent(event);
+					processEvent(event);
 				} else if (getNumberSize() == 4) {
 					float f[] = new float[length];
 					Pointer dst = Pointer.to(f).withByteOffset(0);
 					cl_event event = new cl_event();
-					CL.clEnqueueReadBuffer(Hardware.getLocalHardware().getClComputeContext().getFastClQueue(), mem.getMem(),
+					CL.clEnqueueReadBuffer(queue, mem.getMem(),
 							CL.CL_TRUE, (long) sOffset * getNumberSize(),
 							(long) length * getNumberSize(), dst, 0,
 							null, event);
-					context.getClComputeContext().processEvent(event);
+					processEvent(event);
 					for (int i = 0; i < f.length; i++) out[oOffset + i] = f[i];
 				} else {
 					throw new IllegalArgumentException();
@@ -193,6 +196,11 @@ public class CLMemoryProvider implements MemoryProvider<RAM> {
 		} catch (CLException e) {
 			throw CLExceptionProcessor.process(e, this, sOffset, oOffset, length);
 		}
+	}
+
+	private void processEvent(cl_event event) {
+		CL.clWaitForEvents(1, new cl_event[] { event });
+		CL.clReleaseEvent(event);
 	}
 
 	private Object getHeapData(CLMemory mem) {

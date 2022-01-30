@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,66 +16,71 @@
 
 package org.almostrealism.algebra.computations;
 
-import io.almostrealism.code.ArgumentMap;
-import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.code.Computation;
 import io.almostrealism.code.HybridScope;
-import io.almostrealism.code.ProducerComputation;
+import io.almostrealism.code.PhysicalScope;
+import io.almostrealism.code.ProducerComputationAdapter;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
-import io.almostrealism.code.ScopeInputManager;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.hardware.DynamicOperationComputationAdapter;
+import org.almostrealism.hardware.ComputerFeatures;
+import org.almostrealism.hardware.DestinationSupport;
+import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.mem.MemoryDataDestination;
 
+import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.IntStream;
+import java.util.function.Consumer;
+import java.util.function.IntFunction;
+import java.util.function.Supplier;
 
-public class Choice extends DynamicOperationComputationAdapter {
-	private final List<Computation> choices;
+public abstract class Choice<T extends MemoryData> extends ProducerComputationAdapter<T, T> implements DestinationSupport<MemoryData>, ComputerFeatures {
+	private int memLength;
+	private int choiceCount;
+	private Supplier<MemoryData> destination;
 
-	public Choice(ProducerComputation<Scalar> decision, List<Computation> choices) {
-		super(new ProducerComputation[] { decision });
-		this.choices = choices;
+	public Choice(int memLength, int choiceCount, Supplier<T> blankValue,
+				  IntFunction<MemoryBank<T>> kernelDestination,
+				  Supplier<Evaluable<? extends Scalar>> decision,
+				  Supplier<Evaluable<? extends MemoryBank<T>>> choices) {
+		this.memLength = memLength;
+		this.choiceCount = choiceCount;
+		this.destination = (Supplier) blankValue;
+
+		List inputs = new ArrayList();
+		inputs.add(new MemoryDataDestination(this, kernelDestination));
+		inputs.add(decision);
+		inputs.add(choices);
+		setInputs(inputs);
+
+		init();
 	}
 
+	/** @return  GLOBAL */
 	@Override
-	public void prepareArguments(ArgumentMap map) {
-		super.prepareArguments(map);
-		choices.forEach(c -> c.prepareArguments(map));
-	}
+	public PhysicalScope getDefaultPhysicalScope() { return PhysicalScope.GLOBAL; }
 
 	@Override
-	public void prepareScope(ScopeInputManager manager) {
-		super.prepareScope(manager);
-		choices.forEach(c -> c.prepareScope(manager));
-	}
+	public void setDestination(Supplier<MemoryData> destination) { this.destination = destination; }
 
 	@Override
-	public Scope<Void> getScope() {
-		HybridScope<Void> scope = new HybridScope<>(this);
+	public Supplier<MemoryData> getDestination() { return destination; }
 
-		double interval = 1.0 / choices.size();
+	public Scope<T> getScope() {
+		HybridScope<T> scope = new HybridScope<>(this);
+		scope.getVariables().addAll(getVariables());
+		Consumer<String> code = scope.code();
 
-		Scope<Scalar> decisionScope = ((ProducerComputation) getInputs().get(0)).getScope();
-		ArrayVariable<?> decisionValue = getArgument(0, 2);
+		ArrayVariable<?> output = getArgument(0, memLength);
+		ArrayVariable<?> input = getArgument(2, memLength * choiceCount);
+		String decision = getArgument(1, 2).valueAt(0).getExpression();
+		String choices = stringForDouble(choiceCount * memLength);
+		String decisionChoice = "floor(" + decision + " * " + choices + ")";
 
-		choices.stream().map(Computation::getScope).forEach(atomScope -> {
-			atomScope.convertArgumentsToRequiredScopes();
-			scope.getRequiredScopes().add(atomScope);
-		});
-
-		IntStream.range(0, scope.getRequiredScopes().size()).forEach(i -> {
-			if (i > 0) {
-				scope.code().accept(" else ");
-			}
-
-			double val = (i + 1) * interval;
-
-			scope.code().accept("if (" + decisionValue.valueAt(0).getExpression() + " <= " + val + ") {\n");
-			scope.code().accept("\t" + renderMethod(scope.getRequiredScopes().get(i).call()) + "\n");
-			scope.code().accept("}");
-		});
-
-		scope.code().accept("\n");
+		for (int i = 0; i < memLength; i++) {
+			code.accept(output.valueAt(i).getExpression() + " = " + input.get(decisionChoice + " + " + i).getExpression() + ";\n");
+		}
 
 		return scope;
 	}
