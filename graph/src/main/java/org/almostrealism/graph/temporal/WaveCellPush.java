@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -46,7 +46,8 @@ public class WaveCellPush extends WaveCellComputation {
 		exp.accept(" = ");
 		exp.accept(getAmplitude().valueAt(0).getExpression());
 		exp.accept(" * ");
-		exp.accept(getWave().get("2 * floor(" + getWavePosition().valueAt(0).getExpression() + ")").getExpression());
+		exp.accept(getWave().get("2 * (" + getWaveIndex().valueAt(0).getExpression() +
+				" + floor(" + getWavePosition().valueAt(0).getExpression() + "))").getExpression());
 		exp.accept(";\n");
 		exp.accept("} else {\n");
 		exp.accept(getOutput().valueAt(0).getExpression());

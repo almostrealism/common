@@ -22,8 +22,12 @@ import org.almostrealism.algebra.ScalarBank;
 
 public interface WaveCellData extends BaseAudioData {
 
-	default Scalar waveCount() { return get(3); }
-	default Scalar duration() { return get(4); }
+	default Scalar waveIndex() { return get(3); }
+	default Scalar waveCount() { return get(4); }
+	default Scalar duration() { return get(5); }
+
+	default Provider<Scalar> getWaveIndex() { return new Provider<>(waveIndex()); }
+	default void setWaveIndex(int count) { waveIndex().setValue(count); }
 
 	default Provider<Scalar> getWaveCount() { return new Provider<>(waveCount()); }
 	default void setWaveCount(int count) { waveCount().setValue(count); }

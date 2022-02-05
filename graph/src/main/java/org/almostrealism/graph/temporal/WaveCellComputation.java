@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,6 +33,7 @@ public abstract class WaveCellComputation extends DynamicOperationComputationAda
 				() -> new Provider<>(wave),
 				data::getWavePosition,
 				data::getWaveLength,
+				data::getWaveIndex,
 				data::getWaveCount,
 				data::getAmplitude,
 				data::getDuration);
@@ -43,9 +44,10 @@ public abstract class WaveCellComputation extends DynamicOperationComputationAda
 	public ArrayVariable getWave() { return getArgument(1); }
 	public ArrayVariable getWavePosition() { return getArgument(2, 2); }
 	public ArrayVariable getWaveLength() { return getArgument(3, 2); }
-	public ArrayVariable getWaveCount() { return getArgument(4, 2); }
-	public ArrayVariable getAmplitude() { return getArgument(5, 2); }
-	public ArrayVariable getDuration() { return getArgument(6, 2); }
+	public ArrayVariable getWaveIndex() { return getArgument(4, 2); }
+	public ArrayVariable getWaveCount() { return getArgument(5, 2); }
+	public ArrayVariable getAmplitude() { return getArgument(6, 2); }
+	public ArrayVariable getDuration() { return getArgument(7, 2); }
 
 	@Override
 	public Scope getScope() { return scope; }

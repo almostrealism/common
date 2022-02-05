@@ -54,6 +54,7 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.Input;
 import org.almostrealism.time.CursorPair;
+import org.almostrealism.time.TemporalFeatures;
 import org.almostrealism.time.TemporalScalarProducer;
 import org.almostrealism.time.computations.TemporalScalarFromScalars;
 
@@ -63,7 +64,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 public interface CodeFeatures extends ScalarFeatures, PairFeatures, TriangleDataFeatures, RayFeatures,
-								TransformMatrixFeatures, GeometryFeatures, HardwareFeatures {
+								TransformMatrixFeatures, GeometryFeatures, TemporalFeatures, HardwareFeatures {
 	default <T> Producer<T> p(T value) { return () -> new Provider<>(value); }
 
 	default Producer<CursorPair> v(CursorPair p) {
