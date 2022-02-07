@@ -57,6 +57,8 @@ public class KernelList<T extends MemoryData> implements Supplier<Runnable>, Plu
 		this.size = size;
 	}
 
+	public MemoryBank<? extends MemoryBank<T>> getData() { return data; }
+
 	public void setInput(MemoryBank<T> input) {
 		this.input = input;
 		this.data = tableProvider.apply(input.getCount(), size);

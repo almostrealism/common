@@ -190,6 +190,30 @@ public class GraphicsConverter {
 		return rgbArray;
 	}
 
+	public static double[] histogram(BufferedImage bufferedImage,
+									 int xoff, int yoff, int w, int h,
+									 int buckets) {
+		double histogram[] = new double[buckets];
+
+		for(int i = 0; i < w; i++) {
+			for(int j = 0; j < h; j++) {
+				int color = bufferedImage.getRGB(xoff + i, yoff + j);
+
+				int rChannel = (color >> 16) & 255;
+				int gChannel = (color >> 8) & 255;
+				int bChannel = color & 255;
+
+				double r = rChannel / 255d;
+				double g = gChannel / 255d;
+				double b = bChannel / 255d;
+				double avg = (r + g + b) / 3.0;
+				histogram[(int) Math.min(buckets * avg, buckets - 1)] += 1.0;
+			}
+		}
+
+		return histogram;
+	}
+
 	/**
 	 * Evaluates the specified array of {@link Evaluable}s, producing {@link RGB}s.
 	 */

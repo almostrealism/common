@@ -66,6 +66,10 @@ public abstract class MemoryDataTemporalCellularChromosomeExpansion<T extends Me
 	@Override
 	public void setTimeline(T timeline) { kernels.forEach(k -> k.setInput(timeline)); }
 
+	public KernelList<O> getKernelList(int factor) {
+		return Objects.requireNonNull(kernels.get(factor)).getKernels();
+	}
+
 	@Override
 	public int getFactorCount() { return kernels.size(); }
 
