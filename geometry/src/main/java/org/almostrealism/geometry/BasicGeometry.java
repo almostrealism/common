@@ -24,7 +24,7 @@ import org.almostrealism.algebra.ZeroVector;
 import org.almostrealism.io.DecodePostProcessing;
 
 /**
- * Provides a simple mechanism to keep track of tranformation
+ * Provides a simple mechanism to keep track of transformation
  * parameters that are used with most types of geometry. This
  * type is convenient for extending or encapsulating.
  * 
@@ -59,8 +59,8 @@ public class BasicGeometry implements Positioned, Oriented, Scaled, DecodePostPr
 	
 	/**
 	 * Sets the location of this {@link BasicGeometry} to the specified
-	 * {@link Vector} object. This method calls calulateTransform() after
-	 * it is completed.
+	 * {@link Vector} object. This method flags the transform as no
+	 * longer current.
 	 */
 	public void setLocation(Vector location) {
 		this.location = location;

@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,10 +21,15 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.IntStream;
 
 import io.almostrealism.html.Div;
 import io.almostrealism.html.HTMLContent;
 import io.almostrealism.html.HTMLString;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.hardware.MemoryData;
 
 /**
  * An arbitrary dimension tensor implemented as a recursive {@link LinkedList}.
@@ -79,6 +84,32 @@ public class Tensor<T> implements HTMLContent {
 		}
 
 		return l.size();
+	}
+
+	public int getDimensions() {
+		int dims = 0;
+
+		w: while (true) {
+			int length = length(new int[dims]);
+			if (length <= 0) break w;
+			dims++;
+		}
+
+		return dims;
+	}
+
+	public PackedCollection pack() {
+		TraversalPolicy shape = new TraversalPolicy(IntStream.range(0, getDimensions()).mapToObj(i -> new int[i]).mapToInt(this::length).toArray());
+		TraversalPolicy targetShape = shape.appendDimension(((MemoryData) get(new int[shape.getDimensions()])).getMemLength());
+		PackedCollection c = new PackedCollection(targetShape);
+
+		AtomicInteger index = new AtomicInteger();
+		shape.stream().forEach(pos -> {
+			MemoryData d = (MemoryData) get(pos);
+			c.setMem(index.getAndIncrement() * d.getMemLength(), d, 0, d.getMemLength());
+		});
+
+		return c;
 	}
 
 	public void trim(int... max) {
@@ -208,10 +239,11 @@ public class Tensor<T> implements HTMLContent {
 		Object o = l.get(i);
 		
 		if (o instanceof Leaf) {
-			LinkedList newList = new LinkedList();
-			newList.set(0, o);
-			l.set(i, newList);
-			return newList;
+//			LinkedList newList = new LinkedList();
+//			newList.set(0, o);
+//			l.set(i, newList);
+//			return newList;
+			return null;
 		}
 		
 		return (LinkedList) o;

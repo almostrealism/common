@@ -24,7 +24,7 @@ public class TriangulatableGeometry extends GeometryStack implements Triangulata
 	/**
 	 * @return  A Mesh object with location, size, scale coefficients,
 	 *          rotation coefficients, and transformations as this
-	 *          {@link BasicGeometry}.
+	 *          {@link TriangulatableGeometry}.
 	 */
 	@Override
 	public Mesh triangulate() {

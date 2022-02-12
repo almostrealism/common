@@ -303,7 +303,7 @@ public class AcceleratedOperation<T extends MemoryData> extends OperationAdapter
 	}
 
 	protected MemoryData[] getKernelArgs(MemoryBank output, MemoryBank args[]) {
-		return getKernelArgs(getArgumentVariables(), args, Collections.singletonMap((ArrayVariable) getOutputVariable(), output));
+		return getKernelArgs(getArgumentVariables(), args, Collections.singletonMap((ArrayVariable) getOutputVariable(), output), output.getCount());
 	}
 
 	/**
@@ -345,21 +345,21 @@ public class AcceleratedOperation<T extends MemoryData> extends OperationAdapter
 		argumentMaps = new ArrayList<>();
 	}
 
-	protected static <T> MemoryData[] getKernelArgs(List<ArrayVariable<? extends T>> arguments, MemoryBank args[]) {
-		return getKernelArgs(arguments, args, new HashMap<>());
+	protected static <T> MemoryData[] getKernelArgs(List<ArrayVariable<? extends T>> arguments, MemoryBank args[], int kernelSize) {
+		return getKernelArgs(arguments, args, new HashMap<>(), kernelSize);
 	}
 
-	protected static <T> MemoryData[] getKernelArgs(List<ArrayVariable<? extends T>> arguments, MemoryBank args[], Map<ArrayVariable<? extends T>, MemoryBank> mappings) {
+	protected static <T> MemoryData[] getKernelArgs(List<ArrayVariable<? extends T>> arguments, MemoryBank args[], Map<ArrayVariable<? extends T>, MemoryBank> mappings, int kernelSize) {
 		MemoryData kernelArgs[] = new MemoryData[arguments.size()];
 
-		int kernelSize = 0;
-		if (args.length > 0) {
-			kernelSize = args[0].getCount();
-		} else if (mappings.size() > 0) {
-			kernelSize = mappings.values().iterator().next().getCount();
-		} else {
-			throw new IllegalArgumentException("Cannot determine kernel size");
-		}
+//		int kernelSize = 0;
+//		if (args.length > 0) {
+//			kernelSize = args[0].getCount();
+//		} else if (mappings.size() > 0) {
+//			kernelSize = mappings.values().iterator().next().getCount();
+//		} else {
+//			throw new IllegalArgumentException("Cannot determine kernel size");
+//		}
 
 		i: for (int i = 0; i < arguments.size(); i++) {
 			if (arguments.get(i) == null) continue i;

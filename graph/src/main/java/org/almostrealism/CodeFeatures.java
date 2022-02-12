@@ -36,6 +36,7 @@ import org.almostrealism.algebra.computations.StaticPairComputation;
 import org.almostrealism.algebra.computations.StaticScalarBankComputation;
 import org.almostrealism.algebra.computations.StaticScalarComputation;
 import org.almostrealism.algebra.computations.StaticVectorComputation;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.geometry.GeometryFeatures;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.algebra.Vector;
@@ -63,7 +64,7 @@ import java.util.concurrent.Callable;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-public interface CodeFeatures extends ScalarFeatures, PairFeatures, TriangleDataFeatures, RayFeatures,
+public interface CodeFeatures extends CollectionFeatures, ScalarFeatures, PairFeatures, TriangleDataFeatures, RayFeatures,
 								TransformMatrixFeatures, GeometryFeatures, TemporalFeatures, HardwareFeatures {
 	default <T> Producer<T> p(T value) { return () -> new Provider<>(value); }
 
