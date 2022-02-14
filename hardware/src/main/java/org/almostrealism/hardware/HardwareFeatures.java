@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.almostrealism.code.Computation;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.computations.Assignment;
@@ -50,10 +51,12 @@ public interface HardwareFeatures {
 		return Hardware.getLocalHardware().doubleForString(value);
 	}
 
+	@JsonIgnore
 	default String getNumberTypeName() {
 		return Hardware.getLocalHardware().getNumberTypeName();
 	}
 
+	@JsonIgnore
 	default boolean isCastEnabled() {
 		return Hardware.getLocalHardware().isGPU() && Hardware.getLocalHardware().isDoublePrecision();
 	}

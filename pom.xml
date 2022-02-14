@@ -54,6 +54,7 @@
 	</build>
 
     <dependencies>
+		<!-- TODO Can't this be removed? -->
         <!-- https://mvnrepository.com/artifact/com.fasterxml.jackson.core/jackson-databind -->
 		<dependency>
 		    <groupId>com.fasterxml.jackson.core</groupId>
