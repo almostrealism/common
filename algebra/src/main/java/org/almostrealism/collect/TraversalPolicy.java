@@ -48,6 +48,13 @@ public class TraversalPolicy {
 		return pos;
 	}
 
+	public TraversalPolicy prependDimension(int size) {
+		int newDims[] = new int[getDimensions() + 1];
+		newDims[0] = size;
+		for (int i = 1; i < getDimensions(); i++) newDims[i] = length(i);
+		return new TraversalPolicy(newDims);
+	}
+
 	public TraversalPolicy appendDimension(int size) {
 		int newDims[] = new int[getDimensions() + 1];
 		for (int i = 0; i < getDimensions(); i++) newDims[i] = length(i);

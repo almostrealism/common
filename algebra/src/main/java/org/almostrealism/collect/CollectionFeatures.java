@@ -16,17 +16,44 @@
 
 package org.almostrealism.collect;
 
+import io.almostrealism.scope.Scope;
+import org.almostrealism.hardware.KernelizedEvaluable;
+import org.almostrealism.hardware.MemoryBank;
+
 public interface CollectionFeatures {
 	default CollectionProducer integers(int from, int to) {
-		return () -> args -> {
-			int len = to - from;
-			PackedCollection collection = new PackedCollection(2, len);
-
-			for (int i = 0; i < len; i++) {
-				collection.setMem(2 * i, from + i, 1.0);
+		return new CollectionProducer() {
+			@Override
+			public TraversalPolicy getShape() {
+				return new TraversalPolicy(from - to);
 			}
 
-			return collection;
+			@Override
+			public Scope getScope() {
+				throw new UnsupportedOperationException();
+			}
+
+			@Override
+			public KernelizedEvaluable<PackedCollection> get() {
+				return new KernelizedEvaluable<>() {
+					@Override
+					public MemoryBank<PackedCollection> createKernelDestination(int size) {
+						throw new UnsupportedOperationException();
+					}
+
+					@Override
+					public PackedCollection evaluate(Object... args) {
+						int len = to - from;
+						PackedCollection collection = new PackedCollection(2, len);
+
+						for (int i = 0; i < len; i++) {
+							collection.setMem(2 * i, from + i, 1.0);
+						}
+
+						return collection;
+					}
+				};
+			}
 		};
 	}
 }

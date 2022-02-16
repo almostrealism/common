@@ -75,8 +75,8 @@ public abstract class Choice<T extends MemoryData> extends ProducerComputationAd
 		ArrayVariable<?> output = getArgument(0, memLength);
 		ArrayVariable<?> input = getArgument(2, memLength * choiceCount);
 		String decision = getArgument(1, 2).valueAt(0).getExpression();
-		String choices = stringForDouble(choiceCount * memLength);
-		String decisionChoice = "floor(" + decision + " * " + choices + ")";
+		String choices = stringForDouble(choiceCount);
+		String decisionChoice = "floor(" + decision + " * " + choices + ") * " + memLength;
 
 		for (int i = 0; i < memLength; i++) {
 			code.accept(output.valueAt(i).getExpression() + " = " + input.get(decisionChoice + " + " + i).getExpression() + ";\n");

@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -100,6 +100,22 @@ public class ScalarBank extends MemoryBankAdapter<Scalar> {
 				.mapToObj(this::get)
 				.mapToDouble(Scalar::getValue)
 				.sum());
+	}
+
+	// TODO  Accelerated version
+	@Deprecated
+	public Scalar lengthSq() {
+		return new Scalar(IntStream.range(0, getCount())
+				.mapToObj(this::get)
+				.mapToDouble(Scalar::getValue)
+				.map(v -> v * v)
+				.sum());
+	}
+
+	// TODO  Accelerated version
+	@Deprecated
+	public Scalar length() {
+		return new Scalar(Math.sqrt(lengthSq().getValue()));
 	}
 
 	@Deprecated

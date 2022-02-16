@@ -25,7 +25,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.IntFunction;
 import java.util.stream.Stream;
 
-public class PackedCollection extends MemoryDataAdapter implements MemoryBank<Bytes> {
+public class PackedCollection extends MemoryDataAdapter implements MemoryBank<PackedCollection> {
 	private final TraversalPolicy shape;
 	private final int traversalAxis;
 
@@ -34,7 +34,7 @@ public class PackedCollection extends MemoryDataAdapter implements MemoryBank<By
 	}
 
 	public PackedCollection(TraversalPolicy shape) {
-		this(shape, shape.getDimensions(), null, 0);
+		this(shape, 0, null, 0);
 	}
 
 	public PackedCollection(TraversalPolicy shape, int traversalAxis, MemoryData delegate, int delegateOffset) {
@@ -45,12 +45,12 @@ public class PackedCollection extends MemoryDataAdapter implements MemoryBank<By
 	}
 
 	@Override
-	public Bytes get(int index) {
+	public PackedCollection get(int index) {
 		throw new UnsupportedOperationException();
 	}
 
 	@Override
-	public void set(int index, Bytes value) {
+	public void set(int index, PackedCollection value) {
 		throw new UnsupportedOperationException();
 	}
 
