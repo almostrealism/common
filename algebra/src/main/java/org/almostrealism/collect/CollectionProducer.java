@@ -28,10 +28,10 @@ public interface CollectionProducer<T extends PackedCollection> extends Producer
 		return ev;
 	}
 
-	default CollectionProducer scalarMap(Function<Producer<Scalar>, Producer<Scalar>> f) {
+	default CollectionProducer<PackedCollection> scalarMap(Function<Producer<Scalar>, Producer<Scalar>> f) {
 		Producer<Scalar> p = f.apply(Input.value(Scalar.class, 0));
 
-		return new CollectionProducer() {
+		return new CollectionProducer<>() {
 			@Override
 			public TraversalPolicy getShape() {
 				throw new UnsupportedOperationException();

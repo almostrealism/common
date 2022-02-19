@@ -33,6 +33,20 @@ public interface MemoryData extends MultiExpression<Double>, Delegated<MemoryDat
 
 	void reassign(Memory mem);
 
+	default void load(byte b[]) {
+		ByteBuffer buf = ByteBuffer.allocate(8 * getMemLength());
+
+		for (int i = 0; i < getMemLength() * 8; i++) {
+			buf.put(b[i]);
+		}
+
+		buf.position(0);
+
+		for (int i = 0; i < getMemLength(); i++) {
+			getMem().set(getOffset() + i, buf.getDouble());
+		}
+	}
+
 	default void load(InputStream in) throws IOException {
 		ByteBuffer buf = ByteBuffer.allocate(8 * getMemLength());
 
@@ -45,6 +59,10 @@ public interface MemoryData extends MultiExpression<Double>, Delegated<MemoryDat
 		for (int i = 0; i < getMemLength(); i++) {
 			getMem().set(getOffset() + i, buf.getDouble());
 		}
+	}
+
+	default byte[] persist() {
+		return getMem().getBytes(getOffset(), getMemLength()).array();
 	}
 
 	default void persist(OutputStream out) throws IOException {

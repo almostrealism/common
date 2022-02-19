@@ -21,7 +21,7 @@ import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 
 public interface CollectionFeatures {
-	default CollectionProducer integers(int from, int to) {
+	default CollectionProducer<PackedCollection> integers(int from, int to) {
 		return new CollectionProducer() {
 			@Override
 			public TraversalPolicy getShape() {
