@@ -17,6 +17,8 @@
 package org.almostrealism.algebra;
 
 import org.almostrealism.algebra.computations.Floor;
+import org.almostrealism.algebra.computations.Max;
+import org.almostrealism.algebra.computations.Min;
 import org.almostrealism.algebra.computations.ScalarFromScalarBank;
 import org.almostrealism.algebra.computations.StaticScalarComputation;
 import org.almostrealism.algebra.computations.ScalarPow;
@@ -117,6 +119,18 @@ public interface ScalarFeatures {
 
 	default ScalarProducer floor(Supplier<Evaluable<? extends Scalar>> value) {
 		return new Floor(value);
+	}
+
+	default ScalarProducer min(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
+		return new Min(a, b);
+	}
+
+	default ScalarProducer max(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
+		return new Max(a, b);
+	}
+
+	default ScalarProducer bound(Supplier<Evaluable<? extends Scalar>> a, double min, double max) {
+		return min(max(a, v(min)), v(max));
 	}
 
 	static ScalarFeatures getInstance() { return new ScalarFeatures() { }; }
