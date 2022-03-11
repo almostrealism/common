@@ -22,9 +22,10 @@ import io.almostrealism.code.NameProvider;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
-import org.almostrealism.hardware.ContextSpecific;
+import org.almostrealism.hardware.ctx.ContextSpecific;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.ProviderAwareArgumentMap;
+import org.almostrealism.hardware.ctx.DefaultContextSpecific;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -127,7 +128,7 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 
 	protected synchronized static ContextSpecific<MemoryDataArgumentMap> getGlobalMaps() {
 		if (globalMaps == null) {
-			globalMaps = new ContextSpecific<>(() -> new MemoryDataArgumentMap(false), MemoryDataArgumentMap::destroy);
+			globalMaps = new DefaultContextSpecific<>(() -> new MemoryDataArgumentMap(false), MemoryDataArgumentMap::destroy);
 			globalMaps.init();
 		}
 
@@ -136,7 +137,7 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 
 	protected synchronized static ContextSpecific<MemoryDataArgumentMap> getGlobalMapsKernel() {
 		if (globalMapsKernel == null) {
-			globalMapsKernel = new ContextSpecific<>(MemoryDataArgumentMap::new, MemoryDataArgumentMap::destroy);
+			globalMapsKernel = new DefaultContextSpecific<>(MemoryDataArgumentMap::new, MemoryDataArgumentMap::destroy);
 			globalMapsKernel.init();
 		}
 

@@ -17,12 +17,11 @@
 package org.almostrealism.hardware.jni;
 
 import io.almostrealism.code.Accessibility;
-import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.InstructionSet;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeEncoder;
 import org.almostrealism.c.CJNIPrintWriter;
-import org.almostrealism.hardware.AbstractComputeContext;
+import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.hardware.Hardware;
 
 public class NativeComputeContext extends AbstractComputeContext {

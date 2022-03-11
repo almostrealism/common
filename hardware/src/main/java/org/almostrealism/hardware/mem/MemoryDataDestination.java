@@ -24,11 +24,15 @@ import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.hardware.ctx.ThreadLocalContextSpecific;
 
 import java.util.function.IntFunction;
 
 public class MemoryDataDestination<T extends MemoryData> extends DynamicProducerForMemoryData<T> implements Delegated<DestinationSupport<T>> {
+	public static boolean enableThreadLocalProvider = true;
+
 	private final DestinationSupport<T> destination;
+	private ThreadLocalContextSpecific<MemoryBankProvider<T>> provider;
 
 	public MemoryDataDestination(DestinationSupport<T> destination) {
 		this(destination, null);
@@ -37,6 +41,10 @@ public class MemoryDataDestination<T extends MemoryData> extends DynamicProducer
 	public MemoryDataDestination(DestinationSupport<T> destination, IntFunction<MemoryBank<T>> kernelDestination) {
 		super(args -> destination.getDestination().get(), kernelDestination);
 		this.destination = destination;
+		if (enableThreadLocalProvider) {
+			this.provider = new ThreadLocalContextSpecific<>(() -> new MemoryBankProvider<>(kernelDestination), MemoryBankProvider::destroy);
+			this.provider.init();
+		}
 	}
 
 	@Override
@@ -49,7 +57,11 @@ public class MemoryDataDestination<T extends MemoryData> extends DynamicProducer
 		return new KernelizedEvaluable<T>() {
 			@Override
 			public MemoryBank<T> createKernelDestination(int size) {
-				return e.createKernelDestination(size);
+				if (enableThreadLocalProvider) {
+					return provider.getValue().apply(size);
+				} else {
+					return e.createKernelDestination(size);
+				}
 			}
 
 			@Override

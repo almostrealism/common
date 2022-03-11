@@ -16,8 +16,9 @@
 
 package org.almostrealism.color;
 
-import org.almostrealism.hardware.ContextSpecific;
+import org.almostrealism.hardware.ctx.ContextSpecific;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.ctx.DefaultContextSpecific;
 import org.almostrealism.hardware.mem.MemoryPool;
 
 import java.util.Optional;
@@ -42,7 +43,7 @@ public class RGBData192Pool extends MemoryPool<RGBData192> {
 	private static synchronized void doInitPool() {
 		int size = 4 * Hardware.getLocalHardware().getDefaultPoolSize();
 		if (size > 0) {
-			local = new ContextSpecific<>(() -> new RGBData192Pool(size), pool -> pool.destroy());
+			local = new DefaultContextSpecific<>(() -> new RGBData192Pool(size), pool -> pool.destroy());
 			local.init();
 		}
 	}

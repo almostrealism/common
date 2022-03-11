@@ -18,13 +18,12 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.DataContext;
-import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.hardware.cl.CLMemoryProvider;
 import org.almostrealism.hardware.cl.CLMemoryProvider.Location;
 import org.almostrealism.hardware.cl.CLComputeContext;
 import org.almostrealism.hardware.cl.CLDataContext;
-import org.almostrealism.hardware.jni.NativeCompiler;
+import org.almostrealism.hardware.ctx.ContextListener;
 import org.almostrealism.hardware.jni.NativeDataContext;
 import org.jocl.CL;
 import org.jocl.Sizeof;
@@ -311,11 +310,11 @@ public final class Hardware {
 		} catch (Exception e) {
 			throw new RuntimeException(e);
 		} finally {
+			contextListeners.forEach(l -> l.contextDestroyed(next));
+			context = current;
 			if (Hardware.enableVerbose) System.out.println("Hardware[" + getName() + "]: End " + dcName);
 			next.destroy();
 			if (Hardware.enableVerbose) System.out.println("Hardware[" + getName() + "]: Destroyed " + dcName);
-			context = current;
-			contextListeners.forEach(l -> l.contextDestroyed(next));
 		}
 	}
 

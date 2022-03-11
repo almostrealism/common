@@ -27,7 +27,9 @@ import org.jocl.cl_command_queue;
 import org.jocl.cl_event;
 import org.jocl.cl_mem;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Optional;
 import java.util.stream.IntStream;
 
@@ -45,6 +47,7 @@ public class CLMemoryProvider implements MemoryProvider<RAM> {
 	private long memoryUsed;
 
 	private HashMap<cl_mem, PointerAndObject<?>> heap;
+	private List<CLMemory> allocated;
 
 	public CLMemoryProvider(CLDataContext context, cl_command_queue queue, int numberSize, long memoryMax, Location location) {
 		this.context = context;
@@ -53,6 +56,7 @@ public class CLMemoryProvider implements MemoryProvider<RAM> {
 		this.memoryMax = memoryMax;
 		this.location = location;
 		if (location == Location.HEAP) heap = new HashMap<>();
+		this.allocated = new ArrayList<>();
 	}
 
 	public int getNumberSize() { return numberSize; }
@@ -64,7 +68,9 @@ public class CLMemoryProvider implements MemoryProvider<RAM> {
 	@Override
 	public CLMemory allocate(int size) {
 		try {
-			return new CLMemory(buffer(size), this);
+			CLMemory mem = new CLMemory(buffer(size), this);
+			allocated.add(mem);
+			return mem;
 		} catch (CLException e) {
 			throw new HardwareException(e, (long) size * getNumberSize());
 		}
@@ -73,11 +79,17 @@ public class CLMemoryProvider implements MemoryProvider<RAM> {
 	@Override
 	public void deallocate(int size, RAM ram) {
 		if (!(ram instanceof CLMemory)) throw new IllegalArgumentException();
+		if (ram.getProvider() != this)
+			throw new IllegalArgumentException();
 		CLMemory mem = (CLMemory) ram;
 
 		if (heap != null) heap.remove(mem.getMem());
 		CL.clReleaseMemObject(mem.getMem());
 		memoryUsed = memoryUsed - (long) size * getNumberSize();
+
+		if (!allocated.remove(mem)) {
+			System.out.println("WARN: Deallocated untracked memory");
+		}
 	}
 
 	protected cl_mem buffer(int len) {
@@ -210,6 +222,9 @@ public class CLMemoryProvider implements MemoryProvider<RAM> {
 
 	@Override
 	public void destroy() {
-		// TODO  Deallocate everything
+		// TODO  Deallocating all of these at once appears to produce SIGSEGV
+		// List<CLMemory> available = new ArrayList<>(allocated);
+		// available.forEach(mem -> deallocate(0, mem));
+		allocated = null;
 	}
 }

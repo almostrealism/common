@@ -16,8 +16,9 @@
 
 package org.almostrealism.time;
 
-import org.almostrealism.hardware.ContextSpecific;
+import org.almostrealism.hardware.ctx.ContextSpecific;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.ctx.DefaultContextSpecific;
 import org.almostrealism.hardware.mem.MemoryPool;
 
 import java.util.Optional;
@@ -43,7 +44,7 @@ public class AcceleratedTimeSeriesPool extends MemoryPool<AcceleratedTimeSeries>
 		int size = Hardware.getLocalHardware().getTimeSeriesSize();
 		int count = Hardware.getLocalHardware().getTimeSeriesCount();
 		if (size > 0) {
-			local = new ContextSpecific<>(() -> new AcceleratedTimeSeriesPool(size, count), pool -> pool.destroy());
+			local = new DefaultContextSpecific<>(() -> new AcceleratedTimeSeriesPool(size, count), pool -> pool.destroy());
 			local.init();
 		}
 	}

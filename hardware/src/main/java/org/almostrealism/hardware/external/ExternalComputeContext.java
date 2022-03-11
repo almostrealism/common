@@ -21,7 +21,7 @@ import io.almostrealism.code.InstructionSet;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeEncoder;
 import org.almostrealism.c.CPrintWriter;
-import org.almostrealism.hardware.AbstractComputeContext;
+import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.jni.NativeInstructionSet;
 

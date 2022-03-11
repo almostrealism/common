@@ -54,8 +54,8 @@ public interface HeredityFeatures {
 		return Math.pow(1 - (1 / ((target / multiplier) + 1)), 1.0 / exp);
 	}
 
-	default ScalarProducer oneToInfinity(double f, double exp) {
-		return oneToInfinity(new StaticScalarComputation(new Scalar(f)), exp);
+	default double oneToInfinity(double f, double exp) {
+		return 1.0 / (1.0 - Math.pow(f, exp)) - 1.0;
 	}
 
 	default ScalarProducer oneToInfinity(Factor<Scalar> f, double exp) {

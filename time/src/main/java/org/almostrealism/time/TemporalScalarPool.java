@@ -16,8 +16,9 @@
 
 package org.almostrealism.time;
 
-import org.almostrealism.hardware.ContextSpecific;
+import org.almostrealism.hardware.ctx.ContextSpecific;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.ctx.DefaultContextSpecific;
 import org.almostrealism.hardware.mem.MemoryPool;
 
 import java.util.Optional;
@@ -42,7 +43,7 @@ public class TemporalScalarPool extends MemoryPool<TemporalScalar> {
 	private static synchronized void doInitPool() {
 		int size = 32 * Hardware.getLocalHardware().getDefaultPoolSize();
 		if (size > 0) {
-			local = new ContextSpecific<>(() -> new TemporalScalarPool(size), pool -> pool.destroy());
+			local = new DefaultContextSpecific<>(() -> new TemporalScalarPool(size), pool -> pool.destroy());
 			local.init();
 		}
 	}

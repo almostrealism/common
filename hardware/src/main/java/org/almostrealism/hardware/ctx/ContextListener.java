@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.hardware;
+package org.almostrealism.hardware.ctx;
 
 import io.almostrealism.code.DataContext;
 

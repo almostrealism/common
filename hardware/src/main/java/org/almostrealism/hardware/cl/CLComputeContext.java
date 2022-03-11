@@ -21,7 +21,7 @@ import io.almostrealism.code.InstructionSet;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeEncoder;
 import org.almostrealism.c.OpenCLPrintWriter;
-import org.almostrealism.hardware.AbstractComputeContext;
+import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.profile.ProfileData;
 import org.almostrealism.hardware.profile.RunData;
@@ -67,8 +67,6 @@ public class CLComputeContext extends AbstractComputeContext {
 		if (queue != null) return;
 
 		this.profiling = profiling;
-
-		if (Hardware.enableVerbose) System.out.println("Hardware[" + getName() + "]: OpenCL context initialized");
 
 		queue = CL.clCreateCommandQueue(ctx, mainDevice, profiling ? CL.CL_QUEUE_PROFILING_ENABLE : 0, null);
 		if (Hardware.enableVerbose) System.out.println("Hardware[" + getName() + "]: OpenCL command queue initialized");

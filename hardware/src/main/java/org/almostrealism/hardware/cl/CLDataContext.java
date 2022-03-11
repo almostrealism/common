@@ -154,6 +154,7 @@ public class CLDataContext implements DataContext {
 			computeContext.remove();
 		}
 
+		ram.destroy();
 		CL.clReleaseContext(ctx);
 		ctx = null;
 	}

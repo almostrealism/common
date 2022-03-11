@@ -17,8 +17,9 @@
 package org.almostrealism.geometry;
 
 import org.almostrealism.algebra.Pair;
-import org.almostrealism.hardware.ContextSpecific;
+import org.almostrealism.hardware.ctx.ContextSpecific;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.ctx.DefaultContextSpecific;
 import org.almostrealism.hardware.mem.MemoryPool;
 
 import java.util.Optional;
@@ -43,7 +44,7 @@ public class TransformMatrixPool extends MemoryPool<Pair> {
 	private static synchronized void doInitPool() {
 		int size = Hardware.getLocalHardware().getDefaultPoolSize() / 4;
 		if (size > 0) {
-			local = new ContextSpecific<>(() -> new TransformMatrixPool(size), pool -> pool.destroy());
+			local = new DefaultContextSpecific<>(() -> new TransformMatrixPool(size), pool -> pool.destroy());
 			local.init();
 		}
 	}
