@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -23,6 +23,10 @@ public class Input {
 
 	public static <T> Producer<T> value(Class<T> type, int argIndex) {
 		return PassThroughEvaluable.of(type, argIndex);
+	}
+
+	public static <T> Producer<T> value(Class<T> type, int argIndex, int kernelDimension) {
+		return PassThroughEvaluable.of(type, argIndex, kernelDimension);
 	}
 
 	public static <T> Producer<T> value(int memLength, int argIndex) {

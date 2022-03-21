@@ -80,6 +80,10 @@ public interface CodeFeatures extends CollectionFeatures, ScalarFeatures, PairFe
 		return value(type, argIndex);
 	}
 
+	default <T> Producer<T> v(Class<T> type, int argIndex, int kernelDimension) {
+		return value(type, argIndex, kernelDimension);
+	}
+
 	default <T> Producer<T> v(int memLength, int argIndex) {
 		return value(memLength, argIndex);
 	}
@@ -128,6 +132,10 @@ public interface CodeFeatures extends CollectionFeatures, ScalarFeatures, PairFe
 
 	default <T> Producer<T> value(Class<T> type, int argIndex) {
 		return Input.value(type, argIndex);
+	}
+
+	default <T> Producer<T> value(Class<T> type, int argIndex, int kernelDimension) {
+		return Input.value(type, argIndex, kernelDimension);
 	}
 
 	default <T> Producer<T> value(int memLength, int argIndex) {

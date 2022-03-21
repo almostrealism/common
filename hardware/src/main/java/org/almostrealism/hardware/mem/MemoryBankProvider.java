@@ -18,6 +18,7 @@ package org.almostrealism.hardware.mem;
 
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.ctx.GlobalContextDebugFlags;
 
 import java.util.function.IntFunction;
 
@@ -28,15 +29,23 @@ public class MemoryBankProvider<T extends MemoryData> implements IntFunction<Mem
 
 	public MemoryBankProvider(IntFunction<MemoryBank<T>> supplier) {
 		this.supplier = supplier;
+
+		if (GlobalContextDebugFlags.gate) {
+			System.out.println("!");
+		}
 	}
 
 	public MemoryBank<T> apply(int size) {
 		if (lastSize == size) {
-			System.out.println("MemoryBankProvider: Returning existing MemoryBank");
 			return last;
 		}
 
 		System.out.println("MemoryBankProvider: Creating a new MemoryBank");
+
+		if (GlobalContextDebugFlags.gate) {
+			System.out.println("!");
+		}
+
 		last = supplier.apply(size);
 		lastSize = size;
 		return last;
