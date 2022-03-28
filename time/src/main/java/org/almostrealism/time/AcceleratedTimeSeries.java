@@ -39,6 +39,8 @@ public class AcceleratedTimeSeries extends TemporalScalarBank implements Lifecyc
 
 	public AcceleratedTimeSeries() {
 		super(Hardware.getLocalHardware().getTimeSeriesSize(), AcceleratedTimeSeriesPool.getLocal(), defaultCacheLevel);
+		setBeginCursorIndex(1);
+		setEndCursorIndex(1);
 	}
 
 	public AcceleratedTimeSeries(int maxEntries) {

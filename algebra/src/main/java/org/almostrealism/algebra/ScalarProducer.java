@@ -154,14 +154,14 @@ public interface ScalarProducer extends ProducerComputation<Scalar>, KernelizedP
 	}
 
 	default AcceleratedConditionalStatementScalar greaterThan(Supplier<Evaluable<? extends Scalar>> operand,
-															  Supplier<Evaluable<? extends Vector>> trueValue,
-															  Supplier<Evaluable<? extends Vector>> falseValue) {
+															  Supplier<Evaluable<? extends Scalar>> trueValue,
+															  Supplier<Evaluable<? extends Scalar>> falseValue) {
 		return greaterThan(operand, trueValue, falseValue, false);
 	}
 
 	default AcceleratedConditionalStatementScalar greaterThan(Supplier<Evaluable<? extends Scalar>> operand,
-															  Supplier<Evaluable<? extends Vector>> trueValue,
-															  Supplier<Evaluable<? extends Vector>> falseValue,
+															  Supplier<Evaluable<? extends Scalar>> trueValue,
+															  Supplier<Evaluable<? extends Scalar>> falseValue,
 															  boolean includeEqual) {
 		return new GreaterThanScalar(this, operand, trueValue, falseValue, includeEqual);
 	}

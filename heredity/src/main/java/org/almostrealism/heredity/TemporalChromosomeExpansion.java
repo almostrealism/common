@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,15 +19,18 @@ package org.almostrealism.heredity;
 import io.almostrealism.cycle.Setup;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.time.Temporal;
+import org.almostrealism.time.TemporalList;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-public abstract class TemporalChromosomeExpansion<T, I, O> implements Chromosome<O>, Setup {
+public abstract class TemporalChromosomeExpansion<T, I, O> implements Chromosome<O>, Temporal, Setup {
 	private Chromosome<I> source;
 	private Map<Integer, Function<Gene<I>, Producer<O>>> transforms;
 
@@ -70,6 +73,24 @@ public abstract class TemporalChromosomeExpansion<T, I, O> implements Chromosome
 
 		prepare.get().run();
 		return process();
+	}
+
+	@Override
+	public Supplier<Runnable> tick() {
+		return destination.stream()
+				.flatMap(g -> IntStream.range(0, g.length()).mapToObj(g::valueAt))
+				.map(f -> f instanceof TemporalFactor ? (TemporalFactor) f : null)
+				.filter(Objects::nonNull)
+				.map(Temporal::tick)
+				.collect(OperationList.collector());
+	}
+
+	public TemporalList getTemporals() {
+		return destination.stream()
+				.flatMap(g -> IntStream.range(0, g.length()).mapToObj(g::valueAt))
+				.map(f -> f instanceof Temporal ? (Temporal) f : null)
+				.filter(Objects::nonNull)
+				.collect(TemporalList.collector());
 	}
 
 	protected abstract Supplier<Runnable> process();

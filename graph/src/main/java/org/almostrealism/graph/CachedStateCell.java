@@ -40,6 +40,8 @@ public abstract class CachedStateCell<T> extends FilteredCell<T> implements Fact
 
 	public T getCachedValue() { return cachedValue; }
 
+	protected T getOutputValue() { return outValue; }
+
 	@Override
 	public Producer<T> getResultant(Producer<T> value) {
 		return () -> new Provider<>(outValue);
@@ -56,13 +58,19 @@ public abstract class CachedStateCell<T> extends FilteredCell<T> implements Fact
 		return assign(() -> new Provider<>(cachedValue), protein);
 	}
 
+	protected Supplier<Runnable> pushValue() {
+		return super.push(null);
+	}
+
 	protected abstract Supplier<Runnable> assign(Supplier<Evaluable<? extends T>> out, Supplier<Evaluable<? extends T>> in);
 
 	protected abstract Supplier<Runnable> reset(Supplier<Evaluable<? extends T>> out);
 
 	@Override
 	public Supplier<Runnable> setup() {
-		OperationList reset = new OperationList("CachedStateCell Setup");
+		String name = getClass().getSimpleName();
+		if (name == null || name.length() <= 0) name = "anonymous";
+		OperationList reset = new OperationList(name + " Setup");
 		reset.add(reset(() -> new Provider<>(cachedValue)));
 		reset.add(reset(() -> new Provider<>(outValue)));
 		return reset;
@@ -70,7 +78,9 @@ public abstract class CachedStateCell<T> extends FilteredCell<T> implements Fact
 
 	@Override
 	public Supplier<Runnable> tick() {
-		OperationList tick = new OperationList("CachedStateCell Tick");
+		String name = getClass().getSimpleName();
+		if (name == null || name.length() <= 0) name = "anonymous";
+		OperationList tick = new OperationList(name + " Tick");
 		tick.add(assign(() -> new Provider<>(outValue), () -> new Provider<>(cachedValue)));
 		tick.add(reset(() -> new Provider<>(cachedValue)));
 		tick.add(super.push(null));

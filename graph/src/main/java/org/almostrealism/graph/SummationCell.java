@@ -16,6 +16,7 @@
 
 package org.almostrealism.graph;
 
+import org.almostrealism.CodeFeatures;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.graph.computations.SummationCellOperation;
 import io.almostrealism.relation.Producer;
@@ -23,9 +24,11 @@ import org.almostrealism.hardware.OperationList;
 
 import java.util.function.Supplier;
 
-public class SummationCell extends ScalarCachedStateCell {
+public class SummationCell extends ScalarCachedStateCell implements CodeFeatures {
 	@Override
 	public Supplier<Runnable> push(Producer<Scalar> protein) {
-		return new SummationCellOperation(this, protein);
+		// return new SummationCellOperation(this, protein);
+		if (protein == null) throw new NullPointerException();
+		return a(1, p(getCachedValue()), scalarAdd(p(getCachedValue()), protein));
 	}
 }

@@ -16,9 +16,11 @@
 
 package org.almostrealism.algebra;
 
+import org.almostrealism.algebra.computations.Choice;
 import org.almostrealism.algebra.computations.Floor;
 import org.almostrealism.algebra.computations.Max;
 import org.almostrealism.algebra.computations.Min;
+import org.almostrealism.algebra.computations.ScalarChoice;
 import org.almostrealism.algebra.computations.ScalarFromScalarBank;
 import org.almostrealism.algebra.computations.StaticScalarComputation;
 import org.almostrealism.algebra.computations.ScalarPow;
@@ -131,6 +133,10 @@ public interface ScalarFeatures {
 
 	default ScalarProducer bound(Supplier<Evaluable<? extends Scalar>> a, double min, double max) {
 		return min(max(a, v(min)), v(max));
+	}
+
+	default ScalarChoice choice(int choiceCount, Supplier<Evaluable<? extends Scalar>> decision, Supplier<Evaluable<? extends MemoryBank<Scalar>>> choices) {
+		return new ScalarChoice(choiceCount, decision, choices);
 	}
 
 	static ScalarFeatures getInstance() { return new ScalarFeatures() { }; }

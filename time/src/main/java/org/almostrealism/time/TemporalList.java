@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -21,6 +21,8 @@ import org.almostrealism.hardware.OperationList;
 
 import java.util.ArrayList;
 import java.util.function.Supplier;
+import java.util.stream.Collector;
+import java.util.stream.Collectors;
 
 public class TemporalList extends ArrayList<Temporal> implements Temporal, Lifecycle {
 
@@ -37,5 +39,9 @@ public class TemporalList extends ArrayList<Temporal> implements Temporal, Lifec
 		forEach(t -> {
 			if (t instanceof Lifecycle) ((Lifecycle) t).reset();
 		});
+	}
+
+	public static Collector<Temporal, ?, TemporalList> collector() {
+		return Collectors.toCollection(TemporalList::new);
 	}
 }
