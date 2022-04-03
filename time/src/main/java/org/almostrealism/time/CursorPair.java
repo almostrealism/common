@@ -29,6 +29,8 @@ import java.util.function.Supplier;
 public class CursorPair extends Pair {
 	public CursorPair() { super(0, 0); }
 
+	public CursorPair(double cursor, double delayCursor) { super(cursor, delayCursor); }
+
 	public void setCursor(double v) { setA(v); }
 	public double getCursor() { return getA(); }
 

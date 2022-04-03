@@ -27,8 +27,8 @@ public interface ComputerFeatures extends HardwareFeatures, NameProvider {
 		return Hardware.getLocalHardware().getComputeContext().isKernelSupported();
 	}
 
-	@Override
-	default Variable getOutputVariable() { return getArgument(0); }
+//	@Override
+//	default Variable getOutputVariable() { return getArgument(0); }
 
 	@Override
 	default String getVariableValueName(Variable v, String pos, boolean assignment, int kernelIndex) {

@@ -121,6 +121,10 @@ public interface ScalarProducer extends ProducerComputation<Scalar>, KernelizedP
 
 	default ScalarProducer pow(double exp) { return pow(this, exp); }
 
+	default ScalarProducer mod(Supplier<Evaluable<? extends Scalar>> divisor) {
+		return mod(this, divisor);
+	}
+
 	default AcceleratedConditionalStatementScalar greaterThan(double operand) {
 		return greaterThan(operand, false);
 	}

@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,10 +16,10 @@
 
 package org.almostrealism.algebra;
 
-import org.almostrealism.algebra.computations.Choice;
 import org.almostrealism.algebra.computations.Floor;
 import org.almostrealism.algebra.computations.Max;
 import org.almostrealism.algebra.computations.Min;
+import org.almostrealism.algebra.computations.Mod;
 import org.almostrealism.algebra.computations.ScalarChoice;
 import org.almostrealism.algebra.computations.ScalarFromScalarBank;
 import org.almostrealism.algebra.computations.StaticScalarComputation;
@@ -27,6 +27,9 @@ import org.almostrealism.algebra.computations.ScalarPow;
 import org.almostrealism.algebra.computations.ScalarProduct;
 import org.almostrealism.algebra.computations.ScalarSum;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.computations.ScalarFromPackedCollection;
 import org.almostrealism.hardware.MemoryBank;
 
 import java.util.function.Supplier;
@@ -53,6 +56,14 @@ public interface ScalarFeatures {
 
 	default ScalarProducer scalar(Supplier<Evaluable<? extends MemoryBank<Scalar>>> bank, int index) {
 		return new ScalarFromScalarBank(bank, scalar((double) index));
+	}
+
+	default ScalarProducer scalar(TraversalPolicy shape, Supplier<Evaluable<? extends PackedCollection>> collection, int index) {
+		return scalar(shape, collection, v((double) index));
+	}
+
+	default ScalarProducer scalar(TraversalPolicy shape, Supplier<Evaluable<? extends PackedCollection>> collection, Supplier<Evaluable<? extends Scalar>> index) {
+		return new ScalarFromPackedCollection(shape, collection, index);
 	}
 
 	default ScalarProducer scalar() {
@@ -129,6 +140,10 @@ public interface ScalarFeatures {
 
 	default ScalarProducer max(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
 		return new Max(a, b);
+	}
+
+	default ScalarProducer mod(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
+		return new Mod(a, b);
 	}
 
 	default ScalarProducer bound(Supplier<Evaluable<? extends Scalar>> a, double min, double max) {

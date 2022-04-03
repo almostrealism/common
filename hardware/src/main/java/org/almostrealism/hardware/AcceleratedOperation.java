@@ -51,7 +51,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-public class AcceleratedOperation<T extends MemoryData> extends OperationAdapter<T> implements Function<Object[], Object[]>, Runnable,
+public abstract class AcceleratedOperation<T extends MemoryData> extends OperationAdapter<T> implements Function<Object[], Object[]>, Runnable,
 														KernelizedOperation, Compactable, ScopeLifecycle, ComputerFeatures {
 	public static final boolean enableArgumentMapping = true;
 	public static final boolean enableCompaction = true;

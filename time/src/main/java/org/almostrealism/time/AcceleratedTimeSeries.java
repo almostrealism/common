@@ -22,6 +22,7 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareFeatures;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
+import org.almostrealism.hardware.KernelizedProducer;
 import org.almostrealism.time.computations.AcceleratedTimeSeriesAdd;
 import org.almostrealism.time.computations.AcceleratedTimeSeriesPurge;
 import org.almostrealism.time.computations.AcceleratedTimeSeriesValueAt;
@@ -86,7 +87,7 @@ public class AcceleratedTimeSeries extends TemporalScalarBank implements Lifecyc
 		return new AcceleratedTimeSeriesPurge(() -> new Provider<>(this), time, frequency);
 	}
 
-	public Producer<Scalar> valueAt(Producer<CursorPair> cursor) {
+	public KernelizedProducer<Scalar> valueAt(Producer<CursorPair> cursor) {
 		return new AcceleratedTimeSeriesValueAt(() -> new Provider<>(this), cursor);
 	}
 

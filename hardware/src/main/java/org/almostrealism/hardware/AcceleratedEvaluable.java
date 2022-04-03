@@ -22,6 +22,7 @@ import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
+import io.almostrealism.scope.Variable;
 import org.almostrealism.hardware.cl.HardwareOperator;
 
 import java.util.List;
@@ -58,6 +59,9 @@ public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> ex
 
 		return super.getArgument(index, size);
 	}
+
+	@Override
+	public Variable getOutputVariable() { return getArgument(0); }
 
 	@Override
 	public void prepareScope(ScopeInputManager manager) {

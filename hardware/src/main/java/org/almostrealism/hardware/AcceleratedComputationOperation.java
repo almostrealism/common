@@ -141,6 +141,9 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	@Override
+	public Variable getOutputVariable() { return computation.getOutputVariable(); }
+
+	@Override
 	public void compact() {
 		if (getComputation() instanceof Compactable) {
 			((Compactable) getComputation()).compact();

@@ -18,7 +18,10 @@ package org.almostrealism.time;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.cycle.Setup;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.uml.Lifecycle;
+import org.almostrealism.algebra.Scalar;
+import org.almostrealism.algebra.computations.PairFromScalars;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.computations.Loop;
 

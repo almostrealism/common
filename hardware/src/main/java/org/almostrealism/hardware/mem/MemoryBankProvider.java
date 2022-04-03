@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware.mem;
 
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.ctx.GlobalContextDebugFlags;
@@ -40,11 +41,8 @@ public class MemoryBankProvider<T extends MemoryData> implements IntFunction<Mem
 			return last;
 		}
 
-		System.out.println("MemoryBankProvider: Creating a new MemoryBank");
-
-		if (GlobalContextDebugFlags.gate) {
-			System.out.println("!");
-		}
+		if (Hardware.enableVerbose)
+			System.out.println("MemoryBankProvider: Creating a new MemoryBank");
 
 		last = supplier.apply(size);
 		lastSize = size;
