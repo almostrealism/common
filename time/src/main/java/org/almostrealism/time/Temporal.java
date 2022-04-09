@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,5 +29,9 @@ public interface Temporal extends TemporalFeatures {
 
 	default Supplier<Runnable> iter(int iter) {
 		return iter(this, iter);
+	}
+
+	default Supplier<Runnable> iter(int iter, boolean resetAfter) {
+		return iter(this, iter, resetAfter);
 	}
 }
