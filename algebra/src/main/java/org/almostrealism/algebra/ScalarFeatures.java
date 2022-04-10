@@ -74,8 +74,8 @@ public interface ScalarFeatures {
 		return (ScalarEvaluable) scalarAdd(() -> a, () -> b).get();
 	}
 
-	default ScalarProducer scalarAdd(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
-		return new ScalarSum(a, b);
+	default ScalarProducer scalarAdd(Supplier<Evaluable<? extends Scalar>>... values) {
+		return new ScalarSum(values);
 	}
 
 	default ScalarEvaluable scalarSubtract(Evaluable<Scalar> a, Evaluable<Scalar> b) {

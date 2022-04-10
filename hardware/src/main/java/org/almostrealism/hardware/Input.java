@@ -18,6 +18,8 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.relation.Producer;
 
+import java.util.stream.IntStream;
+
 public class Input {
 	private Input() { }
 
@@ -31,5 +33,9 @@ public class Input {
 
 	public static <T> Producer<T> value(int memLength, int argIndex) {
 		return new PassThroughProducer(memLength, argIndex);
+	}
+
+	public static Producer[] generateArguments(int memLength, int first, int count) {
+		return IntStream.range(0, count).mapToObj(i -> value(memLength, first + i)).toArray(Producer[]::new);
 	}
 }
