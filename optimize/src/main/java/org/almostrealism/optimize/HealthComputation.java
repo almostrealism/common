@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,14 +14,12 @@
  * limitations under the License.
  */
 
-package org.almostrealism.graph.temporal;
+package org.almostrealism.optimize;
 
-import org.almostrealism.graph.Receptor;
-import org.almostrealism.heredity.Genome;
+import io.almostrealism.uml.Lifecycle;
 import org.almostrealism.time.Temporal;
 
-import java.util.List;
-
-public interface GeneticTemporalFactory<G, T, O extends Temporal> {
-	O generateOrgan(Genome<G> genome, List<? extends Receptor<T>> measures, Receptor<T> output);
+public interface HealthComputation<T extends Temporal, S extends HealthScore> extends Lifecycle {
+	void setTarget(T target);
+	S computeHealth();
 }

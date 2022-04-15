@@ -30,6 +30,7 @@
 		<module>space</module>
 		<module>time</module>
 		<module>utils</module>
+		<module>optimize</module>
 	</modules>
 
 	<!-- Output to jar format -->
