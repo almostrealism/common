@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,4 +36,6 @@ public class Frequency {
 	public static Frequency forBPM(double bpm) {
 		return new Frequency(bpm / 60);
 	}
+
+	public String toString() { return asHertz() + "Hz"; }
 }
