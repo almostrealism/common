@@ -54,8 +54,8 @@ public interface RGBFeatures {
 		return (RGBEvaluable) cadd(() -> value, () -> operand).get();
 	}
 
-	default RGBProducer cadd(Supplier<Evaluable<? extends RGB>> value, Supplier<Evaluable<? extends RGB>> operand) {
-		return new ColorSum(value, operand);
+	default RGBProducer cadd(Supplier<Evaluable<? extends RGB>>... values) {
+		return new ColorSum(values);
 	}
 
 	default RGBEvaluable csubtract(Evaluable<RGB> value, Evaluable<RGB> operand) {

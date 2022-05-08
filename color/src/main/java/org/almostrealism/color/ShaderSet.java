@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,8 +16,10 @@
 
 package org.almostrealism.color;
 
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.List;
 
 import org.almostrealism.geometry.DiscreteField;
 import org.almostrealism.color.computations.RGBAdd;
@@ -26,27 +28,21 @@ import io.almostrealism.relation.Producer;
 /**
  * @author  Michael Murray
  */
-public class ShaderSet<C extends LightingContext> extends HashSet<Shader<C>> implements Shader<C> {
+public class ShaderSet<C extends LightingContext> extends HashSet<Shader<C>> implements Shader<C>, RGBFeatures {
     /**
      * @return  The sum of the values given by the shade method for each {@link Shader}
 	 *          instance stored by this {@link ShaderSet}.
      */
     @Override
     public Producer<RGB> shade(C p, DiscreteField normals) {
-        Producer<RGB> color = null;
-        
         Iterator<Shader<C>> itr = super.iterator();
+		List<Producer<RGB>> colors = new ArrayList<>();
 
         while (itr.hasNext()) {
-        	if (color == null) {
-        		color = itr.next().shade(p, normals);
-			} else {
-        		final Producer<RGB> fc = color;
-				color = () -> new RGBAdd(fc, itr.next().shade(p, normals));
-			}
+        	colors.add(itr.next().shade(p, normals));
 		}
-        
-        return color;
+
+        return cadd(colors.toArray(Producer[]::new));
     }
     
 	/** @return  False. */
