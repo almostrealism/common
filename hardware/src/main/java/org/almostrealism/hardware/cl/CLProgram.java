@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware.cl;
 
+import io.almostrealism.code.OperationMetadata;
 import org.almostrealism.hardware.HardwareException;
 import org.jocl.CL;
 import org.jocl.CLException;
@@ -23,16 +24,20 @@ import org.jocl.cl_program;
 
 public class CLProgram {
 	private cl_program prog;
+	private final OperationMetadata metadata;
 	private final String src;
 
-	private CLProgram(cl_program prog, String src) {
+	private CLProgram(cl_program prog, OperationMetadata metadata, String src) {
 		this.prog = prog;
+		this.metadata = metadata;
 		this.src = src;
 	}
 
 	public cl_program getProgram() {
 		return prog;
 	}
+
+	public OperationMetadata getMetadata() { return metadata; }
 
 	public String getSource() {
 		return src;
@@ -53,11 +58,11 @@ public class CLProgram {
 		prog = null;
 	}
 
-	public static CLProgram create(CLComputeContext h, String src) {
+	public static CLProgram create(CLComputeContext h, OperationMetadata metadata, String src) {
 		int[] result = new int[1];
 		cl_program prog = CL.clCreateProgramWithSource(h.getCLContext(), 1, new String[] { src }, null, result);
 		if (result[0] != 0) throw new RuntimeException("Error creating HardwareOperatorMap: " + result[0]);
 
-		return new CLProgram(prog, src);
+		return new CLProgram(prog, metadata, src);
 	}
 }

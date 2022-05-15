@@ -32,6 +32,7 @@ import java.util.function.Consumer;
  * @param <T> Return type
  */
 public class HardwareOperator<T extends MemoryData> implements Consumer<Object[]>, Factory<cl_kernel> {
+	public static boolean enableLog;
 	public static boolean enableVerboseLog;
 
 	private static long totalInvocations;
@@ -87,6 +88,10 @@ public class HardwareOperator<T extends MemoryData> implements Consumer<Object[]
 
 		int index = 0;
 		long id = totalInvocations++;
+
+		if (enableLog) {
+			System.out.println("CL: " + prog.getMetadata().getDisplayName());
+		}
 
 		try {
 			for (int i = 0; i < argCount; i++) {

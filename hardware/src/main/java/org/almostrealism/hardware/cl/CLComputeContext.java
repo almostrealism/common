@@ -18,6 +18,7 @@ package org.almostrealism.hardware.cl;
 
 import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.InstructionSet;
+import io.almostrealism.code.Memory;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeEncoder;
 import org.almostrealism.c.OpenCLPrintWriter;
@@ -41,6 +42,13 @@ import java.util.Map;
 import java.util.function.Consumer;
 
 public class CLComputeContext extends AbstractComputeContext {
+	/**
+	 * Note: Using multiple queues, by enabling this flag, appears to cause some
+	 *       vary hard to identify issues wherein kernel functions will behave
+	 *       totally differently depending on whether kernel arguments have been
+	 *       retrieved using {@link CLMemoryProvider#toArray(Memory, int)} before
+	 *       the kernel is invoked.
+	 */
 	public static boolean enableFastQueue = false;
 
 	private static final String fp64 = "#pragma OPENCL EXTENSION cl_khr_fp64 : enable\n";
@@ -92,7 +100,7 @@ public class CLComputeContext extends AbstractComputeContext {
 		ScopeEncoder enc = new ScopeEncoder(OpenCLPrintWriter::new, Accessibility.EXTERNAL);
 		buf.append(enc.apply(scope));
 
-		HardwareOperatorMap instSet = new HardwareOperatorMap(this, buf.toString(), profileFor(scope.getName()));
+		HardwareOperatorMap instSet = new HardwareOperatorMap(this, scope.getMetadata(), buf.toString(), profileFor(scope.getName()));
 		instructionSets.add(instSet);
 		return instSet;
 	}

@@ -17,6 +17,7 @@
 package org.almostrealism.hardware.cl;
 
 import io.almostrealism.code.InstructionSet;
+import io.almostrealism.code.OperationMetadata;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.profile.RunData;
@@ -43,15 +44,15 @@ public class HardwareOperatorMap<T extends MemoryData> implements InstructionSet
 	private List<HardwareOperator<T>> allOperators;
 	private Consumer<RunData> profile;
 
-	public HardwareOperatorMap(CLComputeContext h, String src, Consumer<RunData> profile) {
+	public HardwareOperatorMap(CLComputeContext h, OperationMetadata metadata, String src, Consumer<RunData> profile) {
 		this.operators = new ThreadLocal<>();
 		this.allOperators = new ArrayList<>();
 		this.profile = profile;
-		init(h, src);
+		init(h, metadata, src);
 	}
 
-	protected void init(CLComputeContext h, String src) {
-		prog = CLProgram.create(h, src);
+	protected void init(CLComputeContext h, OperationMetadata metadata, String src) {
+		prog = CLProgram.create(h, metadata, src);
 
 		RuntimeException ex = null;
 

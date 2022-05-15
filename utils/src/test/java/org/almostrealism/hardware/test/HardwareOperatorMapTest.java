@@ -1,5 +1,6 @@
 package org.almostrealism.hardware.test;
 
+import io.almostrealism.code.OperationMetadata;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.cl.HardwareOperatorMap;
 
@@ -21,7 +22,9 @@ public class HardwareOperatorMapTest {
 
 	// @Test
 	public void largeFunction() {
-		HardwareOperatorMap map = new HardwareOperatorMap(Hardware.getLocalHardware().getClComputeContext(), LARGE_FUNCTION, null);
+		HardwareOperatorMap map = new HardwareOperatorMap(Hardware.getLocalHardware().getClComputeContext(),
+				new OperationMetadata("Large Function", "Large Test Function"),
+				LARGE_FUNCTION, null);
 		assert map.get("f_anonymous_407", 9) != null;
 	}
 }

@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.OperationMetadata;
 import org.almostrealism.hardware.cl.HardwareOperatorMap;
 
 import java.io.InputStream;
@@ -33,7 +34,8 @@ public class AcceleratedFunctions {
 
 	protected synchronized void init(Hardware h, String src) {
 		hardware = h;
-		base = new HardwareOperatorMap(h.getClComputeContext(), src, null);
+		base = new HardwareOperatorMap(h.getClComputeContext(),
+				new OperationMetadata("AcceleratedFunctions", "Built in functions"), src, null);
 		extensions = new HashMap<>();
 	}
 
@@ -45,7 +47,9 @@ public class AcceleratedFunctions {
 			if (in == null) {
 				extensions.put(c, base);
 			} else {
-				extensions.put(c, new HardwareOperatorMap(hardware.getClComputeContext(), hardware.loadSource(in), null));
+				extensions.put(c, new HardwareOperatorMap(hardware.getClComputeContext(),
+						new OperationMetadata(c.getSimpleName(), "Custom CL Code"),
+						hardware.loadSource(in), null));
 			}
 		}
 
