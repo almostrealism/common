@@ -89,8 +89,8 @@ public class HardwareOperator<T extends MemoryData> implements Consumer<Object[]
 		int index = 0;
 		long id = totalInvocations++;
 
-		if (enableLog) {
-			System.out.println("CL: " + prog.getMetadata().getDisplayName());
+		if (enableVerboseLog) {
+			System.out.println("CL: " + prog.getMetadata().getDisplayName() + "(" + id + ")");
 		}
 
 		try {

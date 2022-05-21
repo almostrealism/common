@@ -276,7 +276,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	}
 
 	@Override
-	public void kernelOperate(MemoryBank output, MemoryBank[] args) {
+	public void kernelOperate(MemoryBank output, MemoryData[] args) {
 		if (getArgumentVariables() == null) {
 			System.out.println("WARN: " + getName() + " was not compiled ahead of time");
 			compile();
@@ -286,7 +286,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			if (isKernel() && enableKernel) {
 				Consumer<Object[]> operator = getOperator();
 				((HardwareOperator) operator).setGlobalWorkOffset(0);
-				((HardwareOperator) operator).setGlobalWorkSize(Optional.ofNullable(output).map(MemoryBank::getCount).orElseGet(() -> args[0].getCount()));
+				((HardwareOperator) operator).setGlobalWorkSize(Optional.ofNullable(output).map(MemoryBank::getCount).orElseGet(() -> ((MemoryBank) args[0]).getCount()));
 
 				if (enableKernelLog) System.out.println("AcceleratedOperation: Preparing " + getName() + " kernel...");
 				MemoryData input[] = getKernelArgs(output, args);
@@ -302,7 +302,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		}
 	}
 
-	protected MemoryData[] getKernelArgs(MemoryBank output, MemoryBank args[]) {
+	protected MemoryData[] getKernelArgs(MemoryBank output, MemoryData args[]) {
 		return getKernelArgs(getArgumentVariables(), args, Collections.singletonMap((ArrayVariable) getOutputVariable(), output), output.getCount());
 	}
 
@@ -345,11 +345,11 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		argumentMaps = new ArrayList<>();
 	}
 
-	protected static <T> MemoryData[] getKernelArgs(List<ArrayVariable<? extends T>> arguments, MemoryBank args[], int kernelSize) {
+	protected static <T> MemoryData[] getKernelArgs(List<ArrayVariable<? extends T>> arguments, MemoryData args[], int kernelSize) {
 		return getKernelArgs(arguments, args, new HashMap<>(), kernelSize);
 	}
 
-	protected static <T> MemoryData[] getKernelArgs(List<ArrayVariable<? extends T>> arguments, MemoryBank args[], Map<ArrayVariable<? extends T>, MemoryBank> mappings, int kernelSize) {
+	protected static <T> MemoryData[] getKernelArgs(List<ArrayVariable<? extends T>> arguments, MemoryData args[], Map<ArrayVariable<? extends T>, MemoryBank> mappings, int kernelSize) {
 		MemoryData kernelArgs[] = new MemoryData[arguments.size()];
 
 //		int kernelSize = 0;

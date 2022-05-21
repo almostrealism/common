@@ -110,7 +110,7 @@ public abstract class DynamicAcceleratedEvaluable<I extends MemoryData, O extend
 	 * destination.
 	 */
 	@Override
-	public void kernelEvaluate(MemoryBank destination, MemoryBank args[]) {
+	public void kernelEvaluate(MemoryBank destination, MemoryData... args) {
 		AcceleratedEvaluable.kernelEvaluate(this, destination, args, isKernel());
 	}
 

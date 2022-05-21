@@ -33,7 +33,7 @@ import java.util.stream.Stream;
  * @author  Michael Murray
  */
 public interface KernelizedEvaluable<T extends MemoryData> extends Evaluable<T> {
-	default void kernelEvaluate(MemoryBank destination, MemoryBank... args) {
+	default void kernelEvaluate(MemoryBank destination, MemoryData... args) {
 		String name = this instanceof Named ? ((Named) this).getName() : OperationAdapter.operationName(null, getClass(), "function");
 		if (KernelizedOperation.enableKernelLog) System.out.println("KernelizedEvaluable: Evaluating " + name + " kernel...");
 
@@ -45,7 +45,7 @@ public interface KernelizedEvaluable<T extends MemoryData> extends Evaluable<T> 
 			try {
 				final int fi = i;
 				Object o[] = Stream.of(args)
-						.map(arg -> arg.get(fi)).toArray();
+						.map(arg -> ((MemoryBank) arg).get(fi)).toArray();
 
 				r = evaluate(o);
 				if (r == null) r = replaceNull(o);

@@ -59,7 +59,7 @@ public class DynamicProducerForMemoryData<T extends MemoryData> extends DynamicP
 			}
 
 			@Override
-			public void kernelEvaluate(MemoryBank destination, MemoryBank[] args) {
+			public void kernelEvaluate(MemoryBank destination, MemoryData... args) {
 				if (e instanceof KernelizedEvaluable) {
 					((KernelizedEvaluable) e).kernelEvaluate(destination, args);
 				} else {

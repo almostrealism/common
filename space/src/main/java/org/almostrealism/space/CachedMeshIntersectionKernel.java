@@ -30,6 +30,7 @@ import org.almostrealism.hardware.KernelizedProducer;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.geometry.DimensionAware;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.hardware.MemoryData;
 
 public class CachedMeshIntersectionKernel implements KernelizedEvaluable<Scalar>, DimensionAware {
 	private MeshData data;
@@ -56,7 +57,7 @@ public class CachedMeshIntersectionKernel implements KernelizedEvaluable<Scalar>
 	public MemoryBank<Scalar> createKernelDestination(int size) { return new ScalarBank(size); }
 
 	@Override
-	public void kernelEvaluate(MemoryBank destination, MemoryBank args[]) {
+	public void kernelEvaluate(MemoryBank destination, MemoryData... args) {
 		if (destination instanceof ScalarBank == false) {
 			throw new IllegalArgumentException("Kernel output is Scalar, destination must be ScalarBank");
 		}

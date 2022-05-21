@@ -18,6 +18,7 @@ package org.almostrealism.hardware.cl;
 
 import io.almostrealism.code.InstructionSet;
 import io.almostrealism.code.OperationMetadata;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.profile.RunData;
@@ -52,6 +53,10 @@ public class HardwareOperatorMap<T extends MemoryData> implements InstructionSet
 	}
 
 	protected void init(CLComputeContext h, OperationMetadata metadata, String src) {
+		if (HardwareOperator.enableLog) {
+			System.out.println("HardwareOperatorMap: init " + metadata.getDisplayName());
+		}
+
 		prog = CLProgram.create(h, metadata, src);
 
 		RuntimeException ex = null;

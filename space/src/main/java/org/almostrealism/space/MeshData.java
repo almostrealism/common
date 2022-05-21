@@ -26,6 +26,7 @@ import org.almostrealism.graph.mesh.TriangleDataBank;
 import org.almostrealism.hardware.KernelizedOperation;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.MemoryBankAdapter;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.geometry.computations.RankedChoiceEvaluable;
@@ -58,7 +59,7 @@ public class MeshData extends TriangleDataBank {
 		return out.get(0);
 	}
 
-	public void evaluateIntersectionKernel(KernelizedEvaluable<Ray> ray, ScalarBank destination, MemoryBank args[]) {
+	public void evaluateIntersectionKernel(KernelizedEvaluable<Ray> ray, ScalarBank destination, MemoryData args[]) {
 		PairBank result = new PairBank(destination.getCount());
 		evaluateIntersectionKernel(ray, result, args);
 		for (int i = 0; i < result.getCount(); i++) {
@@ -66,7 +67,7 @@ public class MeshData extends TriangleDataBank {
 		}
 	}
 
-	public void evaluateIntersectionKernel(KernelizedEvaluable<Ray> ray, PairBank destination, MemoryBank args[]) {
+	public void evaluateIntersectionKernel(KernelizedEvaluable<Ray> ray, PairBank destination, MemoryData args[]) {
 		long startTime = System.currentTimeMillis();
 		RayBank rays = new RayBank(destination.getCount());
 		ray.kernelEvaluate(rays, args);

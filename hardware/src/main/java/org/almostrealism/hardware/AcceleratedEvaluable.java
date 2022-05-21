@@ -83,7 +83,7 @@ public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> ex
 	 * destination.
 	 */
 	@Override
-	public void kernelEvaluate(MemoryBank destination, MemoryBank args[]) {
+	public void kernelEvaluate(MemoryBank destination, MemoryData... args) {
 		kernelEvaluate(this, destination, args, isKernel());
 	}
 
@@ -92,7 +92,7 @@ public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> ex
 		throw new RuntimeException("Not implemented");
 	}
 
-	public static void kernelEvaluate(KernelizedOperation operation, MemoryBank destination, MemoryBank args[], boolean kernel) {
+	public static void kernelEvaluate(KernelizedOperation operation, MemoryBank destination, MemoryData args[], boolean kernel) {
 		if (kernel && enableKernel) {
 			operation.kernelOperate(destination, args);
 		} else if (operation instanceof Evaluable) {
@@ -100,7 +100,7 @@ public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> ex
 				final int fi = i;
 				destination.set(i,
 						((Evaluable<MemoryData>) operation).evaluate(Stream.of(args)
-								.map(arg -> arg.get(fi)).toArray()));
+								.map(arg -> ((MemoryBank) arg).get(fi)).toArray()));
 			}
 		} else {
 			// This will produce an error, but that's the correct outcome
