@@ -18,7 +18,6 @@ package org.almostrealism.optimize;
 
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.heredity.Genome;
-import org.almostrealism.graph.temporal.GeneticTemporalFactory;
 import org.almostrealism.time.Temporal;
 
 import java.util.List;
