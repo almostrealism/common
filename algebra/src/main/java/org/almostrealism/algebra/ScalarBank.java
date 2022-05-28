@@ -105,9 +105,9 @@ public class ScalarBank extends MemoryBankAdapter<Scalar> {
 	// TODO  Accelerated version
 	@Deprecated
 	public Scalar lengthSq() {
-		return new Scalar(IntStream.range(0, getCount())
-				.mapToObj(this::get)
-				.mapToDouble(Scalar::getValue)
+		double data[] = toArray(0, getMemLength());
+		return new Scalar(IntStream.range(0, getCount()).map(i -> 2 * i)
+				.mapToDouble(i -> data[i])
 				.map(v -> v * v)
 				.sum());
 	}
