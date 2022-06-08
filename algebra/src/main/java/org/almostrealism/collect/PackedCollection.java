@@ -56,7 +56,7 @@ public class PackedCollection extends MemoryDataAdapter implements MemoryBank<Pa
 
 	@Override
 	public int getCount() {
-		throw new UnsupportedOperationException();
+		return getMemLength() / getAtomicMemLength();
 	}
 
 	@Override
@@ -91,5 +91,9 @@ public class PackedCollection extends MemoryDataAdapter implements MemoryBank<Pa
 			v.setDelegate(this, idx.getAndIncrement() * getAtomicMemLength());
 			return v;
 		}).limit(getMemLength() / getAtomicMemLength());
+	}
+
+	public PackedCollection delegate(int offset, int length) {
+		return new PackedCollection(new TraversalPolicy(length), 0, this, offset);
 	}
 }
