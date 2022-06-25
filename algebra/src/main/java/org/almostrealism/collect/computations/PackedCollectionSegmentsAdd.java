@@ -61,7 +61,7 @@ public class PackedCollectionSegmentsAdd extends Repeated {
 		String oVar = getVariablePrefix() + "_o";
 
 		scope.code().accept("for (int " + i + " = 0; " + cond +"; " + i + "++) {\n");
-		scope.code().accept(getNumberTypeName() + " " + oVar + " = get_global_id(0) - " + getDestinationOffsets().get(i).getExpression() + ";\n");
+		scope.code().accept("    " + getNumberTypeName() + " " + oVar + " = get_global_id(0) - " + getDestinationOffsets().get(i).getExpression() + ";\n");
 		scope.code().accept("    if (" + oVar + " >= 0 && " + oVar + " < " + getSourceLengths().get(i).getExpression() + ") {\n");
 		scope.code().accept("        " + getInner(exp) + ";\n");
 		scope.code().accept("    }\n");
