@@ -75,6 +75,10 @@ public class PackedCollection extends MemoryDataAdapter implements MemoryBank<Pa
 		return new PackedCollection(shape, axis, this, 0);
 	}
 
+	public PackedCollection traverseEach() {
+		return traverse(getShape().getDimensions());
+	}
+
 	public <T extends MemoryData> Stream<T> extract(IntFunction<T> factory) {
 		AtomicInteger idx = new AtomicInteger();
 

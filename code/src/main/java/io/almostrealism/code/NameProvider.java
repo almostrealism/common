@@ -85,7 +85,7 @@ public interface NameProvider {
 	}
 
 	default String getVariableValueName(Variable v, String pos) {
-		return getVariableValueName(v, pos, 0);
+		return getVariableValueName(v, pos, v.getKernelIndex());
 	}
 
 	default String getVariableValueName(Variable v, String pos, int kernelIndex) {

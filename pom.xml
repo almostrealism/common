@@ -27,6 +27,7 @@
 		<module>time</module>
 		<module>utils</module>
 		<module>optimize</module>
+		<module>collect</module>
 	</modules>
 
 	<!-- Output to jar format -->

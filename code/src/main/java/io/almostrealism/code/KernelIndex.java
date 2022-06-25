@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,19 +14,8 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.hardware;
+package io.almostrealism.code;
 
-public interface KernelizedOperation {
-	boolean enableKernelLog = false;
-
-	// TODO  It makes no sense for operation inputs to be divided
-	// TODO  into an "output" and the remaining arguments
-
-	/**
-	 * {@link #kernelOperate(MemoryData...)} is preferred.
-	 */
-	@Deprecated
-	void kernelOperate(MemoryBank output, MemoryData args[]);
-
-	void kernelOperate(MemoryData... args);
+public interface KernelIndex {
+	int getKernelIndex();
 }

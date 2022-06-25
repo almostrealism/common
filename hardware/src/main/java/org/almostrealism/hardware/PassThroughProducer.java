@@ -23,6 +23,7 @@ import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.code.KernelIndex;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -31,7 +32,7 @@ import java.util.function.Supplier;
 
 public class PassThroughProducer<T extends MemoryData>
 		extends DynamicProducerComputationAdapter<T, T>
-		implements ProducerArgumentReference {
+		implements ProducerArgumentReference, KernelIndex {
 	private int argIndex;
 	private int kernelIndex;
 
@@ -101,4 +102,7 @@ public class PassThroughProducer<T extends MemoryData>
 
 	@Override
 	public int getReferencedArgumentIndex() { return argIndex; }
+
+	@Override
+	public int getKernelIndex() { return kernelIndex; }
 }

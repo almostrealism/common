@@ -19,9 +19,15 @@ package org.almostrealism.collect.computations.test;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.computations.RootDelegateKernelOperation;
+import org.almostrealism.collect.computations.RootDelegateSegmentsAdd;
 import org.almostrealism.collect.computations.ScalarFromPackedCollection;
+import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
+
+import java.util.List;
 
 public class CollectionComputationTests implements TestFeatures {
 	@Test
@@ -35,5 +41,33 @@ public class CollectionComputationTests implements TestFeatures {
 
 		ScalarFromPackedCollection scalar = new ScalarFromPackedCollection(collection.getShape(), p(collection), v(1));
 		assertEquals(2.0, scalar.get().evaluate());
+	}
+
+	@Test
+	public void rootDelegateAdd() {
+		HardwareOperator.enableLog = true;
+		HardwareOperator.enableVerboseLog = true;
+
+		PackedCollection root = new PackedCollection(3, 5);
+
+		PackedCollection a = new PackedCollection(new TraversalPolicy(5), 1, root, 0);
+		Scalar s = new Scalar(a, 0);
+		s.setLeft(4);
+		s.setRight(6);
+
+		PackedCollection b = new PackedCollection(new TraversalPolicy(5), 1, root, 5);
+		s = new Scalar(b, 1);
+		s.setLeft(4);
+		s.setRight(6);
+
+		PackedCollection dest = new PackedCollection(new TraversalPolicy(5), 1, root, 10);
+
+		RootDelegateSegmentsAdd<PackedCollection> op = new RootDelegateSegmentsAdd<>(List.of(v(a), v(b)), dest);
+		Runnable r = op.get();
+		r.run();
+
+		assertEquals(4.0, new Scalar(root, 10));
+		assertEquals(10.0, new Scalar(root, 11));
+		assertEquals(6.0, new Scalar(root, 12));
 	}
 }

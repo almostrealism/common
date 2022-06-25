@@ -302,8 +302,45 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		}
 	}
 
+	@Override
+	public void kernelOperate(MemoryData... args) {
+		if (getArgumentVariables() == null) {
+			System.out.println("WARN: " + getName() + " was not compiled ahead of time");
+			compile();
+		}
+
+		try {
+			if (isKernel() && enableKernel) {
+				Consumer<Object[]> operator = getOperator();
+				((HardwareOperator) operator).setGlobalWorkOffset(0);
+				((HardwareOperator) operator).setGlobalWorkSize(((MemoryBank) args[0]).getCount());
+
+				if (enableKernelLog) System.out.println("AcceleratedOperation: Preparing " + getName() + " kernel...");
+				MemoryData input[] = getKernelArgs(null, args);
+
+				if (enableKernelLog) System.out.println("AcceleratedOperation: Evaluating " + getName() + " kernel...");
+
+				operator.accept(input);
+			} else {
+				throw new HardwareException("Kernel not supported");
+			}
+		} catch (CLException e) {
+			throw new HardwareException("Could not evaluate AcceleratedOperation", e);
+		}
+	}
+
 	protected MemoryData[] getKernelArgs(MemoryBank output, MemoryData args[]) {
-		return getKernelArgs(getArgumentVariables(), args, Collections.singletonMap((ArrayVariable) getOutputVariable(), output), output.getCount());
+		int kernelSize;
+
+		if (output != null) {
+			kernelSize = output.getCount();
+		} else if (args.length > 0) {
+			kernelSize = ((MemoryBank) args[0]).getCount();
+		} else {
+			throw new IllegalArgumentException("Cannot determine kernel size");
+		}
+
+		return getKernelArgs(getArgumentVariables(), args, Collections.singletonMap((ArrayVariable) getOutputVariable(), output), kernelSize);
 	}
 
 	/**
@@ -351,15 +388,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 	protected static <T> MemoryData[] getKernelArgs(List<ArrayVariable<? extends T>> arguments, MemoryData args[], Map<ArrayVariable<? extends T>, MemoryBank> mappings, int kernelSize) {
 		MemoryData kernelArgs[] = new MemoryData[arguments.size()];
-
-//		int kernelSize = 0;
-//		if (args.length > 0) {
-//			kernelSize = args[0].getCount();
-//		} else if (mappings.size() > 0) {
-//			kernelSize = mappings.values().iterator().next().getCount();
-//		} else {
-//			throw new IllegalArgumentException("Cannot determine kernel size");
-//		}
 
 		i: for (int i = 0; i < arguments.size(); i++) {
 			if (arguments.get(i) == null) continue i;

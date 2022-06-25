@@ -17,6 +17,7 @@
 package io.almostrealism.scope;
 
 import io.almostrealism.code.Array;
+import io.almostrealism.code.KernelIndex;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.expression.Expression;
@@ -56,6 +57,14 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 	public Expression<Integer> getArraySize() {
 		if (arraySize != null) return arraySize;
 		return super.getArraySize();
+	}
+
+	public int getKernelIndex() {
+		if (getOriginalProducer() instanceof KernelIndex) {
+			return ((KernelIndex) getOriginalProducer()).getKernelIndex();
+		}
+
+		return 0;
 	}
 
 	@Override

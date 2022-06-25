@@ -16,6 +16,7 @@
 
 package io.almostrealism.scope;
 
+import io.almostrealism.code.KernelIndex;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Compactable;
@@ -40,7 +41,7 @@ import java.util.function.Supplier;
  *
  * @param <T>  Type of the underlying data.
  */
-public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable, Delegated<V> {
+public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable, KernelIndex, Delegated<V> {
 	private String name;
 	private PhysicalScope physicalScope;
 	private boolean declaration;
@@ -53,6 +54,10 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 
 	private V delegate;
 	private Variable<?, ?> dependsOn;
+
+	public Variable(String name) {
+		this(name, (Expression<T>) null);
+	}
 
 	public Variable(String name, Expression<T> expression) {
 		this(name, true, expression, (Supplier<Evaluable<? extends T>>) null);
@@ -149,6 +154,8 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 
 	@Override
 	public int getSortHint() { return sortHint; }
+
+	public int getKernelIndex() { return 0; }
 
 	protected void setProducer(Supplier<Evaluable<? extends T>> producer) {
 		this.producer = producer;

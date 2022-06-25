@@ -9,31 +9,11 @@
 	</parent>
 	<modelVersion>4.0.0</modelVersion>
 
-	<artifactId>ar-hardware</artifactId>
+	<artifactId>ar-collect</artifactId>
 
 	<properties>
 		<maven.compiler.source>11</maven.compiler.source>
 		<maven.compiler.target>11</maven.compiler.target>
 	</properties>
 
-	<dependencies>
-		<dependency>
-			<groupId>org.almostrealism</groupId>
-			<artifactId>ar-collect</artifactId>
-			<version>0.47</version>
-		</dependency>
-
-		<dependency>
-			<groupId>org.almostrealism</groupId>
-			<artifactId>ar-code</artifactId>
-			<version>0.47</version>
-		</dependency>
-
-		<!-- https://mvnrepository.com/artifact/org.jocl/jocl -->
-		<dependency>
-			<groupId>org.jocl</groupId>
-			<artifactId>jocl</artifactId>
-			<version>2.0.2</version>
-		</dependency>
-	</dependencies>
 </project>

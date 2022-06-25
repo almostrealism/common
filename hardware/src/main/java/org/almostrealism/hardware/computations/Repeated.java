@@ -20,58 +20,43 @@ import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.HybridScope;
 import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.InstanceReference;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.relation.Compactable;
+import io.almostrealism.scope.Variable;
 import org.almostrealism.c.OpenCLPrintWriter;
 import org.almostrealism.hardware.DynamicOperationComputationAdapter;
 
-// TODO  Should extend Repeated
-public class Loop extends DynamicOperationComputationAdapter<Void> {
-	public static final boolean enableCompaction = true;
+import java.util.function.Supplier;
 
-	private final Computation atom;
-	private final int iterations;
+public abstract class Repeated extends DynamicOperationComputationAdapter<Void> {
 
-	public Loop(Computation<Void> atom, int iterations) {
-		this.atom = atom;
-		this.iterations = iterations;
-	}
-
-	@Override
-	public void prepareArguments(ArgumentMap map) {
-		super.prepareArguments(map);
-		atom.prepareArguments(map);
-	}
-
-	@Override
-	public void prepareScope(ScopeInputManager manager) {
-		super.prepareScope(manager);
-		atom.prepareScope(manager);
+	public Repeated(Supplier<Evaluable<? extends Void>>... inputArgs) {
+		super(inputArgs);
 	}
 
 	@Override
 	public Scope<Void> getScope() {
-		Scope<Void> atomScope = atom.getScope();
-		atomScope.convertArgumentsToRequiredScopes();
-
 		HybridScope<Void> scope = new HybridScope<>(this);
-		scope.setMetadata(new OperationMetadata(getFunctionName(), "Loop x" + iterations));
-		scope.getRequiredScopes().add(atomScope);
 
 		String i = getVariablePrefix() + "_i";
-		scope.code().accept("for (int " + i + " = 0; " + i + " < " + iterations +"; " + i + "++) {\n");
-		// TODO  This is CL specific and should be general
-		scope.code().accept("    " + new OpenCLPrintWriter(null).renderMethod(atomScope.call()) + "\n");
+		Expression exp = new InstanceReference(new Variable(i, Double.class, (Double) null));
+
+		String cond = getCondition(exp);
+		scope.setMetadata(new OperationMetadata(getFunctionName(), "Repeated (" + cond + ")"));
+
+		scope.code().accept("for (int " + i + " = 0; " + cond +"; " + i + "++) {\n");
+		scope.code().accept("    " + getInner(exp) + ";\n");
 		scope.code().accept("}\n");
 		return scope;
 	}
 
-	@Override
-	public synchronized void compact() {
-		super.compact();
-		if (enableCompaction && atom instanceof Compactable) {
-			((Compactable) atom).compact();
-		}
-	}
+	// TODO  Should return Variable
+	public abstract String getInner(Expression<?> index);
+
+	// TODO  Should return Expression
+	public abstract String getCondition(Expression<?> index);
 }

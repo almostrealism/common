@@ -57,6 +57,11 @@ public class HardwareOperatorMap<T extends MemoryData> implements InstructionSet
 			System.out.println("HardwareOperatorMap: init " + metadata.getDisplayName());
 		}
 
+		if (HardwareOperator.enableVerboseLog) {
+			System.out.println("Source:");
+			System.out.println(src);
+		}
+
 		prog = CLProgram.create(h, metadata, src);
 
 		RuntimeException ex = null;
@@ -68,7 +73,7 @@ public class HardwareOperatorMap<T extends MemoryData> implements InstructionSet
 		}
 
 		if (ex != null) {
-			if (HardwareOperator.enableVerboseLog) {
+			if (HardwareOperator.enableLog) {
 				System.out.println("Error compiling:\n" + src);
 			}
 

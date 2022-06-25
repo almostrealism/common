@@ -54,7 +54,7 @@ public class DefaultComputer implements Computer<MemoryData> {
 
 	@Override
 	public Runnable compileRunnable(Computation<Void> c) {
-		return new AcceleratedComputationOperation<>(c, false);
+		return new AcceleratedComputationOperation<>(c, true);
 	}
 
 	@Override
