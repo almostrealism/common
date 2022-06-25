@@ -18,19 +18,24 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.ProducerWithOffset;
 import org.almostrealism.hardware.DynamicOperationComputationAdapter;
 import org.almostrealism.hardware.MemoryBank;
 
 import java.util.List;
 
 public class RootDelegateSegmentsAdd<T extends MemoryBank> extends RootDelegateKernelOperation<T> {
-	public RootDelegateSegmentsAdd(List<Producer<T>> input, T destination) {
+	public RootDelegateSegmentsAdd(List<ProducerWithOffset<T>> input, T destination) {
 		super(input, destination);
 	}
 
 	@Override
-	public DynamicOperationComputationAdapter<Void> construct(Producer<PackedCollection> destination, Producer<PackedCollection> data,
-														   Producer<PackedCollection> offsets, Producer<PackedCollection> count) {
-		return new PackedCollectionSegmentsAdd(destination, data, offsets, count);
+	public DynamicOperationComputationAdapter<Void> construct(Producer<PackedCollection> destination,
+															  Producer<PackedCollection> data,
+															  Producer<PackedCollection> sourceOffsets,
+															  Producer<PackedCollection> sourceLengths,
+															  Producer<PackedCollection> destinationOffsets,
+															  Producer<PackedCollection> count) {
+		return new PackedCollectionSegmentsAdd(destination, data, sourceOffsets, sourceLengths, destinationOffsets, count);
 	}
 }

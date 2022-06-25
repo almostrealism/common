@@ -23,12 +23,6 @@
 			<version>0.47</version>
 		</dependency>
 
-		<dependency>
-			<groupId>org.almostrealism</groupId>
-			<artifactId>ar-code</artifactId>
-			<version>0.47</version>
-		</dependency>
-
 		<!-- https://mvnrepository.com/artifact/org.jocl/jocl -->
 		<dependency>
 			<groupId>org.jocl</groupId>

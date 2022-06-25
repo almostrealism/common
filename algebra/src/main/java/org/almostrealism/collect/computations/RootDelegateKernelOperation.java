@@ -19,6 +19,7 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.ProducerWithOffset;
 import org.almostrealism.hardware.DynamicOperationComputationAdapter;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.KernelizedOperation;
@@ -42,17 +43,21 @@ import java.util.stream.IntStream;
  * @author  Michael Murray
  */
 public abstract class RootDelegateKernelOperation<T extends MemoryBank> implements Supplier<Runnable>, HardwareFeatures {
-	private List<Producer<T>> input;
+	private List<ProducerWithOffset<T>> input;
 	private T destination;
 
-	private PackedCollection offsets;
+	private PackedCollection sourceOffsets;
+	private PackedCollection sourceLengths;
+	private PackedCollection destinationOffsets;
 	private PackedCollection count;
 	private KernelizedOperation kernel;
 
-	public RootDelegateKernelOperation(List<Producer<T>> input, T destination)  {
+	public RootDelegateKernelOperation(List<ProducerWithOffset<T>> input, T destination)  {
 		this.input = input;
 		this.destination = destination;
-		this.offsets = new PackedCollection(input.size());
+		this.sourceOffsets = new PackedCollection(input.size());
+		this.sourceLengths = new PackedCollection(input.size());
+		this.destinationOffsets = new PackedCollection(input.size());
 		this.count = new PackedCollection(1);
 		this.count.setMem((double) input.size());
 	}
@@ -62,8 +67,10 @@ public abstract class RootDelegateKernelOperation<T extends MemoryBank> implemen
 				construct(new PassThroughProducer(-1, 0),
 				new PassThroughProducer(-1, 1),
 				new PassThroughProducer<>(1, 2, -1),
-				new PassThroughProducer<>(1, 3, -1)).get();
-		List<Evaluable<T>> evals = this.input.stream().map(Producer::get).collect(Collectors.toList());
+				new PassThroughProducer<>(1, 3, -1),
+				new PassThroughProducer<>(1, 4, -1),
+				new PassThroughProducer<>(1, 5, -1)).get();
+		List<Evaluable<T>> evals = this.input.stream().map(ProducerWithOffset::getProducer).map(Producer::get).collect(Collectors.toList());
 		List<PackedCollection> rootDelegate = new ArrayList<>();
 
 		OperationList op = new OperationList("RootDelegateOperation");
@@ -79,15 +86,19 @@ public abstract class RootDelegateKernelOperation<T extends MemoryBank> implemen
 					throw new UnsupportedOperationException("All inputs to a root delegate operation must share the same root delegate");
 				}
 
-				offsets.setMem(i, arg.getOffset());
+				sourceOffsets.setMem(i, arg.getOffset());
+				sourceLengths.setMem(i, arg.getMemLength());
+				destinationOffsets.setMem(i, this.input.get(i).getOffset());
 			});
 		});
-		op.add(() -> () -> kernel.kernelOperate(destination, rootDelegate.get(0).traverseEach(), offsets, count));
+		op.add(() -> () -> kernel.kernelOperate(destination, rootDelegate.get(0).traverseEach(), sourceOffsets, sourceLengths, destinationOffsets, count));
 		return op.get();
 	}
 
 	public abstract DynamicOperationComputationAdapter<Void> construct(Producer<PackedCollection> destination,
 																	Producer<PackedCollection> data,
-																	Producer<PackedCollection> offsets,
+																	Producer<PackedCollection> sourceOffsets,
+																	Producer<PackedCollection> sourceLengths,
+																	Producer<PackedCollection> destinationOffsets,
 																	Producer<PackedCollection> count);
 }

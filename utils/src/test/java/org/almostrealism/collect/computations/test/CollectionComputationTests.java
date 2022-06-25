@@ -19,6 +19,7 @@ package org.almostrealism.collect.computations.test;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.ProducerWithOffset;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.RootDelegateKernelOperation;
 import org.almostrealism.collect.computations.RootDelegateSegmentsAdd;
@@ -56,18 +57,21 @@ public class CollectionComputationTests implements TestFeatures {
 		s.setRight(6);
 
 		PackedCollection b = new PackedCollection(new TraversalPolicy(5), 1, root, 5);
-		s = new Scalar(b, 1);
+		s = new Scalar(b, 0);
 		s.setLeft(4);
 		s.setRight(6);
 
 		PackedCollection dest = new PackedCollection(new TraversalPolicy(5), 1, root, 10);
 
-		RootDelegateSegmentsAdd<PackedCollection> op = new RootDelegateSegmentsAdd<>(List.of(v(a), v(b)), dest);
+		RootDelegateSegmentsAdd<PackedCollection> op = new RootDelegateSegmentsAdd<>(
+				List.of(new ProducerWithOffset<>(v(a), 1),
+						new ProducerWithOffset<>(v(b), 2)),
+				dest);
 		Runnable r = op.get();
 		r.run();
 
-		assertEquals(4.0, new Scalar(root, 10));
-		assertEquals(10.0, new Scalar(root, 11));
-		assertEquals(6.0, new Scalar(root, 12));
+		assertEquals(4.0, new Scalar(root, 11));
+		assertEquals(10.0, new Scalar(root, 12));
+		assertEquals(6.0, new Scalar(root, 13));
 	}
 }
