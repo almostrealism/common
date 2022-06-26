@@ -80,6 +80,6 @@ public class CollectionComputationTests implements TestFeatures {
 		PackedCollection data = new PackedCollection(4);
 		data.setMem(0, 1, 2, 3, 4);
 		data.clear();
-		assertEquals(0, data.toArray(0, 4)[0]);
+		assertEquals(0, data.toArray(0, 4)[1]);
 	}
 }

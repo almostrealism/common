@@ -25,6 +25,10 @@ import org.almostrealism.hardware.MemoryBank;
 import java.util.List;
 
 public class RootDelegateSegmentsAdd<T extends MemoryBank> extends RootDelegateKernelOperation<T> {
+	public RootDelegateSegmentsAdd(int maxInputs, T destination) {
+		super(maxInputs, destination);
+	}
+
 	public RootDelegateSegmentsAdd(List<ProducerWithOffset<T>> input, T destination) {
 		super(input, destination);
 	}

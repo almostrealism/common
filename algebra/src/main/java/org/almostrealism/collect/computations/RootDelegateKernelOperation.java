@@ -28,6 +28,7 @@ import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.PassThroughProducer;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -51,15 +52,32 @@ public abstract class RootDelegateKernelOperation<T extends MemoryBank> implemen
 	private PackedCollection destinationOffsets;
 	private PackedCollection count;
 	private KernelizedOperation kernel;
+	private boolean fixedInput;
+	private int maxInputs;
+
+	public RootDelegateKernelOperation(int maxInputs, T destination) {
+		this.maxInputs = maxInputs;
+		this.input = new ArrayList<>(maxInputs);
+		this.destination = destination;
+		this.sourceOffsets = new PackedCollection(maxInputs);
+		this.sourceLengths = new PackedCollection(maxInputs);
+		this.destinationOffsets = new PackedCollection(maxInputs);
+		this.count = new PackedCollection(1);
+	}
 
 	public RootDelegateKernelOperation(List<ProducerWithOffset<T>> input, T destination)  {
-		this.input = input;
+		this.maxInputs = input.size();
+		this.input = Collections.unmodifiableList(input);
 		this.destination = destination;
 		this.sourceOffsets = new PackedCollection(input.size());
 		this.sourceLengths = new PackedCollection(input.size());
 		this.destinationOffsets = new PackedCollection(input.size());
 		this.count = new PackedCollection(1);
-		this.count.setMem((double) input.size());
+		this.fixedInput = true;
+	}
+
+	public List<ProducerWithOffset<T>> getInput() {
+		return input;
 	}
 
 	public Runnable get() {
@@ -70,15 +88,24 @@ public abstract class RootDelegateKernelOperation<T extends MemoryBank> implemen
 				new PassThroughProducer<>(1, 3, -1),
 				new PassThroughProducer<>(1, 4, -1),
 				new PassThroughProducer<>(1, 5, -1)).get();
-		List<Evaluable<T>> evals = this.input.stream().map(ProducerWithOffset::getProducer).map(Producer::get).collect(Collectors.toList());
+		List<Evaluable<T>> evals = fixedInput ? this.input.stream().map(ProducerWithOffset::getProducer).map(Producer::get).collect(Collectors.toList()) : null;
 		List<PackedCollection> rootDelegate = new ArrayList<>();
 
 		OperationList op = new OperationList("RootDelegateOperation");
 		op.add(() -> () -> {
-			rootDelegate.clear();
+			if (input.size() > maxInputs)
+				throw new IllegalArgumentException("Too many inputs");
 
-			IntStream.range(0, evals.size()).forEach(i -> {
-				T arg = evals.get(i).evaluate();
+			rootDelegate.clear();
+			sourceOffsets.clear();
+			sourceLengths.clear();
+			destinationOffsets.clear();
+			count.setMem(0, input.size());
+
+			List<Evaluable<T>> ev = evals == null ? this.input.stream().map(ProducerWithOffset::getProducer).map(Producer::get).collect(Collectors.toList()) : evals;
+
+			IntStream.range(0, ev.size()).forEach(i -> {
+				T arg = ev.get(i).evaluate();
 
 				if (rootDelegate.isEmpty()) {
 					rootDelegate.add((PackedCollection) arg.getRootDelegate());
