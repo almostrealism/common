@@ -16,8 +16,14 @@
 
 package org.almostrealism.collect;
 
+import org.almostrealism.hardware.KernelizedEvaluable;
+import org.almostrealism.hardware.KernelizedOperation;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.PassThroughProducer;
+import org.almostrealism.hardware.computations.Assignment;
+import org.almostrealism.hardware.ctx.ContextSpecific;
+import org.almostrealism.hardware.ctx.DefaultContextSpecific;
 import org.almostrealism.hardware.mem.Bytes;
 import org.almostrealism.hardware.mem.MemoryDataAdapter;
 
@@ -26,6 +32,15 @@ import java.util.function.IntFunction;
 import java.util.stream.Stream;
 
 public class PackedCollection extends MemoryDataAdapter implements MemoryBank<PackedCollection> {
+	private static ContextSpecific<KernelizedOperation> clear;
+
+	static {
+		clear = new DefaultContextSpecific<>(() ->
+				(KernelizedOperation)
+						new Assignment<>(1, new PassThroughProducer(-1, 0),
+						new PassThroughProducer<>(1, 1, -1)).get());
+	}
+
 	private final TraversalPolicy shape;
 	private final int traversalAxis;
 
@@ -70,6 +85,10 @@ public class PackedCollection extends MemoryDataAdapter implements MemoryBank<Pa
 	}
 
 	public TraversalPolicy getShape() { return shape; }
+
+	public void clear() {
+		clear.getValue().kernelOperate(this, new PackedCollection(1));
+	}
 
 	public PackedCollection traverse(int axis) {
 		return new PackedCollection(shape, axis, this, 0);

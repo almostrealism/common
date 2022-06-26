@@ -74,4 +74,12 @@ public class CollectionComputationTests implements TestFeatures {
 		assertEquals(10.0, new Scalar(root, 12));
 		assertEquals(6.0, new Scalar(root, 13));
 	}
+
+	@Test
+	public void clear() {
+		PackedCollection data = new PackedCollection(4);
+		data.setMem(0, 1, 2, 3, 4);
+		data.clear();
+		assertEquals(0, data.toArray(0, 4)[0]);
+	}
 }
