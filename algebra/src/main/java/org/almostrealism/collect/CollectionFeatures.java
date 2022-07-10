@@ -16,9 +16,18 @@
 
 package org.almostrealism.collect;
 
+import io.almostrealism.code.NameProvider;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.Product;
+import io.almostrealism.expression.Sum;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.Scope;
+import org.almostrealism.collect.computations.PackedCollectionExpressionComputation;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
+
+import java.util.function.Function;
+import java.util.function.Supplier;
 
 public interface CollectionFeatures {
 	default CollectionProducer<PackedCollection> integers(int from, int to) {
@@ -55,5 +64,19 @@ public interface CollectionFeatures {
 				};
 			}
 		};
+	}
+
+	default <T extends PackedCollection> PackedCollectionExpressionComputation<T> add(
+			TraversalPolicy shape, Supplier<Evaluable<? extends T>> a, Supplier<Evaluable<? extends T>> b) {
+		Function<NameProvider, Expression<Double>> expression = np ->
+			new Sum(np.getArgument(1, 1).valueAt(0), np.getArgument(2, 1).valueAt(0));
+		return new PackedCollectionExpressionComputation<>(shape, expression, a, b);
+	}
+
+	default <T extends PackedCollection> PackedCollectionExpressionComputation<T> multiply(
+			TraversalPolicy shape, Supplier<Evaluable<? extends T>> a, Supplier<Evaluable<? extends T>> b) {
+		Function<NameProvider, Expression<Double>> expression = np ->
+				new Product(np.getArgument(1, 1).valueAt(0), np.getArgument(2, 1).valueAt(0));
+		return new PackedCollectionExpressionComputation<>(shape, expression, a, b);
 	}
 }

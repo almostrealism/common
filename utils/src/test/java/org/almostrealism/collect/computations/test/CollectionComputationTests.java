@@ -16,21 +16,71 @@
 
 package org.almostrealism.collect.computations.test;
 
+import io.almostrealism.code.NameProvider;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.Sum;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.ProducerWithOffset;
 import org.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.computations.PackedCollectionExpressionComputation;
 import org.almostrealism.collect.computations.RootDelegateKernelOperation;
 import org.almostrealism.collect.computations.RootDelegateSegmentsAdd;
 import org.almostrealism.collect.computations.ScalarFromPackedCollection;
+import org.almostrealism.hardware.PassThroughProducer;
 import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
+import java.util.Arrays;
 import java.util.List;
+import java.util.function.Function;
 
 public class CollectionComputationTests implements TestFeatures {
+	@Test
+	public void expressionComputation() {
+		Function<NameProvider, Expression<Double>> expression = np ->
+				new Sum(np.getArgument(1, 1).valueAt(0), np.getArgument(2, 1).valueAt(0));
+
+		PackedCollectionExpressionComputation<?> computation =
+				new PackedCollectionExpressionComputation(new TraversalPolicy(1), expression,
+						new PassThroughProducer(1, 0),
+						new PassThroughProducer(1, 1));
+
+		PackedCollection a = new PackedCollection(1);
+		PackedCollection b = new PackedCollection(1);
+		a.setMem(0, 3.0);
+		b.setMem(0, 5.0);
+
+		PackedCollection out = computation.get().evaluate(a, b);
+		assertEquals(8.0, out.toArray(0, 1)[0]);
+	}
+
+	@Test
+	public void expressionComputationKernel() {
+		Function<NameProvider, Expression<Double>> expression = np ->
+				new Sum(np.getArgument(1, 1).valueAt(0), np.getArgument(2, 1).valueAt(0));
+
+		PackedCollectionExpressionComputation<?> computation =
+				new PackedCollectionExpressionComputation(new TraversalPolicy(1), expression,
+						new PassThroughProducer(1, 0),
+						new PassThroughProducer(1, 1));
+
+		PackedCollection a = new PackedCollection(4);
+		PackedCollection b = new PackedCollection(4);
+		a.setMem(0, 3.0, 4.0, 5.0, 6.0);
+		b.setMem(0, 5.0, 7.0, 9.0, 11.0);
+
+		PackedCollection out = new PackedCollection(4);
+
+		computation.get().kernelEvaluate(out.traverseEach(), a.traverseEach(), b.traverseEach());
+		System.out.println(Arrays.toString(out.toArray(0, 4)));
+		assertEquals(8.0, out.toArray(0, 1)[0]);
+		assertEquals(14.0, out.toArray(2, 1)[0]);
+	}
+
+
 	@Test
 	public void scalarFromCollection() {
 		Tensor<Scalar> values = new Tensor<>();
