@@ -80,6 +80,10 @@ public abstract class RootDelegateKernelOperation<T extends MemoryBank> implemen
 		return input;
 	}
 
+	public int getMaxInputs() {
+		return maxInputs;
+	}
+
 	public Runnable get() {
 		this.kernel = (KernelizedOperation)
 				construct(new PassThroughProducer(-1, 0),
