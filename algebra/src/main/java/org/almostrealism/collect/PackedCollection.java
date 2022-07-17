@@ -90,6 +90,10 @@ public class PackedCollection extends MemoryDataAdapter implements MemoryBank<Pa
 		clear.getValue().kernelOperate(this.traverseEach(), new PackedCollection(1));
 	}
 
+	public PackedCollection range(TraversalPolicy shape) {
+		return range(shape, 0);
+	}
+
 	public PackedCollection range(TraversalPolicy shape, int start) {
 		return new PackedCollection(shape, 0, this, start);
 	}
