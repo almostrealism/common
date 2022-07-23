@@ -18,6 +18,7 @@ package org.almostrealism.hardware;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.almostrealism.code.Computation;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.hardware.computations.Loop;
@@ -45,6 +46,10 @@ public interface HardwareFeatures {
 
 	default String stringForDouble(double value) {
 		return Hardware.getLocalHardware().stringForDouble(value);
+	}
+
+	default Expression<Double> expressionForDouble(double value) {
+		return new Expression<Double>(Double.class, stringForDouble(value));
 	}
 
 	default double doubleForString(String value) {

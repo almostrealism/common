@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -35,6 +35,7 @@ import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
+import org.almostrealism.collect.Traversable;
 import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.jocl.CLException;
@@ -340,7 +341,9 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			throw new IllegalArgumentException("Cannot determine kernel size");
 		}
 
-		return getKernelArgs(getArgumentVariables(), args, Collections.singletonMap((ArrayVariable) getOutputVariable(), output), kernelSize);
+		return getKernelArgs(getArgumentVariables(), args,
+				output == null ? Collections.emptyMap() : Collections.singletonMap((ArrayVariable) getOutputVariable(), output),
+				kernelSize);
 	}
 
 	/**
@@ -413,6 +416,9 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				KernelizedEvaluable kp = (KernelizedEvaluable) c;
 				kernelArgs[i] = kp.createKernelDestination(kernelSize);
 				kp.kernelEvaluate((MemoryBank) kernelArgs[i], args);
+
+				// This assumes that the axis of the kernel is always the first dimension
+				if (kernelArgs[i] instanceof Traversable) kernelArgs[i] = (MemoryData) ((Traversable) kernelArgs[i]).traverse(1);
 			} else {
 				kernelArgs[i] = (MemoryData) c.evaluate((Object[]) args);
 			}

@@ -16,6 +16,7 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Variable;
 
 public class DefaultNameProvider implements NameProvider {
@@ -36,5 +37,10 @@ public class DefaultNameProvider implements NameProvider {
 	@Override
 	public String getVariableValueName(Variable v, String pos, boolean assignment, int kernelIndex) {
 		return v.getName() + "[" + pos + "]";
+	}
+
+	@Override
+	public String getVariableSizeName(ArrayVariable v) {
+		return "1";
 	}
 }

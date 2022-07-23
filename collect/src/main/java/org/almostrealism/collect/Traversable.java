@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,17 +14,8 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.hardware;
+package org.almostrealism.collect;
 
-public interface KernelSupport {
-	default boolean isKernelEnabled() { return true; }
-
-	default String getKernelIndex(String variableName, int kernelIndex) {
-		return kernelIndex < 0 ? "" :
-				"get_global_id(" + kernelIndex + ") * " + getValueSizeName(variableName) + " + ";
-	}
-
-	static String getValueSizeName(String variableName) {
-		return variableName + "Size";
-	}
+public interface Traversable<T> {
+	T traverse(int axis);
 }

@@ -97,6 +97,10 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 		}
 	}
 
+	public Expression<Integer> length() {
+		return new Expression<Integer>(Integer.class, names.getVariableSizeName(this));
+	}
+
 	@Override
 	public void setExpression(Expression<T> value) {
 		if (getDelegate() != null)

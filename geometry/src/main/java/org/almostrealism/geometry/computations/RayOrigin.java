@@ -17,6 +17,7 @@
 package org.almostrealism.geometry.computations;
 
 import io.almostrealism.expression.Expression;
+import io.almostrealism.scope.Variable;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorBank;
 import org.almostrealism.algebra.VectorProducer;
@@ -46,7 +47,7 @@ import java.util.function.Supplier;
 		};
 	}
 
-	/**
+	 /**
 	 * Returns true if the {@link Ray} {@link Evaluable} is static.
 	 */
 	@Override

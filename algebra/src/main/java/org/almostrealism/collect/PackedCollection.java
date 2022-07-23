@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect;
 
+import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.KernelizedOperation;
 import org.almostrealism.hardware.MemoryBank;
@@ -31,7 +32,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.IntFunction;
 import java.util.stream.Stream;
 
-public class PackedCollection extends MemoryDataAdapter implements MemoryBank<PackedCollection> {
+public class PackedCollection extends MemoryDataAdapter implements MemoryBank<PackedCollection>, Traversable<PackedCollection> {
 	private static ContextSpecific<KernelizedOperation> clear;
 
 	static {
@@ -126,5 +127,13 @@ public class PackedCollection extends MemoryDataAdapter implements MemoryBank<Pa
 
 	public PackedCollection delegate(int offset, int length) {
 		return new PackedCollection(new TraversalPolicy(length), 0, this, offset);
+	}
+
+	public static DynamicCollectionProducer blank(int... dims) {
+		return blank(new TraversalPolicy(dims));
+	}
+
+	public static DynamicCollectionProducer blank(TraversalPolicy shape) {
+		return new DynamicCollectionProducer(shape, args -> new PackedCollection(shape));
 	}
 }

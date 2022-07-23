@@ -98,6 +98,8 @@ public interface NameProvider {
 
 	String getVariableValueName(Variable v, String pos, boolean assignment, int kernelIndex);
 
+	String getVariableSizeName(ArrayVariable v);
+
 	default NameProvider withOutputVariable(Variable outputVariable) {
 		NameProvider p = this;
 
@@ -115,6 +117,11 @@ public interface NameProvider {
 			@Override
 			public String getVariableValueName(Variable v, String pos, boolean assignment, int kernelIndex) {
 				return p.getVariableValueName(v, pos, assignment, kernelIndex);
+			}
+
+			@Override
+			public String getVariableSizeName(ArrayVariable v) {
+				return p.getVariableSizeName(v);
 			}
 		};
 	}

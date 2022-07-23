@@ -25,6 +25,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.ProducerWithOffset;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.PackedCollectionExpressionComputation;
+import org.almostrealism.collect.computations.PackedCollectionMax;
 import org.almostrealism.collect.computations.RootDelegateKernelOperation;
 import org.almostrealism.collect.computations.RootDelegateSegmentsAdd;
 import org.almostrealism.collect.computations.ScalarFromPackedCollection;
@@ -80,6 +81,20 @@ public class CollectionComputationTests implements TestFeatures {
 		assertEquals(14.0, out.toArray(2, 1)[0]);
 	}
 
+	@Test
+	public void collectionMax() {
+		PackedCollection series = new PackedCollection(2, 10);
+		series.setMem(0, 7, 5, 12, 13, 11, 14, 9, 12, 3, 12);
+		series.setMem(10, 12, 3, 12, 10, 14, 16, 13, 12, 5, 7);
+		System.out.println(series.traverse(1).getCount() + " series");
+
+		PackedCollectionMax max = new PackedCollectionMax(new PassThroughProducer<>(10, 0, 0));
+		PackedCollection dest = max.get().evaluate(series.traverse(1));
+
+		System.out.println(Arrays.toString(dest.toArray(0, 2)));
+		assertEquals(14, dest.toArray(0, 1)[0]);
+		assertEquals(16, dest.toArray(1, 1)[0]);
+	}
 
 	@Test
 	public void scalarFromCollection() {

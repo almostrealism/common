@@ -1,0 +1,61 @@
+/*
+ * Copyright 2022 Michael Murray
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
+package org.almostrealism.collect.computations;
+
+import io.almostrealism.code.CollectionUtils;
+import io.almostrealism.code.PhysicalScope;
+import io.almostrealism.code.ProducerComputationAdapter;
+import io.almostrealism.relation.Evaluable;
+import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.hardware.ComputerFeatures;
+import org.almostrealism.hardware.DestinationSupport;
+import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.mem.MemoryDataDestination;
+
+import java.util.function.Supplier;
+
+public class CollectionProducerComputationAdapter extends ProducerComputationAdapter<MemoryData, PackedCollection>
+												implements CollectionProducer<PackedCollection>, DestinationSupport<PackedCollection>, ComputerFeatures {
+	private TraversalPolicy shape;
+	private Supplier<PackedCollection> destination;
+
+	public CollectionProducerComputationAdapter(TraversalPolicy outputShape, Supplier<Evaluable<? extends PackedCollection>>... arguments) {
+		this.shape = outputShape;
+		this.destination = () -> new PackedCollection(shape);
+		this.setInputs((Supplier[]) CollectionUtils.include(new Supplier[0], new MemoryDataDestination(this, len -> new PackedCollection(getShape().prependDimension(len))), arguments));
+		init();
+	}
+
+	@Override
+	public TraversalPolicy getShape() {
+		return shape;
+	}
+
+	@Override
+	public void setDestination(Supplier<PackedCollection> destination) { this.destination = destination; }
+
+	@Override
+	public Supplier<PackedCollection> getDestination() { return destination; }
+
+	/**
+	 * @return  PhysicalScope#GLOBAL
+	 */
+	@Override
+	public PhysicalScope getDefaultPhysicalScope() { return PhysicalScope.GLOBAL; }
+}

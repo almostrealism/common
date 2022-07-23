@@ -37,4 +37,6 @@ public interface Array<T, V extends Array<T, ?>> extends Plural<InstanceReferenc
 	}
 
 	InstanceReference<T> get(String pos, Variable... dependencies);
+
+	Expression<Integer> length();
 }
