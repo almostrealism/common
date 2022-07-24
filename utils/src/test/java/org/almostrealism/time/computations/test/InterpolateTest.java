@@ -60,23 +60,22 @@ public class InterpolateTest implements TestFeatures {
 		System.out.println(series.traverse(0).getCount() + " series");
 
 		PackedCollection cursors = new PackedCollection(2, 1);
-		cursors.setMem(0, 5.5, 5.5);
+		cursors.setMem(0, 5.5, 6.5);
 		System.out.println(cursors.traverse(1).getCount() + " cursors");
 
 		PackedCollection rate = new PackedCollection(2, 1);
 		rate.setMem(0, 1.0, 1.0);
 
 		Interpolate interpolate = new Interpolate(
-				new PassThroughProducer<>(10, 0),
+				new PassThroughProducer<>(10, 0, -1),
 				new PassThroughProducer<>(1, 1),
-				new PassThroughProducer<>(1, 2),
-				v -> new Sum(v, new Expression<>(Double.class, "1.0")));
-		PackedCollection dest = new PackedCollection(2);
-		interpolate.get().kernelEvaluate(dest.traverseEach(), series.traverse(0), cursors.traverse(1), rate.traverse(1));
+				new PassThroughProducer<>(1, 2));
+		PackedCollection dest = new PackedCollection(2, 1);
+		interpolate.get().kernelEvaluate(dest.traverse(1), series.traverse(0), cursors.traverse(1), rate.traverse(1));
 
 		System.out.println(Arrays.toString(dest.toArray(0, 2)));
-		assertEquals(15, dest.toArray(0, 1)[0]);
-//		assertEquals(11, dest.toArray(1, 1)[0]);
+		assertEquals(11.5, dest.toArray(0, 1)[0]);
+		assertEquals(10.5, dest.toArray(1, 1)[0]);
 	}
 
 	@Test

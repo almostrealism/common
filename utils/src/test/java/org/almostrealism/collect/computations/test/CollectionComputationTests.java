@@ -82,7 +82,7 @@ public class CollectionComputationTests implements TestFeatures {
 	}
 
 	@Test
-	public void collectionMax() {
+	public void collectionMaxTwoSeries() {
 		PackedCollection series = new PackedCollection(2, 10);
 		series.setMem(0, 7, 5, 12, 13, 11, 14, 9, 12, 3, 12);
 		series.setMem(10, 12, 3, 12, 10, 14, 16, 13, 12, 5, 7);
@@ -94,6 +94,21 @@ public class CollectionComputationTests implements TestFeatures {
 		System.out.println(Arrays.toString(dest.toArray(0, 2)));
 		assertEquals(14, dest.toArray(0, 1)[0]);
 		assertEquals(16, dest.toArray(1, 1)[0]);
+	}
+
+	@Test
+	public void collectionMax() {
+		PackedCollection series = new PackedCollection(10);
+		series.setMem(0, 7, 5, 12, 13, 11, 14, 9, 12, 3, 12);
+		System.out.println(series.traverse(0).getCount() + " series");
+
+		PackedCollectionMax max = new PackedCollectionMax(new PassThroughProducer<>(10, 0, -1));
+		PackedCollection dest = new PackedCollection(2, 1);
+		max.get().kernelEvaluate(dest.traverse(1), series.traverse(0));
+
+		System.out.println(Arrays.toString(dest.toArray(0, 2)));
+		assertEquals(14, dest.toArray(0, 1)[0]);
+		assertEquals(14, dest.toArray(1, 1)[0]);
 	}
 
 	@Test
