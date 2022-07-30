@@ -39,7 +39,7 @@ public class PackedCollection extends MemoryDataAdapter implements MemoryBank<Pa
 		clear = new DefaultContextSpecific<>(() ->
 				(KernelizedOperation)
 						new Assignment<>(1, new PassThroughProducer(-1, 0),
-						new PassThroughProducer<>(1, 1, -1)).get());
+						new PassThroughProducer<>(1, 1, -1)).getKernel());
 	}
 
 	private final TraversalPolicy shape;

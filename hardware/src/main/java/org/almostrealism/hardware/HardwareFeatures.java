@@ -29,7 +29,7 @@ import java.util.stream.IntStream;
 
 public interface HardwareFeatures {
 	default Runnable compileRunnable(Computation<?> c) {
-		return Hardware.getLocalHardware().getComputeContext().getComputer().compileRunnable((Computation<Void>) c);
+		return Hardware.getLocalHardware().getComputeContext().getComputer().compileRunnable(c);
 	}
 
 	default <T extends MemoryData> KernelizedEvaluable<T> compileProducer(Computation<T> c) {

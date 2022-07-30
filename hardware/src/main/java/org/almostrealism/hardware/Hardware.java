@@ -42,6 +42,7 @@ import java.util.concurrent.Callable;
 public final class Hardware {
 	public static boolean enableVerbose = false;
 	public static final boolean enableMultiThreading = true;
+	public static boolean enableKernelOps = true;
 
 	protected static final int MEMORY_SCALE;
 	protected static final boolean ENABLE_POOLING;
@@ -58,6 +59,10 @@ public final class Hardware {
 		String kernelsEnv = System.getenv("AR_HARDWARE_KERNELS");
 		boolean enableKernels = "enabled".equalsIgnoreCase(kernelsEnv) ||
 				"enabled".equalsIgnoreCase(System.getProperty("AR_HARDWARE_KERNELS"));
+
+		String kernelOps = System.getProperty("AR_HARDWARE_KERNEL_OPS");
+		if (kernelOps == null) kernelOps = System.getenv("AR_HARDWARE_KERNEL_OPS");
+		if ("disabled".equalsIgnoreCase(kernelOps)) enableKernelOps = false;
 
 		boolean enableDestinationConsolidation =
 				"enabled".equalsIgnoreCase(System.getenv("AR_HARDWARE_DESTINATION_CONSOLIDATION")) ||

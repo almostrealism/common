@@ -56,4 +56,13 @@ public abstract class DynamicOperationComputationAdapter<T> extends OperationCom
 		}
 		return r;
 	}
+
+	@Deprecated
+	public Runnable getKernel() {
+		Runnable r = Hardware.getLocalHardware().getComputeContext().getComputer().compileRunnable(this, true);
+		if (r instanceof OperationAdapter) {
+			((OperationAdapter) r).compile();
+		}
+		return r;
+	}
 }

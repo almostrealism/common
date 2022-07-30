@@ -23,6 +23,9 @@ import java.util.Optional;
 public interface Computer<B> {
 	Runnable compileRunnable(Computation<Void> c);
 
+	@Deprecated
+	Runnable compileRunnable(Computation<Void> c, boolean kernel);
+
 	<T extends B> Evaluable<T> compileProducer(Computation<T> c);
 
 	<T> Optional<Computation<T>> decompile(Runnable r);
