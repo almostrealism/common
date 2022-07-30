@@ -83,6 +83,10 @@ public final class Hardware {
 			location = Location.HOST;
 		}
 
+		String opDepth = System.getProperty("AR_HARDWARE_MAX_DEPTH");
+		if (opDepth == null) opDepth = System.getenv("AR_HARDWARE_MAX_DEPTH");
+		if (opDepth != null) OperationList.setMaxDepth(Integer.parseInt(opDepth));
+
 		String tsSize = System.getProperty("AR_HARDWARE_TIMESERIES_SIZE");
 		if (tsSize == null) tsSize = System.getenv("AR_HARDWARE_TIMESERIES_SIZE");
 		if (tsSize == null) tsSize = "100";
