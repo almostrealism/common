@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,5 +25,5 @@ import io.almostrealism.relation.Producer;
  * @author  Michael Murray
  */
 public interface Camera { // TODO  Move to geometry package
-	Producer<Ray> rayAt(Producer<Pair> screenPosition, Producer<Pair> screenDimensions);
+	Producer<Ray> rayAt(Producer<Pair<?>> screenPosition, Producer<Pair<?>> screenDimensions);
 }
