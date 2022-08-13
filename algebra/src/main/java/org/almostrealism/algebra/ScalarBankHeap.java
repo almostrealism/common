@@ -38,7 +38,7 @@ public class ScalarBankHeap {
 			throw new IllegalArgumentException("No room remaining in ScalarBankHeap");
 		}
 
-		ScalarBank allocated = new ScalarBank(count, data, 2 * end, null);
+		ScalarBank allocated = new ScalarBank(count, data, 2 * end);
 		end = end + count;
 		entries.add(allocated);
 		return allocated;

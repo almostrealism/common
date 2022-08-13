@@ -28,7 +28,7 @@ import org.almostrealism.hardware.MemoryBank;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public class PackedCollectionFromPackedCollection<I extends PackedCollection, O extends PackedCollection>
+public class PackedCollectionFromPackedCollection<I extends PackedCollection<?>, O extends PackedCollection<?>>
 		extends DynamicProducerComputationAdapter<I, O> implements CollectionProducer<O> {
 	private TraversalPolicy inputShape;
 

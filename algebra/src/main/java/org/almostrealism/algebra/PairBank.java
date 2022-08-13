@@ -26,7 +26,7 @@ import io.almostrealism.relation.Evaluable;
  *
  * @author  Michael Murray
  */
-public class PairBank extends MemoryBankAdapter<Pair> {
+public class PairBank extends MemoryBankAdapter<Pair<?>> {
 	public PairBank(int count) {
 		super(2, count, delegateSpec ->
 				new Pair(delegateSpec.getDelegate(), delegateSpec.getOffset()));
@@ -48,7 +48,7 @@ public class PairBank extends MemoryBankAdapter<Pair> {
 		return new PairBank(length, this, offset * getAtomicMemLength(), null);
 	}
 
-	public static PairBank fromProducer(Evaluable<Pair> producer, int count) {
+	public static PairBank fromProducer(Evaluable<Pair<?>> producer, int count) {
 		PairBank bank = new PairBank(count);
 		for (int i = 0; i < bank.getCount(); i++) {
 			bank.set(i, producer.evaluate());

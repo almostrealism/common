@@ -32,7 +32,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 
-public class Interpolate extends CollectionProducerComputationAdapter {
+public class Interpolate extends CollectionProducerComputationAdapter<PackedCollection<?>, PackedCollection<?>> {
 	private Function<Expression, Expression> timeForIndex;
 
 	public Interpolate(Producer<PackedCollection> series, Producer<PackedCollection> position, Producer<PackedCollection> rate) {
@@ -50,8 +50,8 @@ public class Interpolate extends CollectionProducerComputationAdapter {
 	}
 
 	@Override
-	public Scope<PackedCollection> getScope() {
-		HybridScope<PackedCollection> scope = new HybridScope<>(this);
+	public Scope<PackedCollection<?>> getScope() {
+		HybridScope<PackedCollection<?>> scope = new HybridScope<>(this);
 		scope.setMetadata(new OperationMetadata(getFunctionName(), "Interpolate"));
 
 		String left = getVariableName(0);

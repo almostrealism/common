@@ -43,7 +43,7 @@ public class MeshData extends TriangleDataBank {
 
 	public MeshData(int triangles) {
 		super(triangles);
-		distances = new ScalarBank(getCount(), CacheLevel.ACCESSED);
+		distances = new ScalarBank(getCount());
 	}
 
 	public synchronized Pair evaluateIntersection(Evaluable<Ray> ray, Object args[]) {
@@ -78,7 +78,7 @@ public class MeshData extends TriangleDataBank {
 		dim.set(0, new Pair(this.getCount(), rays.getCount()));
 
 		if (enablePartialKernel) {
-			ScalarBank distances = new ScalarBank(getCount(), CacheLevel.ACCESSED);
+			ScalarBank distances = new ScalarBank(getCount());
 			RayBank in = new RayBank(1);
 			PairBank out = new PairBank(1);
 
@@ -94,8 +94,7 @@ public class MeshData extends TriangleDataBank {
 
 			if (KernelizedOperation.enableKernelLog) System.out.println(rays.getCount() + " intersection kernels evaluated");
 		} else {
-			ScalarBank distances = new ScalarBank(this.getCount() * rays.getCount(),
-					CacheLevel.NONE);
+			ScalarBank distances = new ScalarBank(this.getCount() * rays.getCount());
 
 			startTime = System.currentTimeMillis();
 			Triangle.intersectAt.kernelEvaluate(distances, new MemoryBank[] { rays, this, dim });

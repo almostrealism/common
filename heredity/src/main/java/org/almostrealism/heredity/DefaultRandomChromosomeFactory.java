@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,9 +16,9 @@
 
 package org.almostrealism.heredity;
 
-import org.almostrealism.algebra.Scalar;
+import org.almostrealism.collect.PackedCollection;
 
-public class DefaultRandomChromosomeFactory implements ChromosomeFactory<Scalar> {
+public class DefaultRandomChromosomeFactory implements ChromosomeFactory<PackedCollection<?>> {
 	private double min, max;
 	private int genes, factors;
 	
@@ -41,11 +41,11 @@ public class DefaultRandomChromosomeFactory implements ChromosomeFactory<Scalar>
 	}
 	
 	@Override
-	public Chromosome<Scalar> generateChromosome(double arg) {
-		ArrayListChromosome<Scalar> c = new ArrayListChromosome<>();
+	public Chromosome<PackedCollection<?>> generateChromosome(double arg) {
+		ArrayListChromosome<PackedCollection<?>> c = new ArrayListChromosome<>();
 		
 		for (int i = 0; i < genes; i++) {
-			ArrayListGene<Scalar> g = new ArrayListGene<>();
+			ArrayListGene<PackedCollection<?>> g = new ArrayListGene<>();
 			
 			for (int j = 0; j < factors; j++) {
 				g.add(new ScaleFactor(min + StrictMath.random() * arg * (max - min)));

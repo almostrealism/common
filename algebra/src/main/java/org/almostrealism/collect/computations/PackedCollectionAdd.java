@@ -30,7 +30,7 @@ import org.almostrealism.hardware.DynamicProducerComputationAdapter;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public class PackedCollectionAdd<I extends PackedCollection, O extends PackedCollection>
+public class PackedCollectionAdd<I extends PackedCollection<?>, O extends PackedCollection<?>>
 		extends DynamicProducerComputationAdapter<I, O> implements CollectionProducer<O> {
 	private TraversalPolicy shape;
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -27,12 +27,12 @@ import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
-public class PairBankFromPairs extends DynamicProducerComputationAdapter<Pair, PairBank>
+public class PairBankFromPairs extends DynamicProducerComputationAdapter<Pair<?>, PairBank>
 								implements PairBankProducer {
 	private Expression<Double> value[];
 
 	@SafeVarargs
-	public PairBankFromPairs(Supplier<Evaluable<? extends Pair>>... input) {
+	public PairBankFromPairs(Supplier<Evaluable<? extends Pair<?>>>... input) {
 		super(2 * input.length, () -> args -> new PairBank(input.length),
 				i -> { throw new UnsupportedOperationException(); }, input);
 	}

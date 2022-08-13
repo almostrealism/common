@@ -162,7 +162,7 @@ public interface VectorFeatures {
 		return (ScalarEvaluable) length(() -> v).get();
 	}
 
-	default ScalarProducer length(Supplier<Evaluable<? extends Vector>> v) {
+	default ScalarProducerBase length(Supplier<Evaluable<? extends Vector>> v) {
 		return x(v).pow(two).add(y(v).pow(two)).add(z(v).pow(two)).pow(half);
 	}
 
@@ -179,7 +179,7 @@ public interface VectorFeatures {
 	}
 
 	default VectorProducer normalize(Supplier<Evaluable<? extends Vector>> p) {
-		ScalarProducer oneOverLength = length(p).pow(ScalarFeatures.minusOne());
+		ScalarProducerBase oneOverLength = length(p).pow(ScalarFeatures.minusOne());
 		return fromScalars(x(p).multiply(oneOverLength),
 				y(p).multiply(oneOverLength),
 				z(p).multiply(oneOverLength));

@@ -56,9 +56,10 @@ public final class Hardware {
 		boolean gpu = "gpu".equalsIgnoreCase(System.getenv("AR_HARDWARE_PLATFORM")) ||
 				"gpu".equalsIgnoreCase(System.getProperty("AR_HARDWARE_PLATFORM"));
 
-		String kernelsEnv = System.getenv("AR_HARDWARE_KERNELS");
-		boolean enableKernels = "enabled".equalsIgnoreCase(kernelsEnv) ||
-				"enabled".equalsIgnoreCase(System.getProperty("AR_HARDWARE_KERNELS"));
+		boolean enableKernels = true;
+		String kernels = System.getProperty("AR_HARDWARE_KERNELS");
+		if (kernels == null) kernels = System.getenv("AR_HARDWARE_KERNELS");
+		if ("disabled".equalsIgnoreCase(kernels)) enableKernels = false;
 
 		String kernelOps = System.getProperty("AR_HARDWARE_KERNEL_OPS");
 		if (kernelOps == null) kernelOps = System.getenv("AR_HARDWARE_KERNEL_OPS");

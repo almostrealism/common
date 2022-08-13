@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,18 +18,14 @@ package org.almostrealism.graph;
 
 import java.util.Iterator;
 import java.util.List;
-import java.util.Optional;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-import org.almostrealism.graph.Cell;
-import org.almostrealism.graph.CellAdapter;
 import org.almostrealism.heredity.Factor;
 import org.almostrealism.heredity.Gene;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.IdentityFactor;
-import org.almostrealism.time.Temporal;
 
 public class MultiCell<T> extends CellAdapter<T> {
 	private final List<Cell<T>> cells;

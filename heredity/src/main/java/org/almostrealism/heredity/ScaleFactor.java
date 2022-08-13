@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,22 +20,24 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Defaults;
+import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.PackedCollection;
 
-import java.util.Base64;
 import java.util.Optional;
 
-public class ScaleFactor implements Factor<Scalar>, ScalarFeatures {
+// TODO Should take a parameter 'T' for what type of input and output is expected
+public class ScaleFactor implements Factor<PackedCollection<?>>, ScalarFeatures, CollectionFeatures {
 	private Scalar scale;
-	
+
 	public ScaleFactor() { scale = new Scalar(0.0); }
-	
+
 	public ScaleFactor(double scale) { this.scale = new Scalar(scale); }
 
 	public ScaleFactor(Scalar scale) { this.scale = scale; }
 
 	@Override
-	public Producer<Scalar> getResultant(Producer<Scalar> value) {
-		return scalarsMultiply(value, v(scale));
+	public Producer<PackedCollection<?>> getResultant(Producer<PackedCollection<?>> value) {
+		return _multiply(value, (Producer) v(scale));
 	}
 
 	public void setScaleValue(double s) { this.scale = new Scalar(s); }

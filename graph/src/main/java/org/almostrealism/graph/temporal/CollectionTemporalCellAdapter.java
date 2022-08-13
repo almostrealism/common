@@ -20,19 +20,20 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.graph.ScalarCachedStateCell;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.graph.CollectionCachedStateCell;
 import org.almostrealism.hardware.OperationList;
 
 import java.util.function.Supplier;
 
-public abstract class ScalarTemporalCellAdapter extends ScalarCachedStateCell implements CodeFeatures {
+public abstract class CollectionTemporalCellAdapter extends CollectionCachedStateCell implements CodeFeatures {
 	public static final double PI = Math.PI;
 
 	public static double depth = 1.0;
 
 	private final OperationList setup;
 
-	public ScalarTemporalCellAdapter() {
+	public CollectionTemporalCellAdapter() {
 		setup = new OperationList("ScalarTemporalCellAdapter Setup");
 	}
 
@@ -48,10 +49,10 @@ public abstract class ScalarTemporalCellAdapter extends ScalarCachedStateCell im
 		return setup;
 	}
 
-	public static ScalarTemporalCellAdapter from(Producer<Scalar> p) {
-		return new ScalarTemporalCellAdapter() {
+	public static CollectionTemporalCellAdapter from(Producer<PackedCollection<?>> p) {
+		return new CollectionTemporalCellAdapter() {
 			@Override
-			public Supplier<Runnable> push(Producer<Scalar> protein) {
+			public Supplier<Runnable> push(Producer<PackedCollection<?>> protein) {
 				return assign(() -> new Provider<>(getCachedValue()), p);
 			}
 		};

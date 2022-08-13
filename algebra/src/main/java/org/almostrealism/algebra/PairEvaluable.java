@@ -19,7 +19,7 @@ package org.almostrealism.algebra;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.computations.StaticPairComputation;
 
-public interface PairEvaluable extends Evaluable<Pair>, PairFeatures {
+public interface PairEvaluable extends Evaluable<Pair<?>>, PairFeatures {
 	static PairProducer of(Pair value) {
 		return new StaticPairComputation(value);
 	}

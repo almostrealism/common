@@ -27,6 +27,6 @@ public class DefaultWaveCellData extends ScalarBank implements WaveCellData {
 	}
 
 	public DefaultWaveCellData(MemoryData delegate, int delegateOffset) {
-		super(SIZE, delegate, delegateOffset, null);
+		super(SIZE, delegate, delegateOffset);
 	}
 }

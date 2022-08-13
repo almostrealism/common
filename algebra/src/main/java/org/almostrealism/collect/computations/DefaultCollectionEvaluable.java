@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
@@ -24,19 +25,52 @@ import org.almostrealism.hardware.MemoryData;
 import io.almostrealism.code.Computation;
 import org.almostrealism.hardware.cl.HardwareOperator;
 
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 
 public class DefaultCollectionEvaluable<T extends PackedCollection> extends AcceleratedComputationEvaluable<T> implements CollectionEvaluable<T> {
 	private TraversalPolicy shape;
+	private BiFunction<MemoryData, Integer, T> postprocessor;
 
-	public DefaultCollectionEvaluable(TraversalPolicy shape, Computation<T> c) {
+	public DefaultCollectionEvaluable(TraversalPolicy shape, Computation<T> c, BiFunction<MemoryData, Integer, T> postprocessor) {
 		super(c);
 		this.shape = shape;
+		this.postprocessor = postprocessor;
+	}
+
+	@Override
+	public T evaluate(Object... args) {
+		if (getArgumentVariables() == null) {
+			System.out.println("WARN: " + getName() + " was not compiled ahead of time");
+			compile();
+		}
+
+		ArrayVariable outputVariable = (ArrayVariable) getComputation().getOutputVariable();
+
+		// Capture the offset, but ultimately use the root delegate
+		int offset = outputVariable.getOffset();
+		outputVariable = (ArrayVariable) outputVariable.getRootDelegate();
+
+		if (outputVariable == null) {
+			throw new IllegalArgumentException("Cannot capture result, as there is no argument which serves as an output variable");
+		}
+
+		int outputArgIndex = getArgumentVariables().indexOf(outputVariable);
+
+		if (outputArgIndex < 0) {
+			throw new IllegalArgumentException("An output variable does not appear to be one of the arguments to the Evaluable");
+		}
+
+		return postProcessOutput((MemoryData) apply(outputArgIndex, args)[outputArgIndex], offset);
 	}
 
 	@Override
 	public synchronized Object[] apply(Object[] args) {
+		throw new UnsupportedOperationException();
+	}
+
+	public synchronized Object[] apply(int outputArgIndex, Object[] args) {
 		if (!isKernel() || !enableKernel) return super.apply(args);
 
 		if (getArgumentVariables() == null) {
@@ -47,11 +81,11 @@ public class DefaultCollectionEvaluable<T extends PackedCollection> extends Acce
 		MemoryData memArgs[] = Stream.of(args).toArray(MemoryData[]::new);
 
 		Consumer<Object[]> operator = getOperator();
-		((HardwareOperator) operator).setGlobalWorkOffset(0);
-		((HardwareOperator) operator).setGlobalWorkSize(workSize(memArgs[0]));
 
 		if (enableKernelLog) System.out.println("AcceleratedOperation: Preparing " + getName() + " kernel...");
 		MemoryData input[] = getKernelArgs(null, memArgs);
+		((HardwareOperator) operator).setGlobalWorkOffset(0);
+		((HardwareOperator) operator).setGlobalWorkSize(workSize(input[outputArgIndex]));
 
 		if (enableKernelLog) System.out.println("AcceleratedOperation: Evaluating " + getName() + " kernel...");
 
@@ -69,7 +103,11 @@ public class DefaultCollectionEvaluable<T extends PackedCollection> extends Acce
 
 	@Override
 	protected T postProcessOutput(MemoryData output, int offset) {
-		return (T) new PackedCollection(shape, 0, output, offset);
+		if (postprocessor == null) {
+			return (T) new PackedCollection(shape, 0, output, offset);
+		} else {
+			return postprocessor.apply(output, offset);
+		}
 	}
 
 	@Override

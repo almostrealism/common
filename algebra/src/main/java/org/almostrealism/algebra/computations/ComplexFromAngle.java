@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@ import org.almostrealism.hardware.DynamicProducerComputationAdapter;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public class ComplexFromAngle extends DynamicProducerComputationAdapter<Scalar, Pair> implements PairProducer {
+public class ComplexFromAngle extends DynamicProducerComputationAdapter<Scalar, Pair<?>> implements PairProducer {
 
 	public ComplexFromAngle(Supplier<Evaluable<? extends Scalar>> angle) {
 		super(2, Pair.empty(), PairBank::new, angle);

@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,8 +17,11 @@
 package org.almostrealism.algebra.computations.test;
 
 import io.almostrealism.code.Computation;
+import io.almostrealism.code.ProducerComputation;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarProducer;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.DynamicAcceleratedOperation;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.util.TestFeatures;
@@ -36,7 +39,7 @@ public class SwitchTest implements TestFeatures {
 		Computation<Void> firstChoice = a(1, p(output), scalarsMultiply(multiplier, v(2.0)));
 		Computation<Void> secondChoice = a(1, p(output), scalarsMultiply(multiplier, v(4.0)));
 		Computation<Void> thirdChoice = a(1, p(output), scalarsMultiply(multiplier, v(8.0)));
-		return new Switch(decision, Arrays.asList(firstChoice, secondChoice, thirdChoice));
+		return new Switch((ProducerComputation) decision, Arrays.asList(firstChoice, secondChoice, thirdChoice));
 	}
 
 	@Test

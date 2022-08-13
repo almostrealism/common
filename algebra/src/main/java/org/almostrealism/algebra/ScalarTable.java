@@ -16,6 +16,8 @@
 
 package org.almostrealism.algebra;
 
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.mem.MemoryBankAdapter;
 import io.almostrealism.relation.Evaluable;
 
@@ -25,11 +27,10 @@ import io.almostrealism.relation.Evaluable;
  *
  * @author  Michael Murray
  */
-public class ScalarTable extends MemoryBankAdapter<ScalarBank> { // implements MemoryTable<Scalar> {
+public class ScalarTable extends PackedCollection<ScalarBank> { // implements MemoryTable<Scalar> {
 	public ScalarTable(int width, int count) {
-		super(2 * width, count, delegateSpec ->
-				new ScalarBank(width, delegateSpec.getDelegate(), delegateSpec.getOffset(),
-						CacheLevel.NONE));
+		super(new TraversalPolicy(count, width, 2), 1, delegateSpec ->
+				new ScalarBank(width, delegateSpec.getDelegate(), delegateSpec.getOffset()));
 	}
 
 	// TODO  These should come from MemoryTable, but it is not easy to get generics to work

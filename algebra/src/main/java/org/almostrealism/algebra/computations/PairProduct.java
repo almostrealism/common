@@ -23,8 +23,8 @@ import org.almostrealism.algebra.PairProducer;
 
 import java.util.function.Supplier;
 
-public class PairProduct extends NAryDynamicProducer<Pair> implements PairProducer {
-	public PairProduct(Supplier<Evaluable<? extends Pair>>... producers) {
+public class PairProduct extends NAryDynamicProducer<Pair<?>> implements PairProducer {
+	public PairProduct(Supplier<Evaluable<? extends Pair<?>>>... producers) {
 		super("*", 2, Pair.empty(), PairBank::new, producers);
 	}
 

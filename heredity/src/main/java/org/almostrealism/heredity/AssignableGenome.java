@@ -21,9 +21,12 @@ import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.algebra.Tensor;
+import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.MemoryData;
 
-public class AssignableGenome extends Tensor<Scalar> implements Genome<Scalar>, Delegated<Tensor<Scalar>>, ScalarFeatures {
-	private final Tensor<Scalar> delegate;
+public class AssignableGenome extends Tensor<PackedCollection<?>> implements Genome<PackedCollection<?>>, Delegated<Tensor<PackedCollection<?>>>, ScalarFeatures, CollectionFeatures {
+	private final Tensor<PackedCollection<?>> delegate;
 	private final int count;
 
 	public AssignableGenome() {
@@ -31,17 +34,17 @@ public class AssignableGenome extends Tensor<Scalar> implements Genome<Scalar>, 
 		count = -1;
 	}
 
-	protected AssignableGenome(Tensor<Scalar> delegate, int count) {
+	protected AssignableGenome(Tensor<PackedCollection<?>> delegate, int count) {
 		this.delegate = delegate;
 		this.count = count;
 	}
 
 	public void assignTo(Genome genome) {
 		for (int x = 0; x < genome.count(); x++) {
-			Chromosome<Scalar> c = (Chromosome<Scalar>) genome.valueAt(x);
+			Chromosome<PackedCollection<?>> c = (Chromosome<PackedCollection<?>>) genome.valueAt(x);
 
 			for (int y = 0; y < c.length(); y++) {
-				Gene<Scalar> g = c.valueAt(y);
+				Gene<PackedCollection<?>> g = c.valueAt(y);
 
 				for (int z = 0; z < g.length(); z++) {
 					Scalar v;
@@ -49,7 +52,7 @@ public class AssignableGenome extends Tensor<Scalar> implements Genome<Scalar>, 
 					if (g.valueAt(z) instanceof ScaleFactor) {
 						v = ((ScaleFactor) g.valueAt(z)).getScale();
 					} else {
-						v = g.valueAt(z).getResultant(v(1.0)).get().evaluate();
+						v = new Scalar(g.valueAt(z).getResultant(c(1.0)).get().evaluate().toDouble(0));
 					}
 
 					if (v == null) {
@@ -60,7 +63,7 @@ public class AssignableGenome extends Tensor<Scalar> implements Genome<Scalar>, 
 						insert(new Scalar(), x, y, z);
 					}
 
-					get(x, y, z).setValue(v.getValue());
+					get(x, y, z).setMem(v.getValue());
 				}
 			}
 		}
@@ -77,7 +80,7 @@ public class AssignableGenome extends Tensor<Scalar> implements Genome<Scalar>, 
 	}
 
 	@Override
-	public Scalar get(int... loc) {
+	public PackedCollection<?> get(int... loc) {
 		if (delegate != null) return delegate.get(loc);
 		return super.get(loc);
 	}
@@ -89,7 +92,7 @@ public class AssignableGenome extends Tensor<Scalar> implements Genome<Scalar>, 
 	}
 
 	@Override
-	public Chromosome<Scalar> valueAt(int pos) {
+	public Chromosome<PackedCollection<?>> valueAt(int pos) {
 		return new AssignableChromosome(pos);
 	}
 
@@ -97,11 +100,11 @@ public class AssignableGenome extends Tensor<Scalar> implements Genome<Scalar>, 
 	public int count() { return count >= 0 ? count : length(); }
 
 	@Override
-	public Tensor<Scalar> getDelegate() {
+	public Tensor<PackedCollection<?>> getDelegate() {
 		return delegate;
 	}
 
-	protected class AssignableChromosome implements Chromosome<Scalar> {
+	protected class AssignableChromosome implements Chromosome<PackedCollection<?>> {
 		private final int index;
 
 		public AssignableChromosome(int index) {
@@ -114,12 +117,12 @@ public class AssignableGenome extends Tensor<Scalar> implements Genome<Scalar>, 
 		}
 
 		@Override
-		public Gene<Scalar> valueAt(int pos) {
+		public Gene<PackedCollection<?>> valueAt(int pos) {
 			return new AssignableGene(index, pos);
 		}
 	}
 
-	protected class AssignableGene implements Gene<Scalar> {
+	protected class AssignableGene implements Gene<PackedCollection<?>> {
 		private final int chromosome;
 		private final int index;
 
@@ -134,14 +137,14 @@ public class AssignableGenome extends Tensor<Scalar> implements Genome<Scalar>, 
 		}
 
 		@Override
-		public Factor<Scalar> valueAt(int pos) {
+		public Factor<PackedCollection<?>> valueAt(int pos) {
 			return value -> {
-				Scalar v = AssignableGenome.this.get(chromosome, index, pos);
+				PackedCollection<?> v = AssignableGenome.this.get(chromosome, index, pos);
 				if (v == null) {
 					throw new NullPointerException();
 				}
 
-				return scalarsMultiply(() -> new Provider<>(v), value);
+				return _multiply(() -> new Provider<>(v), value);
 			};
 		}
 	}

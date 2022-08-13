@@ -28,21 +28,21 @@ import io.almostrealism.relation.Producer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-public class PackedCollectionMax extends CollectionProducerComputationAdapter {
+public class PackedCollectionMax extends CollectionProducerComputationAdapter<PackedCollection<?>, PackedCollection<?>> {
 	private Function<Expression, Expression> expression;
 
-	public PackedCollectionMax(Producer<PackedCollection> values) {
+	public PackedCollectionMax(Producer<PackedCollection<?>> values) {
 		this(values, v -> v);
 	}
 
-	public PackedCollectionMax(Supplier<Evaluable<? extends PackedCollection>> values, Function<Expression, Expression> expression) {
+	public PackedCollectionMax(Supplier<Evaluable<? extends PackedCollection<?>>> values, Function<Expression, Expression> expression) {
 		super(new TraversalPolicy(1), values);
 		this.expression = expression;
 	}
 
 	@Override
-	public Scope<PackedCollection> getScope() {
-		HybridScope<PackedCollection> scope = new HybridScope<>(this);
+	public Scope<PackedCollection<?>> getScope() {
+		HybridScope<PackedCollection<?>> scope = new HybridScope<>(this);
 		scope.setMetadata(new OperationMetadata(getFunctionName(), "PackedCollectionMax"));
 
 		String i = getVariablePrefix() + "_i";

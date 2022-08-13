@@ -1,5 +1,5 @@
  /*
- * Copyright 2020 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -21,19 +21,24 @@ import io.almostrealism.scope.Variable;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorBank;
 import org.almostrealism.algebra.VectorProducer;
+import org.almostrealism.algebra.VectorProducerBase;
+import org.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.computations.DynamicCollectionProducerComputationAdapter;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.hardware.DynamicProducerComputationAdapter;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.hardware.MemoryData;
 
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
- public class RayOrigin extends DynamicProducerComputationAdapter<Ray, Vector> implements VectorProducer {
+@Deprecated
+public class RayOrigin extends DynamicCollectionProducerComputationAdapter<Ray, Vector> implements VectorProducerBase {
 	private Expression<Double> value[];
 	private boolean isStatic;
 
 	public RayOrigin(Supplier<Evaluable<? extends Ray>> r) {
-		super(3, Vector.blank(), VectorBank::new, r);
+		super(new TraversalPolicy(3), r);
 	}
 
 	@Override
@@ -72,4 +77,9 @@ import java.util.function.Supplier;
 			absorbVariables(getInputProducer(1));
 		}
 	}
+
+	 @Override
+	 public Vector postProcessOutput(MemoryData output, int offset) {
+		 return new Vector(output, offset);
+	 }
 }

@@ -16,18 +16,28 @@
 
 package org.almostrealism.algebra.test;
 
+import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.hardware.DynamicAcceleratedOperation;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
+import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.cl.HardwareOperator;
+import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
 
 import static org.almostrealism.Ops.ops;
 
-public class VectorMathTest implements CodeFeatures {
+public class VectorMathTest implements TestFeatures {
+	@Test
+	public void scalarPow() {
+		Scalar result = scalar(3).pow(3).get().evaluate();
+		assertEquals(27, result);
+	}
+
 	@Test
 	public void productFromVectors1() {
 		VectorProducer a = vector(1.0, 2.0, 3.0);

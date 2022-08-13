@@ -16,23 +16,30 @@
 
 package org.almostrealism.collect;
 
+import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.KernelizedOperation;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.PassThroughProducer;
+import org.almostrealism.hardware.cl.InvalidValueException;
 import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.hardware.ctx.ContextSpecific;
 import org.almostrealism.hardware.ctx.DefaultContextSpecific;
 import org.almostrealism.hardware.mem.Bytes;
+import org.almostrealism.hardware.mem.MemoryBankAdapter;
 import org.almostrealism.hardware.mem.MemoryDataAdapter;
 
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BiFunction;
+import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.IntFunction;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-public class PackedCollection extends MemoryDataAdapter implements MemoryBank<PackedCollection>, Traversable<PackedCollection> {
+public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter implements MemoryBank<T>, Traversable<PackedCollection> {
 	private static ContextSpecific<KernelizedOperation> clear;
 
 	static {
@@ -44,6 +51,7 @@ public class PackedCollection extends MemoryDataAdapter implements MemoryBank<Pa
 
 	private final TraversalPolicy shape;
 	private final int traversalAxis;
+	private Function<DelegateSpec, T> supply;
 
 	public PackedCollection(int... shape) {
 		this(new TraversalPolicy(shape));
@@ -51,6 +59,19 @@ public class PackedCollection extends MemoryDataAdapter implements MemoryBank<Pa
 
 	public PackedCollection(TraversalPolicy shape) {
 		this(shape, 0, null, 0);
+	}
+
+	public PackedCollection(TraversalPolicy shape, int traversalAxis) {
+		this(shape, traversalAxis, null);
+	}
+
+	public PackedCollection(TraversalPolicy shape, int traversalAxis, Function<DelegateSpec, T> supply) {
+		this(shape, traversalAxis, supply, null, 0);
+	}
+
+	public PackedCollection(TraversalPolicy shape, int traversalAxis, Function<DelegateSpec, T> supply, MemoryData delegate, int delegateOffset) {
+		this(shape, traversalAxis, delegate, delegateOffset);
+		this.supply = supply;
 	}
 
 	public PackedCollection(TraversalPolicy shape, int traversalAxis, MemoryData delegate, int delegateOffset) {
@@ -61,13 +82,21 @@ public class PackedCollection extends MemoryDataAdapter implements MemoryBank<Pa
 	}
 
 	@Override
-	public PackedCollection get(int index) {
-		throw new UnsupportedOperationException();
+	public T get(int index) {
+		if (traversalAxis == 1 && supply != null) {
+			return supply.apply(new DelegateSpec(shape.size(1) * index));
+		} else {
+			throw new UnsupportedOperationException();
+		}
 	}
 
 	@Override
-	public void set(int index, PackedCollection value) {
-		throw new UnsupportedOperationException();
+	public void set(int index, T value) {
+		set(index, value.toArray(0, value.getMemLength()));
+	}
+
+	public void set(int index, double... values) {
+		setMem(index * getAtomicMemLength(), values, 0, values.length);
 	}
 
 	@Override
@@ -87,23 +116,47 @@ public class PackedCollection extends MemoryDataAdapter implements MemoryBank<Pa
 
 	public TraversalPolicy getShape() { return shape; }
 
+	public Stream<T> stream() {
+		return IntStream.range(0, getCount()).mapToObj(this::get);
+	}
+
+	public void forEach(Consumer<T> consumer) {
+		stream().forEach(consumer);
+	}
+
 	public void clear() {
 		clear.getValue().kernelOperate(this.traverseEach(), new PackedCollection(1));
 	}
 
-	public PackedCollection range(TraversalPolicy shape) {
+	public PackedCollection<T> range(TraversalPolicy shape) {
 		return range(shape, 0);
 	}
 
-	public PackedCollection range(TraversalPolicy shape, int start) {
+	public PackedCollection<T> range(TraversalPolicy shape, int start) {
 		return new PackedCollection(shape, 0, this, start);
 	}
 
-	public PackedCollection traverse(int axis) {
+	// TODO  Accelerated version
+	@Deprecated
+	public double lengthSq() {
+		double data[] = toArray(0, getMemLength());
+		return IntStream.range(0, getMemLength())
+				.mapToDouble(i -> data[i])
+				.map(v -> v * v)
+				.sum();
+	}
+
+	// TODO  Accelerated version
+	@Deprecated
+	public double length() {
+		return Math.sqrt(lengthSq());
+	}
+
+	public PackedCollection<T> traverse(int axis) {
 		return new PackedCollection(shape, axis, this, 0);
 	}
 
-	public PackedCollection traverseEach() {
+	public PackedCollection<T> traverseEach() {
 		return traverse(getShape().getDimensions());
 	}
 
@@ -135,5 +188,26 @@ public class PackedCollection extends MemoryDataAdapter implements MemoryBank<Pa
 
 	public static DynamicCollectionProducer blank(TraversalPolicy shape) {
 		return new DynamicCollectionProducer(shape, args -> new PackedCollection(shape));
+	}
+
+	public static <T extends MemoryData> IntFunction<MemoryBank<PackedCollection<?>>> bank(TraversalPolicy atomicShape) {
+		return len -> new PackedCollection(atomicShape.prependDimension(len));
+	}
+
+	public static <T extends MemoryData> BiFunction<Integer, Integer, MemoryBank<T>> table(TraversalPolicy atomicShape) {
+		return (width, count) -> new PackedCollection(atomicShape.prependDimension(width).prependDimension(count));
+	}
+
+	public class DelegateSpec {
+		private int offset;
+
+		public DelegateSpec(int offset) {
+			setOffset(offset);
+		}
+
+		public MemoryData getDelegate() { return PackedCollection.this; }
+
+		public int getOffset() { return offset; }
+		public void setOffset(int offset) { this.offset = offset; }
 	}
 }

@@ -23,7 +23,7 @@ import org.almostrealism.algebra.ScalarProducer;
 import org.junit.Test;
 
 public class AltComputeContextsTest implements CodeFeatures {
-	@Test
+	// TODO  @Test
 	public void clAndNative() {
 		dc(() -> {
 			Scalar result = new Scalar();

@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@ import io.almostrealism.relation.Evaluable;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public class PairFromScalars extends DynamicProducerComputationAdapter<Scalar, Pair> implements PairProducer {
+public class PairFromScalars extends DynamicProducerComputationAdapter<Scalar, Pair<?>> implements PairProducer {
 	private Expression<Double> value[];
 
 	public PairFromScalars(Supplier<Evaluable<? extends Scalar>> x, Supplier<Evaluable<? extends Scalar>> y) {

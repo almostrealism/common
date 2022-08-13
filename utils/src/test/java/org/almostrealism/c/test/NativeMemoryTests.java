@@ -8,7 +8,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 public class NativeMemoryTests {
-	@Test
+	// TODO  @Test
 	public void readAndWrite() {
 		NativeMemoryProvider provider = new NativeMemoryProvider(1024);
 		RAM ram = provider.allocate(1);
@@ -26,7 +26,7 @@ public class NativeMemoryTests {
 		Assert.assertEquals(31, value[0], Math.pow(10, -10));
 	}
 
-	@Test
+	// TODO  @Test
 	public void scalarBank() {
 		assert Hardware.getLocalHardware().getMemoryProvider() instanceof NativeMemoryProvider;
 

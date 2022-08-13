@@ -26,6 +26,7 @@ import io.almostrealism.relation.Evaluable;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
+@Deprecated
 public class Sine extends DynamicProducerComputationAdapter<Scalar, Scalar> implements ScalarProducer {
 	private Expression<Double> value[];
 

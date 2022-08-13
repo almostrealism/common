@@ -21,11 +21,12 @@ import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.expression.Sum;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
+import org.almostrealism.collect.PackedCollection;
 
 import java.util.function.Consumer;
 
 public class WaveCellTick extends WaveCellComputation {
-	public WaveCellTick(WaveCellData data, ScalarBank wave, boolean repeat) {
+	public WaveCellTick(WaveCellData data, PackedCollection<?> wave, boolean repeat) {
 		super(data, wave, new Scalar(), repeat);
 	}
 

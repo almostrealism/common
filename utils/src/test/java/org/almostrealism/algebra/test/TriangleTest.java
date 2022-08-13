@@ -22,6 +22,7 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.ProducerWithRank;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.algebra.computations.VectorExpressionComputation;
 import org.almostrealism.algebra.computations.VectorProduct;
 import org.almostrealism.bool.AcceleratedConjunctionScalar;
 import org.almostrealism.bool.GreaterThanScalar;
@@ -54,9 +55,9 @@ public class TriangleTest implements CodeFeatures {
 		return (RayPointAt) ((RayFromVectors) noRank).getInputProducer(1);
 	}
 
-	protected RayOrigin originPointProducer() {
+	protected VectorExpressionComputation originPointProducer() {
 		RayPointAt origin = originProducer();
-		return (RayOrigin) origin.getInputProducer(1);
+		return (VectorExpressionComputation) origin.getInputProducer(1);
 	}
 
 	protected VectorProduct originDirectionProducer() {
@@ -66,7 +67,7 @@ public class TriangleTest implements CodeFeatures {
 
 	@Test
 	public void originComposition() {
-		RayOrigin o = originPointProducer();
+		VectorExpressionComputation o = originPointProducer();
 		Evaluable<Vector> evo = o.get();
 		((OperationAdapter) evo).compile();
 

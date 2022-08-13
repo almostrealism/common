@@ -21,17 +21,22 @@ import io.almostrealism.expression.Expression;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarProducer;
+import org.almostrealism.algebra.ScalarProducerBase;
+import org.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.computations.DynamicCollectionProducerComputationAdapter;
 import org.almostrealism.hardware.DynamicProducerComputationAdapter;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.hardware.MemoryData;
 
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public class ScalarPow extends DynamicProducerComputationAdapter<Scalar, Scalar> implements ScalarProducer {
+@Deprecated
+public class ScalarPow extends DynamicCollectionProducerComputationAdapter<Scalar, Scalar> implements ScalarProducerBase {
 	private Expression<Double> value[];
 
 	public ScalarPow(Supplier<Evaluable<? extends Scalar>> base, Supplier<Evaluable<? extends Scalar>> exponent) {
-		super(2, Scalar.blank(), ScalarBank::new, base, exponent);
+		super(new TraversalPolicy(2), base, exponent);
 	}
 
 	@Override
@@ -78,5 +83,10 @@ public class ScalarPow extends DynamicProducerComputationAdapter<Scalar, Scalar>
 		}
 
 		convertToVariableRef();
+	}
+
+	@Override
+	public Scalar postProcessOutput(MemoryData output, int offset) {
+		return new Scalar(output, offset);
 	}
 }

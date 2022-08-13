@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -28,7 +28,7 @@ import io.almostrealism.relation.Evaluable;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public class ScalarFromPair extends DynamicProducerComputationAdapter<Pair, Scalar> implements ScalarProducer {
+public class ScalarFromPair extends DynamicProducerComputationAdapter<Pair<?>, Scalar> implements ScalarProducer {
 	public static final int X = 0;
 	public static final int Y = 1;
 
@@ -37,7 +37,7 @@ public class ScalarFromPair extends DynamicProducerComputationAdapter<Pair, Scal
 	private Expression<Double> value;
 	private boolean isStatic;
 
-	public ScalarFromPair(Supplier<Evaluable<? extends Pair>> pair, int coordinate) {
+	public ScalarFromPair(Supplier<Evaluable<? extends Pair<?>>> pair, int coordinate) {
 		super(2, Scalar.blank(), ScalarBank::new, pair);
 		this.coordinate = coordinate;
 	}

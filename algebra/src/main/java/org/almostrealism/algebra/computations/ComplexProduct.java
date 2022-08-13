@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -29,9 +29,9 @@ import org.almostrealism.hardware.DynamicProducerComputationAdapter;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public class ComplexProduct extends DynamicProducerComputationAdapter<Pair, Pair> implements PairProducer {
+public class ComplexProduct extends DynamicProducerComputationAdapter<Pair<?>, Pair<?>> implements PairProducer {
 
-	public ComplexProduct(Supplier<Evaluable<? extends Pair>> p, Supplier<Evaluable<? extends Pair>> q) {
+	public ComplexProduct(Supplier<Evaluable<? extends Pair<?>>> p, Supplier<Evaluable<? extends Pair<?>>> q) {
 		super(2, Pair.empty(), PairBank::new, p, q);
 	}
 

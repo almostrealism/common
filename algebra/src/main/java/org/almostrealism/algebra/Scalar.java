@@ -20,7 +20,7 @@ import org.almostrealism.algebra.computations.DynamicScalarProducer;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.PooledMem;
 
-public class Scalar extends Pair implements Comparable<Scalar> {
+public class Scalar extends Pair<Scalar> implements Comparable<Scalar> {
 	public static final double EPSILON = 1.19209290e-07;
 	public static final double TWO_PI = 6.283185307179586232;
 	public static final double PI = TWO_PI * 0.5;

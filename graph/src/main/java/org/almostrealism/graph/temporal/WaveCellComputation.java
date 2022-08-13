@@ -22,13 +22,14 @@ import io.almostrealism.scope.Scope;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.DynamicOperationComputationAdapter;
 
 public abstract class WaveCellComputation extends DynamicOperationComputationAdapter {
 	protected HybridScope scope;
 	protected final boolean repeat;
 
-	public WaveCellComputation(WaveCellData data, ScalarBank wave, Scalar output, boolean repeat) {
+	public WaveCellComputation(WaveCellData data, PackedCollection<?> wave, Scalar output, boolean repeat) {
 		super(() -> new Provider<>(output),
 				() -> new Provider<>(wave),
 				data::getWavePosition,

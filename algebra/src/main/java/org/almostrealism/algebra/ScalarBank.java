@@ -16,21 +16,19 @@
 
 package org.almostrealism.algebra;
 
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.mem.MemoryBankAdapter;
 
 import java.util.List;
 import java.util.Set;
 import java.util.function.BiConsumer;
 import java.util.function.BinaryOperator;
-import java.util.function.Consumer;
 import java.util.function.Function;
-import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import java.util.stream.Collector;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-import java.util.stream.Stream;
 
 /**
  * A collection of {@link Scalar}s of a fixed length, that is contiguous in
@@ -38,18 +36,10 @@ import java.util.stream.Stream;
  *
  * @author  Michael Murray
  */
-public class ScalarBank extends MemoryBankAdapter<Scalar> {
+public class ScalarBank extends PackedCollection<Scalar> {
 	public ScalarBank(int count) {
-		super(2, count, delegateSpec ->
+		super(new TraversalPolicy(count, 2), 1, delegateSpec ->
 				new Scalar(delegateSpec.getDelegate(), delegateSpec.getOffset()));
-		if (count == 1) {
-			System.out.println("WARN: Creating a ScalarBank of a single Scalar");
-		}
-	}
-
-	public ScalarBank(int count, CacheLevel cacheLevel) {
-		super(2, count, delegateSpec ->
-				new Scalar(delegateSpec.getDelegate(), delegateSpec.getOffset()), cacheLevel);
 		if (count == 1) {
 			System.out.println("WARN: Creating a ScalarBank of a single Scalar");
 		}
@@ -57,8 +47,8 @@ public class ScalarBank extends MemoryBankAdapter<Scalar> {
 
 	// TODO  Need to respect CacheLevel, but the parent constructor that does
 	//       respect cache level does this init stuff that we don't want
-	public ScalarBank(int count, MemoryData delegate, int delegateOffset, CacheLevel cacheLevel) {
-		super(2, count, delegateSpec ->
+	public ScalarBank(int count, MemoryData delegate, int delegateOffset) {
+		super(new TraversalPolicy(count, 2), 1, delegateSpec ->
 						new Scalar(delegateSpec.getDelegate(), delegateSpec.getOffset()),
 				delegate, delegateOffset);
 	}
@@ -90,7 +80,7 @@ public class ScalarBank extends MemoryBankAdapter<Scalar> {
 		if (offset * getAtomicMemLength() >= getMemLength()) {
 			throw new IllegalArgumentException("Range extends beyond the length of this bank");
 		}
-		return new ScalarBank(length, this, offset * getAtomicMemLength(), null);
+		return new ScalarBank(length, this, offset * getAtomicMemLength());
 	}
 
 	// TODO  Accelerated version
@@ -104,18 +94,12 @@ public class ScalarBank extends MemoryBankAdapter<Scalar> {
 
 	// TODO  Accelerated version
 	@Deprecated
-	public Scalar lengthSq() {
+	public double lengthSq() {
 		double data[] = toArray(0, getMemLength());
-		return new Scalar(IntStream.range(0, getCount()).map(i -> 2 * i)
+		return IntStream.range(0, getCount()).map(i -> 2 * i)
 				.mapToDouble(i -> data[i])
 				.map(v -> v * v)
-				.sum());
-	}
-
-	// TODO  Accelerated version
-	@Deprecated
-	public Scalar length() {
-		return new Scalar(Math.sqrt(lengthSq().getValue()));
+				.sum();
 	}
 
 	@Deprecated

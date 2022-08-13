@@ -24,6 +24,7 @@ import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeInputManager;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.DynamicOperationComputationAdapter;
 
 import java.util.List;
@@ -32,7 +33,7 @@ import java.util.stream.IntStream;
 public class Switch extends DynamicOperationComputationAdapter {
 	private final List<Computation> choices;
 
-	public Switch(ProducerComputation<Scalar> decision, List<Computation> choices) {
+	public Switch(ProducerComputation<PackedCollection<?>> decision, List<Computation> choices) {
 		super(new ProducerComputation[] { decision });
 		this.choices = choices;
 	}

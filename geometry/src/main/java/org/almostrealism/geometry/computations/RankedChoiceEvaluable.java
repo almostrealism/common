@@ -33,7 +33,7 @@ public class RankedChoiceEvaluable<T> extends ArrayList<ProducerWithRank<T, Scal
 	protected double e;
 	protected boolean tolerateNull;
 
-	public static final KernelizedEvaluable<Pair> highestRank;
+	public static final KernelizedEvaluable<Pair<?>> highestRank;
 
 	static {
 		highestRank = new AcceleratedEvaluable<>(

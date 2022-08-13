@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,6 +16,8 @@
 
 package org.almostrealism.algebra;
 
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.MemoryBankAdapter;
 import io.almostrealism.relation.Evaluable;
@@ -26,19 +28,14 @@ import io.almostrealism.relation.Evaluable;
  *
  * @author  Michael Murray
  */
-public class VectorBank extends MemoryBankAdapter<Vector> {
+public class VectorBank extends PackedCollection<Vector> {
 	public VectorBank(int count) {
-		super(3, count, delegateSpec ->
+		super(new TraversalPolicy(count, 3), 1, delegateSpec ->
 				new Vector(delegateSpec.getDelegate(), delegateSpec.getOffset()));
 	}
 
-	public VectorBank(int count, CacheLevel cacheLevel) {
-		super(3, count, delegateSpec ->
-				new Vector(delegateSpec.getDelegate(), delegateSpec.getOffset()), cacheLevel);
-	}
-
 	protected VectorBank(int count, MemoryData delegate, int delegateOffset) {
-		super(3, count, delegateSpec ->
+		super(new TraversalPolicy(count, 3), 1, delegateSpec ->
 				new Vector(delegateSpec.getDelegate(), delegateSpec.getOffset()),
 				delegate, delegateOffset);
 	}

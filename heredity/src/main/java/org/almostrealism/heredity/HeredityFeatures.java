@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,33 +19,37 @@ package org.almostrealism.heredity;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarProducer;
+import org.almostrealism.algebra.ScalarProducerBase;
 import org.almostrealism.algebra.computations.ScalarPow;
 import org.almostrealism.algebra.computations.StaticScalarComputation;
+import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.PackedCollection;
 
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-public interface HeredityFeatures {
-	default Chromosome<Scalar> c(Gene<Scalar>... genes) {
-		ArrayListChromosome<Scalar> c = new ArrayListChromosome<>();
+public interface HeredityFeatures extends CollectionFeatures {
+	default Chromosome<PackedCollection<?>> c(Gene<PackedCollection<?>>... genes) {
+		ArrayListChromosome<PackedCollection<?>> c = new ArrayListChromosome<>();
 		Stream.of(genes).forEach(c::add);
 		return c;
 	}
 
-	default Gene<Scalar> g(double... factors) {
+	default Gene<PackedCollection<?>> g(double... factors) {
 		return g(IntStream.range(0, factors.length).mapToObj(i -> new ScaleFactor(factors[i])).toArray(Factor[]::new));
 	}
 
-	default Gene<Scalar> g(Scalar... factors) {
+	default Gene<PackedCollection<?>> g(Scalar... factors) {
 		return g(IntStream.range(0, factors.length).mapToObj(i -> new ScaleFactor(factors[i])).toArray(Factor[]::new));
 	}
 
-	default Gene<Scalar> g(Producer<Scalar>... factors) {
+	default Gene<PackedCollection<?>> g(Producer<Scalar>... factors) {
 		return g(Stream.of(factors).map(f -> (Factor) protein -> f).toArray(Factor[]::new));
 	}
 
-	default Gene<Scalar> g(Factor<Scalar>... factors) {
-		ArrayListGene<Scalar> gene = new ArrayListGene<>();
+	default Gene<PackedCollection<?>> g(Factor<PackedCollection<?>>... factors) {
+		ArrayListGene<PackedCollection<?>> gene = new ArrayListGene<>();
 		IntStream.range(0, factors.length).mapToObj(i -> factors[i]).forEach(gene::add);
 		return gene;
 	}
@@ -58,17 +62,23 @@ public interface HeredityFeatures {
 		return 1.0 / (1.0 - Math.pow(f, exp)) - 1.0;
 	}
 
-	default ScalarProducer oneToInfinity(Factor<Scalar> f, double exp) {
-		return oneToInfinity(f.getResultant(new StaticScalarComputation(new Scalar(1.0))), exp);
+	default CollectionProducer oneToInfinity(Factor<PackedCollection<?>> f, double exp) {
+		return oneToInfinity(f.getResultant(c(1.0)), exp);
 	}
 
-	default ScalarProducer oneToInfinity(Producer<Scalar> arg, double exp) {
-		return oneToInfinity(arg, new StaticScalarComputation(new Scalar(exp)));
+	default CollectionProducer oneToInfinity(Producer<PackedCollection<?>> arg, double exp) {
+		return oneToInfinity(arg, c(exp));
 	}
 
-	default ScalarProducer oneToInfinity(Producer<Scalar> arg, Producer<Scalar> exp) {
-		ScalarProducer pow = new ScalarPow(arg, exp);
-		return pow.minus().add(1.0).pow(-1.0).subtract(1.0);
+	default CollectionProducer oneToInfinity(Producer<PackedCollection<?>> arg, Producer<PackedCollection<?>> exp) {
+//		ScalarProducerBase pow = new ScalarPow(arg, exp);
+//		return pow.minus().add(1.0).pow(-1.0).subtract(1.0);
+		CollectionProducer pow = _pow(arg, exp);
+		CollectionProducer out = _minus(pow);
+		out = _add(out, c(1.0));
+		out = _pow(out, c(-1.0));
+		out = _add(out, c(-1.0));
+		return out;
 	}
 
 	static HeredityFeatures getInstance() {

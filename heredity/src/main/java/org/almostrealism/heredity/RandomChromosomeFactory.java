@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,11 +19,12 @@ package org.almostrealism.heredity;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Tensor;
+import org.almostrealism.collect.PackedCollection;
 
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-public class RandomChromosomeFactory implements ChromosomeFactory<Scalar> {
+public class RandomChromosomeFactory implements ChromosomeFactory<PackedCollection<?>> {
 	private int genes, factors;
 	private Tensor<Pair> ranges;
 
@@ -43,7 +44,7 @@ public class RandomChromosomeFactory implements ChromosomeFactory<Scalar> {
 	}
 	
 	@Override
-	public Chromosome<Scalar> generateChromosome(double arg) {
+	public Chromosome<PackedCollection<?>> generateChromosome(double arg) {
 		return IntStream.range(0, genes)
 				.mapToObj(i -> IntStream.range(0, factors)
 						.mapToObj(j -> new ScaleFactor(value(i, j) * arg))

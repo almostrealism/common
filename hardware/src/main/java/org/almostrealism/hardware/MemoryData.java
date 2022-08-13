@@ -99,6 +99,10 @@ public interface MemoryData extends MultiExpression<Double>, Delegated<MemoryDat
 
 	int getDelegateOffset();
 
+	default double toDouble(int index) {
+		return toArray(index, 1)[0];
+	}
+
 	default double[] toArray(int offset, int length) {
 		return getMem().toArray(getOffset() + offset, length);
 	}

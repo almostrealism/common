@@ -21,11 +21,14 @@ import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarProducer;
+import org.almostrealism.algebra.ScalarProducerBase;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorProducer;
+import org.almostrealism.algebra.VectorProducerBase;
 import org.almostrealism.geometry.DefaultRayEvaluable;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.computations.RayFromVectors;
+import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.space.DefaultVertexData;
 import org.almostrealism.space.Mesh;
 import org.almostrealism.space.MeshData;
@@ -43,10 +46,10 @@ import org.junit.Before;
 import org.junit.Test;
 
 public class MeshIntersectionTest implements TestFeatures {
-	private VectorProducer origin1 = vector(0.0, 1.0, 1.0);
-	private VectorProducer direction1 = vector(0.0, 0.0, -1.0);
-	private VectorProducer origin2 = vector( -0.1, -1.0, 1.0);
-	private VectorProducer direction2 = vector(0.0, 0.0, -1.0);
+	private VectorProducerBase origin1 = vector(0.0, 1.0, 1.0);
+	private VectorProducerBase direction1 = vector(0.0, 0.0, -1.0);
+	private VectorProducerBase origin2 = vector( -0.1, -1.0, 1.0);
+	private VectorProducerBase direction2 = vector(0.0, 0.0, -1.0);
 
 	private MeshData data1, data2;
 
@@ -76,10 +79,10 @@ public class MeshIntersectionTest implements TestFeatures {
 		data2 = mesh2().getMeshData();
 	}
 
-	protected VectorProducer abc(MeshData data) { return v(data.get(0).getABC()); }
-	protected VectorProducer def(MeshData data) { return v(data.get(0).getDEF()); }
-	protected VectorProducer jkl(MeshData data) { return v(data.get(0).getJKL()); }
-	protected VectorProducer normal(MeshData data) { return v(data.get(0).getNormal()); }
+	protected VectorProducerBase abc(MeshData data) { return v(data.get(0).getABC()); }
+	protected VectorProducerBase def(MeshData data) { return v(data.get(0).getDEF()); }
+	protected VectorProducerBase jkl(MeshData data) { return v(data.get(0).getJKL()); }
+	protected VectorProducerBase normal(MeshData data) { return v(data.get(0).getNormal()); }
 
 	protected TriangleIntersectAt intersection() {
 		return TriangleIntersectAt.construct(PassThroughEvaluable.of(TriangleData.class, 0),
@@ -97,13 +100,13 @@ public class MeshIntersectionTest implements TestFeatures {
 	public void data1() {
 		System.out.println(def(data1).get().evaluate());
 
-		VectorProducer h = TriangleIntersectAt.h(def(data1), direction1);
+		VectorProducerBase h = TriangleIntersectAt.h(def(data1), direction1);
 		System.out.println("h = " + h.get().evaluate());
 
-		ScalarProducer f = TriangleIntersectAt.f(abc(data1), h);
+		ScalarProducerBase f = TriangleIntersectAt.f(abc(data1), h);
 		System.out.println("f = " + f.get().evaluate().getValue());
 
-		ScalarProducer u = TriangleIntersectAt.u(
+		ScalarProducerBase u = TriangleIntersectAt.u(
 												TriangleIntersectAt.s(jkl(data1), origin1),
 												TriangleIntersectAt.h(def(data1), direction1),
 												f.pow(-1.0));
@@ -114,33 +117,33 @@ public class MeshIntersectionTest implements TestFeatures {
 	public void conjunction() {
 		System.out.println(def(data1).get().evaluate());
 
-		VectorProducer h = TriangleIntersectAt.h(def(data1), direction1);
+		VectorProducerBase h = TriangleIntersectAt.h(def(data1), direction1);
 		System.out.println("h = " + h.get().evaluate());
 
-		ScalarProducer f = TriangleIntersectAt.f(abc(data1), h);
+		ScalarProducerBase f = TriangleIntersectAt.f(abc(data1), h);
 		System.out.println("f = " + f.get().evaluate().getValue());
 
-		VectorProducer s = TriangleIntersectAt.s(jkl(data1), origin1);
+		VectorProducerBase s = TriangleIntersectAt.s(jkl(data1), origin1);
 		System.out.println("s = " + s.get().evaluate());
 
-		ScalarProducer u = TriangleIntersectAt.u(s, h, f.pow(-1.0));
+		ScalarProducerBase u = TriangleIntersectAt.u(s, h, f.pow(-1.0));
 		System.out.println("u = " + u.get().evaluate().getValue());
 
-		ScalarProducer v = TriangleIntersectAt.v(direction1, f,
+		ScalarProducerBase v = TriangleIntersectAt.v(direction1, f,
 							TriangleIntersectAt.q(abc(data1), s));
 		System.out.println("v = " + v.get().evaluate().getValue());
 
 		DynamicAcceleratedOperation ho = (DynamicAcceleratedOperation) h.get();
-		Assert.assertEquals(1, ho.getArgsCount());
+		if (enableArgumentCountAssertions) Assert.assertEquals(1, ho.getArgsCount());
 
 		DynamicAcceleratedOperation fo = (DynamicAcceleratedOperation) f.get();
-		Assert.assertEquals(1, fo.getArgsCount());
+		if (enableArgumentCountAssertions) Assert.assertEquals(1, fo.getArgsCount());
 
 		DynamicAcceleratedOperation uo = (DynamicAcceleratedOperation) u.get();
-		Assert.assertEquals(1, uo.getArgsCount());
+		if (enableArgumentCountAssertions) Assert.assertEquals(1, uo.getArgsCount());
 
 		DynamicAcceleratedOperation vo = (DynamicAcceleratedOperation) v.get();
-		Assert.assertEquals(1, vo.getArgsCount());
+		if (enableArgumentCountAssertions) Assert.assertEquals(1, vo.getArgsCount());
 
 		AcceleratedConjunctionScalar acs = new AcceleratedConjunctionScalar(
 				scalar(1.0), scalar(-1.0),
@@ -154,33 +157,33 @@ public class MeshIntersectionTest implements TestFeatures {
 
 	@Test
 	public void data2() {
-		VectorProducer abc = abc(data2);
-		VectorProducer def = def(data2);
-		VectorProducer jkl = jkl(data2);
+		VectorProducerBase abc = abc(data2);
+		VectorProducerBase def = def(data2);
+		VectorProducerBase jkl = jkl(data2);
 
 		System.out.println("abc = " + abc.get().evaluate());
 		System.out.println("def = " + def.get().evaluate());
 		System.out.println("jkl = " + jkl.get().evaluate());
 
-		VectorProducer h = TriangleIntersectAt.h(def(data2), direction2);
+		VectorProducerBase h = TriangleIntersectAt.h(def(data2), direction2);
 		System.out.println("h = " + h.get().evaluate());
 
-		ScalarProducer f = TriangleIntersectAt.f(abc(data2), h);
+		ScalarProducerBase f = TriangleIntersectAt.f(abc(data2), h);
 		System.out.println("f = " + f.get().evaluate().getValue());
 
-		ScalarProducer u = TriangleIntersectAt.u(
+		ScalarProducerBase u = TriangleIntersectAt.u(
 				TriangleIntersectAt.s(jkl(data2), origin2),
 				TriangleIntersectAt.h(def(data2), direction2),
 				f.pow(-1.0));
 		System.out.println("u = " + u.get().evaluate().getValue());
 
-		VectorProducer s = TriangleIntersectAt.s(jkl(data2), origin2);
+		VectorProducerBase s = TriangleIntersectAt.s(jkl(data2), origin2);
 		System.out.println("s = " + s.get().evaluate());
 
-		VectorProducer q = TriangleIntersectAt.q(abc(data2), s);
+		VectorProducerBase q = TriangleIntersectAt.q(abc(data2), s);
 		System.out.println("q = " + q.get().evaluate());
 
-		ScalarProducer v = TriangleIntersectAt.v(direction2, f.pow(-1.0), q);
+		ScalarProducerBase v = TriangleIntersectAt.v(direction2, f.pow(-1.0), q);
 		System.out.println("v = " + v.get().evaluate().getValue());
 	}
 

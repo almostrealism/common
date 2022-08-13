@@ -18,19 +18,20 @@ package org.almostrealism.algebra;
 
 import io.almostrealism.relation.Producer;
 
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.MemoryDataAdapter;
 import org.almostrealism.hardware.PooledMem;
 
-public class Pair extends MemoryDataAdapter {
+public class Pair<T extends PackedCollection> extends PackedCollection<T> {
 	public Pair() {
-		init();
+		super(2);
 	}
 
 	public Pair(MemoryData delegate, int delegateOffset) {
-		setDelegate(delegate, delegateOffset);
-		init();
+		super(new TraversalPolicy(2), 0, delegate, delegateOffset);
 	}
 
 	public Pair(double x, double y) {
@@ -122,7 +123,7 @@ public class Pair extends MemoryDataAdapter {
 				"]";
 	}
 
-	public static Producer<Pair> empty() {
+	public static Producer<Pair<?>> empty() {
 		return new DynamicProducerForMemoryData<>(Pair::new, PairBank::new);
 	}
 }

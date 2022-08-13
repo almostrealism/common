@@ -24,7 +24,7 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.KernelizedProducer;
 
-public interface TemporalScalarProducer extends ProducerComputation<TemporalScalar>, KernelizedProducer<TemporalScalar>, TemporalScalarFeatures {
+public interface TemporalScalarProducer extends TemporalScalarProducerBase {
 	@Override
 	default KernelizedEvaluable<TemporalScalar> get() {
 		DefaultComputer computer = (DefaultComputer) Hardware.getLocalHardware().getComputeContext().getComputer();

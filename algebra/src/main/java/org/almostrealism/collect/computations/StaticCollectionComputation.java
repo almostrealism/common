@@ -16,30 +16,22 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.code.NameProvider;
-import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.algebra.computations.StaticComputationAdapter;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.hardware.MemoryBank;
-import org.almostrealism.hardware.collect.ExpressionComputation;
 
-import java.util.function.Function;
 import java.util.function.Supplier;
 
-public class PackedCollectionExpressionComputation<T extends PackedCollection> extends ExpressionComputation<T> implements CollectionProducer<T> {
-	private TraversalPolicy shape;
+public class StaticCollectionComputation<T extends PackedCollection<?>> extends StaticComputationAdapter<T> implements CollectionProducer<T> {
 
-	public PackedCollectionExpressionComputation(TraversalPolicy shape,
-												 Function<NameProvider, Expression<Double>> expression,
-												 Supplier<Evaluable<? extends T>>... arguments) {
-		super(() -> args -> (T) new PackedCollection(shape),
-				len -> (MemoryBank<T>) new PackedCollection(shape.prependDimension(len)),
-				expression, arguments);
-		this.shape = shape;
+	public StaticCollectionComputation(PackedCollection<?> value) {
+		super((T) value, (Supplier) PackedCollection.blank(value.getShape()), len -> new PackedCollection(value.getShape().prependDimension(len)));
 	}
 
 	@Override
-	public TraversalPolicy getShape() { return shape; }
+	public TraversalPolicy getShape() {
+		return getValue().getShape();
+	}
 }

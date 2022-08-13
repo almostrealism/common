@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 
 package org.almostrealism.chem;
 
-import org.almostrealism.algebra.Scalar;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.heredity.ArrayListGene;
 import org.almostrealism.heredity.Gene;
 import org.almostrealism.physics.Atom;
@@ -31,7 +31,7 @@ public class Alloy extends ProbabilisticFactory<Atom> implements Atomic {
         this(components, new ArrayListGene<>(g));
     }
 
-    public Alloy(List<Atomic> components, Gene<Scalar> composition) {
+    public Alloy(List<Atomic> components, Gene<PackedCollection<?>> composition) {
         super(components, composition);
     }
 }

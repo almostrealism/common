@@ -17,20 +17,61 @@
 package org.almostrealism.collect;
 
 import io.almostrealism.code.NameProvider;
+import io.almostrealism.expression.Exponent;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.Floor;
+import io.almostrealism.expression.Max;
+import io.almostrealism.expression.Min;
+import io.almostrealism.expression.Minus;
+import io.almostrealism.expression.Mod;
+import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
-import org.almostrealism.collect.computations.PackedCollectionExpressionComputation;
+import org.almostrealism.algebra.Scalar;
+import org.almostrealism.algebra.ScalarFeatures;
+import org.almostrealism.algebra.ScalarProducer;
+import org.almostrealism.algebra.computations.ScalarPow;
+import org.almostrealism.collect.computations.ExpressionComputation;
+import org.almostrealism.collect.computations.StaticCollectionComputation;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 
+import java.util.List;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 public interface CollectionFeatures {
-	default CollectionProducer<PackedCollection> integers(int from, int to) {
+	default <T extends PackedCollection<?>> CollectionProducer<T> c(double... values) {
+		PackedCollection<T> c = new PackedCollection<>(values.length);
+		c.setMem(0, values);
+		return new StaticCollectionComputation(c);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> c(PackedCollection<?> supplier) {
+		return new StaticCollectionComputation(supplier);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> c(Producer<PackedCollection<?>>... producers) {
+		List<Function<List<MultiExpression<Double>>, Expression<Double>>> expressions = IntStream.range(0, producers.length)
+				.mapToObj(i -> (Function<List<MultiExpression<Double>>, Expression<Double>>) args -> args.get(i + 1).getValue(0))
+				.collect(Collectors.toList());
+		return new ExpressionComputation(expressions, producers);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> c(Supplier<Evaluable<? extends PackedCollection<?>>> supplier, int index) {
+		return new ExpressionComputation<>(List.of(args -> args.get(1).getValue(index)), supplier);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> c(Producer supplier, int index) {
+		return new ExpressionComputation<>(List.of(args -> args.get(1).getValue(index)), supplier);
+	}
+
+	default CollectionProducer<PackedCollection<?>> integers(int from, int to) {
 		return new CollectionProducer() {
 			@Override
 			public TraversalPolicy getShape() {
@@ -66,17 +107,77 @@ public interface CollectionFeatures {
 		};
 	}
 
-	default <T extends PackedCollection> PackedCollectionExpressionComputation<T> add(
-			TraversalPolicy shape, Supplier<Evaluable<? extends T>> a, Supplier<Evaluable<? extends T>> b) {
-		Function<NameProvider, Expression<Double>> expression = np ->
-			new Sum(np.getArgument(1, 1).valueAt(0), np.getArgument(2, 1).valueAt(0));
-		return new PackedCollectionExpressionComputation<>(shape, expression, a, b);
+	// TODO Rename
+	default <T extends PackedCollection<?>> ExpressionComputation<T> _add(
+			Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
+		Function<List<MultiExpression<Double>>, Expression<Double>> expression = args ->
+			new Sum(args.get(1).getValue(0), args.get(2).getValue(0));
+		return new ExpressionComputation<>(List.of(expression), a, b);
 	}
 
-	default <T extends PackedCollection> PackedCollectionExpressionComputation<T> multiply(
-			TraversalPolicy shape, Supplier<Evaluable<? extends T>> a, Supplier<Evaluable<? extends T>> b) {
-		Function<NameProvider, Expression<Double>> expression = np ->
-				new Product(np.getArgument(1, 1).valueAt(0), np.getArgument(2, 1).valueAt(0));
-		return new PackedCollectionExpressionComputation<>(shape, expression, a, b);
+	// TODO Rename
+	default <T extends PackedCollection<?>> ExpressionComputation<T> _subtract(
+			Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
+		return _add(a, _minus(b));
+	}
+
+	// TODO Rename
+	default <T extends PackedCollection<?>> ExpressionComputation<T> _multiply(
+			Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
+		Function<List<MultiExpression<Double>>, Expression<Double>> expression = np ->
+				new Product(np.get(1).getValue(0), np.get(2).getValue(0));
+		return new ExpressionComputation<>(List.of(expression), a, b);
+	}
+
+	// TODO Rename
+	default <T extends PackedCollection<?>> ExpressionComputation<T> _divide(
+			Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
+		return _multiply(a, _pow(b, c(-1.0)));
+	}
+
+	// TODO Rename
+	default <T extends PackedCollection<?>> ExpressionComputation<T> _minus(
+			Supplier<Evaluable<? extends PackedCollection<?>>> a) {
+		Function<List<MultiExpression<Double>>, Expression<Double>> expression = np ->
+				new Minus(np.get(1).getValue(0));
+		return new ExpressionComputation<>(List.of(expression), a);
+	}
+
+	// TODO Rename
+	default <T extends PackedCollection<?>> ExpressionComputation<T> _pow(
+			Supplier<Evaluable<? extends PackedCollection<?>>> base, Supplier<Evaluable<? extends PackedCollection<?>>> exp) {
+		Function<List<MultiExpression<Double>>, Expression<Double>> expression = np ->
+				new Exponent(np.get(1).getValue(0), np.get(2).getValue(0));
+		return new ExpressionComputation<>(List.of(expression), base, exp);
+	}
+
+	// TODO Rename
+	default <T extends PackedCollection<?>> ExpressionComputation<T> _floor(
+			Supplier<Evaluable<? extends PackedCollection<?>>> value) {
+		Function<List<MultiExpression<Double>>, Expression<Double>> expression = np ->
+				new Floor(np.get(1).getValue(0));
+		return new ExpressionComputation<>(List.of(expression), value);
+	}
+
+	default <T extends PackedCollection<?>> ExpressionComputation<T> _min(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
+		Function<List<MultiExpression<Double>>, Expression<Double>> expression = args ->
+				new Min(args.get(1).getValue(0), args.get(2).getValue(0));
+		return new ExpressionComputation<>(List.of(expression), a, b);
+	}
+
+	default <T extends PackedCollection<?>> ExpressionComputation<T> _max(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
+		Function<List<MultiExpression<Double>>, Expression<Double>> expression = args ->
+				new Max(args.get(1).getValue(0), args.get(2).getValue(0));
+		return new ExpressionComputation<>(List.of(expression), a, b);
+	}
+
+	default <T extends PackedCollection<?>> ExpressionComputation<T> _mod(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
+		Function<List<MultiExpression<Double>>, Expression<Double>> expression = args ->
+				new Mod(args.get(1).getValue(0), args.get(2).getValue(0));
+		return new ExpressionComputation<>(List.of(expression), a, b);
+	}
+
+	default <T extends PackedCollection<?>> ExpressionComputation<T> _bound(Supplier<Evaluable<? extends PackedCollection<?>>> a, double min, double max) {
+		return _min(_max(a, c(min)), c(max));
 	}
 }

@@ -17,6 +17,8 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
@@ -31,7 +33,7 @@ import java.util.function.Supplier;
  * A {@link Vector} represents a 3d vector. It stores three coordinates, x, y, z
  * in a buffer maintained by JOCL.
  */
-public class Vector extends MemoryDataAdapter implements Triple, VectorFeatures, Cloneable {
+public class Vector extends PackedCollection<Vector> implements Triple, VectorFeatures, Cloneable {
 	public static final int CARTESIAN_COORDINATES = 0;
 	public static final int SPHERICAL_COORDINATES = 1;
 
@@ -49,12 +51,11 @@ public class Vector extends MemoryDataAdapter implements Triple, VectorFeatures,
 
 	/** Constructs a {@link Vector} with coordinates at the origin. */
 	public Vector() {
-		init();
+		super(3);
 	}
 
 	public Vector(MemoryData delegate, int delegateOffset) {
-		setDelegate(delegate, delegateOffset);
-		init();
+		super(new TraversalPolicy(3), 0, delegate, delegateOffset);
 	}
 
 	/** Constructs a {@link Vector} with the same coordinates as the specified {@link Vector}. */
@@ -202,21 +203,6 @@ public class Vector extends MemoryDataAdapter implements Triple, VectorFeatures,
 		return this;
 	}
 
-	/** Gets the ith component, 0 <= i < 3 */
-	@Deprecated
-	public double get(int i) {
-		switch (i) {
-			case 0:
-				return getX();
-			case 1:
-				return getY();
-			case 2:
-				return getZ();
-			default:
-				throw new IndexOutOfBoundsException();
-		}
-	}
-
 	/**
 	 * Sets the coordinates of this {@link Vector} to the coordinates of the
 	 * specified {@link Vector}.
@@ -337,22 +323,6 @@ public class Vector extends MemoryDataAdapter implements Triple, VectorFeatures,
 	public float[] toFloat() {
 		double d[] = toArray();
 		return new float[] { (float) d[0], (float) d[1], (float) d[2] };
-	}
-
-	/**
-	 * Returns the length of the vector represented by this Vector object as a double value.
-	 */
-	// TODO  Fast version
-	public double length() {
-		return Math.sqrt(this.lengthSq());
-	}
-
-	/**
-	 * Returns the squared length of the vector represented by this
-	 * {@link Vector} as a double value.
-	 */
-	public double lengthSq() {
-		return lengthSq(v(this)).get().evaluate().getValue();
 	}
 
 	public void normalize() {

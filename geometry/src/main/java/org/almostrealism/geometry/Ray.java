@@ -19,6 +19,8 @@ package org.almostrealism.geometry;
 import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.geometry.computations.RayPointAt;
 import org.almostrealism.hardware.AcceleratedEvaluable;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
@@ -38,7 +40,7 @@ import java.util.stream.IntStream;
  * 
  * @author  Michael Murray
  */
-public class Ray extends MemoryDataAdapter implements RayFeatures, Cloneable {
+public class Ray extends PackedCollection<Ray> implements RayFeatures, Cloneable {
 	private Ray(double coords[]) {
 		this();
 		this.setMem(coords);
@@ -48,12 +50,11 @@ public class Ray extends MemoryDataAdapter implements RayFeatures, Cloneable {
 	 * Constructs a Ray object with origin and direction at the origin.
 	 */
 	public Ray() {
-		init();
+		super(6);
 	}
 
 	public Ray(MemoryData delegate, int delegateOffset) {
-		setDelegate(delegate, delegateOffset);
-		init();
+		super(new TraversalPolicy(6), 0, delegate, delegateOffset);
 	}
 	
 	/**

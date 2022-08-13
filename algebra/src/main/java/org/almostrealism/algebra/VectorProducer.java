@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@ import org.almostrealism.hardware.KernelizedProducer;
 
 import java.util.function.Supplier;
 
-public interface VectorProducer extends ProducerComputation<Vector>, KernelizedProducer<Vector>, VectorFeatures {
+public interface VectorProducer extends VectorProducerBase {
 
 	@Override
 	default KernelizedEvaluable<Vector> get() {
@@ -43,65 +43,5 @@ public interface VectorProducer extends ProducerComputation<Vector>, KernelizedP
 
 		ev.compile();
 		return ev;
-	}
-
-	default ScalarProducer x() {
-		return x(this);
-	}
-
-	default ScalarProducer y() {
-		return y(this);
-	}
-
-	default ScalarProducer z() {
-		return z(this);
-	}
-
-	default ScalarProducer dotProduct(Evaluable<Vector> operand) {
-		return dotProduct(() -> operand);
-	}
-
-	default ScalarProducer dotProduct(Supplier<Evaluable<? extends Vector>> operand) {
-		return dotProduct(this, operand);
-	}
-
-	default VectorProducer crossProduct(Supplier<Evaluable<? extends Vector>> operand) {
-		return crossProduct(this, operand);
-	}
-
-	default VectorProducer add(Supplier<Evaluable<? extends Vector>> operand) {
-		return add(this, operand);
-	}
-
-	default VectorProducer subtract(Supplier<Evaluable<? extends Vector>> operand) { return subtract(this, operand); }
-
-	default VectorProducer multiply(Supplier<Evaluable<? extends Vector>> operand) {
-		return multiply(this, operand);
-	}
-
-	default VectorProducer scalarMultiply(Supplier<Evaluable<? extends Scalar>> operand) { return scalarMultiply(this, operand); }
-
-	default VectorProducer scalarMultiply(Scalar operand) {
-		return scalarMultiply(ScalarFeatures.of(operand));
-	}
-
-	default VectorProducer scalarMultiply(double operand) {
-		return scalarMultiply(new Scalar(operand));
-	}
-
-	default VectorProducer minus() {
-		return minus(this);
-	}
-
-	default ScalarProducer length() {
-		return length(this);
-	}
-
-	default ScalarProducer lengthSq() {
-		return lengthSq(this);
-	}
-
-	default VectorProducer normalize() {
-		return normalize(this);
 	}
 }

@@ -24,21 +24,28 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.ComputerFeatures;
+import org.almostrealism.hardware.DestinationConsolidationArgumentMap;
 import org.almostrealism.hardware.DestinationSupport;
+import org.almostrealism.hardware.KernelizedProducer;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.MemoryDataComputation;
+import org.almostrealism.hardware.ProducerCache;
 import org.almostrealism.hardware.mem.MemoryDataDestination;
 
 import java.util.function.Supplier;
 
-public class CollectionProducerComputationAdapter extends ProducerComputationAdapter<MemoryData, PackedCollection>
-												implements CollectionProducer<PackedCollection>, DestinationSupport<PackedCollection>, ComputerFeatures {
+public abstract class CollectionProducerComputationAdapter<I extends PackedCollection<?>, O extends PackedCollection<?>>
+												extends ProducerComputationAdapter<I, O>
+												implements CollectionProducer<O>, MemoryDataComputation<O>,
+														KernelizedProducer<O>, DestinationSupport<O>,
+														ComputerFeatures {
 	private TraversalPolicy shape;
-	private Supplier<PackedCollection> destination;
+	private Supplier<? extends PackedCollection> destination;
 
-	public CollectionProducerComputationAdapter(TraversalPolicy outputShape, Supplier<Evaluable<? extends PackedCollection>>... arguments) {
+	public CollectionProducerComputationAdapter(TraversalPolicy outputShape, Supplier<Evaluable<? extends I>>... arguments) {
 		this.shape = outputShape;
 		this.destination = () -> new PackedCollection(shape);
-		this.setInputs((Supplier[]) CollectionUtils.include(new Supplier[0], new MemoryDataDestination(this, len -> new PackedCollection(getShape().prependDimension(len))), arguments));
+		this.setInputs(CollectionUtils.include(new Supplier[0], new MemoryDataDestination(this, len -> new PackedCollection(getShape().prependDimension(len))), arguments));
 		init();
 	}
 
@@ -48,14 +55,28 @@ public class CollectionProducerComputationAdapter extends ProducerComputationAda
 	}
 
 	@Override
-	public void setDestination(Supplier<PackedCollection> destination) { this.destination = destination; }
+	public int getMemLength() {
+		return getShape().getTotalSize();
+	}
 
 	@Override
-	public Supplier<PackedCollection> getDestination() { return destination; }
+	public void setDestination(Supplier<O> destination) { this.destination = destination; }
+
+	@Override
+	public Supplier<O> getDestination() { return (Supplier) destination; }
 
 	/**
 	 * @return  PhysicalScope#GLOBAL
 	 */
 	@Override
 	public PhysicalScope getDefaultPhysicalScope() { return PhysicalScope.GLOBAL; }
+
+	@Override
+	public void destroy() {
+		super.destroy();
+		ProducerCache.purgeEvaluableCache(this);
+		if (destination instanceof DestinationConsolidationArgumentMap.DestinationThreadLocal) {
+			((DestinationConsolidationArgumentMap.DestinationThreadLocal) destination).destroy();
+		}
+	}
 }

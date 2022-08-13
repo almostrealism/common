@@ -18,6 +18,7 @@ package org.almostrealism.algebra;
 
 import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.computations.DefaultPairEvaluable;
 import io.almostrealism.code.ProducerComputation;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
@@ -28,10 +29,10 @@ import org.almostrealism.hardware.KernelizedProducer;
 
 import java.util.function.Supplier;
 
-public interface PairProducer extends ProducerComputation<Pair>, KernelizedProducer<Pair>,
+public interface PairProducer extends ProducerComputation<Pair<?>>, KernelizedProducer<Pair<?>>,
 										MultiExpression<Double>, PairFeatures {
 	@Override
-	default KernelizedEvaluable<Pair> get() {
+	default KernelizedEvaluable<Pair<?>> get() {
 		DefaultComputer computer = (DefaultComputer) Hardware.getLocalHardware().getComputeContext().getComputer();
 
 		AcceleratedComputationEvaluable ev;
@@ -47,12 +48,12 @@ public interface PairProducer extends ProducerComputation<Pair>, KernelizedProdu
 	}
 
 	default ScalarProducer l() { return l(this); }
-	default ScalarProducer r() { return r(this); }
+	default ScalarProducerBase r() { return (ScalarProducerBase) r((Producer) this); }
 
 	default ScalarProducer x() { return l(this); }
-	default ScalarProducer y() { return r(this); }
+	default ScalarProducerBase y() { return (ScalarProducerBase) r((Producer) this); }
 
-	default PairProducer multiplyComplex(Supplier<Evaluable<? extends Pair>> p) {
+	default PairProducer multiplyComplex(Supplier<Evaluable<? extends Pair<?>>> p) {
 		return multiplyComplex(this, p);
 	}
 }

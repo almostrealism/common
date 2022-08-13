@@ -34,18 +34,18 @@ import java.util.stream.Stream;
 
 public class PairBankFromPairsBuilder extends DynamicProducerComputationAdapter<Pair, PairBank>
 									implements Factory<PairBankFromPairs> {
-	private Producer<Pair> producers[];
+	private Producer<Pair<?>> producers[];
 
 	public PairBankFromPairsBuilder(int count) {
 		super(2 * count, () -> args -> new PairBank(count), null, new Producer[0]);
 		producers = new Producer[count];
 	}
 
-	public Producer<Pair> get(int index) {
+	public Producer<Pair<?>> get(int index) {
 		return producers[index];
 	}
 
-	public void set(int index, Producer<Pair> value) {
+	public void set(int index, Producer<Pair<?>> value) {
 		producers[index] = value;
 	}
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,9 +24,9 @@ import org.almostrealism.hardware.MemoryBank;
 import io.almostrealism.code.Computation;
 import org.almostrealism.hardware.MemoryData;
 
-public class DefaultPairEvaluable extends AcceleratedComputationEvaluable<Pair> implements PairEvaluable {
+public class DefaultPairEvaluable extends AcceleratedComputationEvaluable<Pair<?>> implements PairEvaluable {
 
-	public DefaultPairEvaluable(Computation<Pair> c) {
+	public DefaultPairEvaluable(Computation<Pair<?>> c) {
 		super(c);
 	}
 
@@ -36,7 +36,7 @@ public class DefaultPairEvaluable extends AcceleratedComputationEvaluable<Pair> 
 	}
 
 	@Override
-	public MemoryBank<Pair> createKernelDestination(int size) {
+	public MemoryBank<Pair<?>> createKernelDestination(int size) {
 		return new PairBank(size);
 	}
 }

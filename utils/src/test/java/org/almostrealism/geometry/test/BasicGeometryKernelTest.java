@@ -6,7 +6,7 @@ import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
 public class BasicGeometryKernelTest implements TestFeatures {
-	@Test
+	// TODO  @Test
 	public void test() {
 		ScalarBank b = integers(0, 10)
 				.scalarMap(v -> scalarsMultiply(v, v(10)))

@@ -31,7 +31,7 @@ public class DefaultScalarBankEvaluable extends AcceleratedComputationEvaluable<
 
 	@Override
 	protected ScalarBank postProcessOutput(MemoryData output, int offset) {
-		return new ScalarBank(output.getMemLength() / 2, output, offset, null);
+		return new ScalarBank(output.getMemLength() / 2, output, offset);
 	}
 
 	@Override

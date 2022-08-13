@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -32,12 +32,12 @@ import java.util.function.Consumer;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public class GaussRandom extends DynamicProducerComputationAdapter<Pair, Scalar> implements ScalarProducer {
+public class GaussRandom extends DynamicProducerComputationAdapter<Pair<?>, Scalar> implements ScalarProducer {
 	public GaussRandom() {
 		super(2, Scalar.blank(), ScalarBank::new, PairFeatures.getInstance().rand());
 	}
 
-	public GaussRandom(Supplier<Pair> randDestination) {
+	public GaussRandom(Supplier<Pair<?>> randDestination) {
 		super(2, Scalar.blank(), ScalarBank::new, PairFeatures.getInstance().rand(randDestination));
 	}
 

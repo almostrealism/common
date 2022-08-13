@@ -38,6 +38,7 @@ import org.almostrealism.algebra.computations.StaticScalarBankComputation;
 import org.almostrealism.algebra.computations.StaticScalarComputation;
 import org.almostrealism.algebra.computations.StaticVectorComputation;
 import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.GeometryFeatures;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.algebra.Vector;
@@ -58,9 +59,12 @@ import org.almostrealism.hardware.Input;
 import org.almostrealism.time.CursorPair;
 import org.almostrealism.time.TemporalFeatures;
 import org.almostrealism.time.TemporalScalarProducer;
+import org.almostrealism.time.TemporalScalarProducerBase;
+import org.almostrealism.time.computations.TemporalScalarExpressionComputation;
 import org.almostrealism.time.computations.TemporalScalarFromScalars;
 
 import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -95,8 +99,12 @@ public interface CodeFeatures extends CollectionFeatures, ScalarFeatures, PairFe
 
 	default ScalarProducer value(double value) { return scalar(value); }
 
-	default TemporalScalarProducer temporal(Supplier<Evaluable<? extends Scalar>> time, Supplier<Evaluable<? extends Scalar>> value) {
-		return new TemporalScalarFromScalars(time, value);
+	default TemporalScalarProducerBase temporal(Supplier<Evaluable<? extends Scalar>> time, Supplier<Evaluable<? extends Scalar>> value) {
+//		return new TemporalScalarFromScalars(time, value);
+
+		return new TemporalScalarExpressionComputation(
+				List.of(args -> args.get(1).getValue(0), args -> args.get(2).getValue(0)),
+					(Supplier) time, (Supplier) value);
 	}
 
 	default Supplier<Evaluable<? extends Vector>> vector(int argIndex) { return value(Vector.class, argIndex); }
@@ -143,7 +151,7 @@ public interface CodeFeatures extends CollectionFeatures, ScalarFeatures, PairFe
 		return Input.value(memLength, argIndex);
 	}
 
-	default <T> Switch choice(ProducerComputation<Scalar> decision, Computation<T>... choices) {
+	default <T> Switch choice(ProducerComputation<PackedCollection<?>> decision, Computation<T>... choices) {
 		return new Switch(decision, Arrays.asList(choices));
 	}
 

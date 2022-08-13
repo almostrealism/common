@@ -75,8 +75,8 @@ public class AdjustableDelayCell extends SummationCell implements CodeFeatures {
 	@Override
 	public Supplier<Runnable> tick() {
 		OperationList tick = new OperationList("AdjustableDelayCell Tick");
-		tick.add(buffer.add(temporal(r(p(cursors)), p(getCachedValue()))));
-		tick.add(a(1, p(getOutputValue()), buffer.valueAt(p(cursors))));
+		tick.add(buffer.add(temporal(r(p(cursors)), (Producer) p(getCachedValue()))));
+		tick.add(a(1, (Producer) p(getOutputValue()), buffer.valueAt(p(cursors))));
 		tick.add(buffer.purge(p(cursors), defaultPurgeFrequency));
 		tick.add(cursors.increment(scale));
 		tick.add(reset(p(getCachedValue())));

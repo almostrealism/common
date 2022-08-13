@@ -20,7 +20,7 @@ import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairBank;
 import org.almostrealism.algebra.PairProducer;
 
-public class StaticPairComputation extends StaticComputationAdapter<Pair> implements PairProducer {
+public class StaticPairComputation extends StaticComputationAdapter<Pair<?>> implements PairProducer {
 	public StaticPairComputation(Pair value) {
 		super(value, Pair.empty(), PairBank::new);
 	}

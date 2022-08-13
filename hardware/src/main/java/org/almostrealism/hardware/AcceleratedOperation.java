@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.KernelIndex;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.code.ArgumentMap;
@@ -276,6 +277,25 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		return -1;
 	}
 
+	private static int getProducerArgumentKernelIndex(Variable<?, ?> arg) {
+		if (arg.getProducer() instanceof KernelIndex) {
+			return ((KernelIndex) arg.getProducer()).getKernelIndex();
+		}
+
+		if (arg.getProducer() instanceof Delegated && ((Delegated) arg.getProducer()).getDelegate() instanceof KernelIndex) {
+			return ((KernelIndex) ((Delegated) arg.getProducer()).getDelegate()).getKernelIndex();
+		}
+
+		if (!(arg.getProducer() instanceof AcceleratedComputationOperation)) return -1;
+
+		Computation c = ((AcceleratedComputationOperation) arg.getProducer()).getComputation();
+		if (c instanceof KernelIndex) {
+			return ((KernelIndex) c).getKernelIndex();
+		}
+
+		return -1;
+	}
+
 	@Override
 	public void kernelOperate(MemoryBank output, MemoryData[] args) {
 		if (getArgumentVariables() == null) {
@@ -338,12 +358,18 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		} else if (args.length > 0) {
 			kernelSize = ((MemoryBank) args[0]).getCount();
 		} else {
-			throw new IllegalArgumentException("Cannot determine kernel size");
+			System.out.println("WARN: Cannot determine kernel size, it will be inferred");
+			kernelSize = -1;
 		}
 
-		return getKernelArgs(getArgumentVariables(), args,
-				output == null ? Collections.emptyMap() : Collections.singletonMap((ArrayVariable) getOutputVariable(), output),
-				kernelSize);
+		if (kernelSize < 0) {
+			return getKernelArgsInferSize(getArgumentVariables(), args,
+					output == null ? Collections.emptyMap() : Collections.singletonMap((ArrayVariable) getOutputVariable(), output));
+		} else {
+			return getKernelArgs(getArgumentVariables(), args,
+					output == null ? Collections.emptyMap() : Collections.singletonMap((ArrayVariable) getOutputVariable(), output),
+					kernelSize);
+		}
 	}
 
 	/**
@@ -406,6 +432,64 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				kernelArgs[i] = args[refIndex];
 				continue i;
 			}
+
+			Evaluable<T> c = (Evaluable<T>) ProducerCache.getEvaluableForSupplier(arguments.get(i).getProducer());
+
+			if (c instanceof ProducerArgumentReference) {
+				int argIndex = ((ProducerArgumentReference) c).getReferencedArgumentIndex();
+				kernelArgs[i] = args[argIndex];
+			} else if (c instanceof KernelizedEvaluable) {
+				KernelizedEvaluable kp = (KernelizedEvaluable) c;
+				kernelArgs[i] = kp.createKernelDestination(kernelSize);
+				kp.kernelEvaluate((MemoryBank) kernelArgs[i], args);
+
+				// This assumes that the axis of the kernel is always the first dimension
+				if (kernelArgs[i] instanceof Traversable) kernelArgs[i] = (MemoryData) ((Traversable) kernelArgs[i]).traverse(1);
+			} else {
+				kernelArgs[i] = (MemoryData) c.evaluate((Object[]) args);
+			}
+		}
+
+		return kernelArgs;
+	}
+
+
+	protected static <T> MemoryData[] getKernelArgsInferSize(List<ArrayVariable<? extends T>> arguments, MemoryData args[], Map<ArrayVariable<? extends T>, MemoryBank> mappings) {
+		MemoryData kernelArgs[] = new MemoryData[arguments.size()];
+
+		int kernelSize = -1;
+
+		i: for (int i = 0; i < arguments.size(); i++) {
+			if (arguments.get(i) == null) continue i;
+
+			if (mappings.containsKey(arguments.get(i))) {
+				kernelArgs[i] = mappings.get(arguments.get(i));
+				continue i;
+			} else {
+				int refIndex = getProducerArgumentReferenceIndex(arguments.get(i));
+
+				if (refIndex >= 0) {
+					kernelArgs[i] = args[refIndex];
+				}
+			}
+
+			if (kernelSize > 0) continue i;
+
+			// If the kernel size can be inferred from this operation argument
+			// capture it from the argument to the evaluation
+			int kernelIdx = getProducerArgumentKernelIndex(arguments.get(i));
+			if (kernelIdx >= 0 && kernelArgs[i] instanceof MemoryBank) {
+				kernelSize = ((MemoryBank<?>) kernelArgs[i]).getCount();
+			}
+		}
+
+		if (kernelSize < 0) {
+			System.out.println("WARN: Could not infer kernel size, it will be set to 1");
+			kernelSize = 1;
+		}
+
+		i: for (int i = 0; i < arguments.size(); i++) {
+			if (kernelArgs[i] != null) continue i;
 
 			Evaluable<T> c = (Evaluable<T>) ProducerCache.getEvaluableForSupplier(arguments.get(i).getProducer());
 

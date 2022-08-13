@@ -22,7 +22,7 @@ import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.PooledMem;
 import io.almostrealism.relation.Producer;
 
-public class TemporalScalar extends Pair {
+public class TemporalScalar extends Pair<TemporalScalar> {
 	public TemporalScalar() { }
 
 	public TemporalScalar(double time, double value) {
@@ -30,7 +30,7 @@ public class TemporalScalar extends Pair {
 		setValue(value);
 	}
 
-	protected TemporalScalar(MemoryData delegate, int delegateOffset) {
+	public TemporalScalar(MemoryData delegate, int delegateOffset) {
 		super(delegate, delegateOffset);
 	}
 

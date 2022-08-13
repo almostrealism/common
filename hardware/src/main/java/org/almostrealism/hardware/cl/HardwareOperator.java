@@ -143,4 +143,11 @@ public class HardwareOperator<T extends MemoryData> implements Consumer<Object[]
 		if (kernel != null) CL.clReleaseKernel(kernel);
 		kernel = null;
 	}
+
+	public static void verboseLog(Runnable r) {
+		boolean log = enableVerboseLog;
+		enableVerboseLog = true;
+		r.run();
+		enableVerboseLog = log;
+	}
 }

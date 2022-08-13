@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,6 +17,8 @@
 package org.almostrealism.graph.mesh;
 
 import org.almostrealism.algebra.ScalarFeatures;
+import org.almostrealism.algebra.ScalarProducerBase;
+import org.almostrealism.algebra.VectorProducerBase;
 import org.almostrealism.geometry.Intersection;
 import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.algebra.VectorProducer;
@@ -35,40 +37,40 @@ public class TriangleIntersectAt extends LessThanScalar {
 				TriangleDataFeatures.getInstance().normal(t), RayFeatures.getInstance().origin(r), RayFeatures.getInstance().direction(r));
 	}
 
-	protected TriangleIntersectAt(VectorProducer abc, VectorProducer def, VectorProducer jkl,
-								  VectorProducer normal, VectorProducer origin, VectorProducer direction) {
+	protected TriangleIntersectAt(VectorProducerBase abc, VectorProducerBase def, VectorProducerBase jkl,
+								  VectorProducerBase normal, VectorProducerBase origin, VectorProducerBase direction) {
 		this(abc, def, jkl, normal, origin, direction, s(jkl, origin));
 	}
 
-	protected TriangleIntersectAt(VectorProducer abc, VectorProducer def, VectorProducer jkl,
-								  VectorProducer normal, VectorProducer origin, VectorProducer direction,
-								  VectorProducer s) {
+	protected TriangleIntersectAt(VectorProducerBase abc, VectorProducerBase def, VectorProducerBase jkl,
+								  VectorProducerBase normal, VectorProducerBase origin, VectorProducerBase direction,
+								  VectorProducerBase s) {
 		this(abc, def, jkl, normal, origin, direction, f(abc, h(def, direction)), q(abc, s), s);
 	}
 
-	protected TriangleIntersectAt(VectorProducer abc, VectorProducer def, VectorProducer jkl,
-								  VectorProducer normal, VectorProducer origin, VectorProducer direction,
-								  ScalarProducer f, VectorProducer q, VectorProducer s) {
+	protected TriangleIntersectAt(VectorProducerBase abc, VectorProducerBase def, VectorProducerBase jkl,
+								  VectorProducerBase normal, VectorProducerBase origin, VectorProducerBase direction,
+								  ScalarProducerBase f, VectorProducerBase q, VectorProducerBase s) {
 		this(abc, def, jkl, normal, origin, direction, f, q, s, v(direction, f.pow(-1.0), q));
 	}
 
-	protected TriangleIntersectAt(VectorProducer abc, VectorProducer def, VectorProducer jkl,
-								  VectorProducer normal, VectorProducer origin, VectorProducer direction,
-								  ScalarProducer f, VectorProducer q, VectorProducer s, ScalarProducer v) {
+	protected TriangleIntersectAt(VectorProducerBase abc, VectorProducerBase def, VectorProducerBase jkl,
+								  VectorProducerBase normal, VectorProducerBase origin, VectorProducerBase direction,
+								  ScalarProducerBase f, VectorProducerBase q, VectorProducerBase s, ScalarProducerBase v) {
 		this(abc, def, jkl, normal, origin, direction, f, q, s, u(s, h(def, direction), f.pow(-1.0)), v);
 	}
 
-	protected TriangleIntersectAt(VectorProducer abc, VectorProducer def, VectorProducer jkl,
-								  VectorProducer normal, VectorProducer origin, VectorProducer direction,
-								  ScalarProducer f, VectorProducer q, VectorProducer s,
-								  ScalarProducer u, ScalarProducer v) {
+	protected TriangleIntersectAt(VectorProducerBase abc, VectorProducerBase def, VectorProducerBase jkl,
+								  VectorProducerBase normal, VectorProducerBase origin, VectorProducerBase direction,
+								  ScalarProducerBase f, VectorProducerBase q, VectorProducerBase s,
+								  ScalarProducerBase u, ScalarProducerBase v) {
 		this(abc, def, jkl, normal, origin, direction, f, q, s, u, v, t(def, f.pow(-1.0), q));
 	}
 
-	protected TriangleIntersectAt(VectorProducer abc, VectorProducer def, VectorProducer jkl,
-								  VectorProducer normal, VectorProducer origin, VectorProducer direction,
-								  ScalarProducer f, VectorProducer q, VectorProducer s,
-								  ScalarProducer u, ScalarProducer v, ScalarProducer t) {
+	protected TriangleIntersectAt(VectorProducerBase abc, VectorProducerBase def, VectorProducerBase jkl,
+								  VectorProducerBase normal, VectorProducerBase origin, VectorProducerBase direction,
+								  ScalarProducerBase f, VectorProducerBase q, VectorProducerBase s,
+								  ScalarProducerBase u, ScalarProducerBase v, ScalarProducerBase t) {
 		this(abc, def, jkl, normal, origin, direction, f, q, s,
 				new AcceleratedConjunctionScalar(
 						t, ScalarFeatures.getInstance().scalar(-1.0),
@@ -78,9 +80,9 @@ public class TriangleIntersectAt extends LessThanScalar {
 						u.add(v).lessThan(1.0, true)));
 	}
 
-	protected TriangleIntersectAt(VectorProducer abc, VectorProducer def, VectorProducer jkl,
-								  VectorProducer normal, VectorProducer origin, VectorProducer direction,
-								  ScalarProducer f, VectorProducer q, VectorProducer s,
+	protected TriangleIntersectAt(VectorProducerBase abc, VectorProducerBase def, VectorProducerBase jkl,
+								  VectorProducerBase normal, VectorProducerBase origin, VectorProducerBase direction,
+								  ScalarProducerBase f, VectorProducerBase q, VectorProducerBase s,
 								  AcceleratedConjunctionScalar trueValue) {
 		super(f, ScalarFeatures.getInstance().scalar(-Intersection.e), trueValue,
 				new GreaterThanScalar(f, ScalarFeatures.getInstance().scalar(Intersection.e), trueValue,
@@ -88,36 +90,36 @@ public class TriangleIntersectAt extends LessThanScalar {
 	}
 
 	// TODO  Make private
-	public static VectorProducer h(VectorProducer def, VectorProducer direction) {
+	public static VectorProducerBase h(VectorProducerBase def, VectorProducerBase direction) {
 		return direction.crossProduct(def);
 	}
 
 	// TODO  Make private
-	public static ScalarProducer f(VectorProducer abc, VectorProducer h) {
+	public static ScalarProducerBase f(VectorProducerBase abc, VectorProducerBase h) {
 		return abc.dotProduct(h);
 	}
 
 	// TODO  Make private
-	public static VectorProducer s(VectorProducer jkl, VectorProducer origin) {
+	public static VectorProducerBase s(VectorProducerBase jkl, VectorProducerBase origin) {
 		return origin.subtract(jkl);
 	}
 
 	// TODO  Make private
-	public static ScalarProducer u(VectorProducer s, VectorProducer h, ScalarProducer f) {
+	public static ScalarProducerBase u(VectorProducerBase s, VectorProducerBase h, ScalarProducerBase f) {
 		return f.multiply(s.dotProduct(h));
 	}
 
 	// TODO  Make private
-	public static VectorProducer q(VectorProducer abc, VectorProducer s) {
+	public static VectorProducerBase q(VectorProducerBase abc, VectorProducerBase s) {
 		return s.crossProduct(abc);
 	}
 
 	// TODO  Make private
-	public static ScalarProducer v(VectorProducer direction, ScalarProducer f, VectorProducer q) {
+	public static ScalarProducerBase v(VectorProducerBase direction, ScalarProducerBase f, VectorProducerBase q) {
 		return f.multiply(direction.dotProduct(q));
 	}
 
-	private static ScalarProducer t(VectorProducer def, ScalarProducer f, VectorProducer q) {
+	private static ScalarProducerBase t(VectorProducerBase def, ScalarProducerBase f, VectorProducerBase q) {
 		return f.multiply(def.dotProduct(q));
 	}
 

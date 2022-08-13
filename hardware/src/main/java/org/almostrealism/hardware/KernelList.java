@@ -52,7 +52,8 @@ public class KernelList<T extends MemoryData> implements Supplier<Runnable>, Plu
 		if (size <= 0) throw new IllegalArgumentException();
 		this.tableProvider = tableProvider;
 		this.parameters = parameters > 0 ? bankProvider.apply(parameters) : null;
-		this.computation = computation.apply(() -> new Provider(this.parameters), Input.value(type, 0));
+//		this.computation = computation.apply(() -> new Provider(this.parameters), Input.value(type, 0));
+		this.computation = computation.apply(() -> new Provider(this.parameters), new PassThroughProducer<>(0, 0));
 		this.parameterValues = new HashMap<>();
 		this.size = size;
 	}

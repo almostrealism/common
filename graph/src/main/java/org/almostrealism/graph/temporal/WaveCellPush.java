@@ -20,11 +20,12 @@ import io.almostrealism.code.HybridScope;
 import io.almostrealism.code.ScopeInputManager;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
+import org.almostrealism.collect.PackedCollection;
 
 import java.util.function.Consumer;
 
 public class WaveCellPush extends WaveCellComputation {
-	public WaveCellPush(WaveCellData data, ScalarBank wave, Scalar output, boolean repeat) {
+	public WaveCellPush(WaveCellData data, PackedCollection<?> wave, Scalar output, boolean repeat) {
 		super(data, wave, output, repeat);
 	}
 
@@ -46,7 +47,7 @@ public class WaveCellPush extends WaveCellComputation {
 		exp.accept(" = ");
 		exp.accept(getAmplitude().valueAt(0).getExpression());
 		exp.accept(" * ");
-		exp.accept(getWave().get("2 * (" + getWaveIndex().valueAt(0).getExpression() +
+		exp.accept(getWave().get("(" + getWaveIndex().valueAt(0).getExpression() +
 				" + floor(" + getWavePosition().valueAt(0).getExpression() + "))").getExpression());
 		exp.accept(";\n");
 		exp.accept("} else {\n");

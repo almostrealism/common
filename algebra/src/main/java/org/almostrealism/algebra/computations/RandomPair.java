@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,16 +22,16 @@ import org.almostrealism.hardware.DestinationSupport;
 
 import java.util.function.Supplier;
 
-public class RandomPair implements PairEvaluable, DestinationSupport<Pair> {
-	private Supplier<Pair> destination = Pair::new;
+public class RandomPair implements PairEvaluable, DestinationSupport<Pair<?>> {
+	private Supplier<Pair<?>> destination = Pair::new;
 
 	@Override
-	public void setDestination(Supplier<Pair> destination) {
+	public void setDestination(Supplier<Pair<?>> destination) {
 		this.destination = destination;
 	}
 
 	@Override
-	public Supplier<Pair> getDestination() {
+	public Supplier<Pair<?>> getDestination() {
 		return destination;
 	}
 

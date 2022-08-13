@@ -109,7 +109,7 @@ public class DestinationConsolidationArgumentMap<S, A> extends MemoryDataArgumen
 		destinations.forEach(DestinationThreadLocal::destroy);
 	}
 
-	protected class DestinationThreadLocal<T extends MemoryData> implements Supplier<T> {
+	public class DestinationThreadLocal<T extends MemoryData> implements Supplier<T> {
 		private Supplier<T> supplier;
 		private ThreadLocal<T> localByThread;
 		private T local;

@@ -20,15 +20,15 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.Ops;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarBank;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.OperationList;
 
 import java.util.function.Supplier;
 
-public class WaveCell extends ScalarTemporalCellAdapter implements CodeFeatures, HardwareFeatures {
+public class WaveCell extends CollectionTemporalCellAdapter implements CodeFeatures, HardwareFeatures {
 	private final WaveCellData data;
-	private final ScalarBank wave;
+	private final PackedCollection<?> wave;
 
 	private final Producer<Scalar> offset, duration, frameIndex, frameCount;
 	private final boolean repeat;
@@ -36,22 +36,21 @@ public class WaveCell extends ScalarTemporalCellAdapter implements CodeFeatures,
 	private double amplitude;
 	private double waveLength;
 
-	// TODO  This should probably take MemoryBank<Scalar> to be more general
-	public WaveCell(ScalarBank wav, int sampleRate) {
+	public WaveCell(PackedCollection<?> wav, int sampleRate) {
 		this(wav, sampleRate, 1.0);
 	}
 
-	public WaveCell(ScalarBank wav, int sampleRate, double amplitude) {
+	public WaveCell(PackedCollection<?> wav, int sampleRate, double amplitude) {
 		this(wav, sampleRate, amplitude, null, null, Ops.ops().v(0.0), Ops.ops().v(wav.getCount()));
 	}
 
-	public WaveCell(ScalarBank wav, int sampleRate, double amplitude,
+	public WaveCell(PackedCollection<?> wav, int sampleRate, double amplitude,
 					Producer<Scalar> offset, Producer<Scalar> repeat,
 					Producer<Scalar> frameIndex, Producer<Scalar> frameCount) {
 		this(new DefaultWaveCellData(), wav, sampleRate, amplitude, offset, repeat, frameIndex, frameCount);
 	}
 
-	public WaveCell(WaveCellData data, ScalarBank wav, int sampleRate, double amplitude,
+	public WaveCell(WaveCellData data, PackedCollection<?> wav, int sampleRate, double amplitude,
 					Producer<Scalar> offset, Producer<Scalar> repeat,
 					Producer<Scalar> frameIndex, Producer<Scalar> frameCount) {
 		this.data = data;
@@ -100,7 +99,7 @@ public class WaveCell extends ScalarTemporalCellAdapter implements CodeFeatures,
 	}
 
 	@Override
-	public Supplier<Runnable> push(Producer<Scalar> protein) {
+	public Supplier<Runnable> push(Producer<PackedCollection<?>> protein) {
 		Scalar value = new Scalar();
 		OperationList push = new OperationList("WavCell Push");
 		if (duration != null) push.add(a(1, data::getDuration, duration));

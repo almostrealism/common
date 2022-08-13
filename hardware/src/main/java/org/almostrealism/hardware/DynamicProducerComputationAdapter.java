@@ -30,6 +30,7 @@ import io.almostrealism.scope.Variable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.hardware.DestinationConsolidationArgumentMap.DestinationThreadLocal;
+import org.almostrealism.hardware.collect.ExpressionValue;
 import org.almostrealism.hardware.mem.MemoryDataDestination;
 
 import java.util.Arrays;
@@ -40,10 +41,11 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+@Deprecated
 public abstract class DynamicProducerComputationAdapter<I extends MemoryData, O extends MemoryData>
 		extends ProducerComputationAdapter<I, O>
 		implements MemoryDataComputation<O>, KernelizedProducer<O>,
-		DestinationSupport<O>, MultiExpression<Double>, ComputerFeatures {
+		DestinationSupport<O>, MultiExpression<Double>, ExpressionValue, ComputerFeatures {
 
 	/**
 	 * If set to true, then {@link Provider}s are treated as value-only

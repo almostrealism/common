@@ -98,7 +98,7 @@ public class Tensor<T> implements HTMLContent {
 		return dims;
 	}
 
-	public PackedCollection pack() {
+	public PackedCollection<?> pack() {
 		TraversalPolicy shape = new TraversalPolicy(IntStream.range(0, getDimensions()).mapToObj(i -> new int[i]).mapToInt(this::length).toArray());
 		TraversalPolicy targetShape = shape.appendDimension(((MemoryData) get(new int[shape.getDimensions()])).getMemLength());
 		PackedCollection c = new PackedCollection(targetShape);

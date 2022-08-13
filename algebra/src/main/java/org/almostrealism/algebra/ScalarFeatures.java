@@ -16,11 +16,14 @@
 
 package org.almostrealism.algebra;
 
+import io.almostrealism.code.NameProvider;
+import io.almostrealism.expression.Exponent;
 import org.almostrealism.algebra.computations.Floor;
 import org.almostrealism.algebra.computations.Max;
 import org.almostrealism.algebra.computations.Min;
 import org.almostrealism.algebra.computations.Mod;
 import org.almostrealism.algebra.computations.ScalarChoice;
+import org.almostrealism.algebra.computations.ScalarExpressionComputation;
 import org.almostrealism.algebra.computations.ScalarFromScalarBank;
 import org.almostrealism.algebra.computations.StaticScalarComputation;
 import org.almostrealism.algebra.computations.ScalarPow;
@@ -29,9 +32,11 @@ import org.almostrealism.algebra.computations.ScalarSum;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.ScalarFromPackedCollection;
 import org.almostrealism.hardware.MemoryBank;
 
+import java.util.List;
 import java.util.function.Supplier;
 
 public interface ScalarFeatures {
@@ -110,15 +115,21 @@ public interface ScalarFeatures {
 		return (ScalarEvaluable) pow(() -> base, () -> exponent).get();
 	}
 
-	default ScalarProducer pow(Supplier<Evaluable<? extends Scalar>> base, Supplier<Evaluable<? extends Scalar>> exponent) {
-		return new ScalarPow(base, exponent);
+	default ScalarProducerBase pow(Supplier<Evaluable<? extends Scalar>> base, Supplier<Evaluable<? extends Scalar>> exponent) {
+//		return new ScalarPow(base, exponent);
+
+		// TODO  Certainty of exponent is ignored
+		return new ScalarExpressionComputation(List.of(
+				args -> new Exponent(args.get(1).getValue(0), args.get(2).getValue(0)),
+				args -> new Exponent(args.get(1).getValue(1), args.get(2).getValue(0))),
+				(Supplier) base, (Supplier) exponent);
 	}
 
 	default ScalarEvaluable pow(Evaluable<Scalar> base, Scalar exp) {
 		return pow(base, of(exp).get());
 	}
 
-	default ScalarProducer pow(Supplier<Evaluable<? extends Scalar>> base, Scalar exp) {
+	default ScalarProducerBase pow(Supplier<Evaluable<? extends Scalar>> base, Scalar exp) {
 		return pow(base, of(exp));
 	}
 
@@ -126,7 +137,7 @@ public interface ScalarFeatures {
 		return pow(base, new Scalar(value));
 	}
 
-	default ScalarProducer pow(Supplier<Evaluable<? extends Scalar>> base, double value) {
+	default ScalarProducerBase pow(Supplier<Evaluable<? extends Scalar>> base, double value) {
 		return pow(base, new Scalar(value));
 	}
 

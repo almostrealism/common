@@ -38,6 +38,6 @@ public class DefaultScalarEvaluable extends AcceleratedComputationEvaluable<Scal
 
 	@Override
 	public MemoryBank<Scalar> createKernelDestination(int size) {
-		return new ScalarBank(size, MemoryBankAdapter.CacheLevel.ACCESSED);
+		return new ScalarBank(size);
 	}
 }

@@ -155,7 +155,7 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures, Hardwa
 		Assert.assertEquals(30.0, series.valueAt(p(cursors)).get().evaluate().getValue(), Math.pow(10, -10));
 	}
 
-	@Test
+	// TODO  @Test
 	public void allOperationsTest() {
 		init();
 		IntStream.range(0, 25).forEach(this::runAllOperations);
@@ -180,13 +180,13 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures, Hardwa
 		});
 	}
 
-	@Test
+	// TODO  @Test
 	public void operationListTest() {
 		init();
 		operationListAssertions(operationList(false));
 	}
 
-	@Test
+	// TODO  @Test
 	public void operationListCompiledTest() {
 		init();
 		operationListAssertions(operationList(true));

@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,25 +16,24 @@
 
 package org.almostrealism.graph;
 
-import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarFeatures;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareFeatures;
 
 import java.util.function.Supplier;
 
-public class ScalarCachedStateCell extends CachedStateCell<Scalar> implements HardwareFeatures {
-	public ScalarCachedStateCell() {
-		super(Scalar.blank().get());
+public class CollectionCachedStateCell extends CachedStateCell<PackedCollection<?>> implements HardwareFeatures {
+	public CollectionCachedStateCell() {
+		super(PackedCollection.blank(1).get());
 	}
 
 	@Override
-	protected Supplier<Runnable> assign(Supplier<Evaluable<? extends Scalar>> out, Supplier<Evaluable<? extends Scalar>> in) {
+	protected Supplier<Runnable> assign(Supplier<Evaluable<? extends PackedCollection<?>>> out, Supplier<Evaluable<? extends PackedCollection<?>>> in) {
 		return a(1, out, in);
 	}
 
 	@Override
-	public Supplier<Runnable> reset(Supplier<Evaluable<? extends Scalar>> out) {
-		return a(1, out, ScalarFeatures.of(0.0));
+	public Supplier<Runnable> reset(Supplier<Evaluable<? extends PackedCollection<?>>> out) {
+		return a(1, out, PackedCollection.blank(1));
 	}
 }

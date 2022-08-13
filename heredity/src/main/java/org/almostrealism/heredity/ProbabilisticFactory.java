@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,10 +19,12 @@ package org.almostrealism.heredity;
 import java.util.HashMap;
 import java.util.List;
 
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Factory;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Defaults;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.collect.PackedCollection;
 
 public class ProbabilisticFactory<V> extends HashMap<Factory<V>, Double> implements Factory<V> {
 	/** Constructs an empty {@link ProbabilisticFactory}. */
@@ -34,9 +36,14 @@ public class ProbabilisticFactory<V> extends HashMap<Factory<V>, Double> impleme
 	 * {@link Gene}. The value 1.0 is used as an argument, making it convenient to use
 	 * the {@link ScaleFactor} to specify scalar probability values.
 	 */
-	public ProbabilisticFactory(List<? extends Factory<V>> factories, Gene<Scalar> probabilities) {
+	public ProbabilisticFactory(List<? extends Factory<V>> factories, Gene<PackedCollection<?>> probabilities) {
 		for (int i = 0; i < factories.size(); i++) {
-			put(factories.get(i), ((Scalar) probabilities.valueAt(i).getResultant(() -> new Provider(new Scalar(1.0))).get().evaluate()).getValue());
+			Evaluable<PackedCollection<?>> ev = probabilities.valueAt(i).getResultant(() -> {
+				PackedCollection<?> s = new PackedCollection<>(1);
+				s.setMem(1.0);
+				return new Provider(s);
+			}).get();
+			put(factories.get(i), ev.evaluate().toDouble(0));
 		}
 	}
 	

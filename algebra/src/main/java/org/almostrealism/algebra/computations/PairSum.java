@@ -23,9 +23,9 @@ import io.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 
-public class PairSum extends NAryDynamicProducer<Pair> implements PairProducer {
+public class PairSum extends NAryDynamicProducer<Pair<?>> implements PairProducer {
 	@SafeVarargs
-	public PairSum(Supplier<Evaluable<? extends Pair>>... producers) {
+	public PairSum(Supplier<Evaluable<? extends Pair<?>>>... producers) {
 		super("+", 2, Pair.empty(), PairBank::new, producers);
 	}
 

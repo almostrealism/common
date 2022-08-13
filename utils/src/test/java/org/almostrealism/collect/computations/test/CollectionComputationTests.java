@@ -18,15 +18,15 @@ package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.expression.Sum;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.ProducerWithOffset;
 import org.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.computations.PackedCollectionExpressionComputation;
+import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.PackedCollectionMax;
-import org.almostrealism.collect.computations.RootDelegateKernelOperation;
 import org.almostrealism.collect.computations.RootDelegateSegmentsAdd;
 import org.almostrealism.collect.computations.ScalarFromPackedCollection;
 import org.almostrealism.hardware.PassThroughProducer;
@@ -41,11 +41,11 @@ import java.util.function.Function;
 public class CollectionComputationTests implements TestFeatures {
 	@Test
 	public void expressionComputation() {
-		Function<NameProvider, Expression<Double>> expression = np ->
-				new Sum(np.getArgument(1, 1).valueAt(0), np.getArgument(2, 1).valueAt(0));
+		Function<List<MultiExpression<Double>>, Expression<Double>> expression = args ->
+				new Sum(args.get(1).getValue(0), args.get(2).getValue(0));
 
-		PackedCollectionExpressionComputation<?> computation =
-				new PackedCollectionExpressionComputation(new TraversalPolicy(1), expression,
+		ExpressionComputation<?> computation =
+				new ExpressionComputation(List.of(expression),
 						new PassThroughProducer(1, 0),
 						new PassThroughProducer(1, 1));
 
@@ -60,11 +60,11 @@ public class CollectionComputationTests implements TestFeatures {
 
 	@Test
 	public void expressionComputationKernel() {
-		Function<NameProvider, Expression<Double>> expression = np ->
-				new Sum(np.getArgument(1, 1).valueAt(0), np.getArgument(2, 1).valueAt(0));
+		Function<List<MultiExpression<Double>>, Expression<Double>> expression = args ->
+				new Sum(args.get(1).getValue(0), args.get(2).getValue(0));
 
-		PackedCollectionExpressionComputation<?> computation =
-				new PackedCollectionExpressionComputation(new TraversalPolicy(1), expression,
+		ExpressionComputation<?> computation =
+				new ExpressionComputation(List.of(expression),
 						new PassThroughProducer(1, 0),
 						new PassThroughProducer(1, 1));
 
@@ -126,9 +126,6 @@ public class CollectionComputationTests implements TestFeatures {
 
 	@Test
 	public void rootDelegateAdd() {
-		HardwareOperator.enableLog = true;
-		HardwareOperator.enableVerboseLog = true;
-
 		PackedCollection root = new PackedCollection(3, 5);
 
 		PackedCollection a = new PackedCollection(new TraversalPolicy(5), 1, root, 0);
