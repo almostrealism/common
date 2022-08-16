@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -23,12 +23,10 @@ import io.almostrealism.relation.ProducerWithRank;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.computations.VectorExpressionComputation;
-import org.almostrealism.algebra.computations.VectorProduct;
 import org.almostrealism.bool.AcceleratedConjunctionScalar;
 import org.almostrealism.bool.GreaterThanScalar;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.computations.RayFromVectors;
-import org.almostrealism.geometry.computations.RayOrigin;
 import org.almostrealism.geometry.computations.RayPointAt;
 import org.almostrealism.graph.mesh.TriangleData;
 import org.almostrealism.graph.mesh.TriangleIntersectAt;
@@ -60,9 +58,9 @@ public class TriangleTest implements CodeFeatures {
 		return (VectorExpressionComputation) origin.getInputProducer(1);
 	}
 
-	protected VectorProduct originDirectionProducer() {
+	protected VectorExpressionComputation originDirectionProducer() {
 		RayPointAt origin = originProducer();
-		return (VectorProduct) origin.getInputProducer(2);
+		return (VectorExpressionComputation) origin.getInputProducer(2);
 	}
 
 	@Test
@@ -75,7 +73,7 @@ public class TriangleTest implements CodeFeatures {
 		System.out.println(vo);
 		Assert.assertEquals(new Vector(0.0, 0.0, 0.0), vo);
 
-		VectorProduct d = originDirectionProducer();
+		VectorExpressionComputation d = originDirectionProducer();
 		Evaluable<Vector> evd = d.get();
 		((OperationAdapter) evd).compile();
 

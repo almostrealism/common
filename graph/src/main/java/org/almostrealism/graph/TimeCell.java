@@ -18,16 +18,16 @@ package org.almostrealism.graph;
 
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
+import org.almostrealism.CodeFeatures;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.computations.ScalarSum;
-import org.almostrealism.algebra.computations.StaticScalarComputation;
+import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.time.Temporal;
 
 import java.util.function.Supplier;
 
-public class TimeCell implements Cell<Scalar>, Temporal {
+public class TimeCell implements Cell<Scalar>, Temporal, CodeFeatures {
 	private Receptor r;
 	private Scalar time;
 
@@ -37,7 +37,7 @@ public class TimeCell implements Cell<Scalar>, Temporal {
 
 	@Override
 	public Supplier<Runnable> setup() {
-		return new Assignment<>(1, () -> new Provider<>(time), new StaticScalarComputation(new Scalar(0.0)));
+		return new Assignment<>(1, () -> new Provider<>(time), ScalarFeatures.of(new Scalar(0.0)));
 	}
 
 	@Override
@@ -48,8 +48,8 @@ public class TimeCell implements Cell<Scalar>, Temporal {
 	@Override
 	public Supplier<Runnable> tick() {
 		return new Assignment<>(1, () -> new Provider<>(time),
-				new ScalarSum(() -> new Provider<>(time),
-						new StaticScalarComputation(new Scalar(1.0))));
+				scalarAdd(() -> new Provider<>(time),
+						ScalarFeatures.of(new Scalar(1.0))));
 	}
 
 	@Override

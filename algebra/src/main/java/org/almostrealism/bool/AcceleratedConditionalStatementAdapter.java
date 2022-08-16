@@ -89,55 +89,52 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemoryDat
 	@Override
 	public Supplier<MemoryData> getDestination() { return destination; }
 
-	private String getBody(Variable<T, ?> outputVariable) {
-		if (compacted == null) {
-			StringBuilder buf = new StringBuilder();
-
-			buf.append("if (");
-			buf.append(getCondition().getExpression());
-			buf.append(") {\n");
-
-			for (int i = 0; i < getMemLength(); i++) {
-//				buf.append("\t");
-//				buf.append(getVariableValueName(outputVariable, i, true));
-//				buf.append(" = ");
-//				buf.append(getVariableValueName(getTrueValue(), i));
-//				buf.append(";\n");
-				buf.append("\t");
-				buf.append(((ArrayVariable) outputVariable).valueAt(i).getExpression());
-				buf.append(" = ");
-				buf.append(getTrueValue().valueAt(i).getExpression());
-				buf.append(";\n");
-			}
-
-			buf.append("} else {\n");
-
-			for (int i = 0; i < getMemLength(); i++) {
-//				buf.append("\t");
-//				buf.append(getVariableValueName(outputVariable, i, true));
-//				buf.append(" = ");
-//				buf.append(getVariableValueName(getFalseValue(), i));
-//				buf.append(";\n");
-				buf.append("\t");
-				buf.append(((ArrayVariable) outputVariable).valueAt(i).getExpression());
-				buf.append(" = ");
-				buf.append(getFalseValue().valueAt(i).getExpression());
-				buf.append(";\n");
-			}
-
-			buf.append("}\n");
-
-			return buf.toString();
-		} else {
-			return compacted.apply(outputVariable);
-		}
-	}
-
+	// TODO  The hybrid scope (by way of ExplicitScope) includes every argument as a dependency.
+	// TODO  To eliminate this problem, the actual dependencies need to be specified.
+	// TODO  They can be extracted from getTrueValueExpression and getFalseValueExpression
+	// TODO  and passed to the HybridScope directly.
 	@Override
 	public Scope<T> getScope() {
 		HybridScope<T> scope = new HybridScope<>(this);
 		scope.getVariables().addAll(getVariables());
-		scope.code().accept(getBody(getOutputVariable()));
+
+		ArrayVariable<?> outputVariable = (ArrayVariable<?>) getOutputVariable();
+		List<Variable<?, ?>> vars = new ArrayList<>();
+
+		Variable<?, ?> condition = new Variable<>("", getCondition());
+		vars.add(condition);
+
+		scope.code().accept("if (");
+		scope.code().accept(condition.getExpression().getExpression());
+		scope.code().accept(") {\n");
+
+		for (int i = 0; i < getMemLength(); i++) {
+			Variable<?, ?> var = new Variable(outputVariable.valueAt(i).getExpression(), getTrueValueExpression().apply(i), outputVariable);
+			vars.add(var);
+
+			scope.code().accept("\t");
+			scope.code().accept(var.getName());
+			scope.code().accept(" = ");
+			scope.code().accept(var.getExpression().getExpression());
+			scope.code().accept(";\n");
+		}
+
+		scope.code().accept("} else {\n");
+
+		for (int i = 0; i < getMemLength(); i++) {
+			Variable<?, ?> var = new Variable(outputVariable.valueAt(i).getExpression(), getFalseValueExpression().apply(i), outputVariable);
+			vars.add(var);
+
+			scope.code().accept("\t");
+			scope.code().accept(var.getName());
+			scope.code().accept(" = ");
+			scope.code().accept(var.getExpression().getExpression());
+			scope.code().accept(";\n");
+		}
+
+		scope.code().accept("}\n");
+
+		scope.setDependencies(vars);
 		return scope;
 	}
 

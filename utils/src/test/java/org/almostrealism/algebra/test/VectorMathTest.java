@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,10 +16,14 @@
 
 package org.almostrealism.algebra.test;
 
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarProducer;
+import org.almostrealism.algebra.ScalarProducerBase;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorProducer;
+import org.almostrealism.algebra.VectorProducerBase;
+import org.almostrealism.algebra.computations.VectorExpressionComputation;
 import org.almostrealism.hardware.DynamicAcceleratedOperation;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
@@ -40,48 +44,51 @@ public class VectorMathTest implements TestFeatures {
 
 	@Test
 	public void productFromVectors1() {
-		VectorProducer a = vector(1.0, 2.0, 3.0);
-		VectorProducer b = vector(4.0, 5.0, 6.0);
-		ScalarProducer s = a.y().multiply(b.z());
+		VectorProducerBase a = vector(1.0, 2.0, 3.0);
+		VectorProducerBase b = vector(4.0, 5.0, 6.0);
+		ScalarProducerBase s = a.y().multiply(b.z());
 		DynamicAcceleratedOperation so = (DynamicAcceleratedOperation) s.get();
 		Assert.assertEquals(1, so.getArgsCount());
 	}
 
 	@Test
 	public void productFromVectors2() {
-		VectorProducer a = vector(1.0, 2.0, 3.0);
-		VectorProducer b = vector(4.0, 5.0, 6.0);
-		ScalarProducer s = a.y().multiply(b.z()).add(1);
+		VectorProducerBase a = vector(1.0, 2.0, 3.0);
+		VectorProducerBase b = vector(4.0, 5.0, 6.0);
+		ScalarProducerBase s = a.y().multiply(b.z()).add(1);
 		DynamicAcceleratedOperation so = (DynamicAcceleratedOperation) s.get();
 		Assert.assertEquals(1, so.getArgsCount());
 	}
 
 	@Test
 	public void productFromVectors3() {
-		VectorProducer a = vector(1.0, 2.0, 3.0);
-		VectorProducer b = vector(4.0, 5.0, 6.0);
-		ScalarProducer s = a.y().multiply(b.z()).subtract(1);
+		VectorProducerBase a = vector(1.0, 2.0, 3.0);
+		VectorProducerBase b = vector(4.0, 5.0, 6.0);
+		ScalarProducerBase s = a.y().multiply(b.z()).subtract(1);
 		DynamicAcceleratedOperation so = (DynamicAcceleratedOperation) s.get();
 		Assert.assertEquals(1, so.getArgsCount());
 	}
 
 	@Test
 	public void productDifference() {
-		VectorProducer a = vector(1.0, 2.0, 3.0);
-		VectorProducer b = vector(4.0, 5.0, 6.0);
-		ScalarProducer s = ops().y(a).multiply(ops().z(b))
-				.subtract(ops().z(a).multiply(ops().y(b)));
-		DynamicAcceleratedOperation so = (DynamicAcceleratedOperation) s.get();
-		Assert.assertEquals(1, so.getArgsCount());
+		HardwareOperator.verboseLog(() -> {
+			VectorProducerBase a = vector(1.0, 2.0, 3.0);
+			VectorProducerBase b = vector(4.0, 5.0, 6.0);
+			ScalarProducerBase s = y(a).multiply(z(b))
+					.subtract(z(a).multiply(y(b)));
+			DynamicAcceleratedOperation so = (DynamicAcceleratedOperation) s.get();
+			assertEquals(-3.0, ((Evaluable<Scalar>) so).evaluate());
+			Assert.assertEquals(1, so.getArgsCount());
+		});
 	}
 
-	protected VectorProducer crossProduct(Producer<Vector> v) {
+	protected VectorExpressionComputation crossProduct(Producer<Vector> v) {
 		return vector(0.0, 0.0, -1.0).crossProduct(v);
 	}
 
 	@Test
 	public void crossProduct() {
-		VectorProducer cp = crossProduct(vector(100.0, -100.0, 0.0)
+		VectorProducerBase cp = crossProduct(vector(100.0, -100.0, 0.0)
 						.subtract(vector(0.0, 100.0, 0.0)));
 
 		Vector v = cp.get().evaluate();
@@ -94,7 +101,7 @@ public class VectorMathTest implements TestFeatures {
 
 	@Test
 	public void crossProductCompact() {
-		VectorProducer cp = crossProduct(vector(100.0, -200.0, 0.0));
+		VectorProducerBase cp = crossProduct(vector(100.0, -200.0, 0.0));
 
 		// cp.compact();
 		DynamicAcceleratedOperation cpo = (DynamicAcceleratedOperation) cp.get();

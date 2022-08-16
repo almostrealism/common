@@ -1,6 +1,7 @@
 package org.almostrealism.math.bool.test;
 
 import io.almostrealism.code.OperationAdapter;
+import org.almostrealism.algebra.ScalarProducerBase;
 import org.almostrealism.util.TestSettings;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
@@ -24,8 +25,8 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 	@Test
 	public void randomLessThan() {
 		IntStream.range(1, 6).forEach(i -> {
-			ScalarProducer a = scalar(i * Math.random());
-			ScalarProducer b = scalar(i * Math.random());
+			ScalarProducerBase a = scalar(i * Math.random());
+			ScalarProducerBase b = scalar(i * Math.random());
 
 			AcceleratedComputationEvaluable<Scalar> lt =
 					(AcceleratedComputationEvaluable<Scalar>) new LessThanScalar(a, b, a, b, false).get();
@@ -105,10 +106,10 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 			double c = i * Math.random();
 			double d = i * Math.random();
 
-			ScalarProducer pa = scalar(a);
-			ScalarProducer pb = scalar(b);
-			ScalarProducer pc = scalar(c);
-			ScalarProducer pd = scalar(d);
+			ScalarProducerBase pa = scalar(a);
+			ScalarProducerBase pb = scalar(b);
+			ScalarProducerBase pc = scalar(c);
+			ScalarProducerBase pd = scalar(d);
 
 			LessThan lt1 = new LessThanScalar(pa, pb, pa, pb, false);
 			LessThan lt2 = new LessThanScalar(pb, pc, lt1, scalar(-a), false);

@@ -19,8 +19,6 @@ package org.almostrealism.algebra;
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.relation.Evaluable;
 
-import org.almostrealism.algebra.computations.ScalarPow;
-import org.almostrealism.algebra.computations.ScalarProduct;
 import org.almostrealism.bool.AcceleratedConditionalStatementVector;
 import org.almostrealism.bool.GreaterThanVector;
 import org.almostrealism.bool.LessThanVector;
@@ -50,7 +48,7 @@ public interface ScalarEvaluable extends Evaluable<Scalar>, ScalarFeatures {
 	}
 
 	default ProducerComputation<Scalar> multiply(Supplier<Evaluable<? extends Scalar>> value) {
-		return new ScalarProduct(() -> this, value);
+		return scalarsMultiply(() -> this, value);
 	}
 
 	default ScalarEvaluable multiply(Scalar value) {
@@ -66,7 +64,7 @@ public interface ScalarEvaluable extends Evaluable<Scalar>, ScalarFeatures {
 	}
 
 	default ProducerComputation<Scalar> divide(Supplier<Evaluable<? extends Scalar>> value) {
-		return multiply(new ScalarPow(value, ScalarFeatures.of(-1.0)));
+		return multiply(pow(value, ScalarFeatures.of(-1.0)));
 	}
 
 	default ScalarEvaluable divide(Scalar value) {

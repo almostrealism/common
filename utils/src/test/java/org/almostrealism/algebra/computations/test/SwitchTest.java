@@ -21,6 +21,7 @@ import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarProducer;
+import org.almostrealism.algebra.ScalarProducerBase;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.DynamicAcceleratedOperation;
 import org.almostrealism.hardware.OperationList;
@@ -35,7 +36,7 @@ public class SwitchTest implements TestFeatures {
 		return choice(output, v(decision), v(multiplier));
 	}
 
-	public Switch choice(Scalar output, ScalarProducer decision, ScalarProducer multiplier) {
+	public Switch choice(Scalar output, ScalarProducerBase decision, ScalarProducerBase multiplier) {
 		Computation<Void> firstChoice = a(1, p(output), scalarsMultiply(multiplier, v(2.0)));
 		Computation<Void> secondChoice = a(1, p(output), scalarsMultiply(multiplier, v(4.0)));
 		Computation<Void> thirdChoice = a(1, p(output), scalarsMultiply(multiplier, v(8.0)));
@@ -80,14 +81,14 @@ public class SwitchTest implements TestFeatures {
 
 	@Test
 	public void nestedChoiceList() {
-		ScalarProducer multiplier = v(2.0);
+		ScalarProducerBase multiplier = v(2.0);
 
 		Scalar output1a = new Scalar(0.0);
 		Scalar output1b = new Scalar(0.0);
-		ScalarProducer decisionA = v(0.4);
+		ScalarProducerBase decisionA = v(0.4);
 		Scalar output2a = new Scalar(0.0);
 		Scalar output2b = new Scalar(0.0);
-		ScalarProducer decisionB = scalarsMultiply(v(0.4), multiplier);
+		ScalarProducerBase decisionB = scalarsMultiply(v(0.4), multiplier);
 
 		OperationList embeddedList = new OperationList("Embedded Choice List");
 		embeddedList.add(choice(output2a, decisionA, multiplier));

@@ -24,6 +24,7 @@ import org.almostrealism.hardware.MemoryBank;
 import io.almostrealism.code.Computation;
 import org.almostrealism.hardware.MemoryData;
 
+@Deprecated
 public class DefaultPairEvaluable extends AcceleratedComputationEvaluable<Pair<?>> implements PairEvaluable {
 
 	public DefaultPairEvaluable(Computation<Pair<?>> c) {

@@ -18,7 +18,7 @@ package org.almostrealism.algebra.computations.jni.test;
 
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.computations.ScalarSum;
+import org.almostrealism.algebra.computations.ScalarExpressionComputation;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
@@ -28,7 +28,7 @@ import java.io.IOException;
 public class NativeMathTest implements TestFeatures {
 	@Test
 	public void add() throws IOException, InterruptedException {
-		ScalarSum sum = new ScalarSum(v(1.0), v(2.0));
+		ScalarExpressionComputation sum = scalarAdd(v(1.0), v(2.0));
 		Evaluable ev = Hardware.getLocalHardware().getComputeContext().getComputer().compileProducer(sum);
 		System.out.println(ev.evaluate());
 		assertEquals(3.0, (Scalar) ev.evaluate());

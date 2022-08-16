@@ -3,6 +3,7 @@ package org.almostrealism.util;
 import io.almostrealism.code.OperationAdapter;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarProducer;
+import org.almostrealism.algebra.ScalarProducerBase;
 import org.almostrealism.algebra.computations.DefaultScalarEvaluable;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
@@ -13,8 +14,8 @@ import java.util.function.Supplier;
 public class CodeFeaturesTests implements TestFeatures {
 	@Test
 	public void partialComputation1() {
-		ScalarProducer p = scalarsMultiply(scalar(1.0), scalar(2.0));
-		ScalarProducer q = scalarAdd(scalar(5.0), p);
+		ScalarProducerBase p = scalarsMultiply(scalar(1.0), scalar(2.0));
+		ScalarProducerBase q = scalarAdd(scalar(5.0), p);
 
 		AcceleratedComputationEvaluable<Scalar> pev = (AcceleratedComputationEvaluable) p.get();
 		AcceleratedComputationEvaluable<Scalar> qev = (AcceleratedComputationEvaluable) q.get();
@@ -25,8 +26,8 @@ public class CodeFeaturesTests implements TestFeatures {
 
 	@Test
 	public void partialComputation2() {
-		ScalarProducer p = scalarsMultiply(scalar(1.0), scalar(2.0));
-		ScalarProducer q = scalarAdd(scalar(5.0), p);
+		ScalarProducerBase p = scalarsMultiply(scalar(1.0), scalar(2.0));
+		ScalarProducerBase q = scalarAdd(scalar(5.0), p);
 
 		AcceleratedComputationEvaluable<Scalar> pev = (AcceleratedComputationEvaluable) p.get();
 		AcceleratedComputationEvaluable<Scalar> qev = (AcceleratedComputationEvaluable) q.get();
@@ -38,8 +39,8 @@ public class CodeFeaturesTests implements TestFeatures {
 	@Test
 	public void partialComputation3() {
 		Scalar multiplier = new Scalar(1.0);
-		ScalarProducer p = scalarsMultiply(p(multiplier), scalar(2.0));
-		ScalarProducer q = scalarAdd(scalar(5.0), p);
+		ScalarProducerBase p = scalarsMultiply(p(multiplier), scalar(2.0));
+		ScalarProducerBase q = scalarAdd(scalar(5.0), p);
 
 		AcceleratedComputationEvaluable<Scalar> pev = (AcceleratedComputationEvaluable) p.get();
 		AcceleratedComputationEvaluable<Scalar> qev = (AcceleratedComputationEvaluable) q.get();
@@ -55,8 +56,8 @@ public class CodeFeaturesTests implements TestFeatures {
 	@Test
 	public void partialComputation4() {
 		Scalar multiplier = new Scalar(1.0);
-		ScalarProducer p = scalarsMultiply(p(multiplier), scalar(2.0));
-		ScalarProducer q = scalarAdd(scalar(5.0), p);
+		ScalarProducerBase p = scalarsMultiply(p(multiplier), scalar(2.0));
+		ScalarProducerBase q = scalarAdd(scalar(5.0), p);
 
 		assertEquals(7.0, q.get().evaluate());
 		assertEquals(2.0, p.get().evaluate());
@@ -68,9 +69,9 @@ public class CodeFeaturesTests implements TestFeatures {
 
 	@Test
 	public void partialComputation5() {
-		ScalarProducer p = scalarsMultiply(scalar(1.0), scalar(2.0));
-		ScalarProducer q = scalarAdd(scalar(5.0), p);
-		ScalarProducer r = scalarsMultiply(scalar(5.0), p);
+		ScalarProducerBase p = scalarsMultiply(scalar(1.0), scalar(2.0));
+		ScalarProducerBase q = scalarAdd(scalar(5.0), p);
+		ScalarProducerBase r = scalarsMultiply(scalar(5.0), p);
 
 		AcceleratedComputationEvaluable<Scalar> pev = (AcceleratedComputationEvaluable) p.get();
 		AcceleratedComputationEvaluable<Scalar> qev = (AcceleratedComputationEvaluable) q.get();
@@ -84,9 +85,9 @@ public class CodeFeaturesTests implements TestFeatures {
 	@Test
 	public void partialComputation6() {
 		Scalar multiplier = new Scalar(1.0);
-		ScalarProducer p = scalarsMultiply(p(multiplier), scalar(2.0));
-		ScalarProducer q = scalarAdd(scalar(5.0), p);
-		ScalarProducer r = scalarsMultiply(scalar(5.0), p);
+		ScalarProducerBase p = scalarsMultiply(p(multiplier), scalar(2.0));
+		ScalarProducerBase q = scalarAdd(scalar(5.0), p);
+		ScalarProducerBase r = scalarsMultiply(scalar(5.0), p);
 
 		assertEquals(10.0, r.get().evaluate());
 		assertEquals(2.0, p.get().evaluate());
@@ -96,9 +97,9 @@ public class CodeFeaturesTests implements TestFeatures {
 	@Test
 	public void partialComputation7() {
 		Scalar multiplier = new Scalar(1.0);
-		ScalarProducer p = scalarsMultiply(() -> args -> multiplier, scalar(2.0));
-		ScalarProducer q = scalarAdd(scalar(5.0), p);
-		ScalarProducer r = scalarsMultiply(scalar(5.0), p);
+		ScalarProducerBase p = scalarsMultiply(() -> args -> multiplier, scalar(2.0));
+		ScalarProducerBase q = scalarAdd(scalar(5.0), p);
+		ScalarProducerBase r = scalarsMultiply(scalar(5.0), p);
 
 		assertEquals(10.0, r.get().evaluate());
 		assertEquals(2.0, p.get().evaluate());
@@ -113,7 +114,7 @@ public class CodeFeaturesTests implements TestFeatures {
 	@Test
 	public void addToProvider() {
 		Scalar value = new Scalar(1.0);
-		ScalarProducer s = v(1).add(p(value));
+		ScalarProducerBase s = v(1).add(p(value));
 		value.setValue(2);
 
 		AcceleratedComputationEvaluable<Scalar> ev = (AcceleratedComputationEvaluable<Scalar>) s.get();

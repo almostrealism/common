@@ -63,6 +63,10 @@ public abstract class MemoryDataAdapter implements MemoryData {
 	@Override
 	public void destroy() {
 		if (mem == null) return;
+		if (delegateMem != null) {
+			System.out.println("WARN: MemoryData has a delegate, but also directly reserved memory");
+		}
+
 		Hardware.getLocalHardware().getMemoryProvider().deallocate(getMemLength(), mem);
 		mem = null;
 	}

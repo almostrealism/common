@@ -140,7 +140,7 @@ public class Plane extends AbstractSurface implements ParticleGroup, RayFeatures
 	}
 	
 	/**
-	 * Returns an {@link Intersection} representing the points along the specified
+	 * Returns a {@link ContinuousField} representing the points along the specified
 	 * {@link Ray} that intersection between the ray and this {@link Plane} occurs.
 	 */
 	@Override
@@ -151,7 +151,7 @@ public class Plane extends AbstractSurface implements ParticleGroup, RayFeatures
 
 		// tr = new RayFromVectors(new RayOrigin(tr), new RayDirection(tr).normalize());
 
-		ScalarProducer s;
+		ScalarProducerBase s;
 
 		if (type == Plane.XY) {
 			s = origin(tr).z().minus().divide(direction(tr).z());

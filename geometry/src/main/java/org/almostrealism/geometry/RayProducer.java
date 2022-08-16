@@ -21,6 +21,7 @@ import org.almostrealism.algebra.VectorProducer;
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.VectorProducerBase;
+import org.almostrealism.algebra.computations.ScalarExpressionComputation;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.DefaultComputer;
 import org.almostrealism.hardware.Hardware;
@@ -48,9 +49,9 @@ public interface RayProducer extends ProducerComputation<Ray>, KernelizedProduce
 
 	default VectorProducerBase direction() { return direction(this); }
 
-	default ScalarProducer oDoto() { return oDoto(this); }
+	default ScalarExpressionComputation oDoto() { return oDoto(this); }
 
-	default ScalarProducer dDotd() { return dDotd(this); }
+	default ScalarExpressionComputation dDotd() { return dDotd(this); }
 
-	default ScalarProducer oDotd() { return oDotd(this); }
+	default ScalarExpressionComputation oDotd() { return oDotd(this); }
 }

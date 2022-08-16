@@ -28,6 +28,7 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Compactable;
 
 import java.util.List;
+import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
 public interface AcceleratedConditionalStatement<T extends MemoryData> extends Producer<T>, OutputSupport, Compactable {
@@ -39,6 +40,11 @@ public interface AcceleratedConditionalStatement<T extends MemoryData> extends P
 
 	List<ArrayVariable<Scalar>> getOperands();
 
+	@Deprecated
 	ArrayVariable<T> getTrueValue();
+	@Deprecated
 	ArrayVariable<T> getFalseValue();
+
+	IntFunction<Expression<Double>> getTrueValueExpression();
+	IntFunction<Expression<Double>> getFalseValueExpression();
 }

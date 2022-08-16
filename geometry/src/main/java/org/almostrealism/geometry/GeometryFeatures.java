@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -20,8 +20,8 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarProducer;
-import org.almostrealism.algebra.computations.StaticScalarComputation;
+import org.almostrealism.algebra.ScalarFeatures;
+import org.almostrealism.algebra.ScalarProducerBase;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
@@ -40,12 +40,12 @@ public interface GeometryFeatures extends CollectionFeatures {
 	}
 
 	default Sine sinw(Supplier<Evaluable<? extends Scalar>> input, Supplier<Evaluable<? extends Scalar>> wavelength) {
-		return sin(new StaticScalarComputation(new Scalar(TWO_PI)).multiply(input).divide(wavelength));
+		return sin(ScalarFeatures.of(new Scalar(TWO_PI)).multiply(input).divide(wavelength));
 	}
 
-	default ScalarProducer sinw(Supplier<Evaluable<? extends Scalar>> input, Supplier<Evaluable<? extends Scalar>> wavelength,
-								Supplier<Evaluable<? extends Scalar>> amp) {
-		return sin(new StaticScalarComputation(new Scalar(TWO_PI)).multiply(input).divide(wavelength)).multiply(amp);
+	default ScalarProducerBase sinw(Supplier<Evaluable<? extends Scalar>> input, Supplier<Evaluable<? extends Scalar>> wavelength,
+									Supplier<Evaluable<? extends Scalar>> amp) {
+		return sin(ScalarFeatures.of(new Scalar(TWO_PI)).multiply(input).divide(wavelength)).multiply(amp);
 	}
 
 	default ExpressionComputation _sin(Supplier<Evaluable<? extends PackedCollection<?>>> input) {

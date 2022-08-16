@@ -18,8 +18,10 @@ package io.almostrealism.code;
 
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.Scope;
+import io.almostrealism.scope.Variable;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -38,6 +40,8 @@ public class HybridScope<T> extends Scope<T> {
 	}
 
 	public void setArguments(List<Argument<?>> arguments) { explicit.setArguments(arguments); }
+
+	public void setDependencies(Collection<Variable<?, ?>> dependencies) { explicit.setArguments(Scope.extractArgumentDependencies(dependencies)); }
 
 	@Override
 	public void write(CodePrintWriter w) {

@@ -48,6 +48,7 @@ public class CLMemoryProvider implements MemoryProvider<RAM> {
 
 	private HashMap<cl_mem, PointerAndObject<?>> heap;
 	private List<CLMemory> allocated;
+	private List<RAM> deallocating;
 
 	public CLMemoryProvider(CLDataContext context, cl_command_queue queue, int numberSize, long memoryMax, Location location) {
 		this.context = context;
@@ -57,6 +58,7 @@ public class CLMemoryProvider implements MemoryProvider<RAM> {
 		this.location = location;
 		if (location == Location.HEAP) heap = new HashMap<>();
 		this.allocated = new ArrayList<>();
+		this.deallocating = new ArrayList<>();
 	}
 
 	public int getNumberSize() { return numberSize; }
@@ -78,17 +80,26 @@ public class CLMemoryProvider implements MemoryProvider<RAM> {
 
 	@Override
 	public void deallocate(int size, RAM ram) {
-		if (!(ram instanceof CLMemory)) throw new IllegalArgumentException();
-		if (ram.getProvider() != this)
-			throw new IllegalArgumentException();
-		CLMemory mem = (CLMemory) ram;
+		synchronized (deallocating) {
+			if (deallocating.contains(ram)) return;
+			deallocating.add(ram);
+		}
 
-		if (heap != null) heap.remove(mem.getMem());
-		CL.clReleaseMemObject(mem.getMem());
-		memoryUsed = memoryUsed - (long) size * getNumberSize();
+		try {
+			if (!(ram instanceof CLMemory)) throw new IllegalArgumentException();
+			if (ram.getProvider() != this)
+				throw new IllegalArgumentException();
+			CLMemory mem = (CLMemory) ram;
 
-		if (!allocated.remove(mem)) {
-			System.out.println("WARN: Deallocated untracked memory");
+			if (heap != null) heap.remove(mem.getMem());
+			CL.clReleaseMemObject(mem.getMem());
+			memoryUsed = memoryUsed - (long) size * getNumberSize();
+
+			if (!allocated.remove(mem)) {
+				System.out.println("WARN: Deallocated untracked memory");
+			}
+		} finally {
+			deallocating.remove(ram);
 		}
 	}
 

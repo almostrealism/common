@@ -403,7 +403,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 		});
 	}
 
-	private static List<Argument<?>> extractArgumentDependencies(Collection<Variable<?, ?>> vars) {
+	protected static List<Argument<?>> extractArgumentDependencies(Collection<Variable<?, ?>> vars) {
 		return extractArgumentDependencies(vars, true);
 	}
 

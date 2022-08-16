@@ -51,7 +51,7 @@ public abstract class AcceleratedBinaryConditionAdapter<T extends MemoryData> ex
 	@Override
 	public Expression getCondition() {
 		if (condition == null) {
-			return new NAryExpression(Boolean.class, operator, getArgument(1).valueAt(0), getArgument(2).valueAt(0));
+			return new NAryExpression(Boolean.class, operator, getInputValue(1, 0), getInputValue(2, 0));
 		} else {
 			return condition;
 		}
@@ -63,32 +63,24 @@ public abstract class AcceleratedBinaryConditionAdapter<T extends MemoryData> ex
 		return Arrays.asList((ArrayVariable) getArgument(1), (ArrayVariable) getArgument(2));
 	}
 
+	@Deprecated
 	@Override
 	public ArrayVariable getTrueValue() { return getArgument(3); }
 
+	@Deprecated
 	@Override
 	public ArrayVariable getFalseValue() { return getArgument(4); }
 
 	@Override
-	public boolean isCompacted() { return super.isCompacted() && condition != null; }
+	public IntFunction<Expression<Double>> getTrueValueExpression() {
+		return i -> getInputValue(3, i);
+	}
 
 	@Override
-	public void compact() {
-		super.compact();
-		
-		if (super.isCompacted() && condition == null) {
-			List<ArrayVariable<Scalar>> operands = getOperands();
-
-			MultiExpression op1 = (MultiExpression) operands.get(0).getProducer();
-			MultiExpression op2 = (MultiExpression) operands.get(1).getProducer();
-
-			Variable v0 = new Variable<>(getVariableName(0), true, op1.getValue(0), operands.get(0).getProducer());
-			Variable v1 = new Variable<>(getVariableName(1), true, op2.getValue(0), operands.get(1).getProducer());
-
-			addVariable(v0);
-			addVariable(v1);
-
-			condition = new NAryExpression(Boolean.class, operator, new InstanceReference<>(v0), new InstanceReference<>(v1));
-		}
+	public IntFunction<Expression<Double>> getFalseValueExpression() {
+		return i -> getInputValue(4, i);
 	}
+
+	@Override
+	public boolean isCompacted() { return super.isCompacted() && condition != null; }
 }

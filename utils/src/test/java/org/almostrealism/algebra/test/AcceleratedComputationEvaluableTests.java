@@ -1,11 +1,10 @@
 package org.almostrealism.algebra.test;
 
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarProducer;
+import org.almostrealism.algebra.ScalarProducerBase;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorProducer;
-import org.almostrealism.algebra.computations.ScalarFromVector;
-import org.almostrealism.algebra.computations.ScalarProduct;
+import org.almostrealism.algebra.computations.ScalarExpressionComputation;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.CodeFeatures;
@@ -24,7 +23,7 @@ public class AcceleratedComputationEvaluableTests implements HardwareFeatures, C
 
 	@Test
 	public void scalarFromVector() {
-		ScalarFromVector res = new ScalarFromVector(vector(0.0, 1.0, 2.0), ScalarFromVector.Y);
+		ScalarExpressionComputation res = y(vector(0.0, 1.0, 2.0));
 		AcceleratedComputationEvaluable ev = (AcceleratedComputationEvaluable) res.get();
 		Scalar s = (Scalar) ev.evaluate();
 		System.out.println(s.getValue());
@@ -33,8 +32,8 @@ public class AcceleratedComputationEvaluableTests implements HardwareFeatures, C
 
 	@Test
 	public void scalarProduct() {
-		ScalarProducer x = scalar(3.0);
-		AcceleratedComputationEvaluable<Scalar> res = (AcceleratedComputationEvaluable<Scalar>) new ScalarProduct(x, scalar(0.5)).get();
+		ScalarProducerBase x = scalar(3.0);
+		AcceleratedComputationEvaluable<Scalar> res = (AcceleratedComputationEvaluable<Scalar>) scalarsMultiply(x, scalar(0.5)).get();
 
 		Scalar s = res.evaluate();
 		System.out.println(s.getValue());

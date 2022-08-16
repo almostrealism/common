@@ -25,6 +25,7 @@ import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.MemoryBankAdapter;
 import io.almostrealism.code.Computation;
 
+@Deprecated
 public class DefaultScalarEvaluable extends AcceleratedComputationEvaluable<Scalar> implements ScalarEvaluable {
 
 	public DefaultScalarEvaluable(Computation<Scalar> c) {

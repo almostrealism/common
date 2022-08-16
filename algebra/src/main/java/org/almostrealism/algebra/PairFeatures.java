@@ -18,22 +18,14 @@ package org.almostrealism.algebra;
 
 import io.almostrealism.expression.Expression;
 import org.almostrealism.algebra.computations.ComplexProduct;
-import org.almostrealism.algebra.computations.DefaultPairEvaluable;
-import org.almostrealism.algebra.computations.DefaultScalarEvaluable;
 import org.almostrealism.algebra.computations.PairFromScalars;
 import org.almostrealism.algebra.computations.PairProduct;
 import org.almostrealism.algebra.computations.PairSum;
 import org.almostrealism.algebra.computations.RandomPair;
 import org.almostrealism.algebra.computations.ScalarExpressionComputation;
 import org.almostrealism.algebra.computations.ScalarFromPair;
-import org.almostrealism.algebra.computations.ScalarPow;
-import org.almostrealism.algebra.computations.ScalarProduct;
-import org.almostrealism.algebra.computations.ScalarSum;
 import org.almostrealism.algebra.computations.StaticPairComputation;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.algebra.computations.StaticScalarComputation;
-import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.hardware.HardwareFeatures;
 
 import java.util.List;
@@ -110,7 +102,7 @@ public interface PairFeatures extends HardwareFeatures {
 	}
 
 	default PairProducer pairDivide(Supplier<Evaluable<? extends Pair<?>>> a, Supplier<Evaluable<? extends Scalar>> b) {
-		ScalarProducerBase v = new ScalarPow(b, new StaticScalarComputation(new Scalar(-1.0)));
+		ScalarProducerBase v = ScalarFeatures.getInstance().pow(b, ScalarFeatures.of(new Scalar(-1.0)));
 		return new PairProduct(a, pair(v, v));
 	}
 

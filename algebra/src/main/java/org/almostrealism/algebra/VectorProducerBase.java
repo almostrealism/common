@@ -19,6 +19,8 @@ package org.almostrealism.algebra;
 import org.almostrealism.algebra.computations.DefaultVectorEvaluable;
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.algebra.computations.ScalarExpressionComputation;
+import org.almostrealism.algebra.computations.VectorExpressionComputation;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.DefaultComputer;
 import org.almostrealism.hardware.Hardware;
@@ -29,27 +31,27 @@ import java.util.function.Supplier;
 
 public interface VectorProducerBase extends ProducerComputation<Vector>, KernelizedProducer<Vector>, VectorFeatures {
 
-	default ScalarProducer x() {
+	default ScalarProducerBase x() {
 		return x(this);
 	}
 
-	default ScalarProducer y() {
+	default ScalarProducerBase y() {
 		return y(this);
 	}
 
-	default ScalarProducer z() {
+	default ScalarProducerBase z() {
 		return z(this);
 	}
 
-	default ScalarProducer dotProduct(Evaluable<Vector> operand) {
+	default ScalarExpressionComputation dotProduct(Evaluable<Vector> operand) {
 		return dotProduct(() -> operand);
 	}
 
-	default ScalarProducer dotProduct(Supplier<Evaluable<? extends Vector>> operand) {
+	default ScalarExpressionComputation dotProduct(Supplier<Evaluable<? extends Vector>> operand) {
 		return dotProduct(this, operand);
 	}
 
-	default VectorProducer crossProduct(Supplier<Evaluable<? extends Vector>> operand) {
+	default VectorExpressionComputation crossProduct(Supplier<Evaluable<? extends Vector>> operand) {
 		return crossProduct(this, operand);
 	}
 
@@ -59,21 +61,21 @@ public interface VectorProducerBase extends ProducerComputation<Vector>, Kerneli
 
 	default VectorProducer subtract(Supplier<Evaluable<? extends Vector>> operand) { return subtract(this, operand); }
 
-	default VectorProducer multiply(Supplier<Evaluable<? extends Vector>> operand) {
+	default VectorExpressionComputation multiply(Supplier<Evaluable<? extends Vector>> operand) {
 		return multiply(this, operand);
 	}
 
-	default VectorProducer scalarMultiply(Supplier<Evaluable<? extends Scalar>> operand) { return scalarMultiply(this, operand); }
+	default VectorExpressionComputation scalarMultiply(Supplier<Evaluable<? extends Scalar>> operand) { return scalarMultiply(this, operand); }
 
-	default VectorProducer scalarMultiply(Scalar operand) {
+	default VectorExpressionComputation scalarMultiply(Scalar operand) {
 		return scalarMultiply(ScalarFeatures.of(operand));
 	}
 
-	default VectorProducer scalarMultiply(double operand) {
+	default VectorExpressionComputation scalarMultiply(double operand) {
 		return scalarMultiply(new Scalar(operand));
 	}
 
-	default VectorProducer minus() {
+	default VectorExpressionComputation minus() {
 		return minus(this);
 	}
 
@@ -81,11 +83,11 @@ public interface VectorProducerBase extends ProducerComputation<Vector>, Kerneli
 		return length(this);
 	}
 
-	default ScalarProducer lengthSq() {
+	default ScalarProducerBase lengthSq() {
 		return lengthSq(this);
 	}
 
-	default VectorProducer normalize() {
+	default VectorExpressionComputation normalize() {
 		return normalize(this);
 	}
 }

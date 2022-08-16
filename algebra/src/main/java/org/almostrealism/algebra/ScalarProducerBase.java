@@ -19,85 +19,79 @@ package org.almostrealism.algebra;
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.relation.Evaluable;
 
-import org.almostrealism.algebra.computations.DefaultScalarEvaluable;
-import org.almostrealism.algebra.computations.ScalarPow;
-import org.almostrealism.algebra.computations.ScalarProduct;
+import org.almostrealism.algebra.computations.ScalarExpressionComputation;
 import org.almostrealism.bool.AcceleratedConditionalStatementScalar;
 import org.almostrealism.bool.AcceleratedConditionalStatementVector;
 import org.almostrealism.bool.GreaterThanScalar;
 import org.almostrealism.bool.GreaterThanVector;
 import org.almostrealism.bool.LessThanScalar;
 import org.almostrealism.bool.LessThanVector;
-import org.almostrealism.hardware.AcceleratedComputationEvaluable;
-import org.almostrealism.hardware.DefaultComputer;
-import org.almostrealism.hardware.Hardware;
-import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.KernelizedProducer;
 
 import java.util.function.Supplier;
 
 public interface ScalarProducerBase extends ProducerComputation<Scalar>, KernelizedProducer<Scalar>, ScalarFeatures {
-	default ScalarProducer add(Supplier<Evaluable<? extends Scalar>> value) {
+	default ScalarProducerBase add(Supplier<Evaluable<? extends Scalar>> value) {
 		return scalarAdd(this, value);
 	}
 
-	default ScalarProducer add(Scalar value) {
+	default ScalarProducerBase add(Scalar value) {
 		return add(ScalarFeatures.of(value));
 	}
 
-	default ScalarProducer add(double value) {
+	default ScalarProducerBase add(double value) {
 		return add(new Scalar(value));
 	}
 
-	default ScalarProducer subtract(double value) {
+	default ScalarProducerBase subtract(double value) {
 		return subtract(new Scalar(value));
 	}
 
-	default ScalarProducer subtract(Scalar value) {
+	default ScalarProducerBase subtract(Scalar value) {
 		return subtract(ScalarFeatures.of(value));
 	}
 
-	default ScalarProducer subtract(Evaluable<Scalar> value) {
+	default ScalarProducerBase subtract(Evaluable<Scalar> value) {
 		return subtract(() -> value);
 	}
 
-	default ScalarProducer subtract(Supplier<Evaluable<? extends Scalar>> value) {
+	default ScalarProducerBase subtract(Supplier<Evaluable<? extends Scalar>> value) {
 		return add(scalarMinus(value));
 	}
 
-	default ScalarProducer multiply(Evaluable<Scalar> value) {
+	default ScalarExpressionComputation multiply(Evaluable<Scalar> value) {
 		return multiply(() -> value);
 	}
 
-	default ScalarProducer multiply(Supplier<Evaluable<? extends Scalar>> value) {
-		return new ScalarProduct(this, value);
+	default ScalarExpressionComputation multiply(Supplier<Evaluable<? extends Scalar>> value) {
+		return scalarsMultiply(this, value);
 	}
 
-	default ScalarProducer multiply(Scalar value) {
+	default ScalarExpressionComputation multiply(Scalar value) {
 		return multiply(ScalarFeatures.of(value));
 	}
 
-	default ScalarProducer multiply(double value) {
+	default ScalarExpressionComputation multiply(double value) {
 		return multiply(new Scalar(value));
 	}
 
-	default ScalarProducer divide(Evaluable<Scalar> value) {
+	default ScalarExpressionComputation divide(Evaluable<Scalar> value) {
 		return divide(() -> value);
 	}
 
-	default ScalarProducer divide(Supplier<Evaluable<? extends Scalar>> value) {
-		return multiply(new ScalarPow(value, ScalarFeatures.of(-1.0)));
+	default ScalarExpressionComputation divide(Supplier<Evaluable<? extends Scalar>> value) {
+		return multiply(pow(value, ScalarFeatures.of(-1.0)));
 	}
 
-	default ScalarProducer divide(Scalar value) {
+	default ScalarExpressionComputation divide(Scalar value) {
 		return divide(ScalarFeatures.of(value));
 	}
 
-	default ScalarProducer divide(double value) {
+	default ScalarExpressionComputation divide(double value) {
 		return divide(new Scalar(value));
 	}
 
-	default ScalarProducer minus() { return multiply(-1.0); }
+	default ScalarExpressionComputation minus() { return multiply(-1.0); }
 
 	default ScalarProducerBase pow(Supplier<Evaluable<? extends Scalar>> exponent) { return pow(this, exponent); }
 
@@ -105,7 +99,7 @@ public interface ScalarProducerBase extends ProducerComputation<Scalar>, Kerneli
 
 	default ScalarProducerBase pow(double exp) { return pow(this, exp); }
 
-	default ScalarProducer mod(Supplier<Evaluable<? extends Scalar>> divisor) {
+	default ScalarProducerBase mod(Supplier<Evaluable<? extends Scalar>> divisor) {
 		return mod(this, divisor);
 	}
 

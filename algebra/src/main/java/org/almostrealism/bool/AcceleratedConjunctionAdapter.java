@@ -167,6 +167,16 @@ public abstract class AcceleratedConjunctionAdapter<T extends MemoryData> extend
 	public ArrayVariable getFalseValue() { return falseVar; }
 
 	@Override
+	public IntFunction<Expression<Double>> getTrueValueExpression() {
+		return i -> (Expression) trueVar.valueAt(i);
+	}
+
+	@Override
+	public IntFunction<Expression<Double>> getFalseValueExpression() {
+		return i -> (Expression) falseVar.valueAt(i);
+	}
+
+	@Override
 	public void compact() {
 		conjuncts.stream()
 				.map(c -> c instanceof Compactable ? (Compactable) c : null)

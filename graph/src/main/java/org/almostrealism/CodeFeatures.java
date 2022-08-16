@@ -29,13 +29,11 @@ import org.almostrealism.algebra.PairFeatures;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarFeatures;
-import org.almostrealism.algebra.ScalarProducer;
-import org.almostrealism.algebra.computations.Choice;
+import org.almostrealism.algebra.ScalarProducerBase;
 import org.almostrealism.algebra.computations.Switch;
 import org.almostrealism.algebra.computations.ScalarBankFromScalars;
 import org.almostrealism.algebra.computations.StaticPairComputation;
 import org.almostrealism.algebra.computations.StaticScalarBankComputation;
-import org.almostrealism.algebra.computations.StaticScalarComputation;
 import org.almostrealism.algebra.computations.StaticVectorComputation;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
@@ -58,10 +56,8 @@ import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.Input;
 import org.almostrealism.time.CursorPair;
 import org.almostrealism.time.TemporalFeatures;
-import org.almostrealism.time.TemporalScalarProducer;
 import org.almostrealism.time.TemporalScalarProducerBase;
 import org.almostrealism.time.computations.TemporalScalarExpressionComputation;
-import org.almostrealism.time.computations.TemporalScalarFromScalars;
 
 import java.util.Arrays;
 import java.util.List;
@@ -97,7 +93,7 @@ public interface CodeFeatures extends CollectionFeatures, ScalarFeatures, PairFe
 		return new DynamicProducer<>(function);
 	}
 
-	default ScalarProducer value(double value) { return scalar(value); }
+	default ScalarProducerBase value(double value) { return scalar(value); }
 
 	default TemporalScalarProducerBase temporal(Supplier<Evaluable<? extends Scalar>> time, Supplier<Evaluable<? extends Scalar>> value) {
 //		return new TemporalScalarFromScalars(time, value);
@@ -121,7 +117,7 @@ public interface CodeFeatures extends CollectionFeatures, ScalarFeatures, PairFe
 
 	default <T> Producer<T> value(T v) {
 		if (v instanceof Scalar) {
-			return (ProducerComputation<T>) new StaticScalarComputation((Scalar) v);
+			return (ProducerComputation<T>) ScalarFeatures.of((Scalar) v);
 		} else if (v instanceof ScalarBank) {
 			return (ProducerComputation<T>) new StaticScalarBankComputation((ScalarBank) v);
 		} else if (v instanceof Pair) {

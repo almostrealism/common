@@ -22,6 +22,7 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.algebra.ScalarProducer;
+import org.almostrealism.algebra.ScalarProducerBase;
 
 import java.util.Optional;
 import java.util.function.Supplier;
@@ -38,7 +39,7 @@ public class Dither extends ScalarBankAdd {
 		super(count, input, gaussRand(ditherValue, randDestination));
 	}
 
-	private static ScalarProducer gaussRand(Supplier<Evaluable<? extends Scalar>> ditherValue, Supplier<Pair<?>> randDestination) {
+	private static ScalarProducerBase gaussRand(Supplier<Evaluable<? extends Scalar>> ditherValue, Supplier<Pair<?>> randDestination) {
 		return ScalarFeatures.getInstance().scalarsMultiply(ditherValue,
 				Optional.ofNullable(randDestination).map(GaussRandom::new).orElseGet(GaussRandom::new));
 	}

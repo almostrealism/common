@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,28 +16,22 @@
 
 package org.almostrealism.geometry;
 
-import io.almostrealism.expression.Exponent;
-import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorEvaluable;
+import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.algebra.VectorProducerBase;
-import org.almostrealism.algebra.computations.DefaultVectorEvaluable;
 import org.almostrealism.algebra.computations.ScalarExpressionComputation;
 import org.almostrealism.algebra.computations.VectorExpressionComputation;
 import org.almostrealism.geometry.computations.StaticRayComputation;
-import org.almostrealism.geometry.computations.DirectionDotDirection;
-import org.almostrealism.geometry.computations.OriginDotDirection;
-import org.almostrealism.geometry.computations.OriginDotOrigin;
 import org.almostrealism.geometry.computations.RayDirection;
-import org.almostrealism.geometry.computations.RayOrigin;
 import io.almostrealism.relation.Evaluable;
 
 import java.util.List;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public interface RayFeatures {
+public interface RayFeatures extends VectorFeatures {
 
 	default RayProducer v(Ray value) { return value(value); }
 
@@ -59,8 +53,6 @@ public interface RayFeatures {
 	}
 
 	default VectorProducerBase origin(Supplier<Evaluable<? extends Ray>> r) {
-//		return new RayOrigin(r);
-
 		return new VectorExpressionComputation(List.of(
 				args -> args.get(1).getValue(0),
 				args -> args.get(1).getValue(1),
@@ -76,11 +68,11 @@ public interface RayFeatures {
 		return new RayDirection(r);
 	}
 
-	default ScalarProducer oDoto(Supplier<Evaluable<? extends Ray>> r) { return new OriginDotOrigin(r); }
+	default ScalarExpressionComputation oDoto(Supplier<Evaluable<? extends Ray>> r) { return dotProduct(origin(r), origin(r)); }
 
-	default ScalarProducer dDotd(Supplier<Evaluable<? extends Ray>> r) { return new DirectionDotDirection(r); }
+	default ScalarExpressionComputation dDotd(Supplier<Evaluable<? extends Ray>> r) { return dotProduct(direction(r), direction(r)); }
 
-	default ScalarProducer oDotd(Supplier<Evaluable<? extends Ray>> r) { return new OriginDotDirection(r); }
+	default ScalarExpressionComputation oDotd(Supplier<Evaluable<? extends Ray>> r) { return dotProduct(origin(r), direction(r)); }
 
 	static RayFeatures getInstance() {
 		return new RayFeatures() { };

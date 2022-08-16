@@ -25,6 +25,7 @@ import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.MemoryBankAdapter.CacheLevel;
 
+@Deprecated
 public class DefaultVectorEvaluable extends AcceleratedComputationEvaluable<Vector> implements VectorEvaluable {
 
 	public DefaultVectorEvaluable(Computation<Vector> c) {

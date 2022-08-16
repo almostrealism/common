@@ -18,10 +18,6 @@ package org.almostrealism.heredity;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarProducer;
-import org.almostrealism.algebra.ScalarProducerBase;
-import org.almostrealism.algebra.computations.ScalarPow;
-import org.almostrealism.algebra.computations.StaticScalarComputation;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -71,8 +67,6 @@ public interface HeredityFeatures extends CollectionFeatures {
 	}
 
 	default CollectionProducer oneToInfinity(Producer<PackedCollection<?>> arg, Producer<PackedCollection<?>> exp) {
-//		ScalarProducerBase pow = new ScalarPow(arg, exp);
-//		return pow.minus().add(1.0).pow(-1.0).subtract(1.0);
 		CollectionProducer pow = _pow(arg, exp);
 		CollectionProducer out = _minus(pow);
 		out = _add(out, c(1.0));

@@ -16,25 +16,11 @@
 
 package org.almostrealism.algebra;
 
-import io.almostrealism.code.ProducerComputation;
-import io.almostrealism.relation.Evaluable;
-
 import org.almostrealism.algebra.computations.DefaultScalarEvaluable;
-import org.almostrealism.algebra.computations.ScalarPow;
-import org.almostrealism.algebra.computations.ScalarProduct;
-import org.almostrealism.bool.AcceleratedConditionalStatementScalar;
-import org.almostrealism.bool.AcceleratedConditionalStatementVector;
-import org.almostrealism.bool.GreaterThanScalar;
-import org.almostrealism.bool.GreaterThanVector;
-import org.almostrealism.bool.LessThanScalar;
-import org.almostrealism.bool.LessThanVector;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.DefaultComputer;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.KernelizedEvaluable;
-import org.almostrealism.hardware.KernelizedProducer;
-
-import java.util.function.Supplier;
 
 public interface ScalarProducer extends ScalarProducerBase {
 	@Override
