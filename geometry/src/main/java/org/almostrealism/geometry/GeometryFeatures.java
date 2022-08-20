@@ -49,7 +49,7 @@ public interface GeometryFeatures extends CollectionFeatures {
 	}
 
 	default ExpressionComputation _sin(Supplier<Evaluable<? extends PackedCollection<?>>> input) {
-		Function<List<MultiExpression<Double>>, Expression<Double>> exp = args -> new io.almostrealism.expression.Sine(args.get(0).getValue(0));
+		Function<List<MultiExpression<Double>>, Expression<Double>> exp = args -> new io.almostrealism.expression.Sine(args.get(1).getValue(0));
 		return new ExpressionComputation(List.of(exp), input);
 	}
 

@@ -59,6 +59,13 @@ public interface ScalarFeatures extends HardwareFeatures {
 
 	default ScalarExpressionComputation scalar(double value) { return value(new Scalar(value)); }
 
+	default ScalarExpressionComputation toScalar(Supplier<Evaluable<? extends PackedCollection<?>>> value) {
+		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
+		comp.add(args -> args.get(1).getValue(0));
+		comp.add(args -> expressionForDouble(1.0));
+		return new ScalarExpressionComputation(comp, value);
+	}
+
 	default ScalarExpressionComputation value(Scalar value) {
 		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
 		IntStream.range(0, 2).forEach(i -> comp.add(args -> expressionForDouble(value.getMem().toArray(value.getOffset() + i, 1)[0])));

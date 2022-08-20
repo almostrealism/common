@@ -84,7 +84,7 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 	@Override
 	public T get(int index) {
 		if (traversalAxis == 1 && supply != null) {
-			return supply.apply(new DelegateSpec(shape.size(1) * index));
+			return supply.apply(new DelegateSpec(this, shape.size(1) * index));
 		} else {
 			throw new UnsupportedOperationException();
 		}
@@ -195,17 +195,23 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 	}
 
 	public static <T extends MemoryData> BiFunction<Integer, Integer, MemoryBank<T>> table(TraversalPolicy atomicShape) {
-		return (width, count) -> new PackedCollection(atomicShape.prependDimension(width).prependDimension(count));
+		return (width, count) -> new PackedCollection<>(atomicShape.prependDimension(width).prependDimension(count));
 	}
 
-	public class DelegateSpec {
+	public static <T extends MemoryData> BiFunction<Integer, Integer, MemoryBank<T>> table(TraversalPolicy atomicShape, BiFunction<DelegateSpec, Integer, T> supply) {
+		return (width, count) -> new PackedCollection<>(atomicShape.prependDimension(width).prependDimension(count), 1, delegateSpec -> supply.apply(delegateSpec, width));
+	}
+
+	public static class DelegateSpec {
+		private MemoryData data;
 		private int offset;
 
-		public DelegateSpec(int offset) {
+		public DelegateSpec(MemoryData data, int offset) {
+			this.data = data;
 			setOffset(offset);
 		}
 
-		public MemoryData getDelegate() { return PackedCollection.this; }
+		public MemoryData getDelegate() { return data; }
 
 		public int getOffset() { return offset; }
 		public void setOffset(int offset) { this.offset = offset; }
