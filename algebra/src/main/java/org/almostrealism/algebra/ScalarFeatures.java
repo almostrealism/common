@@ -16,15 +16,8 @@
 
 package org.almostrealism.algebra;
 
-import io.almostrealism.expression.Exponent;
-import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.MultiExpression;
-import io.almostrealism.expression.Product;
-import io.almostrealism.expression.Sum;
+import io.almostrealism.expression.*;
 import org.almostrealism.algebra.computations.Floor;
-import org.almostrealism.algebra.computations.Max;
-import org.almostrealism.algebra.computations.Min;
-import org.almostrealism.algebra.computations.Mod;
 import org.almostrealism.algebra.computations.ScalarChoice;
 import org.almostrealism.algebra.computations.ScalarExpressionComputation;
 import org.almostrealism.algebra.computations.ScalarFromScalarBank;
@@ -162,19 +155,28 @@ public interface ScalarFeatures extends HardwareFeatures {
 		return new Floor(value);
 	}
 
-	default ScalarProducer min(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
-		return new Min(a, b);
+	default ScalarProducerBase min(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
+		return new ScalarExpressionComputation(List.of(
+				args -> new Min(args.get(1).getValue(0), args.get(2).getValue(0)),
+				args -> new Min(args.get(1).getValue(1), args.get(2).getValue(1))),
+				(Supplier) a, (Supplier) b);
 	}
 
-	default ScalarProducer max(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
-		return new Max(a, b);
+	default ScalarProducerBase max(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
+		return new ScalarExpressionComputation(List.of(
+				args -> new Max(args.get(1).getValue(0), args.get(2).getValue(0)),
+				args -> new Max(args.get(1).getValue(1), args.get(2).getValue(1))),
+				(Supplier) a, (Supplier) b);
 	}
 
-	default ScalarProducer mod(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
-		return new Mod(a, b);
+	default ScalarProducerBase mod(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
+		return new ScalarExpressionComputation(List.of(
+				args -> new Mod(args.get(1).getValue(0), args.get(2).getValue(0)),
+				args -> args.get(1).getValue(1)),
+				(Supplier) a, (Supplier) b);
 	}
 
-	default ScalarProducer bound(Supplier<Evaluable<? extends Scalar>> a, double min, double max) {
+	default ScalarProducerBase bound(Supplier<Evaluable<? extends Scalar>> a, double min, double max) {
 		return min(max(a, v(min)), v(max));
 	}
 

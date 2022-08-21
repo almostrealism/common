@@ -2,9 +2,7 @@ package org.almostrealism.util;
 
 import io.almostrealism.code.OperationAdapter;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.algebra.ScalarProducerBase;
-import org.almostrealism.algebra.computations.DefaultScalarEvaluable;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.junit.Test;

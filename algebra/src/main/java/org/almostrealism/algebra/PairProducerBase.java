@@ -18,32 +18,22 @@ package org.almostrealism.algebra;
 
 import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.computations.DefaultPairEvaluable;
 import io.almostrealism.code.ProducerComputation;
-import org.almostrealism.hardware.AcceleratedComputationEvaluable;
-import org.almostrealism.hardware.DefaultComputer;
-import org.almostrealism.hardware.Hardware;
-import org.almostrealism.hardware.KernelizedEvaluable;
+import org.almostrealism.algebra.computations.ScalarExpressionComputation;
 import org.almostrealism.hardware.KernelizedProducer;
 
 import java.util.function.Supplier;
 
-@Deprecated
-public interface PairProducer extends PairProducerBase {
-	@Override
-	default KernelizedEvaluable<Pair<?>> get() {
-		DefaultComputer computer = (DefaultComputer) Hardware.getLocalHardware().getComputeContext().getComputer();
+public interface PairProducerBase extends ProducerComputation<Pair<?>>, KernelizedProducer<Pair<?>>,
+        MultiExpression<Double>, PairFeatures {
 
-		AcceleratedComputationEvaluable ev;
+    default ScalarExpressionComputation l() { return l(this); }
+    default ScalarExpressionComputation r() { return r(this); }
 
-		if (computer.isNative()) {
-			ev = (AcceleratedComputationEvaluable) computer.compileProducer(this);
-		} else {
-			ev = new DefaultPairEvaluable(this);
-		}
+    default ScalarExpressionComputation x() { return l(this); }
+    default ScalarExpressionComputation y() { return r(this); }
 
-		ev.compile();
-		return ev;
-	}
+    default PairProducer multiplyComplex(Supplier<Evaluable<? extends Pair<?>>> p) {
+        return multiplyComplex(this, p);
+    }
 }

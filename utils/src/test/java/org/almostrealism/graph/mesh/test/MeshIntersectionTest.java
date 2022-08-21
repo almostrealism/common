@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -20,15 +20,11 @@ import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
-import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.algebra.ScalarProducerBase;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.algebra.VectorProducerBase;
-import org.almostrealism.geometry.DefaultRayEvaluable;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.computations.RayFromVectors;
-import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.space.DefaultVertexData;
 import org.almostrealism.space.Mesh;
 import org.almostrealism.space.MeshData;

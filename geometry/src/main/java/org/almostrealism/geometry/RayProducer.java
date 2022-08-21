@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,10 +16,7 @@
 
 package org.almostrealism.geometry;
 
-import org.almostrealism.algebra.ScalarProducer;
-import org.almostrealism.algebra.VectorProducer;
 import io.almostrealism.code.ProducerComputation;
-import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.VectorProducerBase;
 import org.almostrealism.algebra.computations.ScalarExpressionComputation;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;

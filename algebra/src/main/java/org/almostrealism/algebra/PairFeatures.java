@@ -17,19 +17,17 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.expression.Expression;
-import org.almostrealism.algebra.computations.ComplexProduct;
-import org.almostrealism.algebra.computations.PairFromScalars;
-import org.almostrealism.algebra.computations.PairProduct;
-import org.almostrealism.algebra.computations.PairSum;
-import org.almostrealism.algebra.computations.RandomPair;
-import org.almostrealism.algebra.computations.ScalarExpressionComputation;
-import org.almostrealism.algebra.computations.ScalarFromPair;
-import org.almostrealism.algebra.computations.StaticPairComputation;
+import io.almostrealism.expression.MultiExpression;
+import io.almostrealism.expression.Sum;
+import org.almostrealism.algebra.computations.*;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.HardwareFeatures;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.IntStream;
 
 public interface PairFeatures extends HardwareFeatures {
 
@@ -49,17 +47,17 @@ public interface PairFeatures extends HardwareFeatures {
 		return (ScalarEvaluable) l(() -> p).get();
 	}
 
-	default ScalarProducer l(Supplier<Evaluable<? extends Pair<?>>> p) {
-		return new ScalarFromPair(p, ScalarFromPair.X);
+	default ScalarExpressionComputation l(Supplier<Evaluable<? extends Pair<?>>> p) {
+		return new ScalarExpressionComputation(List.of(
+				args -> args.get(1).getValue(0),
+				args -> new Expression<>(Double.class, stringForDouble(1.0))), (Supplier) p);
 	}
 
 	default ScalarEvaluable r(Evaluable<Pair<?>> p) {
 		return (ScalarEvaluable) r(() -> p).get();
 	}
 
-	default ScalarProducerBase r(Supplier<Evaluable<? extends Pair<?>>> p) {
-		// return new ScalarFromPair(p, ScalarFromPair.Y);
-
+	default ScalarExpressionComputation r(Supplier<Evaluable<? extends Pair<?>>> p) {
 		return new ScalarExpressionComputation(List.of(
 				args -> args.get(1).getValue(1),
 				args -> new Expression<>(Double.class, stringForDouble(1.0))), (Supplier) p);
@@ -69,16 +67,19 @@ public interface PairFeatures extends HardwareFeatures {
 		return (PairEvaluable) pairAdd(() -> a, () -> b).get();
 	}
 
-	default PairProducer pairAdd(Supplier<Evaluable<? extends Pair<?>>> a, Supplier<Evaluable<? extends Pair<?>>> b) {
-		return new PairSum(a, b);
+	default PairExpressionComputation pairAdd(Supplier<Evaluable<? extends Pair<?>>>... values) {
+		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
+		comp.add(args -> new Sum(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValue(0)).toArray(Expression[]::new)));
+		comp.add(args -> new Sum(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValue(1)).toArray(Expression[]::new)));
+		return new PairExpressionComputation(comp, (Supplier[]) values);
 	}
 
 	default PairEvaluable pairSubtract(Evaluable<Scalar> a, Evaluable<Scalar> b) {
 		return (PairEvaluable) pairSubtract(() -> a, () -> b).get();
 	}
 
-	default PairProducer pairSubtract(Supplier<Evaluable<? extends Pair<?>>> a, Supplier<Evaluable<? extends Pair<?>>> b) {
-		return new PairSum(a, pairMinus(b));
+	default PairExpressionComputation pairSubtract(Supplier<Evaluable<? extends Pair<?>>> a, Supplier<Evaluable<? extends Pair<?>>> b) {
+		return pairAdd(a, pairMinus(b));
 	}
 
 	default PairEvaluable pairsMultiply(Evaluable<Pair<?>> a, Evaluable<Pair<?>> b) {

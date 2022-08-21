@@ -18,16 +18,12 @@ package org.almostrealism.algebra.test;
 
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.algebra.ScalarProducerBase;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.algebra.VectorProducerBase;
 import org.almostrealism.algebra.computations.VectorExpressionComputation;
 import org.almostrealism.hardware.DynamicAcceleratedOperation;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.CodeFeatures;
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;

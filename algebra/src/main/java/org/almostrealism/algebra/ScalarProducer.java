@@ -22,6 +22,7 @@ import org.almostrealism.hardware.DefaultComputer;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.KernelizedEvaluable;
 
+@Deprecated
 public interface ScalarProducer extends ScalarProducerBase {
 	@Override
 	default KernelizedEvaluable<Scalar> get() {
