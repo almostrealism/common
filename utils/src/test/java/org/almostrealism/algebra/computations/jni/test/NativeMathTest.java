@@ -29,7 +29,7 @@ public class NativeMathTest implements TestFeatures {
 	@Test
 	public void add() throws IOException, InterruptedException {
 		ScalarExpressionComputation sum = scalarAdd(v(1.0), v(2.0));
-		Evaluable ev = Hardware.getLocalHardware().getComputeContext().getComputer().compileProducer(sum);
+		Evaluable ev = sum.get();
 		System.out.println(ev.evaluate());
 		assertEquals(3.0, (Scalar) ev.evaluate());
 	}

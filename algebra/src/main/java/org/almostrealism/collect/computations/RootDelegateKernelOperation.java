@@ -97,6 +97,8 @@ public abstract class RootDelegateKernelOperation<T extends MemoryBank> implemen
 
 		OperationList op = new OperationList("RootDelegateOperation");
 		op.add(() -> () -> {
+			if (input.isEmpty())
+				throw new IllegalArgumentException("No inputs");
 			if (input.size() > maxInputs)
 				throw new IllegalArgumentException("Too many inputs");
 

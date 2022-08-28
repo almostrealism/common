@@ -120,6 +120,10 @@ public abstract class OperationComputationAdapter<I, O> extends OperationAdapter
 	}
 
 	public static Expression<Double> getExpression(ArrayVariable arg, int pos) {
+		if (arg == null) {
+			throw new IllegalArgumentException("Argument cannot be null");
+		}
+
 		Optional<MultiExpression> exp = getExpression(arg.getProducer());
 
 		if (exp.isPresent()) {

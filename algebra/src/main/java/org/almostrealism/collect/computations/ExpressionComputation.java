@@ -16,24 +16,21 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.code.NameProvider;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.MultiExpression;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.hardware.DynamicProducerComputationAdapter;
 import org.almostrealism.hardware.ComputerFeatures;
-import org.almostrealism.hardware.MemoryData;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.hardware.MemoryBank;
 
-import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 public class ExpressionComputation<T extends PackedCollection<?>> extends DynamicCollectionProducerComputationAdapter<T, T> implements ComputerFeatures {
 	private List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression;
@@ -42,7 +39,7 @@ public class ExpressionComputation<T extends PackedCollection<?>> extends Dynami
 	@SafeVarargs
 	public ExpressionComputation(List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression,
 							   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		super(new TraversalPolicy(expression.size()), (Supplier[]) args);
+		super(new TraversalPolicy(expression.size()), validateArgs(args));
 		this.expression = expression;
 	}
 
@@ -63,14 +60,8 @@ public class ExpressionComputation<T extends PackedCollection<?>> extends Dynami
 		};
 	}
 
-	@Override
-	public synchronized void compact() {
-		super.compact();
-
-//		if (value == null && isCompletelyValueOnly()) {
-//			IntStream.range(0, getInputs().size()).forEach(i -> absorbVariables(getInputs().get(i));
-//		}
-//
-//		convertToVariableRef();
+	private static Supplier[] validateArgs(Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+		Stream.of(args).forEach(Objects::requireNonNull);
+		return args;
 	}
 }

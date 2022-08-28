@@ -136,6 +136,10 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 		return new PackedCollection(shape, 0, this, start);
 	}
 
+	public PackedCollection<T> value(int pos) {
+		return range(new TraversalPolicy(1), pos);
+	}
+
 	// TODO  Accelerated version
 	@Deprecated
 	public double lengthSq() {

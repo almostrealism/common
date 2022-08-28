@@ -62,6 +62,10 @@ public class DefaultComputer implements Computer<MemoryData> {
 		return new AcceleratedComputationOperation<>(c, kernel);
 	}
 
+	// TODO  The Computation may have a postProcessOutput method that will not be called
+	// TODO  when using this method of creating an Evaluable from it. Ideally, that feature
+	// TODO  of the Computation would be recognized, and applied after evaluation, so that
+	// TODO  the correct type is returned.
 	@Override
 	public <T extends MemoryData> Evaluable<T> compileProducer(Computation<T> c) {
 		return new AcceleratedComputationEvaluable<>(c);
