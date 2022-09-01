@@ -157,7 +157,19 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 	}
 
 	public PackedCollection<T> traverse(int axis) {
-		return new PackedCollection(shape, axis, this, 0);
+		if (axis <= 0) {
+			return new PackedCollection(shape, axis, this, 0);
+		} else if (axis == 1) {
+			return new PackedCollection<>(shape, axis,
+					delegateSpec ->
+						(T) new PackedCollection<>(shape.subset(1), 0,
+									delegateSpec.getDelegate(), delegateSpec.getOffset()),
+					this, 0);
+		} else {
+			// TODO  This could also provide the supply argument, so that PackedCollection::get is supported
+			// TODO  it's just a little more complicated to implement
+			return new PackedCollection(shape, axis, this, 0);
+		}
 	}
 
 	public PackedCollection<T> traverseEach() {

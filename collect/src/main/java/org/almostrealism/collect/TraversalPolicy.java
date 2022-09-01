@@ -62,6 +62,12 @@ public class TraversalPolicy {
 		return new TraversalPolicy(newDims);
 	}
 
+	public TraversalPolicy subset(int depth) {
+		int newDims[] = new int[getDimensions() - depth];
+		for (int i = 0; i < newDims.length; i++) newDims[i] = length(i + depth);
+		return new TraversalPolicy(newDims);
+	}
+
 	public int getTotalSize() { return size(0); }
 
 	public int getDimensions() { return dims.length; }
