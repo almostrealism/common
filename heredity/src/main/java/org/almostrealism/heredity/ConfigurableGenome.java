@@ -28,12 +28,13 @@ public class ConfigurableGenome implements Genome<PackedCollection<?>> {
 		this.chromosomes = new ArrayList<>();
 	}
 
-	public Genome<Double> getParameters() {
+	public Genome<PackedCollection<?>> getParameters() {
 		throw new UnsupportedOperationException();
 	}
 
-	public void assignTo(Genome<Double> parameters) {
-		throw new UnsupportedOperationException();
+	public void assignTo(Genome<PackedCollection<?>> parameters) {
+//		throw new UnsupportedOperationException();
+		System.out.println("WARN: ConfigurableGenome.assignTo() is not implemented");
 	}
 
 	public SimpleChromosome addSimpleChromosome(int geneLength) {
