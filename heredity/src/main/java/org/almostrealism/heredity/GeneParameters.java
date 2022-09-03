@@ -18,8 +18,6 @@ package org.almostrealism.heredity;
 
 import org.almostrealism.collect.PackedCollection;
 
-import java.util.List;
-
-public abstract class ConfigurableChromosome implements Chromosome<PackedCollection<?>> {
-	public abstract PackedCollection<?> getParameters(int gene);
+public interface GeneParameters {
+	PackedCollection<?> getParameters();
 }

@@ -16,25 +16,34 @@
 
 package org.almostrealism.heredity;
 
+import org.almostrealism.algebra.Scalar;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.ArrayList;
 import java.util.List;
 
-public class ConfigurableGenome implements Genome<PackedCollection<?>> {
+public class ConfigurableGenome implements Genome<PackedCollection<?>>, CollectionFeatures {
 	private List<ConfigurableChromosome> chromosomes;
 
 	public ConfigurableGenome() {
 		this.chromosomes = new ArrayList<>();
 	}
 
-	public Genome<PackedCollection<?>> getParameters() {
-		throw new UnsupportedOperationException();
+	public ParameterGenome getParameters() {
+		return new ParameterGenome(chromosomes);
 	}
 
 	public void assignTo(Genome<PackedCollection<?>> parameters) {
-//		throw new UnsupportedOperationException();
-		System.out.println("WARN: ConfigurableGenome.assignTo() is not implemented");
+		for (int x = 0; x < chromosomes.size(); x++) {
+			for (int y = 0; y < chromosomes.get(x).length(); y++) {
+				PackedCollection<?> params = chromosomes.get(x).getParameters(y);
+
+				for (int z = 0; z < params.getMemLength(); z++) {
+					params.setMem(z, parameters.valueAt(x, y, z).getResultant(c(1.0)).get().evaluate().toDouble(0));
+				}
+			}
+		}
 	}
 
 	public SimpleChromosome addSimpleChromosome(int geneLength) {

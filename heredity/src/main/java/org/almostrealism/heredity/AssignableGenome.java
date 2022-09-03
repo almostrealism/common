@@ -16,6 +16,7 @@
 
 package org.almostrealism.heredity;
 
+import com.fasterxml.jackson.databind.ObjectWriter;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Scalar;
@@ -24,6 +25,15 @@ import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.MemoryData;
+
+import java.io.BufferedWriter;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.io.StringWriter;
+import java.util.Base64;
 
 public class AssignableGenome extends Tensor<PackedCollection<?>> implements Genome<PackedCollection<?>>, Delegated<Tensor<PackedCollection<?>>>, ScalarFeatures, CollectionFeatures {
 	private final Tensor<PackedCollection<?>> delegate;
@@ -102,6 +112,37 @@ public class AssignableGenome extends Tensor<PackedCollection<?>> implements Gen
 	@Override
 	public Tensor<PackedCollection<?>> getDelegate() {
 		return delegate;
+	}
+
+	public String getSerialized() throws IOException {
+		try (ByteArrayOutputStream data = new ByteArrayOutputStream(); DataOutputStream w = new DataOutputStream(data)) {
+			for (int x = 0; x < length(); x++) {
+				for (int y = 0; y < length(x); y++) {
+					for (int z = 0; z < length(x, y); z++) {
+						w.writeInt(x);
+						w.writeInt(y);
+						w.writeInt(z);
+						w.writeDouble(get(x, y, z).toDouble(0));
+					}
+				}
+			}
+
+			w.flush();
+			return Base64.getEncoder().encodeToString(data.toByteArray());
+		}
+	}
+
+	public void setSerialized(String serialized) throws IOException {
+		try (ByteArrayInputStream data = new ByteArrayInputStream(Base64.getDecoder().decode(serialized));
+			 	DataInputStream in = new DataInputStream(data)) {
+			while (in.available() > 0) {
+				int x = in.readInt();
+				int y = in.readInt();
+				int z = in.readInt();
+				double v = in.readDouble();
+				insert(new Scalar(v), x, y, z);
+			}
+		}
 	}
 
 	protected class AssignableChromosome implements Chromosome<PackedCollection<?>> {

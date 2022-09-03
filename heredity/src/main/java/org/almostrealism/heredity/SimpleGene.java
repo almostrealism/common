@@ -16,19 +16,30 @@
 
 package org.almostrealism.heredity;
 
+import io.almostrealism.relation.Producer;
+import io.almostrealism.relation.Provider;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 
-public class SimpleGene implements Gene<PackedCollection<?>>, CollectionFeatures {
+import java.util.function.Supplier;
+
+public class SimpleGene implements Gene<PackedCollection<?>>, GeneParameters, CollectionFeatures {
 	private PackedCollection<?> values;
 
 	public SimpleGene(int length) {
 		this.values = new PackedCollection<>(length);
 	}
 
+	public void set(int index, double value) {
+		values.setMem(index, value);
+	}
+
+	@Override
+	public PackedCollection<?> getParameters() { return values; }
+
 	@Override
 	public Factor<PackedCollection<?>> valueAt(int pos) {
-		return value -> _multiply(value, c(values.value(pos)));
+		return value -> _multiply(value, c((Supplier) () -> new Provider<>(values), pos));
 	}
 
 	@Override

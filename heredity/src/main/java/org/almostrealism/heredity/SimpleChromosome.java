@@ -18,6 +18,8 @@ package org.almostrealism.heredity;
 
 import org.almostrealism.collect.PackedCollection;
 
+import java.util.List;
+
 public class SimpleChromosome extends ConfigurableChromosome {
 	private int geneLength;
 	private ArrayListChromosome<PackedCollection<?>> chromosome;
@@ -31,6 +33,11 @@ public class SimpleChromosome extends ConfigurableChromosome {
 		SimpleGene gene = new SimpleGene(geneLength);
 		chromosome.add(gene);
 		return gene;
+	}
+
+	@Override
+	public PackedCollection<?> getParameters(int gene) {
+		return ((GeneParameters) chromosome.valueAt(gene)).getParameters();
 	}
 
 	@Override
