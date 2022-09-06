@@ -47,6 +47,10 @@ public abstract class TemporalChromosomeExpansion<T, I, O> implements Chromosome
 		this.transforms.put(factor, transform);
 	}
 
+	public Function<Gene<I>, Producer<O>> identity(int index, Producer<I> identity) {
+		return g -> (Producer<O>) g.valueAt(index).getResultant(identity);
+	}
+
 	public Supplier<Runnable> expand() {
 		OperationList prepare = new OperationList("TemporalChromosome Preparation");
 		prepare.add(setup());
