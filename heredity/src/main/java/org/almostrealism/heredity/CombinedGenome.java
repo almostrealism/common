@@ -16,29 +16,43 @@
 
 package org.almostrealism.heredity;
 
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.IntStream;
 
-public class ConfigurableGenome implements Genome<PackedCollection<?>>, CollectionFeatures {
-	private List<ConfigurableChromosome> chromosomes;
+public class CombinedGenome implements Genome<PackedCollection<?>>, CollectionFeatures {
+	private List<ConfigurableGenome> genomes;
 
-	public ConfigurableGenome() {
-		this.chromosomes = new ArrayList<>();
+	public CombinedGenome(int genomeCount) {
+		this(IntStream.range(0, genomeCount).mapToObj(i -> new ConfigurableGenome()).toArray(ConfigurableGenome[]::new));
+	}
+
+	public CombinedGenome(ConfigurableGenome... genomes) {
+		this.genomes = List.of(genomes);
+	}
+
+	public ConfigurableGenome getGenome(int index) {
+		return genomes.get(index);
 	}
 
 	public ParameterGenome getParameters() {
-		return new ParameterGenome(chromosomes);
+		return new ParameterGenome(getAllChromosomes());
 	}
 
-	protected List<ConfigurableChromosome> getChromosomes() {
+	protected List<ConfigurableChromosome> getAllChromosomes() {
+		List<ConfigurableChromosome> chromosomes = new ArrayList<>();
+		for (ConfigurableGenome genome : genomes) {
+			chromosomes.addAll(genome.getChromosomes());
+		}
 		return chromosomes;
 	}
 
 	public void assignTo(Genome<PackedCollection<?>> parameters) {
+		List<ConfigurableChromosome> chromosomes = getAllChromosomes();
+
 		for (int x = 0; x < chromosomes.size(); x++) {
 			for (int y = 0; y < chromosomes.get(x).length(); y++) {
 				PackedCollection<?> params = chromosomes.get(x).getParameters(y);
@@ -50,15 +64,9 @@ public class ConfigurableGenome implements Genome<PackedCollection<?>>, Collecti
 		}
 	}
 
-	public SimpleChromosome addSimpleChromosome(int geneLength) {
-		SimpleChromosome chromosome = new SimpleChromosome(geneLength);
-		chromosomes.add(chromosome);
-		return chromosome;
-	}
-
 	@Override
 	public Chromosome<PackedCollection<?>> valueAt(int pos) {
-		return chromosomes.get(pos);
+		return getAllChromosomes().get(pos);
 	}
 
 	@Override
@@ -72,5 +80,5 @@ public class ConfigurableGenome implements Genome<PackedCollection<?>>, Collecti
 	}
 
 	@Override
-	public int count() { return chromosomes.size(); }
+	public int count() { return getAllChromosomes().size(); }
 }
