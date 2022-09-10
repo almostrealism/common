@@ -16,6 +16,8 @@
 
 package org.almostrealism.graph.temporal;
 
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.HybridScope;
 import io.almostrealism.scope.Scope;
@@ -25,20 +27,20 @@ import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.DynamicOperationComputationAdapter;
 
+import java.util.function.Supplier;
+
 public abstract class WaveCellComputation extends DynamicOperationComputationAdapter {
 	protected HybridScope scope;
-	protected final boolean repeat;
 
-	public WaveCellComputation(WaveCellData data, PackedCollection<?> wave, Scalar output, boolean repeat) {
+	public WaveCellComputation(WaveCellData data, PackedCollection<?> wave, Producer<Scalar> frame, Scalar output) {
 		super(() -> new Provider<>(output),
 				() -> new Provider<>(wave),
-				data::getWavePosition,
+				(Supplier) frame,
 				data::getWaveLength,
 				data::getWaveIndex,
 				data::getWaveCount,
 				data::getAmplitude,
 				data::getDuration);
-		this.repeat = repeat;
 	}
 
 	public ArrayVariable getOutput() { return getArgument(0, 2); }
@@ -48,6 +50,8 @@ public abstract class WaveCellComputation extends DynamicOperationComputationAda
 	public ArrayVariable getWaveIndex() { return getArgument(4, 2); }
 	public ArrayVariable getWaveCount() { return getArgument(5, 2); }
 	public ArrayVariable getAmplitude() { return getArgument(6, 2); }
+
+	@Deprecated
 	public ArrayVariable getDuration() { return getArgument(7, 2); }
 
 	@Override

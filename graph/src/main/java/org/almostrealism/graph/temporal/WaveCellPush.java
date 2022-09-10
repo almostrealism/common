@@ -18,6 +18,7 @@ package org.almostrealism.graph.temporal;
 
 import io.almostrealism.code.HybridScope;
 import io.almostrealism.code.ScopeInputManager;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.collect.PackedCollection;
@@ -25,8 +26,8 @@ import org.almostrealism.collect.PackedCollection;
 import java.util.function.Consumer;
 
 public class WaveCellPush extends WaveCellComputation {
-	public WaveCellPush(WaveCellData data, PackedCollection<?> wave, Scalar output, boolean repeat) {
-		super(data, wave, output, repeat);
+	public WaveCellPush(WaveCellData data, PackedCollection<?> wave, Producer<Scalar> frame, Scalar output) {
+		super(data, wave, frame, output);
 	}
 
 	@Override

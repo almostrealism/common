@@ -22,6 +22,8 @@ import org.almostrealism.algebra.computations.ScalarChoice;
 import org.almostrealism.algebra.computations.ScalarExpressionComputation;
 import org.almostrealism.algebra.computations.ScalarFromScalarBank;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.bool.AcceleratedConditionalStatementScalar;
+import org.almostrealism.bool.GreaterThanScalar;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.ScalarFromPackedCollection;
@@ -184,6 +186,14 @@ public interface ScalarFeatures extends HardwareFeatures {
 
 	default ScalarChoice choice(int choiceCount, Supplier<Evaluable<? extends Scalar>> decision, Supplier<Evaluable<? extends MemoryBank<Scalar>>> choices) {
 		return new ScalarChoice(choiceCount, decision, choices);
+	}
+
+	default AcceleratedConditionalStatementScalar greaterThan(Supplier<Evaluable<? extends Scalar>> left,
+															  Supplier<Evaluable<? extends Scalar>> right,
+															  Supplier<Evaluable<? extends Scalar>> trueValue,
+															  Supplier<Evaluable<? extends Scalar>> falseValue,
+															  boolean includeEqual) {
+		return new GreaterThanScalar(left, right, trueValue, falseValue, includeEqual);
 	}
 
 	static ScalarFeatures getInstance() { return new ScalarFeatures() { }; }

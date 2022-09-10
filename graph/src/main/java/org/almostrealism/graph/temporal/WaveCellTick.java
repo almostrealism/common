@@ -19,15 +19,20 @@ package org.almostrealism.graph.temporal;
 import io.almostrealism.code.HybridScope;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.expression.Sum;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.function.Consumer;
 
+@Deprecated
 public class WaveCellTick extends WaveCellComputation {
-	public WaveCellTick(WaveCellData data, PackedCollection<?> wave, boolean repeat) {
-		super(data, wave, new Scalar(), repeat);
+	private boolean repeat;
+
+	public WaveCellTick(WaveCellData data, PackedCollection<?> wave, Producer<Scalar> frame, boolean repeat) {
+		super(data, wave, frame, new Scalar());
+		this.repeat = repeat;
 	}
 
 	@Override

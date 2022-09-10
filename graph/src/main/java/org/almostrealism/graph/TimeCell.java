@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -30,28 +30,50 @@ import java.util.function.Supplier;
 public class TimeCell implements Cell<Scalar>, Temporal, CodeFeatures {
 	private Receptor r;
 	private Scalar time;
+	private Producer<Scalar> initial, loopDuration;
 
 	public TimeCell() {
 		time = new Scalar();
 	}
 
+	public TimeCell(Producer<Scalar> initial, Producer<Scalar> loopDuration) {
+		this();
+		this.initial = initial;
+		this.loopDuration = loopDuration;
+	}
+
 	@Override
 	public Supplier<Runnable> setup() {
-		return new Assignment<>(1, () -> new Provider<>(time), ScalarFeatures.of(new Scalar(0.0)));
+		if (initial == null) {
+			return new Assignment<>(1, () -> new Provider<>(time), ScalarFeatures.of(new Scalar(0.0)));
+		} else {
+			return new Assignment<>(1, () -> new Provider<>(time), initial);
+		}
 	}
 
 	@Override
 	public Supplier<Runnable> push(Producer<Scalar> protein) {
-		return r == null ? new OperationList("TimeCell Push") : r.push(() -> new Provider<>(time));
+		return r == null ? new OperationList("TimeCell Push") : r.push(this::getFrame);
 	}
 
 	@Override
 	public Supplier<Runnable> tick() {
-		return new Assignment<>(1, () -> new Provider<>(time),
-				scalarAdd(() -> new Provider<>(time),
-						ScalarFeatures.of(new Scalar(1.0))));
+		if (loopDuration == null) {
+			return new Assignment<>(1, () -> new Provider<>(time),
+					scalarAdd(() -> new Provider<>(time),
+							ScalarFeatures.of(new Scalar(1.0))));
+		} else {
+			return new Assignment<>(1, () -> new Provider<>(time),
+					greaterThan(loopDuration, v(0.0),
+						mod(scalarAdd(() -> new Provider<>(time),
+							ScalarFeatures.of(new Scalar(1.0))), loopDuration),
+						scalarAdd(() -> new Provider<>(time),
+							ScalarFeatures.of(new Scalar(1.0))), false));
+		}
 	}
 
 	@Override
 	public void setReceptor(Receptor<Scalar> r) { this.r = r; }
+
+	public Provider<Scalar> getFrame() { return new Provider<>(time); }
 }

@@ -21,6 +21,7 @@ import org.almostrealism.CodeFeatures;
 import org.almostrealism.Ops;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.graph.TimeCell;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.OperationList;
 
@@ -30,8 +31,9 @@ public class WaveCell extends CollectionTemporalCellAdapter implements CodeFeatu
 	private final WaveCellData data;
 	private final PackedCollection<?> wave;
 
-	private final Producer<Scalar> offset, duration, frameIndex, frameCount;
-	private final boolean repeat;
+	private final TimeCell clock;
+	private final Producer<Scalar> frameIndex, frameCount;
+	private final Producer<Scalar> frame;
 
 	private double amplitude;
 	private double waveLength;
@@ -57,39 +59,59 @@ public class WaveCell extends CollectionTemporalCellAdapter implements CodeFeatu
 		this.amplitude = amplitude;
 		this.wave = wav;
 
-		setFreq(1);
+		this.waveLength = 1;
+
+		Producer<Scalar> initial;
 
 		if (offset != null) {
-			this.offset = scalarsMultiply(offset, v(sampleRate));
+			initial = scalarsMultiply(offset, v(-sampleRate));
 		} else {
-			this.offset = null;
+			initial = null;
 		}
 
+		Producer<Scalar> duration;
+
 		if (repeat != null) {
-			this.repeat = true;
-			this.duration = scalarsMultiply(repeat, v(sampleRate));
+			duration = scalarsMultiply(repeat, v(sampleRate));
 		} else {
-			this.repeat = false;
-			this.duration = null;
+			duration = null;
 		}
+
+		this.clock = new TimeCell(initial, duration);
+		this.frame = clock::getFrame;
 
 		this.frameIndex = frameIndex;
 		this.frameCount = frameCount;
 	}
 
-	public void setFreq(double hertz) { waveLength = hertz; }
+	public WaveCell(PackedCollection<?> wav, int sampleRate, Producer<Scalar> frame) {
+		this(wav, sampleRate, 1.0, frame);
+	}
+
+	public WaveCell(PackedCollection<?> wav, int sampleRate, double amplitude, Producer<Scalar> frame) {
+		this(new DefaultWaveCellData(), wav, sampleRate, amplitude, frame, Ops.ops().v(0.0), Ops.ops().v(wav.getCount()));
+	}
+
+	public WaveCell(WaveCellData data, PackedCollection<?> wav, int sampleRate, double amplitude,
+					Producer<Scalar> frame, Producer<Scalar> frameIndex, Producer<Scalar> frameCount) {
+		this.data = data;
+		this.amplitude = amplitude;
+		this.wave = wav;
+		this.waveLength = 1;
+
+		this.clock = null;
+		this.frame = frame;
+
+		this.frameIndex = frameIndex;
+		this.frameCount = frameCount;
+	}
 
 	public void setAmplitude(double amp) { amplitude = amp; }
 
 	@Override
 	public Supplier<Runnable> setup() {
 		OperationList setup = new OperationList("WavCell Setup");
-		if (offset == null) {
-			setup.add(a(1, data::getWavePosition, v(0.0)));
-		} else {
-			setup.add(a(1, data::getWavePosition, scalarsMultiply(v(-1.0), offset)));
-		}
-
+		if (clock != null) setup.add(clock.setup());
 		setup.add(a(1, data::getWaveLength, v(waveLength)));
 		setup.add(a(1, data::getWaveIndex, frameIndex));
 		setup.add(a(1, data::getWaveCount, frameCount));
@@ -102,8 +124,7 @@ public class WaveCell extends CollectionTemporalCellAdapter implements CodeFeatu
 	public Supplier<Runnable> push(Producer<PackedCollection<?>> protein) {
 		Scalar value = new Scalar();
 		OperationList push = new OperationList("WavCell Push");
-		if (duration != null) push.add(a(1, data::getDuration, duration));
-		push.add(new WaveCellPush(data, wave, value, repeat));
+		push.add(new WaveCellPush(data, wave, frame, value));
 		push.add(super.push(p(value)));
 		return push;
 	}
@@ -111,7 +132,7 @@ public class WaveCell extends CollectionTemporalCellAdapter implements CodeFeatu
 	@Override
 	public Supplier<Runnable> tick() {
 		OperationList tick = new OperationList("WavCell Tick");
-		tick.add(new WaveCellTick(data, wave, repeat));
+		if (clock != null) tick.add(clock.tick());
 		tick.add(super.tick());
 		return tick;
 	}
