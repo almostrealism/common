@@ -31,6 +31,14 @@ import java.util.stream.IntStream;
 
 public interface PairFeatures extends HardwareFeatures {
 
+	static PairExpressionComputation of(double l, double r) { return of(new Pair<>(l, r)); }
+
+	static PairExpressionComputation of(Pair<?> value) {
+		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
+		IntStream.range(0, 2).forEach(i -> comp.add(args -> HardwareFeatures.ops().expressionForDouble(value.toDouble(i))));
+		return new PairExpressionComputation(comp);
+	}
+
 	default PairProducer pair(double x, double y) { return value(new Pair(x, y)); }
 
 	default PairProducer pair(Supplier<Evaluable<? extends Scalar>> x, Supplier<Evaluable<? extends Scalar>> y) {

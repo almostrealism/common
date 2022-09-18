@@ -22,6 +22,7 @@ import org.almostrealism.collect.PackedCollection;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class ConfigurableGenome implements Genome<PackedCollection<?>>, CollectionFeatures {
 	private List<ConfigurableChromosome> chromosomes;
@@ -36,6 +37,10 @@ public class ConfigurableGenome implements Genome<PackedCollection<?>>, Collecti
 
 	protected List<ConfigurableChromosome> getChromosomes() {
 		return chromosomes;
+	}
+
+	public DefaultGenomeBreeder<PackedCollection<?>> getBreeder() {
+		return new DefaultGenomeBreeder<>(chromosomes.stream().map(ConfigurableChromosome::getBreeder).collect(Collectors.toList()));
 	}
 
 	public void assignTo(Genome<PackedCollection<?>> parameters) {

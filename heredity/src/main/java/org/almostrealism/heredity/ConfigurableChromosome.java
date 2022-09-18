@@ -22,4 +22,6 @@ import java.util.List;
 
 public abstract class ConfigurableChromosome implements Chromosome<PackedCollection<?>> {
 	public abstract PackedCollection<?> getParameters(int gene);
+
+	public abstract ChromosomeBreeder<PackedCollection<?>> getBreeder();
 }

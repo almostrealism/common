@@ -16,6 +16,7 @@
 
 package org.almostrealism.heredity;
 
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.function.BiFunction;
@@ -29,8 +30,22 @@ public class Breeders {
 	}
 
 	public static ChromosomeBreeder<PackedCollection<?>> averageBreeder() {
-		return byCombiningFactors((f1, f2) ->
-				new ScaleFactor((((ScaleFactor) f1).getScale().toDouble(0) + ((ScaleFactor) f1).getScale().toDouble(0)) / 2.0));
+		return byCombiningFactors((f1, f2) -> {
+			CollectionFeatures ops = CollectionFeatures.getInstance();
+			PackedCollection<?> s1 = value(f1);
+			PackedCollection<?> s2 = value(f2);
+			return new ScaleFactor((s1.toDouble(0) + s2.toDouble(0)) / 2.0);
+		});
+	}
+
+	private static PackedCollection<?> value(Factor<PackedCollection<?>> factor) {
+		if (factor instanceof ScaleFactor) {
+			return ((ScaleFactor) factor).getScale();
+		} else if (factor instanceof AssignableGenome.AssignableFactor) {
+			return ((AssignableGenome.AssignableFactor) factor).getValue();
+		} else {
+			return factor.getResultant(CollectionFeatures.getInstance().c(1.0)).get().evaluate();
+		}
 	}
 
 	public static <T> ChromosomeBreeder<T> perturbationBreeder(double magnitude, DoubleFunction<Factor<T>> factory) {

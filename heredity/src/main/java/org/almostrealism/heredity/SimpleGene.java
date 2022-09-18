@@ -16,14 +16,21 @@
 
 package org.almostrealism.heredity;
 
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
+import org.almostrealism.algebra.computations.StaticComputationAdapter;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.StaticCollectionComputation;
+import org.almostrealism.hardware.Input;
+import org.almostrealism.hardware.PassThroughEvaluable;
 
 import java.util.function.Supplier;
 
 public class SimpleGene implements Gene<PackedCollection<?>>, GeneParameters, CollectionFeatures {
+	public static final boolean enableComputation = false;
+
 	private PackedCollection<?> values;
 
 	public SimpleGene(int length) {
@@ -39,7 +46,21 @@ public class SimpleGene implements Gene<PackedCollection<?>>, GeneParameters, Co
 
 	@Override
 	public Factor<PackedCollection<?>> valueAt(int pos) {
-		return value -> _multiply(value, c((Supplier) () -> new Provider<>(values), pos));
+		if (enableComputation) {
+			return value -> _multiply(value, c((Supplier) () -> new Provider<>(values), pos));
+		} else {
+			return value -> {
+				PackedCollection<?> result = new PackedCollection<>(1);
+
+				if (value instanceof StaticCollectionComputation) {
+					result.setMem(((StaticCollectionComputation) value).getValue().toDouble(0) * values.toDouble(pos));
+				} else {
+					result.setMem(value.get().evaluate().toDouble(0) * values.toDouble(pos));
+				}
+
+				return () -> args -> result;
+			};
+		}
 	}
 
 	@Override

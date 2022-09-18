@@ -184,4 +184,21 @@ public class OperationList extends ArrayList<Supplier<Runnable>> implements Oper
 	protected static void setMaxDepth(int depth) { maxDepth = depth; }
 
 	protected static void setAbortableDepth(int depth) { abortableDepth = depth; }
+
+	public static class Runner implements Runnable {
+		private OperationMetadata metadata;
+		private List<Runnable> run;
+
+		public Runner(OperationMetadata metadata, List<Runnable> run) {
+			this.metadata = metadata;
+			this.run = run;
+		}
+
+		@Override
+		public void run() {
+			for (int i = 0; i < run.size(); i++) {
+				run.get(i).run();
+			}
+		}
+	}
 }

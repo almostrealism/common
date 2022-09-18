@@ -78,7 +78,7 @@ public class WaveCell extends CollectionTemporalCellAdapter implements CodeFeatu
 		}
 
 		this.clock = new TimeCell(initial, duration);
-		this.frame = clock::getFrame;
+		this.frame = clock.frame();
 
 		this.frameIndex = frameIndex;
 		this.frameCount = frameCount;

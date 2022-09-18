@@ -21,6 +21,7 @@ import org.almostrealism.collect.PackedCollection;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public class CombinedGenome implements Genome<PackedCollection<?>>, CollectionFeatures {
@@ -50,6 +51,10 @@ public class CombinedGenome implements Genome<PackedCollection<?>>, CollectionFe
 		return chromosomes;
 	}
 
+	public DefaultGenomeBreeder<PackedCollection<?>> getBreeder() {
+		return new DefaultGenomeBreeder<>(getAllChromosomes().stream().map(ConfigurableChromosome::getBreeder).collect(Collectors.toList()));
+	}
+
 	public void assignTo(Genome<PackedCollection<?>> parameters) {
 		List<ConfigurableChromosome> chromosomes = getAllChromosomes();
 
@@ -58,7 +63,7 @@ public class CombinedGenome implements Genome<PackedCollection<?>>, CollectionFe
 				PackedCollection<?> params = chromosomes.get(x).getParameters(y);
 
 				for (int z = 0; z < params.getMemLength(); z++) {
-					params.setMem(z, parameters.valueAt(x, y, z).getResultant(c(1.0)).get().evaluate().toDouble(0));
+					params.setMem(z, value(parameters.valueAt(x, y, z)));
 				}
 			}
 		}
@@ -81,4 +86,14 @@ public class CombinedGenome implements Genome<PackedCollection<?>>, CollectionFe
 
 	@Override
 	public int count() { return getAllChromosomes().size(); }
+
+	private double value(Factor<PackedCollection<?>> factor) {
+		if (factor instanceof ScaleFactor) {
+			return ((ScaleFactor) factor).getScaleValue();
+		} else if (factor instanceof AssignableGenome.AssignableFactor) {
+			return ((AssignableGenome.AssignableFactor) factor).getValue().toDouble(0);
+		} else {
+			return factor.getResultant(c(1.0)).get().evaluate().toDouble(0);
+		}
+	}
 }

@@ -176,4 +176,8 @@ public interface CollectionFeatures {
 	default <T extends PackedCollection<?>> ExpressionComputation<T> _bound(Supplier<Evaluable<? extends PackedCollection<?>>> a, double min, double max) {
 		return _min(_max(a, c(min)), c(max));
 	}
+
+	static CollectionFeatures getInstance() {
+		return new CollectionFeatures() { };
+	}
 }

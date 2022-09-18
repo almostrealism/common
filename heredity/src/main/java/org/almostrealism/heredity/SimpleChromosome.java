@@ -41,6 +41,11 @@ public class SimpleChromosome extends ConfigurableChromosome {
 	}
 
 	@Override
+	public ChromosomeBreeder<PackedCollection<?>> getBreeder() {
+		return Breeders.averageBreeder();
+	}
+
+	@Override
 	public Gene<PackedCollection<?>> valueAt(int pos) {
 		return chromosome.valueAt(pos);
 	}

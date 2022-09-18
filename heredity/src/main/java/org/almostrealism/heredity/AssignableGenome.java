@@ -18,6 +18,7 @@ package org.almostrealism.heredity;
 
 import com.fasterxml.jackson.databind.ObjectWriter;
 import io.almostrealism.relation.Delegated;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
@@ -179,14 +180,33 @@ public class AssignableGenome extends Tensor<PackedCollection<?>> implements Gen
 
 		@Override
 		public Factor<PackedCollection<?>> valueAt(int pos) {
-			return value -> {
-				PackedCollection<?> v = AssignableGenome.this.get(chromosome, index, pos);
-				if (v == null) {
-					throw new NullPointerException();
-				}
+			return new AssignableFactor(chromosome, index, pos);
+		}
+	}
 
-				return _multiply(() -> new Provider<>(v), value);
-			};
+	protected class AssignableFactor implements Factor<PackedCollection<?>> {
+		private final int chromosome;
+		private final int index;
+		private final int pos;
+
+		public AssignableFactor(int chromosome, int index, int pos) {
+			this.chromosome = chromosome;
+			this.index = index;
+			this.pos = pos;
+		}
+
+		@Override
+		public Producer<PackedCollection<?>> getResultant(Producer<PackedCollection<?>> value) {
+			PackedCollection<?> v = getValue();
+			if (v == null) {
+				throw new NullPointerException();
+			}
+
+			return _multiply(() -> new Provider<>(v), value);
+		}
+
+		public PackedCollection<?> getValue() {
+			return AssignableGenome.this.get(chromosome, index, pos);
 		}
 	}
 }
