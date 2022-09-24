@@ -47,18 +47,36 @@ public class SimpleGene implements Gene<PackedCollection<?>>, GeneParameters, Co
 	@Override
 	public Factor<PackedCollection<?>> valueAt(int pos) {
 		if (enableComputation) {
-			return value -> _multiply(value, c((Supplier) () -> new Provider<>(values), pos));
-		} else {
-			return value -> {
-				PackedCollection<?> result = new PackedCollection<>(1);
-
-				if (value instanceof StaticCollectionComputation) {
-					result.setMem(((StaticCollectionComputation) value).getValue().toDouble(0) * values.toDouble(pos));
-				} else {
-					result.setMem(value.get().evaluate().toDouble(0) * values.toDouble(pos));
+			return new Factor<PackedCollection<?>>() {
+				@Override
+				public Producer<PackedCollection<?>> getResultant(Producer<PackedCollection<?>> value) {
+					return _multiply(value, c((Supplier) () -> new Provider<>(values), pos));
 				}
 
-				return () -> args -> result;
+				@Override
+				public String signature() {
+					return Double.toHexString(values.toDouble(pos));
+				}
+			};
+		} else {
+			return new Factor<PackedCollection<?>>() {
+				@Override
+				public Producer<PackedCollection<?>> getResultant(Producer<PackedCollection<?>> value) {
+					PackedCollection<?> result = new PackedCollection<>(1);
+
+					if (value instanceof StaticCollectionComputation) {
+						result.setMem(((StaticCollectionComputation) value).getValue().toDouble(0) * values.toDouble(pos));
+					} else {
+						result.setMem(value.get().evaluate().toDouble(0) * values.toDouble(pos));
+					}
+
+					return () -> args -> result;
+				}
+
+				@Override
+				public String signature() {
+					return Double.toHexString(values.toDouble(pos));
+				}
 			};
 		}
 	}

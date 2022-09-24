@@ -35,6 +35,10 @@ public class SimpleChromosome extends ConfigurableChromosome {
 		return gene;
 	}
 
+	public void removeGene(int index) {
+		chromosome.remove(index);
+	}
+
 	@Override
 	public PackedCollection<?> getParameters(int gene) {
 		return ((GeneParameters) chromosome.valueAt(gene)).getParameters();
