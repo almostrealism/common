@@ -208,5 +208,10 @@ public class AssignableGenome extends Tensor<PackedCollection<?>> implements Gen
 		public PackedCollection<?> getValue() {
 			return AssignableGenome.this.get(chromosome, index, pos);
 		}
+
+		@Override
+		public String signature() {
+			return Double.toHexString(getValue().toDouble(0));
+		}
 	}
 }

@@ -61,6 +61,10 @@ public class ConfigurableGenome implements Genome<PackedCollection<?>>, Collecti
 		return chromosome;
 	}
 
+	public void removeChromosome(int index) {
+		chromosomes.remove(index);
+	}
+
 	@Override
 	public Chromosome<PackedCollection<?>> valueAt(int pos) {
 		return chromosomes.get(pos);
