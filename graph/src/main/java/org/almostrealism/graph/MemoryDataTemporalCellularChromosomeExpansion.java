@@ -100,9 +100,11 @@ public abstract class MemoryDataTemporalCellularChromosomeExpansion<T extends Me
 				.filter(Objects::nonNull)
 				.collect(OperationList.collector());
 
+		Runnable run = op.get();
+
 		return () -> () -> {
 			if (cc().isKernelSupported()) {
-				op.get().run();
+				run.run();
 			} else {
 				cc(() -> op.get().run(), ComputeRequirement.CL);
 			}

@@ -33,8 +33,7 @@ import java.util.function.BiFunction;
 import java.util.function.Consumer;
 
 /**
- * Wrapper for a {@link cl_program} that contains the {@link HardwareOperator}s
- * used by {@link org.almostrealism.hardware.AcceleratedFunctions}.
+ * Wrapper for a {@link cl_program} that contains the {@link HardwareOperator}s.
  *
  * @author  Michael Murray
  */
