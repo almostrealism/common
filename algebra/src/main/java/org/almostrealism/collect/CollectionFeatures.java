@@ -120,9 +120,18 @@ public interface CollectionFeatures {
 	// TODO Rename
 	default <T extends PackedCollection<?>> ExpressionComputation<T> _multiply(
 			Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
+		return _multiply(a, b, null);
+	}
+
+	// TODO Rename
+	default <T extends PackedCollection<?>> ExpressionComputation<T> _multiply(
+			Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b,
+			Evaluable<T> shortCircuit) {
 		Function<List<MultiExpression<Double>>, Expression<Double>> expression = np ->
 				new Product(np.get(1).getValue(0), np.get(2).getValue(0));
-		return new ExpressionComputation<>(List.of(expression), a, b);
+		ExpressionComputation<T> exp = new ExpressionComputation<>(List.of(expression), a, b);
+		exp.setShortCircuit(shortCircuit);
+		return exp;
 	}
 
 	// TODO Rename

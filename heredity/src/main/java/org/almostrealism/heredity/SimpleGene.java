@@ -29,7 +29,8 @@ import org.almostrealism.hardware.PassThroughEvaluable;
 import java.util.function.Supplier;
 
 public class SimpleGene implements Gene<PackedCollection<?>>, GeneParameters, CollectionFeatures {
-	public static final boolean enableComputation = false;
+	public static final boolean enableComputation = true;
+	public static final boolean enableShortCircuit = true;
 
 	private PackedCollection<?> values;
 
@@ -46,7 +47,29 @@ public class SimpleGene implements Gene<PackedCollection<?>>, GeneParameters, Co
 
 	@Override
 	public Factor<PackedCollection<?>> valueAt(int pos) {
-		if (enableComputation) {
+		if (enableShortCircuit) {
+			return new Factor<PackedCollection<?>>() {
+				@Override
+				public Producer<PackedCollection<?>> getResultant(Producer<PackedCollection<?>> value) {
+					return _multiply(value, c((Supplier) () -> new Provider<>(values), pos), args -> {
+						PackedCollection<?> result = new PackedCollection<>(1);
+
+						if (value instanceof StaticCollectionComputation) {
+							result.setMem(((StaticCollectionComputation) value).getValue().toDouble(0) * values.toDouble(pos));
+						} else {
+							result.setMem(value.get().evaluate(args).toDouble(0) * values.toDouble(pos));
+						}
+
+						return result;
+					});
+				}
+
+				@Override
+				public String signature() {
+					return Double.toHexString(values.toDouble(pos));
+				}
+			};
+		} else if (enableComputation) {
 			return new Factor<PackedCollection<?>>() {
 				@Override
 				public Producer<PackedCollection<?>> getResultant(Producer<PackedCollection<?>> value) {
