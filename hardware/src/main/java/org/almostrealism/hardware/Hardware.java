@@ -23,9 +23,12 @@ import org.almostrealism.hardware.cl.CLMemoryProvider;
 import org.almostrealism.hardware.cl.CLMemoryProvider.Location;
 import org.almostrealism.hardware.cl.CLComputeContext;
 import org.almostrealism.hardware.cl.CLDataContext;
+import org.almostrealism.hardware.cl.DeviceInfo;
 import org.almostrealism.hardware.ctx.ContextListener;
 import org.almostrealism.hardware.jni.NativeDataContext;
+import org.almostrealism.io.SystemUtils;
 import org.jocl.CL;
+import org.jocl.Pointer;
 import org.jocl.Sizeof;
 import org.jocl.cl_device_id;
 import org.jocl.cl_platform_id;
@@ -56,14 +59,8 @@ public final class Hardware {
 		boolean gpu = "gpu".equalsIgnoreCase(System.getenv("AR_HARDWARE_PLATFORM")) ||
 				"gpu".equalsIgnoreCase(System.getProperty("AR_HARDWARE_PLATFORM"));
 
-		boolean enableKernels = true;
-		String kernels = System.getProperty("AR_HARDWARE_KERNELS");
-		if (kernels == null) kernels = System.getenv("AR_HARDWARE_KERNELS");
-		if ("disabled".equalsIgnoreCase(kernels)) enableKernels = false;
-
-		String kernelOps = System.getProperty("AR_HARDWARE_KERNEL_OPS");
-		if (kernelOps == null) kernelOps = System.getenv("AR_HARDWARE_KERNEL_OPS");
-		if ("disabled".equalsIgnoreCase(kernelOps)) enableKernelOps = false;
+		boolean enableKernels = SystemUtils.isEnabled("AR_ENABLE_KERNELS").orElse(true);
+		enableKernelOps = SystemUtils.isEnabled("AR_HARDWARE_KERNEL_OPS").orElse(true);
 
 		boolean enableDestinationConsolidation =
 				"enabled".equalsIgnoreCase(System.getenv("AR_HARDWARE_DESTINATION_CONSOLIDATION")) ||
@@ -215,7 +212,7 @@ public final class Hardware {
 
 		if (timeSeriesSize > 0) {
 			System.out.println("Hardware[" + name + "]: " + timeSeriesCount + " x " +
-					2 * timeSeriesSize * getNumberSize() / 1024 + "kb timeseries(s) available");
+					2 * timeSeriesSize * getNumberSize() / 1024 + "kb timeseries(s) requested");
 		}
 	}
 

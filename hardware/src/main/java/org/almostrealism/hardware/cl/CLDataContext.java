@@ -43,8 +43,13 @@ public class CLDataContext implements DataContext {
 	private final CLMemoryProvider.Location location;
 
 	private cl_platform_id platform;
+
 	private cl_device_id mainDevice;
+	private DeviceInfo mainDeviceInfo;
+
 	private cl_device_id kernelDevice;
+	private DeviceInfo kernelDeviceInfo;
+
 	private cl_context ctx;
 
 	private MemoryProvider<RAM> ram;
@@ -65,6 +70,8 @@ public class CLDataContext implements DataContext {
 		this.platform = platform;
 		this.mainDevice = mainDevice;
 		this.kernelDevice = kernelDevice;
+		this.mainDeviceInfo = mainDevice == null ? null : deviceInfo(mainDevice);
+		this.kernelDeviceInfo = kernelDevice == null ? null : deviceInfo(kernelDevice);
 
 		cl_context_properties contextProperties = new cl_context_properties();
 		contextProperties.addProperty(CL.CL_CONTEXT_PLATFORM, platform);
@@ -105,6 +112,9 @@ public class CLDataContext implements DataContext {
 	public String getName() { return name; }
 
 	public cl_context getClContext() { return ctx; }
+
+	public DeviceInfo getMainDeviceInfo() { return mainDeviceInfo; }
+	public DeviceInfo getKernelDeviceInfo() { return kernelDeviceInfo; }
 
 	public MemoryProvider<RAM> getMemoryProvider() { return ram; }
 
@@ -157,5 +167,28 @@ public class CLDataContext implements DataContext {
 		ram.destroy();
 		CL.clReleaseContext(ctx);
 		ctx = null;
+	}
+
+	protected DeviceInfo deviceInfo(cl_device_id device) {
+		DeviceInfo info = new DeviceInfo(device);
+
+		double kb = 1024.0;
+		double mb = kb * kb;
+		double gb = mb * kb;
+
+		long cores = info.getCores();
+		String clock = info.getClockMhz() / 1000.0 + "GHz";
+		String work = info.getMaxWorkItemDimensions() + "D work support and " +
+				info.getWorkGroupSize() / kb + "kb work size";
+		String memory = info.getLocalMem() / kb + "kb local / " +
+				info.getGlobalMem() / gb + "gb global (" +
+				info.getMaxAlloc() / gb + "gb allocation limit)";
+
+		System.out.println("Hardware[" + getName() + "]: " + cores + " cores @ " + clock);
+		System.out.println("Hardware[" + getName() + "]: " + work);
+		System.out.println("Hardware[" + getName() + "]: " + memory);
+		if (Hardware.enableVerbose) System.out.println("Hardware[" + getName() + "]: Max args " + info.getMaxConstantArgs());
+
+		return info;
 	}
 }

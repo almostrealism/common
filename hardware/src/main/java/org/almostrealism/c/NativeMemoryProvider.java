@@ -51,7 +51,7 @@ public class NativeMemoryProvider implements MemoryProvider<RAM> {
 			throw new HardwareException("Memory max reached");
 		} else {
 			memoryUsed += (long) numberSize * size;
-			NativeMemory mem = new NativeMemory(this, malloc.apply(numberSize * size));
+			NativeMemory mem = new NativeMemory(this, malloc.apply(numberSize * size), numberSize * (long) size);
 			allocated.add(mem);
 			return mem;
 		}

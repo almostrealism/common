@@ -93,6 +93,8 @@ public class HardwareOperator<T extends MemoryData> implements Consumer<Object[]
 			System.out.println("CL: " + prog.getMetadata().getDisplayName() + "(" + id + ")");
 		}
 
+		long totalSize = 0;
+
 		try {
 			for (int i = 0; i < argCount; i++) {
 				if (args[i] == null) {
@@ -111,6 +113,8 @@ public class HardwareOperator<T extends MemoryData> implements Consumer<Object[]
 							name + " is not associated with CLMemory");
 				}
 
+				CLMemory mem = (CLMemory) ((MemoryData) args[i]).getMem();
+				totalSize += mem.getSize();
 				CL.clSetKernelArg(kernel, index++, Sizeof.cl_mem, Pointer.to(((CLMemory) ((MemoryData) args[i]).getMem()).getMem()));
 			}
 
@@ -123,7 +127,13 @@ public class HardwareOperator<T extends MemoryData> implements Consumer<Object[]
 				CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
 						Pointer.to(new int[] { ((MemoryData) args[i]).getAtomicMemLength() })); // Size
 			}
+		} catch (CLException e) {
+			// TODO  This should use the exception processor also, but theres no way to pass the message details
+			throw new HardwareException(e.getMessage() + " for function " + name +
+							" (index = " + index + " argCount = " + argCount + ")", e);
+		}
 
+		try {
 			if (enableVerboseLog) System.out.println(id + ": clEnqueueNDRangeKernel start");
 			cl_event event = new cl_event();
 			CL.clEnqueueNDRangeKernel(Hardware.getLocalHardware().getClComputeContext().getClQueue(globalWorkSize > 1), kernel, 1,
@@ -134,7 +144,7 @@ public class HardwareOperator<T extends MemoryData> implements Consumer<Object[]
 		} catch (CLException e) {
 			// TODO  This should use the exception processor also, but theres no way to pass the message details
 			throw new HardwareException(e.getMessage() + " for function " + name +
-							" (index = " + index + " argCount = " + argCount + ")", e);
+					" (total bytes = " + totalSize + ")", e);
 		}
 //		}
 	}

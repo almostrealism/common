@@ -22,10 +22,12 @@ import org.almostrealism.hardware.RAM;
 public class NativeMemory extends RAM {
 	private final MemoryProvider provider;
 	private final long nativePointer;
+	private final long size;
 
-	public NativeMemory(MemoryProvider provider, long nativePointer) {
+	public NativeMemory(MemoryProvider provider, long nativePointer, long size) {
 		this.provider = provider;
 		this.nativePointer = nativePointer;
+		this.size = size;
 	}
 
 	@Override
@@ -35,4 +37,7 @@ public class NativeMemory extends RAM {
 	public long getNativePointer() {
 		return nativePointer;
 	}
+
+	@Override
+	public long getSize() { return size; }
 }

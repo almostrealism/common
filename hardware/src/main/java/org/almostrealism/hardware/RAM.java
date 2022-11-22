@@ -22,4 +22,6 @@ public abstract class RAM implements Memory {
 	public long getNativePointer() {
 		throw new UnsupportedOperationException();
 	}
+
+	public long getSize() { throw new UnsupportedOperationException(); }
 }

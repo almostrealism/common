@@ -20,6 +20,7 @@ import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.RAM;
+import org.almostrealism.io.SystemUtils;
 import org.jocl.CL;
 import org.jocl.CLException;
 import org.jocl.Pointer;
@@ -34,6 +35,8 @@ import java.util.Optional;
 import java.util.stream.IntStream;
 
 public class CLMemoryProvider implements MemoryProvider<RAM> {
+	public static boolean enableWarnings = SystemUtils.isEnabled("AR_HARDWARE_MEMORY_WARNINGS").orElse(true);
+
 	public enum Location {
 		HOST, DEVICE, HEAP
 	}
@@ -70,7 +73,7 @@ public class CLMemoryProvider implements MemoryProvider<RAM> {
 	@Override
 	public CLMemory allocate(int size) {
 		try {
-			CLMemory mem = new CLMemory(buffer(size), this);
+			CLMemory mem = new CLMemory(this, buffer(size), numberSize * (long) size);
 			allocated.add(mem);
 			return mem;
 		} catch (CLException e) {
@@ -95,7 +98,7 @@ public class CLMemoryProvider implements MemoryProvider<RAM> {
 			CL.clReleaseMemObject(mem.getMem());
 			memoryUsed = memoryUsed - (long) size * getNumberSize();
 
-			if (!allocated.remove(mem)) {
+			if (!allocated.remove(mem) && enableWarnings) {
 				System.out.println("WARN: Deallocated untracked memory");
 			}
 		} finally {
