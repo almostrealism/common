@@ -87,7 +87,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>> implements Oper
 					.map(r -> r instanceof OperationAdapter ? (OperationAdapter) r : null)
 					.filter(Objects::nonNull)
 					.forEach(OperationAdapter::compile);
-			return () -> run.forEach(Runnable::run);
+			return new Runner(getMetadata(), run);
 		}
 	}
 
