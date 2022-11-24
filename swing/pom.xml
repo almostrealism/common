@@ -5,7 +5,7 @@
 	<parent>
 		<artifactId>Common</artifactId>
 		<groupId>org.almostrealism</groupId>
-		<version>0.48</version>
+		<version>0.49</version>
 	</parent>
 	<modelVersion>4.0.0</modelVersion>
 
@@ -20,7 +20,7 @@
 		<dependency>
 			<groupId>org.almostrealism</groupId>
 			<artifactId>ar-color</artifactId>
-			<version>0.48</version>
+			<version>0.49</version>
 		</dependency>
 	</dependencies>
 </project>
