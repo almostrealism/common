@@ -16,21 +16,23 @@
 
 package org.almostrealism.collect.computations.test;
 
-import io.almostrealism.code.NameProvider;
+import io.almostrealism.code.Computation;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.expression.Sum;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.ProducerWithOffset;
+import org.almostrealism.collect.Shape;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.PackedCollectionMax;
 import org.almostrealism.collect.computations.RootDelegateSegmentsAdd;
 import org.almostrealism.collect.computations.ScalarFromPackedCollection;
 import org.almostrealism.hardware.PassThroughProducer;
-import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
@@ -39,6 +41,30 @@ import java.util.List;
 import java.util.function.Function;
 
 public class CollectionComputationTests implements TestFeatures {
+	private static class TestProducer implements Producer<PackedCollection<?>>, Shape {
+		@Override
+		public TraversalPolicy getShape() {
+			return new TraversalPolicy(1);
+		}
+
+		@Override
+		public Evaluable<PackedCollection<?>> get() {
+			return args -> {
+				PackedCollection<?> c = new PackedCollection<>(1);
+				c.setMem(0, 9);
+				return c;
+			};
+		}
+	}
+
+	@Test
+	public void multiply() {
+		PackedCollection<?> testInput = new PackedCollection<>(1);
+		testInput.setMem(0, 9);
+		PackedCollection<?> result = c(3)._multiply(p(testInput)).get().evaluate();
+		assertEquals(27, result.toDouble(0));
+	}
+
 	@Test
 	public void expressionComputation() {
 		Function<List<MultiExpression<Double>>, Expression<Double>> expression = args ->

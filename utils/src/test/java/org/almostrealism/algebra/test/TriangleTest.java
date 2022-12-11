@@ -67,7 +67,6 @@ public class TriangleTest implements CodeFeatures {
 	public void originComposition() {
 		VectorExpressionComputation o = originPointProducer();
 		Evaluable<Vector> evo = o.get();
-		((OperationAdapter) evo).compile();
 
 		Vector vo = evo.evaluate();
 		System.out.println(vo);
@@ -75,7 +74,6 @@ public class TriangleTest implements CodeFeatures {
 
 		VectorExpressionComputation d = originDirectionProducer();
 		Evaluable<Vector> evd = d.get();
-		((OperationAdapter) evd).compile();
 
 		Vector vd = evd.evaluate();
 		System.out.println(vd);

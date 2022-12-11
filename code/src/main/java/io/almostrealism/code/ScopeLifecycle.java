@@ -24,6 +24,8 @@ public interface ScopeLifecycle {
 
 	default void prepareScope(ScopeInputManager manager) { }
 
+	default void resetArguments() { }
+
 	static void prepareArguments(Stream<?> potentialLifecycles, ArgumentMap map) {
 		potentialLifecycles
 				.map(p -> p instanceof ScopeLifecycle ? (ScopeLifecycle) p : null)
@@ -36,5 +38,12 @@ public interface ScopeLifecycle {
 				.map(p -> p instanceof ScopeLifecycle ? (ScopeLifecycle) p : null)
 				.filter(Objects::nonNull)
 				.forEach(sl -> sl.prepareScope(manager));
+	}
+
+	static void resetArguments(Stream<?> potentialLifecycles) {
+		potentialLifecycles
+				.map(p -> p instanceof ScopeLifecycle ? (ScopeLifecycle) p : null)
+				.filter(Objects::nonNull)
+				.forEach(sl -> sl.resetArguments());
 	}
 }

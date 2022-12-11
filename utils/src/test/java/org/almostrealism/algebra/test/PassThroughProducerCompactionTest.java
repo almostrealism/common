@@ -16,6 +16,7 @@
 
 package org.almostrealism.algebra.test;
 
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.computations.ScalarExpressionComputation;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
@@ -34,15 +35,13 @@ public class PassThroughProducerCompactionTest implements HardwareFeatures, Code
 
 	@Test
 	public void applySum() {
-		AcceleratedComputationEvaluable ev = (AcceleratedComputationEvaluable) sum().get();
-		Scalar s = (Scalar) ev.evaluate(new Scalar(1.0), new Scalar(2.0));
+		Evaluable<Scalar> ev = sum().get();
+		Scalar s = ev.evaluate(new Scalar(1.0), new Scalar(2.0));
 		Assert.assertEquals(3.0, s.getValue(), Math.pow(10, -10));
 	}
 
-	protected AcceleratedComputationEvaluable<Scalar> product() {
-		return (AcceleratedComputationEvaluable)
-				scalarsMultiply(sum(),
-					PassThroughEvaluable.of(Scalar.class, 2)).get();
+	protected Evaluable<Scalar> product() {
+		return scalarsMultiply(sum(), PassThroughEvaluable.of(Scalar.class, 2)).get();
 	}
 
 	@Test
@@ -57,7 +56,7 @@ public class PassThroughProducerCompactionTest implements HardwareFeatures, Code
 
 	@Test
 	public void applyProductCompact() {
-		AcceleratedComputationEvaluable<Scalar> p = product();
+		Evaluable<Scalar> p = product();
 
 		Scalar s = p.evaluate(new Scalar(1.0), new Scalar(2.0), new Scalar(3.0));
 		Assert.assertEquals(9.0, s.getValue(), Math.pow(10, -10));

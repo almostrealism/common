@@ -1,5 +1,6 @@
 package org.almostrealism.algebra.test;
 
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarProducerBase;
 import org.almostrealism.algebra.Vector;
@@ -24,8 +25,8 @@ public class AcceleratedComputationEvaluableTests implements HardwareFeatures, C
 	@Test
 	public void scalarFromVector() {
 		ScalarExpressionComputation res = y(vector(0.0, 1.0, 2.0));
-		AcceleratedComputationEvaluable ev = (AcceleratedComputationEvaluable) res.get();
-		Scalar s = (Scalar) ev.evaluate();
+		Evaluable<Scalar> ev = res.get();
+		Scalar s = ev.evaluate();
 		System.out.println(s.getValue());
 		assert s.getValue() == 1.0;
 	}
@@ -33,7 +34,7 @@ public class AcceleratedComputationEvaluableTests implements HardwareFeatures, C
 	@Test
 	public void scalarProduct() {
 		ScalarProducerBase x = scalar(3.0);
-		AcceleratedComputationEvaluable<Scalar> res = (AcceleratedComputationEvaluable<Scalar>) scalarsMultiply(x, scalar(0.5)).get();
+		Evaluable<Scalar> res = scalarsMultiply(x, scalar(0.5)).get();
 
 		Scalar s = res.evaluate();
 		System.out.println(s.getValue());

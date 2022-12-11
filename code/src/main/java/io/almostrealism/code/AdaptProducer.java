@@ -54,6 +54,12 @@ public class AdaptProducer<T> implements Producer<T>, ScopeLifecycle {
 	}
 
 	@Override
+	public void resetArguments() {
+		ScopeLifecycle.resetArguments(Stream.of(p));
+		ScopeLifecycle.resetArguments(Stream.of(args));
+	}
+
+	@Override
 	public Evaluable<T> get() {
 		Evaluable<T> ev = p.get();
 		Evaluable ar[] = new Evaluable[args.length];

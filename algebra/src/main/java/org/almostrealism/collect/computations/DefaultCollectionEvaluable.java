@@ -46,7 +46,7 @@ public class DefaultCollectionEvaluable<T extends PackedCollection> extends Acce
 			compile();
 		}
 
-		ArrayVariable outputVariable = (ArrayVariable) getComputation().getOutputVariable();
+		ArrayVariable outputVariable = (ArrayVariable) getOutputVariable();
 
 		// Capture the offset, but ultimately use the root delegate
 		int offset = outputVariable.getOffset();
@@ -89,7 +89,9 @@ public class DefaultCollectionEvaluable<T extends PackedCollection> extends Acce
 
 		if (enableKernelLog) System.out.println("AcceleratedOperation: Evaluating " + getName() + " kernel...");
 
+		preApply();
 		operator.accept(input);
+		postApply();
 		return input;
 	}
 
@@ -113,5 +115,13 @@ public class DefaultCollectionEvaluable<T extends PackedCollection> extends Acce
 	@Override
 	public MemoryBank<T> createKernelDestination(int size) {
 		return (MemoryBank) new PackedCollection(shape.prependDimension(size));
+	}
+
+	@Override
+	public boolean isAggregatedInput() { return true; }
+
+	@Override
+	public MemoryData createAggregatedInput(int memLength) {
+		return new PackedCollection(memLength);
 	}
 }

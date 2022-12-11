@@ -35,6 +35,7 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 
 	private Computation<T> computation;
 	private Scope<T> scope;
+	private Variable outputVariable;
 
 	public AcceleratedComputationOperation(Computation<T> c, boolean kernel) {
 		super(kernel, new ArrayVariable[0]);
@@ -98,6 +99,12 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 		getComputation().prepareScope(manager);
 	}
 
+	@Override
+	public void resetArguments() {
+		super.resetArguments();
+		getComputation().resetArguments();
+	}
+
 	protected synchronized void preCompile() {
 		prepareScope();
 		if (enableCompaction) compact();
@@ -105,6 +112,11 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 
 	@Override
 	public synchronized Scope<T> compile() {
+		if (scope != null) {
+			System.out.println("WARN: Attempting to compile an operation which was already compiled");
+			return scope;
+		}
+
 		preCompile();
 
 		if (getComputation() instanceof OperationAdapter
@@ -128,6 +140,7 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	public synchronized void postCompile() {
 		setInputs(scope.getInputs());
 		setArguments(scope.getArguments());
+		outputVariable = getComputation().getOutputVariable();
 		super.postCompile();
 	}
 
@@ -141,7 +154,7 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	@Override
-	public Variable getOutputVariable() { return computation.getOutputVariable(); }
+	public Variable getOutputVariable() { return outputVariable == null ? computation.getOutputVariable() : outputVariable; }
 
 	@Override
 	public void compact() {

@@ -41,7 +41,7 @@ public class ExpressionDelegationTest implements TestFeatures {
 		HardwareOperator.verboseLog(() -> {
 			Scalar a = new Scalar(1.0);
 			Scalar b = new Scalar(2.0);
-			AcceleratedComputationEvaluable<Scalar> ev = (AcceleratedComputationEvaluable<Scalar>) r((Supplier) temporal(p(a), p(b))).get();
+			Evaluable<Scalar> ev = r((Supplier) temporal(p(a), p(b))).get();
 
 			Scalar s = ev.evaluate();
 			System.out.println(s);

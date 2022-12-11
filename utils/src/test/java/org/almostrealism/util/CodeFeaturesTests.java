@@ -1,10 +1,12 @@
 package org.almostrealism.util;
 
 import io.almostrealism.code.OperationAdapter;
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarProducerBase;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
+import org.almostrealism.hardware.KernelizedEvaluable;
 import org.junit.Test;
 
 import java.util.function.Supplier;
@@ -15,8 +17,8 @@ public class CodeFeaturesTests implements TestFeatures {
 		ScalarProducerBase p = scalarsMultiply(scalar(1.0), scalar(2.0));
 		ScalarProducerBase q = scalarAdd(scalar(5.0), p);
 
-		AcceleratedComputationEvaluable<Scalar> pev = (AcceleratedComputationEvaluable) p.get();
-		AcceleratedComputationEvaluable<Scalar> qev = (AcceleratedComputationEvaluable) q.get();
+		KernelizedEvaluable<Scalar> pev = p.get();
+		KernelizedEvaluable<Scalar> qev = q.get();
 
 		assertEquals(2.0, pev.evaluate());
 		assertEquals(7.0, qev.evaluate());
@@ -27,8 +29,8 @@ public class CodeFeaturesTests implements TestFeatures {
 		ScalarProducerBase p = scalarsMultiply(scalar(1.0), scalar(2.0));
 		ScalarProducerBase q = scalarAdd(scalar(5.0), p);
 
-		AcceleratedComputationEvaluable<Scalar> pev = (AcceleratedComputationEvaluable) p.get();
-		AcceleratedComputationEvaluable<Scalar> qev = (AcceleratedComputationEvaluable) q.get();
+		KernelizedEvaluable<Scalar> pev = p.get();
+		KernelizedEvaluable<Scalar> qev = q.get();
 
 		assertEquals(2.0, pev.evaluate());
 		assertEquals(7.0, qev.evaluate());
@@ -40,8 +42,8 @@ public class CodeFeaturesTests implements TestFeatures {
 		ScalarProducerBase p = scalarsMultiply(p(multiplier), scalar(2.0));
 		ScalarProducerBase q = scalarAdd(scalar(5.0), p);
 
-		AcceleratedComputationEvaluable<Scalar> pev = (AcceleratedComputationEvaluable) p.get();
-		AcceleratedComputationEvaluable<Scalar> qev = (AcceleratedComputationEvaluable) q.get();
+		KernelizedEvaluable<Scalar> pev = p.get();
+		KernelizedEvaluable<Scalar> qev = q.get();
 
 		assertEquals(2.0, pev.evaluate());
 		assertEquals(7.0, qev.evaluate());
@@ -57,12 +59,20 @@ public class CodeFeaturesTests implements TestFeatures {
 		ScalarProducerBase p = scalarsMultiply(p(multiplier), scalar(2.0));
 		ScalarProducerBase q = scalarAdd(scalar(5.0), p);
 
-		assertEquals(7.0, q.get().evaluate());
-		assertEquals(2.0, p.get().evaluate());
+		Evaluable<Scalar> qev = q.get();
+		assertEquals(7.0, qev.evaluate());
 
+		Evaluable<Scalar> pev = p.get();
+		assertEquals(2.0, pev.evaluate());
+
+		// Make sure the process respects the update to a provided value
 		multiplier.setValue(2.0);
 		assertEquals(4.0, p.get().evaluate());
 		assertEquals(9.0, q.get().evaluate());
+
+		// Make sure the original Evaluables are not affected
+		assertEquals(4.0, pev.evaluate());
+		assertEquals(9.0, qev.evaluate());
 	}
 
 	@Test
@@ -71,9 +81,9 @@ public class CodeFeaturesTests implements TestFeatures {
 		ScalarProducerBase q = scalarAdd(scalar(5.0), p);
 		ScalarProducerBase r = scalarsMultiply(scalar(5.0), p);
 
-		AcceleratedComputationEvaluable<Scalar> pev = (AcceleratedComputationEvaluable) p.get();
-		AcceleratedComputationEvaluable<Scalar> qev = (AcceleratedComputationEvaluable) q.get();
-		AcceleratedComputationEvaluable<Scalar> rev = (AcceleratedComputationEvaluable) r.get();
+		KernelizedEvaluable<Scalar> pev = p.get();
+		KernelizedEvaluable<Scalar> qev = q.get();
+		KernelizedEvaluable<Scalar> rev = r.get();
 
 		assertEquals(2.0, pev.evaluate());
 		assertEquals(7.0, qev.evaluate());
@@ -115,7 +125,7 @@ public class CodeFeaturesTests implements TestFeatures {
 		ScalarProducerBase s = v(1).add(p(value));
 		value.setValue(2);
 
-		AcceleratedComputationEvaluable<Scalar> ev = (AcceleratedComputationEvaluable<Scalar>) s.get();
+		KernelizedEvaluable<Scalar> ev = s.get();
 		assertEquals(3.0, ev.evaluate().getValue());
 
 		value.setValue(3);

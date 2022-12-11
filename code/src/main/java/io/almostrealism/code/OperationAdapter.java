@@ -38,7 +38,6 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 public abstract class OperationAdapter<T> implements Compactable, NameProvider, NamedFunction, Named {
-	public static final boolean enableNullInputs = true;
 
 	private static long functionId = 0;
 
@@ -108,6 +107,8 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 
 		return getArgumentForInput((List) getArgumentVariables(), (Supplier) input);
 	}
+
+	public void resetArguments() { this.arguments = null; }
 
 	public void init() {
 		if (function == null) setFunctionName(functionName(getClass()));

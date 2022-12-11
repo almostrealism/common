@@ -101,6 +101,11 @@ public class ExpressionComputation<T extends PackedCollection<?>> extends Dynami
 			public void kernelEvaluate(MemoryBank destination, MemoryData... args) {
 				getKernel().kernelEvaluate(destination, args);
 			}
+
+			@Override
+			public int getArgsCount() {
+				return getKernel().getArgsCount();
+			}
 		};
 	}
 }

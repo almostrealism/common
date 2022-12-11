@@ -50,6 +50,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -66,6 +67,8 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	private Class cls;
 
 	protected List<ArgumentMap> argumentMaps;
+	private Supplier<Runnable> preOp;
+	private Supplier<Runnable> postOp;
 
 	@SafeVarargs
 	protected AcceleratedOperation(boolean kernel, Supplier<Evaluable<? extends T>>... args) {
@@ -128,14 +131,28 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	@Override
 	public PhysicalScope getDefaultPhysicalScope() { return PhysicalScope.GLOBAL; }
 
+	public boolean isAggregatedInput() { return false; }
+
+	public MemoryData createAggregatedInput(int memLength) {
+		return null;
+	}
+
 	protected void prepareScope() {
+		resetArguments();
+
 		SupplierArgumentMap argumentMap = null;
 
 		if (argumentMapping) {
 			if (Hardware.getLocalHardware().isDestinationConsolidation()) {
 				argumentMap = new DestinationConsolidationArgumentMap<>(isKernel());
 			} else if (enableArgumentMapping) {
-				argumentMap = MemoryDataArgumentMap.create(isKernel());
+				if (preOp != null || postOp != null) {
+					throw new UnsupportedOperationException("Redundant call to prepareScope");
+				}
+
+				argumentMap = MemoryDataArgumentMap.create(isAggregatedInput() ? this::createAggregatedInput : null, isKernel());
+				preOp = ((MemoryDataArgumentMap) argumentMap).getPrepareData();
+				postOp = ((MemoryDataArgumentMap) argumentMap).getPostprocessData();
 			}
 		}
 
@@ -174,6 +191,9 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 					.collect(Collectors.toList()));
 		}
 	}
+
+	public void preApply() { if (preOp != null) preOp.get().run(); }
+	public void postApply() { if (postOp != null) postOp.get().run(); }
 
 	@Override
 	public void run() { apply(new Object[0]); }
@@ -314,7 +334,9 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 				if (enableKernelLog) System.out.println("AcceleratedOperation: Evaluating " + getName() + " kernel...");
 
+				preApply();
 				operator.accept(input);
+				postApply();
 			} else {
 				throw new HardwareException("Kernel not supported");
 			}
@@ -341,7 +363,9 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 				if (enableKernelLog) System.out.println("AcceleratedOperation: Evaluating " + getName() + " kernel...");
 
+				preApply();
 				operator.accept(input);
+				postApply();
 			} else {
 				throw new HardwareException("Kernel not supported");
 			}

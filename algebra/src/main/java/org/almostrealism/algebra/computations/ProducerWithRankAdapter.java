@@ -64,6 +64,12 @@ public class ProducerWithRankAdapter<T> implements ProducerWithRank<T, Scalar>, 
 	}
 
 	@Override
+	public void resetArguments() {
+		ScopeLifecycle.resetArguments(Stream.of(getProducer()));
+		ScopeLifecycle.resetArguments(Stream.of(getRank()));
+	}
+
+	@Override
 	public void compact() {
 		getProducer().compact();
 		getRank().compact();

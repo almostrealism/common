@@ -129,16 +129,16 @@ public class MeshIntersectionTest implements TestFeatures {
 							TriangleIntersectAt.q(abc(data1), s));
 		System.out.println("v = " + v.get().evaluate().getValue());
 
-		DynamicAcceleratedOperation ho = (DynamicAcceleratedOperation) h.get();
+		KernelizedEvaluable<Vector> ho = h.get();
 		if (enableArgumentCountAssertions) Assert.assertEquals(1, ho.getArgsCount());
 
-		DynamicAcceleratedOperation fo = (DynamicAcceleratedOperation) f.get();
+		KernelizedEvaluable<Scalar> fo = f.get();
 		if (enableArgumentCountAssertions) Assert.assertEquals(1, fo.getArgsCount());
 
-		DynamicAcceleratedOperation uo = (DynamicAcceleratedOperation) u.get();
+		KernelizedEvaluable<Scalar> uo = u.get();
 		if (enableArgumentCountAssertions) Assert.assertEquals(1, uo.getArgsCount());
 
-		DynamicAcceleratedOperation vo = (DynamicAcceleratedOperation) v.get();
+		KernelizedEvaluable<Scalar> vo = v.get();
 		if (enableArgumentCountAssertions) Assert.assertEquals(1, vo.getArgsCount());
 
 		AcceleratedConjunctionScalar acs = new AcceleratedConjunctionScalar(
@@ -147,8 +147,8 @@ public class MeshIntersectionTest implements TestFeatures {
 				u.lessThan(1.0, true),
 				v.greaterThan(0.0, true),
 				u.add(v).lessThan(1.0, true));
-		Evaluable<Scalar> evs = acs.get();
-		if (enableArgumentCountAssertions) Assert.assertEquals(1, ((OperationAdapter) evs).getArgsCount());
+		KernelizedEvaluable<Scalar> evs = acs.get();
+		if (enableArgumentCountAssertions) Assert.assertEquals(1, evs.getArgsCount());
 	}
 
 	@Test

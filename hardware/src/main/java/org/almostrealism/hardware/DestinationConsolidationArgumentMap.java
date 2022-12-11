@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,7 +36,7 @@ public class DestinationConsolidationArgumentMap<S, A> extends MemoryDataArgumen
 	private boolean confirmed;
 
 	public DestinationConsolidationArgumentMap(boolean kernel) {
-		super(kernel);
+		super(null, kernel);
 		keys = new ArrayList<>();
 		destinations = new ArrayList<>();
 	}

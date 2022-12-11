@@ -69,6 +69,12 @@ public abstract class OperationComputationAdapter<I, O> extends OperationAdapter
 		assignArguments(manager);
 	}
 
+	@Override
+	public void resetArguments() {
+		super.resetArguments();
+		ScopeLifecycle.resetArguments(getInputs().stream());
+	}
+
 	/**
 	 * Generate {@link ArrayVariable}s for the values available via
 	 * {@link #getInputs()} and store them so they can be retrieved
