@@ -24,6 +24,7 @@ import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.collect.Shape;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.ctx.ContextSpecific;
 import org.almostrealism.hardware.MemoryData;
@@ -182,6 +183,7 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 
 	private ArrayVariable<A> generateArgument(NameProvider p, Supplier key, MemoryData md) {
 		if (!enableArgumentAggregation || aggregateGenerator == null) return null;
+		if (md.getMem().getProvider() == Hardware.getLocalHardware().getDataContext().getKernelMemoryProvider()) return null;
 		return generateArgument(p, key, () -> md, md.getMemLength());
 	}
 
