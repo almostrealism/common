@@ -21,7 +21,9 @@ import java.util.concurrent.Callable;
 public interface DataContext {
 	ComputeContext getComputeContext();
 
-	MemoryProvider<? extends Memory> getMemoryProvider();
+	MemoryProvider<? extends Memory> getMemoryProvider(int size);
+
+	MemoryProvider<? extends Memory> getKernelMemoryProvider();
 
 	<T> T computeContext(Callable<T> exec, ComputeRequirement... expectations);
 

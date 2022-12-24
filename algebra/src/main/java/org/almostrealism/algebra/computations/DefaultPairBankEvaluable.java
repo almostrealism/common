@@ -18,7 +18,9 @@ package org.almostrealism.algebra.computations;
 
 import org.almostrealism.algebra.PairBank;
 import org.almostrealism.algebra.PairBankEvaluable;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryBank;
 import io.almostrealism.code.Computation;
 import org.almostrealism.hardware.MemoryData;

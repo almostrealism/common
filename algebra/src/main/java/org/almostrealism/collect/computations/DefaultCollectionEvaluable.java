@@ -23,7 +23,9 @@ import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 import io.almostrealism.code.Computation;
+import org.almostrealism.hardware.MemoryDataArgumentProcessor;
 import org.almostrealism.hardware.cl.HardwareOperator;
+import org.almostrealism.hardware.mem.Bytes;
 
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
@@ -83,21 +85,22 @@ public class DefaultCollectionEvaluable<T extends PackedCollection> extends Acce
 		Consumer<Object[]> operator = getOperator();
 
 		if (enableKernelLog) System.out.println("AcceleratedOperation: Preparing " + getName() + " kernel...");
-		MemoryData input[] = getKernelArgs(null, memArgs);
+		MemoryDataArgumentProcessor processor = processKernelArgs(null, memArgs);
+		MemoryData input[] = Stream.of(processor.getArguments()).toArray(MemoryData[]::new);
 		((HardwareOperator) operator).setGlobalWorkOffset(0);
 		((HardwareOperator) operator).setGlobalWorkSize(workSize(input[outputArgIndex]));
 
 		if (enableKernelLog) System.out.println("AcceleratedOperation: Evaluating " + getName() + " kernel...");
 
-		preApply();
-		operator.accept(input);
-		postApply();
-		return input;
+		runApply(operator, processor, input);
+		return processor.getOriginalArguments();
 	}
 
 	private int workSize(MemoryData data) {
 		if (data instanceof MemoryBank) {
 			return ((MemoryBank<?>) data).getCount();
+		} else if (data instanceof Bytes) {
+			return ((Bytes) data).getCount();
 		} else {
 			return 1;
 		}
@@ -119,9 +122,4 @@ public class DefaultCollectionEvaluable<T extends PackedCollection> extends Acce
 
 	@Override
 	public boolean isAggregatedInput() { return true; }
-
-	@Override
-	public MemoryData createAggregatedInput(int memLength) {
-		return new PackedCollection(memLength);
-	}
 }

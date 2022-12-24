@@ -32,6 +32,7 @@ import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.PackedCollectionMax;
 import org.almostrealism.collect.computations.RootDelegateSegmentsAdd;
 import org.almostrealism.collect.computations.ScalarFromPackedCollection;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.PassThroughProducer;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
@@ -152,7 +153,8 @@ public class CollectionComputationTests implements TestFeatures {
 
 	@Test
 	public void rootDelegateAdd() {
-		PackedCollection root = new PackedCollection(3, 5);
+		PackedCollection root = Hardware.getLocalHardware().getClDataContext().deviceMemory(() -> new PackedCollection(3, 5));
+		// PackedCollection root = new PackedCollection(3, 5);
 
 		PackedCollection a = new PackedCollection(new TraversalPolicy(5), 1, root, 0);
 		Scalar s = new Scalar(a, 0);

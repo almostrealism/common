@@ -179,7 +179,7 @@ public final class Hardware {
 		this.contextListeners = new ArrayList<>();
 
 		if (enableCl) {
-			this.context = new CLDataContext(this, name, this.memoryMax, this.location);
+			this.context = new CLDataContext(this, name, this.memoryMax, getOffHeapSize(), this.location);
 
 			CL.setExceptionsEnabled(true);
 
@@ -292,7 +292,7 @@ public final class Hardware {
 
 		if (context instanceof CLDataContext) {
 			current = context;
-			next = new CLDataContext(this, getName(), memoryMax, location);
+			next = new CLDataContext(this, getName(), memoryMax, getOffHeapSize(), location);
 		} else if (context instanceof NativeDataContext) {
 			current = context;
 			next = new NativeDataContext(this, getName(), isDoublePrecision(), isNativeMemory(), isExternalNative(), memoryMax);
@@ -343,6 +343,14 @@ public final class Hardware {
 	public int getNumberSize() { return isDoublePrecision() ? Sizeof.cl_double : Sizeof.cl_float; }
 
 	public int getMemoryScale() { return MEMORY_SCALE; }
+
+	public int getOffHeapSize() {
+		try {
+			return Integer.parseInt(SystemUtils.getProperty("AR_HARDWARE_OFF_HEAP_SIZE"));
+		} catch (NullPointerException | NumberFormatException e) {
+			return 1024;
+		}
+	}
 
 	public int getDefaultPoolSize() { return ENABLE_POOLING ? 6250 * (int) Math.pow(2, MEMORY_SCALE) : -1; }
 
@@ -413,7 +421,7 @@ public final class Hardware {
 		return null;
 	}
 
-	public MemoryProvider getMemoryProvider() { return context.getMemoryProvider(); }
+	public MemoryProvider getMemoryProvider(int size) { return context.getMemoryProvider(size); }
 
 	private static String deviceName(long type) {
 		if (type == CL.CL_DEVICE_TYPE_CPU) {

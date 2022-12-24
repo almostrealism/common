@@ -26,6 +26,7 @@ import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
+import org.almostrealism.hardware.mem.Bytes;
 
 import java.util.List;
 import java.util.function.Consumer;

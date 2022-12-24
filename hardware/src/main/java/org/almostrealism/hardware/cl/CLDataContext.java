@@ -19,27 +19,28 @@ package org.almostrealism.hardware.cl;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.code.DataContext;
+import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.RAM;
-import org.almostrealism.hardware.jni.NativeCompiler;
-import org.almostrealism.hardware.jni.NativeComputeContext;
+import org.almostrealism.hardware.jvm.JVMMemoryProvider;
 import org.jocl.CL;
 import org.jocl.cl_command_queue;
 import org.jocl.cl_context;
 import org.jocl.cl_context_properties;
 import org.jocl.cl_device_id;
-import org.jocl.cl_event;
 import org.jocl.cl_platform_id;
 
 import java.util.Optional;
 import java.util.concurrent.Callable;
+import java.util.function.IntFunction;
 import java.util.stream.Stream;
 
 public class CLDataContext implements DataContext {
 	private final Hardware hardware;
 	private final String name;
 	private final long memoryMax;
+	private final int offHeapSize;
 	private final CLMemoryProvider.Location location;
 
 	private cl_platform_id platform;
@@ -52,16 +53,20 @@ public class CLDataContext implements DataContext {
 
 	private cl_context ctx;
 
-	private MemoryProvider<RAM> ram;
+	private MemoryProvider<RAM> mainRam;
+	private MemoryProvider<Memory> altRam;
 
 	private ThreadLocal<ComputeContext> computeContext;
+	private ThreadLocal<IntFunction<MemoryProvider<?>>> memoryProvider;
 
-	public CLDataContext(Hardware hardware, String name, long memoryMax, CLMemoryProvider.Location location) {
+	public CLDataContext(Hardware hardware, String name, long memoryMax, int offHeapSize, CLMemoryProvider.Location location) {
 		this.hardware = hardware;
 		this.name = name;
 		this.memoryMax = memoryMax;
+		this.offHeapSize = offHeapSize;
 		this.location = location;
 		this.computeContext = new ThreadLocal<>();
+		this.memoryProvider = new ThreadLocal<>();
 	}
 
 	public void init(cl_platform_id platform, cl_device_id mainDevice, cl_device_id kernelDevice) {
@@ -90,7 +95,8 @@ public class CLDataContext implements DataContext {
 		if (Hardware.enableVerbose)
 			System.out.println("Hardware[" + getName() + "]: OpenCL read/write command queue initialized");
 
-		ram = new CLMemoryProvider(this, queue, hardware.getNumberSize(), memoryMax, location);
+		mainRam = new CLMemoryProvider(this, queue, hardware.getNumberSize(), memoryMax, location);
+		altRam = new JVMMemoryProvider();
 	}
 
 	private ComputeContext createContext(ComputeRequirement... expectations) {
@@ -116,7 +122,21 @@ public class CLDataContext implements DataContext {
 	public DeviceInfo getMainDeviceInfo() { return mainDeviceInfo; }
 	public DeviceInfo getKernelDeviceInfo() { return kernelDeviceInfo; }
 
-	public MemoryProvider<RAM> getMemoryProvider() { return ram; }
+	public MemoryProvider<RAM> getMemoryProvider() { return mainRam; }
+	public MemoryProvider<Memory> getAltMemoryProvider() { return altRam; }
+
+	@Override
+	public MemoryProvider<? extends Memory> getKernelMemoryProvider() { return getMemoryProvider(); }
+
+	@Override
+	public MemoryProvider<?> getMemoryProvider(int size) {
+		IntFunction<MemoryProvider<?>> supply = memoryProvider.get();
+		if (supply == null) {
+			return size < offHeapSize ? getAltMemoryProvider() : getMemoryProvider();
+		} else {
+			return supply.apply(size);
+		}
+	}
 
 	public ComputeContext getComputeContext() {
 		if (computeContext.get() == null) {
@@ -156,6 +176,22 @@ public class CLDataContext implements DataContext {
 		}
 	}
 
+	public <T> T deviceMemory(Callable<T> exec) {
+		IntFunction<MemoryProvider<?>> current = memoryProvider.get();
+		IntFunction<MemoryProvider<?>> next = s -> mainRam;
+
+		try {
+			memoryProvider.set(next);
+			return exec.call();
+		} catch (RuntimeException e) {
+			throw e;
+		} catch (Exception e) {
+			throw new RuntimeException(e);
+		} finally {
+			memoryProvider.set(current);
+		}
+	}
+
 	@Override
 	public void destroy() {
 		// TODO  Destroy any other compute contexts
@@ -164,7 +200,8 @@ public class CLDataContext implements DataContext {
 			computeContext.remove();
 		}
 
-		ram.destroy();
+		mainRam.destroy();
+		if (altRam != null) altRam.destroy();
 		CL.clReleaseContext(ctx);
 		ctx = null;
 	}

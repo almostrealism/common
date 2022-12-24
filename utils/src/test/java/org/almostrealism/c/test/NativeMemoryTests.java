@@ -28,7 +28,7 @@ public class NativeMemoryTests {
 
 	// TODO  @Test
 	public void scalarBank() {
-		assert Hardware.getLocalHardware().getMemoryProvider() instanceof NativeMemoryProvider;
+		assert Hardware.getLocalHardware().getMemoryProvider(0) instanceof NativeMemoryProvider;
 
 		ScalarBank bank = new ScalarBank(20);
 		bank.set(4, 25);

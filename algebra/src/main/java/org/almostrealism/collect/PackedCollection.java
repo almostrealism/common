@@ -75,10 +75,6 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 	}
 
 	public PackedCollection(TraversalPolicy shape, int traversalAxis, MemoryData delegate, int delegateOffset) {
-		if (shape.getTotalSize() == 2) {
-			System.out.println("!");
-		}
-
 		this.shape = shape;
 		this.traversalAxis = traversalAxis;
 		setDelegate(delegate, delegateOffset);

@@ -34,7 +34,7 @@ public abstract class MemoryDataAdapter implements MemoryData {
 			PooledMem pool = getDefaultDelegate();
 
 			if (pool == null) {
-				mem = Hardware.getLocalHardware().getMemoryProvider().allocate(getMemLength());
+				mem = Hardware.getLocalHardware().getMemoryProvider(getMemLength()).allocate(getMemLength());
 			} else {
 				setDelegate(pool, pool.reserveOffset(this));
 				setMem(new double[getMemLength()]);
@@ -67,7 +67,7 @@ public abstract class MemoryDataAdapter implements MemoryData {
 			System.out.println("WARN: MemoryData has a delegate, but also directly reserved memory");
 		}
 
-		Hardware.getLocalHardware().getMemoryProvider().deallocate(getMemLength(), mem);
+		mem.getProvider().deallocate(getMemLength(), mem);
 		mem = null;
 	}
 

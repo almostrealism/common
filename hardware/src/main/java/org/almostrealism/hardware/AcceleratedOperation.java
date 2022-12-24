@@ -38,6 +38,7 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.collect.Traversable;
 import org.almostrealism.hardware.cl.HardwareOperator;
+import org.almostrealism.hardware.mem.Bytes;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.jocl.CLException;
 
@@ -53,6 +54,7 @@ import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public abstract class AcceleratedOperation<T extends MemoryData> extends OperationAdapter<T> implements Function<Object[], Object[]>, Runnable,
 														KernelizedOperation, Compactable, ScopeLifecycle, ComputerFeatures {
@@ -133,8 +135,8 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 	public boolean isAggregatedInput() { return false; }
 
-	public MemoryData createAggregatedInput(int memLength) {
-		return null;
+	public MemoryData createAggregatedInput(int memLength, int atomicLength) {
+		return Hardware.getLocalHardware().getClDataContext().deviceMemory(() -> new Bytes(memLength, atomicLength));
 	}
 
 	protected void prepareScope() {
@@ -150,7 +152,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 					throw new UnsupportedOperationException("Redundant call to prepareScope");
 				}
 
-				argumentMap = MemoryDataArgumentMap.create(isAggregatedInput() ? this::createAggregatedInput : null, isKernel());
+				argumentMap = MemoryDataArgumentMap.create(isAggregatedInput() ? i -> createAggregatedInput(i, i) : null, isKernel());
 				preOp = ((MemoryDataArgumentMap) argumentMap).getPrepareData();
 				postOp = ((MemoryDataArgumentMap) argumentMap).getPostprocessData();
 			}
@@ -207,7 +209,8 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 		Consumer<Object[]> op = getOperator();
 
-		Object allArgs[] = getAllArgs(args);
+		MemoryDataArgumentProcessor argProcess = getAllArgs(args);
+		Object allArgs[] = argProcess.getArguments();
 
 		for (int i = 0; i < allArgs.length; i++) {
 			if (allArgs[i] == null) return new Object[] { handleNull(i) };
@@ -216,15 +219,18 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		String before = null;
 		if (enableInputLogging) before = Arrays.toString(allArgs);
 
+		argProcess.getPrepare().get().run();
 		op.accept(allArgs);
+		argProcess.getPostprocess().get().run();
 
 		if (enableInputLogging) {
 			System.out.println(getName() + ": " + before + " -> " + Arrays.toString(allArgs));
 		}
-		return allArgs;
+
+		return argProcess.getOriginalArguments();
 	}
 
-	protected Object[] getAllArgs(Object args[]) {
+	protected MemoryDataArgumentProcessor getAllArgs(Object args[]) {
 		List<Argument<? extends T>> arguments = getArguments();
 		Object allArgs[] = new Object[arguments.size()];
 
@@ -275,7 +281,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			}
 		}
 
-		return allArgs;
+		return new MemoryDataArgumentProcessor(allArgs, Hardware.getLocalHardware().getDataContext().getKernelMemoryProvider(), this::createAggregatedInput);
 	}
 
 	private static int getProducerArgumentReferenceIndex(Variable<?, ?> arg) {
@@ -316,6 +322,14 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		return -1;
 	}
 
+	protected void runApply(Consumer<Object[]> operator, MemoryDataArgumentProcessor processor, MemoryData input[]) {
+		preApply();
+		processor.getPrepare().get().run();
+		operator.accept(input);
+		processor.getPostprocess().get().run();
+		postApply();
+	}
+
 	@Override
 	public void kernelOperate(MemoryBank output, MemoryData[] args) {
 		if (getArgumentVariables() == null) {
@@ -330,13 +344,11 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				((HardwareOperator) operator).setGlobalWorkSize(Optional.ofNullable(output).map(MemoryBank::getCount).orElseGet(() -> ((MemoryBank) args[0]).getCount()));
 
 				if (enableKernelLog) System.out.println("AcceleratedOperation: Preparing " + getName() + " kernel...");
-				MemoryData input[] = getKernelArgs(output, args);
+				MemoryDataArgumentProcessor processor = processKernelArgs(output, args);
+				MemoryData input[] = Stream.of(processor.getArguments()).toArray(MemoryData[]::new);
 
 				if (enableKernelLog) System.out.println("AcceleratedOperation: Evaluating " + getName() + " kernel...");
-
-				preApply();
-				operator.accept(input);
-				postApply();
+				runApply(operator, processor, input);
 			} else {
 				throw new HardwareException("Kernel not supported");
 			}
@@ -359,13 +371,11 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				((HardwareOperator) operator).setGlobalWorkSize(((MemoryBank) args[0]).getCount());
 
 				if (enableKernelLog) System.out.println("AcceleratedOperation: Preparing " + getName() + " kernel...");
-				MemoryData input[] = getKernelArgs(null, args);
+				MemoryDataArgumentProcessor processor = processKernelArgs(null, args);
+				MemoryData input[] = Stream.of(processor.getArguments()).toArray(MemoryData[]::new);
 
 				if (enableKernelLog) System.out.println("AcceleratedOperation: Evaluating " + getName() + " kernel...");
-
-				preApply();
-				operator.accept(input);
-				postApply();
+				runApply(operator, processor, input);
 			} else {
 				throw new HardwareException("Kernel not supported");
 			}
@@ -374,7 +384,13 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		}
 	}
 
-	protected MemoryData[] getKernelArgs(MemoryBank output, MemoryData args[]) {
+	protected MemoryDataArgumentProcessor processKernelArgs(MemoryBank output, MemoryData args[]) {
+		return new MemoryDataArgumentProcessor(getKernelArgs(output, args),
+				Hardware.getLocalHardware().getDataContext().getKernelMemoryProvider(),
+				this::createAggregatedInput);
+	}
+
+	private MemoryData[] getKernelArgs(MemoryBank output, MemoryData args[]) {
 		int kernelSize;
 
 		if (output != null) {

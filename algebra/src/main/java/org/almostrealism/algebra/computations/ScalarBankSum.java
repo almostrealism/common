@@ -25,8 +25,10 @@ import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarProducer;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.ComputerFeatures;
 import org.almostrealism.hardware.DestinationSupport;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.MemoryDataDestination;
 
 import java.util.function.Supplier;

@@ -17,12 +17,27 @@
 package org.almostrealism.hardware.mem;
 
 public class Bytes extends MemoryDataAdapter {
+	private final int atomicLength;
 	private final int memLength;
 
 	public Bytes(int memLength) {
+		this(memLength, memLength);
+	}
+
+	public Bytes(int memLength, int atomicLength) {
+		if (memLength % atomicLength != 0) {
+			throw new IllegalArgumentException("Memory length must be a multiple of atomic length");
+		}
+
+		this.atomicLength = atomicLength;
 		this.memLength = memLength;
 		init();
 	}
+
+	public int getCount() { return getMemLength() / getAtomicMemLength(); }
+
+	@Override
+	public int getAtomicMemLength() { return atomicLength; }
 
 	@Override
 	public int getMemLength() {

@@ -211,7 +211,12 @@ public class Vector extends PackedCollection<Vector> implements Triple, VectorFe
 	 * @return This Vector.
 	 */
 	public Vector setTo(Vector v) {
-		setMem(0, v, 0, 3);
+		if (v.getMem().getProvider() == this.getMem().getProvider()) {
+			setMem(0, v, 0, 3);
+		} else {
+			setMem(v.toArray(), 0);
+		}
+
 		return this;
 	}
 

@@ -57,6 +57,12 @@ public class NativeDataContext implements DataContext {
 
 	public MemoryProvider<? extends Memory> getMemoryProvider() { return ram; }
 
+	@Override
+	public MemoryProvider<? extends Memory> getMemoryProvider(int size) { return getMemoryProvider(); }
+
+	@Override
+	public MemoryProvider<? extends Memory> getKernelMemoryProvider() { return getMemoryProvider(); }
+
 	public ComputeContext getComputeContext() {
 		if (context == null) {
 			if (Hardware.enableVerbose) System.out.println("INFO: No explicit ComputeContext for " + Thread.currentThread().getName());

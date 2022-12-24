@@ -21,6 +21,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.ProducerWithOffset;
 import org.almostrealism.hardware.DynamicOperationComputationAdapter;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.KernelizedOperation;
 import org.almostrealism.hardware.MemoryBank;
@@ -112,6 +113,10 @@ public abstract class RootDelegateKernelOperation<T extends MemoryBank> implemen
 
 			IntStream.range(0, ev.size()).forEach(i -> {
 				T arg = ev.get(i).evaluate();
+
+				if (arg.getMem().getProvider() != Hardware.getLocalHardware().getDataContext().getKernelMemoryProvider()) {
+					throw new IllegalArgumentException("Argument " + i + " is not in kernel memory");
+				}
 
 				if (rootDelegate.isEmpty()) {
 					rootDelegate.add((PackedCollection) arg.getRootDelegate());

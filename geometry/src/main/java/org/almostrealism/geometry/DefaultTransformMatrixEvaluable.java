@@ -16,8 +16,10 @@
 
 package org.almostrealism.geometry;
 
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import io.almostrealism.code.Computation;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 
 public class DefaultTransformMatrixEvaluable extends AcceleratedComputationEvaluable<TransformMatrix> {
