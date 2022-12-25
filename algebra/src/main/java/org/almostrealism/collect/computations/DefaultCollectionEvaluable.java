@@ -23,7 +23,7 @@ import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 import io.almostrealism.code.Computation;
-import org.almostrealism.hardware.MemoryDataArgumentProcessor;
+import org.almostrealism.hardware.mem.MemoryDataArgumentProcessor;
 import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.hardware.mem.Bytes;
 

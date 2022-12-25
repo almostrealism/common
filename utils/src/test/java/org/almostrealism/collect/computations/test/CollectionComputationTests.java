@@ -22,6 +22,7 @@ import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
@@ -33,13 +34,16 @@ import org.almostrealism.collect.computations.PackedCollectionMax;
 import org.almostrealism.collect.computations.RootDelegateSegmentsAdd;
 import org.almostrealism.collect.computations.ScalarFromPackedCollection;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.PassThroughProducer;
 import org.almostrealism.util.TestFeatures;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Function;
+import java.util.function.Supplier;
 
 public class CollectionComputationTests implements TestFeatures {
 	private static class TestProducer implements Producer<PackedCollection<?>>, Shape {
@@ -82,6 +86,28 @@ public class CollectionComputationTests implements TestFeatures {
 		b.setMem(0, 5.0);
 
 		PackedCollection out = computation.get().evaluate(a, b);
+		assertEquals(8.0, out.toArray(0, 1)[0]);
+	}
+
+	@Test
+	public void providerExpressionComputation() {
+		Function<List<MultiExpression<Double>>, Expression<Double>> expression = args ->
+				new Sum(args.get(1).getValue(0), args.get(2).getValue(0));
+
+		PackedCollection<?> a = new PackedCollection(1);
+		PackedCollection<?> b = new PackedCollection(1);
+		a.setMem(3.0);
+		b.setMem(5.0);
+
+		ExpressionComputation<?> computation =
+				new ExpressionComputation(List.of(expression),
+						() -> new Provider<>(a),
+						() -> new Provider<>(b));
+
+		KernelizedEvaluable<?> ev = computation.get();
+		Assert.assertEquals(2, ev.getArgsCount());
+
+  		PackedCollection out = (PackedCollection) ev.evaluate();
 		assertEquals(8.0, out.toArray(0, 1)[0]);
 	}
 

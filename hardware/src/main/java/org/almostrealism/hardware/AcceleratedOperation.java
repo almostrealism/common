@@ -40,6 +40,7 @@ import org.almostrealism.collect.Traversable;
 import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.hardware.mem.Bytes;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
+import org.almostrealism.hardware.mem.MemoryDataArgumentProcessor;
 import org.jocl.CLException;
 
 import java.util.ArrayList;
@@ -51,7 +52,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.function.Function;
-import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -219,9 +219,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		String before = null;
 		if (enableInputLogging) before = Arrays.toString(allArgs);
 
-		argProcess.getPrepare().get().run();
-		op.accept(allArgs);
-		argProcess.getPostprocess().get().run();
+		runApply(op, argProcess, Stream.of(allArgs).toArray(MemoryData[]::new));
 
 		if (enableInputLogging) {
 			System.out.println(getName() + ": " + before + " -> " + Arrays.toString(allArgs));

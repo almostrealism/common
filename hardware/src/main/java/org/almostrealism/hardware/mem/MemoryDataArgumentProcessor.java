@@ -1,6 +1,8 @@
-package org.almostrealism.hardware;
+package org.almostrealism.hardware.mem;
 
 import io.almostrealism.code.MemoryProvider;
+import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.OperationList;
 
 import java.util.function.IntFunction;
 
@@ -46,8 +48,8 @@ public class MemoryDataArgumentProcessor {
 			throw new IllegalArgumentException("Could not generate temporary memory using " + tempFactory.getClass());
 		}
 
-		prepare.add(() -> () -> tmp.setMem(data.toArray(0, data.getMemLength())));
-		postprocess.add(() -> () -> data.setMem(tmp.toArray(0, data.getMemLength())));
+		prepare.add(new MemoryDataCopy("Temp Prep", data, tmp));
+		postprocess.add(new MemoryDataCopy("Temp Post", tmp, data));
 		return tmp;
 	}
 

@@ -16,14 +16,12 @@
 
 package org.almostrealism.hardware.mem;
 
-import io.almostrealism.code.Computation;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
-import org.almostrealism.collect.Shape;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.ctx.ContextSpecific;
@@ -33,6 +31,7 @@ import org.almostrealism.hardware.ctx.DefaultContextSpecific;
 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
@@ -41,12 +40,12 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 	public static final boolean enableGlobalArgumentMap = false;
 
 	public static final boolean enableArgumentAggregation = true;
-	public static final boolean enableEvaluableAggregation = false;
 
 	private static ContextSpecific<MemoryDataArgumentMap> globalMaps;
 	private static ContextSpecific<MemoryDataArgumentMap> globalMapsKernel;
 
 	private final Map<Memory, ArrayVariable<A>> mems;
+	private final Map<MemoryDataRef, Integer> aggregatePositions;
 	private final boolean kernel;
 
 	private OperationList prepareData;
@@ -65,6 +64,7 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 
 	public MemoryDataArgumentMap(IntFunction<MemoryData> aggregateGenerator, boolean kernel) {
 		this.mems = new HashMap<>();
+		this.aggregatePositions = new HashMap<>();
 		this.kernel = kernel;
 
 		this.aggregateGenerator = aggregateGenerator;
@@ -109,19 +109,25 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 			if (!(provider instanceof Provider)) return null;
 			if (!(((Provider) provider).get() instanceof MemoryData)) return null;
 
-			generateArg = true;
 			md = (MemoryData) ((Provider) provider).get();
+
+			// If the provider points to a MemoryData that is stored outside of device memory,
+			// it is a candidate for argument aggregation below
+			generateArg = md.getMem().getProvider() != Hardware.getLocalHardware().getDataContext().getKernelMemoryProvider();
 		}
 
 		if (md == null) return null;
 
-		ArrayVariable<A> generatedArg = null;
-		if (generateArg) generatedArg = generateArgument(p, key, md);
-		if (generatedArg != null) return generatedArg;
+		if (generateArg) {
+			// If aggregation is desired for this MemoryData, try to
+			// generate the aggregate argument and return it
+			ArrayVariable<A> generatedArg = generateArgument(p, key, md);
+			if (generatedArg != null) return generatedArg;
+		}
 
-		if (generatedArg != null) {
-			return generatedArg;
-		} if (mems.containsKey(md.getMem())) {
+		if (mems.containsKey(md.getMem())) {
+			// Otherwise, if the root delegate already had an argument produced for it,
+			// return that
 			return delegateProvider.getArgument(p, key, mems.get(md.getMem()), md.getOffset());
 		} else {
 			// Obtain the array variable for the root delegate of the MemoryData
@@ -184,31 +190,33 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 	private ArrayVariable<A> generateArgument(NameProvider p, Supplier key, MemoryData md) {
 		if (!enableArgumentAggregation || aggregateGenerator == null) return null;
 		if (md.getMem().getProvider() == Hardware.getLocalHardware().getDataContext().getKernelMemoryProvider()) return null;
-		return generateArgument(p, key, () -> md, md.getMemLength());
-	}
 
-	private ArrayVariable<A> generateArgument(NameProvider p, Supplier key, Supplier<MemoryData> value, int size) {
+		if (aggregatePositions.containsKey(new MemoryDataRef(md))) {
+			// If aggregation has already occurred for this MemoryData,
+			// then return an argument that delegates to the correct position
+			// of the aggregated argument
+			return delegateProvider.getArgument(p, key, getAggregateArgument(p), aggregatePositions.get(new MemoryDataRef(md)));
+		}
+
 		if (aggregateData != null) {
 			throw new IllegalArgumentException("Cannot generate argument when aggregate data is already built");
 		}
 
 		int pos = aggregateLength;
 
-		prepareData.add(() -> () -> {
-			MemoryData md = value.get();
-			if (md == null) return;
+		// Remember the position of this MemoryData in the aggregate argument
+		// in case another attempt is made at aggregation for a different
+		// provider of the same underlying MemoryData
+		aggregatePositions.put(new MemoryDataRef(md), pos);
 
-			getAggregateData().setMem(pos, value.get().toArray(0, size), 0, size);
-		});
+		// Update the pre/post operations to move the data into and out of the aggregate argument data
+		prepareData.add(new MemoryDataCopy("Agg Prep", () -> md, this::getAggregateData, 0, pos, md.getMemLength()));
+		postprocessData.add(new MemoryDataCopy("Agg Post", this::getAggregateData, () -> md, pos, 0, md.getMemLength()));
 
-		postprocessData.add(() -> () -> {
-			MemoryData md = value.get();
-			if (md == null) return;
+		// Expand the required length of the aggregate argument
+		aggregateLength += md.getMemLength();
 
-			md.setMem(0, getAggregateData().toArray(pos, size), 0, size);
-		});
-
-		aggregateLength += size;
+		// Return a delegate to the aggregate argument
 		return delegateProvider.getArgument(p, key, getAggregateArgument(p), pos);
 	}
 
@@ -254,5 +262,26 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 		}
 
 		return globalMapsKernel;
+	}
+
+	private static class MemoryDataRef {
+		private MemoryData md;
+
+		public MemoryDataRef(MemoryData md) {
+			this.md = md;
+		}
+
+		@Override
+		public boolean equals(Object o) {
+			if (this == o) return true;
+			if (!(o instanceof MemoryDataRef)) return false;
+			MemoryDataRef that = (MemoryDataRef) o;
+			return md == that.md;
+		}
+
+		@Override
+		public int hashCode() {
+			return Objects.hash(md);
+		}
 	}
 }

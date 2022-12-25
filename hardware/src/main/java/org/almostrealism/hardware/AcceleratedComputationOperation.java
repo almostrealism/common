@@ -33,6 +33,7 @@ import java.util.function.Consumer;
 
 public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperation<MemoryData> implements NameProvider {
 	public static boolean enableRequiredScopes = true;
+	public static boolean enableOperationInputAggregation = true;
 
 	private Computation<T> computation;
 	private Scope<T> scope;
@@ -167,6 +168,11 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	@Override
 	public boolean isStatic() {
 		return getComputation() instanceof Compactable && ((Compactable) getComputation()).isStatic();
+	}
+
+	@Override
+	public boolean isAggregatedInput() {
+		return enableOperationInputAggregation;
 	}
 
 	@Override
