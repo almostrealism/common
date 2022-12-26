@@ -130,6 +130,8 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 	 */
 	public abstract Scope compile();
 
+	public abstract boolean isCompiled();
+
 	/**
 	 * Take care of anything necessary after compilation. This may be called
 	 * when a parent operation (one that cites this as an argument, for example)

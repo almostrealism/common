@@ -147,6 +147,9 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	@Override
+	public boolean isCompiled() { return scope != null; }
+
+	@Override
 	public synchronized Consumer<Object[]> getOperator() {
 		if (operators == null || operators.isDestroyed()) {
 			operators = Hardware.getLocalHardware().getComputeContext().deliver(scope);

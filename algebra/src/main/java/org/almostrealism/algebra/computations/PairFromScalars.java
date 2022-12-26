@@ -27,6 +27,7 @@ import io.almostrealism.relation.Evaluable;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
+@Deprecated
 public class PairFromScalars extends DynamicProducerComputationAdapter<Scalar, Pair<?>> implements PairProducer {
 	private Expression<Double> value[];
 

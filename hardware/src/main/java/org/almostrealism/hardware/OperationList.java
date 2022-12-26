@@ -31,6 +31,7 @@ import org.almostrealism.hardware.computations.Abort;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collector;
 import java.util.stream.Collectors;
@@ -86,6 +87,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>> implements Oper
 			run.stream()
 					.map(r -> r instanceof OperationAdapter ? (OperationAdapter) r : null)
 					.filter(Objects::nonNull)
+					.filter(Predicate.not(OperationAdapter::isCompiled))
 					.forEach(OperationAdapter::compile);
 			return new Runner(getMetadata(), run);
 		}
@@ -193,6 +195,8 @@ public class OperationList extends ArrayList<Supplier<Runnable>> implements Oper
 			this.metadata = metadata;
 			this.run = run;
 		}
+
+		public List<Runnable> getOperations() { return run; }
 
 		@Override
 		public void run() {

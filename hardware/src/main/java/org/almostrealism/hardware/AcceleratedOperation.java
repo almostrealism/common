@@ -176,6 +176,11 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	}
 
 	@Override
+	public boolean isCompiled() {
+		return false;
+	}
+
+	@Override
 	public void prepareArguments(ArgumentMap map) {
 		if (getInputs() != null) ScopeLifecycle.prepareArguments(getInputs().stream(), map);
 	}

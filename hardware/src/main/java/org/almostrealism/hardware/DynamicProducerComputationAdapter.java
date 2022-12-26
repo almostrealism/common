@@ -186,7 +186,9 @@ public abstract class DynamicProducerComputationAdapter<I extends MemoryData, O 
 			}
 
 			// A Provider is always "value only"
-			if (enableValueOnlyProviders && considerProviders && supplier.get() instanceof Provider) {
+			if (enableValueOnlyProviders && considerProviders &&
+					!(supplier instanceof ProducerComputationAdapter) &&
+					supplier.get() instanceof Provider) {
 				continue i;
 			}
 

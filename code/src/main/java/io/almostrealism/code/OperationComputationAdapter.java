@@ -56,6 +56,9 @@ public abstract class OperationComputationAdapter<I, O> extends OperationAdapter
 	}
 
 	@Override
+	public boolean isCompiled() { return false; }
+
+	@Override
 	public void prepareArguments(ArgumentMap map) {
 		if (getArgumentVariables() != null) return;
 		ScopeLifecycle.prepareArguments(getInputs().stream(), map);

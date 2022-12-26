@@ -39,7 +39,7 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 	public static final boolean enableDestinationDetection = true;
 	public static final boolean enableGlobalArgumentMap = false;
 
-	public static final boolean enableArgumentAggregation = true;
+	public static boolean enableArgumentAggregation = true;
 
 	private static ContextSpecific<MemoryDataArgumentMap> globalMaps;
 	private static ContextSpecific<MemoryDataArgumentMap> globalMapsKernel;
@@ -118,20 +118,21 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 
 		if (md == null) return null;
 
-		if (generateArg) {
-			// If aggregation is desired for this MemoryData, try to
-			// generate the aggregate argument and return it
-			ArrayVariable<A> generatedArg = generateArgument(p, key, md);
-			if (generatedArg != null) return generatedArg;
-		}
-
 		if (mems.containsKey(md.getMem())) {
-			// Otherwise, if the root delegate already had an argument produced for it,
+			// If the root delegate already had an argument produced for it,
 			// return that
 			return delegateProvider.getArgument(p, key, mems.get(md.getMem()), md.getOffset());
 		} else {
-			// Obtain the array variable for the root delegate of the MemoryData
-			ArrayVariable var = delegateProvider.getArgument(p, new RootDelegateProviderSupplier(md), null, -1);
+			ArrayVariable var;
+
+			if (generateArg) {
+				// If aggregation is desired for this MemoryData, try to
+				// generate the aggregate argument for the root delegate
+				var = generateArgument(p, new RootDelegateProviderSupplier(md), md.getRootDelegate());
+			} else {
+				// Otherwise, just obtain the array variable for the root delegate
+				var = delegateProvider.getArgument(p, new RootDelegateProviderSupplier(md), null, -1);
+			}
 
 			// Record that this MemoryData has var as its root delegate
 			mems.put(md.getMem(), var);
