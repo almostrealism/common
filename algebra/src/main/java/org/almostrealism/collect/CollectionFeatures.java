@@ -42,6 +42,8 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public interface CollectionFeatures {
+	default TraversalPolicy shape(int... dims) { return new TraversalPolicy(dims); }
+
 	default <T extends PackedCollection<?>> CollectionProducer<T> c(double... values) {
 		PackedCollection<T> c = new PackedCollection<>(values.length);
 		c.setMem(0, values);

@@ -5,6 +5,8 @@ import org.almostrealism.hardware.MemoryData;
 import java.util.function.Supplier;
 
 public class MemoryDataCopy implements Supplier<Runnable> {
+	public static boolean enableVerbose = false;
+
 	private String name;
 	private Supplier<MemoryData> source;
 	private Supplier<MemoryData> target;
@@ -13,6 +15,18 @@ public class MemoryDataCopy implements Supplier<Runnable> {
 
 	public MemoryDataCopy(String name, MemoryData source, MemoryData target) {
 		this(name, () -> source, () -> target, 0, 0, source.getMemLength());
+	}
+
+	public MemoryDataCopy(Supplier<MemoryData> source, Supplier<MemoryData> target, int length) {
+		this(null, source, target, 0, 0, length);
+	}
+
+	public MemoryDataCopy(String name, Supplier<MemoryData> source, Supplier<MemoryData> target, int length) {
+		this(name, source, target, 0, 0, length);
+	}
+
+	public MemoryDataCopy(Supplier<MemoryData> source, Supplier<MemoryData> target, int sourcePosition, int targetPosition, int length) {
+		this(null, source, target, sourcePosition, targetPosition, length);
 	}
 
 	public MemoryDataCopy(String name, Supplier<MemoryData> source, Supplier<MemoryData> target, int sourcePosition, int targetPosition, int length) {
@@ -30,7 +44,12 @@ public class MemoryDataCopy implements Supplier<Runnable> {
 			MemoryData source = this.source.get();
 			MemoryData target = this.target.get();
 
-			// System.out.println("MemoryDataCopy[" + name + "]: Copying " + source + " (" + sourcePosition + ") to " + target + " (" + targetPosition + ")");
+			if (enableVerbose) {
+				System.out.println("MemoryDataCopy[" + name + "]: Copying " + source + " (" +
+						sourcePosition + ") to " + target + " (" + targetPosition + ") [" + length + "]");
+			}
+
+			// TODO  This can be done faster if the source and target are on the same MemoryProvider
 			target.setMem(targetPosition, source.toArray(sourcePosition, length));
 		};
 	}

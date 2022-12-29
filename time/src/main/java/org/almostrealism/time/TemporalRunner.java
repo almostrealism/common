@@ -69,8 +69,9 @@ public class TemporalRunner implements Setup, Temporal, OperationComputation<Voi
 		s = setup.get();
 		r = run.get();
 
-		if (s instanceof OperationAdapter) ((OperationAdapter<?>) s).compile();
-		if (r instanceof OperationAdapter) ((OperationAdapter<?>) r).compile();
+		// TODO  These probably should be removed completely
+		if (s instanceof OperationAdapter && !((OperationAdapter) s).isCompiled()) ((OperationAdapter<?>) s).compile();
+		if (r instanceof OperationAdapter && !((OperationAdapter) r).isCompiled()) ((OperationAdapter<?>) r).compile();
 	}
 
 	@Override
