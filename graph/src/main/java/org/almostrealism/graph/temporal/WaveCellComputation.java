@@ -27,6 +27,7 @@ import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.DynamicOperationComputationAdapter;
 
+import java.util.Objects;
 import java.util.function.Supplier;
 
 public abstract class WaveCellComputation extends DynamicOperationComputationAdapter {
@@ -35,7 +36,7 @@ public abstract class WaveCellComputation extends DynamicOperationComputationAda
 	public WaveCellComputation(WaveCellData data, PackedCollection<?> wave, Producer<Scalar> frame, Scalar output) {
 		super(() -> new Provider<>(output),
 				() -> new Provider<>(wave),
-				(Supplier) frame,
+				(Supplier) Objects.requireNonNull(frame),
 				data::getWaveLength,
 				data::getWaveIndex,
 				data::getWaveCount,

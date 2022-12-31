@@ -25,6 +25,7 @@ import org.almostrealism.graph.TimeCell;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.OperationList;
 
+import java.util.Objects;
 import java.util.function.Supplier;
 
 public class WaveCell extends CollectionTemporalCellAdapter implements CodeFeatures, HardwareFeatures {
@@ -100,7 +101,7 @@ public class WaveCell extends CollectionTemporalCellAdapter implements CodeFeatu
 		this.waveLength = 1;
 
 		this.clock = null;
-		this.frame = frame;
+		this.frame = Objects.requireNonNull(frame);
 
 		this.frameIndex = frameIndex;
 		this.frameCount = frameCount;

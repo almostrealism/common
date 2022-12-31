@@ -39,11 +39,11 @@ public class TimeCell implements Cell<Scalar>, Temporal, CodeFeatures {
 	private PackedCollection<?> resets;
 
 	public TimeCell() {
-		time = new Pair<>();
+		this(1);
 	}
 
 	public TimeCell(int maxResets) {
-		this();
+		this.time = new Pair<>();
 		this.resets = new PackedCollection<>(maxResets);
 		initResets();
 	}

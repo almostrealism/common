@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package org.almostrealism.graph;
 
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
+import org.almostrealism.graph.temporal.TemporalFactorFromCell;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.Cellular;
 import org.almostrealism.heredity.CellularTemporalFactor;
@@ -72,33 +73,6 @@ public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
 		T v = value.get();
 		Producer<T> destination = () -> new Provider<>(v);
 
-		return new CellularTemporalFactor<T>() {
-			@Override
-			public Producer<T> getResultant(Producer<T> value) {
-				c.setReceptor(assignment.apply(destination));
-				return combine.apply(destination, value);
-			}
-
-			@Override
-			public Supplier<Runnable> setup() {
-				return c.setup();
-			}
-
-			@Override
-			public Supplier<Runnable> tick() {
-				String name = c.getClass().getSimpleName();
-				if (name == null || name.length() <= 0) name = "anonymous";
-				OperationList tick = new OperationList("CellularTemporalFactor (from " + name + ") Tick");
-				tick.add(c.push(null));
-				if (c instanceof Temporal) tick.add(((Temporal) c).tick());
-				return tick;
-			}
-
-			@Override
-			public void reset() {
-				CellularTemporalFactor.super.reset();
-				c.reset();
-			}
-		};
+		return new TemporalFactorFromCell<T>(c, destination, assignment, combine);
 	}
 }
