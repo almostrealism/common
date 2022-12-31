@@ -58,7 +58,7 @@ public class WaveCell extends CollectionTemporalCellAdapter implements CodeFeatu
 					Producer<Scalar> frameIndex, Producer<Scalar> frameCount) {
 		this.data = data;
 		this.amplitude = amplitude;
-		this.wave = wav;
+		this.wave = validate(wav);
 
 		this.waveLength = 1;
 
@@ -97,7 +97,7 @@ public class WaveCell extends CollectionTemporalCellAdapter implements CodeFeatu
 					Producer<Scalar> frame, Producer<Scalar> frameIndex, Producer<Scalar> frameCount) {
 		this.data = data;
 		this.amplitude = amplitude;
-		this.wave = wav;
+		this.wave = validate(wav);
 		this.waveLength = 1;
 
 		this.clock = null;
@@ -136,6 +136,16 @@ public class WaveCell extends CollectionTemporalCellAdapter implements CodeFeatu
 		if (clock != null) tick.add(clock.tick());
 		tick.add(super.tick());
 		return tick;
+	}
+
+	private static PackedCollection<?> validate(PackedCollection<?> wav) {
+		if (wav.getCount() == 0) {
+			throw new IllegalArgumentException("Wave must have at least one sample");
+		} else if (wav.getCount() == 1) {
+			System.out.println("WARN: Wave has only one sample");
+		}
+
+		return wav;
 	}
 }
 
