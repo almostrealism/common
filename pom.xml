@@ -70,12 +70,16 @@
 
 	<distributionManagement>
 		<repository>
-			<id>internal</id>
-			<url>http://mvn.almostrealism.org:8080/repository/internal/</url>
+			<id>central</id>
+			<url>https://almostrealism.jfrog.io/artifactory/default-libs-release</url>
 		</repository>
-		<snapshotRepository>
-			<id>internal</id>
-			<url>http://mvn.almostrealism.org:8080/repository/internal/</url>
-		</snapshotRepository>
+<!--		<repository>-->
+<!--			<id>internal</id>-->
+<!--			<url>http://mvn.almostrealism.org:8080/repository/internal/</url>-->
+<!--		</repository>-->
+<!--		<snapshotRepository>-->
+<!--			<id>internal</id>-->
+<!--			<url>http://mvn.almostrealism.org:8080/repository/internal/</url>-->
+<!--		</snapshotRepository>-->
 	</distributionManagement>
 </project>
