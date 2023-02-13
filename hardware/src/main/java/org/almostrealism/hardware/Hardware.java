@@ -91,7 +91,7 @@ public final class Hardware {
 
 		String tsSize = System.getProperty("AR_HARDWARE_TIMESERIES_SIZE");
 		if (tsSize == null) tsSize = System.getenv("AR_HARDWARE_TIMESERIES_SIZE");
-		if (tsSize == null) tsSize = "100";
+		// if (tsSize == null) tsSize = "100";
 
 		String tsCount = System.getProperty("AR_HARDWARE_TIMESERIES_COUNT");
 		if (tsCount == null) tsCount = System.getenv("AR_HARDWARE_TIMESERIES_COUNT");
