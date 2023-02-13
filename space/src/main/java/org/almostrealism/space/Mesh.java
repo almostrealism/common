@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,25 +16,17 @@
 
 package org.almostrealism.space;
 
-import java.io.File;
-import java.io.IOException;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 import java.util.ListIterator;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorEvaluable;
 import org.almostrealism.color.RGB;
-import org.almostrealism.color.ShaderContext;
 import org.almostrealism.geometry.Positioned;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.ContinuousField;
@@ -44,7 +36,6 @@ import org.almostrealism.graph.mesh.MeshPointData;
 import org.almostrealism.hardware.KernelizedProducer;
 import org.almostrealism.hardware.MemoryBank;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.code.Operator;
 import org.almostrealism.geometry.DimensionAwareKernel;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.geometry.ShadableIntersection;
@@ -60,82 +51,6 @@ import org.almostrealism.geometry.ShadableIntersection;
  */
 public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, Triangle> {
 	private static RGB white = new RGB(1.0, 1.0, 1.0);
-	
-	public static class MeshFile implements ShadableSurfaceWrapper, ShadableSurface {
-		private String name;
-		private int format;
-		private String url;
-		private Mesh mesh;
-		private ShadableSurface s;
-		
-		public void setFile(String f) { this.name = f; }
-		public String getFile() { return this.name; }
-		public void setFormat(int f) { this.format = f; }
-		public int getFormat() { return this.format; }
-		public void setURL(String url) { this.url = url; }
-		public String getURL() { return this.url; }
-		
-		public void setSurface(ShadableSurface s) { this.s = s; }
-		
-		public ShadableSurface getSurface() {
-			if (this.mesh == null) {
-				try {
-					if (this.url != null) {
-						URL url = new URL(this.url + this.name);
-						
-						this.mesh = (Mesh) ModelData.decodeScene(url.openStream(),
-								this.format, false, null, this.s).getSurfaces()[0];
-					} else {
-						this.mesh = (Mesh) FileDecoder.decodeSurfaceFile(
-									new File(this.name), this.format, false, null, this.s);
-					}
-				} catch (IOException ioe) {
-					System.out.println("Mesh.MeshFile: IO error loading mesh data - " +
-										ioe.getMessage());
-				}
-				
-				if (this.mesh == null) {
-					System.out.println("Mesh.MeshFile: Unexpected failure loading mesh data.");
-					return null;
-				}
-				
-				this.mesh.setMeshFile(this);
-				this.mesh.loadTree();
-			}
-			
-			return this.mesh;
-		}
-		
-		@Override public boolean getShadeFront() { return this.getSurface().getShadeFront(); }
-		@Override public boolean getShadeBack() { return this.getSurface().getShadeBack(); }
-		@Override public Producer<RGB> getValueAt(Producer<Vector> point) { return this.getSurface().getValueAt(point); }
-
-		@Override
-		public BoundingSolid calculateBoundingSolid() { return mesh.calculateBoundingSolid(); }
-
-		@Override public Producer<Vector> getNormalAt(Producer<Vector> point) { return this.getSurface().getNormalAt(point); }
-		@Override public ContinuousField intersectAt(Producer<Ray> ray) { return this.getSurface().intersectAt(ray); }
-
-		@Override
-		public boolean cancel(boolean mayInterruptIfRunning) { return getSurface().cancel(mayInterruptIfRunning); }
-
-		@Override public boolean isCancelled() { return getSurface().isCancelled(); }
-		@Override public boolean isDone() { return getSurface().isDone(); }
-
-		@Override public Operator<Scalar> get() throws ExecutionException, InterruptedException { return getSurface().get(); }
-
-		@Override
-		public Operator<Scalar> get(long timeout, TimeUnit unit) throws InterruptedException, ExecutionException, TimeoutException {
-			return getSurface().get(timeout, unit);
-		}
-
-		@Override
-		public Operator<Scalar> expect() { return getSurface().expect(); }
-
-		@Override public Producer<RGB> shade(ShaderContext p) { return this.getSurface().shade(p); }
-
-		@Override public RGB operate(Vector in) { return getSurface().operate(in); }
-	}
 	
 	public interface VertexData {
 		double getRed(int index); double getGreen(int index); double getBlue(int index);
@@ -156,7 +71,7 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
   private boolean ignore[];
   private boolean smooth, removeBackFaces, intcolor;
   
-  private MeshFile file;
+  private MeshSource source;
   private VertexData vertexData;
 
   private KdTree<Positioned> spatialVertexTree;
@@ -197,7 +112,7 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 	  	this.clearTriangleCache();
   	}
   	
-  	private void setMeshFile(MeshFile f) { this.file = f; }
+  	protected void setMeshSource(MeshSource f) { this.source = f; }
   	
   	/**
   	 * Adds the point defined by the specified Vector object to the mesh
@@ -339,7 +254,7 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
   	/**
   	 * @return  An array of Mesh.Vertex objects stored by this Mesh object.
   	 */
-  	public Vertex[] getVectors() { return this.getVectors(this.file == null); }
+  	public Vertex[] getVectors() { return this.getVectors(this.source == null); }
   	
   	public Vertex[] getVectors(boolean b) {
   		if (this.points == null) return null;
@@ -376,7 +291,7 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 	}
 
   	public int[][] getTriangleData() {
-  		return this.getTriangleData(this.file == null);
+  		return this.getTriangleData(this.source == null);
   	}
 
   	public int[][] getTriangleData(boolean b) {
@@ -749,8 +664,8 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 	public ShadableSurface getSurface(int index) { return this.getTriangle(index, false); }
 	
 	public Object encode() {
-		if (this.file != null) {
-			return this.file;
+		if (this.source != null) {
+			return this.source;
 		} else {
 			return this;
 		}
