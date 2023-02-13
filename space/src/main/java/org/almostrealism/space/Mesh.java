@@ -112,7 +112,7 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 	  	this.clearTriangleCache();
   	}
   	
-  	protected void setMeshSource(MeshSource f) { this.source = f; }
+  	public void setMeshSource(MeshSource f) { this.source = f; }
   	
   	/**
   	 * Adds the point defined by the specified Vector object to the mesh
