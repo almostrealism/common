@@ -30,7 +30,9 @@ import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
+import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.computations.ExpressionComputation;
+import org.almostrealism.collect.computations.PackedCollectionFromPackedCollection;
 import org.almostrealism.collect.computations.StaticCollectionComputation;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
@@ -67,6 +69,10 @@ public interface CollectionFeatures {
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> c(Producer supplier, int index) {
 		return new ExpressionComputation<>(List.of(args -> args.get(1).getValue(index)), supplier);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> c(TraversalPolicy shape, Supplier<Evaluable<? extends PackedCollection>> collection, Supplier<Evaluable<? extends Scalar>> index) {
+		return (CollectionProducer<T>) new PackedCollectionFromPackedCollection(shape, collection, index);
 	}
 
 	default CollectionProducer<PackedCollection<?>> integers(int from, int to) {

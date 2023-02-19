@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect;
 
+import io.almostrealism.code.Computation;
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -33,6 +34,7 @@ import org.almostrealism.bool.LessThanCollection;
 import org.almostrealism.bool.LessThanScalar;
 import org.almostrealism.collect.computations.DefaultCollectionEvaluable;
 import org.almostrealism.collect.computations.ExpressionComputation;
+import org.almostrealism.collect.computations.PackedCollectionFromPackedCollection;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.Input;
 import org.almostrealism.hardware.KernelizedEvaluable;
@@ -166,5 +168,36 @@ public interface CollectionProducer<T extends PackedCollection<?>> extends Produ
 														   Supplier<Evaluable<? extends PackedCollection<?>>> falseValue,
 														   boolean includeEqual) {
 		return new LessThanCollection(this, operand, trueValue, falseValue, includeEqual);
+	}
+
+	default KernelizedEvaluable<PackedCollection<?>> shortCircuit(Evaluable<PackedCollection<?>> ev) {
+		return new KernelizedEvaluable<PackedCollection<?>>() {
+			private KernelizedEvaluable<PackedCollection<?>> kernel;
+
+			@Override
+			public MemoryBank<PackedCollection<?>> createKernelDestination(int size) {
+				return getKernel().createKernelDestination(size);
+			}
+
+			@Override
+			public PackedCollection<?> evaluate(Object... args) {
+				return ev.evaluate(args);
+			}
+
+			@Override
+			public void kernelEvaluate(MemoryBank destination, MemoryData... args) {
+				getKernel().kernelEvaluate(destination, args);
+			}
+
+			public KernelizedEvaluable<PackedCollection<?>> getKernel() {
+				if (kernel == null) {
+					AcceleratedComputationEvaluable<PackedCollection<?>> ev = new DefaultCollectionEvaluable<PackedCollection<?>>(getShape(), (Computation) CollectionProducer.this, CollectionProducer.this::postProcessOutput);
+					ev.compile();
+					kernel = ev;
+				}
+
+				return kernel;
+			}
+		};
 	}
 }

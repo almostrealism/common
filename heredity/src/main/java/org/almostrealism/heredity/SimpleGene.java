@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,23 +16,21 @@
 
 package org.almostrealism.heredity;
 
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
-import org.almostrealism.algebra.computations.StaticComputationAdapter;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.StaticCollectionComputation;
-import org.almostrealism.hardware.Input;
-import org.almostrealism.hardware.PassThroughEvaluable;
 
 import java.util.function.Supplier;
+import java.util.function.UnaryOperator;
 
 public class SimpleGene implements Gene<PackedCollection<?>>, GeneParameters, CollectionFeatures {
 	public static final boolean enableComputation = true;
 	public static final boolean enableShortCircuit = true;
 
 	private PackedCollection<?> values;
+	private UnaryOperator<Producer<PackedCollection<?>>> transform;
 
 	public SimpleGene(int length) {
 		this.values = new PackedCollection<>(length);
@@ -40,6 +38,14 @@ public class SimpleGene implements Gene<PackedCollection<?>>, GeneParameters, Co
 
 	public void set(int index, double value) {
 		values.setMem(index, value);
+	}
+
+	public UnaryOperator<Producer<PackedCollection<?>>> getTransform() {
+		return transform;
+	}
+
+	public void setTransform(UnaryOperator<Producer<PackedCollection<?>>> transform) {
+		this.transform = transform;
 	}
 
 	@Override
@@ -51,7 +57,7 @@ public class SimpleGene implements Gene<PackedCollection<?>>, GeneParameters, Co
 			return new Factor<PackedCollection<?>>() {
 				@Override
 				public Producer<PackedCollection<?>> getResultant(Producer<PackedCollection<?>> value) {
-					return _multiply(value, c((Supplier) () -> new Provider<>(values), pos), args -> {
+					return transform(_multiply(value, c((Supplier) () -> new Provider<>(values), pos), args -> {
 						PackedCollection<?> result = new PackedCollection<>(1);
 
 						if (value instanceof StaticCollectionComputation) {
@@ -61,7 +67,7 @@ public class SimpleGene implements Gene<PackedCollection<?>>, GeneParameters, Co
 						}
 
 						return result;
-					});
+					}));
 				}
 
 				@Override
@@ -73,7 +79,7 @@ public class SimpleGene implements Gene<PackedCollection<?>>, GeneParameters, Co
 			return new Factor<PackedCollection<?>>() {
 				@Override
 				public Producer<PackedCollection<?>> getResultant(Producer<PackedCollection<?>> value) {
-					return _multiply(value, c((Supplier) () -> new Provider<>(values), pos));
+					return transform(_multiply(value, c((Supplier) () -> new Provider<>(values), pos)));
 				}
 
 				@Override
@@ -93,7 +99,7 @@ public class SimpleGene implements Gene<PackedCollection<?>>, GeneParameters, Co
 						result.setMem(value.get().evaluate().toDouble(0) * values.toDouble(pos));
 					}
 
-					return () -> args -> result;
+					return transform(() -> args -> result);
 				}
 
 				@Override
@@ -102,6 +108,10 @@ public class SimpleGene implements Gene<PackedCollection<?>>, GeneParameters, Co
 				}
 			};
 		}
+	}
+
+	protected Producer<PackedCollection<?>> transform(Producer<PackedCollection<?>> value) {
+		return transform == null ? value : transform.apply(value);
 	}
 
 	@Override

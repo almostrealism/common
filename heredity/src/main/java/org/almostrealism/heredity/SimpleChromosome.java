@@ -35,6 +35,12 @@ public class SimpleChromosome extends ConfigurableChromosome {
 		return gene;
 	}
 
+	public ChoiceGene addChoiceGene(PackedCollection<?> choices) {
+		ChoiceGene gene = new ChoiceGene(choices, geneLength);
+		chromosome.add(gene);
+		return gene;
+	}
+
 	public void removeGene(int index) {
 		chromosome.remove(index);
 	}

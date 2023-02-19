@@ -22,6 +22,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.DynamicProducerComputationAdapter;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 
@@ -43,10 +44,12 @@ public abstract class ValueFromPackedCollection<T extends MemoryData> extends Dy
 	public IntFunction<Expression<Double>> getValueFunction() {
 		return pos -> {
 			if (pos < getMemLength()) {
+				String number = "(" + Hardware.getLocalHardware().getNumberTypeName() + ")";
+
 				if (getArgument(2, 2).isStatic()) {
-					return getArgument(1, shape.getTotalSize()).get(getMemLength() + " * " + getInputValue(2, 0).getExpression() + " + " + pos);
+					return getArgument(1, shape.getTotalSize()).get(getMemLength() + " * " + getInputValue(2, 0).getExpression() + " + floor(" + number + pos + ")");
 				} else {
-					return getArgument(1, shape.getTotalSize()).get(getMemLength() + " * " + getInputValue(2, 0).getExpression() + " + " + pos, getArgument(2, 2));
+					return getArgument(1, shape.getTotalSize()).get(getMemLength() + " * " + getInputValue(2, 0).getExpression() + " + floor(" + number + pos + ")", getArgument(2, 2));
 				}
 			} else {
 				return new Expression<>(Double.class, stringForDouble(0.0));
