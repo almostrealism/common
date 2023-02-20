@@ -19,6 +19,7 @@ package org.almostrealism.algebra.computations;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarBankProducer;
 
+@Deprecated
 public class StaticScalarBankComputation extends StaticComputationAdapter<ScalarBank> implements ScalarBankProducer {
 	public StaticScalarBankComputation(ScalarBank value) {
 		super(value, () -> args -> new ScalarBank(value.getCount()), i -> { throw new UnsupportedOperationException(); });
