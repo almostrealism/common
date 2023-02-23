@@ -16,6 +16,7 @@
 
 package org.almostrealism.heredity;
 
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 
@@ -31,7 +32,6 @@ public class Breeders {
 
 	public static ChromosomeBreeder<PackedCollection<?>> averageBreeder() {
 		return byCombiningFactors((f1, f2) -> {
-			CollectionFeatures ops = CollectionFeatures.getInstance();
 			PackedCollection<?> s1 = value(f1);
 			PackedCollection<?> s2 = value(f2);
 			return new ScaleFactor((s1.toDouble(0) + s2.toDouble(0)) / 2.0);
@@ -60,8 +60,8 @@ public class Breeders {
 //				s2 = ((ScaleFactor) f1).getScale();
 //			}
 
-			s1 = ((ScaleFactor) f1).getScale().toDouble(0);
-			s2 = ((ScaleFactor) f2).getScale().toDouble(0);
+			s1 = value((Factor) f1).toDouble(0);
+			s2 = value((Factor) f2).toDouble(0);
 
 			double m = magnitude;
 			if (s2 > s1) {
