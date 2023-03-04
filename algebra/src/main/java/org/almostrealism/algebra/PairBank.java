@@ -41,11 +41,15 @@ public class PairBank extends MemoryBankAdapter<Pair<?>> {
 	}
 
 	public PairBank range(int offset, int length) {
-		if (offset * getAtomicMemLength() >= getMemLength()) {
+		return range(offset, length, false);
+	}
+
+	public PairBank range(int offset, int length, boolean shift) {
+		if (offset * getAtomicMemLength() + (shift ? 1 : 0) >= getMemLength()) {
 			throw new IllegalArgumentException("Range extends beyond the length of this bank");
 		}
 
-		return new PairBank(length, this, offset * getAtomicMemLength(), null);
+		return new PairBank(length, this, offset * getAtomicMemLength() + (shift ? 1 : 0), null);
 	}
 
 	public static PairBank fromProducer(Evaluable<Pair<?>> producer, int count) {

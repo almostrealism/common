@@ -20,10 +20,17 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairBank;
+import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarBankProducer;
+import org.almostrealism.algebra.ScalarFeatures;
+import org.almostrealism.algebra.ScalarProducerBase;
 import org.almostrealism.hardware.DynamicProducerComputationAdapter;
+import org.almostrealism.hardware.Input;
+import org.almostrealism.hardware.KernelizedEvaluable;
 
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
@@ -53,6 +60,28 @@ public class PowerSpectrum extends DynamicProducerComputationAdapter<PairBank, S
 			} else {
 				return new Expression<>(Double.class, "1.0");
 			}
+		};
+	}
+
+	public static Producer<ScalarBank> fast(int count, Supplier<Evaluable<? extends PairBank>> input) {
+		return () -> {
+			ScalarFeatures ops = ScalarFeatures.getInstance();
+
+			Evaluable<? extends PairBank> in = input.get();
+			KernelizedEvaluable<Scalar> ev = ops.scalarAdd(
+					ops.scalarsMultiply(Input.value(2, 0), Input.value(2, 0)),
+					ops.scalarsMultiply(Input.value(2, 1), Input.value(2, 1))).get();
+
+			return args -> {
+				int tot = count / 2 + 1;
+				PairBank data = in.evaluate(args);
+				ScalarBank out = new ScalarBank(tot);
+
+				ev.kernelEvaluate(out.range(1, tot - 2), data.range(1, tot - 2), data.range(1, tot - 2, true));
+				out.set(0, data.get(0).r() * data.get(0).r(), 1.0);
+				out.set(tot - 1, data.get(0).i() * data.get(0).i(), 1.0);
+				return out;
+			};
 		};
 	}
 }

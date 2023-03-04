@@ -35,6 +35,10 @@ public class Input {
 		return new PassThroughProducer(memLength, argIndex);
 	}
 
+	public static <T> Producer<T> value(int memLength, int argIndex, int kernelDimension) {
+		return new PassThroughProducer(memLength, argIndex, kernelDimension);
+	}
+
 	public static Producer[] generateArguments(int memLength, int first, int count) {
 		return IntStream.range(0, count).mapToObj(i -> value(memLength, first + i)).toArray(Producer[]::new);
 	}

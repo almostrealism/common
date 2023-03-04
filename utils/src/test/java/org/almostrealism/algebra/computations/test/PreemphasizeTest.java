@@ -46,7 +46,15 @@ public class PreemphasizeTest implements TestFeatures {
 
 		((OperationAdapter) ev).compile();
 
+		System.out.println("Standard...");
 		ScalarBank b = ev.evaluate(window(), new Scalar(0.1));
 		IntStream.range(0, b.getCount()).mapToObj(b::get).forEach(System.out::println);
+
+		System.out.println("Fast...");
+		ScalarBank c = Preemphasize.fast(SIZE, v(2 * SIZE, 0),
+				v(Scalar.class, 1)).get().evaluate(window(), new Scalar(0.1));
+		IntStream.range(0, c.getCount()).mapToObj(c::get).forEach(System.out::println);
+
+		IntStream.range(0, c.getCount()).forEach(i -> assertEquals(b.get(i), c.get(i)));
 	}
 }

@@ -25,6 +25,7 @@ import org.almostrealism.hardware.DynamicProducerComputationAdapter;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
+@Deprecated
 public class ScalarBankPad extends DynamicProducerComputationAdapter<ScalarBank, ScalarBank> implements ScalarBankProducer {
 	private int total;
 

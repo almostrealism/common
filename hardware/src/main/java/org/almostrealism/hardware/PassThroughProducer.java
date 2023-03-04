@@ -71,7 +71,21 @@ public class PassThroughProducer<T extends MemoryData>
 	}
 
 	@Override
-	public KernelizedEvaluable<T> get() { return compileProducer(this); }
+	public KernelizedEvaluable<T> get() {
+		// return compileProducer(this);
+
+		return new KernelizedEvaluable<T>() {
+			@Override
+			public MemoryBank<T> createKernelDestination(int size) {
+				throw new UnsupportedOperationException();
+			}
+
+			@Override
+			public T evaluate(Object... args) {
+				return (T) args[argIndex];
+			}
+		};
+	}
 
 	/**
 	 * To avoid infinite regress (since pass through has itself as
