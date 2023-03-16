@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,19 +22,11 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarFeatures;
-import org.almostrealism.algebra.Vector;
 import org.almostrealism.bool.AcceleratedConditionalStatementCollection;
-import org.almostrealism.bool.AcceleratedConditionalStatementScalar;
-import org.almostrealism.bool.AcceleratedConditionalStatementVector;
 import org.almostrealism.bool.GreaterThanCollection;
-import org.almostrealism.bool.GreaterThanScalar;
-import org.almostrealism.bool.GreaterThanVector;
 import org.almostrealism.bool.LessThanCollection;
-import org.almostrealism.bool.LessThanScalar;
 import org.almostrealism.collect.computations.DefaultCollectionEvaluable;
 import org.almostrealism.collect.computations.ExpressionComputation;
-import org.almostrealism.collect.computations.PackedCollectionFromPackedCollection;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.Input;
 import org.almostrealism.hardware.KernelizedEvaluable;
@@ -46,7 +38,9 @@ import org.almostrealism.hardware.mem.MemoryDataAdapter;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-public interface CollectionProducer<T extends PackedCollection<?>> extends ProducerComputation<T>, KernelizedProducer<T>, Shape, CollectionFeatures {
+public interface CollectionProducerComputation<T extends PackedCollection<?>> extends
+		CollectionProducer<T>, ProducerComputation<T>, KernelizedProducer<T>, CollectionFeatures {
+
 	// This should be 0, but Scalar is actually a Pair so a set of scalars is 2D not 1D
 	int SCALAR_AXIS = 1;
 
@@ -61,12 +55,22 @@ public interface CollectionProducer<T extends PackedCollection<?>> extends Produ
 		return ev;
 	}
 
-	default CollectionProducer<PackedCollection<?>> scalarMap(Function<Producer<Scalar>, Producer<Scalar>> f) {
+	@Override
+	default CollectionProducerComputation<T> traverse(int axis) {
+		throw new UnsupportedOperationException();
+	}
+
+	default CollectionProducerComputation<PackedCollection<?>> scalarMap(Function<Producer<Scalar>, Producer<Scalar>> f) {
 		Producer<Scalar> p = f.apply(Input.value(Scalar.class, 0));
 
-		return new CollectionProducer<>() {
+		return new CollectionProducerComputation<>() {
 			@Override
 			public TraversalPolicy getShape() {
+				throw new UnsupportedOperationException();
+			}
+
+			@Override
+			public CollectionProducerComputation<PackedCollection<?>> traverse(int axis) {
 				throw new UnsupportedOperationException();
 			}
 
@@ -191,7 +195,7 @@ public interface CollectionProducer<T extends PackedCollection<?>> extends Produ
 
 			public KernelizedEvaluable<PackedCollection<?>> getKernel() {
 				if (kernel == null) {
-					AcceleratedComputationEvaluable<PackedCollection<?>> ev = new DefaultCollectionEvaluable<PackedCollection<?>>(getShape(), (Computation) CollectionProducer.this, CollectionProducer.this::postProcessOutput);
+					AcceleratedComputationEvaluable<PackedCollection<?>> ev = new DefaultCollectionEvaluable<PackedCollection<?>>(getShape(), (Computation) CollectionProducerComputation.this, CollectionProducerComputation.this::postProcessOutput);
 					ev.compile();
 					kernel = ev;
 				}

@@ -20,14 +20,13 @@ import io.almostrealism.code.CollectionUtils;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerComputationAdapter;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.ComputerFeatures;
 import org.almostrealism.hardware.DestinationConsolidationArgumentMap;
 import org.almostrealism.hardware.DestinationSupport;
 import org.almostrealism.hardware.KernelizedProducer;
-import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryDataComputation;
 import org.almostrealism.hardware.ProducerCache;
 import org.almostrealism.hardware.mem.MemoryDataDestination;
@@ -36,7 +35,7 @@ import java.util.function.Supplier;
 
 public abstract class CollectionProducerComputationAdapter<I extends PackedCollection<?>, O extends PackedCollection<?>>
 												extends ProducerComputationAdapter<I, O>
-												implements CollectionProducer<O>, MemoryDataComputation<O>,
+												implements CollectionProducerComputation<O>, MemoryDataComputation<O>,
 														KernelizedProducer<O>, DestinationSupport<O>,
 														ComputerFeatures {
 	private TraversalPolicy shape;

@@ -17,7 +17,7 @@
 package org.almostrealism.collect.computations;
 
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
@@ -25,7 +25,7 @@ import org.almostrealism.hardware.KernelizedEvaluable;
 
 import java.util.function.Supplier;
 
-public class PackedCollectionFromPackedCollection extends ValueFromPackedCollection<PackedCollection<?>> implements CollectionProducer<PackedCollection<?>> {
+public class PackedCollectionFromPackedCollection extends ValueFromPackedCollection<PackedCollection<?>> implements CollectionProducerComputation<PackedCollection<?>> {
 	public PackedCollectionFromPackedCollection(TraversalPolicy shape, Supplier<Evaluable<? extends PackedCollection>> collection, Supplier<Evaluable<? extends Scalar>> index) {
 		super(shape, PackedCollection.blank(1), PackedCollection.bank(new TraversalPolicy(1)),
 				collection, index);

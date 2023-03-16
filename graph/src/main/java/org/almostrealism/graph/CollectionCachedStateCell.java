@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,12 +17,13 @@
 package org.almostrealism.graph;
 
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareFeatures;
 
 import java.util.function.Supplier;
 
-public class CollectionCachedStateCell extends CachedStateCell<PackedCollection<?>> implements HardwareFeatures {
+public class CollectionCachedStateCell extends CachedStateCell<PackedCollection<?>> implements CollectionFeatures {
 	public CollectionCachedStateCell() {
 		super(PackedCollection.blank(1).get());
 	}

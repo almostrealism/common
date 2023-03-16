@@ -19,7 +19,7 @@ package org.almostrealism.heredity;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.CollectionFeatures;
-import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.stream.IntStream;
@@ -58,17 +58,17 @@ public interface HeredityFeatures extends CollectionFeatures {
 		return 1.0 / (1.0 - Math.pow(f, exp)) - 1.0;
 	}
 
-	default CollectionProducer oneToInfinity(Factor<PackedCollection<?>> f, double exp) {
+	default CollectionProducerComputation oneToInfinity(Factor<PackedCollection<?>> f, double exp) {
 		return oneToInfinity(f.getResultant(c(1.0)), exp);
 	}
 
-	default CollectionProducer oneToInfinity(Producer<PackedCollection<?>> arg, double exp) {
+	default CollectionProducerComputation oneToInfinity(Producer<PackedCollection<?>> arg, double exp) {
 		return oneToInfinity(arg, c(exp));
 	}
 
-	default CollectionProducer oneToInfinity(Producer<PackedCollection<?>> arg, Producer<PackedCollection<?>> exp) {
-		CollectionProducer pow = _pow(arg, exp);
-		CollectionProducer out = _minus(pow);
+	default CollectionProducerComputation oneToInfinity(Producer<PackedCollection<?>> arg, Producer<PackedCollection<?>> exp) {
+		CollectionProducerComputation pow = _pow(arg, exp);
+		CollectionProducerComputation out = _minus(pow);
 		out = _add(out, c(1.0));
 		out = _pow(out, c(-1.0));
 		out = _add(out, c(-1.0));

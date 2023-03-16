@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,19 +16,14 @@
 
 package org.almostrealism.collect;
 
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
-import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.KernelizedOperation;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.PassThroughProducer;
-import org.almostrealism.hardware.cl.InvalidValueException;
 import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.hardware.ctx.ContextSpecific;
 import org.almostrealism.hardware.ctx.DefaultContextSpecific;
-import org.almostrealism.hardware.mem.Bytes;
-import org.almostrealism.hardware.mem.MemoryBankAdapter;
 import org.almostrealism.hardware.mem.MemoryDataAdapter;
 
 import java.util.concurrent.atomic.AtomicInteger;

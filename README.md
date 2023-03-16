@@ -7,19 +7,22 @@ the automated production of artwork. These libraries provide abstractions that c
 at runtime with a whole range of different acceleration strategies, so you do not have to make
 a commitment to a particular strategy for production use of your model code ahead of time.
 
+There is a complete implementation of n-dimensional arrays, but unlike other acceleration
+frameworks where specific operations are accelerated, this library provides a mechanism for
+compiling an entire accelerator program from a hierarchy of mathematical operations. This
+makes it potentially faster than systems which are design to perform certain common operations
+quickly, but are not capable of generating custom accelerator code.
+
+Using this library correctly allows you to take complex operations, written in Java, and end
+up with binaries for CPU, GPU, or FPGA that are as fast or faster than hand-written native code.
+
 #### Support Accelerators
     1. Normal JNI Operations via runtime generated .so/.dylib
     2. External Native Operations via a generated executable
     3. OpenCL (JNI with JOCL) on CPU
     4. OpenCL (JNI with JOCL) on GPU
-    4. TensorFlow Graphs
-        a. TensorFlow MKL with JNI
-        b. TensorFlow AVX2 with JNI
-        c. TensorFlow Metal with JNI using tensorflow-metal
 
 *For more information about Java bindings for OpenCL, visit jocl.org*
-
-*Note: TensorFlow support is still being actively developed and won't be available until late 2022*
 
 ### Why would you want this?
 When choosing Java as your target language, you are normally making a trade-off related to
@@ -54,7 +57,7 @@ Add utils:
         <dependency>
             <groupId>org.almostrealism</groupId>
             <artifactId>ar-utils</artifactId>
-            <version>0.44</version>
+            <version>0.52</version>
         </dependency>
 
 ### Enabling Your Application
@@ -100,6 +103,39 @@ using a native lib on windows and a TensorFlow graph in the cloud. All with the 
 for defining your expressions.
 
 ### Tutorial
+
+### Using Tensor
+
+Tensor is a data structure that is used to represent multi-dimensional arrays of data. Before
+a tensor can be used in computations, it has to be packed (at which point it's shape becomes
+immutable).
+
+```Java
+public class MyNativeEnableApplication implements CodeFeatures {
+	// ....
+
+	public void createTensor() {
+		// Create the tensor
+		Tensor<Double> t = new Tensor<>();
+		t.insert(1.0, 0, 0);
+		t.insert(2.0, 0, 1);
+		t.insert(3.0, 0, 2);
+		t.insert(4.0, 1, 0);
+		t.insert(5.0, 1, 1);
+		t.insert(6.0, 1, 2);
+		
+		Tensor<Double> p = new Tensor<>();
+		p.insert(3.0, 0, 0);
+		p.insert(4.0, 0, 1);
+		
+		// Prepare the computation
+        CollectionProducer<PackedCollection<?>> product = t.pack().multiply(p.pack());
+		
+		// Compile the computation and evaluate it
+		PackedCollection<?> out = product.get().evaluate();
+	}
+}
+```
 
 #### Using Variables
 Mathematical operations can use both constant values and variable values:

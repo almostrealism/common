@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,7 +16,6 @@
 
 package org.almostrealism.collect;
 
-import io.almostrealism.code.NameProvider;
 import io.almostrealism.expression.Exponent;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Floor;
@@ -29,13 +28,18 @@ import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.PackedCollectionFromPackedCollection;
+import org.almostrealism.collect.computations.Random;
 import org.almostrealism.collect.computations.StaticCollectionComputation;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.computations.Assignment;
 
 import java.util.List;
 import java.util.function.Function;
@@ -46,37 +50,64 @@ import java.util.stream.IntStream;
 public interface CollectionFeatures {
 	default TraversalPolicy shape(int... dims) { return new TraversalPolicy(dims); }
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> c(double... values) {
+	default <T> Producer<T> p(T value) { return () -> new Provider<>(value); }
+
+	default <T extends MemoryData> Assignment<T> a(int memLength, Evaluable<T> result, Evaluable<T> value) {
+		return a(memLength, () -> result, () -> value);
+	}
+
+	default <T extends MemoryData> Assignment<T> a(int memLength, Supplier<Evaluable<? extends T>> result, Supplier<Evaluable<? extends T>> value) {
+		return new Assignment<>(memLength, result, value);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> c(double... values) {
 		PackedCollection<T> c = new PackedCollection<>(values.length);
 		c.setMem(0, values);
 		return new StaticCollectionComputation(c);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> c(PackedCollection<?> supplier) {
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> c(TraversalPolicy shape, double... values) {
+		if (values.length != shape.getTotalSize()) {
+			throw new IllegalArgumentException("Wrong number of values for shape");
+		}
+
+		PackedCollection<T> c = new PackedCollection<>(shape);
+		c.setMem(0, values);
+		return new StaticCollectionComputation(c);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> c(PackedCollection<?> supplier) {
 		return new StaticCollectionComputation(supplier);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> c(Producer<PackedCollection<?>>... producers) {
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> c(Producer<PackedCollection<?>>... producers) {
 		List<Function<List<MultiExpression<Double>>, Expression<Double>>> expressions = IntStream.range(0, producers.length)
 				.mapToObj(i -> (Function<List<MultiExpression<Double>>, Expression<Double>>) args -> args.get(i + 1).getValue(0))
 				.collect(Collectors.toList());
 		return new ExpressionComputation(expressions, producers);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> c(Supplier<Evaluable<? extends PackedCollection<?>>> supplier, int index) {
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> c(Supplier<Evaluable<? extends PackedCollection<?>>> supplier, int index) {
 		return new ExpressionComputation<>(List.of(args -> args.get(1).getValue(index)), supplier);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> c(Producer supplier, int index) {
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> c(Producer supplier, int index) {
 		return new ExpressionComputation<>(List.of(args -> args.get(1).getValue(index)), supplier);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducer<T> c(TraversalPolicy shape, Supplier<Evaluable<? extends PackedCollection>> collection, Supplier<Evaluable<? extends Scalar>> index) {
-		return (CollectionProducer<T>) new PackedCollectionFromPackedCollection(shape, collection, index);
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> c(TraversalPolicy shape, Supplier<Evaluable<? extends PackedCollection>> collection, Supplier<Evaluable<? extends Scalar>> index) {
+		return (CollectionProducerComputation<T>) new PackedCollectionFromPackedCollection(shape, collection, index);
 	}
 
-	default CollectionProducer<PackedCollection<?>> integers(int from, int to) {
-		return new CollectionProducer() {
+	default DynamicCollectionProducer func(TraversalPolicy shape, Function<Object[], PackedCollection<?>> function) {
+		return new DynamicCollectionProducer(shape, function);
+	}
+
+	default Random rand(TraversalPolicy shape) { return new Random(shape); }
+	default Random randn(TraversalPolicy shape) { return new Random(shape, true); }
+
+	default CollectionProducerComputation<PackedCollection<?>> integers(int from, int to) {
+		return new CollectionProducerComputation() {
 			@Override
 			public TraversalPolicy getShape() {
 				return new TraversalPolicy(from - to);
@@ -131,13 +162,23 @@ public interface CollectionFeatures {
 		return _multiply(a, b, null);
 	}
 
+
 	// TODO Rename
 	default <T extends PackedCollection<?>> ExpressionComputation<T> _multiply(
 			Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b,
 			Evaluable<T> shortCircuit) {
-		Function<List<MultiExpression<Double>>, Expression<Double>> expression = np ->
-				new Product(np.get(1).getValue(0), np.get(2).getValue(0));
-		ExpressionComputation<T> exp = new ExpressionComputation<>(List.of(expression), a, b);
+		return _multiply(1, a, b, shortCircuit);
+	}
+
+	// TODO Rename
+	default <T extends PackedCollection<?>> ExpressionComputation<T> _multiply(int count,
+			Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b,
+			Evaluable<T> shortCircuit) {
+		List<Function<List<MultiExpression<Double>>, Expression<Double>>> expressions =
+				IntStream.range(0, count).mapToObj(i -> (Function<List<MultiExpression<Double>>, Expression<Double>>)
+								np -> new Product(np.get(1).getValue(i), np.get(2).getValue(i)))
+						.collect(Collectors.toList());
+		ExpressionComputation<T> exp = new ExpressionComputation<>(expressions, a, b);
 		exp.setShortCircuit(shortCircuit);
 		return exp;
 	}

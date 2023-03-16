@@ -66,14 +66,6 @@ public interface HardwareFeatures {
 		return Hardware.getLocalHardware().isGPU() && Hardware.getLocalHardware().isDoublePrecision();
 	}
 
-	default <T extends MemoryData> Assignment<T> a(int memLength, Evaluable<T> result, Evaluable<T> value) {
-		return a(memLength, () -> result, () -> value);
-	}
-
-	default <T extends MemoryData> Assignment<T> a(int memLength, Supplier<Evaluable<? extends T>> result, Supplier<Evaluable<? extends T>> value) {
-		return new Assignment<>(memLength, result, value);
-	}
-
 	default Supplier<Runnable> loop(Computation<Void> c, int iterations) {
 		if (c instanceof OperationList && !((OperationList) c).isComputation()) {
 			Runnable r = ((OperationList) c).get();

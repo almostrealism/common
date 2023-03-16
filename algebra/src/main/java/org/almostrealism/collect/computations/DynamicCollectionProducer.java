@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,7 +16,6 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.scope.Scope;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversalPolicy;
@@ -24,7 +23,7 @@ import org.almostrealism.hardware.DynamicProducerForMemoryData;
 
 import java.util.function.Function;
 
-// TODO  This needs to take a generic argument for the type of collection to produce
+// TODO  This needs to take a generic argument for the type of collection to produce (maybe)
 public class DynamicCollectionProducer extends DynamicProducerForMemoryData<PackedCollection<?>> implements CollectionProducer<PackedCollection<?>> {
 	private TraversalPolicy shape;
 
@@ -39,7 +38,7 @@ public class DynamicCollectionProducer extends DynamicProducerForMemoryData<Pack
 	}
 
 	@Override
-	public Scope<PackedCollection<?>> getScope() {
-		throw new RuntimeException("Not implemented");
+	public CollectionProducer<PackedCollection<?>> traverse(int axis) {
+		throw new UnsupportedOperationException();
 	}
 }

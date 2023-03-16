@@ -75,4 +75,16 @@ public class TraversalPolicy {
 	public Stream<int[]> stream() {
 		return IntStream.range(0, getTotalSize()).mapToObj(this::position);
 	}
+
+	@Override
+	public String toString() {
+		StringBuilder sb = new StringBuilder();
+		sb.append("(");
+		for (int i = 0; i < dims.length; i++) {
+			sb.append(dims[i]);
+			if (i < dims.length - 1) sb.append(", ");
+		}
+		sb.append(")");
+		return sb.toString();
+	}
 }

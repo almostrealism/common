@@ -67,7 +67,6 @@ import java.util.function.Supplier;
 
 public interface CodeFeatures extends CollectionFeatures, ScalarFeatures, PairFeatures, TriangleDataFeatures, RayFeatures,
 								TransformMatrixFeatures, GeometryFeatures, TemporalFeatures, HardwareFeatures {
-	default <T> Producer<T> p(T value) { return () -> new Provider<>(value); }
 
 	default Producer<CursorPair> v(CursorPair p) {
 		throw new UnsupportedOperationException();
