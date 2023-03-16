@@ -45,7 +45,6 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 	}
 
 	private final TraversalPolicy shape;
-	private final int traversalAxis;
 	private Function<DelegateSpec, T> supply;
 
 	public PackedCollection(int... shape) {
@@ -70,15 +69,14 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 	}
 
 	public PackedCollection(TraversalPolicy shape, int traversalAxis, MemoryData delegate, int delegateOffset) {
-		this.shape = shape;
-		this.traversalAxis = traversalAxis;
+		this.shape = shape.traverse(traversalAxis);
 		setDelegate(delegate, delegateOffset);
 		init();
 	}
 
 	@Override
 	public T get(int index) {
-		if (traversalAxis == 1 && supply != null) {
+		if (shape.getTraversalAxis() == 1 && supply != null) {
 			return supply.apply(new DelegateSpec(this, shape.size(1) * index));
 		} else {
 			throw new UnsupportedOperationException();
@@ -96,7 +94,7 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 
 	@Override
 	public int getCount() {
-		return getMemLength() / getAtomicMemLength();
+		return shape.getCount();
 	}
 
 	@Override
@@ -106,7 +104,7 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 
 	@Override
 	public int getAtomicMemLength() {
-		return shape.size(traversalAxis);
+		return shape.getSize();
 	}
 
 	public TraversalPolicy getShape() { return shape; }
@@ -175,7 +173,7 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 		AtomicInteger idx = new AtomicInteger();
 
 		return Stream.generate(() -> {
-			T v = factory.apply(getAtomicMemLength() / getShape().size(traversalAxis + 1));
+			T v = factory.apply(getAtomicMemLength() / getShape().size(getShape().getTraversalAxis() + 1));
 			if (v.getMemLength() != getAtomicMemLength()) {
 				throw new UnsupportedOperationException("Cannot extract entries of length " + getAtomicMemLength() +
 														" into memory of length " + v.getMemLength());

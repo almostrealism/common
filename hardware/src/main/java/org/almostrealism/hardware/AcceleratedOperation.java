@@ -544,7 +544,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				kernelArgs[i] = kp.createKernelDestination(kernelSize);
 				kp.kernelEvaluate((MemoryBank) kernelArgs[i], args);
 
-				// This assumes that the axis of the kernel is always the first dimension
+				// TODO This assumes that the axis of the kernel is always the first dimension
 				if (kernelArgs[i] instanceof Traversable) kernelArgs[i] = (MemoryData) ((Traversable) kernelArgs[i]).traverse(1);
 			} else {
 				kernelArgs[i] = (MemoryData) c.evaluate((Object[]) args);

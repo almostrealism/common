@@ -19,8 +19,9 @@ package org.almostrealism.collect;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-public class TraversalPolicy {
+public class TraversalPolicy implements Traversable<TraversalPolicy> {
 	private int dims[];
+	private int traversalAxis;
 
 	public TraversalPolicy(int... dims) {
 		this.dims = dims;
@@ -48,6 +49,13 @@ public class TraversalPolicy {
 		return pos;
 	}
 
+	@Override
+	public TraversalPolicy traverse(int axis) {
+		TraversalPolicy p = new TraversalPolicy(dims);
+		p.traversalAxis = axis;
+		return p;
+	}
+
 	public TraversalPolicy prependDimension(int size) {
 		int newDims[] = new int[getDimensions() + 1];
 		newDims[0] = size;
@@ -68,7 +76,13 @@ public class TraversalPolicy {
 		return new TraversalPolicy(newDims);
 	}
 
+	public int getTraversalAxis() { return traversalAxis; }
+
+	public int getSize() { return size(traversalAxis); }
+
 	public int getTotalSize() { return size(0); }
+
+	public int getCount() { return getTotalSize() / getSize(); }
 
 	public int getDimensions() { return dims.length; }
 
