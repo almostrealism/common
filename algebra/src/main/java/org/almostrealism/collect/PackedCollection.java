@@ -34,7 +34,7 @@ import java.util.function.IntFunction;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter implements MemoryBank<T>, Traversable<PackedCollection> {
+public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter implements MemoryBank<T>, Shape<PackedCollection<T>> {
 	private static ContextSpecific<KernelizedOperation> clear;
 
 	static {
@@ -149,13 +149,21 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 		return Math.sqrt(lengthSq());
 	}
 
-	public PackedCollection<T> traverse(int axis) {
+	@Override
+	public PackedCollection reshape(TraversalPolicy shape) {
+		if (shape.getTotalSize() != getMemLength()) {
+			throw new IllegalArgumentException("Shape size (" + shape.getSize() +
+					") does not match collection size (" + getMemLength() + ")");
+		}
+
+		int axis = shape.getTraversalAxis();
+
 		if (axis <= 0) {
 			return new PackedCollection(shape, axis, this, 0);
 		} else if (axis == 1) {
 			return new PackedCollection<>(shape, axis,
 					delegateSpec ->
-						(T) new PackedCollection<>(shape.subset(1), 0,
+							(T) new PackedCollection<>(shape.subset(1), 0,
 									delegateSpec.getDelegate(), delegateSpec.getOffset()),
 					this, 0);
 		} else {
@@ -187,7 +195,7 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 		}).limit(getMemLength() / getAtomicMemLength());
 	}
 
-	public PackedCollection delegate(int offset, int length) {
+	public PackedCollection<?> delegate(int offset, int length) {
 		return new PackedCollection(new TraversalPolicy(length), 0, this, offset);
 	}
 

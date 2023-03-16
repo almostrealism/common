@@ -27,6 +27,7 @@ import org.almostrealism.bool.GreaterThanCollection;
 import org.almostrealism.bool.LessThanCollection;
 import org.almostrealism.collect.computations.DefaultCollectionEvaluable;
 import org.almostrealism.collect.computations.ExpressionComputation;
+import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.Input;
 import org.almostrealism.hardware.KernelizedEvaluable;
@@ -56,8 +57,13 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 	}
 
 	@Override
-	default CollectionProducerComputation<T> traverse(int axis) {
-		throw new UnsupportedOperationException();
+	default Producer<T> traverse(int axis) {
+		return reshape(getShape().traverse(axis));
+	}
+
+	@Override
+	default Producer<T> reshape(TraversalPolicy shape) {
+		return new ReshapeProducer<>(shape, (Producer) this);
 	}
 
 	default CollectionProducerComputation<PackedCollection<?>> scalarMap(Function<Producer<Scalar>, Producer<Scalar>> f) {
@@ -89,11 +95,11 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 
 					@Override
 					public PackedCollection<?> evaluate(Object... args) {
-						PackedCollection c = get().evaluate();
+						PackedCollection<?> c = get().evaluate();
 						KernelizedEvaluable<Scalar> ev = (KernelizedEvaluable<Scalar>) p.get();
 						MemoryBank<Scalar> bank = ev.createKernelDestination(c.getShape().length(SCALAR_AXIS));
 						ev.kernelEvaluate(bank, new MemoryBank[] { c.traverse(SCALAR_AXIS) });
-						return new PackedCollection(c.getShape(), c.getShape().getDimensions(), bank, 0);
+						return new PackedCollection<>(c.getShape(), c.getShape().getDimensions(), bank, 0);
 					}
 				};
 			}

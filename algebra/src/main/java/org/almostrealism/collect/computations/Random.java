@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.Shape;
 import org.almostrealism.collect.TraversalPolicy;
@@ -25,7 +26,7 @@ import org.almostrealism.hardware.MemoryBank;
 
 import java.util.stream.IntStream;
 
-public class Random implements KernelizedProducer<PackedCollection<?>>, Shape {
+public class Random implements KernelizedProducer<PackedCollection<?>>, Shape<Producer<PackedCollection<?>>> {
 	private java.util.Random random;
 	private TraversalPolicy shape;
 	private boolean normal;
@@ -62,5 +63,10 @@ public class Random implements KernelizedProducer<PackedCollection<?>>, Shape {
 	@Override
 	public TraversalPolicy getShape() {
 		return shape;
+	}
+
+	@Override
+	public Producer<PackedCollection<?>> reshape(TraversalPolicy shape) {
+		return new ReshapeProducer<>(shape, (Producer) this);
 	}
 }

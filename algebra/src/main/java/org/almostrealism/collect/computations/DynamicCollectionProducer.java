@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversalPolicy;
@@ -38,7 +39,7 @@ public class DynamicCollectionProducer extends DynamicProducerForMemoryData<Pack
 	}
 
 	@Override
-	public CollectionProducer<PackedCollection<?>> traverse(int axis) {
-		throw new UnsupportedOperationException();
+	public Producer<PackedCollection<?>> reshape(TraversalPolicy shape) {
+		return new ReshapeProducer<>(shape, (Producer) this);
 	}
 }

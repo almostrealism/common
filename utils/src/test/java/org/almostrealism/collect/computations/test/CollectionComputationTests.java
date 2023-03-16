@@ -31,6 +31,7 @@ import org.almostrealism.collect.Shape;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.PackedCollectionMax;
+import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.collect.computations.RootDelegateSegmentsAdd;
 import org.almostrealism.collect.computations.ScalarFromPackedCollection;
 import org.almostrealism.hardware.Hardware;
@@ -46,7 +47,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 public class CollectionComputationTests implements TestFeatures {
-	private static class TestProducer implements Producer<PackedCollection<?>>, Shape {
+	private static class TestProducer implements Producer<PackedCollection<?>>, Shape<Producer<PackedCollection<?>>> {
 		@Override
 		public TraversalPolicy getShape() {
 			return new TraversalPolicy(1);
@@ -59,6 +60,11 @@ public class CollectionComputationTests implements TestFeatures {
 				c.setMem(0, 9);
 				return c;
 			};
+		}
+
+		@Override
+		public Producer<PackedCollection<?>> reshape(TraversalPolicy shape) {
+			return new ReshapeProducer<>(shape, (Producer) this);
 		}
 	}
 
@@ -136,7 +142,7 @@ public class CollectionComputationTests implements TestFeatures {
 
 	@Test
 	public void collectionMaxTwoSeries() {
-		PackedCollection series = new PackedCollection(2, 10);
+		PackedCollection<?> series = new PackedCollection(2, 10);
 		series.setMem(0, 7, 5, 12, 13, 11, 14, 9, 12, 3, 12);
 		series.setMem(10, 12, 3, 12, 10, 14, 16, 13, 12, 5, 7);
 		System.out.println(series.traverse(1).getCount() + " series");
@@ -151,12 +157,12 @@ public class CollectionComputationTests implements TestFeatures {
 
 	@Test
 	public void collectionMax() {
-		PackedCollection series = new PackedCollection(10);
+		PackedCollection<?> series = new PackedCollection(10);
 		series.setMem(0, 7, 5, 12, 13, 11, 14, 9, 12, 3, 12);
 		System.out.println(series.traverse(0).getCount() + " series");
 
 		PackedCollectionMax max = new PackedCollectionMax(new PassThroughProducer<>(10, 0, -1));
-		PackedCollection dest = new PackedCollection(2, 1);
+		PackedCollection<?> dest = new PackedCollection(2, 1);
 		max.get().kernelEvaluate(dest.traverse(1), series.traverse(0));
 
 		System.out.println(Arrays.toString(dest.toArray(0, 2)));

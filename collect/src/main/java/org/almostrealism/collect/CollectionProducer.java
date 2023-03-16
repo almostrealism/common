@@ -18,5 +18,5 @@ package org.almostrealism.collect;
 
 import io.almostrealism.relation.Producer;
 
-public interface CollectionProducer<T> extends Producer<T>, Shape, Traversable<CollectionProducer<T>> {
+public interface CollectionProducer<T> extends Producer<T>, Shape<Producer<T>> {
 }

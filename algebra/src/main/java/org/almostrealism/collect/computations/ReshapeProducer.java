@@ -14,15 +14,25 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.collect;
+package org.almostrealism.collect.computations;
 
-public interface Shape<T> extends Traversable<T> {
-	TraversalPolicy getShape();
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.Shape;
+import org.almostrealism.collect.TraversalPolicy;
 
-	T reshape(TraversalPolicy shape);
+public class ReshapeProducer<T extends Shape<T>> implements Producer<T> {
+	private TraversalPolicy shape;
+	private Producer<T> producer;
+
+	public ReshapeProducer(TraversalPolicy shape, Producer<T> producer) {
+		this.shape = shape;
+		this.producer = producer;
+	}
 
 	@Override
-	default T traverse(int axis) {
-		return reshape(getShape().traverse(axis));
+	public Evaluable<T> get() {
+		Evaluable<T> eval = producer.get();
+		return args -> eval.evaluate(args).reshape(shape);
 	}
 }

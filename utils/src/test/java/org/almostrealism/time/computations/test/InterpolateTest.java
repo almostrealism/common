@@ -29,16 +29,16 @@ import java.util.Arrays;
 public class InterpolateTest implements TestFeatures {
 	@Test
 	public void interpolateTwoSeries() {
-		PackedCollection series = new PackedCollection(2, 10);
+		PackedCollection<?> series = new PackedCollection(2, 10);
 		series.setMem(0, 7, 5, 12, 13, 16, 14, 9, 12, 3, 12);
 		series.setMem(10, 12, 3, 12, 10, 14, 16, 13, 12, 5, 7);
 		System.out.println(series.traverse(1).getCount() + " series");
 
-		PackedCollection cursors = new PackedCollection(2, 1);
+		PackedCollection<?> cursors = new PackedCollection(2, 1);
 		cursors.setMem(0, 5.5, 3.5);
 		System.out.println(cursors.traverse(1).getCount() + " cursors");
 
-		PackedCollection rate = new PackedCollection(2, 1);
+		PackedCollection<?> rate = new PackedCollection(2, 1);
 		rate.setMem(0, 1.0, 1.0);
 
 		Interpolate interpolate = new Interpolate(
@@ -55,22 +55,22 @@ public class InterpolateTest implements TestFeatures {
 
 	@Test
 	public void interpolateKernel() {
-		PackedCollection series = new PackedCollection(10);
+		PackedCollection<?> series = new PackedCollection(10);
 		series.setMem(0, 7, 5, 12, 13, 16, 14, 9, 12, 3, 12);
 		System.out.println(series.traverse(0).getCount() + " series");
 
-		PackedCollection cursors = new PackedCollection(2, 1);
+		PackedCollection<?> cursors = new PackedCollection(2, 1);
 		cursors.setMem(0, 5.5, 6.5);
 		System.out.println(cursors.traverse(1).getCount() + " cursors");
 
-		PackedCollection rate = new PackedCollection(2, 1);
+		PackedCollection<?> rate = new PackedCollection(2, 1);
 		rate.setMem(0, 1.0, 1.0);
 
 		Interpolate interpolate = new Interpolate(
 				new PassThroughProducer<>(10, 0, -1),
 				new PassThroughProducer<>(1, 1),
 				new PassThroughProducer<>(1, 2));
-		PackedCollection dest = new PackedCollection(2, 1);
+		PackedCollection<?> dest = new PackedCollection(2, 1);
 		interpolate.get().kernelEvaluate(dest.traverse(1), series.traverse(0), cursors.traverse(1), rate.traverse(1));
 
 		System.out.println(Arrays.toString(dest.toArray(0, 2)));
