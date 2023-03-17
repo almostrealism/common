@@ -20,22 +20,28 @@ import io.almostrealism.cycle.Setup;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.OperationList;
 
 import java.util.function.Supplier;
 
 public class Convolution2D implements Layer, Setup, CollectionFeatures {
+	private int width = 3;
 	private int filterCount;
+	private TraversalPolicy filterShape;
 	private PackedCollection<?> filters;
 
 	public Convolution2D(int filters) {
 		this.filterCount = filters;
+		this.filterShape = shape(filterCount, width, width);
+		this.filters = new PackedCollection<>(filterShape);
 	}
 
 	@Override
 	public Supplier<Runnable> setup() {
 		OperationList setup = new OperationList();
-		setup.add(a(filters.getShape().getTotalSize(), p(filters), _divide(randn(shape(filterCount, 3, 3)), c(9))));
+		setup.add(a(filters.getShape().getTotalSize(), p(filters),
+				_divide(randn(filterShape).traverseEach(), c(9).traverse(0))));
 		return setup;
 	}
 
