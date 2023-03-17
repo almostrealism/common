@@ -401,7 +401,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		} else if (args.length > 0) {
 			kernelSize = ((MemoryBank) args[0]).getCount();
 		} else {
-			System.out.println("WARN: Cannot determine kernel size, it will be inferred");
 			kernelSize = -1;
 		}
 
@@ -502,6 +501,10 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 		int kernelSize = -1;
 
+		/*
+		 * In the first pass, kernel size is inferred from Producer arguments that
+		 * reference an Evaluable argument.
+		 */
 		i: for (int i = 0; i < arguments.size(); i++) {
 			if (arguments.get(i) == null) continue i;
 
@@ -526,17 +529,79 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			}
 		}
 
-		if (kernelSize < 0) {
-			System.out.println("WARN: Could not infer kernel size, it will be set to 1");
-			kernelSize = 1;
-		}
+		/*
+		 * In the second pass, kernel size is inferred from Producer arguments
+		 * that do not support kernel evaluation. Given that there is no way
+		 * to specify kernel parameters for these arguments, it is safe to
+		 * assume that the desired kernel parameters must be compatible with
+		 * their output.
+		 */
+		List<Integer> sizes = new ArrayList<>();
 
 		i: for (int i = 0; i < arguments.size(); i++) {
 			if (kernelArgs[i] != null) continue i;
 
 			Evaluable<T> c = (Evaluable<T>) ProducerCache.getEvaluableForSupplier(arguments.get(i).getProducer());
 
+			if (!(c instanceof KernelizedEvaluable)) {
+				kernelArgs[i] = (MemoryData) c.evaluate((Object[]) args);
+
+				if (kernelArgs[i] instanceof MemoryBank) {
+					sizes.add(((MemoryBank<?>) kernelArgs[i]).getCount());
+				}
+			}
+		}
+
+		/*
+		 * If there is only one size, it can be used as the kernel size.
+		 */
+		if (kernelSize < 0 && sizes.size() == 1) {
+			kernelSize = sizes.get(0);
+		}
+
+		/*
+		 * If there are multiple sizes, but they are all the same,
+		 * that can be used as the kernel size.
+		 */
+		k: if (kernelSize < 0 && sizes.size() > 1) {
+			int sharedSize = sizes.get(0);
+			for (int i = 1; i < sizes.size(); i++) {
+				if (sharedSize != sizes.get(i)) {
+					break k;
+				}
+			}
+
+			kernelSize = sharedSize;
+		}
+
+		/*
+		 * Otherwise, a kernel size compatible with all sizes may be inferred.
+		 */
+		if (kernelSize < 0 && sizes.size() > 0) {
+			kernelSize = KernelSupport.inferKernelSize(sizes.stream().mapToInt(i -> i).toArray());
+		}
+
+		/*
+		 * If the kernel size is still not known, the kernel size will be 1.
+		 */
+		if (kernelSize < 0) {
+			System.out.println("WARN: Could not infer kernel size, it will be set to 1");
+			kernelSize = 1;
+		}
+
+		/*
+		 * In the final pass, kernel arguments are evaluated in a way that ensures the
+		 * result is compatible with the kernel size inferred in the first and second
+		 * passes.
+		 */
+		i: for (int i = 0; i < arguments.size(); i++) {
+			if (kernelArgs[i] != null) continue i;
+
+			Evaluable<T> c = (Evaluable<T>) ProducerCache.getEvaluableForSupplier(arguments.get(i).getProducer());
+
 			if (c instanceof ProducerArgumentReference) {
+				// TODO  This should not be necessary
+				System.out.println("WARN: ProducerArgumentReference not detected by first pass");
 				int argIndex = ((ProducerArgumentReference) c).getReferencedArgumentIndex();
 				kernelArgs[i] = args[argIndex];
 			} else if (c instanceof KernelizedEvaluable) {
@@ -544,9 +609,18 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				kernelArgs[i] = kp.createKernelDestination(kernelSize);
 				kp.kernelEvaluate((MemoryBank) kernelArgs[i], args);
 
-				// TODO This assumes that the axis of the kernel is always the first dimension
-				if (kernelArgs[i] instanceof Traversable) kernelArgs[i] = (MemoryData) ((Traversable) kernelArgs[i]).traverse(1);
+				if (((MemoryBank<?>) kernelArgs[i]).getCount() != kernelSize && kernelArgs[i] instanceof Traversable) {
+					kernelArgs[i] = (MemoryData) ((Traversable) kernelArgs[i]).traverse(1);
+				}
+
+				if (((MemoryBank<?>) kernelArgs[i]).getCount() != kernelSize) {
+					throw new IllegalArgumentException("Kernel argument " + i + " with count " +
+								((MemoryBank<?>) kernelArgs[i]).getCount() +
+								" is not compatible with kernel size " + kernelSize);
+				}
 			} else {
+				// TODO  This should not be necessary
+				System.out.println("WARN: Producer which does not support kernel evaluation not detected by second pass");
 				kernelArgs[i] = (MemoryData) c.evaluate((Object[]) args);
 			}
 		}

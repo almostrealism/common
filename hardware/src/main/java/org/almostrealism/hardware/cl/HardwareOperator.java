@@ -19,12 +19,16 @@ package org.almostrealism.hardware.cl;
 import io.almostrealism.relation.Factory;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
+import org.almostrealism.hardware.KernelSupport;
+import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.mem.Bytes;
 import org.almostrealism.hardware.profile.RunData;
 import org.jocl.*;
 
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
+import java.util.stream.IntStream;
 
 /**
  * {@link HardwareOperator}s are intended to be used with {@link ThreadLocal}.
@@ -96,23 +100,9 @@ public class HardwareOperator<T extends MemoryData> implements Consumer<Object[]
 		long totalSize = 0;
 
 		try {
+			int sizeMasks[] = computeSizeMasks(args);
+
 			for (int i = 0; i < argCount; i++) {
-				if (args[i] == null) {
-					throw new NullPointerException("argument " + i + " to function " + name);
-				}
-
-				if (!(args[i] instanceof MemoryData)) {
-					throw new IllegalArgumentException("argument " + i + " (" +
-							args[i].getClass().getSimpleName() + ") to function " +
-							name + " is not a MemoryData");
-				}
-
-				if (((MemoryData) args[i]).getMem() instanceof CLMemory == false) {
-					throw new IllegalArgumentException("argument " + i + " (" +
-							args[i].getClass().getSimpleName() + ") to function " +
-							name + " is not associated with CLMemory");
-				}
-
 				CLMemory mem = (CLMemory) ((MemoryData) args[i]).getMem();
 				totalSize += mem.getSize();
 				CL.clSetKernelArg(kernel, index++, Sizeof.cl_mem, Pointer.to(((CLMemory) ((MemoryData) args[i]).getMem()).getMem()));
@@ -125,7 +115,7 @@ public class HardwareOperator<T extends MemoryData> implements Consumer<Object[]
 
 			for (int i = 0; i < argCount; i++) {
 				CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
-						Pointer.to(new int[] { ((MemoryData) args[i]).getAtomicMemLength() })); // Size
+						Pointer.to(new int[] { ((MemoryData) args[i]).getAtomicMemLength() * sizeMasks[i]})); // Size
 			}
 		} catch (CLException e) {
 			// TODO  This should use the exception processor also, but theres no way to pass the message details
@@ -147,6 +137,49 @@ public class HardwareOperator<T extends MemoryData> implements Consumer<Object[]
 					" (total bytes = " + totalSize + ")", e);
 		}
 //		}
+	}
+
+	protected int[] computeSizeMasks(Object args[]) {
+		int sizes[] = new int[args.length];
+
+		for (int i = 0; i < argCount; i++) {
+			if (args[i] == null) {
+				throw new NullPointerException("argument " + i + " to function " + name);
+			}
+
+			if (!(args[i] instanceof MemoryData)) {
+				throw new IllegalArgumentException("argument " + i + " (" +
+						args[i].getClass().getSimpleName() + ") to function " +
+						name + " is not a MemoryData");
+			}
+
+			if (((MemoryData) args[i]).getMem() instanceof CLMemory == false) {
+				throw new IllegalArgumentException("argument " + i + " (" +
+						args[i].getClass().getSimpleName() + ") to function " +
+						name + " is not associated with CLMemory");
+			}
+
+			if (args[i] instanceof MemoryBank) {
+				sizes[i] = ((MemoryBank) args[i]).getCount();
+			} else if (args[i] instanceof Bytes) {
+				sizes[i] = ((Bytes) args[i]).getCount();
+			} else {
+				sizes[i] = ((MemoryData) args[i]).getMemLength();
+			}
+		}
+
+		if (globalWorkSize == 1) {
+			return IntStream.range(0, argCount).map(i -> 0).toArray();
+		} else {
+			if (globalWorkSize > Integer.MAX_VALUE) {
+				// Is it though?
+				throw new IllegalArgumentException("globalWorkSize is too large");
+			}
+
+			return IntStream.range(0, sizes.length)
+					.map(i -> (sizes[i] >= globalWorkSize && sizes[i] % globalWorkSize == 0) ? 1 : 0)
+					.toArray();
+		}
 	}
 
 	public void destroy() {

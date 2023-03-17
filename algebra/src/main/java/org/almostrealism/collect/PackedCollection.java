@@ -173,10 +173,6 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 		}
 	}
 
-	public PackedCollection<T> traverseEach() {
-		return traverse(getShape().getDimensions());
-	}
-
 	public <T extends MemoryData> Stream<T> extract(IntFunction<T> factory) {
 		AtomicInteger idx = new AtomicInteger();
 

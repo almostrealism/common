@@ -94,7 +94,7 @@ public abstract class RootDelegateKernelOperation<T extends MemoryBank> implemen
 				new PassThroughProducer<>(1, 4, -1),
 				new PassThroughProducer<>(1, 5, -1)).getKernel();
 		List<Evaluable<T>> evals = fixedInput ? this.input.stream().map(ProducerWithOffset::getProducer).map(Producer::get).collect(Collectors.toList()) : null;
-		List<PackedCollection> rootDelegate = new ArrayList<>();
+		List<PackedCollection<?>> rootDelegate = new ArrayList<>();
 
 		OperationList op = new OperationList("RootDelegateOperation");
 		op.add(() -> () -> {

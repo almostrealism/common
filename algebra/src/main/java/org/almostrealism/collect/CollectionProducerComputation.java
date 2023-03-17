@@ -46,7 +46,22 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 	int SCALAR_AXIS = 1;
 
 	default T postProcessOutput(MemoryData output, int offset) {
-		return (T) new PackedCollection(getShape(), 0, output, offset);
+		TraversalPolicy shape = getShape();
+
+		if (output instanceof Shape) {
+			TraversalPolicy outputShape = ((Shape) output).getShape();
+
+			while (shape.getDimensions() < outputShape.getDimensions()) {
+				int dim = outputShape.getDimensions() - shape.getDimensions();
+				shape = shape.prependDimension(outputShape.length(dim - 1));
+			}
+
+			if (shape.getTotalSize() != outputShape.getTotalSize()) {
+				throw new IllegalArgumentException("Output is not compatible with expected shape");
+			}
+		}
+
+		return (T) new PackedCollection(shape, shape.getTraversalAxis(), output, offset);
 	}
 
 	@Override

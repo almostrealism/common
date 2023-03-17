@@ -20,14 +20,25 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.Shape;
 import org.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.hardware.KernelSupport;
 
-public class ReshapeProducer<T extends Shape<T>> implements Producer<T> {
+public class ReshapeProducer<T extends Shape<T>> implements Producer<T>, Shape<Producer<T>>, KernelSupport {
 	private TraversalPolicy shape;
 	private Producer<T> producer;
 
 	public ReshapeProducer(TraversalPolicy shape, Producer<T> producer) {
 		this.shape = shape;
 		this.producer = producer;
+	}
+
+	@Override
+	public TraversalPolicy getShape() {
+		return shape;
+	}
+
+	@Override
+	public Producer<T> reshape(TraversalPolicy shape) {
+		return new ReshapeProducer<>(shape, producer);
 	}
 
 	@Override

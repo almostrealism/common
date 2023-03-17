@@ -60,20 +60,29 @@ public class TraversalPolicy implements Traversable<TraversalPolicy> {
 		int newDims[] = new int[getDimensions() + 1];
 		newDims[0] = size;
 		for (int i = 0; i < getDimensions(); i++) newDims[i + 1] = length(i);
-		return new TraversalPolicy(newDims);
+
+		TraversalPolicy p = new TraversalPolicy(newDims);
+		p.traversalAxis = traversalAxis + 1;
+		return p;
 	}
 
 	public TraversalPolicy appendDimension(int size) {
 		int newDims[] = new int[getDimensions() + 1];
 		for (int i = 0; i < getDimensions(); i++) newDims[i] = length(i);
 		newDims[newDims.length - 1] = size;
-		return new TraversalPolicy(newDims);
+
+		TraversalPolicy p = new TraversalPolicy(newDims);
+		p.traversalAxis = traversalAxis;
+		return p;
 	}
 
 	public TraversalPolicy subset(int depth) {
 		int newDims[] = new int[getDimensions() - depth];
 		for (int i = 0; i < newDims.length; i++) newDims[i] = length(i + depth);
-		return new TraversalPolicy(newDims);
+
+		TraversalPolicy p = new TraversalPolicy(newDims);
+		p.traversalAxis = traversalAxis > depth ? traversalAxis - depth : 0;
+		return p;
 	}
 
 	public int getTraversalAxis() { return traversalAxis; }

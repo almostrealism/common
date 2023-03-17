@@ -37,6 +37,7 @@ import org.almostrealism.collect.computations.ScalarFromPackedCollection;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.PassThroughProducer;
+import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
@@ -127,12 +128,12 @@ public class CollectionComputationTests implements TestFeatures {
 						new PassThroughProducer(1, 0),
 						new PassThroughProducer(1, 1));
 
-		PackedCollection a = new PackedCollection(4);
-		PackedCollection b = new PackedCollection(4);
+		PackedCollection<?> a = new PackedCollection(4);
+		PackedCollection<?> b = new PackedCollection(4);
 		a.setMem(0, 3.0, 4.0, 5.0, 6.0);
 		b.setMem(0, 5.0, 7.0, 9.0, 11.0);
 
-		PackedCollection out = new PackedCollection(4);
+		PackedCollection<?> out = new PackedCollection(4);
 
 		computation.get().kernelEvaluate(out.traverseEach(), a.traverseEach(), b.traverseEach());
 		System.out.println(Arrays.toString(out.toArray(0, 4)));
@@ -163,7 +164,9 @@ public class CollectionComputationTests implements TestFeatures {
 
 		PackedCollectionMax max = new PackedCollectionMax(new PassThroughProducer<>(10, 0, -1));
 		PackedCollection<?> dest = new PackedCollection(2, 1);
-		max.get().kernelEvaluate(dest.traverse(1), series.traverse(0));
+
+		HardwareOperator.verboseLog(() ->
+			max.get().kernelEvaluate(dest.traverse(1), series.traverse(0)));
 
 		System.out.println(Arrays.toString(dest.toArray(0, 2)));
 		assertEquals(14, dest.toArray(0, 1)[0]);
