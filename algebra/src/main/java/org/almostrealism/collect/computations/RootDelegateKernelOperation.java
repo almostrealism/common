@@ -129,7 +129,8 @@ public abstract class RootDelegateKernelOperation<T extends MemoryBank> implemen
 				destinationOffsets.setMem(i, this.input.get(i).getOffset());
 			});
 		});
-		op.add(() -> () -> kernel.kernelOperate(destination, rootDelegate.get(0).traverseEach(), sourceOffsets, sourceLengths, destinationOffsets, count));
+		op.add(() -> () ->
+				kernel.kernelOperate(destination, rootDelegate.get(0).traverseEach(), sourceOffsets, sourceLengths, destinationOffsets, count));
 		return op.get();
 	}
 

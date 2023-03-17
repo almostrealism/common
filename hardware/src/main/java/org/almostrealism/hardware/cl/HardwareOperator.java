@@ -37,6 +37,7 @@ import java.util.stream.IntStream;
 public class HardwareOperator<T extends MemoryData> implements Consumer<Object[]>, Factory<cl_kernel> {
 	public static boolean enableLog;
 	public static boolean enableVerboseLog;
+	public static boolean enableDimensionMasks = true;
 
 	private static long totalInvocations;
 
@@ -118,8 +119,13 @@ public class HardwareOperator<T extends MemoryData> implements Consumer<Object[]
 			}
 
 			for (int i = 0; i < argCount; i++) {
-				CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
-						Pointer.to(new int[] { ((MemoryData) args[i]).getAtomicMemLength() * dimMasks[i]})); // Dim0
+				if (enableDimensionMasks) {
+					CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
+							Pointer.to(new int[]{((MemoryData) args[i]).getAtomicMemLength() * dimMasks[i]})); // Dim0
+				} else {
+					CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
+							Pointer.to(new int[]{((MemoryData) args[i]).getAtomicMemLength()})); // Dim0
+				}
 			}
 		} catch (CLException e) {
 			// TODO  This should use the exception processor also, but theres no way to pass the message details
