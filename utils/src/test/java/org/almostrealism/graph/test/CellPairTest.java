@@ -36,14 +36,10 @@ public class CellPairTest implements TestFeatures {
 
 		// A = 6
 		DynamicAcceleratedOperation op = (DynamicAcceleratedOperation) cellA.push(c(6.0)).get();
-		System.out.println("cellA.push:");
-		System.out.println(op.getFunctionDefinition());
 		op.run();
 
 		// B = 9
 		op = (DynamicAcceleratedOperation) cellB.push(c(9.0)).get();
-		System.out.println("cellB.push:");
-		System.out.println(op.getFunctionDefinition());
 		op.run();
 
 		assertEquals(6.0, cellA.getCachedValue().toDouble(0));
@@ -51,8 +47,6 @@ public class CellPairTest implements TestFeatures {
 
 		// A(6) -> Pair(*2) -> B = 12
 		op = (DynamicAcceleratedOperation) cellA.tick().get();
-		System.out.println("cellA.tick:");
-		System.out.println(op.getFunctionDefinition());
 		op.run();
 
 		assertEquals(12.0, cellB.getCachedValue().toDouble(0));
@@ -60,8 +54,6 @@ public class CellPairTest implements TestFeatures {
 
 		// B(6) -> Pair(3.0) -> A = 3.0
 		op = (DynamicAcceleratedOperation) cellB.tick().get();
-		System.out.println("cellB.tick:");
-		System.out.println(op.getFunctionDefinition());
 		op.run();
 
 		assertEquals(3.0, cellA.getCachedValue().toDouble(0));
@@ -83,7 +75,6 @@ public class CellPairTest implements TestFeatures {
 		// ops.add(cellB.tick());             // B(6) -> Pair(3.0) -> A = 3.0
 
 		DynamicAcceleratedOperation dao = (DynamicAcceleratedOperation) ops.get();
-		System.out.println(dao.getFunctionDefinition());
 		dao.run();
 
 		assertEquals(12.0, cellB.getCachedValue().toDouble(0));
