@@ -19,7 +19,6 @@ package org.almostrealism.hardware.cl;
 import io.almostrealism.relation.Factory;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
-import org.almostrealism.hardware.KernelSupport;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.Bytes;
@@ -100,7 +99,7 @@ public class HardwareOperator<T extends MemoryData> implements Consumer<Object[]
 		long totalSize = 0;
 
 		try {
-			int sizeMasks[] = computeSizeMasks(args);
+			int dimMasks[] = computeDimensionMasks(args);
 
 			for (int i = 0; i < argCount; i++) {
 				CLMemory mem = (CLMemory) ((MemoryData) args[i]).getMem();
@@ -115,7 +114,12 @@ public class HardwareOperator<T extends MemoryData> implements Consumer<Object[]
 
 			for (int i = 0; i < argCount; i++) {
 				CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
-						Pointer.to(new int[] { ((MemoryData) args[i]).getAtomicMemLength() * sizeMasks[i]})); // Size
+						Pointer.to(new int[] { ((MemoryData) args[i]).getAtomicMemLength()})); // Size
+			}
+
+			for (int i = 0; i < argCount; i++) {
+				CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
+						Pointer.to(new int[] { ((MemoryData) args[i]).getAtomicMemLength() * dimMasks[i]})); // Dim0
 			}
 		} catch (CLException e) {
 			// TODO  This should use the exception processor also, but theres no way to pass the message details
@@ -139,7 +143,7 @@ public class HardwareOperator<T extends MemoryData> implements Consumer<Object[]
 //		}
 	}
 
-	protected int[] computeSizeMasks(Object args[]) {
+	protected int[] computeDimensionMasks(Object args[]) {
 		int sizes[] = new int[args.length];
 
 		for (int i = 0; i < argCount; i++) {

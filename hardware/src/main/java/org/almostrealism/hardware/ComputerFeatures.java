@@ -67,6 +67,11 @@ public interface ComputerFeatures extends HardwareFeatures, NameProvider {
 	}
 
 	@Override
+	default String getVariableDimName(ArrayVariable v, int dim) {
+		return KernelSupport.getValueDimName(v.getName(), dim);
+	}
+
+	@Override
 	default String getVariableSizeName(ArrayVariable v) {
 		return KernelSupport.getValueSizeName(v.getName());
 	}

@@ -150,14 +150,6 @@ subtractFrom(__global float *a, __global const float *b, const int aOffset, cons
 }
 
 __kernel void
-multiplyBy(__global float *a, __global const float *b, const int aOffset, const int bOffset,
-           const int aSize, const int bSize) {
-	a[aOffset] *= b[bOffset];
-	a[aOffset + 1] *= b[bOffset + 1];
-	a[aOffset + 2] *= b[bOffset + 2];
-}
-
-__kernel void
 divideBy(__global float *a, __global const float *b, const int aOffset, const int bOffset,
          const int aSize, const int bSize) {
 	a[aOffset] /= b[bOffset];
@@ -228,7 +220,10 @@ identityMatrix_local(__local float *m, const int mOffset) {
 }
 
 __kernel void
-identityMatrix(__global float *m, const int mOffset, const int mSize) {
+identityMatrix(__global float *m,
+                const int mOffset,
+                const int mSize,
+                const int mDim0) {
     __local float m_l[16];
     identityMatrix_local(m_l, 0);
     matrixCopy_localToGlobal(m, m_l, mOffset, 0);
@@ -244,8 +239,10 @@ matrixTranspose_local(__local float *res, __local const float *m, const int resO
 }
 
 __kernel void
-matrixTranspose(__global float *res, __global const float *m, const int resOffset, const int mOffset,
-                const int resSize, const int mSize) {
+matrixTranspose(__global float *res, __global const float *m,
+                const int resOffset, const int mOffset,
+                const int resSize, const int mSize,
+                const int resDim0, const int mDim0) {
     __local float m_l[16];
     __local float res_l[16];
     matrixCopy_globalToLocal(m_l, m, 0, mOffset);
@@ -316,7 +313,8 @@ matrixDeterminant_local(__local float *res, __local float *df, __local float *ut
 __kernel void
 matrixDeterminant(__global float *res, __global const float *m,
                   const int resOffset, const int mOffset,
-                  const int resSize, const int mSize) {
+                  const int resSize, const int mSize,
+                  const int resDim0, const int mDim0) {
     __local float res_l[2];
     __local float m_l[16];
 
@@ -366,7 +364,8 @@ matrixAdjoint_local(__local float *res, __local float *det, __local float *df,
 __kernel void
 matrixAdjoint(__global float *res, __global const float *m,
                 const int resOffset, const int mOffset,
-                const int resSize, const int mSize) {
+                const int resSize, const int mSize,
+                const int resDim0, const int mDim0) {
     __local float m_l[16];
     __local float res_l[16];
 
@@ -382,52 +381,23 @@ matrixAdjoint(__global float *res, __global const float *m,
 }
 
 __kernel void
-translationMatrix(__global float *m, __global const float *v, const int mOffset, const int vOffset,
-                    const int mSize, const int vSize) {
+translationMatrix(__global float *m, __global const float *v,
+                    const int mOffset, const int vOffset,
+                    const int mSize, const int vSize,
+                    const int mDim0, const int vDim0) {
     m[mOffset + 3]  = v[vOffset];
     m[mOffset + 7]  = v[vOffset + 1];
     m[mOffset + 11] = v[vOffset + 2];
 }
 
 __kernel void
-scaleMatrix(__global float *m, __global const float *v, const int mOffset, const int vOffset,
-            const int mSize, const int vSize) {
+scaleMatrix(__global float *m, __global const float *v,
+            const int mOffset, const int vOffset,
+            const int mSize, const int vSize,
+            const int mDim0, const int vDim0) {
     m[mOffset]  = v[vOffset];
     m[mOffset + 5]  = v[vOffset + 1];
     m[mOffset + 10] = v[vOffset + 2];
-}
-
-__kernel void
-planeXYIntersectAt(__global float *res, __global const float *r,
-                    const int resOffset, const int rOffset,
-                    const int resSize, const int rSize) {
-    if (r[get_global_id(0) * rSize + rOffset + 5] == 0) {
-        res[get_global_id(0) * resSize + resOffset] = -1;
-    } else {
-        res[get_global_id(0) * resSize + resOffset] = -r[get_global_id(0) * rSize + rOffset + 2] / r[get_global_id(0) * rSize + rOffset + 5];
-    }
-}
-
-__kernel void
-planeXZIntersectAt(__global float *res, __global const float *r,
-                    const int resOffset, const int rOffset,
-                    const int resSize, const int rSize) {
-    if (r[get_global_id(0) * rSize + rOffset + 4] == 0) {
-        res[get_global_id(0) * resSize + resOffset] = -1;
-    } else {
-        res[get_global_id(0) * resSize + resOffset] = -r[get_global_id(0) * rSize + rOffset + 1] / r[get_global_id(0) * rSize + rOffset + 4];
-    }
-}
-
-__kernel void
-planeYZIntersectAt(__global float *res, __global const float *r,
-                    const int resOffset, const int rOffset,
-                    const int resSize, const int rSize) {
-    if (r[get_global_id(0) * rSize + rOffset + 3] == 0) {
-        res[get_global_id(0) * resSize + resOffset] = -1;
-    } else {
-        res[get_global_id(0) * resSize + resOffset] = -r[get_global_id(0) * rSize + rOffset] / r[get_global_id(0) * rSize + rOffset + 3];
-    }
 }
 
 __kernel void
@@ -437,7 +407,9 @@ highestRank(__global float *res,
             const int resOffset, const int dataOffset,
             const int confOffset,
             const int resSize, const int dataSize,
-            const int confSize) {
+            const int confSize,
+            const int resDim0, const int dataDim0,
+            const int confDim0) {
 	float closest = -1.0;
 	int closestIndex = -1;
 

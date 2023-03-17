@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,18 +16,13 @@
 
 package org.almostrealism.hardware.computations;
 
-import io.almostrealism.code.ArgumentMap;
-import io.almostrealism.code.Computation;
 import io.almostrealism.code.HybridScope;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.Scope;
-import io.almostrealism.code.ScopeInputManager;
-import io.almostrealism.relation.Compactable;
 import io.almostrealism.scope.Variable;
-import org.almostrealism.c.OpenCLPrintWriter;
 import org.almostrealism.hardware.DynamicOperationComputationAdapter;
 
 import java.util.function.Supplier;

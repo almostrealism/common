@@ -22,8 +22,16 @@ public interface KernelSupport {
 	default boolean isKernelEnabled() { return true; }
 
 	default String getKernelIndex(String variableName, int kernelIndex) {
+		if (kernelIndex > 0) {
+			throw new UnsupportedOperationException("Only one kernel dimension is currently supported");
+		}
+
 		return kernelIndex < 0 ? "" :
-				"get_global_id(" + kernelIndex + ") * " + getValueSizeName(variableName) + " + ";
+				"get_global_id(" + kernelIndex + ") * " + getValueDimName(variableName, kernelIndex) + " + ";
+	}
+
+	static String getValueDimName(String variableName, int dim) {
+		return variableName + "Dim" + dim;
 	}
 
 	static String getValueSizeName(String variableName) {

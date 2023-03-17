@@ -98,6 +98,8 @@ public interface NameProvider {
 
 	String getVariableValueName(Variable v, String pos, boolean assignment, int kernelIndex);
 
+	String getVariableDimName(ArrayVariable v, int dim);
+
 	String getVariableSizeName(ArrayVariable v);
 
 	default NameProvider withOutputVariable(Variable outputVariable) {
@@ -117,6 +119,11 @@ public interface NameProvider {
 			@Override
 			public String getVariableValueName(Variable v, String pos, boolean assignment, int kernelIndex) {
 				return p.getVariableValueName(v, pos, assignment, kernelIndex);
+			}
+
+			@Override
+			public String getVariableDimName(ArrayVariable v, int dim) {
+				return p.getVariableDimName(v, dim);
 			}
 
 			@Override

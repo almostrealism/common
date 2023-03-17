@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -37,13 +37,17 @@ public class PassThroughProducer<T extends MemoryData>
 	private int kernelIndex;
 
 	public PassThroughProducer(int memLength, int argIndex) {
-		this(memLength, argIndex, 0);
+		super(memLength, null, null);
+		this.argIndex = argIndex;
+		this.kernelIndex = 0;
 	}
 
+	@Deprecated
 	public PassThroughProducer(int memLength, int argIndex, int kernelIndex) {
 		super(memLength, null, null);
 		this.argIndex = argIndex;
 		this.kernelIndex = kernelIndex;
+		System.out.println("WARN: Specifying kernel index before compilation is deprecated");
 	}
 
 	@Override
