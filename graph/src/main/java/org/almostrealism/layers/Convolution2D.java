@@ -23,6 +23,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.OperationList;
 
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 public class Convolution2D implements Layer, Setup, CollectionFeatures {
@@ -43,6 +44,14 @@ public class Convolution2D implements Layer, Setup, CollectionFeatures {
 		setup.add(a(filters.getShape().getTotalSize(), p(filters),
 				_divide(randn(filterShape).traverseEach(), c(9).traverse(0))));
 		return setup;
+	}
+
+	public void iterateRegions(int w, int h, Producer<PackedCollection<?>> image, Consumer<Producer<PackedCollection<?>>> results) {
+		for (int i = 0; i < h - 2; i++) {
+			for (int j = 0; j < w - 2; j++) {
+				results.accept(subset(shape(3, 3), image, i, j));
+			}
+		}
 	}
 
 	@Override
