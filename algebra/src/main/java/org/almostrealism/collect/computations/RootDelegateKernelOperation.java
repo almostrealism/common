@@ -130,7 +130,7 @@ public abstract class RootDelegateKernelOperation<T extends MemoryBank> implemen
 			});
 		});
 		op.add(() -> () ->
-				kernel.kernelOperate(destination, rootDelegate.get(0).traverseEach(), sourceOffsets, sourceLengths, destinationOffsets, count));
+				kernel.kernelOperate(destination, rootDelegate.get(0).traverse(0), sourceOffsets, sourceLengths, destinationOffsets, count));
 		return op.get();
 	}
 
