@@ -16,6 +16,12 @@
 
 package org.almostrealism.collect;
 
+import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.Minus;
+import io.almostrealism.expression.Product;
+import io.almostrealism.expression.Quotient;
+import io.almostrealism.expression.Sum;
+
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
@@ -36,6 +42,25 @@ public class TraversalPolicy implements Traversable<TraversalPolicy> {
 		return dims[axis];
 	}
 
+	public int index(int... pos) {
+		int index = 0;
+		for (int i = 0; i < pos.length; i++) {
+			index += pos[i] * size(i + 1);
+		}
+		return index;
+	}
+
+	public Expression index(Expression... pos) {
+		Expression index = new Expression(Double.class, "0");
+
+		for (int i = 0; i < pos.length; i++) {
+			Expression s = new Expression<>(Double.class, String.valueOf(size(i + 1)));
+			index = new Sum(index, new Product(pos[i], s));
+		}
+
+		return index;
+	}
+
 	public int[] position(int index) {
 		int pos[] = new int[getDimensions()];
 
@@ -49,11 +74,39 @@ public class TraversalPolicy implements Traversable<TraversalPolicy> {
 		return pos;
 	}
 
+	public Expression[] position(Expression index) {
+		Expression pos[] = new Expression[getDimensions()];
+
+		Expression remaining = index;
+		for (int i = 0; i < pos.length; i++) {
+			Expression s = new Expression<>(Double.class, String.valueOf(size(i + 1)));
+			pos[i] = new Quotient(remaining, s);
+			remaining = new Sum(remaining, new Minus(new Product(pos[i], s)));
+		}
+
+		return pos;
+	}
+
+	public Expression subset(TraversalPolicy shape, Expression index, int... loc) {
+		Expression pos[] = shape.position(index);
+
+		for (int i = 0; i < loc.length; i++) {
+			Expression l = new Expression<>(Double.class, String.valueOf(loc[i]));
+			pos[i] = new Sum(pos[i], l);
+		}
+
+		return index(pos);
+	}
+
 	@Override
 	public TraversalPolicy traverse(int axis) {
 		TraversalPolicy p = new TraversalPolicy(dims);
 		p.traversalAxis = axis;
 		return p;
+	}
+
+	public TraversalPolicy traverseEach() {
+		return traverse(getDimensions());
 	}
 
 	public TraversalPolicy prependDimension(int size) {

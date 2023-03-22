@@ -16,10 +16,16 @@
 
 package org.almostrealism.hardware;
 
+import org.almostrealism.collect.TraversalPolicy;
+
 import java.util.stream.IntStream;
 
 public interface KernelSupport {
 	default boolean isKernelEnabled() { return true; }
+
+	default String getKernelIndex(int kernelIndex) {
+		return "get_global_id(" + kernelIndex + ")";
+	}
 
 	default String getKernelIndex(String variableName, int kernelIndex) {
 		if (kernelIndex > 0) {
@@ -27,7 +33,7 @@ public interface KernelSupport {
 		}
 
 		return kernelIndex < 0 ? "" :
-				"get_global_id(" + kernelIndex + ") * " + getValueDimName(variableName, kernelIndex) + " + ";
+				getKernelIndex(kernelIndex) + " * " + getValueDimName(variableName, kernelIndex) + " + ";
 	}
 
 	static String getValueDimName(String variableName, int dim) {

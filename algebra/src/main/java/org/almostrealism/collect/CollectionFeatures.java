@@ -36,6 +36,7 @@ import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.PackedCollectionFromPackedCollection;
 import org.almostrealism.collect.computations.PackedCollectionSubset;
 import org.almostrealism.collect.computations.Random;
+import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.collect.computations.StaticCollectionComputation;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
@@ -51,7 +52,28 @@ import java.util.stream.IntStream;
 public interface CollectionFeatures {
 	default TraversalPolicy shape(int... dims) { return new TraversalPolicy(dims); }
 
-	default <T> Producer<T> p(T value) { return () -> new Provider<>(value); }
+	default <T> Producer<T> p(T value) {
+		if (value instanceof Shape) {
+			return new CollectionProducer<>() {
+				@Override
+				public Evaluable get() {
+					return new Provider<>(value);
+				}
+
+				@Override
+				public TraversalPolicy getShape() {
+					return ((Shape) value).getShape();
+				}
+
+				@Override
+				public Producer reshape(TraversalPolicy shape) {
+					return CollectionFeatures.this.reshape(shape, (Producer) this);
+				}
+			};
+		} else {
+			return () -> new Provider<>(value);
+		}
+	}
 
 	default <T extends MemoryData> Assignment<T> a(int memLength, Evaluable<T> result, Evaluable<T> value) {
 		return a(memLength, () -> result, () -> value);
@@ -104,8 +126,20 @@ public interface CollectionFeatures {
 		return new DynamicCollectionProducer(shape, function);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> subset(TraversalPolicy shape, Producer<PackedCollection<?>> collection, int... position) {
-		return (CollectionProducerComputation<T>) new PackedCollectionSubset<>(shape, collection, position);
+	default <T extends Shape<T>> Producer traverse(int axis, Producer<T> producer) {
+		return new ReshapeProducer<>(axis, producer);
+	}
+
+	default <T extends Shape<T>> Producer traverseEach(Producer<T> producer) {
+		return new ReshapeProducer<>(((Shape) producer).getShape().traverseEach(), producer);
+	}
+
+	default <T extends Shape<T>> Producer reshape(TraversalPolicy shape, Producer<T> producer) {
+		return new ReshapeProducer<>(shape, producer);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> subset(TraversalPolicy shape, Producer<?> collection, int... position) {
+		return new PackedCollectionSubset<>(shape, collection, position);
 	}
 
 	default Random rand(TraversalPolicy shape) { return new Random(shape); }

@@ -59,6 +59,7 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 		return super.getArraySize();
 	}
 
+	@Override
 	public int getKernelIndex() {
 		if (getOriginalProducer() instanceof KernelIndex) {
 			return ((KernelIndex) getOriginalProducer()).getKernelIndex();
@@ -83,11 +84,14 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 		}
 	}
 
-	@Override
-	public InstanceReference<T> get(String pos, Variable... dependencies) {
+	public InstanceReference<T> get(Expression<?> pos, int kernelIndex) {
+		return get(pos.getExpression(), kernelIndex, pos.getDependencies().toArray(Variable[]::new));
+	}
+
+	public InstanceReference<T> get(String pos, int kernelIndex, Variable... dependencies) {
 		if (getDelegate() == null) {
-			return new InstanceReference(new Variable<>(names.getVariableValueName(this, pos), false, new Expression(getType()), this),
-											dependencies);
+			return new InstanceReference(new Variable<>(names.getVariableValueName(this, pos, kernelIndex),
+					false, new Expression(getType()), this), dependencies);
 		} else if (getDelegate() == this) {
 			throw new IllegalArgumentException("Circular delegate reference");
 		} else {
@@ -95,6 +99,11 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 			ref.getReferent().setOriginalProducer(getOriginalProducer());
 			return ref;
 		}
+	}
+
+	@Override
+	public InstanceReference<T> get(String pos, Variable... dependencies) {
+		return get(pos, getKernelIndex(), dependencies);
 	}
 
 	public Expression<Integer> length() {

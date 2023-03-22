@@ -16,12 +16,12 @@
 
 package org.almostrealism.layers;
 
-import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.function.Supplier;
 
 public interface Layer {
 
-	Supplier<Runnable> forward(Producer<PackedCollection<?>> input);
+	Supplier<Runnable> forward(CollectionProducer<PackedCollection<?>> input, PackedCollection<?> output);
 }

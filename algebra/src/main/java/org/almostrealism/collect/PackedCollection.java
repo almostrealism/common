@@ -52,7 +52,7 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 	}
 
 	public PackedCollection(TraversalPolicy shape) {
-		this(shape, 0, null, 0);
+		this(shape, shape.getTraversalAxis(), null, 0);
 	}
 
 	public PackedCollection(TraversalPolicy shape, int traversalAxis) {

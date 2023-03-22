@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,17 +16,8 @@
 
 package io.almostrealism.expression;
 
-import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.scope.Variable;
-
-import java.util.function.IntFunction;
-
-public interface MultiExpression<T> {
-
-	default IntFunction<Variable<T, ?>> getAssignmentFunction(Variable<?, ?> outputVariable) {
-		return i ->
-				new Variable(((ArrayVariable) outputVariable).valueAt(i).getExpression(), false, getValue(i), outputVariable.getRootDelegate());
+public class Quotient extends NAryExpression<Double> {
+	public Quotient(Expression<Double>... values) {
+		super(Double.class, "/", values);
 	}
-
-	Expression<T> getValue(int pos);
 }

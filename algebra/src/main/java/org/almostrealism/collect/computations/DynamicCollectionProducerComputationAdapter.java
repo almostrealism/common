@@ -59,6 +59,8 @@ public abstract class DynamicCollectionProducerComputationAdapter<I extends Pack
 
 	private IntFunction<InstanceReference> variableRef;
 
+	protected DynamicCollectionProducerComputationAdapter() { }
+
 	public DynamicCollectionProducerComputationAdapter(TraversalPolicy outputShape, Supplier<Evaluable<? extends I>>... arguments) {
 		super(outputShape, arguments);
 	}

@@ -24,7 +24,13 @@ import org.almostrealism.hardware.KernelSupport;
 
 public class ReshapeProducer<T extends Shape<T>> implements Producer<T>, Shape<Producer<T>>, KernelSupport {
 	private TraversalPolicy shape;
+	private int traversalAxis;
 	private Producer<T> producer;
+
+	public ReshapeProducer(int traversalAxis, Producer<T> producer) {
+		this.traversalAxis = traversalAxis;
+		this.producer = producer;
+	}
 
 	public ReshapeProducer(TraversalPolicy shape, Producer<T> producer) {
 		this.shape = shape;
@@ -33,7 +39,12 @@ public class ReshapeProducer<T extends Shape<T>> implements Producer<T>, Shape<P
 
 	@Override
 	public TraversalPolicy getShape() {
-		return shape;
+		if (shape == null) {
+			TraversalPolicy inputShape = ((Shape) producer).getShape();
+			return inputShape.traverse(traversalAxis);
+		} else {
+			return shape;
+		}
 	}
 
 	@Override
@@ -44,6 +55,15 @@ public class ReshapeProducer<T extends Shape<T>> implements Producer<T>, Shape<P
 	@Override
 	public Evaluable<T> get() {
 		Evaluable<T> eval = producer.get();
-		return args -> eval.evaluate(args).reshape(shape);
+
+		return args -> {
+			Shape out = eval.evaluate(args);
+
+			if (shape == null) {
+				return eval.evaluate(args).reshape(out.getShape().traverse(traversalAxis));
+			} else {
+				return eval.evaluate(args).reshape(shape);
+			}
+		};
 	}
 }

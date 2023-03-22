@@ -27,6 +27,8 @@ import org.almostrealism.hardware.ComputerFeatures;
 import org.almostrealism.hardware.DestinationConsolidationArgumentMap;
 import org.almostrealism.hardware.DestinationSupport;
 import org.almostrealism.hardware.KernelizedProducer;
+import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryDataComputation;
 import org.almostrealism.hardware.ProducerCache;
 import org.almostrealism.hardware.mem.MemoryDataDestination;
@@ -41,11 +43,21 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 	private TraversalPolicy shape;
 	private Supplier<? extends PackedCollection> destination;
 
+	protected CollectionProducerComputationAdapter() { }
+
 	public CollectionProducerComputationAdapter(TraversalPolicy outputShape, Supplier<Evaluable<? extends I>>... arguments) {
 		this.shape = outputShape;
 		this.destination = () -> new PackedCollection(shape);
-		this.setInputs(CollectionUtils.include(new Supplier[0], new MemoryDataDestination(this, len -> new PackedCollection(getShape().prependDimension(len))), arguments));
+		this.setInputs(CollectionUtils.include(new Supplier[0], new MemoryDataDestination(this, this::createKernelDestination), arguments));
 		init();
+	}
+
+	protected void setShape(TraversalPolicy shape) {
+		this.shape = shape;
+	}
+
+	protected MemoryBank<?> createKernelDestination(int len) {
+		return new PackedCollection<>(getShape().prependDimension(len));
 	}
 
 	@Override
