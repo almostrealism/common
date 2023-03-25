@@ -16,22 +16,36 @@
 
 package org.almostrealism.collect.computations.test;
 
+import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.MultiExpression;
+import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.computations.ArrayVariableComputation;
+import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.IntStream;
 
 public class PackedCollectionSubsetTests implements TestFeatures {
+
+	public Tensor<Double> tensor(TraversalPolicy shape) {
+		return tensor(shape, (pos) -> true);
+	}
 
 	public Tensor<Double> tensor(TraversalPolicy shape, Predicate<int[]> condition) {
 		Tensor<Double> t = new Tensor<>();
@@ -130,5 +144,80 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 				}
 			}
 		});
+	}
+
+	@Test
+	public void arrayVariableComputation() {
+		int filterCount = 4;
+		int size = 3;
+		int w = 10;
+		int h = 10;
+
+		TraversalPolicy filterShape = shape(filterCount, size, size);
+		TraversalPolicy inputShape = shape(h, w);
+		TraversalPolicy outputShape = shape(h - 2, w - 2, filterCount);
+
+		Tensor<Double> f = tensor(filterShape);
+		Tensor<Double> t = tensor(inputShape);
+
+		PackedCollection<?> filter = f.pack();
+		PackedCollection<?> input = t.pack();
+
+		// output[i, j] = np.sum(im_region * self.filters, axis=(1, 2))
+
+		Expression index = new Expression(Integer.class, "get_global_id(0)");
+		Expression i = outputShape.position(index)[0];
+		Expression j = outputShape.position(index)[1];
+		Expression k = outputShape.position(index)[2];
+
+		// TODO  The ideal way to describe this computation looks like this
+		// kernel(outputShape, (args, i, j, k) -> args[1].get(k).multiply(args[2].get(shape(size, size), i, j)).sum());
+
+		Function<List<ArrayVariable<Double>>, Expression<Double>> expression = (List<ArrayVariable<Double>> args) -> {
+			List<Expression> sum = new ArrayList<>();
+
+			// args.get(1).get(k).multiply(args.get(2).get(shape(size, size), i, j)).sum()
+
+			for (int x = 0; x < (size * size); x++) {
+				// Pixel x of filter k
+				Expression<Double> filterValue = args.get(1).valueAt(filterShape.subset(shape(1, size, size), x, k));
+				// -> args.get(1).get(k).valueAt(x)
+
+				// Pixel x of input (i:i+size, j:j+size)
+				Expression<Double> inputValue = args.get(2).valueAt(inputShape.subset(shape(size, size), x, i, j));
+				// -> args.get(2).get(i, j).subset(size, size).valueAt(x)
+
+				// Multiply and add to sum
+				sum.add(filterValue.multiply(inputValue));
+			}
+
+			return new Sum(sum.toArray(Expression[]::new));
+		};
+
+		CollectionProducerComputation<PackedCollection<?>> producer =
+				new ArrayVariableComputation<>(outputShape, List.of(expression), p(filter), p(input));
+		KernelizedEvaluable<PackedCollection<?>> ev = producer.get();
+
+		PackedCollection<?> result = new PackedCollection(outputShape);
+		ev.kernelEvaluate(result.traverseEach(), filter, input);
+		System.out.println(result.getShape());
+
+		for (int p = 0; p < outputShape.length(0); p++) {
+			for (int q = 0; q < outputShape.length(1); q++) {
+				for (int r = 0; r < outputShape.length(2); r++) {
+					double expected = 0;
+
+					for (int x = 0; x < size; x++) {
+						for (int y = 0; y < size; y++) {
+							expected += filter.toDouble(filterShape.index(r, x, y)) * input.toDouble(inputShape.index(p + x, q + y));
+						}
+					}
+
+					double actual = result.toDouble(outputShape.index(p, q, r));
+					System.out.println("PackedCollectionSubsetTests: [" + p + ", " + q + ", " + r + "] " + expected + " vs " + actual);
+					Assert.assertEquals(expected, actual, 0.0001);
+				}
+			}
+		}
 	}
 }

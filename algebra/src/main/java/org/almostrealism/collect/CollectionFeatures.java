@@ -126,6 +126,10 @@ public interface CollectionFeatures {
 		return new DynamicCollectionProducer(shape, function);
 	}
 
+	default CollectionProducerComputation<PackedCollection<?>> kernel(TraversalPolicy shape, KernelExpression kernel) {
+		throw new UnsupportedOperationException();
+	}
+
 	default <T extends Shape<T>> Producer traverse(int axis, Producer<T> producer) {
 		return new ReshapeProducer<>(axis, producer);
 	}

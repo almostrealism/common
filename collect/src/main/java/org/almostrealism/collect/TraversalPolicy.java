@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -87,11 +87,24 @@ public class TraversalPolicy implements Traversable<TraversalPolicy> {
 		return pos;
 	}
 
+	public Expression subset(TraversalPolicy shape, int index, int... loc) {
+		return subset(shape, new Expression(Integer.class, String.valueOf(index)), loc);
+	}
+
 	public Expression subset(TraversalPolicy shape, Expression index, int... loc) {
+		return subset(shape, index,
+				IntStream.of(loc).mapToObj(i -> new Expression(Integer.class, String.valueOf(i))).toArray(Expression[]::new));
+	}
+
+	public Expression subset(TraversalPolicy shape, int index, Expression... loc) {
+		return subset(shape, new Expression(Integer.class, String.valueOf(index)), loc);
+	}
+
+	public Expression subset(TraversalPolicy shape, Expression index, Expression... loc) {
 		Expression pos[] = shape.position(index);
 
 		for (int i = 0; i < loc.length; i++) {
-			Expression l = new Expression<>(Double.class, String.valueOf(loc[i]));
+			Expression l = loc[i];
 			pos[i] = new Sum(pos[i], l);
 		}
 
