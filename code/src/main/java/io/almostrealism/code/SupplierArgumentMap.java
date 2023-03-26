@@ -32,6 +32,10 @@ public class SupplierArgumentMap<S, A> implements ArgumentMap<Supplier, ArrayVar
 	public SupplierArgumentMap() {
 		this.arguments = new HashMap<>();
 	}
+
+	public void setDelegateProvider(ArgumentProvider provider) {
+		this.delegateProvider = provider;
+	}
 	
 	public void put(Supplier<S> key, ArrayVariable<A> value) {
 		arguments.put(key, value);

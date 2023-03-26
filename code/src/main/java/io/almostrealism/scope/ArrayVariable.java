@@ -95,7 +95,7 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 		} else if (getDelegate() == this) {
 			throw new IllegalArgumentException("Circular delegate reference");
 		} else {
-			InstanceReference ref = getDelegate().get(pos + " + " + getDelegateOffset(), dependencies);
+			InstanceReference ref = getDelegate().get(pos + " + " + getDelegateOffset(), kernelIndex, dependencies);
 			ref.getReferent().setOriginalProducer(getOriginalProducer());
 			return ref;
 		}

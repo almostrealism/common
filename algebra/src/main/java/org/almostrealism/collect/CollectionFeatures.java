@@ -29,8 +29,10 @@ import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.collect.computations.ArrayVariableComputation;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.PackedCollectionFromPackedCollection;
@@ -43,8 +45,10 @@ import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.computations.Assignment;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
+import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -126,8 +130,20 @@ public interface CollectionFeatures {
 		return new DynamicCollectionProducer(shape, function);
 	}
 
-	default CollectionProducerComputation<PackedCollection<?>> kernel(TraversalPolicy shape, KernelExpression kernel) {
-		throw new UnsupportedOperationException();
+	default CollectionProducerComputation<PackedCollection<?>> kernel(IntFunction<Expression> kernelIndex, TraversalPolicy shape,
+																	  KernelExpression kernel, Producer... arguments) {
+		Expression index = kernelIndex.apply(0);
+		Expression pos[] = shape.position(index);
+
+		return new ArrayVariableComputation<>(
+				shape, List.of(args -> {
+					CollectionVariable vars[] = new CollectionVariable[args.size()];
+					for (int i = 0; i < vars.length; i++) {
+						vars[i] = args.get(i) instanceof CollectionVariable ? (CollectionVariable) args.get(i) : null;
+					}
+
+					return kernel.apply(vars, pos);
+				}), arguments);
 	}
 
 	default <T extends Shape<T>> Producer traverse(int axis, Producer<T> producer) {

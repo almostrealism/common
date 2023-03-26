@@ -17,7 +17,6 @@
 package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -200,6 +199,145 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 
 		PackedCollection<?> result = new PackedCollection(outputShape);
 		ev.kernelEvaluate(result.traverseEach(), filter, input);
+		System.out.println(result.getShape());
+
+		for (int p = 0; p < outputShape.length(0); p++) {
+			for (int q = 0; q < outputShape.length(1); q++) {
+				for (int r = 0; r < outputShape.length(2); r++) {
+					double expected = 0;
+
+					for (int x = 0; x < size; x++) {
+						for (int y = 0; y < size; y++) {
+							expected += filter.toDouble(filterShape.index(r, x, y)) * input.toDouble(inputShape.index(p + x, q + y));
+						}
+					}
+
+					double actual = result.toDouble(outputShape.index(p, q, r));
+					System.out.println("PackedCollectionSubsetTests: [" + p + ", " + q + ", " + r + "] " + expected + " vs " + actual);
+					Assert.assertEquals(expected, actual, 0.0001);
+				}
+			}
+		}
+	}
+
+	@Test
+	public void variableSubsetKernel() {
+		int w = 2;
+		int h = 4;
+		int d = 3;
+
+		int x0 = 4, x1 = x0 + w;
+		int y0 = 3, y1 = y0 + h;
+		int z0 = 2, z1 = z0 + d;
+
+		Tensor<Double> t = tensor(shape(10, 10, 10), (int[] c) -> {
+			int x = c[0], y = c[1], z = c[2];
+			return x >= x0 && x < x1 && y >= y0 && y < y1 && z >= z0 && z < z1;
+		});
+
+		PackedCollection<?> input = t.pack();
+		TraversalPolicy inputShape = input.getShape();
+		System.out.println("PackedCollectionSubsetTests: input shape = " + inputShape);
+
+		TraversalPolicy subsetShape = shape(w, h, d);
+
+		CollectionProducerComputation<PackedCollection<?>> producer =
+				kernel(i -> new Expression(Integer.class, "get_global_id(" + i + ")"),
+						subsetShape, (args, pos) -> args[1].get(shape(w, h, d), x0, y0, z0).valueAt(subsetShape.index(pos)), p(input));
+		KernelizedEvaluable<PackedCollection<?>> ev = producer.get();
+
+		PackedCollection<?> result = new PackedCollection(subsetShape);
+		ev.kernelEvaluate(result.traverseEach());
+		System.out.println(result.getShape());
+
+		for (int i = 0; i < w; i++) {
+			for (int j = 0; j < h; j++) {
+				for (int k = 0; k < d; k++) {
+					double expected = (x0 + i + y0 + j + z0 + k);
+					double actual = result.toDouble(subsetShape.index(i, j, k));
+					System.out.println("PackedCollectionSubsetTests: [" + i + ", " + j + ", " + k + "] " + expected + " vs " + actual);
+					Assert.assertEquals(expected, actual, 0.0001);
+				}
+			}
+		}
+	}
+
+	@Test
+	public void windowSumKernel() {
+		int size = 3;
+		int w = 10;
+		int h = 10;
+
+		TraversalPolicy inputShape = shape(h, w);
+		TraversalPolicy outputShape = shape(h - 2, w - 2, 1);
+
+		Tensor<Double> t = tensor(inputShape);
+		PackedCollection<?> input = t.pack();
+
+		CollectionProducerComputation<PackedCollection<?>> producer =
+				kernel(i -> new Expression(Integer.class, "get_global_id(" + i + ")"),
+						outputShape, (args, pos) -> {
+							System.out.println("args[1].shape = " + args[1].getShape());
+							Expression exp = args[1].get(shape(size, size), pos[0], pos[1]).toList().sum();
+							return exp;
+						}, p(input));
+		KernelizedEvaluable<PackedCollection<?>> ev = producer.get();
+
+		PackedCollection<?> result = new PackedCollection(outputShape);
+		ev.kernelEvaluate(result.traverseEach());
+		System.out.println(result.getShape());
+
+		for (int p = 0; p < outputShape.length(0); p++) {
+			for (int q = 0; q < outputShape.length(1); q++) {
+				for (int r = 0; r < outputShape.length(2); r++) {
+					double expected = 0;
+
+					for (int x = 0; x < size; x++) {
+						for (int y = 0; y < size; y++) {
+							expected += input.toDouble(inputShape.index(p + x, q + y));
+						}
+					}
+
+					double actual = result.toDouble(outputShape.index(p, q, r));
+					System.out.println("PackedCollectionSubsetTests: [" + p + ", " + q + ", " + r + "] " + expected + " vs " + actual);
+					Assert.assertEquals(expected, actual, 0.0001);
+				}
+			}
+		}
+	}
+
+	@Test
+	public void convKernel() {
+		int filterCount = 4;
+		int size = 3;
+		int w = 10;
+		int h = 10;
+
+		TraversalPolicy filterShape = shape(filterCount, size, size);
+		TraversalPolicy inputShape = shape(h, w);
+		TraversalPolicy outputShape = shape(h - 2, w - 2, filterCount);
+
+		Tensor<Double> f = tensor(filterShape);
+		Tensor<Double> t = tensor(inputShape);
+
+		PackedCollection<?> filter = f.pack();
+		PackedCollection<?> input = t.pack();
+
+		CollectionProducerComputation<PackedCollection<?>> producer =
+//				kernel(outputShape, (args, i, j, k) -> args[1].get(k).multiply(args[2].get(shape(size, size), i, j)).sum(),
+//						p(filter), p(input));
+				kernel(i -> new Expression(Integer.class, "get_global_id(" + i + ")"),
+						outputShape, (args, pos) -> {
+							System.out.println("args[1].shape = " + args[1].getShape());
+							System.out.println("args[2].shape = " + args[2].getShape());
+							return args[1].get(shape(1, size, size), pos[2])
+									.multiply(args[2].get(shape(size, size), pos[0], pos[1])).sum();
+						},
+						p(filter), p(input));
+		KernelizedEvaluable<PackedCollection<?>> ev = producer.get();
+
+		PackedCollection<?> result = new PackedCollection(outputShape);
+		ev.kernelEvaluate(result.traverseEach());
 		System.out.println(result.getShape());
 
 		for (int p = 0; p < outputShape.length(0); p++) {

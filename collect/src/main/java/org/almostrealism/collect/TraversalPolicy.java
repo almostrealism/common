@@ -101,6 +101,12 @@ public class TraversalPolicy implements Traversable<TraversalPolicy> {
 	}
 
 	public Expression subset(TraversalPolicy shape, Expression index, Expression... loc) {
+		if (shape.getDimensions() != getDimensions()) {
+			System.out.println("WARN: Obtaining a " + shape.getDimensions() +
+					"d subset of a " + getDimensions() +
+					"d collection is likely to produce an unexpected result");
+		}
+
 		Expression pos[] = shape.position(index);
 
 		for (int i = 0; i < loc.length; i++) {

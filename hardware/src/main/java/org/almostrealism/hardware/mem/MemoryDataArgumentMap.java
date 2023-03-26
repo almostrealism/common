@@ -22,6 +22,7 @@ import io.almostrealism.code.NameProvider;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
+import org.almostrealism.collect.CollectionScopeInputManager;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.KernelSupport;
 import org.almostrealism.hardware.OperationList;
@@ -37,6 +38,7 @@ import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
 public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> {
+	public static final boolean enableCollectionVariables = true;
 	public static final boolean enableDestinationDetection = true;
 	public static final boolean enableGlobalArgumentMap = false;
 
@@ -242,7 +244,9 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 
 	public static MemoryDataArgumentMap create(IntFunction<MemoryData> aggregateGenerator, boolean kernel) {
 		if (!enableGlobalArgumentMap) {
-			return new MemoryDataArgumentMap(aggregateGenerator, kernel);
+			MemoryDataArgumentMap map = new MemoryDataArgumentMap(aggregateGenerator, kernel);
+			if (enableCollectionVariables) map.setDelegateProvider(CollectionScopeInputManager.getInstance());
+			return map;
 		}
 
 		return kernel ? getGlobalMapsKernel().getValue() : getGlobalMaps().getValue();
