@@ -130,6 +130,12 @@ public interface CollectionFeatures {
 		return new DynamicCollectionProducer(shape, function);
 	}
 
+	default CollectionProducerComputation<PackedCollection<?>> kernel(IntFunction<Expression> kernelIndex,
+																	  TraversableKernelExpression kernel,
+																	  Producer... arguments) {
+		return kernel(kernelIndex, kernel.getShape(), kernel, arguments);
+	}
+
 	default CollectionProducerComputation<PackedCollection<?>> kernel(IntFunction<Expression> kernelIndex, TraversalPolicy shape,
 																	  KernelExpression kernel, Producer... arguments) {
 		Expression index = kernelIndex.apply(0);

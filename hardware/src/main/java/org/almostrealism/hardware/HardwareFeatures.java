@@ -24,6 +24,7 @@ import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.hardware.computations.Loop;
 
 import java.util.Optional;
+import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
@@ -42,6 +43,10 @@ public interface HardwareFeatures {
 
 	default <T extends MemoryData> Optional<Computation<T>> decompile(Evaluable<T> r) {
 		return Hardware.getLocalHardware().getComputeContext().getComputer().decompile(r);
+	}
+
+	default IntFunction<Expression> kernelIndex() {
+		return i -> new Expression(Integer.class, KernelSupport.getKernelIndex(i));
 	}
 
 	default String stringForDouble(double value) {

@@ -63,7 +63,7 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 		return i -> {
 			if (i != 0) throw new IllegalArgumentException("Invalid position");
 
-			Expression index = new Expression(Double.class, getKernelIndex(0));
+			Expression index = new Expression(Double.class, KernelSupport.getKernelIndex(0));
 			TraversalPolicy inputShape = ((Shape) getInputs().get(1)).getShape();
 			Expression<?> p = inputShape.subset(getShape(), index, pos);
 			return getArgument(1, inputShape.getTotalSize()).get(p, -1);

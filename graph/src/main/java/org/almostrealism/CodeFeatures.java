@@ -36,7 +36,11 @@ import org.almostrealism.algebra.computations.StaticPairComputation;
 import org.almostrealism.algebra.computations.StaticScalarBankComputation;
 import org.almostrealism.algebra.computations.StaticVectorComputation;
 import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.CollectionProducerComputation;
+import org.almostrealism.collect.KernelExpression;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.TraversableKernelExpression;
+import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.geometry.GeometryFeatures;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.algebra.Vector;
@@ -54,6 +58,8 @@ import io.almostrealism.code.ProducerComputation;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.Input;
+import org.almostrealism.hardware.KernelSupport;
+import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.time.CursorPair;
 import org.almostrealism.time.TemporalFeatures;
 import org.almostrealism.time.TemporalScalarProducerBase;
@@ -63,9 +69,10 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.function.Function;
+import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public interface CodeFeatures extends CollectionFeatures, ScalarFeatures, PairFeatures, TriangleDataFeatures, RayFeatures,
+public interface CodeFeatures extends LayerFeatures, ScalarFeatures, PairFeatures, TriangleDataFeatures, RayFeatures,
 								TransformMatrixFeatures, GeometryFeatures, TemporalFeatures, HardwareFeatures {
 
 	default Producer<CursorPair> v(CursorPair p) {
@@ -156,6 +163,17 @@ public interface CodeFeatures extends CollectionFeatures, ScalarFeatures, PairFe
 
 	default Expression<Double> e(String expression, Variable<?, ?>... dependencies) {
 		return new Expression<>(Double.class, expression, dependencies);
+	}
+
+	default CollectionProducerComputation<PackedCollection<?>> kernel(TraversableKernelExpression kernel,
+																	  Producer... arguments) {
+		return kernel(kernel.getShape(), kernel, arguments);
+	}
+
+	default CollectionProducerComputation<PackedCollection<?>> kernel(TraversalPolicy shape,
+																	  KernelExpression kernel,
+																	  Producer... arguments) {
+		return kernel(kernelIndex(), shape, kernel, arguments);
 	}
 
 	default DataContext dc() {

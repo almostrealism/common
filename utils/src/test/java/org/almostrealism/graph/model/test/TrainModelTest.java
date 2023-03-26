@@ -14,12 +14,16 @@
  * limitations under the License.
  */
 
-package org.almostrealism.layers;
+package org.almostrealism.graph.model.test;
 
-import io.almostrealism.cycle.Setup;
-import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.CodeFeatures;
+import org.almostrealism.model.Model;
+import org.junit.Test;
 
-public interface Layer extends Setup {
-
-	PackedCollection<?> getWeights();
+public class TrainModelTest implements CodeFeatures {
+	@Test
+	public void train() {
+		Model model = new Model(shape(100, 100));
+		model.addBlock(convolution2d(100, 100, 8, 3));
+	}
 }

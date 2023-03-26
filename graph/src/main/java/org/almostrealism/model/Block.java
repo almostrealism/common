@@ -14,12 +14,20 @@
  * limitations under the License.
  */
 
-package org.almostrealism.layers;
+package org.almostrealism.model;
 
-import io.almostrealism.cycle.Setup;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.TraversalPolicy;
 
-public interface Layer extends Setup {
+import java.util.function.Supplier;
+
+public interface Block {
+	TraversalPolicy getInputShape();
+
+	TraversalPolicy getOutputShape();
 
 	PackedCollection<?> getWeights();
+
+	Supplier<Runnable> forward(Producer<PackedCollection<?>> input, Producer<PackedCollection<?>> output);
 }

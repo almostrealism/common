@@ -16,10 +16,27 @@
 
 package org.almostrealism.layers;
 
-import io.almostrealism.cycle.Setup;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.TraversableKernelExpression;
 
-public interface Layer extends Setup {
+import java.util.function.Supplier;
 
-	PackedCollection<?> getWeights();
+public class KernelLayer implements Layer {
+	private Supplier<Runnable> setup;
+	private TraversableKernelExpression kernel;
+	private PackedCollection<?>	weights;
+
+	public KernelLayer(Supplier<Runnable> setup, TraversableKernelExpression kernel, PackedCollection<?> weights) {
+		this.setup = setup;
+		this.kernel = kernel;
+		this.weights = weights;
+	}
+
+	@Override
+	public Supplier<Runnable> setup() { return setup; }
+
+	@Override
+	public PackedCollection<?> getWeights() { return weights; }
+
+	public TraversableKernelExpression getKernel() { return kernel; }
 }

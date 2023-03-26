@@ -23,7 +23,7 @@ import java.util.stream.IntStream;
 public interface KernelSupport {
 	default boolean isKernelEnabled() { return true; }
 
-	default String getKernelIndex(int kernelIndex) {
+	static String getKernelIndex(int kernelIndex) {
 		return "get_global_id(" + kernelIndex + ")";
 	}
 
