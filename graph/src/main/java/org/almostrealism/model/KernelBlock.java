@@ -73,8 +73,7 @@ public class KernelBlock implements Block, CodeFeatures {
 		return () -> {
 			KernelizedEvaluable<PackedCollection<?>> k = computation.get();
 			Evaluable<PackedCollection<?>> out = output.get();
-			return () ->
-					k.kernelEvaluate(out.evaluate().traverseEach());
+			return () -> k.kernelEvaluate(out.evaluate().traverseEach());
 		};
 	}
 }
