@@ -42,22 +42,6 @@ import java.util.stream.IntStream;
 
 public class PackedCollectionSubsetTests implements TestFeatures {
 
-	public Tensor<Double> tensor(TraversalPolicy shape) {
-		return tensor(shape, (pos) -> true);
-	}
-
-	public Tensor<Double> tensor(TraversalPolicy shape, Predicate<int[]> condition) {
-		Tensor<Double> t = new Tensor<>();
-
-		shape.stream().forEach(pos -> {
-			boolean inside = condition.test(pos);
-			double multiplier = inside ? 1 : -1;
-			t.insert(multiplier * IntStream.of(pos).sum(), pos);
-		});
-
-		return t;
-	}
-
 	@Test
 	public void subset3d() {
 		int w = 2;
@@ -324,16 +308,12 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		PackedCollection<?> input = t.pack();
 
 		CollectionProducerComputation<PackedCollection<?>> producer =
-//				kernel(outputShape, (args, i, j, k) -> args[1].get(k).multiply(args[2].get(shape(size, size), i, j)).sum(),
-//						p(filter), p(input));
-				kernel(i -> new Expression(Integer.class, "get_global_id(" + i + ")"),
-						outputShape, (args, pos) -> {
+				kernel(outputShape, (args, pos) -> {
 							System.out.println("args[1].shape = " + args[1].getShape());
 							System.out.println("args[2].shape = " + args[2].getShape());
 							return args[1].get(shape(1, size, size), pos[2])
 									.multiply(args[2].get(shape(size, size), pos[0], pos[1])).sum();
-						},
-						p(filter), p(input));
+						}, p(filter), p(input));
 		KernelizedEvaluable<PackedCollection<?>> ev = producer.get();
 
 		PackedCollection<?> result = new PackedCollection(outputShape);

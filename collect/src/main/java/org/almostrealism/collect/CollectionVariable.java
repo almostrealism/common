@@ -66,6 +66,10 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> {
 		}
 	}
 
+	public InstanceReference<T> get(Expression<?>... pos) {
+		return get(getShape().index(pos), -1);
+	}
+
 	public CollectionVariable<T> get(TraversalPolicy shape, int... pos) {
 		// TODO  This can be made more efficient by converting pos[] into an index ahead of time
 

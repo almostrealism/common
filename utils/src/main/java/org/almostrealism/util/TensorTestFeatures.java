@@ -14,21 +14,28 @@
  * limitations under the License.
  */
 
-package org.almostrealism.model;
+package org.almostrealism.util;
 
-import io.almostrealism.cycle.Setup;
-import io.almostrealism.relation.Producer;
-import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.TraversalPolicy;
 
-import java.util.function.Supplier;
+import java.util.function.Predicate;
+import java.util.stream.IntStream;
 
-public interface Block extends Setup {
-	TraversalPolicy getInputShape();
+public interface TensorTestFeatures {
+	default Tensor<Double> tensor(TraversalPolicy shape) {
+		return tensor(shape, (pos) -> true);
+	}
 
-	TraversalPolicy getOutputShape();
+	default Tensor<Double> tensor(TraversalPolicy shape, Predicate<int[]> condition) {
+		Tensor<Double> t = new Tensor<>();
 
-	PackedCollection<?> getWeights();
+		shape.stream().forEach(pos -> {
+			boolean inside = condition.test(pos);
+			double multiplier = inside ? 1 : -1;
+			t.insert(multiplier * IntStream.of(pos).sum(), pos);
+		});
 
-	Supplier<Runnable> forward(Producer<PackedCollection<?>> input, Producer<PackedCollection<?>> output);
+		return t;
+	}
 }

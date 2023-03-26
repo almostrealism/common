@@ -22,6 +22,7 @@ import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Quotient;
 import io.almostrealism.expression.Sum;
 
+import java.util.Arrays;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
@@ -169,6 +170,21 @@ public class TraversalPolicy implements Traversable<TraversalPolicy> {
 
 	public Stream<int[]> stream() {
 		return IntStream.range(0, getTotalSize()).mapToObj(this::position);
+	}
+
+	@Override
+	public int hashCode() {
+		return Arrays.hashCode(dims);
+	}
+
+	@Override
+	public boolean equals(Object obj) {
+		if (obj instanceof TraversalPolicy) {
+			TraversalPolicy p = (TraversalPolicy) obj;
+			return Arrays.equals(dims, p.dims) && traversalAxis == p.traversalAxis;
+		}
+
+		return false;
 	}
 
 	@Override

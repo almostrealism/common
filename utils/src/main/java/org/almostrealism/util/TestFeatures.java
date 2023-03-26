@@ -21,7 +21,7 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareFeatures;
 
-public interface TestFeatures extends CodeFeatures, HardwareFeatures, TestSettings {
+public interface TestFeatures extends CodeFeatures, HardwareFeatures, TensorTestFeatures, TestSettings {
 
 	default void assertEquals(Scalar a, Scalar b) {
 		assertEquals(a.getValue(), b.getValue());

@@ -25,6 +25,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversableKernelExpression;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.KernelizedEvaluable;
+import org.almostrealism.hardware.OperationList;
 
 import java.util.function.Supplier;
 
@@ -33,16 +34,24 @@ public class KernelBlock implements Block, CodeFeatures {
 	private final TraversalPolicy outputShape;
 	private final KernelExpression kernel;
 	private final PackedCollection<?> weights;
+	private final Supplier<Runnable> setup;
 
-	public KernelBlock(TraversalPolicy inputShape, TraversableKernelExpression kernel, PackedCollection<?> weights) {
-		this(inputShape, kernel.getShape(), kernel, weights);
+	public KernelBlock(TraversalPolicy shape, TraversableKernelExpression kernel, PackedCollection<?> weights) {
+		this(shape, kernel, weights, new OperationList());
 	}
 
-	public KernelBlock(TraversalPolicy inputShape, TraversalPolicy outputShape, KernelExpression kernel, PackedCollection<?> weights) {
+	public KernelBlock(TraversalPolicy inputShape, TraversableKernelExpression kernel,
+					   PackedCollection<?> weights, Supplier<Runnable> setup) {
+		this(inputShape, kernel.getShape(), kernel, weights, setup);
+	}
+
+	public KernelBlock(TraversalPolicy inputShape, TraversalPolicy outputShape, KernelExpression kernel,
+					   PackedCollection<?> weights, Supplier<Runnable> setup) {
 		this.inputShape = inputShape;
 		this.outputShape = outputShape;
 		this.kernel = kernel;
 		this.weights = weights;
+		this.setup = setup;
 	}
 
 	@Override
@@ -55,13 +64,17 @@ public class KernelBlock implements Block, CodeFeatures {
 	public PackedCollection<?> getWeights() { return weights; }
 
 	@Override
+	public Supplier<Runnable> setup() { return setup; }
+
+	@Override
 	public Supplier<Runnable> forward(Producer<PackedCollection<?>> input, Producer<PackedCollection<?>> output) {
 		CollectionProducerComputation<PackedCollection<?>> computation = kernel(outputShape, kernel, p(weights), input);
 
 		return () -> {
 			KernelizedEvaluable<PackedCollection<?>> k = computation.get();
 			Evaluable<PackedCollection<?>> out = output.get();
-			return () -> k.kernelEvaluate(out.evaluate());
+			return () ->
+					k.kernelEvaluate(out.evaluate().traverseEach());
 		};
 	}
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,21 +14,24 @@
  * limitations under the License.
  */
 
-package org.almostrealism.model;
-
-import io.almostrealism.cycle.Setup;
-import io.almostrealism.relation.Producer;
-import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.TraversalPolicy;
+package org.almostrealism.hardware;
 
 import java.util.function.Supplier;
 
-public interface Block extends Setup {
-	TraversalPolicy getInputShape();
+public class KernelOperation<T extends MemoryData> implements Supplier<Runnable> {
+	private KernelizedProducer<T> producer;
+	private MemoryBank destination;
+	private MemoryData arguments[];
 
-	TraversalPolicy getOutputShape();
+	public KernelOperation(KernelizedProducer<T> producer, MemoryBank destination, MemoryData... arguments) {
+		this.producer = producer;
+		this.destination = destination;
+		this.arguments = arguments;
+	}
 
-	PackedCollection<?> getWeights();
-
-	Supplier<Runnable> forward(Producer<PackedCollection<?>> input, Producer<PackedCollection<?>> output);
+	@Override
+	public Runnable get() {
+		KernelizedEvaluable<T> ev = producer.get();
+		return () -> ev.kernelEvaluate(destination, arguments);
+	}
 }

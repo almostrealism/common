@@ -17,13 +17,69 @@
 package org.almostrealism.graph.model.test;
 
 import org.almostrealism.CodeFeatures;
+import org.almostrealism.algebra.Tensor;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.model.KernelBlock;
 import org.almostrealism.model.Model;
+import org.almostrealism.util.TestFeatures;
+import org.junit.Assert;
 import org.junit.Test;
 
-public class TrainModelTest implements CodeFeatures {
+public class TrainModelTest implements TestFeatures {
+	@Test
+	public void conv() {
+		int size = 3;
+		int w = 10;
+		int h = 10;
+
+		TraversalPolicy inputShape = shape(h, w);
+		Model model = new Model(inputShape);
+		KernelBlock conv2d = model.addBlock(convolution2d(w, h, 8, size));
+
+		Tensor<Double> t = tensor(inputShape);
+		PackedCollection<?> input = t.pack();
+
+		model.setup().get().run();
+		model.forward(input);
+
+		PackedCollection<?> filter = conv2d.getWeights();
+		TraversalPolicy filterShape = filter.getShape();
+		TraversalPolicy outputShape = model.getShape();
+
+		for (int p = 0; p < outputShape.length(0); p++) {
+			for (int q = 0; q < outputShape.length(1); q++) {
+				for (int r = 0; r < outputShape.length(2); r++) {
+					double expected = 0;
+
+					for (int x = 0; x < size; x++) {
+						for (int y = 0; y < size; y++) {
+							expected += filter.toDouble(filterShape.index(r, x, y)) * input.toDouble(inputShape.index(p + x, q + y));
+						}
+					}
+
+					double actual = model.getInputs().get(1).toDouble(outputShape.index(p, q, r));
+					System.out.println("PackedCollectionSubsetTests: [" + p + ", " + q + ", " + r + "] " + expected + " vs " + actual);
+					Assert.assertEquals(expected, actual, 0.0001);
+				}
+			}
+		}
+	}
+
 	@Test
 	public void train() {
-		Model model = new Model(shape(100, 100));
-		model.addBlock(convolution2d(100, 100, 8, 3));
+		int size = 3;
+		int w = 10;
+		int h = 10;
+
+		TraversalPolicy inputShape = shape(h, w);
+		Model model = new Model(inputShape);
+		model.addBlock(convolution2d(w, h, 4, size));
+
+		Tensor<Double> t = tensor(inputShape);
+		PackedCollection<?> input = t.pack();
+
+		model.setup().get().run();
+		model.forward(input);
 	}
 }

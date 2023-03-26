@@ -39,6 +39,7 @@ import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.KernelExpression;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.Shape;
 import org.almostrealism.collect.TraversableKernelExpression;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.geometry.GeometryFeatures;
@@ -58,7 +59,11 @@ import io.almostrealism.code.ProducerComputation;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.Input;
+import org.almostrealism.hardware.KernelOperation;
 import org.almostrealism.hardware.KernelSupport;
+import org.almostrealism.hardware.KernelizedProducer;
+import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.time.CursorPair;
 import org.almostrealism.time.TemporalFeatures;
@@ -163,6 +168,18 @@ public interface CodeFeatures extends LayerFeatures, ScalarFeatures, PairFeature
 
 	default Expression<Double> e(String expression, Variable<?, ?>... dependencies) {
 		return new Expression<>(Double.class, expression, dependencies);
+	}
+
+	default CollectionProducerComputation<PackedCollection<?>> identity(Producer<PackedCollection<?>> argument) {
+		if (!(argument instanceof Shape)) {
+			throw new IllegalArgumentException("Argument to identity kernel must be traversable");
+		}
+
+		return kernel(((Shape) argument).getShape(), (args, pos) -> args[1].get(pos), argument);
+	}
+
+	default <T extends MemoryData> Supplier<Runnable> run(KernelizedProducer<T> kernel, MemoryBank destination, MemoryData... arguments) {
+		return new KernelOperation<>(kernel, destination, arguments);
 	}
 
 	default CollectionProducerComputation<PackedCollection<?>> kernel(TraversableKernelExpression kernel,

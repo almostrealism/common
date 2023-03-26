@@ -21,6 +21,8 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversableKernelExpression;
 import org.almostrealism.collect.TraversalPolicy;
 
+import java.util.function.Supplier;
+
 public interface LayerFeatures extends CollectionFeatures {
 	default KernelLayer convolution2d(int inputWidth, int inputHeight, int filterCount, int size) {
 		int pad = size - 1;
@@ -28,8 +30,18 @@ public interface LayerFeatures extends CollectionFeatures {
 		int outputHeight = inputHeight - pad;
 		TraversalPolicy filterShape = shape(filterCount, size, size);
 		PackedCollection<?> filters = new PackedCollection<>(filterShape);
-		return new KernelLayer(a(filters.getShape().getTotalSize(), p(filters),
-					_divide(randn(filterShape).traverseEach(), c(9).traverse(0))),
+
+		// TODO  This should be kernelized
+		Supplier<Runnable> init = () -> () -> {
+			for (int i = 0; i < filterShape.getTotalSize(); i++) {
+				filters.setMem(i, Math.random());
+			}
+		};
+
+//		Supplier<Runnable> init = a(filters.getShape().getTotalSize(), p(filters),
+//				_divide(randn(filterShape).traverseEach(), c(9).traverse(0)));
+
+		return new KernelLayer(init,
 				TraversableKernelExpression.withShape(shape(outputHeight, outputWidth, filterCount),
 					(args, pos) -> args[1].get(shape(1, size, size), pos[2])
 						.multiply(args[2].get(shape(size, size), pos[0], pos[1])).sum()),
