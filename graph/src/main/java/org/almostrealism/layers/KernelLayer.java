@@ -18,18 +18,28 @@ package org.almostrealism.layers;
 
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversableKernelExpression;
+import org.almostrealism.hardware.OperationList;
 
 import java.util.function.Supplier;
 
 public class KernelLayer implements Layer {
-	private Supplier<Runnable> setup;
 	private TraversableKernelExpression kernel;
 	private PackedCollection<?>	weights;
 
-	public KernelLayer(Supplier<Runnable> setup, TraversableKernelExpression kernel, PackedCollection<?> weights) {
-		this.setup = setup;
+	private Supplier<Runnable> setup;
+
+	public KernelLayer(TraversableKernelExpression kernel) {
+		this(kernel, null);
+	}
+
+	public KernelLayer(TraversableKernelExpression kernel, PackedCollection<?> weights) {
+		this(kernel, weights, new OperationList());
+	}
+
+	public KernelLayer(TraversableKernelExpression kernel, PackedCollection<?> weights, Supplier<Runnable> setup) {
 		this.kernel = kernel;
 		this.weights = weights;
+		this.setup = setup;
 	}
 
 	@Override

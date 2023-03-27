@@ -104,6 +104,8 @@ public class Expression<T> {
 	}
 
 	public Sum add(Expression<Double> operand) { return new Sum((Expression) this, operand); }
+
+	public Product multiply(int operand) { return new Product((Expression) this, new Expression(Integer.class, String.valueOf(operand))); }
 	public Product multiply(Expression<Double> operand) { return new Product((Expression) this, operand); }
 
 	@Override

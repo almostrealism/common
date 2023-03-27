@@ -27,7 +27,9 @@ import org.almostrealism.hardware.OperationList;
 import org.almostrealism.layers.KernelLayer;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 public class Model implements Setup, Receptor<PackedCollection<?>>, CodeFeatures {
@@ -43,6 +45,10 @@ public class Model implements Setup, Receptor<PackedCollection<?>>, CodeFeatures
 		this.shape = shape;
 		this.blocks = new ArrayList<>();
 		this.inputs = new ArrayList<>();
+	}
+
+	public List<Block> getBlocks() {
+		return Collections.unmodifiableList(blocks);
 	}
 
 	public void addBlock(Block b) {
@@ -77,6 +83,10 @@ public class Model implements Setup, Receptor<PackedCollection<?>>, CodeFeatures
 		KernelBlock b = new KernelBlock(shape, layer.getKernel(), layer.getWeights(), layer.setup());
 		addBlock(b);
 		return b;
+	}
+
+	public KernelBlock addBlock(Function<TraversalPolicy, KernelLayer> layer) {
+		return addBlock(layer.apply(shape));
 	}
 
 	public TraversalPolicy getShape() { return shape; }

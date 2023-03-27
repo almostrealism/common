@@ -17,34 +17,56 @@
 package org.almostrealism.layers;
 
 import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.KernelExpression;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversableKernelExpression;
 import org.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.hardware.KernelOperation;
 
+import java.util.function.Function;
 import java.util.function.Supplier;
 
 public interface LayerFeatures extends CollectionFeatures {
-	default KernelLayer convolution2d(int inputWidth, int inputHeight, int filterCount, int size) {
+
+	default KernelLayer layer(TraversalPolicy shape, KernelExpression kernel) {
+		return new KernelLayer(TraversableKernelExpression.withShape(shape, kernel));
+	}
+
+	default KernelLayer layer(TraversalPolicy shape, KernelExpression kernel, PackedCollection<?> weights) {
+		return new KernelLayer(TraversableKernelExpression.withShape(shape, kernel), weights);
+	}
+
+	default KernelLayer layer(TraversalPolicy shape, KernelExpression kernel, PackedCollection<?> weights, Supplier<Runnable> setup) {
+		return new KernelLayer(TraversableKernelExpression.withShape(shape, kernel), weights, setup);
+	}
+
+	default Function<TraversalPolicy, KernelLayer> convolution2d(int size, int filterCount) {
+		return shape -> convolution2d(shape, size, filterCount);
+	}
+
+	default KernelLayer convolution2d(TraversalPolicy inputShape, int size, int filterCount) {
 		int pad = size - 1;
-		int outputWidth = inputWidth - pad;
-		int outputHeight = inputHeight - pad;
+		TraversalPolicy outputShape = shape(inputShape.length(0) - pad, inputShape.length(1) - pad, filterCount);
 		TraversalPolicy filterShape = shape(filterCount, size, size);
+
+		KernelExpression kernel = (args, pos) ->
+				args[2].get(shape(1, size, size), pos[2])
+					.multiply(args[1].get(shape(size, size), pos[0], pos[1])).sum();
+
 		PackedCollection<?> filters = new PackedCollection<>(filterShape);
+		Supplier<Runnable> init = new KernelOperation<>(
+				_divide(randn(filterShape).traverseEach(), c(9).traverse(0)), filters.traverseEach());
 
-		// TODO  This should be kernelized
-		Supplier<Runnable> init = () -> () -> {
-			for (int i = 0; i < filterShape.getTotalSize(); i++) {
-				filters.setMem(i, Math.random());
-			}
-		};
+		return layer(outputShape, kernel, filters, init);
+	}
 
-//		Supplier<Runnable> init = a(filters.getShape().getTotalSize(), p(filters),
-//				_divide(randn(filterShape).traverseEach(), c(9).traverse(0)));
+	default Function<TraversalPolicy, KernelLayer> pool2d(int size) {
+		return shape -> pool2d(shape, size);
+	}
 
-		return new KernelLayer(init,
-				TraversableKernelExpression.withShape(shape(outputHeight, outputWidth, filterCount),
-					(args, pos) -> args[1].get(shape(1, size, size), pos[2])
-						.multiply(args[2].get(shape(size, size), pos[0], pos[1])).sum()),
-				filters);
+	default KernelLayer pool2d(TraversalPolicy inputShape, int size) {
+		TraversalPolicy outputShape = shape(inputShape.length(0) / size, inputShape.length(1) / size, inputShape.length(2));
+		KernelExpression kernel = (args, pos) -> args[1].get(shape(size, size, 1), pos[0].multiply(size), pos[1].multiply(size), pos[2]).max();
+		return layer(outputShape, kernel);
 	}
 }

@@ -17,6 +17,7 @@
 package io.almostrealism.code;
 
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.Max;
 import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Sum;
@@ -48,6 +49,19 @@ public class ExpressionList<T> extends ArrayList<Expression<T>> implements Multi
 
 	public Expression<T> sum() {
 		return (Expression<T>) new Sum(toArray(Expression[]::new));
+	}
+
+	public Expression<T> max() {
+		if (size() <= 0) {
+			throw new IllegalArgumentException("Maximum of zero expressions is undefined");
+		}
+
+		Expression max = get(0);
+		for (int i = 1; i < size(); i++) {
+			max = new Max(max, (Expression) get(i));
+		}
+
+		return max;
 	}
 
 	public static Collector<Expression, ?, ExpressionList> collector() {

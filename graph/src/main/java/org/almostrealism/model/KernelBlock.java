@@ -68,7 +68,8 @@ public class KernelBlock implements Block, CodeFeatures {
 
 	@Override
 	public Supplier<Runnable> forward(Producer<PackedCollection<?>> input, Producer<PackedCollection<?>> output) {
-		CollectionProducerComputation<PackedCollection<?>> computation = kernel(outputShape, kernel, p(weights), input);
+		CollectionProducerComputation<PackedCollection<?>> computation =
+				weights == null ? kernel(outputShape, kernel, input) : kernel(outputShape, kernel, input, p(weights));
 
 		return () -> {
 			KernelizedEvaluable<PackedCollection<?>> k = computation.get();
