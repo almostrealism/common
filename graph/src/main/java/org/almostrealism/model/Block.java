@@ -20,7 +20,9 @@ import io.almostrealism.cycle.Setup;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.graph.Cell;
 
+import java.util.List;
 import java.util.function.Supplier;
 
 public interface Block extends Setup {
@@ -28,7 +30,7 @@ public interface Block extends Setup {
 
 	TraversalPolicy getOutputShape();
 
-	PackedCollection<?> getWeights();
+	Cell<PackedCollection<?>> forward();
 
-	Supplier<Runnable> forward(Producer<PackedCollection<?>> input, Producer<PackedCollection<?>> output);
+	Cell<PackedCollection<?>> backward();
 }

@@ -108,6 +108,10 @@ public class Expression<T> {
 	public Product multiply(int operand) { return new Product((Expression) this, new Expression(Integer.class, String.valueOf(operand))); }
 	public Product multiply(Expression<Double> operand) { return new Product((Expression) this, operand); }
 
+	public Quotient divide(Expression<Double> operand) { return new Quotient((Expression) this, operand); }
+
+	public Exp exp() { return new Exp((Expression) this); }
+
 	@Override
 	public boolean equals(Object obj) {
 		if (!(obj instanceof Expression)) return false;

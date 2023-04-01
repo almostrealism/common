@@ -98,7 +98,11 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> {
 		return stream().collect(ExpressionList.collector());
 	}
 
+	public Expression<T> sum() { return toList().sum(); }
+
 	public Expression<T> max() { return toList().max(); }
+
+	public ExpressionList<T> exp() { return toList().exp(); }
 
 	public ExpressionList<T> multiply(CollectionVariable<T> operands) {
 		ExpressionList<T> a = stream().collect(ExpressionList.collector());

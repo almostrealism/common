@@ -16,15 +16,16 @@
 
 package org.almostrealism.graph.model.test;
 
-import org.almostrealism.CodeFeatures;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.model.KernelBlock;
+import org.almostrealism.layers.KernelLayer;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
+
+import java.util.stream.IntStream;
 
 public class TrainModelTest implements TestFeatures {
 	private int convSize = 3;
@@ -33,17 +34,76 @@ public class TrainModelTest implements TestFeatures {
 	private int h = 10;
 	private TraversalPolicy inputShape = shape(h, w);
 
-	protected Model model() {
-		Model model = new Model(inputShape);
-		model.addBlock(convolution2d(convSize, 8));
-		model.addBlock(pool2d(poolSize));
-		return model;
-	}
+	@Test
+	public void dense() {
+		int size = 30;
+		int nodes = 10;
 
+		Model model = new Model(shape(size));
+		KernelLayer dense = dense(size, nodes);
+		KernelLayer softmax = softmax(nodes);
+		model.addBlock(dense);
+		model.addBlock(softmax);
+
+		Tensor<Double> t = tensor(shape(size));
+		PackedCollection<?> input = t.pack();
+
+		PackedCollection<?> biases = dense.getWeights().get(1);
+		IntStream.range(0, nodes).forEach(i -> biases.setMem(i, Math.random()));
+
+		model.setup().get().run();
+		model.forward(input);
+
+		PackedCollection<?> weights = dense.getWeights().get(0);
+		PackedCollection<?> output = dense.getForward().getOutput();
+
+		for (int i = 0; i < nodes; i++) {
+			double expected = 0;
+
+			for (int x = 0; x < size; x++) {
+				expected += weights.valueAt(x, i) * input.valueAt(x);
+			}
+
+			double actual = output.valueAt(i);
+			Assert.assertNotEquals(expected, actual, 0.0001);
+
+			expected += biases.valueAt(i);
+			System.out.println("TrainModelTest: [" + i + "] " + expected + " vs " + actual);
+			Assert.assertEquals(expected, actual, 0.0001);
+		}
+
+		input = output;
+		output = softmax.getForward().getOutput();
+
+		double expValues[] = new double[nodes];
+
+		for (int i = 0; i < nodes; i++) {
+			expValues[i] = Math.exp(input.toDouble(i));
+		}
+
+		double sum = 0;
+
+		for (int i = 0; i < nodes; i++) {
+			sum += expValues[i];
+		}
+
+		for (int i = 0; i < nodes; i++) {
+			double expected = expValues[i] / sum;
+			double actual = output.toDouble(i);
+
+			System.out.println("TrainModelTest: [" + i + "] " + expected + " vs " + actual);
+			Assert.assertEquals(expected, actual, 0.0001);
+		}
+	}
 
 	@Test
 	public void conv() {
-		Model model = model();
+		Model model = new Model(inputShape);
+		KernelLayer conv = convolution2d(inputShape, convSize, 8);
+		KernelLayer pool = pool2d(conv.getOutputShape(), poolSize);
+
+		model.addBlock(conv);
+		model.addBlock(pool);
 
 		Tensor<Double> t = tensor(inputShape);
 		PackedCollection<?> input = t.pack();
@@ -51,10 +111,10 @@ public class TrainModelTest implements TestFeatures {
 		model.setup().get().run();
 		model.forward(input);
 
-		PackedCollection<?> filter = model.getBlocks().get(0).getWeights();
+		PackedCollection<?> filter = conv.getWeights().get(0);
 		TraversalPolicy filterShape = filter.getShape();
 
-		PackedCollection<?> output = model.getInputs().get(1);
+		PackedCollection<?> output = conv.getForward().getOutput();
 		TraversalPolicy outputShape = output.getShape();
 
 		for (int p = 0; p < outputShape.length(0); p++) {
@@ -75,10 +135,10 @@ public class TrainModelTest implements TestFeatures {
 			}
 		}
 
-		input = model.getInputs().get(1);
+		input = output;
 		inputShape = input.getShape();
 
-		output = model.getInputs().get(2);
+		output = pool.getForward().getOutput();
 		outputShape = output.getShape();
 
 		for (int p = 0; p < outputShape.length(0); p++) {
@@ -105,12 +165,12 @@ public class TrainModelTest implements TestFeatures {
 
 	@Test
 	public void train() {
-		Model model = model();
-
-		Tensor<Double> t = tensor(inputShape);
-		PackedCollection<?> input = t.pack();
-
-		model.setup().get().run();
-		model.forward(input);
+//		Model model = model();
+//
+//		Tensor<Double> t = tensor(inputShape);
+//		PackedCollection<?> input = t.pack();
+//
+//		model.setup().get().run();
+//		model.forward(input);
 	}
 }

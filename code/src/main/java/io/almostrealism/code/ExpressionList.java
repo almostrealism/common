@@ -16,6 +16,7 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.expression.Exp;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Max;
 import io.almostrealism.expression.MultiExpression;
@@ -62,6 +63,12 @@ public class ExpressionList<T> extends ArrayList<Expression<T>> implements Multi
 		}
 
 		return max;
+	}
+
+	public ExpressionList<T> exp() {
+		ExpressionList result = new ExpressionList();
+		for (Expression<T> e : this) result.add(e.exp());
+		return result;
 	}
 
 	public static Collector<Expression, ?, ExpressionList> collector() {

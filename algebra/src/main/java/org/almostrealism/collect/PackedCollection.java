@@ -133,6 +133,10 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 		return range(new TraversalPolicy(1), pos);
 	}
 
+	public double valueAt(int... pos) {
+		return toDouble(getShape().index(pos));
+	}
+
 	// TODO  Accelerated version
 	@Deprecated
 	public double lengthSq() {

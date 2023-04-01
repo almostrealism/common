@@ -19,7 +19,9 @@ package org.almostrealism.layers;
 import io.almostrealism.cycle.Setup;
 import org.almostrealism.collect.PackedCollection;
 
+import java.util.List;
+
 public interface Layer extends Setup {
 
-	PackedCollection<?> getWeights();
+	List<PackedCollection<?>> getWeights();
 }

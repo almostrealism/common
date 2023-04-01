@@ -18,35 +18,49 @@ package org.almostrealism.layers;
 
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversableKernelExpression;
+import org.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.graph.Cell;
 import org.almostrealism.hardware.OperationList;
 
+import java.util.Collections;
+import java.util.List;
 import java.util.function.Supplier;
 
 public class KernelLayer implements Layer {
-	private TraversableKernelExpression kernel;
-	private PackedCollection<?>	weights;
+	private TraversalPolicy outputShape;
+	private KernelLayerCell forward;
+	private Cell<PackedCollection<?>> backwards;
+	private List<PackedCollection<?>> weights;
 
 	private Supplier<Runnable> setup;
 
-	public KernelLayer(TraversableKernelExpression kernel) {
-		this(kernel, null);
+	public KernelLayer(TraversableKernelExpression forward, Cell<PackedCollection<?>> backwards) {
+		this(forward, backwards, Collections.emptyList());
 	}
 
-	public KernelLayer(TraversableKernelExpression kernel, PackedCollection<?> weights) {
-		this(kernel, weights, new OperationList());
+	public KernelLayer(TraversableKernelExpression forward, Cell<PackedCollection<?>> backwards,
+					   List<PackedCollection<?>> weights) {
+		this(forward, backwards, weights, new OperationList());
 	}
 
-	public KernelLayer(TraversableKernelExpression kernel, PackedCollection<?> weights, Supplier<Runnable> setup) {
-		this.kernel = kernel;
+	public KernelLayer(TraversableKernelExpression forward, Cell<PackedCollection<?>> backwards,
+					   List<PackedCollection<?>> weights, Supplier<Runnable> setup) {
+		this.outputShape = forward.getShape();
+		this.forward = new KernelLayerCell(forward, weights);
+		this.backwards = backwards;
 		this.weights = weights;
 		this.setup = setup;
 	}
+
+	public TraversalPolicy getOutputShape() { return outputShape; }
 
 	@Override
 	public Supplier<Runnable> setup() { return setup; }
 
 	@Override
-	public PackedCollection<?> getWeights() { return weights; }
+	public List<PackedCollection<?>> getWeights() { return weights; }
 
-	public TraversableKernelExpression getKernel() { return kernel; }
+	public KernelLayerCell getForward() { return forward; }
+
+	public Cell<PackedCollection<?>> getBackwards() { return backwards; }
 }

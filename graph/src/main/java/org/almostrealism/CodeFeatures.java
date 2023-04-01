@@ -166,10 +166,6 @@ public interface CodeFeatures extends LayerFeatures, ScalarFeatures, PairFeature
 		return e(stringForDouble(value));
 	}
 
-	default Expression<Double> e(String expression, Variable<?, ?>... dependencies) {
-		return new Expression<>(Double.class, expression, dependencies);
-	}
-
 	default CollectionProducerComputation<PackedCollection<?>> identity(Producer<PackedCollection<?>> argument) {
 		if (!(argument instanceof Shape)) {
 			throw new IllegalArgumentException("Argument to identity kernel must be traversable");

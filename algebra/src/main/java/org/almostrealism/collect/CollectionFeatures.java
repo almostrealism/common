@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect;
 
+import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.Exponent;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Floor;
@@ -53,7 +54,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-public interface CollectionFeatures {
+public interface CollectionFeatures extends ExpressionFeatures {
 	default TraversalPolicy shape(int... dims) { return new TraversalPolicy(dims); }
 
 	default <T> Producer<T> p(T value) {
