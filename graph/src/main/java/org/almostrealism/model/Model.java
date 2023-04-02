@@ -25,7 +25,9 @@ import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.hardware.mem.MemoryDataCopy;
 import org.almostrealism.layers.KernelLayer;
+import org.almostrealism.layers.PropagationCell;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -37,13 +39,29 @@ public class Model implements Setup, CodeFeatures {
 	private List<Block> blocks;
 	private TraversalPolicy shape;
 
+	private PackedCollection<?> learningRate;
+
 	public Model() {
 		this(null);
 	}
 
 	public Model(TraversalPolicy shape) {
+		this(shape, 1e-4);
+	}
+
+	public Model(TraversalPolicy shape, double learningRate) {
 		this.shape = shape;
 		this.blocks = new ArrayList<>();
+		this.learningRate = new PackedCollection<>(1);
+		setLearningRate(learningRate);
+	}
+
+	public void setLearningRate(double rate) {
+		learningRate.setMem(0, rate);
+	}
+
+	public double getLearningRate() {
+		return learningRate.toDouble(0);
 	}
 
 	public List<Block> getBlocks() {
@@ -63,22 +81,32 @@ public class Model implements Setup, CodeFeatures {
 			}
 		}
 
-		if (!blocks.isEmpty()) blocks.get(blocks.size() - 1).forward().setReceptor(b.forward());
+		if (!blocks.isEmpty()) {
+			blocks.get(blocks.size() - 1).forward().setReceptor(b.forward());
+			b.backward().setReceptor(blocks.get(blocks.size() - 1).backward());
+		}
 
 		blocks.add(b);
 		shape = b.getOutputShape();
 	}
 
 	public CellularBlock addBlock(KernelLayer layer) {
+		PropagationCell backwards = layer.getBackwards();
+		backwards.setLearningRate(p(learningRate));
+
 		CellularBlock b = new CellularBlock(shape,
 									layer.getOutputShape(), layer.getForward(),
-									layer.getBackwards(), layer.setup());
+									backwards, layer.setup());
 		addBlock(b);
 		return b;
 	}
 
 	public CellularBlock addBlock(Function<TraversalPolicy, KernelLayer> layer) {
 		return addBlock(layer.apply(shape));
+	}
+
+	public Block lastBlock() {
+		return blocks.get(blocks.size() - 1);
 	}
 
 	public TraversalPolicy getShape() { return shape; }
@@ -88,11 +116,15 @@ public class Model implements Setup, CodeFeatures {
 		return blocks.stream().map(Block::setup).collect(OperationList.collector());
 	}
 
-	public Cell<PackedCollection<?>> forward() {
-		return blocks.get(0).forward();
+	public Cell<PackedCollection<?>> forward() { return blocks.get(0).forward(); }
+	public PackedCollection<?> forward(PackedCollection<?> input) {
+		PackedCollection<?> output = new PackedCollection<>(lastBlock().getOutputShape());
+		lastBlock().forward().setReceptor(out ->
+				new MemoryDataCopy("Model Output", () -> out.get().evaluate(), () -> output, output.getMemLength()));
+		forward().push(p(input)).get().run();
+		return output;
 	}
 
-	public void forward(PackedCollection<?> input) {
-		forward().push(p(input)).get().run();
-	}
+	public Cell<PackedCollection<?>> backward() { return lastBlock().backward(); }
+	public void backward(PackedCollection<?> gradient) { backward().push(p(gradient)).get().run(); }
 }

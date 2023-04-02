@@ -16,7 +16,6 @@
 
 package io.almostrealism.code;
 
-import io.almostrealism.expression.Exp;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Max;
 import io.almostrealism.expression.MultiExpression;
@@ -32,6 +31,10 @@ public class ExpressionList<T> extends ArrayList<Expression<T>> implements Multi
 	@Override
 	public Expression<T> getValue(int pos) {
 		return get(pos);
+	}
+
+	public ExpressionList<T> minus() {
+		return stream().map(Expression::minus).collect(collector());
 	}
 
 	public ExpressionList<T> multiply(ExpressionList<T> operands) {

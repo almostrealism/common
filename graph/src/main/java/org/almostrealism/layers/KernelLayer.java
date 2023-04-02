@@ -19,7 +19,6 @@ package org.almostrealism.layers;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversableKernelExpression;
 import org.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.graph.Cell;
 import org.almostrealism.hardware.OperationList;
 
 import java.util.Collections;
@@ -29,25 +28,26 @@ import java.util.function.Supplier;
 public class KernelLayer implements Layer {
 	private TraversalPolicy outputShape;
 	private KernelLayerCell forward;
-	private Cell<PackedCollection<?>> backwards;
+	private PropagationCell backwards;
 	private List<PackedCollection<?>> weights;
 
 	private Supplier<Runnable> setup;
 
-	public KernelLayer(TraversableKernelExpression forward, Cell<PackedCollection<?>> backwards) {
-		this(forward, backwards, Collections.emptyList());
+	public KernelLayer(TraversalPolicy inputShape, TraversableKernelExpression forward, Propagation backwards) {
+		this(inputShape, forward, backwards, Collections.emptyList());
 	}
 
-	public KernelLayer(TraversableKernelExpression forward, Cell<PackedCollection<?>> backwards,
+	public KernelLayer(TraversalPolicy inputShape, TraversableKernelExpression forward, Propagation backwards,
 					   List<PackedCollection<?>> weights) {
-		this(forward, backwards, weights, new OperationList());
+		this(inputShape, forward, backwards, weights, new OperationList());
 	}
 
-	public KernelLayer(TraversableKernelExpression forward, Cell<PackedCollection<?>> backwards,
+	public KernelLayer(TraversalPolicy inputShape, TraversableKernelExpression forward, Propagation backwards,
 					   List<PackedCollection<?>> weights, Supplier<Runnable> setup) {
 		this.outputShape = forward.getShape();
-		this.forward = new KernelLayerCell(forward, weights);
-		this.backwards = backwards;
+		this.forward = new KernelLayerCell(inputShape, forward, weights);
+		this.backwards = new PropagationCell(backwards);
+		this.backwards.setForwardInput(this.forward.getInput());
 		this.weights = weights;
 		this.setup = setup;
 	}
@@ -62,5 +62,5 @@ public class KernelLayer implements Layer {
 
 	public KernelLayerCell getForward() { return forward; }
 
-	public Cell<PackedCollection<?>> getBackwards() { return backwards; }
+	public PropagationCell getBackwards() { return backwards; }
 }

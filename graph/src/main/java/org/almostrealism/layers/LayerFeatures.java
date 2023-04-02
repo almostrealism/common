@@ -16,32 +16,40 @@
 
 package org.almostrealism.layers;
 
+import io.almostrealism.code.ExpressionList;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.KernelExpression;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversableKernelExpression;
 import org.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.graph.Cell;
 import org.almostrealism.hardware.KernelOperation;
+import org.almostrealism.hardware.KernelizedEvaluable;
+import org.almostrealism.hardware.OperationList;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
 public interface LayerFeatures extends CollectionFeatures {
 
-	default KernelLayer layer(TraversalPolicy shape, KernelExpression kernel, Cell<PackedCollection<?>> backwards) {
-		return new KernelLayer(TraversableKernelExpression.withShape(shape, kernel), backwards);
+	default KernelLayer layer(TraversalPolicy inputShape, TraversalPolicy outputShape,
+							  KernelExpression kernel, Propagation backwards) {
+		return new KernelLayer(inputShape, TraversableKernelExpression.withShape(outputShape, kernel), backwards);
 	}
 
-	default KernelLayer layer(TraversalPolicy shape, KernelExpression kernel,
-							  Cell<PackedCollection<?>> backwards, List<PackedCollection<?>> weights) {
-		return new KernelLayer(TraversableKernelExpression.withShape(shape, kernel), backwards, weights);
+	default KernelLayer layer(TraversalPolicy inputShape, TraversalPolicy outputShape, KernelExpression kernel,
+							  Propagation backwards, List<PackedCollection<?>> weights) {
+		return new KernelLayer(inputShape, TraversableKernelExpression.withShape(outputShape, kernel), backwards, weights);
 	}
 
-	default KernelLayer layer(TraversalPolicy shape, KernelExpression kernel, Cell<PackedCollection<?>> backwards,
-							  List<PackedCollection<?>> weights, Supplier<Runnable> setup) {
-		return new KernelLayer(TraversableKernelExpression.withShape(shape, kernel), backwards, weights, setup);
+	default KernelLayer layer(TraversalPolicy inputShape, TraversalPolicy outputShape, KernelExpression kernel,
+							  Propagation backwards, List<PackedCollection<?>> weights, Supplier<Runnable> setup) {
+		return new KernelLayer(inputShape, TraversableKernelExpression.withShape(outputShape, kernel), backwards, weights, setup);
 	}
 
 	default Function<TraversalPolicy, KernelLayer> convolution2d(int size, int filterCount) {
@@ -61,7 +69,7 @@ public interface LayerFeatures extends CollectionFeatures {
 		Supplier<Runnable> init = new KernelOperation<>(
 				_divide(randn(filterShape).traverseEach(), c(9).traverse(0)), filters.traverseEach());
 
-		return layer(outputShape, kernel, null, List.of(filters), init);
+		return layer(inputShape, outputShape, kernel, null, List.of(filters), init);
 	}
 
 	default Function<TraversalPolicy, KernelLayer> pool2d(int size) {
@@ -71,7 +79,7 @@ public interface LayerFeatures extends CollectionFeatures {
 	default KernelLayer pool2d(TraversalPolicy inputShape, int size) {
 		TraversalPolicy outputShape = shape(inputShape.length(0) / size, inputShape.length(1) / size, inputShape.length(2));
 		KernelExpression kernel = (args, pos) -> args[1].get(shape(size, size, 1), pos[0].multiply(size), pos[1].multiply(size), pos[2]).max();
-		return layer(outputShape, kernel, null);
+		return layer(inputShape, outputShape, kernel, null);
 	}
 
 	default Function<TraversalPolicy, KernelLayer> dense(int nodes) {
@@ -82,10 +90,53 @@ public interface LayerFeatures extends CollectionFeatures {
 		TraversalPolicy outputShape = shape(nodes);
 		KernelExpression kernel = (args, pos) -> args[1].multiply(args[2].get(shape(size, 1), e(0), pos[0])).sum().add(args[3].get(pos[0]));
 
+		//       # Gradients of totals against weights/biases/input
+		//      d_t_d_w = self.last_input
+		//      d_t_d_b = 1
+		//      d_t_d_inputs = self.weights
+		//
+		//      # Gradients of loss against totals
+		//      d_L_d_t = gradient * d_out_d_t
+		//
+		//      # Gradients of loss against weights/biases/input
+		//      d_L_d_w = d_t_d_w[np.newaxis].T @ d_L_d_t[np.newaxis]
+		//      d_L_d_b = d_L_d_t * d_t_d_b
+		//      d_L_d_inputs = d_t_d_inputs @ d_L_d_t
+		//
+		//      # Update weights / biases
+		//      self.weights -= learn_rate * d_L_d_w
+		//      self.biases -= learn_rate * d_L_d_b
+
+		// pos[0] -> 0 to 11
+		// pos[1] -> 0 to 4
+
 		PackedCollection<?> weights = new PackedCollection<>(shape(size, nodes));
 		PackedCollection<?> biases = new PackedCollection<>(shape(nodes));
+
+		KernelExpression outputGradient = (args, pos) -> args[1].get(shape(1, nodes), pos[0]).multiply(args[2]).sum();
+		KernelExpression weightGradient = (args, pos) -> args[1].get(pos[0]).multiply(args[2].get(pos[1]));
+		KernelExpression adjustWeights = (args, pos) -> args[1].get(pos[0], pos[1]).subtract(args[2].get(pos[0], pos[1]).multiply(args[3].valueAt(0)));
+		KernelExpression adjustBiases = (args, pos) -> args[1].get(pos[0]).subtract(args[2].get(pos[0]).multiply(args[3].valueAt(0)));
+
+		Propagation backwards = (lr, gradient, input, next) -> {
+			OperationList ops = new OperationList();
+			PackedCollection<?> out = new PackedCollection<>(shape(size));
+			PackedCollection<?> wGrad = new PackedCollection<>(shape(size, nodes));
+			CollectionProducerComputation<PackedCollection<?>> output = kernel(ops.kernelIndex(), shape(size), outputGradient, p(weights), gradient);
+			CollectionProducerComputation<PackedCollection<?>> wgr = kernel(ops.kernelIndex(), shape(size, nodes), weightGradient, input, gradient);
+			CollectionProducerComputation<PackedCollection<?>> dw = kernel(ops.kernelIndex(), shape(size, nodes), adjustWeights, p(weights), p(wGrad), lr);
+			CollectionProducerComputation<PackedCollection<?>> bw = kernel(ops.kernelIndex(), shape(nodes), adjustBiases, p(biases), gradient, lr);
+
+			ops.add(new KernelOperation(output, out.traverseEach()));
+			ops.add(new KernelOperation(wgr, wGrad.traverseEach()));
+			ops.add(new KernelOperation(dw, weights.traverseEach()));
+			ops.add(new KernelOperation(bw, biases.traverseEach()));
+			if (next != null) ops.add(next.push(p(out)));
+			return ops;
+		};
+
 		Supplier<Runnable> init = new KernelOperation<>(_divide(randn(shape(size, nodes)).traverseEach(), c(size).traverse(0)), weights.traverseEach());
-		return layer(outputShape, kernel, null, List.of(weights, biases), init);
+		return layer(shape(size), outputShape, kernel, backwards, List.of(weights, biases), init);
 	}
 
 	default Function<TraversalPolicy, KernelLayer> softmax() {
@@ -93,8 +144,32 @@ public interface LayerFeatures extends CollectionFeatures {
 	}
 
 	default KernelLayer softmax(int size) {
-		TraversalPolicy outputShape = shape(size);
-		KernelExpression kernel = (args, pos) -> exp(args[1].get(pos[0])).divide(args[1].exp().sum());
-		return layer(outputShape, kernel, null);
+		TraversalPolicy shape = shape(size);
+		KernelExpression forward = (args, pos) -> exp(args[1].get(pos[0])).divide(args[1].exp().sum());
+		KernelExpression backward = (args, pos) -> {
+			ExpressionList gradient = args[1].toList();
+			ExpressionList in = args[2].toList().exp();
+
+			Expression t = args[2].get(pos[0]).exp();
+			Expression s = in.sum();
+			Expression gr = args[1].get(pos[0]);
+
+			return gradient.sum().multiply(
+					in.minus().multiply(gradient).sum().multiply(t)
+					.add(gr.multiply(t).multiply(s.subtract(t)))
+					.divide(s.pow(e(2))));
+		};
+
+		Propagation propagation = (lr, gradient, input, next) -> {
+			OperationList ops = new OperationList();
+			PackedCollection<?> output = new PackedCollection<>(shape);
+			CollectionProducerComputation<PackedCollection<?>> gr = kernel(ops.kernelIndex(), shape, backward, gradient, input);
+
+			ops.add(new KernelOperation(gr, output.traverseEach()));
+			if (next != null) ops.add(next.push(p(output)));
+			return ops;
+		};
+
+		return layer(shape, shape, forward, propagation);
 	}
 }

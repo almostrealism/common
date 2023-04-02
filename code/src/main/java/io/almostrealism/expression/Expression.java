@@ -103,13 +103,17 @@ public class Expression<T> {
 		}
 	}
 
+	public Minus minus() { return new Minus((Expression) this); }
+
 	public Sum add(Expression<Double> operand) { return new Sum((Expression) this, operand); }
+	public Difference subtract(Expression<Double> operand) { return new Difference((Expression) this, operand); }
 
 	public Product multiply(int operand) { return new Product((Expression) this, new Expression(Integer.class, String.valueOf(operand))); }
 	public Product multiply(Expression<Double> operand) { return new Product((Expression) this, operand); }
 
 	public Quotient divide(Expression<Double> operand) { return new Quotient((Expression) this, operand); }
 
+	public Exponent pow(Expression<Double> operand) { return new Exponent((Expression) this, operand); }
 	public Exp exp() { return new Exp((Expression) this); }
 
 	@Override
