@@ -16,6 +16,8 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.expression.Conditional;
+import io.almostrealism.expression.Equals;
 import io.almostrealism.expression.Exp;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.Variable;
@@ -32,5 +34,13 @@ public interface ExpressionFeatures {
 
 	default Exp exp(Expression expression) {
 		return new Exp(expression);
+	}
+
+	default Equals equals(Expression<?> left, Expression<?> right) {
+		return new Equals(left, right);
+	}
+
+	default Conditional conditional(Expression<Boolean> condition, Expression<Double> positive, Expression<Double> negative) {
+		return new Conditional(condition, positive, negative);
 	}
 }

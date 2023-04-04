@@ -111,10 +111,13 @@ public class Expression<T> {
 	public Product multiply(int operand) { return new Product((Expression) this, new Expression(Integer.class, String.valueOf(operand))); }
 	public Product multiply(Expression<Double> operand) { return new Product((Expression) this, operand); }
 
+	public Quotient divide(int operand) { return new Quotient((Expression) this, new Expression(Integer.class, String.valueOf(operand))); }
 	public Quotient divide(Expression<Double> operand) { return new Quotient((Expression) this, operand); }
 
 	public Exponent pow(Expression<Double> operand) { return new Exponent((Expression) this, operand); }
 	public Exp exp() { return new Exp((Expression) this); }
+
+	public Equals eq(Expression<T> operand) { return new Equals(this, operand); }
 
 	@Override
 	public boolean equals(Object obj) {

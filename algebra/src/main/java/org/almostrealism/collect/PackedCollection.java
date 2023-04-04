@@ -29,6 +29,7 @@ import org.almostrealism.hardware.mem.MemoryDataAdapter;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
+import java.util.function.DoubleFunction;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.stream.IntStream;
@@ -111,6 +112,10 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 
 	public Stream<T> stream() {
 		return IntStream.range(0, getCount()).mapToObj(this::get);
+	}
+
+	public void fill(Function<int[], Double> f) {
+		getShape().stream().forEach(pos -> setMem(getShape().index(pos), f.apply(pos)));
 	}
 
 	public void forEach(Consumer<T> consumer) {

@@ -19,6 +19,7 @@ package org.almostrealism.graph.model.test;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.layers.KernelLayer;
 import org.almostrealism.model.Model;
 import org.junit.Assert;
@@ -125,6 +126,54 @@ public class PropagationTests implements CodeFeatures {
 
 		for (int i = 0; i < result.length; i++) {
 			Assert.assertEquals(expected[i], result[i], 1e-6);
+		}
+	}
+
+	@Test
+	public void pool2dBackwards() {
+		int w = 16;
+		int h = 12;
+		int size = 2;
+
+		TraversalPolicy inputShape = shape(h, w, 1);
+		TraversalPolicy outputShape = shape(h / size, w / size, 1);
+
+		Model model = new Model(inputShape, 1e-1);
+		KernelLayer pool = pool2d(inputShape, size);
+		model.addBlock(pool);
+
+		PackedCollection<?> input = new PackedCollection<>(inputShape);
+		input.fill(pos -> (double) (int) (100 * Math.random()));
+
+		PackedCollection<?> output = model.forward(input);
+
+		PackedCollection<?> result = new PackedCollection(inputShape);
+
+		pool.getBackwards().setReceptor(grad -> () -> {
+			Evaluable<PackedCollection<?>> gr = grad.get();
+
+			return () -> {
+				PackedCollection<?> out = gr.evaluate();
+				System.out.println(Arrays.toString(out.toArray(0, out.getMemLength())));
+
+				result.setMem(0, out, 0, out.getMemLength());
+			};
+		});
+
+		PackedCollection<?> gradient = new PackedCollection<>(outputShape);
+		gradient.fill(pos -> Math.random());
+		model.backward(gradient);
+
+		for (int i = 0; i < h; i++) {
+			for (int j = 0; j < w; j++) {
+				System.out.println("Input = " + input.valueAt(i, j, 0) + ", Output = " + output.valueAt(i / size, j / size, 0));
+				if (input.valueAt(i, j, 0) == output.valueAt(i / size, j / size, 0)) {
+					System.out.println("Expected = " + gradient.valueAt(i / size, j / size, 0) + ", Actual = " + result.valueAt(i, j, 0));
+					Assert.assertEquals(gradient.valueAt(i / size, j / size, 0), result.valueAt(i, j, 0), 1e-6);
+				} else {
+					Assert.assertEquals(0, result.valueAt(i, j, 0), 1e-6);
+				}
+			}
 		}
 	}
 }

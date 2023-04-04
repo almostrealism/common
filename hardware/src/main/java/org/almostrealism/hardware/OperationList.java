@@ -20,12 +20,15 @@ import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.NamedFunction;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.OperationComputation;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.relation.Compactable;
+import org.almostrealism.collect.KernelExpression;
+import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.computations.Abort;
 
 import java.util.ArrayList;
@@ -72,6 +75,12 @@ public class OperationList extends ArrayList<Supplier<Runnable>> implements Oper
 	public String getFunctionName() { return this.functionName; }
 
 	public OperationMetadata getMetadata() { return metadata; }
+
+	public <T extends MemoryData> KernelOperation<T> add(KernelizedProducer<T> producer, MemoryBank destination, MemoryData... arguments) {
+		KernelOperation<T> operation = new KernelOperation<>(producer, destination, arguments);
+		add(operation);
+		return operation;
+	}
 
 	@Override
 	public Runnable get() {

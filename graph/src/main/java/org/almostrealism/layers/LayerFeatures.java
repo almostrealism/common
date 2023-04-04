@@ -79,7 +79,23 @@ public interface LayerFeatures extends CollectionFeatures {
 	default KernelLayer pool2d(TraversalPolicy inputShape, int size) {
 		TraversalPolicy outputShape = shape(inputShape.length(0) / size, inputShape.length(1) / size, inputShape.length(2));
 		KernelExpression kernel = (args, pos) -> args[1].get(shape(size, size, 1), pos[0].multiply(size), pos[1].multiply(size), pos[2]).max();
-		return layer(inputShape, outputShape, kernel, null);
+		KernelExpression backward = (args, pos) -> {
+			Expression i = pos[0].divide(size);
+			Expression j = pos[1].divide(size);
+			Expression max = args[1].get(shape(size, size, 1), i.multiply(2), j.multiply(2), pos[2]).max();
+			return conditional(max.eq(args[1].get(pos)), args[2].get(i, j, pos[2]), e(0));
+		};
+
+		Propagation propagation = (lr, gradient, input, next) -> {
+			PackedCollection<?> out = new PackedCollection<>(inputShape);
+
+			OperationList ops = new OperationList();
+			ops.add(kernel(ops.kernelIndex(), inputShape, backward, input, gradient), out.traverseEach());
+			if (next != null) ops.add(next.push(p(out)));
+			return ops;
+		};
+
+		return layer(inputShape, outputShape, kernel, propagation);
 	}
 
 	default Function<TraversalPolicy, KernelLayer> dense(int nodes) {
@@ -89,26 +105,6 @@ public interface LayerFeatures extends CollectionFeatures {
 	default KernelLayer dense(int size, int nodes) {
 		TraversalPolicy outputShape = shape(nodes);
 		KernelExpression kernel = (args, pos) -> args[1].multiply(args[2].get(shape(size, 1), e(0), pos[0])).sum().add(args[3].get(pos[0]));
-
-		//       # Gradients of totals against weights/biases/input
-		//      d_t_d_w = self.last_input
-		//      d_t_d_b = 1
-		//      d_t_d_inputs = self.weights
-		//
-		//      # Gradients of loss against totals
-		//      d_L_d_t = gradient * d_out_d_t
-		//
-		//      # Gradients of loss against weights/biases/input
-		//      d_L_d_w = d_t_d_w[np.newaxis].T @ d_L_d_t[np.newaxis]
-		//      d_L_d_b = d_L_d_t * d_t_d_b
-		//      d_L_d_inputs = d_t_d_inputs @ d_L_d_t
-		//
-		//      # Update weights / biases
-		//      self.weights -= learn_rate * d_L_d_w
-		//      self.biases -= learn_rate * d_L_d_b
-
-		// pos[0] -> 0 to 11
-		// pos[1] -> 0 to 4
 
 		PackedCollection<?> weights = new PackedCollection<>(shape(size, nodes));
 		PackedCollection<?> biases = new PackedCollection<>(shape(nodes));
@@ -127,10 +123,10 @@ public interface LayerFeatures extends CollectionFeatures {
 			CollectionProducerComputation<PackedCollection<?>> dw = kernel(ops.kernelIndex(), shape(size, nodes), adjustWeights, p(weights), p(wGrad), lr);
 			CollectionProducerComputation<PackedCollection<?>> bw = kernel(ops.kernelIndex(), shape(nodes), adjustBiases, p(biases), gradient, lr);
 
-			ops.add(new KernelOperation(output, out.traverseEach()));
-			ops.add(new KernelOperation(wgr, wGrad.traverseEach()));
-			ops.add(new KernelOperation(dw, weights.traverseEach()));
-			ops.add(new KernelOperation(bw, biases.traverseEach()));
+			ops.add(output, out.traverseEach());
+			ops.add(wgr, wGrad.traverseEach());
+			ops.add(dw, weights.traverseEach());
+			ops.add(bw, biases.traverseEach());
 			if (next != null) ops.add(next.push(p(out)));
 			return ops;
 		};

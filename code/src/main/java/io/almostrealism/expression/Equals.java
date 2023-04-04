@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,18 +16,8 @@
 
 package io.almostrealism.expression;
 
-public class ExpressionArray<T> {
-	private Expression<T> data[];
-
-	public ExpressionArray(int count) {
-		data = new Expression[count];
-	}
-
-	public Expression<T> get(int index) {
-		return data[index];
-	}
-
-	public void set(int index, Expression<T> value) {
-		data[index] = value;
+public class Equals extends Expression<Boolean> {
+	public Equals(Expression<?> left, Expression<?> right) {
+		super(Boolean.class, "(" + left.getExpression() + ") == (" + right.getExpression() + ")", left, right);
 	}
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,17 +14,12 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.algebra.expressions;
+package io.almostrealism.expression;
 
-import io.almostrealism.expression.ExpressionArray;
-
-public class PairBankExpression extends ExpressionArray<Double> {
-	public PairBankExpression(int count) {
-		super(2 * count);
-	}
-
-	public void set(int index, PairExpression exp) {
-		set(index * 2, exp.get(0));
-		set(index * 2 + 1, exp.get(1));
+public class Conditional extends Expression<Double> {
+	public Conditional(Expression<Boolean> condition, Expression<Double> positive, Expression<Double> negative) {
+		super(Double.class,
+				"(" + condition.getExpression() + ") ? (" + positive.getExpression() +
+				") : (" + negative.getExpression() + ")", condition, positive, negative);
 	}
 }
