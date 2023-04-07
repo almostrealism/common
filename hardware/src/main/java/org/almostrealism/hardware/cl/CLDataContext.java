@@ -132,6 +132,8 @@ public class CLDataContext implements DataContext {
 	private void start(boolean gpu, boolean kernelQueue) {
 		if (ctx != null) return;
 
+		CL.setExceptionsEnabled(true);
+
 		identifyDevices(gpu, kernelQueue);
 
 		this.mainDeviceInfo = mainDevice == null ? null : deviceInfo(mainDevice);

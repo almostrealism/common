@@ -26,6 +26,7 @@ import io.almostrealism.relation.Evaluable;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
+@Deprecated
 public class ScalarFromScalarBank<T extends ScalarBank> extends DynamicProducerComputationAdapter<T, Scalar> implements ScalarProducer {
 	public ScalarFromScalarBank(Supplier<Evaluable<? extends T>> bank, Supplier<Evaluable<? extends T>> index) {
 		super(2, Scalar.blank(), ScalarBank::new, bank, index);

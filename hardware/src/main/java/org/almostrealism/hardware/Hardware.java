@@ -23,12 +23,9 @@ import org.almostrealism.hardware.cl.CLMemoryProvider;
 import org.almostrealism.hardware.cl.CLMemoryProvider.Location;
 import org.almostrealism.hardware.cl.CLComputeContext;
 import org.almostrealism.hardware.cl.CLDataContext;
-import org.almostrealism.hardware.cl.DeviceInfo;
 import org.almostrealism.hardware.ctx.ContextListener;
 import org.almostrealism.hardware.jni.NativeDataContext;
 import org.almostrealism.io.SystemUtils;
-import org.jocl.CL;
-import org.jocl.Pointer;
 import org.jocl.Sizeof;
 import org.jocl.cl_device_id;
 import org.jocl.cl_platform_id;
@@ -180,8 +177,6 @@ public final class Hardware {
 
 		if (enableCl) {
 			this.context = new CLDataContext(this, name, this.memoryMax, getOffHeapSize(), this.location);
-
-			CL.setExceptionsEnabled(true);
 
 			if (enableVerbose) {
 				if (enableGpu) {
