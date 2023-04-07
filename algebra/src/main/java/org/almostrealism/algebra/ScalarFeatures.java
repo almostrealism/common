@@ -23,6 +23,7 @@ import org.almostrealism.algebra.computations.ScalarExpressionComputation;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.bool.AcceleratedConditionalStatementScalar;
 import org.almostrealism.bool.GreaterThanScalar;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.ScalarFromPackedCollection;
@@ -35,7 +36,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
-public interface ScalarFeatures extends HardwareFeatures {
+public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 
 	static Supplier<Evaluable<? extends Scalar>> minusOne() { return of(-1.0); }
 
@@ -74,12 +75,12 @@ public interface ScalarFeatures extends HardwareFeatures {
 		return new ScalarExpressionComputation(comp, (Supplier) bank);
 	}
 
-	default ScalarProducer scalar(TraversalPolicy shape, Supplier<Evaluable<? extends PackedCollection>> collection, int index) {
+	default ScalarProducer scalar(TraversalPolicy shape, Supplier<Evaluable<? extends PackedCollection<?>>> collection, int index) {
 		return scalar(shape, collection, v((double) index));
 	}
 
-	default ScalarProducer scalar(TraversalPolicy shape, Supplier<Evaluable<? extends PackedCollection>> collection, Supplier<Evaluable<? extends Scalar>> index) {
-		return new ScalarFromPackedCollection(shape, collection, index);
+	default ScalarProducer scalar(TraversalPolicy shape, Supplier<Evaluable<? extends PackedCollection<?>>> collection, Supplier<Evaluable<? extends Scalar>> index) {
+		return new ScalarFromPackedCollection(shape, (Supplier) collection, index);
 	}
 
 	default ScalarProducer scalar() {

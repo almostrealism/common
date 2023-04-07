@@ -23,24 +23,21 @@ import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.algebra.ScalarProducerBase;
+import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.TraversalPolicy;
 
 import java.util.Optional;
 import java.util.function.Supplier;
 
 public class Dither extends ScalarBankAdd {
+
 	public Dither(int count, Supplier<Evaluable<? extends ScalarBank>> input,
 				  Supplier<Evaluable<? extends Scalar>> ditherValue) {
-		this(count, input, ditherValue, null);
+		super(count, input, gaussRand(ditherValue));
 	}
 
-	public Dither(int count, Supplier<Evaluable<? extends ScalarBank>> input,
-				  Supplier<Evaluable<? extends Scalar>> ditherValue,
-				  Supplier<Pair<?>> randDestination) {
-		super(count, input, gaussRand(ditherValue, randDestination));
-	}
-
-	private static ScalarProducerBase gaussRand(Supplier<Evaluable<? extends Scalar>> ditherValue, Supplier<Pair<?>> randDestination) {
-		return ScalarFeatures.getInstance().scalarsMultiply(ditherValue,
-				Optional.ofNullable(randDestination).map(GaussRandom::new).orElseGet(GaussRandom::new));
+	private static ScalarProducerBase gaussRand(Supplier<Evaluable<? extends Scalar>> ditherValue) {
+		ScalarFeatures ops = ScalarFeatures.getInstance();
+		return ScalarFeatures.getInstance().scalarsMultiply(ditherValue, ops.scalar(ops.shape(1), ops.randn(ops.shape(1)), 0));
 	}
 }
