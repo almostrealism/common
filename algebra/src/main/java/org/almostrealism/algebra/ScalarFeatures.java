@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -20,7 +20,6 @@ import io.almostrealism.expression.*;
 import org.almostrealism.algebra.computations.Floor;
 import org.almostrealism.algebra.computations.ScalarChoice;
 import org.almostrealism.algebra.computations.ScalarExpressionComputation;
-import org.almostrealism.algebra.computations.ScalarFromScalarBank;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.bool.AcceleratedConditionalStatementScalar;
 import org.almostrealism.bool.GreaterThanScalar;
@@ -69,8 +68,10 @@ public interface ScalarFeatures extends HardwareFeatures {
 		return new ScalarExpressionComputation(comp);
 	}
 
-	default ScalarProducer scalar(Supplier<Evaluable<? extends MemoryBank<Scalar>>> bank, int index) {
-		return new ScalarFromScalarBank(bank, scalar((double) index));
+	default ScalarProducerBase scalar(Supplier<Evaluable<? extends MemoryBank<Scalar>>> bank, int index) {
+		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
+		IntStream.range(0, 2).forEach(i -> comp.add(args -> args.get(1).getValue(2 * index + i)));
+		return new ScalarExpressionComputation(comp, (Supplier) bank);
 	}
 
 	default ScalarProducer scalar(TraversalPolicy shape, Supplier<Evaluable<? extends PackedCollection>> collection, int index) {
