@@ -161,6 +161,14 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 		}
 
 		@Override
+		public boolean isKernelEnabled() {
+			// TODO  This is not ideal, but until we cleanup kernel functionality further
+			// TODO  allowing this to be treated as KernelSupport is not compatible with
+			// TODO  the scenarios where we need to disable kernel operations
+			return Hardware.enableKernelOps;
+		}
+
+		@Override
 		public Evaluable<? extends MemoryData> get() { return provider; }
 
 		@Override
