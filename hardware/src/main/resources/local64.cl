@@ -111,7 +111,8 @@ __kernel void matrixCopy_globalToLocal(__local double *res, __global const doubl
 __kernel void
 add(__global double *res, __global const double *a, __global const double *b,
     const int resOffset, const int aOffset, const int bOffset,
-    const int resSize, const int aSize, const int bSize) {
+    const int resSize, const int aSize, const int bSize,
+    const int resDim0, const int aDim0, const int bDim0) {
 	res[resOffset] = a[aOffset] + b[bOffset];
 	res[resOffset + 1] = a[aOffset + 1] + b[bOffset + 1];
 	res[resOffset + 2] = a[aOffset + 2] + b[bOffset + 2];
@@ -136,24 +137,30 @@ divide(__global double *res, __global const double *a, __global const double *b,
 }
 
 __kernel void
-addTo(__global double *a, __global const double *b, const int aOffset, const int bOffset,
-      const int aSize, const int bSize) {
+addTo(__global double *a, __global const double *b,
+      const int aOffset, const int bOffset,
+      const int aSize, const int bSize,
+      const int aDim0, const int bDim0) {
 	a[aOffset] += b[bOffset];
 	a[aOffset + 1] += b[bOffset + 1];
 	a[aOffset + 2] += b[bOffset + 2];
 }
 
 __kernel void
-subtractFrom(__global double *a, __global const double *b, const int aOffset, const int bOffset,
-            const int aSize, const int bSize) {
+subtractFrom(__global double *a, __global const double *b,
+            const int aOffset, const int bOffset,
+            const int aSize, const int bSize,
+            const int aDim0, const int bDim0) {
     a[aOffset] -= b[bOffset];
     a[aOffset + 1] -= b[bOffset + 1];
     a[aOffset + 2] -= b[bOffset + 2];
 }
 
 __kernel void
-divideBy(__global double *a, __global const double *b, const int aOffset, const int bOffset,
-         const int aSize, const int bSize) {
+divideBy(__global double *a, __global const double *b,
+         const int aOffset, const int bOffset,
+         const int aSize, const int bSize,
+         const int aDim0, const int bDim0) {
 	a[aOffset] /= b[bOffset];
 	a[aOffset + 1] /= b[bOffset + 1];
 	a[aOffset + 2] /= b[bOffset + 2];
@@ -187,7 +194,8 @@ rayPointAt(__global double *res, __global double *r, __global double *t,
 __kernel void
 matrixProduct(__global double *res, __global const double *a, __global const double *b,
                 const int resOffset, const int aOffset, const int bOffset,
-                const int resSize, const int aSize, const int bSize) {
+                const int resSize, const int aSize, const int bSize,
+                const int resDim0, const int aDim0, const int bDim0) {
     for (int i = 0; i < 4; i++) {
         for (int j = 0; j < 4; j++) {
             res[resOffset + j * 4 + i] = a[aOffset + j * 4] * 	b[bOffset + i] +

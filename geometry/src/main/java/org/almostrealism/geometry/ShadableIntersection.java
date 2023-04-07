@@ -26,7 +26,6 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.computations.ProducerWithRankAdapter;
-import org.almostrealism.geometry.computations.RayDirection;
 import org.almostrealism.geometry.computations.RayPointAt;
 import org.almostrealism.geometry.computations.RayFromVectors;
 
@@ -40,11 +39,11 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 	private Producer<Ray> normal;
 
 	public ShadableIntersection(Gradient surface, Supplier<Evaluable<? extends Ray>> r, Producer<Scalar> distance) {
-		this(surface, new RayPointAt(r, distance), new RayDirection(r), distance);
+		this(surface, new RayPointAt(r, distance), RayFeatures.getInstance().direction(r), distance);
 	}
 
 	public ShadableIntersection(Supplier<Evaluable<? extends Ray>> r, Supplier<Evaluable<? extends Vector>> normal, Producer<Scalar> distance) {
-		this(new RayPointAt(r, distance), new RayDirection(r), normal, distance);
+		this(new RayPointAt(r, distance), RayFeatures.getInstance().direction(r), normal, distance);
 	}
 
 	public ShadableIntersection(Gradient surface, Producer<Vector> point, Producer<Vector> incident, Producer<Scalar> distance) {

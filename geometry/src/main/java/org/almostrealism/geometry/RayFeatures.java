@@ -19,12 +19,10 @@ package org.almostrealism.geometry;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorEvaluable;
 import org.almostrealism.algebra.VectorFeatures;
-import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.algebra.VectorProducerBase;
 import org.almostrealism.algebra.computations.ScalarExpressionComputation;
 import org.almostrealism.algebra.computations.VectorExpressionComputation;
 import org.almostrealism.geometry.computations.StaticRayComputation;
-import org.almostrealism.geometry.computations.RayDirection;
 import io.almostrealism.relation.Evaluable;
 
 import java.util.List;
@@ -64,8 +62,12 @@ public interface RayFeatures extends VectorFeatures {
 		return (VectorEvaluable) direction(() -> r).get();
 	}
 
-	default VectorProducer direction(Supplier<Evaluable<? extends Ray>> r) {
-		return new RayDirection(r);
+	default VectorProducerBase direction(Supplier<Evaluable<? extends Ray>> r) {
+		return new VectorExpressionComputation(List.of(
+				args -> args.get(1).getValue(3),
+				args -> args.get(1).getValue(4),
+				args -> args.get(1).getValue(5)),
+				(Supplier) r);
 	}
 
 	default ScalarExpressionComputation oDoto(Supplier<Evaluable<? extends Ray>> r) { return dotProduct(origin(r), origin(r)); }
