@@ -53,14 +53,14 @@ public class TriangleDataTest implements TestFeatures {
 	public void edges() {
 		MeshPointData points = points();
 
-		VectorProducer edge1 = subtract(v(points.get(0).getP2()), v(points.get(0).getP1()));
+		VectorProducer edge1 = subtract(v(points.get(0).get(1)), v(points.get(0).get(0)));
 		Vector value = edge1.get().evaluate();
 		System.out.println(value);
 		Assert.assertEquals(-1, value.getX(), Math.pow(10, -10));
 		Assert.assertEquals(-2, value.getY(), Math.pow(10, -10));
 		Assert.assertEquals(0, value.getZ(), Math.pow(10, -10));
 
-		VectorProducer edge2 = subtract(v(points.get(0).getP3()), v(points.get(0).getP1()));
+		VectorProducer edge2 = subtract(v(points.get(0).get(2)), v(points.get(0).get(0)));
 		value = edge2.get().evaluate();
 		System.out.println(value);
 		Assert.assertEquals(1, value.getX(), Math.pow(10, -10));
@@ -77,18 +77,18 @@ public class TriangleDataTest implements TestFeatures {
 	@Test
 	public void triangleData() {
 		MeshPointData points = points();
-		TriangleDataProducer td = triangle(v(points.get(0).getP1()),
-											v(points.get(0).getP2()),
-											v(points.get(0).getP3()));
+		TriangleDataProducer td = triangle(v(points.get(0).get(0)),
+											v(points.get(0).get(1)),
+											v(points.get(0).get(2)));
 		triangleDataAssertions(td.get().evaluate());
 	}
 
 	@Test
 	public void triangleDataCompact() {
 		MeshPointData points = points();
-		Producer<TriangleData> td = triangle(v(points.get(0).getP1()),
-				v(points.get(0).getP2()),
-				v(points.get(0).getP3()));
+		Producer<TriangleData> td = triangle(v(points.get(0).get(0)),
+				v(points.get(0).get(1)),
+				v(points.get(0).get(2)));
 		// td.compact();
 		triangleDataAssertions(td.get().evaluate());
 	}

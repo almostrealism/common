@@ -22,6 +22,7 @@ import org.almostrealism.algebra.VectorEvaluable;
 import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.algebra.computations.DefaultVectorEvaluable;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.collect.PackedCollection;
 
 import java.util.function.Supplier;
 
@@ -58,7 +59,7 @@ public interface TriangleDataFeatures extends VectorFeatures {
 		return new VectorFromTriangleData(t, VectorFromTriangleData.NORMAL);
 	}
 
-	default TriangleDataProducer triangle(Supplier<Evaluable<? extends TrianglePointData>> points) {
+	default TriangleDataProducer triangle(Supplier<Evaluable<? extends PackedCollection<?>>> points) {
 		return triangle(new VectorFromTrianglePointData(points, VectorFromTrianglePointData.P1),
 				new VectorFromTrianglePointData(points, VectorFromTrianglePointData.P2),
 				new VectorFromTrianglePointData(points, VectorFromTrianglePointData.P3));

@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@ import io.almostrealism.relation.Evaluable;
  *
  * @author  Michael Murray
  */
+@Deprecated
 public class VectorBank extends PackedCollection<Vector> {
 	public VectorBank(int count) {
 		super(new TraversalPolicy(count, 3), 1, delegateSpec ->
@@ -38,14 +39,5 @@ public class VectorBank extends PackedCollection<Vector> {
 		super(new TraversalPolicy(count, 3), 1, delegateSpec ->
 				new Vector(delegateSpec.getDelegate(), delegateSpec.getOffset()),
 				delegate, delegateOffset);
-	}
-
-	public static VectorBank fromProducer(Evaluable<Vector> producer, int count) {
-		VectorBank bank = new VectorBank(count);
-		for (int i = 0; i < bank.getCount(); i++) {
-			bank.set(i, producer.evaluate());
-		}
-
-		return bank;
 	}
 }

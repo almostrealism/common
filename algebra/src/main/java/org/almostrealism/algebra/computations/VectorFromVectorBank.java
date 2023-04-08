@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -26,13 +26,14 @@ import io.almostrealism.relation.Evaluable;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
+@Deprecated
 public class VectorFromVectorBank<T extends VectorBank> extends DynamicProducerComputationAdapter<T, Vector> implements VectorProducer {
 	private int position;
 
 	private Expression<Double> value[];
 
 	public VectorFromVectorBank(Supplier<Evaluable<? extends T>> bank, int position) {
-		super(3, Vector.blank(), VectorBank::new, bank);
+		super(3, Vector.blank(), Vector::bank, bank);
 		this.position = position * 3;
 	}
 

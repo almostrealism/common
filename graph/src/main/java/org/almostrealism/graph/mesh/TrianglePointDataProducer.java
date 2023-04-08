@@ -16,6 +16,7 @@
 
 package org.almostrealism.graph.mesh;
 
+import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.algebra.VectorProducer;
 import io.almostrealism.code.ProducerComputation;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
@@ -24,7 +25,8 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.KernelizedProducer;
 
-public interface TrianglePointDataProducer extends ProducerComputation<TrianglePointData>, KernelizedProducer<TrianglePointData>, TrianglePointDataFeatures {
+@Deprecated
+public interface TrianglePointDataProducer extends ProducerComputation<TrianglePointData>, KernelizedProducer<TrianglePointData>, VectorFeatures {
 
 	@Override
 	default KernelizedEvaluable<TrianglePointData> get() {
@@ -41,10 +43,4 @@ public interface TrianglePointDataProducer extends ProducerComputation<TriangleP
 		ev.compile();
 		return ev;
 	}
-
-	default VectorProducer p1() { return p1(this); }
-
-	default VectorProducer p2() { return p2(this); }
-
-	default VectorProducer p3() { return p3(this); }
 }

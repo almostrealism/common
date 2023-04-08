@@ -21,6 +21,7 @@ import io.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 
+@Deprecated
 public class VectorFromTriangleData extends VectorFromVectorBank<TriangleData> {
 	public static final int ABC = 0;
 	public static final int DEF = 1;

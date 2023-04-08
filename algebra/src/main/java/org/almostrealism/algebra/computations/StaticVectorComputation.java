@@ -22,6 +22,6 @@ import org.almostrealism.algebra.VectorProducer;
 
 public class StaticVectorComputation extends StaticComputationAdapter<Vector> implements VectorProducer {
 	public StaticVectorComputation(Vector value) {
-		super(value, Vector.blank(), VectorBank::new);
+		super(value, Vector.blank(), Vector::bank);
 	}
 }

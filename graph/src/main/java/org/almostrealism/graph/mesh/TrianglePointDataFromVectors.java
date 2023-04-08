@@ -20,6 +20,7 @@ import io.almostrealism.expression.Expression;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.hardware.DynamicProducerComputationAdapter;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.hardware.DynamicProducerForMemoryData;
 
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
@@ -29,7 +30,7 @@ public class TrianglePointDataFromVectors extends DynamicProducerComputationAdap
 
 	public TrianglePointDataFromVectors(Supplier<Evaluable<? extends Vector>> p1, Supplier<Evaluable<? extends Vector>> p2,
 								   Supplier<Evaluable<? extends Vector>> p3) {
-		super(9, TrianglePointData.blank(), TrianglePointDataBank::new, p1, p2, p3);
+		super(9, new DynamicProducerForMemoryData(() -> Vector.bank(3), TrianglePointDataBank::new), TrianglePointDataBank::new, p1, p2, p3);
 	}
 
 	@Override

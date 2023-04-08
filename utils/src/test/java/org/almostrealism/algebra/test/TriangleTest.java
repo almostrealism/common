@@ -25,6 +25,7 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.computations.VectorExpressionComputation;
 import org.almostrealism.bool.AcceleratedConjunctionScalar;
 import org.almostrealism.bool.GreaterThanScalar;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.computations.RayFromVectors;
 import org.almostrealism.geometry.computations.RayPointAt;
@@ -95,10 +96,10 @@ public class TriangleTest implements CodeFeatures {
 		Ray in = ray(0.0, 0.0, 0.0, 0.0, 0.0, -1.0).get().evaluate();
 		System.out.println(in);
 
-		TrianglePointData tp = new TrianglePointData();
-		tp.setP1(new Vector(1.0, 1.0, -1.0));
-		tp.setP2(new Vector(-1.0, 1.0, -1.0));
-		tp.setP3(new Vector(0.0, -1.0, -1.0));
+		PackedCollection<Vector> tp = Vector.bank(3);
+		tp.set(0, new Vector(1.0, 1.0, -1.0));
+		tp.set(1, new Vector(-1.0, 1.0, -1.0));
+		tp.set(2, new Vector(0.0, -1.0, -1.0));
 
 		TriangleData td = triangle(p(tp)).get().evaluate();
 		Assert.assertEquals(new Vector(-2.0, 0.0, 0.0), td.getABC());

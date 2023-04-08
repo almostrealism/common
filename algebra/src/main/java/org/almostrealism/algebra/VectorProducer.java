@@ -27,6 +27,7 @@ import org.almostrealism.hardware.KernelizedProducer;
 
 import java.util.function.Supplier;
 
+@Deprecated
 public interface VectorProducer extends VectorProducerBase {
 
 	@Override

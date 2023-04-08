@@ -25,6 +25,7 @@ import io.almostrealism.relation.Evaluable;
  *
  * @author  Michael Murray
  */
+@Deprecated
 public class TrianglePointDataBank extends MemoryBankAdapter<TrianglePointData> {
 	public TrianglePointDataBank(int count) {
 		super(9, count, delegateSpec ->

@@ -18,15 +18,17 @@ package org.almostrealism.graph.mesh;
 
 import org.almostrealism.algebra.computations.VectorFromVectorBank;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.collect.PackedCollection;
 
 import java.util.function.Supplier;
 
+@Deprecated
 public class VectorFromTrianglePointData extends VectorFromVectorBank<TrianglePointData> {
 	public static final int P1 = 0;
 	public static final int P2 = 1;
 	public static final int P3 = 2;
 
-	public VectorFromTrianglePointData(Supplier<Evaluable<? extends TrianglePointData>> triangle, int position) {
-		super(triangle, position);
+	public VectorFromTrianglePointData(Supplier<Evaluable<? extends PackedCollection<?>>> triangle, int position) {
+		super((Supplier) triangle, position);
 	}
 }

@@ -17,12 +17,10 @@
 package org.almostrealism.graph.mesh;
 
 import org.almostrealism.algebra.VectorEvaluable;
+import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.hardware.KernelizedEvaluable;
 
-public interface TrianglePointDataEvaluable extends KernelizedEvaluable<TrianglePointData>, TrianglePointDataFeatures {
-	default VectorEvaluable p1() { return p1(this); }
+@Deprecated
+public interface TrianglePointDataEvaluable extends KernelizedEvaluable<TrianglePointData>, VectorFeatures {
 
-	default VectorEvaluable p2() { return p2(this); }
-
-	default VectorEvaluable p3() { return p3(this); }
 }

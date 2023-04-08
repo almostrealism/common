@@ -19,6 +19,7 @@ package org.almostrealism.space;
 import io.almostrealism.code.AdaptEvaluable;
 import io.almostrealism.code.OperationAdapter;
 import org.almostrealism.algebra.*;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
 import org.almostrealism.geometry.Intersection;
 import org.almostrealism.geometry.TransformMatrix;
@@ -112,7 +113,15 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 		setVertices(vertexData.getPosition(ind1), vertexData.getPosition(ind2), vertexData.getPosition(ind3));
 	}
 
-	public TriangleData getData() { return data; }
+	public PackedCollection<Vector> getPointData() {
+		PackedCollection<Vector> points = Vector.bank(3);
+		points.set(0, p1);
+		points.set(1, p2);
+		points.set(2, p3);
+		return points;
+	}
+
+	public PackedCollection<Vector> getData() { return data; }
 	
 	/**
 	 * Sets the vertices of this Triangle object to those specified.
@@ -122,17 +131,13 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 	 * you must call the setVertices method again.
 	 */	
 	public void setVertices(Vector p1, Vector p2, Vector p3) {
-		if (enableHardwareOperator) {
-			TrianglePointData points = new TrianglePointData();
-			points.setP1(p1);
-			points.setP2(p2);
-			points.setP3(p3);
-			this.data = dataProducer.evaluate(points);
-		} else {
-			this.p1 = p1;
-			this.p2 = p2;
-			this.p3 = p3;
+		this.p1 = p1;
+		this.p2 = p2;
+		this.p3 = p3;
 
+		if (enableHardwareOperator) {
+			this.data = dataProducer.evaluate(getPointData());
+		} else {
 			Vector a = this.p2.subtract(this.p1);
 			Vector b = this.p3.subtract(this.p1);
 

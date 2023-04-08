@@ -27,6 +27,7 @@ import org.almostrealism.algebra.computations.ScalarExpressionComputation;
 import org.almostrealism.algebra.computations.StaticVectorComputation;
 import org.almostrealism.algebra.computations.VectorExpressionComputation;
 import org.almostrealism.algebra.computations.VectorSum;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.hardware.HardwareFeatures;
 
 import java.util.ArrayList;
@@ -42,7 +43,7 @@ import java.util.stream.IntStream;
  *
  * @author  Michael Murray
  */
-public interface VectorFeatures extends HardwareFeatures {
+public interface VectorFeatures extends CollectionFeatures, HardwareFeatures {
 	Scalar half = new Scalar(0.5);
 	Scalar two = new Scalar(2.0);
 

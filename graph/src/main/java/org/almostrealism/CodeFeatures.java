@@ -120,7 +120,7 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 
 	default Supplier<Evaluable<? extends TriangleData>> triangle(int argIndex) { return value(TriangleData.class, argIndex); }
 
-	default Supplier<Evaluable<? extends TrianglePointData>> points(int argIndex) { return value(TrianglePointData.class, argIndex); }
+	default Supplier<Evaluable<? extends PackedCollection<?>>> points(int argIndex) { return value(shape(3, 3), argIndex); }
 
 	default <T> Producer<T> value(T v) {
 		if (v instanceof Scalar) {
@@ -148,6 +148,10 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 
 	default <T> Producer<T> value(Class<T> type, int argIndex, int kernelDimension) {
 		return Input.value(type, argIndex, kernelDimension);
+	}
+
+	default <T> Producer<T> value(TraversalPolicy shape, int argIndex) {
+		return Input.value(shape.getTotalSize(), argIndex);
 	}
 
 	default <T> Producer<T> value(int memLength, int argIndex) {

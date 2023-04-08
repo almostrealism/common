@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -25,7 +25,7 @@ import java.util.function.Supplier;
 
 public class VectorSum extends NAryDynamicProducer<Vector> implements VectorProducer {
 	public VectorSum(Supplier<Evaluable<? extends Vector>>... producers) {
-		super("+", 3, Vector.blank(), VectorBank::new, producers);
+		super("+", 3, Vector.blank(), Vector::bank, producers);
 	}
 
 	@Override

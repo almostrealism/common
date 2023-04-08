@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -31,6 +31,6 @@ public class AcceleratedConjunctionVector extends AcceleratedConjunctionAdapter<
 	public AcceleratedConjunctionVector(Supplier<Evaluable<?>> trueValue,
 										Supplier<Evaluable<?>> falseValue,
 										AcceleratedConditionalStatement<Vector>... conjuncts) {
-		super(3, Vector::new, VectorBank::new, trueValue, falseValue, conjuncts);
+		super(3, Vector::new, Vector::bank, trueValue, falseValue, conjuncts);
 	}
 }

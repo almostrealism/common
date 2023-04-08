@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -37,7 +37,7 @@ public class Transform extends DynamicProducerComputationAdapter<Vector, Vector>
 	private Expression<Double> value[];
 
 	public Transform(TransformMatrix t, Supplier<Evaluable<? extends Vector>> v, boolean includeTranslation) {
-		super(3, Vector.blank(), VectorBank::new, new Supplier[] { v }, new Object[] { t });
+		super(3, Vector.blank(), Vector::bank, new Supplier[] { v }, new Object[] { t });
 		this.includeTranslation = includeTranslation;
 	}
 

@@ -41,6 +41,6 @@ public class DefaultVectorEvaluable extends AcceleratedComputationEvaluable<Vect
 
 	@Override
 	public MemoryBank<Vector> createKernelDestination(int size) {
-		return new VectorBank(size);
+		return Vector.bank(size);
 	}
 }

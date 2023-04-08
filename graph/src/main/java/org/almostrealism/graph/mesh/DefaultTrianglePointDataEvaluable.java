@@ -23,6 +23,7 @@ import org.almostrealism.hardware.MemoryBank;
 import io.almostrealism.code.Computation;
 import org.almostrealism.hardware.MemoryData;
 
+@Deprecated
 public class DefaultTrianglePointDataEvaluable extends AcceleratedComputationEvaluable<TrianglePointData> implements TrianglePointDataEvaluable {
 
 	public DefaultTrianglePointDataEvaluable(Computation<TrianglePointData> c) {

@@ -403,8 +403,19 @@ public class Vector extends PackedCollection<Vector> implements Triple, VectorFe
 
 	public static Producer<Vector> blank() {
 		Supplier<Vector> s = Vector::new;
-		IntFunction<MemoryBank<Vector>> b = VectorBank::new;
+		IntFunction<MemoryBank<Vector>> b = Vector::bank;
 		return new DynamicProducerForMemoryData<>(s, b);
+	}
+
+	public static PackedCollection<Vector> bank(int count) {
+		return new PackedCollection<>(new TraversalPolicy(count, 3), 1, delegateSpec ->
+				new Vector(delegateSpec.getDelegate(), delegateSpec.getOffset()));
+	}
+
+	public static PackedCollection<Vector> bank(int count, MemoryData delegate, int delegateOffset) {
+		return new PackedCollection<>(new TraversalPolicy(count, 3), 1, delegateSpec ->
+				new Vector(delegateSpec.getDelegate(), delegateSpec.getOffset()),
+				delegate, delegateOffset);
 	}
 
 	/**

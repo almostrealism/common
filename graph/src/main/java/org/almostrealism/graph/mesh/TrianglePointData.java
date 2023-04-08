@@ -22,6 +22,7 @@ import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.MemoryData;
 import io.almostrealism.relation.Producer;
 
+@Deprecated
 public class TrianglePointData extends VectorBank {
 	public TrianglePointData() {
 		super(3);
@@ -29,17 +30,5 @@ public class TrianglePointData extends VectorBank {
 
 	protected TrianglePointData(MemoryData delegate, int delegateOffset) {
 		super(3, delegate, delegateOffset);
-	}
-
-	public void setP1(Vector p1) { set(0, p1); }
-	public void setP2(Vector p2) { set(1, p2); }
-	public void setP3(Vector p3) { set(2, p3); }
-
-	public Vector getP1() { return get(0); }
-	public Vector getP2() { return get(1); }
-	public Vector getP3() { return get(2); }
-
-	public static Producer<TrianglePointData> blank() {
-		return new DynamicProducerForMemoryData<>(TrianglePointData::new, TrianglePointDataBank::new);
 	}
 }

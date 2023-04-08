@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,22 +16,19 @@
 
 package org.almostrealism.space;
 
-import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairBank;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorBank;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBBank;
 import org.almostrealism.graph.mesh.MeshPointData;
-import org.almostrealism.geometry.ContinuousField;
-import org.almostrealism.graph.mesh.TriangleDataFromVectors;
 import org.almostrealism.graph.mesh.TrianglePointData;
 import org.almostrealism.graph.mesh.TrianglePointDataFromVectors;
 
 public class DefaultVertexData implements Mesh.VertexData {
-	private VectorBank vertices;
+	private PackedCollection<Vector> vertices;
 	private RGBBank colors;
 	private PairBank texCoords;
 
@@ -39,13 +36,13 @@ public class DefaultVertexData implements Mesh.VertexData {
 	private int triangles[][];
 
 	public DefaultVertexData(int points, int triangles) {
-		this.vertices = new VectorBank(points);
+		this.vertices = Vector.bank(points);
 		this.colors = new RGBBank(points);
 		this.texCoords = new PairBank(points);
 		this.triangles = new int[triangles][3];
 	}
 
-	public VectorBank getVertices() { return vertices; }
+	public PackedCollection<Vector> getVertices() { return vertices; }
 	public RGBBank getColors() { return colors; }
 	public PairBank getTextureCoordinates() { return texCoords; }
 
