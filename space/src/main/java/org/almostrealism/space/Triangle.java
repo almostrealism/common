@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,20 +17,17 @@
 package org.almostrealism.space;
 
 import io.almostrealism.code.AdaptEvaluable;
-import io.almostrealism.code.OperationAdapter;
 import org.almostrealism.algebra.*;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
 import org.almostrealism.geometry.Intersection;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import io.almostrealism.code.Operator;
 import io.almostrealism.code.Constant;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.graph.mesh.TriangleData;
-import org.almostrealism.graph.mesh.TrianglePointData;
 import org.almostrealism.graph.mesh.TriangleDataFeatures;
 import org.almostrealism.graph.mesh.TriangleDataProducer;
 import org.almostrealism.graph.mesh.TriangleIntersectAt;
@@ -67,7 +64,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 	public static final KernelizedEvaluable<Scalar> intersectAt;
 	
 	static {
-		TriangleDataProducer triangle = triangleFeat.triangle(PassThroughEvaluable.of(TrianglePointData.class, 0));
+		TriangleDataProducer triangle = triangleFeat.triangle(PassThroughEvaluable.of(0));
 		dataProducer = triangle.get();
 
 		intersectAt = new TriangleIntersectAt(PassThroughEvaluable.of(TriangleData.class, 1),

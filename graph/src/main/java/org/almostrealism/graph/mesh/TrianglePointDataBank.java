@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,6 +16,8 @@
 
 package org.almostrealism.graph.mesh;
 
+import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.mem.MemoryBankAdapter;
 import io.almostrealism.relation.Evaluable;
 
@@ -26,18 +28,9 @@ import io.almostrealism.relation.Evaluable;
  * @author  Michael Murray
  */
 @Deprecated
-public class TrianglePointDataBank extends MemoryBankAdapter<TrianglePointData> {
+public class TrianglePointDataBank extends MemoryBankAdapter<PackedCollection<Vector>> {
 	public TrianglePointDataBank(int count) {
 		super(9, count, delegateSpec ->
-				new TrianglePointData(delegateSpec.getDelegate(), delegateSpec.getOffset()));
-	}
-
-	public static TrianglePointDataBank fromProducer(Evaluable<TrianglePointData> producer, int count) {
-		TrianglePointDataBank bank = new TrianglePointDataBank(count);
-		for (int i = 0; i < bank.getCount(); i++) {
-			bank.set(i, producer.evaluate());
-		}
-
-		return bank;
+				Vector.bank(3, delegateSpec.getDelegate(), delegateSpec.getOffset()));
 	}
 }

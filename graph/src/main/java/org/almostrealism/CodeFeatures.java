@@ -51,7 +51,6 @@ import org.almostrealism.geometry.computations.StaticRayComputation;
 import org.almostrealism.geometry.computations.StaticTransformMatrixComputation;
 import org.almostrealism.graph.mesh.TriangleData;
 import org.almostrealism.graph.mesh.TriangleDataFeatures;
-import org.almostrealism.graph.mesh.TrianglePointData;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.code.ProducerComputation;

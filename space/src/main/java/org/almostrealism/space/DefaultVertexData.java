@@ -17,6 +17,8 @@
 package org.almostrealism.space;
 
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
+import org.almostrealism.CodeFeatures;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairBank;
 import org.almostrealism.algebra.Vector;
@@ -24,10 +26,8 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBBank;
 import org.almostrealism.graph.mesh.MeshPointData;
-import org.almostrealism.graph.mesh.TrianglePointData;
-import org.almostrealism.graph.mesh.TrianglePointDataFromVectors;
 
-public class DefaultVertexData implements Mesh.VertexData {
+public class DefaultVertexData implements Mesh.VertexData, CodeFeatures {
 	private PackedCollection<Vector> vertices;
 	private RGBBank colors;
 	private PairBank texCoords;
@@ -91,12 +91,13 @@ public class DefaultVertexData implements Mesh.VertexData {
 	public MeshPointData getMeshPointData() {
 		MeshPointData points = new MeshPointData(getTriangleCount());
 
-		TrianglePointDataFromVectors producer =
-				new TrianglePointDataFromVectors(
-						() -> args -> vertices.get(((int[]) args[0])[0]),
+		Producer<PackedCollection<Vector>> producer =
+				points(
+						() ->
+								args -> vertices.get(((int[]) args[0])[0]),
 						() -> args -> vertices.get(((int[]) args[0])[1]),
 						() -> args -> vertices.get(((int[]) args[0])[2]));
-		Evaluable<TrianglePointData> ev = producer.get();
+		Evaluable<PackedCollection<Vector>> ev = producer.get();
 
 		for (int i = 0; i < triangles.length; i++) {
 			points.set(i, ev.evaluate(triangles[i]));

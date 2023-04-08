@@ -31,7 +31,6 @@ import org.almostrealism.geometry.computations.RayFromVectors;
 import org.almostrealism.geometry.computations.RayPointAt;
 import org.almostrealism.graph.mesh.TriangleData;
 import org.almostrealism.graph.mesh.TriangleIntersectAt;
-import org.almostrealism.graph.mesh.TrianglePointData;
 import org.almostrealism.hardware.PassThroughEvaluable;
 import org.almostrealism.space.Triangle;
 import org.almostrealism.CodeFeatures;

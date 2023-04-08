@@ -387,18 +387,18 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		}
 	}
 
-	protected MemoryDataArgumentProcessor processKernelArgs(MemoryBank output, MemoryData args[]) {
+	protected MemoryDataArgumentProcessor processKernelArgs(MemoryBank output, Object args[]) {
 		return new MemoryDataArgumentProcessor(getKernelArgs(output, args),
 				Hardware.getLocalHardware().getDataContext().getKernelMemoryProvider(),
 				this::createAggregatedInput);
 	}
 
-	private MemoryData[] getKernelArgs(MemoryBank output, MemoryData args[]) {
+	private MemoryData[] getKernelArgs(MemoryBank output, Object args[]) {
 		int kernelSize;
 
 		if (output != null) {
 			kernelSize = output.getCount();
-		} else if (args.length > 0) {
+		} else if (args.length > 0 && Stream.of(args).filter(a -> !(a instanceof MemoryData)).findAny().isEmpty()) {
 			kernelSize = ((MemoryBank) args[0]).getCount();
 		} else {
 			kernelSize = -1;
@@ -453,11 +453,11 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		argumentMaps = new ArrayList<>();
 	}
 
-	protected static <T> MemoryData[] getKernelArgs(List<ArrayVariable<? extends T>> arguments, MemoryData args[], int kernelSize) {
+	protected static <T> MemoryData[] getKernelArgs(List<ArrayVariable<? extends T>> arguments, Object args[], int kernelSize) {
 		return getKernelArgs(arguments, args, new HashMap<>(), kernelSize);
 	}
 
-	protected static <T> MemoryData[] getKernelArgs(List<ArrayVariable<? extends T>> arguments, MemoryData args[], Map<ArrayVariable<? extends T>, MemoryBank> mappings, int kernelSize) {
+	protected static <T> MemoryData[] getKernelArgs(List<ArrayVariable<? extends T>> arguments, Object args[], Map<ArrayVariable<? extends T>, MemoryBank> mappings, int kernelSize) {
 		MemoryData kernelArgs[] = new MemoryData[arguments.size()];
 
 		i: for (int i = 0; i < arguments.size(); i++) {
@@ -471,7 +471,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			int refIndex = getProducerArgumentReferenceIndex(arguments.get(i));
 
 			if (refIndex >= 0) {
-				kernelArgs[i] = args[refIndex];
+				kernelArgs[i] = (MemoryData) args[refIndex];
 				continue i;
 			}
 
@@ -479,11 +479,11 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 			if (c instanceof ProducerArgumentReference) {
 				int argIndex = ((ProducerArgumentReference) c).getReferencedArgumentIndex();
-				kernelArgs[i] = args[argIndex];
-			} else if (c instanceof KernelizedEvaluable) {
+				kernelArgs[i] = (MemoryData) args[argIndex];
+			} else if (c instanceof KernelizedEvaluable && Stream.of(args).filter(a -> !(a instanceof MemoryData)).findAny().isEmpty()) {
 				KernelizedEvaluable kp = (KernelizedEvaluable) c;
 				kernelArgs[i] = kp.createKernelDestination(kernelSize);
-				kp.kernelEvaluate((MemoryBank) kernelArgs[i], args);
+				kp.kernelEvaluate((MemoryBank) kernelArgs[i], Stream.of(args).map(MemoryData.class::cast).toArray(MemoryData[]::new));
 
 				// This assumes that the axis of the kernel is always the first dimension
 				if (kernelArgs[i] instanceof Traversable) kernelArgs[i] = (MemoryData) ((Traversable) kernelArgs[i]).traverse(1);
@@ -496,7 +496,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	}
 
 
-	protected static <T> MemoryData[] getKernelArgsInferSize(List<ArrayVariable<? extends T>> arguments, MemoryData args[], Map<ArrayVariable<? extends T>, MemoryBank> mappings) {
+	protected static <T> MemoryData[] getKernelArgsInferSize(List<ArrayVariable<? extends T>> arguments, Object args[], Map<ArrayVariable<? extends T>, MemoryBank> mappings) {
 		MemoryData kernelArgs[] = new MemoryData[arguments.size()];
 
 		int kernelSize = -1;
@@ -515,7 +515,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				int refIndex = getProducerArgumentReferenceIndex(arguments.get(i));
 
 				if (refIndex >= 0) {
-					kernelArgs[i] = args[refIndex];
+					kernelArgs[i] = (MemoryData) args[refIndex];
 				}
 			}
 
@@ -603,11 +603,11 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				// TODO  This should not be necessary
 				System.out.println("WARN: ProducerArgumentReference not detected by first pass");
 				int argIndex = ((ProducerArgumentReference) c).getReferencedArgumentIndex();
-				kernelArgs[i] = args[argIndex];
-			} else if (c instanceof KernelizedEvaluable) {
+				kernelArgs[i] = (MemoryData) args[argIndex];
+			} else if (c instanceof KernelizedEvaluable && Stream.of(args).filter(a -> !(a instanceof MemoryData)).findAny().isEmpty()) {
 				KernelizedEvaluable kp = (KernelizedEvaluable) c;
 				kernelArgs[i] = kp.createKernelDestination(kernelSize);
-				kp.kernelEvaluate((MemoryBank) kernelArgs[i], args);
+				kp.kernelEvaluate((MemoryBank) kernelArgs[i], Stream.of(args).map(MemoryData.class::cast).toArray(MemoryData[]::new));
 
 				if (((MemoryBank<?>) kernelArgs[i]).getCount() != kernelSize && kernelArgs[i] instanceof Traversable) {
 					kernelArgs[i] = (MemoryData) ((Traversable) kernelArgs[i]).traverse(1);
@@ -619,8 +619,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 								" is not compatible with kernel size " + kernelSize);
 				}
 			} else {
-				// TODO  This should not be necessary
-				System.out.println("WARN: Producer which does not support kernel evaluation not detected by second pass");
 				kernelArgs[i] = (MemoryData) c.evaluate((Object[]) args);
 			}
 		}

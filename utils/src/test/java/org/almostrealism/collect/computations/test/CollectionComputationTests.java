@@ -96,6 +96,28 @@ public class CollectionComputationTests implements TestFeatures {
 		assertEquals(8.0, out.toArray(0, 1)[0]);
 	}
 
+
+	@Test
+	public void expressionComputationDynamic() {
+		Function<List<MultiExpression<Double>>, Expression<Double>> expression = args ->
+				new Sum(args.get(1).getValue(0), args.get(2).getValue(0));
+
+		ExpressionComputation<?> computation =
+				new ExpressionComputation(List.of(expression),
+						(Producer) () -> args -> {
+							PackedCollection<?> c = new PackedCollection<>(1);
+							c.setMem(0, 2 * (Integer) args[1]);
+							return c;
+						},
+						new PassThroughProducer(1, 0));
+
+		PackedCollection a = new PackedCollection(1);
+		a.setMem(0, 3.0);
+
+		PackedCollection out = computation.get().evaluate(a, Integer.valueOf(6));
+		assertEquals(15.0, out.toArray(0, 1)[0]);
+	}
+
 	@Test
 	public void providerExpressionComputation() {
 		Function<List<MultiExpression<Double>>, Expression<Double>> expression = args ->
