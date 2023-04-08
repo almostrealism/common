@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
+@Deprecated
 public class PairExpressionComputation extends ExpressionComputation<Pair<?>> implements PairProducerBase {
     public PairExpressionComputation(List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression, Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
         super(expression, args);

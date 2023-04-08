@@ -18,6 +18,7 @@ package org.almostrealism.graph.mesh.test;
 
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorProducer;
+import org.almostrealism.algebra.VectorProducerBase;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.graph.mesh.TrianglePointDataBank;
@@ -53,14 +54,14 @@ public class TriangleDataTest implements TestFeatures {
 	public void edges() {
 		TrianglePointDataBank points = points();
 
-		VectorProducer edge1 = subtract(v(points.get(0).get(1)), v(points.get(0).get(0)));
+		VectorProducerBase edge1 = subtract(v(points.get(0).get(1)), v(points.get(0).get(0)));
 		Vector value = edge1.get().evaluate();
 		System.out.println(value);
 		Assert.assertEquals(-1, value.getX(), Math.pow(10, -10));
 		Assert.assertEquals(-2, value.getY(), Math.pow(10, -10));
 		Assert.assertEquals(0, value.getZ(), Math.pow(10, -10));
 
-		VectorProducer edge2 = subtract(v(points.get(0).get(2)), v(points.get(0).get(0)));
+		VectorProducerBase edge2 = subtract(v(points.get(0).get(2)), v(points.get(0).get(0)));
 		value = edge2.get().evaluate();
 		System.out.println(value);
 		Assert.assertEquals(1, value.getX(), Math.pow(10, -10));

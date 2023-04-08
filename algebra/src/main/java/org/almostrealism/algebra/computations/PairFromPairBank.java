@@ -27,6 +27,7 @@ import org.almostrealism.hardware.DynamicProducerComputationAdapter;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
+@Deprecated
 public class PairFromPairBank extends DynamicProducerComputationAdapter<PairBank, Pair<?>> implements PairProducer {
 	public PairFromPairBank(Supplier<Evaluable<? extends PairBank>> bank, Supplier<Evaluable<? extends Scalar>> index) {
 		super(2, Pair.empty(), PairBank::new, bank, (Supplier) index);

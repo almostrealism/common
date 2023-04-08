@@ -27,6 +27,7 @@ import io.almostrealism.relation.Evaluable;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
+@Deprecated
 public class RayFromVectors extends DynamicProducerComputationAdapter<Vector, Ray> implements RayProducer {
 	private Expression<Double> value[];
 	

@@ -16,6 +16,7 @@
 
 package org.almostrealism.geometry;
 
+import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorEvaluable;
 import org.almostrealism.algebra.VectorFeatures;
@@ -68,6 +69,10 @@ public interface RayFeatures extends VectorFeatures {
 				args -> args.get(1).getValue(4),
 				args -> args.get(1).getValue(5)),
 				(Supplier) r);
+	}
+
+	default VectorProducerBase pointAt(Supplier<Evaluable<? extends Ray>> r, Supplier<Evaluable<? extends Scalar>> t) {
+		return add(origin(r), scalarMultiply(direction(r), t));
 	}
 
 	default ScalarExpressionComputation oDoto(Supplier<Evaluable<? extends Ray>> r) { return dotProduct(origin(r), origin(r)); }

@@ -211,9 +211,16 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	// TODO Rename
 	default <T extends PackedCollection<?>> ExpressionComputation<T> _add(
 			Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
-		Function<List<MultiExpression<Double>>, Expression<Double>> expression = args ->
-			new Sum(args.get(1).getValue(0), args.get(2).getValue(0));
-		return new ExpressionComputation<>(List.of(expression), a, b);
+		return _add(1, a, b);
+	}
+
+	default <T extends PackedCollection<?>> ExpressionComputation<T> _add(int depth,
+				Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
+		List<Function<List<MultiExpression<Double>>, Expression<Double>>> expressions =
+				IntStream.range(0, depth).mapToObj(i -> (Function<List<MultiExpression<Double>>, Expression<Double>>)
+								np -> new Product(np.get(1).getValue(i), np.get(2).getValue(i)))
+						.collect(Collectors.toList());
+		return new ExpressionComputation<>(expressions, a, b);
 	}
 
 	// TODO Rename

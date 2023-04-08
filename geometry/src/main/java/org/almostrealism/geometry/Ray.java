@@ -16,16 +16,14 @@
 
 package org.almostrealism.geometry;
 
-import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.algebra.VectorProducerBase;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.geometry.computations.RayPointAt;
 import org.almostrealism.hardware.AcceleratedEvaluable;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.mem.MemoryDataAdapter;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.MemoryBank;
@@ -158,8 +156,8 @@ public class Ray extends PackedCollection<Ray> implements RayFeatures, Cloneable
 	 * @return  The point on the ray represented by this {@link Ray} at distance t from the origin
 	 *          as a {@link Vector}.
 	 */
-	public VectorProducer pointAt(Producer<Scalar> t) {
-		return new RayPointAt(v(this), t);
+	public VectorProducerBase pointAt(Producer<Scalar> t) {
+		return pointAt(v(this), t);
 	}
 
 	@Override

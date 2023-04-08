@@ -22,13 +22,13 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.ProducerWithRank;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.algebra.VectorProducerBase;
 import org.almostrealism.algebra.computations.VectorExpressionComputation;
 import org.almostrealism.bool.AcceleratedConjunctionScalar;
 import org.almostrealism.bool.GreaterThanScalar;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.computations.RayFromVectors;
-import org.almostrealism.geometry.computations.RayPointAt;
 import org.almostrealism.graph.mesh.TriangleIntersectAt;
 import org.almostrealism.hardware.PassThroughEvaluable;
 import org.almostrealism.space.Triangle;
@@ -47,19 +47,19 @@ public class TriangleTest implements CodeFeatures {
 	}
 
 
-	protected RayPointAt originProducer() {
+	protected VectorProducerBase originProducer() {
 		Producer<Ray> noRank = ((ProducerWithRank) intersectAt()).getProducer();
-		return (RayPointAt) ((RayFromVectors) noRank).getInputProducer(1);
+		return (VectorProducerBase) ((RayFromVectors) noRank).getInputProducer(1);
 	}
 
 	protected VectorExpressionComputation originPointProducer() {
-		RayPointAt origin = originProducer();
-		return (VectorExpressionComputation) origin.getInputProducer(1);
+		VectorProducerBase origin = originProducer();
+		return (VectorExpressionComputation) ((OperationAdapter) origin).getInputs().get(1);
 	}
 
 	protected VectorExpressionComputation originDirectionProducer() {
-		RayPointAt origin = originProducer();
-		return (VectorExpressionComputation) origin.getInputProducer(2);
+		VectorProducerBase origin = originProducer();
+		return (VectorExpressionComputation) ((OperationAdapter) origin).getInputs().get(2);
 	}
 
 	@Test
@@ -81,9 +81,8 @@ public class TriangleTest implements CodeFeatures {
 
 	@Test
 	public void origin() {
-		RayPointAt at = originProducer();
+		VectorProducerBase at = originProducer();
 		Evaluable<Vector> ev = at.get();
-		((OperationAdapter) ev).compile();
 
 		Vector p = ev.evaluate();
 		System.out.println(p);

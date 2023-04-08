@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +26,6 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.computations.ScalarExpressionComputation;
 import org.almostrealism.algebra.computations.StaticVectorComputation;
 import org.almostrealism.algebra.computations.VectorExpressionComputation;
-import org.almostrealism.algebra.computations.VectorSum;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareFeatures;
@@ -36,6 +35,7 @@ import java.util.List;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 /**
@@ -135,8 +135,12 @@ public interface VectorFeatures extends CollectionFeatures, HardwareFeatures {
 	}
 
 	@Deprecated
-	default VectorProducer add(Supplier<Evaluable<? extends Vector>> value, Supplier<Evaluable<? extends Vector>> operand) {
-		return new VectorSum(value, operand);
+	default VectorExpressionComputation add(Supplier<Evaluable<? extends Vector>> value, Supplier<Evaluable<? extends Vector>> operand) {
+		List<Function<List<MultiExpression<Double>>, Expression<Double>>> expressions =
+				IntStream.range(0, 3).mapToObj(i -> (Function<List<MultiExpression<Double>>, Expression<Double>>)
+								np -> new Sum(np.get(1).getValue(i), np.get(2).getValue(i)))
+						.collect(Collectors.toList());
+		return new VectorExpressionComputation(expressions, (Supplier) value, (Supplier) operand);
 	}
 
 	@Deprecated
@@ -145,8 +149,8 @@ public interface VectorFeatures extends CollectionFeatures, HardwareFeatures {
 	}
 
 	@Deprecated
-	default VectorProducer subtract(Supplier<Evaluable<? extends Vector>> value, Supplier<Evaluable<? extends Vector>> operand) {
-		return new VectorSum(value, minus(operand));
+	default VectorProducerBase subtract(Supplier<Evaluable<? extends Vector>> value, Supplier<Evaluable<? extends Vector>> operand) {
+		return add(value, minus(operand));
 	}
 
 	@Deprecated

@@ -55,11 +55,11 @@ public interface VectorProducerBase extends ProducerComputation<Vector>, Kerneli
 		return crossProduct(this, operand);
 	}
 
-	default VectorProducer add(Supplier<Evaluable<? extends Vector>> operand) {
+	default VectorProducerBase add(Supplier<Evaluable<? extends Vector>> operand) {
 		return add(this, operand);
 	}
 
-	default VectorProducer subtract(Supplier<Evaluable<? extends Vector>> operand) { return subtract(this, operand); }
+	default VectorProducerBase subtract(Supplier<Evaluable<? extends Vector>> operand) { return subtract(this, operand); }
 
 	default VectorExpressionComputation multiply(Supplier<Evaluable<? extends Vector>> operand) {
 		return multiply(this, operand);
