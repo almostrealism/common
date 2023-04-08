@@ -41,6 +41,7 @@ import java.util.function.Supplier;
 
 public interface CollectionProducerComputation<T extends PackedCollection<?>> extends
 		CollectionProducer<T>, ProducerComputation<T>, KernelizedProducer<T>, CollectionFeatures {
+	boolean enableShapeTrim = false;
 
 	// This should be 0, but Scalar is actually a Pair so a set of scalars is 2D not 1D
 	int SCALAR_AXIS = 1;
@@ -48,12 +49,17 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 	default T postProcessOutput(MemoryData output, int offset) {
 		TraversalPolicy shape = getShape();
 
-		if (output instanceof Shape) {
+		s: if (output instanceof Shape) {
 			TraversalPolicy outputShape = ((Shape) output).getShape();
 
 			while (shape.getDimensions() < outputShape.getDimensions()) {
 				int dim = outputShape.getDimensions() - shape.getDimensions();
-				shape = shape.prependDimension(outputShape.length(dim - 1));
+
+				if (enableShapeTrim && shape.getDimensions() == outputShape.getDimensions() - 1 && dim == 1) {
+					break s;
+				} else {
+					shape = shape.prependDimension(outputShape.length(dim - 1));
+				}
 			}
 
 			if (shape.getTotalSize() != outputShape.getTotalSize()) {

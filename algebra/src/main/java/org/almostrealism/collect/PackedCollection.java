@@ -35,7 +35,7 @@ import java.util.function.IntFunction;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter implements MemoryBank<T>, Shape<PackedCollection<T>> {
+public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter implements MemoryBank<T>, Shape<PackedCollection<T>>, Cloneable {
 	private static ContextSpecific<KernelizedOperation> clear;
 
 	static {
@@ -204,6 +204,12 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 
 	public PackedCollection<?> delegate(int offset, int length) {
 		return new PackedCollection(new TraversalPolicy(length), 0, this, offset);
+	}
+
+	public PackedCollection<T> clone() {
+		PackedCollection<T> clone = new PackedCollection<>(getShape(), getShape().getTraversalAxis());
+		clone.setMem(0, toArray(0, getMemLength()), 0, getMemLength());
+		return clone;
 	}
 
 	public static DynamicCollectionProducer blank(int... dims) {

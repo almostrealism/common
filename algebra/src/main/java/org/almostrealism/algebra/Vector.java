@@ -378,7 +378,7 @@ public class Vector extends PackedCollection<Vector> implements Triple, VectorFe
 	 * @see java.lang.Object#clone()
 	 */
 	@Override
-	public Object clone() {
+	public Vector clone() {
 		Vector v = new Vector();
 		v.setTo(this);
 		return v;
@@ -416,6 +416,14 @@ public class Vector extends PackedCollection<Vector> implements Triple, VectorFe
 		return new PackedCollection<>(new TraversalPolicy(count, 3), 1, delegateSpec ->
 				new Vector(delegateSpec.getDelegate(), delegateSpec.getOffset()),
 				delegate, delegateOffset);
+	}
+
+	public static PackedCollection<?> table(int width, int count) {
+		return new PackedCollection<>(new TraversalPolicy(count, width, 3), 1);
+	}
+
+	public static PackedCollection<?> table(int width, int count, MemoryData delegate, int delegateOffset) {
+		return new PackedCollection<>(new TraversalPolicy(count, width, 3), 1, delegate, delegateOffset);
 	}
 
 	/**

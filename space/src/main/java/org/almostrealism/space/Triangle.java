@@ -19,6 +19,7 @@ package org.almostrealism.space;
 import io.almostrealism.code.AdaptEvaluable;
 import org.almostrealism.algebra.*;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.color.RGB;
 import org.almostrealism.geometry.Intersection;
 import org.almostrealism.geometry.TransformMatrix;
@@ -27,9 +28,7 @@ import org.almostrealism.hardware.KernelizedEvaluable;
 import io.almostrealism.code.Operator;
 import io.almostrealism.code.Constant;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.graph.mesh.TriangleData;
-import org.almostrealism.graph.mesh.TriangleDataFeatures;
-import org.almostrealism.graph.mesh.TriangleDataProducer;
+import org.almostrealism.graph.mesh.TriangleFeatures;
 import org.almostrealism.graph.mesh.TriangleIntersectAt;
 import org.almostrealism.geometry.ShadableIntersection;
 import org.almostrealism.geometry.ContinuousField;
@@ -47,27 +46,27 @@ import java.util.function.Supplier;
  * 
  * @author  Michael Murray
  */
-public class Triangle extends AbstractSurface implements ParticleGroup, TriangleDataFeatures {
+public class Triangle extends AbstractSurface implements ParticleGroup, TriangleFeatures {
 	public static boolean enableHardwareOperator = true;
 
-	private static TriangleDataFeatures triangleFeat = TriangleDataFeatures.getInstance();
+	private static TriangleFeatures triangleFeat = TriangleFeatures.getInstance();
 
 	private Mesh.VertexData vertexData;
 	private int ind1, ind2, ind3;
 	
 	private Vector p1, p2, p3;
 	private boolean smooth, intcolor, useT = true;
-	private TriangleData data;
+	private PackedCollection<Vector> data;
 
-	protected static final KernelizedEvaluable<TriangleData> dataProducer;
+	protected static final KernelizedEvaluable<PackedCollection<Vector>> dataProducer;
 
 	public static final KernelizedEvaluable<Scalar> intersectAt;
 	
 	static {
-		TriangleDataProducer triangle = triangleFeat.triangle(PassThroughEvaluable.of(0));
+		ExpressionComputation<PackedCollection<Vector>> triangle = triangleFeat.triangle(PassThroughEvaluable.of(0));
 		dataProducer = triangle.get();
 
-		intersectAt = new TriangleIntersectAt(PassThroughEvaluable.of(TriangleData.class, 1),
+		intersectAt = new TriangleIntersectAt(PassThroughEvaluable.of(1),
 							PassThroughEvaluable.of(Ray.class, 0, -1)).get();
 	}
 
@@ -133,7 +132,8 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 		this.p3 = p3;
 
 		if (enableHardwareOperator) {
-			this.data = dataProducer.evaluate(getPointData());
+			this.data = (PackedCollection<Vector>) dataProducer.evaluate(getPointData().traverse(0))
+													.reshape(shape(4, 3)).traverse(1);
 		} else {
 			Vector a = this.p2.subtract(this.p1);
 			Vector b = this.p3.subtract(this.p1);
@@ -141,10 +141,10 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 			Vector normal = a.crossProduct(b);
 			normal.normalize();
 
-			this.data.setABC(this.p1.subtract(this.p2));
-			this.data.setDEF(this.p1.subtract(this.p3));
-			this.data.setJKL(this.p1);
-			this.data.setNormal(normal);
+			this.data.set(0, this.p1.subtract(this.p2));
+			this.data.set(1, this.p1.subtract(this.p3));
+			this.data.set(2, this.p1);
+			this.data.set(3, normal);
 		}
 	}
 
@@ -264,9 +264,9 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 					Vector triple = point.get().evaluate(args);
 					if (dc.length() < Intersection.e * 100) return new RGB(0.0, 0.0, 0.0);
 
-					Vector abc = data.getABC();
-					Vector def = data.getDEF();
-					Vector jkl = data.getJKL();
+					Vector abc = data.get(0);
+					Vector def = data.get(1);
+					Vector jkl = data.get(2);
 
 					if (intcolor) {
 						double g = triple.getA();
@@ -344,9 +344,9 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 						double h = point.getY();
 						double i = point.getZ();
 
-						Vector abc = data.getABC();
-						Vector def = data.getDEF();
-						Vector jkl = data.getJKL();
+						Vector abc = data.get(0);
+						Vector def = data.get(1);
+						Vector jkl = data.get(2);
 
 						double m = abc.getX() * (def.getY() * i - h * def.getZ()) +
 								abc.getY() * (g * def.getZ() - def.getX() * i) +
@@ -387,10 +387,10 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 		} else {
 			if (useT && getTransform(true) != null) {
 				return getTransform(true).getInverse().transform(
-						v(data.getNormal()),
+						v(data.get(3)),
 						TransformMatrix.TRANSFORM_AS_NORMAL);
 			} else {
-				return v((Vector) data.getNormal().clone());
+				return c(((PackedCollection<?>) data.get(3)).clone());
 			}
 		}
 	}
@@ -420,9 +420,9 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 					return args -> {
 						Ray r = fr.get().evaluate(args);
 
-						Vector abc = data.getABC();
-						Vector def = data.getDEF();
-						Vector jkl = Triangle.this.data.getJKL().subtract(r.getOrigin());
+						Vector abc = data.get(0);
+						Vector def = data.get(1);
+						Vector jkl = Triangle.this.data.get(2).subtract(r.getOrigin());
 
 						double m = abc.getX() * (def.getY() * r.getDirection().getZ() - r.getDirection().getY() * def.getZ()) +
 								abc.getY() * (r.getDirection().getX() * def.getZ() - def.getX() * r.getDirection().getZ()) +

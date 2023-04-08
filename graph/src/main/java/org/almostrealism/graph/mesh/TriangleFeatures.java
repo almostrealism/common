@@ -22,9 +22,8 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.algebra.VectorEvaluable;
 import org.almostrealism.algebra.VectorProducer;
-import org.almostrealism.algebra.computations.DefaultVectorEvaluable;
+import org.almostrealism.algebra.VectorProducerBase;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.algebra.computations.ScalarBankExpressionComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
 
@@ -34,7 +33,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
-public interface TriangleDataFeatures extends VectorFeatures {
+public interface TriangleFeatures extends VectorFeatures {
 	default VectorEvaluable abc(Evaluable<TriangleData> t) {
 		return (VectorEvaluable) abc(() -> t).get();
 	}
@@ -67,17 +66,29 @@ public interface TriangleDataFeatures extends VectorFeatures {
 		return new VectorFromTriangleData(t, VectorFromTriangleData.NORMAL);
 	}
 
-	default TriangleDataProducer triangle(Supplier<Evaluable<? extends PackedCollection<?>>> points) {
+	default ExpressionComputation<PackedCollection<Vector>> triangle(Supplier<Evaluable<? extends PackedCollection<?>>> points) {
 		return triangle(
 				point(points, 0),
 				point(points, 1),
 				point(points, 2));
 	}
 
-	default TriangleDataProducer triangle(Supplier<Evaluable<? extends Vector>> p1,
+	default ExpressionComputation<PackedCollection<Vector>> triangle(Supplier<Evaluable<? extends Vector>> p1,
 										  Supplier<Evaluable<? extends Vector>> p2,
 										  Supplier<Evaluable<? extends Vector>> p3) {
-		return new TriangleDataFromVectors(subtract(p2, p1), subtract(p3, p1), p1);
+		VectorProducerBase abc = subtract(p2, p1);
+		VectorProducerBase def = subtract(p3, p1);
+		Supplier jkl = p1;
+		return triangle(abc, def, jkl, crossProduct(abc, def).normalize());
+	}
+
+	default ExpressionComputation<PackedCollection<Vector>> triangle(Supplier<Evaluable<? extends Vector>> abc,
+																	 Supplier<Evaluable<? extends Vector>> def,
+																	 Supplier<Evaluable<? extends Vector>> jkl,
+																	 Supplier<Evaluable<? extends Vector>> normal) {
+		List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression = new ArrayList<>();
+		IntStream.range(0, 12).forEach(i -> expression.add(args -> args.get(i / 3 + 1).getValue(i % 3)));
+		return new ExpressionComputation<>(shape(4, 3), expression, (Supplier) abc, (Supplier) def, (Supplier) jkl, (Supplier) normal);
 	}
 
 	default ExpressionComputation<Vector> point(Supplier<Evaluable<? extends PackedCollection<?>>> points, int index) {
@@ -94,7 +105,7 @@ public interface TriangleDataFeatures extends VectorFeatures {
 		return new ExpressionComputation<>(expression, (Supplier) p1, (Supplier) p2, (Supplier) p3);
 	}
 
-	static TriangleDataFeatures getInstance() {
-		return new TriangleDataFeatures() { };
+	static TriangleFeatures getInstance() {
+		return new TriangleFeatures() { };
 	}
 }

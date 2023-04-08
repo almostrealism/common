@@ -18,6 +18,8 @@ package org.almostrealism.graph.mesh.test;
 
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorProducer;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.space.DefaultVertexData;
 import org.almostrealism.space.Mesh;
 import org.almostrealism.space.MeshData;
@@ -77,51 +79,49 @@ public class TriangleDataTest implements TestFeatures {
 	@Test
 	public void triangleData() {
 		MeshPointData points = points();
-		TriangleDataProducer td = triangle(v(points.get(0).get(0)),
+		ExpressionComputation<PackedCollection<Vector>> td = triangle(v(points.get(0).get(0)),
 											v(points.get(0).get(1)),
 											v(points.get(0).get(2)));
-		triangleDataAssertions(td.get().evaluate());
+		triangleDataAssertions(td.get().evaluate().reshape(shape(4, 3).traverse(1)));
 	}
 
 	@Test
 	public void triangleDataCompact() {
 		MeshPointData points = points();
-		Producer<TriangleData> td = triangle(v(points.get(0).get(0)),
+		Producer<PackedCollection<Vector>> td = triangle(v(points.get(0).get(0)),
 				v(points.get(0).get(1)),
 				v(points.get(0).get(2)));
-		// td.compact();
-		triangleDataAssertions(td.get().evaluate());
+		triangleDataAssertions(td.get().evaluate().reshape(shape(4, 3).traverse(1)));
 	}
 
 	@Test
 	public void triangleDataKernel() {
 		MeshPointData points = points();
-		Producer<TriangleData> td = triangle(points(0));
-		// td.compact();
+		Producer<PackedCollection<Vector>> td = triangle(points(0));
 
 		MeshData output = new MeshData(1);
 		((KernelizedEvaluable) td.get()).kernelEvaluate(output, new MemoryBank[] { points });
 		triangleDataAssertions(output.get(0));
 	}
 
-	protected void triangleDataAssertions(TriangleData value) {
-		System.out.println(value.getABC());
-		System.out.println(value.getDEF());
-		System.out.println(value.getJKL());
-		System.out.println(value.getNormal());
+	protected void triangleDataAssertions(PackedCollection<?> value) {
+		Assert.assertEquals(shape(4, 3).traverse(1), value.getShape());
 
-		Assert.assertEquals(-1, value.getABC().getX(), Math.pow(10, -10));
-		Assert.assertEquals(-2, value.getABC().getY(), Math.pow(10, -10));
-		Assert.assertEquals(0, value.getABC().getZ(), Math.pow(10, -10));
-		Assert.assertEquals(1, value.getDEF().getX(), Math.pow(10, -10));
-		Assert.assertEquals(-2, value.getDEF().getY(), Math.pow(10, -10));
-		Assert.assertEquals(0, value.getDEF().getZ(), Math.pow(10, -10));
-		Assert.assertEquals(0, value.getJKL().getX(), Math.pow(10, -10));
-		Assert.assertEquals(1, value.getJKL().getY(), Math.pow(10, -10));
-		Assert.assertEquals(0, value.getJKL().getZ(), Math.pow(10, -10));
-		Assert.assertEquals(0, value.getNormal().getX(), Math.pow(10, -10));
-		Assert.assertEquals(0, value.getNormal().getY(), Math.pow(10, -10));
-		Assert.assertEquals(1, value.getNormal().getZ(), Math.pow(10, -10));
+		Assert.assertEquals(-1, value.get(0).toDouble(0), Math.pow(10, -10));
+		Assert.assertEquals(-2, value.get(0).toDouble(1), Math.pow(10, -10));
+		Assert.assertEquals(0, value.get(0).toDouble(2), Math.pow(10, -10));
+
+		Assert.assertEquals(1, value.get(1).toDouble(0), Math.pow(10, -10));
+		Assert.assertEquals(-2, value.get(1).toDouble(1), Math.pow(10, -10));
+		Assert.assertEquals(0, value.get(1).toDouble(2), Math.pow(10, -10));
+
+		Assert.assertEquals(0, value.get(2).toDouble(0), Math.pow(10, -10));
+		Assert.assertEquals(1, value.get(2).toDouble(1), Math.pow(10, -10));
+		Assert.assertEquals(0, value.get(2).toDouble(2), Math.pow(10, -10));
+
+		Assert.assertEquals(0, value.get(3).toDouble(0), Math.pow(10, -10));
+		Assert.assertEquals(0, value.get(3).toDouble(1), Math.pow(10, -10));
+		Assert.assertEquals(1, value.get(3).toDouble(2), Math.pow(10, -10));
 	}
 
 	protected Mesh mesh() { return new Mesh(data()); }
@@ -129,14 +129,14 @@ public class TriangleDataTest implements TestFeatures {
 	// TODO @Test
 	public void fromMesh() {
 		MeshData data = mesh().getMeshData();
-		Assert.assertEquals(0, data.get(0).getNormal().getX(), Math.pow(10, -10));
-		Assert.assertEquals(0, data.get(0).getNormal().getY(), Math.pow(10, -10));
-		Assert.assertEquals(1, data.get(0).getNormal().getZ(), Math.pow(10, -10));
-		assertEquals(-2.0 / 3.0, data.get(1).getNormal().getX());
-		assertEquals(1.0 / 3.0, data.get(1).getNormal().getY());
-		assertEquals(2.0 / 3.0, data.get(1).getNormal().getZ());
-		assertEquals(2.0 / 3.0, data.get(2).getNormal().getX());
-		assertEquals(1.0 / 3.0, data.get(2).getNormal().getY());
-		assertEquals(2.0 / 3.0, data.get(2).getNormal().getZ());
+		Assert.assertEquals(0, data.get(0).get(3).getX(), Math.pow(10, -10));
+		Assert.assertEquals(0, data.get(0).get(3).getY(), Math.pow(10, -10));
+		Assert.assertEquals(1, data.get(0).get(3).getZ(), Math.pow(10, -10));
+		assertEquals(-2.0 / 3.0, data.get(1).get(3).getX());
+		assertEquals(1.0 / 3.0, data.get(1).get(3).getY());
+		assertEquals(2.0 / 3.0, data.get(1).get(3).getZ());
+		assertEquals(2.0 / 3.0, data.get(2).get(3).getX());
+		assertEquals(1.0 / 3.0, data.get(2).get(3).getY());
+		assertEquals(2.0 / 3.0, data.get(2).get(3).getZ());
 	}
 }

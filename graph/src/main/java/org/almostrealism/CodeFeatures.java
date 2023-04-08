@@ -50,7 +50,7 @@ import org.almostrealism.geometry.TransformMatrixFeatures;
 import org.almostrealism.geometry.computations.StaticRayComputation;
 import org.almostrealism.geometry.computations.StaticTransformMatrixComputation;
 import org.almostrealism.graph.mesh.TriangleData;
-import org.almostrealism.graph.mesh.TriangleDataFeatures;
+import org.almostrealism.graph.mesh.TriangleFeatures;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.code.ProducerComputation;
@@ -75,7 +75,7 @@ import java.util.function.Supplier;
 
 public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 								PairFeatures, PairBankFeatures,
-								TriangleDataFeatures, RayFeatures,
+		TriangleFeatures, RayFeatures,
 								TransformMatrixFeatures, GeometryFeatures,
 								TemporalFeatures, HardwareFeatures {
 

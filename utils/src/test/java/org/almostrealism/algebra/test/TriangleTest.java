@@ -91,7 +91,7 @@ public class TriangleTest implements CodeFeatures {
 		Assert.assertEquals(p, new Vector(0.0, 0.0, -1.0));
 	}
 
-	protected TriangleData triangle() {
+	protected PackedCollection<?> triangle() {
 		Ray in = ray(0.0, 0.0, 0.0, 0.0, 0.0, -1.0).get().evaluate();
 		System.out.println(in);
 
@@ -100,18 +100,30 @@ public class TriangleTest implements CodeFeatures {
 		tp.set(1, new Vector(-1.0, 1.0, -1.0));
 		tp.set(2, new Vector(0.0, -1.0, -1.0));
 
-		TriangleData td = triangle(p(tp)).get().evaluate();
-		Assert.assertEquals(new Vector(-2.0, 0.0, 0.0), td.getABC());
-		Assert.assertEquals(new Vector(-1.0, -2.0, 0.0), td.getDEF());
-		Assert.assertEquals(new Vector(1.0, 1.0, -1.0), td.getJKL());
-		Assert.assertEquals(new Vector(0.0, 0.0, 1.0), td.getNormal());
+		PackedCollection<?> td = triangle(p(tp)).get().evaluate().reshape(shape(4, 3).traverse(1));
+		Assert.assertEquals(-2.0, td.get(0).toDouble(0), 0.0001);
+		Assert.assertEquals(0.0, td.get(0).toDouble(1), 0.0001);
+		Assert.assertEquals(0.0, td.get(0).toDouble(2), 0.0001);
+		Assert.assertEquals(-1.0, td.get(1).toDouble(0), 0.0001);
+		Assert.assertEquals(-2.0, td.get(1).toDouble(1), 0.0001);
+		Assert.assertEquals(0.0, td.get(1).toDouble(2), 0.0001);
+		Assert.assertEquals(1.0, td.get(2).toDouble(0), 0.0001);
+		Assert.assertEquals(1.0, td.get(2).toDouble(1), 0.0001);
+		Assert.assertEquals(-1.0, td.get(2).toDouble(2), 0.0001);
+		Assert.assertEquals(0.0, td.get(3).toDouble(0), 0.0001);
+		Assert.assertEquals(0.0, td.get(3).toDouble(1), 0.0001);
+		Assert.assertEquals(1.0, td.get(3).toDouble(2), 0.0001);
+//		Assert.assertEquals(new Vector(-2.0, 0.0, 0.0), td.get(0));
+//		Assert.assertEquals(new Vector(-1.0, -2.0, 0.0), td.get(1));
+//		Assert.assertEquals(new Vector(1.0, 1.0, -1.0), td.get(2));
+//		Assert.assertEquals(new Vector(0.0, 0.0, 1.0), td.get(3));
 		return td;
 	}
 
 	@Test
 	public void choiceTest() {
 		Ray in = ray(0.0, 0.0, 0.0, 0.0, 0.0, -1.0).get().evaluate();
-		TriangleData td = triangle();
+		PackedCollection<?> td = triangle();
 
 		TriangleIntersectAt intersectAt = new TriangleIntersectAt(PassThroughEvaluable.of(TriangleData.class, 1),
 				PassThroughEvaluable.of(Ray.class, 0, -1));
@@ -134,7 +146,7 @@ public class TriangleTest implements CodeFeatures {
 	@Test
 	public void distanceTest() {
 		Ray in = ray(0.0, 0.0, 0.0, 0.0, 0.0, -1.0).get().evaluate();
-		TriangleData td = triangle();
+		PackedCollection<?> td = triangle();
 
 		Scalar distance = Triangle.intersectAt.evaluate(in, td);
 		System.out.println("distance = " + distance);

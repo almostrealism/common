@@ -177,7 +177,7 @@ public class Ray extends PackedCollection<Ray> implements RayFeatures, Cloneable
 	public int hashCode() { return getOrigin().hashCode(); }
 
 	@Override
-	public Object clone() {
+	public Ray clone() {
 		// TODO  copy mem directly
 		double coords[] = toArray();
 		return new Ray(coords);

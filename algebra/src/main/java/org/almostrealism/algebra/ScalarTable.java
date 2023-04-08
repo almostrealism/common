@@ -27,6 +27,7 @@ import io.almostrealism.relation.Evaluable;
  *
  * @author  Michael Murray
  */
+@Deprecated
 public class ScalarTable extends PackedCollection<ScalarBank> { // implements MemoryTable<Scalar> {
 	public ScalarTable(int width, int count) {
 		super(new TraversalPolicy(count, width, 2), 1, delegateSpec ->

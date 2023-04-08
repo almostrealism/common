@@ -23,6 +23,7 @@ import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.KernelizedProducer;
 import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.hardware.MemoryData;
 
 import java.util.stream.IntStream;
 
@@ -52,10 +53,15 @@ public class Random implements KernelizedProducer<PackedCollection<?>>, Shape<Pr
 			@Override
 			public PackedCollection<?> evaluate(Object... args) {
 				PackedCollection<?> destination = new PackedCollection<>(getShape());
+				kernelEvaluate(destination);
+				return destination;
+			}
+
+			@Override
+			public void kernelEvaluate(MemoryBank destination, MemoryData... args) {
 				destination.setMem(IntStream.range(0, getShape().getTotalSize())
 						.mapToDouble(i -> normal ? random.nextGaussian() : random.nextDouble())
 						.toArray());
-				return destination;
 			}
 		};
 	}

@@ -19,7 +19,7 @@ package org.almostrealism.graph.mesh;
 import org.almostrealism.algebra.VectorEvaluable;
 import org.almostrealism.hardware.KernelizedEvaluable;
 
-public interface TriangleDataEvaluable extends KernelizedEvaluable<TriangleData>, TriangleDataFeatures {
+public interface TriangleDataEvaluable extends KernelizedEvaluable<TriangleData>, TriangleFeatures {
 	default VectorEvaluable abc() { return abc(this); }
 
 	default VectorEvaluable def() { return def(this); }
