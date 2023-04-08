@@ -16,15 +16,10 @@
 
 package org.almostrealism.algebra;
 
-import org.almostrealism.algebra.computations.DefaultVectorEvaluable;
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.computations.ScalarExpressionComputation;
 import org.almostrealism.algebra.computations.VectorExpressionComputation;
-import org.almostrealism.hardware.AcceleratedComputationEvaluable;
-import org.almostrealism.hardware.DefaultComputer;
-import org.almostrealism.hardware.Hardware;
-import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.KernelizedProducer;
 
 import java.util.function.Supplier;
@@ -55,11 +50,11 @@ public interface VectorProducerBase extends ProducerComputation<Vector>, Kerneli
 		return crossProduct(this, operand);
 	}
 
-	default VectorProducerBase add(Supplier<Evaluable<? extends Vector>> operand) {
+	default VectorProducerBase add(VectorProducerBase operand) {
 		return add(this, operand);
 	}
 
-	default VectorProducerBase subtract(Supplier<Evaluable<? extends Vector>> operand) { return subtract(this, operand); }
+	default VectorProducerBase subtract(VectorProducerBase operand) { return subtract(this, operand); }
 
 	default VectorExpressionComputation multiply(Supplier<Evaluable<? extends Vector>> operand) {
 		return multiply(this, operand);

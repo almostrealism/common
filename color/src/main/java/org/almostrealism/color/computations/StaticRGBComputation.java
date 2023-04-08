@@ -16,13 +16,29 @@
 
 package org.almostrealism.color.computations;
 
+import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.Shape;
+import org.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBBank;
 import org.almostrealism.color.RGBProducer;
 import org.almostrealism.algebra.computations.StaticComputationAdapter;
+import org.almostrealism.hardware.MemoryData;
 
-public class StaticRGBComputation extends StaticComputationAdapter<RGB> implements RGBProducer {
+public class StaticRGBComputation extends StaticComputationAdapter<RGB> implements RGBProducer, Shape<Producer<PackedCollection<?>>> {
 	public StaticRGBComputation(RGB value) {
 		super(value, RGB.blank(), RGBBank::new);
+	}
+
+	@Override
+	public TraversalPolicy getShape() {
+		return new TraversalPolicy(3);
+	}
+
+	@Override
+	public Producer<PackedCollection<?>> reshape(TraversalPolicy shape) {
+		return new ReshapeProducer(shape, this);
 	}
 }

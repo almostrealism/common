@@ -25,6 +25,7 @@ import io.almostrealism.relation.Evaluable;
  * 
  * @author  Michael Murray
  */
+@Deprecated
 @Function
 public interface VectorEvaluable extends VectorFeatures, Evaluable<Vector> {
 
@@ -47,12 +48,6 @@ public interface VectorEvaluable extends VectorFeatures, Evaluable<Vector> {
     default VectorEvaluable crossProduct(Evaluable<Vector> operand) {
         return crossProduct(this, operand);
     }
-
-    default VectorEvaluable add(Evaluable<Vector> operand) {
-        return add(this, operand);
-    }
-
-    default VectorEvaluable subtract(Evaluable<Vector> operand) { return subtract(this, operand); }
 
     default VectorEvaluable multiply(Evaluable<Vector> operand) {
         return multiply(this, operand);

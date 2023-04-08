@@ -135,27 +135,27 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 	}
 
 	// TODO  Rename
-	default <T extends PackedCollection<?>> ExpressionComputation<T> _add(Supplier<Evaluable<? extends PackedCollection<?>>> value) {
-		return CollectionFeatures.super._add((Producer) this, value);
+	default <T extends PackedCollection<?>> ExpressionComputation<T> _add(Producer<T> value) {
+		return CollectionFeatures.super.add((Producer) this, value);
 	}
 
 	// TODO  Rename
-	default <T extends PackedCollection<?>> ExpressionComputation<T> _subtract(Supplier<Evaluable<? extends PackedCollection<?>>> value) {
+	default <T extends PackedCollection<?>> ExpressionComputation<T> _subtract(Producer<T> value) {
 		return CollectionFeatures.super._subtract((Producer) this, value);
 	}
 
 	// TODO  Rename
-	default <T extends PackedCollection<?>> ExpressionComputation<T> _multiply(Supplier<Evaluable<? extends PackedCollection<?>>> value) {
+	default <T extends PackedCollection<?>> ExpressionComputation<T> _multiply(Producer<T> value) {
 		return CollectionFeatures.super._multiply((Producer) this, value);
 	}
 
 	// TODO  Rename
-	default <T extends PackedCollection<?>> ExpressionComputation<T> _divide(Supplier<Evaluable<? extends PackedCollection<?>>> value) {
+	default <T extends PackedCollection<?>> ExpressionComputation<T> _divide(Producer<T> value) {
 		return CollectionFeatures.super._divide((Producer) this, value);
 	}
 
 	// TODO  Rename
-	default <T extends PackedCollection<?>> ExpressionComputation<T> _pow(Supplier<Evaluable<? extends PackedCollection<?>>> value) {
+	default <T extends PackedCollection<?>> ExpressionComputation<T> _pow(Producer<T> value) {
 		return CollectionFeatures.super._pow((Producer) this, value);
 	}
 

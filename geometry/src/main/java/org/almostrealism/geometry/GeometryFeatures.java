@@ -19,6 +19,7 @@ package org.almostrealism.geometry;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.algebra.ScalarProducerBase;
@@ -35,16 +36,16 @@ public interface GeometryFeatures extends CollectionFeatures {
 	double PI = Math.PI;
 	double TWO_PI = 2 * PI;
 
-	default Sine sin(Supplier<Evaluable<? extends Scalar>> input) {
+	default Sine sin(Producer<Scalar> input) {
 		return new Sine(input);
 	}
 
-	default Sine sinw(Supplier<Evaluable<? extends Scalar>> input, Supplier<Evaluable<? extends Scalar>> wavelength) {
+	default Sine sinw(Producer<Scalar> input, Producer<Scalar> wavelength) {
 		return sin(ScalarFeatures.of(new Scalar(TWO_PI)).multiply(input).divide(wavelength));
 	}
 
-	default ScalarProducerBase sinw(Supplier<Evaluable<? extends Scalar>> input, Supplier<Evaluable<? extends Scalar>> wavelength,
-									Supplier<Evaluable<? extends Scalar>> amp) {
+	default ScalarProducerBase sinw(Producer<Scalar> input, Producer<Scalar> wavelength,
+									Producer<Scalar> amp) {
 		return sin(ScalarFeatures.of(new Scalar(TWO_PI)).multiply(input).divide(wavelength)).multiply(amp);
 	}
 
@@ -53,12 +54,9 @@ public interface GeometryFeatures extends CollectionFeatures {
 		return new ExpressionComputation(List.of(exp), input);
 	}
 
-	default Sine _sinw(Supplier<Evaluable<? extends PackedCollection<?>>> input, Supplier<Evaluable<? extends PackedCollection<?>>> wavelength) {
-		return sin(c(TWO_PI)._multiply(input)._divide(wavelength));
-	}
-
-	default ExpressionComputation<PackedCollection<?>> _sinw(Supplier<Evaluable<? extends PackedCollection<?>>> input, Supplier<Evaluable<? extends PackedCollection<?>>> wavelength,
-								Supplier<Evaluable<? extends PackedCollection<?>>> amp) {
+	default ExpressionComputation<PackedCollection<?>> _sinw(Producer<PackedCollection<?>> input,
+															 Producer<PackedCollection<?>> wavelength,
+															 Producer<PackedCollection<?>> amp) {
 		return _sin(c(TWO_PI)._multiply(input)._divide(wavelength))._multiply(amp);
 	}
 }

@@ -16,11 +16,27 @@
 
 package org.almostrealism.algebra.computations;
 
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorProducer;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.Shape;
+import org.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.computations.ReshapeProducer;
 
-public class StaticVectorComputation extends StaticComputationAdapter<Vector> implements VectorProducer {
+@Deprecated
+public class StaticVectorComputation extends StaticComputationAdapter<Vector> implements VectorProducer, Shape<Producer<PackedCollection<?>>> {
 	public StaticVectorComputation(Vector value) {
 		super(value, Vector.blank(), Vector::bank);
+	}
+
+	@Override
+	public TraversalPolicy getShape() {
+		return new TraversalPolicy(3);
+	}
+
+	@Override
+	public Producer<PackedCollection<?>> reshape(TraversalPolicy shape) {
+		return new ReshapeProducer(shape, this);
 	}
 }

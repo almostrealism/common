@@ -129,13 +129,8 @@ public interface VectorFeatures extends CollectionFeatures, HardwareFeatures {
 				x(a).multiply(y(b)).subtract(y(a).multiply(x(b))));
 	}
 
-	@Deprecated
-	default VectorEvaluable add(Evaluable<Vector> value, Evaluable<Vector> operand) {
-		return (VectorEvaluable) add(() -> value, () -> operand).get();
-	}
-
-	@Deprecated
-	default VectorExpressionComputation add(Supplier<Evaluable<? extends Vector>> value, Supplier<Evaluable<? extends Vector>> operand) {
+	default VectorExpressionComputation add(VectorProducerBase value, VectorProducerBase operand) {
+		// TODO  Delegate to _add
 		List<Function<List<MultiExpression<Double>>, Expression<Double>>> expressions =
 				IntStream.range(0, 3).mapToObj(i -> (Function<List<MultiExpression<Double>>, Expression<Double>>)
 								np -> new Sum(np.get(1).getValue(i), np.get(2).getValue(i)))
@@ -143,13 +138,7 @@ public interface VectorFeatures extends CollectionFeatures, HardwareFeatures {
 		return new VectorExpressionComputation(expressions, (Supplier) value, (Supplier) operand);
 	}
 
-	@Deprecated
-	default VectorEvaluable subtract(Evaluable<Vector> value, Evaluable<Vector> operand) {
-		return (VectorEvaluable) subtract(() -> value, () -> operand).get();
-	}
-
-	@Deprecated
-	default VectorProducerBase subtract(Supplier<Evaluable<? extends Vector>> value, Supplier<Evaluable<? extends Vector>> operand) {
+	default VectorProducerBase subtract(VectorProducerBase value, VectorProducerBase operand) {
 		return add(value, minus(operand));
 	}
 

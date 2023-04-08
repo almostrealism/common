@@ -67,7 +67,13 @@ public class ExpressionComputation<T extends PackedCollection<?>> extends Dynami
 
 	@Override
 	public IntFunction<Expression<Double>> getValueFunction() {
-		return pos -> expression.get(pos).apply(getExpressions());
+		return pos -> {
+			if (pos >= expression.size()) {
+				throw new IllegalArgumentException();
+			} else {
+				return expression.get(pos).apply(getExpressions());
+			}
+		};
 	}
 
 	private static Supplier[] validateArgs(Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
