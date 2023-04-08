@@ -17,7 +17,6 @@
 package org.almostrealism.geometry.computations;
 
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorBank;
 import org.almostrealism.hardware.MemoryBank;
 
 public class RankedChoiceEvaluableForVector extends RankedChoiceEvaluableForMemoryData<Vector> {

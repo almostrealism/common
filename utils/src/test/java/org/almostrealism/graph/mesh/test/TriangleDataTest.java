@@ -20,12 +20,10 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
+import org.almostrealism.graph.mesh.TrianglePointDataBank;
 import org.almostrealism.space.DefaultVertexData;
 import org.almostrealism.space.Mesh;
 import org.almostrealism.space.MeshData;
-import org.almostrealism.graph.mesh.MeshPointData;
-import org.almostrealism.graph.mesh.TriangleData;
-import org.almostrealism.graph.mesh.TriangleDataProducer;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import io.almostrealism.relation.Producer;
@@ -49,11 +47,11 @@ public class TriangleDataTest implements TestFeatures {
 		return data;
 	}
 
-	protected MeshPointData points() { return data().getMeshPointData(); }
+	protected TrianglePointDataBank points() { return data().getMeshPointData(); }
 
 	@Test
 	public void edges() {
-		MeshPointData points = points();
+		TrianglePointDataBank points = points();
 
 		VectorProducer edge1 = subtract(v(points.get(0).get(1)), v(points.get(0).get(0)));
 		Vector value = edge1.get().evaluate();
@@ -78,7 +76,7 @@ public class TriangleDataTest implements TestFeatures {
 
 	@Test
 	public void triangleData() {
-		MeshPointData points = points();
+		TrianglePointDataBank points = points();
 		ExpressionComputation<PackedCollection<Vector>> td = triangle(v(points.get(0).get(0)),
 											v(points.get(0).get(1)),
 											v(points.get(0).get(2)));
@@ -87,7 +85,7 @@ public class TriangleDataTest implements TestFeatures {
 
 	@Test
 	public void triangleDataCompact() {
-		MeshPointData points = points();
+		TrianglePointDataBank points = points();
 		Producer<PackedCollection<Vector>> td = triangle(v(points.get(0).get(0)),
 				v(points.get(0).get(1)),
 				v(points.get(0).get(2)));
@@ -96,7 +94,7 @@ public class TriangleDataTest implements TestFeatures {
 
 	@Test
 	public void triangleDataKernel() {
-		MeshPointData points = points();
+		TrianglePointDataBank points = points();
 		Producer<PackedCollection<Vector>> td = triangle(points(0));
 
 		MeshData output = new MeshData(1);
@@ -129,14 +127,14 @@ public class TriangleDataTest implements TestFeatures {
 	// TODO @Test
 	public void fromMesh() {
 		MeshData data = mesh().getMeshData();
-		Assert.assertEquals(0, data.get(0).get(3).getX(), Math.pow(10, -10));
-		Assert.assertEquals(0, data.get(0).get(3).getY(), Math.pow(10, -10));
-		Assert.assertEquals(1, data.get(0).get(3).getZ(), Math.pow(10, -10));
-		assertEquals(-2.0 / 3.0, data.get(1).get(3).getX());
-		assertEquals(1.0 / 3.0, data.get(1).get(3).getY());
-		assertEquals(2.0 / 3.0, data.get(1).get(3).getZ());
-		assertEquals(2.0 / 3.0, data.get(2).get(3).getX());
-		assertEquals(1.0 / 3.0, data.get(2).get(3).getY());
-		assertEquals(2.0 / 3.0, data.get(2).get(3).getZ());
+		Assert.assertEquals(0, data.get(0).get(3).toDouble(0), Math.pow(10, -10));
+		Assert.assertEquals(0, data.get(0).get(3).toDouble(1), Math.pow(10, -10));
+		Assert.assertEquals(1, data.get(0).get(3).toDouble(2), Math.pow(10, -10));
+		assertEquals(-2.0 / 3.0, data.get(1).get(3).toDouble(0));
+		assertEquals(1.0 / 3.0, data.get(1).get(3).toDouble(1));
+		assertEquals(2.0 / 3.0, data.get(1).get(3).toDouble(2));
+		assertEquals(2.0 / 3.0, data.get(2).get(3).toDouble(0));
+		assertEquals(1.0 / 3.0, data.get(2).get(3).toDouble(1));
+		assertEquals(2.0 / 3.0, data.get(2).get(3).toDouble(2));
 	}
 }

@@ -24,6 +24,7 @@ import org.almostrealism.algebra.VectorEvaluable;
 import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.algebra.VectorProducerBase;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.algebra.computations.VectorExpressionComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
 
@@ -34,36 +35,22 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public interface TriangleFeatures extends VectorFeatures {
-	default VectorEvaluable abc(Evaluable<TriangleData> t) {
-		return (VectorEvaluable) abc(() -> t).get();
+
+
+	default VectorExpressionComputation abc(Supplier<Evaluable<? extends PackedCollection<?>>> t) {
+		return vector(t, 0);
 	}
 
-	default VectorProducer abc(Supplier<Evaluable<? extends TriangleData>> t) {
-		return new VectorFromTriangleData(t, VectorFromTriangleData.ABC);
+	default VectorExpressionComputation def(Supplier<Evaluable<? extends PackedCollection<?>>> t) {
+		return vector(t, 1);
 	}
 
-	default VectorEvaluable def(Evaluable<TriangleData> t) {
-		return (VectorEvaluable) def(() -> t).get();
+	default VectorExpressionComputation jkl(Supplier<Evaluable<? extends PackedCollection<?>>> t) {
+		return vector(t, 2);
 	}
 
-	default VectorProducer def(Supplier<Evaluable<? extends TriangleData>> t) {
-		return new VectorFromTriangleData(t, VectorFromTriangleData.DEF);
-	}
-
-	default VectorEvaluable jkl(Evaluable<TriangleData> t) {
-		return (VectorEvaluable) jkl(() -> t).get();
-	}
-
-	default VectorProducer jkl(Supplier<Evaluable<? extends TriangleData>> t) {
-		return new VectorFromTriangleData(t, VectorFromTriangleData.JKL);
-	}
-
-	default VectorEvaluable normal(Evaluable<TriangleData> t) {
-		return (VectorEvaluable) normal(() -> t).get();
-	}
-
-	default VectorProducer normal(Supplier<Evaluable<? extends TriangleData>> t) {
-		return new VectorFromTriangleData(t, VectorFromTriangleData.NORMAL);
+	default VectorExpressionComputation normal(Supplier<Evaluable<? extends PackedCollection<?>>> t) {
+		return vector(t, 4);
 	}
 
 	default ExpressionComputation<PackedCollection<Vector>> triangle(Supplier<Evaluable<? extends PackedCollection<?>>> points) {

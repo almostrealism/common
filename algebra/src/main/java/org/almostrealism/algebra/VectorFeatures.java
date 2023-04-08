@@ -28,6 +28,7 @@ import org.almostrealism.algebra.computations.StaticVectorComputation;
 import org.almostrealism.algebra.computations.VectorExpressionComputation;
 import org.almostrealism.algebra.computations.VectorSum;
 import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareFeatures;
 
 import java.util.ArrayList;
@@ -69,6 +70,12 @@ public interface VectorFeatures extends CollectionFeatures, HardwareFeatures {
 											   Supplier<Evaluable<? extends Scalar>> y,
 											   Supplier<Evaluable<? extends Scalar>> z) {
 		return fromScalars(x, y, z);
+	}
+
+	default VectorExpressionComputation vector(Supplier<Evaluable<? extends PackedCollection<?>>> bank, int index) {
+		List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression = new ArrayList<>();
+		IntStream.range(0, 3).forEach(i -> expression.add(args -> args.get(1).getValue(index * 3 + i)));
+		return new VectorExpressionComputation(expression, bank);
 	}
 
 	default Producer<Vector> vector() { return Vector.blank(); }
@@ -122,24 +129,30 @@ public interface VectorFeatures extends CollectionFeatures, HardwareFeatures {
 				x(a).multiply(y(b)).subtract(y(a).multiply(x(b))));
 	}
 
+	@Deprecated
 	default VectorEvaluable add(Evaluable<Vector> value, Evaluable<Vector> operand) {
 		return (VectorEvaluable) add(() -> value, () -> operand).get();
 	}
 
+	@Deprecated
 	default VectorProducer add(Supplier<Evaluable<? extends Vector>> value, Supplier<Evaluable<? extends Vector>> operand) {
 		return new VectorSum(value, operand);
 	}
 
+	@Deprecated
 	default VectorEvaluable subtract(Evaluable<Vector> value, Evaluable<Vector> operand) {
 		return (VectorEvaluable) subtract(() -> value, () -> operand).get();
 	}
 
+	@Deprecated
 	default VectorProducer subtract(Supplier<Evaluable<? extends Vector>> value, Supplier<Evaluable<? extends Vector>> operand) {
 		return new VectorSum(value, minus(operand));
 	}
 
+	@Deprecated
 	default VectorEvaluable multiply(Evaluable<Vector> a, Evaluable<Vector> b) { return (VectorEvaluable) multiply(() -> a, () -> b).get(); }
 
+	@Deprecated
 	default VectorExpressionComputation multiply(Supplier<Evaluable<? extends Vector>>... values) {
 		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
 		comp.add(args -> new Product(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValue(0)).toArray(Expression[]::new)));

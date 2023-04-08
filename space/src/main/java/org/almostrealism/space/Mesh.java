@@ -33,7 +33,7 @@ import org.almostrealism.geometry.Positioned;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.ContinuousField;
 import org.almostrealism.graph.KdTree;
-import org.almostrealism.graph.mesh.MeshPointData;
+import org.almostrealism.graph.mesh.TrianglePointDataBank;
 import org.almostrealism.hardware.KernelizedProducer;
 import org.almostrealism.hardware.MemoryBank;
 import io.almostrealism.relation.Producer;
@@ -64,7 +64,7 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 		int[] getTriangle(int index); int getTriangleCount();
 		int getVertexCount();
 
-		MeshPointData getMeshPointData();
+		TrianglePointDataBank getMeshPointData();
 	}
 	
   private List points, triangles;
@@ -288,12 +288,12 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 
   	public MeshData getMeshData() {
 		MeshData tdata = new MeshData(tcache.length);
-		MeshPointData points = getMeshPointData();
+		TrianglePointDataBank points = getMeshPointData();
 		Triangle.dataProducer.kernelEvaluate(tdata, new MemoryBank[] { points });
   		return tdata;
 	}
 
-	public MeshPointData getMeshPointData() {
+	public TrianglePointDataBank getMeshPointData() {
   		if (vertexData == null) {
   			throw new RuntimeException("Not implemented");
 		}

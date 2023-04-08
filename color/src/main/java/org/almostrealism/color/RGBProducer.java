@@ -30,6 +30,7 @@ import org.almostrealism.hardware.KernelizedProducer;
 
 import java.util.function.Supplier;
 
+@Deprecated
 public interface RGBProducer extends ProducerComputation<RGB>, KernelizedProducer<RGB>, RGBFeatures {
 	@Override
 	default KernelizedEvaluable<RGB> get() {

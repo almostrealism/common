@@ -49,7 +49,6 @@ import org.almostrealism.geometry.RayFeatures;
 import org.almostrealism.geometry.TransformMatrixFeatures;
 import org.almostrealism.geometry.computations.StaticRayComputation;
 import org.almostrealism.geometry.computations.StaticTransformMatrixComputation;
-import org.almostrealism.graph.mesh.TriangleData;
 import org.almostrealism.graph.mesh.TriangleFeatures;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -117,7 +116,7 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 
 	default Supplier<Evaluable<? extends ScalarBank>> scalars(ScalarBank s) { return value(s); }
 
-	default Supplier<Evaluable<? extends TriangleData>> triangle(int argIndex) { return value(TriangleData.class, argIndex); }
+	default Supplier<Evaluable<? extends PackedCollection<?>>> triangle(int argIndex) { return value(shape(4, 3), argIndex); }
 
 	default Supplier<Evaluable<? extends PackedCollection<?>>> points(int argIndex) { return value(shape(3, 3), argIndex); }
 

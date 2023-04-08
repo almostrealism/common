@@ -22,7 +22,7 @@ import org.almostrealism.hardware.mem.MemoryBankAdapter;
 import io.almostrealism.relation.Evaluable;
 
 /**
- * A collection of {@link TrianglePointData}s of a fixed length, that is contiguous in
+ * A collection of (count, 3, 3), that is contiguous in
  * RAM and usable for kernel methods.
  *
  * @author  Michael Murray

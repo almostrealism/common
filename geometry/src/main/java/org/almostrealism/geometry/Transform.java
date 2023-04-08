@@ -19,7 +19,6 @@ package org.almostrealism.geometry;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.expression.Expression;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorBank;
 import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.hardware.AcceleratedEvaluable;
 import org.almostrealism.hardware.DynamicProducerComputationAdapter;

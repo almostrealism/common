@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,14 +18,10 @@ package org.almostrealism.algebra.computations;
 
 import io.almostrealism.code.Computation;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorBank;
 import org.almostrealism.algebra.VectorEvaluable;
-import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.mem.MemoryBankAdapter.CacheLevel;
 
 @Deprecated
 public class DefaultVectorEvaluable extends AcceleratedComputationEvaluable<Vector> implements VectorEvaluable {

@@ -19,6 +19,7 @@ package org.almostrealism.algebra;
 import org.almostrealism.algebra.computations.StaticVectorComputation;
 import org.almostrealism.hardware.MemoryData;
 
+// TODO  This should be a StaticCollectionComputation
 public class ImmutableVector extends StaticVectorComputation implements TripleFunction<Triple, Vector> {
 	public ImmutableVector() {
 		super(new Data());

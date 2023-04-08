@@ -25,6 +25,7 @@ import io.almostrealism.relation.Evaluable;
  *
  * @author  Michael Murray
  */
+@Deprecated
 public class PairTable extends MemoryBankAdapter<PairBank> { // implements MemoryTable<Pair> {
 	public PairTable(int width, int count) {
 		super(2 * width, count, delegateSpec ->
@@ -44,16 +45,5 @@ public class PairTable extends MemoryBankAdapter<PairBank> { // implements Memor
 
 	public int getWidth() {
 		return get(0).getCount();
-	}
-
-	// TODO  ...
-
-	public static PairTable fromProducer(Evaluable<PairBank> producer, int width, int count) {
-		PairTable table = new PairTable(width, count);
-		for (int i = 0; i < table.getCount(); i++) {
-			table.set(i, producer.evaluate());
-		}
-
-		return table;
 	}
 }

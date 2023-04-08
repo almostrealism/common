@@ -40,6 +40,7 @@ import java.util.stream.Stream;
  *
  * @author  Michael Murray
  */
+@Deprecated
 public abstract class MemoryBankAdapter<T extends MemoryData> extends MemoryDataAdapter implements MemoryBank<T> {
 	public static final CacheLevel defaultCacheLevel = CacheLevel.ACCESSED;
 

@@ -16,13 +16,14 @@
 
 package org.almostrealism.space;
 
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.geometry.Intersection;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairBank;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayBank;
-import org.almostrealism.graph.mesh.TriangleDataBank;
 import org.almostrealism.hardware.KernelizedOperation;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
@@ -30,9 +31,8 @@ import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.MemoryBankAdapter;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.geometry.computations.RankedChoiceEvaluable;
-import org.almostrealism.hardware.mem.MemoryBankAdapter.CacheLevel;
 
-public class MeshData extends TriangleDataBank {
+public class MeshData extends MemoryBankAdapter<PackedCollection<?>> {
 	/**
 	 * If there is not enough RAM to run the entire kernel at once,
 	 * it can be run one {@link Ray} at a time by enabling this flag.
@@ -42,7 +42,8 @@ public class MeshData extends TriangleDataBank {
 	private ScalarBank distances;
 
 	public MeshData(int triangles) {
-		super(triangles);
+		super(12, triangles, delegateSpec ->
+				new PackedCollection<>(new TraversalPolicy(4, 3), 1, delegateSpec.getDelegate(), delegateSpec.getOffset()));
 		distances = new ScalarBank(getCount());
 	}
 

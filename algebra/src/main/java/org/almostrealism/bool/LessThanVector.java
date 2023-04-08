@@ -18,7 +18,6 @@ package org.almostrealism.bool;
 
 import org.almostrealism.algebra.Vector;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.algebra.VectorBank;
 
 import java.util.function.Supplier;
 

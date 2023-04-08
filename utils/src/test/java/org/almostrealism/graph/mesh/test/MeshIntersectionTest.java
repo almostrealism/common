@@ -28,9 +28,7 @@ import org.almostrealism.geometry.computations.RayFromVectors;
 import org.almostrealism.space.DefaultVertexData;
 import org.almostrealism.space.Mesh;
 import org.almostrealism.space.MeshData;
-import org.almostrealism.graph.mesh.TriangleData;
 import org.almostrealism.graph.mesh.TriangleIntersectAt;
-import org.almostrealism.hardware.DynamicAcceleratedOperation;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.bool.AcceleratedConjunctionScalar;
@@ -75,13 +73,13 @@ public class MeshIntersectionTest implements TestFeatures {
 		data2 = mesh2().getMeshData();
 	}
 
-	protected VectorProducerBase abc(MeshData data) { return v(data.get(0).getABC()); }
-	protected VectorProducerBase def(MeshData data) { return v(data.get(0).getDEF()); }
-	protected VectorProducerBase jkl(MeshData data) { return v(data.get(0).getJKL()); }
-	protected VectorProducerBase normal(MeshData data) { return v(data.get(0).getNormal()); }
+	protected VectorProducerBase abc(MeshData data) { return v(new Vector(data.get(0).get(0), 0)); }
+	protected VectorProducerBase def(MeshData data) { return v(new Vector(data.get(0).get(1), 0)); }
+	protected VectorProducerBase jkl(MeshData data) { return v(new Vector(data.get(0).get(2), 0)); }
+	protected VectorProducerBase normal(MeshData data) { return v(new Vector(data.get(0).get(3), 0)); }
 
 	protected TriangleIntersectAt intersection() {
-		return TriangleIntersectAt.construct(PassThroughEvaluable.of(TriangleData.class, 0),
+		return TriangleIntersectAt.construct(PassThroughEvaluable.of(0),
 										new RayFromVectors(PassThroughEvaluable.of(Vector.class, 1),
 															PassThroughEvaluable.of(Vector.class, 2)));
 	}

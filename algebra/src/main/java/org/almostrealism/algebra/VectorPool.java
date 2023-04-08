@@ -23,6 +23,7 @@ import org.almostrealism.hardware.mem.MemoryPool;
 
 import java.util.Optional;
 
+@Deprecated
 public class VectorPool extends MemoryPool<Pair> {
 	private static ContextSpecific<VectorPool> local;
 

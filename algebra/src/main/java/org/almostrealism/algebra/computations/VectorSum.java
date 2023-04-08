@@ -17,7 +17,6 @@
 package org.almostrealism.algebra.computations;
 
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorBank;
 import org.almostrealism.algebra.VectorProducer;
 import io.almostrealism.relation.Evaluable;
 

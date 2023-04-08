@@ -171,6 +171,7 @@ public class DestinationConsolidationArgumentMap<S, A> extends MemoryDataArgumen
 		}
 	}
 
+	@Deprecated
 	private static class DestinationBank extends MemoryBankAdapter<MemoryData> {
 		protected DestinationBank(int length) {
 			super(1, length, null, CacheLevel.NONE);

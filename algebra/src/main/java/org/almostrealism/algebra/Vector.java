@@ -31,7 +31,7 @@ import java.util.function.Supplier;
 
 /**
  * A {@link Vector} represents a 3d vector. It stores three coordinates, x, y, z
- * in a buffer maintained by JOCL.
+ * in a buffer that is contiguous in memory.
  */
 public class Vector extends PackedCollection<Vector> implements Triple, VectorFeatures, Cloneable {
 	public static final int CARTESIAN_COORDINATES = 0;

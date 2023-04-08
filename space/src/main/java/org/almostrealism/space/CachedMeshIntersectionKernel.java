@@ -16,14 +16,13 @@
 
 package org.almostrealism.space;
 
-import io.almostrealism.code.OperationAdapter;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairBank;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorBank;
 import org.almostrealism.algebra.ZeroVector;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.KernelizedProducer;
@@ -70,7 +69,7 @@ public class CachedMeshIntersectionKernel implements KernelizedEvaluable<Scalar>
 	}
 
 	/**
-	 * Returns a cached value from {@link #kernelEvaluate(MemoryBank, MemoryBank[])}.
+	 * Returns a cached value from {@link #kernelEvaluate(MemoryBank, MemoryData[])}.
 	 * This method will not work properly unless the kernel has already been evaluated.
 	 */
 	@Override
@@ -85,23 +84,23 @@ public class CachedMeshIntersectionKernel implements KernelizedEvaluable<Scalar>
 	}
 
 	public Evaluable<Vector> getClosestNormal() {
-		return new KernelizedEvaluable<Vector>() {
+		return new KernelizedEvaluable<>() {
 			@Override
 			public Vector evaluate(Object[] args) {
 				if (cache == null) {
-					return data.get((int) data.evaluateIntersection(ray, args).getB()).getNormal();
+					return new Vector(data.get((int) data.evaluateIntersection(ray, args).getB()).get(4), 0);
 				} else {
 					Pair pos = (Pair) args[0];
 					int n = DimensionAware.getPosition(pos.getX(), pos.getY(), width, height, ssw, ssh);
 					if (n < 0) return ZeroVector.getEvaluable().evaluate();
 					int a = (int) cache.get(n).getB();
 					if (a < 0) return ZeroVector.getEvaluable().evaluate();
-					return data.get(a).getNormal();
+					return new Vector(data.get(a).get(4), 0);
 				}
 			}
 
 			@Override
-			public MemoryBank<Vector> createKernelDestination(int size) { return Vector.bank(size); }
+			public MemoryBank<Vector> createKernelDestination(int size) {return Vector.bank(size); }
 		};
 	}
 }

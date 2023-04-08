@@ -25,14 +25,14 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBBank;
-import org.almostrealism.graph.mesh.MeshPointData;
+import org.almostrealism.graph.mesh.TrianglePointDataBank;
 
 public class DefaultVertexData implements Mesh.VertexData, CodeFeatures {
 	private PackedCollection<Vector> vertices;
 	private RGBBank colors;
 	private PairBank texCoords;
 
-	// TODO Convert to a vertex bank so that conversion to MeshPointData can be kernelized
+	// TODO Convert to a vertex bank so that conversion to TrianglePointDataBank can be kernelized
 	private int triangles[][];
 
 	public DefaultVertexData(int points, int triangles) {
@@ -88,8 +88,8 @@ public class DefaultVertexData implements Mesh.VertexData, CodeFeatures {
 
 	// TODO Kernelize
 	@Override
-	public MeshPointData getMeshPointData() {
-		MeshPointData points = new MeshPointData(getTriangleCount());
+	public TrianglePointDataBank getMeshPointData() {
+		TrianglePointDataBank points = new TrianglePointDataBank(getTriangleCount());
 
 		Producer<PackedCollection<Vector>> producer =
 				points(
