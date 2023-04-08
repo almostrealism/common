@@ -19,7 +19,6 @@ package org.almostrealism.algebra.computations.test;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.PairBank;
 import org.almostrealism.algebra.ScalarBank;
-import org.almostrealism.algebra.computations.PowerSpectrum;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
@@ -41,13 +40,13 @@ public class PowerSpectrumTest implements TestFeatures {
 		IntStream.range(0, window.getCount()).mapToObj(window::get).forEach(System.out::println);
 
 		System.out.println("Standard...");
-		Evaluable<ScalarBank> ev = new PowerSpectrum(size, v(2 * size, 0)).get();
+		Evaluable<ScalarBank> ev = powerSpectrumOld(size, v(2 * size, 0)).get();
 
 		ScalarBank spectrum = ev.evaluate(window(size));
 		IntStream.range(0, spectrum.getCount()).mapToObj(spectrum::get).forEach(System.out::println);
 
 		System.out.println("Fast...");
-		ev = PowerSpectrum.fast(size, v(2 * size, 0)).get();
+		ev = powerSpectrum(size, v(2 * size, 0)).get();
 
 		spectrum = ev.evaluate(window(size));
 		IntStream.range(0, spectrum.getCount()).mapToObj(spectrum::get).forEach(System.out::println);
@@ -58,13 +57,13 @@ public class PowerSpectrumTest implements TestFeatures {
 		int size = 512;
 
 		System.out.println("Standard...");
-		Evaluable<ScalarBank> ev = new PowerSpectrum(size, v(2 * size, 0)).get();
+		Evaluable<ScalarBank> ev = powerSpectrumOld(size, v(2 * size, 0)).get();
 
 		ScalarBank spectrum = ev.evaluate(window(size));
 		IntStream.range(0, spectrum.getCount()).mapToObj(spectrum::get).forEach(System.out::println);
 
 		System.out.println("Fast...");
-		ev = PowerSpectrum.fast(size, v(2 * size, 0)).get();
+		ev = powerSpectrum(size, v(2 * size, 0)).get();
 
 		ScalarBank spectrumFast = ev.evaluate(window(size));
 		IntStream.range(0, spectrumFast.getCount()).mapToObj(spectrumFast::get).forEach(System.out::println);

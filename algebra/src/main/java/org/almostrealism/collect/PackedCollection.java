@@ -80,7 +80,9 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 		if (shape.getTraversalAxis() == 1 && supply != null) {
 			return supply.apply(new DelegateSpec(this, shape.size(1) * index));
 		} else {
-			throw new UnsupportedOperationException();
+			return (T) new PackedCollection(
+					shape.subset(shape.getTraversalAxis()), shape.getTraversalAxis(),
+					null, this, shape.getSize() * index);
 		}
 	}
 

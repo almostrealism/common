@@ -19,7 +19,7 @@ package org.almostrealism.hardware;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerArgumentReference;
-import io.almostrealism.code.ProducerComputationAdapter;
+import io.almostrealism.code.ProducerComputationBase;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.expression.Expression;
@@ -43,7 +43,7 @@ import java.util.stream.IntStream;
 
 @Deprecated
 public abstract class DynamicProducerComputationAdapter<I extends MemoryData, O extends MemoryData>
-		extends ProducerComputationAdapter<I, O>
+		extends ProducerComputationBase<I, O>
 		implements MemoryDataComputation<O>, KernelizedProducer<O>,
 		DestinationSupport<O>, MultiExpression<Double>, ExpressionValue, ComputerFeatures {
 
@@ -187,7 +187,7 @@ public abstract class DynamicProducerComputationAdapter<I extends MemoryData, O 
 
 			// A Provider is always "value only"
 			if (enableValueOnlyProviders && considerProviders &&
-					!(supplier instanceof ProducerComputationAdapter) &&
+					!(supplier instanceof ProducerComputationBase) &&
 					supplier.get() instanceof Provider) {
 				continue i;
 			}

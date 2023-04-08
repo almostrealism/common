@@ -14,20 +14,28 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.chem;
+package io.almostrealism.code;
 
 import io.almostrealism.relation.Graph;
+import io.almostrealism.relation.Node;
+import io.almostrealism.relation.NodeGroup;
+import io.almostrealism.relation.Parent;
 
 import java.util.Collection;
+import java.util.function.Consumer;
 
-public interface Molecule extends Substance, Graph<Element> {
+public interface Tree<T extends Tree> extends Graph<T>, NodeGroup<T>, Parent<T>, Node {
+	default void forEach(Consumer<? super T> consumer) {
+		getChildren().forEach(consumer);
+	}
+
 	@Override
-	default Collection<Element> neighbors(Element node) {
+	default Collection<T> neighbors(T node) {
 		throw new UnsupportedOperationException();
 	}
 
 	@Override
 	default int countNodes() {
-		return 0;
+		throw new UnsupportedOperationException();
 	}
 }

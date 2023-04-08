@@ -16,6 +16,7 @@
 
 package io.almostrealism.relation;
 
+@Deprecated
 public interface Sortable {
 	int getSortHint();
 }

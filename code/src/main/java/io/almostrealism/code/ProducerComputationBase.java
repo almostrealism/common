@@ -14,9 +14,16 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.algebra;
+package io.almostrealism.code;
 
-@Deprecated
-public interface TripleFunction<T extends Triple, V> {
-	V operate(T in);
+import io.almostrealism.scope.Variable;
+
+public abstract class ProducerComputationBase<I, O> extends OperationComputationBase<I, O> implements ProducerComputation<O> {
+	private Variable outputVariable;
+
+	@Override
+	public void setOutputVariable(Variable out) { this.outputVariable = out; }
+
+	@Override
+	public Variable getOutputVariable() { return outputVariable == null ? getArgument(0) : outputVariable; }
 }

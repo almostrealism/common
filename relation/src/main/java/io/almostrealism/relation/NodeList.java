@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,9 +14,13 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.algebra;
+package io.almostrealism.relation;
 
-@Deprecated
-public interface TripleFunction<T extends Triple, V> {
-	V operate(T in);
+import java.util.List;
+import java.util.function.Consumer;
+
+public interface NodeList<T extends Node> extends NodeGroup<T>, List<T> {
+	default void forEach(Consumer<? super T> consumer) {
+		List.super.forEach(consumer);
+	}
 }

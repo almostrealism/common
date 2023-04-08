@@ -32,7 +32,7 @@ import java.util.Optional;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-public abstract class OperationComputationAdapter<I, O> extends OperationAdapter<I> implements Computation<O>, Compactable {
+public abstract class OperationComputationBase<I, O> extends OperationAdapter<I> implements Computation<O>, Compactable {
 
 	/**
 	 * If set to true, then {@link Provider}s are treated as static for
@@ -44,7 +44,7 @@ public abstract class OperationComputationAdapter<I, O> extends OperationAdapter
 	 */
 	public static final boolean enableStaticProviders = false;
 
-	public OperationComputationAdapter() {
+	public OperationComputationBase() {
 		super(new Supplier[0]);
 	}
 

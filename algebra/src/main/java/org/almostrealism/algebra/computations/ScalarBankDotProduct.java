@@ -19,6 +19,7 @@ package org.almostrealism.algebra.computations;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.ScalarBank;
+import org.almostrealism.algebra.ScalarBankFeatures;
 
 import java.util.function.Supplier;
 
@@ -30,6 +31,6 @@ public class ScalarBankDotProduct extends ScalarBankSum {
 
 	private static Producer<ScalarBank> product(int count, Supplier<Evaluable<? extends ScalarBank>> a,
 												Supplier<Evaluable<? extends ScalarBank>> b) {
-		return ScalarBankProduct.fast(count, a, b);
+		return ScalarBankFeatures.getInstance().scalarBankProduct(count, a, b);
 	}
 }

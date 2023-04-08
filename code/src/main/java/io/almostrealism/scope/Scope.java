@@ -21,8 +21,8 @@ import io.almostrealism.code.CodePrintWriter;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.OperationMetadata;
-import io.almostrealism.code.ParameterizedGraph;
 import io.almostrealism.code.ProducerArgumentReference;
+import io.almostrealism.code.Tree;
 import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
@@ -31,7 +31,6 @@ import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.DynamicProducer;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Named;
-import io.almostrealism.relation.Parent;
 import io.almostrealism.relation.Nameable;
 import io.almostrealism.relation.Sortable;
 
@@ -52,7 +51,7 @@ import java.util.stream.IntStream;
  *
  * @param <T>  The type of the value returned by this {@link Scope}.
  */
-public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<Scope<T>, T>, Parent<Scope<T>>, Nameable {
+public class Scope<T> extends ArrayList<Scope<T>> implements Tree<Scope<T>>, Nameable {
 	public static final boolean enableInlining = true;
 
 	private String name;
@@ -127,6 +126,11 @@ public class Scope<T> extends ArrayList<Scope<T>> implements ParameterizedGraph<
 	public boolean isEmbedded() { return embedded; }
 
 	public void setEmbedded(boolean embedded) { this.embedded = embedded; }
+
+	@Override
+	public Collection<Scope<T>> neighbors(Scope<T> node) {
+		throw new UnsupportedOperationException();
+	}
 
 	/**
 	 * Returns the {@link Scope}s that are required by this {@link Scope},

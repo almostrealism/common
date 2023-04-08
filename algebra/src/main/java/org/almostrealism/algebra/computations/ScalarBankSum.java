@@ -19,21 +19,19 @@ package org.almostrealism.algebra.computations;
 import io.almostrealism.code.HybridScope;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.PhysicalScope;
-import io.almostrealism.code.ProducerComputationAdapter;
+import io.almostrealism.code.ProducerComputationBase;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarProducer;
-import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.ComputerFeatures;
 import org.almostrealism.hardware.DestinationSupport;
-import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.MemoryDataDestination;
 
 import java.util.function.Supplier;
 
-public class ScalarBankSum extends ProducerComputationAdapter<ScalarBank, Scalar> implements ScalarProducer, DestinationSupport<Scalar>, ComputerFeatures {
+public class ScalarBankSum extends ProducerComputationBase<ScalarBank, Scalar> implements ScalarProducer, DestinationSupport<Scalar>, ComputerFeatures {
 	private final int count;
 
 	private Supplier<Scalar> destination;

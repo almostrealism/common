@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,19 +16,27 @@
 
 package org.almostrealism.algebra.computations;
 
+import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.MultiExpression;
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarBankProducerBase;
-import org.almostrealism.collect.computations.StaticCollectionComputation;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.ExpressionComputation;
+import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 
-@Deprecated
-public class StaticScalarBankComputation extends StaticCollectionComputation<ScalarBank> implements ScalarBankProducerBase {
-	public StaticScalarBankComputation(ScalarBank value) {
-		super(value);
+import java.util.List;
+import java.util.function.Function;
+import java.util.function.Supplier;
+
+public class ScalarBankExpressionComputation extends ExpressionComputation<ScalarBank> implements ScalarBankProducerBase {
+	public ScalarBankExpressionComputation(List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression, Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+		super(expression, args);
 	}
 
 	@Override
 	public ScalarBank postProcessOutput(MemoryData output, int offset) {
-		return new ScalarBank(output.getMemLength() / 2, output, offset);
+		return new ScalarBank(((MemoryBank) output).getCount(), output, offset);
 	}
 }

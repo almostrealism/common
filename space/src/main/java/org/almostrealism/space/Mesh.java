@@ -22,7 +22,9 @@ import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 import java.util.ListIterator;
+import java.util.function.Consumer;
 
+import io.almostrealism.relation.Graph;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorEvaluable;
@@ -30,7 +32,6 @@ import org.almostrealism.color.RGB;
 import org.almostrealism.geometry.Positioned;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.ContinuousField;
-import org.almostrealism.graph.Automata;
 import org.almostrealism.graph.KdTree;
 import org.almostrealism.graph.mesh.MeshPointData;
 import org.almostrealism.hardware.KernelizedProducer;
@@ -49,7 +50,7 @@ import org.almostrealism.geometry.ShadableIntersection;
  * @author  Michael Murray
  * @author  Dan Chivers
  */
-public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, Triangle> {
+public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 	private static RGB white = new RGB(1.0, 1.0, 1.0);
 	
 	public interface VertexData {
@@ -257,15 +258,25 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
   	public Vertex[] getVectors() { return this.getVectors(this.source == null); }
   	
   	public Vertex[] getVectors(boolean b) {
-  		if (this.points == null) return null;
-  		
-  		if (b)
-  			return (Vertex[]) this.points.toArray(new Vertex[0]);
-  		else
-  			return null;
-  	}
-  	
-  	public Iterator iterateVectors() { return this.points.iterator(); }
+		if (this.points == null) return null;
+
+		if (b)
+			return (Vertex[]) this.points.toArray(new Vertex[0]);
+		else
+			return null;
+	}
+
+	@Override
+	public Collection<Vector> neighbors(Vector node) {
+		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	public int countNodes() {
+		return points.size();
+	}
+
+	public Iterator iterateVectors() { return this.points.iterator(); }
   	
   	public void setTriangleData(int data[][]) {
   		this.triangles.clear();
@@ -669,136 +680,5 @@ public class Mesh extends SpacePartition<Triangle> implements Automata<Vector, T
 		} else {
 			return this;
 		}
-	}
-
-	@Override
-	public int size() {
-		// TODO Auto-generated method stub
-		return 0;
-	}
-
-	@Override
-	public boolean isEmpty() {
-		// TODO Auto-generated method stub
-		return false;
-	}
-
-	@Override
-	public boolean contains(Object o) {
-		// TODO Auto-generated method stub
-		return false;
-	}
-
-	@Override
-	public Object[] toArray() {
-		// TODO Auto-generated method stub
-		return null;
-	}
-
-	@Override
-	public <T> T[] toArray(T[] a) {
-		// TODO Auto-generated method stub
-		return null;
-	}
-
-	@Override
-	public boolean add(Triangle e) {
-		throw new RuntimeException("Not implemented");
-	}
-
-	@Override
-	public boolean remove(Object o) {
-		// TODO Auto-generated method stub
-		return false;
-	}
-
-	@Override
-	public boolean containsAll(Collection<?> c) {
-		// TODO Auto-generated method stub
-		return false;
-	}
-
-	@Override
-	public boolean addAll(Collection<? extends Triangle> c) {
-		// TODO Auto-generated method stub
-		return false;
-	}
-
-	@Override
-	public boolean addAll(int index, Collection<? extends Triangle> c) {
-		// TODO Auto-generated method stub
-		return false;
-	}
-
-	@Override
-	public boolean removeAll(Collection<?> c) {
-		// TODO Auto-generated method stub
-		return false;
-	}
-
-	@Override
-	public boolean retainAll(Collection<?> c) {
-		// TODO Auto-generated method stub
-		return false;
-	}
-
-	@Override
-	public void clear() {
-		// TODO Auto-generated method stub
-		
-	}
-
-	@Override
-	public Triangle get(int index) {
-		// TODO Auto-generated method stub
-		return null;
-	}
-
-	@Override
-	public Triangle set(int index, Triangle element) {
-		// TODO Auto-generated method stub
-		return null;
-	}
-
-	@Override
-	public void add(int index, Triangle element) {
-		// TODO Auto-generated method stub
-		
-	}
-
-	@Override
-	public Triangle remove(int index) {
-		// TODO Auto-generated method stub
-		return null;
-	}
-
-	@Override
-	public int indexOf(Object o) {
-		// TODO Auto-generated method stub
-		return 0;
-	}
-
-	@Override
-	public int lastIndexOf(Object o) {
-		// TODO Auto-generated method stub
-		return 0;
-	}
-
-	@Override
-	public ListIterator<Triangle> listIterator() {
-		// TODO Auto-generated method stub
-		return null;
-	}
-
-	@Override
-	public ListIterator<Triangle> listIterator(int index) {
-		// TODO Auto-generated method stub
-		return null;
-	}
-
-	@Override
-	public List<Triangle> subList(int fromIndex, int toIndex) {
-		// TODO Auto-generated method stub
-		return null;
 	}
 }

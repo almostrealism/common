@@ -16,17 +16,20 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.code.Tree;
 import io.almostrealism.scope.Variable;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-public class Expression<T> {
+public class Expression<T> implements Tree<Expression<?>> {
 	private Class<T> type;
 	private Supplier<String> expression;
 	private List<Variable<?, ?>> dependencies = new ArrayList<>();
@@ -118,6 +121,11 @@ public class Expression<T> {
 	public Exp exp() { return new Exp((Expression) this); }
 
 	public Equals eq(Expression<T> operand) { return new Equals(this, operand); }
+
+	@Override
+	public Collection<Expression<?>> getChildren() {
+		throw new UnsupportedOperationException();
+	}
 
 	@Override
 	public boolean equals(Object obj) {

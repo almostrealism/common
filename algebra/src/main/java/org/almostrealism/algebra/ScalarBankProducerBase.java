@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,18 +17,7 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.code.ProducerComputation;
-import org.almostrealism.algebra.computations.DefaultScalarBankEvaluable;
-import org.almostrealism.hardware.AcceleratedComputationEvaluable;
-import org.almostrealism.hardware.DefaultComputer;
-import org.almostrealism.hardware.Hardware;
-import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.KernelizedProducer;
 
-public interface ScalarBankProducer extends ProducerComputation<ScalarBank>, KernelizedProducer<ScalarBank>, ScalarFeatures {
-	@Override
-	default KernelizedEvaluable<ScalarBank> get() {
-		AcceleratedComputationEvaluable ev = new DefaultScalarBankEvaluable(this);
-		ev.compile();
-		return ev;
-	}
+public interface ScalarBankProducerBase extends ProducerComputation<ScalarBank>, KernelizedProducer<ScalarBank>, ScalarFeatures {
 }

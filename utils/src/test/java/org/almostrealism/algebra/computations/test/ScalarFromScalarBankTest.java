@@ -18,7 +18,7 @@ package org.almostrealism.algebra.computations.test;
 
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarProducerBase;
-import org.almostrealism.algebra.computations.ScalarBankPadFast;
+import org.almostrealism.algebra.computations.ScalarBankPad;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
@@ -47,7 +47,7 @@ public class ScalarFromScalarBankTest implements TestFeatures {
 
 		assertEquals(4, bank.get(2));
 
-		ScalarBankPadFast pad = new ScalarBankPadFast(7, 4, v(bank));
+		ScalarBankPad pad = new ScalarBankPad(7, 4, v(bank));
 		ScalarBank padded = pad.get().evaluate();
 
 		assertEquals(7, padded.getCount());

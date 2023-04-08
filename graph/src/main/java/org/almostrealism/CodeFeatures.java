@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -20,22 +20,21 @@ import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.code.DataContext;
-import io.almostrealism.scope.Variable;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.DynamicProducer;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Pair;
+import org.almostrealism.algebra.PairBankFeatures;
 import org.almostrealism.algebra.PairFeatures;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
+import org.almostrealism.algebra.ScalarBankFeatures;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.algebra.ScalarProducerBase;
 import org.almostrealism.algebra.computations.Switch;
-import org.almostrealism.algebra.computations.ScalarBankFromScalars;
 import org.almostrealism.algebra.computations.StaticPairComputation;
 import org.almostrealism.algebra.computations.StaticScalarBankComputation;
 import org.almostrealism.algebra.computations.StaticVectorComputation;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.KernelExpression;
 import org.almostrealism.collect.PackedCollection;
@@ -60,7 +59,6 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.Input;
 import org.almostrealism.hardware.KernelOperation;
-import org.almostrealism.hardware.KernelSupport;
 import org.almostrealism.hardware.KernelizedProducer;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
@@ -74,11 +72,13 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.function.Function;
-import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public interface CodeFeatures extends LayerFeatures, ScalarFeatures, PairFeatures, TriangleDataFeatures, RayFeatures,
-								TransformMatrixFeatures, GeometryFeatures, TemporalFeatures, HardwareFeatures {
+public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
+								PairFeatures, PairBankFeatures,
+								TriangleDataFeatures, RayFeatures,
+								TransformMatrixFeatures, GeometryFeatures,
+								TemporalFeatures, HardwareFeatures {
 
 	default Producer<CursorPair> v(CursorPair p) {
 		throw new UnsupportedOperationException();
@@ -117,10 +117,6 @@ public interface CodeFeatures extends LayerFeatures, ScalarFeatures, PairFeature
 	default Supplier<Evaluable<? extends Vector>> vector(int argIndex) { return value(Vector.class, argIndex); }
 
 	default Supplier<Evaluable<? extends ScalarBank>> scalars(ScalarBank s) { return value(s); }
-
-	default ScalarBankFromScalars scalars(Supplier<Evaluable<? extends Scalar>>... values) {
-		return new ScalarBankFromScalars(values);
-	}
 
 	default Supplier<Evaluable<? extends TriangleData>> triangle(int argIndex) { return value(TriangleData.class, argIndex); }
 

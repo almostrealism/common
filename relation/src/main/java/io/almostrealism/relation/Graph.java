@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,16 +14,12 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.code;
+package io.almostrealism.relation;
 
-import io.almostrealism.scope.Variable;
+import java.util.Collection;
 
-public abstract class ProducerComputationAdapter<I, O> extends OperationComputationAdapter<I, O> implements ProducerComputation<O> {
-	private Variable outputVariable;
+public interface Graph<T extends Node> {
+	Collection<T> neighbors(T node);
 
-	@Override
-	public void setOutputVariable(Variable out) { this.outputVariable = out; }
-
-	@Override
-	public Variable getOutputVariable() { return outputVariable == null ? getArgument(0) : outputVariable; }
+	int countNodes();
 }

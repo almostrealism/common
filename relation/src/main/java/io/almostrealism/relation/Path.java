@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,9 +14,9 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.algebra;
+package io.almostrealism.relation;
 
-@Deprecated
-public interface TripleFunction<T extends Triple, V> {
-	V operate(T in);
+import io.almostrealism.uml.Plural;
+
+public interface Path extends Plural<Node> {
 }

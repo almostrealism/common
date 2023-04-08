@@ -17,6 +17,7 @@
 package org.almostrealism.graph;
 
 // TODO  Replace with OutputStream
+@Deprecated
 public interface DataReceiver {
 	void next(byte b[]);
 }
