@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,12 +17,12 @@
 package org.almostrealism.geometry.computations;
 
 import org.almostrealism.algebra.computations.StaticComputationAdapter;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.TransformMatrix;
-import org.almostrealism.geometry.TransformMatrixBank;
 import org.almostrealism.geometry.TransformMatrixProducer;
 
 public class StaticTransformMatrixComputation extends StaticComputationAdapter<TransformMatrix> implements TransformMatrixProducer {
 	public StaticTransformMatrixComputation(TransformMatrix value) {
-		super(value, TransformMatrix.blank(), TransformMatrixBank::new);
+		super(value, TransformMatrix.blank(), i -> new PackedCollection<>(i, 16));
 	}
 }
