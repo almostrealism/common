@@ -20,12 +20,16 @@ import io.almostrealism.code.ExpressionList;
 import io.almostrealism.expression.Expression;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducerComputation;
+import org.almostrealism.collect.CollectionVariable;
 import org.almostrealism.collect.KernelExpression;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversableKernelExpression;
 import org.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.graph.Cell;
 import org.almostrealism.hardware.KernelOperation;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.model.Block;
+import org.almostrealism.model.DefaultBlock;
 
 import java.util.List;
 import java.util.function.Function;
@@ -61,11 +65,49 @@ public interface LayerFeatures extends CollectionFeatures {
 				i.v(1).get(shape(1, size, size), p.l(2))
 					.multiply(i.v(0).get(shape(size, size), p.l(0), p.l(1))).sum();
 
+		KernelExpression reverse = (i, p) -> {
+			CollectionVariable gradient = i.v(0);
+			CollectionVariable input = i.v(1);
+			Expression fx = p.l(1);
+			Expression fy = p.l(2);
+			Expression f = p.l(0);
+
+			ExpressionList regions = new ExpressionList();
+
+			for (int x = 0; x < outputShape.length(0); x++) {
+				for (int y = 0; y < outputShape.length(1); y++) {
+					Expression g = gradient.get(e(x), e(y), f);
+					Expression v = input.get(e(x).add(fx), e(y).add(fy));
+					regions.add(g.multiply(v));
+				}
+			}
+
+			return regions.sum();
+		};
+
+		KernelExpression adjustFilter = (i, p) -> i.v(0).get(p).subtract(i.v(1).get(p).multiply(i.v(2).valueAt(0)));
+
 		PackedCollection<?> filters = new PackedCollection<>(filterShape);
+
+		Propagation propagation = (lr, gradient, input, next) -> {
+			OperationList ops = new OperationList();
+			PackedCollection<?> filterGrad = new PackedCollection<>(filterShape);
+			CollectionProducerComputation<PackedCollection<?>> fgr = kernel(ops.kernelIndex(), filterShape, reverse, gradient, input);
+			CollectionProducerComputation<PackedCollection<?>> df = kernel(ops.kernelIndex(), filterShape, adjustFilter, p(filters), p(filterGrad), lr);
+
+
+			ops.add(new KernelOperation(fgr, filterGrad.traverseEach()));
+			ops.add(new KernelOperation(df, filters.traverseEach()));
+			if (next != null) {
+				System.out.println("WARN: convolution2d does not support backpropagation");
+			}
+			return ops;
+		};
+
 		Supplier<Runnable> init = new KernelOperation<>(
 				divide(randn(filterShape).traverseEach(), c(9).traverse(0)), filters.traverseEach());
 
-		return layer(inputShape, outputShape, kernel, null, List.of(filters), init);
+		return layer(inputShape, outputShape, kernel, propagation, List.of(filters), init);
 	}
 
 	default Function<TraversalPolicy, KernelLayer> pool2d(int size) {

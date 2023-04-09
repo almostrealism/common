@@ -17,18 +17,19 @@
 package org.almostrealism.graph.model.test;
 
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.CodeFeatures;
+import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.layers.KernelLayer;
 import org.almostrealism.model.Model;
+import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.Arrays;
 import java.util.stream.IntStream;
 
-public class PropagationTests implements CodeFeatures {
+public class PropagationTests implements TestFeatures {
 	@Test
 	public void softmaxBackwards() {
 		PackedCollection<?> input = new PackedCollection(10);
@@ -73,8 +74,8 @@ public class PropagationTests implements CodeFeatures {
 		Model model = new Model(shape(size), 1e-1);
 		KernelLayer dense = dense(size, nodes);
 		KernelLayer softmax = softmax(nodes);
-		model.addBlock(dense);
-		model.addBlock(softmax);
+		model.addLayer(dense);
+		model.addLayer(softmax);
 
 		PackedCollection<?> weights = dense.getWeights().get(0);
 
@@ -140,7 +141,7 @@ public class PropagationTests implements CodeFeatures {
 
 		Model model = new Model(inputShape, 1e-1);
 		KernelLayer pool = pool2d(inputShape, size);
-		model.addBlock(pool);
+		model.addLayer(pool);
 
 		PackedCollection<?> input = new PackedCollection<>(inputShape);
 		input.fill(pos -> (double) (int) (100 * Math.random()));
@@ -172,6 +173,58 @@ public class PropagationTests implements CodeFeatures {
 					Assert.assertEquals(gradient.valueAt(i / size, j / size, 0), result.valueAt(i, j, 0), 1e-6);
 				} else {
 					Assert.assertEquals(0, result.valueAt(i, j, 0), 1e-6);
+				}
+			}
+		}
+	}
+
+	@Test
+	public void convBackwards() {
+		int convSize = 3;
+		int w = 10;
+		int h = 10;
+		TraversalPolicy inputShape = shape(h, w);
+
+		Model model = new Model(inputShape, 1e-2);
+		KernelLayer conv = convolution2d(inputShape, convSize, 8);
+
+		model.addLayer(conv);
+
+		Tensor<Double> t = tensor(inputShape);
+		PackedCollection<?> input = t.pack();
+
+		model.setup().get().run();
+		model.forward(input);
+
+		TraversalPolicy filterShape = conv.getWeights().get(0).getShape();
+		PackedCollection<?> originalFilter = new PackedCollection<>(filterShape);
+		originalFilter.setMem(0, conv.getWeights().get(0), 0, conv.getWeights().get(0).getMemLength());
+
+		TraversalPolicy gradientShape = model.getShape();
+		PackedCollection<?> gradient = new PackedCollection<>(gradientShape);
+		gradient.fill(pos -> Math.random());
+		model.backward(gradient);
+
+		PackedCollection<?> adjustedFilter = conv.getWeights().get(0);
+
+		for (int f = 0; f < filterShape.length(0); f++) {
+			for (int xf = 0; xf < filterShape.length(1); xf++) {
+				for (int yf = 0; yf < filterShape.length(2); yf++) {
+					double expected = 0;
+
+					for (int x = 0; x < gradientShape.length(0); x++) {
+						for (int y = 0; y < gradientShape.length(1); y++) {
+							double g = gradient.toDouble(gradientShape.index(x, y, f));
+							double v = input.toDouble(inputShape.index(x + xf, y + yf));
+							expected += g * v;
+						}
+					}
+
+					expected *= 1e-2;
+
+					double actual = originalFilter.toDouble(filterShape.index(f, xf, yf)) - adjustedFilter.toDouble(filterShape.index(f, xf, yf));
+					System.out.println("PropagationTest: " + expected + " vs " + actual);
+					Assert.assertEquals(expected, actual, 1e-6);
 				}
 			}
 		}

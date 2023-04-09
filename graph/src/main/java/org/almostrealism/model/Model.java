@@ -17,13 +17,10 @@
 package org.almostrealism.model;
 
 import io.almostrealism.cycle.Setup;
-import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.TraversableKernelExpression;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.graph.Cell;
-import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.mem.MemoryDataCopy;
 import org.almostrealism.layers.KernelLayer;
@@ -90,7 +87,13 @@ public class Model implements Setup, CodeFeatures {
 		shape = b.getOutputShape();
 	}
 
-	public CellularBlock addBlock(KernelLayer layer) {
+	public Block addBlock(Function<TraversalPolicy, Block> block) {
+		Block b = block.apply(shape);
+		addBlock(b);
+		return b;
+	}
+
+	public CellularBlock addLayer(KernelLayer layer) {
 		PropagationCell backwards = layer.getBackwards();
 		backwards.setLearningRate(p(learningRate));
 
@@ -101,8 +104,8 @@ public class Model implements Setup, CodeFeatures {
 		return b;
 	}
 
-	public CellularBlock addBlock(Function<TraversalPolicy, KernelLayer> layer) {
-		return addBlock(layer.apply(shape));
+	public CellularBlock addLayer(Function<TraversalPolicy, KernelLayer> layer) {
+		return addLayer(layer.apply(shape));
 	}
 
 	public Block lastBlock() {
