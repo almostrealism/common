@@ -19,12 +19,10 @@ package org.almostrealism.color;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
-import org.almostrealism.algebra.ScalarEvaluable;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.color.computations.StaticRGBComputation;
 import org.almostrealism.color.computations.ColorProduct;
 import org.almostrealism.color.computations.ColorSum;
-import org.almostrealism.color.computations.DefaultRGBEvaluable;
 import org.almostrealism.color.computations.RGBFromScalars;
 
 import java.util.function.Supplier;

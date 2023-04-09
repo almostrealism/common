@@ -87,10 +87,6 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 		return Scalar.blank();
 	}
 
-	default ScalarEvaluable scalarAdd(Evaluable<Scalar> a, Evaluable<Scalar> b) {
-		return (ScalarEvaluable) scalarAdd(() -> a, () -> b).get();
-	}
-
 	default ScalarExpressionComputation scalarAdd(Supplier<Evaluable<? extends Scalar>>... values) {
 		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
 		comp.add(args -> new Sum(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValue(0)).toArray(Expression[]::new)));
@@ -98,16 +94,8 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 		return new ScalarExpressionComputation(comp, (Supplier[]) values);
 	}
 
-	default ScalarEvaluable scalarSubtract(Evaluable<Scalar> a, Evaluable<Scalar> b) {
-		return (ScalarEvaluable) scalarSubtract(() -> a, () -> b).get();
-	}
-
 	default ScalarExpressionComputation scalarSubtract(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
 		return scalarAdd(a, scalarMinus(b));
-	}
-
-	default ScalarEvaluable scalarsMultiply(Evaluable<Scalar> a, Evaluable<Scalar> b) {
-		return (ScalarEvaluable) scalarsMultiply(() -> a, () -> b).get();
 	}
 
 	default ScalarExpressionComputation scalarsMultiply(Supplier<Evaluable<? extends Scalar>>... values) {
@@ -119,10 +107,6 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 
 	default ScalarExpressionComputation scalarsDivide(ScalarProducerBase a, ScalarProducerBase b) {
 		return scalarsMultiply(a, pow(b, v(-1.0)));
-	}
-
-	default ScalarEvaluable scalarMinus(Evaluable<Scalar> v) {
-		return (ScalarEvaluable) scalarMinus(() -> v).get();
 	}
 
 	default ScalarProducerBase scalarMinus(Supplier<Evaluable<? extends Scalar>> v) {
@@ -139,10 +123,6 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 
 	default ScalarProducerBase pow(ScalarProducerBase base, Scalar exp) {
 		return pow(base, of(exp));
-	}
-
-	default ScalarEvaluable pow(Evaluable<Scalar> base, double value) {
-		throw new UnsupportedOperationException();
 	}
 
 	default ScalarProducerBase pow(ScalarProducerBase base, double value) {

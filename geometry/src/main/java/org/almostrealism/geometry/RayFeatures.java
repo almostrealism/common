@@ -18,7 +18,6 @@ package org.almostrealism.geometry;
 
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorEvaluable;
 import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.algebra.VectorProducerBase;
 import org.almostrealism.algebra.computations.ScalarExpressionComputation;
@@ -47,20 +46,12 @@ public interface RayFeatures extends VectorFeatures {
 				values.apply(3), values.apply(4), values.apply(5));
 	}
 
-	default VectorEvaluable origin(Evaluable<Ray> r) {
-		return (VectorEvaluable) origin(() -> r).get();
-	}
-
 	default VectorProducerBase origin(Supplier<Evaluable<? extends Ray>> r) {
 		return new VectorExpressionComputation(List.of(
 				args -> args.get(1).getValue(0),
 				args -> args.get(1).getValue(1),
 				args -> args.get(1).getValue(2)),
 				(Supplier) r);
-	}
-
-	default VectorEvaluable direction(Evaluable<Ray> r) {
-		return (VectorEvaluable) direction(() -> r).get();
 	}
 
 	default VectorProducerBase direction(Supplier<Evaluable<? extends Ray>> r) {

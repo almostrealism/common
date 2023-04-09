@@ -17,14 +17,15 @@
 package org.almostrealism.algebra.computations;
 
 import io.almostrealism.code.Computation;
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorEvaluable;
+import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 
 @Deprecated
-public class DefaultVectorEvaluable extends AcceleratedComputationEvaluable<Vector> implements VectorEvaluable {
+public class DefaultVectorEvaluable extends AcceleratedComputationEvaluable<Vector> implements Evaluable<Vector>, VectorFeatures {
 
 	public DefaultVectorEvaluable(Computation<Vector> c) {
 		super(c);

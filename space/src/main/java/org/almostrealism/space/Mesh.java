@@ -21,13 +21,11 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
-import java.util.ListIterator;
-import java.util.function.Consumer;
 
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Graph;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorEvaluable;
 import org.almostrealism.color.RGB;
 import org.almostrealism.geometry.Positioned;
 import org.almostrealism.geometry.Ray;
@@ -416,7 +414,7 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 	/**
 	 * @return  null.
 	 */
-	public VectorEvaluable getNormalAt(Vector point) { return null; }
+	public Evaluable<Vector> getNormalAt(Vector point) { return null; }
 	
 	/**
 	 * Sets the smooth flag for this Mesh object. If the flag is true,

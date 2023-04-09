@@ -16,19 +16,17 @@
 
 package org.almostrealism.algebra.computations;
 
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
-import org.almostrealism.algebra.ScalarEvaluable;
-import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.mem.MemoryBankAdapter;
 import io.almostrealism.code.Computation;
 
 @Deprecated
-public class DefaultScalarEvaluable extends AcceleratedComputationEvaluable<Scalar> implements ScalarEvaluable {
+public class DefaultScalarEvaluable extends AcceleratedComputationEvaluable<Scalar> implements Evaluable<Scalar>, ScalarFeatures {
 
 	public DefaultScalarEvaluable(Computation<Scalar> c) {
 		super(c);

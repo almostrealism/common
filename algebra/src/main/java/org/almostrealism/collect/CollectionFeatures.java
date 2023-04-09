@@ -133,10 +133,6 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return new ExpressionComputation(expressions, producers);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> c(Supplier<Evaluable<? extends PackedCollection<?>>> supplier, int index) {
-		return new ExpressionComputation<>(List.of(args -> args.get(1).getValue(index)), supplier);
-	}
-
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> c(Producer supplier, int index) {
 		return new ExpressionComputation<>(List.of(args -> args.get(1).getValue(index)), supplier);
 	}
@@ -187,7 +183,10 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return new PackedCollectionSubset<>(shape, collection, position);
 	}
 
+	default Random rand(int... dims) { return rand(shape(dims)); }
 	default Random rand(TraversalPolicy shape) { return new Random(shape); }
+
+	default Random randn(int... dims) { return randn(shape(dims)); }
 	default Random randn(TraversalPolicy shape) { return new Random(shape, true); }
 
 	default CollectionProducerComputation<PackedCollection<?>> integers(int from, int to) {

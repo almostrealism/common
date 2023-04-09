@@ -16,17 +16,15 @@
 
 package org.almostrealism.algebra.computations;
 
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.PairBank;
-import org.almostrealism.algebra.PairBankEvaluable;
-import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryBank;
 import io.almostrealism.code.Computation;
 import org.almostrealism.hardware.MemoryData;
 
 @Deprecated
-public class DefaultPairBankEvaluable extends AcceleratedComputationEvaluable<PairBank> implements PairBankEvaluable {
+public class DefaultPairBankEvaluable extends AcceleratedComputationEvaluable<PairBank> implements Evaluable<PairBank> {
 
 	public DefaultPairBankEvaluable(Computation<PairBank> c) {
 		super(c);
