@@ -57,7 +57,7 @@ public class SimpleGene implements Gene<PackedCollection<?>>, GeneParameters, Co
 			return new Factor<PackedCollection<?>>() {
 				@Override
 				public Producer<PackedCollection<?>> getResultant(Producer<PackedCollection<?>> value) {
-					return transform(_multiply(value, c((Supplier) () -> new Provider<>(values), pos), args -> {
+					return transform(multiply(value, c((Supplier) () -> new Provider<>(values), pos), args -> {
 						PackedCollection<?> result = new PackedCollection<>(1);
 
 						if (value instanceof StaticCollectionComputation) {
@@ -79,7 +79,7 @@ public class SimpleGene implements Gene<PackedCollection<?>>, GeneParameters, Co
 			return new Factor<PackedCollection<?>>() {
 				@Override
 				public Producer<PackedCollection<?>> getResultant(Producer<PackedCollection<?>> value) {
-					return transform(_multiply(value, c((Supplier) () -> new Provider<>(values), pos)));
+					return transform(multiply(value, c((Supplier) () -> new Provider<>(values), pos)));
 				}
 
 				@Override

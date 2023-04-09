@@ -58,7 +58,7 @@ public class CollectionKernelTests implements TestFeatures {
 				c(v2).get().evaluate(args));
 
 		HardwareOperator.verboseLog(() -> {
-			CollectionProducerComputation<PackedCollection<?>> c = _multiply(5, a.traverse(1), b.traverse(0), null);
+			CollectionProducerComputation<PackedCollection<?>> c = multiply(5, a.traverse(1), b.traverse(0), null);
 			KernelizedEvaluable<PackedCollection<?>> eval = c.get();
 			PackedCollection<?> out = eval.evaluate();
 

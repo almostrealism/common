@@ -246,24 +246,24 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	}
 
 	// TODO Rename
-	default <T extends PackedCollection<?>> ExpressionComputation<T> _multiply(
+	default <T extends PackedCollection<?>> ExpressionComputation<T> multiply(
 			Producer<T> a, Producer<T> b) {
-		return _multiply(a, b, null);
+		return multiply(a, b, null);
 	}
 
 
 	// TODO Rename
-	default <T extends PackedCollection<?>> ExpressionComputation<T> _multiply(
+	default <T extends PackedCollection<?>> ExpressionComputation<T> multiply(
 			Producer<T> a, Producer<T> b,
 			Evaluable<T> shortCircuit) {
 		int depth = size(a) == size(b) ? size(a) : 1;
-		return _multiply(depth, (Supplier) a, (Supplier) b, shortCircuit);
+		return multiply(depth, (Supplier) a, (Supplier) b, shortCircuit);
 	}
 
 	// TODO Rename
-	default <T extends PackedCollection<?>> ExpressionComputation<T> _multiply(int depth,
-			Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b,
-			Evaluable<T> shortCircuit) {
+	default <T extends PackedCollection<?>> ExpressionComputation<T> multiply(int depth,
+																			  Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b,
+																			  Evaluable<T> shortCircuit) {
 		List<Function<List<MultiExpression<Double>>, Expression<Double>>> expressions =
 				IntStream.range(0, depth).mapToObj(i -> (Function<List<MultiExpression<Double>>, Expression<Double>>)
 								np -> new Product(np.get(1).getValue(i), np.get(2).getValue(i)))
@@ -275,7 +275,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 
 	// TODO Rename
 	default <T extends PackedCollection<?>> ExpressionComputation<T> _divide(Producer<T> a, Producer<T> b) {
-		return _multiply(a, _pow(b, c(-1.0)));
+		return multiply(a, _pow(b, c(-1.0)));
 	}
 
 	// TODO Rename

@@ -149,6 +149,10 @@ public interface VectorFeatures extends CollectionFeatures, HardwareFeatures {
 		return add(value, minus(operand));
 	}
 
+	default VectorExpressionComputation multiply(VectorProducerBase a, VectorProducerBase b) {
+		return multiply(new VectorProducerBase[] { a, b });
+	}
+
 	default VectorExpressionComputation multiply(VectorProducerBase... values) {
 		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
 		comp.add(args -> new Product(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValue(0)).toArray(Expression[]::new)));
@@ -165,8 +169,13 @@ public interface VectorFeatures extends CollectionFeatures, HardwareFeatures {
 		return scalarMultiply(a, new Scalar(b));
 	}
 
+	@Deprecated
 	default VectorEvaluable scalarMultiply(Evaluable<Vector> a, Scalar b) {
 		return scalarMultiply(a, ScalarFeatures.of(b).get());
+	}
+
+	default VectorExpressionComputation scalarMultiply(Producer<Vector> a, double b) {
+		return scalarMultiply(a, new Scalar(b));
 	}
 
 	default VectorExpressionComputation scalarMultiply(Producer<Vector> a, Scalar b) {
@@ -180,7 +189,7 @@ public interface VectorFeatures extends CollectionFeatures, HardwareFeatures {
 
 	@Deprecated
 	default VectorExpressionComputation scalarMultiply(Producer<Vector> a, Supplier<Evaluable<? extends Scalar>> b) {
-		return vector(_multiply(a, fromScalars(b, b, b)));
+		return vector(multiply(a, fromScalars(b, b, b)));
 	}
 
 	default VectorExpressionComputation minus(VectorProducerBase p) {

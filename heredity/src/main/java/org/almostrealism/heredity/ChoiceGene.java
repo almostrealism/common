@@ -16,7 +16,6 @@
 
 package org.almostrealism.heredity;
 
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.ScalarFeatures;
@@ -47,7 +46,7 @@ public class ChoiceGene implements Gene<PackedCollection<?>>, GeneParameters, Sc
 			@Override
 			public Producer<PackedCollection<?>> getResultant(Producer<PackedCollection<?>> value) {
 				value = c(values.getShape(), () -> new Provider<>(values), scalar(pos));
-				return c(choices.getShape(), () -> new Provider<>(choices), (Supplier) _multiply(value, c(choices.getMemLength())));
+				return c(choices.getShape(), () -> new Provider<>(choices), (Supplier) multiply(value, c(choices.getMemLength())));
 			}
 
 			@Override

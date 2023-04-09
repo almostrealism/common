@@ -16,9 +16,10 @@
 
 package org.almostrealism.stats;
 
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
 import io.almostrealism.relation.Evaluable;
 
 public interface SphericalProbabilityDistribution {
-	Evaluable<Vector> getSample(double in[], double orient[]);
+	Producer<Vector> getSample(double in[], double orient[]);
 }

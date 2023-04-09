@@ -16,7 +16,6 @@
 
 package org.almostrealism.graph.test;
 
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.CollectionCachedStateCell;
 import org.almostrealism.hardware.DynamicAcceleratedOperation;
@@ -31,7 +30,7 @@ public class CellPairTest implements TestFeatures {
 		CollectionCachedStateCell cellA = new CollectionCachedStateCell();
 		CollectionCachedStateCell cellB = new CollectionCachedStateCell();
 
-		CellPair<PackedCollection<?>> pair = new CellPair<>(cellA, cellB, v -> c(3.0), v -> _multiply(v, c(2.0)));
+		CellPair<PackedCollection<?>> pair = new CellPair<>(cellA, cellB, v -> c(3.0), v -> multiply(v, c(2.0)));
 		pair.init();
 
 		// A = 6
@@ -65,7 +64,7 @@ public class CellPairTest implements TestFeatures {
 		CollectionCachedStateCell cellA = new CollectionCachedStateCell();
 		CollectionCachedStateCell cellB = new CollectionCachedStateCell();
 
-		CellPair<PackedCollection<?>> pair = new CellPair<>(cellA, cellB, v -> c(3.0), v -> _multiply(v, c(2.0)));
+		CellPair<PackedCollection<?>> pair = new CellPair<>(cellA, cellB, v -> c(3.0), v -> multiply(v, c(2.0)));
 		pair.init();
 
 		OperationList ops = new OperationList("Cell Pushes and Ticks");

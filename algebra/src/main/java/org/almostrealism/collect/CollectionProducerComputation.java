@@ -146,7 +146,7 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 
 	// TODO  Rename
 	default <T extends PackedCollection<?>> ExpressionComputation<T> _multiply(Producer<T> value) {
-		return CollectionFeatures.super._multiply((Producer) this, value);
+		return CollectionFeatures.super.multiply((Producer) this, value);
 	}
 
 	// TODO  Rename

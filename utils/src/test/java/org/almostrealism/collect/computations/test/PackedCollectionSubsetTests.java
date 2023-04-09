@@ -37,8 +37,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Function;
-import java.util.function.Predicate;
-import java.util.stream.IntStream;
 
 public class PackedCollectionSubsetTests implements TestFeatures {
 
@@ -111,7 +109,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 
 		HardwareOperator.verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> subset = subset(shape(size, size), p(input), x0, y0);
-			Producer<PackedCollection<?>> product = _multiply(traverseEach(p(filter)), subset).reshape(filterShape);
+			Producer<PackedCollection<?>> product = multiply(traverseEach(p(filter)), subset).reshape(filterShape);
 			Evaluable<PackedCollection<?>> ev = product.get();
 			PackedCollection<?> result = ev.evaluate();
 

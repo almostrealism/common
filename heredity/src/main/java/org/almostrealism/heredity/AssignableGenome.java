@@ -16,7 +16,6 @@
 
 package org.almostrealism.heredity;
 
-import com.fasterxml.jackson.databind.ObjectWriter;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
@@ -25,15 +24,12 @@ import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.MemoryData;
 
-import java.io.BufferedWriter;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
-import java.io.StringWriter;
 import java.util.Base64;
 
 public class AssignableGenome extends Tensor<PackedCollection<?>> implements Genome<PackedCollection<?>>, Delegated<Tensor<PackedCollection<?>>>, ScalarFeatures, CollectionFeatures {
@@ -202,7 +198,7 @@ public class AssignableGenome extends Tensor<PackedCollection<?>> implements Gen
 				throw new NullPointerException();
 			}
 
-			return _multiply(() -> new Provider<>(v), value);
+			return multiply(() -> new Provider<>(v), value);
 		}
 
 		public PackedCollection<?> getValue() {
