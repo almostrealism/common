@@ -47,6 +47,15 @@ public class VectorMathTest implements TestFeatures {
 	}
 
 	@Test
+	public void scalarMultiply() {
+		VectorProducerBase product = scalarMultiply(vector(1, 2, 3), 2);
+		Vector result = product.get().evaluate();
+		assertEquals(2, result.getX());
+		assertEquals(4, result.getY());
+		assertEquals(6, result.getZ());
+	}
+
+	@Test
 	public void productFromVectors1() {
 		VectorProducerBase a = vector(1.0, 2.0, 3.0);
 		VectorProducerBase b = vector(4.0, 5.0, 6.0);

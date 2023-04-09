@@ -59,6 +59,10 @@ public class ExpressionComputation<T extends PackedCollection<?>> extends Dynami
 		this.shortCircuit = shortCircuit;
 	}
 
+	public List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression() {
+		return expression;
+	}
+
 	public List<MultiExpression<Double>> getExpressions() {
 		return IntStream.range(0, getInputs().size())
 				.mapToObj(i -> (MultiExpression<Double>) pos -> getInputValue(i, pos))

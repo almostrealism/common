@@ -21,9 +21,6 @@ import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorFeatures;
-import org.almostrealism.algebra.VectorEvaluable;
-import org.almostrealism.algebra.VectorProducer;
-import org.almostrealism.algebra.VectorProducerBase;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.computations.VectorExpressionComputation;
 import org.almostrealism.collect.PackedCollection;
@@ -64,8 +61,8 @@ public interface TriangleFeatures extends VectorFeatures {
 	default ExpressionComputation<PackedCollection<Vector>> triangle(Producer<Vector> p1,
 																	 Producer<Vector> p2,
 																	 Producer<Vector> p3) {
-		Producer<Vector> abc = _subtract(p2, p1);
-		Producer<Vector> def = _subtract(p3, p1);
+		Producer<Vector> abc = subtract(p2, p1);
+		Producer<Vector> def = subtract(p3, p1);
 		Supplier jkl = p1;
 		return triangle(abc, def, jkl, crossProduct(abc, def).normalize());
 	}

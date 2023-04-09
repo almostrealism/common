@@ -241,7 +241,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	}
 
 	// TODO Rename
-	default <T extends PackedCollection<?>> ExpressionComputation<T> _subtract(Producer<T> a, Producer<T> b) {
+	default <T extends PackedCollection<?>> ExpressionComputation<T> subtract(Producer<T> a, Producer<T> b) {
 		return add(a, _minus(b));
 	}
 

@@ -16,6 +16,7 @@
 
 package org.almostrealism.physics;
 
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.VectorProducerBase;
@@ -57,7 +58,7 @@ public interface Absorber {
 	 *          This should be a unit vector, because all photons travel at
 	 *          100 percent of the speed of light.
 	 */
-	Evaluable<Vector> emit();
+	Producer<Vector> emit();
 	
 	/**
 	 * @return  The quantity of energy that would be emitted by this absorber if the emit
@@ -76,7 +77,7 @@ public interface Absorber {
 	 * @return  {x, y, z} - The position of the photon that will getDependencies be emitted by this
 	 *          Absorber.
 	 */
-	VectorProducerBase getEmitPosition();
+	Producer<Vector> getEmitPosition();
 	
 	/** @param c  The Clock instance for this absorber to use to keep time. */
 	void setClock(Clock c);

@@ -16,6 +16,7 @@
 
 package org.almostrealism.physics;
 
+import io.almostrealism.relation.Producer;
 import org.almostrealism.geometry.ContinuousField;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.color.Light;
@@ -37,7 +38,7 @@ public class PhotonFieldContext<T extends PhotonField, F extends Absorber> exten
 		this.film = film;
 	}
 
-	public PhotonFieldContext(ContinuousField intersection, Supplier<Evaluable<? extends Vector>> lightDirection,
+	public PhotonFieldContext(ContinuousField intersection, Producer<Vector> lightDirection,
 							  Light light, Iterable<Light> otherLights,
 							  Collection<Curve<RGB>> otherSurfaces,
 							  T field, F film) {
@@ -46,7 +47,7 @@ public class PhotonFieldContext<T extends PhotonField, F extends Absorber> exten
 		this.film = film;
 	}
 
-	public PhotonFieldContext(ContinuousField intersection, Supplier<Evaluable<? extends Vector>> lightDirection,
+	public PhotonFieldContext(ContinuousField intersection, Producer<Vector> lightDirection,
 							  Light light, Iterable<Light> otherLights,
 							  Curve<RGB> surface, Curve<RGB>[] otherSurfaces,
 							  T field, F film) {

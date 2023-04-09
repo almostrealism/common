@@ -49,24 +49,6 @@ public interface VectorEvaluable extends VectorFeatures, Evaluable<Vector> {
         return crossProduct(this, operand);
     }
 
-    default VectorEvaluable multiply(Evaluable<Vector> operand) {
-        return multiply(this, operand);
-    }
-
-    default VectorEvaluable scalarMultiply(Evaluable<Scalar> operand) { return scalarMultiply(this, operand); }
-
-    default VectorEvaluable scalarMultiply(Scalar operand) {
-        return scalarMultiply(ScalarFeatures.of(operand).get());
-    }
-
-    default VectorEvaluable scalarMultiply(double operand) {
-        return scalarMultiply(new Scalar(operand));
-    }
-
-    default VectorEvaluable minus() {
-        return minus(this);
-    }
-
     default ScalarEvaluable length() {
         return length(this);
     }

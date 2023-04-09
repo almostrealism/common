@@ -56,7 +56,7 @@ public interface VectorProducerBase extends ProducerComputation<Vector>, Kerneli
 
 	default VectorProducerBase subtract(VectorProducerBase operand) { return subtract(this, operand); }
 
-	default VectorExpressionComputation multiply(Supplier<Evaluable<? extends Vector>> operand) {
+	default VectorExpressionComputation multiply(VectorProducerBase operand) {
 		return multiply(this, operand);
 	}
 
