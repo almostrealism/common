@@ -36,17 +36,14 @@ public interface GeometryFeatures extends CollectionFeatures {
 	double PI = Math.PI;
 	double TWO_PI = 2 * PI;
 
+	@Deprecated
 	default Sine sin(Producer<Scalar> input) {
 		return new Sine(input);
 	}
 
-	default Sine sinw(Producer<Scalar> input, Producer<Scalar> wavelength) {
-		return sin(ScalarFeatures.of(new Scalar(TWO_PI)).multiply(input).divide(wavelength));
-	}
-
-	default ScalarProducerBase sinw(Producer<Scalar> input, Producer<Scalar> wavelength,
-									Producer<Scalar> amp) {
-		return sin(ScalarFeatures.of(new Scalar(TWO_PI)).multiply(input).divide(wavelength)).multiply(amp);
+	default ExpressionComputation<Scalar> sinw(Producer<Scalar> input, Producer<Scalar> wavelength,
+											   Producer<Scalar> amp) {
+		return multiply(sin(ScalarFeatures.of(new Scalar(TWO_PI)).multiply(input).divide(wavelength)), amp);
 	}
 
 	default ExpressionComputation _sin(Supplier<Evaluable<? extends PackedCollection<?>>> input) {
@@ -57,6 +54,6 @@ public interface GeometryFeatures extends CollectionFeatures {
 	default ExpressionComputation<PackedCollection<?>> _sinw(Producer<PackedCollection<?>> input,
 															 Producer<PackedCollection<?>> wavelength,
 															 Producer<PackedCollection<?>> amp) {
-		return _sin(c(TWO_PI)._multiply(input)._divide(wavelength))._multiply(amp);
+		return _sin(c(TWO_PI).multiply(input).divide(wavelength)).multiply(amp);
 	}
 }

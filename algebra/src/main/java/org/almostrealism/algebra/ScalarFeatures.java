@@ -38,7 +38,7 @@ import java.util.stream.IntStream;
 
 public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 
-	static Supplier<Evaluable<? extends Scalar>> minusOne() { return of(-1.0); }
+	static ScalarProducerBase minusOne() { return of(-1.0); }
 
 	static ScalarExpressionComputation of(double value) { return of(new Scalar(value)); }
 
@@ -117,7 +117,7 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 		return new ScalarExpressionComputation(comp, (Supplier[]) values);
 	}
 
-	default ScalarExpressionComputation scalarsDivide(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
+	default ScalarExpressionComputation scalarsDivide(ScalarProducerBase a, ScalarProducerBase b) {
 		return scalarsMultiply(a, pow(b, v(-1.0)));
 	}
 
@@ -129,11 +129,7 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 		return scalarsMultiply(ScalarFeatures.minusOne(), v);
 	}
 
-	default ScalarEvaluable pow(Evaluable<Scalar> base, Evaluable<Scalar> exponent) {
-		return (ScalarEvaluable) pow(() -> base, () -> exponent).get();
-	}
-
-	default ScalarProducerBase pow(Supplier<Evaluable<? extends Scalar>> base, Supplier<Evaluable<? extends Scalar>> exponent) {
+	default ScalarProducerBase pow(ScalarProducerBase base, ScalarProducerBase exponent) {
 		// TODO  Certainty of exponent is ignored
 		return new ScalarExpressionComputation(List.of(
 				args -> new Exponent(args.get(1).getValue(0), args.get(2).getValue(0)),
@@ -141,19 +137,15 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 				(Supplier) base, (Supplier) exponent);
 	}
 
-	default ScalarEvaluable pow(Evaluable<Scalar> base, Scalar exp) {
-		return pow(base, of(exp).get());
-	}
-
-	default ScalarProducerBase pow(Supplier<Evaluable<? extends Scalar>> base, Scalar exp) {
+	default ScalarProducerBase pow(ScalarProducerBase base, Scalar exp) {
 		return pow(base, of(exp));
 	}
 
 	default ScalarEvaluable pow(Evaluable<Scalar> base, double value) {
-		return pow(base, new Scalar(value));
+		throw new UnsupportedOperationException();
 	}
 
-	default ScalarProducerBase pow(Supplier<Evaluable<? extends Scalar>> base, double value) {
+	default ScalarProducerBase pow(ScalarProducerBase base, double value) {
 		return pow(base, new Scalar(value));
 	}
 

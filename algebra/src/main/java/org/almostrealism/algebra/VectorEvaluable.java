@@ -53,10 +53,6 @@ public interface VectorEvaluable extends VectorFeatures, Evaluable<Vector> {
         return length(this);
     }
 
-    default ScalarEvaluable lengthSq() {
-        return lengthSq(this);
-    }
-
     default VectorEvaluable normalize() {
         return normalize(this);
     }

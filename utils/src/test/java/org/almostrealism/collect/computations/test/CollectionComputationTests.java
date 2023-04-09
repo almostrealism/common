@@ -16,7 +16,6 @@
 
 package org.almostrealism.collect.computations.test;
 
-import io.almostrealism.code.Computation;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.expression.Sum;
@@ -45,7 +44,6 @@ import org.junit.Test;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Function;
-import java.util.function.Supplier;
 
 public class CollectionComputationTests implements TestFeatures {
 	private static class TestProducer implements Producer<PackedCollection<?>>, Shape<Producer<PackedCollection<?>>> {
@@ -73,7 +71,7 @@ public class CollectionComputationTests implements TestFeatures {
 	public void multiply() {
 		PackedCollection<?> testInput = new PackedCollection<>(1);
 		testInput.setMem(0, 9);
-		PackedCollection<?> result = c(3)._multiply(p(testInput)).get().evaluate();
+		PackedCollection<?> result = c(3).multiply(p(testInput)).get().evaluate();
 		assertEquals(27, result.toDouble(0));
 	}
 

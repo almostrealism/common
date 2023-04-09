@@ -67,10 +67,10 @@ public interface HeredityFeatures extends CollectionFeatures {
 	}
 
 	default CollectionProducerComputation oneToInfinity(Producer<PackedCollection<?>> arg, Producer<PackedCollection<?>> exp) {
-		CollectionProducerComputation pow = _pow(arg, exp);
-		CollectionProducerComputation out = _minus(pow);
+		CollectionProducerComputation pow = pow(arg, exp);
+		CollectionProducerComputation out = minus(pow);
 		out = add(out, c(1.0));
-		out = _pow(out, c(-1.0));
+		out = pow(out, c(-1.0));
 		out = add(out, c(-1.0));
 		return out;
 	}

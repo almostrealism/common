@@ -106,11 +106,7 @@ public interface PairFeatures extends HardwareFeatures {
 		return new ComplexProduct(a, b);
 	}
 
-	default PairEvaluable pairDivide(Evaluable<Pair<?>> a, Evaluable<Scalar> b) {
-		return (PairEvaluable) pairDivide(() -> a, () -> b).get();
-	}
-
-	default PairProducer pairDivide(Supplier<Evaluable<? extends Pair<?>>> a, Supplier<Evaluable<? extends Scalar>> b) {
+	default PairProducer pairDivide(Supplier<Evaluable<? extends Pair<?>>> a, ScalarProducerBase b) {
 		ScalarProducerBase v = ScalarFeatures.getInstance().pow(b, ScalarFeatures.of(new Scalar(-1.0)));
 		return new PairProduct(a, pair(v, v));
 	}
@@ -123,26 +119,11 @@ public interface PairFeatures extends HardwareFeatures {
 		return new PairProduct(a, pair(r(b).pow(-1.0), l(b).pow(-1.0)));
 	}
 
-	default PairEvaluable pairMinus(Evaluable<Scalar> v) {
-		return (PairEvaluable) pairMinus(() -> v).get();
-	}
-
 	default PairProducer pairMinus(Supplier<Evaluable<? extends Pair<?>>> v) {
 		return new PairProduct(v(new Pair(-1.0, -1.0)), v);
 	}
 
-	default Supplier<Evaluable<? extends Pair<?>>> rand() {
-		return RandomPair::new;
-	}
-
-	default Supplier<Evaluable<? extends Pair<?>>> rand(Supplier<Pair<?>> destination) {
-		return () -> {
-			RandomPair p = new RandomPair();
-			p.setDestination(destination);
-			return p;
-		};
-	}
-
+	@Deprecated
 	default PairEvaluable fromScalars(Evaluable<Scalar> x, Evaluable<Scalar> y) {
 		return (PairEvaluable) fromScalars(() -> x, () -> y).get();
 	}

@@ -18,19 +18,15 @@ package org.almostrealism.layers;
 
 import io.almostrealism.code.ExpressionList;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.CollectionFeatures;
-import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.KernelExpression;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversableKernelExpression;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.KernelOperation;
-import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.OperationList;
 
-import java.util.Arrays;
 import java.util.List;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -67,7 +63,7 @@ public interface LayerFeatures extends CollectionFeatures {
 
 		PackedCollection<?> filters = new PackedCollection<>(filterShape);
 		Supplier<Runnable> init = new KernelOperation<>(
-				_divide(randn(filterShape).traverseEach(), c(9).traverse(0)), filters.traverseEach());
+				divide(randn(filterShape).traverseEach(), c(9).traverse(0)), filters.traverseEach());
 
 		return layer(inputShape, outputShape, kernel, null, List.of(filters), init);
 	}
@@ -131,7 +127,7 @@ public interface LayerFeatures extends CollectionFeatures {
 			return ops;
 		};
 
-		Supplier<Runnable> init = new KernelOperation<>(_divide(randn(shape(size, nodes)).traverseEach(), c(size).traverse(0)), weights.traverseEach());
+		Supplier<Runnable> init = new KernelOperation<>(divide(randn(shape(size, nodes)).traverseEach(), c(size).traverse(0)), weights.traverseEach());
 		return layer(shape(size), outputShape, kernel, backwards, List.of(weights, biases), init);
 	}
 

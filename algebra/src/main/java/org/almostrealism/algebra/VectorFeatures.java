@@ -206,10 +206,6 @@ public interface VectorFeatures extends CollectionFeatures, HardwareFeatures {
 		return x(v).pow(two).add(y(v).pow(two)).add(z(v).pow(two)).pow(half);
 	}
 
-	default ScalarEvaluable lengthSq(Evaluable<Vector> v) {
-		return x(v).pow(two).add(y(v).pow(two)).add(z(v).pow(two));
-	}
-
 	default ScalarProducerBase lengthSq(Supplier<Evaluable<? extends Vector>> v) {
 		return x(v).pow(two).add(y(v).pow(two)).add(z(v).pow(two));
 	}

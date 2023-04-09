@@ -242,7 +242,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 
 	// TODO Rename
 	default <T extends PackedCollection<?>> ExpressionComputation<T> subtract(Producer<T> a, Producer<T> b) {
-		return add(a, _minus(b));
+		return add(a, minus(b));
 	}
 
 	// TODO Rename
@@ -274,12 +274,12 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	}
 
 	// TODO Rename
-	default <T extends PackedCollection<?>> ExpressionComputation<T> _divide(Producer<T> a, Producer<T> b) {
-		return multiply(a, _pow(b, c(-1.0)));
+	default <T extends PackedCollection<?>> ExpressionComputation<T> divide(Producer<T> a, Producer<T> b) {
+		return multiply(a, pow(b, c(-1.0)));
 	}
 
 	// TODO Rename
-	default <T extends PackedCollection<?>> ExpressionComputation<T> _minus(Producer<T> a) {
+	default <T extends PackedCollection<?>> ExpressionComputation<T> minus(Producer<T> a) {
 		return minus(size(a), (Supplier) a);
 	}
 
@@ -291,14 +291,14 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return new ExpressionComputation<>(expressions, (Supplier) a);
 	}
 
-	default <T extends PackedCollection<?>> ExpressionComputation<T> _pow(Producer<T> base, Producer<T> exp) {
+	default <T extends PackedCollection<?>> ExpressionComputation<T> pow(Producer<T> base, Producer<T> exp) {
 		int depth = size(base) == size(exp) ? size(base) : 1;
-		return _pow(depth, (Supplier) base, (Supplier) exp);
+		return pow(depth, (Supplier) base, (Supplier) exp);
 	}
 
 	// TODO Rename
-	default <T extends PackedCollection<?>> ExpressionComputation<T> _pow(int depth,
-			Supplier<Evaluable<? extends PackedCollection<?>>> base, Supplier<Evaluable<? extends PackedCollection<?>>> exp) {
+	default <T extends PackedCollection<?>> ExpressionComputation<T> pow(int depth,
+																		 Supplier<Evaluable<? extends PackedCollection<?>>> base, Supplier<Evaluable<? extends PackedCollection<?>>> exp) {
 		List<Function<List<MultiExpression<Double>>, Expression<Double>>> expressions =
 				IntStream.range(0, depth).mapToObj(i -> (Function<List<MultiExpression<Double>>, Expression<Double>>)
 								np -> new Exponent(np.get(1).getValue(i), np.get(2).getValue(i)))

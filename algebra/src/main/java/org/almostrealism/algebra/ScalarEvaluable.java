@@ -59,27 +59,7 @@ public interface ScalarEvaluable extends Evaluable<Scalar>, ScalarFeatures {
 		return multiply(new Scalar(value));
 	}
 
-	default ScalarEvaluable divide(Evaluable<Scalar> value) {
-		return (ScalarEvaluable) divide(() -> value).get();
-	}
-
-	default ProducerComputation<Scalar> divide(Supplier<Evaluable<? extends Scalar>> value) {
-		return multiply(pow(value, ScalarFeatures.of(-1.0)));
-	}
-
-	default ScalarEvaluable divide(Scalar value) {
-		return divide(ScalarFeatures.of(value).get());
-	}
-
-	default ScalarEvaluable divide(double value) {
-		return divide(new Scalar(value));
-	}
-
 	default ScalarEvaluable minus() { return multiply(-1.0); }
-
-	default ScalarEvaluable pow(Evaluable<Scalar> exponent) { return pow(this, exponent); }
-
-	default ScalarEvaluable pow(Scalar exp) { return pow(this, exp); }
 
 	default ScalarEvaluable pow(double exp) { return pow(this, exp); }
 

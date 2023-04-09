@@ -91,7 +91,7 @@ public class CollectionKernelTests implements TestFeatures {
 				c(v2).get().evaluate(args));
 
 		HardwareOperator.verboseLog(() -> {
-			Producer<PackedCollection<?>> c = _divide(a.traverseEach(), b.traverse(0)).reshape(shape(2, 5));
+			Producer<PackedCollection<?>> c = divide(a.traverseEach(), b.traverse(0)).reshape(shape(2, 5));
 			Evaluable<PackedCollection<?>> eval = c.get();
 			PackedCollection<?> out = eval.evaluate();
 
