@@ -16,6 +16,7 @@
 
 package org.almostrealism.color;
 
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.algebra.ScalarEvaluable;
@@ -28,7 +29,7 @@ import org.almostrealism.color.computations.RGBFromScalars;
 
 import java.util.function.Supplier;
 
-public interface RGBFeatures {
+public interface RGBFeatures extends ScalarFeatures {
 
 	static RGBProducer of(RGB value) {
 		return new StaticRGBComputation(value);
@@ -101,6 +102,13 @@ public interface RGBFeatures {
 	default RGBProducer cfromScalar(double value) {
 		return cfromScalar(new Scalar(value));
 	}
+
+	default Producer<RGB> attenuation(double da, double db, double dc, Producer<RGB> color, Producer<Scalar> distanceSq) {
+		return multiply((Producer) color, (Producer) cfromScalar(multiply(v(da), distanceSq)
+				.add(v(db).multiply(pow(distanceSq, scalar(0.5))))
+				.add(v(dc))));
+	}
+
 
 	static RGBFeatures getInstance() { return new RGBFeatures() {}; }
 }

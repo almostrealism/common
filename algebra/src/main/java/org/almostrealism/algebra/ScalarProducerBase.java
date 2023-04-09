@@ -31,7 +31,7 @@ import org.almostrealism.hardware.KernelizedProducer;
 import java.util.function.Supplier;
 
 public interface ScalarProducerBase extends ProducerComputation<Scalar>, KernelizedProducer<Scalar>, ScalarFeatures {
-	default ScalarProducerBase add(Supplier<Evaluable<? extends Scalar>> value) {
+	default ScalarProducerBase add(ScalarProducerBase value) {
 		return scalarAdd(this, value);
 	}
 
