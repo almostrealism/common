@@ -169,7 +169,7 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 			throw new IllegalArgumentException("Argument to identity kernel must be traversable");
 		}
 
-		return kernel(((Shape) argument).getShape(), (args, pos) -> args[1].get(pos), argument);
+		return kernel(((Shape) argument).getShape(), (i, p) -> i.v(0).get(p), argument);
 	}
 
 	default <T extends MemoryData> Supplier<Runnable> run(KernelizedProducer<T> kernel, MemoryBank destination, MemoryData... arguments) {

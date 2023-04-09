@@ -51,6 +51,10 @@ public class TraversalPolicy implements Traversable<TraversalPolicy> {
 		return index;
 	}
 
+	public Expression index(PositionExpression pos) {
+		return index(pos.toArray());
+	}
+
 	public Expression index(Expression... pos) {
 		Expression index = new Expression(Double.class, "0");
 

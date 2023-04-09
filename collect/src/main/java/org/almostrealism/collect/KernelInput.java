@@ -16,12 +16,6 @@
 
 package org.almostrealism.collect;
 
-import io.almostrealism.expression.Expression;
-
-public interface KernelExpression {
-	default Expression<Double> apply(CollectionVariable args[], Expression... pos) {
-		return apply(index -> args[index + 1], () -> pos);
-	}
-
-	Expression<Double> apply(KernelInput in, PositionExpression pos);
+public interface KernelInput {
+	CollectionVariable v(int index);
 }

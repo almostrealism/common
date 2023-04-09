@@ -57,9 +57,9 @@ public interface LayerFeatures extends CollectionFeatures {
 		TraversalPolicy outputShape = shape(inputShape.length(0) - pad, inputShape.length(1) - pad, filterCount);
 		TraversalPolicy filterShape = shape(filterCount, size, size);
 
-		KernelExpression kernel = (args, pos) ->
-				args[2].get(shape(1, size, size), pos[2])
-					.multiply(args[1].get(shape(size, size), pos[0], pos[1])).sum();
+		KernelExpression kernel = (i, p) ->
+				i.v(1).get(shape(1, size, size), p.l(2))
+					.multiply(i.v(0).get(shape(size, size), p.l(0), p.l(1))).sum();
 
 		PackedCollection<?> filters = new PackedCollection<>(filterShape);
 		Supplier<Runnable> init = new KernelOperation<>(
@@ -74,12 +74,15 @@ public interface LayerFeatures extends CollectionFeatures {
 
 	default KernelLayer pool2d(TraversalPolicy inputShape, int size) {
 		TraversalPolicy outputShape = shape(inputShape.length(0) / size, inputShape.length(1) / size, inputShape.length(2));
-		KernelExpression kernel = (args, pos) -> args[1].get(shape(size, size, 1), pos[0].multiply(size), pos[1].multiply(size), pos[2]).max();
-		KernelExpression backward = (args, pos) -> {
-			Expression i = pos[0].divide(size);
-			Expression j = pos[1].divide(size);
-			Expression max = args[1].get(shape(size, size, 1), i.multiply(2), j.multiply(2), pos[2]).max();
-			return conditional(max.eq(args[1].get(pos)), args[2].get(i, j, pos[2]), e(0));
+		KernelExpression kernel = (i, p) -> i.v(0).get(shape(size, size, 1),
+																p.l(0).multiply(size),
+																p.l(1).multiply(size),
+																p.l(2)).max();
+		KernelExpression backward = (i, p) -> {
+			Expression x = p.l(0).divide(size);
+			Expression y = p.l(1).divide(size);
+			Expression max = i.v(0).get(shape(size, size, 1), x.multiply(2), y.multiply(2), p.l(2)).max();
+			return conditional(max.eq(i.v(0).get(p)), i.v(1).get(x, y, p.l(2)), e(0));
 		};
 
 		Propagation propagation = (lr, gradient, input, next) -> {
@@ -100,15 +103,17 @@ public interface LayerFeatures extends CollectionFeatures {
 
 	default KernelLayer dense(int size, int nodes) {
 		TraversalPolicy outputShape = shape(nodes);
-		KernelExpression kernel = (args, pos) -> args[1].multiply(args[2].get(shape(size, 1), e(0), pos[0])).sum().add(args[3].get(pos[0]));
+		KernelExpression kernel = (i, p) -> i.v(0).multiply(i.v(1)
+				.get(shape(size, 1), e(0), p.l(0)))
+				.sum().add(i.v(2).get(p.l(0)));
 
 		PackedCollection<?> weights = new PackedCollection<>(shape(size, nodes));
 		PackedCollection<?> biases = new PackedCollection<>(shape(nodes));
 
-		KernelExpression outputGradient = (args, pos) -> args[1].get(shape(1, nodes), pos[0]).multiply(args[2]).sum();
-		KernelExpression weightGradient = (args, pos) -> args[1].get(pos[0]).multiply(args[2].get(pos[1]));
-		KernelExpression adjustWeights = (args, pos) -> args[1].get(pos[0], pos[1]).subtract(args[2].get(pos[0], pos[1]).multiply(args[3].valueAt(0)));
-		KernelExpression adjustBiases = (args, pos) -> args[1].get(pos[0]).subtract(args[2].get(pos[0]).multiply(args[3].valueAt(0)));
+		KernelExpression outputGradient = (i, p) -> i.v(0).get(shape(1, nodes), p.l(0)).multiply(i.v(1)).sum();
+		KernelExpression weightGradient = (i, p) -> i.v(0).get(p.l(0)).multiply(i.v(1).get(p.l(1)));
+		KernelExpression adjustWeights = (i, p) -> i.v(0).get(p.l(0), p.l(1)).subtract(i.v(1).get(p.l(0), p.l(1)).multiply(i.v(2).valueAt(0)));
+		KernelExpression adjustBiases = (i, p) -> i.v(0).get(p.l(0)).subtract(i.v(1).get(p.l(0)).multiply(i.v(2).valueAt(0)));
 
 		Propagation backwards = (lr, gradient, input, next) -> {
 			OperationList ops = new OperationList();
@@ -137,14 +142,14 @@ public interface LayerFeatures extends CollectionFeatures {
 
 	default KernelLayer softmax(int size) {
 		TraversalPolicy shape = shape(size);
-		KernelExpression forward = (args, pos) -> exp(args[1].get(pos[0])).divide(args[1].exp().sum());
-		KernelExpression backward = (args, pos) -> {
-			ExpressionList gradient = args[1].toList();
-			ExpressionList in = args[2].toList().exp();
+		KernelExpression forward = (i, p) -> exp(i.v(0).get(p.l(0))).divide(i.v(0).exp().sum());
+		KernelExpression backward = (i, p) -> {
+			ExpressionList gradient = i.v(0).toList();
+			ExpressionList in = i.v(1).toList().exp();
 
-			Expression t = args[2].get(pos[0]).exp();
+			Expression t = i.v(1).get(p.l(0)).exp();
 			Expression s = in.sum();
-			Expression gr = args[1].get(pos[0]);
+			Expression gr = i.v(0).get(p.l(0));
 
 			return gradient.sum().multiply(
 					in.minus().multiply(gradient).sum().multiply(t)

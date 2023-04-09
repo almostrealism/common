@@ -66,6 +66,10 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> {
 		}
 	}
 
+	public InstanceReference<T> get(PositionExpression pos) {
+		return get(pos.toArray());
+	}
+
 	public InstanceReference<T> get(Expression<?>... pos) {
 		return get(getShape().index(pos), -1);
 	}

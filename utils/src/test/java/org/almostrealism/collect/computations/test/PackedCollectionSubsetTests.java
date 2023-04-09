@@ -225,7 +225,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 
 		CollectionProducerComputation<PackedCollection<?>> producer =
 				kernel(i -> new Expression(Integer.class, "get_global_id(" + i + ")"),
-						subsetShape, (args, pos) -> args[1].get(shape(w, h, d), x0, y0, z0).valueAt(subsetShape.index(pos)), p(input));
+						subsetShape, (i, p) -> i.v(0).get(shape(w, h, d), x0, y0, z0).valueAt(subsetShape.index(p)), p(input));
 		KernelizedEvaluable<PackedCollection<?>> ev = producer.get();
 
 		PackedCollection<?> result = new PackedCollection(subsetShape);
@@ -258,9 +258,9 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 
 		CollectionProducerComputation<PackedCollection<?>> producer =
 				kernel(i -> new Expression(Integer.class, "get_global_id(" + i + ")"),
-						outputShape, (args, pos) -> {
-							System.out.println("args[1].shape = " + args[1].getShape());
-							Expression exp = args[1].get(shape(size, size), pos[0], pos[1]).toList().sum();
+						outputShape, (i, p) -> {
+							System.out.println("i.v(0).shape = " + i.v(0).getShape());
+							Expression exp = i.v(0).get(shape(size, size), p.l(0), p.l(1)).toList().sum();
 							return exp;
 						}, p(input));
 		KernelizedEvaluable<PackedCollection<?>> ev = producer.get();
@@ -306,11 +306,11 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		PackedCollection<?> input = t.pack();
 
 		CollectionProducerComputation<PackedCollection<?>> producer =
-				kernel(outputShape, (args, pos) -> {
-							System.out.println("args[1].shape = " + args[1].getShape());
-							System.out.println("args[2].shape = " + args[2].getShape());
-							return args[1].get(shape(1, size, size), pos[2])
-									.multiply(args[2].get(shape(size, size), pos[0], pos[1])).sum();
+				kernel(outputShape, (i, p) -> {
+							System.out.println("i.v(0).shape = " + i.v(0).getShape());
+							System.out.println("i.v(1).shape = " + i.v(1).getShape());
+							return i.v(0).get(shape(1, size, size), p.l(2))
+									.multiply(i.v(1).get(shape(size, size), p.l(0), p.l(1))).sum();
 						}, p(filter), p(input));
 		KernelizedEvaluable<PackedCollection<?>> ev = producer.get();
 
