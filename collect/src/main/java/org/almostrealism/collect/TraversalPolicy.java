@@ -162,6 +162,10 @@ public class TraversalPolicy implements Traversable<TraversalPolicy> {
 		return p;
 	}
 
+	public TraversalPolicy flatten() {
+		return new TraversalPolicy(getTotalSize());
+	}
+
 	public int getTraversalAxis() { return traversalAxis; }
 
 	public int getSize() { return size(traversalAxis); }

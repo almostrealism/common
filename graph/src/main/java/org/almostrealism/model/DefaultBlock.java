@@ -3,6 +3,7 @@ package org.almostrealism.model;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.graph.Cell;
+import org.almostrealism.hardware.OperationList;
 
 import java.util.function.Supplier;
 
@@ -12,6 +13,11 @@ public class DefaultBlock implements Block {
 	private Supplier<Runnable> setup;
 	private Cell<PackedCollection<?>> forward;
 	private Cell<PackedCollection<?>> backward;
+
+	public DefaultBlock(TraversalPolicy inputShape, TraversalPolicy outputShape, Cell<PackedCollection<?>> forward,
+			Cell<PackedCollection<?>> backward) {
+		this(inputShape, outputShape, forward, backward, new OperationList());
+	}
 
 	public DefaultBlock(TraversalPolicy inputShape, TraversalPolicy outputShape,
 						Cell<PackedCollection<?>> forward, Cell<PackedCollection<?>> backward,

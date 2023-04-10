@@ -25,8 +25,10 @@ import org.almostrealism.collect.KernelExpression;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversableKernelExpression;
 import org.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.hardware.KernelOperation;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.DefaultBlock;
@@ -50,6 +52,15 @@ public interface LayerFeatures extends CollectionFeatures {
 	default KernelLayer layer(TraversalPolicy inputShape, TraversalPolicy outputShape, KernelExpression kernel,
 							  Propagation backwards, List<PackedCollection<?>> weights, Supplier<Runnable> setup) {
 		return new KernelLayer(inputShape, TraversableKernelExpression.withShape(outputShape, kernel), backwards, weights, setup);
+	}
+
+	default Function<TraversalPolicy, Block> flatten() {
+		return shape -> {
+			TraversalPolicy outputShape = shape.flatten();
+			return new DefaultBlock(shape, outputShape,
+					Cell.of((in, next) -> next.push(reshape(outputShape, in))),
+					Cell.of((in, next) -> next.push(reshape(shape, in))));
+		};
 	}
 
 	default Function<TraversalPolicy, KernelLayer> convolution2d(int size, int filterCount) {

@@ -42,8 +42,8 @@ public class TrainModelTest implements TestFeatures {
 		Model model = new Model(shape(size));
 		KernelLayer dense = dense(size, nodes);
 		KernelLayer softmax = softmax(nodes);
-		model.addBlock(dense);
-		model.addBlock(softmax);
+		model.addLayer(dense);
+		model.addLayer(softmax);
 
 		Tensor<Double> t = tensor(shape(size));
 		PackedCollection<?> input = t.pack();
@@ -102,8 +102,8 @@ public class TrainModelTest implements TestFeatures {
 		KernelLayer conv = convolution2d(inputShape, convSize, 8);
 		KernelLayer pool = pool2d(conv.getOutputShape(), poolSize);
 
-		model.addBlock(conv);
-		model.addBlock(pool);
+		model.addLayer(conv);
+		model.addLayer(pool);
 
 		Tensor<Double> t = tensor(inputShape);
 		PackedCollection<?> input = t.pack();
@@ -165,12 +165,17 @@ public class TrainModelTest implements TestFeatures {
 
 	@Test
 	public void train() {
-//		Model model = model();
-//
-//		Tensor<Double> t = tensor(inputShape);
-//		PackedCollection<?> input = t.pack();
-//
-//		model.setup().get().run();
-//		model.forward(input);
+		Tensor<Double> t = tensor(inputShape);
+		PackedCollection<?> input = t.pack();
+
+		Model model = new Model(shape(100, 100));
+		model.addLayer(convolution2d(3, 8));
+		model.addLayer(pool2d(2));
+		model.addBlock(flatten());
+		model.addLayer(dense(10));
+		model.addLayer(softmax());
+
+		model.setup().get().run();
+		model.forward(input);
 	}
 }

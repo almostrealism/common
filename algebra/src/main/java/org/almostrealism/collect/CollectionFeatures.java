@@ -90,7 +90,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 
 				@Override
 				public Producer reshape(TraversalPolicy shape) {
-					return CollectionFeatures.this.reshape(shape, (Producer) this);
+					return CollectionFeatures.this.reshape(shape, this);
 				}
 			};
 		} else {
@@ -175,7 +175,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return new ReshapeProducer<>(((Shape) producer).getShape().traverseEach(), producer);
 	}
 
-	default <T extends Shape<T>> Producer reshape(TraversalPolicy shape, Producer<T> producer) {
+	default <T extends Shape<T>> Producer reshape(TraversalPolicy shape, Producer producer) {
 		return new ReshapeProducer<>(shape, producer);
 	}
 
