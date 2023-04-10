@@ -126,7 +126,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return new StaticCollectionComputation(supplier);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> c(Producer<PackedCollection<?>>... producers) {
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> concat(Producer<PackedCollection<?>>... producers) {
 		List<Function<List<MultiExpression<Double>>, Expression<Double>>> expressions = IntStream.range(0, producers.length)
 				.mapToObj(i -> (Function<List<MultiExpression<Double>>, Expression<Double>>) args -> args.get(i + 1).getValue(0))
 				.collect(Collectors.toList());
