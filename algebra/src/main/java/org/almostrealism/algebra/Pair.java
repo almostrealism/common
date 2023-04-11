@@ -124,6 +124,25 @@ public class Pair<T extends PackedCollection> extends PackedCollection<T> {
 	}
 
 	public static Producer<Pair<?>> empty() {
-		return new DynamicProducerForMemoryData<>(Pair::new, PairBank::new);
+		return new DynamicProducerForMemoryData<>(Pair::new, Pair::bank);
+	}
+
+	public static PackedCollection<Pair<?>> bank(int count) {
+		return new PackedCollection<>(new TraversalPolicy(count, 2), 1, delegateSpec ->
+				new Pair<>(delegateSpec.getDelegate(), delegateSpec.getOffset()));
+	}
+
+	public static PackedCollection<Pair<?>> bank(int count, MemoryData delegate, int delegateOffset) {
+		return new PackedCollection<>(new TraversalPolicy(count, 2), 1, delegateSpec ->
+				new Pair<>(delegateSpec.getDelegate(), delegateSpec.getOffset()),
+				delegate, delegateOffset);
+	}
+
+	public static PackedCollection<?> table(int width, int count) {
+		return new PackedCollection<>(new TraversalPolicy(count, width, 2), 1);
+	}
+
+	public static PackedCollection<?> table(int width, int count, MemoryData delegate, int delegateOffset) {
+		return new PackedCollection<>(new TraversalPolicy(count, width, 2), 1, delegate, delegateOffset);
 	}
 }

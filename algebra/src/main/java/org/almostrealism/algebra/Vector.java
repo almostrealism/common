@@ -497,43 +497,6 @@ public class Vector extends PackedCollection<Vector> implements Triple, VectorFe
 		dest.setZ(v1.getZ() - v2.getZ());
 	}
 
-	public static double getCoord(Vector vec, int num) {
-		switch (num) {
-			case 0: return vec.getX();
-			case 1: return vec.getY();
-			case 2: return vec.getZ();
-			default: throw new RuntimeException();
-		}
-	}
-
-	public static void setCoord(Vector vec, int num, double value) {
-		switch (num) {
-			case 0: vec.setX(value); break;
-			case 1: vec.setY(value); break;
-			case 2: vec.setZ(value); break;
-			default: throw new RuntimeException();
-		}
-	}
-
-	public static void mulCoord(Vector vec, int num, float value) {
-		switch (num) {
-			case 0: vec.setX(vec.getX() * value); break;
-			case 1: vec.setY(vec.getY() * value); break;
-			case 2: vec.setZ(vec.getZ() * value); break;
-			default: throw new RuntimeException();
-		}
-	}
-
-	public static void setInterpolate3(Vector dest, Vector v0, Vector v1, double rt) {
-		double s = 1f - rt;
-
-		dest.setX(s * v0.getX() + rt * v1.getX());
-		dest.setY(s * v0.getY() + rt * v1.getY());
-		dest.setZ(s * v0.getZ() + rt * v1.getZ());
-		// don't do the unused w component
-		//		m_co[3] = s * v0[3] + rt * v1[3];
-	}
-
 	public static void add(Vector dest, Vector v1, Vector v2) {
 		dest.setX(v1.getX() + v2.getX());
 		dest.setY(v1.getY() + v2.getY());

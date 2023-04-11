@@ -29,7 +29,7 @@ import org.almostrealism.hardware.MemoryData;
 @Deprecated
 public class StaticPairComputation extends StaticComputationAdapter<Pair<?>> implements PairProducer, Shape<Producer<PackedCollection<?>>> {
 	public StaticPairComputation(Pair value) {
-		super(value, Pair.empty(), PairBank::new);
+		super(value, Pair.empty(), Pair::bank);
 	}
 
 	@Override

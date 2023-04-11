@@ -26,6 +26,7 @@ import io.almostrealism.relation.Evaluable;
  *
  * @author  Michael Murray
  */
+@Deprecated
 public class PairBank extends MemoryBankAdapter<Pair<?>> {
 	public PairBank(int count) {
 		super(2, count, delegateSpec ->

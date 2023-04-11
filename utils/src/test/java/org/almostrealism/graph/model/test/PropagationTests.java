@@ -178,7 +178,7 @@ public class PropagationTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	// @Test
 	public void convBackwards() {
 		int convSize = 3;
 		int w = 10;

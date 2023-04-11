@@ -21,20 +21,23 @@ import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairBank;
 import org.almostrealism.algebra.PairBankProducer;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.computations.DynamicCollectionProducerComputationAdapter;
+import org.almostrealism.hardware.ComputerFeatures;
 import org.almostrealism.hardware.DynamicProducerComputationAdapter;
 
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
-public class PairBankFromPairs extends DynamicProducerComputationAdapter<Pair<?>, PairBank>
-								implements PairBankProducer {
+@Deprecated
+public class PairBankFromPairs extends DynamicCollectionProducerComputationAdapter<Pair<?>, PackedCollection<Pair<?>>> implements ComputerFeatures {
 	private Expression<Double> value[];
 
 	@SafeVarargs
 	public PairBankFromPairs(Supplier<Evaluable<? extends Pair<?>>>... input) {
-		super(2 * input.length, () -> args -> new PairBank(input.length),
-				i -> { throw new UnsupportedOperationException(); }, input);
+		super(new TraversalPolicy(input.length, 2), input);
 	}
 
 	private int arg(int index) { return 1 + index / 2; }
