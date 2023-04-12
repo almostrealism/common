@@ -28,6 +28,7 @@
 		<module>utils</module>
 		<module>optimize</module>
 		<module>collect</module>
+		<module>ml</module>
 	</modules>
 
 	<!-- Output to jar format -->
