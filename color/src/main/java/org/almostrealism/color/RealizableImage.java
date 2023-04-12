@@ -17,7 +17,7 @@
 package org.almostrealism.color;
 
 import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.PairBank;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.KernelizedOperation;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
@@ -60,7 +60,7 @@ public class RealizableImage implements Producer<RGB[][]> {
 			int w = (int) dim.getX();
 			int h = (int) dim.getY();
 			int size = w * h;
-			PairBank input = generateKernelInput(x, y, w, h);
+			PackedCollection<Pair<?>> input = generateKernelInput(x, y, w, h);
 			RGBBank output = new RGBBank(size);
 
 			if (source != null) {
@@ -79,9 +79,9 @@ public class RealizableImage implements Producer<RGB[][]> {
 	@Override
 	public void compact() { source.compact(); }
 
-	public static PairBank generateKernelInput(int x, int y, int width, int height) {
+	public static PackedCollection<Pair<?>> generateKernelInput(int x, int y, int width, int height) {
 		int size = width * height;
-		PairBank input = new PairBank(size);
+		PackedCollection<Pair<?>> input = Pair.bank(size);
 
 		for (int i = 0; i < width; i++) {
 			for (int j = 0; j < height; j++) {

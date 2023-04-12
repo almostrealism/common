@@ -24,6 +24,8 @@ import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.computations.ScalarBankExpressionComputation;
+import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Input;
 import org.almostrealism.hardware.KernelizedEvaluable;
 
@@ -33,10 +35,10 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
-public interface PairBankFeatures {
+public interface PairBankFeatures extends CollectionFeatures {
 
 	@Deprecated
-	default ScalarBankProducerBase powerSpectrumOld(int count, Supplier<Evaluable<? extends PairBank>> input) {
+	default ScalarBankProducerBase powerSpectrumOld(int count, Supplier<Evaluable<? extends PackedCollection<Pair<?>>>> input) {
 		int memLength = 2 * (count / 2 + 1);
 
 		List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression = new ArrayList<>();
@@ -59,21 +61,23 @@ public interface PairBankFeatures {
 		return new ScalarBankExpressionComputation(expression, (Supplier) input);
 	}
 
-	default Producer<ScalarBank> powerSpectrum(int count, Supplier<Evaluable<? extends PairBank>> input) {
+	default Producer<ScalarBank> powerSpectrum(int count, Supplier<Evaluable<? extends PackedCollection<Pair<?>>>> input) {
 		return () -> {
 			ScalarFeatures ops = ScalarFeatures.getInstance();
 
-			Evaluable<? extends PairBank> in = input.get();
+			Evaluable<? extends PackedCollection<Pair<?>>> in = input.get();
 			KernelizedEvaluable<Scalar> ev = ops.scalarAdd(
 					ops.scalarsMultiply(Input.value(2, 0), Input.value(2, 0)),
 					ops.scalarsMultiply(Input.value(2, 1), Input.value(2, 1))).get();
 
 			return args -> {
 				int tot = count / 2 + 1;
-				PairBank data = in.evaluate(args);
+				PackedCollection<Pair<?>> data = in.evaluate(args);
 				ScalarBank out = new ScalarBank(tot);
 
-				ev.kernelEvaluate(out.range(1, tot - 2), data.range(1, tot - 2), data.range(1, tot - 2, true));
+				ev.kernelEvaluate(out.range(1, tot - 2),
+						data.range(shape(tot - 2, 2), 2).traverse(1),
+						data.range(shape(tot - 2, 2), 3).traverse(1));
 				out.set(0, data.get(0).r() * data.get(0).r(), 1.0);
 				out.set(tot - 1, data.get(0).i() * data.get(0).i(), 1.0);
 				return out;

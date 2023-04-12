@@ -18,13 +18,11 @@ package org.almostrealism.algebra.computations;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.PairBank;
 import org.almostrealism.algebra.PairProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.Shape;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.ReshapeProducer;
-import org.almostrealism.hardware.MemoryData;
 
 @Deprecated
 public class StaticPairComputation extends StaticComputationAdapter<Pair<?>> implements PairProducer, Shape<Producer<PackedCollection<?>>> {

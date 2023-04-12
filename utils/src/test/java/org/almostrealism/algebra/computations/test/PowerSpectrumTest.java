@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,16 +17,17 @@
 package org.almostrealism.algebra.computations.test;
 
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.algebra.PairBank;
+import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.ScalarBank;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
 import java.util.stream.IntStream;
 
 public class PowerSpectrumTest implements TestFeatures {
-	public PairBank window(int size) {
-		PairBank window = new PairBank(size);
+	public PackedCollection<Pair<?>> window(int size) {
+		PackedCollection<Pair<?>> window = Pair.bank(size);
 		IntStream.range(0, size).forEach(i -> window.set(i, (i + 1) * 4, (i + 1) * 10));
 		return window;
 	}
@@ -36,7 +37,7 @@ public class PowerSpectrumTest implements TestFeatures {
 		int size = 4;
 
 		System.out.println("Window:");
-		PairBank window = window(size);
+		PackedCollection<Pair<?>> window = window(size);
 		IntStream.range(0, window.getCount()).mapToObj(window::get).forEach(System.out::println);
 
 		System.out.println("Standard...");

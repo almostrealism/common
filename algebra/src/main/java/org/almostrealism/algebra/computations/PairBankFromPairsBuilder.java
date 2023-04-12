@@ -24,7 +24,6 @@ import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Factory;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.PairBank;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.DynamicProducerComputationAdapter;
 import org.almostrealism.hardware.KernelizedEvaluable;

@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,7 +18,6 @@ package org.almostrealism.algebra.computations;
 
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.PairBank;
 import org.almostrealism.algebra.PairProducer;
 
 import java.util.function.Supplier;
@@ -26,7 +25,7 @@ import java.util.function.Supplier;
 @Deprecated
 public class PairProduct extends NAryDynamicProducer<Pair<?>> implements PairProducer {
 	public PairProduct(Supplier<Evaluable<? extends Pair<?>>>... producers) {
-		super("*", 2, Pair.empty(), PairBank::new, producers);
+		super("*", 2, Pair.empty(), Pair::bank, producers);
 	}
 
 	@Override

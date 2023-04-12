@@ -1,13 +1,9 @@
 package org.almostrealism.algebra.computations.test;
 
-import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.algebra.PairBank;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.computations.ScalarBankDotProduct;
-import org.almostrealism.hardware.AcceleratedComputationOperation;
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 

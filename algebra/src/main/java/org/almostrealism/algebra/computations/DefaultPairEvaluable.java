@@ -18,7 +18,6 @@ package org.almostrealism.algebra.computations;
 
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.PairBank;
 import org.almostrealism.algebra.PairFeatures;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.MemoryBank;
@@ -39,6 +38,6 @@ public class DefaultPairEvaluable extends AcceleratedComputationEvaluable<Pair<?
 
 	@Override
 	public MemoryBank<Pair<?>> createKernelDestination(int size) {
-		return new PairBank(size);
+		return Pair.bank(size);
 	}
 }

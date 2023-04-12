@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,13 +19,10 @@ package org.almostrealism.algebra.computations;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.PairBank;
-import org.almostrealism.algebra.PairBankProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.DynamicCollectionProducerComputationAdapter;
 import org.almostrealism.hardware.ComputerFeatures;
-import org.almostrealism.hardware.DynamicProducerComputationAdapter;
 
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
