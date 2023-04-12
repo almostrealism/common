@@ -30,7 +30,7 @@ import org.almostrealism.graph.mesh.TrianglePointDataBank;
 public class DefaultVertexData implements Mesh.VertexData, CodeFeatures {
 	private PackedCollection<Vector> vertices;
 	private RGBBank colors;
-	private PairBank texCoords;
+	private PackedCollection<Pair<?>> texCoords;
 
 	// TODO Convert to a vertex bank so that conversion to TrianglePointDataBank can be kernelized
 	private int triangles[][];
@@ -38,13 +38,13 @@ public class DefaultVertexData implements Mesh.VertexData, CodeFeatures {
 	public DefaultVertexData(int points, int triangles) {
 		this.vertices = Vector.bank(points);
 		this.colors = new RGBBank(points);
-		this.texCoords = new PairBank(points);
+		this.texCoords = Pair.bank(points);
 		this.triangles = new int[triangles][3];
 	}
 
 	public PackedCollection<Vector> getVertices() { return vertices; }
 	public RGBBank getColors() { return colors; }
-	public PairBank getTextureCoordinates() { return texCoords; }
+	public PackedCollection<Pair<?>> getTextureCoordinates() { return texCoords; }
 
 	@Override
 	public RGB getColor(int index) { return getColors().get(index); }

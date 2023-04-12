@@ -61,14 +61,14 @@ public class MeshData extends MemoryBankAdapter<PackedCollection<?>> {
 	}
 
 	public void evaluateIntersectionKernel(KernelizedEvaluable<Ray> ray, ScalarBank destination, MemoryData args[]) {
-		PairBank result = new PairBank(destination.getCount());
+		PackedCollection<Pair<?>> result = Pair.bank(destination.getCount());
 		evaluateIntersectionKernel(ray, result, args);
 		for (int i = 0; i < result.getCount(); i++) {
 			destination.get(i).setMem(new double[] { result.get(i).getA(), 1.0 });
 		}
 	}
 
-	public void evaluateIntersectionKernel(KernelizedEvaluable<Ray> ray, PairBank destination, MemoryData args[]) {
+	public void evaluateIntersectionKernel(KernelizedEvaluable<Ray> ray, PackedCollection<Pair<?>> destination, MemoryData args[]) {
 		long startTime = System.currentTimeMillis();
 		RayBank rays = new RayBank(destination.getCount());
 		ray.kernelEvaluate(rays, args);

@@ -32,7 +32,7 @@ public class PairFromScalars extends DynamicProducerComputationAdapter<Scalar, P
 	private Expression<Double> value[];
 
 	public PairFromScalars(Supplier<Evaluable<? extends Scalar>> x, Supplier<Evaluable<? extends Scalar>> y) {
-		super(2, Pair.empty(), PairBank::new, x, y);
+		super(2, Pair.empty(), Pair::bank, x, y);
 	}
 
 	@Override

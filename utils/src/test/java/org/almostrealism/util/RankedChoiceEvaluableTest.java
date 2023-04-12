@@ -19,6 +19,7 @@ package org.almostrealism.util;
 import io.almostrealism.relation.ProducerWithRank;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.algebra.computations.ProducerWithRankAdapter;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Intersection;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairBank;
@@ -63,9 +64,9 @@ public class RankedChoiceEvaluableTest implements CodeFeatures {
 		in.set(2, new Scalar(1.0));
 		in.set(3, new Scalar(3.0));
 
-		PairBank out = new PairBank(1);
+		PackedCollection<Pair<?>> out = Pair.bank(1);
 
-		PairBank conf = new PairBank(1);
+		PackedCollection<Pair<?>> conf = Pair.bank(1);
 		conf.set(0, new Pair(4, Intersection.e));
 
 		RankedChoiceEvaluable.highestRank.kernelEvaluate(out, new MemoryBank[] { in, conf });

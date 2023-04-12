@@ -31,7 +31,7 @@ import java.util.function.Supplier;
 @Deprecated
 public class PairFromPairBank extends DynamicProducerComputationAdapter<PackedCollection<Pair<?>>, Pair<?>> implements PairProducer {
 	public PairFromPairBank(Supplier<Evaluable<? extends PackedCollection<Pair<?>>>> bank, Supplier<Evaluable<? extends Scalar>> index) {
-		super(2, Pair.empty(), PairBank::new, bank, (Supplier) index);
+		super(2, Pair.empty(), Pair::bank, bank, (Supplier) index);
 	}
 
 	@Override

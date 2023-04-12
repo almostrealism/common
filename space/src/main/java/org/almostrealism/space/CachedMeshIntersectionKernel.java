@@ -35,7 +35,7 @@ public class CachedMeshIntersectionKernel implements KernelizedEvaluable<Scalar>
 	private MeshData data;
 	private KernelizedEvaluable<Ray> ray;
 
-	private PairBank cache;
+	private PackedCollection<Pair<?>> cache;
 
 	private int width = -1, height = -1, ssw = -1, ssh = -1;
 
@@ -61,7 +61,7 @@ public class CachedMeshIntersectionKernel implements KernelizedEvaluable<Scalar>
 			throw new IllegalArgumentException("Kernel output is Scalar, destination must be ScalarBank");
 		}
 
-		cache = new PairBank(destination.getCount());
+		cache = Pair.bank(destination.getCount());
 		data.evaluateIntersectionKernel(ray, cache, args);
 		for (int i = 0; i < cache.getCount(); i++) {
 			((ScalarBank) destination).get(i).setMem(new double[] { cache.get(i).getA(), 1.0 });
