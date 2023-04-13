@@ -35,6 +35,7 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.computations.ArrayVariableComputation;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.collect.computations.ExpressionComputation;
+import org.almostrealism.collect.computations.PackedCollectionEnumerate;
 import org.almostrealism.collect.computations.PackedCollectionFromPackedCollection;
 import org.almostrealism.collect.computations.PackedCollectionSubset;
 import org.almostrealism.collect.computations.Random;
@@ -181,6 +182,10 @@ public interface CollectionFeatures extends ExpressionFeatures {
 
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> subset(TraversalPolicy shape, Producer<?> collection, int... position) {
 		return new PackedCollectionSubset<>(shape, collection, position);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> enumerate(TraversalPolicy shape, Producer<?> collection) {
+		return new PackedCollectionEnumerate<>(shape, collection);
 	}
 
 	default Random rand(int... dims) { return rand(shape(dims)); }

@@ -160,10 +160,6 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 		return new Switch(decision, Arrays.asList(choices));
 	}
 
-	default Expression<Double> e(double value) {
-		return e(stringForDouble(value));
-	}
-
 	default CollectionProducerComputation<PackedCollection<?>> identity(Producer<PackedCollection<?>> argument) {
 		if (!(argument instanceof Shape)) {
 			throw new IllegalArgumentException("Argument to identity kernel must be traversable");

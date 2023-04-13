@@ -54,7 +54,11 @@ public interface HardwareFeatures {
 	}
 
 	default Expression<Double> expressionForDouble(double value) {
-		return new Expression<Double>(Double.class, stringForDouble(value));
+		return new Expression<>(Double.class, stringForDouble(value));
+	}
+
+	default Expression<Double> e(double value) {
+		return expressionForDouble(value);
 	}
 
 	default double doubleForString(String value) {

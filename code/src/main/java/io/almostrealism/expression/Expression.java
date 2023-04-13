@@ -120,6 +120,10 @@ public class Expression<T> implements Tree<Expression<?>> {
 	public Exponent pow(Expression<Double> operand) { return new Exponent((Expression) this, operand); }
 	public Exp exp() { return new Exp((Expression) this); }
 
+	public Floor floor() { return new Floor((Expression) this); }
+
+	public Mod mod(Expression<Double> operand) { return new Mod((Expression) this, operand); }
+
 	public Equals eq(Expression<T> operand) { return new Equals(this, operand); }
 
 	@Override

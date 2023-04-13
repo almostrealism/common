@@ -90,6 +90,38 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 	}
 
 	@Test
+	public void enumerate2d() {
+		Tensor<Double> t = tensor(shape(10, 10), (int[] c) -> c[1] < 2);
+		PackedCollection<?> input = t.pack();
+
+		CollectionProducer<PackedCollection<?>> producer = enumerate(shape(10, 2), p(input));
+		Evaluable<PackedCollection<?>> ev = producer.get();
+		PackedCollection<?> enumerated = ev.evaluate();
+
+		Assert.assertEquals(5, enumerated.getShape().length(0));
+		Assert.assertEquals(10, enumerated.getShape().length(1));
+		Assert.assertEquals(2, enumerated.getShape().length(2));
+
+		for (int i = 0; i < 5; i++) {
+			for (int j = 0; j < 10; j++) {
+				for (int k = 0; k < 2; k++) {
+					if (i == 0) {
+						Assert.assertTrue(enumerated.toDouble(enumerated.getShape().index(i, j, k)) >= 0);
+					} else {
+						Assert.assertTrue(enumerated.toDouble(enumerated.getShape().index(i, j, k)) <= 0);
+					}
+				}
+			}
+		}
+	}
+
+	@Test
+	public void enmerate2dProduct() {
+		// TODO Multiply the rows of one matrix with the columns of another matrix
+		// enumerate(shape(10, 1), p(input)).multiply(enumerate(shape(1, 10), p(input)))
+	}
+
+	@Test
 	public void subsetProduct() {
 		int size = 3;
 		int x0 = 4, x1 = x0 + size;
