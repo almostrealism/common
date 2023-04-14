@@ -47,21 +47,10 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		super(computeShape(shape, stride, collection), (Supplier) collection);
 		this.subsetShape = shape;
 		this.strideShape = stride;
-		setDestination(() -> { throw new UnsupportedOperationException(); });
-		setInputs(new Destination(), (Supplier) collection);
-		init();
 	}
 
 	@Override
 	public int getMemLength() { return 1; }
-
-	@Override
-	protected MemoryBank<?> createKernelDestination(int len) {
-		if (len != getShape().getTotalSize())
-			throw new IllegalArgumentException("Enumerate kernel size must match original shape (" + getShape().getTotalSize() + ")");
-
-		return new PackedCollection<>(getShape().traverseEach());
-	}
 
 	@Override
 	public IntFunction<Expression<Double>> getValueFunction() {
@@ -92,21 +81,9 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		};
 	}
 
-	private class Destination implements Producer<PackedCollection<?>>, Delegated<DestinationSupport<T>>, KernelSupport {
-		@Override
-		public Evaluable<PackedCollection<?>> get() {
-			return args -> new PackedCollection<>(getShape().traverseEach());
-		}
-
-		@Override
-		public DestinationSupport<T> getDelegate() {
-			return PackedCollectionEnumerate.this;
-		}
-	}
-
 	private static TraversalPolicy shape(Producer<?> collection) {
 		if (!(collection instanceof Shape))
-			throw new IllegalArgumentException("Subset cannot be performed without a TraversalPolicy");
+			throw new IllegalArgumentException("Enumerate cannot be performed without a TraversalPolicy");
 
 		return ((Shape) collection).getShape();
 	}

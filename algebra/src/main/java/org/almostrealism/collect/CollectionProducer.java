@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect;
 
+import io.almostrealism.code.ExpressionList;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.bool.AcceleratedConditionalStatementCollection;
@@ -23,12 +24,17 @@ import org.almostrealism.bool.GreaterThanCollection;
 import org.almostrealism.bool.LessThanCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
 
+import java.util.function.Function;
 import java.util.function.Supplier;
 
-public interface CollectionProducer<T extends PackedCollection<?>> extends CollectionProducerBase<T>, CollectionFeatures {
+public interface CollectionProducer<T extends Shape<?>> extends CollectionProducerBase<T>, CollectionFeatures {
 
-	default CollectionProducerComputation<T> enumerate(int axis, int len, int stride) {
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> enumerate(int axis, int len, int stride) {
 		return enumerate(axis, len, stride, this);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> map(Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper) {
+		return map(this, mapper);
 	}
 
 	default <T extends PackedCollection<?>> ExpressionComputation<T> add(Producer<T> value) {

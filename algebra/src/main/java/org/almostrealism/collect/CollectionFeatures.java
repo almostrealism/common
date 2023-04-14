@@ -17,6 +17,7 @@
 package org.almostrealism.collect;
 
 import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.code.ExpressionList;
 import io.almostrealism.expression.Exponent;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Floor;
@@ -37,6 +38,7 @@ import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.PackedCollectionEnumerate;
 import org.almostrealism.collect.computations.PackedCollectionFromPackedCollection;
+import org.almostrealism.collect.computations.PackedCollectionMap;
 import org.almostrealism.collect.computations.PackedCollectionSubset;
 import org.almostrealism.collect.computations.Random;
 import org.almostrealism.collect.computations.ReshapeProducer;
@@ -202,7 +204,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 				}), arguments);
 	}
 
-	default <T extends Shape<T>> Producer traverse(int axis, Producer<T> producer) {
+	default <T extends Shape<T>> CollectionProducer<T> traverse(int axis, Producer<T> producer) {
 		return new ReshapeProducer<>(axis, producer);
 	}
 
@@ -228,6 +230,10 @@ public interface CollectionFeatures extends ExpressionFeatures {
 
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> enumerate(TraversalPolicy shape, TraversalPolicy stride, Producer<?> collection) {
 		return new PackedCollectionEnumerate<>(shape, stride, collection);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> map(Producer<?> collection, Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper) {
+		return new PackedCollectionMap<>(collection, mapper);
 	}
 
 	default Random rand(int... dims) { return rand(shape(dims)); }

@@ -87,8 +87,9 @@ public interface LayerFeatures extends CollectionFeatures {
 		// regions.multiply(c(filterShape)).sum(3).sum(2) // 8x8x1
 
 		// regions = c(inputShape).enumerate(0, 3, 1).enumerate(1, 3, 1); // 8x8x3x3
-		// regions.split(2) // 8x8 x 3x3
-		// .reduce(r -> r.multiply(c(shape(3, 3)) // 8x8x3x3
+		// regions.traverse(2) // 8x8 x 3x3
+		// .map(r -> r.multiply(c(shape(3, 3)) // 8x8x3x3
+		// .reduce(
 		// .sum(3) // 8x8x3x1
 		// .sum(2)); // 8x8x1x1
 

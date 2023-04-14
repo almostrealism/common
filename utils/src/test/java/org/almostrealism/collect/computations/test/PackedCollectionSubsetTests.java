@@ -94,9 +94,9 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		Tensor<Double> t = tensor(shape(10, 10), (int[] c) -> c[1] < 2);
 		PackedCollection<?> input = t.pack();
 
-		CollectionProducerBase<PackedCollection<?>> producer = enumerate(shape(10, 2), p(input));
+		CollectionProducerBase<PackedCollection<?>> producer = enumerate(shape(10, 2), traverseEach(p(input)));
 		Evaluable<PackedCollection<?>> ev = producer.get();
-		PackedCollection<?> enumerated = ev.evaluate();
+		PackedCollection<?> enumerated = ev.evaluate().reshape(shape(5, 10, 2));
 
 		Assert.assertEquals(5, enumerated.getShape().length(0));
 		Assert.assertEquals(10, enumerated.getShape().length(1));

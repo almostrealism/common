@@ -33,7 +33,7 @@ public interface TensorTestFeatures {
 		shape.stream().forEach(pos -> {
 			boolean inside = condition.test(pos);
 			double multiplier = inside ? 1 : -1;
-			t.insert(multiplier * IntStream.of(pos).sum(), pos);
+			t.insert(multiplier * (IntStream.of(pos).sum()), pos);
 		});
 
 		return t;

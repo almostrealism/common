@@ -18,11 +18,12 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.Shape;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.KernelSupport;
 
-public class ReshapeProducer<T extends Shape<T>> implements Producer<T>, Shape<Producer<T>>, KernelSupport {
+public class ReshapeProducer<T extends Shape<T>> implements CollectionProducer<T>, Shape<Producer<T>>, KernelSupport {
 	private TraversalPolicy shape;
 	private int traversalAxis;
 	private Producer<T> producer;
