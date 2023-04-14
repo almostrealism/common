@@ -86,6 +86,12 @@ public interface LayerFeatures extends CollectionFeatures {
 		// filters = c(filterShape).clone(shape(8, 8)) // 8x8x3x3
 		// regions.multiply(c(filterShape)).sum(3).sum(2) // 8x8x1
 
+		// regions = c(inputShape).enumerate(0, 3, 1).enumerate(1, 3, 1); // 8x8x3x3
+		// regions.split(2) // 8x8 x 3x3
+		// .reduce(r -> r.multiply(c(shape(3, 3)) // 8x8x3x3
+		// .sum(3) // 8x8x3x1
+		// .sum(2)); // 8x8x1x1
+
 		return layer(inputShape, outputShape,
 				(in, filter, x, y, z) ->
 						filter.get(shape(1, size, size), z).multiply(in.get(shape(size, size), x, y)).sum(),
