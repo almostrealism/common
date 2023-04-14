@@ -82,8 +82,9 @@ public interface LayerFeatures extends CollectionFeatures {
 		Supplier<Runnable> init = new KernelOperation<>(
 				divide(randn(filterShape).traverseEach(), c(9).traverse(0)), filters.traverseEach());
 
-		// regions = c(inputShape).enumerate(0, 3, 1).enumerate(1, 3, 1)
-		// regions.multiply(c(filterShape).enumerate(shape(1, size, size)))
+		// regions = c(inputShape).enumerate(0, 3, 1).enumerate(1, 3, 1) // 8x8x3x3
+		// filters = c(filterShape).clone(shape(8, 8)) // 8x8x3x3
+		// regions.multiply(c(filterShape)).sum(3).sum(2) // 8x8x1
 
 		return layer(inputShape, outputShape,
 				(in, filter, x, y, z) ->
