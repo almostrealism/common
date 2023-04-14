@@ -23,14 +23,12 @@ import org.almostrealism.collect.Shape;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.geometry.RayBank;
 import org.almostrealism.geometry.RayProducer;
-import org.almostrealism.hardware.MemoryData;
 
 @Deprecated
 public class StaticRayComputation extends StaticComputationAdapter<Ray> implements RayProducer, Shape<Producer<PackedCollection<?>>> {
 	public StaticRayComputation(Ray value) {
-		super(value, Ray.blank(), RayBank::new);
+		super(value, Ray.blank(), Ray::bank);
 	}
 
 	@Override

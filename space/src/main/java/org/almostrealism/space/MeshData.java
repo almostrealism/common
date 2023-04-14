@@ -22,7 +22,6 @@ import org.almostrealism.geometry.Intersection;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.geometry.RayBank;
 import org.almostrealism.hardware.KernelizedOperation;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
@@ -47,7 +46,7 @@ public class MeshData extends MemoryBankAdapter<PackedCollection<?>> {
 	}
 
 	public synchronized Pair evaluateIntersection(Evaluable<Ray> ray, Object args[]) {
-		RayBank in = new RayBank(1);
+		PackedCollection<Ray> in = Ray.bank(1);
 		PackedCollection<Pair<?>> out = Pair.bank(1);
 
 		PackedCollection<Pair<?>> conf = Pair.bank(1);
@@ -69,7 +68,7 @@ public class MeshData extends MemoryBankAdapter<PackedCollection<?>> {
 
 	public void evaluateIntersectionKernel(KernelizedEvaluable<Ray> ray, PackedCollection<Pair<?>> destination, MemoryData args[]) {
 		long startTime = System.currentTimeMillis();
-		RayBank rays = new RayBank(destination.getCount());
+		PackedCollection<Ray> rays = Ray.bank(destination.getCount());
 		ray.kernelEvaluate(rays, args);
 
 		if (KernelizedOperation.enableKernelLog) System.out.println("MeshData: Evaluated ray kernel in " + (System.currentTimeMillis() - startTime) + " msec");
@@ -79,7 +78,7 @@ public class MeshData extends MemoryBankAdapter<PackedCollection<?>> {
 
 		if (enablePartialKernel) {
 			ScalarBank distances = new ScalarBank(getCount());
-			RayBank in = new RayBank(1);
+			PackedCollection<Ray> in = Ray.bank(1);
 			PackedCollection<Pair<?>> out = Pair.bank(1);
 
 			PackedCollection<Pair<?>> conf = Pair.bank(1);

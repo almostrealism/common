@@ -16,6 +16,7 @@
 
 package org.almostrealism.geometry;
 
+import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorProducerBase;
@@ -195,7 +196,28 @@ public class Ray extends PackedCollection<Ray> implements RayFeatures, Cloneable
 
 	public static Producer<Ray> blank() {
 		Supplier<Ray> r = Ray::new;
-		IntFunction<MemoryBank<Ray>> b = RayBank::new;
+		IntFunction<MemoryBank<Ray>> b = Ray::bank;
 		return new DynamicProducerForMemoryData<>(r, b);
+	}
+
+	public static PackedCollection<Ray> bank(int count) {
+		return new PackedCollection<>(new TraversalPolicy(count, 6), 1, delegateSpec ->
+				new Ray(delegateSpec.getDelegate(), delegateSpec.getOffset()));
+	}
+
+	@Deprecated
+	public static PackedCollection<Ray> bank(int count, Supplier<Evaluable<? extends Ray>> source) {
+		PackedCollection<Ray> bank = Ray.bank(count);
+		for (int i = 0; i < bank.getCount(); i++) {
+			bank.set(i, source.get().evaluate());
+		}
+
+		return bank;
+	}
+
+	public static PackedCollection<Ray> bank(int count, MemoryData delegate, int delegateOffset) {
+		return new PackedCollection<>(new TraversalPolicy(count, 6), 1, delegateSpec ->
+				new Ray(delegateSpec.getDelegate(), delegateSpec.getOffset()),
+				delegate, delegateOffset);
 	}
 }

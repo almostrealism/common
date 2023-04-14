@@ -24,6 +24,7 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 
+@Deprecated
 public class DefaultRayEvaluable extends AcceleratedComputationEvaluable<Ray> implements Evaluable<Ray>, RayFeatures  {
 
 	public DefaultRayEvaluable(Computation<Ray> c) {
@@ -37,6 +38,6 @@ public class DefaultRayEvaluable extends AcceleratedComputationEvaluable<Ray> im
 
 	@Override
 	public MemoryBank<Ray> createKernelDestination(int size) {
-		return new RayBank(size);
+		return Ray.bank(size);
 	}
 }

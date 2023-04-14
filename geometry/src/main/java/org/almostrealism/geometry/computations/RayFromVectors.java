@@ -19,7 +19,6 @@ package org.almostrealism.geometry.computations;
 import io.almostrealism.expression.Expression;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.geometry.RayBank;
 import org.almostrealism.geometry.RayProducer;
 import org.almostrealism.hardware.DynamicProducerComputationAdapter;
 import io.almostrealism.relation.Evaluable;
@@ -32,7 +31,7 @@ public class RayFromVectors extends DynamicProducerComputationAdapter<Vector, Ra
 	private Expression<Double> value[];
 	
 	public RayFromVectors(Supplier<Evaluable<? extends Vector>> origin, Supplier<Evaluable<? extends Vector>> direction) {
-		super(6, Ray.blank(), RayBank::new, origin, direction);
+		super(6, Ray.blank(), Ray::bank, origin, direction);
 	}
 
 	@Override
