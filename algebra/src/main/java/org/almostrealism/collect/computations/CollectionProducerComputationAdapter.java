@@ -56,7 +56,18 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 	}
 
 	protected MemoryBank<?> createKernelDestination(int len) {
-		return new PackedCollection<>(getShape().prependDimension(len));
+		if (len % getShape().getCount() != 0) {
+			throw new IllegalArgumentException("Kernel length must be a multiple of the shape count");
+		}
+
+		int count = len / getShape().getCount();
+
+		if (len == getShape().length(0) && count == 1) {
+			// It is not necessary to prepend a (usually) unnecessary dimension
+			return new PackedCollection<>(getShape());
+		} else {
+			return new PackedCollection<>(getShape().prependDimension(count));
+		}
 	}
 
 	@Override
@@ -66,7 +77,7 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 
 	@Override
 	public int getMemLength() {
-		return getShape().getTotalSize();
+		return getShape().getSize();
 	}
 
 	@Override

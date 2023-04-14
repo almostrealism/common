@@ -30,22 +30,29 @@ import org.almostrealism.hardware.MemoryBank;
 
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
+import java.util.stream.IntStream;
 
 public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		extends DynamicCollectionProducerComputationAdapter<PackedCollection<?>, T>
 		implements CollectionProducerComputation<T> {
+
+	private TraversalPolicy strideShape;
 	private TraversalPolicy subsetShape;
-	private int axis[];
 
 	public PackedCollectionEnumerate(TraversalPolicy shape, Producer<?> collection) {
-		super(computeShape(shape, collection), (Supplier) collection);
+		this(shape, computeStride(shape, collection), collection);
+	}
+
+	public PackedCollectionEnumerate(TraversalPolicy shape, TraversalPolicy stride, Producer<?> collection) {
+		super(computeShape(shape, stride, collection), (Supplier) collection);
 		this.subsetShape = shape;
-		this.axis = computeAxis(shape, collection);
+		this.strideShape = stride;
 		setDestination(() -> { throw new UnsupportedOperationException(); });
 		setInputs(new Destination(), (Supplier) collection);
 		init();
 	}
 
+	@Override
 	public int getMemLength() { return 1; }
 
 	@Override
@@ -73,8 +80,8 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 			Expression<?> pos[] = new Expression[subsetShape.getDimensions()];
 
 			for (int j = 0; j < subsetShape.getDimensions(); j++) {
-				if (j == axis[0]) {
-					pos[j] = slice.multiply(e(subsetShape.length(j)));
+				if (strideShape.length(j) > 0) {
+					pos[j] = slice.multiply(e(strideShape.length(j)));
 				} else {
 					pos[j] = e(0);
 				}
@@ -104,17 +111,20 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		return ((Shape) collection).getShape();
 	}
 
-	private static TraversalPolicy computeShape(TraversalPolicy shape, Producer<?> collection) {
+	private static TraversalPolicy computeShape(TraversalPolicy shape, TraversalPolicy stride, Producer<?> collection) {
 		TraversalPolicy superShape = shape(collection);
 
-		if (superShape.getTotalSize() % shape.getTotalSize() != 0) {
-			throw new IllegalArgumentException("Collection shape must be a multiple of the subset shape");
-		}
+		int count = IntStream.range(0, shape.getDimensions()).map(dim -> {
+						int pad = stride.length(dim) - shape.length(dim);
+						return stride.length(dim) > 0 ? (superShape.length(dim) + pad) / stride.length(dim) : -1;
+					})
+					.filter(i -> i > 0).min()
+					.orElseThrow(() -> new IllegalArgumentException("Invalid stride"));
 
-		return shape.prependDimension(superShape.getTotalSize() / shape.getTotalSize());
+		return shape.prependDimension(count).traverseEach();
 	}
 
-	private static int[] computeAxis(TraversalPolicy shape, Producer<?> collection) {
+	private static TraversalPolicy computeStride(TraversalPolicy shape, Producer<?> collection) {
 		TraversalPolicy superShape = shape(collection);
 
 		int dims[] = new int[shape.getDimensions()];
@@ -127,19 +137,21 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 			}
 		}
 
-		int axis[] = {-1, 0} ;
+		int axis = -1;
 
 		for (int i = 0; i < dims.length; i++) {
 			if (dims[i] > 1) {
-				if (axis[0] >= 0) {
+				if (axis >= 0) {
 					throw new UnsupportedOperationException("Enumeration across more than one axis is not currently supported");
 				} else {
-					axis[0] = i;
-					axis[1] = dims[i];
+					axis = i;
+					dims[i] = shape.length(i);
 				}
+			} else {
+				dims[i] = 0;
 			}
 		}
 
-		return axis;
+		return new TraversalPolicy(dims);
 	}
 }

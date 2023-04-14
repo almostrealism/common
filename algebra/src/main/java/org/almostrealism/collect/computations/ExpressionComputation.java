@@ -50,7 +50,7 @@ public class ExpressionComputation<T extends PackedCollection<?>> extends Dynami
 	public ExpressionComputation(TraversalPolicy shape, List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression,
 							   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
 		super(shape, validateArgs(args));
-		if (shape.getTotalSize() != expression.size())
+		if (shape.getSize() != expression.size())
 			throw new IllegalArgumentException("Expected " + shape.getTotalSize() + " expressions");
 		this.expression = expression;
 	}

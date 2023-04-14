@@ -21,6 +21,8 @@ import org.almostrealism.collect.TraversalPolicy;
 import java.util.stream.IntStream;
 
 public interface KernelSupport {
+	boolean enableKernelDivisabilityFallback = true;
+
 	default boolean isKernelEnabled() { return true; }
 
 	static String getKernelIndex(int kernelIndex) {
@@ -56,7 +58,16 @@ public interface KernelSupport {
 		int kernelSize = largest / smallest;
 		if (kernelSize <= 0) return kernelSize;
 
-		validateKernelSize(kernelSize, smallest, sizes);
+		try {
+			validateKernelSize(kernelSize, smallest, sizes);
+		} catch (IllegalArgumentException e) {
+			if (enableKernelDivisabilityFallback) {
+				return largest;
+			} else {
+				throw e;
+			}
+		}
+
 		return kernelSize;
 	}
 

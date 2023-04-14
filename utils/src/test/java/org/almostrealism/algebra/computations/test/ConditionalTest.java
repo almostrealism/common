@@ -19,7 +19,7 @@ package org.almostrealism.algebra.computations.test;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.CollectionProducerBase;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.util.TestFeatures;
@@ -31,10 +31,10 @@ import java.util.function.Function;
 public class ConditionalTest implements TestFeatures {
 	@Test
 	public void positive() {
-		CollectionProducer a = c(2);
-		CollectionProducer b = c(2);
-		CollectionProducer c = c(3);
-		CollectionProducer d = c(5);
+		CollectionProducerBase a = c(2);
+		CollectionProducerBase b = c(2);
+		CollectionProducerBase c = c(3);
+		CollectionProducerBase d = c(5);
 
 		Function<List<MultiExpression<Double>>, Expression<Double>> expression =
 				args -> conditional(equals(args.get(1).getValue(0), args.get(2).getValue(0)),
@@ -48,10 +48,10 @@ public class ConditionalTest implements TestFeatures {
 
 	@Test
 	public void negative() {
-		CollectionProducer a = c(2);
-		CollectionProducer b = c(1);
-		CollectionProducer c = c(3);
-		CollectionProducer d = c(5);
+		CollectionProducerBase a = c(2);
+		CollectionProducerBase b = c(1);
+		CollectionProducerBase c = c(3);
+		CollectionProducerBase d = c(5);
 
 		Function<List<MultiExpression<Double>>, Expression<Double>> expression =
 				args -> conditional(equals(args.get(1).getValue(0), args.get(2).getValue(0)),

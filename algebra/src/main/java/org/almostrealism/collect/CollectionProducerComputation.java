@@ -40,7 +40,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 public interface CollectionProducerComputation<T extends PackedCollection<?>> extends
-		CollectionProducer<T>, ProducerComputation<T>, KernelizedProducer<T>, CollectionFeatures {
+		CollectionProducer<T>, ProducerComputation<T>, KernelizedProducer<T> {
 	boolean enableShapeTrim = false;
 
 	// This should be 0, but Scalar is actually a Pair so a set of scalars is 2D not 1D
@@ -132,68 +132,6 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 		T data = factory.apply(c.getShape());
 		data.setDelegate(c, 0);
 		return data;
-	}
-
-	default <T extends PackedCollection<?>> ExpressionComputation<T> add(Producer<T> value) {
-		return CollectionFeatures.super.add((Producer) this, value);
-	}
-
-	default <T extends PackedCollection<?>> ExpressionComputation<T> subtract(Producer<T> value) {
-		return CollectionFeatures.super.subtract((Producer) this, value);
-	}
-
-	default <T extends PackedCollection<?>> ExpressionComputation<T> multiply(Producer<T> value) {
-		return CollectionFeatures.super.multiply((Producer) this, value);
-	}
-
-	default <T extends PackedCollection<?>> ExpressionComputation<T> divide(Producer<T> value) {
-		return CollectionFeatures.super.divide((Producer) this, value);
-	}
-
-	default <T extends PackedCollection<?>> ExpressionComputation<T> pow(Producer<T> value) {
-		return CollectionFeatures.super.pow((Producer) this, value);
-	}
-
-	default AcceleratedConditionalStatementCollection _greaterThan(Supplier<Evaluable<? extends PackedCollection<?>>> operand) {
-		return _greaterThan(operand, false);
-	}
-
-	default AcceleratedConditionalStatementCollection _greaterThan(Supplier<Evaluable<? extends PackedCollection<?>>> operand, boolean includeEqual) {
-		return _greaterThan(operand, null, null, includeEqual);
-	}
-
-	default AcceleratedConditionalStatementCollection _greaterThan(Supplier<Evaluable<? extends PackedCollection<?>>> operand,
-															  Supplier<Evaluable<? extends PackedCollection<?>>> trueValue,
-															  Supplier<Evaluable<? extends PackedCollection<?>>> falseValue) {
-		return _greaterThan(operand, trueValue, falseValue, false);
-	}
-
-	default AcceleratedConditionalStatementCollection _greaterThan(Supplier<Evaluable<? extends PackedCollection<?>>> operand,
-																  Supplier<Evaluable<? extends PackedCollection<?>>> trueValue,
-																  Supplier<Evaluable<? extends PackedCollection<?>>> falseValue,
-																  boolean includeEqual) {
-		return new GreaterThanCollection(this, operand, trueValue, falseValue, includeEqual);
-	}
-
-	default AcceleratedConditionalStatementCollection _lessThan(Supplier operand) {
-		return _lessThan(operand, false);
-	}
-
-	default AcceleratedConditionalStatementCollection _lessThan(Supplier operand, boolean includeEqual) {
-		return _lessThan(operand, null, null, includeEqual);
-	}
-
-	default AcceleratedConditionalStatementCollection _lessThan(Supplier<Evaluable<? extends PackedCollection<?>>> operand,
-														   Supplier<Evaluable<? extends PackedCollection<?>>> trueValue,
-														   Supplier<Evaluable<? extends PackedCollection<?>>> falseValue) {
-		return _lessThan(operand, trueValue, falseValue, false);
-	}
-
-	default AcceleratedConditionalStatementCollection _lessThan(Supplier<Evaluable<? extends PackedCollection<?>>> operand,
-														   Supplier<Evaluable<? extends PackedCollection<?>>> trueValue,
-														   Supplier<Evaluable<? extends PackedCollection<?>>> falseValue,
-														   boolean includeEqual) {
-		return new LessThanCollection(this, operand, trueValue, falseValue, includeEqual);
 	}
 
 	default KernelizedEvaluable<PackedCollection<?>> shortCircuit(Evaluable<PackedCollection<?>> ev) {

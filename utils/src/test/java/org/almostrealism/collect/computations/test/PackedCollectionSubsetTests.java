@@ -22,7 +22,7 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.algebra.Tensor;
-import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.CollectionProducerBase;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversalPolicy;
@@ -68,7 +68,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		Assert.assertEquals(433, index);
 
 		HardwareOperator.verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> producer = subset(shape(w, h, d), p(input), x0, y0, z0);
+			CollectionProducerBase<PackedCollection<?>> producer = subset(shape(w, h, d), p(input), x0, y0, z0);
 			Evaluable<PackedCollection<?>> ev = producer.get();
 			PackedCollection<?> subset = ev.evaluate();
 
@@ -94,7 +94,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		Tensor<Double> t = tensor(shape(10, 10), (int[] c) -> c[1] < 2);
 		PackedCollection<?> input = t.pack();
 
-		CollectionProducer<PackedCollection<?>> producer = enumerate(shape(10, 2), p(input));
+		CollectionProducerBase<PackedCollection<?>> producer = enumerate(shape(10, 2), p(input));
 		Evaluable<PackedCollection<?>> ev = producer.get();
 		PackedCollection<?> enumerated = ev.evaluate();
 
@@ -116,9 +116,79 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 	}
 
 	@Test
-	public void enmerate2dProduct() {
-		// TODO Multiply the rows of one matrix with the columns of another matrix
-		// enumerate(shape(10, 1), p(input)).multiply(enumerate(shape(1, 10), p(input)))
+	public void enumerate2dProduct() {
+		Tensor<Double> t = tensor(shape(4, 6));
+		PackedCollection<?> input = t.pack().traverseEach();
+
+		PackedCollection<?> operand = new PackedCollection<>(shape(6, 4));
+		operand.fill(pos -> Math.random());
+		operand = operand.traverseEach();
+
+		Producer<PackedCollection<?>> product = enumerate(shape(4, 1), traverseEach(p(input)))
+										.multiply(enumerate(shape(1, 4), traverseEach(p(operand))));
+
+		Evaluable<PackedCollection<?>> ev = product.get();
+		PackedCollection<?> enumerated = ev.evaluate().reshape(shape(6, 4));
+
+		Assert.assertEquals(6, enumerated.getShape().length(0));
+		Assert.assertEquals(4, enumerated.getShape().length(1));
+
+		for (int i = 0; i < 6; i++) {
+			for (int j = 0; j < 4; j++) {
+				Assert.assertEquals(input.toDouble(input.getShape().index(j, i)) * operand.toDouble(operand.getShape().index(i, j)),
+									enumerated.toDouble(enumerated.getShape().index(i, j)), 0.0001);
+			}
+		}
+	}
+
+	@Test
+	public void stride2dProduct() {
+		Tensor<Double> t = tensor(shape(8, 10));
+		PackedCollection<?> input = t.pack();
+
+		PackedCollection<?> filter = tensor(shape(9, 8, 2), (int[] c) -> {
+			int i = c[0], j = c[1], k = c[2];
+			return i == 0 || i == 8 || j == 0 || j == 7 || k == 0 || k == 1;
+		}).pack();
+
+		Producer<PackedCollection<?>> stride = enumerate(shape(8, 2), shape(0, 1), traverseEach(p(input)))
+													.multiply(traverseEach(p(filter)));
+		Evaluable<PackedCollection<?>> ev = stride.get();
+		PackedCollection<?> enumerated = ev.evaluate().reshape(shape(9, 8, 2));
+
+		System.out.println(enumerated.getShape());
+
+		for (int i = 0; i < 9; i++) {
+			for (int j = 0; j < 8; j++) {
+				for (int k = 0; k < 2; k++) {
+					Assert.assertEquals(input.toDouble(input.getShape().index(j, i + k)) *
+											filter.toDouble(filter.getShape().index(i, j, k)),
+										enumerated.toDouble(enumerated.getShape().index(i, j, k)), 0.0001);
+				}
+			}
+		}
+	}
+
+	// @Test
+	public void doubleStride2dProduct() {
+		Tensor<Double> t = tensor(shape(8, 10));
+		PackedCollection<?> input = t.pack();
+
+		PackedCollection<?> filter = tensor(shape(9, 8, 2), (int[] c) -> {
+			int i = c[0], j = c[1], k = c[2];
+			return i == 0 || i == 8 || j == 0 || j == 7 || k == 0 || k == 1;
+		}).pack();
+
+		Producer<PackedCollection<?>> stride = c(p(input))
+						.enumerate(0, 3, 1)
+						.enumerate(1, 3, 1)
+						.multiply(c(p(filter)));
+	}
+
+	@Test
+	public void subsetTranspose() {
+		// TODO Transpose a matrix and then take a subset
+		// enumerate(shape(10, 1), p(input)).subset(shape(3, 3, 1), 2, 2, 0)
 	}
 
 	@Test
@@ -140,7 +210,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		PackedCollection<?> input = t.pack();
 
 		HardwareOperator.verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> subset = subset(shape(size, size), p(input), x0, y0);
+			CollectionProducerBase<PackedCollection<?>> subset = subset(shape(size, size), p(input), x0, y0);
 			Producer<PackedCollection<?>> product = multiply(traverseEach(p(filter)), subset).reshape(filterShape);
 			Evaluable<PackedCollection<?>> ev = product.get();
 			PackedCollection<?> result = ev.evaluate();
