@@ -12,7 +12,7 @@
   <p align="center">
     Tools for high-performance scientific computing, generative art, and machine learning in Java
     with pluggable native acceleration (currently implemented with OpenCL, though other backend
-    acceleration libraries would be a welcome contribution from the community).
+    acceleration libraries to follow in 2024).
     <br />
     <a href="https://github.com/almostrealism/common/issues">Report Bug</a>
     ·
