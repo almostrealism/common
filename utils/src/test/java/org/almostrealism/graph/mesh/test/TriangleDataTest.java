@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,11 +17,9 @@
 package org.almostrealism.graph.mesh.test;
 
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.algebra.VectorProducerBase;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
-import org.almostrealism.graph.mesh.TrianglePointDataBank;
 import org.almostrealism.space.DefaultVertexData;
 import org.almostrealism.space.Mesh;
 import org.almostrealism.space.MeshData;
@@ -48,11 +46,11 @@ public class TriangleDataTest implements TestFeatures {
 		return data;
 	}
 
-	protected TrianglePointDataBank points() { return data().getMeshPointData(); }
+	protected PackedCollection<PackedCollection<Vector>> points() { return data().getMeshPointData(); }
 
 	@Test
 	public void edges() {
-		TrianglePointDataBank points = points();
+		PackedCollection<PackedCollection<Vector>> points = points();
 
 		VectorProducerBase edge1 = subtract(v(points.get(0).get(1)), v(points.get(0).get(0)));
 		Vector value = edge1.get().evaluate();
@@ -77,7 +75,7 @@ public class TriangleDataTest implements TestFeatures {
 
 	@Test
 	public void triangleData() {
-		TrianglePointDataBank points = points();
+		PackedCollection<PackedCollection<Vector>> points = points();
 		ExpressionComputation<PackedCollection<Vector>> td = triangle(v(points.get(0).get(0)),
 											v(points.get(0).get(1)),
 											v(points.get(0).get(2)));
@@ -86,7 +84,7 @@ public class TriangleDataTest implements TestFeatures {
 
 	@Test
 	public void triangleDataCompact() {
-		TrianglePointDataBank points = points();
+		PackedCollection<PackedCollection<Vector>> points = points();
 		Producer<PackedCollection<Vector>> td = triangle(v(points.get(0).get(0)),
 				v(points.get(0).get(1)),
 				v(points.get(0).get(2)));
@@ -95,7 +93,7 @@ public class TriangleDataTest implements TestFeatures {
 
 	@Test
 	public void triangleDataKernel() {
-		TrianglePointDataBank points = points();
+		PackedCollection<PackedCollection<Vector>> points = points();
 		Producer<PackedCollection<Vector>> td = triangle(points(0));
 
 		MeshData output = new MeshData(1);

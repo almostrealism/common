@@ -26,12 +26,12 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Graph;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
 import org.almostrealism.geometry.Positioned;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.ContinuousField;
 import org.almostrealism.graph.KdTree;
-import org.almostrealism.graph.mesh.TrianglePointDataBank;
 import org.almostrealism.hardware.KernelizedProducer;
 import org.almostrealism.hardware.MemoryBank;
 import io.almostrealism.relation.Producer;
@@ -62,7 +62,7 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 		int[] getTriangle(int index); int getTriangleCount();
 		int getVertexCount();
 
-		TrianglePointDataBank getMeshPointData();
+		PackedCollection<PackedCollection<Vector>> getMeshPointData();
 	}
 	
   private List points, triangles;
@@ -286,12 +286,12 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 
   	public MeshData getMeshData() {
 		MeshData tdata = new MeshData(tcache.length);
-		TrianglePointDataBank points = getMeshPointData();
+		PackedCollection<PackedCollection<Vector>> points = getMeshPointData();
 		Triangle.dataProducer.kernelEvaluate(tdata, new MemoryBank[] { points });
   		return tdata;
 	}
 
-	public TrianglePointDataBank getMeshPointData() {
+	public PackedCollection<PackedCollection<Vector>> getMeshPointData() {
   		if (vertexData == null) {
   			throw new RuntimeException("Not implemented");
 		}
