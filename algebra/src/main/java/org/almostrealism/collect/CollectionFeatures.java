@@ -17,7 +17,6 @@
 package org.almostrealism.collect;
 
 import io.almostrealism.code.ExpressionFeatures;
-import io.almostrealism.code.ExpressionList;
 import io.almostrealism.expression.Exponent;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Floor;
@@ -357,7 +356,6 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return pow(depth, (Supplier) base, (Supplier) exp);
 	}
 
-	// TODO Rename
 	default <T extends PackedCollection<?>> ExpressionComputation<T> pow(int depth,
 																		 Supplier<Evaluable<? extends PackedCollection<?>>> base, Supplier<Evaluable<? extends PackedCollection<?>>> exp) {
 		List<Function<List<MultiExpression<Double>>, Expression<Double>>> expressions =
@@ -367,8 +365,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return new ExpressionComputation<>(expressions, base, exp);
 	}
 
-	// TODO Rename
-	default <T extends PackedCollection<?>> ExpressionComputation<T> _floor(
+	default <T extends PackedCollection<?>> ExpressionComputation<T> floor(
 			Supplier<Evaluable<? extends PackedCollection<?>>> value) {
 		Function<List<MultiExpression<Double>>, Expression<Double>> expression = np ->
 				new Floor(np.get(1).getValue(0));

@@ -5,27 +5,22 @@
 	<parent>
 		<artifactId>Common</artifactId>
 		<groupId>org.almostrealism</groupId>
-		<version>0.52</version>
+		<version>0.53</version>
 	</parent>
 	<modelVersion>4.0.0</modelVersion>
 
 	<artifactId>ar-space</artifactId>
 
-	<properties>
-		<maven.compiler.source>11</maven.compiler.source>
-		<maven.compiler.target>11</maven.compiler.target>
-	</properties>
-
 	<dependencies>
 		<dependency>
 			<groupId>org.almostrealism</groupId>
 			<artifactId>ar-graph</artifactId>
-			<version>0.52</version>
+			<version>0.53</version>
 		</dependency>
 		<dependency>
 			<groupId>org.almostrealism</groupId>
 			<artifactId>ar-physics</artifactId>
-			<version>0.52</version>
+			<version>0.53</version>
 		</dependency>
 	</dependencies>
 </project>

@@ -17,7 +17,6 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.expression.*;
-import org.almostrealism.algebra.computations.Floor;
 import org.almostrealism.algebra.computations.ScalarChoice;
 import org.almostrealism.algebra.computations.ScalarExpressionComputation;
 import io.almostrealism.relation.Evaluable;
@@ -127,10 +126,6 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 
 	default ScalarProducerBase pow(ScalarProducerBase base, double value) {
 		return pow(base, new Scalar(value));
-	}
-
-	default ScalarProducer floor(Supplier<Evaluable<? extends Scalar>> value) {
-		return new Floor(value);
 	}
 
 	default ScalarProducerBase min(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {

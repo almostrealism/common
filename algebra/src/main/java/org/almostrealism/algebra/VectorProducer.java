@@ -17,15 +17,10 @@
 package org.almostrealism.algebra;
 
 import org.almostrealism.algebra.computations.DefaultVectorEvaluable;
-import io.almostrealism.code.ProducerComputation;
-import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.DefaultComputer;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.KernelizedEvaluable;
-import org.almostrealism.hardware.KernelizedProducer;
-
-import java.util.function.Supplier;
 
 @Deprecated
 public interface VectorProducer extends VectorProducerBase {
