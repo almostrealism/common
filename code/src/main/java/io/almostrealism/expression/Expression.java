@@ -16,17 +16,20 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.code.Tree;
 import io.almostrealism.scope.Variable;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-public class Expression<T> {
+public class Expression<T> implements Tree<Expression<?>> {
 	private Class<T> type;
 	private Supplier<String> expression;
 	private List<Variable<?, ?>> dependencies = new ArrayList<>();
@@ -103,8 +106,30 @@ public class Expression<T> {
 		}
 	}
 
+	public Minus minus() { return new Minus((Expression) this); }
+
 	public Sum add(Expression<Double> operand) { return new Sum((Expression) this, operand); }
+	public Difference subtract(Expression<Double> operand) { return new Difference((Expression) this, operand); }
+
+	public Product multiply(int operand) { return new Product((Expression) this, new Expression(Integer.class, String.valueOf(operand))); }
 	public Product multiply(Expression<Double> operand) { return new Product((Expression) this, operand); }
+
+	public Quotient divide(int operand) { return new Quotient((Expression) this, new Expression(Integer.class, String.valueOf(operand))); }
+	public Quotient divide(Expression<Double> operand) { return new Quotient((Expression) this, operand); }
+
+	public Exponent pow(Expression<Double> operand) { return new Exponent((Expression) this, operand); }
+	public Exp exp() { return new Exp((Expression) this); }
+
+	public Floor floor() { return new Floor((Expression) this); }
+
+	public Mod mod(Expression<Double> operand) { return new Mod((Expression) this, operand); }
+
+	public Equals eq(Expression<T> operand) { return new Equals(this, operand); }
+
+	@Override
+	public Collection<Expression<?>> getChildren() {
+		throw new UnsupportedOperationException();
+	}
 
 	@Override
 	public boolean equals(Object obj) {

@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,9 +19,8 @@ package org.almostrealism.graph.mesh;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.algebra.ScalarProducerBase;
 import org.almostrealism.algebra.VectorProducerBase;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Intersection;
-import org.almostrealism.algebra.ScalarProducer;
-import org.almostrealism.algebra.VectorProducer;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayFeatures;
 import org.almostrealism.bool.AcceleratedConjunctionScalar;
@@ -32,9 +31,9 @@ import io.almostrealism.relation.Evaluable;
 import java.util.function.Supplier;
 
 public class TriangleIntersectAt extends LessThanScalar {
-	public TriangleIntersectAt(Supplier<Evaluable<? extends TriangleData>> t, Supplier<Evaluable<? extends Ray>> r) {
-		this(TriangleDataFeatures.getInstance().abc(t), TriangleDataFeatures.getInstance().def(t), TriangleDataFeatures.getInstance().jkl(t),
-				TriangleDataFeatures.getInstance().normal(t), RayFeatures.getInstance().origin(r), RayFeatures.getInstance().direction(r));
+	public TriangleIntersectAt(Supplier<Evaluable<? extends PackedCollection<?>>> t, Supplier<Evaluable<? extends Ray>> r) {
+		this(TriangleFeatures.getInstance().abc(t), TriangleFeatures.getInstance().def(t), TriangleFeatures.getInstance().jkl(t),
+				TriangleFeatures.getInstance().normal(t), RayFeatures.getInstance().origin(r), RayFeatures.getInstance().direction(r));
 	}
 
 	protected TriangleIntersectAt(VectorProducerBase abc, VectorProducerBase def, VectorProducerBase jkl,
@@ -123,7 +122,7 @@ public class TriangleIntersectAt extends LessThanScalar {
 		return f.multiply(def.dotProduct(q));
 	}
 
-	public static TriangleIntersectAt construct(Supplier<Evaluable<? extends TriangleData>> t, Supplier<Evaluable<? extends Ray>> r) {
+	public static TriangleIntersectAt construct(Supplier<Evaluable<? extends PackedCollection<?>>> t, Supplier<Evaluable<? extends Ray>> r) {
 		return new TriangleIntersectAt(t, r);
 	}
 }

@@ -23,6 +23,7 @@ import org.almostrealism.hardware.mem.MemoryPool;
 
 import java.util.Optional;
 
+@Deprecated
 public class PairPool extends MemoryPool<Pair> {
 	private static ContextSpecific<PairPool> local;
 

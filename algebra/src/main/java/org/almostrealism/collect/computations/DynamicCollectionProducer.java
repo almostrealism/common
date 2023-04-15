@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,16 +16,16 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.scope.Scope;
-import org.almostrealism.collect.CollectionProducer;
+import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionProducerBase;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
 
 import java.util.function.Function;
 
-// TODO  This needs to take a generic argument for the type of collection to produce
-public class DynamicCollectionProducer extends DynamicProducerForMemoryData<PackedCollection<?>> implements CollectionProducer<PackedCollection<?>> {
+// TODO  This needs to take a generic argument for the type of collection to produce (maybe)
+public class DynamicCollectionProducer extends DynamicProducerForMemoryData<PackedCollection<?>> implements CollectionProducerBase<PackedCollection<?>> {
 	private TraversalPolicy shape;
 
 	public DynamicCollectionProducer(TraversalPolicy shape, Function<Object[], PackedCollection<?>> function) {
@@ -39,7 +39,7 @@ public class DynamicCollectionProducer extends DynamicProducerForMemoryData<Pack
 	}
 
 	@Override
-	public Scope<PackedCollection<?>> getScope() {
-		throw new RuntimeException("Not implemented");
+	public Producer<PackedCollection<?>> reshape(TraversalPolicy shape) {
+		return new ReshapeProducer<>(shape, (Producer) this);
 	}
 }

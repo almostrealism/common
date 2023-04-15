@@ -18,12 +18,12 @@ package org.almostrealism.bool;
 
 import io.almostrealism.code.CollectionUtils;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.function.Supplier;
 
-public interface AcceleratedConditionalStatementCollection extends AcceleratedConditionalStatement<PackedCollection<?>>, CollectionProducer<PackedCollection<?>> {
+public interface AcceleratedConditionalStatementCollection extends AcceleratedConditionalStatement<PackedCollection<?>>, CollectionProducerComputation<PackedCollection<?>> {
 	default AcceleratedConjunctionCollection and(AcceleratedConditionalStatement<PackedCollection<?>> operand, Supplier<Evaluable<PackedCollection<?>>> trueValue, Supplier<Evaluable<PackedCollection<?>>> falseValue) {
 		return and(trueValue, falseValue, operand);
 	}

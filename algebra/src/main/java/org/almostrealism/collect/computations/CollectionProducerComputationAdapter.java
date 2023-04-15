@@ -18,16 +18,16 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.CollectionUtils;
 import io.almostrealism.code.PhysicalScope;
-import io.almostrealism.code.ProducerComputationAdapter;
+import io.almostrealism.code.ProducerComputationBase;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.ComputerFeatures;
 import org.almostrealism.hardware.DestinationConsolidationArgumentMap;
 import org.almostrealism.hardware.DestinationSupport;
 import org.almostrealism.hardware.KernelizedProducer;
-import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryDataComputation;
 import org.almostrealism.hardware.ProducerCache;
 import org.almostrealism.hardware.mem.MemoryDataDestination;
@@ -35,18 +35,42 @@ import org.almostrealism.hardware.mem.MemoryDataDestination;
 import java.util.function.Supplier;
 
 public abstract class CollectionProducerComputationAdapter<I extends PackedCollection<?>, O extends PackedCollection<?>>
-												extends ProducerComputationAdapter<I, O>
-												implements CollectionProducer<O>, MemoryDataComputation<O>,
+												extends ProducerComputationBase<I, O>
+												implements CollectionProducerComputation<O>, MemoryDataComputation<O>,
 														KernelizedProducer<O>, DestinationSupport<O>,
 														ComputerFeatures {
 	private TraversalPolicy shape;
 	private Supplier<? extends PackedCollection> destination;
 
+	protected CollectionProducerComputationAdapter() { }
+
 	public CollectionProducerComputationAdapter(TraversalPolicy outputShape, Supplier<Evaluable<? extends I>>... arguments) {
 		this.shape = outputShape;
 		this.destination = () -> new PackedCollection(shape);
-		this.setInputs(CollectionUtils.include(new Supplier[0], new MemoryDataDestination(this, len -> new PackedCollection(getShape().prependDimension(len))), arguments));
+		this.setInputs(CollectionUtils.include(new Supplier[0], new MemoryDataDestination(this, this::createKernelDestination), arguments));
 		init();
+	}
+
+	protected void setShape(TraversalPolicy shape) {
+		this.shape = shape;
+	}
+
+	protected MemoryBank<?> createKernelDestination(int len) {
+		if (len > 1 && len % getShape().getCount() != 0) {
+			throw new IllegalArgumentException("Kernel length must be a multiple of the shape count");
+		}
+
+		int count = len / getShape().getCount();
+
+		// When kernel length as 1, an assumption is made that the intended shape
+		// is the original shape. This is a bit of a hack, but it's by far the
+		// simplest solution available
+		if (count == 0 || (len == getShape().length(0) && count == 1)) {
+			// It is not necessary to prepend a (usually) unnecessary dimension
+			return new PackedCollection<>(getShape());
+		} else {
+			return new PackedCollection<>(getShape().prependDimension(count));
+		}
 	}
 
 	@Override
@@ -56,7 +80,7 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 
 	@Override
 	public int getMemLength() {
-		return getShape().getTotalSize();
+		return getShape().getSize();
 	}
 
 	@Override

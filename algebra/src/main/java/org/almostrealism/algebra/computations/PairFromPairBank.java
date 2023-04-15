@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,18 +18,19 @@ package org.almostrealism.algebra.computations;
 
 import io.almostrealism.expression.Expression;
 import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.PairBank;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.PairProducer;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.DynamicProducerComputationAdapter;
 
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public class PairFromPairBank extends DynamicProducerComputationAdapter<PairBank, Pair<?>> implements PairProducer {
-	public PairFromPairBank(Supplier<Evaluable<? extends PairBank>> bank, Supplier<Evaluable<? extends Scalar>> index) {
-		super(2, Pair.empty(), PairBank::new, bank, (Supplier) index);
+@Deprecated
+public class PairFromPairBank extends DynamicProducerComputationAdapter<PackedCollection<Pair<?>>, Pair<?>> implements PairProducer {
+	public PairFromPairBank(Supplier<Evaluable<? extends PackedCollection<Pair<?>>>> bank, Supplier<Evaluable<? extends Scalar>> index) {
+		super(2, Pair.empty(), Pair::bank, bank, (Supplier) index);
 	}
 
 	@Override

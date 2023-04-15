@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,12 +16,27 @@
 
 package org.almostrealism.algebra.computations;
 
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorBank;
 import org.almostrealism.algebra.VectorProducer;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.Shape;
+import org.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.computations.ReshapeProducer;
 
-public class StaticVectorComputation extends StaticComputationAdapter<Vector> implements VectorProducer {
+@Deprecated
+public class StaticVectorComputation extends StaticComputationAdapter<Vector> implements VectorProducer, Shape<Producer<PackedCollection<?>>> {
 	public StaticVectorComputation(Vector value) {
-		super(value, Vector.blank(), VectorBank::new);
+		super(value, Vector.blank(), Vector::bank);
+	}
+
+	@Override
+	public TraversalPolicy getShape() {
+		return new TraversalPolicy(3);
+	}
+
+	@Override
+	public Producer<PackedCollection<?>> reshape(TraversalPolicy shape) {
+		return new ReshapeProducer(shape, this);
 	}
 }

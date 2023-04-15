@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,7 +26,9 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.computations.ScalarExpressionComputation;
 import org.almostrealism.algebra.computations.StaticVectorComputation;
 import org.almostrealism.algebra.computations.VectorExpressionComputation;
-import org.almostrealism.algebra.computations.VectorSum;
+import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.hardware.HardwareFeatures;
 
 import java.util.ArrayList;
@@ -34,6 +36,7 @@ import java.util.List;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 /**
@@ -42,7 +45,7 @@ import java.util.stream.IntStream;
  *
  * @author  Michael Murray
  */
-public interface VectorFeatures extends HardwareFeatures {
+public interface VectorFeatures extends CollectionFeatures, HardwareFeatures {
 	Scalar half = new Scalar(0.5);
 	Scalar two = new Scalar(2.0);
 
@@ -70,34 +73,30 @@ public interface VectorFeatures extends HardwareFeatures {
 		return fromScalars(x, y, z);
 	}
 
-	default Producer<Vector> vector() { return Vector.blank(); }
-
-	default ScalarEvaluable x(Evaluable<Vector> v) {
-		return (ScalarEvaluable) x(() -> v).get();
+	default VectorExpressionComputation vector(Supplier<Evaluable<? extends PackedCollection<?>>> bank, int index) {
+		List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression = new ArrayList<>();
+		IntStream.range(0, 3).forEach(i -> expression.add(args -> args.get(1).getValue(index * 3 + i)));
+		return new VectorExpressionComputation(expression, bank);
 	}
+
+	default VectorExpressionComputation vector(ExpressionComputation<?> value) {
+		if (value.getExpressions().size() != 3) throw new IllegalArgumentException();
+		return new VectorExpressionComputation(value.expression(),
+				value.getInputs().subList(1, value.getInputs().size()).toArray(Supplier[]::new));
+	}
+
+	default Producer<Vector> vector() { return Vector.blank(); }
 
 	default ScalarExpressionComputation x(Supplier<Evaluable<? extends Vector>> v) {
 		return new ScalarExpressionComputation(List.of(args -> args.get(1).getValue(0), args -> expressionForDouble(1.0)), (Supplier) v);
-	}
-
-	default ScalarEvaluable y(Evaluable<Vector> v) {
-		return (ScalarEvaluable) y(() -> v).get();
 	}
 
 	default ScalarExpressionComputation y(Supplier<Evaluable<? extends Vector>> v) {
 		return new ScalarExpressionComputation(List.of(args -> args.get(1).getValue(1), args -> expressionForDouble(1.0)), (Supplier) v);
 	}
 
-	default ScalarEvaluable z(Evaluable<Vector> v) {
-		return (ScalarEvaluable) z(() -> v).get();
-	}
-
 	default ScalarExpressionComputation z(Supplier<Evaluable<? extends Vector>> v) {
 		return new ScalarExpressionComputation(List.of(args -> args.get(1).getValue(2), args -> expressionForDouble(1.0)), (Supplier) v);
-	}
-
-	default ScalarEvaluable dotProduct(Evaluable<Vector> a, Evaluable<Vector> b) {
-		return (ScalarEvaluable) dotProduct(() -> a, () -> b).get();
 	}
 
 	default ScalarExpressionComputation dotProduct(Supplier<Evaluable<? extends Vector>> a, Supplier<Evaluable<? extends Vector>> b) {
@@ -111,35 +110,30 @@ public interface VectorFeatures extends HardwareFeatures {
 		return new ScalarExpressionComputation(comp, (Supplier) a, (Supplier) b);
 	}
 
-	default VectorEvaluable crossProduct(Evaluable<Vector> a, Evaluable<Vector> b) {
-		return (VectorEvaluable) crossProduct(() -> a, () -> b).get();
-	}
-
 	default VectorExpressionComputation crossProduct(Supplier<Evaluable<? extends Vector>> a, Supplier<Evaluable<? extends Vector>> b) {
 		return fromScalars(y(a).multiply(z(b)).subtract(z(a).multiply(y(b))),
 				z(a).multiply(x(b)).subtract(x(a).multiply(z(b))),
 				x(a).multiply(y(b)).subtract(y(a).multiply(x(b))));
 	}
 
-	default VectorEvaluable add(Evaluable<Vector> value, Evaluable<Vector> operand) {
-		return (VectorEvaluable) add(() -> value, () -> operand).get();
+	default VectorExpressionComputation add(VectorProducerBase value, VectorProducerBase operand) {
+		// TODO  Delegate to _add
+		List<Function<List<MultiExpression<Double>>, Expression<Double>>> expressions =
+				IntStream.range(0, 3).mapToObj(i -> (Function<List<MultiExpression<Double>>, Expression<Double>>)
+								np -> new Sum(np.get(1).getValue(i), np.get(2).getValue(i)))
+						.collect(Collectors.toList());
+		return new VectorExpressionComputation(expressions, (Supplier) value, (Supplier) operand);
 	}
 
-	default VectorProducer add(Supplier<Evaluable<? extends Vector>> value, Supplier<Evaluable<? extends Vector>> operand) {
-		return new VectorSum(value, operand);
+	default VectorProducerBase subtract(VectorProducerBase value, VectorProducerBase operand) {
+		return add(value, minus(operand));
 	}
 
-	default VectorEvaluable subtract(Evaluable<Vector> value, Evaluable<Vector> operand) {
-		return (VectorEvaluable) subtract(() -> value, () -> operand).get();
+	default VectorExpressionComputation multiply(VectorProducerBase a, VectorProducerBase b) {
+		return multiply(new VectorProducerBase[] { a, b });
 	}
 
-	default VectorProducer subtract(Supplier<Evaluable<? extends Vector>> value, Supplier<Evaluable<? extends Vector>> operand) {
-		return new VectorSum(value, minus(operand));
-	}
-
-	default VectorEvaluable multiply(Evaluable<Vector> a, Evaluable<Vector> b) { return (VectorEvaluable) multiply(() -> a, () -> b).get(); }
-
-	default VectorExpressionComputation multiply(Supplier<Evaluable<? extends Vector>>... values) {
+	default VectorExpressionComputation multiply(VectorProducerBase... values) {
 		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
 		comp.add(args -> new Product(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValue(0)).toArray(Expression[]::new)));
 		comp.add(args -> new Product(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValue(1)).toArray(Expression[]::new)));
@@ -147,58 +141,35 @@ public interface VectorFeatures extends HardwareFeatures {
 		return new VectorExpressionComputation(comp, (Supplier[]) values);
 	}
 
-	default VectorEvaluable scalarMultiply(Evaluable<Vector> a, double b) {
+	default VectorExpressionComputation scalarMultiply(VectorProducerBase a, double b) {
 		return scalarMultiply(a, new Scalar(b));
 	}
 
-	default VectorExpressionComputation scalarMultiply(Supplier<Evaluable<? extends Vector>> a, double b) {
+	default VectorExpressionComputation scalarMultiply(Producer<Vector> a, double b) {
 		return scalarMultiply(a, new Scalar(b));
 	}
 
-	default VectorEvaluable scalarMultiply(Evaluable<Vector> a, Scalar b) {
-		return scalarMultiply(a, ScalarFeatures.of(b).get());
-	}
-
-	default VectorExpressionComputation scalarMultiply(Supplier<Evaluable<? extends Vector>> a, Scalar b) {
+	default VectorExpressionComputation scalarMultiply(Producer<Vector> a, Scalar b) {
 		return scalarMultiply(a, ScalarFeatures.of(b));
 	}
 
-	default VectorEvaluable scalarMultiply(Evaluable<Vector> a, Evaluable<Scalar> b) {
-		return (VectorEvaluable) scalarMultiply(() -> a, () -> b).get();
+	@Deprecated
+	default VectorExpressionComputation scalarMultiply(Producer<Vector> a, Supplier<Evaluable<? extends Scalar>> b) {
+		return vector(multiply(a, fromScalars(b, b, b)));
 	}
 
-	default VectorExpressionComputation scalarMultiply(Supplier<Evaluable<? extends Vector>> a, Supplier<Evaluable<? extends Scalar>> b) {
-		return multiply(a, fromScalars(b, b, b));
-	}
-
-	default VectorEvaluable minus(Evaluable<Vector> p) {
-		return (VectorEvaluable) minus(() -> p).get();
-	}
-
-	default VectorExpressionComputation minus(Supplier<Evaluable<? extends Vector>> p) {
+	default VectorExpressionComputation minus(VectorProducerBase p) {
 		return multiply(p, fromScalars(ScalarFeatures.minusOne(),
 				ScalarFeatures.minusOne(),
 				ScalarFeatures.minusOne()));
-	}
-
-	default ScalarEvaluable length(Evaluable<Vector> v) {
-		return (ScalarEvaluable) length(() -> v).get();
 	}
 
 	default ScalarProducerBase length(Supplier<Evaluable<? extends Vector>> v) {
 		return x(v).pow(two).add(y(v).pow(two)).add(z(v).pow(two)).pow(half);
 	}
 
-	default ScalarEvaluable lengthSq(Evaluable<Vector> v) {
-		return x(v).pow(two).add(y(v).pow(two)).add(z(v).pow(two));
-	}
-
 	default ScalarProducerBase lengthSq(Supplier<Evaluable<? extends Vector>> v) {
 		return x(v).pow(two).add(y(v).pow(two)).add(z(v).pow(two));
-	}
-
-	default VectorEvaluable normalize(Evaluable<Vector> p) {
-		return (VectorEvaluable) normalize(() -> p).get();
 	}
 
 	default VectorExpressionComputation normalize(Supplier<Evaluable<? extends Vector>> p) {
@@ -206,10 +177,6 @@ public interface VectorFeatures extends HardwareFeatures {
 		return fromScalars(x(p).multiply(oneOverLength),
 				y(p).multiply(oneOverLength),
 				z(p).multiply(oneOverLength));
-	}
-
-	default VectorEvaluable fromScalars(Evaluable<Scalar> x, Evaluable<Scalar> y, Evaluable<Scalar> z) {
-		return (VectorEvaluable) fromScalars(() -> x, () -> y, () -> z).get();
 	}
 
 	default VectorExpressionComputation fromScalars(Supplier<Evaluable<? extends Scalar>> x,

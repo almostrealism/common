@@ -16,13 +16,27 @@
 
 package org.almostrealism.algebra.computations;
 
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.PairBank;
 import org.almostrealism.algebra.PairProducer;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.Shape;
+import org.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.computations.ReshapeProducer;
 
 @Deprecated
-public class StaticPairComputation extends StaticComputationAdapter<Pair<?>> implements PairProducer {
+public class StaticPairComputation extends StaticComputationAdapter<Pair<?>> implements PairProducer, Shape<Producer<PackedCollection<?>>> {
 	public StaticPairComputation(Pair value) {
-		super(value, Pair.empty(), PairBank::new);
+		super(value, Pair.empty(), Pair::bank);
+	}
+
+	@Override
+	public TraversalPolicy getShape() {
+		return new TraversalPolicy(2);
+	}
+
+	@Override
+	public Producer<PackedCollection<?>> reshape(TraversalPolicy shape) {
+		return new ReshapeProducer(shape, this);
 	}
 }

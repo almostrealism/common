@@ -16,6 +16,7 @@
 
 package org.almostrealism.algebra;
 
+@Deprecated
 public interface TripleFunction<T extends Triple, V> {
 	V operate(T in);
 }

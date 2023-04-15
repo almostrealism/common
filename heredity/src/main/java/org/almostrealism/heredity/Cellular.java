@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,8 @@
 package org.almostrealism.heredity;
 
 import io.almostrealism.cycle.Setup;
+import io.almostrealism.relation.Node;
 import io.almostrealism.uml.Lifecycle;
 
-public interface Cellular extends Setup, Lifecycle {
+public interface Cellular extends Node, Setup, Lifecycle {
 }

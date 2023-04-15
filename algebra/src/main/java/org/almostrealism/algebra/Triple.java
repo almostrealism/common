@@ -1,5 +1,6 @@
 package org.almostrealism.algebra;
 
+@Deprecated
 public interface Triple {
 	double getA();
 	double getB();

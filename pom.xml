@@ -6,7 +6,7 @@
 
     <groupId>org.almostrealism</groupId>
     <artifactId>Common</artifactId>
-    <version>0.49</version>
+    <version>0.52</version>
 	<modules>
 		<module>relation</module>
 		<module>io</module>
@@ -28,6 +28,7 @@
 		<module>utils</module>
 		<module>optimize</module>
 		<module>collect</module>
+		<module>ml</module>
 	</modules>
 
 	<!-- Output to jar format -->

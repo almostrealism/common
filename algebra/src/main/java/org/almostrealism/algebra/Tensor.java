@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -100,8 +100,20 @@ public class Tensor<T> implements HTMLContent {
 
 	public PackedCollection<?> pack() {
 		TraversalPolicy shape = new TraversalPolicy(IntStream.range(0, getDimensions()).mapToObj(i -> new int[i]).mapToInt(this::length).toArray());
-		TraversalPolicy targetShape = shape.appendDimension(((MemoryData) get(new int[shape.getDimensions()])).getMemLength());
-		PackedCollection c = new PackedCollection(targetShape);
+		if (get(new int[shape.getDimensions()]) instanceof MemoryData) {
+			TraversalPolicy targetShape = shape.appendDimension(((MemoryData) get(new int[shape.getDimensions()])).getMemLength());
+			return packMem(shape, targetShape);
+		}
+
+		PackedCollection<?> c = new PackedCollection<>(shape);
+
+		AtomicInteger index = new AtomicInteger();
+		shape.stream().forEach(pos -> c.setMem(index.getAndIncrement(), ((Number) get(pos)).doubleValue()));
+		return c;
+	}
+
+	private PackedCollection<?> packMem(TraversalPolicy shape, TraversalPolicy targetShape) {
+		PackedCollection<?> c = new PackedCollection<>(targetShape);
 
 		AtomicInteger index = new AtomicInteger();
 		shape.stream().forEach(pos -> {

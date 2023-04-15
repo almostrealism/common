@@ -38,7 +38,7 @@ public class ScaleFactor implements Factor<PackedCollection<?>>, ScalarFeatures,
 
 	@Override
 	public Producer<PackedCollection<?>> getResultant(Producer<PackedCollection<?>> value) {
-		return _multiply(value, (Producer) v(scale), args -> {
+		return multiply(value, (Producer) v(scale), args -> {
 			PackedCollection<?> result = new PackedCollection<>(1);
 
 			if (value instanceof StaticCollectionComputation) {

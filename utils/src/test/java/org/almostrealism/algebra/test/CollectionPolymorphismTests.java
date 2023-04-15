@@ -27,7 +27,9 @@ public class CollectionPolymorphismTests implements TestFeatures {
 		t.insert(new Scalar(4), 1, 0);
 		t.insert(new Scalar(5), 1, 1);
 		t.insert(new Scalar(6), 1, 2);
-		List<ScalarBank> banks = t.pack().traverse(1).extract(ScalarBank::new).collect(Collectors.toList());
+		List<ScalarBank> banks = t.pack().traverse(1)
+				.extract(ScalarBank::new)
+				.collect(Collectors.toList());
 		assertEquals(3, banks.get(0).get(2));
 		assertEquals(5, banks.get(1).get(1));
 	}

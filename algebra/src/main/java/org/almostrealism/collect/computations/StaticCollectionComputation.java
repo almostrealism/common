@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,15 +16,14 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.computations.StaticComputationAdapter;
-import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversalPolicy;
 
 import java.util.function.Supplier;
 
-public class StaticCollectionComputation<T extends PackedCollection<?>> extends StaticComputationAdapter<T> implements CollectionProducer<T> {
+public class StaticCollectionComputation<T extends PackedCollection<?>> extends StaticComputationAdapter<T> implements CollectionProducerComputation<T> {
 
 	public StaticCollectionComputation(PackedCollection<?> value) {
 		super((T) value, (Supplier) PackedCollection.blank(value.getShape()), len -> new PackedCollection(value.getShape().prependDimension(len)));
@@ -33,5 +32,10 @@ public class StaticCollectionComputation<T extends PackedCollection<?>> extends 
 	@Override
 	public TraversalPolicy getShape() {
 		return getValue().getShape();
+	}
+
+	@Override
+	public CollectionProducerComputation<T> traverse(int axis) {
+		return new StaticCollectionComputation(getValue().traverse(axis));
 	}
 }

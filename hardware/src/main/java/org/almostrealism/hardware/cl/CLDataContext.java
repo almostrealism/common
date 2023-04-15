@@ -59,6 +59,8 @@ public class CLDataContext implements DataContext {
 	private ThreadLocal<ComputeContext> computeContext;
 	private ThreadLocal<IntFunction<MemoryProvider<?>>> memoryProvider;
 
+	private Runnable start;
+
 	public CLDataContext(Hardware hardware, String name, long memoryMax, int offHeapSize, CLMemoryProvider.Location location) {
 		this.hardware = hardware;
 		this.name = name;
@@ -69,12 +71,71 @@ public class CLDataContext implements DataContext {
 		this.memoryProvider = new ThreadLocal<>();
 	}
 
-	public void init(cl_platform_id platform, cl_device_id mainDevice, cl_device_id kernelDevice) {
+	public void init(boolean gpu, boolean kernelQueue) {
+		altRam = new JVMMemoryProvider();
+		start = () -> start(gpu, kernelQueue);
+	}
+
+	protected void identifyDevices(boolean gpu, boolean kernelQueue) {
+		if (platform != null && mainDevice != null) return;
+
+		final int platformIndex = 0;
+		final int deviceIndex = 0;
+		final long deviceType = gpu ? CL.CL_DEVICE_TYPE_GPU : CL.CL_DEVICE_TYPE_CPU;
+
+		int numPlatformsArray[] = new int[1];
+		CL.clGetPlatformIDs(0, null, numPlatformsArray);
+		int numPlatforms = numPlatformsArray[0];
+
+		if (Hardware.enableVerbose) System.out.println("Hardware[" + name + "]: " + numPlatforms + " platforms available");
+
+		cl_platform_id platforms[] = new cl_platform_id[numPlatforms];
+		CL.clGetPlatformIDs(platforms.length, platforms, null);
+		platform = platforms[platformIndex];
+
+		if (Hardware.enableVerbose)
+			System.out.println("Hardware[" + name + "]: Using platform " + platformIndex + " -- " + platform);
+
+		/* Main Device Selection */
+
+		int numDevicesArray[] = new int[1];
+		CL.clGetDeviceIDs(platform, deviceType, 0, null, numDevicesArray);
+		int numDevices = numDevicesArray[0];
+
+		if (Hardware.enableVerbose)
+			System.out.println("Hardware[" + name + "]: " + numDevices + " " + deviceName(deviceType) + "(s) available");
+
+		cl_device_id devices[] = new cl_device_id[numDevices];
+		CL.clGetDeviceIDs(platform, deviceType, numDevices, devices, null);
+		mainDevice = devices[deviceIndex];
+
+		System.out.println("Hardware[" + name + "]: Using " + deviceName(deviceType) + " " + deviceIndex);
+
+		/* Kernel Device Selection */
+
+		if (kernelQueue) {
+			CL.clGetDeviceIDs(platform, CL.CL_DEVICE_TYPE_GPU, 0, null, numDevicesArray);
+			numDevices = numDevicesArray[0];
+
+			if (Hardware.enableVerbose)
+				System.out.println("Hardware[" + name + "]: " + numDevices + " " + deviceName(CL.CL_DEVICE_TYPE_GPU) + "(s) available for kernels");
+
+			if (numDevices > 0) {
+				CL.clGetDeviceIDs(platform, CL.CL_DEVICE_TYPE_GPU, numDevices, devices, null);
+				kernelDevice = devices[deviceIndex];
+
+				System.out.println("Hardware[" + name + "]: Using " + deviceName(CL.CL_DEVICE_TYPE_GPU) + " " + deviceIndex + " for kernels");
+			}
+		}
+	}
+
+	private void start(boolean gpu, boolean kernelQueue) {
 		if (ctx != null) return;
 
-		this.platform = platform;
-		this.mainDevice = mainDevice;
-		this.kernelDevice = kernelDevice;
+		CL.setExceptionsEnabled(true);
+
+		identifyDevices(gpu, kernelQueue);
+
 		this.mainDeviceInfo = mainDevice == null ? null : deviceInfo(mainDevice);
 		this.kernelDeviceInfo = kernelDevice == null ? null : deviceInfo(kernelDevice);
 
@@ -96,7 +157,8 @@ public class CLDataContext implements DataContext {
 			System.out.println("Hardware[" + getName() + "]: OpenCL read/write command queue initialized");
 
 		mainRam = new CLMemoryProvider(this, queue, hardware.getNumberSize(), memoryMax, location);
-		altRam = new JVMMemoryProvider();
+
+		start = null;
 	}
 
 	private ComputeContext createContext(ComputeRequirement... expectations) {
@@ -108,6 +170,7 @@ public class CLDataContext implements DataContext {
 		if (cReq.isPresent()) {
 			cc = new CLNativeComputeContext(hardware);
 		} else {
+			if (start != null) start.run();
 			cc = new CLComputeContext(hardware, ctx);
 			((CLComputeContext) cc).init(mainDevice, kernelDevice, pReq.isPresent());
 		}
@@ -117,12 +180,19 @@ public class CLDataContext implements DataContext {
 
 	public String getName() { return name; }
 
-	public cl_context getClContext() { return ctx; }
+	public cl_context getClContext() {
+		if (start != null) start.run();
+		return ctx;
+	}
 
 	public DeviceInfo getMainDeviceInfo() { return mainDeviceInfo; }
 	public DeviceInfo getKernelDeviceInfo() { return kernelDeviceInfo; }
 
-	public MemoryProvider<RAM> getMemoryProvider() { return mainRam; }
+	public MemoryProvider<RAM> getMemoryProvider() {
+		if (start != null) start.run();
+		return mainRam;
+	}
+
 	public MemoryProvider<Memory> getAltMemoryProvider() { return altRam; }
 
 	@Override
@@ -200,10 +270,20 @@ public class CLDataContext implements DataContext {
 			computeContext.remove();
 		}
 
-		mainRam.destroy();
+		if (mainRam != null) mainRam.destroy();
 		if (altRam != null) altRam.destroy();
-		CL.clReleaseContext(ctx);
+		if (ctx != null) CL.clReleaseContext(ctx);
 		ctx = null;
+	}
+
+	protected static String deviceName(long type) {
+		if (type == CL.CL_DEVICE_TYPE_CPU) {
+			return "CPU";
+		} else if (type == CL.CL_DEVICE_TYPE_GPU) {
+			return "GPU";
+		} else {
+			throw new IllegalArgumentException("Unknown device type " + type);
+		}
 	}
 
 	protected DeviceInfo deviceInfo(cl_device_id device) {

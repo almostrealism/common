@@ -24,6 +24,7 @@ import org.almostrealism.algebra.Triple;
 import org.almostrealism.algebra.TripleFunction;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorFeatures;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.computations.MatrixAdjoint;
 import org.almostrealism.geometry.computations.MatrixDeterminant;
 import org.almostrealism.geometry.computations.MatrixProduct;
@@ -390,7 +391,7 @@ public class TransformMatrix extends MemoryDataAdapter implements TripleFunction
 	public static Producer<TransformMatrix> blank() {
 		return new DynamicProducerForMemoryData<>(args ->
 				new TransformMatrix(false, null, 0),
-				TransformMatrixBank::new);
+				i -> new PackedCollection<>(i, 16));
 	}
 
 	/**

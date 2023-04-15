@@ -25,7 +25,7 @@ import java.util.function.Supplier;
 public class DefaultScopeInputManager implements ScopeInputManager {
 	private static final DefaultScopeInputManager instance = new DefaultScopeInputManager();
 
-	private int counter;
+	protected int counter;
 	private BiFunction<NameProvider, Supplier<Evaluable<?>>, ArrayVariable<?>> variableFactory;
 
 	public DefaultScopeInputManager() {
@@ -33,6 +33,10 @@ public class DefaultScopeInputManager implements ScopeInputManager {
 	}
 
 	public DefaultScopeInputManager(BiFunction<NameProvider, Supplier<Evaluable<?>>, ArrayVariable<?>> variableFactory) {
+		this.variableFactory = variableFactory;
+	}
+
+	protected void setVariableFactory(BiFunction<NameProvider, Supplier<Evaluable<?>>, ArrayVariable<?>> variableFactory) {
 		this.variableFactory = variableFactory;
 	}
 

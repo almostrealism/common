@@ -24,7 +24,7 @@ import java.util.function.Function;
 public class DynamicRGBProducer extends DynamicProducerForMemoryData<RGB> implements RGBProducer {
 
 	public DynamicRGBProducer(Function<Object[], RGB> function) {
-		super(function, RGBBank::new);
+		super(function, RGB::bank);
 	}
 
 	@Override

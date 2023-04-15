@@ -17,13 +17,15 @@
 package org.almostrealism.geometry;
 
 import io.almostrealism.code.Computation;
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 
-public class DefaultRayEvaluable extends AcceleratedComputationEvaluable<Ray> implements RayEvaluable {
+@Deprecated
+public class DefaultRayEvaluable extends AcceleratedComputationEvaluable<Ray> implements Evaluable<Ray>, RayFeatures  {
 
 	public DefaultRayEvaluable(Computation<Ray> c) {
 		super(c);
@@ -36,6 +38,6 @@ public class DefaultRayEvaluable extends AcceleratedComputationEvaluable<Ray> im
 
 	@Override
 	public MemoryBank<Ray> createKernelDestination(int size) {
-		return new RayBank(size);
+		return Ray.bank(size);
 	}
 }

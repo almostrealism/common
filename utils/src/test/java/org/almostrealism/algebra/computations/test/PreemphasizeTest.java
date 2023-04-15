@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,14 +16,9 @@
 
 package org.almostrealism.algebra.computations.test;
 
-import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
-import org.almostrealism.algebra.computations.DefaultScalarBankEvaluable;
-import org.almostrealism.algebra.computations.Preemphasize;
-import org.almostrealism.hardware.AcceleratedComputationEvaluable;
-import org.almostrealism.hardware.DynamicAcceleratedEvaluable;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
@@ -40,13 +35,19 @@ public class PreemphasizeTest implements TestFeatures {
 
 	@Test
 	public void preemphasize() {
-		Evaluable<ScalarBank> ev = new Preemphasize(SIZE,
+		Evaluable<ScalarBank> ev = preemphasizeOld(SIZE,
 				v(2 * SIZE, 0),
 				v(Scalar.class, 1)).get();
 
-		((OperationAdapter) ev).compile();
-
+		System.out.println("Standard...");
 		ScalarBank b = ev.evaluate(window(), new Scalar(0.1));
 		IntStream.range(0, b.getCount()).mapToObj(b::get).forEach(System.out::println);
+
+		System.out.println("Fast...");
+		ScalarBank c = preemphasize(SIZE, v(2 * SIZE, 0),
+				v(Scalar.class, 1)).get().evaluate(window(), new Scalar(0.1));
+		IntStream.range(0, c.getCount()).mapToObj(c::get).forEach(System.out::println);
+
+		IntStream.range(0, c.getCount()).forEach(i -> assertEquals(b.get(i), c.get(i)));
 	}
 }

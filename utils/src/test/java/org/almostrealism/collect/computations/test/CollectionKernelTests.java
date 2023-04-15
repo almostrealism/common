@@ -1,0 +1,112 @@
+/*
+ * Copyright 2023 Michael Murray
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
+package org.almostrealism.collect.computations.test;
+
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionProducerBase;
+import org.almostrealism.collect.CollectionProducerComputation;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.DynamicCollectionProducer;
+import org.almostrealism.hardware.KernelizedEvaluable;
+import org.almostrealism.hardware.cl.HardwareOperator;
+import org.almostrealism.util.TestFeatures;
+import org.junit.Assert;
+import org.junit.Test;
+
+import java.util.Arrays;
+
+public class CollectionKernelTests implements TestFeatures {
+	@Test
+	public void func() {
+		DynamicCollectionProducer a = func(shape(2, 5), args ->
+				c(shape(2, 5), 2.0, 3.0, 4.0, 6.0, 7.0, 8.0, 11.0, 13.0, 15.0, 17.0)
+						.get().evaluate(args));
+		PackedCollection<?> out = a.traverse(1).get().evaluate();
+		System.out.println("CollectionKernelTests.func: Out shape = " + out.getShape());
+		System.out.println("CollectionKernelTests.func: Out count = " + out.getCount());
+		System.out.println("CollectionKernelTests.func: Out atomic length = " + out.getAtomicMemLength());
+
+		Assert.assertEquals(2, out.getShape().length(0));
+		Assert.assertEquals(5, out.getShape().length(1));
+		Assert.assertEquals(2, out.getCount());
+	}
+
+	@Test
+	public void multiply() {
+		double v1[] = { 2.0, 3.0, 4.0, 6.0, 7.0, 8.0, 11.0, 13.0, 15.0, 17.0};
+		double v2[] = { 2.0, 3.0, 0.5, 0.25, 0.1 };
+
+		CollectionProducerBase<PackedCollection<?>> a = func(shape(2, 5), args ->
+				c(shape(2, 5), v1)
+						.get().evaluate(args));
+		CollectionProducerBase<PackedCollection<?>> b = func(shape(5), args ->
+				c(v2).get().evaluate(args));
+
+		HardwareOperator.verboseLog(() -> {
+			CollectionProducerComputation<PackedCollection<?>> c = multiply(shape(2, 5).traverse(1), a.traverse(1), b.traverse(0), null);
+			KernelizedEvaluable<PackedCollection<?>> eval = c.get();
+			PackedCollection<?> out = eval.evaluate();
+
+			System.out.println("CollectionKernelTests.divide: Out shape = " + out.getShape());
+			System.out.println("CollectionKernelTests.divide: Out count = " + out.getCount());
+
+			Assert.assertEquals(2, out.getShape().length(0));
+			Assert.assertEquals(5, out.getShape().length(1));
+			Assert.assertEquals(2, out.getCount());
+
+			double values[] = out.toArray(0, 10);
+			System.out.println(Arrays.toString(values));
+
+			for (int i = 0; i < 5; i++) {
+				assertEquals(v1[i] * v2[i], values[i]);
+				assertEquals(v1[i + 5] * v2[i], values[i + 5]);
+			}
+		});
+	}
+
+	@Test
+	public void divide() {
+		double v1[] = { 2.0, 3.0, 4.0, 6.0, 7.0, 8.0, 11.0, 13.0, 15.0, 17.0};
+		double v2[] = { 2.0 };
+
+		CollectionProducerBase<PackedCollection<?>> a = func(shape(2, 5), args ->
+				c(shape(2, 5), v1)
+						.get().evaluate(args));
+		CollectionProducerBase<PackedCollection<?>> b = func(shape(1), args ->
+				c(v2).get().evaluate(args));
+
+		HardwareOperator.verboseLog(() -> {
+			Producer<PackedCollection<?>> c = divide(a.traverseEach(), b.traverse(0)).reshape(shape(2, 5));
+			Evaluable<PackedCollection<?>> eval = c.get();
+			PackedCollection<?> out = eval.evaluate();
+
+			System.out.println("CollectionKernelTests.divide: Out shape = " + out.getShape());
+			System.out.println("CollectionKernelTests.divide: Out count = " + out.getCount());
+
+			Assert.assertEquals(2, out.getShape().length(0));
+			Assert.assertEquals(5, out.getShape().length(1));
+
+			double values[] = out.toArray(0, 10);
+			System.out.println(Arrays.toString(values));
+
+			for (int i = 0; i < 10; i++) {
+				assertEquals(v1[i] / v2[0], values[i]);
+			}
+		});
+	}
+}

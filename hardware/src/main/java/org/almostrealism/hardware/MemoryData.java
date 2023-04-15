@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -20,13 +20,14 @@ import io.almostrealism.code.Memory;
 import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Delegated;
+import io.almostrealism.relation.Node;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 
-public interface MemoryData extends MultiExpression<Double>, Delegated<MemoryData> {
+public interface MemoryData extends MultiExpression<Double>, Delegated<MemoryData>, Node {
 	int sizeOf = Hardware.getLocalHardware().getNumberSize();
 
 	Memory getMem();

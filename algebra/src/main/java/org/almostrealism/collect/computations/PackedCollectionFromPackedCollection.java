@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,49 +16,37 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.expression.Expression;
-import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.algebra.Scalar;
+import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.Position;
 import org.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.hardware.DynamicProducerComputationAdapter;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.hardware.KernelizedEvaluable;
 
-import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public class PackedCollectionFromPackedCollection<I extends PackedCollection<?>, O extends PackedCollection<?>>
-		extends DynamicProducerComputationAdapter<I, O> implements CollectionProducer<O> {
-	private TraversalPolicy inputShape;
+public class PackedCollectionFromPackedCollection extends ValueFromPackedCollection<PackedCollection<?>> implements CollectionProducerComputation<PackedCollection<?>> {
+	public PackedCollectionFromPackedCollection(TraversalPolicy shape, Supplier<Evaluable<? extends PackedCollection>> collection, Supplier<Evaluable<? extends Scalar>> index) {
+		super(shape, PackedCollection.blank(1), PackedCollection.bank(new TraversalPolicy(1)),
+				collection, index);
+	}
 
-	public PackedCollectionFromPackedCollection(TraversalPolicy inputShape, TraversalPolicy outputShape,
-												Supplier<Evaluable<? extends O>> result,
-												IntFunction<MemoryBank<O>> kernelDestination,
-												Supplier<Evaluable<? extends I>> collection,
-												Supplier<Evaluable<? extends Position>> position) {
-		super(outputShape.getTotalSize(), result, kernelDestination, collection, (Supplier) position);
-		this.inputShape = inputShape;
+	public TraversalPolicy getShape() {
+		return shape(1);
 	}
 
 	@Override
-	public TraversalPolicy getShape() { return inputShape; }
+	public KernelizedEvaluable<PackedCollection<?>> get() {
+		Evaluable<? extends PackedCollection> out = getInputs().get(0).get();
+		Evaluable<? extends PackedCollection> c = getInputs().get(1).get();
+		Evaluable<? extends Scalar> i = (Evaluable) getInputs().get(2).get();
 
-	@Override
-	public IntFunction<Expression<Double>> getValueFunction() {
-		return pos -> {
-			// TODO  ????
-			if (pos == 0) {
-				if (getArgument(2).isStatic()) {
-					return getArgument(1).get("2 * " + getInputValue(2, 0).getExpression());
-				} else {
-					return getArgument(1).get("2 * " + getInputValue(2, 0).getExpression(), getArgument(2));
-				}
-			} else if (pos == 1) {
-				return new Expression<>(Double.class, stringForDouble(1.0));
-			} else {
-				throw new IllegalArgumentException();
-			}
-		};
+		return shortCircuit(args -> {
+			PackedCollection<?> collection = c.evaluate(args);
+			Scalar index = i.evaluate(args);
+			PackedCollection dest = out.evaluate(args);
+			dest.setMem(collection.toDouble((int) index.getValue()));
+			return dest;
+		});
 	}
 }

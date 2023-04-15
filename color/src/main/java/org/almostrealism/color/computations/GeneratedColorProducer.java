@@ -31,14 +31,14 @@ import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.KernelizedProducer;
 
 public class GeneratedColorProducer<T> extends ColorProducerAdapter implements Generated<T, Producer<RGB>> {
-	private KernelizedProducer<RGB> p;
+	private Producer<RGB> p;
 	private T generator;
 
 	protected GeneratedColorProducer(T generator) {
 		this.generator = generator;
 	}
 
-	protected GeneratedColorProducer(T generator, KernelizedProducer<RGB> p) {
+	protected GeneratedColorProducer(T generator, Producer<RGB> p) {
 		this.generator = generator;
 		this.p = p;
 	}
@@ -72,14 +72,14 @@ public class GeneratedColorProducer<T> extends ColorProducerAdapter implements G
 	public void compact() { p.compact(); }
 
 	@Override
-	public KernelizedEvaluable<RGB> get() { return p.get(); }
+	public KernelizedEvaluable<RGB> get() { return (KernelizedEvaluable<RGB>) p.get(); }
 
 	public static <T> GeneratedColorProducer<T> fromFunction(T generator, TripleFunction<Triple, RGB> t) {
 		return new GeneratedColorProducer(generator, new DynamicProducerForMemoryData<>(args ->
 				t.operate(args.length > 0 ? (Triple) args[0] : new Vector(1.0, 1.0, 1.0))));
 	}
 
-	public static <T> GeneratedColorProducer<T> fromProducer(T generator, KernelizedProducer<? extends RGB> p) {
+	public static <T> GeneratedColorProducer<T> fromProducer(T generator, Producer<? extends RGB> p) {
 		return new GeneratedColorProducer(generator, p);
 	}
 }

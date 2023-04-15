@@ -16,6 +16,7 @@
 
 package org.almostrealism.geometry.computations;
 
+import org.almostrealism.geometry.RayFeatures;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.geometry.Ray;
 import io.almostrealism.relation.Evaluable;
@@ -24,7 +25,7 @@ import java.util.function.Supplier;
 
 public class RayMatrixTransform extends RayFromVectors {
 	public RayMatrixTransform(TransformMatrix t, Supplier<Evaluable<? extends Ray>> r) {
-		super(new TransformAsLocation(t, new RayOrigin(r)),
-				new TransformAsOffset(t, new RayDirection(r)));
+		super(new TransformAsLocation(t, RayFeatures.getInstance().origin(r)),
+				new TransformAsOffset(t, RayFeatures.getInstance().direction(r)));
 	}
 }

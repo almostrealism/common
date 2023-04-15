@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,38 +16,32 @@
 
 package org.almostrealism.space;
 
-import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
+import org.almostrealism.CodeFeatures;
 import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.PairBank;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorBank;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
-import org.almostrealism.color.RGBBank;
-import org.almostrealism.graph.mesh.MeshPointData;
-import org.almostrealism.geometry.ContinuousField;
-import org.almostrealism.graph.mesh.TriangleDataFromVectors;
-import org.almostrealism.graph.mesh.TrianglePointData;
-import org.almostrealism.graph.mesh.TrianglePointDataFromVectors;
 
-public class DefaultVertexData implements Mesh.VertexData {
-	private VectorBank vertices;
-	private RGBBank colors;
-	private PairBank texCoords;
+public class DefaultVertexData implements Mesh.VertexData, CodeFeatures {
+	private PackedCollection<Vector> vertices;
+	private PackedCollection<RGB> colors;
+	private PackedCollection<Pair<?>> texCoords;
 
-	// TODO Convert to a vertex bank so that conversion to MeshPointData can be kernelized
+	// TODO Convert to a vertex bank so that conversion to PackedCollection<PackedCollection<Vector>> can be kernelized
 	private int triangles[][];
 
 	public DefaultVertexData(int points, int triangles) {
-		this.vertices = new VectorBank(points);
-		this.colors = new RGBBank(points);
-		this.texCoords = new PairBank(points);
+		this.vertices = Vector.bank(points);
+		this.colors = RGB.bank(points);
+		this.texCoords = Pair.bank(points);
 		this.triangles = new int[triangles][3];
 	}
 
-	public VectorBank getVertices() { return vertices; }
-	public RGBBank getColors() { return colors; }
-	public PairBank getTextureCoordinates() { return texCoords; }
+	public PackedCollection<Vector> getVertices() { return vertices; }
+	public PackedCollection<RGB> getColors() { return colors; }
+	public PackedCollection<Pair<?>> getTextureCoordinates() { return texCoords; }
 
 	@Override
 	public RGB getColor(int index) { return getColors().get(index); }
@@ -91,15 +85,16 @@ public class DefaultVertexData implements Mesh.VertexData {
 
 	// TODO Kernelize
 	@Override
-	public MeshPointData getMeshPointData() {
-		MeshPointData points = new MeshPointData(getTriangleCount());
+	public PackedCollection<PackedCollection<Vector>> getMeshPointData() {
+		PackedCollection<PackedCollection<Vector>> points = Vector.table(9, getTriangleCount());
 
-		TrianglePointDataFromVectors producer =
-				new TrianglePointDataFromVectors(
-						() -> args -> vertices.get(((int[]) args[0])[0]),
+		Producer<PackedCollection<Vector>> producer =
+				points(
+						() ->
+								args -> vertices.get(((int[]) args[0])[0]),
 						() -> args -> vertices.get(((int[]) args[0])[1]),
 						() -> args -> vertices.get(((int[]) args[0])[2]));
-		Evaluable<TrianglePointData> ev = producer.get();
+		Evaluable<PackedCollection<Vector>> ev = producer.get();
 
 		for (int i = 0; i < triangles.length; i++) {
 			points.set(i, ev.evaluate(triangles[i]));

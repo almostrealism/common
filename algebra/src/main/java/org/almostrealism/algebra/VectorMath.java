@@ -16,6 +16,7 @@
 
 package org.almostrealism.algebra;
 
+@Deprecated
 public class VectorMath {
 	
 	/**

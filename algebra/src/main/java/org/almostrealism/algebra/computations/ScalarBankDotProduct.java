@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,27 +17,20 @@
 package org.almostrealism.algebra.computations;
 
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.ScalarBank;
+import org.almostrealism.algebra.ScalarBankFeatures;
 
 import java.util.function.Supplier;
 
 public class ScalarBankDotProduct extends ScalarBankSum {
 	public ScalarBankDotProduct(int count, Supplier<Evaluable<? extends ScalarBank>> a,
 								Supplier<Evaluable<? extends ScalarBank>> b) {
-		super(count, product(count, a, b, null));
+		super(count, product(count, a, b));
 	}
 
-	protected ScalarBankDotProduct(int count, Supplier<Evaluable<? extends ScalarBank>> a,
-								   Supplier<Evaluable<? extends ScalarBank>> b,
-								   Supplier<ScalarBank> temp) {
-		super(count, product(count, a, b, temp));
-	}
-
-	private static ScalarBankProduct product(int count, Supplier<Evaluable<? extends ScalarBank>> a,
-											 Supplier<Evaluable<? extends ScalarBank>> b,
-											 Supplier<ScalarBank> temp) {
-		ScalarBankProduct product = new ScalarBankProduct(count, a, b);
-		if (temp != null) product.setDestination(temp);
-		return product;
+	private static Producer<ScalarBank> product(int count, Supplier<Evaluable<? extends ScalarBank>> a,
+												Supplier<Evaluable<? extends ScalarBank>> b) {
+		return ScalarBankFeatures.getInstance().scalarBankProduct(count, a, b);
 	}
 }

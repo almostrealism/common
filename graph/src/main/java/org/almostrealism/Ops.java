@@ -16,10 +16,16 @@
 
 package org.almostrealism;
 
+import java.util.function.Function;
+
 public class Ops implements CodeFeatures {
 	private static Ops ops = new Ops();
 
 	private Ops() { }
 
 	public static Ops ops() { return ops; }
+
+	public static <T> T op(Function<Ops, T> op) {
+		return op.apply(ops());
+	}
 }

@@ -21,6 +21,7 @@ import io.almostrealism.relation.Producer;
 /**
  * @author  Michael Murray
  */
+@Deprecated
 public interface PathElement<IN, OUT> { // extends Producer<OUT> { TODO
 	Iterable<Producer<IN>> getDependencies();
 }

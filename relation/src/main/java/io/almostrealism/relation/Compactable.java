@@ -16,7 +16,8 @@
 
 package io.almostrealism.relation;
 
-public interface Compactable {
+@Deprecated
+public interface Compactable { // extends Node {
 
 	/**
 	 * If this {@link Compactable} depends on other data (for example,

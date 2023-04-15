@@ -16,6 +16,10 @@
 
 package io.almostrealism.code;
 
+// Now that we can use TraversalPolicy to control the way kernels
+// are applied, the kernel index for any datastructure should just
+// always be 1
+@Deprecated
 public interface KernelIndex {
 	int getKernelIndex();
 }

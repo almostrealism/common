@@ -16,6 +16,7 @@
 
 package org.almostrealism.color;
 
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.color.Light;
 import io.almostrealism.relation.Evaluable;
@@ -28,21 +29,21 @@ import java.util.function.Supplier;
  * @author  Michael Murray
  */
 public class LightingContext {
-	private Supplier<Evaluable<? extends Vector>> lightDirection;
+	private Producer<Vector> lightDirection;
 	private Light light;
 	private Iterable<Light> otherLights;
 	
 	/**
-	 * Sets the direction toward the light to the specified {@link Vector} {@link Evaluable}.
+	 * Sets the direction toward the light to the specified {@link Vector} {@link Producer}.
 	 * 
 	 * @param l  Vector object to use.
 	 */
-	public void setLightDirection(Supplier<Evaluable<? extends Vector>> l) { this.lightDirection = l; }
+	public void setLightDirection(Producer<Vector> l) { this.lightDirection = l; }
 	
 	/**
-	 * @return  A {@link Vector} {@link Evaluable} representing the direction toward the light (this can be expected to be unit length).
+	 * @return  A {@link Vector} {@link Producer} representing the direction toward the light (this can be expected to be unit length).
 	 */
-	public Supplier<Evaluable<? extends Vector>> getLightDirection() { return this.lightDirection; }
+	public Producer<Vector> getLightDirection() { return this.lightDirection; }
 	
 	/**
 	 * Sets the Light to the specified Light object.

@@ -49,7 +49,7 @@ public class MultiCell<T> extends CellAdapter<T> {
 		Iterator<Cell<T>> itr = cells.iterator();
 
 		i: for (int i = 0; itr.hasNext(); i++) {
-			Factor<T> factor = gene.valueAt(i);
+			Factor<T> factor = gene == null ? new IdentityFactor<>() : gene.valueAt(i);
 			if (factor == null) {
 				itr.next(); continue i;
 			}

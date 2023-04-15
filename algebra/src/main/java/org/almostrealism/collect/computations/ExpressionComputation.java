@@ -37,19 +37,30 @@ import java.util.stream.Stream;
 
 public class ExpressionComputation<T extends PackedCollection<?>> extends DynamicCollectionProducerComputationAdapter<T, T> implements ComputerFeatures {
 	private List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression;
-	private List<Expression<Double>> value;
 
 	private Evaluable<T> shortCircuit;
 
 	@SafeVarargs
 	public ExpressionComputation(List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression,
+								 Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+		this(new TraversalPolicy(expression.size()), expression, args);
+	}
+
+	@SafeVarargs
+	public ExpressionComputation(TraversalPolicy shape, List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression,
 							   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		super(new TraversalPolicy(expression.size()), validateArgs(args));
+		super(shape, validateArgs(args));
+		if (shape.getSize() != expression.size())
+			throw new IllegalArgumentException("Expected " + shape.getTotalSize() + " expressions");
 		this.expression = expression;
 	}
 
 	public void setShortCircuit(Evaluable<T> shortCircuit) {
 		this.shortCircuit = shortCircuit;
+	}
+
+	public List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression() {
+		return expression;
 	}
 
 	public List<MultiExpression<Double>> getExpressions() {
@@ -61,10 +72,10 @@ public class ExpressionComputation<T extends PackedCollection<?>> extends Dynami
 	@Override
 	public IntFunction<Expression<Double>> getValueFunction() {
 		return pos -> {
-			if (value == null) {
-				return expression.get(pos).apply(getExpressions());
+			if (pos >= expression.size()) {
+				throw new IllegalArgumentException();
 			} else {
-				return value.get(pos);
+				return expression.get(pos).apply(getExpressions());
 			}
 		};
 	}

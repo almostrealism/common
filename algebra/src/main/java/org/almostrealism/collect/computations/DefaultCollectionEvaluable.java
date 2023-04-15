@@ -27,6 +27,7 @@ import org.almostrealism.hardware.mem.MemoryDataArgumentProcessor;
 import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.hardware.mem.Bytes;
 
+import java.util.Optional;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
@@ -80,12 +81,10 @@ public class DefaultCollectionEvaluable<T extends PackedCollection> extends Acce
 			compile();
 		}
 
-		MemoryData memArgs[] = Stream.of(args).toArray(MemoryData[]::new);
-
 		Consumer<Object[]> operator = getOperator();
 
 		if (enableKernelLog) System.out.println("AcceleratedOperation: Preparing " + getName() + " kernel...");
-		MemoryDataArgumentProcessor processor = processKernelArgs(null, memArgs);
+		MemoryDataArgumentProcessor processor = processKernelArgs(null, args);
 		MemoryData input[] = Stream.of(processor.getArguments()).toArray(MemoryData[]::new);
 		((HardwareOperator) operator).setGlobalWorkOffset(0);
 		((HardwareOperator) operator).setGlobalWorkSize(workSize(input[outputArgIndex]));

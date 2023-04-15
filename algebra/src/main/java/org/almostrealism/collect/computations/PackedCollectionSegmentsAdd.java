@@ -60,6 +60,8 @@ public class PackedCollectionSegmentsAdd extends Repeated {
 
 		String oVar = getVariablePrefix() + "_o";
 
+		// Iterate over all the segments
+		// If the kernel position is with the destination region, add the data
 		scope.code().accept("for (int " + i + " = 0; " + cond +"; " + i + "++) {\n");
 		scope.code().accept("    " + getNumberTypeName() + " " + oVar + " = get_global_id(0) - " + getDestinationOffsets().get(i).getExpression() + ";\n");
 		scope.code().accept("    if (" + oVar + " >= 0 && " + oVar + " < " + getSourceLengths().get(i).getExpression() + ") {\n");
@@ -71,7 +73,7 @@ public class PackedCollectionSegmentsAdd extends Repeated {
 
 	@Override
 	public String getInner(Expression<?> index) {
-		String sourcePosition = getSourceOffsets().valueAt(index).getExpression() + " - " + getDestinationOffsets().valueAt(index).getExpression();
+		String sourcePosition = "get_global_id(0) + " + getSourceOffsets().valueAt(index).getExpression() + " - " + getDestinationOffsets().valueAt(index).getExpression();
 
 		return getDestination().valueAt(0).getExpression() + " = " +
 				new Sum(getDestination().valueAt(0),

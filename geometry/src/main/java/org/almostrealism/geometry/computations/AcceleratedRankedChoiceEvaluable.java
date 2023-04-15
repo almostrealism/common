@@ -22,7 +22,6 @@ import io.almostrealism.scope.Variable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.geometry.DimensionAware;
 import org.almostrealism.hardware.AcceleratedEvaluable;
-import org.almostrealism.hardware.DynamicAcceleratedMultiEvaluable;
 import org.almostrealism.hardware.DynamicAcceleratedEvaluable;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryBank;
@@ -262,51 +261,13 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData> extends Dyna
 
 			List<ArrayVariable<Scalar>> ranks = getRanks();
 			compactedRanks = new Function[ranks.size()];
-			IntStream.range(0, compactedRanks.length).forEach(i -> {
-				if (ranks.get(i).getProducer() instanceof DynamicAcceleratedMultiEvaluable) {
-					DynamicAcceleratedMultiEvaluable p = (DynamicAcceleratedMultiEvaluable) ranks.get(i).getProducer();
-					compactedRanks[i] = ev -> {
-						String s = p.getBody(getHighestRankInputVariable());
-						ev.addAll(p.getVariables());
-						return s;
-					};
-
-					newArgs.addAll(AcceleratedEvaluable.excludeResult(p.getArgumentVariables()));
-				} else {
-					newArgs.add(ranks.get(i));
-				}
-			});
+			IntStream.range(0, compactedRanks.length).forEach(i -> newArgs.add(ranks.get(i)));
 
 			List<ArrayVariable<T>> choices = getChoices();
 			compactedChoices = new Function[choices.size()];
-			IntStream.range(0, compactedChoices.length).forEach(i -> {
-				if (choices.get(i).getProducer() instanceof DynamicAcceleratedMultiEvaluable) {
-					DynamicAcceleratedMultiEvaluable p = (DynamicAcceleratedMultiEvaluable) choices.get(i).getProducer();
-					compactedChoices[i] = ev -> {
-						String s = p.getBody(getOutputVariable());
-						ev.addAll(p.getVariables());
-						return s;
-					};
+			IntStream.range(0, compactedChoices.length).forEach(i -> newArgs.add(choices.get(i)));
 
-					newArgs.addAll(AcceleratedEvaluable.excludeResult(p.getArgumentVariables()));
-				} else {
-					newArgs.add(choices.get(i));
-				}
-			});
-
-			ArrayVariable defaultValue = getDefaultValue();
-			if (defaultValue.getProducer() instanceof DynamicAcceleratedMultiEvaluable) {
-				DynamicAcceleratedMultiEvaluable p = (DynamicAcceleratedMultiEvaluable) defaultValue.getProducer();
-				compactedDefaultValue = ev -> {
-					String s = p.getBody(getOutputVariable());
-					ev.addAll(p.getVariables());
-					return s;
-				};
-
-				newArgs.addAll(AcceleratedEvaluable.excludeResult(p.getArgumentVariables()));
-			} else {
-				newArgs.add(defaultValue);
-			}
+			newArgs.add(getDefaultValue());
 
 			// setArguments(newArgs);
 			removeDuplicateArguments();

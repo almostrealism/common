@@ -17,7 +17,6 @@
 package org.almostrealism.graph;
 
 import org.almostrealism.CodeFeatures;
-import org.almostrealism.algebra.Scalar;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 
@@ -27,6 +26,6 @@ public class SummationCell extends CollectionCachedStateCell implements CodeFeat
 	@Override
 	public Supplier<Runnable> push(Producer<PackedCollection<?>> protein) {
 		if (protein == null) throw new NullPointerException();
-		return a(1, p(getCachedValue()), _add(p(getCachedValue()), protein));
+		return a(1, p(getCachedValue()), add(p(getCachedValue()), protein));
 	}
 }

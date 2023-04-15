@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,7 +22,6 @@ import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.CodePrintWriterAdapter;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.Method;
-import io.almostrealism.code.ResourceVariable;
 import io.almostrealism.scope.Metric;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.expression.InstanceReference;
@@ -261,9 +260,10 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 		for (int i = 0; i < argumentOrder.size(); i++) {
 			Variable v = args.get(argumentOrder.get(i));
 
-			if (v instanceof ResourceVariable) {
-				buf.append(encode(v.getProducer()));
-			}
+//			TODO
+//			if (v instanceof ResourceVariable) {
+//				buf.append(encode(v.getProducer()));
+//			}
 
 			if (i < argumentOrder.size() - 1) {
 				buf.append(", ");

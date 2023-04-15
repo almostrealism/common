@@ -177,6 +177,8 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 				renderArguments(arguments, out, false, false, Integer.class, "", "Offset");
 				out.accept(", ");
 				renderArguments(arguments, out, false, false, Integer.class, "", "Size");
+				out.accept(", ");
+				renderArguments(arguments, out, false, false, Integer.class, "", "Dim0");
 			}
 		} else {
 			renderArguments(arguments, out, false, false, null, "", "");
@@ -191,6 +193,8 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 				renderArguments(arguments, out, true, false, Integer.class, "", "Offset");
 				out.accept(", ");
 				renderArguments(arguments, out, true, false, Integer.class, "", "Size");
+				out.accept(", ");
+				renderArguments(arguments, out, true, false, Integer.class, "", "Dim0");
 			}
 		} else {
 			renderArguments(arguments, out, true, true, null, "", "");

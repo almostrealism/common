@@ -53,9 +53,8 @@ public class Scalar extends Pair<Scalar> implements Comparable<Scalar> {
 		return (int) ((this.getValue() - s.getValue() / m) * Integer.MAX_VALUE);
 	}
 
-	public Object clone() {
-		Scalar s = new Scalar(getValue(), getCertainty());
-		return s;
+	public Scalar clone() {
+		return new Scalar(getValue(), getCertainty());
 	}
 
 	@Override

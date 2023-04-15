@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,13 +16,29 @@
 
 package org.almostrealism.geometry.computations;
 
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.computations.StaticComputationAdapter;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.Shape;
+import org.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.geometry.TransformMatrix;
-import org.almostrealism.geometry.TransformMatrixBank;
 import org.almostrealism.geometry.TransformMatrixProducer;
 
-public class StaticTransformMatrixComputation extends StaticComputationAdapter<TransformMatrix> implements TransformMatrixProducer {
+@Deprecated
+public class StaticTransformMatrixComputation extends StaticComputationAdapter<TransformMatrix> implements TransformMatrixProducer,
+		Shape<Producer<PackedCollection<?>>> {
 	public StaticTransformMatrixComputation(TransformMatrix value) {
-		super(value, TransformMatrix.blank(), TransformMatrixBank::new);
+		super(value, TransformMatrix.blank(), i -> new PackedCollection<>(i, 16));
+	}
+
+	@Override
+	public TraversalPolicy getShape() {
+		return new TraversalPolicy(16);
+	}
+
+	@Override
+	public Producer<PackedCollection<?>> reshape(TraversalPolicy shape) {
+		return new ReshapeProducer(shape, this);
 	}
 }

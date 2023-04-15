@@ -22,6 +22,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.function.Supplier;
 
+import io.almostrealism.relation.Producer;
 import org.almostrealism.geometry.ContinuousField;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Curve;
@@ -59,12 +60,12 @@ public class ShaderContext extends LightingContext {
 	 * @param otherLights  Array of Light objects representing other lights in the scene.
 	 * @param otherSurfaces  Collection of other Surface objects in the scene.
 	 */
-	public ShaderContext(ContinuousField intersection, Supplier<Evaluable<? extends Vector>> lightDirection, Light light,
+	public ShaderContext(ContinuousField intersection, Producer<Vector> lightDirection, Light light,
 						 Iterable<Light> otherLights, Collection<Curve<RGB>> otherSurfaces) {
 		this(intersection, lightDirection, light, otherLights, otherSurfaces.toArray(new Curve[0]));
 	}
 	
-	private ShaderContext(ContinuousField intersection, Supplier<Evaluable<? extends Vector>> lightDirection, Light light,
+	private ShaderContext(ContinuousField intersection, Producer<Vector> lightDirection, Light light,
 						  Iterable<Light> otherLights, Curve<RGB> otherSurfaces[]) {
 		this(intersection, lightDirection, light, otherLights, null, otherSurfaces);
 	}
@@ -79,7 +80,7 @@ public class ShaderContext extends LightingContext {
 	 * @param surface  Surface object to be shaded.
 	 * @param otherSurfaces  Array of other Surface objects in the scene.
 	 */
-	public ShaderContext(ContinuousField intersection, Supplier<Evaluable<? extends Vector>> lightDirection, Light light,
+	public ShaderContext(ContinuousField intersection, Producer<Vector> lightDirection, Light light,
 						 Iterable<Light> otherLights, Curve<RGB> surface, Curve<RGB> otherSurfaces[]) {
 		this.intersection = intersection;
 		this.setLightDirection(lightDirection);

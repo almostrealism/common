@@ -18,7 +18,7 @@ package org.almostrealism.bool;
 
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.PhysicalScope;
-import io.almostrealism.code.ProducerComputationAdapter;
+import io.almostrealism.code.ProducerComputationBase;
 import io.almostrealism.code.HybridScope;
 import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.scope.Scope;
@@ -39,7 +39,7 @@ import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
 public abstract class AcceleratedConditionalStatementAdapter<T extends MemoryData>
-											extends ProducerComputationAdapter<MemoryData, T>
+											extends ProducerComputationBase<MemoryData, T>
 											implements AcceleratedConditionalStatement<T>,
 													DestinationSupport<MemoryData>,
 													ComputerFeatures {

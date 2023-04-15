@@ -1,8 +1,8 @@
 package org.almostrealism.hardware.test;
 
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.geometry.RayBank;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.hardware.PassThroughEvaluable;
@@ -24,9 +24,8 @@ public class KernelTest implements CodeFeatures {
 		TestKernel k = new TestKernel(Ray.blank(),
 									PassThroughEvaluable.of(Ray.class, 0));
 
-		RayBank output = RayBank.fromProducer(Ray.blank(), count);
-		RayBank input = RayBank.fromProducer(
-				ray(1, 2, 3,4, 5, 7), count);
+		PackedCollection<Ray> output = Ray.bank(count, Ray.blank());
+		PackedCollection<Ray> input = Ray.bank(count, ray(1, 2, 3,4, 5, 7));
 
 		k.kernelEvaluate(output, new MemoryBank[] { input });
 

@@ -18,6 +18,7 @@ package org.almostrealism.algebra;
 
 import io.almostrealism.relation.Evaluable;
 
+// TODO  This should produce PackedCollection
 public class ZeroVector extends ImmutableVector {
 	private static ZeroVector local = new ZeroVector();
 

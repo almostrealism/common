@@ -23,12 +23,9 @@ import org.almostrealism.hardware.cl.CLMemoryProvider;
 import org.almostrealism.hardware.cl.CLMemoryProvider.Location;
 import org.almostrealism.hardware.cl.CLComputeContext;
 import org.almostrealism.hardware.cl.CLDataContext;
-import org.almostrealism.hardware.cl.DeviceInfo;
 import org.almostrealism.hardware.ctx.ContextListener;
 import org.almostrealism.hardware.jni.NativeDataContext;
 import org.almostrealism.io.SystemUtils;
-import org.jocl.CL;
-import org.jocl.Pointer;
 import org.jocl.Sizeof;
 import org.jocl.cl_device_id;
 import org.jocl.cl_platform_id;
@@ -91,7 +88,7 @@ public final class Hardware {
 
 		String tsSize = System.getProperty("AR_HARDWARE_TIMESERIES_SIZE");
 		if (tsSize == null) tsSize = System.getenv("AR_HARDWARE_TIMESERIES_SIZE");
-		if (tsSize == null) tsSize = "100";
+		// if (tsSize == null) tsSize = "100";
 
 		String tsCount = System.getProperty("AR_HARDWARE_TIMESERIES_COUNT");
 		if (tsCount == null) tsCount = System.getenv("AR_HARDWARE_TIMESERIES_COUNT");
@@ -181,8 +178,6 @@ public final class Hardware {
 		if (enableCl) {
 			this.context = new CLDataContext(this, name, this.memoryMax, getOffHeapSize(), this.location);
 
-			CL.setExceptionsEnabled(true);
-
 			if (enableVerbose) {
 				if (enableGpu) {
 					System.out.println("Initializing Hardware (GPU Enabled)...");
@@ -221,63 +216,9 @@ public final class Hardware {
 
 	public void setMaximumOperationDepth(int depth) { OperationList.setMaxDepth(depth); }
 
-	protected void identifyDevices() {
-		if (platform != null && device != null) return;
-
-		final int platformIndex = 0;
-		final int deviceIndex = 0;
-		final long deviceType = enableGpu ? CL.CL_DEVICE_TYPE_GPU : CL.CL_DEVICE_TYPE_CPU;
-
-		int numPlatformsArray[] = new int[1];
-		CL.clGetPlatformIDs(0, null, numPlatformsArray);
-		int numPlatforms = numPlatformsArray[0];
-
-		if (enableVerbose) System.out.println("Hardware[" + name + "]: " + numPlatforms + " platforms available");
-
-		cl_platform_id platforms[] = new cl_platform_id[numPlatforms];
-		CL.clGetPlatformIDs(platforms.length, platforms, null);
-		platform = platforms[platformIndex];
-
-		if (enableVerbose)
-			System.out.println("Hardware[" + name + "]: Using platform " + platformIndex + " -- " + platform);
-
-		/* Main Device Selection */
-
-		int numDevicesArray[] = new int[1];
-		CL.clGetDeviceIDs(platform, deviceType, 0, null, numDevicesArray);
-		int numDevices = numDevicesArray[0];
-
-		if (enableVerbose)
-			System.out.println("Hardware[" + name + "]: " + numDevices + " " + deviceName(deviceType) + "(s) available");
-
-		cl_device_id devices[] = new cl_device_id[numDevices];
-		CL.clGetDeviceIDs(platform, deviceType, numDevices, devices, null);
-		device = devices[deviceIndex];
-
-		System.out.println("Hardware[" + name + "]: Using " + deviceName(deviceType) + " " + deviceIndex);
-
-		/* Kernel Device Selection */
-
-		if (enableKernelQueue) {
-			CL.clGetDeviceIDs(platform, CL.CL_DEVICE_TYPE_GPU, 0, null, numDevicesArray);
-			numDevices = numDevicesArray[0];
-
-			if (enableVerbose)
-				System.out.println("Hardware[" + name + "]: " + numDevices + " " + deviceName(CL.CL_DEVICE_TYPE_GPU) + "(s) available for kernels");
-
-			if (numDevices > 0) {
-				CL.clGetDeviceIDs(platform, CL.CL_DEVICE_TYPE_GPU, numDevices, devices, null);
-				kernelDevice = devices[deviceIndex];
-
-				System.out.println("Hardware[" + name + "]: Using " + deviceName(CL.CL_DEVICE_TYPE_GPU) + " " + deviceIndex + " for kernels");
-			}
-		}
-	}
-
 	protected void start(DataContext ctx) {
 		if (ctx instanceof CLDataContext) {
-			identifyDevices();
-			((CLDataContext) ctx).init(platform, device, kernelDevice);
+			((CLDataContext) ctx).init(enableGpu, enableKernelQueue);
 		} else if (ctx instanceof NativeDataContext) {
 			((NativeDataContext) ctx).init();
 		}
@@ -422,16 +363,6 @@ public final class Hardware {
 	}
 
 	public MemoryProvider getMemoryProvider(int size) { return context.getMemoryProvider(size); }
-
-	private static String deviceName(long type) {
-		if (type == CL.CL_DEVICE_TYPE_CPU) {
-			return "CPU";
-		} else if (type == CL.CL_DEVICE_TYPE_GPU) {
-			return "GPU";
-		} else {
-			throw new IllegalArgumentException("Unknown device type " + type);
-		}
-	}
 
 	protected String loadSource() {
 		return loadSource(enableDoublePrecision ? "local64" : "local32");

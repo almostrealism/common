@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package org.almostrealism.geometry;
 
+import io.almostrealism.relation.Node;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.Gradient;
@@ -26,6 +27,6 @@ import org.almostrealism.algebra.Gradient;
  *
  * @author  Michael Murray
  */
-public interface Curve<T> extends Gradient<T> {
+public interface Curve<T> extends Gradient<T>, Node {
 	Producer<T> getValueAt(Producer<Vector> point);
 }

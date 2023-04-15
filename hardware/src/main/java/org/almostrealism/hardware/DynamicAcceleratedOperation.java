@@ -56,6 +56,8 @@ public abstract class DynamicAcceleratedOperation<T extends MemoryData> extends 
 	 */
 	@Deprecated
 	public String getFunctionDefinition() {
+		System.out.println("WARN: DynamicAcceleratedOperation.getFunctionDefinition() is deprecated");
+
 		return "__kernel void " + getFunctionName() + "(" +
 				getFunctionArgsDefinition() +
 				") {\n" +

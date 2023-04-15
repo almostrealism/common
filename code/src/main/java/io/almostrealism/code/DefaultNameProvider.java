@@ -40,6 +40,11 @@ public class DefaultNameProvider implements NameProvider {
 	}
 
 	@Override
+	public String getVariableDimName(ArrayVariable v, int dim) {
+		return "1";
+	}
+
+	@Override
 	public String getVariableSizeName(ArrayVariable v) {
 		return "1";
 	}

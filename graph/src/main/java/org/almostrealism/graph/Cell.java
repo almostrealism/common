@@ -73,6 +73,27 @@ public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
 		T v = value.get();
 		Producer<T> destination = () -> new Provider<>(v);
 
-		return new TemporalFactorFromCell<T>(c, destination, assignment, combine);
+		return new TemporalFactorFromCell<>(c, destination, assignment, combine);
+	}
+
+	static <T> Cell<T> of(BiFunction<Producer<T>, Receptor<T>, Supplier<Runnable>> func) {
+		return new Cell<>() {
+			private Receptor<T> r;
+
+			@Override
+			public Supplier<Runnable> setup() {
+				return new OperationList();
+			}
+
+			@Override
+			public Supplier<Runnable> push(Producer<T> protein) {
+				return func.apply(protein, r);
+			}
+
+			@Override
+			public void setReceptor(Receptor<T> r) {
+				this.r = r;
+			}
+		};
 	}
 }

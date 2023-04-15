@@ -31,7 +31,7 @@ import org.almostrealism.hardware.KernelizedProducer;
 import java.util.function.Supplier;
 
 public interface ScalarProducerBase extends ProducerComputation<Scalar>, KernelizedProducer<Scalar>, ScalarFeatures {
-	default ScalarProducerBase add(Supplier<Evaluable<? extends Scalar>> value) {
+	default ScalarProducerBase add(ScalarProducerBase value) {
 		return scalarAdd(this, value);
 	}
 
@@ -51,19 +51,16 @@ public interface ScalarProducerBase extends ProducerComputation<Scalar>, Kerneli
 		return subtract(ScalarFeatures.of(value));
 	}
 
-	default ScalarProducerBase subtract(Evaluable<Scalar> value) {
-		return subtract(() -> value);
-	}
-
-	default ScalarProducerBase subtract(Supplier<Evaluable<? extends Scalar>> value) {
+	default ScalarProducerBase subtract(ScalarProducerBase value) {
 		return add(scalarMinus(value));
 	}
 
+	@Deprecated
 	default ScalarExpressionComputation multiply(Evaluable<Scalar> value) {
-		return multiply(() -> value);
+		throw new UnsupportedOperationException();
 	}
 
-	default ScalarExpressionComputation multiply(Supplier<Evaluable<? extends Scalar>> value) {
+	default ScalarExpressionComputation multiply(ScalarProducerBase value) {
 		return scalarsMultiply(this, value);
 	}
 
@@ -75,11 +72,7 @@ public interface ScalarProducerBase extends ProducerComputation<Scalar>, Kerneli
 		return multiply(new Scalar(value));
 	}
 
-	default ScalarExpressionComputation divide(Evaluable<Scalar> value) {
-		return divide(() -> value);
-	}
-
-	default ScalarExpressionComputation divide(Supplier<Evaluable<? extends Scalar>> value) {
+	default ScalarExpressionComputation divide(ScalarProducerBase value) {
 		return multiply(pow(value, ScalarFeatures.of(-1.0)));
 	}
 
@@ -93,7 +86,7 @@ public interface ScalarProducerBase extends ProducerComputation<Scalar>, Kerneli
 
 	default ScalarExpressionComputation minus() { return multiply(-1.0); }
 
-	default ScalarProducerBase pow(Supplier<Evaluable<? extends Scalar>> exponent) { return pow(this, exponent); }
+	default ScalarProducerBase pow(ScalarProducerBase exponent) { return pow(this, exponent); }
 
 	default ScalarProducerBase pow(Scalar exp) { return pow(this, exp); }
 

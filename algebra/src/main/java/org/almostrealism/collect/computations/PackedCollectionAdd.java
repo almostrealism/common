@@ -19,10 +19,7 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarBank;
-import org.almostrealism.algebra.ScalarBankProducer;
-import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.DynamicProducerComputationAdapter;
@@ -31,7 +28,7 @@ import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
 public class PackedCollectionAdd<I extends PackedCollection<?>, O extends PackedCollection<?>>
-		extends DynamicProducerComputationAdapter<I, O> implements CollectionProducer<O> {
+		extends DynamicProducerComputationAdapter<I, O> implements CollectionProducerComputation<O> {
 	private TraversalPolicy shape;
 
 	public PackedCollectionAdd(TraversalPolicy shape, Supplier<Evaluable<? extends PackedCollection>> a,

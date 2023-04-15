@@ -16,14 +16,14 @@
 
 package org.almostrealism.algebra.test;
 
-import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarProducerBase;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorProducerBase;
 import org.almostrealism.algebra.computations.VectorExpressionComputation;
-import org.almostrealism.hardware.DynamicAcceleratedOperation;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.ExpressionComputation;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.cl.HardwareOperator;
@@ -42,8 +42,22 @@ public class VectorMathTest implements TestFeatures {
 
 	@Test
 	public void scalarPowDynamic() {
-		Scalar result = scalar(3).pow(() -> args -> new Scalar(3)).get().evaluate();
+		Producer<Scalar> d = () -> args -> new Scalar(3);
+		ExpressionComputation<Scalar> s = scalar(3);
+		Producer<Scalar> p = s.pow(d);
+		Evaluable<Scalar> ev = p.get();
+		PackedCollection<?> out = ev.evaluate();
+		double result = out.toDouble(0);
 		assertEquals(27, result);
+	}
+
+	@Test
+	public void scalarMultiply() {
+		VectorProducerBase product = scalarMultiply(vector(1, 2, 3), 2);
+		Vector result = product.get().evaluate();
+		assertEquals(2, result.getX());
+		assertEquals(4, result.getY());
+		assertEquals(6, result.getZ());
 	}
 
 	@Test

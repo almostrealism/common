@@ -17,10 +17,18 @@
 package org.almostrealism.algebra.computations;
 
 import org.almostrealism.algebra.ScalarBank;
-import org.almostrealism.algebra.ScalarBankProducer;
+import org.almostrealism.algebra.ScalarBankProducerBase;
+import org.almostrealism.collect.computations.StaticCollectionComputation;
+import org.almostrealism.hardware.MemoryData;
 
-public class StaticScalarBankComputation extends StaticComputationAdapter<ScalarBank> implements ScalarBankProducer {
+@Deprecated
+public class StaticScalarBankComputation extends StaticCollectionComputation<ScalarBank> implements ScalarBankProducerBase {
 	public StaticScalarBankComputation(ScalarBank value) {
-		super(value, () -> args -> new ScalarBank(value.getCount()), i -> { throw new UnsupportedOperationException(); });
+		super(value);
+	}
+
+	@Override
+	public ScalarBank postProcessOutput(MemoryData output, int offset) {
+		return new ScalarBank(output.getMemLength() / 2, output, offset);
 	}
 }

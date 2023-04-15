@@ -16,7 +16,6 @@
 
 package org.almostrealism.collect.computations.test;
 
-import io.almostrealism.code.Computation;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.expression.Sum;
@@ -31,11 +30,13 @@ import org.almostrealism.collect.Shape;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.PackedCollectionMax;
+import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.collect.computations.RootDelegateSegmentsAdd;
 import org.almostrealism.collect.computations.ScalarFromPackedCollection;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.PassThroughProducer;
+import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
@@ -43,10 +44,9 @@ import org.junit.Test;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Function;
-import java.util.function.Supplier;
 
 public class CollectionComputationTests implements TestFeatures {
-	private static class TestProducer implements Producer<PackedCollection<?>>, Shape {
+	private static class TestProducer implements Producer<PackedCollection<?>>, Shape<Producer<PackedCollection<?>>> {
 		@Override
 		public TraversalPolicy getShape() {
 			return new TraversalPolicy(1);
@@ -60,14 +60,36 @@ public class CollectionComputationTests implements TestFeatures {
 				return c;
 			};
 		}
+
+		@Override
+		public Producer<PackedCollection<?>> reshape(TraversalPolicy shape) {
+			return new ReshapeProducer<>(shape, (Producer) this);
+		}
 	}
 
 	@Test
 	public void multiply() {
 		PackedCollection<?> testInput = new PackedCollection<>(1);
 		testInput.setMem(0, 9);
-		PackedCollection<?> result = c(3)._multiply(p(testInput)).get().evaluate();
+		PackedCollection<?> result = c(3).multiply(p(testInput)).get().evaluate();
 		assertEquals(27, result.toDouble(0));
+	}
+
+	@Test
+	public void sum() {
+		PackedCollection<?> input = tensor(shape(3, 5)).pack();
+		PackedCollection<?> output = c(p(input)).sum().get().evaluate();
+
+		double expected = 0;
+		for (int i = 0; i < 3; i++) {
+			for (int j = 0; j < 5; j++) {
+				expected += input.toDouble(input.getShape().index(i, j));
+			}
+		}
+
+		System.out.println(output.getShape());
+		System.out.println(output.toDouble(0));
+		assertEquals(expected, output.toDouble(0));
 	}
 
 	@Test
@@ -87,6 +109,28 @@ public class CollectionComputationTests implements TestFeatures {
 
 		PackedCollection out = computation.get().evaluate(a, b);
 		assertEquals(8.0, out.toArray(0, 1)[0]);
+	}
+
+
+	@Test
+	public void expressionComputationDynamic() {
+		Function<List<MultiExpression<Double>>, Expression<Double>> expression = args ->
+				new Sum(args.get(1).getValue(0), args.get(2).getValue(0));
+
+		ExpressionComputation<?> computation =
+				new ExpressionComputation(List.of(expression),
+						(Producer) () -> args -> {
+							PackedCollection<?> c = new PackedCollection<>(1);
+							c.setMem(0, 2 * (Integer) args[1]);
+							return c;
+						},
+						new PassThroughProducer(1, 0));
+
+		PackedCollection a = new PackedCollection(1);
+		a.setMem(0, 3.0);
+
+		PackedCollection out = computation.get().evaluate(a, Integer.valueOf(6));
+		assertEquals(15.0, out.toArray(0, 1)[0]);
 	}
 
 	@Test
@@ -121,12 +165,12 @@ public class CollectionComputationTests implements TestFeatures {
 						new PassThroughProducer(1, 0),
 						new PassThroughProducer(1, 1));
 
-		PackedCollection a = new PackedCollection(4);
-		PackedCollection b = new PackedCollection(4);
+		PackedCollection<?> a = new PackedCollection(4);
+		PackedCollection<?> b = new PackedCollection(4);
 		a.setMem(0, 3.0, 4.0, 5.0, 6.0);
 		b.setMem(0, 5.0, 7.0, 9.0, 11.0);
 
-		PackedCollection out = new PackedCollection(4);
+		PackedCollection<?> out = new PackedCollection(4);
 
 		computation.get().kernelEvaluate(out.traverseEach(), a.traverseEach(), b.traverseEach());
 		System.out.println(Arrays.toString(out.toArray(0, 4)));
@@ -136,7 +180,7 @@ public class CollectionComputationTests implements TestFeatures {
 
 	@Test
 	public void collectionMaxTwoSeries() {
-		PackedCollection series = new PackedCollection(2, 10);
+		PackedCollection<?> series = new PackedCollection(2, 10);
 		series.setMem(0, 7, 5, 12, 13, 11, 14, 9, 12, 3, 12);
 		series.setMem(10, 12, 3, 12, 10, 14, 16, 13, 12, 5, 7);
 		System.out.println(series.traverse(1).getCount() + " series");
@@ -151,13 +195,15 @@ public class CollectionComputationTests implements TestFeatures {
 
 	@Test
 	public void collectionMax() {
-		PackedCollection series = new PackedCollection(10);
+		PackedCollection<?> series = new PackedCollection(10);
 		series.setMem(0, 7, 5, 12, 13, 11, 14, 9, 12, 3, 12);
 		System.out.println(series.traverse(0).getCount() + " series");
 
 		PackedCollectionMax max = new PackedCollectionMax(new PassThroughProducer<>(10, 0, -1));
-		PackedCollection dest = new PackedCollection(2, 1);
-		max.get().kernelEvaluate(dest.traverse(1), series.traverse(0));
+		PackedCollection<?> dest = new PackedCollection(2, 1);
+
+		HardwareOperator.verboseLog(() ->
+			max.get().kernelEvaluate(dest.traverse(1), series.traverse(0)));
 
 		System.out.println(Arrays.toString(dest.toArray(0, 2)));
 		assertEquals(14, dest.toArray(0, 1)[0]);

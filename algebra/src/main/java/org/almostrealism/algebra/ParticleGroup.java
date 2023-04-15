@@ -20,5 +20,5 @@ package org.almostrealism.algebra;
  * @author  Michael Murray
  */
 public interface ParticleGroup {
-    public double[][] getParticleVertices();
+    double[][] getParticleVertices();
 }

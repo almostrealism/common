@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Factory;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.PairBank;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.DynamicProducerComputationAdapter;
 import org.almostrealism.hardware.KernelizedEvaluable;
 
@@ -32,12 +32,12 @@ import java.util.Objects;
 import java.util.function.IntFunction;
 import java.util.stream.Stream;
 
-public class PairBankFromPairsBuilder extends DynamicProducerComputationAdapter<Pair, PairBank>
+public class PairBankFromPairsBuilder extends DynamicProducerComputationAdapter<Pair, PackedCollection<Pair<?>>>
 									implements Factory<PairBankFromPairs> {
 	private Producer<Pair<?>> producers[];
 
 	public PairBankFromPairsBuilder(int count) {
-		super(2 * count, () -> args -> new PairBank(count), null, new Producer[0]);
+		super(2 * count, () -> args -> Pair.bank(count), null, new Producer[0]);
 		producers = new Producer[count];
 	}
 
@@ -69,7 +69,7 @@ public class PairBankFromPairsBuilder extends DynamicProducerComputationAdapter<
 	}
 
 	@Override
-	public KernelizedEvaluable<PairBank> get() { return construct().get(); }
+	public KernelizedEvaluable<PackedCollection<Pair<?>>> get() { return construct().get(); }
 
 	@Override
 	public PairBankFromPairs construct() { return new PairBankFromPairs(producers); }

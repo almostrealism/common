@@ -16,6 +16,7 @@
 
 package org.almostrealism.algebra;
 
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 
 import org.almostrealism.collect.PackedCollection;
@@ -124,6 +125,37 @@ public class Pair<T extends PackedCollection> extends PackedCollection<T> {
 	}
 
 	public static Producer<Pair<?>> empty() {
-		return new DynamicProducerForMemoryData<>(Pair::new, PairBank::new);
+		return new DynamicProducerForMemoryData<>(Pair::new, Pair::bank);
+	}
+
+	public static PackedCollection<Pair<?>> bank(int count) {
+		return new PackedCollection<>(new TraversalPolicy(count, 2), 1, delegateSpec ->
+				new Pair<>(delegateSpec.getDelegate(), delegateSpec.getOffset()));
+	}
+
+	@Deprecated
+	public static PackedCollection<Pair<?>> bank(int count, Evaluable<Pair<?>> source) {
+		PackedCollection<Pair<?>> bank = Pair.bank(count);
+		for (int i = 0; i < bank.getCount(); i++) {
+			bank.set(i, source.evaluate());
+		}
+
+		return bank;
+	}
+
+	public static PackedCollection<Pair<?>> bank(int count, MemoryData delegate, int delegateOffset) {
+		return new PackedCollection<>(new TraversalPolicy(count, 2), 1, delegateSpec ->
+				new Pair<>(delegateSpec.getDelegate(), delegateSpec.getOffset()),
+				delegate, delegateOffset);
+	}
+
+	public static PackedCollection<PackedCollection<Pair<?>>> table(int width, int count) {
+		return new PackedCollection<>(new TraversalPolicy(count, width, 2), 1, delegateSpec ->
+				Pair.bank(width, delegateSpec.getDelegate(), delegateSpec.getOffset()));
+	}
+
+	public static PackedCollection<PackedCollection<Pair<?>>> table(int width, int count, MemoryData delegate, int delegateOffset) {
+		return new PackedCollection<>(new TraversalPolicy(count, width, 2), 1, delegateSpec ->
+				Pair.bank(width, delegateSpec.getDelegate(), delegateSpec.getOffset()), delegate, delegateOffset);
 	}
 }

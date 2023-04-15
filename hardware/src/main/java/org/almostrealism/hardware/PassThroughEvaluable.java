@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import io.almostrealism.relation.Producer;
 
 import java.lang.reflect.InvocationTargetException;
 
+@Deprecated
 public class PassThroughEvaluable<T> implements Evaluable<T>, ProducerArgumentReference, HardwareFeatures {
 	private int argIndex = -1;
 
@@ -38,6 +39,10 @@ public class PassThroughEvaluable<T> implements Evaluable<T>, ProducerArgumentRe
 	@Override
 	public int getReferencedArgumentIndex() { return argIndex; }
 
+	public static <T> Producer<T> of(int index) {
+		return of(null, index);
+	}
+
 	// TODO  Move to PassThroughProducer
 	public static <T> Producer<T> of(Class<? extends T> type, int index) {
 		return of(type, index, 0);
@@ -45,9 +50,13 @@ public class PassThroughEvaluable<T> implements Evaluable<T>, ProducerArgumentRe
 
 	// TODO  Move to PassThroughProducer
 	public static <T> Producer<T> of(Class<? extends T> type, int index, int kernelDimension) {
-		if (MemoryBank.class.isAssignableFrom(type)) {
+		if (type == null || MemoryBank.class.isAssignableFrom(type)) {
 //			return () -> new PassThroughEvaluable<>(index);
-			return new PassThroughProducer(0, index, kernelDimension);
+			if (kernelDimension == 0) {
+				return new PassThroughProducer(0, index);
+			} else {
+				return new PassThroughProducer(0, index, kernelDimension);
+			}
 		} else
 			if (MemoryData.class.isAssignableFrom(type)) {
 			try {

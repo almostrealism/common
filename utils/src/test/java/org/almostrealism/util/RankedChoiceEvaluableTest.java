@@ -19,9 +19,9 @@ package org.almostrealism.util;
 import io.almostrealism.relation.ProducerWithRank;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.algebra.computations.ProducerWithRankAdapter;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Intersection;
 import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.PairBank;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.Vector;
@@ -31,7 +31,6 @@ import org.almostrealism.geometry.computations.RankedChoiceEvaluableForVector;
 import org.almostrealism.hardware.DynamicAcceleratedEvaluable;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryBank;
-import org.almostrealism.hardware.mem.MemoryBankAdapter;
 import org.almostrealism.hardware.PassThroughEvaluable;
 import org.junit.Assert;
 import org.junit.Test;
@@ -63,9 +62,9 @@ public class RankedChoiceEvaluableTest implements CodeFeatures {
 		in.set(2, new Scalar(1.0));
 		in.set(3, new Scalar(3.0));
 
-		PairBank out = new PairBank(1);
+		PackedCollection<Pair<?>> out = Pair.bank(1);
 
-		PairBank conf = new PairBank(1);
+		PackedCollection<Pair<?>> conf = Pair.bank(1);
 		conf.set(0, new Pair(4, Intersection.e));
 
 		RankedChoiceEvaluable.highestRank.kernelEvaluate(out, new MemoryBank[] { in, conf });
@@ -110,7 +109,6 @@ public class RankedChoiceEvaluableTest implements CodeFeatures {
 	public void rankedChoice1() {
 		RankedChoiceEvaluableForVector rcp = getRankedChoiceProducer1();
 		DynamicAcceleratedEvaluable<Vector, Vector> acc = rcp.getAccelerated();
-		System.out.println(acc.getFunctionDefinition());
 
 		Vector result = acc.evaluate();
 		System.out.println("result = " + result);
@@ -121,7 +119,6 @@ public class RankedChoiceEvaluableTest implements CodeFeatures {
 	public void rankedChoice2() {
 		RankedChoiceEvaluableForVector rcp = getRankedChoiceProducer2();
 		DynamicAcceleratedEvaluable<Vector, Vector> acc = rcp.getAccelerated();
-		System.out.println(acc.getFunctionDefinition());
 
 		Vector result = acc.evaluate();
 		System.out.println("result = " + result);
@@ -152,7 +149,6 @@ public class RankedChoiceEvaluableTest implements CodeFeatures {
 		AcceleratedRankedChoiceEvaluable<Scalar> acc =
 				new AcceleratedRankedChoiceEvaluable<>(2, Scalar::new, ScalarBank::new,
 													values, Scalar.blank(), Intersection.e, Scalar.blank().get()::evaluate);
-		System.out.println(acc.getFunctionDefinition());
 
 		Scalar result = acc.evaluate(new Scalar(1), new Scalar(0), new Scalar(2),
 				new Scalar(1), new Scalar(3), new Scalar(2));

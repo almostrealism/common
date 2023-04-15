@@ -51,28 +51,16 @@ public interface PairFeatures extends HardwareFeatures {
 		return new StaticPairComputation(value);
 	}
 
-	default ScalarEvaluable l(Evaluable<Pair<?>> p) {
-		return (ScalarEvaluable) l(() -> p).get();
-	}
-
 	default ScalarExpressionComputation l(Supplier<Evaluable<? extends Pair<?>>> p) {
 		return new ScalarExpressionComputation(List.of(
 				args -> args.get(1).getValue(0),
 				args -> new Expression<>(Double.class, stringForDouble(1.0))), (Supplier) p);
 	}
 
-	default ScalarEvaluable r(Evaluable<Pair<?>> p) {
-		return (ScalarEvaluable) r(() -> p).get();
-	}
-
 	default ScalarExpressionComputation r(Supplier<Evaluable<? extends Pair<?>>> p) {
 		return new ScalarExpressionComputation(List.of(
 				args -> args.get(1).getValue(1),
 				args -> new Expression<>(Double.class, stringForDouble(1.0))), (Supplier) p);
-	}
-
-	default PairEvaluable pairAdd(Evaluable<Pair<?>> a, Evaluable<Pair<?>> b) {
-		return (PairEvaluable) pairAdd(() -> a, () -> b).get();
 	}
 
 	default PairExpressionComputation pairAdd(Supplier<Evaluable<? extends Pair<?>>>... values) {
@@ -82,69 +70,29 @@ public interface PairFeatures extends HardwareFeatures {
 		return new PairExpressionComputation(comp, (Supplier[]) values);
 	}
 
-	default PairEvaluable pairSubtract(Evaluable<Scalar> a, Evaluable<Scalar> b) {
-		return (PairEvaluable) pairSubtract(() -> a, () -> b).get();
-	}
-
 	default PairExpressionComputation pairSubtract(Supplier<Evaluable<? extends Pair<?>>> a, Supplier<Evaluable<? extends Pair<?>>> b) {
 		return pairAdd(a, pairMinus(b));
-	}
-
-	default PairEvaluable pairsMultiply(Evaluable<Pair<?>> a, Evaluable<Pair<?>> b) {
-		return (PairEvaluable) pairsMultiply(() -> a, () -> b).get();
 	}
 
 	default PairProducer pairsMultiply(Supplier<Evaluable<? extends Pair<?>>> a, Supplier<Evaluable<? extends Pair<?>>> b) {
 		return new PairProduct(a, b);
 	}
 
-	default PairEvaluable multiplyComplex(Evaluable<Scalar> a, Evaluable<Scalar> b) {
-		return (PairEvaluable) multiplyComplex(() -> a, () -> b).get();
-	}
-
 	default PairProducer multiplyComplex(Supplier<Evaluable<? extends Pair<?>>> a, Supplier<Evaluable<? extends Pair<?>>> b) {
 		return new ComplexProduct(a, b);
 	}
 
-	default PairEvaluable pairDivide(Evaluable<Pair<?>> a, Evaluable<Scalar> b) {
-		return (PairEvaluable) pairDivide(() -> a, () -> b).get();
-	}
-
-	default PairProducer pairDivide(Supplier<Evaluable<? extends Pair<?>>> a, Supplier<Evaluable<? extends Scalar>> b) {
+	default PairProducer pairDivide(Supplier<Evaluable<? extends Pair<?>>> a, ScalarProducerBase b) {
 		ScalarProducerBase v = ScalarFeatures.getInstance().pow(b, ScalarFeatures.of(new Scalar(-1.0)));
 		return new PairProduct(a, pair(v, v));
-	}
-
-	default PairEvaluable pairsDivide(Evaluable<Pair<?>> a, Evaluable<Pair<?>> b) {
-		return (PairEvaluable) pairsDivide(() -> a, () -> b).get();
 	}
 
 	default PairProducer pairsDivide(Supplier<Evaluable<? extends Pair<?>>> a, Supplier<Evaluable<? extends Pair<?>>> b) {
 		return new PairProduct(a, pair(r(b).pow(-1.0), l(b).pow(-1.0)));
 	}
 
-	default PairEvaluable pairMinus(Evaluable<Scalar> v) {
-		return (PairEvaluable) pairMinus(() -> v).get();
-	}
-
 	default PairProducer pairMinus(Supplier<Evaluable<? extends Pair<?>>> v) {
 		return new PairProduct(v(new Pair(-1.0, -1.0)), v);
-	}
-
-	default Supplier<Evaluable<? extends Pair<?>>> rand() {
-		return RandomPair::new;
-	}
-
-	default Supplier<Evaluable<? extends Pair<?>>> rand(Supplier<Pair<?>> destination) {
-		return () -> {
-			RandomPair p = new RandomPair();
-			p.setDestination(destination);
-			return p;
-		};
-	}
-
-	default PairEvaluable fromScalars(Evaluable<Scalar> x, Evaluable<Scalar> y) {
-		return (PairEvaluable) fromScalars(() -> x, () -> y).get();
 	}
 
 	default PairProducer fromScalars(Supplier<Evaluable<? extends Scalar>> x, Supplier<Evaluable<? extends Scalar>> y) {

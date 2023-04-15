@@ -22,7 +22,10 @@ import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.function.Consumer;
 
+import io.almostrealism.relation.Group;
+import io.almostrealism.relation.NodeGroup;
 import org.almostrealism.algebra.*;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.computations.RGBAdd;
@@ -41,7 +44,7 @@ import io.almostrealism.code.Operator;
  * 
  * @author  Michael Murray
  */
-public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface implements Iterable<T> {
+public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface implements NodeGroup<T>, Iterable<T> {
 	private ArrayList<T> surfaces;
 
 	/** Constructs a {@link SurfaceGroup} object with no {@link Gradient} objects. */
@@ -111,7 +114,12 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 		System.out.println("Call to deprecated getSurface method");
 		return (ShadableSurface) this.surfaces.get(index);
 	}
-	
+
+	@Override
+	public void forEach(Consumer<? super T> consumer) {
+		surfaces.forEach(consumer);
+	}
+
 	public Iterator<T> iterator() { return surfaces.iterator(); }
 	
 	/** {@link ShadableSurface#shade(ShaderContext)} */

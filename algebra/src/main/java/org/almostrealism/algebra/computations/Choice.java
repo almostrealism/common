@@ -18,7 +18,7 @@ package org.almostrealism.algebra.computations;
 
 import io.almostrealism.code.HybridScope;
 import io.almostrealism.code.PhysicalScope;
-import io.almostrealism.code.ProducerComputationAdapter;
+import io.almostrealism.code.ProducerComputationBase;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
@@ -35,7 +35,7 @@ import java.util.function.Consumer;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public abstract class Choice<T extends MemoryData> extends ProducerComputationAdapter<T, T> implements DestinationSupport<MemoryData>, ComputerFeatures {
+public abstract class Choice<T extends MemoryData> extends ProducerComputationBase<T, T> implements DestinationSupport<MemoryData>, ComputerFeatures {
 	private int memLength;
 	private int choiceCount;
 	private Supplier<MemoryData> destination;

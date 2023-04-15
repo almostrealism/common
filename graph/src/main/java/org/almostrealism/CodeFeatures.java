@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -20,23 +20,27 @@ import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.code.DataContext;
-import io.almostrealism.scope.Variable;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.DynamicProducer;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Pair;
+import org.almostrealism.algebra.PairBankFeatures;
 import org.almostrealism.algebra.PairFeatures;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
+import org.almostrealism.algebra.ScalarBankFeatures;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.algebra.ScalarProducerBase;
 import org.almostrealism.algebra.computations.Switch;
-import org.almostrealism.algebra.computations.ScalarBankFromScalars;
 import org.almostrealism.algebra.computations.StaticPairComputation;
 import org.almostrealism.algebra.computations.StaticScalarBankComputation;
 import org.almostrealism.algebra.computations.StaticVectorComputation;
-import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.CollectionProducerComputation;
+import org.almostrealism.collect.KernelExpression;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.Shape;
+import org.almostrealism.collect.TraversableKernelExpression;
+import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.geometry.GeometryFeatures;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.algebra.Vector;
@@ -45,15 +49,18 @@ import org.almostrealism.geometry.RayFeatures;
 import org.almostrealism.geometry.TransformMatrixFeatures;
 import org.almostrealism.geometry.computations.StaticRayComputation;
 import org.almostrealism.geometry.computations.StaticTransformMatrixComputation;
-import org.almostrealism.graph.mesh.TriangleData;
-import org.almostrealism.graph.mesh.TriangleDataFeatures;
-import org.almostrealism.graph.mesh.TrianglePointData;
+import org.almostrealism.graph.mesh.TriangleFeatures;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.code.ProducerComputation;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.Input;
+import org.almostrealism.hardware.KernelOperation;
+import org.almostrealism.hardware.KernelizedProducer;
+import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.time.CursorPair;
 import org.almostrealism.time.TemporalFeatures;
 import org.almostrealism.time.TemporalScalarProducerBase;
@@ -65,9 +72,11 @@ import java.util.concurrent.Callable;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-public interface CodeFeatures extends CollectionFeatures, ScalarFeatures, PairFeatures, TriangleDataFeatures, RayFeatures,
-								TransformMatrixFeatures, GeometryFeatures, TemporalFeatures, HardwareFeatures {
-	default <T> Producer<T> p(T value) { return () -> new Provider<>(value); }
+public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
+								PairFeatures, PairBankFeatures,
+								TriangleFeatures, RayFeatures,
+								TransformMatrixFeatures, GeometryFeatures,
+								TemporalFeatures, HardwareFeatures {
 
 	default Producer<CursorPair> v(CursorPair p) {
 		throw new UnsupportedOperationException();
@@ -107,13 +116,9 @@ public interface CodeFeatures extends CollectionFeatures, ScalarFeatures, PairFe
 
 	default Supplier<Evaluable<? extends ScalarBank>> scalars(ScalarBank s) { return value(s); }
 
-	default ScalarBankFromScalars scalars(Supplier<Evaluable<? extends Scalar>>... values) {
-		return new ScalarBankFromScalars(values);
-	}
+	default Supplier<Evaluable<? extends PackedCollection<?>>> triangle(int argIndex) { return value(shape(4, 3), argIndex); }
 
-	default Supplier<Evaluable<? extends TriangleData>> triangle(int argIndex) { return value(TriangleData.class, argIndex); }
-
-	default Supplier<Evaluable<? extends TrianglePointData>> points(int argIndex) { return value(TrianglePointData.class, argIndex); }
+	default Supplier<Evaluable<? extends PackedCollection<?>>> points(int argIndex) { return value(shape(3, 3), argIndex); }
 
 	default <T> Producer<T> value(T v) {
 		if (v instanceof Scalar) {
@@ -143,6 +148,10 @@ public interface CodeFeatures extends CollectionFeatures, ScalarFeatures, PairFe
 		return Input.value(type, argIndex, kernelDimension);
 	}
 
+	default <T> Producer<T> value(TraversalPolicy shape, int argIndex) {
+		return Input.value(shape.getTotalSize(), argIndex);
+	}
+
 	default <T> Producer<T> value(int memLength, int argIndex) {
 		return Input.value(memLength, argIndex);
 	}
@@ -151,12 +160,27 @@ public interface CodeFeatures extends CollectionFeatures, ScalarFeatures, PairFe
 		return new Switch(decision, Arrays.asList(choices));
 	}
 
-	default Expression<Double> e(double value) {
-		return e(stringForDouble(value));
+	default CollectionProducerComputation<PackedCollection<?>> identity(Producer<PackedCollection<?>> argument) {
+		if (!(argument instanceof Shape)) {
+			throw new IllegalArgumentException("Argument to identity kernel must be traversable");
+		}
+
+		return kernel(((Shape) argument).getShape(), (i, p) -> i.v(0).get(p), argument);
 	}
 
-	default Expression<Double> e(String expression, Variable<?, ?>... dependencies) {
-		return new Expression<>(Double.class, expression, dependencies);
+	default <T extends MemoryData> Supplier<Runnable> run(KernelizedProducer<T> kernel, MemoryBank destination, MemoryData... arguments) {
+		return new KernelOperation<>(kernel, destination, arguments);
+	}
+
+	default CollectionProducerComputation<PackedCollection<?>> kernel(TraversableKernelExpression kernel,
+																	  Producer... arguments) {
+		return kernel(kernel.getShape(), kernel, arguments);
+	}
+
+	default CollectionProducerComputation<PackedCollection<?>> kernel(TraversalPolicy shape,
+																	  KernelExpression kernel,
+																	  Producer... arguments) {
+		return kernel(kernelIndex(), shape, kernel, arguments);
 	}
 
 	default DataContext dc() {

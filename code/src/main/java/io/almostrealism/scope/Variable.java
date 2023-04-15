@@ -150,6 +150,7 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 
 	public Expression<T> getExpression() { return expression; }
 
+	@Deprecated
 	public void setSortHint(int hint) { this.sortHint = hint; }
 
 	@Override

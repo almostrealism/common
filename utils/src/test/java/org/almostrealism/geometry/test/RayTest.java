@@ -17,9 +17,9 @@
 package org.almostrealism.geometry.test;
 
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.algebra.VectorProducerBase;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.computations.RayCopy;
-import org.almostrealism.geometry.computations.RayPointAt;
 import org.almostrealism.geometry.computations.StaticRayComputation;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import io.almostrealism.relation.Provider;
@@ -30,14 +30,14 @@ import org.junit.Test;
 public class RayTest implements TestFeatures {
 	@Test
 	public void pointAtTest1() {
-		RayPointAt p = new RayPointAt(ray(0.0, 0.0, 0.0, 0.0, 1.0, 0.5), scalar(10));
+		VectorProducerBase p = pointAt(ray(0.0, 0.0, 0.0, 0.0, 1.0, 0.5), scalar(10));
 		Assert.assertEquals(p.get().evaluate(), new Vector(0.0, 10.0, 5.0));
 		Assert.assertEquals(p.get().evaluate(), new Vector(0.0, 10.0, 5.0));
 	}
 
 	@Test
 	public void pointAtTest2() {
-		RayPointAt at = new RayPointAt(ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0), scalar(-20));
+		VectorProducerBase at = pointAt(ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0), scalar(-20));
 		Assert.assertEquals(at.get().evaluate(), new Vector(0.0, -10.0, 21.0));
 	}
 

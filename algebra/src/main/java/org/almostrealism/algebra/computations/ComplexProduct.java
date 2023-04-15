@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,7 +22,6 @@ import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.PairBank;
 import org.almostrealism.algebra.PairProducer;
 import org.almostrealism.hardware.DynamicProducerComputationAdapter;
 
@@ -32,7 +31,7 @@ import java.util.function.Supplier;
 public class ComplexProduct extends DynamicProducerComputationAdapter<Pair<?>, Pair<?>> implements PairProducer {
 
 	public ComplexProduct(Supplier<Evaluable<? extends Pair<?>>> p, Supplier<Evaluable<? extends Pair<?>>> q) {
-		super(2, Pair.empty(), PairBank::new, p, q);
+		super(2, Pair.empty(), Pair::bank, p, q);
 	}
 
 	@Override

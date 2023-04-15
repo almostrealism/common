@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,7 +18,6 @@ package org.almostrealism.bool;
 
 import org.almostrealism.algebra.Vector;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.algebra.VectorBank;
 
 import java.util.function.Supplier;
 
@@ -28,6 +27,6 @@ public class LessThanVector extends LessThan<Vector> implements AcceleratedCondi
 			Supplier rightOperand,
 			Supplier<Evaluable<Vector>> trueValue,
 			Supplier<Evaluable<Vector>> falseValue) {
-		super(3, Vector::new, VectorBank::new, leftOperand, rightOperand, trueValue, falseValue, false);
+		super(3, Vector::new, Vector::bank, leftOperand, rightOperand, trueValue, falseValue, false);
 	}
 }

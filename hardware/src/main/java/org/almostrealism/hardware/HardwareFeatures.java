@@ -24,6 +24,7 @@ import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.hardware.computations.Loop;
 
 import java.util.Optional;
+import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
@@ -44,12 +45,20 @@ public interface HardwareFeatures {
 		return Hardware.getLocalHardware().getComputeContext().getComputer().decompile(r);
 	}
 
+	default IntFunction<Expression> kernelIndex() {
+		return i -> new Expression(Integer.class, KernelSupport.getKernelIndex(i));
+	}
+
 	default String stringForDouble(double value) {
 		return Hardware.getLocalHardware().stringForDouble(value);
 	}
 
 	default Expression<Double> expressionForDouble(double value) {
-		return new Expression<Double>(Double.class, stringForDouble(value));
+		return new Expression<>(Double.class, stringForDouble(value));
+	}
+
+	default Expression<Double> e(double value) {
+		return expressionForDouble(value);
 	}
 
 	default double doubleForString(String value) {
@@ -64,14 +73,6 @@ public interface HardwareFeatures {
 	@JsonIgnore
 	default boolean isCastEnabled() {
 		return Hardware.getLocalHardware().isGPU() && Hardware.getLocalHardware().isDoublePrecision();
-	}
-
-	default <T extends MemoryData> Assignment<T> a(int memLength, Evaluable<T> result, Evaluable<T> value) {
-		return a(memLength, () -> result, () -> value);
-	}
-
-	default <T extends MemoryData> Assignment<T> a(int memLength, Supplier<Evaluable<? extends T>> result, Supplier<Evaluable<? extends T>> value) {
-		return new Assignment<>(memLength, result, value);
 	}
 
 	default Supplier<Runnable> loop(Computation<Void> c, int iterations) {

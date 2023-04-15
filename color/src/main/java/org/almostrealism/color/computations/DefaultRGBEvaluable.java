@@ -17,13 +17,13 @@
 package org.almostrealism.color.computations;
 
 import org.almostrealism.color.RGB;
-import org.almostrealism.color.RGBBank;
 import org.almostrealism.color.RGBEvaluable;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import io.almostrealism.code.Computation;
 import org.almostrealism.hardware.MemoryData;
 
+@Deprecated
 public class DefaultRGBEvaluable extends AcceleratedComputationEvaluable<RGB> implements RGBEvaluable {
 
 	public DefaultRGBEvaluable(Computation<RGB> c) {
@@ -37,6 +37,6 @@ public class DefaultRGBEvaluable extends AcceleratedComputationEvaluable<RGB> im
 
 	@Override
 	public MemoryBank<RGB> createKernelDestination(int size) {
-		return new RGBBank(size);
+		return RGB.bank(size);
 	}
 }

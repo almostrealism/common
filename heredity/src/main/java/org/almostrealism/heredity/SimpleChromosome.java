@@ -35,6 +35,12 @@ public class SimpleChromosome extends ConfigurableChromosome {
 		return gene;
 	}
 
+	public ChoiceGene addChoiceGene(PackedCollection<?> choices) {
+		ChoiceGene gene = new ChoiceGene(choices, geneLength);
+		chromosome.add(gene);
+		return gene;
+	}
+
 	public void removeGene(int index) {
 		chromosome.remove(index);
 	}
@@ -46,7 +52,9 @@ public class SimpleChromosome extends ConfigurableChromosome {
 
 	@Override
 	public ChromosomeBreeder<PackedCollection<?>> getBreeder() {
-		return Breeders.averageBreeder();
+		// return Breeders.averageBreeder();
+		// return Breeders.randomChoiceBreeder();
+		return Breeders.perturbationBreeder(0.01, ScaleFactor::new);
 	}
 
 	@Override
