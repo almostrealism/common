@@ -21,20 +21,23 @@ import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducerComputation;
+import org.almostrealism.collect.CollectionVariable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.Shape;
+import org.almostrealism.collect.TraversableExpression;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.DestinationSupport;
 import org.almostrealism.hardware.KernelSupport;
 import org.almostrealism.hardware.MemoryBank;
 
+import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		extends DynamicCollectionProducerComputationAdapter<PackedCollection<?>, T>
-		implements CollectionProducerComputation<T> {
+		implements TraversableExpression<Double> {
 
 	private TraversalPolicy strideShape;
 	private TraversalPolicy subsetShape;
@@ -58,27 +61,39 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 			if (i != 0) throw new IllegalArgumentException("Invalid position");
 
 			Expression index = new Expression(Double.class, KernelSupport.getKernelIndex(0));
-
-			// Index into subset shape
-			Expression offset = e(index.getExpression() + " % " + subsetShape.getTotalSize());
-
-			// The current slice
-			Expression slice = index.divide(e((double) subsetShape.getTotalSize())).floor();
-
-			TraversalPolicy inputShape = ((Shape) getInputs().get(1)).getShape();
-			Expression<?> pos[] = new Expression[subsetShape.getDimensions()];
-
-			for (int j = 0; j < subsetShape.getDimensions(); j++) {
-				if (strideShape.length(j) > 0) {
-					pos[j] = slice.multiply(e(strideShape.length(j)));
-				} else {
-					pos[j] = e(0);
-				}
-			}
-
-			Expression<?> p = inputShape.subset(subsetShape, offset, pos);
-			return getArgument(1, inputShape.getTotalSize()).get(p, -1);
+			return getValueAt(index);
 		};
+	}
+
+	@Override
+	public Expression<Double> getValue(Expression... pos) {
+		// Find the index in the output shape
+		Expression index = getShape().index(pos);
+		return getValueAt(index);
+	}
+
+	public Expression<Double> getValueAt(Expression index) {
+		CollectionVariable var = getCollectionArgumentVariable(1);
+		if (var == null) return null;
+
+		// Determine which slice to extract
+		Expression slice = index.divide(e((double) subsetShape.getTotalSize())).floor();
+
+		// Find the index in that slice
+		Expression offset = e("((int) " + index.getExpression() + ") % " + subsetShape.getTotalSize());
+
+		// Determine the location of the slice
+		Expression<?> p[] = new Expression[subsetShape.getDimensions()];
+
+		for (int j = 0; j < subsetShape.getDimensions(); j++) {
+			if (strideShape.length(j) > 0) {
+				p[j] = slice.multiply(e(strideShape.length(j)));
+			} else {
+				p[j] = e(0);
+			}
+		}
+
+		return var.get(subsetShape, p).getValueAt(offset);
 	}
 
 	private static TraversalPolicy shape(Producer<?> collection) {

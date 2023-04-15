@@ -33,8 +33,7 @@ import java.util.function.Supplier;
 
 @Deprecated
 public class PackedCollectionSubset<T extends PackedCollection<?>>
-		extends DynamicCollectionProducerComputationAdapter<PackedCollection<?>, T>
-		implements CollectionProducerComputation<T> {
+		extends DynamicCollectionProducerComputationAdapter<PackedCollection<?>, T> {
 	private int pos[];
 
 	public PackedCollectionSubset(TraversalPolicy shape, Producer<?> collection, int... pos) {

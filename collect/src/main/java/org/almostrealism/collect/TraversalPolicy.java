@@ -154,6 +154,28 @@ public class TraversalPolicy implements Traversable<TraversalPolicy> {
 		return p;
 	}
 
+	public TraversalPolicy replaceDimension(int size) {
+		return replaceDimension(getTraversalAxis(), size);
+	}
+
+	public TraversalPolicy replaceDimension(int axis, int size) {
+		int newDims[] = new int[getDimensions()];
+		for (int i = 0; i < getDimensions(); i++) newDims[i] = i == axis ? size : length(i);
+
+		TraversalPolicy p = new TraversalPolicy(newDims);
+		p.traversalAxis = traversalAxis;
+		return p;
+	}
+
+	public TraversalPolicy stride(int stride) {
+		int newDims[] = new int[getDimensions()];
+		for (int i = 0; i < getDimensions(); i++) newDims[i] = i == traversalAxis ? stride : 0;
+
+		TraversalPolicy p = new TraversalPolicy(newDims);
+		p.traversalAxis = traversalAxis;
+		return p;
+	}
+
 	public TraversalPolicy subset(int depth) {
 		int newDims[] = new int[getDimensions() - depth];
 		for (int i = 0; i < newDims.length; i++) newDims[i] = length(i + depth);

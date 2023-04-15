@@ -40,8 +40,7 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class PackedCollectionMap<T extends PackedCollection<?>>
-		extends DynamicCollectionProducerComputationAdapter<PackedCollection<?>, T>
-		implements CollectionProducerComputation<T> {
+		extends DynamicCollectionProducerComputationAdapter<PackedCollection<?>, T> {
 	private Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper;
 	private ExpressionList<Double> result;
 	private TraversalPolicy inputShape;

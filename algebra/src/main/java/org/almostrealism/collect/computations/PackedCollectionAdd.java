@@ -27,6 +27,7 @@ import org.almostrealism.hardware.DynamicProducerComputationAdapter;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
+@Deprecated
 public class PackedCollectionAdd<I extends PackedCollection<?>, O extends PackedCollection<?>>
 		extends DynamicProducerComputationAdapter<I, O> implements CollectionProducerComputation<O> {
 	private TraversalPolicy shape;

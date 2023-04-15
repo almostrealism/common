@@ -23,6 +23,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Variable;
 
@@ -31,7 +32,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-public class CollectionVariable<T extends Shape> extends ArrayVariable<T> {
+public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implements TraversableExpression<Double> {
 	private TraversalPolicy shape;
 
 	private CollectionVariable<T> parent;
@@ -64,6 +65,36 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> {
 			Expression idx = new Expression(Integer.class, index, dependencies);
 			Expression<?> p = parent.getShape().subset(getShape(), idx, pos);
 			return parent.get(p, -1);
+		}
+	}
+
+	@Override
+	public Expression<Double> getValue(Expression... pos) {
+		if (parent != null) {
+			Expression<?> index = getShape().index(pos);
+			return parent.getValue(parent.getShape().subset(getShape(), index, this.pos));
+		}
+
+		return getValueAt(getShape().index(pos));
+	}
+
+	@Override
+	public Expression<Double> getValueAt(Expression index) {
+		if (parent != null) {
+			Expression<?> p = parent.getShape().subset(getShape(), index, pos);
+			return parent.getValueAt(p);
+		}
+
+		Supplier producer = getProducer();
+
+		if (producer instanceof Delegated) {
+			producer = (Producer) ((Delegated<?>) producer).getDelegate();
+		}
+
+		if (producer instanceof TraversableExpression) {
+			return ((TraversableExpression<Double>) producer).getValueAt(index);
+		} else {
+			return (Expression) get(index, -1);
 		}
 	}
 

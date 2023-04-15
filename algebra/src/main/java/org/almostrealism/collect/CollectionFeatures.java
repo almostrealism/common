@@ -219,8 +219,27 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return new PackedCollectionSubset<>(shape, collection, position);
 	}
 
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> enumerate(int axis, int len, Producer<?> collection) {
+		return enumerate(axis, len, len, collection);
+	}
+
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> enumerate(int axis, int len, int stride, Producer<?> collection) {
-		throw new UnsupportedOperationException();
+		return enumerate(axis, len, stride, 1, collection);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> enumerate(int axis, int len, int stride, int repeat, Producer<?> collection) {
+		CollectionProducerComputation<T> result = null;
+
+		TraversalPolicy inputShape = shape(collection);
+
+		for (int i = 0; i < repeat; i++) {
+			TraversalPolicy shp = inputShape.traverse(axis).replaceDimension(len);
+			TraversalPolicy st = inputShape.traverse(axis).stride(stride);
+			result = enumerate(shp, st, result == null ? collection : result);
+			inputShape = shape(result);
+		}
+
+		return result;
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> enumerate(TraversalPolicy shape, Producer<?> collection) {

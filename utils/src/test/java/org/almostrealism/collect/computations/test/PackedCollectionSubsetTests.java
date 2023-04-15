@@ -22,6 +22,7 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.algebra.Tensor;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerBase;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
@@ -151,8 +152,10 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 			return i == 0 || i == 8 || j == 0 || j == 7 || k == 0 || k == 1;
 		}).pack();
 
-		Producer<PackedCollection<?>> stride = enumerate(shape(8, 2), shape(0, 1), traverseEach(p(input)))
-													.multiply(traverseEach(p(filter)));
+//		Producer<PackedCollection<?>> stride = enumerate(shape(8, 2), shape(0, 1), traverseEach(p(input)))
+//													.multiply(traverseEach(p(filter)));
+		Producer<PackedCollection<?>> stride = enumerate(1, 2, 1, traverseEach(p(input)))
+				.multiply(traverseEach(p(filter)));
 		Evaluable<PackedCollection<?>> ev = stride.get();
 		PackedCollection<?> enumerated = ev.evaluate().reshape(shape(9, 8, 2));
 
@@ -167,6 +170,98 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 				}
 			}
 		}
+	}
+
+	@Test
+	public void enumerateTwiceSmall() {
+		PackedCollection<?> input = tensor(shape(4, 4)).pack();
+
+		HardwareOperator.verboseLog(() -> {
+			CollectionProducer<PackedCollection<?>> convY = c(p(input))
+					.enumerate(1, 2, 2);
+			PackedCollection<?> output = convY.get().evaluate();
+			System.out.println(output.getShape());
+
+			CollectionProducer<PackedCollection<?>> convX = c(traverse(0, p(output)))
+					.enumerate(1, 2, 2);
+			output = convX.get().evaluate();
+			System.out.println(output.getShape());
+
+			for (int i = 0; i < 2; i++) {
+				for (int j = 0; j < 2; j++) {
+					for (int k = 0; k < 2; k++) {
+						for (int l = 0; l < 2; l++) {
+							double expected = input.toDouble(input.getShape().index(i * 2 + k, j * 2 + l));
+							double actual = output.toDouble(output.getShape().index(i, j, k, l));
+							System.out.println("PackedCollectionMapTests: " + expected + " vs " + actual);
+							Assert.assertEquals(expected, actual, 0.0001);
+						}
+					}
+				}
+			}
+		});
+	}
+
+	@Test
+	public void doubleEnumerateSmall() {
+		int r = 4;
+		int c = 4;
+		int w = 2;
+		int s = 2;
+
+		PackedCollection<?> input = tensor(shape(r, c)).pack();
+
+		HardwareOperator.verboseLog(() -> {
+			CollectionProducer<PackedCollection<?>> conv = c(p(input))
+					.enumerate(1, w, s)
+					.enumerate(1, w, s);
+			PackedCollection<?> output = conv.get().evaluate();
+			System.out.println(output.getShape());
+
+			for (int i = 0; i < r; i += s) {
+				for (int j = 0; j < c; j += s) {
+					System.out.println("i: " + i + " j: " + j);
+					for (int k = 0; k < w; k++) {
+						for (int l = 0; l < w; l++) {
+							double expected = input.toDouble(input.getShape().index(i + k, j + l));
+							double actual = output.toDouble(output.getShape().index(i / s, j / s, k, l));
+							System.out.println("PackedCollectionSubsetTests: " + expected + " vs " + actual);
+							Assert.assertEquals(expected, actual, 0.0001);
+						}
+					}
+				}
+			}
+		});
+	}
+
+	@Test
+	public void enumerateTwice() {
+		PackedCollection<?> input = tensor(shape(10, 10)).pack();
+
+		HardwareOperator.verboseLog(() -> {
+			CollectionProducer<PackedCollection<?>> convY = c(p(input))
+					.enumerate(1, 3, 1);
+			PackedCollection<?> output = convY.get().evaluate();
+			System.out.println(output.getShape());
+
+			CollectionProducer<PackedCollection<?>> convX = c(traverse(0, p(output)))
+					.enumerate(1, 3, 1);
+			output = convX.get().evaluate();
+			System.out.println(output.getShape());
+
+			for (int i = 0; i < 8; i++) {
+				for (int j = 0; j < 8; j++) {
+					for (int k = 0; k < 3; k++) {
+						for (int l = 0; l < 3; l++) {
+							double expected = input.toDouble(input.getShape().index(i + k, j + l));
+							double actual = output.toDouble(output.getShape().index(i, j, k, l));
+							System.out.println("PackedCollectionMapTests: " + expected + " vs " + actual);
+							Assert.assertEquals(expected, actual, 0.0001);
+						}
+					}
+				}
+			}
+		});
 	}
 
 	// @Test

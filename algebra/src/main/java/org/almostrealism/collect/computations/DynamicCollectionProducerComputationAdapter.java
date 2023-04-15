@@ -16,6 +16,9 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.expression.Exp;
+import io.almostrealism.relation.Delegated;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.expression.InstanceReference;
@@ -26,11 +29,16 @@ import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
+import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.CollectionProducerComputation;
+import org.almostrealism.collect.CollectionVariable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.collect.ExpressionValue;
 
 import java.util.List;
+import java.util.Optional;
+import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -93,18 +101,6 @@ public abstract class DynamicCollectionProducerComputationAdapter<I extends Pack
 		return null;
 	}
 
-	public boolean isInputProducerStatic(int index) {
-		Supplier<Evaluable<? extends I>> producer = getInputs().get(index);
-		if (producer instanceof OperationAdapter) {
-			return ((OperationAdapter) producer).isStatic();
-		}
-
-		Evaluable<? extends I> evaluable = producer.get();
-		if (enableStaticProviders && evaluable instanceof Provider) return true;
-
-		return false;
-	}
-
 	@Override
 	public Expression getValue(int pos) {
 		return (isVariableRef() ? variableRef : getValueFunction()).apply(pos);
@@ -159,13 +155,13 @@ public abstract class DynamicCollectionProducerComputationAdapter<I extends Pack
 		return true;
 	}
 
-	protected static <T> List<ArrayVariable<? extends T>> extractStaticProducers(List<ArrayVariable<? extends T>> args) {
-		return IntStream.range(0, args.size()).filter(i -> args.get(i).getProducer() instanceof DynamicCollectionProducerComputationAdapter &&
-				((DynamicCollectionProducerComputationAdapter) args.get(i).getProducer()).isStatic()).mapToObj(args::get).collect(Collectors.toList());
-	}
+	public CollectionVariable getCollectionArgumentVariable(int argIndex) {
+		ArrayVariable<?> arg = getArgument(argIndex);
 
-	protected static <T> List<ArrayVariable<? extends T>> extractDynamicProducers(List<ArrayVariable<? extends T>> args) {
-		return IntStream.range(0, args.size()).filter(i -> !(args.get(i).getProducer() instanceof DynamicCollectionProducerComputationAdapter) ||
-				!((DynamicCollectionProducerComputationAdapter) args.get(i).getProducer()).isStatic()).mapToObj(args::get).collect(Collectors.toList());
+		if (arg instanceof CollectionVariable) {
+			return (CollectionVariable) arg;
+		} else {
+			return null;
+		}
 	}
 }

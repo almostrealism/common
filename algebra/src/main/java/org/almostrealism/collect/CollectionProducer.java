@@ -28,9 +28,12 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 public interface CollectionProducer<T extends Shape<?>> extends CollectionProducerBase<T>, CollectionFeatures {
-
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> enumerate(int axis, int len, int stride) {
-		return enumerate(axis, len, stride, this);
+		return enumerate(axis, len, stride, 1);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> enumerate(int axis, int len, int stride, int repeat) {
+		return enumerate(axis, len, stride, repeat, this);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> map(Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper) {
