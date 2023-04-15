@@ -23,11 +23,11 @@ import java.io.ObjectOutput;
 
 import io.almostrealism.code.Memory;
 import org.almostrealism.algebra.Triple;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.KernelizedProducer;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.algebra.Defaults;
-import org.almostrealism.hardware.cl.CLMemory;
-import org.jocl.cl_mem;
 
 /**
  * An RGB object represents a color defined by three channels: red, green, and blue.
@@ -567,6 +567,17 @@ public class RGB implements Triple, MemoryData, Externalizable, Cloneable {
 
 	public static KernelizedProducer<RGB> blank() {
 		return new DynamicRGBProducer(args -> new RGB(defaultDepth, 0, 0, 0, false));
+	}
+
+	public static PackedCollection<RGB> bank(int count) {
+		return new PackedCollection<>(new TraversalPolicy(count, 3), 1, delegateSpec ->
+				new RGB(delegateSpec.getDelegate(), delegateSpec.getOffset()));
+	}
+
+	public static PackedCollection<RGB> bank(int count, MemoryData delegate, int delegateOffset) {
+		return new PackedCollection<>(new TraversalPolicy(count, 3), 1, delegateSpec ->
+				new RGB(delegateSpec.getDelegate(), delegateSpec.getOffset()),
+				delegate, delegateOffset);
 	}
 
 	public static RGB gray(double value) { return new RGB(value, value, value); }

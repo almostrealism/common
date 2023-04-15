@@ -3,8 +3,8 @@ package org.almostrealism.color.test;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
-import org.almostrealism.color.RGBBank;
 import org.almostrealism.color.computations.ColorSum;
 import org.almostrealism.color.computations.GreaterThanRGB;
 import org.almostrealism.color.computations.RGBBlack;
@@ -47,7 +47,7 @@ public class ColorMathTest implements TestFeatures {
 		HardwareOperator.verboseLog(() -> {
 			Producer<Scalar> arg0 = v(Scalar.class, 0);
 
-			RGBBank result = new RGBBank(5);
+			PackedCollection<RGB> result = RGB.bank(5);
 			ScalarBank input = new ScalarBank(5);
 			input.set(0, 0.0);
 			input.set(1, -1.0);

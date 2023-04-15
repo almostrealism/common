@@ -17,7 +17,6 @@
 package org.almostrealism.color.computations;
 
 import org.almostrealism.color.RGB;
-import org.almostrealism.color.RGBBank;
 import org.almostrealism.geometry.computations.AcceleratedRankedChoiceEvaluable;
 import org.almostrealism.geometry.computations.RankedChoiceEvaluableForMemoryData;
 import org.almostrealism.hardware.MemoryBank;
@@ -32,7 +31,7 @@ public class RankedChoiceEvaluableForRGB extends RankedChoiceEvaluableForMemoryD
 	}
 
 	public AcceleratedRankedChoiceEvaluable<RGB> getAccelerated() {
-		return getAccelerated(3, RGB::new, RGBBank::new);
+		return getAccelerated(3, RGB::new, RGB::bank);
 	}
 
 	@Override
@@ -45,5 +44,5 @@ public class RankedChoiceEvaluableForRGB extends RankedChoiceEvaluableForMemoryD
 	}
 
 	@Override
-	public MemoryBank<RGB> createKernelDestination(int size) { return new RGBBank(size); }
+	public MemoryBank<RGB> createKernelDestination(int size) { return RGB.bank(size); }
 }

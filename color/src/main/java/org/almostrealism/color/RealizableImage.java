@@ -61,7 +61,7 @@ public class RealizableImage implements Producer<RGB[][]> {
 			int h = (int) dim.getY();
 			int size = w * h;
 			PackedCollection<Pair<?>> input = generateKernelInput(x, y, w, h);
-			RGBBank output = new RGBBank(size);
+			PackedCollection<RGB> output = RGB.bank(size);
 
 			if (source != null) {
 				((KernelizedEvaluable) source.get()).kernelEvaluate(output, new MemoryBank[]{input});
@@ -92,7 +92,7 @@ public class RealizableImage implements Producer<RGB[][]> {
 		return input;
 	}
 
-	public static RGB[][] processKernelOutput(int w, int h, RGBBank output) {
+	public static RGB[][] processKernelOutput(int w, int h, PackedCollection<RGB> output) {
 		RGB image[][] = new RGB[w][h];
 
 		for (int i = 0; i < w; i++) {

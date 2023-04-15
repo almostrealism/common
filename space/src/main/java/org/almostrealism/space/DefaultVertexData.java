@@ -23,11 +23,10 @@ import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
-import org.almostrealism.color.RGBBank;
 
 public class DefaultVertexData implements Mesh.VertexData, CodeFeatures {
 	private PackedCollection<Vector> vertices;
-	private RGBBank colors;
+	private PackedCollection<RGB> colors;
 	private PackedCollection<Pair<?>> texCoords;
 
 	// TODO Convert to a vertex bank so that conversion to PackedCollection<PackedCollection<Vector>> can be kernelized
@@ -35,13 +34,13 @@ public class DefaultVertexData implements Mesh.VertexData, CodeFeatures {
 
 	public DefaultVertexData(int points, int triangles) {
 		this.vertices = Vector.bank(points);
-		this.colors = new RGBBank(points);
+		this.colors = RGB.bank(points);
 		this.texCoords = Pair.bank(points);
 		this.triangles = new int[triangles][3];
 	}
 
 	public PackedCollection<Vector> getVertices() { return vertices; }
-	public RGBBank getColors() { return colors; }
+	public PackedCollection<RGB> getColors() { return colors; }
 	public PackedCollection<Pair<?>> getTextureCoordinates() { return texCoords; }
 
 	@Override
