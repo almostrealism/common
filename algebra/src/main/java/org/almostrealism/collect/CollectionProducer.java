@@ -37,6 +37,14 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 		return map(this, mapper);
 	}
 
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> reduce(Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper) {
+		return reduce(this, mapper);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> reduce(TraversalPolicy itemShape, Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper) {
+		return reduce(itemShape, this, mapper);
+	}
+
 	default <T extends PackedCollection<?>> ExpressionComputation<T> add(Producer<T> value) {
 		return add((Producer) this, value);
 	}
@@ -55,6 +63,10 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 
 	default <T extends PackedCollection<?>> ExpressionComputation<T> pow(Producer<T> value) {
 		return pow((Producer) this, value);
+	}
+
+	default <T extends PackedCollection<?>> ExpressionComputation<T> sum() {
+		return sum((Producer) this);
 	}
 
 	default AcceleratedConditionalStatementCollection _greaterThan(Supplier<Evaluable<? extends PackedCollection<?>>> operand) {

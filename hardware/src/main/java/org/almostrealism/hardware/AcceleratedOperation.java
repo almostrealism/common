@@ -609,14 +609,16 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				kernelArgs[i] = kp.createKernelDestination(kernelSize);
 				kp.kernelEvaluate((MemoryBank) kernelArgs[i], Stream.of(args).map(MemoryData.class::cast).toArray(MemoryData[]::new));
 
-				if (((MemoryBank<?>) kernelArgs[i]).getCount() != kernelSize && kernelArgs[i] instanceof Traversable) {
-					kernelArgs[i] = (MemoryData) ((Traversable) kernelArgs[i]).traverse(1);
-				}
+				if (kernelSize > 1) {
+					if (((MemoryBank<?>) kernelArgs[i]).getCount() != kernelSize && kernelArgs[i] instanceof Traversable) {
+						kernelArgs[i] = (MemoryData) ((Traversable) kernelArgs[i]).traverse(1);
+					}
 
-				if (((MemoryBank<?>) kernelArgs[i]).getCount() != kernelSize) {
-					throw new IllegalArgumentException("Kernel argument " + i + " with count " +
+					if (((MemoryBank<?>) kernelArgs[i]).getCount() != kernelSize) {
+						throw new IllegalArgumentException("Kernel argument " + i + " with count " +
 								((MemoryBank<?>) kernelArgs[i]).getCount() +
 								" is not compatible with kernel size " + kernelSize);
+					}
 				}
 			} else {
 				kernelArgs[i] = (MemoryData) c.evaluate((Object[]) args);

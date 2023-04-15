@@ -236,6 +236,14 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return new PackedCollectionMap<>(collection, mapper);
 	}
 
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> reduce(Producer<?> collection, Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper) {
+		return reduce(shape(1), collection, mapper);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> reduce(TraversalPolicy itemShape, Producer<?> collection, Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper) {
+		return new PackedCollectionMap<>(shape(collection).reduce(itemShape), collection, mapper);
+	}
+
 	default Random rand(int... dims) { return rand(shape(dims)); }
 	default Random rand(TraversalPolicy shape) { return new Random(shape); }
 
@@ -387,6 +395,13 @@ public interface CollectionFeatures extends ExpressionFeatures {
 
 	default <T extends PackedCollection<?>> ExpressionComputation<T> _bound(Supplier<Evaluable<? extends PackedCollection<?>>> a, double min, double max) {
 		return _min(_max(a, c(min)), c(max));
+	}
+
+	default <T extends PackedCollection<?>> ExpressionComputation<T> sum(Supplier<Evaluable<? extends PackedCollection<?>>> input) {
+		int size = shape(input).getTotalSize();
+		Function<List<MultiExpression<Double>>, Expression<Double>> expression= np ->
+			new Sum(IntStream.range(0, size).mapToObj(i -> np.get(1).getValue(i)).toArray(Expression[]::new));
+		return new ExpressionComputation<>(List.of(expression), input);
 	}
 
 	static CollectionFeatures getInstance() {

@@ -22,17 +22,14 @@ import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.MultiExpression;
-import io.almostrealism.relation.Delegated;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.CollectionVariable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.Shape;
 import org.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.hardware.DestinationSupport;
 import org.almostrealism.hardware.KernelSupport;
-import org.almostrealism.hardware.MemoryBank;
 
 import java.util.List;
 import java.util.function.Function;
@@ -47,10 +44,20 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 		implements CollectionProducerComputation<T> {
 	private Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper;
 	private ExpressionList<Double> result;
+	private TraversalPolicy inputShape;
 
 	public PackedCollectionMap(Producer<?> collection, Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper) {
-		super(shape(collection), (Supplier) collection);
+		this(shape(collection), collection, mapper);
+	}
+
+	public PackedCollectionMap(TraversalPolicy shape, Producer<?> collection, Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper) {
+		super(shape, (Supplier) collection);
+		this.inputShape = shape(collection);
 		this.mapper = mapper;
+
+		if (inputShape.getTraversalAxis() != shape.getTraversalAxis()) {
+			throw new IllegalArgumentException("Input and output shapes must have the same traversal axis");
+		}
 	}
 
 	@Override
@@ -58,15 +65,21 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 		super.prepareScope(manager);
 
 		Expression slice = new Expression(Double.class, KernelSupport.getKernelIndex(0));
-		CollectionVariable input = (CollectionVariable) getArgument(1, getShape().getTotalSize());
 
-		TraversalPolicy sliceShape = getShape().item();
-		while (sliceShape.getDimensions() < getShape().getDimensions())
+		ArrayVariable arg = getArgument(1, inputShape.getTotalSize());
+		if (arg instanceof CollectionVariable == false) {
+			throw new IllegalArgumentException("Map input must be a collection");
+		}
+
+		CollectionVariable input = (CollectionVariable) arg;
+
+		TraversalPolicy sliceShape = inputShape.item();
+		while (sliceShape.getDimensions() < inputShape.getDimensions())
 			sliceShape = sliceShape.prependDimension(1);
 
 		ExpressionList<Double> exp = input.get(sliceShape, slice).toList();
 
-		ExpressionComputation<?> computation = new ExpressionComputation<>(getShape().item(),
+		ExpressionComputation<?> computation = new ExpressionComputation<>(inputShape.item(),
 				IntStream.range(0, exp.size())
 						.mapToObj(i -> (Function<List<MultiExpression<Double>>, Expression<Double>>) args -> exp.get(i))
 						.collect(Collectors.toList()));

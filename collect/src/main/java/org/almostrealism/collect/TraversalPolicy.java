@@ -36,6 +36,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy> {
 
 	public int size(int depth) {
 		if (depth == dims.length) return 1;
+		if (depth > dims.length) throw new IllegalArgumentException("Depth is greater than the number of dimensions");
 		return IntStream.range(depth, dims.length).map(i -> dims[i]).reduce((x, y) -> x * y).getAsInt();
 	}
 
@@ -165,6 +166,16 @@ public class TraversalPolicy implements Traversable<TraversalPolicy> {
 	public TraversalPolicy item() {
 		if (traversalAxis == dims.length) return new TraversalPolicy(1);
 		return new TraversalPolicy(IntStream.range(traversalAxis, dims.length).map(i -> dims[i]).toArray());
+	}
+
+	public TraversalPolicy reduce(TraversalPolicy itemShape) {
+		int newDims[] = new int[traversalAxis + itemShape.getDimensions()];
+		for (int i = 0; i < traversalAxis; i++) newDims[i] = length(i);
+		for (int i = 0; i < itemShape.getDimensions(); i++) newDims[i + traversalAxis] = itemShape.length(i);
+
+		TraversalPolicy p = new TraversalPolicy(newDims);
+		p.traversalAxis = traversalAxis;
+		return p;
 	}
 
 	public TraversalPolicy flatten() {

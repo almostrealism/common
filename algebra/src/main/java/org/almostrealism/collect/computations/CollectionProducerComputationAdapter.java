@@ -56,13 +56,16 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 	}
 
 	protected MemoryBank<?> createKernelDestination(int len) {
-		if (len % getShape().getCount() != 0) {
+		if (len > 1 && len % getShape().getCount() != 0) {
 			throw new IllegalArgumentException("Kernel length must be a multiple of the shape count");
 		}
 
 		int count = len / getShape().getCount();
 
-		if (len == getShape().length(0) && count == 1) {
+		// When kernel length as 1, an assumption is made that the intended shape
+		// is the original shape. This is a bit of a hack, but it's by far the
+		// simplest solution available
+		if (count == 0 || (len == getShape().length(0) && count == 1)) {
 			// It is not necessary to prepend a (usually) unnecessary dimension
 			return new PackedCollection<>(getShape());
 		} else {

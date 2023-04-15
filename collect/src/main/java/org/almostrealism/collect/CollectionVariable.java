@@ -21,6 +21,7 @@ import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
+import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Variable;
@@ -117,6 +118,8 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> {
 	public static <T> ArrayVariable<T> create(NameProvider np, String name, Supplier<Evaluable<? extends T>> p) {
 		if (p instanceof Shape) {
 			return new CollectionVariable(np, name, ((Shape) p).getShape(), p);
+		} else if (p instanceof Delegated && ((Delegated) p).getDelegate() instanceof Shape) {
+			return new CollectionVariable(np, name, ((Shape) ((Delegated) p).getDelegate()).getShape(), p);
 		} else {
 			return new ArrayVariable<>(np, name, p);
 		}
