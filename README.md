@@ -45,6 +45,7 @@ up with binaries for CPU, GPU, or FPGA that are as fast or faster than hand-writ
     4. OpenCL (JNI with JOCL) on GPU
 
 *For more information about Java bindings for OpenCL, visit jocl.org*
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ### Why would you want this?
 When choosing Java as your target language, you are normally making a trade-off related to
@@ -60,7 +61,6 @@ this library should be able to make it unnecessary. You also can run your progra
 machine with an OpenCL compatible device and a JVM, without compiling on the target system.
 This means no more of the headache of "numpy failed to build on this Amazon Graviton machine",
 etc.
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ### What does it depend on?
 The dependency footprint is unbelievably small. The only dependency that is brought with
