@@ -29,7 +29,7 @@ a commitment to a particular strategy for production use of your model code ahea
 There is a complete implementation of n-dimensional arrays, but unlike other acceleration
 frameworks where specific operations are accelerated, this library provides a mechanism for
 compiling an entire accelerator program from a hierarchy of mathematical operations. This
-makes it potentially faster than systems which are design to perform certain common operations
+makes it potentially faster than systems which are designed to perform certain common operations
 quickly, but are not capable of generating custom accelerator code.
 
 Machine learning capabilities will be expanded substantially over the remainder of 2023, but
@@ -55,7 +55,7 @@ AVX2 or native frameworks like CL and Metal. The Almost Realism Libraries elimin
 off, allowing you to create Java applications that make use of acceleration without breaking
 the design patterns that are normally used in Java development.
 
-This also means you can, for example, define ML workflows and other HPC processes in Scalar,
+This also means you can, for example, define ML workflows and other HPC processes in Scala,
 Kotlin or Groovy. If you've ever been frustrated trying to take a Python project to production,
 this library should be able to make it unnecessary. You also can run your programs on any
 machine with an OpenCL compatible device and a JVM, without compiling on the target system.
@@ -116,7 +116,8 @@ public class MyNativeEnableApplication implements CodeFeatures {
 
 	public void performMath() {
 		// Compose the expression
-		Supplier<Evaluable<Scalar>> constantOperation = v(1.0).multiply(v(2.0));
+		Supplier<Evaluable<
+		>> constantOperation = v(1.0).multiply(v(2.0));
 		
 		// Compile the expression
 		Evaluable<Scalar> compiledOperation = constantOperation.get();
