@@ -420,12 +420,12 @@ public class Vector extends PackedCollection<Vector> implements Triple, VectorFe
 
 	public static PackedCollection<PackedCollection<Vector>> table(int width, int count) {
 		return new PackedCollection<>(new TraversalPolicy(count, width, 3), 1, delegateSpec ->
-				Vector.bank(3, delegateSpec.getDelegate(), delegateSpec.getOffset()));
+				Vector.bank(width, delegateSpec.getDelegate(), delegateSpec.getOffset()));
 	}
 
 	public static PackedCollection<PackedCollection<Vector>> table(int width, int count, MemoryData delegate, int delegateOffset) {
 		return new PackedCollection<>(new TraversalPolicy(count, width, 3), 1, delegateSpec ->
-					Vector.bank(3, delegateSpec.getDelegate(), delegateSpec.getOffset()),
+					Vector.bank(width, delegateSpec.getDelegate(), delegateSpec.getOffset()),
 				delegate, delegateOffset);
 	}
 

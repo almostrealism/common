@@ -30,7 +30,7 @@ import org.almostrealism.hardware.mem.MemoryBankAdapter;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.geometry.computations.RankedChoiceEvaluable;
 
-public class MeshData extends MemoryBankAdapter<PackedCollection<?>> {
+public class MeshData extends PackedCollection<PackedCollection<?>> {
 	/**
 	 * If there is not enough RAM to run the entire kernel at once,
 	 * it can be run one {@link Ray} at a time by enabling this flag.
@@ -40,7 +40,7 @@ public class MeshData extends MemoryBankAdapter<PackedCollection<?>> {
 	private ScalarBank distances;
 
 	public MeshData(int triangles) {
-		super(12, triangles, delegateSpec ->
+		super(new TraversalPolicy(triangles, 4, 3), 1, delegateSpec ->
 				new PackedCollection<>(new TraversalPolicy(4, 3), 1, delegateSpec.getDelegate(), delegateSpec.getOffset()));
 		distances = new ScalarBank(getCount());
 	}
