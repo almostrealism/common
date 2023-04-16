@@ -60,7 +60,7 @@ public abstract class DynamicProducerComputationAdapter<I extends MemoryData, O 
 	 * to take the {@link Expression} from {@link #getValueFunction()} to
 	 * a local variable in the rendered code. This can prevent
 	 * {@link Expression}s from growing too large during compaction, when
-	 * values are repeatedly embedded to form bigger and bigger
+	 * values are repeatedly embedded to form larger and larger
 	 * {@link Expression}s.
 	 */
 	public static final boolean enableVariableRefConversion = false;

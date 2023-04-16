@@ -28,7 +28,6 @@ import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Variable;
 
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
@@ -98,12 +97,9 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 		}
 	}
 
-	public InstanceReference<T> get(PositionExpression pos) {
-		return get(pos.toArray());
-	}
-
-	public InstanceReference<T> get(Expression<?>... pos) {
-		return get(getShape().index(pos), -1);
+	public Expression<Double> get(Expression<?>... pos) {
+		// return get(getShape().index(pos), -1);
+		return getValue(pos);
 	}
 
 	public CollectionVariable<T> get(TraversalPolicy shape, int... pos) {
@@ -126,8 +122,8 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 		return new CollectionVariable<>(shape, this, pos);
 	}
 
-	public Stream<InstanceReference<?>> stream() {
-		return IntStream.range(0, shape.getTotalSize()).mapToObj(String::valueOf).map(i -> get(i, -1));
+	public Stream<Expression<Double>> stream() {
+		return IntStream.range(0, shape.getTotalSize()).mapToObj(i -> getValueAt(e(i)));
 	}
 
 	public ExpressionList<T> toList() {

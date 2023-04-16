@@ -20,7 +20,6 @@ import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.code.DataContext;
-import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.DynamicProducer;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Pair;
@@ -165,7 +164,7 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 			throw new IllegalArgumentException("Argument to identity kernel must be traversable");
 		}
 
-		return kernel(((Shape) argument).getShape(), (i, p) -> i.v(0).get(p), argument);
+		return kernel(((Shape) argument).getShape(), (i, p) -> i.v(0).getValue(p), argument);
 	}
 
 	default <T extends MemoryData> Supplier<Runnable> run(KernelizedProducer<T> kernel, MemoryBank destination, MemoryData... arguments) {

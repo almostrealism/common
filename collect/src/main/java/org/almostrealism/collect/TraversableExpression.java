@@ -16,9 +16,15 @@
 
 package org.almostrealism.collect;
 
+import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.Expression;
 
-public interface TraversableExpression<T> {
+public interface TraversableExpression<T> extends ExpressionFeatures {
+
+	default Expression<T> getValue(PositionExpression pos) {
+		return getValue(pos.toArray());
+	}
+
 	Expression<T> getValue(Expression... pos);
 
 	Expression<T> getValueAt(Expression index);

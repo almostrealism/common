@@ -21,7 +21,6 @@ import io.almostrealism.expression.Expression;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionOperationList;
 import org.almostrealism.collect.CollectionProducerComputation;
-import org.almostrealism.collect.CollectionVariable;
 import org.almostrealism.collect.Func;
 import org.almostrealism.collect.KernelExpression;
 import org.almostrealism.collect.PackedCollection;
@@ -36,7 +35,6 @@ import org.almostrealism.model.DefaultBlock;
 import java.util.List;
 import java.util.function.Function;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 
 public interface LayerFeatures extends CollectionFeatures {
 
@@ -123,7 +121,7 @@ public interface LayerFeatures extends CollectionFeatures {
 			Expression x = p.l(0).divide(size);
 			Expression y = p.l(1).divide(size);
 			Expression max = i.v(0).get(shape(size, size, 1), x.multiply(2), y.multiply(2), p.l(2)).max();
-			return conditional(max.eq(i.v(0).get(p)), i.v(1).get(x, y, p.l(2)), e(0));
+			return conditional(max.eq(i.v(0).getValue(p)), i.v(1).get(x, y, p.l(2)), e(0));
 		};
 
 		Propagation propagation = (lr, gradient, input, next) -> {
