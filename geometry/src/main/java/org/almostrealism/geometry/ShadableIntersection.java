@@ -33,7 +33,7 @@ import org.almostrealism.geometry.computations.RayFromVectors;
  * 
  * @author  Michael Murray
  */
-public class ShadableIntersection extends Intersection implements ContinuousField, VectorFeatures {
+public class ShadableIntersection extends Intersection implements ContinuousField, RayFeatures {
 	private Producer<Vector> incident;
 	private Producer<Ray> normal;
 
@@ -54,7 +54,7 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 
 		this.incident = incident;
 
-		Producer<Ray> p = new RayFromVectors(getPoint(), normal);
+		Producer<Ray> p = ray(getPoint(), normal);
 		this.normal = new ProducerWithRankAdapter<>(p, distance);
 	}
 	

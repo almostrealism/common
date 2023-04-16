@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,16 +16,13 @@
 
 package org.almostrealism.geometry;
 
-import io.almostrealism.code.ProducerComputation;
-import org.almostrealism.algebra.VectorProducerBase;
-import org.almostrealism.algebra.computations.ScalarExpressionComputation;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.DefaultComputer;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.KernelizedEvaluable;
-import org.almostrealism.hardware.KernelizedProducer;
 
-public interface RayProducer extends ProducerComputation<Ray>, KernelizedProducer<Ray>, RayFeatures {
+@Deprecated
+public interface RayProducer extends RayProducerBase {
 	@Override
 	default KernelizedEvaluable<Ray> get() {
 		DefaultComputer computer = (DefaultComputer) Hardware.getLocalHardware().getComputeContext().getComputer();
@@ -41,14 +38,4 @@ public interface RayProducer extends ProducerComputation<Ray>, KernelizedProduce
 		ev.compile();
 		return ev;
 	}
-
-	default VectorProducerBase origin() { return origin(this); }
-
-	default VectorProducerBase direction() { return direction(this); }
-
-	default ScalarExpressionComputation oDoto() { return oDoto(this); }
-
-	default ScalarExpressionComputation dDotd() { return dDotd(this); }
-
-	default ScalarExpressionComputation oDotd() { return oDotd(this); }
 }

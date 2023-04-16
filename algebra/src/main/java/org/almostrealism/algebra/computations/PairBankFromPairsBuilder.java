@@ -24,16 +24,18 @@ import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Factory;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Pair;
+import org.almostrealism.algebra.PairBankFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.DynamicProducerComputationAdapter;
 import org.almostrealism.hardware.KernelizedEvaluable;
+import org.almostrealism.hardware.KernelizedProducer;
 
 import java.util.Objects;
 import java.util.function.IntFunction;
 import java.util.stream.Stream;
 
 public class PairBankFromPairsBuilder extends DynamicProducerComputationAdapter<Pair, PackedCollection<Pair<?>>>
-									implements Factory<PairBankFromPairs> {
+									implements Factory<KernelizedProducer<PackedCollection<Pair<?>>>>, PairBankFeatures {
 	private Producer<Pair<?>> producers[];
 
 	public PairBankFromPairsBuilder(int count) {
@@ -72,7 +74,7 @@ public class PairBankFromPairsBuilder extends DynamicProducerComputationAdapter<
 	public KernelizedEvaluable<PackedCollection<Pair<?>>> get() { return construct().get(); }
 
 	@Override
-	public PairBankFromPairs construct() { return new PairBankFromPairs(producers); }
+	public KernelizedProducer<PackedCollection<Pair<?>>> construct() { return pairBank(producers); }
 
 	private int arg(int index) { return index / 2; }
 	private int pos(int index) { return index % 2; }

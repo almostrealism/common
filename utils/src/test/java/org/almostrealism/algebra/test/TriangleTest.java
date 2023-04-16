@@ -28,6 +28,8 @@ import org.almostrealism.bool.AcceleratedConjunctionScalar;
 import org.almostrealism.bool.GreaterThanScalar;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Ray;
+import org.almostrealism.geometry.RayProducerBase;
+import org.almostrealism.geometry.computations.RayExpressionComputation;
 import org.almostrealism.geometry.computations.RayFromVectors;
 import org.almostrealism.graph.mesh.TriangleIntersectAt;
 import org.almostrealism.hardware.PassThroughEvaluable;
@@ -49,7 +51,7 @@ public class TriangleTest implements CodeFeatures {
 
 	protected VectorProducerBase originProducer() {
 		Producer<Ray> noRank = ((ProducerWithRank) intersectAt()).getProducer();
-		return (VectorProducerBase) ((RayFromVectors) noRank).getInputProducer(1);
+		return (VectorProducerBase) ((RayExpressionComputation) noRank).getInputProducer(1);
 	}
 
 	protected VectorExpressionComputation originPointProducer() {
@@ -154,7 +156,6 @@ public class TriangleTest implements CodeFeatures {
 	@Test
 	public void intersectionTest() {
 		Evaluable<Ray> ev = intersectAt().get();
-		((OperationAdapter) ev).compile();
 
 		Ray r = ev.evaluate();
 		System.out.println(r);

@@ -48,7 +48,7 @@ import java.util.function.Supplier;
  * methods for transforming various types of vectors. The TransformMatrix class also provides
  * some static methods that generate certain useful matrices.
  */
-public class TransformMatrix extends MemoryDataAdapter implements TripleFunction<Triple, Vector>, VectorFeatures, TransformMatrixFeatures, HardwareFeatures {
+public class TransformMatrix extends MemoryDataAdapter implements TripleFunction<Triple, Vector>, VectorFeatures, TransformMatrixFeatures, RayFeatures, HardwareFeatures {
 	public static final int TRANSFORM_AS_LOCATION = 1;
 	public static final int TRANSFORM_AS_OFFSET = 2;
 	public static final int TRANSFORM_AS_NORMAL = 4;
@@ -256,8 +256,8 @@ public class TransformMatrix extends MemoryDataAdapter implements TripleFunction
 		return transform(v(vector), TRANSFORM_AS_NORMAL).get().evaluate();
 	}
 
-	public RayMatrixTransform transform(Supplier<Evaluable<? extends Ray>> ray) {
-		return new RayMatrixTransform(this, ray);
+	public RayProducerBase transform(Supplier<Evaluable<? extends Ray>> ray) {
+		return transform(this, ray);
 	}
 	
 	/**

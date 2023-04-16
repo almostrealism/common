@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,14 +16,20 @@
 
 package org.almostrealism.color;
 
+import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.color.computations.RGBExpressionComputation;
 import org.almostrealism.color.computations.StaticRGBComputation;
-import org.almostrealism.color.computations.RGBFromScalars;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.IntStream;
 
 public interface RGBFeatures extends ScalarFeatures {
 
@@ -36,7 +42,9 @@ public interface RGBFeatures extends ScalarFeatures {
 	default RGBProducer rgb(double r, double g, double b) { return value(new RGB(r, g, b)); }
 
 	default RGBProducer rgb(Supplier<Evaluable<? extends Scalar>> r, Supplier<Evaluable<? extends Scalar>> g, Supplier<Evaluable<? extends Scalar>> b) {
-		return new RGBFromScalars(r, g, b);
+		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
+		IntStream.range(0, 3).forEach(i -> comp.add(args -> args.get(1 + i).getValue(0)));
+		return new RGBExpressionComputation(comp, (Supplier) r, (Supplier) g, (Supplier) b);
 	}
 
 	default RGBProducer rgb(Scalar v) { return cfromScalar(v); }
@@ -48,7 +56,7 @@ public interface RGBFeatures extends ScalarFeatures {
 	}
 
 	default RGBProducer cfromScalar(Supplier<Evaluable<? extends Scalar>> value) {
-		return new RGBFromScalars(value, value, value);
+		return rgb(value, value, value);
 	}
 
 	default RGBProducer cfromScalar(Scalar value) {

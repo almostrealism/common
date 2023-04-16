@@ -16,18 +16,26 @@
 
 package org.almostrealism.geometry;
 
+import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.MultiExpression;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.algebra.VectorProducerBase;
 import org.almostrealism.algebra.computations.ScalarExpressionComputation;
 import org.almostrealism.algebra.computations.VectorExpressionComputation;
+import org.almostrealism.geometry.computations.RayExpressionComputation;
 import org.almostrealism.geometry.computations.StaticRayComputation;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.geometry.computations.TransformAsLocation;
+import org.almostrealism.geometry.computations.TransformAsOffset;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
+import java.util.stream.IntStream;
 
 public interface RayFeatures extends VectorFeatures {
 
@@ -39,6 +47,13 @@ public interface RayFeatures extends VectorFeatures {
 
 	default RayProducer ray(double x, double y, double z, double dx, double dy, double dz) {
 		return value(new Ray(new Vector(x, y, z), new Vector(dx, dy, dz)));
+	}
+
+	default RayExpressionComputation ray(Supplier<Evaluable<? extends Vector>> origin,
+											Supplier<Evaluable<? extends Vector>> direction) {
+		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
+		IntStream.range(0, 6).forEach(i -> comp.add(args -> args.get(1 + i / 3).getValue(i % 3)));
+		return new RayExpressionComputation(comp, (Supplier) origin, (Supplier) direction);
 	}
 
 	default RayProducer ray(IntFunction<Double> values) {
@@ -71,6 +86,10 @@ public interface RayFeatures extends VectorFeatures {
 	default ScalarExpressionComputation dDotd(Supplier<Evaluable<? extends Ray>> r) { return dotProduct(direction(r), direction(r)); }
 
 	default ScalarExpressionComputation oDotd(Supplier<Evaluable<? extends Ray>> r) { return dotProduct(origin(r), direction(r)); }
+
+	default RayExpressionComputation transform(TransformMatrix t, Supplier<Evaluable<? extends Ray>> r) {
+		return ray(new TransformAsLocation(t, origin(r)), new TransformAsOffset(t, direction(r)));
+	}
 
 	static RayFeatures getInstance() {
 		return new RayFeatures() { };

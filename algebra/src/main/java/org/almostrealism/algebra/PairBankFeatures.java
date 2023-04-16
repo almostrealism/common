@@ -23,6 +23,8 @@ import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.computations.PairBankExpressionComputation;
+import org.almostrealism.algebra.computations.PairExpressionComputation;
 import org.almostrealism.algebra.computations.ScalarBankExpressionComputation;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
@@ -36,6 +38,12 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public interface PairBankFeatures extends CollectionFeatures {
+
+	default PairBankExpressionComputation pairBank(Supplier<Evaluable<? extends Pair<?>>>... input) {
+		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
+		IntStream.range(0, 2 * input.length).forEach(i -> comp.add(args -> args.get(1 + i / 2).getValue(i % 2)));
+		return new PairBankExpressionComputation(input.length, comp, (Supplier[]) input);
+	}
 
 	@Deprecated
 	default ScalarBankProducerBase powerSpectrumOld(int count, Supplier<Evaluable<? extends PackedCollection<Pair<?>>>> input) {

@@ -70,7 +70,9 @@ public interface VectorFeatures extends CollectionFeatures, HardwareFeatures {
 	default VectorExpressionComputation vector(Supplier<Evaluable<? extends Scalar>> x,
 											   Supplier<Evaluable<? extends Scalar>> y,
 											   Supplier<Evaluable<? extends Scalar>> z) {
-		return fromScalars(x, y, z);
+		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
+		IntStream.range(0, 3).forEach(i -> comp.add(args -> args.get(1 + i).getValue(0)));
+		return new VectorExpressionComputation(comp, (Supplier) x, (Supplier) y, (Supplier) z);
 	}
 
 	default VectorExpressionComputation vector(Supplier<Evaluable<? extends PackedCollection<?>>> bank, int index) {
@@ -111,7 +113,7 @@ public interface VectorFeatures extends CollectionFeatures, HardwareFeatures {
 	}
 
 	default VectorExpressionComputation crossProduct(Supplier<Evaluable<? extends Vector>> a, Supplier<Evaluable<? extends Vector>> b) {
-		return fromScalars(y(a).multiply(z(b)).subtract(z(a).multiply(y(b))),
+		return vector(y(a).multiply(z(b)).subtract(z(a).multiply(y(b))),
 				z(a).multiply(x(b)).subtract(x(a).multiply(z(b))),
 				x(a).multiply(y(b)).subtract(y(a).multiply(x(b))));
 	}
@@ -155,11 +157,11 @@ public interface VectorFeatures extends CollectionFeatures, HardwareFeatures {
 
 	@Deprecated
 	default VectorExpressionComputation scalarMultiply(Producer<Vector> a, Supplier<Evaluable<? extends Scalar>> b) {
-		return vector(multiply(a, fromScalars(b, b, b)));
+		return vector(multiply(a, vector(b, b, b)));
 	}
 
 	default VectorExpressionComputation minus(VectorProducerBase p) {
-		return multiply(p, fromScalars(ScalarFeatures.minusOne(),
+		return multiply(p, vector(ScalarFeatures.minusOne(),
 				ScalarFeatures.minusOne(),
 				ScalarFeatures.minusOne()));
 	}
@@ -174,17 +176,9 @@ public interface VectorFeatures extends CollectionFeatures, HardwareFeatures {
 
 	default VectorExpressionComputation normalize(Supplier<Evaluable<? extends Vector>> p) {
 		ScalarProducerBase oneOverLength = length(p).pow(ScalarFeatures.minusOne());
-		return fromScalars(x(p).multiply(oneOverLength),
+		return vector(x(p).multiply(oneOverLength),
 				y(p).multiply(oneOverLength),
 				z(p).multiply(oneOverLength));
-	}
-
-	default VectorExpressionComputation fromScalars(Supplier<Evaluable<? extends Scalar>> x,
-													Supplier<Evaluable<? extends Scalar>> y,
-													Supplier<Evaluable<? extends Scalar>> z) {
-		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		IntStream.range(0, 3).forEach(i -> comp.add(args -> args.get(1 + i).getValue(0)));
-		return new VectorExpressionComputation(comp, (Supplier) x, (Supplier) y, (Supplier) z);
 	}
 
 	static VectorFeatures getInstance() {

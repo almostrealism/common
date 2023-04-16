@@ -24,6 +24,8 @@ import org.almostrealism.algebra.ScalarProducerBase;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorProducerBase;
 import org.almostrealism.geometry.Ray;
+import org.almostrealism.geometry.RayProducerBase;
+import org.almostrealism.geometry.computations.RayExpressionComputation;
 import org.almostrealism.geometry.computations.RayFromVectors;
 import org.almostrealism.space.DefaultVertexData;
 import org.almostrealism.space.Mesh;
@@ -80,7 +82,7 @@ public class MeshIntersectionTest implements TestFeatures {
 
 	protected TriangleIntersectAt intersection() {
 		return TriangleIntersectAt.construct(PassThroughEvaluable.of(0),
-										new RayFromVectors(PassThroughEvaluable.of(Vector.class, 1),
+										ray(PassThroughEvaluable.of(Vector.class, 1),
 															PassThroughEvaluable.of(Vector.class, 2)));
 	}
 
@@ -204,7 +206,7 @@ public class MeshIntersectionTest implements TestFeatures {
 	@Test
 	public void intersectionKernel1() {
 		ScalarBank distances = new ScalarBank(1);
-		RayFromVectors ray = new RayFromVectors(origin1, direction1);
+		RayProducerBase ray = ray(origin1, direction1);
 		data1.evaluateIntersectionKernel(ray.get(), distances, new MemoryBank[0]);
 		System.out.println("distance = " + distances.get(0).getValue());
 		Assert.assertEquals(1.0, distances.get(0).getValue(), Math.pow(10, -10));
@@ -221,7 +223,7 @@ public class MeshIntersectionTest implements TestFeatures {
 	@Test
 	public void intersectionKernel2() {
 		ScalarBank distances = new ScalarBank(1);
-		RayFromVectors ray = new RayFromVectors(origin2, direction2);
+		RayExpressionComputation ray = ray(origin2, direction2);
 		data2.evaluateIntersectionKernel(ray.get(), distances, new MemoryBank[0]);
 		System.out.println("distance = " + distances.get(0).getValue());
 		assertEquals(1.0, distances.get(0));

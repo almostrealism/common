@@ -16,6 +16,7 @@
 
 package org.almostrealism.space.test;
 
+import org.almostrealism.geometry.RayProducerBase;
 import org.almostrealism.geometry.computations.RayMatrixTransform;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
@@ -84,12 +85,12 @@ public class PlaneTest implements HardwareFeatures, CodeFeatures {
 		Plane p = new Plane(Plane.XZ);
 		p.setLocation(new Vector(0.0, -10, 0.0));
 
-		RayMatrixTransform t = new RayMatrixTransform(p.getTransform(true),
+		RayProducerBase t = transform(p.getTransform(true),
 					ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0));
 		Assert.assertEquals(new Ray(new Vector(0.0, -10.0, 1.0),
 				new Vector(0.0, 0.5, -1.0)), t.get().evaluate());
 
-		t = new RayMatrixTransform(p.getTransform(true).getInverse(),
+		t = transform(p.getTransform(true).getInverse(),
 					ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0));
 		Assert.assertEquals(new Ray(new Vector(0.0, 10.0, 1.0),
 				new Vector(0.0, 0.5, -1.0)), t.get().evaluate());

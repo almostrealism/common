@@ -16,6 +16,7 @@
 
 package org.almostrealism.algebra.test;
 
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.computations.RayMatrixTransform;
@@ -27,11 +28,11 @@ import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
 public class RayMatrixTransformTest implements HardwareFeatures, TestFeatures {
-	protected AcceleratedComputationEvaluable<Ray> transform() {
+	protected Evaluable<Ray> transform() {
 		TransformMatrix m = new TranslationMatrix(vector(0.0, -10.0, 0.0)).evaluate();
 
 		Ray r = new Ray(new Vector(1.0, 2.0, 3.0), new Vector(4.0, 5.0, 6.0));
-		return (AcceleratedComputationEvaluable<Ray>) new RayMatrixTransform(m.getInverse(), v(r)).get();
+		return transform(m.getInverse(), v(r)).get();
 	}
 
 	@Test
@@ -42,7 +43,7 @@ public class RayMatrixTransformTest implements HardwareFeatures, TestFeatures {
 
 	@Test
 	public void applyCompact() {
-		AcceleratedComputationEvaluable<Ray> t = transform();
+		Evaluable<Ray> t = transform();
 		Ray r = t.evaluate();
 		assertions(r);
 	}

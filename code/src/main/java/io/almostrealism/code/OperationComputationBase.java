@@ -113,6 +113,8 @@ public abstract class OperationComputationBase<I, O> extends OperationAdapter<I>
 	@Override
 	public Variable getOutputVariable() { return null; }
 
+	// Replaced by getArgument(i).getValueAt(pos)
+	@Deprecated
 	public Expression<Double> getInputValue(int index, int pos) {
 		if (getArgumentVariables() == null) {
 			throw new IllegalArgumentException("Input value cannot be obtained before arguments are determined");

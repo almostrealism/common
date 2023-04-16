@@ -16,7 +16,9 @@
 
 package org.almostrealism.algebra.computations.test;
 
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.geometry.TransformMatrix;
+import org.almostrealism.geometry.computations.RayExpressionComputation;
 import org.almostrealism.geometry.computations.RayMatrixTransform;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayProducer;
@@ -40,11 +42,11 @@ public class RayMatrixTransformTest implements TestFeatures {
 
 	@Test
 	public void scaleAndTranslate() {
-		RayMatrixTransform transform = new RayMatrixTransform(getMatrix(), getRay1());
-		AcceleratedComputationEvaluable<Ray> ace = (AcceleratedComputationEvaluable<Ray>) transform.get();
-		ace.compile();
+		RayExpressionComputation transform = transform(getMatrix(), getRay1());
+		Evaluable<Ray> ace = transform.get();
 		Ray r = ace.evaluate();
 		System.out.println(r);
+
 		assertEquals(0.25, r.getOrigin().getX());
 		assertEquals(3.9, r.getOrigin().getY());
 		assertEquals(-2.25, r.getOrigin().getZ());
