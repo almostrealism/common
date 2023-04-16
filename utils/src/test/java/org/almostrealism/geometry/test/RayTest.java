@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,10 +19,8 @@ package org.almostrealism.geometry.test;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorProducerBase;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.geometry.computations.RayCopy;
 import org.almostrealism.geometry.computations.StaticRayComputation;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
-import io.almostrealism.relation.Provider;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
@@ -39,14 +37,6 @@ public class RayTest implements TestFeatures {
 	public void pointAtTest2() {
 		VectorProducerBase at = pointAt(ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0), scalar(-20));
 		Assert.assertEquals(at.get().evaluate(), new Vector(0.0, -10.0, 21.0));
-	}
-
-	@Test
-	public void copyTest() {
-		RayCopy c = new RayCopy(new Provider<>(new Ray(new Vector(1.0, 2.0, 3.0),
-															new Vector(5.0, 4.0, 3.0))));
-		Assert.assertEquals(c.evaluate(), new Ray(new Vector(1.0, 2.0, 3.0),
-										new Vector(5.0, 4.0, 3.0)));
 	}
 
 	@Test

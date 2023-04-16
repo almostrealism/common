@@ -16,6 +16,8 @@
 
 package org.almostrealism.hardware.collect;
 
+// Use TraversableExpression instead
+@Deprecated
 public interface ExpressionValue {
 	boolean isValueOnly();
 }

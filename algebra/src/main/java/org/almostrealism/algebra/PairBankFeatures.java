@@ -24,7 +24,7 @@ import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.computations.PairBankExpressionComputation;
-import org.almostrealism.algebra.computations.PairExpressionComputation;
+import org.almostrealism.algebra.computations.PairFromPairBank;
 import org.almostrealism.algebra.computations.ScalarBankExpressionComputation;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
@@ -43,6 +43,10 @@ public interface PairBankFeatures extends CollectionFeatures {
 		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
 		IntStream.range(0, 2 * input.length).forEach(i -> comp.add(args -> args.get(1 + i / 2).getValue(i % 2)));
 		return new PairBankExpressionComputation(input.length, comp, (Supplier[]) input);
+	}
+
+	default PairProducerBase pairFromBank(Supplier<Evaluable<? extends PackedCollection<Pair<?>>>> bank, Supplier<Evaluable<? extends Scalar>> index) {
+		return new PairFromPairBank(bank, index);
 	}
 
 	@Deprecated

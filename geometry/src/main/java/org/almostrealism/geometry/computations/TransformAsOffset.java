@@ -23,6 +23,7 @@ import org.almostrealism.geometry.TransformMatrix;
 
 import java.util.function.Supplier;
 
+@Deprecated
 public class TransformAsOffset extends Transform {
 	public TransformAsOffset(TransformMatrix t, Supplier<Evaluable<? extends Vector>> v) {
 		super(t, v, false);

@@ -30,7 +30,6 @@ import org.almostrealism.geometry.computations.MatrixDeterminant;
 import org.almostrealism.geometry.computations.MatrixProduct;
 import org.almostrealism.geometry.computations.MatrixToUpperTriangle;
 import org.almostrealism.geometry.computations.MatrixTranspose;
-import org.almostrealism.geometry.computations.RayMatrixTransform;
 import org.almostrealism.geometry.computations.TransformAsLocation;
 import org.almostrealism.geometry.computations.TransformAsOffset;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;

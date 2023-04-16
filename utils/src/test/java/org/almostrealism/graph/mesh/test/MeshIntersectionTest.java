@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -26,7 +26,6 @@ import org.almostrealism.algebra.VectorProducerBase;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayProducerBase;
 import org.almostrealism.geometry.computations.RayExpressionComputation;
-import org.almostrealism.geometry.computations.RayFromVectors;
 import org.almostrealism.space.DefaultVertexData;
 import org.almostrealism.space.Mesh;
 import org.almostrealism.space.MeshData;

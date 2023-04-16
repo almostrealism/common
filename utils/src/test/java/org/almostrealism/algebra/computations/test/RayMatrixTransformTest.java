@@ -19,10 +19,8 @@ package org.almostrealism.algebra.computations.test;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.geometry.computations.RayExpressionComputation;
-import org.almostrealism.geometry.computations.RayMatrixTransform;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayProducer;
-import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 

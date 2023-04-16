@@ -23,10 +23,8 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Gradient;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.computations.ProducerWithRankAdapter;
-import org.almostrealism.geometry.computations.RayFromVectors;
 
 /**
  * Extends {@link Intersection} to provide metadata that is required for shading.

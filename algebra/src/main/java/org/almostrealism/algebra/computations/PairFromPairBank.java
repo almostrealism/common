@@ -20,17 +20,21 @@ import io.almostrealism.expression.Expression;
 import org.almostrealism.algebra.Pair;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.PairProducer;
+import org.almostrealism.algebra.PairProducerBase;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.computations.DynamicCollectionProducerComputationAdapter;
 import org.almostrealism.hardware.DynamicProducerComputationAdapter;
+import org.almostrealism.hardware.MemoryData;
 
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
 @Deprecated
-public class PairFromPairBank extends DynamicProducerComputationAdapter<PackedCollection<Pair<?>>, Pair<?>> implements PairProducer {
+public class PairFromPairBank extends DynamicCollectionProducerComputationAdapter<PackedCollection<Pair<?>>, Pair<?>> implements PairProducerBase {
 	public PairFromPairBank(Supplier<Evaluable<? extends PackedCollection<Pair<?>>>> bank, Supplier<Evaluable<? extends Scalar>> index) {
-		super(2, Pair.empty(), Pair::bank, bank, (Supplier) index);
+		super(new TraversalPolicy(2), bank, (Supplier) index);
 	}
 
 	@Override
@@ -52,5 +56,10 @@ public class PairFromPairBank extends DynamicProducerComputationAdapter<PackedCo
 				throw new IllegalArgumentException();
 			}
 		};
+	}
+
+	@Override
+	public Pair postProcessOutput(MemoryData output, int offset) {
+		return new Pair(output, offset);
 	}
 }

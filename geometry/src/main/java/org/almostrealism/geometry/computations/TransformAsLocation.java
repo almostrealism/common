@@ -23,6 +23,7 @@ import org.almostrealism.geometry.TransformMatrix;
 
 import java.util.function.Supplier;
 
+@Deprecated
 public class TransformAsLocation extends Transform {
 	public TransformAsLocation(TransformMatrix t, Supplier<Evaluable<? extends Vector>> v) {
 		super(t, v, true);
