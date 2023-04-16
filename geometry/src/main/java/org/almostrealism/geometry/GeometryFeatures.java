@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,16 +18,17 @@ package org.almostrealism.geometry;
 
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.MultiExpression;
+import io.almostrealism.expression.Sine;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
-import org.almostrealism.algebra.ScalarProducerBase;
+import org.almostrealism.algebra.computations.ScalarExpressionComputation;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
-import org.almostrealism.geometry.computations.Sine;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -37,8 +38,11 @@ public interface GeometryFeatures extends CollectionFeatures {
 	double TWO_PI = 2 * PI;
 
 	@Deprecated
-	default Sine sin(Producer<Scalar> input) {
-		return new Sine(input);
+	default ScalarExpressionComputation sin(Producer<Scalar> input) {
+		List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression = new ArrayList<>();
+		expression.add(args -> new Sine(args.get(1).getValue(0)));
+		expression.add(args -> args.get(1).getValue(1));
+		return new ScalarExpressionComputation(expression, (Supplier) input);
 	}
 
 	default ExpressionComputation<Scalar> sinw(Producer<Scalar> input, Producer<Scalar> wavelength,
