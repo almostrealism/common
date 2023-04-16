@@ -63,6 +63,7 @@ public interface PairFeatures extends HardwareFeatures {
 				args -> new Expression<>(Double.class, stringForDouble(1.0))), (Supplier) p);
 	}
 
+	@Deprecated
 	default PairExpressionComputation pairAdd(Supplier<Evaluable<? extends Pair<?>>>... values) {
 		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
 		comp.add(args -> new Sum(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValue(0)).toArray(Expression[]::new)));
@@ -70,29 +71,8 @@ public interface PairFeatures extends HardwareFeatures {
 		return new PairExpressionComputation(comp, (Supplier[]) values);
 	}
 
-	default PairExpressionComputation pairSubtract(Supplier<Evaluable<? extends Pair<?>>> a, Supplier<Evaluable<? extends Pair<?>>> b) {
-		return pairAdd(a, pairMinus(b));
-	}
-
-	default PairProducer pairsMultiply(Supplier<Evaluable<? extends Pair<?>>> a, Supplier<Evaluable<? extends Pair<?>>> b) {
-		return new PairProduct(a, b);
-	}
-
 	default PairProducer multiplyComplex(Supplier<Evaluable<? extends Pair<?>>> a, Supplier<Evaluable<? extends Pair<?>>> b) {
 		return new ComplexProduct(a, b);
-	}
-
-	default PairProducer pairDivide(Supplier<Evaluable<? extends Pair<?>>> a, ScalarProducerBase b) {
-		ScalarProducerBase v = ScalarFeatures.getInstance().pow(b, ScalarFeatures.of(new Scalar(-1.0)));
-		return new PairProduct(a, pair(v, v));
-	}
-
-	default PairProducer pairsDivide(Supplier<Evaluable<? extends Pair<?>>> a, Supplier<Evaluable<? extends Pair<?>>> b) {
-		return new PairProduct(a, pair(r(b).pow(-1.0), l(b).pow(-1.0)));
-	}
-
-	default PairProducer pairMinus(Supplier<Evaluable<? extends Pair<?>>> v) {
-		return new PairProduct(v(new Pair(-1.0, -1.0)), v);
 	}
 
 	default PairProducer fromScalars(Supplier<Evaluable<? extends Scalar>> x, Supplier<Evaluable<? extends Scalar>> y) {

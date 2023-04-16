@@ -30,7 +30,7 @@ public abstract class MemoryDataAdapter implements MemoryData {
 	private int delegateMemOffset;
 
 	protected void init() {
-		if (delegateMem == null) {
+		if (getDelegate() == null) {
 			PooledMem pool = getDefaultDelegate();
 
 			if (pool == null) {
@@ -43,7 +43,7 @@ public abstract class MemoryDataAdapter implements MemoryData {
 	}
 
 	@Override
-	public Memory getMem() { return delegateMem == null ? mem : delegateMem.getMem(); }
+	public Memory getMem() { return getDelegate() == null ? mem : getDelegate().getMem(); }
 
 	@Override
 	public MemoryData getDelegate() { return delegateMem; }

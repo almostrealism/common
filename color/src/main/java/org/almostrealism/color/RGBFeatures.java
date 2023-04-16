@@ -22,7 +22,6 @@ import org.almostrealism.algebra.ScalarFeatures;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.color.computations.StaticRGBComputation;
 import org.almostrealism.color.computations.ColorProduct;
-import org.almostrealism.color.computations.ColorSum;
 import org.almostrealism.color.computations.RGBFromScalars;
 
 import java.util.function.Supplier;
@@ -47,22 +46,6 @@ public interface RGBFeatures extends ScalarFeatures {
 
 	default RGBProducer value(RGB value) {
 		return new StaticRGBComputation(value);
-	}
-
-	default RGBEvaluable cadd(Evaluable<RGB> value, Evaluable<RGB> operand) {
-		return (RGBEvaluable) cadd(() -> value, () -> operand).get();
-	}
-
-	default RGBProducer cadd(Supplier<Evaluable<? extends RGB>>... values) {
-		return new ColorSum(values);
-	}
-
-	default RGBEvaluable csubtract(Evaluable<RGB> value, Evaluable<RGB> operand) {
-		return (RGBEvaluable) csubtract(() -> value, () -> operand).get();
-	}
-
-	default RGBProducer csubtract(Supplier<Evaluable<? extends RGB>> value, Supplier<Evaluable<? extends RGB>> operand) {
-		return new ColorSum(value, cminus(operand));
 	}
 
 	default RGBEvaluable cmultiply(Evaluable<RGB> a, Evaluable<RGB> b) {

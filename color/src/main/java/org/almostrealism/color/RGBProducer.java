@@ -39,12 +39,6 @@ public interface RGBProducer extends ProducerComputation<RGB>, KernelizedProduce
 		return ev;
 	}
 
-	default RGBProducer add(Supplier<Evaluable<? extends RGB>> operand) {
-		return cadd(this, operand);
-	}
-
-	default RGBProducer subtract(Supplier<Evaluable<? extends RGB>> operand) { return csubtract(this, operand); }
-
 	default RGBProducer multiply(Supplier<Evaluable<? extends RGB>> operand) {
 		return cmultiply(this, operand);
 	}
@@ -53,10 +47,6 @@ public interface RGBProducer extends ProducerComputation<RGB>, KernelizedProduce
 
 	default RGBProducer scalarMultiply(Scalar operand) {
 		return scalarMultiply(ScalarFeatures.of(operand));
-	}
-
-	default RGBProducer scalarMultiply(double operand) {
-		return scalarMultiply(new Scalar(operand));
 	}
 
 	default RGBProducer minus() {

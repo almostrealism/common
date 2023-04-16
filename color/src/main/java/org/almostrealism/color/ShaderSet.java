@@ -36,13 +36,13 @@ public class ShaderSet<C extends LightingContext> extends HashSet<Shader<C>> imp
     @Override
     public Producer<RGB> shade(C p, DiscreteField normals) {
         Iterator<Shader<C>> itr = super.iterator();
-		List<Producer<RGB>> colors = new ArrayList<>();
+		Producer<RGB> colors = null;
 
         while (itr.hasNext()) {
-        	colors.add(itr.next().shade(p, normals));
+        	colors = colors == null ? itr.next().shade(p, normals) : add(colors, itr.next().shade(p, normals));
 		}
 
-        return cadd(colors.toArray(Producer[]::new));
+        return colors;
     }
     
 	/** @return  False. */

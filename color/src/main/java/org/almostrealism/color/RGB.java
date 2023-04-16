@@ -28,20 +28,19 @@ import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.KernelizedProducer;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.algebra.Defaults;
+import org.almostrealism.hardware.NoOpMemoryData;
 
 /**
  * An RGB object represents a color defined by three channels: red, green, and blue.
  * An RGB object stores these channels as double values between 0.0 (no color) and
  * 1.0 (strongest color).
  */
-public class RGB implements Triple, MemoryData, Externalizable, Cloneable {
+public class RGB extends PackedCollection<RGB> implements Triple, Externalizable, Cloneable {
 	protected interface Data extends MemoryData {
-		void set(int i, double r);
 		void add(int i, double r);
 		void scale(int i, double r);
-		
-		double get(int i);
-		double length();
+
+		double sum();
 		void write(ObjectOutput out) throws IOException;
 		void read(ObjectInput in) throws IOException;
 	}
@@ -196,11 +195,11 @@ public class RGB implements Triple, MemoryData, Externalizable, Cloneable {
 	 */
 	public void setRed(double r) {
 		if (r < 0.0) {
-			this.data.set(0, 0.0);
+			this.data.setMem(0, 0.0);
 		} else if (r > 1.0) {
-			this.data.set(0, 1.0);
+			this.data.setMem(0, 1.0);
 		} else {
-			this.data.set(0, r);
+			this.data.setMem(0, r);
 		}
 	}
 	
@@ -211,11 +210,11 @@ public class RGB implements Triple, MemoryData, Externalizable, Cloneable {
 	 */
 	public void setGreen(double g) {
 		if (g < 0.0) {
-			this.data.set(1, 0.0);
+			this.data.setMem(1, 0.0);
 		} else if (g > 1.0) {
-			this.data.set(1, 1.0);
+			this.data.setMem(1, 1.0);
 		} else {
-			this.data.set(1, g);
+			this.data.setMem(1, g);
 		}
 	}
 	
@@ -226,33 +225,33 @@ public class RGB implements Triple, MemoryData, Externalizable, Cloneable {
 	 */
 	public void setBlue(double b) {
 		if (b < 0.0) {
-			this.data.set(2, 0.0);
+			this.data.setMem(2, 0.0);
 		} else if (b > 1.0) {
-			this.data.set(2, 1.0);
+			this.data.setMem(2, 1.0);
 		} else {
-			this.data.set(2, b);
+			this.data.setMem(2, b);
 		}
 	}
 	
 	/**
 	 * @return  The sum of each component of this RGB object.
 	 */
-	public double length() { return this.data.length(); }
+	public double length() { return this.data.sum(); }
 	
 	/**
 	  Returns the value of the red channel of this RGB object as a double value.
 	*/
-	public double getRed() { return this.data.get(0); }
+	public double getRed() { return this.data.toDouble(0); }
 	
 	/**
 	  Returns the value of the green channel of this RGB object as a double value.
 	*/
-	public double getGreen() { return this.data.get(1); }
+	public double getGreen() { return this.data.toDouble(1); }
 	
 	/**
 	  Returns the value of the blue channel of this RGB object as a double value.
 	*/
-	public double getBlue() { return this.data.get(2); }
+	public double getBlue() { return this.data.toDouble(2); }
 
 	@Override
 	public double getA() { return getRed(); }
@@ -311,17 +310,6 @@ public class RGB implements Triple, MemoryData, Externalizable, Cloneable {
 	}
 	
 	/**
-	 * Subtracts the specified RGB object from this RGB object.
-	 * 
-	 * @param rgb  Value to subtract.
-	 */
-	public void subtractFrom(RGB rgb) {
-	    this.data.add(0, -rgb.getRed());
-	    this.data.add(1, -rgb.getGreen());
-	    this.data.add(2, -rgb.getBlue());
-	}
-	
-	/**
 	 * @return  The product of the RGB value represented by this RGB object and the specified double
 	 * value as an RGB object. Consider using the multiplyBy method to avoid creating unnecessary
 	 * new RGB objects.
@@ -347,8 +335,9 @@ public class RGB implements Triple, MemoryData, Externalizable, Cloneable {
 	}
 	
 	/**
-	 * Returns the product of the RGB value represented by this RGB object and that of the specified RGB object as an RGB object.
-	 * Consider using the multiplyBy method to avoid creating unnecessary new RGB objects.
+	 * Returns the product of the RGB value represented by this RGB object and that of the
+	 * specified RGB object as an RGB object. Consider using the multiplyBy method to avoid
+	 * creating unnecessary new RGB objects.
 	 */
 	public RGB multiply(RGB rgb) {
 		RGB product = new RGB(this.colorDepth,
@@ -446,14 +435,14 @@ public class RGB implements Triple, MemoryData, Externalizable, Cloneable {
 	
 	/** Returns an integer hash code for this RGB object. */
 	public int hashCode() {
-		double d = this.data.length() * 1000;
+		double d = this.data.sum() * 1000;
 		return (int)d;
 	}
 	
 	/**
 	 * @return  An RGB object that represents the same color as this RGB object.
 	 */
-	public Object clone() {
+	public RGB clone() {
 		// TODO  Clone mem
 		return new RGB(this.colorDepth, this.getRed(), this.getGreen(), this.getBlue());
 	}
@@ -554,13 +543,16 @@ public class RGB implements Triple, MemoryData, Externalizable, Cloneable {
 	public int getMemLength() { return data.getMemLength(); }
 
 	@Override
-	public void setDelegate(MemoryData m, int offset) { data.setDelegate(m, offset); }
+	public void setDelegate(MemoryData m, int offset) {
+		if (data != null)
+			data.setDelegate(m, offset);
+	}
 
 	@Override
-	public MemoryData getDelegate() { return data.getDelegate(); }
+	public MemoryData getDelegate() { return data == null ? new NoOpMemoryData() : data.getDelegate(); }
 
 	@Override
-	public int getDelegateOffset() { return data.getDelegateOffset(); }
+	public int getDelegateOffset() { return data == null ? 0 : data.getDelegateOffset(); }
 
 	@Override
 	public void destroy() { data.destroy(); }

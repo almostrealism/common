@@ -28,12 +28,6 @@ import io.almostrealism.relation.Evaluable;
  */
 public interface RGBEvaluable extends Evaluable<RGB>, RGBFeatures {
 
-	default RGBEvaluable add(Evaluable<RGB> operand) {
-		return cadd(this, operand);
-	}
-
-	default RGBEvaluable subtract(Evaluable<RGB> operand) { return csubtract(this, operand); }
-
 	default RGBEvaluable multiply(Evaluable<RGB> operand) {
 		return cmultiply(this, operand);
 	}

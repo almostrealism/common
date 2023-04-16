@@ -16,6 +16,8 @@
 
 package org.almostrealism.color;
 
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.MemoryDataAdapter;
 import org.almostrealism.hardware.PooledMem;
@@ -24,38 +26,34 @@ import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 
-public class RGBData192 extends MemoryDataAdapter implements RGB.Data {
+public class RGBData192 extends PackedCollection<RGBData192> implements RGB.Data {
 	public static final int depth = 192;
 
 	public RGBData192() {
-		init();
+		super(new TraversalPolicy(3), 0);
 	}
 
 	protected RGBData192(MemoryData delegate, int delegateOffset) {
-		setDelegate(delegate, delegateOffset);
-		init();
+		super(new TraversalPolicy(3), 0, delegate, delegateOffset);
 	}
 
-	public void set(int i, double r) {
-		setMem(i, new double[] { r }, 0, 1);
-	}
-
+	@Override
 	public void add(int i, double r) {
 		double rgb[] = toArray();
 		rgb[i] += r;
 		setMem(rgb);
 	}
 
+	@Override
 	public void scale(int i, double r) {
 		double rgb[] = toArray();
 		rgb[i] *= r;
 		setMem(rgb);
 	}
 
-	public double get(int i) { return toArray()[i]; }
-
 	/** Returns the sum of the components (not vector length). */
-	public double length() {
+	@Override
+	public double sum() {
 		double rgb[] = toArray();
 		return rgb[0] + rgb[1] + rgb[2];
 	}
@@ -73,11 +71,6 @@ public class RGBData192 extends MemoryDataAdapter implements RGB.Data {
 		out.writeDouble(rgb[0]);
 		out.writeDouble(rgb[1]);
 		out.writeDouble(rgb[2]);
-	}
-
-	@Override
-	public int getMemLength() {
-		return 3;
 	}
 
 	@Override

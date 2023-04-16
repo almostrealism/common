@@ -5,7 +5,6 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
-import org.almostrealism.color.computations.ColorSum;
 import org.almostrealism.color.computations.GreaterThanRGB;
 import org.almostrealism.color.computations.RGBBlack;
 import org.almostrealism.color.computations.RGBWhite;
@@ -19,12 +18,12 @@ public class ColorMathTest implements TestFeatures {
 		HardwareOperator.verboseLog(() -> {
 			Producer<RGB> p1 = new RGBBlack();
 			Producer<RGB> p2 = new RGBWhite();
-			ColorSum sum = new ColorSum(p1, p2);
+			Producer<RGB> sum = add(p1, p2);
 
-			RGB result = sum.get().evaluate();
-			assertEquals(1.0, result.getRed());
-			assertEquals(1.0, result.getGreen());
-			assertEquals(1.0, result.getBlue());
+			PackedCollection<?> result = sum.get().evaluate();
+			assertEquals(1.0, result.toDouble(0));
+			assertEquals(1.0, result.toDouble(1));
+			assertEquals(1.0, result.toDouble(2));
 		});
 	}
 

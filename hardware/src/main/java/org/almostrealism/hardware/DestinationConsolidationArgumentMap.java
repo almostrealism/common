@@ -178,6 +178,7 @@ public class DestinationConsolidationArgumentMap<S, A> extends MemoryDataArgumen
 		}
 	}
 
+	@Deprecated
 	private static class AnyMemoryData extends MemoryDataAdapter {
 		private final int memLength;
 
