@@ -31,7 +31,7 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implements TraversableExpression<Double> {
+public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implements CollectionExpression {
 	private TraversalPolicy shape;
 
 	private CollectionVariable<T> parent;
@@ -120,26 +120,6 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 		}
 
 		return new CollectionVariable<>(shape, this, pos);
-	}
-
-	public Stream<Expression<Double>> stream() {
-		return IntStream.range(0, shape.getTotalSize()).mapToObj(i -> getValueAt(e(i)));
-	}
-
-	public ExpressionList<T> toList() {
-		return stream().collect(ExpressionList.collector());
-	}
-
-	public Expression<T> sum() { return toList().sum(); }
-
-	public Expression<T> max() { return toList().max(); }
-
-	public ExpressionList<T> exp() { return toList().exp(); }
-
-	public ExpressionList<T> multiply(CollectionVariable<T> operands) {
-		ExpressionList<T> a = stream().collect(ExpressionList.collector());
-		ExpressionList<T> b = operands.stream().collect(ExpressionList.collector());
-		return a.multiply(b);
 	}
 
 	public static <T> ArrayVariable<T> create(NameProvider np, String name, Supplier<Evaluable<? extends T>> p) {
