@@ -16,14 +16,10 @@
 
 package org.almostrealism.color;
 
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Triple;
 import org.almostrealism.algebra.TripleFunction;
 
-/**
- * ColorProducer is implemented by any class that can produce an {@link RGB} object
- * given some array of input objects.
- * 
- * @author Michael Murray
- */
-public interface ColorEvaluable extends RGBEvaluable, TripleFunction<Triple, RGB> {
+@Deprecated
+public interface ColorEvaluable extends Evaluable<RGB>, TripleFunction<Triple, RGB> {
 }

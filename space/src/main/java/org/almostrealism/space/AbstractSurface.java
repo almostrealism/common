@@ -17,12 +17,10 @@
 package org.almostrealism.space;
 
 import java.util.*;
-import java.util.function.Supplier;
 
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.Triple;
 import org.almostrealism.color.*;
-import org.almostrealism.color.computations.ColorProduct;
 import org.almostrealism.color.computations.RGBAdd;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.physics.Porous;
@@ -31,7 +29,6 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.code.Operator;
 import org.almostrealism.texture.Texture;
 import org.almostrealism.color.computations.AdaptProducerRGB;
-import io.almostrealism.code.CollectionUtils;
 import org.almostrealism.geometry.TransformMatrix;
 
 /**
@@ -561,19 +558,14 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 		Producer<RGB> colorAt = v(getColor());
 	    
 	    if (textures.length > 0) {
-	    	List<Producer<RGB>> texColors = new ArrayList<>();
-
 	        for (int i = 0; i < this.textures.length; i++) {
 	        	Texture t = textures[i];
-	            texColors.add(new AdaptProducerRGB(() -> args -> t.operate((Triple) args[0]), fp));
+				colorAt = multiply(colorAt, new AdaptProducerRGB(() -> args -> t.operate((Triple) args[0]), fp));
 	        }
-	        
-	        colorAt = new ColorProduct(
-	        		CollectionUtils.include(new Supplier[0], colorAt, texColors.toArray(new Supplier[0])));
 	    }
 
 	    if (this.parent != null)
-	        colorAt = new ColorProduct(colorAt, this.parent.getColorAt(fp, transform));
+	        colorAt = multiply(colorAt, this.parent.getColorAt(fp, transform));
 		
 		return colorAt;
 	}

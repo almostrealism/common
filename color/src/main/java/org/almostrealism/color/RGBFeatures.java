@@ -21,7 +21,6 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.color.computations.StaticRGBComputation;
-import org.almostrealism.color.computations.ColorProduct;
 import org.almostrealism.color.computations.RGBFromScalars;
 
 import java.util.function.Supplier;
@@ -46,30 +45,6 @@ public interface RGBFeatures extends ScalarFeatures {
 
 	default RGBProducer value(RGB value) {
 		return new StaticRGBComputation(value);
-	}
-
-	default RGBEvaluable cmultiply(Evaluable<RGB> a, Evaluable<RGB> b) {
-		return (RGBEvaluable) cmultiply(() -> a, () -> b).get();
-	}
-
-	default RGBProducer cmultiply(Supplier<Evaluable<? extends RGB>> a, Supplier<Evaluable<? extends RGB>> b) {
-		return new ColorProduct(a, b);
-	}
-
-	default RGBEvaluable cscalarMultiply(Evaluable<RGB> a, Evaluable<Scalar> b) {
-		return (RGBEvaluable) cscalarMultiply(() -> a, () -> b).get();
-	}
-
-	default RGBProducer cscalarMultiply(Supplier<Evaluable<? extends RGB>> a, Supplier<Evaluable<? extends Scalar>> b) {
-		return cmultiply(a, cfromScalar(b));
-	}
-
-	default RGBEvaluable cminus(Evaluable<RGB> p) {
-		return (RGBEvaluable) cminus(() -> p).get();
-	}
-
-	default RGBProducer cminus(Supplier<Evaluable<? extends RGB>> p) {
-		return cmultiply(p, cfromScalar(ScalarFeatures.minusOne()));
 	}
 
 	default RGBProducer cfromScalar(Supplier<Evaluable<? extends Scalar>> value) {

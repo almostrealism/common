@@ -16,16 +16,16 @@
 
 package org.almostrealism.color.computations;
 
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.color.RGB;
-import org.almostrealism.color.RGBEvaluable;
 
 public class RGBBlack extends StaticRGBComputation {
 	private static RGBBlack local = new RGBBlack();
-	private static RGBEvaluable evaluable = (RGBEvaluable) local.get();
+	private static Evaluable<RGB> evaluable = local.get();
 
 	public RGBBlack() { super(new RGB()); }
 
 	public static RGBBlack getInstance() { return local; }
 
-	public static RGBEvaluable getEvaluable() { return evaluable; }
+	public static Evaluable<RGB> getEvaluable() { return evaluable; }
 }

@@ -38,18 +38,4 @@ public interface RGBProducer extends ProducerComputation<RGB>, KernelizedProduce
 		ev.compile();
 		return ev;
 	}
-
-	default RGBProducer multiply(Supplier<Evaluable<? extends RGB>> operand) {
-		return cmultiply(this, operand);
-	}
-
-	default RGBProducer scalarMultiply(Supplier<Evaluable<? extends Scalar>> operand) { return cscalarMultiply(this, operand); }
-
-	default RGBProducer scalarMultiply(Scalar operand) {
-		return scalarMultiply(ScalarFeatures.of(operand));
-	}
-
-	default RGBProducer minus() {
-		return cminus(this);
-	}
 }

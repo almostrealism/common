@@ -16,15 +16,16 @@
 
 package org.almostrealism.color.computations;
 
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.color.RGB;
-import org.almostrealism.color.RGBEvaluable;
+import org.almostrealism.color.RGBFeatures;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import io.almostrealism.code.Computation;
 import org.almostrealism.hardware.MemoryData;
 
 @Deprecated
-public class DefaultRGBEvaluable extends AcceleratedComputationEvaluable<RGB> implements RGBEvaluable {
+public class DefaultRGBEvaluable extends AcceleratedComputationEvaluable<RGB> implements Evaluable<RGB>, RGBFeatures {
 
 	public DefaultRGBEvaluable(Computation<RGB> c) {
 		super(c);

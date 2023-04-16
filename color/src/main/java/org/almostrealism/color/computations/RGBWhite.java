@@ -17,7 +17,6 @@
 package org.almostrealism.color.computations;
 
 import org.almostrealism.color.RGB;
-import org.almostrealism.color.RGBEvaluable;
 
 public class RGBWhite extends StaticRGBComputation {
 	private static RGBWhite local = new RGBWhite();
