@@ -383,16 +383,11 @@ public interface CollectionFeatures extends ExpressionFeatures {
 
 	}
 
-	default <T extends PackedCollection<?>> ExpressionComputation<T> minus(Producer<T> a) {
-		return minus(size(a), (Supplier) a);
-	}
-
-	default <T extends PackedCollection<?>> ExpressionComputation<T> minus(int depth, Supplier<Evaluable<? extends PackedCollection<?>>> a) {
-		List<Function<List<MultiExpression<Double>>, Expression<Double>>> expressions =
-				IntStream.range(0, depth).mapToObj(i -> (Function<List<MultiExpression<Double>>, Expression<Double>>)
-								np -> new Minus(np.get(1).getValue(i)))
-						.collect(Collectors.toList());
-		return new ExpressionComputation<>(expressions, (Supplier) a);
+	default <T extends PackedCollection<?>> DynamicExpressionComputation<T> minus(Producer<T> a) {
+//		return minus(size(a), (Supplier) a);
+		return new DynamicExpressionComputation<>(shape(a),
+				args -> CollectionExpression.create(shape(a), index -> new Minus(args[1].getValueAt(index))),
+				(Supplier) a);
 	}
 
 	default <T extends PackedCollection<?>> ExpressionComputation<T> pow(Producer<T> base, Producer<T> exp) {

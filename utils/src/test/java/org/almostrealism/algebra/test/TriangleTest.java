@@ -49,7 +49,7 @@ public class TriangleTest implements CodeFeatures {
 
 	protected VectorProducerBase originProducer() {
 		Producer<Ray> noRank = ((ProducerWithRank) intersectAt()).getProducer();
-		return (VectorProducerBase) ((RayExpressionComputation) noRank).getInputProducer(1);
+		return (VectorProducerBase) (Supplier) ((RayExpressionComputation) noRank).getInputs().get(1);
 	}
 
 	protected VectorExpressionComputation originPointProducer() {

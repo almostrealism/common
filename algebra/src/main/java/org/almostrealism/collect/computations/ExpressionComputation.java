@@ -42,10 +42,6 @@ public class ExpressionComputation<T extends PackedCollection<?>> extends Dynami
 
 	private Evaluable<T> shortCircuit;
 
-	protected ExpressionComputation(TraversalPolicy shape, Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		super(shape, validateArgs(args));
-	}
-
 	@Deprecated
 	@SafeVarargs
 	public ExpressionComputation(List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression,
@@ -126,10 +122,5 @@ public class ExpressionComputation<T extends PackedCollection<?>> extends Dynami
 				return getKernel().getArgsCount();
 			}
 		};
-	}
-
-	private ExpressionComputation create(TraversalPolicy shape, Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		ExpressionComputation computation = new ExpressionComputation(shape, args);
-		return computation;
 	}
 }

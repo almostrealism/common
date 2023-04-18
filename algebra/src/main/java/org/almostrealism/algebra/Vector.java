@@ -26,6 +26,7 @@ import org.almostrealism.hardware.mem.MemoryDataAdapter;
 import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.hardware.MemoryBank;
 
+import java.util.function.BiFunction;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
@@ -427,6 +428,10 @@ public class Vector extends PackedCollection<Vector> implements Triple, VectorFe
 		return new PackedCollection<>(new TraversalPolicy(count, width, 3), 1, delegateSpec ->
 					Vector.bank(width, delegateSpec.getDelegate(), delegateSpec.getOffset()),
 				delegate, delegateOffset);
+	}
+
+	public static BiFunction<MemoryData, Integer, Vector> postprocessor() {
+		return (output, offset) -> new Vector(output, offset);
 	}
 
 	/**

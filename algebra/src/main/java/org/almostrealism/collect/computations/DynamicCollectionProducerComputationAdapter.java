@@ -16,44 +16,24 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.expression.Exp;
-import io.almostrealism.relation.Delegated;
-import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.MultiExpression;
-import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Provider;
-import org.almostrealism.collect.CollectionProducer;
-import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.CollectionVariable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.hardware.collect.ExpressionValue;
 
-import java.util.List;
-import java.util.Optional;
-import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public abstract class DynamicCollectionProducerComputationAdapter<I extends PackedCollection<?>, O extends PackedCollection<?>>
-		extends CollectionProducerComputationAdapter<I, O> implements MultiExpression<Double>, ExpressionValue {
-
-	/**
-	 * If set to true, then {@link Provider}s are treated as value-only
-	 * for compaction. This is desirable, because otherwise the presence
-	 * of a {@link Provider} will prevent the compaction of an expression
-	 * altogether.
-	 */
-	public static final boolean enableValueOnlyProviders = true;
+		extends CollectionProducerComputationAdapter<I, O> implements MultiExpression<Double> {
 
 	/**
 	 * If set to true, then {@link #convertToVariableRef()} can be used
@@ -93,14 +73,6 @@ public abstract class DynamicCollectionProducerComputationAdapter<I extends Pack
 		return scope;
 	}
 
-	public OperationAdapter getInputProducer(int index) {
-		if (getInputs().get(index) instanceof OperationAdapter) {
-			return (OperationAdapter) getInputs().get(index);
-		}
-
-		return null;
-	}
-
 	@Override
 	public Expression getValue(int pos) {
 		return (isVariableRef() ? variableRef : getValueFunction()).apply(pos);
@@ -121,38 +93,6 @@ public abstract class DynamicCollectionProducerComputationAdapter<I extends Pack
 
 	protected IntFunction<Variable<Double, ?>> variableForIndex(IntFunction<Expression<Double>> valueFunction) {
 		return i -> new Variable(getVariableName(i), true, valueFunction.apply(i), this);
-	}
-
-	public boolean isValueOnly() { return true; }
-
-	protected boolean isCompletelyValueOnly() {
-		return isCompletelyValueOnly(true);
-	}
-
-	protected boolean isCompletelyValueOnly(boolean considerProviders) {
-		List<Supplier<Evaluable<? extends I>>> inputs = getInputs();
-		// Confirm that all inputs are themselves dynamic accelerated adapters
-		i: for (int i = 1; i < inputs.size(); i++) {
-			if (inputs.get(i) == null)
-				throw new IllegalArgumentException("Null input producer");
-
-			Supplier<Evaluable<? extends I>> supplier = inputs.get(i);
-
-			// A "value only" producer is acceptable
-			if (supplier instanceof ExpressionValue
-					&& ((ExpressionValue) supplier).isValueOnly()) {
-				continue i;
-			}
-
-			// A Provider is always "value only"
-			if (enableValueOnlyProviders && considerProviders && supplier.get() instanceof Provider) {
-				continue i;
-			}
-
-			return false;
-		}
-
-		return true;
 	}
 
 	public CollectionVariable getCollectionArgumentVariable(int argIndex) {

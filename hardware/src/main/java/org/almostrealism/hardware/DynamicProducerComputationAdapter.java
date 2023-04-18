@@ -24,36 +24,23 @@ import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.MultiExpression;
-import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Provider;
 import org.almostrealism.hardware.DestinationConsolidationArgumentMap.DestinationThreadLocal;
-import org.almostrealism.hardware.collect.ExpressionValue;
 import org.almostrealism.hardware.mem.MemoryDataDestination;
 
 import java.util.Arrays;
-import java.util.List;
 import java.util.Optional;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 @Deprecated
 public abstract class DynamicProducerComputationAdapter<I extends MemoryData, O extends MemoryData>
 		extends ProducerComputationBase<I, O>
 		implements MemoryDataComputation<O>, KernelizedProducer<O>,
-		DestinationSupport<O>, MultiExpression<Double>, ExpressionValue, ComputerFeatures {
-
-	/**
-	 * If set to true, then {@link Provider}s are treated as value-only
-	 * for compaction. This is desirable, because otherwise the presence
-	 * of a {@link Provider} will prevent the compaction of an expression
-	 * altogether.
-	 */
-	public static final boolean enableValueOnlyProviders = true;
+		DestinationSupport<O>, MultiExpression<Double>, ComputerFeatures {
 
 	/**
 	 * If set to true, then {@link #convertToVariableRef()} can be used
@@ -122,26 +109,6 @@ public abstract class DynamicProducerComputationAdapter<I extends MemoryData, O 
 		return scope;
 	}
 
-	public OperationAdapter getInputProducer(int index) {
-		if (getInputs().get(index) instanceof OperationAdapter) {
-			return (OperationAdapter) getInputs().get(index);
-		}
-
-		return null;
-	}
-
-	public boolean isInputProducerStatic(int index) {
-		Supplier<Evaluable<? extends I>> producer = getInputs().get(index);
-		if (producer instanceof OperationAdapter) {
-			return ((OperationAdapter) producer).isStatic();
-		}
-
-		Evaluable<? extends I> evaluable = producer.get();
-		if (enableStaticProviders && evaluable instanceof Provider) return true;
-
-		return false;
-	}
-
 	@Override
 	public Expression getValue(int pos) {
 		return (isVariableRef() ? variableRef : getValueFunction()).apply(pos);
@@ -164,40 +131,6 @@ public abstract class DynamicProducerComputationAdapter<I extends MemoryData, O 
 		return i -> new Variable(getVariableName(i), true, valueFunction.apply(i), this);
 	}
 
-	public boolean isValueOnly() { return true; }
-
-	protected boolean isCompletelyValueOnly() {
-		return isCompletelyValueOnly(true);
-	}
-
-	protected boolean isCompletelyValueOnly(boolean considerProviders) {
-		List<Supplier<Evaluable<? extends I>>> inputs = getInputs();
-		// Confirm that all inputs are themselves dynamic accelerated adapters
-		i: for (int i = 1; i < inputs.size(); i++) {
-			if (inputs.get(i) == null)
-				throw new IllegalArgumentException("Null input producer");
-
-			Supplier<Evaluable<? extends I>> supplier = inputs.get(i);
-
-			// A "value only" producer is acceptable
-			if (supplier instanceof DynamicProducerComputationAdapter
-					&& ((DynamicProducerComputationAdapter) supplier).isValueOnly()) {
-				continue i;
-			}
-
-			// A Provider is always "value only"
-			if (enableValueOnlyProviders && considerProviders &&
-					!(supplier instanceof ProducerComputationBase) &&
-					supplier.get() instanceof Provider) {
-				continue i;
-			}
-
-			return false;
-		}
-
-		return true;
-	}
-
 	/**
 	 * @return  GLOBAL
 	 */
@@ -211,15 +144,5 @@ public abstract class DynamicProducerComputationAdapter<I extends MemoryData, O 
 		if (destination instanceof DestinationThreadLocal) {
 			((DestinationThreadLocal) destination).destroy();
 		}
-	}
-
-	protected static <T> List<ArrayVariable<? extends T>> extractStaticProducers(List<ArrayVariable<? extends T>> args) {
-		return IntStream.range(0, args.size()).filter(i -> args.get(i).getProducer() instanceof DynamicProducerComputationAdapter &&
-				((DynamicProducerComputationAdapter) args.get(i).getProducer()).isStatic()).mapToObj(args::get).collect(Collectors.toList());
-	}
-
-	protected static <T> List<ArrayVariable<? extends T>> extractDynamicProducers(List<ArrayVariable<? extends T>> args) {
-		return IntStream.range(0, args.size()).filter(i -> !(args.get(i).getProducer() instanceof DynamicProducerComputationAdapter) ||
-				!((DynamicProducerComputationAdapter) args.get(i).getProducer()).isStatic()).mapToObj(args::get).collect(Collectors.toList());
 	}
 }

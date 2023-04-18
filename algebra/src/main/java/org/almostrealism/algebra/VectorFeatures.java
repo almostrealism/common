@@ -143,7 +143,7 @@ public interface VectorFeatures extends CollectionFeatures, HardwareFeatures {
 	}
 
 	default VectorProducerBase subtract(VectorProducerBase value, VectorProducerBase operand) {
-		return add(value, minus(operand));
+		return vector(add(value, minus(operand)));
 	}
 
 	default VectorExpressionComputation multiply(VectorProducerBase a, VectorProducerBase b) {
@@ -173,12 +173,6 @@ public interface VectorFeatures extends CollectionFeatures, HardwareFeatures {
 	@Deprecated
 	default VectorExpressionComputation scalarMultiply(Producer<Vector> a, Supplier<Evaluable<? extends Scalar>> b) {
 		return vector(multiply(a, vector(b, b, b)));
-	}
-
-	default VectorExpressionComputation minus(VectorProducerBase p) {
-		return multiply(p, vector(ScalarFeatures.minusOne(),
-				ScalarFeatures.minusOne(),
-				ScalarFeatures.minusOne()));
 	}
 
 	default ScalarProducerBase length(Supplier<Evaluable<? extends Vector>> v) {

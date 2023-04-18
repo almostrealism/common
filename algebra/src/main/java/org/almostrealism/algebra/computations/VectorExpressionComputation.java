@@ -37,6 +37,6 @@ public class VectorExpressionComputation extends ExpressionComputation<Vector> i
 
 	@Override
 	public Vector postProcessOutput(MemoryData output, int offset) {
-		return new Vector(output, offset);
+		return Vector.postprocessor().apply(output, offset);
 	}
 }

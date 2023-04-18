@@ -1,10 +1,9 @@
 package org.almostrealism.algebra.test;
 
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.geometry.computations.TransformAsLocation;
 import org.almostrealism.geometry.TranslationMatrix;
-import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.CodeFeatures;
 import org.junit.Assert;
@@ -15,22 +14,13 @@ public class TransformTest implements HardwareFeatures, CodeFeatures {
 		return new TranslationMatrix(vector(0.0, 10.0, 0.0)).evaluate();
 	}
 
-	protected AcceleratedComputationEvaluable<Vector> transformAsLocation() {
-		return (AcceleratedComputationEvaluable<Vector>)
-				new TransformAsLocation(matrix(),
-						vector(1.0, 2.0, 3.0)).get();
+	protected Evaluable<Vector> transformAsLocation() {
+		return transformAsLocation(matrix(), vector(1.0, 2.0, 3.0)).get();
 	}
 
 	@Test
 	public void applyAsLocation() {
 		Vector v = transformAsLocation().evaluate();
-		locationAssertions(v);
-	}
-
-	@Test
-	public void applyAsLocationCompact() {
-		AcceleratedComputationEvaluable<Vector> t = transformAsLocation();
-		Vector v = t.evaluate();
 		locationAssertions(v);
 	}
 

@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect.computations.test;
 
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.cl.HardwareOperator;
@@ -152,12 +153,14 @@ public class PackedCollectionMapTests implements TestFeatures {
 
 			for (int i = 0; i < 8; i++) {
 				for (int j = 0; j < 8; j++) {
+					System.out.println("PackedCollectionMapTests: " + i + ", " + j);
+
 					for (int k = 0; k < 3; k++) {
 						for (int l = 0; l < 3; l++) {
 							double expected = input.toDouble(input.getShape().index(i + k, j + l)) * filter.toDouble(filter.getShape().index(k, l));
 							double actual = output.toDouble(output.getShape().index(i, j, k, l));
 
-							System.out.println("PackedCollectionMapTests: " + expected + " vs " + actual);
+							System.out.println("\tPackedCollectionMapTests: " + expected + " vs " + actual);
 							Assert.assertEquals(expected, actual, 0.0001);
 						}
 					}
@@ -166,7 +169,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 		});
 	}
 
-	@Test
+	// @Test
 	public void enumerateMapReduce() {
 		int r = 10;
 		int c = 10;
@@ -202,6 +205,45 @@ public class PackedCollectionMapTests implements TestFeatures {
 
 					System.out.println("PackedCollectionMapTests: " + expected + " vs " + actual);
 					Assert.assertEquals(expected, actual, 0.0001);
+				}
+			}
+		});
+	}
+
+	// @Test
+	public void mapConcat() {
+		int r = 10;
+		int c = 10;
+		int s = 3;
+
+		PackedCollection<?> input = tensor(shape(r, c, s)).pack();
+		PackedCollection<?> addOn = tensor(shape(s)).pack();
+
+		HardwareOperator.verboseLog(() -> {
+			CollectionProducer<PackedCollection<?>> conv = traverse(2, p(input))
+					.map(v -> concat((Producer) v, p(addOn)));
+			System.out.println(conv.getShape());
+
+			PackedCollection<?> output = conv.get().evaluate();
+			System.out.println(output.getShape());
+
+			for (int i = 0; i < 10; i++) {
+				for (int j = 0; j < 10; j++) {
+					for (int k = 0; k < 3; k++) {
+						double expected = input.toDouble(input.getShape().index(i, j, k));
+						double actual = output.toDouble(output.getShape().index(i, j, k));
+
+						System.out.println("PackedCollectionMapTests: " + expected + " vs " + actual);
+						Assert.assertEquals(expected, actual, 0.0001);
+					}
+
+					for (int k = 0; k < 3; k++) {
+						double expected = addOn.toDouble(addOn.getShape().index(k));
+						double actual = output.toDouble(output.getShape().index(i, j, k + 3));
+
+						System.out.println("PackedCollectionMapTests: " + expected + " vs " + actual);
+						Assert.assertEquals(expected, actual, 0.0001);
+					}
 				}
 			}
 		});

@@ -30,8 +30,6 @@ import org.almostrealism.geometry.computations.MatrixDeterminant;
 import org.almostrealism.geometry.computations.MatrixProduct;
 import org.almostrealism.geometry.computations.MatrixToUpperTriangle;
 import org.almostrealism.geometry.computations.MatrixTranspose;
-import org.almostrealism.geometry.computations.TransformAsLocation;
-import org.almostrealism.geometry.computations.TransformAsOffset;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.cl.HardwareOperator;
@@ -202,9 +200,9 @@ public class TransformMatrix extends MemoryDataAdapter implements TripleFunction
 		if (this.isIdentity) return vector;
 		
 		if (type == TransformMatrix.TRANSFORM_AS_LOCATION) {
-			return new TransformAsLocation(this, vector);
+			return transformAsLocation(this, vector);
 		} else if (type == TransformMatrix.TRANSFORM_AS_OFFSET) {
-			return new TransformAsOffset(this, vector);
+			return transformAsOffset(this, vector);
 		} else if (type == TransformMatrix.TRANSFORM_AS_NORMAL) {
 			if (!this.inverted) this.calculateInverse();
 			return this.inverseTranspose.transform(vector, TransformMatrix.TRANSFORM_AS_OFFSET);

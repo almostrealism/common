@@ -27,8 +27,6 @@ import org.almostrealism.algebra.computations.VectorExpressionComputation;
 import org.almostrealism.geometry.computations.RayExpressionComputation;
 import org.almostrealism.geometry.computations.StaticRayComputation;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.geometry.computations.TransformAsLocation;
-import org.almostrealism.geometry.computations.TransformAsOffset;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -88,7 +86,7 @@ public interface RayFeatures extends VectorFeatures {
 	default ScalarExpressionComputation oDotd(Supplier<Evaluable<? extends Ray>> r) { return dotProduct(origin(r), direction(r)); }
 
 	default RayExpressionComputation transform(TransformMatrix t, Supplier<Evaluable<? extends Ray>> r) {
-		return ray(new TransformAsLocation(t, origin(r)), new TransformAsOffset(t, direction(r)));
+		return ray(TransformMatrixFeatures.getInstance().transformAsLocation(t, origin(r)), TransformMatrixFeatures.getInstance().transformAsOffset(t, direction(r)));
 	}
 
 	static RayFeatures getInstance() {

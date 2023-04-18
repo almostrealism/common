@@ -20,6 +20,8 @@ import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.computations.ScalarExpressionComputation;
 import org.almostrealism.algebra.computations.VectorExpressionComputation;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.DynamicExpressionComputation;
 import org.almostrealism.hardware.KernelizedProducer;
 
 import java.util.function.Supplier;
@@ -70,7 +72,7 @@ public interface VectorProducerBase extends ProducerComputation<Vector>, Kerneli
 		return scalarMultiply(new Scalar(operand));
 	}
 
-	default VectorExpressionComputation minus() {
+	default DynamicExpressionComputation<Vector> minus() {
 		return minus(this);
 	}
 

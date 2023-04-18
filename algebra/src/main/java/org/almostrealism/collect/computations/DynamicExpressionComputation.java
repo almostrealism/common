@@ -32,6 +32,7 @@ import org.almostrealism.hardware.MemoryData;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
@@ -42,8 +43,17 @@ import java.util.stream.Stream;
 // TODO  DynamicCollectionProducerComputationAdapter, which can then be renamed to DynamicCollectionProducerComputation.
 public class DynamicExpressionComputation<T extends PackedCollection<?>> extends DynamicCollectionProducerComputationAdapter<T, T> implements TraversableExpression, ComputerFeatures {
 	private Function<CollectionVariable[], CollectionExpression> expression;
+	private BiFunction<MemoryData, Integer, T> postprocessor;
 
 	private Evaluable<T> shortCircuit;
+
+	@SafeVarargs
+	public DynamicExpressionComputation(TraversalPolicy shape,
+										BiFunction<CollectionVariable[], Expression, Expression> expression,
+										Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+		super(shape, validateArgs(args));
+		this.expression = vars -> CollectionExpression.create(shape, index -> expression.apply(vars, index));
+	}
 
 	@SafeVarargs
 	public DynamicExpressionComputation(TraversalPolicy shape,
@@ -58,6 +68,14 @@ public class DynamicExpressionComputation<T extends PackedCollection<?>> extends
 
 	public void setShortCircuit(Evaluable<T> shortCircuit) {
 		this.shortCircuit = shortCircuit;
+	}
+
+	public BiFunction<MemoryData, Integer, T> getPostprocessor() {
+		return postprocessor;
+	}
+
+	public void setPostprocessor(BiFunction<MemoryData, Integer, T> postprocessor) {
+		this.postprocessor = postprocessor;
 	}
 
 	protected CollectionExpression getExpression() {
@@ -130,5 +148,10 @@ public class DynamicExpressionComputation<T extends PackedCollection<?>> extends
 				return getKernel().getArgsCount();
 			}
 		};
+	}
+
+	@Override
+	public T postProcessOutput(MemoryData output, int offset) {
+		return getPostprocessor() == null ? super.postProcessOutput(output, offset) : getPostprocessor().apply(output, offset);
 	}
 }

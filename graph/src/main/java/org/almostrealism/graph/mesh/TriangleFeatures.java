@@ -24,6 +24,7 @@ import org.almostrealism.algebra.VectorFeatures;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.computations.VectorExpressionComputation;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.DynamicExpressionComputation;
 import org.almostrealism.collect.computations.ExpressionComputation;
 
 import java.util.ArrayList;
@@ -88,6 +89,8 @@ public interface TriangleFeatures extends VectorFeatures {
 		List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression = new ArrayList<>();
 		IntStream.range(0, 9).forEach(i -> expression.add(args -> args.get(i / 3 + 1).getValue(i % 3)));
 		return new ExpressionComputation<>(expression, (Supplier) p1, (Supplier) p2, (Supplier) p3);
+		// TODO  return new DynamicExpressionComputation<>(shape(9), (args, index) -> args[???].getValueAt(index.mod(3)),
+		// TODO            (Supplier) p1, (Supplier) p2, (Supplier) p3);
 	}
 
 	static TriangleFeatures getInstance() {

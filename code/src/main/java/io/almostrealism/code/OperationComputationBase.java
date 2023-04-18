@@ -113,8 +113,6 @@ public abstract class OperationComputationBase<I, O> extends OperationAdapter<I>
 	@Override
 	public Variable getOutputVariable() { return null; }
 
-	// Replaced by getArgument(i).getValueAt(pos)
-	@Deprecated
 	public Expression<Double> getInputValue(int index, int pos) {
 		if (getArgumentVariables() == null) {
 			throw new IllegalArgumentException("Input value cannot be obtained before arguments are determined");
@@ -130,7 +128,6 @@ public abstract class OperationComputationBase<I, O> extends OperationAdapter<I>
 		return scope;
 	}
 
-	@Deprecated
 	public static Expression<Double> getExpression(ArrayVariable arg, int pos) {
 		if (arg == null) {
 			throw new IllegalArgumentException("Argument cannot be null");
@@ -145,7 +142,6 @@ public abstract class OperationComputationBase<I, O> extends OperationAdapter<I>
 		}
 	}
 
-	@Deprecated
 	public static <T> Optional<MultiExpression> getExpression(Supplier<Evaluable<? extends T>> producer) {
 		if (producer instanceof MultiExpression) {
 			return Optional.of((MultiExpression) producer);
