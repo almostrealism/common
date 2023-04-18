@@ -3,6 +3,7 @@ package org.almostrealism.collect;
 import io.almostrealism.code.ExpressionList;
 import io.almostrealism.expression.Expression;
 
+import java.util.function.Function;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
@@ -28,5 +29,25 @@ public interface CollectionExpression extends TraversableExpression<Double> {
 		ExpressionList<Double> a = stream().collect(ExpressionList.collector());
 		ExpressionList<Double> b = operands.stream().collect(ExpressionList.collector());
 		return a.multiply(b);
+	}
+
+	static CollectionExpression create(TraversalPolicy shape, Function<Expression<?>, Expression<Double>> valueAt) {
+		return new CollectionExpression() {
+			@Override
+			public TraversalPolicy getShape() {
+				return shape;
+			}
+
+			// TODO  This should be the default implementation for all CollectionExpressions
+			@Override
+			public Expression<Double> getValue(Expression... pos) {
+				return getValueAt(getShape().index(pos));
+			}
+
+			@Override
+			public Expression<Double> getValueAt(Expression index) {
+				return valueAt.apply(index);
+			}
+		};
 	}
 }

@@ -21,6 +21,22 @@ import io.almostrealism.scope.Variable;
 
 import java.util.function.IntFunction;
 
+/**
+ * Implementors of MultiExpression should migrate to implementing TraversableExpression
+ * while the {@link MultiExpression#getAssignmentFunction(Variable)} need not be part of
+ * the interface, and should eventually be part of {@link io.almostrealism.code.ProducerComputationBase}.
+ *
+ * The problem with this interface is that because it does not allow for retrieving values
+ * using an {@link Expression} for the index, it is not possible to embed computations
+ * based on {@link MultiExpression} into other computations that retrieve values without
+ * necessarily knowing, ahead of kernel evaluation time, their index. A potential workaround
+ * for this is for implementors to (1) reliably provide only a single expression for index 0,
+ * (2) for that expression to contain the necessary use of the kernel index for kernel evaluation,
+ * and (3) for the computation that embeds it to always use the same kernel size as the one
+ * assumed by the embedded computation. However, this is such an extreme constraint, that
+ * it is safe to assume it doesn't make any sense to even attempt it.
+ */
+@Deprecated
 public interface MultiExpression<T> {
 
 	default IntFunction<Variable<T, ?>> getAssignmentFunction(Variable<?, ?> outputVariable) {

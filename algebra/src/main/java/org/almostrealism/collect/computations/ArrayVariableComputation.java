@@ -20,6 +20,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.TraversableExpression;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.ComputerFeatures;
 import io.almostrealism.relation.Evaluable;
@@ -36,6 +37,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
+@Deprecated
 public class ArrayVariableComputation<T extends PackedCollection<?>> extends DynamicCollectionProducerComputationAdapter<T, T> implements ComputerFeatures {
 	private List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression;
 

@@ -34,6 +34,10 @@ public class PackedCollectionMapTests implements TestFeatures {
 			PackedCollection<?> output = product.get().evaluate();
 			System.out.println(output.getShape());
 
+			Assert.assertEquals(8, output.getShape().length(0));
+			Assert.assertEquals(3, output.getShape().length(1));
+			Assert.assertEquals(3, output.getShape().length(2));
+
 			for (int i = 0; i < 8; i++) {
 				for (int j = 0; j < 3; j++) {
 					for (int k = 0; k < 3; k++) {
@@ -126,11 +130,11 @@ public class PackedCollectionMapTests implements TestFeatures {
 	}
 
 	@Test
-	public void enumerateMapReduce() {
-		int r = 4;
-		int c = 4;
-		int w = 2;
-		int s = 2;
+	public void enumerateMap() {
+		int r = 10;
+		int c = 10;
+		int w = 3;
+		int s = 1;
 
 		PackedCollection<?> input = tensor(shape(r, c)).pack();
 		PackedCollection<?> filter = tensor(shape(w, w)).pack();
@@ -138,38 +142,68 @@ public class PackedCollectionMapTests implements TestFeatures {
 		HardwareOperator.verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> conv = c(p(input))
 					.enumerate(1, w, s)
-					.enumerate(1, w, s);
-//					.map(v -> v.multiply(p(filter)))
-//					.reduce(v -> v.sum());
+					.enumerate(1, w, s)
+					.traverse(2)
+					.map(v -> v.multiply(p(filter)));
+			System.out.println(conv.getShape());
+
 			PackedCollection<?> output = conv.get().evaluate();
 			System.out.println(output.getShape());
 
-			for (int i = 0; i < r; i += s) {
-				for (int j = 0; j < c; j += s) {
-					System.out.println("i: " + i + " j: " + j);
-					for (int k = 0; k < w; k++) {
-						for (int l = 0; l < w; l++) {
-							double expected = input.toDouble(input.getShape().index(i + k, j + l));
-							double actual = output.toDouble(output.getShape().index(i / s, j / s, k, l));
+			for (int i = 0; i < 8; i++) {
+				for (int j = 0; j < 8; j++) {
+					for (int k = 0; k < 3; k++) {
+						for (int l = 0; l < 3; l++) {
+							double expected = input.toDouble(input.getShape().index(i + k, j + l)) * filter.toDouble(filter.getShape().index(k, l));
+							double actual = output.toDouble(output.getShape().index(i, j, k, l));
+
 							System.out.println("PackedCollectionMapTests: " + expected + " vs " + actual);
 							Assert.assertEquals(expected, actual, 0.0001);
 						}
 					}
 				}
 			}
+		});
+	}
 
-//			for (int i = 0; i < 8; i++) {
-//				double expected = 0;
-//
-//				for (int j = 0; j < 3; j++) {
-//					for (int k = 0; k < 3; k++) {
-//						expected += input.toDouble(input.getShape().index(i, j, k)) * filter.toDouble(filter.getShape().index(j, k));
-//					}
-//				}
-//
-//				System.out.println("PackedCollectionMapTests: " + expected + " vs " + output.toDouble(output.getShape().index(i, 0)));
-//				Assert.assertEquals(expected, output.toDouble(output.getShape().index(i, 0)), 0.0001);
-//			}
+	@Test
+	public void enumerateMapReduce() {
+		int r = 10;
+		int c = 10;
+		int w = 3;
+		int s = 1;
+
+		PackedCollection<?> input = tensor(shape(r, c)).pack();
+		PackedCollection<?> filter = tensor(shape(w, w)).pack();
+
+		HardwareOperator.verboseLog(() -> {
+			CollectionProducer<PackedCollection<?>> conv = c(p(input))
+					.enumerate(1, w, s)
+					.enumerate(1, w, s)
+					.traverse(2)
+					.map(v -> v.multiply(p(filter)))
+					.reduce(v -> v.sum());
+			System.out.println(conv.getShape());
+
+			PackedCollection<?> output = conv.get().evaluate();
+			System.out.println(output.getShape());
+
+			for (int i = 0; i < 8; i++) {
+				for (int j = 0; j < 8; j++) {
+					double expected = 0;
+
+					for (int k = 0; k < 3; k++) {
+						for (int l = 0; l < 3; l++) {
+							expected += input.toDouble(input.getShape().index(i + k, j + l)) * filter.toDouble(filter.getShape().index(k, l));
+						}
+					}
+
+					double actual = output.toDouble(output.getShape().index(i, j, 0));
+
+					System.out.println("PackedCollectionMapTests: " + expected + " vs " + actual);
+					Assert.assertEquals(expected, actual, 0.0001);
+				}
+			}
 		});
 	}
 }

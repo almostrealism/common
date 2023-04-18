@@ -26,7 +26,7 @@ public class KernelListTest implements TestFeatures {
 		ScalarBank output = new ScalarBank(4);
 
 //		scalar(() -> new Provider<>(paramsA), 0).multiply(Input.value(Scalar.class, 0)).get().kernelEvaluate(output, input);
-		multiply(scalar(() -> new Provider<>(paramsA), 0), new PassThroughProducer<>(8, 0)).get().kernelEvaluate(output, input);
+		multiply(scalar(() -> new Provider<>(paramsA), 0), new PassThroughProducer<>(shape(4, 2).traverse(1), 0)).get().kernelEvaluate(output, input);
 		assertEquals(4.0, output.get(1));
 	}
 

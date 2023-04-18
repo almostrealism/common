@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,12 +17,15 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.MultiExpression;
+import io.almostrealism.scope.ArrayVariable;
+import org.almostrealism.collect.CollectionExpression;
+import org.almostrealism.collect.CollectionVariable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversableExpression;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.ComputerFeatures;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.hardware.KernelSupport;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
@@ -32,59 +35,50 @@ import java.util.Objects;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-@Deprecated
-public class ExpressionComputation<T extends PackedCollection<?>> extends DynamicCollectionProducerComputationAdapter<T, T> implements ComputerFeatures {
-	private List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression;
+// TODO  As other implementations of DynamicCollectionProducerComputationAdapter are gradually made unnecessary
+// TODO  by the existence of this class, the functionality here can just be migrated into
+// TODO  DynamicCollectionProducerComputationAdapter, which can then be renamed to DynamicCollectionProducerComputation.
+public class DynamicExpressionComputation<T extends PackedCollection<?>> extends DynamicCollectionProducerComputationAdapter<T, T> implements TraversableExpression, ComputerFeatures {
+	private Function<CollectionVariable[], CollectionExpression> expression;
 
 	private Evaluable<T> shortCircuit;
 
-	protected ExpressionComputation(TraversalPolicy shape, Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		super(shape, validateArgs(args));
-	}
-
-	@Deprecated
 	@SafeVarargs
-	public ExpressionComputation(List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression,
-								 Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		this(new TraversalPolicy(expression.size()), expression, args);
-	}
-
-	@Deprecated
-	@SafeVarargs
-	public ExpressionComputation(TraversalPolicy shape, List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression,
-							   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+	public DynamicExpressionComputation(TraversalPolicy shape,
+										Function<CollectionVariable[], CollectionExpression> expression,
+										Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
 		super(shape, validateArgs(args));
-		if (shape.getSize() != expression.size())
-			throw new IllegalArgumentException("Expected " + shape.getTotalSize() + " expressions");
 		this.expression = expression;
 	}
+
+	@Override
+	public int getMemLength() { return getShape().getSize(); }
 
 	public void setShortCircuit(Evaluable<T> shortCircuit) {
 		this.shortCircuit = shortCircuit;
 	}
 
-	public List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression() {
-		return expression;
-	}
+	protected CollectionExpression getExpression() {
+		CollectionVariable vars[] = new CollectionVariable[getInputs().size()];
+		for (int i = 0; i < vars.length; i++) {
+			ArrayVariable arg = getArgumentForInput(getInputs().get(i));
+			vars[i] = arg instanceof CollectionVariable ? (CollectionVariable) arg : null;
+		}
 
-	public List<MultiExpression<Double>> getExpressions() {
-		return IntStream.range(0, getInputs().size())
-				.mapToObj(i -> (MultiExpression<Double>) pos -> getInputValue(i, pos))
-				.collect(Collectors.toList());
+		return expression.apply(vars);
 	}
 
 	@Override
 	public IntFunction<Expression<Double>> getValueFunction() {
 		return pos -> {
-			if (pos >= expression.size()) {
-				throw new IllegalArgumentException();
-			} else {
-				return expression.get(pos).apply(getExpressions());
-			}
+			if (pos > getMemLength()) throw new IllegalArgumentException();
+
+			Expression<?> index = new Expression(Double.class, KernelSupport.getKernelIndex(0));
+			index = index.multiply(getMemLength()).add(e(pos));
+
+			return getExpression().getValueAt(index);
 		};
 	}
 
@@ -94,13 +88,23 @@ public class ExpressionComputation<T extends PackedCollection<?>> extends Dynami
 	}
 
 	@Override
+	public Expression getValue(Expression[] pos) {
+		return getExpression().getValue(pos);
+	}
+
+	@Override
+	public Expression getValueAt(Expression index) {
+		return getExpression().getValueAt(index);
+	}
+
+	@Override
 	public KernelizedEvaluable<T> get() {
 		return new KernelizedEvaluable<T>() {
 			KernelizedEvaluable<T> kernel;
 
 			private KernelizedEvaluable<T> getKernel() {
 				if (kernel == null) {
-					kernel = ExpressionComputation.super.get();
+					kernel = DynamicExpressionComputation.super.get();
 				}
 
 				return kernel;
@@ -126,10 +130,5 @@ public class ExpressionComputation<T extends PackedCollection<?>> extends Dynami
 				return getKernel().getArgsCount();
 			}
 		};
-	}
-
-	private ExpressionComputation create(TraversalPolicy shape, Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		ExpressionComputation computation = new ExpressionComputation(shape, args);
-		return computation;
 	}
 }

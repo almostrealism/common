@@ -24,10 +24,12 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
+import org.almostrealism.collect.CollectionExpression;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.CollectionVariable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.Shape;
+import org.almostrealism.collect.TraversableExpression;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.KernelSupport;
 
@@ -65,7 +67,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 
 		Expression slice = new Expression(Double.class, KernelSupport.getKernelIndex(0));
 
-		ArrayVariable arg = getArgument(1, inputShape.getTotalSize());
+		ArrayVariable arg = getArgumentForInput(getInputs().get(1));
 		if (arg instanceof CollectionVariable == false) {
 			throw new IllegalArgumentException("Map input must be a collection");
 		}
@@ -76,19 +78,36 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 		while (sliceShape.getDimensions() < inputShape.getDimensions())
 			sliceShape = sliceShape.prependDimension(1);
 
+		CollectionVariable inputSlice = input.get(sliceShape, slice);
+		CollectionExpression expression = CollectionExpression.create(sliceShape, index -> inputSlice.getValueAt(index));
+
+		DynamicCollectionProducerComputationAdapter computation = new DynamicExpressionComputation(sliceShape, args -> expression);
+
+		CollectionProducerComputation<?> mapped = mapper.apply(computation);
+
+		if (mapped instanceof TraversableExpression) {
+			ScopeLifecycle.prepareScope(Stream.of(mapped), manager);
+			result = IntStream.range(0, getShape().item().getTotalSize())
+					.mapToObj(i -> ((TraversableExpression<Double>) mapped).getValueAt(e(i)))
+					.collect(ExpressionList.collector());
+			return;
+		}
+
+		// TODO  This fallback to using ExpressionComputation as input to the mapping function
+		// TODO  can eventually be removed when all CollectionProducerComputations are
+		// TODO  TraversableExpression implementations.
 		ExpressionList<Double> exp = input.get(sliceShape, slice).toList();
 
-		ExpressionComputation<?> computation = new ExpressionComputation<>(inputShape.item(),
+		computation = new ExpressionComputation<>(inputShape.item(),
 				IntStream.range(0, exp.size())
 						.mapToObj(i -> (Function<List<MultiExpression<Double>>, Expression<Double>>) args -> exp.get(i))
 						.collect(Collectors.toList()));
-
-		CollectionProducerComputation<?> mapped = mapper.apply(computation);
-		ScopeLifecycle.prepareScope(Stream.of(mapped), manager);
+		CollectionProducerComputation<?> altMapped = mapper.apply(computation);
+		ScopeLifecycle.prepareScope(Stream.of(altMapped), manager);
 
 		result = IntStream.range(0, getShape().item().getTotalSize())
-				.mapToObj(i -> OperationComputationBase.getExpression(mapped).orElseThrow().getValue(i))
-				.collect(ExpressionList.collector());
+					.mapToObj(i -> OperationComputationBase.getExpression(altMapped).orElseThrow().getValue(i))
+					.collect(ExpressionList.collector());
 	}
 
 	@Override

@@ -22,6 +22,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.bool.AcceleratedConditionalStatementCollection;
 import org.almostrealism.bool.GreaterThanCollection;
 import org.almostrealism.bool.LessThanCollection;
+import org.almostrealism.collect.computations.DynamicCollectionProducerComputationAdapter;
 import org.almostrealism.collect.computations.ExpressionComputation;
 
 import java.util.function.Function;
@@ -56,11 +57,11 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 		return subtract((Producer) this, value);
 	}
 
-	default <T extends PackedCollection<?>> ExpressionComputation<T> multiply(Producer<T> value) {
+	default <T extends PackedCollection<?>> DynamicCollectionProducerComputationAdapter<T, T> multiply(Producer<T> value) {
 		return multiply((Producer) this, value);
 	}
 
-	default <T extends PackedCollection<?>> ExpressionComputation<T> divide(Producer<T> value) {
+	default <T extends PackedCollection<?>> DynamicCollectionProducerComputationAdapter<T, T> divide(Producer<T> value) {
 		return divide((Producer) this, value);
 	}
 

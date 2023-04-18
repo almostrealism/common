@@ -26,6 +26,7 @@ import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.algebra.computations.ScalarExpressionComputation;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.DynamicCollectionProducerComputationAdapter;
 import org.almostrealism.collect.computations.ExpressionComputation;
 
 import java.util.ArrayList;
@@ -45,8 +46,8 @@ public interface GeometryFeatures extends CollectionFeatures {
 		return new ScalarExpressionComputation(expression, (Supplier) input);
 	}
 
-	default ExpressionComputation<Scalar> sinw(Producer<Scalar> input, Producer<Scalar> wavelength,
-											   Producer<Scalar> amp) {
+	default DynamicCollectionProducerComputationAdapter<Scalar, Scalar> sinw(Producer<Scalar> input, Producer<Scalar> wavelength,
+				  Producer<Scalar> amp) {
 		return multiply(sin(ScalarFeatures.of(new Scalar(TWO_PI)).multiply(input).divide(wavelength)), amp);
 	}
 
@@ -55,7 +56,7 @@ public interface GeometryFeatures extends CollectionFeatures {
 		return new ExpressionComputation(List.of(exp), input);
 	}
 
-	default ExpressionComputation<PackedCollection<?>> _sinw(Producer<PackedCollection<?>> input,
+	default DynamicCollectionProducerComputationAdapter<PackedCollection<?>, PackedCollection<?>> _sinw(Producer<PackedCollection<?>> input,
 															 Producer<PackedCollection<?>> wavelength,
 															 Producer<PackedCollection<?>> amp) {
 		return _sin(c(TWO_PI).multiply(input).divide(wavelength)).multiply(amp);

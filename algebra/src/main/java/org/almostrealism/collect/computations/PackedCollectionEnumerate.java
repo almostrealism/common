@@ -20,6 +20,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.scope.Variable;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.CollectionVariable;
 import org.almostrealism.collect.PackedCollection;

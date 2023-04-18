@@ -24,6 +24,8 @@ import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.code.KernelIndex;
+import org.almostrealism.collect.Shape;
+import org.almostrealism.collect.TraversalPolicy;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -32,12 +34,21 @@ import java.util.function.Supplier;
 
 public class PassThroughProducer<T extends MemoryData>
 		extends DynamicProducerComputationAdapter<T, T>
-		implements ProducerArgumentReference, KernelIndex {
+		implements ProducerArgumentReference, Shape<PassThroughProducer<T>>, KernelIndex {
+	private TraversalPolicy shape;
 	private int argIndex;
 	private int kernelIndex;
 
+	public PassThroughProducer(TraversalPolicy shape, int argIndex) {
+		super(shape.getSize(), null, null);
+		this.shape = shape;
+		this.argIndex = argIndex;
+	}
+
+	@Deprecated
 	public PassThroughProducer(int memLength, int argIndex) {
 		super(memLength, null, null);
+		this.shape = new TraversalPolicy(memLength).traverse(0);
 		this.argIndex = argIndex;
 		this.kernelIndex = 0;
 	}
@@ -45,9 +56,24 @@ public class PassThroughProducer<T extends MemoryData>
 	@Deprecated
 	public PassThroughProducer(int memLength, int argIndex, int kernelIndex) {
 		super(memLength, null, null);
+		this.shape = new TraversalPolicy(memLength).traverse(0);
 		this.argIndex = argIndex;
 		this.kernelIndex = kernelIndex;
 		System.out.println("WARN: Specifying kernel index before compilation is deprecated");
+	}
+
+	@Override
+	public TraversalPolicy getShape() {
+		return shape;
+	}
+
+	@Override
+	public PassThroughProducer<T> reshape(TraversalPolicy shape) {
+		if (shape.getTotalSize() != getShape().getTotalSize()) {
+			throw new UnsupportedOperationException();
+		}
+
+		return new PassThroughProducer<>(shape, argIndex);
 	}
 
 	@Override

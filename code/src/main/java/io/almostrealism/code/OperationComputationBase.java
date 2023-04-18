@@ -130,6 +130,7 @@ public abstract class OperationComputationBase<I, O> extends OperationAdapter<I>
 		return scope;
 	}
 
+	@Deprecated
 	public static Expression<Double> getExpression(ArrayVariable arg, int pos) {
 		if (arg == null) {
 			throw new IllegalArgumentException("Argument cannot be null");
@@ -144,6 +145,7 @@ public abstract class OperationComputationBase<I, O> extends OperationAdapter<I>
 		}
 	}
 
+	@Deprecated
 	public static <T> Optional<MultiExpression> getExpression(Supplier<Evaluable<? extends T>> producer) {
 		if (producer instanceof MultiExpression) {
 			return Optional.of((MultiExpression) producer);

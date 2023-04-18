@@ -21,6 +21,7 @@ import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
+import io.almostrealism.expression.Mod;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -90,9 +91,24 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 			producer = (Producer) ((Delegated<?>) producer).getDelegate();
 		}
 
+		// TODO  This process of falling back when TraversableExpression
+		// TODO  returns null shouldn't really be necessary, but there
+		// TODO  are currently some implementations of TraversableExpression
+		// TODO  that wrap other types, and it isn't known whether those
+		// TODO  types are TraversableExpressions or not.
+		Expression<Double> result = null;
+
 		if (producer instanceof TraversableExpression) {
-			return ((TraversableExpression<Double>) producer).getValueAt(index);
+			result = ((TraversableExpression<Double>) producer).getValueAt(index);
+		}
+
+		if (result != null) return result;
+
+		if (getShape().getTotalSize() == 1) {
+			return (Expression) get(e(0), -1);
 		} else {
+			Variable dependencies[] = (Variable[]) index.getDependencies().toArray(Variable[]::new);
+			index =  e("((int) (" + index.getExpression() + ")) % " + getShape().getTotalSize(), dependencies);
 			return (Expression) get(index, -1);
 		}
 	}

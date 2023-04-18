@@ -28,6 +28,9 @@ import org.almostrealism.algebra.computations.StaticVectorComputation;
 import org.almostrealism.algebra.computations.VectorExpressionComputation;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.Shape;
+import org.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.computations.DynamicCollectionProducerComputationAdapter;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.hardware.HardwareFeatures;
 
@@ -81,10 +84,22 @@ public interface VectorFeatures extends CollectionFeatures, HardwareFeatures {
 		return new VectorExpressionComputation(expression, bank);
 	}
 
-	default VectorExpressionComputation vector(ExpressionComputation<?> value) {
-		if (value.getExpressions().size() != 3) throw new IllegalArgumentException();
-		return new VectorExpressionComputation(value.expression(),
-				value.getInputs().subList(1, value.getInputs().size()).toArray(Supplier[]::new));
+	default VectorExpressionComputation vector(DynamicCollectionProducerComputationAdapter<?, ?> value) {
+		if (value instanceof ExpressionComputation) {
+			if (((ExpressionComputation) value).getExpressions().size() != 3) throw new IllegalArgumentException();
+			return new VectorExpressionComputation(((ExpressionComputation) value).expression(),
+					value.getInputs().subList(1, value.getInputs().size()).toArray(Supplier[]::new));
+		} else if (value instanceof Shape) {
+			TraversalPolicy shape = ((Shape) value).getShape();
+
+			List<Function<List<MultiExpression<Double>>, Expression<Double>>> expressions =
+					IntStream.range(0, shape.getSize()).mapToObj(i -> (Function<List<MultiExpression<Double>>, Expression<Double>>)
+									np -> np.get(1).getValue(i))
+							.collect(Collectors.toList());
+			return new VectorExpressionComputation(expressions, (Supplier) value);
+		} else {
+			throw new UnsupportedOperationException();
+		}
 	}
 
 	default Producer<Vector> vector() { return Vector.blank(); }

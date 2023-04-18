@@ -16,14 +16,19 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionExpression;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.Shape;
+import org.almostrealism.collect.TraversableExpression;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.KernelSupport;
 
-public class ReshapeProducer<T extends Shape<T>> implements CollectionProducer<T>, Shape<Producer<T>>, KernelSupport {
+import java.util.stream.Stream;
+
+public class ReshapeProducer<T extends Shape<T>> implements CollectionProducer<T>, TraversableExpression<Double>, Shape<Producer<T>>, KernelSupport {
 	private TraversalPolicy shape;
 	private int traversalAxis;
 	private Producer<T> producer;
@@ -46,6 +51,16 @@ public class ReshapeProducer<T extends Shape<T>> implements CollectionProducer<T
 		} else {
 			return shape;
 		}
+	}
+
+	@Override
+	public Expression<Double> getValue(Expression... pos) {
+		return getValueAt(getShape().index(pos));
+	}
+
+	@Override
+	public Expression<Double> getValueAt(Expression index) {
+		return producer instanceof TraversableExpression ? ((TraversableExpression) producer).getValueAt(index) : null;
 	}
 
 	@Override

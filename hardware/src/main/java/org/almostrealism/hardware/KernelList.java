@@ -20,6 +20,8 @@ import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.uml.Plural;
+import org.almostrealism.collect.Shape;
+import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.computations.Assignment;
 
 import java.util.HashMap;
@@ -31,6 +33,7 @@ import java.util.stream.IntStream;
 
 public class KernelList<T extends MemoryData> implements Supplier<Runnable>, Plural<MemoryBank<T>> {
 	private ProducerComputation<T> computation;
+	private BiFunction<Producer<MemoryBank<T>>, Producer<T>, ProducerComputation<T>> computationProvider;
 
 	private MemoryBank<T> input;
 	private MemoryBank<T> parameters;
@@ -52,8 +55,8 @@ public class KernelList<T extends MemoryData> implements Supplier<Runnable>, Plu
 		if (size <= 0) throw new IllegalArgumentException();
 		this.tableProvider = tableProvider;
 		this.parameters = parameters > 0 ? bankProvider.apply(parameters) : null;
-//		this.computation = computation.apply(() -> new Provider(this.parameters), Input.value(type, 0));
-		this.computation = computation.apply(() -> new Provider(this.parameters), new PassThroughProducer<>(0, 0));
+//		this.computation = computation.apply(() -> new Provider(this.parameters), new PassThroughProducer<>(0, 0));
+		this.computationProvider = computation;
 		this.parameterValues = new HashMap<>();
 		this.size = size;
 	}
@@ -63,6 +66,9 @@ public class KernelList<T extends MemoryData> implements Supplier<Runnable>, Plu
 	public void setInput(MemoryBank<T> input) {
 		this.input = input;
 		this.data = tableProvider.apply(input.getCount(), size);
+
+		TraversalPolicy shape = ((Shape) input).getShape();
+		this.computation = computationProvider.apply(() -> new Provider(this.parameters), new PassThroughProducer<>(shape, 0));
 	}
 
 	public void setParameters(int pos, Producer<? extends MemoryBank<T>> parameters) {

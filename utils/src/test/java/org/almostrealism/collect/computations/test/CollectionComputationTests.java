@@ -69,10 +69,12 @@ public class CollectionComputationTests implements TestFeatures {
 
 	@Test
 	public void multiply() {
-		PackedCollection<?> testInput = new PackedCollection<>(1);
-		testInput.setMem(0, 9);
-		PackedCollection<?> result = c(3).multiply(p(testInput)).get().evaluate();
-		assertEquals(27, result.toDouble(0));
+		HardwareOperator.verboseLog(() -> {;
+			PackedCollection<?> testInput = new PackedCollection<>(1);
+			testInput.setMem(0, 9);
+			PackedCollection<?> result = c(3).multiply(p(testInput)).get().evaluate();
+			assertEquals(27, result.toDouble(0));
+		});
 	}
 
 	@Test

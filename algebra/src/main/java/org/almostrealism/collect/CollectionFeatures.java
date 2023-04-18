@@ -26,6 +26,7 @@ import io.almostrealism.expression.Minus;
 import io.almostrealism.expression.Mod;
 import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.expression.Product;
+import io.almostrealism.expression.Quotient;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -34,6 +35,8 @@ import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.computations.ArrayVariableComputation;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
+import org.almostrealism.collect.computations.DynamicCollectionProducerComputationAdapter;
+import org.almostrealism.collect.computations.DynamicExpressionComputation;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.PackedCollectionEnumerate;
 import org.almostrealism.collect.computations.PackedCollectionFromPackedCollection;
@@ -326,20 +329,31 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return add(a, minus(b));
 	}
 
-	default <T extends PackedCollection<?>> ExpressionComputation<T> multiply(
+	default <T extends PackedCollection<?>> DynamicCollectionProducerComputationAdapter<T, T> multiply(
 			Producer<T> a, Producer<T> b) {
 		return multiply(a, b, null);
 	}
 
-	default <T extends PackedCollection<?>> ExpressionComputation<T> multiply(
+	default <T extends PackedCollection<?>> DynamicCollectionProducerComputationAdapter<T, T> multiply(
 			Producer<T> a, Producer<T> b,
 			Evaluable<T> shortCircuit) {
-		TraversalPolicy shape = shape(1);
-		if (shape(a).getSize() == shape(b).getSize()) {
-			shape = shape(a);
+		TraversalPolicy shape = shape(a);
+		int size = shape(b).getSize();
+		if (shape.getSize() != size) {
+			throw new IllegalArgumentException("Cannot multiply a collection of size " + shape.getSize() +
+					" with a collection of size " + size);
 		}
 
-		return multiply(shape, (Supplier) a, (Supplier) b, shortCircuit);
+		return new DynamicExpressionComputation<>(shape,
+				args -> CollectionExpression.create(shape, index -> new Product(args[1].getValueAt(index), args[2].getValueAt(index))),
+				(Supplier) a, (Supplier) b);
+
+//		TraversalPolicy shape = shape(1);
+//		if (shape(a).getSize() == shape(b).getSize()) {
+//			shape = shape(a);
+//		}
+//
+//		return multiply(shape, (Supplier) a, (Supplier) b, shortCircuit);
 	}
 
 	default <T extends PackedCollection<?>> ExpressionComputation<T> multiply(TraversalPolicy shape,
@@ -354,8 +368,19 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return exp;
 	}
 
-	default <T extends PackedCollection<?>> ExpressionComputation<T> divide(Producer<T> a, Producer<T> b) {
-		return multiply(a, pow(b, c(-1.0)));
+	default <T extends PackedCollection<?>> DynamicCollectionProducerComputationAdapter<T, T> divide(Producer<T> a, Producer<T> b) {
+		// return multiply(a, pow(b, c(-1.0)));
+		TraversalPolicy shape = shape(a);
+		int size = shape(b).getSize();
+		if (shape.getSize() != size) {
+			throw new IllegalArgumentException("Cannot multiply a collection of size " + shape.getSize() +
+					" with a collection of size " + size);
+		}
+
+		return new DynamicExpressionComputation<>(shape,
+				args -> CollectionExpression.create(shape, index -> new Quotient(args[1].getValueAt(index), args[2].getValueAt(index))),
+				(Supplier) a, (Supplier) b);
+
 	}
 
 	default <T extends PackedCollection<?>> ExpressionComputation<T> minus(Producer<T> a) {
