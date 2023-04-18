@@ -25,7 +25,12 @@ import io.almostrealism.scope.Variable;
 public interface ExpressionFeatures {
 
 	default Expression e(int value) {
-		return e(String.valueOf(value));
+		return e(String.valueOf(value), new Variable[0]);
+	}
+
+
+	default Expression<Double> e(String expression, Expression<?>... dependencies) {
+		return new Expression<>(Double.class, expression, dependencies);
 	}
 
 	default Expression<Double> e(String expression, Variable<?, ?>... dependencies) {

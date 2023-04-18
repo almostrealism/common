@@ -81,7 +81,7 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		Expression slice = index.divide(e((double) subsetShape.getTotalSize())).floor();
 
 		// Find the index in that slice
-		Expression offset = e("((int) " + index.getExpression() + ") % " + subsetShape.getTotalSize());
+		Expression offset = e("((int) " + index.getExpression() + ") % " + subsetShape.getTotalSize(), index);
 
 		// Determine the location of the slice
 		Expression<?> p[] = new Expression[subsetShape.getDimensions()];
