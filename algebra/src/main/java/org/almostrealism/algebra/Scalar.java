@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,6 +19,8 @@ package org.almostrealism.algebra;
 import org.almostrealism.algebra.computations.DynamicScalarProducer;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.PooledMem;
+
+import java.util.function.BiFunction;
 
 public class Scalar extends Pair<Scalar> implements Comparable<Scalar> {
 	public static final double EPSILON = 1.19209290e-07;
@@ -62,6 +64,10 @@ public class Scalar extends Pair<Scalar> implements Comparable<Scalar> {
 
 	public static ScalarProducer blank() {
 		return new DynamicScalarProducer(args -> new Scalar(false));
+	}
+
+	public static BiFunction<MemoryData, Integer, Scalar> postprocessor() {
+		return (delegate, offset) -> new Scalar(delegate, offset);
 	}
 
 	public static Scalar sel(double a, double b, double c) {

@@ -29,6 +29,7 @@ import org.almostrealism.hardware.MemoryData;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
+@Deprecated
 public abstract class ValueFromPackedCollection<T extends MemoryData> extends DynamicProducerComputationAdapter<PackedCollection, T> {
 	private TraversalPolicy shape;
 

@@ -221,8 +221,10 @@ public class CollectionComputationTests implements TestFeatures {
 
 		PackedCollection collection = values.pack();
 
-		ScalarFromPackedCollection scalar = new ScalarFromPackedCollection(collection.getShape(), p(collection), v(1));
-		assertEquals(2.0, scalar.get().evaluate());
+		Producer<Scalar> scalar = scalar(collection.getShape().traverse(1), p(collection), v(1));
+		Scalar output = scalar.get().evaluate();
+		assertEquals(2.0, output);
+		assertEquals(1.0, output.toDouble(1));
 	}
 
 	@Test

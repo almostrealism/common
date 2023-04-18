@@ -25,6 +25,7 @@ import org.almostrealism.hardware.KernelizedEvaluable;
 
 import java.util.function.Supplier;
 
+@Deprecated
 public class PackedCollectionFromPackedCollection extends ValueFromPackedCollection<PackedCollection<?>> implements CollectionProducerComputation<PackedCollection<?>> {
 	public PackedCollectionFromPackedCollection(TraversalPolicy shape, Supplier<Evaluable<? extends PackedCollection>> collection, Supplier<Evaluable<? extends Scalar>> index) {
 		super(shape, PackedCollection.blank(1), PackedCollection.bank(new TraversalPolicy(1)),

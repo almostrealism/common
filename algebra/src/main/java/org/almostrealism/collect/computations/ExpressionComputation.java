@@ -29,6 +29,7 @@ import org.almostrealism.hardware.MemoryData;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
@@ -36,20 +37,17 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-@Deprecated
 public class ExpressionComputation<T extends PackedCollection<?>> extends DynamicCollectionProducerComputationAdapter<T, T> implements ComputerFeatures {
 	private List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression;
-
+	private BiFunction<MemoryData, Integer, T> postprocessor;
 	private Evaluable<T> shortCircuit;
 
-	@Deprecated
 	@SafeVarargs
 	public ExpressionComputation(List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression,
 								 Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
 		this(new TraversalPolicy(expression.size()), expression, args);
 	}
 
-	@Deprecated
 	@SafeVarargs
 	public ExpressionComputation(TraversalPolicy shape, List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression,
 							   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
@@ -61,6 +59,14 @@ public class ExpressionComputation<T extends PackedCollection<?>> extends Dynami
 
 	public void setShortCircuit(Evaluable<T> shortCircuit) {
 		this.shortCircuit = shortCircuit;
+	}
+
+	public BiFunction<MemoryData, Integer, T> getPostprocessor() {
+		return postprocessor;
+	}
+
+	public void setPostprocessor(BiFunction<MemoryData, Integer, T> postprocessor) {
+		this.postprocessor = postprocessor;
 	}
 
 	public List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression() {
@@ -122,5 +128,10 @@ public class ExpressionComputation<T extends PackedCollection<?>> extends Dynami
 				return getKernel().getArgsCount();
 			}
 		};
+	}
+
+	@Override
+	public T postProcessOutput(MemoryData output, int offset) {
+		return getPostprocessor() == null ? super.postProcessOutput(output, offset) : getPostprocessor().apply(output, offset);
 	}
 }

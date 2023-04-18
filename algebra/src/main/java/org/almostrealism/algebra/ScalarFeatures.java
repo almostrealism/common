@@ -25,6 +25,8 @@ import org.almostrealism.bool.GreaterThanScalar;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.computations.DynamicExpressionComputation;
+import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.ScalarFromPackedCollection;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.MemoryBank;
@@ -74,15 +76,26 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 		return new ScalarExpressionComputation(comp, (Supplier) bank);
 	}
 
-	default ScalarProducer scalar(TraversalPolicy shape, Supplier<Evaluable<? extends PackedCollection<?>>> collection, int index) {
-		return scalar(shape, collection, v((double) index));
+	default ExpressionComputation<Scalar> scalar(TraversalPolicy shape, Supplier<Evaluable<? extends PackedCollection<?>>> collection, int index) {
+		// return scalar(shape, collection, v((double) index));
+		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
+		comp.add(args -> args.get(1).getValue(shape.getSize() * index));
+		comp.add(args -> expressionForDouble(1.0));
+		ExpressionComputation c = new ExpressionComputation(comp, collection);
+		c.setPostprocessor(Scalar.postprocessor());
+		return c;
 	}
 
-	default ScalarProducer scalar(TraversalPolicy shape, Supplier<Evaluable<? extends PackedCollection<?>>> collection, Supplier<Evaluable<? extends Scalar>> index) {
-		return new ScalarFromPackedCollection(shape, (Supplier) collection, index);
+	default DynamicExpressionComputation<Scalar> scalar(TraversalPolicy shape, Supplier<Evaluable<? extends PackedCollection<?>>> collection, Supplier<Evaluable<? extends Scalar>> index) {
+		DynamicExpressionComputation c =  new DynamicExpressionComputation<Scalar>(shape,
+				(args, i) ->
+						conditional(i.eq(e(0.0)), args[1].getValueAt(args[2].getValueAt(e(0)).multiply(shape.getSize())), e(1.0)),
+				collection, (Supplier) index);
+		c.setPostprocessor(Scalar.postprocessor());
+		return c;
 	}
 
-	default ScalarProducer scalar() {
+	default ScalarProducerBase scalar() {
 		return Scalar.blank();
 	}
 

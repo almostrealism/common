@@ -25,6 +25,7 @@ import org.almostrealism.collect.TraversalPolicy;
 
 import java.util.function.Supplier;
 
+@Deprecated
 public class ScalarFromPackedCollection extends ValueFromPackedCollection<Scalar> implements ScalarProducer {
 
 	public ScalarFromPackedCollection(TraversalPolicy shape, Supplier<Evaluable<? extends PackedCollection>> collection, Supplier<Evaluable<? extends Scalar>> index) {
