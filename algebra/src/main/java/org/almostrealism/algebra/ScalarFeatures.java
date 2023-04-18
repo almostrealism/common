@@ -27,7 +27,6 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.DynamicExpressionComputation;
 import org.almostrealism.collect.computations.ExpressionComputation;
-import org.almostrealism.collect.computations.ScalarFromPackedCollection;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.MemoryBank;
 

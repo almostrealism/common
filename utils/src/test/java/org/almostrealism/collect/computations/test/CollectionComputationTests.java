@@ -32,7 +32,6 @@ import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.PackedCollectionMax;
 import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.collect.computations.RootDelegateSegmentsAdd;
-import org.almostrealism.collect.computations.ScalarFromPackedCollection;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.PassThroughProducer;

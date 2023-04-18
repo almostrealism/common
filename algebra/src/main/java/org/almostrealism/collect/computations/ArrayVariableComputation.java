@@ -37,6 +37,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
+// Use DynamicExpressionComputation instead
 @Deprecated
 public class ArrayVariableComputation<T extends PackedCollection<?>> extends DynamicCollectionProducerComputationAdapter<T, T> implements ComputerFeatures {
 	private List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression;

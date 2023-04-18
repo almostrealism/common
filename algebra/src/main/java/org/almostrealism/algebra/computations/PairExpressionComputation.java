@@ -23,11 +23,14 @@ import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairProducerBase;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
+import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.MemoryData;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.IntStream;
 
 @Deprecated
 public class PairExpressionComputation extends ExpressionComputation<Pair<?>> implements PairProducerBase {
@@ -38,5 +41,18 @@ public class PairExpressionComputation extends ExpressionComputation<Pair<?>> im
     @Override
     public Pair postProcessOutput(MemoryData output, int offset) {
         return new Pair(output, offset);
+    }
+
+    public static PairExpressionComputation fixed(Pair value) {
+        List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
+        IntStream.range(0, 2).forEach(i -> comp.add(args -> {
+            String s = HardwareFeatures.ops().stringForDouble(value.getMem().toArray(value.getOffset() + i, 1)[0]);
+            if (s.contains("Infinity")) {
+                throw new IllegalArgumentException("Infinity is not supported");
+            }
+
+            return new Expression<>(Double.class, s);
+        }));
+        return new PairExpressionComputation(comp);
     }
 }
