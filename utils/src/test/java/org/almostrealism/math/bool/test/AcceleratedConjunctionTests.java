@@ -41,8 +41,8 @@ public class AcceleratedConjunctionTests extends AcceleratedConditionalStatement
 	}
 
 	protected Runnable conjunctionTest(double a, double b, double c, double d) {
-		Evaluable<Scalar> s = conjunction(v(a), v(Scalar.class, 0),
-				v(c), v(Scalar.class, 1));
+		Evaluable<Scalar> s = conjunction(v(a), v(Scalar.shape(), 0),
+				v(c), v(Scalar.shape(), 1));
 
 		return () -> {
 			double t = s.evaluate(v(b).get().evaluate(), v(d).get().evaluate()).getValue();
@@ -63,12 +63,12 @@ public class AcceleratedConjunctionTests extends AcceleratedConditionalStatement
 	}
 
 	protected AcceleratedComputationEvaluable<Scalar> dotProductConjunction(Producer<Ray> r) {
-		return conjunction(ray(i -> Math.random()).oDotd(), v(1), oDotd(v(Ray.class, 0)), v(1));
+		return conjunction(ray(i -> Math.random()).oDotd(), v(1), oDotd(v(Ray.shape(), 0)), v(1));
 	}
 
 	@Test
 	public void dotProductInConjunction() {
-		Evaluable<Scalar> c = dotProductConjunction(v(Ray.class, 0));
+		Evaluable<Scalar> c = dotProductConjunction(v(Ray.shape(), 0));
 		if (enableArgumentCountAssertions) Assert.assertEquals(2, ((OperationAdapter) c).getArgsCount());
 
 		double v = c.evaluate(ray(i -> Math.random()).get().evaluate()).getValue();
@@ -79,7 +79,7 @@ public class AcceleratedConjunctionTests extends AcceleratedConditionalStatement
 	@Test
 	public void dotProductInNestedConjunction1() {
 		AcceleratedComputationEvaluable<Scalar> c = dotProductConjunction(ray(i -> Math.random()));
-		c = conjunction(c.getComputation(), v(Scalar.class, 0),
+		c = conjunction(c.getComputation(), v(Scalar.shape(), 0),
 				v(Math.random()), v(Math.random()));
 
 		double v = c.evaluate(v(Math.random()).get().evaluate()).getValue();
@@ -91,7 +91,7 @@ public class AcceleratedConjunctionTests extends AcceleratedConditionalStatement
 	@Test
 	public void dotProductInNestedConjunction2() {
 		AcceleratedComputationEvaluable<Scalar> c = dotProductConjunction(ray(i -> Math.random()));
-		c = conjunction(c.getComputation(), v(Math.random()), v(Scalar.class, 0), v(Math.random()));
+		c = conjunction(c.getComputation(), v(Math.random()), v(Scalar.shape(), 0), v(Math.random()));
 
 		double v = c.evaluate(v(Math.random()).get().evaluate()).getValue();
 
@@ -101,7 +101,7 @@ public class AcceleratedConjunctionTests extends AcceleratedConditionalStatement
 
 	@Test
 	public void dotProductInNestedConjunction3() {
-		AcceleratedComputationEvaluable<Scalar> c = dotProductConjunction(v(Ray.class, 0));
+		AcceleratedComputationEvaluable<Scalar> c = dotProductConjunction(v(Ray.shape(), 0));
 		c = conjunction(c.getComputation(), v(Math.random()),
 				v(Math.random()), v(Math.random()));
 
@@ -113,9 +113,9 @@ public class AcceleratedConjunctionTests extends AcceleratedConditionalStatement
 
 	@Test
 	public void dotProductInNestedConjunction4() {
-		AcceleratedComputationEvaluable<Scalar> c = dotProductConjunction(v(Ray.class, 0));
-		c = conjunction(c.getComputation(), v(Scalar.class, 1),
-				v(Math.random()), v(Scalar.class, 2));
+		AcceleratedComputationEvaluable<Scalar> c = dotProductConjunction(v(Ray.shape(), 0));
+		c = conjunction(c.getComputation(), v(Scalar.shape(), 1),
+				v(Math.random()), v(Scalar.shape(), 2));
 
 		double v = c.evaluate(ray(i -> Math.random()).get().evaluate(),
 							v(Math.random()).get().evaluate(),

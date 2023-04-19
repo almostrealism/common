@@ -11,7 +11,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.HardwareFeatures;
-import org.almostrealism.hardware.PassThroughEvaluable;
+import org.almostrealism.hardware.Input;
 import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
@@ -23,7 +23,7 @@ public class AcceleratedComputationOperationTest implements HardwareFeatures, Te
 	@Test
 	public void sum() {
 		VectorProducer v = vector(1.0, 2.0, 3.0);
-		Producer<Vector> in = PassThroughEvaluable.of(Vector.class, 0);
+		Producer<Vector> in = Input.value(Vector.shape(), 0);
 
 		AcceleratedComputationEvaluable<Vector> s = (AcceleratedComputationEvaluable) compileProducer(add(v, in));
 	}

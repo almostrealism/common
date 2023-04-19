@@ -20,8 +20,8 @@ import io.almostrealism.code.OperationAdapter;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.AcceleratedEvaluable;
+import org.almostrealism.hardware.Input;
 import org.almostrealism.hardware.KernelizedEvaluable;
-import org.almostrealism.hardware.PassThroughEvaluable;
 import io.almostrealism.relation.ProducerWithRank;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -40,8 +40,8 @@ public class RankedChoiceEvaluable<T> extends ArrayList<ProducerWithRank<T, Scal
 				"highestRank",
 				true,
 				Pair.empty(),
-				PassThroughEvaluable.of(Scalar.class, 0),
-				PassThroughEvaluable.of(Pair.class, 1));
+				Input.value(Scalar.shape(), 0),
+				Input.value(Pair.shape(), 1));
 		((OperationAdapter) highestRank).compile();
 	}
 

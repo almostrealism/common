@@ -13,7 +13,6 @@ import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.bool.AcceleratedConditionalStatementScalar;
 import org.almostrealism.bool.LessThan;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.hardware.PassThroughEvaluable;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
@@ -65,7 +64,7 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 
 	@Test
 	public void compactWithDotProduct() {
-		Evaluable<Scalar> lt = lessThan(ray(i -> Math.random()).oDotd(), oDotd(v(Ray.class, 0))).get();
+		Evaluable<Scalar> lt = lessThan(ray(i -> Math.random()).oDotd(), oDotd(v(Ray.shape(), 0))).get();
 		if (TestSettings.enableArgumentCountAssertions)
 			Assert.assertEquals(2, ((OperationAdapter) lt).getArgsCount());
 
@@ -76,8 +75,8 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 
 	@Test
 	public void compactWithCrossProduct() {
-		LessThan<Scalar> lt1 = lessThan(ray(i -> Math.random()).oDotd(), oDotd(v(Ray.class, 0)));
-		AcceleratedConditionalStatementScalar lt2 = vector(i -> Math.random()).crossProduct(v(Vector.class, 1))
+		LessThan<Scalar> lt1 = lessThan(ray(i -> Math.random()).oDotd(), oDotd(v(Ray.shape(), 0)));
+		AcceleratedConditionalStatementScalar lt2 = vector(i -> Math.random()).crossProduct(v(Vector.shape(), 1))
 														.length().lessThan(lt1, v(1), v(2));
 
 		double v = lt2.get().evaluate(ray(i -> Math.random()).get().evaluate(), vector(i -> Math.random()).get().evaluate()).getValue();

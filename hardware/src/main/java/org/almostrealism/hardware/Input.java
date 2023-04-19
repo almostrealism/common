@@ -23,12 +23,7 @@ import java.util.stream.IntStream;
 
 public class Input {
 	private Input() { }
-
-	@Deprecated
-	public static <T> Producer<T> value(Class<T> type, int argIndex) {
-		return PassThroughEvaluable.of(type, argIndex);
-	}
-
+	
 	public static <T> Producer<T> value(TraversalPolicy shape, int argIndex) {
 		return new PassThroughProducer(shape, argIndex);
 	}

@@ -84,11 +84,6 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 		return value(v);
 	}
 
-	@Deprecated
-	default <T> Producer<T> v(Class<T> type, int argIndex) {
-		return value(type, argIndex);
-	}
-
 	default <T> Producer<T> v(int memLength, int argIndex) {
 		return value(memLength, argIndex);
 	}
@@ -147,11 +142,6 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 		} else {
 			return () -> new Provider<>(v);
 		}
-	}
-
-	@Deprecated
-	default <T> Producer<T> value(Class<T> type, int argIndex) {
-		return Input.value(type, argIndex);
 	}
 
 	default <T> Producer<T> value(TraversalPolicy shape, int argIndex) {

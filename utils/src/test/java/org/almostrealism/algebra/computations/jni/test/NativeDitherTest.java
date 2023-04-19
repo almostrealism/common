@@ -13,7 +13,7 @@ public class NativeDitherTest implements TestFeatures {
 	public void random() {
 		ScalarBank random = new ScalarBank(160);
 		IntStream.range(0, 160).forEach(i ->  random.set(i, 100 * Math.random()));
-		ScalarBankProducerBase dither = dither(160, v(ScalarBank.class, 0), v(Scalar.class, 1));
+		ScalarBankProducerBase dither = dither(160, v(Scalar.shape(), 0), v(Scalar.shape(), 1));
 		ScalarBank out = dither.get().evaluate(random, new Scalar(1.0));
 		assertNotEquals(0.0, out.get(20));
 	}

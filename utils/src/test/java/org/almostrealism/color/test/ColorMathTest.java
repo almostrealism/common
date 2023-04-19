@@ -30,8 +30,8 @@ public class ColorMathTest implements TestFeatures {
 	@Test
 	public void greaterThan() {
 		HardwareOperator.verboseLog(() -> {
-			Producer<Scalar> arg0 = v(Scalar.class, 0);
-			Producer<RGB> arg1 = v(RGB.class, 1);
+			Producer<Scalar> arg0 = v(Scalar.shape(), 0);
+			Producer<RGB> arg1 = v(RGB.shape(), 1);
 
 			GreaterThanRGB greater = new GreaterThanRGB(arg0, v(0.0), arg1, RGBBlack.getInstance());
 			RGB result = greater.get().evaluate(new Scalar(0.1), new RGB(0.0, 1.0, 0.0));
@@ -44,7 +44,7 @@ public class ColorMathTest implements TestFeatures {
 	@Test
 	public void greaterThanKernel() {
 		HardwareOperator.verboseLog(() -> {
-			Producer<Scalar> arg0 = v(Scalar.class, 0);
+			Producer<Scalar> arg0 = v(Scalar.shape(), 0);
 
 			PackedCollection<RGB> result = RGB.bank(5);
 			ScalarBank input = new ScalarBank(5);

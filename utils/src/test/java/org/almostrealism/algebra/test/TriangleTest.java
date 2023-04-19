@@ -31,7 +31,6 @@ import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.computations.RayExpressionComputation;
 import org.almostrealism.graph.mesh.TriangleIntersectAt;
 import org.almostrealism.hardware.Input;
-import org.almostrealism.hardware.PassThroughEvaluable;
 import org.almostrealism.space.Triangle;
 import org.almostrealism.CodeFeatures;
 import org.junit.Assert;
@@ -124,7 +123,7 @@ public class TriangleTest implements CodeFeatures {
 		Ray in = ray(0.0, 0.0, 0.0, 0.0, 0.0, -1.0).get().evaluate();
 		PackedCollection<?> td = triangle();
 
-		TriangleIntersectAt intersectAt = new TriangleIntersectAt(PassThroughEvaluable.of(1),
+		TriangleIntersectAt intersectAt = new TriangleIntersectAt(Input.value(shape(4, 3), 1),
 				Input.value(Ray.shape(), 0, -1));
 
 		GreaterThanScalar gts = (GreaterThanScalar) (Supplier) intersectAt.getInputs().get(4);

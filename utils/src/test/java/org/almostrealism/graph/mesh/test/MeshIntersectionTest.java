@@ -26,6 +26,7 @@ import org.almostrealism.algebra.VectorProducerBase;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayProducerBase;
 import org.almostrealism.geometry.computations.RayExpressionComputation;
+import org.almostrealism.hardware.Input;
 import org.almostrealism.space.DefaultVertexData;
 import org.almostrealism.space.Mesh;
 import org.almostrealism.space.MeshData;
@@ -34,7 +35,6 @@ import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.bool.AcceleratedConjunctionScalar;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
-import org.almostrealism.hardware.PassThroughEvaluable;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Before;
@@ -80,9 +80,9 @@ public class MeshIntersectionTest implements TestFeatures {
 	protected VectorProducerBase normal(MeshData data) { return v(new Vector(data.get(0).get(3), 0)); }
 
 	protected TriangleIntersectAt intersection() {
-		return TriangleIntersectAt.construct(PassThroughEvaluable.of(0),
-										ray(PassThroughEvaluable.of(Vector.class, 1),
-															PassThroughEvaluable.of(Vector.class, 2)));
+		return TriangleIntersectAt.construct(Input.value(shape(4, 3), 0),
+										ray(Input.value(Vector.shape(), 1),
+															Input.value(Vector.shape(), 2)));
 	}
 
 	@Test

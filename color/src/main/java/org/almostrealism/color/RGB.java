@@ -457,6 +457,10 @@ public class RGB extends PackedCollection<RGB> implements Triple, Externalizable
 		
 		return value;
 	}
+
+	public static TraversalPolicy shape() {
+		return new TraversalPolicy(3);
+	}
 	
 	/**
 	 * Parses a string representation of an RGB object of the format

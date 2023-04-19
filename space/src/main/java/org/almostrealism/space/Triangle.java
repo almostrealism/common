@@ -34,7 +34,6 @@ import org.almostrealism.graph.mesh.TriangleIntersectAt;
 import org.almostrealism.geometry.ShadableIntersection;
 import org.almostrealism.geometry.ContinuousField;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.hardware.PassThroughEvaluable;
 import io.almostrealism.relation.Provider;
 
 import java.util.concurrent.ExecutionException;

@@ -31,7 +31,6 @@ import org.almostrealism.geometry.computations.RankedChoiceEvaluableForVector;
 import org.almostrealism.hardware.DynamicAcceleratedEvaluable;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryBank;
-import org.almostrealism.hardware.PassThroughEvaluable;
 import org.junit.Assert;
 import org.junit.Test;
 

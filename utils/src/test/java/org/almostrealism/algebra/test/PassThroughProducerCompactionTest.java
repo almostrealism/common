@@ -22,15 +22,15 @@ import org.almostrealism.algebra.computations.ScalarExpressionComputation;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.CodeFeatures;
-import org.almostrealism.hardware.PassThroughEvaluable;
+import org.almostrealism.hardware.Input;
 import org.junit.Assert;
 import org.junit.Test;
 
 public class PassThroughProducerCompactionTest implements HardwareFeatures, CodeFeatures {
 	protected ScalarExpressionComputation sum() {
 		return scalarAdd(
-				PassThroughEvaluable.of(Scalar.class, 0),
-				PassThroughEvaluable.of(Scalar.class, 1));
+				Input.value(Scalar.shape(), 0),
+				Input.value(Scalar.shape(), 1));
 	}
 
 	@Test
@@ -41,7 +41,7 @@ public class PassThroughProducerCompactionTest implements HardwareFeatures, Code
 	}
 
 	protected Evaluable<Scalar> product() {
-		return scalarsMultiply(sum(), PassThroughEvaluable.of(Scalar.class, 2)).get();
+		return scalarsMultiply(sum(), Input.value(Scalar.shape(), 2)).get();
 	}
 
 	@Test
