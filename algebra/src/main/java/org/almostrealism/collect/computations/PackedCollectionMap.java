@@ -75,10 +75,14 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 		CollectionVariable input = (CollectionVariable) arg;
 
 		TraversalPolicy sliceShape = inputShape.item();
-		while (sliceShape.getDimensions() < inputShape.getDimensions())
+		TraversalPolicy traversalShape = new TraversalPolicy();
+		int traversalDimensions = inputShape.getDimensions() - sliceShape.getDimensions();
+		for (int i = 0; i < traversalDimensions; i++) {
 			sliceShape = sliceShape.prependDimension(1);
+			traversalShape = traversalShape.appendDimension(inputShape.length(i));
+		}
 
-		CollectionVariable inputSlice = input.get(sliceShape, slice);
+		CollectionVariable inputSlice = input.get(sliceShape, traversalShape.position(slice));
 		CollectionExpression expression = CollectionExpression.create(sliceShape, index -> inputSlice.getValueAt(index));
 
 		DynamicCollectionProducerComputationAdapter computation = new DynamicExpressionComputation(sliceShape, args -> expression);
@@ -96,7 +100,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 		// TODO  This fallback to using ExpressionComputation as input to the mapping function
 		// TODO  can eventually be removed when all CollectionProducerComputations are
 		// TODO  TraversableExpression implementations.
-		ExpressionList<Double> exp = input.get(sliceShape, slice).toList();
+		ExpressionList<Double> exp = input.get(sliceShape, traversalShape.position(slice)).toList();
 
 		computation = new ExpressionComputation<>(inputShape.item(),
 				IntStream.range(0, exp.size())

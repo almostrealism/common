@@ -131,17 +131,18 @@ public class PackedCollectionMapTests implements TestFeatures {
 	}
 
 	@Test
-	public void enumerateMap() {
-		int r = 10;
-		int c = 10;
-		int w = 3;
+	public void enumerateMapSmall() {
+		int r = 3;
+		int c = 3;
+		int w = 2;
 		int s = 1;
+		int pad = 1;
 
 		PackedCollection<?> input = tensor(shape(r, c)).pack();
 		PackedCollection<?> filter = tensor(shape(w, w)).pack();
 
-		// TODO -> this test fails in a different way depending on the setting
-		// TODO    of -DAR_HARDWARE_OFF_HEAP_SIZE=0
+		input.fill(pos -> pos[0] + pos[1] * 0.1);
+		filter.fill(pos -> 1.0);
 
 		HardwareOperator.verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> conv = c(p(input))
@@ -154,12 +155,66 @@ public class PackedCollectionMapTests implements TestFeatures {
 			PackedCollection<?> output = conv.get().evaluate();
 			System.out.println(output.getShape());
 
-			for (int i = 0; i < 8; i++) {
-				for (int j = 0; j < 8; j++) {
+			for (int i = 0; i < r - pad; i++) {
+				for (int j = 0; j < c - pad; j++) {
 					System.out.println("PackedCollectionMapTests: " + i + ", " + j);
 
-					for (int k = 0; k < 3; k++) {
-						for (int l = 0; l < 3; l++) {
+					for (int k = 0; k < w; k++) {
+						System.out.print("\t[");
+						for (int l = 0; l < w; l++) {
+							double expected = input.toDouble(input.getShape().index(i + k, j + l)) * filter.toDouble(filter.getShape().index(k, l));
+							double actual = output.toDouble(output.getShape().index(i, j, k, l));
+
+							System.out.print(expected + ", ");
+						}
+
+						System.out.print("]\t[");
+
+						for (int l = 0; l < w; l++) {
+							double expected = input.toDouble(input.getShape().index(i + k, j + l)) * filter.toDouble(filter.getShape().index(k, l));
+							double actual = output.toDouble(output.getShape().index(i, j, k, l));
+
+							System.out.print(actual + ", ");
+
+							Assert.assertEquals(expected, actual, 0.0001);
+						}
+
+						System.out.println("]");
+					}
+				}
+			}
+		});
+	}
+
+	@Test
+	public void enumerateMap() {
+		int r = 10;
+		int c = 10;
+		int w = 3;
+		int s = 1;
+		int pad = 2;
+
+		PackedCollection<?> input = tensor(shape(r, c)).pack();
+		PackedCollection<?> filter = tensor(shape(w, w)).pack();
+
+		// TODO  Fails without -DAR_HARDWARE_OFF_HEAP_SIZE=0
+		HardwareOperator.verboseLog(() -> {
+			CollectionProducer<PackedCollection<?>> conv = c(p(input))
+					.enumerate(1, w, s)
+					.enumerate(1, w, s)
+					.traverse(2)
+					.map(v -> v.multiply(p(filter)));
+			System.out.println(conv.getShape());
+
+			PackedCollection<?> output = conv.get().evaluate();
+			System.out.println(output.getShape());
+
+			for (int i = 0; i < r - pad; i++) {
+				for (int j = 0; j < c - pad; j++) {
+					System.out.println("PackedCollectionMapTests: " + i + ", " + j);
+
+					for (int k = 0; k < w; k++) {
+						for (int l = 0; l < w; l++) {
 							double expected = input.toDouble(input.getShape().index(i + k, j + l)) * filter.toDouble(filter.getShape().index(k, l));
 							double actual = output.toDouble(output.getShape().index(i, j, k, l));
 
@@ -172,7 +227,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 		});
 	}
 
-	// @Test
+	@Test
 	public void enumerateMapReduce() {
 		int r = 10;
 		int c = 10;
