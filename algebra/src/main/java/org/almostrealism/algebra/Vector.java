@@ -402,6 +402,10 @@ public class Vector extends PackedCollection<Vector> implements Triple, VectorFe
 		return value.toString();
 	}
 
+	public static TraversalPolicy shape() {
+		return new TraversalPolicy(3);
+	}
+
 	public static Producer<Vector> blank() {
 		Supplier<Vector> s = Vector::new;
 		IntFunction<MemoryBank<Vector>> b = Vector::bank;

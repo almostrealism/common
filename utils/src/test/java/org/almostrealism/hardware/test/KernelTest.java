@@ -3,6 +3,7 @@ package org.almostrealism.hardware.test;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Ray;
+import org.almostrealism.hardware.Input;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.hardware.PassThroughEvaluable;
@@ -21,8 +22,7 @@ public class KernelTest implements CodeFeatures {
 	public void copyRayKernel() {
 		int count = 2;
 
-		TestKernel k = new TestKernel(Ray.blank(),
-									PassThroughEvaluable.of(Ray.class, 0));
+		TestKernel k = new TestKernel(Ray.blank(), Input.value(Ray.shape(), 0));
 
 		PackedCollection<Ray> output = Ray.bank(count, Ray.blank());
 		PackedCollection<Ray> input = Ray.bank(count, ray(1, 2, 3,4, 5, 7));

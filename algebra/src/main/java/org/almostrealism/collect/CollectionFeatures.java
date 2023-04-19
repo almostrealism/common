@@ -59,6 +59,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public interface CollectionFeatures extends ExpressionFeatures {
+	boolean enableDynamicExpressions = false;
 	boolean enableShapelessWarning = false;
 
 	default TraversalPolicy shape(int... dims) { return new TraversalPolicy(dims); }
@@ -337,23 +338,27 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	default <T extends PackedCollection<?>> DynamicCollectionProducerComputationAdapter<T, T> multiply(
 			Producer<T> a, Producer<T> b,
 			Evaluable<T> shortCircuit) {
-		TraversalPolicy shape = shape(a);
-		int size = shape(b).getSize();
-		if (shape.getSize() != size) {
-			throw new IllegalArgumentException("Cannot multiply a collection of size " + shape.getSize() +
-					" with a collection of size " + size);
+		if (enableDynamicExpressions) {
+			TraversalPolicy shape = shape(a);
+			int size = shape(b).getSize();
+			if (shape.getSize() != size) {
+				throw new IllegalArgumentException("Cannot multiply a collection of size " + shape.getSize() +
+						" with a collection of size " + size);
+			}
+
+			DynamicExpressionComputation exp = new DynamicExpressionComputation<>(shape,
+							args -> CollectionExpression.create(shape, index -> new Product(args[1].getValueAt(index), args[2].getValueAt(index))),
+							(Supplier) a, (Supplier) b);
+			exp.setShortCircuit(shortCircuit);
+			return exp;
+		} else {
+			TraversalPolicy shape = shape(1);
+			if (shape(a).getSize() == shape(b).getSize()) {
+				shape = shape(a);
+			}
+
+			return multiply(shape, (Supplier) a, (Supplier) b, shortCircuit);
 		}
-
-		return new DynamicExpressionComputation<>(shape,
-				args -> CollectionExpression.create(shape, index -> new Product(args[1].getValueAt(index), args[2].getValueAt(index))),
-				(Supplier) a, (Supplier) b);
-
-//		TraversalPolicy shape = shape(1);
-//		if (shape(a).getSize() == shape(b).getSize()) {
-//			shape = shape(a);
-//		}
-//
-//		return multiply(shape, (Supplier) a, (Supplier) b, shortCircuit);
 	}
 
 	default <T extends PackedCollection<?>> ExpressionComputation<T> multiply(TraversalPolicy shape,

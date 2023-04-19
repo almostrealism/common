@@ -41,7 +41,7 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 	static {
 		clear = new DefaultContextSpecific<>(() ->
 				(KernelizedOperation)
-						new Assignment<>(1, new PassThroughProducer(-1, 0),
+						new Assignment<>(1, new PassThroughProducer(1, 0),
 						new PassThroughProducer<>(1, 1, -1)).getKernel());
 	}
 

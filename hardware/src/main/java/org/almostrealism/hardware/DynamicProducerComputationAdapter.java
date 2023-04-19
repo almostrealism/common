@@ -71,6 +71,10 @@ public abstract class DynamicProducerComputationAdapter<I extends MemoryData, O 
 			throw new IllegalArgumentException();
 		}
 
+		if (memLength <= 0) {
+			throw new IllegalArgumentException("Output size must be greater than zero");
+		}
+
 		this.memLength = memLength;
 		this.destination = () -> (O) Optional.ofNullable(result).map(Supplier::get).map(Evaluable::evaluate).orElse(null);
 		this.setInputs(Arrays.asList(

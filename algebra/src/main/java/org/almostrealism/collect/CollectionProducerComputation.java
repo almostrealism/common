@@ -88,7 +88,7 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 	}
 
 	default CollectionProducerComputation<PackedCollection<?>> scalarMap(Function<Producer<Scalar>, Producer<Scalar>> f) {
-		Producer<Scalar> p = f.apply(Input.value(Scalar.class, 0));
+		Producer<Scalar> p = f.apply(Input.value(Scalar.shape(), 0));
 
 		return new CollectionProducerComputation<>() {
 			@Override

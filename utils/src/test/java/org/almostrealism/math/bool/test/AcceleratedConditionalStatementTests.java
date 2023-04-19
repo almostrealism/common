@@ -2,6 +2,7 @@ package org.almostrealism.math.bool.test;
 
 import io.almostrealism.code.OperationAdapter;
 import org.almostrealism.algebra.ScalarProducerBase;
+import org.almostrealism.hardware.Input;
 import org.almostrealism.util.TestSettings;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
@@ -41,8 +42,8 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 	}
 
 	protected LessThan<Scalar> lessThan() {
-		Producer<Scalar> one = PassThroughEvaluable.of(Scalar.class, 0);
-		Producer<Scalar> two = PassThroughEvaluable.of(Scalar.class, 1);
+		Producer<Scalar> one = Input.value(Scalar.shape(), 0);
+		Producer<Scalar> two = Input.value(Scalar.shape(), 1);
 		LessThan<Scalar> lt = lessThan(one, two);
 		return lt;
 	}

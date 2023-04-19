@@ -87,8 +87,8 @@ public abstract class RootDelegateKernelOperation<T extends MemoryBank> implemen
 
 	public Runnable get() {
 		this.kernel = (KernelizedOperation)
-				construct(new PassThroughProducer(-1, 0),
-				new PassThroughProducer(-1, 1),
+				construct(new PassThroughProducer(1, 0),
+				new PassThroughProducer(1, 1),
 				new PassThroughProducer<>(1, 2, -1),
 				new PassThroughProducer<>(1, 3, -1),
 				new PassThroughProducer<>(1, 4, -1),

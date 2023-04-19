@@ -37,11 +37,11 @@ public abstract class WaveCellComputation extends DynamicOperationComputationAda
 		super(() -> new Provider<>(output),
 				() -> new Provider<>(wave),
 				(Supplier) Objects.requireNonNull(frame),
-				data::getWaveLength,
-				data::getWaveIndex,
-				data::getWaveCount,
-				data::getAmplitude,
-				data::getDuration);
+				(Supplier) data.getWaveLength(),
+				(Supplier) data.getWaveIndex(),
+				(Supplier) data.getWaveCount(),
+				(Supplier) data.getAmplitude(),
+				(Supplier) data.getDuration());
 	}
 
 	public ArrayVariable getOutput() { return getArgument(0, 2); }

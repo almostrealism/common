@@ -194,6 +194,10 @@ public class Ray extends PackedCollection<Ray> implements RayFeatures, Cloneable
 					"] [" + coords[3] + ", " + coords[4] + ", " + coords[5] + "]";
 	}
 
+	public static TraversalPolicy shape() {
+		return new TraversalPolicy(6);
+	}
+
 	public static Producer<Ray> blank() {
 		Supplier<Ray> r = Ray::new;
 		IntFunction<MemoryBank<Ray>> b = Ray::bank;

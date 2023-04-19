@@ -18,6 +18,7 @@ package org.almostrealism.graph;
 
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
+import org.almostrealism.Ops;
 import org.almostrealism.graph.temporal.TemporalFactorFromCell;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.Cellular;
@@ -71,7 +72,7 @@ public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
 												  Function<Producer<T>, Receptor<T>> assignment,
 												  BiFunction<Producer<T>, Producer<T>, Producer<T>> combine) {
 		T v = value.get();
-		Producer<T> destination = () -> new Provider<>(v);
+		Producer<T> destination = Ops.ops().p(v);
 
 		return new TemporalFactorFromCell<>(c, destination, assignment, combine);
 	}

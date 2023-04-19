@@ -17,6 +17,7 @@
 package org.almostrealism.algebra;
 
 import org.almostrealism.algebra.computations.DynamicScalarProducer;
+import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.PooledMem;
 
@@ -61,6 +62,10 @@ public class Scalar extends Pair<Scalar> implements Comparable<Scalar> {
 
 	@Override
 	public PooledMem getDefaultDelegate() { return ScalarPool.getLocal(); }
+
+	public static TraversalPolicy shape() {
+		return new TraversalPolicy(2);
+	}
 
 	public static ScalarProducer blank() {
 		return new DynamicScalarProducer(args -> new Scalar(false));

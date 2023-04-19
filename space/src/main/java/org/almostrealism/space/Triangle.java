@@ -24,6 +24,7 @@ import org.almostrealism.color.RGB;
 import org.almostrealism.geometry.Intersection;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.geometry.Ray;
+import org.almostrealism.hardware.Input;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import io.almostrealism.code.Operator;
 import io.almostrealism.code.Constant;
@@ -63,11 +64,11 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 	public static final KernelizedEvaluable<Scalar> intersectAt;
 	
 	static {
-		ExpressionComputation<PackedCollection<Vector>> triangle = triangleFeat.triangle(PassThroughEvaluable.of(0));
+		ExpressionComputation<PackedCollection<Vector>> triangle = triangleFeat.triangle(Input.value(Vector.shape(), 0));
 		dataProducer = triangle.get();
 
-		intersectAt = new TriangleIntersectAt(PassThroughEvaluable.of(1),
-							PassThroughEvaluable.of(Ray.class, 0, -1)).get();
+		intersectAt = new TriangleIntersectAt(Input.value(Vector.shape(), 1),
+				Input.value(Ray.shape(), 0, -1)).get();
 	}
 
 	/**

@@ -84,16 +84,27 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 		return value(v);
 	}
 
+	@Deprecated
 	default <T> Producer<T> v(Class<T> type, int argIndex) {
 		return value(type, argIndex);
 	}
 
-	default <T> Producer<T> v(Class<T> type, int argIndex, int kernelDimension) {
-		return value(type, argIndex, kernelDimension);
-	}
-
 	default <T> Producer<T> v(int memLength, int argIndex) {
 		return value(memLength, argIndex);
+	}
+
+	@Deprecated
+	default <T> Producer<T> v(int memLength, int argIndex, int kernelDimension) {
+		return value(memLength, argIndex, kernelDimension);
+	}
+
+	default <T> Producer<T> v(TraversalPolicy shape, int argIndex) {
+		return value(shape, argIndex);
+	}
+
+	@Deprecated
+	default <T> Producer<T> v(TraversalPolicy shape, int argIndex, int kernelDimension) {
+		return value(shape, argIndex, kernelDimension);
 	}
 
 	default <T> Producer<T> v(Function<Object[], T> function) {
@@ -110,7 +121,7 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 					(Supplier) time, (Supplier) value);
 	}
 
-	default Supplier<Evaluable<? extends Vector>> vector(int argIndex) { return value(Vector.class, argIndex); }
+	default Supplier<Evaluable<? extends Vector>> vector(int argIndex) { return value(Vector.shape(), argIndex); }
 
 	default Supplier<Evaluable<? extends ScalarBank>> scalars(ScalarBank s) { return value(s); }
 
@@ -138,20 +149,27 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 		}
 	}
 
+	@Deprecated
 	default <T> Producer<T> value(Class<T> type, int argIndex) {
 		return Input.value(type, argIndex);
 	}
 
-	default <T> Producer<T> value(Class<T> type, int argIndex, int kernelDimension) {
-		return Input.value(type, argIndex, kernelDimension);
+	default <T> Producer<T> value(TraversalPolicy shape, int argIndex) {
+		return Input.value(shape, argIndex);
 	}
 
-	default <T> Producer<T> value(TraversalPolicy shape, int argIndex) {
-		return Input.value(shape.getTotalSize(), argIndex);
+	@Deprecated
+	default <T> Producer<T> value(TraversalPolicy shape, int argIndex, int kernelDimension) {
+		return Input.value(shape, argIndex, kernelDimension);
 	}
 
 	default <T> Producer<T> value(int memLength, int argIndex) {
 		return Input.value(memLength, argIndex);
+	}
+
+	@Deprecated
+	default <T> Producer<T> value(int memLength, int argIndex, int kernelDimension) {
+		return Input.value(memLength, argIndex, kernelDimension);
 	}
 
 	default <T> Switch choice(ProducerComputation<PackedCollection<?>> decision, Computation<T>... choices) {

@@ -16,6 +16,7 @@
 
 package org.almostrealism.graph.temporal;
 
+import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
@@ -26,13 +27,13 @@ public interface WaveCellData extends BaseAudioData {
 	default Scalar waveCount() { return get(4); }
 	default Scalar duration() { return get(5); }
 
-	default Provider<Scalar> getWaveIndex() { return new Provider<>(waveIndex()); }
+	default Producer<Scalar> getWaveIndex() { return p(waveIndex()); }
 	default void setWaveIndex(int count) { waveIndex().setValue(count); }
 
-	default Provider<Scalar> getWaveCount() { return new Provider<>(waveCount()); }
+	default Producer<Scalar> getWaveCount() { return p(waveCount()); }
 	default void setWaveCount(int count) { waveCount().setValue(count); }
 
-	default Provider<Scalar> getDuration() { return new Provider<>(duration()); }
+	default Producer<Scalar> getDuration() { return p(duration()); }
 	default void setDuration(double duration) { duration().setValue(duration); }
 }
 

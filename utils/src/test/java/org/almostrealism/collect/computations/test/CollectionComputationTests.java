@@ -200,7 +200,7 @@ public class CollectionComputationTests implements TestFeatures {
 		series.setMem(0, 7, 5, 12, 13, 11, 14, 9, 12, 3, 12);
 		System.out.println(series.traverse(0).getCount() + " series");
 
-		PackedCollectionMax max = new PackedCollectionMax(new PassThroughProducer<>(10, 0, -1));
+		PackedCollectionMax max = new PackedCollectionMax(new PassThroughProducer<>(shape(10), 0, -1));
 		PackedCollection<?> dest = new PackedCollection(2, 1);
 
 		HardwareOperator.verboseLog(() ->

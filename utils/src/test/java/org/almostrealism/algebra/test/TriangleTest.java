@@ -30,6 +30,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.computations.RayExpressionComputation;
 import org.almostrealism.graph.mesh.TriangleIntersectAt;
+import org.almostrealism.hardware.Input;
 import org.almostrealism.hardware.PassThroughEvaluable;
 import org.almostrealism.space.Triangle;
 import org.almostrealism.CodeFeatures;
@@ -124,7 +125,7 @@ public class TriangleTest implements CodeFeatures {
 		PackedCollection<?> td = triangle();
 
 		TriangleIntersectAt intersectAt = new TriangleIntersectAt(PassThroughEvaluable.of(1),
-				PassThroughEvaluable.of(Ray.class, 0, -1));
+				Input.value(Ray.shape(), 0, -1));
 
 		GreaterThanScalar gts = (GreaterThanScalar) (Supplier) intersectAt.getInputs().get(4);
 		AcceleratedConjunctionScalar acs = (AcceleratedConjunctionScalar) (Supplier) gts.getInputs().get(3);

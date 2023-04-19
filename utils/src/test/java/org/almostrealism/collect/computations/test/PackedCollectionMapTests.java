@@ -140,6 +140,9 @@ public class PackedCollectionMapTests implements TestFeatures {
 		PackedCollection<?> input = tensor(shape(r, c)).pack();
 		PackedCollection<?> filter = tensor(shape(w, w)).pack();
 
+		// TODO -> this test fails in a different way depending on the setting
+		// TODO    of -DAR_HARDWARE_OFF_HEAP_SIZE=0
+
 		HardwareOperator.verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> conv = c(p(input))
 					.enumerate(1, w, s)

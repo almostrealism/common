@@ -198,7 +198,7 @@ public class AssignableGenome extends Tensor<PackedCollection<?>> implements Gen
 				throw new NullPointerException();
 			}
 
-			return multiply(() -> new Provider<>(v), value);
+			return multiply(c(v.getShape(), p(v), c(0)), value);
 		}
 
 		public PackedCollection<?> getValue() {

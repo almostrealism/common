@@ -107,8 +107,7 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 		if (getShape().getTotalSize() == 1) {
 			return (Expression) get(e(0), -1);
 		} else {
-			Variable dependencies[] = (Variable[]) index.getDependencies().toArray(Variable[]::new);
-			index =  e("((int) (" + index.getExpression() + ")) % " + getShape().getTotalSize(), dependencies);
+			index =  e("((int) (" + index.getExpression() + ")) % " + getShape().getTotalSize(), index);
 			return (Expression) get(index, -1);
 		}
 	}

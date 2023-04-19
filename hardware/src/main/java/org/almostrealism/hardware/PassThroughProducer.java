@@ -45,12 +45,20 @@ public class PassThroughProducer<T extends MemoryData>
 		this.argIndex = argIndex;
 	}
 
-	@Deprecated
-	public PassThroughProducer(int memLength, int argIndex) {
-		super(memLength, null, null);
-		this.shape = new TraversalPolicy(memLength).traverse(0);
+	public PassThroughProducer(int size, int argIndex) {
+		super(size, null, null);
+		this.shape = new TraversalPolicy(size).traverse(0);
 		this.argIndex = argIndex;
 		this.kernelIndex = 0;
+	}
+
+	@Deprecated
+	public PassThroughProducer(TraversalPolicy shape, int argIndex, int kernelIndex) {
+		super(shape.getSize(), null, null);
+		this.shape = shape;
+		this.argIndex = argIndex;
+		this.kernelIndex = kernelIndex;
+		System.out.println("WARN: Specifying kernel index before compilation is deprecated");
 	}
 
 	@Deprecated

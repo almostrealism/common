@@ -16,16 +16,16 @@
 
 package org.almostrealism.graph;
 
+import org.almostrealism.CodeFeatures;
 import org.almostrealism.heredity.Factor;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.relation.Provider;
 import org.almostrealism.time.Temporal;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.OperationList;
 
 import java.util.function.Supplier;
 
-public abstract class CachedStateCell<T> extends FilteredCell<T> implements Factor<T>, Source<T>, Temporal {
+public abstract class CachedStateCell<T> extends FilteredCell<T> implements Factor<T>, Source<T>, Temporal, CodeFeatures {
 	private final T cachedValue;
 	private final T outValue;
 
@@ -36,7 +36,7 @@ public abstract class CachedStateCell<T> extends FilteredCell<T> implements Fact
 		setFilter(this);
 	}
 	
-	public void setCachedValue(T v) { assign(() -> new Provider<>(cachedValue), () -> new Provider<>(v)).get().run(); }
+	public void setCachedValue(T v) { assign(p(cachedValue), p(v)).get().run(); }
 
 	public T getCachedValue() { return cachedValue; }
 
@@ -44,7 +44,7 @@ public abstract class CachedStateCell<T> extends FilteredCell<T> implements Fact
 
 	@Override
 	public Producer<T> getResultant(Producer<T> value) {
-		return () -> new Provider<>(outValue);
+		return p(outValue);
 	}
 
 	@Override
@@ -55,7 +55,7 @@ public abstract class CachedStateCell<T> extends FilteredCell<T> implements Fact
 
 	@Override
 	public Supplier<Runnable> push(Producer<T> protein) {
-		return assign(() -> new Provider<>(cachedValue), protein);
+		return assign(p(cachedValue), protein);
 	}
 
 	protected Supplier<Runnable> pushValue() {
@@ -71,8 +71,8 @@ public abstract class CachedStateCell<T> extends FilteredCell<T> implements Fact
 		String name = getClass().getSimpleName();
 		if (name == null || name.length() <= 0) name = "anonymous";
 		OperationList reset = new OperationList(name + " Setup");
-		reset.add(reset(() -> new Provider<>(cachedValue)));
-		reset.add(reset(() -> new Provider<>(outValue)));
+		reset.add(reset(p(cachedValue)));
+		reset.add(reset(p(outValue)));
 		return reset;
 	}
 
@@ -81,8 +81,8 @@ public abstract class CachedStateCell<T> extends FilteredCell<T> implements Fact
 		String name = getClass().getSimpleName();
 		if (name == null || name.length() <= 0) name = "anonymous";
 		OperationList tick = new OperationList(name + " Tick");
-		tick.add(assign(() -> new Provider<>(outValue), () -> new Provider<>(cachedValue)));
-		tick.add(reset(() -> new Provider<>(cachedValue)));
+		tick.add(assign(p(outValue), p(cachedValue)));
+		tick.add(reset(p(cachedValue)));
 		tick.add(super.push(null));
 		return tick;
 	}

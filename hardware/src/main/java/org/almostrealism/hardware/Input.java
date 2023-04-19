@@ -17,24 +17,32 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.TraversalPolicy;
 
 import java.util.stream.IntStream;
 
 public class Input {
 	private Input() { }
 
+	@Deprecated
 	public static <T> Producer<T> value(Class<T> type, int argIndex) {
 		return PassThroughEvaluable.of(type, argIndex);
 	}
 
-	public static <T> Producer<T> value(Class<T> type, int argIndex, int kernelDimension) {
-		return PassThroughEvaluable.of(type, argIndex, kernelDimension);
+	public static <T> Producer<T> value(TraversalPolicy shape, int argIndex) {
+		return new PassThroughProducer(shape, argIndex);
+	}
+
+	@Deprecated
+	public static <T> Producer<T> value(TraversalPolicy shape, int argIndex, int kernelDimension) {
+		return new PassThroughProducer(shape, argIndex, kernelDimension);
 	}
 
 	public static <T> Producer<T> value(int memLength, int argIndex) {
 		return new PassThroughProducer(memLength, argIndex);
 	}
 
+	@Deprecated
 	public static <T> Producer<T> value(int memLength, int argIndex, int kernelDimension) {
 		return new PassThroughProducer(memLength, argIndex, kernelDimension);
 	}

@@ -41,6 +41,7 @@ import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.hardware.mem.Bytes;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.hardware.mem.MemoryDataArgumentProcessor;
+import org.almostrealism.io.SystemUtils;
 import org.jocl.CLException;
 
 import java.util.ArrayList;
@@ -61,6 +62,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	public static final boolean enableArgumentMapping = true;
 	public static final boolean enableCompaction = true;
 	public static final boolean enableInputLogging = false;
+	public static boolean enableKernelSizeWarnings = SystemUtils.isEnabled("AR_HARDWARE_KERNEL_SIZE_WARNINGS").orElse(true);
 
 	private static final Map<String, ThreadLocal<HardwareOperator>> operators = new HashMap<>();
 
@@ -585,7 +587,8 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		 * If the kernel size is still not known, the kernel size will be 1.
 		 */
 		if (kernelSize < 0) {
-			System.out.println("WARN: Could not infer kernel size, it will be set to 1");
+			if (enableKernelSizeWarnings)
+				System.out.println("WARN: Could not infer kernel size, it will be set to 1");
 			kernelSize = 1;
 		}
 

@@ -124,6 +124,10 @@ public class Pair<T extends PackedCollection> extends PackedCollection<T> {
 				"]";
 	}
 
+	public static TraversalPolicy shape() {
+		return new TraversalPolicy(2);
+	}
+
 	public static Producer<Pair<?>> empty() {
 		return new DynamicProducerForMemoryData<>(Pair::new, Pair::bank);
 	}

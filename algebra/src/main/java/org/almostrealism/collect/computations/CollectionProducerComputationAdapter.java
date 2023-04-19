@@ -45,6 +45,10 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 	protected CollectionProducerComputationAdapter() { }
 
 	public CollectionProducerComputationAdapter(TraversalPolicy outputShape, Supplier<Evaluable<? extends I>>... arguments) {
+		if (outputShape.getTotalSize() <= 0) {
+			throw new IllegalArgumentException("Output shape must have a total size greater than 0");
+		}
+
 		this.shape = outputShape;
 		this.destination = () -> new PackedCollection(shape);
 		this.setInputs(CollectionUtils.include(new Supplier[0], new MemoryDataDestination(this, this::createKernelDestination), arguments));

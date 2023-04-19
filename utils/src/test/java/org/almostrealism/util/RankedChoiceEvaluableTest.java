@@ -139,12 +139,12 @@ public class RankedChoiceEvaluableTest implements CodeFeatures {
 	// TODO  @Test
 	public void randomRankedChoiceKernel() {
 		List<ProducerWithRank<Scalar, Scalar>> values = Arrays.asList(
-				new ProducerWithRankAdapter<>(PassThroughEvaluable.of(Scalar.class, 0),
-										PassThroughEvaluable.of(Scalar.class, 1)),
-				new ProducerWithRankAdapter<>(PassThroughEvaluable.of(Scalar.class, 2),
-										PassThroughEvaluable.of(Scalar.class, 3)),
-				new ProducerWithRankAdapter<>(PassThroughEvaluable.of(Scalar.class, 4),
-										PassThroughEvaluable.of(Scalar.class, 5)));
+				new ProducerWithRankAdapter<>(v(Scalar.shape(), 0),
+										v(Scalar.shape(), 1)),
+				new ProducerWithRankAdapter<>(v(Scalar.shape(), 2),
+										v(Scalar.shape(), 3)),
+				new ProducerWithRankAdapter<>(v(Scalar.shape(), 4),
+										v(Scalar.shape(), 5)));
 
 		AcceleratedRankedChoiceEvaluable<Scalar> acc =
 				new AcceleratedRankedChoiceEvaluable<>(2, Scalar::new, ScalarBank::new,
