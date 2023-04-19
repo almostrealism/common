@@ -16,6 +16,9 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.code.ScopeInputManager;
+import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -28,7 +31,7 @@ import org.almostrealism.hardware.KernelSupport;
 
 import java.util.stream.Stream;
 
-public class ReshapeProducer<T extends Shape<T>> implements CollectionProducer<T>, TraversableExpression<Double>, Shape<Producer<T>>, KernelSupport {
+public class ReshapeProducer<T extends Shape<T>> implements CollectionProducer<T>, ScopeLifecycle, TraversableExpression<Double>, Shape<Producer<T>>, KernelSupport {
 	private TraversalPolicy shape;
 	private int traversalAxis;
 	private Producer<T> producer;
@@ -54,6 +57,27 @@ public class ReshapeProducer<T extends Shape<T>> implements CollectionProducer<T
 	}
 
 	@Override
+	public void prepareArguments(ArgumentMap map) {
+		if (producer instanceof ScopeLifecycle) {
+			((ScopeLifecycle) producer).prepareArguments(map);
+		}
+	}
+
+	@Override
+	public void prepareScope(ScopeInputManager manager) {
+		if (producer instanceof ScopeLifecycle) {
+			((ScopeLifecycle) producer).prepareScope(manager);
+		}
+	}
+
+	@Override
+	public void resetArguments() {
+		if (producer instanceof ScopeLifecycle) {
+			((ScopeLifecycle) producer).resetArguments();
+		}
+	}
+
+	@Override
 	public Expression<Double> getValue(Expression... pos) {
 		return getValueAt(getShape().index(pos));
 	}
@@ -70,15 +94,22 @@ public class ReshapeProducer<T extends Shape<T>> implements CollectionProducer<T
 
 	@Override
 	public Evaluable<T> get() {
-		Evaluable<T> eval = producer.get();
+		return new Evaluable<T>() {
+			private Evaluable<T> eval;
 
-		return args -> {
-			Shape out = eval.evaluate(args);
+			@Override
+			public T evaluate(Object... args) {
+				if (eval == null) {
+					eval = producer.get();
+				}
 
-			if (shape == null) {
-				return eval.evaluate(args).reshape(out.getShape().traverse(traversalAxis));
-			} else {
-				return eval.evaluate(args).reshape(shape);
+				Shape out = eval.evaluate(args);
+
+				if (shape == null) {
+					return eval.evaluate(args).reshape(out.getShape().traverse(traversalAxis));
+				} else {
+					return eval.evaluate(args).reshape(shape);
+				}
 			}
 		};
 	}
