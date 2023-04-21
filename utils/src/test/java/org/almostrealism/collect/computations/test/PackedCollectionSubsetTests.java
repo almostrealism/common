@@ -69,7 +69,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		Assert.assertEquals(433, index);
 
 		HardwareOperator.verboseLog(() -> {
-			CollectionProducerBase<PackedCollection<?>> producer = subset(shape(w, h, d), p(input), x0, y0, z0);
+			CollectionProducer<PackedCollection<?>> producer = subset(shape(w, h, d), p(input), x0, y0, z0);
 			Evaluable<PackedCollection<?>> ev = producer.get();
 			PackedCollection<?> subset = ev.evaluate();
 
@@ -95,7 +95,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		Tensor<Double> t = tensor(shape(10, 10), (int[] c) -> c[1] < 2);
 		PackedCollection<?> input = t.pack();
 
-		CollectionProducerBase<PackedCollection<?>> producer = enumerate(shape(10, 2), traverseEach(p(input)));
+		CollectionProducer<PackedCollection<?>> producer = enumerate(shape(10, 2), traverseEach(p(input)));
 		Evaluable<PackedCollection<?>> ev = producer.get();
 		PackedCollection<?> enumerated = ev.evaluate().reshape(shape(5, 10, 2));
 
@@ -117,6 +117,28 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 	}
 
 	@Test
+	public void enumerateProduct() {
+		PackedCollection<?> input = tensor(shape(6, 4)).pack();
+		PackedCollection<?> operand = tensor(shape(4, 6, 1)).pack();
+
+		CollectionProducer<PackedCollection<?>> product = enumerate(shape(6, 1), p(input)).traverse(0).multiply(p(operand));
+		System.out.println(product.getShape());
+
+		Evaluable<PackedCollection<?>> ev = product.get();
+		PackedCollection<?> enumerated = ev.evaluate().reshape(shape(4, 6));
+
+		Assert.assertEquals(4, enumerated.getShape().length(0));
+		Assert.assertEquals(6, enumerated.getShape().length(1));
+
+		for (int i = 0; i < 4; i++) {
+			for (int j = 0; j < 6; j++) {
+				Assert.assertEquals(input.toDouble(input.getShape().index(j, i)) * operand.toDouble(operand.getShape().index(i, j)),
+						enumerated.toDouble(enumerated.getShape().index(i, j)), 0.0001);
+			}
+		}
+	}
+
+	@Test
 	public void enumerate2dProduct() {
 		Tensor<Double> t = tensor(shape(4, 6));
 		PackedCollection<?> input = t.pack().traverseEach();
@@ -125,8 +147,8 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		operand.fill(pos -> Math.random());
 		operand = operand.traverseEach();
 
-		Producer<PackedCollection<?>> product = enumerate(shape(4, 1), traverseEach(p(input)))
-										.multiply(enumerate(shape(1, 4), traverseEach(p(operand))));
+		Producer<PackedCollection<?>> product = enumerate(shape(4, 1), p(input)).traverse(0)
+										.multiply(enumerate(shape(1, 4), p(operand)).traverse(0));
 
 		Evaluable<PackedCollection<?>> ev = product.get();
 		PackedCollection<?> enumerated = ev.evaluate().reshape(shape(6, 4));
@@ -152,10 +174,10 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 			return i == 0 || i == 8 || j == 0 || j == 7 || k == 0 || k == 1;
 		}).pack();
 
-//		Producer<PackedCollection<?>> stride = enumerate(shape(8, 2), shape(0, 1), traverseEach(p(input)))
-//													.multiply(traverseEach(p(filter)));
-		Producer<PackedCollection<?>> stride = enumerate(1, 2, 1, traverseEach(p(input)))
-				.multiply(traverseEach(p(filter)));
+		Producer<PackedCollection<?>> stride =
+				enumerate(1, 2, 1, p(input))
+				.traverse(0)
+				.multiply(p(filter));
 		Evaluable<PackedCollection<?>> ev = stride.get();
 		PackedCollection<?> enumerated = ev.evaluate().reshape(shape(9, 8, 2));
 
@@ -305,7 +327,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		PackedCollection<?> input = t.pack();
 
 		HardwareOperator.verboseLog(() -> {
-			CollectionProducerBase<PackedCollection<?>> subset = subset(shape(size, size), p(input), x0, y0);
+			CollectionProducer<PackedCollection<?>> subset = subset(shape(size, size), p(input), x0, y0);
 			Producer<PackedCollection<?>> product = multiply(traverseEach(p(filter)), traverseEach((Producer) subset)).reshape(filterShape);
 			Evaluable<PackedCollection<?>> ev = product.get();
 			PackedCollection<?> result = ev.evaluate();

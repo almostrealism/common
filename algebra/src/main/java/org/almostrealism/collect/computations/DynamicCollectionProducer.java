@@ -17,6 +17,7 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerBase;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversalPolicy;
@@ -25,7 +26,7 @@ import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import java.util.function.Function;
 
 // TODO  This needs to take a generic argument for the type of collection to produce (maybe)
-public class DynamicCollectionProducer extends DynamicProducerForMemoryData<PackedCollection<?>> implements CollectionProducerBase<PackedCollection<?>> {
+public class DynamicCollectionProducer extends DynamicProducerForMemoryData<PackedCollection<?>> implements CollectionProducer<PackedCollection<?>> {
 	private TraversalPolicy shape;
 
 	public DynamicCollectionProducer(TraversalPolicy shape, Function<Object[], PackedCollection<?>> function) {
@@ -39,7 +40,7 @@ public class DynamicCollectionProducer extends DynamicProducerForMemoryData<Pack
 	}
 
 	@Override
-	public Producer<PackedCollection<?>> reshape(TraversalPolicy shape) {
+	public CollectionProducer<PackedCollection<?>> reshape(TraversalPolicy shape) {
 		return new ReshapeProducer<>(shape, (Producer) this);
 	}
 }

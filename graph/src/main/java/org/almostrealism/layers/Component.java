@@ -16,13 +16,23 @@
 
 package org.almostrealism.layers;
 
-import io.almostrealism.cycle.Setup;
-import io.almostrealism.relation.Producer;
-import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.TraversalPolicy;
 
-import java.util.List;
+import java.util.Optional;
+import java.util.function.Supplier;
 
-public interface Layer extends Component, Setup {
+public interface Component {
 
-	List<PackedCollection<?>> getWeights();
+	TraversalPolicy getOutputShape();
+
+	static <T> Optional<TraversalPolicy> shape(T v) {
+		if (v instanceof Component) {
+			return Optional.of(((Component) v).getOutputShape());
+		} else if (v instanceof Supplier) {
+			return Optional.of(CollectionFeatures.getInstance().shape((Supplier) v));
+		} else {
+			return Optional.empty();
+		}
+	}
 }

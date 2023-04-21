@@ -31,7 +31,7 @@ import org.almostrealism.hardware.KernelSupport;
 
 import java.util.stream.Stream;
 
-public class ReshapeProducer<T extends Shape<T>> implements CollectionProducer<T>, ScopeLifecycle, TraversableExpression<Double>, Shape<Producer<T>>, KernelSupport {
+public class ReshapeProducer<T extends Shape<T>> implements CollectionProducer<T>, ScopeLifecycle, TraversableExpression<Double>, KernelSupport {
 	private TraversalPolicy shape;
 	private int traversalAxis;
 	private Producer<T> producer;
@@ -88,7 +88,7 @@ public class ReshapeProducer<T extends Shape<T>> implements CollectionProducer<T
 	}
 
 	@Override
-	public Producer<T> reshape(TraversalPolicy shape) {
+	public CollectionProducer<T> reshape(TraversalPolicy shape) {
 		return new ReshapeProducer<>(shape, producer);
 	}
 

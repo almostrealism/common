@@ -17,6 +17,7 @@
 package io.almostrealism.expression;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.stream.Stream;
 
 public class NAryExpression<T> extends Expression<T> {
@@ -25,7 +26,21 @@ public class NAryExpression<T> extends Expression<T> {
 	}
 
 	public NAryExpression(Class<T> type, String operator, Expression<?>... values) {
-		super(type, concat(operator, Stream.of(values).map(Expression::getExpression).map(s -> "(" + s + ")")), values);
+		super(type, concat(operator, Stream.of(validateExpressions(values)).map(Expression::getExpression).map(s -> "(" + s + ")")), values);
+	}
+
+	private static Expression<?>[] validateExpressions(Expression<?>[] values) {
+		Objects.requireNonNull(values);
+
+		if (values.length < 2) {
+			throw new IllegalArgumentException("NAryExpression must have at least 2 values");
+		}
+
+		for (int i = 0; i < values.length; i++) {
+			Objects.requireNonNull(values[i]);
+		}
+
+		return values;
 	}
 
 	private static String concat(String separator, Stream<String> values) {

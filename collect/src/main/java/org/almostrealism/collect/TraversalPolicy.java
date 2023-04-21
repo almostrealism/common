@@ -190,7 +190,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy> {
 		return new TraversalPolicy(IntStream.range(traversalAxis, dims.length).map(i -> dims[i]).toArray());
 	}
 
-	public TraversalPolicy reduce(TraversalPolicy itemShape) {
+	public TraversalPolicy replace(TraversalPolicy itemShape) {
 		int newDims[] = new int[traversalAxis + itemShape.getDimensions()];
 		for (int i = 0; i < traversalAxis; i++) newDims[i] = length(i);
 		for (int i = 0; i < itemShape.getDimensions(); i++) newDims[i + traversalAxis] = itemShape.length(i);

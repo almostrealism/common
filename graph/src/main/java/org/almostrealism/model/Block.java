@@ -21,14 +21,13 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.graph.Cell;
+import org.almostrealism.layers.Component;
 
 import java.util.List;
 import java.util.function.Supplier;
 
-public interface Block extends Setup {
+public interface Block extends Component, Setup {
 	TraversalPolicy getInputShape();
-
-	TraversalPolicy getOutputShape();
 
 	Cell<PackedCollection<?>> forward();
 

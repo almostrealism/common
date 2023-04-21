@@ -18,8 +18,10 @@ package org.almostrealism.layers;
 
 import io.almostrealism.code.ExpressionList;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionOperationList;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.Func;
 import org.almostrealism.collect.KernelExpression;
@@ -28,6 +30,7 @@ import org.almostrealism.collect.TraversableKernelExpression;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.hardware.KernelOperation;
+import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.DefaultBlock;
@@ -37,6 +40,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 public interface LayerFeatures extends CollectionFeatures {
+	boolean enableKernelLayers = true;
 
 	default KernelLayer layer(TraversalPolicy inputShape, TraversalPolicy outputShape,
 							  KernelExpression kernel, Propagation backwards) {
@@ -58,6 +62,21 @@ public interface LayerFeatures extends CollectionFeatures {
 		return new KernelLayer(inputShape, TraversableKernelExpression.withShape(outputShape, kernel), backwards, weights, setup);
 	}
 
+	default CellularLayer layer(TraversalPolicy outputShape, Cell<PackedCollection<?>> forward, Cell<PackedCollection<?>> backward,
+								List<PackedCollection<?>> weights, Supplier<Runnable> setup) {
+		return new DefaultCellularLayer(outputShape, forward, backward, weights, setup);
+	}
+
+	default CellularLayer layer(TraversalPolicy inputShape, TraversalPolicy outputShape,
+								Cell<PackedCollection<?>> forward, Propagation backward,
+								List<PackedCollection<?>> weights, Supplier<Runnable> setup) {
+		PropagationCell backwardCell = new PropagationCell(backward);
+		DefaultCellularLayer layer = new DefaultCellularLayer(outputShape, forward, backwardCell, weights, setup);
+		layer.init(inputShape);
+		backwardCell.setForwardInput(layer.getInput());
+		return layer;
+	}
+
 	default Function<TraversalPolicy, Block> flatten() {
 		return shape -> {
 			TraversalPolicy outputShape = shape.flatten();
@@ -67,11 +86,11 @@ public interface LayerFeatures extends CollectionFeatures {
 		};
 	}
 
-	default Function<TraversalPolicy, KernelLayer> convolution2d(int size, int filterCount) {
+	default Function<TraversalPolicy, CellularLayer> convolution2d(int size, int filterCount) {
 		return shape -> convolution2d(shape, size, filterCount);
 	}
 
-	default KernelLayer convolution2d(TraversalPolicy inputShape, int size, int filterCount) {
+	default CellularLayer convolution2d(TraversalPolicy inputShape, int size, int filterCount) {
 		int pad = size - 1;
 		TraversalPolicy outputShape = shape(inputShape.length(0) - pad, inputShape.length(1) - pad, filterCount);
 		TraversalPolicy filterShape = shape(filterCount, size, size);
@@ -80,34 +99,67 @@ public interface LayerFeatures extends CollectionFeatures {
 		Supplier<Runnable> init = new KernelOperation<>(
 				divide(randn(filterShape).traverseEach(), c(9).traverse(0)), filters.traverseEach());
 
-		// regions = c(inputShape).enumerate(0, 3, 1).enumerate(1, 3, 1); 	// 8x8x3x3
-		// regions.traverse(2) 												// 8x8 x 3x3
-		// .map(r -> r.multiply(c(shape(3, 3)) 								// 8x8 x 3x3
-		// .reduce(r -> r.sum()) 											// 8x8x1
+		if (enableKernelLayers) {
+			return layer(inputShape, outputShape,
+					(in, filter, x, y, z) ->
+							filter.get(shape(1, size, size), z).multiply(in.get(shape(size, size), x, y)).sum(),
+					(lr, gradient, input, next) -> {
+						CollectionOperationList ops = new CollectionOperationList();
+						PackedCollection<?> filterGrad = new PackedCollection<>(filterShape);
 
-		return layer(inputShape, outputShape,
-				(in, filter, x, y, z) ->
-						filter.get(shape(1, size, size), z).multiply(in.get(shape(size, size), x, y)).sum(),
-				(lr, gradient, input, next) -> {
-					CollectionOperationList ops = new CollectionOperationList();
-					PackedCollection<?> filterGrad = new PackedCollection<>(filterShape);
+						ops.kernel((_gradient, _input, f, fx, fy) ->
+								shape(outputShape.length(0), outputShape.length(1)).stream()
+										.map(pos -> _gradient.get(e(pos[0]), e(pos[1]), f).multiply(_input.get(e(pos[0]).add(fx), e(pos[1]).add(fy))))
+										.collect(ExpressionList.collector())
+										.sum(), filterGrad.traverseEach(), gradient, input);
+						ops.kernel((_filters, _gradient, _lr, x, y, z) ->
+										_filters.get(x, y, z).subtract(_gradient.get(x, y, z).multiply(_lr.valueAt(0))),
+								filters.traverseEach(), p(filters), p(filterGrad), lr);
+						if (next != null) {
+							System.out.println("WARN: convolution2d does not support backpropagation");
+						}
+						return ops;
+					}, List.of(filters), init);
+		} else {
+			return layer(inputShape, outputShape,
+					Cell.of((input, next) -> {
+						OperationList ops = new OperationList();
+						ops.add(() -> {
+							PackedCollection<?> output = new PackedCollection<>(outputShape);
+							KernelizedEvaluable<PackedCollection<?>> ev =
+									c(input).enumerate(1, 3, 1)
+									.enumerate(1, 3, 1)
+									.traverse(2)
+									.map(r -> r.multiply(p(filters)))
+									.reduce(r -> r.sum()).get();
+							return () -> {
+								ev.kernelEvaluate(output);
+								next.push(p(output));
+							};
+						});
+						return ops;
+					}),
+					(lr, gradient, input, next) -> {
+						CollectionOperationList ops = new CollectionOperationList();
+						PackedCollection<?> filterGrad = new PackedCollection<>(filterShape);
 
-					ops.kernel((_gradient, _input, f, fx, fy) ->
-							shape(outputShape.length(0), outputShape.length(1)).stream()
-									.map(pos -> _gradient.get(e(pos[0]), e(pos[1]), f).multiply(_input.get(e(pos[0]).add(fx), e(pos[1]).add(fy))))
-									.collect(ExpressionList.collector())
-									.sum(), filterGrad.traverseEach(), gradient, input);
-					ops.kernel((_filters, _gradient, _lr, x, y, z) ->
-									_filters.get(x, y, z).subtract(_gradient.get(x, y, z).multiply(_lr.valueAt(0))),
-							filters.traverseEach(), p(filters), p(filterGrad), lr);
-					if (next != null) {
-						System.out.println("WARN: convolution2d does not support backpropagation");
-					}
-					return ops;
-				}, List.of(filters), init);
+						ops.kernel((_gradient, _input, f, fx, fy) ->
+								shape(outputShape.length(0), outputShape.length(1)).stream()
+										.map(pos -> _gradient.get(e(pos[0]), e(pos[1]), f).multiply(_input.get(e(pos[0]).add(fx), e(pos[1]).add(fy))))
+										.collect(ExpressionList.collector())
+										.sum(), filterGrad.traverseEach(), gradient, input);
+						ops.kernel((_filters, _gradient, _lr, x, y, z) ->
+										_filters.get(x, y, z).subtract(_gradient.get(x, y, z).multiply(_lr.valueAt(0))),
+								filters.traverseEach(), p(filters), p(filterGrad), lr);
+						if (next != null) {
+							System.out.println("WARN: convolution2d does not support backpropagation");
+						}
+						return ops;
+					}, List.of(filters), init);
+		}
 	}
 
-	default Function<TraversalPolicy, KernelLayer> pool2d(int size) {
+	default Function<TraversalPolicy, CellularLayer> pool2d(int size) {
 		return shape -> pool2d(shape, size);
 	}
 
@@ -136,11 +188,11 @@ public interface LayerFeatures extends CollectionFeatures {
 		return layer(inputShape, outputShape, kernel, propagation);
 	}
 
-	default Function<TraversalPolicy, KernelLayer> dense(int nodes) {
+	default Function<TraversalPolicy, CellularLayer> dense(int nodes) {
 		return shape -> dense(shape.getTotalSize(), nodes);
 	}
 
-	default KernelLayer dense(int size, int nodes) {
+	default CellularLayer dense(int size, int nodes) {
 		TraversalPolicy outputShape = shape(nodes);
 		KernelExpression kernel = (i, p) -> i.v(0).multiply(i.v(1)
 				.get(shape(size, 1), e(0), p.l(0)))
@@ -175,11 +227,11 @@ public interface LayerFeatures extends CollectionFeatures {
 		return layer(shape(size), outputShape, kernel, backwards, List.of(weights, biases), init);
 	}
 
-	default Function<TraversalPolicy, KernelLayer> softmax() {
+	default Function<TraversalPolicy, CellularLayer> softmax() {
 		return shape -> softmax(shape.getTotalSize());
 	}
 
-	default KernelLayer softmax(int size) {
+	default CellularLayer softmax(int size) {
 		TraversalPolicy shape = shape(size);
 		KernelExpression forward = (i, p) -> exp(i.v(0).get(p.l(0))).divide(i.v(0).exp().sum());
 		KernelExpression backward = (i, p) -> {

@@ -23,7 +23,9 @@ import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.mem.MemoryDataCopy;
+import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.KernelLayer;
+import org.almostrealism.layers.Learning;
 import org.almostrealism.layers.PropagationCell;
 
 import java.util.ArrayList;
@@ -93,18 +95,17 @@ public class Model implements Setup, CodeFeatures {
 		return b;
 	}
 
-	public CellularBlock addLayer(KernelLayer layer) {
-		PropagationCell backwards = layer.getBackwards();
-		backwards.setLearningRate(p(learningRate));
+	public CellularBlock addLayer(CellularLayer layer) {
+		if (layer instanceof Learning) ((Learning) layer).setLearningRate(p(learningRate));
 
 		CellularBlock b = new CellularBlock(shape,
 									layer.getOutputShape(), layer.getForward(),
-									backwards, layer.setup());
+									layer.getBackward(), layer.setup());
 		addBlock(b);
 		return b;
 	}
 
-	public CellularBlock addLayer(Function<TraversalPolicy, KernelLayer> layer) {
+	public CellularBlock addLayer(Function<TraversalPolicy, CellularLayer> layer) {
 		return addLayer(layer.apply(shape));
 	}
 

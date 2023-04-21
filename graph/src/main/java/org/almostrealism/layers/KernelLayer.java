@@ -16,6 +16,7 @@
 
 package org.almostrealism.layers;
 
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversableKernelExpression;
 import org.almostrealism.collect.TraversalPolicy;
@@ -25,29 +26,29 @@ import java.util.Collections;
 import java.util.List;
 import java.util.function.Supplier;
 
-public class KernelLayer implements Layer {
+public class KernelLayer implements CellularLayer, Learning {
 	private TraversalPolicy outputShape;
 	private KernelLayerCell forward;
-	private PropagationCell backwards;
+	private PropagationCell backward;
 	private List<PackedCollection<?>> weights;
 
 	private Supplier<Runnable> setup;
 
-	public KernelLayer(TraversalPolicy inputShape, TraversableKernelExpression forward, Propagation backwards) {
-		this(inputShape, forward, backwards, Collections.emptyList());
+	public KernelLayer(TraversalPolicy inputShape, TraversableKernelExpression forward, Propagation backward) {
+		this(inputShape, forward, backward, Collections.emptyList());
 	}
 
-	public KernelLayer(TraversalPolicy inputShape, TraversableKernelExpression forward, Propagation backwards,
+	public KernelLayer(TraversalPolicy inputShape, TraversableKernelExpression forward, Propagation backward,
 					   List<PackedCollection<?>> weights) {
-		this(inputShape, forward, backwards, weights, new OperationList());
+		this(inputShape, forward, backward, weights, new OperationList());
 	}
 
-	public KernelLayer(TraversalPolicy inputShape, TraversableKernelExpression forward, Propagation backwards,
+	public KernelLayer(TraversalPolicy inputShape, TraversableKernelExpression forward, Propagation backward,
 					   List<PackedCollection<?>> weights, Supplier<Runnable> setup) {
 		this.outputShape = forward.getShape();
 		this.forward = new KernelLayerCell(inputShape, forward, weights);
-		this.backwards = new PropagationCell(backwards);
-		this.backwards.setForwardInput(this.forward.getInput());
+		this.backward = new PropagationCell(backward);
+		this.backward.setForwardInput(this.forward.getInput());
 		this.weights = weights;
 		this.setup = setup;
 	}
@@ -60,7 +61,14 @@ public class KernelLayer implements Layer {
 	@Override
 	public List<PackedCollection<?>> getWeights() { return weights; }
 
+	@Override
 	public KernelLayerCell getForward() { return forward; }
 
-	public PropagationCell getBackwards() { return backwards; }
+	@Override
+	public PropagationCell getBackward() { return backward; }
+
+	@Override
+	public void setLearningRate(Producer<PackedCollection<?>> learningRate) {
+		backward.setLearningRate(learningRate);
+	}
 }

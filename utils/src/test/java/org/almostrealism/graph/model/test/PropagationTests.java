@@ -20,7 +20,9 @@ import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.KernelLayer;
+import org.almostrealism.layers.PropagationCell;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
@@ -43,8 +45,8 @@ public class PropagationTests implements TestFeatures {
 
 		double result[] = new double[10];
 
-		KernelLayer layer = softmax(10);
-		layer.getBackwards().setReceptor(grad -> () -> {
+		CellularLayer layer = softmax(10);
+		layer.getBackward().setReceptor(grad -> () -> {
 			Evaluable<PackedCollection<?>> gr = grad.get();
 
 			return () -> {
@@ -54,8 +56,8 @@ public class PropagationTests implements TestFeatures {
 				out.getMem(0, result, 0, result.length);
 			};
 		});
-		layer.getBackwards().setForwardInput(input);
-		layer.getBackwards().push(p(gradient)).get().run();
+		((PropagationCell) layer.getBackward()).setForwardInput(input);
+		layer.getBackward().push(p(gradient)).get().run();
 
 		double expected[] = new double[] { -1.22242448e-07, -3.32289424e-07, -9.03256303e-07,  1.56203074e-03,
 				-6.67421149e-06, -1.81423878e-05, -4.93161231e-05, -1.34055121e-04,
@@ -72,8 +74,8 @@ public class PropagationTests implements TestFeatures {
 		int nodes = 5;
 
 		Model model = new Model(shape(size), 1e-1);
-		KernelLayer dense = dense(size, nodes);
-		KernelLayer softmax = softmax(nodes);
+		CellularLayer dense = dense(size, nodes);
+		CellularLayer softmax = softmax(nodes);
 		model.addLayer(dense);
 		model.addLayer(softmax);
 
@@ -103,7 +105,7 @@ public class PropagationTests implements TestFeatures {
 
 		double result[] = new double[size];
 
-		dense.getBackwards().setReceptor(grad -> () -> {
+		dense.getBackward().setReceptor(grad -> () -> {
 			Evaluable<PackedCollection<?>> gr = grad.get();
 
 			return () -> {
@@ -150,7 +152,7 @@ public class PropagationTests implements TestFeatures {
 
 		PackedCollection<?> result = new PackedCollection(inputShape);
 
-		pool.getBackwards().setReceptor(grad -> () -> {
+		pool.getBackward().setReceptor(grad -> () -> {
 			Evaluable<PackedCollection<?>> gr = grad.get();
 
 			return () -> {
@@ -186,7 +188,7 @@ public class PropagationTests implements TestFeatures {
 		TraversalPolicy inputShape = shape(h, w);
 
 		Model model = new Model(inputShape, 1e-2);
-		KernelLayer conv = convolution2d(inputShape, convSize, 8);
+		CellularLayer conv = convolution2d(inputShape, convSize, 8);
 
 		model.addLayer(conv);
 

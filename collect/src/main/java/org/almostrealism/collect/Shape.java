@@ -29,4 +29,6 @@ public interface Shape<T> extends Traversable<T> {
 	default T traverseEach() {
 		return traverse(getShape().getDimensions());
 	}
+
+	default T traverse() { return traverse(getShape().getTraversalAxis() + 1); }
 }

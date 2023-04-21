@@ -41,6 +41,7 @@ import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.PackedCollectionEnumerate;
 import org.almostrealism.collect.computations.PackedCollectionFromPackedCollection;
 import org.almostrealism.collect.computations.PackedCollectionMap;
+import org.almostrealism.collect.computations.PackedCollectionRepeat;
 import org.almostrealism.collect.computations.PackedCollectionSubset;
 import org.almostrealism.collect.computations.Random;
 import org.almostrealism.collect.computations.ReshapeProducer;
@@ -152,22 +153,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		if (producer instanceof CollectionProducer) {
 			return (CollectionProducer<T>) producer;
 		} else if (producer instanceof Shape) {
-			return new CollectionProducer<T>() {
-				@Override
-				public Evaluable<T> get() {
-					return producer.get();
-				}
-
-				@Override
-				public TraversalPolicy getShape() {
-					return ((Shape) producer).getShape();
-				}
-
-				@Override
-				public Producer<T> reshape(TraversalPolicy shape) {
-					return new ReshapeProducer<>(shape, producer);
-				}
-			};
+			return new ReshapeProducer(((Shape) producer).getShape(), producer);
 		} else {
 			throw new UnsupportedOperationException();
 		}
@@ -223,6 +209,10 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return new PackedCollectionSubset<>(shape, collection, position);
 	}
 
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> repeat(int repeat, Producer<?> collection) {
+		return new PackedCollectionRepeat<>(repeat, collection);
+	}
+
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> enumerate(int axis, int len, Producer<?> collection) {
 		return enumerate(axis, len, len, collection);
 	}
@@ -258,12 +248,16 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return new PackedCollectionMap<>(collection, mapper);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> reduce(Producer<?> collection, Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper) {
-		return reduce(shape(1), collection, mapper);
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> map(TraversalPolicy itemShape, Producer<?> collection, Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper) {
+		return new PackedCollectionMap<>(shape(collection).replace(itemShape), collection, mapper);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> reduce(TraversalPolicy itemShape, Producer<?> collection, Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper) {
-		return new PackedCollectionMap<>(shape(collection).reduce(itemShape), collection, mapper);
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> reduce(Producer<?> collection, Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper) {
+		return map(shape(1), collection, mapper);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> expand(int repeat, Producer<?> collection, Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper) {
+		return map(shape(collection).item().prependDimension(repeat), collection, mapper);
 	}
 
 	default Random rand(int... dims) { return rand(shape(dims)); }

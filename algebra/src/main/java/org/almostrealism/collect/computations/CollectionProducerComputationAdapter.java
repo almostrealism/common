@@ -19,9 +19,12 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.code.CollectionUtils;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.TraversableExpression;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.ComputerFeatures;
 import org.almostrealism.hardware.DestinationConsolidationArgumentMap;
@@ -39,6 +42,8 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 												implements CollectionProducerComputation<O>, MemoryDataComputation<O>,
 														KernelizedProducer<O>, DestinationSupport<O>,
 														ComputerFeatures {
+	public static boolean enableEmbeddedInputs = true;
+
 	private TraversalPolicy shape;
 	private Supplier<? extends PackedCollection> destination;
 
@@ -98,6 +103,20 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 	 */
 	@Override
 	public PhysicalScope getDefaultPhysicalScope() { return PhysicalScope.GLOBAL; }
+
+	@Override
+	public Expression<Double> getInputValue(int index, int pos) {
+		if (enableEmbeddedInputs) {
+			if (getInputs().get(index) instanceof TraversableExpression) {
+				Expression<Double> value = ((TraversableExpression) getInputs().get(index)).getValueAt(e(pos));
+
+				// if (!(value instanceof InstanceReference)) return value;
+				if (value != null) return value;
+			}
+		}
+
+		return super.getInputValue(index, pos);
+	}
 
 	@Override
 	public void destroy() {

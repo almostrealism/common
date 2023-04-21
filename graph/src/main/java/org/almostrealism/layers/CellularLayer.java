@@ -16,13 +16,10 @@
 
 package org.almostrealism.layers;
 
-import io.almostrealism.cycle.Setup;
-import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.graph.Cell;
 
-import java.util.List;
-
-public interface Layer extends Component, Setup {
-
-	List<PackedCollection<?>> getWeights();
+public interface CellularLayer extends Layer {
+	Cell<PackedCollection<?>> getForward();
+	Cell<PackedCollection<?>> getBackward();
 }

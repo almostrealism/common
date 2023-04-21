@@ -25,7 +25,7 @@ import org.almostrealism.hardware.OperationList;
 
 import java.util.function.Supplier;
 
-public class PropagationCell implements Cell<PackedCollection<?>>, CodeFeatures {
+public class PropagationCell implements Cell<PackedCollection<?>>, Learning, CodeFeatures {
 	private final Propagation propagation;
 	private PackedCollection<?> input;
 
@@ -53,6 +53,7 @@ public class PropagationCell implements Cell<PackedCollection<?>>, CodeFeatures 
 		return learningRate;
 	}
 
+	@Override
 	public void setLearningRate(Producer<PackedCollection<?>> learningRate) {
 		this.learningRate = learningRate;
 	}

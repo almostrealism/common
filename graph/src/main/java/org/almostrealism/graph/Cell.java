@@ -77,6 +77,14 @@ public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
 		return new TemporalFactorFromCell<>(c, destination, assignment, combine);
 	}
 
+	static <T> Cell<T> branch(Cell<T>... cells) {
+		return Cell.of((input, next) -> {
+			OperationList op = new OperationList();
+			for (Cell<T> cell : cells) op.add(cell.push(input));
+			return op;
+		});
+	}
+
 	static <T> Cell<T> of(BiFunction<Producer<T>, Receptor<T>, Supplier<Runnable>> func) {
 		return new Cell<>() {
 			private Receptor<T> r;

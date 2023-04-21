@@ -19,7 +19,9 @@ package org.almostrealism.graph.model.test;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.KernelLayer;
+import org.almostrealism.layers.KernelLayerCell;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
@@ -40,8 +42,8 @@ public class TrainModelTest implements TestFeatures {
 		int nodes = 10;
 
 		Model model = new Model(shape(size));
-		KernelLayer dense = dense(size, nodes);
-		KernelLayer softmax = softmax(nodes);
+		CellularLayer dense = dense(size, nodes);
+		CellularLayer softmax = softmax(nodes);
 		model.addLayer(dense);
 		model.addLayer(softmax);
 
@@ -55,7 +57,7 @@ public class TrainModelTest implements TestFeatures {
 		model.forward(input);
 
 		PackedCollection<?> weights = dense.getWeights().get(0);
-		PackedCollection<?> output = dense.getForward().getOutput();
+		PackedCollection<?> output = ((KernelLayerCell) dense.getForward()).getOutput();
 
 		for (int i = 0; i < nodes; i++) {
 			double expected = 0;
@@ -73,7 +75,7 @@ public class TrainModelTest implements TestFeatures {
 		}
 
 		input = output;
-		output = softmax.getForward().getOutput();
+		output = ((KernelLayerCell) softmax.getForward()).getOutput();
 
 		double expValues[] = new double[nodes];
 
@@ -99,8 +101,8 @@ public class TrainModelTest implements TestFeatures {
 	@Test
 	public void conv() {
 		Model model = new Model(inputShape);
-		KernelLayer conv = convolution2d(inputShape, convSize, 8);
-		KernelLayer pool = pool2d(conv.getOutputShape(), poolSize);
+		CellularLayer conv = convolution2d(inputShape, convSize, 8);
+		CellularLayer pool = pool2d(conv.getOutputShape(), poolSize);
 
 		model.addLayer(conv);
 		model.addLayer(pool);
@@ -114,7 +116,7 @@ public class TrainModelTest implements TestFeatures {
 		PackedCollection<?> filter = conv.getWeights().get(0);
 		TraversalPolicy filterShape = filter.getShape();
 
-		PackedCollection<?> output = conv.getForward().getOutput();
+		PackedCollection<?> output = ((KernelLayerCell) conv.getForward()).getOutput();
 		TraversalPolicy outputShape = output.getShape();
 
 		for (int p = 0; p < outputShape.length(0); p++) {
@@ -138,7 +140,7 @@ public class TrainModelTest implements TestFeatures {
 		input = output;
 		inputShape = input.getShape();
 
-		output = pool.getForward().getOutput();
+		output = ((KernelLayerCell) pool.getForward()).getOutput();
 		outputShape = output.getShape();
 
 		for (int p = 0; p < outputShape.length(0); p++) {

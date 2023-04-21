@@ -16,7 +16,6 @@
 
 package org.almostrealism.collect;
 
-import io.almostrealism.code.ExpressionList;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.bool.AcceleratedConditionalStatementCollection;
@@ -28,7 +27,12 @@ import org.almostrealism.collect.computations.ExpressionComputation;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-public interface CollectionProducer<T extends Shape<?>> extends CollectionProducerBase<T>, CollectionFeatures {
+public interface CollectionProducer<T extends Shape<?>> extends CollectionProducerBase<T, CollectionProducer<T>>, Shape<CollectionProducer<T>>, CollectionFeatures {
+
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> repeat(int repeat) {
+		return repeat(repeat, this);
+	}
+
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> enumerate(int axis, int len, int stride) {
 		return enumerate(axis, len, stride, 1);
 	}
@@ -41,12 +45,16 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 		return map(this, mapper);
 	}
 
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> map(TraversalPolicy itemShape, Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper) {
+		return map(itemShape, this, mapper);
+	}
+
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> reduce(Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper) {
 		return reduce(this, mapper);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> reduce(TraversalPolicy itemShape, Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper) {
-		return reduce(itemShape, this, mapper);
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> expand(int repeat, Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper) {
+		return expand(repeat, this, mapper);
 	}
 
 	default <T extends PackedCollection<?>> ExpressionComputation<T> add(Producer<T> value) {
