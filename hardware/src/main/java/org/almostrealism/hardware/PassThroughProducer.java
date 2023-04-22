@@ -16,6 +16,8 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.ProducerComputationBase;
+import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.code.ArgumentMap;
@@ -33,11 +35,18 @@ import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
 public class PassThroughProducer<T extends MemoryData>
+//		extends ProducerComputationBase<T, T>
 		extends DynamicProducerComputationAdapter<T, T>
-		implements ProducerArgumentReference, Shape<PassThroughProducer<T>>, KernelIndex {
+		implements ProducerArgumentReference,
+		MemoryDataComputation<T>, KernelizedProducer<T>,
+		DestinationSupport<T>, MultiExpression<Double>,
+		Shape<PassThroughProducer<T>>, KernelIndex,
+		ComputerFeatures  {
 	private TraversalPolicy shape;
 	private int argIndex;
 	private int kernelIndex;
+
+	private Supplier<T> destination;
 
 	public PassThroughProducer(TraversalPolicy shape, int argIndex) {
 		super(shape.getSize(), null, null);
@@ -71,9 +80,19 @@ public class PassThroughProducer<T extends MemoryData>
 	}
 
 	@Override
-	public TraversalPolicy getShape() {
-		return shape;
-	}
+	public TraversalPolicy getShape() { return shape; }
+
+	@Override
+	public int getMemLength() { return shape.getSize(); }
+
+	@Override
+	public Expression<Double> getValue(int pos) { return getValueFunction().apply(pos); }
+
+	@Override
+	public void setDestination(Supplier<T> destination) { this.destination = destination; }
+
+	@Override
+	public Supplier<T> getDestination() { return destination; }
 
 	@Override
 	public PassThroughProducer<T> reshape(TraversalPolicy shape) {
@@ -147,7 +166,6 @@ public class PassThroughProducer<T extends MemoryData>
 		return getArgumentVariables().get(index);
 	}
 
-	@Override
 	public IntFunction<Expression<Double>> getValueFunction() {
 		return pos -> new Expression<>(Double.class, getArgumentValueName(0, pos, kernelIndex), getArgument(0));
 	}

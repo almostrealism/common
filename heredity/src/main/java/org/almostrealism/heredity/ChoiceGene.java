@@ -45,8 +45,8 @@ public class ChoiceGene implements Gene<PackedCollection<?>>, GeneParameters, Sc
 		return new Factor<>() {
 			@Override
 			public Producer<PackedCollection<?>> getResultant(Producer<PackedCollection<?>> value) {
-				value = c(values.getShape(), () -> new Provider<>(values), scalar(pos));
-				return c(choices.getShape(), () -> new Provider<>(choices), (Supplier) multiply(value, c(choices.getMemLength())));
+				value = c(shape(1), p(values), scalar(pos));
+				return c(shape(1), p(choices), (Supplier) multiply(value, c(choices.getMemLength())));
 			}
 
 			@Override
@@ -57,5 +57,5 @@ public class ChoiceGene implements Gene<PackedCollection<?>>, GeneParameters, Sc
 	}
 
 	@Override
-	public int length() {return values.getMemLength();}
+	public int length() { return values.getMemLength(); }
 }

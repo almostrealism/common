@@ -32,6 +32,7 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.Scope;
+import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.computations.ArrayVariableComputation;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
@@ -39,7 +40,6 @@ import org.almostrealism.collect.computations.DynamicCollectionProducerComputati
 import org.almostrealism.collect.computations.DynamicExpressionComputation;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.PackedCollectionEnumerate;
-import org.almostrealism.collect.computations.PackedCollectionFromPackedCollection;
 import org.almostrealism.collect.computations.PackedCollectionMap;
 import org.almostrealism.collect.computations.PackedCollectionRepeat;
 import org.almostrealism.collect.computations.PackedCollectionSubset;
@@ -52,6 +52,7 @@ import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryDataComputation;
 import org.almostrealism.hardware.computations.Assignment;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
 import java.util.function.IntFunction;
@@ -163,8 +164,27 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return new ExpressionComputation<>(List.of(args -> args.get(1).getValue(index)), supplier);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> c(TraversalPolicy shape, Supplier<Evaluable<? extends PackedCollection>> collection, Supplier<Evaluable<? extends Scalar>> index) {
-		return (CollectionProducerComputation<T>) new PackedCollectionFromPackedCollection(shape, collection, index);
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> c(TraversalPolicy shape,
+																			   Supplier<Evaluable<? extends PackedCollection>> collection,
+																			   Supplier<Evaluable<? extends Scalar>> index) {
+		DynamicExpressionComputation exp = new DynamicExpressionComputation<>(shape,
+				args -> CollectionExpression.create(shape, idx -> args[1].getValueAt(args[2].getValueAt(e(0)).add(idx))),
+				(Supplier) collection, (Supplier) index);
+		if (shape.getTotalSize() == 1) {
+			exp.setShortCircuit(args -> {
+				Evaluable<? extends PackedCollection> out = ag -> new PackedCollection(1);
+				Evaluable<? extends PackedCollection> c = collection.get();
+				Evaluable<? extends Scalar> i = index.get();
+
+				PackedCollection<?> col = c.evaluate(args);
+				Scalar idx = i.evaluate(args);
+				PackedCollection dest = out.evaluate(args);
+				dest.setMem(col.toDouble((int) idx.getValue()));
+				return dest;
+			});
+		}
+
+		return exp;
 	}
 
 	default DynamicCollectionProducer func(TraversalPolicy shape, Function<Object[], PackedCollection<?>> function) {
