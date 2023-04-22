@@ -19,6 +19,7 @@ package org.almostrealism.algebra;
 import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.code.ProducerComputation;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.computations.ScalarExpressionComputation;
 import org.almostrealism.hardware.KernelizedProducer;
 
@@ -33,7 +34,7 @@ public interface PairProducerBase extends ProducerComputation<Pair<?>>, Kerneliz
     default ScalarExpressionComputation x() { return l(this); }
     default ScalarExpressionComputation y() { return r(this); }
 
-    default PairProducer multiplyComplex(Supplier<Evaluable<? extends Pair<?>>> p) {
+    default Producer<Pair<?>> multiplyComplex(Supplier<Evaluable<? extends Pair<?>>> p) {
         return multiplyComplex(this, p);
     }
 }

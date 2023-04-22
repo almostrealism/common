@@ -71,39 +71,15 @@ public class Scalar extends Pair<Scalar> implements Comparable<Scalar> {
 		return new DynamicScalarProducer(args -> new Scalar(false));
 	}
 
-	public static BiFunction<MemoryData, Integer, Scalar> postprocessor() {
+	public static BiFunction<MemoryData, Integer, Pair<?>> postprocessor() {
 		return (delegate, offset) -> new Scalar(delegate, offset);
-	}
-
-	public static Scalar sel(double a, double b, double c) {
-		return new Scalar((a >= 0 ? b : c));
-	}
-
-	public static boolean fuzzyZero(double x) {
-		return Math.abs(x) < EPSILON;
-	}
-
-	public static Scalar atan2(double y, double x) {
-		double coeff_1 = PI / 4.0;
-		double coeff_2 = 3.0 * coeff_1;
-		double abs_y = Math.abs(y);
-		double angle;
-
-		if (x >= 0.0) {
-			double r = (x - abs_y) / (x + abs_y);
-			angle = coeff_1 - coeff_1 * r;
-		} else {
-			double r = (x + abs_y) / (abs_y - x);
-			angle = coeff_2 - coeff_1 * r;
-		}
-
-		return new Scalar(((y < 0.0f) ? -angle : angle));
 	}
 
 	/**
 	 * Returns 1 if the sign of the given argument is positive; -1 if
 	 * negative; 0 if 0.
 	 */
+	@Deprecated
 	public static int sgn(double f) {
 		if (f > 0) {
 			return 1;
@@ -114,30 +90,19 @@ public class Scalar extends Pair<Scalar> implements Comparable<Scalar> {
 		return 0;
 	}
 
-	/** Clamps argument between min and max values. */
-	public static float clamp(double val, double min, double max) {
-		if (val < min) return (float) min;
-		if (val > max) return (float) max;
-		return (float) val;
-	}
-
-	/** Clamps argument between min and max values. */
-	public static int clamp(int val, int min, int max) {
-		if (val < min) return min;
-		if (val > max) return max;
-		return val;
-	}
-
+	@Deprecated
 	public static float[] toFloat(double d[]) {
 		float f[] = new float[d.length];
 		for (int i = 0; i < d.length; i++) f[i] = (float) d[i];
 		return f;
 	}
 
+	@Deprecated
 	public static float ssFunc(final double t, final float p[]) {
 		return ssFunc(t, p, 0);
 	}
 
+	@Deprecated
 	public static float ssFunc(final double t, final float p[], int pOff) {
 		return (float) (Math.pow(Math.pow(Math.abs(Math.cos(p[0 + pOff] * t / 4)) / p[1 + pOff], p[4 + pOff]) +
 				Math.pow(Math.abs(Math.sin(p[0 + pOff] * t / 4)) / p[2 + pOff], p[5 + pOff]), 1 / p[3 + pOff]));

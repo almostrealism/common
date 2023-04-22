@@ -40,7 +40,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 public interface LayerFeatures extends CollectionFeatures {
-	boolean enableKernelLayers = false;
+	boolean enableKernelLayers = true;
 
 	default KernelLayer layer(TraversalPolicy inputShape, TraversalPolicy outputShape,
 							  KernelExpression kernel, Propagation backwards) {

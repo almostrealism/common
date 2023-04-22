@@ -26,6 +26,8 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairBankFeatures;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.computations.DynamicCollectionProducerComputationAdapter;
 import org.almostrealism.hardware.DynamicProducerComputationAdapter;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.KernelizedProducer;
@@ -34,12 +36,12 @@ import java.util.Objects;
 import java.util.function.IntFunction;
 import java.util.stream.Stream;
 
-public class PairBankFromPairsBuilder extends DynamicProducerComputationAdapter<Pair, PackedCollection<Pair<?>>>
+public class PairBankFromPairsBuilder extends DynamicCollectionProducerComputationAdapter<Pair<?>, PackedCollection<Pair<?>>>
 									implements Factory<KernelizedProducer<PackedCollection<Pair<?>>>>, PairBankFeatures {
 	private Producer<Pair<?>> producers[];
 
 	public PairBankFromPairsBuilder(int count) {
-		super(2 * count, () -> args -> Pair.bank(count), null, new Producer[0]);
+		super(new TraversalPolicy(count, 2).traverse(0), new Producer[0]);
 		producers = new Producer[count];
 	}
 

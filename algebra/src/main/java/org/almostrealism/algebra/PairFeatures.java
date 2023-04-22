@@ -16,11 +16,16 @@
 
 package org.almostrealism.algebra;
 
+import io.almostrealism.expression.Cosine;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.Minus;
 import io.almostrealism.expression.MultiExpression;
+import io.almostrealism.expression.Product;
+import io.almostrealism.expression.Sine;
 import io.almostrealism.expression.Sum;
 import org.almostrealism.algebra.computations.*;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.hardware.HardwareFeatures;
 
 import java.util.ArrayList;
@@ -73,8 +78,30 @@ public interface PairFeatures extends HardwareFeatures {
 		return new PairExpressionComputation(comp, (Supplier[]) values);
 	}
 
-	default PairProducer multiplyComplex(Supplier<Evaluable<? extends Pair<?>>> a, Supplier<Evaluable<? extends Pair<?>>> b) {
-		return new ComplexProduct(a, b);
+	default ExpressionComputation<Pair<?>> multiplyComplex(Supplier<Evaluable<? extends Pair<?>>> a, Supplier<Evaluable<? extends Pair<?>>> b) {
+		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
+		IntStream.range(0, 2).forEach(i -> comp.add(args -> {
+			Expression p = args.get(1).getValue(0);
+			Expression q = args.get(1).getValue(1);
+			Expression r = args.get(2).getValue(0);
+			Expression s = args.get(2).getValue(1);
+
+			if (i == 0) {
+				return new Sum(new Product(p, r), new Minus(new Product(q, s)));
+			} else if (i == 1) {
+				return new Sum(new Product(p, s), new Product(q, r));
+			} else {
+				throw new IllegalArgumentException();
+			}
+		}));
+		return Pair.postprocess(new ExpressionComputation<>(comp, (Supplier) a, (Supplier) b));
+	}
+
+	default ExpressionComputation<Pair<?>> complexFromAngle(Supplier<Evaluable<? extends Scalar>> angle) {
+		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
+		comp.add(args -> new Cosine(args.get(1).getValue(0)));
+		comp.add(args -> new Sine(args.get(1).getValue(0)));
+		return Pair.postprocess(new ExpressionComputation<>(comp, (Supplier) angle));
 	}
 
 	static PairFeatures getInstance() {

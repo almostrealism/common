@@ -117,7 +117,9 @@ public class TrainModelTest implements TestFeatures {
 		PackedCollection<?> filter = conv.getWeights().get(0);
 		TraversalPolicy filterShape = filter.getShape();
 
-		PackedCollection<?> output = ((DefaultCellularLayer) conv).getOutput();
+		PackedCollection<?> output = conv instanceof DefaultCellularLayer ?
+						((DefaultCellularLayer) conv).getOutput() :
+						((KernelLayerCell) conv.getForward()).getOutput();
 		TraversalPolicy outputShape = output.getShape();
 
 		for (int p = 0; p < outputShape.length(0); p++) {
