@@ -25,7 +25,7 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionVariable;
 import org.almostrealism.collect.computations.DynamicExpressionComputation;
-import org.almostrealism.geometry.computations.StaticTransformMatrixComputation;
+import org.almostrealism.collect.computations.ExpressionComputation;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -34,10 +34,10 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 public interface TransformMatrixFeatures extends CollectionFeatures {
-	default TransformMatrixProducer v(TransformMatrix v) { return value(v); }
+	default ExpressionComputation<TransformMatrix> v(TransformMatrix v) { return value(v); }
 
-	default TransformMatrixProducer value(TransformMatrix v) {
-		return new StaticTransformMatrixComputation(v);
+	default ExpressionComputation<TransformMatrix> value(TransformMatrix v) {
+		return ExpressionComputation.fixed(v, TransformMatrix.postprocessor());
 	}
 
 	default DynamicExpressionComputation<Vector> transformAsLocation(TransformMatrix matrix, Supplier<Evaluable<? extends Vector>> vector) {

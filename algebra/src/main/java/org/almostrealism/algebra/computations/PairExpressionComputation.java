@@ -40,19 +40,6 @@ public class PairExpressionComputation extends ExpressionComputation<Pair<?>> im
 
     @Override
     public Pair postProcessOutput(MemoryData output, int offset) {
-        return new Pair(output, offset);
-    }
-
-    public static PairExpressionComputation fixed(Pair value) {
-        List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
-        IntStream.range(0, 2).forEach(i -> comp.add(args -> {
-            String s = HardwareFeatures.ops().stringForDouble(value.getMem().toArray(value.getOffset() + i, 1)[0]);
-            if (s.contains("Infinity")) {
-                throw new IllegalArgumentException("Infinity is not supported");
-            }
-
-            return new Expression<>(Double.class, s);
-        }));
-        return new PairExpressionComputation(comp);
+        return Pair.postprocessor().apply(output, offset);
     }
 }

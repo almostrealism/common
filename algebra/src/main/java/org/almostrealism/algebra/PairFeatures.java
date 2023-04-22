@@ -44,7 +44,7 @@ public interface PairFeatures extends HardwareFeatures {
 		return new PairExpressionComputation(comp);
 	}
 
-	default PairProducerBase pair(double x, double y) { return value(new Pair(x, y)); }
+	default ExpressionComputation<Pair<?>> pair(double x, double y) { return value(new Pair(x, y)); }
 
 	default PairProducerBase pair(Supplier<Evaluable<? extends Scalar>> x, Supplier<Evaluable<? extends Scalar>> y) {
 		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
@@ -52,10 +52,10 @@ public interface PairFeatures extends HardwareFeatures {
 		return new PairExpressionComputation(comp, (Supplier) x, (Supplier) y);
 	}
 
-	default PairProducerBase v(Pair value) { return value(value); }
+	default ExpressionComputation<Pair<?>> v(Pair value) { return value(value); }
 
-	default PairProducerBase value(Pair value) {
-		return PairExpressionComputation.fixed(value);
+	default ExpressionComputation<Pair<?>> value(Pair value) {
+		return ExpressionComputation.fixed((Pair<?>) value, Pair.postprocessor());
 	}
 
 	default ScalarExpressionComputation l(Supplier<Evaluable<? extends Pair<?>>> p) {

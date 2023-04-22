@@ -53,6 +53,12 @@ public class JVMMemoryProvider implements MemoryProvider<Memory> {
 	public void getMem(Memory mem, int sOffset, double[] out, int oOffset, int length) {
 		JVMMemory src = (JVMMemory) mem;
 		for (int i = 0; i < length; i++) {
+			if ((sOffset + i) >= src.data.length) {
+				throw new ArrayIndexOutOfBoundsException();
+			} else if ((oOffset + i) >= out.length) {
+				throw new ArrayIndexOutOfBoundsException();
+			}
+
 			out[oOffset + i] = src.data[sOffset + i];
 		}
 	}

@@ -46,7 +46,6 @@ import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.RayFeatures;
 import org.almostrealism.geometry.TransformMatrixFeatures;
 import org.almostrealism.geometry.computations.StaticRayComputation;
-import org.almostrealism.geometry.computations.StaticTransformMatrixComputation;
 import org.almostrealism.graph.mesh.TriangleFeatures;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -130,13 +129,13 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 		} else if (v instanceof ScalarBank) {
 			return (ProducerComputation<T>) new StaticScalarBankComputation((ScalarBank) v);
 		} else if (v instanceof Pair) {
-			return (ProducerComputation<T>) PairFeatures.getInstance().v((Pair) v);
+			return (ProducerComputation<T>) PairFeatures.getInstance().value((Pair) v);
 		} else if (v instanceof Vector) {
 			return (ProducerComputation<T>) new StaticVectorComputation((Vector) v);
 		} else if (v instanceof Ray) {
 			return (ProducerComputation<T>) new StaticRayComputation((Ray) v);
 		} else if (v instanceof TransformMatrix) {
-			return (ProducerComputation<T>) new StaticTransformMatrixComputation((TransformMatrix) v);
+			return (ProducerComputation<T>) TransformMatrixFeatures.getInstance().value((TransformMatrix) v);
 		} else if (v == null) {
 			return null;
 		} else {

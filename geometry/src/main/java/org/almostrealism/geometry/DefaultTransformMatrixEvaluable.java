@@ -16,12 +16,11 @@
 
 package org.almostrealism.geometry;
 
-import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import io.almostrealism.code.Computation;
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 
+@Deprecated
 public class DefaultTransformMatrixEvaluable extends AcceleratedComputationEvaluable<TransformMatrix> {
 
 	public DefaultTransformMatrixEvaluable(Computation<TransformMatrix> c) {
@@ -30,6 +29,6 @@ public class DefaultTransformMatrixEvaluable extends AcceleratedComputationEvalu
 
 	@Override
 	protected TransformMatrix postProcessOutput(MemoryData output, int offset) {
-		return new TransformMatrix(output, offset);
+		return TransformMatrix.postprocessor().apply(output, offset);
 	}
 }

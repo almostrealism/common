@@ -25,6 +25,7 @@ import org.almostrealism.algebra.TripleFunction;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.geometry.computations.MatrixAdjoint;
 import org.almostrealism.geometry.computations.MatrixDeterminant;
 import org.almostrealism.geometry.computations.MatrixProduct;
@@ -37,6 +38,7 @@ import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.MemoryDataAdapter;
 import org.almostrealism.hardware.PooledMem;
 
+import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
 /**
@@ -45,7 +47,7 @@ import java.util.function.Supplier;
  * methods for transforming various types of vectors. The TransformMatrix class also provides
  * some static methods that generate certain useful matrices.
  */
-public class TransformMatrix extends MemoryDataAdapter implements TripleFunction<Triple, Vector>, VectorFeatures, TransformMatrixFeatures, RayFeatures, HardwareFeatures {
+public class TransformMatrix extends PackedCollection<PackedCollection<?>> implements TripleFunction<Triple, Vector>, TransformMatrixFeatures, RayFeatures, HardwareFeatures {
 	public static final int TRANSFORM_AS_LOCATION = 1;
 	public static final int TRANSFORM_AS_OFFSET = 2;
 	public static final int TRANSFORM_AS_NORMAL = 4;
@@ -55,8 +57,6 @@ public class TransformMatrix extends MemoryDataAdapter implements TripleFunction
 											{0.0, 1.0, 0.0, 0.0},
 											{0.0, 0.0, 1.0, 0.0},
 											{0.0, 0.0, 0.0, 1.0}};
-	private static ThreadLocal<HardwareOperator<Vector>> transformAsLocation = new ThreadLocal<>();
-	private static ThreadLocal<HardwareOperator<Vector>> transformAsOffset = new ThreadLocal<>();
 
 	private TransformMatrix inverseMatrix;
 	private TransformMatrix inverseTranspose;
@@ -76,15 +76,17 @@ public class TransformMatrix extends MemoryDataAdapter implements TripleFunction
 	}
 
 	private TransformMatrix(boolean identity, MemoryData delegate, int delegateOffset) {
+		super(new TraversalPolicy(16), 0);
 		setDelegate(delegate, delegateOffset);
 		initMem(identity);
 	}
-	
+
 	/**
 	 * Constructs a TransformMatrix object with the specified matrix data. Any extra array entries are removed
 	 * and missing array entries are replaced with 0.0.
 	 */
 	public TransformMatrix(double matrix[][]) {
+		super(new TraversalPolicy(16), 0);
 		initMem(false);
 		this.setMatrix(matrix);
 	}
@@ -95,7 +97,7 @@ public class TransformMatrix extends MemoryDataAdapter implements TripleFunction
 			new IdentityMatrix(() -> new Provider<>(this)).evaluate();
 		}
 	}
-	
+
 	/**
 	 * Sets the 16 values stored by this TransformMatrix to those specified.
 	 * Any extra array entries are removed and missing array entries are
@@ -103,9 +105,9 @@ public class TransformMatrix extends MemoryDataAdapter implements TripleFunction
 	 */
 	public void setMatrix(double matrix[][]) {
 		double newMatrix[] = new double[16];
-		
+
 		boolean id = true;
-		
+
 		for(int i = 0; i < matrix.length && i < 4; i++) {
 			for(int j = 0; j < matrix.length && j < 4; j++) {
 				int index = i * 4 + j;
@@ -113,15 +115,15 @@ public class TransformMatrix extends MemoryDataAdapter implements TripleFunction
 				if (newMatrix[index] != TransformMatrix.identity[i][j]) id = false;
 			}
 		}
-		
+
 		if (matrix.length < 4 || matrix[0].length < 4) id = false;
-		
+
 		this.setMem(newMatrix);
-		
+
 		this.inverted = false;
 		this.isIdentity = id;
 	}
-	
+
 	/**
 	 * This method is slow.
 	 *
@@ -159,16 +161,16 @@ public class TransformMatrix extends MemoryDataAdapter implements TripleFunction
 	public TransformMatrix multiply(double value) {
 		double m[] = toArray();
 		double newMatrix[][] = new double[4][4];
-		
+
 		for (int i = 0; i < 4; i++) {
 			for (int j = 0; j < 4; j++) {
 				newMatrix[i][j] = m[i * 4 + j] * value;
 			}
 		}
-		
+
 		return new TransformMatrix(newMatrix);
 	}
-	
+
 	/**
 	 * Multiplies the matrix represented by this {@link TransformMatrix} with the matrix
 	 * represented by the specified {@link TransformMatrix} and returns the result as a
@@ -179,7 +181,7 @@ public class TransformMatrix extends MemoryDataAdapter implements TripleFunction
 	public TransformMatrix multiply(TransformMatrix matrix) {
 		return new MatrixProduct(v(this), v(matrix)).evaluate();
 	}
-	
+
 	/**
 	 * Delegates to {@link #transformAsOffset(Vector)}.
 	 */
@@ -198,7 +200,7 @@ public class TransformMatrix extends MemoryDataAdapter implements TripleFunction
 
 	public Producer<Vector> transform(Producer<Vector> vector, int type) {
 		if (this.isIdentity) return vector;
-		
+
 		if (type == TransformMatrix.TRANSFORM_AS_LOCATION) {
 			return transformAsLocation(this, vector);
 		} else if (type == TransformMatrix.TRANSFORM_AS_OFFSET) {
@@ -210,13 +212,13 @@ public class TransformMatrix extends MemoryDataAdapter implements TripleFunction
 			throw new IllegalArgumentException("Illegal type: " + type);
 		}
 	}
-	
+
 	public double[] transform(double x, double y, double z, int type) {
 		if (this.isIdentity) return new double[] {x, y, z};
 
 		return transform(vector(x, y, z), type).get().evaluate().toArray();
 	}
-	
+
 	/**
 	 * Computes and returns the result of the vector multiplication of the matrix represented by this
 	 * TransformMatrix object and the vector represented by the specified Vector object assuming that
@@ -228,7 +230,7 @@ public class TransformMatrix extends MemoryDataAdapter implements TripleFunction
 
 		return transform(v(vector), TRANSFORM_AS_LOCATION).get().evaluate();
 	}
-	
+
 	/**
 	 * Computes and returns the result of the vector multiplication of the matrix represented
 	 * by this TransformMatrix object and the vector represented by the specified Vector object
@@ -240,7 +242,7 @@ public class TransformMatrix extends MemoryDataAdapter implements TripleFunction
 
 		return transform(v(vector), TRANSFORM_AS_OFFSET).get().evaluate();
 	}
-	
+
 	/**
 	 * Computes and returns the result of the vector multiplication of the matrix represented
 	 * by this TransformMatrix object and the vector represented by the specified Vector object
@@ -256,14 +258,14 @@ public class TransformMatrix extends MemoryDataAdapter implements TripleFunction
 	public RayProducerBase transform(Supplier<Evaluable<? extends Ray>> ray) {
 		return transform(this, ray);
 	}
-	
+
 	/**
 	 * Calculates the inverse of the matrix represented by this TransformMatrix
 	 * object and stores it for later use.
 	 */
 	public void calculateInverse() {
 		double det = 0.0;
-		
+
 		if (this.isIdentity) {
 			this.inverseMatrix = new TransformMatrix();
 		} else {
@@ -279,10 +281,10 @@ public class TransformMatrix extends MemoryDataAdapter implements TripleFunction
 		}
 
 		this.inverseTranspose = this.inverseMatrix.transpose();
-		
+
 		this.inverted = true;
 	}
-	
+
 	/**
 	 * @return  The inverse of the matrix represented by this TransformMatrix object as a
 	 *          TransformMatrix object. If this method, or the calulateInverse() method,
@@ -292,7 +294,7 @@ public class TransformMatrix extends MemoryDataAdapter implements TripleFunction
 	public TransformMatrix getInverse() {
 		if (this.inverted == false)
 			this.calculateInverse();
-		
+
 		return this.inverseMatrix;
 	}
 
@@ -318,7 +320,7 @@ public class TransformMatrix extends MemoryDataAdapter implements TripleFunction
 		matrix[2][3] = trans.getZ();
 		*/
 	}
-	
+
 	/**
 	 * Computes the determinant of the matrix represented by this TransformMatrix object and
 	 * returns the result as a double value.
@@ -339,7 +341,7 @@ public class TransformMatrix extends MemoryDataAdapter implements TripleFunction
 
 		return transposeMatrix;
 	}
-	
+
 	/**
 	 * Computes the adjoint of the matrix represented by this TransformMatrix object and
 	 * returns the result as a TransformMatrix object.
@@ -347,7 +349,7 @@ public class TransformMatrix extends MemoryDataAdapter implements TripleFunction
 	public TransformMatrix adjoint() {
 		return new MatrixAdjoint(() -> new Provider<>(this)).evaluate();
 	}
-	
+
 	/**
 	 * Converts the matrix represented by this TransformMatrix object to an upper triangle matrix and
 	 * returns the result as a TransformMatrix object.
@@ -381,7 +383,7 @@ public class TransformMatrix extends MemoryDataAdapter implements TripleFunction
 				"[ " + m[1][0] + ", " + m[1][1] + ", " + m[1][2] + ", " + m[1][3] + " ]\n" +
 				"[ " + m[2][0] + ", " + m[2][1] + ", " + m[2][2] + ", " + m[2][3] + " ]\n" +
 				"[ " + m[3][0] + ", " + m[3][1] + ", " + m[3][2] + ", " + m[3][3] + " ]";
-		
+
 		return data;
 	}
 
@@ -389,6 +391,10 @@ public class TransformMatrix extends MemoryDataAdapter implements TripleFunction
 		return new DynamicProducerForMemoryData<>(args ->
 				new TransformMatrix(false, null, 0),
 				i -> new PackedCollection<>(i, 16));
+	}
+
+	public static BiFunction<MemoryData, Integer, TransformMatrix> postprocessor() {
+		return (output, offset) -> new TransformMatrix(output, offset);
 	}
 
 	/**

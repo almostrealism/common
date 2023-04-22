@@ -25,6 +25,8 @@ import org.almostrealism.hardware.MemoryBank;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
+// Use ExpressionComputation::fixed instead
+@Deprecated
 public abstract class StaticComputationAdapter<T extends MemoryData> extends DynamicProducerComputationAdapter<MemoryData, T> {
 	private final T value;
 

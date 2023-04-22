@@ -18,15 +18,20 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.MultiExpression;
+import org.almostrealism.algebra.Pair;
+import org.almostrealism.algebra.computations.PairExpressionComputation;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.Shape;
 import org.almostrealism.collect.TraversableExpression;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.ComputerFeatures;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.BiFunction;
@@ -65,8 +70,9 @@ public class ExpressionComputation<T extends PackedCollection<?>> extends Dynami
 		return postprocessor;
 	}
 
-	public void setPostprocessor(BiFunction<MemoryData, Integer, T> postprocessor) {
+	public ExpressionComputation<T> setPostprocessor(BiFunction<MemoryData, Integer, T> postprocessor) {
 		this.postprocessor = postprocessor;
+		return this;
 	}
 
 	public List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression() {
@@ -133,5 +139,19 @@ public class ExpressionComputation<T extends PackedCollection<?>> extends Dynami
 	@Override
 	public T postProcessOutput(MemoryData output, int offset) {
 		return getPostprocessor() == null ? super.postProcessOutput(output, offset) : getPostprocessor().apply(output, offset);
+	}
+
+	public static <T extends PackedCollection<?>> ExpressionComputation<T> fixed(T value, BiFunction<MemoryData, Integer, T> postprocessor) {
+		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
+		IntStream.range(0, value.getShape().getTotalSize()).forEach(i -> comp.add(args -> {
+			String s = HardwareFeatures.ops().stringForDouble(value.getMem().toArray(value.getOffset() + i, 1)[0]);
+			if (s.contains("Infinity")) {
+				throw new IllegalArgumentException("Infinity is not supported");
+			}
+
+			return new Expression<>(Double.class, s);
+		}));
+
+		return new ExpressionComputation(comp).setPostprocessor(postprocessor);
 	}
 }
