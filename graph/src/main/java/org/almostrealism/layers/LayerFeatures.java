@@ -40,7 +40,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 public interface LayerFeatures extends CollectionFeatures {
-	boolean enableKernelLayers = true;
+	boolean enableKernelLayers = false;
 
 	default KernelLayer layer(TraversalPolicy inputShape, TraversalPolicy outputShape,
 							  KernelExpression kernel, Propagation backwards) {
@@ -130,11 +130,12 @@ public interface LayerFeatures extends CollectionFeatures {
 									c(input).enumerate(1, 3, 1)
 									.enumerate(1, 3, 1)
 									.traverse(2)
-									.map(r -> r.multiply(p(filters)))
-									.reduce(r -> r.sum()).get();
+									.expand(filterCount, v -> v.repeat(filterCount).multiply(p(filters)))
+									.traverse()
+									.reduce(v -> v.sum()).get();
 							return () -> {
 								ev.kernelEvaluate(output);
-								next.push(p(output));
+								if (next != null) next.push(p(output));
 							};
 						});
 						return ops;

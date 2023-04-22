@@ -20,6 +20,7 @@ import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.layers.CellularLayer;
+import org.almostrealism.layers.DefaultCellularLayer;
 import org.almostrealism.layers.KernelLayer;
 import org.almostrealism.layers.KernelLayerCell;
 import org.almostrealism.model.Model;
@@ -116,7 +117,7 @@ public class TrainModelTest implements TestFeatures {
 		PackedCollection<?> filter = conv.getWeights().get(0);
 		TraversalPolicy filterShape = filter.getShape();
 
-		PackedCollection<?> output = ((KernelLayerCell) conv.getForward()).getOutput();
+		PackedCollection<?> output = ((DefaultCellularLayer) conv).getOutput();
 		TraversalPolicy outputShape = output.getShape();
 
 		for (int p = 0; p < outputShape.length(0); p++) {

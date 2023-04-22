@@ -17,9 +17,11 @@
 package org.almostrealism.layers;
 
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.graph.Cell;
+import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.mem.MemoryDataCopy;
 
@@ -27,7 +29,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.function.Supplier;
 
-public class DefaultCellularLayer implements CellularLayer, Learning {
+public class DefaultCellularLayer implements CellularLayer, CollectionFeatures, Learning {
 	private TraversalPolicy outputShape;
 	private Supplier<Runnable> setup;
 	private Cell<PackedCollection<?>> forward;
@@ -35,6 +37,7 @@ public class DefaultCellularLayer implements CellularLayer, Learning {
 	private List<PackedCollection<?>> weights;
 
 	private PackedCollection<?> input;
+	private PackedCollection<?> output;
 
 	public DefaultCellularLayer(Cell<PackedCollection<?>> forward,
 								Cell<PackedCollection<?>> backward) {
@@ -68,22 +71,72 @@ public class DefaultCellularLayer implements CellularLayer, Learning {
 
 	public void init(TraversalPolicy inputShape) {
 		this.input = new PackedCollection<>(inputShape);
+		this.output = new PackedCollection<>(outputShape);
 	}
 
 	public PackedCollection<?> getInput() { return input; }
+	public PackedCollection<?> getOutput() { return output; }
 
 	@Override
 	public Supplier<Runnable> setup() { return setup; }
 
 	@Override
 	public Cell<PackedCollection<?>> getForward() {
-		return Cell.branch(forward, Cell.of((in, next) ->
-			new MemoryDataCopy(in.get()::evaluate, () -> input, input.getMemLength())
-		));
+		Cell<PackedCollection<?>> copyInput = Cell.of((in, next) ->
+				new MemoryDataCopy(in.get()::evaluate, () -> input, input.getMemLength())
+		);
+
+		return new Cell<>() {
+			@Override
+			public Supplier<Runnable> setup() {
+				return forward.setup();
+			}
+
+			@Override
+			public Supplier<Runnable> push(Producer<PackedCollection<?>> protein) {
+				OperationList op = new OperationList();
+				op.add(copyInput.push(protein));
+				op.add(forward.push(protein));
+				return op;
+			}
+
+			@Override
+			public void setReceptor(Receptor<PackedCollection<?>> r) {
+				forward.setReceptor(r);
+			}
+		};
 	}
 
 	@Override
-	public Cell<PackedCollection<?>> getBackward() { return backward; }
+	public Cell<PackedCollection<?>> getBackward() {
+		Cell<PackedCollection<?>> copyOutput = Cell.of((in, next) ->
+				new MemoryDataCopy(in.get()::evaluate, () -> output, output.getMemLength())
+		);
+
+		backward.setReceptor(copyOutput);
+
+		return new Cell<>() {
+			private Receptor<PackedCollection<?>> r;
+
+			@Override
+			public Supplier<Runnable> setup() {
+				return backward.setup();
+			}
+
+			@Override
+			public Supplier<Runnable> push(Producer<PackedCollection<?>> protein) {
+				OperationList op = new OperationList();
+				op.add(backward.push(protein));
+				if (r != null) op.add(r.push(p(output)));
+				return op;
+			}
+
+			@Override
+			public void setReceptor(Receptor<PackedCollection<?>> r) {
+				this.r = r;
+			}
+		};
+	}
 
 	@Override
 	public TraversalPolicy getOutputShape() { return outputShape; }
