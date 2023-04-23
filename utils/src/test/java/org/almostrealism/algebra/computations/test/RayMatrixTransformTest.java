@@ -17,6 +17,7 @@
 package org.almostrealism.algebra.computations.test;
 
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.geometry.computations.RayExpressionComputation;
 import org.almostrealism.geometry.Ray;
@@ -34,7 +35,7 @@ public class RayMatrixTransformTest implements TestFeatures {
 		});
 	}
 
-	protected RayProducer getRay1() {
+	protected ExpressionComputation<Ray> getRay1() {
 		return ray(1.0, 2.0, 3.0,4.0, 5.0, 6.0);
 	}
 

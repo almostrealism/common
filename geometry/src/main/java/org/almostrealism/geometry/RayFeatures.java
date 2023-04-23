@@ -24,8 +24,8 @@ import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.algebra.VectorProducerBase;
 import org.almostrealism.algebra.computations.ScalarExpressionComputation;
 import org.almostrealism.algebra.computations.VectorExpressionComputation;
+import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.geometry.computations.RayExpressionComputation;
-import org.almostrealism.geometry.computations.StaticRayComputation;
 import io.almostrealism.relation.Evaluable;
 
 import java.util.ArrayList;
@@ -37,13 +37,13 @@ import java.util.stream.IntStream;
 
 public interface RayFeatures extends VectorFeatures {
 
-	default RayProducer v(Ray value) { return value(value); }
+	default ExpressionComputation<Ray> v(Ray value) { return value(value); }
 
-	default RayProducer value(Ray value) {
-		return new StaticRayComputation(value);
+	default ExpressionComputation<Ray> value(Ray value) {
+		return ExpressionComputation.fixed(value, Ray.postprocessor());
 	}
 
-	default RayProducer ray(double x, double y, double z, double dx, double dy, double dz) {
+	default ExpressionComputation<Ray> ray(double x, double y, double z, double dx, double dy, double dz) {
 		return value(new Ray(new Vector(x, y, z), new Vector(dx, dy, dz)));
 	}
 
@@ -54,7 +54,7 @@ public interface RayFeatures extends VectorFeatures {
 		return new RayExpressionComputation(comp, (Supplier) origin, (Supplier) direction);
 	}
 
-	default RayProducer ray(IntFunction<Double> values) {
+	default ExpressionComputation<Ray> ray(IntFunction<Double> values) {
 		return ray(values.apply(0), values.apply(1), values.apply(2),
 				values.apply(3), values.apply(4), values.apply(5));
 	}

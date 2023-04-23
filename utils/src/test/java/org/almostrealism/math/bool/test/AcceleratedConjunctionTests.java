@@ -63,7 +63,7 @@ public class AcceleratedConjunctionTests extends AcceleratedConditionalStatement
 	}
 
 	protected AcceleratedComputationEvaluable<Scalar> dotProductConjunction(Producer<Ray> r) {
-		return conjunction(ray(i -> Math.random()).oDotd(), v(1), oDotd(v(Ray.shape(), 0)), v(1));
+		return conjunction(oDotd(ray(i -> Math.random())), v(1), oDotd(v(Ray.shape(), 0)), v(1));
 	}
 
 	@Test

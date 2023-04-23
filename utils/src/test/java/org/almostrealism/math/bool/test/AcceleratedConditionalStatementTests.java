@@ -64,7 +64,7 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 
 	@Test
 	public void compactWithDotProduct() {
-		Evaluable<Scalar> lt = lessThan(ray(i -> Math.random()).oDotd(), oDotd(v(Ray.shape(), 0))).get();
+		Evaluable<Scalar> lt = lessThan(oDotd(ray(i -> Math.random())), oDotd(v(Ray.shape(), 0))).get();
 		if (TestSettings.enableArgumentCountAssertions)
 			Assert.assertEquals(2, ((OperationAdapter) lt).getArgsCount());
 
@@ -75,7 +75,7 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 
 	@Test
 	public void compactWithCrossProduct() {
-		LessThan<Scalar> lt1 = lessThan(ray(i -> Math.random()).oDotd(), oDotd(v(Ray.shape(), 0)));
+		LessThan<Scalar> lt1 = lessThan(oDotd(ray(i -> Math.random())), oDotd(v(Ray.shape(), 0)));
 		AcceleratedConditionalStatementScalar lt2 = vector(i -> Math.random()).crossProduct(v(Vector.shape(), 1))
 														.length().lessThan(lt1, v(1), v(2));
 

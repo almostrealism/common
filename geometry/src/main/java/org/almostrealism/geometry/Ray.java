@@ -29,6 +29,7 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.MemoryBank;
 
+import java.util.function.BiFunction;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
@@ -223,5 +224,9 @@ public class Ray extends PackedCollection<Ray> implements RayFeatures, Cloneable
 		return new PackedCollection<>(new TraversalPolicy(count, 6), 1, delegateSpec ->
 				new Ray(delegateSpec.getDelegate(), delegateSpec.getOffset()),
 				delegate, delegateOffset);
+	}
+
+	public static BiFunction<MemoryData, Integer, Ray> postprocessor() {
+		return (output, offset) -> new Ray(output, offset);
 	}
 }

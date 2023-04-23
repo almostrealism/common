@@ -16,11 +16,11 @@
 
 package org.almostrealism.geometry.test;
 
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorProducerBase;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.geometry.computations.StaticRayComputation;
-import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
@@ -41,10 +41,9 @@ public class RayTest implements TestFeatures {
 
 	@Test
 	public void staticComputation() {
-		StaticRayComputation comp = new StaticRayComputation(
-													new Ray(new Vector(1.0, 2.0, 3.0),
+		Producer<Ray> comp = value(new Ray(new Vector(1.0, 2.0, 3.0),
 															new Vector(4.0, 5.0, 6.0)));
-		AcceleratedComputationEvaluable<Ray> ev = (AcceleratedComputationEvaluable<Ray>) comp.get();
+		Evaluable<Ray> ev = comp.get();
 
 		Ray r = ev.evaluate();
 		System.out.println(r);
