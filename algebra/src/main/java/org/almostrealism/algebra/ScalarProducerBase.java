@@ -84,8 +84,6 @@ public interface ScalarProducerBase extends ProducerComputation<Scalar>, Kerneli
 		return divide(new Scalar(value));
 	}
 
-	default ScalarExpressionComputation minus() { return multiply(-1.0); }
-
 	default ScalarProducerBase pow(ScalarProducerBase exponent) { return pow(this, exponent); }
 
 	default ScalarProducerBase pow(Scalar exp) { return pow(this, exp); }

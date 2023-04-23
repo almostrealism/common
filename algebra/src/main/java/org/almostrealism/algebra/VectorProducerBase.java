@@ -72,10 +72,6 @@ public interface VectorProducerBase extends ProducerComputation<Vector>, Kerneli
 		return scalarMultiply(new Scalar(operand));
 	}
 
-	default DynamicExpressionComputation<Vector> minus() {
-		return minus(this);
-	}
-
 	default ScalarProducerBase length() {
 		return length(this);
 	}

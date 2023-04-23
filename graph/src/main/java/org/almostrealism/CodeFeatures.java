@@ -33,7 +33,6 @@ import org.almostrealism.algebra.ScalarProducerBase;
 import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.algebra.computations.Switch;
 import org.almostrealism.algebra.computations.StaticScalarBankComputation;
-import org.almostrealism.algebra.computations.StaticVectorComputation;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.KernelExpression;
 import org.almostrealism.collect.PackedCollection;

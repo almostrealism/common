@@ -24,7 +24,6 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 
 import org.almostrealism.algebra.computations.ScalarExpressionComputation;
-import org.almostrealism.algebra.computations.StaticVectorComputation;
 import org.almostrealism.algebra.computations.VectorExpressionComputation;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;

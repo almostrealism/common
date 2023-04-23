@@ -123,7 +123,7 @@ public class Plane extends AbstractSurface implements ParticleGroup, RayFeatures
 			else
 				n = null;
 
-			normal = new ImmutableVector(n); // This causes us to avoid infinite regress
+			normal = value(n); // This causes us to avoid infinite regress
 
 			TransformMatrix m = getTransform(true);
 
@@ -151,14 +151,14 @@ public class Plane extends AbstractSurface implements ParticleGroup, RayFeatures
 
 		// tr = new RayFromVectors(new RayOrigin(tr), new RayDirection(tr).normalize());
 
-		ScalarProducerBase s;
+		Producer<Scalar> s;
 
 		if (type == Plane.XY) {
-			s = origin(tr).z().minus().divide(direction(tr).z());
+			s = scalar(minus(origin(tr).z()).divide(direction(tr).z()));
 		} else if (type == Plane.XZ) {
-			s = origin(tr).y().minus().divide(direction(tr).y());
+			s = scalar(minus(origin(tr).y()).divide(direction(tr).y()));
 		} else if (type == Plane.YZ) {
-			s = origin(tr).x().minus().divide(direction(tr).x());
+			s = scalar(minus(origin(tr).x()).divide(direction(tr).x()));
 		} else {
 			throw new IllegalArgumentException(String.valueOf(type));
 		}

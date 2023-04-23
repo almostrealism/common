@@ -22,6 +22,7 @@ import org.almostrealism.bool.AcceleratedConditionalStatementCollection;
 import org.almostrealism.bool.GreaterThanCollection;
 import org.almostrealism.bool.LessThanCollection;
 import org.almostrealism.collect.computations.DynamicCollectionProducerComputationAdapter;
+import org.almostrealism.collect.computations.DynamicExpressionComputation;
 import org.almostrealism.collect.computations.ExpressionComputation;
 
 import java.util.function.Function;
@@ -75,6 +76,10 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 
 	default <T extends PackedCollection<?>> ExpressionComputation<T> pow(Producer<T> value) {
 		return pow((Producer) this, value);
+	}
+
+	default <T extends PackedCollection<?>> DynamicExpressionComputation<T> minus() {
+		return minus((Producer) this);
 	}
 
 	default <T extends PackedCollection<?>> ExpressionComputation<T> sum() {

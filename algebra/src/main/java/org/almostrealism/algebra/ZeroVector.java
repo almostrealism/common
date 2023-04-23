@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,18 +17,13 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 
-// TODO  This should produce PackedCollection
-public class ZeroVector extends ImmutableVector {
-	private static ZeroVector local = new ZeroVector();
+public class ZeroVector {
 
-	private Scalar zero = new Scalar(0.0);
+	private ZeroVector() { }
 
-	public ZeroVector() {
-		super(0, 0, 0);
-	}
-
-	public static ZeroVector getInstance() { return local; }
+	public static Producer<Vector> getInstance() { return VectorFeatures.getInstance().vector(0, 0, 0); }
 
 	public static Evaluable<Vector> getEvaluable() { return getInstance().get(); }
 }

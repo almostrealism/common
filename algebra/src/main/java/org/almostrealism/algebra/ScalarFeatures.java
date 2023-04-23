@@ -17,14 +17,18 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.expression.*;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.computations.ScalarChoice;
 import org.almostrealism.algebra.computations.ScalarExpressionComputation;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.algebra.computations.VectorExpressionComputation;
 import org.almostrealism.bool.AcceleratedConditionalStatementScalar;
 import org.almostrealism.bool.GreaterThanScalar;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.Shape;
 import org.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.computations.DynamicCollectionProducerComputationAdapter;
 import org.almostrealism.collect.computations.DynamicExpressionComputation;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.hardware.HardwareFeatures;
@@ -34,6 +38,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
@@ -53,6 +58,24 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 	default ScalarExpressionComputation v(Scalar value) { return value(value); }
 
 	default ScalarExpressionComputation scalar(double value) { return value(new Scalar(value)); }
+
+	default ExpressionComputation<Scalar> scalar(DynamicCollectionProducerComputationAdapter<?, ?> value) {
+		if (value instanceof ExpressionComputation) {
+			if (((ExpressionComputation) value).getExpressions().size() != 2) throw new IllegalArgumentException();
+			return new ScalarExpressionComputation(((ExpressionComputation) value).expression(),
+					value.getInputs().subList(1, value.getInputs().size()).toArray(Supplier[]::new));
+		} else if (value instanceof Shape) {
+			TraversalPolicy shape = ((Shape) value).getShape();
+
+			List<Function<List<MultiExpression<Double>>, Expression<Double>>> expressions =
+					IntStream.range(0, shape.getSize()).mapToObj(i -> (Function<List<MultiExpression<Double>>, Expression<Double>>)
+									np -> np.get(1).getValue(i))
+							.collect(Collectors.toList());
+			return new ScalarExpressionComputation(expressions, (Supplier) value);
+		} else {
+			throw new UnsupportedOperationException();
+		}
+	}
 
 	default ScalarExpressionComputation toScalar(Supplier<Evaluable<? extends PackedCollection<?>>> value) {
 		if (value == null) return null;

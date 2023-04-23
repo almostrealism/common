@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,15 +17,12 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 
-public class UnityVector extends ImmutableVector {
-	private static UnityVector local = new UnityVector();
+public class UnityVector {
+	private UnityVector() { }
 
-	public UnityVector() {
-		super(1, 1, 1);
-	}
-
-	public static UnityVector getInstance() { return local; }
+	public static Producer<Vector> getInstance() { return VectorFeatures.getInstance().vector(1.0, 1.0, 1.0); }
 
 	public static Evaluable<Vector> getEvaluable() {
 		return getInstance().get();
