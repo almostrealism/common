@@ -62,27 +62,27 @@ public class VectorMathTest implements TestFeatures {
 
 	@Test
 	public void productFromVectors1() {
-		VectorProducerBase a = vector(1.0, 2.0, 3.0);
-		VectorProducerBase b = vector(4.0, 5.0, 6.0);
-		ScalarProducerBase s = a.y().multiply(b.z());
+		Producer<Vector> a = vector(1.0, 2.0, 3.0);
+		Producer<Vector> b = vector(4.0, 5.0, 6.0);
+		ScalarProducerBase s = y(a).multiply(z(b));
 		Evaluable<Scalar> so = s.get();
 		// Assert.assertEquals(1, so.getArgsCount());
 	}
 
 	@Test
 	public void productFromVectors2() {
-		VectorProducerBase a = vector(1.0, 2.0, 3.0);
-		VectorProducerBase b = vector(4.0, 5.0, 6.0);
-		ScalarProducerBase s = a.y().multiply(b.z()).add(1);
+		Producer<Vector> a = vector(1.0, 2.0, 3.0);
+		Producer<Vector> b = vector(4.0, 5.0, 6.0);
+		ScalarProducerBase s = y(a).multiply(z(b)).add(1);
 		KernelizedEvaluable<Scalar> so = s.get();
 		Assert.assertEquals(1, so.getArgsCount());
 	}
 
 	@Test
 	public void productFromVectors3() {
-		VectorProducerBase a = vector(1.0, 2.0, 3.0);
-		VectorProducerBase b = vector(4.0, 5.0, 6.0);
-		ScalarProducerBase s = a.y().multiply(b.z()).subtract(1);
+		Producer<Vector> a = vector(1.0, 2.0, 3.0);
+		Producer<Vector> b = vector(4.0, 5.0, 6.0);
+		ScalarProducerBase s = y(a).multiply(z(b)).subtract(1);
 		KernelizedEvaluable<Scalar> so = s.get();
 		Assert.assertEquals(1, so.getArgsCount());
 	}
@@ -90,8 +90,8 @@ public class VectorMathTest implements TestFeatures {
 	@Test
 	public void productDifference() {
 		HardwareOperator.verboseLog(() -> {
-			VectorProducerBase a = vector(1.0, 2.0, 3.0);
-			VectorProducerBase b = vector(4.0, 5.0, 6.0);
+			Producer<Vector> a = vector(1.0, 2.0, 3.0);
+			Producer<Vector> b = vector(4.0, 5.0, 6.0);
 			ScalarProducerBase s = y(a).multiply(z(b))
 					.subtract(z(a).multiply(y(b)));
 			KernelizedEvaluable<Scalar> so = s.get();
@@ -101,7 +101,7 @@ public class VectorMathTest implements TestFeatures {
 	}
 
 	protected VectorExpressionComputation crossProduct(Producer<Vector> v) {
-		return vector(0.0, 0.0, -1.0).crossProduct(v);
+		return crossProduct(vector(0.0, 0.0, -1.0), v);
 	}
 
 	@Test

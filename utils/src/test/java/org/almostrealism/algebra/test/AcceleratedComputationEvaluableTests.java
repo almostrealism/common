@@ -1,6 +1,7 @@
 package org.almostrealism.algebra.test;
 
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarProducerBase;
 import org.almostrealism.algebra.Vector;
@@ -14,7 +15,7 @@ import org.junit.Test;
 public class AcceleratedComputationEvaluableTests implements HardwareFeatures, CodeFeatures {
 	@Test
 	public void staticProducer() {
-		VectorProducer res = vector(0.0, 1.0, 2.0);
+		Producer<Vector> res = vector(0.0, 1.0, 2.0);
 		Vector v = res.get().evaluate();
 		System.out.println(v);
 		assert v.getX() == 0.0;

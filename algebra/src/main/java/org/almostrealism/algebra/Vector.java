@@ -332,7 +332,8 @@ public class Vector extends PackedCollection<Vector> implements Triple, VectorFe
 	}
 
 	public void normalize() {
-		v(this).normalize().get().evaluate();
+		// TODO  This should leverage a reusable Evaluable that takes an argument
+		normalize(v(this)).get().evaluate();
 	}
 
 	/** This is the fastest way to get access to the data in this {@link Vector}. */

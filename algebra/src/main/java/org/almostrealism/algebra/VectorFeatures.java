@@ -42,31 +42,21 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-/**
- * {@link VectorEvaluable} is implemented by any class that can produce an {@link Vector} object
- * given some array of input objects.
- *
- * @author  Michael Murray
- */
 public interface VectorFeatures extends CollectionFeatures, HardwareFeatures {
 	Scalar half = new Scalar(0.5);
 	Scalar two = new Scalar(2.0);
 
-	static VectorProducer of(Vector value) {
-		return new StaticVectorComputation(value);
+	default ExpressionComputation<Vector> v(Vector value) { return value(value); }
+
+	default ExpressionComputation<Vector> value(Vector value) {
+		return ExpressionComputation.fixed(value, Vector.postprocessor());
 	}
 
-	default VectorProducer v(Vector value) { return value(value); }
+	default ExpressionComputation<Vector> vector(double x, double y, double z) { return value(new Vector(x, y, z)); }
 
-	default VectorProducer value(Vector value) {
-		return new StaticVectorComputation(value);
-	}
+	default ExpressionComputation<Vector> vector(double v[]) { return vector(v[0], v[1], v[2]); }
 
-	default VectorProducer vector(double x, double y, double z) { return value(new Vector(x, y, z)); }
-
-	default VectorProducer vector(double v[]) { return vector(v[0], v[1], v[2]); }
-
-	default VectorProducer vector(IntFunction<Double> values) {
+	default ExpressionComputation<Vector> vector(IntFunction<Double> values) {
 		return vector(values.apply(0), values.apply(1), values.apply(2));
 	}
 

@@ -66,7 +66,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 		ExpressionComputation<PackedCollection<Vector>> triangle = triangleFeat.triangle(Input.value(Vector.shape(), 0));
 		dataProducer = triangle.get();
 
-		intersectAt = new TriangleIntersectAt(Input.value(Vector.shape(), 1),
+		intersectAt = TriangleIntersectAt.construct(Input.value(Vector.shape(), 1),
 				Input.value(Ray.shape(), 0, -1)).get();
 	}
 

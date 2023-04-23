@@ -16,8 +16,11 @@
 
 package org.almostrealism.graph.mesh;
 
+import io.almostrealism.relation.Producer;
+import org.almostrealism.Ops;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.algebra.ScalarProducerBase;
+import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorProducerBase;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Intersection;
@@ -31,46 +34,46 @@ import io.almostrealism.relation.Evaluable;
 import java.util.function.Supplier;
 
 public class TriangleIntersectAt extends LessThanScalar {
-	public TriangleIntersectAt(Supplier<Evaluable<? extends PackedCollection<?>>> t, Supplier<Evaluable<? extends Ray>> r) {
-		this(TriangleFeatures.getInstance().abc(t), TriangleFeatures.getInstance().def(t), TriangleFeatures.getInstance().jkl(t),
+	private static TriangleIntersectAt create(Supplier<Evaluable<? extends PackedCollection<?>>> t, Supplier<Evaluable<? extends Ray>> r) {
+		return create(TriangleFeatures.getInstance().abc(t), TriangleFeatures.getInstance().def(t), TriangleFeatures.getInstance().jkl(t),
 				TriangleFeatures.getInstance().normal(t), RayFeatures.getInstance().origin(r), RayFeatures.getInstance().direction(r));
 	}
 
-	protected TriangleIntersectAt(VectorProducerBase abc, VectorProducerBase def, VectorProducerBase jkl,
+	private static TriangleIntersectAt create(VectorProducerBase abc, VectorProducerBase def, VectorProducerBase jkl,
 								  VectorProducerBase normal, VectorProducerBase origin, VectorProducerBase direction) {
-		this(abc, def, jkl, normal, origin, direction, s(jkl, origin));
+		return create(abc, def, jkl, normal, origin, direction, s(jkl, origin));
 	}
 
-	protected TriangleIntersectAt(VectorProducerBase abc, VectorProducerBase def, VectorProducerBase jkl,
+	private static TriangleIntersectAt create(VectorProducerBase abc, VectorProducerBase def, VectorProducerBase jkl,
 								  VectorProducerBase normal, VectorProducerBase origin, VectorProducerBase direction,
-								  VectorProducerBase s) {
-		this(abc, def, jkl, normal, origin, direction, f(abc, h(def, direction)), q(abc, s), s);
+								  Producer<Vector> s) {
+		return create(abc, def, jkl, normal, origin, direction, f(abc, h(def, direction)), q(abc, s), s);
 	}
 
-	protected TriangleIntersectAt(VectorProducerBase abc, VectorProducerBase def, VectorProducerBase jkl,
+	private static TriangleIntersectAt create(VectorProducerBase abc, VectorProducerBase def, VectorProducerBase jkl,
 								  VectorProducerBase normal, VectorProducerBase origin, VectorProducerBase direction,
-								  ScalarProducerBase f, VectorProducerBase q, VectorProducerBase s) {
-		this(abc, def, jkl, normal, origin, direction, f, q, s, v(direction, f.pow(-1.0), q));
+								  ScalarProducerBase f, VectorProducerBase q, Producer<Vector> s) {
+		return createv(abc, def, jkl, normal, origin, direction, f, q, s, v(direction, f.pow(-1.0), q));
 	}
 
-	protected TriangleIntersectAt(VectorProducerBase abc, VectorProducerBase def, VectorProducerBase jkl,
+	private static TriangleIntersectAt createv(VectorProducerBase abc, VectorProducerBase def, VectorProducerBase jkl,
 								  VectorProducerBase normal, VectorProducerBase origin, VectorProducerBase direction,
-								  ScalarProducerBase f, VectorProducerBase q, VectorProducerBase s, ScalarProducerBase v) {
-		this(abc, def, jkl, normal, origin, direction, f, q, s, u(s, h(def, direction), f.pow(-1.0)), v);
+								  ScalarProducerBase f, VectorProducerBase q, Producer<Vector> s, ScalarProducerBase v) {
+		return createu(abc, def, jkl, normal, origin, direction, f, q, s, u(s, h(def, direction), f.pow(-1.0)), v);
 	}
 
-	protected TriangleIntersectAt(VectorProducerBase abc, VectorProducerBase def, VectorProducerBase jkl,
+	private static TriangleIntersectAt createu(VectorProducerBase abc, VectorProducerBase def, VectorProducerBase jkl,
 								  VectorProducerBase normal, VectorProducerBase origin, VectorProducerBase direction,
-								  ScalarProducerBase f, VectorProducerBase q, VectorProducerBase s,
+								  ScalarProducerBase f, VectorProducerBase q, Producer<Vector> s,
 								  ScalarProducerBase u, ScalarProducerBase v) {
-		this(abc, def, jkl, normal, origin, direction, f, q, s, u, v, t(def, f.pow(-1.0), q));
+		return createt(abc, def, jkl, normal, origin, direction, f, q, s, u, v, t(def, f.pow(-1.0), q));
 	}
 
-	protected TriangleIntersectAt(VectorProducerBase abc, VectorProducerBase def, VectorProducerBase jkl,
+	private static TriangleIntersectAt createt(VectorProducerBase abc, VectorProducerBase def, VectorProducerBase jkl,
 								  VectorProducerBase normal, VectorProducerBase origin, VectorProducerBase direction,
-								  ScalarProducerBase f, VectorProducerBase q, VectorProducerBase s,
+								  ScalarProducerBase f, VectorProducerBase q, Producer<Vector> s,
 								  ScalarProducerBase u, ScalarProducerBase v, ScalarProducerBase t) {
-		this(abc, def, jkl, normal, origin, direction, f, q, s,
+		return new TriangleIntersectAt(abc, def, jkl, normal, origin, direction, f, q, s,
 				new AcceleratedConjunctionScalar(
 						t, ScalarFeatures.getInstance().scalar(-1.0),
 						u.greaterThan(0.0, true),
@@ -81,7 +84,7 @@ public class TriangleIntersectAt extends LessThanScalar {
 
 	protected TriangleIntersectAt(VectorProducerBase abc, VectorProducerBase def, VectorProducerBase jkl,
 								  VectorProducerBase normal, VectorProducerBase origin, VectorProducerBase direction,
-								  ScalarProducerBase f, VectorProducerBase q, VectorProducerBase s,
+								  ScalarProducerBase f, VectorProducerBase q, Producer<Vector> s,
 								  AcceleratedConjunctionScalar trueValue) {
 		super(f, ScalarFeatures.getInstance().scalar(-Intersection.e), trueValue,
 				new GreaterThanScalar(f, ScalarFeatures.getInstance().scalar(Intersection.e), trueValue,
@@ -89,33 +92,33 @@ public class TriangleIntersectAt extends LessThanScalar {
 	}
 
 	// TODO  Make private
-	public static VectorProducerBase h(VectorProducerBase def, VectorProducerBase direction) {
-		return direction.crossProduct(def);
+	public static VectorProducerBase h(Producer<Vector> def, Producer<Vector> direction) {
+		return Ops.ops().crossProduct(direction, def);
 	}
 
 	// TODO  Make private
-	public static ScalarProducerBase f(VectorProducerBase abc, VectorProducerBase h) {
-		return abc.dotProduct(h);
+	public static ScalarProducerBase f(Producer<Vector> abc, VectorProducerBase h) {
+		return Ops.ops().dotProduct(abc, h);
 	}
 
 	// TODO  Make private
-	public static VectorProducerBase s(VectorProducerBase jkl, VectorProducerBase origin) {
-		return origin.subtract(jkl);
+	public static Producer<Vector> s(Producer<Vector> jkl, Producer<Vector> origin) {
+		return Ops.ops().subtract(origin, jkl);
 	}
 
 	// TODO  Make private
-	public static ScalarProducerBase u(VectorProducerBase s, VectorProducerBase h, ScalarProducerBase f) {
-		return f.multiply(s.dotProduct(h));
+	public static ScalarProducerBase u(Producer<Vector> s, Producer<Vector> h, ScalarProducerBase f) {
+		return f.multiply(Ops.ops().dotProduct(s, h));
 	}
 
 	// TODO  Make private
-	public static VectorProducerBase q(VectorProducerBase abc, VectorProducerBase s) {
-		return s.crossProduct(abc);
+	public static VectorProducerBase q(Producer<Vector> abc, Producer<Vector> s) {
+		return Ops.ops().crossProduct(s, abc);
 	}
 
 	// TODO  Make private
-	public static ScalarProducerBase v(VectorProducerBase direction, ScalarProducerBase f, VectorProducerBase q) {
-		return f.multiply(direction.dotProduct(q));
+	public static ScalarProducerBase v(Producer<Vector> direction, ScalarProducerBase f, VectorProducerBase q) {
+		return f.multiply(Ops.ops().dotProduct(direction, q));
 	}
 
 	private static ScalarProducerBase t(VectorProducerBase def, ScalarProducerBase f, VectorProducerBase q) {
@@ -123,6 +126,6 @@ public class TriangleIntersectAt extends LessThanScalar {
 	}
 
 	public static TriangleIntersectAt construct(Supplier<Evaluable<? extends PackedCollection<?>>> t, Supplier<Evaluable<? extends Ray>> r) {
-		return new TriangleIntersectAt(t, r);
+		return create(t, r);
 	}
 }

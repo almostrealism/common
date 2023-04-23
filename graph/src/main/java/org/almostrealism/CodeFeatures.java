@@ -30,6 +30,7 @@ import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarBankFeatures;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.algebra.ScalarProducerBase;
+import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.algebra.computations.Switch;
 import org.almostrealism.algebra.computations.StaticScalarBankComputation;
 import org.almostrealism.algebra.computations.StaticVectorComputation;
@@ -130,7 +131,7 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 		} else if (v instanceof Pair) {
 			return (ProducerComputation<T>) PairFeatures.getInstance().value((Pair) v);
 		} else if (v instanceof Vector) {
-			return (ProducerComputation<T>) new StaticVectorComputation((Vector) v);
+			return (ProducerComputation<T>) VectorFeatures.getInstance().value((Vector) v);
 		} else if (v instanceof Ray) {
 			return (ProducerComputation<T>) RayFeatures.getInstance().value((Ray) v);
 		} else if (v instanceof TransformMatrix) {

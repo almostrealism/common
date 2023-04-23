@@ -52,21 +52,21 @@ public class TriangleDataTest implements TestFeatures {
 	public void edges() {
 		PackedCollection<PackedCollection<Vector>> points = points();
 
-		VectorProducerBase edge1 = subtract(v(points.get(0).get(1)), v(points.get(0).get(0)));
+		Producer<Vector> edge1 = vector(subtract(v(points.get(0).get(1)), v(points.get(0).get(0))));
 		Vector value = edge1.get().evaluate();
 		System.out.println(value);
 		Assert.assertEquals(-1, value.getX(), Math.pow(10, -10));
 		Assert.assertEquals(-2, value.getY(), Math.pow(10, -10));
 		Assert.assertEquals(0, value.getZ(), Math.pow(10, -10));
 
-		VectorProducerBase edge2 = subtract(v(points.get(0).get(2)), v(points.get(0).get(0)));
+		Producer<Vector> edge2 = vector(subtract(v(points.get(0).get(2)), v(points.get(0).get(0))));
 		value = edge2.get().evaluate();
 		System.out.println(value);
 		Assert.assertEquals(1, value.getX(), Math.pow(10, -10));
 		Assert.assertEquals(-2, value.getY(), Math.pow(10, -10));
 		Assert.assertEquals(0, value.getZ(), Math.pow(10, -10));
 
-		value = vector(0.0, 0.0, -1.0).crossProduct(edge2).get().evaluate();
+		value = crossProduct(vector(0.0, 0.0, -1.0), edge2).get().evaluate();
 		System.out.println(value);
 		Assert.assertEquals(-2, value.getX(), Math.pow(10, -10));
 		Assert.assertEquals(-1, value.getY(), Math.pow(10, -10));

@@ -3,6 +3,7 @@ package org.almostrealism.hardware.test;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.expression.Sum;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Vector;
@@ -22,10 +23,10 @@ import java.util.function.Function;
 public class AcceleratedComputationOperationTest implements HardwareFeatures, TestFeatures {
 	@Test
 	public void sum() {
-		VectorProducer v = vector(1.0, 2.0, 3.0);
+		Producer<Vector> v = vector(1.0, 2.0, 3.0);
 		Producer<Vector> in = Input.value(Vector.shape(), 0);
 
-		AcceleratedComputationEvaluable<Vector> s = (AcceleratedComputationEvaluable) compileProducer(add(v, in));
+		Evaluable<Vector> s = compileProducer(add(v, in));
 	}
 
 	@Test

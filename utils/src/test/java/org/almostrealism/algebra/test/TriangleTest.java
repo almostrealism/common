@@ -123,7 +123,7 @@ public class TriangleTest implements CodeFeatures {
 		Ray in = ray(0.0, 0.0, 0.0, 0.0, 0.0, -1.0).get().evaluate();
 		PackedCollection<?> td = triangle();
 
-		TriangleIntersectAt intersectAt = new TriangleIntersectAt(Input.value(shape(4, 3), 1),
+		TriangleIntersectAt intersectAt = TriangleIntersectAt.construct(Input.value(shape(4, 3), 1),
 				Input.value(Ray.shape(), 0, -1));
 
 		GreaterThanScalar gts = (GreaterThanScalar) (Supplier) intersectAt.getInputs().get(4);
