@@ -22,8 +22,8 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.color.computations.RGBExpressionComputation;
-import org.almostrealism.color.computations.StaticRGBComputation;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -33,13 +33,9 @@ import java.util.stream.IntStream;
 
 public interface RGBFeatures extends ScalarFeatures {
 
-	static RGBProducer of(RGB value) {
-		return new StaticRGBComputation(value);
-	}
+	default ExpressionComputation<RGB> v(RGB value) { return value(value); }
 
-	default RGBProducer v(RGB value) { return value(value); }
-
-	default RGBProducer rgb(double r, double g, double b) { return value(new RGB(r, g, b)); }
+	default ExpressionComputation<RGB> rgb(double r, double g, double b) { return value(new RGB(r, g, b)); }
 
 	default RGBProducer rgb(Supplier<Evaluable<? extends Scalar>> r, Supplier<Evaluable<? extends Scalar>> g, Supplier<Evaluable<? extends Scalar>> b) {
 		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
@@ -51,8 +47,11 @@ public interface RGBFeatures extends ScalarFeatures {
 
 	default RGBProducer rgb(double v) { return cfromScalar(v); }
 
-	default RGBProducer value(RGB value) {
-		return new StaticRGBComputation(value);
+	default ExpressionComputation<RGB> white() { return rgb(1.0, 1.0, 1.0); }
+	default ExpressionComputation<RGB> black() { return rgb(0.0, 0.0, 0.0); }
+
+	default ExpressionComputation<RGB> value(RGB value) {
+		return ExpressionComputation.fixed(value, RGB.postprocessor());
 	}
 
 	default RGBProducer cfromScalar(Supplier<Evaluable<? extends Scalar>> value) {

@@ -62,8 +62,9 @@ public class ExpressionComputation<T extends PackedCollection<?>> extends Dynami
 		this.expression = expression;
 	}
 
-	public void setShortCircuit(Evaluable<T> shortCircuit) {
+	public ExpressionComputation<T> setShortCircuit(Evaluable<T> shortCircuit) {
 		this.shortCircuit = shortCircuit;
+		return this;
 	}
 
 	public BiFunction<MemoryData, Integer, T> getPostprocessor() {
@@ -141,6 +142,10 @@ public class ExpressionComputation<T extends PackedCollection<?>> extends Dynami
 		return getPostprocessor() == null ? super.postProcessOutput(output, offset) : getPostprocessor().apply(output, offset);
 	}
 
+	public static <T extends PackedCollection<?>> ExpressionComputation<T> fixed(T value) {
+		return fixed(value, null);
+	}
+
 	public static <T extends PackedCollection<?>> ExpressionComputation<T> fixed(T value, BiFunction<MemoryData, Integer, T> postprocessor) {
 		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
 		IntStream.range(0, value.getShape().getTotalSize()).forEach(i -> comp.add(args -> {
@@ -152,6 +157,10 @@ public class ExpressionComputation<T extends PackedCollection<?>> extends Dynami
 			return new Expression<>(Double.class, s);
 		}));
 
-		return new ExpressionComputation(comp).setPostprocessor(postprocessor);
+		return new ExpressionComputation(comp).setPostprocessor(postprocessor).setShortCircuit(args -> {
+			PackedCollection v = new PackedCollection(value.getShape());
+			v.setMem(value.toArray(0, value.getMemLength()));
+			return postprocessor == null ? v : postprocessor.apply(v, 0);
+		});
 	}
 }

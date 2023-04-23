@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,9 +16,11 @@
 
 package org.almostrealism.color.computations;
 
+import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.color.DynamicRGBProducer;
 import org.almostrealism.color.RGB;
+import org.almostrealism.color.RGBFeatures;
 import org.almostrealism.color.RGBProducer;
 import org.almostrealism.hardware.KernelizedEvaluable;
 
@@ -28,22 +30,22 @@ import org.almostrealism.hardware.KernelizedEvaluable;
  * @author Michael Murray
  */
 public class RandomColorGenerator extends ColorProducerAdapter {
- 	private RGBProducer baseRGB, offsetRGB;
+ 	private Producer<RGB> baseRGB, offsetRGB;
  
 	public RandomColorGenerator() {
-		this(RGBBlack.getInstance(), RGBWhite.getInstance());
+		this(RGBFeatures.getInstance().black(), RGBFeatures.getInstance().white());
 	}
 	
-	public RandomColorGenerator(RGBProducer baseRGB, RGBProducer offsetRGB) {
+	public RandomColorGenerator(Producer<RGB> baseRGB, Producer<RGB> offsetRGB) {
 		this.baseRGB = baseRGB;
 		this.offsetRGB = offsetRGB;
 	}
 	
-	public void setBaseRGB(RGBProducer base) { this.baseRGB = base; }
-	public void setOffsetRGB(RGBProducer offset) { this.offsetRGB = offset; }
+	public void setBaseRGB(Producer<RGB> base) { this.baseRGB = base; }
+	public void setOffsetRGB(Producer<RGB> offset) { this.offsetRGB = offset; }
 	
-	public RGBProducer getBaseRGB() { return this.baseRGB; }
-	public RGBProducer getOffsetRGB() { return this.offsetRGB; }
+	public Producer<RGB> getBaseRGB() { return this.baseRGB; }
+	public Producer<RGB> getOffsetRGB() { return this.offsetRGB; }
 
 	@Override
 	public KernelizedEvaluable<RGB> get() {

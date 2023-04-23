@@ -25,6 +25,10 @@ public class Bytes extends MemoryDataAdapter {
 	}
 
 	public Bytes(int memLength, int atomicLength) {
+		if (atomicLength == 0) {
+			throw new IllegalArgumentException();
+		}
+
 		if (memLength % atomicLength != 0) {
 			throw new IllegalArgumentException("Memory length must be a multiple of atomic length");
 		}

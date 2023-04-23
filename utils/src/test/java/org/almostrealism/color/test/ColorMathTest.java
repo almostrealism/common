@@ -5,19 +5,18 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
+import org.almostrealism.color.RGBFeatures;
 import org.almostrealism.color.computations.GreaterThanRGB;
-import org.almostrealism.color.computations.RGBBlack;
-import org.almostrealism.color.computations.RGBWhite;
 import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
-public class ColorMathTest implements TestFeatures {
+public class ColorMathTest implements TestFeatures, RGBFeatures {
 	@Test
 	public void fixedSum() {
 		HardwareOperator.verboseLog(() -> {
-			Producer<RGB> p1 = new RGBBlack();
-			Producer<RGB> p2 = new RGBWhite();
+			Producer<RGB> p1 = black();
+			Producer<RGB> p2 = white();
 			Producer<RGB> sum = add(p1, p2);
 
 			PackedCollection<?> result = sum.get().evaluate();
@@ -33,7 +32,7 @@ public class ColorMathTest implements TestFeatures {
 			Producer<Scalar> arg0 = v(Scalar.shape(), 0);
 			Producer<RGB> arg1 = v(RGB.shape(), 1);
 
-			GreaterThanRGB greater = new GreaterThanRGB(arg0, v(0.0), arg1, RGBBlack.getInstance());
+			GreaterThanRGB greater = new GreaterThanRGB(arg0, v(0.0), arg1, black());
 			RGB result = greater.get().evaluate(new Scalar(0.1), new RGB(0.0, 1.0, 0.0));
 			assertEquals(0.0, result.getRed());
 			assertEquals(1.0, result.getGreen());
@@ -54,7 +53,7 @@ public class ColorMathTest implements TestFeatures {
 			input.set(3, -0.1);
 			input.set(4, 0.1);
 
-			GreaterThanRGB greater = new GreaterThanRGB(arg0, v(0.0), RGBWhite.getInstance(), RGBBlack.getInstance());
+			GreaterThanRGB greater = new GreaterThanRGB(arg0, v(0.0), white(), black());
 			greater.get().kernelEvaluate(result, input);
 			assertEquals(0.0, result.get(0).getGreen());
 			assertEquals(0.0, result.get(1).getGreen());

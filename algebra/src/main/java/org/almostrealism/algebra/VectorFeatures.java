@@ -75,7 +75,8 @@ public interface VectorFeatures extends CollectionFeatures, HardwareFeatures {
 
 	default VectorExpressionComputation vector(DynamicCollectionProducerComputationAdapter<?, ?> value) {
 		if (value instanceof ExpressionComputation) {
-			if (((ExpressionComputation) value).getExpressions().size() != 3) throw new IllegalArgumentException();
+			if (((ExpressionComputation) value).expression().size() != 3)
+				throw new IllegalArgumentException();
 			return new VectorExpressionComputation(((ExpressionComputation) value).expression(),
 					value.getInputs().subList(1, value.getInputs().size()).toArray(Supplier[]::new));
 		} else if (value instanceof Shape) {

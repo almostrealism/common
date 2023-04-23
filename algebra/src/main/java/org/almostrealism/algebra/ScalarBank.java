@@ -23,6 +23,7 @@ import org.almostrealism.hardware.MemoryData;
 import java.util.List;
 import java.util.Set;
 import java.util.function.BiConsumer;
+import java.util.function.BiFunction;
 import java.util.function.BinaryOperator;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -136,6 +137,10 @@ public class ScalarBank extends PackedCollection<Scalar> {
 		for (int i = 0; i < getCount(); i++) {
 			set(i, Math.log(get(i).getValue()));
 		}
+	}
+
+	public static BiFunction<MemoryData, Integer, ScalarBank> postprocessor() {
+		return (output, offset) -> new ScalarBank(output.getMemLength() / 2, output, offset);
 	}
 
 	public static Collector<Double, ?, ScalarBank> doubleCollector(int total) {

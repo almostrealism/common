@@ -20,6 +20,7 @@ import java.io.Externalizable;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
+import java.util.function.BiFunction;
 
 import io.almostrealism.code.Memory;
 import org.almostrealism.algebra.Triple;
@@ -43,6 +44,8 @@ public class RGB extends PackedCollection<RGB> implements Triple, Externalizable
 		double sum();
 		void write(ObjectOutput out) throws IOException;
 		void read(ObjectInput in) throws IOException;
+		
+		TraversalPolicy getShape();
 	}
 
 //	private static class Data48 implements Data {
@@ -186,6 +189,10 @@ public class RGB extends PackedCollection<RGB> implements Triple, Externalizable
 //			return 0;
 //		else
 //			return Math.pow(c * f, this.gamma);
+	}
+	
+	public TraversalPolicy getShape() {
+		return data.getShape();
 	}
 
 	/**
@@ -547,6 +554,16 @@ public class RGB extends PackedCollection<RGB> implements Triple, Externalizable
 	public int getMemLength() { return data.getMemLength(); }
 
 	@Override
+	public int getCount() {
+		return data.getShape().getCount();
+	}
+
+	@Override
+	public int getAtomicMemLength() {
+		return data.getAtomicMemLength();
+	}
+
+	@Override
 	public void setDelegate(MemoryData m, int offset) {
 		if (data != null)
 			data.setDelegate(m, offset);
@@ -576,5 +593,7 @@ public class RGB extends PackedCollection<RGB> implements Triple, Externalizable
 				delegate, delegateOffset);
 	}
 
-	public static RGB gray(double value) { return new RGB(value, value, value); }
+	public static BiFunction<MemoryData, Integer, RGB> postprocessor() {
+		return (output, offset) -> new RGB(output, offset);
+	}
 }

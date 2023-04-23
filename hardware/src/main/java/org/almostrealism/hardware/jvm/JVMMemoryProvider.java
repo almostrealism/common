@@ -24,6 +24,8 @@ public class JVMMemoryProvider implements MemoryProvider<Memory> {
 
 	@Override
 	public Memory allocate(int size) {
+		if (size <= 0)
+			throw new IllegalArgumentException();
 		return new JVMMemory(this, size);
 	}
 

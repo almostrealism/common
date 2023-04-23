@@ -17,11 +17,12 @@
 package org.almostrealism.color.computations;
 
 import org.almostrealism.color.RGB;
+import org.almostrealism.color.RGBFeatures;
 import org.almostrealism.geometry.computations.AcceleratedRankedChoiceEvaluable;
 import org.almostrealism.geometry.computations.RankedChoiceEvaluableForMemoryData;
 import org.almostrealism.hardware.MemoryBank;
 
-public class RankedChoiceEvaluableForRGB extends RankedChoiceEvaluableForMemoryData<RGB> {
+public class RankedChoiceEvaluableForRGB extends RankedChoiceEvaluableForMemoryData<RGB> implements RGBFeatures {
 	public RankedChoiceEvaluableForRGB(double e) {
 		super(e);
 	}
@@ -37,7 +38,7 @@ public class RankedChoiceEvaluableForRGB extends RankedChoiceEvaluableForMemoryD
 	@Override
 	public RGB replaceNull(Object[] args) {
 		if (tolerateNull) {
-			return RGBBlack.getEvaluable().evaluate();
+			return black().get().evaluate();
 		} else {
 			throw new NullPointerException();
 		}

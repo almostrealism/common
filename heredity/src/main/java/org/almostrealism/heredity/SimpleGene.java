@@ -20,7 +20,6 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.StaticCollectionComputation;
 
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
@@ -60,11 +59,11 @@ public class SimpleGene implements Gene<PackedCollection<?>>, GeneParameters, Co
 					return transform(multiply(value, c((Producer) () -> new Provider<>(values), pos), args -> {
 						PackedCollection<?> result = new PackedCollection<>(1);
 
-						if (value instanceof StaticCollectionComputation) {
-							result.setMem(((StaticCollectionComputation) value).getValue().toDouble(0) * values.toDouble(pos));
-						} else {
+//						if (value instanceof StaticCollectionComputation) {
+//							result.setMem(((StaticCollectionComputation) value).getValue().toDouble(0) * values.toDouble(pos));
+//						} else {
 							result.setMem(value.get().evaluate(args).toDouble(0) * values.toDouble(pos));
-						}
+//						}
 
 						return result;
 					}));
@@ -93,11 +92,11 @@ public class SimpleGene implements Gene<PackedCollection<?>>, GeneParameters, Co
 				public Producer<PackedCollection<?>> getResultant(Producer<PackedCollection<?>> value) {
 					PackedCollection<?> result = new PackedCollection<>(1);
 
-					if (value instanceof StaticCollectionComputation) {
-						result.setMem(((StaticCollectionComputation) value).getValue().toDouble(0) * values.toDouble(pos));
-					} else {
+//					if (value instanceof StaticCollectionComputation) {
+//						result.setMem(((StaticCollectionComputation) value).getValue().toDouble(0) * values.toDouble(pos));
+//					} else {
 						result.setMem(value.get().evaluate().toDouble(0) * values.toDouble(pos));
-					}
+//					}
 
 					return transform(() -> args -> result);
 				}

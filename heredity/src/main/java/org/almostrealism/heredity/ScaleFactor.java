@@ -22,7 +22,6 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Defaults;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.StaticCollectionComputation;
 
 import java.util.Optional;
 
@@ -41,11 +40,11 @@ public class ScaleFactor implements Factor<PackedCollection<?>>, ScalarFeatures,
 		return multiply(value, (Producer) v(scale), args -> {
 			PackedCollection<?> result = new PackedCollection<>(1);
 
-			if (value instanceof StaticCollectionComputation) {
-				result.setMem(((StaticCollectionComputation) value).getValue().toDouble(0) * scale.toDouble(0));
-			} else {
+//			if (value instanceof StaticCollectionComputation) {
+//				result.setMem(((StaticCollectionComputation) value).getValue().toDouble(0) * scale.toDouble(0));
+//			} else {
 				result.setMem(value.get().evaluate(args).toDouble(0) * scale.toDouble(0));
-			}
+//			}
 
 			return result;
 		});

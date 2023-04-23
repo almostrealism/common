@@ -25,6 +25,7 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.computations.ScalarBankExpressionComputation;
 import org.almostrealism.algebra.computations.ScalarBankSum;
+import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.hardware.Input;
 import org.almostrealism.hardware.KernelizedEvaluable;
 
@@ -35,6 +36,10 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public interface ScalarBankFeatures extends ScalarFeatures {
+	default ExpressionComputation<ScalarBank> value(ScalarBank value) {
+		return ExpressionComputation.fixed(value, ScalarBank.postprocessor());
+	}
+
 	@Deprecated
 	default ScalarBankProducerBase scalarBankAdd(int count, Supplier<Evaluable<? extends ScalarBank>> input,
 						  						Supplier<Evaluable<? extends Scalar>> value) {

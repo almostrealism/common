@@ -45,7 +45,6 @@ import org.almostrealism.collect.computations.PackedCollectionRepeat;
 import org.almostrealism.collect.computations.PackedCollectionSubset;
 import org.almostrealism.collect.computations.Random;
 import org.almostrealism.collect.computations.ReshapeProducer;
-import org.almostrealism.collect.computations.StaticCollectionComputation;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
@@ -126,7 +125,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> c(double... values) {
 		PackedCollection<T> c = new PackedCollection<>(values.length);
 		c.setMem(0, values);
-		return new StaticCollectionComputation(c);
+		return (CollectionProducerComputation<T>) c(c);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> c(TraversalPolicy shape, double... values) {
@@ -136,11 +135,11 @@ public interface CollectionFeatures extends ExpressionFeatures {
 
 		PackedCollection<T> c = new PackedCollection<>(shape);
 		c.setMem(0, values);
-		return new StaticCollectionComputation(c);
+		return (CollectionProducerComputation<T>) c(c);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> c(PackedCollection<?> supplier) {
-		return new StaticCollectionComputation(supplier);
+	default <T extends PackedCollection<?>> ExpressionComputation<T> c(T value) {
+		return ExpressionComputation.fixed(value);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> concat(Producer<PackedCollection<?>>... producers) {

@@ -390,7 +390,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 						v(data.get(3)),
 						TransformMatrix.TRANSFORM_AS_NORMAL);
 			} else {
-				return c(((PackedCollection<?>) data.get(3)).clone());
+				return vector(c(((PackedCollection<?>) data.get(3)).clone()));
 			}
 		}
 	}
