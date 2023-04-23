@@ -22,7 +22,6 @@ import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.code.ScopeInputManager;
 import org.almostrealism.hardware.DynamicOperationComputationAdapter;
-import org.almostrealism.hardware.DynamicProducerComputationAdapter;
 import org.almostrealism.hardware.MemoryData;
 
 import java.util.function.Supplier;

@@ -21,15 +21,12 @@ import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.expression.Expression;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarBank;
-import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.algebra.ScalarProducerBase;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.DynamicCollectionProducerComputationAdapter;
-import org.almostrealism.hardware.DynamicProducerComputationAdapter;
-import org.almostrealism.hardware.MemoryData;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.time.CursorPair;
 
@@ -102,5 +99,10 @@ public class AcceleratedTimeSeriesValueAt extends DynamicCollectionProducerCompu
 	@Override
 	public IntFunction<Expression<Double>> getValueFunction() {
 		return i -> new Expression<>(Double.class, "1.0");
+	}
+
+	@Override
+	public Scalar postProcessOutput(MemoryData output, int offset) {
+		return (Scalar) Scalar.postprocessor().apply(output, offset);
 	}
 }

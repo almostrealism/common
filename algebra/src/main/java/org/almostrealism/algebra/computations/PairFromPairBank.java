@@ -19,13 +19,11 @@ package org.almostrealism.algebra.computations;
 import io.almostrealism.expression.Expression;
 import org.almostrealism.algebra.Pair;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.algebra.PairProducer;
 import org.almostrealism.algebra.PairProducerBase;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.DynamicCollectionProducerComputationAdapter;
-import org.almostrealism.hardware.DynamicProducerComputationAdapter;
 import org.almostrealism.hardware.MemoryData;
 
 import java.util.function.IntFunction;

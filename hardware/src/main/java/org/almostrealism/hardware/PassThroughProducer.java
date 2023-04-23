@@ -16,8 +16,11 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
+import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.expression.MultiExpression;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.code.ArgumentMap;
@@ -26,17 +29,23 @@ import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.code.KernelIndex;
+import io.almostrealism.scope.Scope;
+import io.almostrealism.scope.Variable;
 import org.almostrealism.collect.Shape;
 import org.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.hardware.mem.MemoryDataDestination;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
+import java.util.stream.IntStream;
 
 public class PassThroughProducer<T extends MemoryData>
-//		extends ProducerComputationBase<T, T>
-		extends DynamicProducerComputationAdapter<T, T>
+		extends ProducerComputationBase<T, T>
+//		extends DynamicProducerComputationAdapter<T, T>
 		implements ProducerArgumentReference,
 		MemoryDataComputation<T>, KernelizedProducer<T>,
 		DestinationSupport<T>, MultiExpression<Double>,
@@ -49,13 +58,13 @@ public class PassThroughProducer<T extends MemoryData>
 	private Supplier<T> destination;
 
 	public PassThroughProducer(TraversalPolicy shape, int argIndex) {
-		super(shape.getSize(), null, null);
+		this();
 		this.shape = shape;
 		this.argIndex = argIndex;
 	}
 
 	public PassThroughProducer(int size, int argIndex) {
-		super(size, null, null);
+		this();
 		this.shape = new TraversalPolicy(size).traverse(0);
 		this.argIndex = argIndex;
 		this.kernelIndex = 0;
@@ -63,7 +72,7 @@ public class PassThroughProducer<T extends MemoryData>
 
 	@Deprecated
 	public PassThroughProducer(TraversalPolicy shape, int argIndex, int kernelIndex) {
-		super(shape.getSize(), null, null);
+		this();
 		this.shape = shape;
 		this.argIndex = argIndex;
 		this.kernelIndex = kernelIndex;
@@ -72,21 +81,34 @@ public class PassThroughProducer<T extends MemoryData>
 
 	@Deprecated
 	public PassThroughProducer(int memLength, int argIndex, int kernelIndex) {
-		super(memLength, null, null);
+		this();
 		this.shape = new TraversalPolicy(memLength).traverse(0);
 		this.argIndex = argIndex;
 		this.kernelIndex = kernelIndex;
 		System.out.println("WARN: Specifying kernel index before compilation is deprecated");
 	}
 
+	private PassThroughProducer() {
+		this.destination = () -> null;
+		this.setInputs(Arrays.asList(new MemoryDataDestination(this, null)));
+		init();
+	}
+
+	protected IntFunction<Variable<Double, ?>> variableForIndex(IntFunction<Expression<Double>> valueFunction) {
+		return i -> new Variable(getVariableName(i), true, valueFunction.apply(i), this);
+	}
+
+	/**
+	 * @return  GLOBAL
+	 */
+	@Override
+	public PhysicalScope getDefaultPhysicalScope() { return PhysicalScope.GLOBAL; }
+
 	@Override
 	public TraversalPolicy getShape() { return shape; }
 
 	@Override
 	public int getMemLength() { return shape.getSize(); }
-
-	@Override
-	public Expression<Double> getValue(int pos) { return getValueFunction().apply(pos); }
 
 	@Override
 	public void setDestination(Supplier<T> destination) { this.destination = destination; }
@@ -113,9 +135,24 @@ public class PassThroughProducer<T extends MemoryData>
 	public void prepareScope(ScopeInputManager manager) {
 		super.prepareScope(manager);
 
+		// Result should always be first
+		// TODO  This causes cascading issues, as the output variable is reused by the referring
+		// TODO  producer and then multiple arguments are sorted to be "first"
+		ArrayVariable arg = getArgumentForInput(getInputs().get(0));
+		if (arg != null) arg.setSortHint(-1);
+
 		List<Argument<? extends T>> args = new ArrayList<>();
 		args.add(new Argument<>(manager.argumentForInput(this).apply((Supplier) this), Expectation.NOT_ALTERED));
 		setArguments(args);
+	}
+
+	@Override
+	public Scope<T> getScope() {
+		Scope<T> scope = super.getScope();
+		IntStream.range(0, getMemLength())
+				.mapToObj(getAssignmentFunction(getOutputVariable()))
+				.forEach(v -> scope.getVariables().add((Variable) v));
+		return scope;
 	}
 
 	/**
@@ -166,6 +203,10 @@ public class PassThroughProducer<T extends MemoryData>
 		return getArgumentVariables().get(index);
 	}
 
+
+	@Override
+	public Expression<Double> getValue(int pos) { return getValueFunction().apply(pos); }
+
 	public IntFunction<Expression<Double>> getValueFunction() {
 		return pos -> new Expression<>(Double.class, getArgumentValueName(0, pos, kernelIndex), getArgument(0));
 	}
@@ -175,4 +216,13 @@ public class PassThroughProducer<T extends MemoryData>
 
 	@Override
 	public int getKernelIndex() { return kernelIndex; }
+
+	@Override
+	public void destroy() {
+		super.destroy();
+		ProducerCache.purgeEvaluableCache(this);
+		if (destination instanceof DestinationConsolidationArgumentMap.DestinationThreadLocal) {
+			((DestinationConsolidationArgumentMap.DestinationThreadLocal) destination).destroy();
+		}
+	}
 }
