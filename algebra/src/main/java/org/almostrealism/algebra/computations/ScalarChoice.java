@@ -18,14 +18,19 @@ package org.almostrealism.algebra.computations;
 
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarBank;
-import org.almostrealism.algebra.ScalarProducer;
+import org.almostrealism.algebra.ScalarProducerBase;
 import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.hardware.MemoryData;
 
 import java.util.function.Supplier;
 
-public class ScalarChoice extends Choice<Scalar> implements ScalarProducer {
+public class ScalarChoice extends Choice<Scalar> implements ScalarProducerBase {
 	public ScalarChoice(int choiceCount, Supplier<Evaluable<? extends Scalar>> decision, Supplier<Evaluable<? extends MemoryBank<Scalar>>> choices) {
-		super(2, choiceCount, Scalar::new, ScalarBank::new, decision, choices);
+		super(2, choiceCount, decision, choices);
+	}
+
+	@Override
+	public Scalar postProcessOutput(MemoryData output, int offset) {
+		return (Scalar) Scalar.postprocessor().apply(output, offset);
 	}
 }

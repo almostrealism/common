@@ -23,6 +23,9 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.computations.CollectionProducerComputationAdapter;
 import org.almostrealism.hardware.ComputerFeatures;
 import org.almostrealism.hardware.DestinationSupport;
 import org.almostrealism.hardware.MemoryBank;
@@ -35,50 +38,27 @@ import java.util.function.Consumer;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public abstract class Choice<T extends MemoryData> extends ProducerComputationBase<T, T> implements DestinationSupport<MemoryData>, ComputerFeatures {
-	private int memLength;
+public abstract class Choice<T extends PackedCollection<?>> extends CollectionProducerComputationAdapter<T, T> {
 	private int choiceCount;
-	private Supplier<MemoryData> destination;
 
-	public Choice(int memLength, int choiceCount, Supplier<T> blankValue,
-				  IntFunction<MemoryBank<T>> kernelDestination,
-				  Supplier<Evaluable<? extends Scalar>> decision,
+	public Choice(int memLength, int choiceCount, Supplier<Evaluable<? extends Scalar>> decision,
 				  Supplier<Evaluable<? extends MemoryBank<T>>> choices) {
-		this.memLength = memLength;
+		super(new TraversalPolicy(memLength).traverse(0), (Supplier) decision, (Supplier) choices);
 		this.choiceCount = choiceCount;
-		this.destination = (Supplier) blankValue;
-
-		List inputs = new ArrayList();
-		inputs.add(new MemoryDataDestination(this, kernelDestination));
-		inputs.add(decision);
-		inputs.add(choices);
-		setInputs(inputs);
-
-		init();
 	}
-
-	/** @return  GLOBAL */
-	@Override
-	public PhysicalScope getDefaultPhysicalScope() { return PhysicalScope.GLOBAL; }
-
-	@Override
-	public void setDestination(Supplier<MemoryData> destination) { this.destination = destination; }
-
-	@Override
-	public Supplier<MemoryData> getDestination() { return destination; }
 
 	public Scope<T> getScope() {
 		HybridScope<T> scope = new HybridScope<>(this);
 		scope.getVariables().addAll(getVariables());
 		Consumer<String> code = scope.code();
 
-		ArrayVariable<?> output = getArgument(0, memLength);
-		ArrayVariable<?> input = getArgument(2, memLength * choiceCount);
+		ArrayVariable<?> output = getArgument(0, getMemLength());
+		ArrayVariable<?> input = getArgument(2, getMemLength() * choiceCount);
 		String decision = getArgument(1, 2).valueAt(0).getExpression();
 		String choices = stringForDouble(choiceCount);
-		String decisionChoice = "floor(" + decision + " * " + choices + ") * " + memLength;
+		String decisionChoice = "floor(" + decision + " * " + choices + ") * " + getMemLength();
 
-		for (int i = 0; i < memLength; i++) {
+		for (int i = 0; i < getMemLength(); i++) {
 			code.accept(output.valueAt(i).getExpression() + " = " + input.get(decisionChoice + " + " + i).getExpression() + ";\n");
 		}
 

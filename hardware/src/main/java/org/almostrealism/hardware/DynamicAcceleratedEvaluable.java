@@ -35,22 +35,8 @@ public abstract class DynamicAcceleratedEvaluable<I extends MemoryData, O extend
 
 	public DynamicAcceleratedEvaluable(Supplier<O> destination,
 									   IntFunction<MemoryBank<O>> kernelDestination,
-									   Supplier<Evaluable<? extends I>> inputArgs[],
-									   Object additionalArguments[]) {
-		this(destination, kernelDestination, AcceleratedEvaluable.producers(inputArgs, additionalArguments));
-	}
-
-	public DynamicAcceleratedEvaluable(Supplier<O> destination,
-									   IntFunction<MemoryBank<O>> kernelDestination,
 									   Supplier... inputArgs) {
 		this(true, destination, kernelDestination, inputArgs);
-	}
-
-	public DynamicAcceleratedEvaluable(boolean kernel, Supplier<O> destination,
-									   IntFunction<MemoryBank<O>> kernelDestination,
-									   Supplier<Evaluable<? extends I>> inputArgs[],
-									   Object additionalArguments[]) {
-		this(kernel, destination, kernelDestination, AcceleratedEvaluable.producers(inputArgs, additionalArguments));
 	}
 
 	@SafeVarargs

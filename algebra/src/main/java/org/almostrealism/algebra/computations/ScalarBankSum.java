@@ -18,42 +18,23 @@ package org.almostrealism.algebra.computations;
 
 import io.almostrealism.code.HybridScope;
 import io.almostrealism.code.OperationMetadata;
-import io.almostrealism.code.PhysicalScope;
-import io.almostrealism.code.ProducerComputationBase;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
-import org.almostrealism.algebra.ScalarProducer;
-import org.almostrealism.hardware.ComputerFeatures;
-import org.almostrealism.hardware.DestinationSupport;
-import org.almostrealism.hardware.mem.MemoryDataDestination;
+import org.almostrealism.algebra.ScalarProducerBase;
+import org.almostrealism.collect.computations.CollectionProducerComputationAdapter;
+import org.almostrealism.hardware.MemoryData;
 
 import java.util.function.Supplier;
 
-public class ScalarBankSum extends ProducerComputationBase<ScalarBank, Scalar> implements ScalarProducer, DestinationSupport<Scalar>, ComputerFeatures {
+public class ScalarBankSum extends CollectionProducerComputationAdapter<ScalarBank, Scalar> implements ScalarProducerBase {
 	private final int count;
 
-	private Supplier<Scalar> destination;
-
 	public ScalarBankSum(int count, Supplier<Evaluable<? extends ScalarBank>> input) {
+		super(Scalar.shape(), input);
 		this.count = count;
-		this.destination = Scalar::new;
-		this.setInputs(new MemoryDataDestination(this, ScalarBank::new), input);
-		init();
 	}
-
-	@Override
-	public void setDestination(Supplier<Scalar> destination) { this.destination = destination; }
-
-	@Override
-	public Supplier<Scalar> getDestination() { return destination; }
-
-	/**
-	 * @return  PhysicalScope#GLOBAL
-	 */
-	@Override
-	public PhysicalScope getDefaultPhysicalScope() { return PhysicalScope.GLOBAL; }
 
 	@Override
 	public Scope<Scalar> getScope() {
@@ -68,5 +49,10 @@ public class ScalarBankSum extends ProducerComputationBase<ScalarBank, Scalar> i
 		scope.code().accept("    " + result + " = " + result + " + " + value + ";\n");
 		scope.code().accept("}\n");
 		return scope;
+	}
+
+	@Override
+	public Scalar postProcessOutput(MemoryData output, int offset) {
+		return (Scalar) Scalar.postprocessor().apply(output, offset);
 	}
 }

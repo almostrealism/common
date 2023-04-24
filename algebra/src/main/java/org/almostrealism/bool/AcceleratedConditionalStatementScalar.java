@@ -17,7 +17,6 @@
 package org.almostrealism.bool;
 
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarProducer;
 import io.almostrealism.code.CollectionUtils;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.ScalarProducerBase;

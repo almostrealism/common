@@ -23,6 +23,7 @@ import org.almostrealism.algebra.ScalarBankFeatures;
 
 import java.util.function.Supplier;
 
+@Deprecated
 public class ScalarBankDotProduct extends ScalarBankSum {
 	public ScalarBankDotProduct(int count, Supplier<Evaluable<? extends ScalarBank>> a,
 								Supplier<Evaluable<? extends ScalarBank>> b) {

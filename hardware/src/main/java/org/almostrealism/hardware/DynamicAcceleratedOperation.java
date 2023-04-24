@@ -42,7 +42,8 @@ public abstract class DynamicAcceleratedOperation<T extends MemoryData> extends 
 	@Override
 	public synchronized Consumer<Object[]> getOperator() {
 		if (operators == null || operators.isDestroyed()) {
-			operators = Hardware.getLocalHardware().getClComputeContext().deliver(Scope.verbatim(getFunctionDefinition()));
+			// operators = Hardware.getLocalHardware().getClComputeContext().deliver(Scope.verbatim(getFunctionDefinition()));
+			throw new UnsupportedOperationException();
 		}
 
 		return operators.get(getFunctionName(), getArgsCount());

@@ -19,7 +19,6 @@ package org.almostrealism.hardware.test;
 import io.almostrealism.code.ComputeRequirement;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.algebra.ScalarProducerBase;
 import org.junit.Test;
 

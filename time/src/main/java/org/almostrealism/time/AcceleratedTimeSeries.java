@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,14 +17,11 @@
 package org.almostrealism.time;
 
 import io.almostrealism.uml.Lifecycle;
-import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarProducer;
 import org.almostrealism.algebra.ScalarProducerBase;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareFeatures;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
-import org.almostrealism.hardware.KernelizedProducer;
 import org.almostrealism.time.computations.AcceleratedTimeSeriesAdd;
 import org.almostrealism.time.computations.AcceleratedTimeSeriesPurge;
 import org.almostrealism.time.computations.AcceleratedTimeSeriesValueAt;

@@ -67,7 +67,7 @@ public class Scalar extends Pair<Scalar> implements Comparable<Scalar> {
 		return new TraversalPolicy(2);
 	}
 
-	public static ScalarProducer blank() {
+	public static ScalarProducerBase blank() {
 		return new DynamicScalarProducer(args -> new Scalar(false));
 	}
 
