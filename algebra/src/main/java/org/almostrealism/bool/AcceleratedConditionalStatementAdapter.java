@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -23,6 +23,9 @@ import io.almostrealism.code.HybridScope;
 import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
+import org.almostrealism.collect.CollectionProducerComputation;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.ComputerFeatures;
 import org.almostrealism.hardware.DestinationSupport;
 import org.almostrealism.hardware.ExplictBody;
@@ -34,13 +37,15 @@ import org.almostrealism.hardware.mem.MemoryDataDestination;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public abstract class AcceleratedConditionalStatementAdapter<T extends MemoryData>
+public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCollection<?>>
 											extends ProducerComputationBase<MemoryData, T>
-											implements AcceleratedConditionalStatement<T>,
+											implements CollectionProducerComputation<T>,
+													AcceleratedConditionalStatement<T>,
 													DestinationSupport<MemoryData>,
 													ComputerFeatures {
 	public static boolean enableCompaction = false;
@@ -49,6 +54,8 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemoryDat
 
 	private Supplier<MemoryData> destination;
 	private Function<Variable<T, ?>, String> compacted;
+
+	private BiFunction<MemoryData, Integer, T> postprocessor;
 
 	public AcceleratedConditionalStatementAdapter(int memLength, Supplier<T> blankValue, IntFunction<MemoryBank<T>> kernelDestination) {
 		this(memLength, blankValue, kernelDestination, null, null, null, null);
@@ -77,6 +84,11 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemoryDat
 
 	public int getMemLength() { return memLength; }
 
+	@Override
+	public TraversalPolicy getShape() {
+		return new TraversalPolicy(memLength);
+	}
+
 	/**
 	 * @return  GLOBAL
 	 */
@@ -88,6 +100,14 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemoryDat
 
 	@Override
 	public Supplier<MemoryData> getDestination() { return destination; }
+
+	public BiFunction<MemoryData, Integer, T> getPostprocessor() {
+		return postprocessor;
+	}
+
+	public void setPostprocessor(BiFunction<MemoryData, Integer, T> postprocessor) {
+		this.postprocessor = postprocessor;
+	}
 
 	// TODO  The hybrid scope (by way of ExplicitScope) includes every argument as a dependency.
 	// TODO  To eliminate this problem, the actual dependencies need to be specified.
@@ -188,6 +208,11 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends MemoryDat
 	}
 
 	protected boolean isCompacted() { return compacted != null; }
+
+	@Override
+	public T postProcessOutput(MemoryData output, int offset) {
+		return getPostprocessor() == null ? CollectionProducerComputation.super.postProcessOutput(output, offset) : getPostprocessor().apply(output, offset);
+	}
 
 	@Override
 	public void destroy() {

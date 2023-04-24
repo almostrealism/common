@@ -27,6 +27,7 @@ import java.util.function.Consumer;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
+@Deprecated
 public abstract class DynamicAcceleratedEvaluable<I extends MemoryData, O extends MemoryData>
 		extends DynamicAcceleratedOperation<MemoryData>
 		implements KernelizedEvaluable<O>, DestinationSupport<O> {

@@ -29,6 +29,7 @@ import io.almostrealism.expression.NAryExpression;
 import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryBank;
 
@@ -42,7 +43,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-public abstract class AcceleratedConjunctionAdapter<T extends MemoryData> extends AcceleratedConditionalStatementAdapter<T> {
+public abstract class AcceleratedConjunctionAdapter<T extends PackedCollection<?>> extends AcceleratedConditionalStatementAdapter<T> {
 	private List<AcceleratedConditionalStatement<? extends T>> conjuncts;
 	private Supplier<Evaluable<?>> trueValue, falseValue;
 	private ArrayVariable<?> trueVar, falseVar;

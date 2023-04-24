@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,12 +17,11 @@
 package org.almostrealism.color.computations;
 
 import org.almostrealism.color.RGB;
-import org.almostrealism.color.RGBProducer;
 import org.almostrealism.bool.GreaterThan;
 
 import java.util.function.Supplier;
 
-public class GreaterThanRGB extends GreaterThan<RGB> implements RGBProducer {
+public class GreaterThanRGB extends GreaterThan<RGB> {
 	public GreaterThanRGB(
 			Supplier leftOperand,
 			Supplier rightOperand,
@@ -30,5 +29,6 @@ public class GreaterThanRGB extends GreaterThan<RGB> implements RGBProducer {
 			Supplier falseValue) {
 		super(3, RGB::new, RGB::bank, leftOperand, rightOperand,
 				trueValue, falseValue, false);
+		setPostprocessor(RGB.postprocessor());
 	}
 }

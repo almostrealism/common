@@ -47,9 +47,4 @@ public class GreaterThanCollection extends GreaterThan<PackedCollection<?>> impl
 				leftOperand, rightOperand,
 				trueValue, falseValue, includeEqual);
 	}
-
-	@Override
-	public TraversalPolicy getShape() {
-		return new TraversalPolicy(1);
-	}
 }

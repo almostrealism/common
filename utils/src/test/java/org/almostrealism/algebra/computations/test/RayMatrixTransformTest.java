@@ -21,7 +21,6 @@ import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.geometry.computations.RayExpressionComputation;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.geometry.RayProducer;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 

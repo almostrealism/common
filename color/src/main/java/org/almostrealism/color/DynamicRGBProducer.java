@@ -21,14 +21,9 @@ import org.almostrealism.hardware.DynamicProducerForMemoryData;
 
 import java.util.function.Function;
 
-public class DynamicRGBProducer extends DynamicProducerForMemoryData<RGB> implements RGBProducer {
+public class DynamicRGBProducer extends DynamicProducerForMemoryData<RGB> {
 
 	public DynamicRGBProducer(Function<Object[], RGB> function) {
 		super(function, RGB::bank);
-	}
-
-	@Override
-	public Scope<RGB> getScope() {
-		throw new RuntimeException("Not implemented");
 	}
 }

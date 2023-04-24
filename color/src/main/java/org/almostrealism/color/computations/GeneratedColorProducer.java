@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package org.almostrealism.color.computations;
 
 import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ScopeInputManager;
@@ -30,7 +31,8 @@ import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.KernelizedProducer;
 
-public class GeneratedColorProducer<T> extends ColorProducerAdapter implements Generated<T, Producer<RGB>> {
+public class GeneratedColorProducer<T> implements Generated<T, Producer<RGB>>, ProducerComputation<RGB>,
+													KernelizedProducer<RGB>, TripleFunction<Triple, RGB> {
 	private Producer<RGB> p;
 	private T generator;
 
@@ -73,6 +75,9 @@ public class GeneratedColorProducer<T> extends ColorProducerAdapter implements G
 
 	@Override
 	public KernelizedEvaluable<RGB> get() { return (KernelizedEvaluable<RGB>) p.get(); }
+
+	@Override
+	public RGB operate(Triple in) { return get().evaluate(in); }
 
 	public static <T> GeneratedColorProducer<T> fromFunction(T generator, TripleFunction<Triple, RGB> t) {
 		return new GeneratedColorProducer(generator, new DynamicProducerForMemoryData<>(args ->

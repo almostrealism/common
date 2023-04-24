@@ -31,5 +31,6 @@ public class AcceleratedConjunctionVector extends AcceleratedConjunctionAdapter<
 										Supplier<Evaluable<?>> falseValue,
 										AcceleratedConditionalStatement<Vector>... conjuncts) {
 		super(3, Vector::new, Vector::bank, trueValue, falseValue, conjuncts);
+		setPostprocessor(Vector.postprocessor());
 	}
 }

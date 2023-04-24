@@ -1,5 +1,5 @@
 /*
- * Copyright 2017 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,16 +16,20 @@
 
 package org.almostrealism.color.computations;
 
+import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.scope.Scope;
+import org.almostrealism.algebra.Triple;
+import org.almostrealism.algebra.TripleFunction;
 import org.almostrealism.color.DynamicRGBProducer;
 import org.almostrealism.color.RGB;
 import org.almostrealism.hardware.KernelizedEvaluable;
+import org.almostrealism.hardware.KernelizedProducer;
 
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
-public class AverageColor extends ColorProducerAdapter {
+public class AverageColor implements ProducerComputation<RGB>, KernelizedProducer<RGB> {
 	private static class Color {
 		double p;
 		RGB c;

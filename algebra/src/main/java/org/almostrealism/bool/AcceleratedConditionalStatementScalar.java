@@ -20,10 +20,11 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarProducer;
 import io.almostrealism.code.CollectionUtils;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.algebra.ScalarProducerBase;
 
 import java.util.function.Supplier;
 
-public interface AcceleratedConditionalStatementScalar extends AcceleratedConditionalStatement<Scalar>, ScalarProducer {
+public interface AcceleratedConditionalStatementScalar extends AcceleratedConditionalStatement<Scalar>, ScalarProducerBase {
 	default AcceleratedConjunctionScalar and(AcceleratedConditionalStatement<Scalar> operand, Supplier<Evaluable<Scalar>> trueValue, Supplier<Evaluable<Scalar>> falseValue) {
 		return and(trueValue, falseValue, operand);
 	}

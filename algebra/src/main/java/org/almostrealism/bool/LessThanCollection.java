@@ -21,6 +21,7 @@ import org.almostrealism.collect.TraversalPolicy;
 
 import java.util.function.Supplier;
 
+@Deprecated
 public class LessThanCollection extends LessThan<PackedCollection<?>> implements AcceleratedConditionalStatementCollection {
 	public LessThanCollection(
 			Supplier leftOperand, Supplier rightOperand,
@@ -36,10 +37,5 @@ public class LessThanCollection extends LessThan<PackedCollection<?>> implements
 				leftOperand, rightOperand,
 				trueValue, falseValue,
 				includeEqual);
-	}
-
-	@Override
-	public TraversalPolicy getShape() {
-		return new TraversalPolicy(1);
 	}
 }

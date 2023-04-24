@@ -28,5 +28,6 @@ public class GreaterThanVector extends GreaterThan<Vector> implements Accelerate
 			Supplier<Evaluable<? extends Vector>> trueValue,
 			Supplier<Evaluable<? extends Vector>> falseValue) {
 		super(3, Vector::new, Vector::bank, leftOperand, rightOperand, trueValue, falseValue, false);
+		setPostprocessor(Vector.postprocessor());
 	}
 }

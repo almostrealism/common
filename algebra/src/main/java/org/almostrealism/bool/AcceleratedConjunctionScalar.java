@@ -19,6 +19,7 @@ package org.almostrealism.bool;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 
+import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
 public class AcceleratedConjunctionScalar extends AcceleratedConjunctionAdapter<Scalar>
@@ -31,5 +32,6 @@ public class AcceleratedConjunctionScalar extends AcceleratedConjunctionAdapter<
 	public AcceleratedConjunctionScalar(Supplier trueValue, Supplier falseValue,
 										AcceleratedConditionalStatement<Scalar>... conjuncts) {
 		super(2, Scalar::new, ScalarBank::new, trueValue, falseValue, conjuncts);
+		setPostprocessor((BiFunction) Scalar.postprocessor());
 	}
 }

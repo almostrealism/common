@@ -20,9 +20,12 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.hardware.MemoryBank;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.hardware.MemoryData;
 
+import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
+@Deprecated
 public class LessThanScalar extends LessThan<Scalar> implements AcceleratedConditionalStatementScalar {
 	public LessThanScalar(
 			Supplier leftOperand, Supplier rightOperand,
@@ -38,5 +41,6 @@ public class LessThanScalar extends LessThan<Scalar> implements AcceleratedCondi
 				leftOperand, rightOperand,
 				trueValue, falseValue,
 				includeEqual);
+		setPostprocessor((BiFunction) Scalar.postprocessor());
 	}
 }

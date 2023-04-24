@@ -16,20 +16,20 @@
 
 package org.almostrealism.color.computations;
 
+import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.color.DynamicRGBProducer;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBFeatures;
-import org.almostrealism.color.RGBProducer;
 import org.almostrealism.hardware.KernelizedEvaluable;
+import org.almostrealism.hardware.KernelizedProducer;
 
 /**
- * TODO  Accept a {@link Gene}.
  * 
  * @author Michael Murray
  */
-public class RandomColorGenerator extends ColorProducerAdapter {
+public class RandomColorGenerator implements ProducerComputation<RGB>, KernelizedProducer<RGB> {
  	private Producer<RGB> baseRGB, offsetRGB;
  
 	public RandomColorGenerator() {

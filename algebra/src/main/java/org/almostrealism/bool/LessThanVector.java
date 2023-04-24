@@ -21,6 +21,7 @@ import io.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 
+@Deprecated
 public class LessThanVector extends LessThan<Vector> implements AcceleratedConditionalStatementVector {
 	public LessThanVector(
 			Supplier leftOperand,
@@ -28,5 +29,6 @@ public class LessThanVector extends LessThan<Vector> implements AcceleratedCondi
 			Supplier<Evaluable<Vector>> trueValue,
 			Supplier<Evaluable<Vector>> falseValue) {
 		super(3, Vector::new, Vector::bank, leftOperand, rightOperand, trueValue, falseValue, false);
+		setPostprocessor(Vector.postprocessor());
 	}
 }

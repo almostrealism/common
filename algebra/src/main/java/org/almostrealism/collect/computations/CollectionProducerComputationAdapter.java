@@ -20,7 +20,6 @@ import io.almostrealism.code.CollectionUtils;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;

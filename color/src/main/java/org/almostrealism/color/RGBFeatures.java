@@ -23,7 +23,6 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.computations.ExpressionComputation;
-import org.almostrealism.color.computations.RGBExpressionComputation;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -37,15 +36,15 @@ public interface RGBFeatures extends ScalarFeatures {
 
 	default ExpressionComputation<RGB> rgb(double r, double g, double b) { return value(new RGB(r, g, b)); }
 
-	default RGBProducer rgb(Supplier<Evaluable<? extends Scalar>> r, Supplier<Evaluable<? extends Scalar>> g, Supplier<Evaluable<? extends Scalar>> b) {
+	default ExpressionComputation<RGB> rgb(Supplier<Evaluable<? extends Scalar>> r, Supplier<Evaluable<? extends Scalar>> g, Supplier<Evaluable<? extends Scalar>> b) {
 		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
 		IntStream.range(0, 3).forEach(i -> comp.add(args -> args.get(1 + i).getValue(0)));
-		return new RGBExpressionComputation(comp, (Supplier) r, (Supplier) g, (Supplier) b);
+		return new ExpressionComputation<>(comp, (Supplier) r, (Supplier) g, (Supplier) b).setPostprocessor(RGB.postprocessor());
 	}
 
-	default RGBProducer rgb(Scalar v) { return cfromScalar(v); }
+	default ExpressionComputation<RGB> rgb(Scalar v) { return cfromScalar(v); }
 
-	default RGBProducer rgb(double v) { return cfromScalar(v); }
+	default ExpressionComputation<RGB> rgb(double v) { return cfromScalar(v); }
 
 	default ExpressionComputation<RGB> white() { return rgb(1.0, 1.0, 1.0); }
 	default ExpressionComputation<RGB> black() { return rgb(0.0, 0.0, 0.0); }
@@ -54,15 +53,15 @@ public interface RGBFeatures extends ScalarFeatures {
 		return ExpressionComputation.fixed(value, RGB.postprocessor());
 	}
 
-	default RGBProducer cfromScalar(Supplier<Evaluable<? extends Scalar>> value) {
+	default ExpressionComputation<RGB> cfromScalar(Supplier<Evaluable<? extends Scalar>> value) {
 		return rgb(value, value, value);
 	}
 
-	default RGBProducer cfromScalar(Scalar value) {
+	default ExpressionComputation<RGB> cfromScalar(Scalar value) {
 		return cfromScalar(ScalarFeatures.of(value));
 	}
 
-	default RGBProducer cfromScalar(double value) {
+	default ExpressionComputation<RGB> cfromScalar(double value) {
 		return cfromScalar(new Scalar(value));
 	}
 
