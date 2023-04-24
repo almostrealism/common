@@ -26,7 +26,7 @@ import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-public abstract class DynamicAcceleratedOperation<T extends MemoryData> extends AcceleratedOperation<T> implements ExplictBody<T> {
+public abstract class DynamicAcceleratedOperation<T extends MemoryData> extends AcceleratedOperation<T> {
 	protected InstructionSet operators;
 
 	@SafeVarargs
@@ -47,80 +47,6 @@ public abstract class DynamicAcceleratedOperation<T extends MemoryData> extends 
 		}
 
 		return operators.get(getFunctionName(), getArgsCount());
-	}
-
-	/**
-	 * @deprecated  In the process of abstracting the way in which {@link InstructionSet}s
-	 *              are created from {@link DynamicAcceleratedOperation}s, this method will
-	 *              inevitably become unusable because it is specific to a particular kind
-	 *              of {@link InstructionSet} (one that uses JOCL).
-	 */
-	@Deprecated
-	public String getFunctionDefinition() {
-		System.out.println("WARN: DynamicAcceleratedOperation.getFunctionDefinition() is deprecated");
-
-		return "__kernel void " + getFunctionName() + "(" +
-				getFunctionArgsDefinition() +
-				") {\n" +
-				getBody(getOutputVariable()) +
-				"}";
-	}
-
-	/**
-	 * @deprecated  In the process of abstracting the way in which {@link InstructionSet}s
-	 *              are created from {@link DynamicAcceleratedOperation}s, this method will
-	 *              inevitably become unusable because it is specific to a particular kind
-	 *              of {@link InstructionSet} (one that uses JOCL).
-	 */
-	@Deprecated
-	@Override
-	public String getBody(Variable<T, ?> outputVariable) {
-		throw new UnsupportedOperationException();
-	}
-
-	/**
-	 * @deprecated  In the process of abstracting the way in which {@link InstructionSet}s
-	 *              are created from {@link DynamicAcceleratedOperation}s, this method will
-	 *              inevitably become unusable because it is specific to a particular kind
-	 *              of {@link InstructionSet} (one that uses JOCL).
-	 */
-	@Deprecated
-	protected String getFunctionArgsDefinition() {
-		StringBuilder buf = new StringBuilder();
-
-		List<ArrayVariable<? extends T>> args = getArgumentVariables();
-
-		for (int i = 0; i < args.size(); i++) {
-			buf.append("__global ");
-			if (i != 0) buf.append("const ");
-			buf.append(getNumberTypeName());
-			buf.append(" *");
-
-			if (args.get(i) == null) {
-				throw new IllegalArgumentException("Null Argument (" + i + ")");
-			} else if (args.get(i).getName() == null) {
-				throw new IllegalArgumentException("Null name for Argument " + i);
-			}
-
-			buf.append(getArgumentVariables().get(i).getName());
-			buf.append(", ");
-		}
-
-		for (int i = 0; i < getArgumentVariables().size(); i++) {
-			buf.append("const int ");
-			buf.append(getArgumentVariables().get(i).getName());
-			buf.append("Offset");
-			buf.append(", ");
-		}
-
-		for (int i = 0; i < getArgumentVariables().size(); i++) {
-			buf.append("const int ");
-			buf.append(getArgumentVariables().get(i).getName());
-			buf.append("Size");
-			if (i < getArgsCount() - 1) buf.append(", ");
-		}
-
-		return buf.toString();
 	}
 
 	@Override

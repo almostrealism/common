@@ -20,6 +20,11 @@ import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ProducerComputation;
 import org.almostrealism.hardware.cl.HardwareOperator;
+import org.almostrealism.hardware.mem.Bytes;
+import org.almostrealism.hardware.mem.MemoryDataArgumentProcessor;
+
+import java.util.function.Consumer;
+import java.util.stream.Stream;
 
 public class AcceleratedComputationEvaluable<T extends MemoryData> extends AcceleratedComputationOperation implements KernelizedEvaluable<T> {
 	public AcceleratedComputationEvaluable(Computation<T> c) {
@@ -37,7 +42,7 @@ public class AcceleratedComputationEvaluable<T extends MemoryData> extends Accel
 			compile();
 		}
 
-		ArrayVariable outputVariable = (ArrayVariable) getComputation().getOutputVariable();
+		ArrayVariable outputVariable = (ArrayVariable) getOutputVariable();
 
 		// Capture the offset, but ultimately use the root delegate
 		int offset = outputVariable.getOffset();
@@ -53,7 +58,44 @@ public class AcceleratedComputationEvaluable<T extends MemoryData> extends Accel
 			throw new IllegalArgumentException("An output variable does not appear to be one of the arguments to the Evaluable");
 		}
 
-		return postProcessOutput((MemoryData) apply(args)[outputArgIndex], offset);
+		return postProcessOutput((MemoryData) apply(outputArgIndex, args)[outputArgIndex], offset);
+	}
+
+	@Override
+	public synchronized Object[] apply(Object[] args) {
+		throw new UnsupportedOperationException();
+	}
+
+	public synchronized Object[] apply(int outputArgIndex, Object[] args) {
+		if (!isKernel() || !enableKernel) return super.apply(args);
+
+		if (getArgumentVariables() == null) {
+			System.out.println("WARN: " + getName() + " was not compiled ahead of time");
+			compile();
+		}
+
+		Consumer<Object[]> operator = getOperator();
+
+		if (enableKernelLog) System.out.println("AcceleratedOperation: Preparing " + getName() + " kernel...");
+		MemoryDataArgumentProcessor processor = processKernelArgs(null, args);
+		MemoryData input[] = Stream.of(processor.getArguments()).toArray(MemoryData[]::new);
+		((HardwareOperator) operator).setGlobalWorkOffset(0);
+		((HardwareOperator) operator).setGlobalWorkSize(workSize(input[outputArgIndex]));
+
+		if (enableKernelLog) System.out.println("AcceleratedOperation: Evaluating " + getName() + " kernel...");
+
+		runApply(operator, processor, input);
+		return processor.getOriginalArguments();
+	}
+
+	private int workSize(MemoryData data) {
+		if (data instanceof MemoryBank) {
+			return ((MemoryBank<?>) data).getCount();
+		} else if (data instanceof Bytes) {
+			return ((Bytes) data).getCount();
+		} else {
+			return 1;
+		}
 	}
 
 	/**

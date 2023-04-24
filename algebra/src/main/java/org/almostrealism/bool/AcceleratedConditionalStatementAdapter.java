@@ -28,7 +28,6 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.ComputerFeatures;
 import org.almostrealism.hardware.DestinationSupport;
-import org.almostrealism.hardware.ExplictBody;
 import org.almostrealism.hardware.MemoryData;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.MemoryBank;
@@ -48,12 +47,10 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCol
 													AcceleratedConditionalStatement<T>,
 													DestinationSupport<MemoryData>,
 													ComputerFeatures {
-	public static boolean enableCompaction = false;
 
 	private final int memLength;
 
 	private Supplier<MemoryData> destination;
-	private Function<Variable<T, ?>, String> compacted;
 
 	private BiFunction<MemoryData, Integer, T> postprocessor;
 
@@ -158,56 +155,7 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCol
 		return scope;
 	}
 
-	@Override
-	public void compact() {
-		super.compact();
-
-		if (!enableCompaction || !isCompactable()) return;
-
-		ExplictBody trueOperation =
-				(ExplictBody) (getTrueValue() == null ? null : getTrueValue().getProducer().get());
-		ExplictBody falseOperation =
-				(ExplictBody) (getFalseValue() == null ? null : getFalseValue().getProducer().get());
-
-		compacted = outputVariable -> {
-			StringBuffer buf = new StringBuffer();
-
-			buf.append("if (");
-			buf.append(getCondition().getExpression());
-			buf.append(") {\n");
-			if (trueOperation != null) {
-				buf.append(trueOperation.getBody(outputVariable));
-			}
-			buf.append("} else {\n");
-			if (falseOperation != null) {
-				buf.append(falseOperation.getBody(outputVariable));
-			}
-			buf.append("}\n");
-
-			return buf.toString();
-		};
-
-		getOperands().stream()
-				.map(ArrayVariable::getProducer)
-				.forEach(this::absorbVariables);
-	}
-
-	protected boolean isCompactable() {
-		if (compacted != null) return false;
-
-		if (getTrueValue() != null && getTrueValue().getProducer().get() instanceof ExplictBody == false)
-			return false;
-		if (getFalseValue() != null && getFalseValue().getProducer().get() instanceof ExplictBody == false)
-			return false;
-		for (ArrayVariable a : getOperands()) {
-			if (a.getProducer() instanceof MultiExpression == false)
-				return false;
-		}
-
-		return true;
-	}
-
-	protected boolean isCompacted() { return compacted != null; }
+	protected boolean isCompacted() { return false; }
 
 	@Override
 	public T postProcessOutput(MemoryData output, int offset) {

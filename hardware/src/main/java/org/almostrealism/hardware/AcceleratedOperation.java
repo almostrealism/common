@@ -111,7 +111,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 	public Consumer<Object[]> getOperator() {
 		// TODO  This needs to be by class in addition to function, as function names may collide
-		synchronized (AcceleratedEvaluable.class) {
+		synchronized (AcceleratedOperation.class) {
 			if (operators.get(getFunctionName()) == null) {
 				operators.put(getFunctionName(), new ThreadLocal<>());
 			}

@@ -113,20 +113,6 @@ public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> ex
 		return CollectionUtils.include(new Supplier[0], res, p);
 	}
 
-	public static MemoryBank[] includeResult(MemoryBank res, MemoryBank... p) {
-		return CollectionUtils.include(new MemoryBank[0], res, p);
-	}
-
-	public static <T> List<T> excludeResult(List<T> p) {
-		return IntStream.range(1, p.size()).mapToObj(p::get).collect(Collectors.toList());
-	}
-
-	public static ArrayVariable[] excludeResult(ArrayVariable... p) {
-		ArrayVariable q[] = new ArrayVariable[p.length - 1];
-		for (int i = 1; i < p.length; i++) q[i - 1] = p[i];
-		return q;
-	}
-
 	public static Supplier[] producers(Supplier inputs[], Object fixedValues[]) {
 		Supplier p[] = new Supplier[inputs.length + fixedValues.length];
 

@@ -95,7 +95,6 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData> extends Dyna
 		}
 	}
 
-	@Override
 	public String getBody(Variable<MemoryData, ?> outputVariable) {
 		StringBuilder buf = new StringBuilder();
 
