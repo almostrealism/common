@@ -11,12 +11,14 @@ public class MemoryDataArgumentProcessor {
 	private OperationList postprocess;
 	private Object[] originalArguments;
 	private Object[] arguments;
+	private int kernelSize;
 
-	public MemoryDataArgumentProcessor(Object[] args, MemoryProvider target, TempMemoryFactory tempFactory) {
-		prepare = new OperationList();
-		postprocess = new OperationList();
-		originalArguments = args;
-		arguments = new Object[args.length];
+	public MemoryDataArgumentProcessor(Object[] args, MemoryProvider target, TempMemoryFactory tempFactory, int kernelSize) {
+		this.prepare = new OperationList();
+		this.postprocess = new OperationList();
+		this.originalArguments = args;
+		this.arguments = new Object[args.length];
+		this.kernelSize = kernelSize;
 
 		for (int i = 0; i < args.length; i++) {
 			arguments[i] = processArgument(args[i], target, tempFactory);
@@ -34,6 +36,8 @@ public class MemoryDataArgumentProcessor {
 		return arguments;
 	}
 	public Object[] getOriginalArguments() { return originalArguments; }
+
+	public int getKernelSize() { return kernelSize; }
 
 	private Object processArgument(Object arg, MemoryProvider target, TempMemoryFactory tempFactory) {
 		if (!(arg instanceof MemoryData)) {

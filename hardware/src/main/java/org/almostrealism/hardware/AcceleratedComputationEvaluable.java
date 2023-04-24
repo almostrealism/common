@@ -80,7 +80,14 @@ public class AcceleratedComputationEvaluable<T extends MemoryData> extends Accel
 		MemoryDataArgumentProcessor processor = processKernelArgs(null, args);
 		MemoryData input[] = Stream.of(processor.getArguments()).toArray(MemoryData[]::new);
 		((HardwareOperator) operator).setGlobalWorkOffset(0);
-		((HardwareOperator) operator).setGlobalWorkSize(workSize(input[outputArgIndex]));
+
+		int workSize = workSize(input[outputArgIndex]);
+		if (processor.getKernelSize() != workSize) {
+			System.out.println("WARN: Kernel size (" + processor.getKernelSize() + ") does not match work size (" + workSize + ")");
+		}
+
+//		((HardwareOperator) operator).setGlobalWorkSize(processor.getKernelSize());
+		((HardwareOperator) operator).setGlobalWorkSize(workSize);
 
 		if (enableKernelLog) System.out.println("AcceleratedOperation: Evaluating " + getName() + " kernel...");
 

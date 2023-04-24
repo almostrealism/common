@@ -286,7 +286,9 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			}
 		}
 
-		return new MemoryDataArgumentProcessor(allArgs, Hardware.getLocalHardware().getDataContext().getKernelMemoryProvider(), this::createAggregatedInput);
+		return new MemoryDataArgumentProcessor(allArgs,
+				Hardware.getLocalHardware().getDataContext().getKernelMemoryProvider(),
+				this::createAggregatedInput, -1);
 	}
 
 	private static int getProducerArgumentReferenceIndex(Variable<?, ?> arg) {
@@ -390,12 +392,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	}
 
 	protected MemoryDataArgumentProcessor processKernelArgs(MemoryBank output, Object args[]) {
-		return new MemoryDataArgumentProcessor(getKernelArgs(output, args),
-				Hardware.getLocalHardware().getDataContext().getKernelMemoryProvider(),
-				this::createAggregatedInput);
-	}
-
-	private MemoryData[] getKernelArgs(MemoryBank output, Object args[]) {
 		int kernelSize;
 
 		if (output != null) {
@@ -406,14 +402,149 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			kernelSize = -1;
 		}
 
-		if (kernelSize < 0) {
-			return getKernelArgsInferSize(getArgumentVariables(), args,
-					output == null ? Collections.emptyMap() : Collections.singletonMap((ArrayVariable) getOutputVariable(), output));
-		} else {
-			return getKernelArgs(getArgumentVariables(), args,
-					output == null ? Collections.emptyMap() : Collections.singletonMap((ArrayVariable) getOutputVariable(), output),
-					kernelSize);
+//		if (kernelSize < 0) {
+//			return getKernelArgsInferSize(getArgumentVariables(), args,
+//					output == null ? Collections.emptyMap() : Collections.singletonMap((ArrayVariable) getOutputVariable(), output));
+//		} else {
+//			return getKernelArgs(getArgumentVariables(), args,
+//					output == null ? Collections.emptyMap() : Collections.singletonMap((ArrayVariable) getOutputVariable(), output),
+//					kernelSize);
+//		}
+
+		List<ArrayVariable<? extends T>> arguments = getArgumentVariables();
+		Map<ArrayVariable<? extends T>, MemoryData> mappings = output == null ? Collections.emptyMap() :
+				Collections.singletonMap((ArrayVariable<? extends T>) getOutputVariable(), output);
+
+		MemoryData kernelArgs[] = new MemoryData[arguments.size()];
+
+		/*
+		 * In the first pass, kernel size is inferred from Producer arguments that
+		 * reference an Evaluable argument.
+		 */
+		i: for (int i = 0; i < arguments.size(); i++) {
+			if (arguments.get(i) == null) continue i;
+
+			if (mappings.containsKey(arguments.get(i))) {
+				kernelArgs[i] = mappings.get(arguments.get(i));
+				continue i;
+			} else {
+				int refIndex = getProducerArgumentReferenceIndex(arguments.get(i));
+
+				if (refIndex >= 0) {
+					kernelArgs[i] = (MemoryData) args[refIndex];
+				}
+			}
+
+			if (kernelSize > 0) continue i;
+
+			// If the kernel size can be inferred from this operation argument
+			// capture it from the argument to the evaluation
+			int kernelIdx = getProducerArgumentKernelIndex(arguments.get(i));
+			if (kernelIdx >= 0 && kernelArgs[i] instanceof MemoryBank) {
+				kernelSize = ((MemoryBank<?>) kernelArgs[i]).getCount();
+			}
 		}
+
+		/*
+		 * In the second pass, kernel size is inferred from Producer arguments
+		 * that do not support kernel evaluation. Given that there is no way
+		 * to specify kernel parameters for these arguments, it is safe to
+		 * assume that the desired kernel parameters must be compatible with
+		 * their output.
+		 */
+		List<Integer> sizes = new ArrayList<>();
+
+		i: for (int i = 0; i < arguments.size(); i++) {
+			if (kernelArgs[i] != null) continue i;
+
+			Evaluable<T> c = (Evaluable<T>) ProducerCache.getEvaluableForSupplier(arguments.get(i).getProducer());
+
+			if (!(c instanceof KernelizedEvaluable)) {
+				kernelArgs[i] = (MemoryData) c.evaluate((Object[]) args);
+
+				if (kernelArgs[i] instanceof MemoryBank) {
+					sizes.add(((MemoryBank<?>) kernelArgs[i]).getCount());
+				}
+			}
+		}
+
+		/*
+		 * If there is only one size, it can be used as the kernel size.
+		 */
+		if (kernelSize < 0 && sizes.size() == 1) {
+			kernelSize = sizes.get(0);
+		}
+
+		/*
+		 * If there are multiple sizes, but they are all the same,
+		 * that can be used as the kernel size.
+		 */
+		k: if (kernelSize < 0 && sizes.size() > 1) {
+			int sharedSize = sizes.get(0);
+			for (int i = 1; i < sizes.size(); i++) {
+				if (sharedSize != sizes.get(i)) {
+					break k;
+				}
+			}
+
+			kernelSize = sharedSize;
+		}
+
+		/*
+		 * Otherwise, a kernel size compatible with all sizes may be inferred.
+		 */
+		if (kernelSize < 0 && sizes.size() > 0) {
+			kernelSize = KernelSupport.inferKernelSize(sizes.stream().mapToInt(i -> i).toArray());
+		}
+
+		/*
+		 * If the kernel size is still not known, the kernel size will be 1.
+		 */
+		if (kernelSize < 0) {
+			if (enableKernelSizeWarnings)
+				System.out.println("WARN: Could not infer kernel size, it will be set to 1");
+			kernelSize = 1;
+		}
+
+		/*
+		 * In the final pass, kernel arguments are evaluated in a way that ensures the
+		 * result is compatible with the kernel size inferred in the first and second
+		 * passes.
+		 */
+		i: for (int i = 0; i < arguments.size(); i++) {
+			if (kernelArgs[i] != null) continue i;
+
+			Evaluable<T> c = (Evaluable<T>) ProducerCache.getEvaluableForSupplier(arguments.get(i).getProducer());
+
+			if (c instanceof ProducerArgumentReference) {
+				// TODO  This should not be necessary
+				System.out.println("WARN: ProducerArgumentReference not detected by first pass");
+				int argIndex = ((ProducerArgumentReference) c).getReferencedArgumentIndex();
+				kernelArgs[i] = (MemoryData) args[argIndex];
+			} else if (c instanceof KernelizedEvaluable && Stream.of(args).filter(a -> !(a instanceof MemoryData)).findAny().isEmpty()) {
+				KernelizedEvaluable kp = (KernelizedEvaluable) c;
+				kernelArgs[i] = kp.createKernelDestination(kernelSize);
+				kp.kernelEvaluate((MemoryBank) kernelArgs[i], Stream.of(args).map(MemoryData.class::cast).toArray(MemoryData[]::new));
+
+				if (kernelSize > 1) {
+					if (((MemoryBank<?>) kernelArgs[i]).getCount() != kernelSize && kernelArgs[i] instanceof Traversable) {
+						kernelArgs[i] = (MemoryData) ((Traversable) kernelArgs[i]).traverse(1);
+					}
+
+					if (((MemoryBank<?>) kernelArgs[i]).getCount() != kernelSize) {
+						throw new IllegalArgumentException("Kernel argument " + i + " with count " +
+								((MemoryBank<?>) kernelArgs[i]).getCount() +
+								" is not compatible with kernel size " + kernelSize);
+					}
+				}
+			} else {
+				kernelArgs[i] = (MemoryData) c.evaluate((Object[]) args);
+			}
+		}
+
+		return new MemoryDataArgumentProcessor(kernelArgs,
+				Hardware.getLocalHardware().getDataContext().getKernelMemoryProvider(),
+				this::createAggregatedInput, -1);
 	}
 
 	/**
