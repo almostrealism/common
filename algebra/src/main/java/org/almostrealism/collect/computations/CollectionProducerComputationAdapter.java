@@ -73,8 +73,8 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 		// When kernel length as 1, an assumption is made that the intended shape
 		// is the original shape. This is a bit of a hack, but it's by far the
 		// simplest solution available
-		if (count == 0 || (len == getShape().length(0) && count == 1)) {
-//		if (count == 0 || len == getShape().getCount()) {
+//		if (count == 0 || (len == getShape().length(0) && count == 1)) {
+		if (count == 0 || len == getShape().getCount()) {
 			// It is not necessary to prepend a (usually) unnecessary dimension
 			return new PackedCollection<>(getShape());
 		} else {
