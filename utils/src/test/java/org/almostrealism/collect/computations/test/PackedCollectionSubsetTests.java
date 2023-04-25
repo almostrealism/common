@@ -198,7 +198,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 	public void enumerateTwiceSmall() {
 		PackedCollection<?> input = tensor(shape(4, 4)).pack();
 
-		HardwareOperator.verboseLog(() -> {
+//		HardwareOperator.verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> convY = c(p(input))
 					.enumerate(1, 2, 2);
 			PackedCollection<?> output = convY.get().evaluate();
@@ -221,7 +221,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 					}
 				}
 			}
-		});
+//		});
 	}
 
 	@Test

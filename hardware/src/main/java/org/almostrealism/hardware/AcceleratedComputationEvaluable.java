@@ -86,8 +86,8 @@ public class AcceleratedComputationEvaluable<T extends MemoryData> extends Accel
 			System.out.println("WARN: Kernel size (" + processor.getKernelSize() + ") does not match work size (" + workSize + ")");
 		}
 
-//		((HardwareOperator) operator).setGlobalWorkSize(processor.getKernelSize());
-		((HardwareOperator) operator).setGlobalWorkSize(workSize);
+		((HardwareOperator) operator).setGlobalWorkSize(processor.getKernelSize());
+//		((HardwareOperator) operator).setGlobalWorkSize(workSize);
 
 		if (enableKernelLog) System.out.println("AcceleratedOperation: Evaluating " + getName() + " kernel...");
 

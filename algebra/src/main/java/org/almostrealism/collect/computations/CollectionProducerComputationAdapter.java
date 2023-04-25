@@ -45,6 +45,7 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 
 	private TraversalPolicy shape;
 	private Supplier<? extends PackedCollection> destination;
+	private boolean fixedDestinationShape;
 
 	protected CollectionProducerComputationAdapter() { }
 
@@ -59,16 +60,28 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 		init();
 	}
 
+	public boolean isFixedDestinationShape() {
+		return fixedDestinationShape;
+	}
+
+	public void setFixedDestinationShape(boolean fixedDestinationShape) {
+		this.fixedDestinationShape = fixedDestinationShape;
+	}
+
 	protected void setShape(TraversalPolicy shape) {
 		this.shape = shape;
 	}
 
 	protected MemoryBank<?> createKernelDestination(int len) {
+		if (fixedDestinationShape) return new PackedCollection<>(getShape());
+
 		if (len > 1 && len % getShape().getCount() != 0) {
 			throw new IllegalArgumentException("Kernel length must be a multiple of the shape count");
 		}
 
 		int count = len / getShape().getCount();
+
+		TraversalPolicy shape;
 
 		// When kernel length as 1, an assumption is made that the intended shape
 		// is the original shape. This is a bit of a hack, but it's by far the
@@ -76,10 +89,14 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 //		if (count == 0 || (len == getShape().length(0) && count == 1)) {
 		if (count == 0 || len == getShape().getCount()) {
 			// It is not necessary to prepend a (usually) unnecessary dimension
-			return new PackedCollection<>(getShape());
+			shape = getShape();
 		} else {
-			return new PackedCollection<>(getShape().prependDimension(count));
+			shape = getShape().prependDimension(count);
 		}
+
+		System.out.println("CollectionProducerComputationAdapter: createKernelDestination(" + len + "): "
+							+ shape + "[" + shape.getTraversalAxis() + "]");
+		return new PackedCollection<>(shape);
 	}
 
 	@Override

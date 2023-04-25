@@ -404,15 +404,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			kernelSize = -1;
 		}
 
-//		if (kernelSize < 0) {
-//			return getKernelArgsInferSize(getArgumentVariables(), args,
-//					output == null ? Collections.emptyMap() : Collections.singletonMap((ArrayVariable) getOutputVariable(), output));
-//		} else {
-//			return getKernelArgs(getArgumentVariables(), args,
-//					output == null ? Collections.emptyMap() : Collections.singletonMap((ArrayVariable) getOutputVariable(), output),
-//					kernelSize);
-//		}
-
 		List<ArrayVariable<? extends T>> arguments = getArgumentVariables();
 		Map<ArrayVariable<? extends T>, MemoryData> mappings = output == null ? Collections.emptyMap() :
 				Collections.singletonMap((ArrayVariable<? extends T>) getOutputVariable(), output);
@@ -455,15 +446,15 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		 * the kernel dimension for what it will produce, it is known ahead of
 		 * time what the expected kernel size is.
 		 */
-//		i: for (int i = 0; i < arguments.size(); i++) {
-//			if (kernelArgs[i] != null) continue i;
-//
-//			Supplier p = arguments.get(i).getProducer();
-//
-//			if (p instanceof MemoryDataDestination && ((MemoryDataDestination) p).getDelegate() instanceof Shape) {
-//				sizes.add(((Shape) ((MemoryDataDestination) p).getDelegate()).getShape().getCount());
-//			}
-//		}
+		i: for (int i = 0; i < arguments.size(); i++) {
+			if (kernelArgs[i] != null) continue i;
+
+			Supplier p = arguments.get(i).getProducer();
+
+			if (p instanceof MemoryDataDestination && ((MemoryDataDestination) p).getDelegate() instanceof Shape) {
+				sizes.add(((Shape) ((MemoryDataDestination) p).getDelegate()).getShape().getCount());
+			}
+		}
 
 		/*
 		 * In the third pass, kernel size is inferred from Producer arguments

@@ -106,6 +106,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 				IntStream.range(0, exp.size())
 						.mapToObj(i -> (Function<List<MultiExpression<Double>>, Expression<Double>>) args -> exp.get(i))
 						.collect(Collectors.toList()));
+		computation.setFixedDestinationShape(true);
 		CollectionProducerComputation<?> altMapped = mapper.apply(computation);
 		ScopeLifecycle.prepareScope(Stream.of(altMapped), manager);
 
