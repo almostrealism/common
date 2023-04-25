@@ -42,6 +42,7 @@ public class RankedChoiceEvaluable<T> extends ArrayList<ProducerWithRank<T, Scal
 				Pair.empty(),
 				Input.value(Scalar.shape(), 0),
 				Input.value(Pair.shape(), 1));
+		((AcceleratedEvaluable) highestRank).setPostprocessor(Pair.postprocessor());
 		((OperationAdapter) highestRank).compile();
 	}
 

@@ -61,28 +61,28 @@ public class AcceleratedComputationEvaluable<T extends MemoryData> extends Accel
 		return postProcessOutput((MemoryData) apply(args)[outputArgIndex], offset);
 	}
 
-	@Override
-	public synchronized Object[] apply(Object[] args) {
-		if (!isKernel() || !enableKernel) return super.apply(args);
-
-		if (getArgumentVariables() == null) {
-			System.out.println("WARN: " + getName() + " was not compiled ahead of time");
-			compile();
-		}
-
-		Consumer<Object[]> operator = getOperator();
-
-		if (enableKernelLog) System.out.println("AcceleratedOperation: Preparing " + getName() + " kernel...");
-		MemoryDataArgumentProcessor processor = processKernelArgs(null, args);
-		MemoryData input[] = Stream.of(processor.getArguments()).toArray(MemoryData[]::new);
-		((HardwareOperator) operator).setGlobalWorkOffset(0);
-		((HardwareOperator) operator).setGlobalWorkSize(processor.getKernelSize());
-
-		if (enableKernelLog) System.out.println("AcceleratedOperation: Evaluating " + getName() + " kernel...");
-
-		runApply(operator, processor, input);
-		return processor.getOriginalArguments();
-	}
+//	@Override
+//	public synchronized Object[] apply(Object[] args) {
+//		if (!isKernel() || !enableKernel) return super.apply(args);
+//
+//		if (getArgumentVariables() == null) {
+//			System.out.println("WARN: " + getName() + " was not compiled ahead of time");
+//			compile();
+//		}
+//
+//		Consumer<Object[]> operator = getOperator();
+//
+//		if (enableKernelLog) System.out.println("AcceleratedOperation: Preparing " + getName() + " kernel...");
+//		MemoryDataArgumentProcessor processor = processKernelArgs(null, args);
+//		MemoryData input[] = Stream.of(processor.getArguments()).toArray(MemoryData[]::new);
+//		((HardwareOperator) operator).setGlobalWorkOffset(0);
+//		((HardwareOperator) operator).setGlobalWorkSize(processor.getKernelSize());
+//
+//		if (enableKernelLog) System.out.println("AcceleratedOperation: Evaluating " + getName() + " kernel...");
+//
+//		runApply(operator, processor, input);
+//		return processor.getOriginalArguments();
+//	}
 
 	/**
 	 * As the result of an {@link AcceleratedComputationEvaluable} is not guaranteed to be

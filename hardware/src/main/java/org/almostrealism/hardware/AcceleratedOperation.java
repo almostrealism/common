@@ -209,8 +209,8 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	@Override
 	public void run() { apply(new Object[0]); }
 
-	@Override
-	public synchronized Object[] apply(Object[] args) {
+	@Deprecated
+	public synchronized Object[] oldApply(Object[] args) {
 		if (getArgumentVariables() == null) {
 			System.out.println("WARN: " + getName() + " was not compiled ahead of time");
 			compile();
@@ -235,6 +235,31 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		}
 
 		return argProcess.getOriginalArguments();
+	}
+
+	@Override
+	public synchronized Object[] apply(Object[] args) {
+		if (!isKernel() || !enableKernel) {
+			return oldApply(args);
+		}
+
+		if (getArgumentVariables() == null) {
+			System.out.println("WARN: " + getName() + " was not compiled ahead of time");
+			compile();
+		}
+
+		Consumer<Object[]> operator = getOperator();
+
+		if (enableKernelLog) System.out.println("AcceleratedOperation: Preparing " + getName() + " kernel...");
+		MemoryDataArgumentProcessor processor = processKernelArgs(null, args);
+		MemoryData input[] = Stream.of(processor.getArguments()).toArray(MemoryData[]::new);
+		((HardwareOperator) operator).setGlobalWorkOffset(0);
+		((HardwareOperator) operator).setGlobalWorkSize(processor.getKernelSize());
+
+		if (enableKernelLog) System.out.println("AcceleratedOperation: Evaluating " + getName() + " kernel...");
+
+		runApply(operator, processor, input);
+		return processor.getOriginalArguments();
 	}
 
 	protected MemoryDataArgumentProcessor getAllArgs(Object args[]) {

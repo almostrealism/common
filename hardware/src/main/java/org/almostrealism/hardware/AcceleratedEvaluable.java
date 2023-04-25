@@ -26,6 +26,7 @@ import io.almostrealism.scope.Variable;
 import org.almostrealism.hardware.cl.HardwareOperator;
 
 import java.util.List;
+import java.util.function.BiFunction;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -33,6 +34,8 @@ import java.util.stream.Stream;
 
 @Deprecated
 public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> extends AcceleratedOperation implements KernelizedEvaluable<O> {
+	private BiFunction<MemoryData, Integer, O> postprocessor;
+
 	@SafeVarargs
 	public AcceleratedEvaluable(String function, Supplier<Evaluable<? extends O>> result, Supplier<Evaluable<? extends I>>... inputArgs) {
 		this(function, false, result, inputArgs, new Object[0]);
@@ -51,6 +54,10 @@ public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> ex
 		super(function, kernel, includeResult(result, inputArgs));
 		setArgumentMapping(false);
 	}
+
+	public BiFunction<MemoryData, Integer, O> getPostprocessor() { return postprocessor; }
+
+	public void setPostprocessor(BiFunction<MemoryData, Integer, O> postprocessor) { this.postprocessor = postprocessor; }
 
 	@Override
 	public ArrayVariable getArgument(int index, Expression<Integer> size) {
@@ -74,7 +81,17 @@ public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> ex
 	}
 
 	@Override
-	public O evaluate(Object... args) { return (O) apply(args)[0]; }
+	public O evaluate(Object... args) { return postProcessOutput((MemoryData) apply(args)[0], 0); }
+
+	/**
+	 * As the result of an {@link AcceleratedEvaluable} is not guaranteed to be
+	 * of the correct type of {@link MemoryData}, depending on what optimizations
+	 * are used for evaluation, subclasses can override this method to ensure that the
+	 * expected type is returned by the {@link #evaluate(Object...)} method.
+	 */
+	protected O postProcessOutput(MemoryData output, int offset) {
+		return postprocessor == null ? (O) output : postprocessor.apply(output, offset);
+	}
 
 	/**
 	 * If {@link #isKernel()} returns true, this method will pass the
