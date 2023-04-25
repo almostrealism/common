@@ -58,15 +58,11 @@ public class AcceleratedComputationEvaluable<T extends MemoryData> extends Accel
 			throw new IllegalArgumentException("An output variable does not appear to be one of the arguments to the Evaluable");
 		}
 
-		return postProcessOutput((MemoryData) apply(outputArgIndex, args)[outputArgIndex], offset);
+		return postProcessOutput((MemoryData) apply(args)[outputArgIndex], offset);
 	}
 
 	@Override
 	public synchronized Object[] apply(Object[] args) {
-		throw new UnsupportedOperationException();
-	}
-
-	public synchronized Object[] apply(int outputArgIndex, Object[] args) {
 		if (!isKernel() || !enableKernel) return super.apply(args);
 
 		if (getArgumentVariables() == null) {
@@ -80,29 +76,12 @@ public class AcceleratedComputationEvaluable<T extends MemoryData> extends Accel
 		MemoryDataArgumentProcessor processor = processKernelArgs(null, args);
 		MemoryData input[] = Stream.of(processor.getArguments()).toArray(MemoryData[]::new);
 		((HardwareOperator) operator).setGlobalWorkOffset(0);
-
-		int workSize = workSize(input[outputArgIndex]);
-		if (processor.getKernelSize() != workSize) {
-			System.out.println("WARN: Kernel size (" + processor.getKernelSize() + ") does not match work size (" + workSize + ")");
-		}
-
 		((HardwareOperator) operator).setGlobalWorkSize(processor.getKernelSize());
-//		((HardwareOperator) operator).setGlobalWorkSize(workSize);
 
 		if (enableKernelLog) System.out.println("AcceleratedOperation: Evaluating " + getName() + " kernel...");
 
 		runApply(operator, processor, input);
 		return processor.getOriginalArguments();
-	}
-
-	private int workSize(MemoryData data) {
-		if (data instanceof MemoryBank) {
-			return ((MemoryBank<?>) data).getCount();
-		} else if (data instanceof Bytes) {
-			return ((Bytes) data).getCount();
-		} else {
-			return 1;
-		}
 	}
 
 	/**
