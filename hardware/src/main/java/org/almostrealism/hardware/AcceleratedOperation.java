@@ -36,11 +36,13 @@ import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
+import org.almostrealism.collect.Shape;
 import org.almostrealism.collect.Traversable;
 import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.hardware.mem.Bytes;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.hardware.mem.MemoryDataArgumentProcessor;
+import org.almostrealism.hardware.mem.MemoryDataDestination;
 import org.almostrealism.io.SystemUtils;
 import org.jocl.CLException;
 
@@ -445,15 +447,31 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			}
 		}
 
+		List<Integer> sizes = new ArrayList<>();
+
 		/*
 		 * In the second pass, kernel size is inferred from Producer arguments
+		 * that actually implement Shape. If an input to the operation declares
+		 * the kernel dimension for what it will produce, it is known ahead of
+		 * time what the expected kernel size is.
+		 */
+//		i: for (int i = 0; i < arguments.size(); i++) {
+//			if (kernelArgs[i] != null) continue i;
+//
+//			Supplier p = arguments.get(i).getProducer();
+//
+//			if (p instanceof MemoryDataDestination && ((MemoryDataDestination) p).getDelegate() instanceof Shape) {
+//				sizes.add(((Shape) ((MemoryDataDestination) p).getDelegate()).getShape().getCount());
+//			}
+//		}
+
+		/*
+		 * In the third pass, kernel size is inferred from Producer arguments
 		 * that do not support kernel evaluation. Given that there is no way
 		 * to specify kernel parameters for these arguments, it is safe to
 		 * assume that the desired kernel parameters must be compatible with
 		 * their output.
 		 */
-		List<Integer> sizes = new ArrayList<>();
-
 		i: for (int i = 0; i < arguments.size(); i++) {
 			if (kernelArgs[i] != null) continue i;
 
@@ -526,17 +544,17 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				kernelArgs[i] = kp.createKernelDestination(kernelSize);
 				kp.kernelEvaluate((MemoryBank) kernelArgs[i], Stream.of(args).map(MemoryData.class::cast).toArray(MemoryData[]::new));
 
-				if (kernelSize > 1) {
-					if (((MemoryBank<?>) kernelArgs[i]).getCount() != kernelSize && kernelArgs[i] instanceof Traversable) {
-						kernelArgs[i] = (MemoryData) ((Traversable) kernelArgs[i]).traverse(1);
-					}
-
-					if (((MemoryBank<?>) kernelArgs[i]).getCount() != kernelSize) {
-						throw new IllegalArgumentException("Kernel argument " + i + " with count " +
-								((MemoryBank<?>) kernelArgs[i]).getCount() +
-								" is not compatible with kernel size " + kernelSize);
-					}
-				}
+//				if (kernelSize > 1) {
+//					if (((MemoryBank<?>) kernelArgs[i]).getCount() != kernelSize && kernelArgs[i] instanceof Traversable) {
+//						kernelArgs[i] = (MemoryData) ((Traversable) kernelArgs[i]).traverse(1);
+//					}
+//
+//					if (((MemoryBank<?>) kernelArgs[i]).getCount() != kernelSize) {
+//						throw new IllegalArgumentException("Kernel argument " + i + " with count " +
+//								((MemoryBank<?>) kernelArgs[i]).getCount() +
+//								" is not compatible with kernel size " + kernelSize);
+//					}
+//				}
 			} else {
 				kernelArgs[i] = (MemoryData) c.evaluate((Object[]) args);
 			}
@@ -570,15 +588,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	}
 
 	public boolean isKernel() { return kernel; }
-
-	public boolean isInputKernel() {
-		for (ArrayVariable arg : getArgumentVariables()) {
-			if (!(arg.getProducer() instanceof AcceleratedEvaluable)) return false;
-			if (!((AcceleratedEvaluable) arg.getProducer()).isKernel()) return false;
-		}
-
-		return true;
-	}
 
 	@Override
 	public void destroy() {
