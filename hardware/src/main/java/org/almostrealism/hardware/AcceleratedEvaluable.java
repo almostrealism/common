@@ -68,7 +68,7 @@ public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> ex
 	}
 
 	@Override
-	public O evaluate(Object... args) { return postProcessOutput((MemoryData) apply(args)[0], 0); }
+	public O evaluate(Object... args) { return postProcessOutput((MemoryData) apply(null, args)[0], 0); }
 
 	/**
 	 * As the result of an {@link AcceleratedEvaluable} is not guaranteed to be

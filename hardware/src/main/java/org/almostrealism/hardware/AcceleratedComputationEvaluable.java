@@ -58,7 +58,7 @@ public class AcceleratedComputationEvaluable<T extends MemoryData> extends Accel
 			throw new IllegalArgumentException("An output variable does not appear to be one of the arguments to the Evaluable");
 		}
 
-		return postProcessOutput((MemoryData) apply(args)[outputArgIndex], offset);
+		return postProcessOutput((MemoryData) apply(null, args)[outputArgIndex], offset);
 	}
 
 //	@Override

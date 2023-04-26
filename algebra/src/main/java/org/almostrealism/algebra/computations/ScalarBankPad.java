@@ -49,12 +49,6 @@ public class ScalarBankPad extends CollectionProducerComputationAdapter<ScalarBa
 	@Override
 	public Supplier<ScalarBank> getDestination() { return destination; }
 
-	/**
-	 * @return  PhysicalScope#GLOBAL
-	 */
-	@Override
-	public PhysicalScope getDefaultPhysicalScope() { return PhysicalScope.GLOBAL; }
-
 	@Override
 	public Scope<ScalarBank> getScope() {
 		HybridScope<ScalarBank> scope = new HybridScope<>(this);

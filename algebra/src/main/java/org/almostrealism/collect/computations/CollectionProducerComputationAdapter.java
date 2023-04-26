@@ -83,9 +83,10 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 
 		TraversalPolicy shape;
 
-		// When kernel length as 1, an assumption is made that the intended shape
-		// is the original shape. This is a bit of a hack, but it's by far the
-		// simplest solution available
+		// When kernel length is 1, or identical to the output count, an
+		// assumption is made that the intended shape is the original shape.
+		// This is a bit of a hack, but it's by far the simplest solution
+		// available
 //		if (count == 0 || (len == getShape().length(0) && count == 1)) {
 		if (count == 0 || len == getShape().getCount()) {
 			// It is not necessary to prepend a (usually) unnecessary dimension

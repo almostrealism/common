@@ -60,7 +60,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-public abstract class AcceleratedOperation<T extends MemoryData> extends OperationAdapter<T> implements Function<Object[], Object[]>, Runnable,
+public abstract class AcceleratedOperation<T extends MemoryData> extends OperationAdapter<T> implements Runnable,
 														KernelizedOperation, Compactable, ScopeLifecycle, ComputerFeatures {
 	public static final boolean enableArgumentMapping = true;
 	public static final boolean enableCompaction = true;
@@ -212,10 +212,9 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	public void postApply() { if (postOp != null) postOp.get().run(); }
 
 	@Override
-	public void run() { apply(new Object[0]); }
+	public void run() { apply(null, new Object[0]); }
 
-	@Override
-	public synchronized Object[] apply(Object[] args) {
+	protected synchronized Object[] apply(MemoryBank output, Object[] args) {
 		if (getArgumentVariables() == null) {
 			System.out.println("WARN: " + getName() + " was not compiled ahead of time");
 			compile();
@@ -224,7 +223,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		Consumer<Object[]> operator = getOperator();
 
 		if (enableKernelLog) System.out.println("AcceleratedOperation: Preparing " + getName() + " kernel...");
-		MemoryDataArgumentProcessor processor = processKernelArgs(null, args);
+		MemoryDataArgumentProcessor processor = processKernelArgs(output, args);
 		MemoryData input[] = Stream.of(processor.getArguments()).toArray(MemoryData[]::new);
 		((HardwareOperator) operator).setGlobalWorkOffset(0);
 		((HardwareOperator) operator).setGlobalWorkSize(processor.getKernelSize());
@@ -283,50 +282,9 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 	@Override
 	public void kernelOperate(MemoryBank output, MemoryData[] args) {
-		if (getArgumentVariables() == null) {
-			System.out.println("WARN: " + getName() + " was not compiled ahead of time");
-			compile();
-		}
-
 		try {
 			if (isKernel() && enableKernel) {
-				Consumer<Object[]> operator = getOperator();
-				((HardwareOperator) operator).setGlobalWorkOffset(0);
-				((HardwareOperator) operator).setGlobalWorkSize(Optional.ofNullable(output).map(MemoryBank::getCount).orElseGet(() -> ((MemoryBank) args[0]).getCount()));
-
-				if (enableKernelLog) System.out.println("AcceleratedOperation: Preparing " + getName() + " kernel...");
-				MemoryDataArgumentProcessor processor = processKernelArgs(output, args);
-				MemoryData input[] = Stream.of(processor.getArguments()).toArray(MemoryData[]::new);
-
-				if (enableKernelLog) System.out.println("AcceleratedOperation: Evaluating " + getName() + " kernel...");
-				runApply(operator, processor, input);
-			} else {
-				throw new HardwareException("Kernel not supported");
-			}
-		} catch (CLException e) {
-			throw new HardwareException("Could not evaluate AcceleratedOperation", e);
-		}
-	}
-
-	@Override
-	public void kernelOperate(MemoryData... args) {
-		if (getArgumentVariables() == null) {
-			System.out.println("WARN: " + getName() + " was not compiled ahead of time");
-			compile();
-		}
-
-		try {
-			if (isKernel() && enableKernel) {
-				Consumer<Object[]> operator = getOperator();
-				((HardwareOperator) operator).setGlobalWorkOffset(0);
-				((HardwareOperator) operator).setGlobalWorkSize(((MemoryBank) args[0]).getCount());
-
-				if (enableKernelLog) System.out.println("AcceleratedOperation: Preparing " + getName() + " kernel...");
-				MemoryDataArgumentProcessor processor = processKernelArgs(null, args);
-				MemoryData input[] = Stream.of(processor.getArguments()).toArray(MemoryData[]::new);
-
-				if (enableKernelLog) System.out.println("AcceleratedOperation: Evaluating " + getName() + " kernel...");
-				runApply(operator, processor, input);
+				apply(output, args);
 			} else {
 				throw new HardwareException("Kernel not supported");
 			}

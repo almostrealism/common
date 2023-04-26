@@ -25,8 +25,9 @@ public interface KernelizedOperation {
 	/**
 	 * {@link #kernelOperate(MemoryData...)} is preferred.
 	 */
-	@Deprecated
 	void kernelOperate(MemoryBank output, MemoryData args[]);
 
-	void kernelOperate(MemoryData... args);
+	default void kernelOperate(MemoryData... args) {
+		kernelOperate(null, args);
+	}
 }
