@@ -22,8 +22,10 @@ import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversableExpression;
 import org.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.ComputerFeatures;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.hardware.DestinationEvaluable;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
@@ -95,6 +97,15 @@ public class ArrayVariableComputation<T extends PackedCollection<?>> extends Dyn
 			@Override
 			public void kernelEvaluate(MemoryBank destination, MemoryData... args) {
 				getKernel().kernelEvaluate(destination, args);
+			}
+
+			@Override
+			public Evaluable<T> withDestination(MemoryBank<T> destination) {
+				if (getKernel() instanceof AcceleratedOperation) {
+					return new DestinationEvaluable<>((AcceleratedOperation) getKernel(), destination);
+				} else {
+					throw new UnsupportedOperationException();
+				}
 			}
 
 			@Override

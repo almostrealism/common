@@ -398,8 +398,9 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 				new ArrayVariableComputation<>(outputShape, List.of(expression), p(filter), p(input));
 		KernelizedEvaluable<PackedCollection<?>> ev = producer.get();
 
-		PackedCollection<?> result = new PackedCollection(outputShape);
-		ev.kernelEvaluate(result.traverseEach(), filter, input);
+		PackedCollection<PackedCollection<?>> result = new PackedCollection(outputShape);
+//		ev.kernelEvaluate(result.traverseEach(), filter, input);
+		ev.into(result.traverseEach()).evaluate(filter, input);
 		System.out.println(result.getShape());
 
 		for (int p = 0; p < outputShape.length(0); p++) {

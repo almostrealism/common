@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ProducerComputation;
@@ -61,7 +62,12 @@ public class AcceleratedComputationEvaluable<T extends MemoryData> extends Accel
 		return postProcessOutput((MemoryData) apply(null, args)[outputArgIndex], offset);
 	}
 
-//	@Override
+	@Override
+	public Evaluable<T> withDestination(MemoryBank<T> destination) {
+		return new DestinationEvaluable(this, destination);
+	}
+
+	//	@Override
 //	public synchronized Object[] apply(Object[] args) {
 //		if (!isKernel() || !enableKernel) return super.apply(args);
 //

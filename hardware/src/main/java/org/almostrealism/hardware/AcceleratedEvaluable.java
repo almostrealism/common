@@ -70,6 +70,11 @@ public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> ex
 	@Override
 	public O evaluate(Object... args) { return postProcessOutput((MemoryData) apply(null, args)[0], 0); }
 
+	@Override
+	public Evaluable<O> withDestination(MemoryBank<O> destination) {
+		return new DestinationEvaluable(this, destination);
+	}
+
 	/**
 	 * As the result of an {@link AcceleratedEvaluable} is not guaranteed to be
 	 * of the correct type of {@link MemoryData}, depending on what optimizations

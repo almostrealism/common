@@ -66,7 +66,8 @@ public class RankedChoiceEvaluableTest implements CodeFeatures {
 		PackedCollection<Pair<?>> conf = Pair.bank(1);
 		conf.set(0, new Pair(4, Intersection.e));
 
-		RankedChoiceEvaluable.highestRank.kernelEvaluate(out, new MemoryBank[] { in, conf });
+//		RankedChoiceEvaluable.highestRank.kernelEvaluate(out, new MemoryBank[] { in, conf });
+		RankedChoiceEvaluable.highestRank.into(out).evaluate(in, conf);
 
 		System.out.println("rank = " + out.get(0).getA());
 		Assert.assertEquals(1.0, out.get(0).getA(), Math.pow(10, -10));

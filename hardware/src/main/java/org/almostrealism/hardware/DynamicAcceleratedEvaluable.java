@@ -50,6 +50,11 @@ public abstract class DynamicAcceleratedEvaluable<I extends MemoryData, O extend
 	}
 
 	@Override
+	public Evaluable<O> withDestination(MemoryBank<O> destination) {
+		return new DestinationEvaluable(this, destination);
+	}
+
+	@Override
 	public O evaluate(Object... args) { return (O) apply(null, args)[0]; }
 
 	@Deprecated

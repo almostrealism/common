@@ -64,7 +64,8 @@ public interface ScalarBankFeatures extends ScalarFeatures {
 				ScalarBank d1 = x.evaluate(args);
 				ScalarBank d2 = y.evaluate(args);
 				ScalarBank out = new ScalarBank(count);
-				ev.kernelEvaluate(out, d1, d2);
+//				ev.kernelEvaluate(out, d1, d2);
+				ev.into(out).evaluate(d1, d2);
 				return out;
 			};
 		};
