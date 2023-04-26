@@ -31,5 +31,7 @@ import java.util.function.Supplier;
 public class MatrixAdjoint extends AcceleratedEvaluable<TransformMatrix, TransformMatrix> {
 	public MatrixAdjoint(Supplier<Evaluable<? extends TransformMatrix>> m) {
 		super("matrixAdjoint", TransformMatrix.blank(), m);
+		setKernelDestination(TransformMatrix::bank);
+		setPostprocessor(TransformMatrix.postprocessor());
 	}
 }

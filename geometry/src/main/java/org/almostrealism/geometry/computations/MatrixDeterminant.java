@@ -19,9 +19,12 @@ package org.almostrealism.geometry.computations;
 import io.almostrealism.code.DefaultScopeInputManager;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.hardware.AcceleratedEvaluable;
+import org.almostrealism.hardware.MemoryData;
 
+import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
 /**
@@ -33,5 +36,7 @@ import java.util.function.Supplier;
 public class MatrixDeterminant extends AcceleratedEvaluable<TransformMatrix, Scalar> {
 	public MatrixDeterminant(Supplier<Evaluable<? extends TransformMatrix>> m) {
 		super("matrixDeterminant", Scalar.blank(), m);
+		setKernelDestination(ScalarBank::new);
+		setPostprocessor((BiFunction) Scalar.postprocessor());
 	}
 }

@@ -32,5 +32,7 @@ import java.util.function.Supplier;
 public class MatrixTranspose extends AcceleratedEvaluable<TransformMatrix, TransformMatrix> {
 	public MatrixTranspose(Supplier<Evaluable<? extends TransformMatrix>> m) {
 		super("matrixTranspose", TransformMatrix.blank(), m);
+		setKernelDestination(TransformMatrix::bank);
+		setPostprocessor(TransformMatrix.postprocessor());
 	}
 }

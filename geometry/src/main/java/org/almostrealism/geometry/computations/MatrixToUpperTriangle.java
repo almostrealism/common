@@ -28,5 +28,7 @@ public class MatrixToUpperTriangle extends AcceleratedEvaluable<MemoryData, Tran
 	public MatrixToUpperTriangle(Supplier<Evaluable<? extends MemoryData>> m) {
 		super("matrixToUpperTriangle", TransformMatrix.blank(),
 				(Supplier) Scalar.blank(), m);
+		setKernelDestination(TransformMatrix::bank);
+		setPostprocessor(TransformMatrix.postprocessor());
 	}
 }

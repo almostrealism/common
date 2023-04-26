@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@ import org.almostrealism.hardware.cl.HardwareOperator;
 
 import java.util.List;
 import java.util.function.BiFunction;
+import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -35,18 +36,11 @@ import java.util.stream.Stream;
 @Deprecated
 public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> extends AcceleratedOperation implements KernelizedEvaluable<O> {
 	private BiFunction<MemoryData, Integer, O> postprocessor;
+	private IntFunction<MemoryBank<O>> kernelDestination;
 
 	@SafeVarargs
 	public AcceleratedEvaluable(String function, Supplier<Evaluable<? extends O>> result, Supplier<Evaluable<? extends I>>... inputArgs) {
-		this(function, false, result, inputArgs, new Object[0]);
-	}
-
-	public AcceleratedEvaluable(String function, Supplier<Evaluable<? extends O>> result, Supplier<Evaluable<? extends I>> inputArgs[], Object additionalArguments[]) {
-		this(function, false, result, inputArgs, additionalArguments);
-	}
-
-	public AcceleratedEvaluable(String function, boolean kernel, Supplier<Evaluable<? extends O>> result, Supplier<Evaluable<? extends I>> inputArgs[], Object additionalArguments[]) {
-		this(function, kernel, result, producers(inputArgs, additionalArguments));
+		this(function, false, result, inputArgs);
 	}
 
 	@SafeVarargs
@@ -56,17 +50,10 @@ public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> ex
 	}
 
 	public BiFunction<MemoryData, Integer, O> getPostprocessor() { return postprocessor; }
-
 	public void setPostprocessor(BiFunction<MemoryData, Integer, O> postprocessor) { this.postprocessor = postprocessor; }
 
-	@Override
-	public ArrayVariable getArgument(int index, Expression<Integer> size) {
-		if (getArguments() != null) {
-			return getArgumentForInput((Supplier<Evaluable>) getInputs().get(index));
-		}
-
-		return super.getArgument(index, size);
-	}
+	public IntFunction<MemoryBank<O>> getKernelDestination() { return kernelDestination; }
+	public void setKernelDestination(IntFunction<MemoryBank<O>> kernelDestination) { this.kernelDestination = kernelDestination; }
 
 	@Override
 	public Variable getOutputVariable() { return getArgument(0); }
@@ -107,7 +94,11 @@ public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> ex
 
 	@Override
 	public MemoryBank<O> createKernelDestination(int size) {
-		throw new RuntimeException("Not implemented");
+		if (kernelDestination != null) {
+			return kernelDestination.apply(size);
+		} else {
+			throw new UnsupportedOperationException();
+		}
 	}
 
 	public static void kernelEvaluate(KernelizedOperation operation, MemoryBank destination, MemoryData args[], boolean kernel) {
@@ -128,20 +119,5 @@ public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> ex
 
 	public static Supplier[] includeResult(Supplier res, Supplier... p) {
 		return CollectionUtils.include(new Supplier[0], res, p);
-	}
-
-	public static Supplier[] producers(Supplier inputs[], Object fixedValues[]) {
-		Supplier p[] = new Supplier[inputs.length + fixedValues.length];
-
-		for (int i = 0; i < inputs.length; i++) {
-			p[i] = inputs[i];
-		}
-
-		for (int i = 0; i < fixedValues.length; i++) {
-			Object o = fixedValues[i];
-			p[inputs.length + i] = fixedValues == null ? null : () -> new Provider<>(o);
-		}
-
-		return p;
 	}
 }

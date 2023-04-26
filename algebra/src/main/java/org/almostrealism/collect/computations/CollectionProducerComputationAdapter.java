@@ -94,8 +94,8 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 			shape = getShape().prependDimension(count);
 		}
 
-		System.out.println("CollectionProducerComputationAdapter: createKernelDestination(" + len + "): "
-							+ shape + "[" + shape.getTraversalAxis() + "]");
+//		System.out.println("CollectionProducerComputationAdapter: createKernelDestination(" + len + "): "
+//							+ shape + "[" + shape.getTraversalAxis() + "]");
 		return new PackedCollection<>(shape);
 	}
 

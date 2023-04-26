@@ -21,6 +21,7 @@ import org.almostrealism.hardware.DynamicProducerForMemoryData;
 
 import java.util.function.Function;
 
+@Deprecated
 public class DynamicRGBProducer extends DynamicProducerForMemoryData<RGB> {
 
 	public DynamicRGBProducer(Function<Object[], RGB> function) {

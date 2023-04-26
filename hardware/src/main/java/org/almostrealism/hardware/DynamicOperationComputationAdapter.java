@@ -30,11 +30,7 @@ import java.util.function.Supplier;
 public abstract class DynamicOperationComputationAdapter<T> extends OperationComputationBase<T, Void> implements Operation, ComputerFeatures {
 	@SafeVarargs
 	public DynamicOperationComputationAdapter(Supplier<Evaluable<? extends T>>... inputArgs) {
-		this(inputArgs, new Object[0]);
-	}
-
-	public DynamicOperationComputationAdapter(Supplier<Evaluable<? extends T>>[] inputArgs, Object[] additionalArguments) {
-		this.setInputs(Arrays.asList(AcceleratedEvaluable.producers(inputArgs, additionalArguments)));
+		this.setInputs(inputArgs);
 		init();
 	}
 

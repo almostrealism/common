@@ -116,8 +116,7 @@ public class Ray extends PackedCollection<Ray> implements RayFeatures, Cloneable
 	 */
 	public Evaluable<Scalar> oDoto() {
 		// TODO  Cache
-		return new AcceleratedEvaluable<>("rayODotO", false, Scalar.blank(),
-										new Supplier[0], new Object[] { this });
+		return new AcceleratedEvaluable<>("rayODotO", false, Scalar.blank(), p(this));
 	}
 	
 	/**
@@ -125,8 +124,7 @@ public class Ray extends PackedCollection<Ray> implements RayFeatures, Cloneable
 	 */
 	public Evaluable<Scalar> dDotd() {
 		// TODO  Cache
-		return new AcceleratedEvaluable<>("rayDDotD", false, Scalar.blank(),
-										new Supplier[0], new Object[] { this });
+		return new AcceleratedEvaluable<>("rayDDotD", false, Scalar.blank(), p(this));
 	}
 	
 	/**
@@ -134,8 +132,7 @@ public class Ray extends PackedCollection<Ray> implements RayFeatures, Cloneable
 	 */
 	public Evaluable<Scalar> oDotd() {
 		// TODO  Cache
-		return new AcceleratedEvaluable<>("rayODotD", false, Scalar.blank(),
-										new Supplier[0], new Object[] { this });
+		return new AcceleratedEvaluable<>("rayODotD", false, Scalar.blank(), p(this));
 	}
 	
 	/**

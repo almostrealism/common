@@ -17,6 +17,7 @@
 package org.almostrealism.hardware.test;
 
 import org.almostrealism.geometry.Ray;
+import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.hardware.AcceleratedEvaluable;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.MemoryData;
@@ -27,10 +28,7 @@ public class TestKernel extends AcceleratedEvaluable<Ray, Ray> {
 	@SafeVarargs
 	public TestKernel(Supplier<Evaluable<? extends Ray>> blank, Supplier<Evaluable<? extends Ray>>... inputArgs) {
 		super("testKernel", true, blank, inputArgs);
-	}
-
-	@Override
-	protected Ray postProcessOutput(MemoryData output, int offset) {
-		return Ray.postprocessor().apply(output, offset);
+		setKernelDestination(Ray::bank);
+		setPostprocessor(Ray.postprocessor());
 	}
 }

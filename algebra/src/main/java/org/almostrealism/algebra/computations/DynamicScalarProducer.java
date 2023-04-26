@@ -24,6 +24,7 @@ import org.almostrealism.hardware.DynamicProducerForMemoryData;
 
 import java.util.function.Function;
 
+@Deprecated
 public class DynamicScalarProducer extends DynamicProducerForMemoryData<Scalar> implements ScalarProducerBase {
 
 	public DynamicScalarProducer(Function<Object[], Scalar> function) {

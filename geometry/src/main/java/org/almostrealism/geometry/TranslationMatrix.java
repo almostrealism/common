@@ -19,6 +19,7 @@ package org.almostrealism.geometry;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.hardware.AcceleratedEvaluable;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.hardware.MemoryData;
 
 import java.util.function.Supplier;
 
@@ -31,5 +32,7 @@ import java.util.function.Supplier;
 public class TranslationMatrix extends AcceleratedEvaluable<Vector, TransformMatrix> {
 	public TranslationMatrix(Supplier<Evaluable<? extends Vector>> t) {
 		super("translationMatrix", IdentityMatrix::new, t);
+		setKernelDestination(TransformMatrix::bank);
+		setPostprocessor(TransformMatrix.postprocessor());
 	}
 }

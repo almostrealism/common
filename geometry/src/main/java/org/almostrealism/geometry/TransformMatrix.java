@@ -393,8 +393,13 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 				i -> new PackedCollection<>(i, 16));
 	}
 
+	public static PackedCollection<TransformMatrix> bank(int count) {
+		return new PackedCollection<>(new TraversalPolicy(count, 16), 1, delegateSpec ->
+				new TransformMatrix(delegateSpec.getDelegate(), delegateSpec.getOffset()));
+	}
+
 	public static BiFunction<MemoryData, Integer, TransformMatrix> postprocessor() {
-		return (output, offset) -> new TransformMatrix(output, offset);
+		return (output, offset) -> new TransformMatrix(false, output, offset);
 	}
 
 	/**

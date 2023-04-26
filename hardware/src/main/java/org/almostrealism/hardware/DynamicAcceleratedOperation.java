@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.InstructionSet;
 import io.almostrealism.scope.Scope;
@@ -47,11 +48,6 @@ public abstract class DynamicAcceleratedOperation<T extends MemoryData> extends 
 		}
 
 		return operators.get(getFunctionName(), getArgsCount());
-	}
-
-	@Override
-	public ArrayVariable getArgument(int index) {
-		return getInputs() == null ? getArgumentVariables().get(index) : getArgumentForInput(getInputs().get(index));
 	}
 
 	@Override

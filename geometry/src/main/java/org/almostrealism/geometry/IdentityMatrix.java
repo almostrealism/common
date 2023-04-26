@@ -16,7 +16,6 @@
 
 package org.almostrealism.geometry;
 
-import io.almostrealism.code.DefaultScopeInputManager;
 import org.almostrealism.hardware.AcceleratedEvaluable;
 import io.almostrealism.relation.Evaluable;
 
@@ -33,5 +32,7 @@ public class IdentityMatrix extends AcceleratedEvaluable<TransformMatrix, Transf
 
 	public IdentityMatrix(Supplier<Evaluable<? extends TransformMatrix>> newMatrix) {
 		super("identityMatrix", newMatrix);
+		setKernelDestination(TransformMatrix::bank);
+		setPostprocessor(TransformMatrix.postprocessor());
 	}
 }

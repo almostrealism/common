@@ -136,6 +136,8 @@ public interface MemoryData extends MultiExpression<Double>, Delegated<MemoryDat
 	default void setMem(int offset, double[] source, int srcOffset, int length) {
 		if (getDelegate() == null) {
 			setMem(getMem(), getOffset() + offset, source, srcOffset, length);
+		} else if (getDelegate() == this) {
+			throw new IllegalArgumentException("Circular delegate reference");
 		} else {
 			getDelegate().setMem(getDelegateOffset() + offset, source, srcOffset, length);
 		}

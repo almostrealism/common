@@ -16,7 +16,6 @@
 
 package org.almostrealism.geometry;
 
-import io.almostrealism.code.DefaultScopeInputManager;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.hardware.AcceleratedEvaluable;
 import io.almostrealism.relation.Evaluable;
@@ -32,5 +31,7 @@ import java.util.function.Supplier;
 public class ScaleMatrix extends AcceleratedEvaluable<Vector, TransformMatrix> {
 	public ScaleMatrix(Supplier<Evaluable<? extends Vector>> s) {
 		super("scaleMatrix", () -> new IdentityMatrix(), s);
+		setKernelDestination(TransformMatrix::bank);
+		setPostprocessor(TransformMatrix.postprocessor());
 	}
 }

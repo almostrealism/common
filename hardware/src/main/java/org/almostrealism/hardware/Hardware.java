@@ -129,8 +129,6 @@ public final class Hardware {
 	private final boolean memVolatile;
 	private long memoryMax;
 	private Location location;
-	private cl_platform_id platform;
-	private cl_device_id device, kernelDevice;
 
 	private DataContext context;
 	private List<ContextListener> contextListeners;

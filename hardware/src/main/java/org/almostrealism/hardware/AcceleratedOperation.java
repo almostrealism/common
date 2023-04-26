@@ -17,6 +17,7 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.KernelIndex;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.code.ArgumentMap;
@@ -63,7 +64,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 														KernelizedOperation, Compactable, ScopeLifecycle, ComputerFeatures {
 	public static final boolean enableArgumentMapping = true;
 	public static final boolean enableCompaction = true;
-	public static final boolean enableInputLogging = false;
 	public static boolean enableKernelSizeWarnings = SystemUtils.isEnabled("AR_HARDWARE_KERNEL_SIZE_WARNINGS").orElse(true);
 
 	private static final Map<String, ThreadLocal<HardwareOperator>> operators = new HashMap<>();
@@ -129,6 +129,11 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 	protected void setArgumentMapping(boolean enabled) {
 		this.argumentMapping = enabled;
+	}
+
+	@Override
+	public ArrayVariable getArgument(int index, Expression<Integer> size) {
+		return getInputs() == null ? getArgumentVariables().get(index) : getArgumentForInput(getInputs().get(index));
 	}
 
 	/**
@@ -209,40 +214,8 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	@Override
 	public void run() { apply(new Object[0]); }
 
-	@Deprecated
-	public synchronized Object[] oldApply(Object[] args) {
-		if (getArgumentVariables() == null) {
-			System.out.println("WARN: " + getName() + " was not compiled ahead of time");
-			compile();
-		}
-
-		Consumer<Object[]> op = getOperator();
-
-		MemoryDataArgumentProcessor argProcess = getAllArgs(args);
-		Object allArgs[] = argProcess.getArguments();
-
-		for (int i = 0; i < allArgs.length; i++) {
-			if (allArgs[i] == null) return new Object[] { handleNull(i) };
-		}
-
-		String before = null;
-		if (enableInputLogging) before = Arrays.toString(allArgs);
-
-		runApply(op, argProcess, Stream.of(allArgs).toArray(MemoryData[]::new));
-
-		if (enableInputLogging) {
-			System.out.println(getName() + ": " + before + " -> " + Arrays.toString(allArgs));
-		}
-
-		return argProcess.getOriginalArguments();
-	}
-
 	@Override
 	public synchronized Object[] apply(Object[] args) {
-		if (!isKernel() || !enableKernel) {
-			return oldApply(args);
-		}
-
 		if (getArgumentVariables() == null) {
 			System.out.println("WARN: " + getName() + " was not compiled ahead of time");
 			compile();
@@ -260,62 +233,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 		runApply(operator, processor, input);
 		return processor.getOriginalArguments();
-	}
-
-	protected MemoryDataArgumentProcessor getAllArgs(Object args[]) {
-		List<Argument<? extends T>> arguments = getArguments();
-		Object allArgs[] = new Object[arguments.size()];
-
-		for (int i = 0; i < arguments.size(); i++) {
-			Argument<? extends T> arg = arguments.get(i);
-
-			try {
-				if (arg == null) {
-					allArgs[i] = replaceNull(i);
-				} else if (arg.getVariable().getProducer() == null) {
-					throw new IllegalArgumentException("No Producer for " + arg.getName());
-				} else {
-					int argRef = getProducerArgumentReferenceIndex(arg.getVariable());
-
-					if (argRef >= args.length) {
-						throw new IllegalArgumentException("Not enough arguments were supplied for evaluation");
-					}
-
-					if (argRef >= 0) {
-						allArgs[i] = args[argRef];
-					} else if (arg.getExpectation() == Expectation.EVALUATE_AHEAD) {
-						allArgs[i] = ProducerCache.evaluate(arg.getVariable().getProducer(), args);
-					} else if (arg.getVariable().getProducer() instanceof Delegated &&
-							((Delegated) arg.getVariable().getProducer()).getDelegate() instanceof DestinationSupport) {
-						DestinationSupport dest = (DestinationSupport) ((Delegated) arg.getVariable().getProducer()).getDelegate();
-						allArgs[i] = dest.getDestination().get();
-					} else if (arg.getVariable().getProducer() instanceof Delegated &&
-							((Delegated) arg.getVariable().getProducer()).getDelegate() instanceof Provider) {
-						Provider dest = (Provider) ((Delegated) arg.getVariable().getProducer()).getDelegate();
-						allArgs[i] = dest.get();
-					} else if (arg.getVariable().getProducer() instanceof ProducerComputation) {
-						Variable var = ((ProducerComputation) arg.getVariable().getProducer()).getOutputVariable();
-						allArgs[i] = ProducerCache.evaluate(var.getProducer(), args);
-					} else if (arg.getVariable().getProducer().get() instanceof Provider) {
-						allArgs[i] = ((Provider) arg.getVariable().getProducer().get()).get();
-					} else {
-						throw new IllegalArgumentException("Argument Expectation requires access to destination or output variable");
-					}
-				}
-
-				if (allArgs[i] == null) allArgs[i] = replaceNull(i);
-			} catch (IllegalArgumentException e) {
-				throw e;
-			} catch (Exception e) {
-				throw new RuntimeException("Function \"" + getFunctionName() +
-						"\" could not complete due to exception evaluating argument " + i +
-						" (" + arguments.get(i).getVariable().getProducer().getClass() + ")", e);
-			}
-		}
-
-		return new MemoryDataArgumentProcessor(allArgs,
-				Hardware.getLocalHardware().getDataContext().getKernelMemoryProvider(),
-				this::createAggregatedInput, -1);
 	}
 
 	private static int getProducerArgumentReferenceIndex(Variable<?, ?> arg) {
@@ -421,7 +338,9 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	protected MemoryDataArgumentProcessor processKernelArgs(MemoryBank output, Object args[]) {
 		int kernelSize;
 
-		if (output != null) {
+		if (!isKernel() || !enableKernel) {
+			kernelSize = 1;
+		} else if (output != null) {
 			kernelSize = output.getCount();
 		} else if (args.length > 0 && Stream.of(args).filter(a -> !(a instanceof MemoryData)).findAny().isEmpty()) {
 			kernelSize = ((MemoryBank) args[0]).getCount();
