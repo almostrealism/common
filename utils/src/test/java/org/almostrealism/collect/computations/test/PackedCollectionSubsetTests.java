@@ -449,7 +449,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		KernelizedEvaluable<PackedCollection<?>> ev = producer.get();
 
 		PackedCollection<?> result = new PackedCollection(subsetShape);
-		ev.kernelEvaluate(result.traverseEach());
+		ev.into(result.traverseEach()).evaluate();
 		System.out.println(result.getShape());
 
 		for (int i = 0; i < w; i++) {
@@ -486,7 +486,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		KernelizedEvaluable<PackedCollection<?>> ev = producer.get();
 
 		PackedCollection<?> result = new PackedCollection(outputShape);
-		ev.kernelEvaluate(result.traverseEach());
+		ev.into(result.traverseEach()).evaluate();
 		System.out.println(result.getShape());
 
 		for (int p = 0; p < outputShape.length(0); p++) {

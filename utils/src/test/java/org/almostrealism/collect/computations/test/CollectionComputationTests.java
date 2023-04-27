@@ -173,7 +173,7 @@ public class CollectionComputationTests implements TestFeatures {
 
 		PackedCollection<?> out = new PackedCollection(4);
 
-		computation.get().kernelEvaluate(out.traverseEach(), a.traverseEach(), b.traverseEach());
+		computation.get().into(out.traverseEach()).evaluate(a.traverseEach(), b.traverseEach());
 		System.out.println(Arrays.toString(out.toArray(0, 4)));
 		assertEquals(8.0, out.toArray(0, 1)[0]);
 		assertEquals(14.0, out.toArray(2, 1)[0]);

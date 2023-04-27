@@ -121,7 +121,7 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 						PackedCollection<?> c = get().evaluate();
 						KernelizedEvaluable<Scalar> ev = (KernelizedEvaluable<Scalar>) p.get();
 						MemoryBank<Scalar> bank = ev.createKernelDestination(c.getShape().length(SCALAR_AXIS));
-						ev.kernelEvaluate(bank, new MemoryBank[] { c.traverse(SCALAR_AXIS) });
+						ev.into(bank).evaluate(c.traverse(SCALAR_AXIS));
 						return new PackedCollection<>(c.getShape(), c.getShape().getDimensions(), bank, 0);
 					}
 				};

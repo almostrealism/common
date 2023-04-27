@@ -71,7 +71,8 @@ public class MeshData extends PackedCollection<PackedCollection<?>> {
 	public void evaluateIntersectionKernel(KernelizedEvaluable<Ray> ray, PackedCollection<Pair<?>> destination, MemoryData args[]) {
 		long startTime = System.currentTimeMillis();
 		PackedCollection<Ray> rays = Ray.bank(destination.getCount());
-		ray.kernelEvaluate(rays, args);
+		// ray.kernelEvaluate(rays, args);
+		ray.into(rays).evaluate(args);
 
 		if (KernelizedOperation.enableKernelLog) System.out.println("MeshData: Evaluated ray kernel in " + (System.currentTimeMillis() - startTime) + " msec");
 
@@ -88,8 +89,10 @@ public class MeshData extends PackedCollection<PackedCollection<?>> {
 
 			for (int i = 0; i < rays.getCount(); i++) {
 				in.set(0, rays.get(i));
-				Triangle.intersectAt.kernelEvaluate(distances, new MemoryBank[] { in, this, dim });
-				RankedChoiceEvaluable.highestRank.kernelEvaluate(out, new MemoryBank[] { distances, conf });
+//				Triangle.intersectAt.kernelEvaluate(distances, new MemoryBank[] { in, this, dim });
+//				RankedChoiceEvaluable.highestRank.kernelEvaluate(out, new MemoryBank[] { distances, conf });
+				Triangle.intersectAt.into(distances).evaluate(in, this, dim);
+				RankedChoiceEvaluable.highestRank.into(out).evaluate(distances, conf);
 				destination.set(i, out.get(0));
 			}
 
@@ -98,7 +101,8 @@ public class MeshData extends PackedCollection<PackedCollection<?>> {
 			ScalarBank distances = new ScalarBank(this.getCount() * rays.getCount());
 
 			startTime = System.currentTimeMillis();
-			Triangle.intersectAt.kernelEvaluate(distances, new MemoryBank[] { rays, this, dim });
+			// Triangle.intersectAt.kernelEvaluate(distances, new MemoryBank[] { rays, this, dim });
+			Triangle.intersectAt.into(distances).evaluate(rays, this, dim);
 			System.out.println("MeshData: Completed intersection kernel in " +
 					(System.currentTimeMillis() - startTime) + " msec");
 			// TODO Choose best with highestRank kernel

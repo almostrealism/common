@@ -70,7 +70,7 @@ public class KernelLayerCell implements Cell<PackedCollection<?>>, CodeFeatures 
 				this.input.getShape().getTotalSize()));
 		push.add(() -> {
 			KernelizedEvaluable<PackedCollection<?>> k = computation.get();
-			return () -> k.kernelEvaluate(output.traverseEach());
+			return () -> k.into(output.traverseEach()).evaluate();
 		});
 		if (next != null) push.add(next.push(p(output)));
 		return push;

@@ -54,7 +54,7 @@ public class ColorMathTest implements TestFeatures, RGBFeatures {
 			input.set(4, 0.1);
 
 			GreaterThanRGB greater = new GreaterThanRGB(arg0, v(0.0), white(), black());
-			greater.get().kernelEvaluate(result, input);
+			greater.get().into(result).evaluate(input);
 			assertEquals(0.0, result.get(0).getGreen());
 			assertEquals(0.0, result.get(1).getGreen());
 			assertEquals(1.0, result.get(2).getGreen());

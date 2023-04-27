@@ -168,7 +168,7 @@ public class RankedChoiceEvaluableTest implements CodeFeatures {
 		input[5].set(0, -0.4508810286585523, 1.0);
 
 		ScalarBank output = new ScalarBank(count);
-		acc.kernelEvaluate(output, input);
+		acc.into(output).evaluate(input);
 
 		Assert.assertEquals(0.0, output.get(0).getValue(), Math.pow(10, -10));
 
@@ -187,7 +187,7 @@ public class RankedChoiceEvaluableTest implements CodeFeatures {
 
 		System.out.println("RankedChoiceProducerTest: Evaluating kernel...");
 		output = new ScalarBank(count);
-		acc.kernelEvaluate(output, input);
+		acc.into(output).evaluate(input);
 
 		boolean failed = false;
 
