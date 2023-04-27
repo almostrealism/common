@@ -435,7 +435,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			} else if (c instanceof KernelizedEvaluable && Stream.of(args).filter(a -> !(a instanceof MemoryData)).findAny().isEmpty()) {
 				KernelizedEvaluable kp = (KernelizedEvaluable) c;
 				kernelArgs[i] = kp.createKernelDestination(kernelSize);
-				// kp.kernelEvaluate((MemoryBank) kernelArgs[i], Stream.of(args).map(MemoryData.class::cast).toArray(MemoryData[]::new));
 				kp.into((MemoryBank) kernelArgs[i]).evaluate(Stream.of(args).map(MemoryData.class::cast).toArray(MemoryData[]::new));
 
 //				if (kernelSize > 1) {

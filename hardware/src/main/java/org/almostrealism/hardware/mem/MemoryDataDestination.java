@@ -75,12 +75,6 @@ public class MemoryDataDestination<T extends MemoryData> extends DynamicProducer
 			}
 
 			@Override
-			public void kernelEvaluate(MemoryBank destination, MemoryData... args) {
-//				if (AcceleratedOperation.enableKernelLog)
-//					System.out.println("MemoryDataDestination: Skipping evaluation");
-			}
-
-			@Override
 			public Evaluable<T> withDestination(MemoryBank<T> destination) {
 				return args -> (T) destination;
 			}

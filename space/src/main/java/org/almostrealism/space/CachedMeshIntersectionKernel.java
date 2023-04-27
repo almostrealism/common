@@ -30,6 +30,8 @@ import org.almostrealism.geometry.DimensionAware;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.MemoryData;
 
+import java.util.stream.Stream;
+
 public class CachedMeshIntersectionKernel implements KernelizedEvaluable<Scalar>, DimensionAware {
 	private MeshData data;
 	private KernelizedEvaluable<Ray> ray;
@@ -55,21 +57,26 @@ public class CachedMeshIntersectionKernel implements KernelizedEvaluable<Scalar>
 	public MemoryBank<Scalar> createKernelDestination(int size) { return new ScalarBank(size); }
 
 	@Override
-	public void kernelEvaluate(MemoryBank destination, MemoryData... args) {
+	public Evaluable withDestination(MemoryBank<Scalar> destination) {
 		if (destination instanceof ScalarBank == false) {
 			throw new IllegalArgumentException("Kernel output is Scalar, destination must be ScalarBank");
 		}
 
-		cache = Pair.bank(destination.getCount());
-		data.evaluateIntersectionKernel(ray, cache, args);
-		for (int i = 0; i < cache.getCount(); i++) {
-			((ScalarBank) destination).get(i).setMem(new double[] { cache.get(i).getA(), 1.0 });
-		}
+		return args -> {
+			cache = Pair.bank(destination.getCount());
+			data.evaluateIntersectionKernel(ray, cache, Stream.of(args).map(MemoryData.class::cast).toArray(MemoryData[]::new));
+			for (int i = 0; i < cache.getCount(); i++) {
+				destination.get(i).setMem(new double[] { cache.get(i).getA(), 1.0 });
+			}
+
+			return destination;
+		};
 	}
 
 	/**
-	 * Returns a cached value from {@link #kernelEvaluate(MemoryBank, MemoryData[])}.
-	 * This method will not work properly unless the kernel has already been evaluated.
+	 * Returns a cached value from kernel evaluation.
+	 * This method will not work properly unless kernel
+	 * evaluation has already taken place.
 	 */
 	@Override
 	public Scalar evaluate(Object[] args) {

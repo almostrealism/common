@@ -89,18 +89,6 @@ public abstract class DynamicAcceleratedEvaluable<I extends MemoryData, O extend
 		});
 	}
 
-	/**
-	 * If {@link #isKernel()} returns true, this method will pass the
-	 * destination and the argument {@link MemoryBank}s to the
-	 * {@link HardwareOperator}. Otherwise, {@link #evaluate(Object[])}
-	 * will be called sequentially and the result will be added to the
-	 * destination.
-	 */
-	@Override
-	public void kernelEvaluate(MemoryBank destination, MemoryData... args) {
-		AcceleratedEvaluable.kernelEvaluate(this, destination, args, isKernel());
-	}
-
 	@Override
 	public Variable getOutputVariable() { return getArgument(0); }
 

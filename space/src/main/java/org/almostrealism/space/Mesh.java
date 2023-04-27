@@ -287,7 +287,6 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
   	public MeshData getMeshData() {
 		MeshData tdata = new MeshData(tcache.length);
 		PackedCollection<PackedCollection<Vector>> points = getMeshPointData();
-		// Triangle.dataProducer.kernelEvaluate(tdata, new MemoryBank[] { points });
 		Triangle.dataProducer.into(tdata).evaluate(points);
   		return tdata;
 	}

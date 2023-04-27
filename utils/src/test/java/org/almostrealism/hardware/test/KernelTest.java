@@ -26,7 +26,6 @@ public class KernelTest implements CodeFeatures {
 		PackedCollection<Ray> output = Ray.bank(count, Ray.blank());
 		PackedCollection<Ray> input = Ray.bank(count, ray(1, 2, 3,4, 5, 7));
 
-		// k.kernelEvaluate(output, new MemoryBank[] { input });
 		k.into(output).evaluate(input);
 
 		for (int i = 0; i < count; i++) {

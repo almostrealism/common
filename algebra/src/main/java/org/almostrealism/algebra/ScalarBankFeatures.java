@@ -64,7 +64,6 @@ public interface ScalarBankFeatures extends ScalarFeatures {
 				ScalarBank d1 = x.evaluate(args);
 				ScalarBank d2 = y.evaluate(args);
 				ScalarBank out = new ScalarBank(count);
-//				ev.kernelEvaluate(out, d1, d2);
 				ev.into(out).evaluate(d1, d2);
 				return out;
 			};
@@ -98,8 +97,6 @@ public interface ScalarBankFeatures extends ScalarFeatures {
 				ScalarBank data = in.evaluate(args);
 				ScalarBank out = new ScalarBank(count);
 
-				// ev.kernelEvaluate(out.range(0, 1), data.range(0, 1), data.range(0, 1), c);
-				// ev.kernelEvaluate(out.range(1, count - 1), data.range(1, count - 1), data.range(0, count - 1), c);
 				ev.into(out.range(0, 1))
 						.evaluate(data.range(0, 1), data.range(0, 1), c);
 				ev.into(out.range(1, count - 1))

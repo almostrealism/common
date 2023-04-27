@@ -80,40 +80,12 @@ public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> ex
 		return postprocessor == null ? (O) output : postprocessor.apply(output, offset);
 	}
 
-	/**
-	 * If {@link #isKernel()} returns true, this method will pass the
-	 * destination and the argument {@link MemoryBank}s to the
-	 * {@link HardwareOperator}. Otherwise, {@link #evaluate(Object[])}
-	 * will be called sequentially and the result will be added to the
-	 * destination.
-	 */
-	@Override
-	public void kernelEvaluate(MemoryBank destination, MemoryData... args) {
-		kernelEvaluate(this, destination, args, isKernel());
-	}
-
 	@Override
 	public MemoryBank<O> createKernelDestination(int size) {
 		if (kernelDestination != null) {
 			return kernelDestination.apply(size);
 		} else {
 			throw new UnsupportedOperationException();
-		}
-	}
-
-	public static void kernelEvaluate(KernelizedOperation operation, MemoryBank destination, MemoryData args[], boolean kernel) {
-		if (kernel && enableKernel) {
-			operation.kernelOperate(destination, args);
-		} else if (operation instanceof Evaluable) {
-			for (int i = 0; i < destination.getCount(); i++) {
-				final int fi = i;
-				destination.set(i,
-						((Evaluable<MemoryData>) operation).evaluate(Stream.of(args)
-								.map(arg -> ((MemoryBank) arg).get(fi)).toArray()));
-			}
-		} else {
-			// This will produce an error, but that's the correct outcome
-			operation.kernelOperate(destination, args);
 		}
 	}
 

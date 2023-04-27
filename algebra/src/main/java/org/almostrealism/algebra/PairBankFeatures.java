@@ -87,9 +87,6 @@ public interface PairBankFeatures extends CollectionFeatures {
 				PackedCollection<Pair<?>> data = in.evaluate(args);
 				ScalarBank out = new ScalarBank(tot);
 
-//				ev.kernelEvaluate(out.range(1, tot - 2),
-//						data.range(shape(tot - 2, 2), 2).traverse(1),
-//						data.range(shape(tot - 2, 2), 3).traverse(1));
 				ev.into(out.range(1, tot - 2)).evaluate(
 						data.range(shape(tot - 2, 2), 2).traverse(1),
 						data.range(shape(tot - 2, 2), 3).traverse(1));

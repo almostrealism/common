@@ -71,7 +71,6 @@ public class InterpolateTest implements TestFeatures {
 				new PassThroughProducer<>(1, 1),
 				new PassThroughProducer<>(1, 2));
 		PackedCollection<?> dest = new PackedCollection(2, 1);
-		// interpolate.get().kernelEvaluate(dest.traverse(1), series.traverse(0), cursors.traverse(1), rate.traverse(1));
 		interpolate.get().into(dest.traverse(1))
 				.evaluate(series.traverse(0), cursors.traverse(1), rate.traverse(1));
 

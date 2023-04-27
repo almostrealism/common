@@ -140,12 +140,6 @@ public class DynamicExpressionComputation<T extends PackedCollection<?>> extends
 			}
 
 			@Override
-			public void kernelEvaluate(MemoryBank destination, MemoryData... args) {
-				// getKernel().kernelEvaluate(destination, args);
-				getKernel().into(destination).evaluate(args);
-			}
-
-			@Override
 			public Evaluable<T> withDestination(MemoryBank<T> destination) {
 				return new DestinationEvaluable<>(getKernel(), destination);
 			}

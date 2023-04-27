@@ -95,12 +95,6 @@ public class ArrayVariableComputation<T extends PackedCollection<?>> extends Dyn
 			}
 
 			@Override
-			public void kernelEvaluate(MemoryBank destination, MemoryData... args) {
-				// getKernel().kernelEvaluate(destination, args);
-				getKernel().into(destination).evaluate(args);
-			}
-
-			@Override
 			public Evaluable<T> withDestination(MemoryBank<T> destination) {
 				return new DestinationEvaluable<>(getKernel(), destination);
 			}

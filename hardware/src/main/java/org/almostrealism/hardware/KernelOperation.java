@@ -32,7 +32,6 @@ public class KernelOperation<T extends MemoryData> implements Supplier<Runnable>
 	@Override
 	public Runnable get() {
 		KernelizedEvaluable<T> ev = producer.get();
-		// return () -> ev.kernelEvaluate(destination, arguments);
 		return () -> ev.into(destination).evaluate(arguments);
 	}
 }

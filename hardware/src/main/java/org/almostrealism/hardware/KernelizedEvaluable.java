@@ -16,12 +16,7 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.code.OperationAdapter;
-import io.almostrealism.relation.Named;
 import io.almostrealism.relation.Evaluable;
-import org.jocl.CLException;
-
-import java.util.stream.Stream;
 
 /**
  * A {@link KernelizedEvaluable} is a {@link Evaluable} that can be evaluated
@@ -33,33 +28,6 @@ import java.util.stream.Stream;
  * @author  Michael Murray
  */
 public interface KernelizedEvaluable<T extends MemoryData> extends Evaluable<T> {
-	default void kernelEvaluate(MemoryBank destination, MemoryData... args) {
-		String name = this instanceof Named ? ((Named) this).getName() : OperationAdapter.operationName(null, getClass(), "function");
-		if (KernelizedOperation.enableKernelLog) System.out.println("KernelizedEvaluable: Evaluating " + name + " kernel...");
-
-		boolean enableLog = false; // name.equals("LightingEngineAggregator");
-
-		for (int i = 0; i < destination.getCount(); i++) {
-			T r = null;
-
-			try {
-				final int fi = i;
-				Object o[] = Stream.of(args)
-						.map(arg -> ((MemoryBank) arg).get(fi)).toArray();
-
-				r = evaluate(o);
-				if (r == null) r = replaceNull(o);
-
-				destination.set(i, r);
-			} catch (UnsupportedOperationException e) {
-				throw new HardwareException("i = " + i + " of " + destination.getCount() + ", r = " + r, e);
-			} catch (CLException e) {
-				throw new HardwareException("i = " + i + " of " + destination.getCount() + ", r = " + r, e);
-			}
-
-			if (enableLog && (i + 1) % 100 == 0) System.out.println((i + 1) + " kernel results collected");
-		}
-	}
 
 	default T replaceNull(Object args[]) {
 		throw new NullPointerException();

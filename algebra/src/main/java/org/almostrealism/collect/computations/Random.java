@@ -60,13 +60,6 @@ Random implements KernelizedProducer<PackedCollection<?>>, Shape<Producer<Packed
 			}
 
 			@Override
-			public void kernelEvaluate(MemoryBank destination, MemoryData... args) {
-				destination.setMem(IntStream.range(0, getShape().getTotalSize())
-						.mapToDouble(i -> normal ? random.nextGaussian() : random.nextDouble())
-						.toArray());
-			}
-
-			@Override
 			public Evaluable<PackedCollection<?>> withDestination(MemoryBank<PackedCollection<?>> destination) {
 				return args -> {
 					destination.setMem(IntStream.range(0, getShape().getTotalSize())

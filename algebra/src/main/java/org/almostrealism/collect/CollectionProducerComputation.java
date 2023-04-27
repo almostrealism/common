@@ -151,12 +151,6 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 			}
 
 			@Override
-			public void kernelEvaluate(MemoryBank destination, MemoryData... args) {
-				// getKernel().kernelEvaluate(destination, args);
-				getKernel().into(destination).evaluate(args);
-			}
-
-			@Override
 			public Evaluable<PackedCollection<?>> withDestination(MemoryBank<PackedCollection<?>> destination) {
 				return new DestinationEvaluable<>((AcceleratedComputationEvaluable) getKernel(), destination);
 			}
