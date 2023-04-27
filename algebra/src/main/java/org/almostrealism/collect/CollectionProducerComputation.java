@@ -29,6 +29,7 @@ import org.almostrealism.collect.computations.DefaultCollectionEvaluable;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
+import org.almostrealism.hardware.DestinationEvaluable;
 import org.almostrealism.hardware.Input;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.KernelizedProducer;
@@ -87,6 +88,7 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 		return new ReshapeProducer<>(shape, (Producer) this);
 	}
 
+	@Deprecated
 	default CollectionProducerComputation<PackedCollection<?>> scalarMap(Function<Producer<Scalar>, Producer<Scalar>> f) {
 		Producer<Scalar> p = f.apply(Input.value(Scalar.shape(), 0));
 
@@ -150,7 +152,13 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 
 			@Override
 			public void kernelEvaluate(MemoryBank destination, MemoryData... args) {
-				getKernel().kernelEvaluate(destination, args);
+				// getKernel().kernelEvaluate(destination, args);
+				getKernel().into(destination).evaluate(args);
+			}
+
+			@Override
+			public Evaluable<PackedCollection<?>> withDestination(MemoryBank<PackedCollection<?>> destination) {
+				return new DestinationEvaluable<>((AcceleratedComputationEvaluable) getKernel(), destination);
 			}
 
 			public KernelizedEvaluable<PackedCollection<?>> getKernel() {

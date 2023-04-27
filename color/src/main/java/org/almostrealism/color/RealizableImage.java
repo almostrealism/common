@@ -64,7 +64,8 @@ public class RealizableImage implements Producer<RGB[][]> {
 			PackedCollection<RGB> output = RGB.bank(size);
 
 			if (source != null) {
-				((KernelizedEvaluable) source.get()).kernelEvaluate(output, new MemoryBank[]{input});
+				// ((KernelizedEvaluable) source.get()).kernelEvaluate(output, new MemoryBank[]{input});
+				((KernelizedEvaluable) source.get()).into(output).evaluate(input);
 			} else if (func != null) {
 				RGB result[] = input.stream().map(func).toArray(RGB[]::new);
 				for (int i = 0; i < result.length; i++) output.set(i, result[i]);

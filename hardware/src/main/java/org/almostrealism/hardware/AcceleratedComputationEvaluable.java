@@ -62,11 +62,6 @@ public class AcceleratedComputationEvaluable<T extends MemoryData> extends Accel
 		return postProcessOutput((MemoryData) apply(null, args)[outputArgIndex], offset);
 	}
 
-	@Override
-	public Evaluable<T> withDestination(MemoryBank<T> destination) {
-		return new DestinationEvaluable(this, destination);
-	}
-
 	//	@Override
 //	public synchronized Object[] apply(Object[] args) {
 //		if (!isKernel() || !enableKernel) return super.apply(args);

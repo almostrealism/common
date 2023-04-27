@@ -67,12 +67,12 @@ public interface KernelizedEvaluable<T extends MemoryData> extends Evaluable<T> 
 
 	MemoryBank<T> createKernelDestination(int size);
 
-	default Evaluable<T> into(MemoryBank<T> destination) {
-		return withDestination(destination);
+	default Evaluable<T> into(MemoryBank<?> destination) {
+		return withDestination((MemoryBank<T>) destination);
 	}
 
 	default Evaluable<T> withDestination(MemoryBank<T> destination) {
-		throw new UnsupportedOperationException();
+		return new DestinationEvaluable<>((Evaluable) this, destination);
 	}
 
 	default int getArgsCount() {

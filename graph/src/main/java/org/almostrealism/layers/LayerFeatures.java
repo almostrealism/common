@@ -134,7 +134,8 @@ public interface LayerFeatures extends CollectionFeatures {
 									.traverse()
 									.reduce(v -> v.sum()).get();
 							return () -> {
-								ev.kernelEvaluate(output);
+								// ev.kernelEvaluate(output);
+								ev.into(output).evaluate();
 								if (next != null) next.push(p(output));
 							};
 						});

@@ -97,7 +97,8 @@ public class TriangleDataTest implements TestFeatures {
 		Producer<PackedCollection<Vector>> td = triangle(points(0));
 
 		MeshData output = new MeshData(1);
-		((KernelizedEvaluable) td.get()).kernelEvaluate(output, new MemoryBank[] { points });
+		// ((KernelizedEvaluable) td.get()).kernelEvaluate(output, new MemoryBank[] { points });
+		((KernelizedEvaluable) td.get()).into(output).evaluate(points);
 		triangleDataAssertions(output.get(0));
 	}
 

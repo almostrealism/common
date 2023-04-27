@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.Shape;
@@ -27,7 +28,8 @@ import org.almostrealism.hardware.MemoryData;
 
 import java.util.stream.IntStream;
 
-public class Random implements KernelizedProducer<PackedCollection<?>>, Shape<Producer<PackedCollection<?>>> {
+public class
+Random implements KernelizedProducer<PackedCollection<?>>, Shape<Producer<PackedCollection<?>>> {
 	private java.util.Random random;
 	private TraversalPolicy shape;
 	private boolean normal;
@@ -53,7 +55,7 @@ public class Random implements KernelizedProducer<PackedCollection<?>>, Shape<Pr
 			@Override
 			public PackedCollection<?> evaluate(Object... args) {
 				PackedCollection<?> destination = new PackedCollection<>(getShape());
-				kernelEvaluate(destination);
+				into(destination).evaluate(args);
 				return destination;
 			}
 
@@ -62,6 +64,16 @@ public class Random implements KernelizedProducer<PackedCollection<?>>, Shape<Pr
 				destination.setMem(IntStream.range(0, getShape().getTotalSize())
 						.mapToDouble(i -> normal ? random.nextGaussian() : random.nextDouble())
 						.toArray());
+			}
+
+			@Override
+			public Evaluable<PackedCollection<?>> withDestination(MemoryBank<PackedCollection<?>> destination) {
+				return args -> {
+					destination.setMem(IntStream.range(0, getShape().getTotalSize())
+							.mapToDouble(i -> normal ? random.nextGaussian() : random.nextDouble())
+							.toArray());
+					return (PackedCollection<?>) destination;
+				};
 			}
 		};
 	}

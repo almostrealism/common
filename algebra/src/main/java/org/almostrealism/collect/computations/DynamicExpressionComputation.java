@@ -23,8 +23,10 @@ import org.almostrealism.collect.CollectionVariable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversableExpression;
 import org.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.ComputerFeatures;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.hardware.DestinationEvaluable;
 import org.almostrealism.hardware.KernelSupport;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
@@ -139,7 +141,13 @@ public class DynamicExpressionComputation<T extends PackedCollection<?>> extends
 
 			@Override
 			public void kernelEvaluate(MemoryBank destination, MemoryData... args) {
-				getKernel().kernelEvaluate(destination, args);
+				// getKernel().kernelEvaluate(destination, args);
+				getKernel().into(destination).evaluate(args);
+			}
+
+			@Override
+			public Evaluable<T> withDestination(MemoryBank<T> destination) {
+				return new DestinationEvaluable<>(getKernel(), destination);
 			}
 
 			@Override

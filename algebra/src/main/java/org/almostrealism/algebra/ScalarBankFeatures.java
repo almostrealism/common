@@ -98,8 +98,12 @@ public interface ScalarBankFeatures extends ScalarFeatures {
 				ScalarBank data = in.evaluate(args);
 				ScalarBank out = new ScalarBank(count);
 
-				ev.kernelEvaluate(out.range(0, 1), data.range(0, 1), data.range(0, 1), c);
-				ev.kernelEvaluate(out.range(1, count - 1), data.range(1, count - 1), data.range(0, count - 1), c);
+				// ev.kernelEvaluate(out.range(0, 1), data.range(0, 1), data.range(0, 1), c);
+				// ev.kernelEvaluate(out.range(1, count - 1), data.range(1, count - 1), data.range(0, count - 1), c);
+				ev.into(out.range(0, 1))
+						.evaluate(data.range(0, 1), data.range(0, 1), c);
+				ev.into(out.range(1, count - 1))
+						.evaluate(data.range(1, count - 1), data.range(0, count - 1), c);
 				return out;
 			};
 		};

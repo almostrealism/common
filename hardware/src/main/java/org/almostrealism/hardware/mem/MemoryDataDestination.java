@@ -81,6 +81,11 @@ public class MemoryDataDestination<T extends MemoryData> extends DynamicProducer
 			}
 
 			@Override
+			public Evaluable<T> withDestination(MemoryBank<T> destination) {
+				return args -> (T) destination;
+			}
+
+			@Override
 			public T evaluate(Object... args) { return e.evaluate(args); }
 		};
 	}

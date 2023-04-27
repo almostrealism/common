@@ -53,8 +53,10 @@ public class MeshData extends PackedCollection<PackedCollection<?>> {
 		conf.set(0, new Pair(getCount(), Intersection.e));
 
 		in.set(0, ray.evaluate(args));
-		Triangle.intersectAt.kernelEvaluate(distances, new MemoryBank[] { in, this });
-		RankedChoiceEvaluable.highestRank.kernelEvaluate(out, new MemoryBank[] { distances, conf });
+//		Triangle.intersectAt.kernelEvaluate(distances, new MemoryBank[] { in, this });
+//		RankedChoiceEvaluable.highestRank.kernelEvaluate(out, new MemoryBank[] { distances, conf });
+		Triangle.intersectAt.into(distances).evaluate(in, this);
+		RankedChoiceEvaluable.highestRank.into(out).evaluate(distances, conf);
 		return out.get(0);
 	}
 

@@ -16,12 +16,16 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.relation.DynamicProducer;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Named;
+import org.jocl.CLException;
 
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
+import java.util.stream.Stream;
 
 public class DynamicProducerForMemoryData<T extends MemoryData> extends DynamicProducer<T> implements KernelizedProducer<T> {
 
@@ -61,10 +65,17 @@ public class DynamicProducerForMemoryData<T extends MemoryData> extends DynamicP
 			@Override
 			public void kernelEvaluate(MemoryBank destination, MemoryData... args) {
 				if (e instanceof KernelizedEvaluable) {
-					((KernelizedEvaluable) e).kernelEvaluate(destination, args);
+					// ((KernelizedEvaluable) e).kernelEvaluate(destination, args);
+					((KernelizedEvaluable) e).into(destination).evaluate(args);
 				} else {
-					KernelizedEvaluable.super.kernelEvaluate(destination, args);
+					// KernelizedEvaluable.super.kernelEvaluate(destination, args);
+					new DestinationEvaluable<>((Evaluable) e, destination).evaluate(args);
 				}
+			}
+
+			@Override
+			public Evaluable<T> withDestination(MemoryBank<T> destination) {
+				return new DestinationEvaluable(e, destination);
 			}
 
 			@Override

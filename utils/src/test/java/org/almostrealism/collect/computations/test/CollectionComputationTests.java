@@ -203,8 +203,10 @@ public class CollectionComputationTests implements TestFeatures {
 		PackedCollectionMax max = new PackedCollectionMax(new PassThroughProducer<>(shape(10), 0, -1));
 		PackedCollection<?> dest = new PackedCollection(2, 1);
 
+//		HardwareOperator.verboseLog(() ->
+//			max.get().kernelEvaluate(dest.traverse(1), series.traverse(0)));
 		HardwareOperator.verboseLog(() ->
-			max.get().kernelEvaluate(dest.traverse(1), series.traverse(0)));
+			max.get().into(dest.traverse(1)).evaluate(series.traverse(0)));
 
 		System.out.println(Arrays.toString(dest.toArray(0, 2)));
 		assertEquals(14, dest.toArray(0, 1)[0]);
