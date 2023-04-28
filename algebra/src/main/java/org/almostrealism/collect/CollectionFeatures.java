@@ -114,10 +114,6 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		}
 	}
 
-	default <T extends MemoryData> Assignment<T> a(int memLength, Evaluable<T> result, Evaluable<T> value) {
-		return a(memLength, () -> result, () -> value);
-	}
-
 	default <T extends MemoryData> Assignment<T> a(int memLength, Supplier<Evaluable<? extends T>> result, Supplier<Evaluable<? extends T>> value) {
 		return new Assignment<>(memLength, result, value);
 	}
@@ -212,8 +208,8 @@ public interface CollectionFeatures extends ExpressionFeatures {
 				}), arguments);
 	}
 
-	default <T extends Shape<T>> CollectionProducer<T> traverse(int axis, Producer<T> producer) {
-		return new ReshapeProducer<>(axis, producer);
+	default <T extends PackedCollection<?>> CollectionProducer<T> traverse(int axis, Producer<T> producer) {
+		return new ReshapeProducer(axis, producer);
 	}
 
 	default <T extends Shape<T>> Producer traverseEach(Producer<T> producer) {

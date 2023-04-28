@@ -98,7 +98,8 @@ public class TriangleTest implements CodeFeatures {
 		tp.set(1, new Vector(-1.0, 1.0, -1.0));
 		tp.set(2, new Vector(0.0, -1.0, -1.0));
 
-		PackedCollection<?> td = triangle(p(tp)).get().evaluate().reshape(shape(4, 3).traverse(1));
+		PackedCollection<?> td = triangle(p(tp)).get().evaluate();
+		td = td.traverse(1);
 		Assert.assertEquals(-2.0, td.get(0).toDouble(0), 0.0001);
 		Assert.assertEquals(0.0, td.get(0).toDouble(1), 0.0001);
 		Assert.assertEquals(0.0, td.get(0).toDouble(2), 0.0001);

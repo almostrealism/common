@@ -110,4 +110,21 @@ public class CollectionKernelTests implements TestFeatures {
 			}
 		});
 	}
+
+	@Test
+	public void providerAddKernel() {
+		PackedCollection<?> a = tensor(shape(10)).pack().traverse();
+		PackedCollection<?> b = tensor(shape(10)).pack().traverse();
+
+		HardwareOperator.verboseLog(() -> {
+			CollectionProducer<PackedCollection<?>> p = add(traverse(1, p(a)), traverse(1, p(b)));
+			PackedCollection<?> out = p.get().evaluate();
+
+			Assert.assertEquals(10, out.getShape().length(0));
+
+			for (int i = 0; i < out.getShape().length(0); i++) {
+				assertEquals(a.toDouble(i) + b.toDouble(i), out.toDouble(i));
+			}
+		});
+	}
 }

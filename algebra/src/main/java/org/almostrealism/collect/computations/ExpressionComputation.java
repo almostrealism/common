@@ -20,6 +20,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.MultiExpression;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.computations.PairExpressionComputation;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.Shape;
 import org.almostrealism.collect.TraversableExpression;
@@ -36,6 +37,7 @@ import org.almostrealism.hardware.MemoryData;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.IntFunction;
@@ -52,6 +54,7 @@ public class ExpressionComputation<T extends PackedCollection<?>> extends Dynami
 	@SafeVarargs
 	public ExpressionComputation(List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression,
 								 Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+		// this(shape(expression.size(), args), expression, args);
 		this(new TraversalPolicy(expression.size()), expression, args);
 	}
 
@@ -164,5 +167,21 @@ public class ExpressionComputation<T extends PackedCollection<?>> extends Dynami
 			v.setMem(value.toArray(0, value.getMemLength()));
 			return postprocessor == null ? v : postprocessor.apply(v, 0);
 		});
+	}
+
+	private static TraversalPolicy shape(int size, Supplier... args) {
+		TraversalPolicy shape = new TraversalPolicy(size);
+		Set<Integer> count = Stream.of(args)
+				.map(CollectionFeatures.getInstance()::shape)
+				.map(TraversalPolicy::getCount)
+				.filter(i -> i > 1)
+				.collect(Collectors.toSet());
+		if (count.isEmpty()) {
+			return shape;
+		} else if (count.size() == 1) {
+			return shape.prependDimension(count.iterator().next());
+		} else {
+			throw new IllegalArgumentException("Unable to infer shape from arguments");
+		}
 	}
 }

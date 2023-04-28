@@ -80,7 +80,7 @@ public interface TriangleFeatures extends VectorFeatures {
 	default ExpressionComputation<Vector> point(Supplier<Evaluable<? extends PackedCollection<?>>> points, int index) {
 		List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression = new ArrayList<>();
 		IntStream.range(0, 3).forEach(i -> expression.add(args -> args.get(1).getValue(index * 3 + i)));
-		return new ExpressionComputation<>(expression, (Supplier) points);
+		return new ExpressionComputation<>(shape(3), expression, (Supplier) points);
 	}
 
 	default ExpressionComputation<PackedCollection<Vector>> points(Supplier<Evaluable<? extends Vector>> p1,

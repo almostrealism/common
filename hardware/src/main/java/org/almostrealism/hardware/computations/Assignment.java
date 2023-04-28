@@ -56,6 +56,11 @@ public class Assignment<T extends MemoryData> extends DynamicOperationComputatio
 							new Variable(getArgument(0).valueAt(i).getExpression(), false,
 									getArgument(1).valueAt(i), getArgument(0)))
 					.forEach(this::addVariable);
+//			IntStream.range(0, memLength)
+//					.mapToObj(i ->
+//							new Variable(getArgument(0).valueAt(i).getExpression(), false,
+//									getInputValue(1, i), getArgument(0)))
+//					.forEach(this::addVariable);
 		}
 	}
 }

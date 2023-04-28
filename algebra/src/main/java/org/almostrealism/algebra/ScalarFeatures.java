@@ -103,7 +103,7 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
 		comp.add(args -> args.get(1).getValue(shape.getSize() * index));
 		comp.add(args -> expressionForDouble(1.0));
-		ExpressionComputation c = new ExpressionComputation(comp, collection);
+		ExpressionComputation c = new ExpressionComputation(shape(2), comp, collection);
 		c.setPostprocessor(Scalar.postprocessor());
 		return c;
 	}
