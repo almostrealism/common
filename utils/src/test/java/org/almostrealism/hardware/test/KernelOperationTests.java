@@ -21,6 +21,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.util.TestFeatures;
+import org.junit.Assert;
 import org.junit.Test;
 
 public class KernelOperationTests implements TestFeatures {
@@ -39,5 +40,57 @@ public class KernelOperationTests implements TestFeatures {
 		for (int i = 0; i < x.getShape().length(0); i++) {
 			assertEquals(a.toDouble(i) + b.toDouble(i), x.toDouble(i));
 		}
+	}
+
+	@Test
+	public void enumerateRepeatMapReduce() {
+		int r = 10;
+		int c = 10;
+		int w = 3;
+		int s = 1;
+		int pad = 2;
+
+		int n = 4;
+
+		PackedCollection<?> input = tensor(shape(r, c)).pack();
+		PackedCollection<?> filter = tensor(shape(n, w, w)).pack();
+
+		PackedCollection<?> output = new PackedCollection<>(shape(8, 8, 4, 1));
+
+//		HardwareOperator.verboseLog(() -> {
+			CollectionProducer<PackedCollection<?>> conv = c(p(input))
+					.enumerate(1, w, s)
+					.enumerate(1, w, s)
+					.traverse(2)
+					.expand(n, v -> v.repeat(n).multiply(p(filter)))
+					.traverse()
+					.reduce(v -> v.sum());
+			System.out.println(conv.getShape());
+
+			OperationList op = new OperationList();
+			op.add(a(1, traverse(3, p(output)), conv));
+			op.get().run();
+
+			output = output.reshape(shape(8, 8, 4));
+
+			for (int filterIndex = 0; filterIndex < n; filterIndex++) {
+				for (int i = 0; i < r - pad; i++) {
+					for (int j = 0; j < c - pad; j++) {
+						double expected = 0;
+
+						for (int k = 0; k < w; k++) {
+							for (int l = 0; l < w; l++) {
+								expected += input.toDouble(input.getShape().index(i + k, j + l)) * filter.toDouble(filter.getShape().index(filterIndex, k, l));
+							}
+						}
+
+						double actual = output.toDouble(output.getShape().index(i, j, filterIndex));
+
+						System.out.println("PackedCollectionMapTests: " + expected + " vs " + actual);
+						Assert.assertEquals(expected, actual, 0.0001);
+					}
+				}
+			}
+//		});
 	}
 }
