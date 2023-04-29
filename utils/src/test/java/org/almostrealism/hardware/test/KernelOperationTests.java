@@ -43,6 +43,26 @@ public class KernelOperationTests implements TestFeatures {
 	}
 
 	@Test
+	public void doubleAssignment() {
+		PackedCollection<?> x = new PackedCollection<>(shape(10)).traverse();
+		PackedCollection<?> y = new PackedCollection<>(shape(10)).traverse();
+		PackedCollection<?> a = tensor(shape(10)).pack().traverse();
+		PackedCollection<?> b = tensor(shape(10)).pack().traverse();
+
+		HardwareOperator.verboseLog(() -> {
+			OperationList op = new OperationList();
+			op.add(a(1, traverse(1, p(x)), add(traverse(1, p(a)), traverse(1, p(b)))));
+			op.add(a(1, traverse(1, p(y)), multiply(traverse(1, p(a)), traverse(1, p(b)))));
+			op.get().run();
+		});
+
+		for (int i = 0; i < x.getShape().length(0); i++) {
+			assertEquals(a.toDouble(i) + b.toDouble(i), x.toDouble(i));
+			assertEquals(a.toDouble(i) * b.toDouble(i), y.toDouble(i));
+		}
+	}
+
+	@Test
 	public void enumerateRepeatMapReduce() {
 		int r = 10;
 		int c = 10;

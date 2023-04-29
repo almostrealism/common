@@ -234,9 +234,9 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Tree<Scope<T>>, Nam
 		return removeDuplicateArguments(args).stream().map(mapper).collect(Collectors.toList());
 	}
 
-	public void convertArgumentsToRequiredScopes() {
+	public List<String> convertArgumentsToRequiredScopes() {
 		if (this.arguments != null) {
-			return;
+			return Collections.emptyList();
 		}
 
 		// Because of the fact that child scopes have dependencies which are included in
@@ -246,7 +246,10 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Tree<Scope<T>>, Nam
 		// required scope at the top level which will often not preserve the expected
 		// order of execution of those requirements, unless somehow the dependency list
 		// is coincidentally in the correct order
-		forEach(Scope::convertArgumentsToRequiredScopes);
+
+		List<String> convertedScopes = new ArrayList<>();
+		stream().map(Scope::convertArgumentsToRequiredScopes)
+				.flatMap(List::stream).forEach(convertedScopes::add);
 
 		List<Argument<?>> args = new ArrayList<>();
 		List<Computation> convertedComputations = new ArrayList<>();
@@ -284,7 +287,11 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Tree<Scope<T>>, Nam
 
 					if (computation == null) {
 						return Collections.singletonList(arg);
-					} else if (convertedComputations.contains(computation)) {
+					}
+
+					// If the computation has already been converted,
+					// skip over it
+					if (convertedComputations.contains(computation)) {
 						return Collections.emptyList();
 					}
 
@@ -301,20 +308,29 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Tree<Scope<T>>, Nam
 						return Collections.singletonList(arg);
 					}
 
+					// If the computation produces a Scope that was already
+					// converted by a child scope, skip over it
+					if (convertedScopes.contains(s.getName())) {
+						return Collections.emptyList();
+					}
+
 					// Recursively convert the required Scope's arguments
 					// into required scopes themselves
-					s.convertArgumentsToRequiredScopes();
+					// s.convertArgumentsToRequiredScopes();
+					convertedScopes.addAll(s.convertArgumentsToRequiredScopes());
 
 					// Attempt to simply include the scope
 					// inline, otherwise introduce a method
 					if (tryAbsorb(s)) {
 						convertedComputations.add(computation);
+						convertedScopes.add(s.getName());
 						return s.getDependencies();
 					} else {
 						s.setEmbedded(true);
 						required.add(s);
 						methods.add(s.call());
 						convertedComputations.add(computation);
+						convertedScopes.add(s.getName());
 
 						// Dependencies will be covered by inspecting the required scope,
 						// so no need to add them here
@@ -326,6 +342,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Tree<Scope<T>>, Nam
 				.forEach(args::add);
 
 		this.arguments = args;
+		return convertedScopes;
 	}
 
 	public Method<?> call() {
