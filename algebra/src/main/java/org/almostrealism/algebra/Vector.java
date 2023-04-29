@@ -290,7 +290,7 @@ public class Vector extends PackedCollection<Vector> implements Triple, VectorFe
 	 */
 	@Deprecated
 	public synchronized void multiplyBy(double value) {
-		setTo(v(this).multiply(vector(value, value, value)).get().evaluate());
+		setTo(vector(v(this).multiply(vector(value, value, value))).get().evaluate());
 	}
 
 	/** Returns the quotient of the division of this {@link Vector} by the specified value. */

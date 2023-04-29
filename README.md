@@ -281,9 +281,8 @@ using a regular JNI method in a runtime-generated .so or .dylib.
 #### Parallelization via Accelerator
 Although you can use the tool with multiple threads (compiled operations are threadsafe),
 you may want to leverage parallelization that cannot be accomplished with Java's Thread
-concept. If you are targeting a GPU with OpenCL or you have supplied TensorFlow natives
-for GPU acceleration, you'll want to express a collection of operations with a single
-operation. This works largely the same way, but there is a separate evaluation method.
+concept. If you are targeting a GPU with OpenCL, for example, you'll want to express a
+collection of operations with a single operation. This works the same way.
 
 ```Java
 public class MyNativeEnableApplication implements CodeFeatures {
@@ -307,7 +306,7 @@ public class MyNativeEnableApplication implements CodeFeatures {
 		ScalarBank results = new ScalarBank(3);
 		
 		// Evaluate the expression with the accelerator deciding how to parallelize it
-        compiledOperation.kernelEvaluate(results, bank);
+        compiledOperation.into(results).evaluate(bank);
 		
 		System.out.println("7 * 3 = " + results.get(0));
 		System.out.println("7 * 4 = " + results.get(1));
