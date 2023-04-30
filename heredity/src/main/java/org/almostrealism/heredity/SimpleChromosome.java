@@ -51,6 +51,17 @@ public class SimpleChromosome extends ConfigurableChromosome {
 	}
 
 	@Override
+	public PackedCollection<?> getParameterRanges(int gene) {
+		return ((GeneParameters) chromosome.valueAt(gene)).getParameterRanges();
+	}
+
+	public void setParameterRange(int factor, double min, double max) {
+		for (int i = 0; i < chromosome.size(); i++) {
+			((SimpleGene) chromosome.valueAt(i)).setRange(factor, min, max);
+		}
+	}
+
+	@Override
 	public ChromosomeBreeder<PackedCollection<?>> getBreeder() {
 		// return Breeders.averageBreeder();
 		// return Breeders.randomChoiceBreeder();

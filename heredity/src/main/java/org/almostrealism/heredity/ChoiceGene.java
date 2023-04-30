@@ -41,6 +41,17 @@ public class ChoiceGene implements Gene<PackedCollection<?>>, GeneParameters, Sc
 	public PackedCollection<?> getParameters() { return values; }
 
 	@Override
+	public PackedCollection<?> getParameterRanges() {
+		PackedCollection<?> ranges = new PackedCollection<>(shape(values.getMemLength(), 2), 1);
+
+		for (int i = 0; i < values.getMemLength(); i++) {
+			ranges.get(i).setMem(0.0, 1.0);
+		}
+
+		return ranges;
+	}
+
+	@Override
 	public Factor<PackedCollection<?>> valueAt(int pos) {
 		return new Factor<>() {
 			@Override

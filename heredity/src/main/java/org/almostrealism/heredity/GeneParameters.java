@@ -20,4 +20,6 @@ import org.almostrealism.collect.PackedCollection;
 
 public interface GeneParameters {
 	PackedCollection<?> getParameters();
+
+	PackedCollection<?> getParameterRanges();
 }
