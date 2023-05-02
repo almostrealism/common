@@ -45,7 +45,6 @@ import java.util.stream.IntStream;
 
 public class PassThroughProducer<T extends MemoryData>
 		extends ProducerComputationBase<T, T>
-//		extends DynamicProducerComputationAdapter<T, T>
 		implements ProducerArgumentReference,
 		MemoryDataComputation<T>, KernelizedProducer<T>,
 		DestinationSupport<T>, MultiExpression<Double>,

@@ -35,6 +35,7 @@ import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.collect.computations.RootDelegateSegmentsAdd;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.KernelizedEvaluable;
+import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.PassThroughProducer;
 import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.util.TestFeatures;
@@ -210,6 +211,26 @@ public class CollectionComputationTests implements TestFeatures {
 		System.out.println(Arrays.toString(dest.toArray(0, 2)));
 		assertEquals(14, dest.toArray(0, 1)[0]);
 		assertEquals(14, dest.toArray(1, 1)[0]);
+	}
+
+	@Test
+	public void greaterThanMax() {
+		PackedCollection<?> series = new PackedCollection(10);
+		series.setMem(0, 7, 5, 12, 13, 11, 14, 9, 12, 3, 12);
+		System.out.println(series.traverse(0).getCount() + " series");
+
+		PackedCollection<?> dest = new PackedCollection(1);
+		CollectionProducer<PackedCollection<?>> max = new PackedCollectionMax(p(series.traverse(0)));
+		CollectionProducer<PackedCollection<?>> auto = max._greaterThan(c(0.0), c(0.8).divide(max), c(1.0));
+
+		HardwareOperator.verboseLog(() -> {
+			OperationList op = new OperationList("greaterThanMax");
+			op.add(a(1, p(dest), auto));
+			op.get().run();
+		});
+
+		System.out.println("Max = " + dest.toDouble(0));
+		assertEquals(0.8 / 14, dest.toDouble(0));
 	}
 
 	@Test
