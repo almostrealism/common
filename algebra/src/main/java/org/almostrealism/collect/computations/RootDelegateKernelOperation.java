@@ -89,10 +89,11 @@ public abstract class RootDelegateKernelOperation<T extends MemoryBank> implemen
 		this.kernel = (KernelizedOperation)
 				construct(new PassThroughProducer(1, 0),
 				new PassThroughProducer(1, 1),
-				new PassThroughProducer<>(1, 2, -1),
-				new PassThroughProducer<>(1, 3, -1),
-				new PassThroughProducer<>(1, 4, -1),
-				new PassThroughProducer<>(1, 5, -1)).getKernel();
+				new PassThroughProducer<>(1, 2),
+				new PassThroughProducer<>(1, 3),
+				new PassThroughProducer<>(1, 4),
+				new PassThroughProducer<>(1, 5)
+				).getKernel();
 		List<Evaluable<T>> evals = fixedInput ? this.input.stream().map(ProducerWithOffset::getProducer).map(Producer::get).collect(Collectors.toList()) : null;
 		List<PackedCollection<?>> rootDelegate = new ArrayList<>();
 

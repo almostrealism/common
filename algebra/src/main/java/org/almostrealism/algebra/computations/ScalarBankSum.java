@@ -28,6 +28,7 @@ import org.almostrealism.hardware.MemoryData;
 
 import java.util.function.Supplier;
 
+@Deprecated
 public class ScalarBankSum extends CollectionProducerComputationAdapter<ScalarBank, Scalar> implements ScalarProducerBase {
 	private final int count;
 
