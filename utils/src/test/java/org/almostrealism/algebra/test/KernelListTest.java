@@ -44,7 +44,7 @@ public class KernelListTest implements TestFeatures {
 			ScalarBank paramsB = new ScalarBank(1);
 			paramsB.set(0, 3);
 
-			KernelList kernels = new KernelList<>(Scalar.class, ScalarBank::new, ScalarTable::new,
+			KernelList kernels = new KernelList<>(ScalarBank::new, ScalarTable::new,
 					(v, in) -> multiply(scalar(v, 0), in), 2, 1);
 			kernels.setInput(input);
 			kernels.setParameters(0, v(paramsA));

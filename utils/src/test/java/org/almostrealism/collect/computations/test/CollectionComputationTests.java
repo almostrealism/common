@@ -45,6 +45,7 @@ import org.junit.Test;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Function;
+import java.util.stream.IntStream;
 
 public class CollectionComputationTests implements TestFeatures {
 	private static class TestProducer implements Producer<PackedCollection<?>>, Shape<Producer<PackedCollection<?>>> {
@@ -179,6 +180,20 @@ public class CollectionComputationTests implements TestFeatures {
 		System.out.println(Arrays.toString(out.toArray(0, 4)));
 		assertEquals(8.0, out.toArray(0, 1)[0]);
 		assertEquals(14.0, out.toArray(2, 1)[0]);
+	}
+
+	@Test
+	public void scale() {
+		PackedCollection<?> timeline = new PackedCollection<>(shape(10), 1);
+		IntStream.range(0, 10).forEach(i -> timeline.set(i, i + 1));
+
+		PackedCollection<?> destination = new PackedCollection<>(shape(10), 1);
+
+		KernelizedEvaluable<PackedCollection<?>> ev = multiply(c(2), c(p(timeline))).get();
+		ev.into(destination.traverseEach()).evaluate();
+		System.out.println(Arrays.toString(destination.toArray(0, 10)));
+		assertEquals(6.0, destination.toDouble(2));
+		assertEquals(8.0, destination.toDouble(3));
 	}
 
 	@Test

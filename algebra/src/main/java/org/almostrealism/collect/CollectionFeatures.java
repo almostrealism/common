@@ -212,8 +212,8 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return new ReshapeProducer(axis, producer);
 	}
 
-	default <T extends Shape<T>> Producer traverseEach(Producer<T> producer) {
-		return new ReshapeProducer<>(((Shape) producer).getShape().traverseEach(), producer);
+	default <T extends PackedCollection<?>> Producer traverseEach(Producer<T> producer) {
+		return new ReshapeProducer(((Shape) producer).getShape().traverseEach(), producer);
 	}
 
 	default <T extends Shape<T>> Producer reshape(TraversalPolicy shape, Producer producer) {

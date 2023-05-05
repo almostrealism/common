@@ -55,7 +55,7 @@ public interface KernelSupport {
 	static int inferKernelSize(int sizes[]) {
 		int smallest = IntStream.of(sizes).min().orElse(1);
 		int largest = IntStream.of(sizes).max().orElse(-1);
-		int kernelSize = largest / smallest;
+		int kernelSize = largest; // largest / smallest;
 		if (kernelSize <= 0) return kernelSize;
 
 		try {

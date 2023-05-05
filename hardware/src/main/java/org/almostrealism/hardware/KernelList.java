@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -44,12 +44,14 @@ public class KernelList<T extends MemoryData> implements Supplier<Runnable>, Plu
 
 	private Map<Integer, Producer<? extends MemoryBank<T>>> parameterValues;
 
-	public KernelList(Class<T> type, IntFunction<MemoryBank<T>> bankProvider, BiFunction<Integer, Integer, MemoryBank<? extends MemoryBank<T>>> tableProvider,
+	public KernelList(IntFunction<MemoryBank<T>> bankProvider,
+					  BiFunction<Integer, Integer, MemoryBank<? extends MemoryBank<T>>> tableProvider,
 					  ProducerComputation<T> computation, int size) {
-		this(type, bankProvider, tableProvider, (p, in) -> computation, size, 0);
+		this(bankProvider, tableProvider, (p, in) -> computation, size, 0);
 	}
 
-	public KernelList(Class<T> type, IntFunction<MemoryBank<T>> bankProvider, BiFunction<Integer, Integer, MemoryBank<? extends MemoryBank<T>>> tableProvider,
+	public KernelList(IntFunction<MemoryBank<T>> bankProvider,
+					  BiFunction<Integer, Integer, MemoryBank<? extends MemoryBank<T>>> tableProvider,
 					  BiFunction<Producer<MemoryBank<T>>, Producer<T>, ProducerComputation<T>> computation,
 					  int size, int parameters) {
 		if (size <= 0) throw new IllegalArgumentException();

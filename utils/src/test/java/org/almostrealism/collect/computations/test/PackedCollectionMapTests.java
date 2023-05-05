@@ -19,10 +19,14 @@ package org.almostrealism.collect.computations.test;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
+
+import java.util.Arrays;
+import java.util.stream.IntStream;
 
 public class PackedCollectionMapTests implements TestFeatures {
 	@Test
@@ -49,6 +53,31 @@ public class PackedCollectionMapTests implements TestFeatures {
 				}
 			}
 		});
+	}
+
+	@Test
+	public void scale() {
+		PackedCollection<?> timeline = new PackedCollection<>(shape(10), 1);
+		IntStream.range(0, 10).forEach(i -> timeline.set(i, i + 1));
+
+		PackedCollection<?> scale = new PackedCollection<>(shape(5), 1);
+		IntStream.range(0, 5).forEach(i -> scale.set(i, i + 2));
+		System.out.println(Arrays.toString(scale.toArray(0, 5)));
+
+		PackedCollection<?> destination = new PackedCollection<>(shape(5, 10), 1);
+
+		Producer<PackedCollection<?>> repeated = c(p(scale)).traverse(1).expand(10, v -> v.repeat(10));
+
+		Producer<PackedCollection<?>> repeatedTimeline = c(p(timeline)).traverse(0).expand(5, v -> v.repeat(5));
+
+		KernelizedEvaluable<PackedCollection<?>> ev = multiply(traverseEach(repeated), traverseEach(repeatedTimeline)).get();
+		destination = ev.evaluate();
+		System.out.println(destination.getShape());
+		System.out.println(Arrays.toString(destination.toArray(0, 10)));
+		System.out.println(Arrays.toString(destination.toArray(10, 10)));
+
+		assertEquals(8, destination.toDouble(3));
+		assertEquals(12, destination.toDouble(13));
 	}
 
 	@Test

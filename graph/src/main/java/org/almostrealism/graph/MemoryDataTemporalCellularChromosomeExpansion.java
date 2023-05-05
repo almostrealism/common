@@ -78,7 +78,7 @@ public abstract class MemoryDataTemporalCellularChromosomeExpansion<T extends Me
 	}
 
 	public void addFactor(BiFunction<Producer<MemoryBank<O>>, Producer<O>, ProducerComputation<O>> computation) {
-		this.kernels.add(new KernelOrValue(new KernelList(type, bankProvider, tableProvider, computation, inputGenes, inputFactors)));
+		this.kernels.add(new KernelOrValue(new KernelList(bankProvider, tableProvider, computation, inputGenes, inputFactors)));
 	}
 
 	@Override

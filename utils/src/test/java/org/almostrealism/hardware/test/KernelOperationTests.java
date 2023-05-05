@@ -16,13 +16,18 @@
 
 package org.almostrealism.hardware.test;
 
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
+
+import java.util.Arrays;
+import java.util.stream.IntStream;
 
 public class KernelOperationTests implements TestFeatures {
 	@Test
@@ -60,6 +65,21 @@ public class KernelOperationTests implements TestFeatures {
 			assertEquals(a.toDouble(i) + b.toDouble(i), x.toDouble(i));
 			assertEquals(a.toDouble(i) * b.toDouble(i), y.toDouble(i));
 		}
+	}
+
+	// @Test
+	public void kernelList() {
+		PackedCollection<?> timeline = new PackedCollection<>(shape(10), 1);
+		IntStream.range(0, 10).forEach(i -> timeline.set(i, i + 1));
+
+		PackedCollection<?> params = new PackedCollection<>(shape(5), 1);
+		IntStream.range(0, 5).forEach(i -> params.set(i, i + 1));
+
+		PackedCollection<?> destination = new PackedCollection<>(shape(5, 10));
+
+		KernelizedEvaluable<PackedCollection<?>> ev = c(p(params)).traverseEach().map(v -> v.multiply(traverseEach(p(timeline)))).get();
+		ev.into(destination.traverseEach()).evaluate();
+		System.out.println(Arrays.toString(destination.toArray(20, 10)));
 	}
 
 	@Test
