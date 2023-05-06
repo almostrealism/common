@@ -26,6 +26,7 @@ import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
+@Deprecated
 public abstract class TemporalCellularChromosomeExpansion<T, I, O> extends TemporalChromosomeExpansion<T, I, O> {
 	public TemporalCellularChromosomeExpansion(Chromosome<I> source) {
 		super(source);

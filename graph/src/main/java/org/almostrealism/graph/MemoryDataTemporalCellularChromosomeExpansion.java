@@ -38,6 +38,7 @@ import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
+@Deprecated
 public abstract class MemoryDataTemporalCellularChromosomeExpansion<T extends MemoryBank<O>,
 		I extends MemoryData,
 		O extends MemoryData>

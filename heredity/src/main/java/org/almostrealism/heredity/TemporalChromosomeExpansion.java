@@ -30,6 +30,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+@Deprecated
 public abstract class TemporalChromosomeExpansion<T, I, O> implements Chromosome<O>, Temporal, Setup {
 	private Chromosome<I> source;
 	private Map<Integer, Function<Gene<I>, Producer<O>>> transforms;
