@@ -139,10 +139,18 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> concat(Producer<PackedCollection<?>>... producers) {
+		return (CollectionProducerComputation) concat(0, producers);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> concat(int axis, Producer<PackedCollection<?>>... producers) {
 		List<Function<List<MultiExpression<Double>>, Expression<Double>>> expressions = IntStream.range(0, producers.length)
 				.mapToObj(i -> (Function<List<MultiExpression<Double>>, Expression<Double>>) args -> args.get(i + 1).getValue(0))
 				.collect(Collectors.toList());
-		return new ExpressionComputation(expressions, producers);
+		if (axis != 0) {
+			return new ExpressionComputation(shape(producers.length, 1), expressions, producers).traverse(axis);
+		} else {
+			return new ExpressionComputation(shape(producers.length, 1), expressions, producers);
+		}
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> c(Producer producer) {
