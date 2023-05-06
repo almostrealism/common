@@ -17,6 +17,7 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.ProducerComputation;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.uml.Plural;
@@ -70,7 +71,9 @@ public class KernelList<T extends MemoryData> implements Supplier<Runnable>, Plu
 		this.data = tableProvider.apply(input.getCount(), size);
 
 		TraversalPolicy shape = ((Shape) input).getShape();
-		this.computation = computationProvider.apply(() -> new Provider(this.parameters), new PassThroughProducer<>(shape, 0));
+		TraversalPolicy parameterShape = ((Shape) parameters).getShape();
+//		this.computation = computationProvider.apply(() -> new Provider(this.parameters), new PassThroughProducer<>(shape, 0));
+		this.computation = computationProvider.apply(new PassThroughProducer<>(parameterShape, 1), new PassThroughProducer<>(shape, 0));
 	}
 
 	public void setParameters(int pos, Producer<? extends MemoryBank<T>> parameters) {
@@ -93,7 +96,7 @@ public class KernelList<T extends MemoryData> implements Supplier<Runnable>, Plu
 					System.out.println("KernelList: Evaluating kernel " + i + " against " + input.getCount() + " values...");
 				}
 
-				ev.into(data.get(i)).evaluate(input);
+				ev.into(data.get(i)).evaluate(input, this.parameters);
 			});
 		});
 

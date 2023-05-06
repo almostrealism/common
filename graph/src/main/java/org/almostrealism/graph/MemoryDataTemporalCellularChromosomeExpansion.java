@@ -39,8 +39,8 @@ import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
 public abstract class MemoryDataTemporalCellularChromosomeExpansion<T extends MemoryBank<O>,
-																	I extends MemoryData,
-																	O extends MemoryData>
+		I extends MemoryData,
+		O extends MemoryData>
 		extends TemporalCellularChromosomeExpansion<T, I, O> implements CodeFeatures {
 	private final Class<O> type;
 	private List<KernelOrValue> kernels;
