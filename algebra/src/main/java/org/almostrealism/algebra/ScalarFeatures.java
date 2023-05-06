@@ -61,7 +61,7 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 
 	default ExpressionComputation<Scalar> scalar(DynamicCollectionProducerComputationAdapter<?, ?> value) {
 		if (value instanceof ExpressionComputation) {
-			if (((ExpressionComputation) value).getExpressions().size() != 2) throw new IllegalArgumentException();
+			if (((ExpressionComputation) value).expression().size() != 2) throw new IllegalArgumentException();
 			return new ScalarExpressionComputation(((ExpressionComputation) value).expression(),
 					value.getInputs().subList(1, value.getInputs().size()).toArray(Supplier[]::new));
 		} else if (value instanceof Shape) {

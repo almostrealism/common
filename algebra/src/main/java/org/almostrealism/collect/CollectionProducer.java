@@ -82,7 +82,7 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 		return pow((Producer) this, value);
 	}
 
-	default <T extends PackedCollection<?>> DynamicExpressionComputation<T> minus() {
+	default <T extends PackedCollection<?>> DynamicCollectionProducerComputationAdapter<T, T> minus() {
 		return minus((Producer) this);
 	}
 

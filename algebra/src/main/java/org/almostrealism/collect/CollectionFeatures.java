@@ -383,7 +383,6 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	}
 
 	default <T extends PackedCollection<?>> DynamicCollectionProducerComputationAdapter<T, T> divide(Producer<T> a, Producer<T> b) {
-		// return multiply(a, pow(b, c(-1.0)));
 		TraversalPolicy shape = shape(a);
 		int size = shape(b).getSize();
 		if (shape.getSize() != size) {
@@ -391,17 +390,31 @@ public interface CollectionFeatures extends ExpressionFeatures {
 					" with a collection of size " + size);
 		}
 
-		return new DynamicExpressionComputation<>(shape,
-				args -> CollectionExpression.create(shape, index -> new Quotient(args[1].getValueAt(index), args[2].getValueAt(index))),
-				(Supplier) a, (Supplier) b);
-
+		if (enableDynamicExpressions) {
+			return new DynamicExpressionComputation<>(shape,
+					args -> CollectionExpression.create(shape, index -> new Quotient(args[1].getValueAt(index), args[2].getValueAt(index))),
+					(Supplier) a, (Supplier) b);
+		} else {
+			List<Function<List<MultiExpression<Double>>, Expression<Double>>> expressions =
+					IntStream.range(0, shape.getSize()).mapToObj(i -> (Function<List<MultiExpression<Double>>, Expression<Double>>)
+									np -> new Quotient(np.get(1).getValue(i), np.get(2).getValue(i)))
+							.collect(Collectors.toList());
+			return new ExpressionComputation<>(shape, expressions, (Supplier) a, (Supplier) b);
+		}
 	}
 
-	default <T extends PackedCollection<?>> DynamicExpressionComputation<T> minus(Producer<T> a) {
-//		return minus(size(a), (Supplier) a);
-		return new DynamicExpressionComputation<>(shape(a),
-				args -> CollectionExpression.create(shape(a), index -> new Minus(args[1].getValueAt(index))),
-				(Supplier) a);
+	default <T extends PackedCollection<?>> DynamicCollectionProducerComputationAdapter<T, T> minus(Producer<T> a) {
+		if (enableDynamicExpressions) {
+			return new DynamicExpressionComputation<>(shape(a),
+					args -> CollectionExpression.create(shape(a), index -> new Minus(args[1].getValueAt(index))),
+					(Supplier) a);
+		} else {
+			List<Function<List<MultiExpression<Double>>, Expression<Double>>> expressions =
+					IntStream.range(0, shape(a).getSize()).mapToObj(i -> (Function<List<MultiExpression<Double>>, Expression<Double>>)
+									np -> new Minus(np.get(1).getValue(i)))
+							.collect(Collectors.toList());
+			return new ExpressionComputation<>(shape(a), expressions, (Supplier) a);
+		}
 	}
 
 	default <T extends PackedCollection<?>> ExpressionComputation<T> pow(Producer<T> base, Producer<T> exp) {
