@@ -169,7 +169,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> c(TraversalPolicy shape,
 																			   Supplier<Evaluable<? extends PackedCollection>> collection,
-																			   Supplier<Evaluable<? extends Scalar>> index) {
+																			   Supplier<Evaluable<? extends PackedCollection>> index) {
 		DynamicExpressionComputation exp = new DynamicExpressionComputation<>(shape,
 				args -> CollectionExpression.create(shape, idx -> args[1].getValueAt(args[2].getValueAt(e(0)).add(idx))),
 				(Supplier) collection, (Supplier) index);
@@ -177,12 +177,12 @@ public interface CollectionFeatures extends ExpressionFeatures {
 			exp.setShortCircuit(args -> {
 				Evaluable<? extends PackedCollection> out = ag -> new PackedCollection(1);
 				Evaluable<? extends PackedCollection> c = collection.get();
-				Evaluable<? extends Scalar> i = index.get();
+				Evaluable<? extends PackedCollection> i = index.get();
 
 				PackedCollection<?> col = c.evaluate(args);
-				Scalar idx = i.evaluate(args);
+				PackedCollection idx = i.evaluate(args);
 				PackedCollection dest = out.evaluate(args);
-				dest.setMem(col.toDouble((int) idx.getValue()));
+				dest.setMem(col.toDouble((int) idx.toDouble(0)));
 				return dest;
 			});
 		}
