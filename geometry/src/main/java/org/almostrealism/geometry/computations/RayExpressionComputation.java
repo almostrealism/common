@@ -22,7 +22,6 @@ import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.geometry.RayProducerBase;
 import org.almostrealism.hardware.MemoryData;
 
 import java.util.List;
@@ -30,7 +29,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 @Deprecated
-public class RayExpressionComputation extends ExpressionComputation<Ray> implements RayProducerBase {
+public class RayExpressionComputation extends ExpressionComputation<Ray> {
 	public RayExpressionComputation(List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression, Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
 		super(expression, args);
 	}

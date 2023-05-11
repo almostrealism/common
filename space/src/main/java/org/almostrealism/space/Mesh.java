@@ -582,7 +582,7 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 
 		TransformMatrix t = getTransform(true);
 		KernelizedProducer<Ray> tray = (KernelizedProducer<Ray>) ray;
-		if (t != null) tray = t.getInverse().transform(tray);
+		if (t != null) tray = (KernelizedProducer<Ray>) t.getInverse().transform(tray);
 
 		CachedMeshIntersectionKernel kernel = new CachedMeshIntersectionKernel(getMeshData(), tray);
 		return new ShadableIntersection(ray, () -> kernel.getClosestNormal(), new DimensionAwareKernel<>(kernel));

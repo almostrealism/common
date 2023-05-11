@@ -6,7 +6,7 @@
 	<parent>
 		<groupId>org.almostrealism</groupId>
 		<artifactId>Common</artifactId>
-		<version>0.54</version>
+		<version>0.55</version>
 	</parent>
 
 	<artifactId>ar-ml</artifactId>
@@ -19,7 +19,7 @@
 		<dependency>
 			<groupId>org.almostrealism</groupId>
 			<artifactId>ar-utils</artifactId>
-			<version>0.54</version>
+			<version>0.55</version>
 		</dependency>
 		<dependency>
 			<groupId>org.jetbrains.kotlin</groupId>
