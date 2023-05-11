@@ -224,8 +224,9 @@ public class Vector extends PackedCollection<Vector> implements Triple, VectorFe
 	/**
 	 * Returns the opposite of the vector represented by this {@link Vector}.
 	 */
+	@Deprecated
 	public Vector minus() {
-		return minus(v(this)).get().evaluate();
+		return new Vector(-getX(), -getY(), -getZ());
 	}
 
 	/** Returns the sum of this {@link Vector} and the specified {@link Vector}. */

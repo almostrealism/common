@@ -6,7 +6,7 @@
 
     <groupId>org.almostrealism</groupId>
     <artifactId>Common</artifactId>
-    <version>0.53</version>
+    <version>0.54</version>
 
 	<properties>
 		<maven.compiler.source>11</maven.compiler.source>

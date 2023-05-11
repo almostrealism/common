@@ -18,6 +18,7 @@ package org.almostrealism.algebra;
 
 import io.almostrealism.expression.*;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.computations.PairExpressionComputation;
 import org.almostrealism.algebra.computations.ScalarChoice;
 import org.almostrealism.algebra.computations.ScalarExpressionComputation;
 import io.almostrealism.relation.Evaluable;
@@ -59,9 +60,15 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 
 	default ScalarExpressionComputation scalar(double value) { return value(new Scalar(value)); }
 
+	default ScalarProducerBase scalar(Producer<?> x) {
+		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
+		IntStream.range(0, 2).forEach(i -> comp.add(args -> args.get(1).getValue(i)));
+		return new ScalarExpressionComputation(comp, (Supplier) x);
+	}
+
 	default ExpressionComputation<Scalar> scalar(DynamicCollectionProducerComputationAdapter<?, ?> value) {
 		if (value instanceof ExpressionComputation) {
-			if (((ExpressionComputation) value).getExpressions().size() != 2) throw new IllegalArgumentException();
+			if (((ExpressionComputation) value).expression().size() != 2) throw new IllegalArgumentException();
 			return new ScalarExpressionComputation(((ExpressionComputation) value).expression(),
 					value.getInputs().subList(1, value.getInputs().size()).toArray(Supplier[]::new));
 		} else if (value instanceof Shape) {

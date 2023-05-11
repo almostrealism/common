@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.ProducerComputation;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.uml.Plural;
@@ -44,12 +45,14 @@ public class KernelList<T extends MemoryData> implements Supplier<Runnable>, Plu
 
 	private Map<Integer, Producer<? extends MemoryBank<T>>> parameterValues;
 
-	public KernelList(Class<T> type, IntFunction<MemoryBank<T>> bankProvider, BiFunction<Integer, Integer, MemoryBank<? extends MemoryBank<T>>> tableProvider,
+	public KernelList(IntFunction<MemoryBank<T>> bankProvider,
+					  BiFunction<Integer, Integer, MemoryBank<? extends MemoryBank<T>>> tableProvider,
 					  ProducerComputation<T> computation, int size) {
-		this(type, bankProvider, tableProvider, (p, in) -> computation, size, 0);
+		this(bankProvider, tableProvider, (p, in) -> computation, size, 0);
 	}
 
-	public KernelList(Class<T> type, IntFunction<MemoryBank<T>> bankProvider, BiFunction<Integer, Integer, MemoryBank<? extends MemoryBank<T>>> tableProvider,
+	public KernelList(IntFunction<MemoryBank<T>> bankProvider,
+					  BiFunction<Integer, Integer, MemoryBank<? extends MemoryBank<T>>> tableProvider,
 					  BiFunction<Producer<MemoryBank<T>>, Producer<T>, ProducerComputation<T>> computation,
 					  int size, int parameters) {
 		if (size <= 0) throw new IllegalArgumentException();
@@ -68,7 +71,9 @@ public class KernelList<T extends MemoryData> implements Supplier<Runnable>, Plu
 		this.data = tableProvider.apply(input.getCount(), size);
 
 		TraversalPolicy shape = ((Shape) input).getShape();
-		this.computation = computationProvider.apply(() -> new Provider(this.parameters), new PassThroughProducer<>(shape, 0));
+		TraversalPolicy parameterShape = ((Shape) parameters).getShape();
+//		this.computation = computationProvider.apply(() -> new Provider(this.parameters), new PassThroughProducer<>(shape, 0));
+		this.computation = computationProvider.apply(new PassThroughProducer<>(parameterShape, 1), new PassThroughProducer<>(shape, 0));
 	}
 
 	public void setParameters(int pos, Producer<? extends MemoryBank<T>> parameters) {
@@ -91,7 +96,7 @@ public class KernelList<T extends MemoryData> implements Supplier<Runnable>, Plu
 					System.out.println("KernelList: Evaluating kernel " + i + " against " + input.getCount() + " values...");
 				}
 
-				ev.into(data.get(i)).evaluate(input);
+				ev.into(data.get(i)).evaluate(input, this.parameters);
 			});
 		});
 

@@ -187,7 +187,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy> {
 	}
 
 	public TraversalPolicy item() {
-		if (traversalAxis == dims.length) return new TraversalPolicy(1);
+		if (traversalAxis == dims.length) return new TraversalPolicy();
 		return new TraversalPolicy(IntStream.range(traversalAxis, dims.length).map(i -> dims[i]).toArray());
 	}
 

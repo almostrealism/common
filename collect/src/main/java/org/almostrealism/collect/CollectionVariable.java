@@ -58,6 +58,11 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 	public TraversalPolicy getShape() { return shape; }
 
 	@Override
+	public Expression<Integer> length() {
+		return getShape().getSize() == 1 ? super.length() : e(getShape().getSize());
+	}
+
+	@Override
 	public InstanceReference<T> get(String index, int kernelIndex, Variable... dependencies) {
 		if (parent == null) {
 			return super.get(index, kernelIndex, dependencies);

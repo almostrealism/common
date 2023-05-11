@@ -38,9 +38,10 @@ import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
+@Deprecated
 public abstract class MemoryDataTemporalCellularChromosomeExpansion<T extends MemoryBank<O>,
-																	I extends MemoryData,
-																	O extends MemoryData>
+		I extends MemoryData,
+		O extends MemoryData>
 		extends TemporalCellularChromosomeExpansion<T, I, O> implements CodeFeatures {
 	private final Class<O> type;
 	private List<KernelOrValue> kernels;
@@ -78,7 +79,7 @@ public abstract class MemoryDataTemporalCellularChromosomeExpansion<T extends Me
 	}
 
 	public void addFactor(BiFunction<Producer<MemoryBank<O>>, Producer<O>, ProducerComputation<O>> computation) {
-		this.kernels.add(new KernelOrValue(new KernelList(type, bankProvider, tableProvider, computation, inputGenes, inputFactors)));
+		this.kernels.add(new KernelOrValue(new KernelList(bankProvider, tableProvider, computation, inputGenes, inputFactors)));
 	}
 
 	@Override

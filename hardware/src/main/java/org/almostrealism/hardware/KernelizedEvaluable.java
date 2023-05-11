@@ -35,7 +35,8 @@ public interface KernelizedEvaluable<T extends MemoryData> extends Evaluable<T> 
 
 	MemoryBank<T> createKernelDestination(int size);
 
-	default Evaluable<T> into(MemoryBank<?> destination) {
+	@Override
+	default Evaluable<T> into(Object destination) {
 		return withDestination((MemoryBank<T>) destination);
 	}
 

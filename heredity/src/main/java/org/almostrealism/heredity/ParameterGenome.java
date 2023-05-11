@@ -23,12 +23,14 @@ import java.io.IOException;
 import java.util.List;
 
 public class ParameterGenome implements Genome<PackedCollection<?>> {
+	private List<ConfigurableChromosome> chromosomes;
 	private AssignableGenome genome;
 
 	public ParameterGenome() { }
 
 	protected ParameterGenome(List<ConfigurableChromosome> chromosomes) {
-		genome = new AssignableGenome();
+		this.chromosomes = chromosomes;
+		this.genome = new AssignableGenome();
 
 		for (int x = 0; x < chromosomes.size(); x++) {
 			for (int y = 0; y < chromosomes.get(x).length(); y++) {
@@ -42,7 +44,8 @@ public class ParameterGenome implements Genome<PackedCollection<?>> {
 		}
 	}
 
-	private ParameterGenome(AssignableGenome genome) {
+	private ParameterGenome(List<ConfigurableChromosome> chromosomes, AssignableGenome genome) {
+		this.chromosomes = chromosomes;
 		this.genome = genome;
 	}
 
@@ -67,6 +70,10 @@ public class ParameterGenome implements Genome<PackedCollection<?>> {
 	}
 
 	public ParameterGenome random() {
+		if (chromosomes != null) return random(chromosomes);
+
+		System.out.println("WARN: No chromosomes to use for determining range of random values");
+
 		AssignableGenome random = new AssignableGenome();
 
 		for (int x = 0; x < genome.length(); x++) {
@@ -77,7 +84,26 @@ public class ParameterGenome implements Genome<PackedCollection<?>> {
 			}
 		}
 
-		return new ParameterGenome(random);
+		return new ParameterGenome(null, random);
+	}
+
+	public ParameterGenome random(List<ConfigurableChromosome> chromosomes) {
+		AssignableGenome random = new AssignableGenome();
+
+		for (int x = 0; x < genome.length(); x++) {
+			for (int y = 0; y < genome.length(x); y++) {
+				PackedCollection<?> ranges = chromosomes.get(x).getParameterRanges(y);
+
+				for (int z = 0; z < genome.length(x, y); z++) {
+					double min = ranges.get(z).toDouble(0);
+					double max = ranges.get(z).toDouble(1);
+					double len = max - min;
+					random.insert(new Scalar(min + len * Math.random()), x, y, z);
+				}
+			}
+		}
+
+		return new ParameterGenome(chromosomes, random);
 	}
 
 	public String getSerialized() throws IOException {

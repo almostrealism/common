@@ -24,6 +24,8 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.TimeCell;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.hardware.computations.Assignment;
+import org.almostrealism.heredity.Factor;
 
 import java.util.Objects;
 import java.util.function.Supplier;
@@ -44,7 +46,12 @@ public class WaveCell extends CollectionTemporalCellAdapter implements CodeFeatu
 	}
 
 	public WaveCell(PackedCollection<?> wav, int sampleRate, double amplitude) {
-		this(wav, sampleRate, amplitude, null, null, Ops.ops().v(0.0), Ops.ops().v(wav.getCount()));
+		this(wav, sampleRate, amplitude, null, null);
+	}
+
+	public WaveCell(PackedCollection<?> wav, int sampleRate, double amplitude,
+					Producer<Scalar> offset, Producer<Scalar> repeat) {
+		this(wav, sampleRate, amplitude, offset, repeat, Ops.ops().v(0.0), Ops.ops().v(wav.getCount()));
 	}
 
 	public WaveCell(PackedCollection<?> wav, int sampleRate, double amplitude,
@@ -136,6 +143,10 @@ public class WaveCell extends CollectionTemporalCellAdapter implements CodeFeatu
 		if (clock != null) tick.add(clock.tick());
 		tick.add(super.tick());
 		return tick;
+	}
+
+	public Factor<PackedCollection<?>> toFactor() {
+		return toFactor(() -> new PackedCollection<>(shape(1)), p -> protein -> new Assignment<>(1, p, protein));
 	}
 
 	private static PackedCollection<?> validate(PackedCollection<?> wav) {

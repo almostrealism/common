@@ -2,6 +2,8 @@ package org.almostrealism.math.bool.test;
 
 import io.almostrealism.code.OperationAdapter;
 import org.almostrealism.algebra.ScalarProducerBase;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.Random;
 import org.almostrealism.hardware.Input;
 import org.almostrealism.util.TestSettings;
 import io.almostrealism.relation.Evaluable;
@@ -26,8 +28,7 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 			ScalarProducerBase a = scalar(i * Math.random());
 			ScalarProducerBase b = scalar(i * Math.random());
 
-			AcceleratedComputationEvaluable<Scalar> lt =
-					(AcceleratedComputationEvaluable<Scalar>) new LessThanScalar(a, b, a, b, false).get();
+			Evaluable<Scalar> lt = lessThan(a, b).get();
 
 			Scalar s = lt.evaluate();
 			System.out.println("lessThan = " + s.getValue());
@@ -36,6 +37,31 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 				assertEquals(a.get().evaluate().getValue(), s.getValue());
 			} else {
 				assertEquals(b.get().evaluate().getValue(), s.getValue());
+			}
+		});
+	}
+
+	@Test
+	public void randomLessThanKernel() {
+		PackedCollection<?> x = rand(shape(100, 2)).get().evaluate();
+		PackedCollection<?> y = rand(shape(100, 2)).get().evaluate();
+
+		PackedCollection<?> less = new PackedCollection<>(shape(100, 2), 1);
+		lessThan().get().into(less).evaluate(x.traverse(1), y.traverse(1));
+
+		Assert.assertEquals(100, less.getShape().length(0));
+		Assert.assertEquals(2, less.getShape().length(1));
+
+		IntStream.range(0, 100).forEach(i -> {
+			double a = x.valueAt(i, 0);
+			double b = y.valueAt(i, 0);
+			double s = less.valueAt(i, 0);
+			System.out.println("lessThan = " + s);
+
+			if (a < b) {
+				assertEquals(a, s);
+			} else {
+				assertEquals(b, s);
 			}
 		});
 	}

@@ -16,7 +16,6 @@
 
 package org.almostrealism.heredity;
 
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 

@@ -110,4 +110,8 @@ public class TimeCell implements Cell<Scalar>, Temporal, CodeFeatures {
 	public void setReceptor(Receptor<Scalar> r) { this.r = r; }
 
 	public Producer<Scalar> frame() { return l(() -> new Provider<>(time)); }
+
+	public Producer<PackedCollection<?>> time(double sampleRate) {
+		return divide(c(frame(), 0), c(sampleRate));
+	}
 }

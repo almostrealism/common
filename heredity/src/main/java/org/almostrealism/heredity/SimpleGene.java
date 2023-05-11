@@ -29,14 +29,27 @@ public class SimpleGene implements Gene<PackedCollection<?>>, GeneParameters, Co
 	public static final boolean enableShortCircuit = true;
 
 	private PackedCollection<?> values;
+	private PackedCollection<?> ranges;
 	private UnaryOperator<Producer<PackedCollection<?>>> transform;
 
 	public SimpleGene(int length) {
 		this.values = new PackedCollection<>(length);
+		this.ranges = new PackedCollection<>(shape(length, 2), 1);
+		initRanges();
+	}
+
+	protected void initRanges() {
+		for (int i = 0; i < values.getMemLength(); i++) {
+			ranges.get(i).setMem(0.0, 1.0);
+		}
 	}
 
 	public void set(int index, double value) {
 		values.setMem(index, value);
+	}
+
+	public void setRange(int index, double min, double max) {
+		ranges.get(index).setMem(min, max);
 	}
 
 	public UnaryOperator<Producer<PackedCollection<?>>> getTransform() {
@@ -49,6 +62,9 @@ public class SimpleGene implements Gene<PackedCollection<?>>, GeneParameters, Co
 
 	@Override
 	public PackedCollection<?> getParameters() { return values; }
+
+	@Override
+	public PackedCollection<?> getParameterRanges() { return ranges; }
 
 	@Override
 	public Factor<PackedCollection<?>> valueAt(int pos) {

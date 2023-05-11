@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,8 +16,6 @@
 
 package org.almostrealism.geometry;
 
-import java.util.Arrays;
-
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import io.almostrealism.relation.Producer;
@@ -25,7 +23,7 @@ import io.almostrealism.relation.Producer;
 /**
  * An Intersection object stores data for the intersections between a ray and a surface.
  */
-public class Intersection<OUT> implements DimensionAware {
+public class Intersection implements DimensionAware {
 	/** A very small value (0.00000001) that is used in '>=' and '<=' operations to account for computational errors. */
 	public static final double e = 0.00000001;
 
