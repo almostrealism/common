@@ -111,24 +111,24 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 		return new GreaterThanCollection(this, operand, trueValue, falseValue, includeEqual);
 	}
 
-	default AcceleratedConditionalStatementCollection _lessThan(Supplier operand) {
+	default <T extends PackedCollection<?>> CollectionProducer<T> _lessThan(Supplier operand) {
 		return _lessThan(operand, false);
 	}
 
-	default AcceleratedConditionalStatementCollection _lessThan(Supplier operand, boolean includeEqual) {
+	default <T extends PackedCollection<?>> CollectionProducer<T> _lessThan(Supplier operand, boolean includeEqual) {
 		return _lessThan(operand, null, null, includeEqual);
 	}
 
-	default AcceleratedConditionalStatementCollection _lessThan(Supplier<Evaluable<? extends PackedCollection<?>>> operand,
+	default <T extends PackedCollection<?>> CollectionProducer<T> _lessThan(Supplier<Evaluable<? extends PackedCollection<?>>> operand,
 																Supplier<Evaluable<? extends PackedCollection<?>>> trueValue,
 																Supplier<Evaluable<? extends PackedCollection<?>>> falseValue) {
 		return _lessThan(operand, trueValue, falseValue, false);
 	}
 
-	default AcceleratedConditionalStatementCollection _lessThan(Supplier<Evaluable<? extends PackedCollection<?>>> operand,
+	default <T extends PackedCollection<?>> CollectionProducer<T> _lessThan(Supplier<Evaluable<? extends PackedCollection<?>>> operand,
 																Supplier<Evaluable<? extends PackedCollection<?>>> trueValue,
 																Supplier<Evaluable<? extends PackedCollection<?>>> falseValue,
 																boolean includeEqual) {
-		return new LessThanCollection(this, operand, trueValue, falseValue, includeEqual);
+		return _lessThan(this, (Producer) operand, (Producer) trueValue, (Producer) falseValue, includeEqual);
 	}
 }

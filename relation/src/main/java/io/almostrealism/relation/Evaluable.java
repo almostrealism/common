@@ -31,4 +31,8 @@ public interface Evaluable<T> {
 	}
 
 	T evaluate(Object... args);
+
+	default Evaluable<T> into(Object destination) {
+		throw new UnsupportedOperationException();
+	}
 }

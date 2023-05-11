@@ -25,6 +25,7 @@ import io.almostrealism.expression.Sine;
 import io.almostrealism.expression.Sum;
 import org.almostrealism.algebra.computations.*;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.hardware.HardwareFeatures;
 
@@ -50,6 +51,12 @@ public interface PairFeatures extends HardwareFeatures {
 		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
 		IntStream.range(0, 2).forEach(i -> comp.add(args -> args.get(1 + i).getValue(0)));
 		return new PairExpressionComputation(comp, (Supplier) x, (Supplier) y);
+	}
+
+	default PairProducerBase pair(Supplier<Evaluable<? extends PackedCollection<?>>> x) {
+		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
+		IntStream.range(0, 2).forEach(i -> comp.add(args -> args.get(1).getValue(i)));
+		return new PairExpressionComputation(comp, x);
 	}
 
 	default ExpressionComputation<Pair<?>> v(Pair value) { return value(value); }

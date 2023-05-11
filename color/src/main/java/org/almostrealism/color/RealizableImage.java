@@ -45,6 +45,7 @@ public class RealizableImage implements Producer<RGB[][]> {
 
 	public Pair getDimensions() { return dim; }
 
+	// TODO  This should be Evaluable<PackedCollection<?>>
 	@Override
 	public Evaluable<RGB[][]> get() {
 		return args -> {

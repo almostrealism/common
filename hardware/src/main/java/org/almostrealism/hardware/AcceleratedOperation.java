@@ -98,14 +98,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		this.argumentMaps = new ArrayList<>();
 	}
 
-	@SafeVarargs
-	public AcceleratedOperation(String function, boolean kernel, ArrayVariable<T>... args) {
-		this(kernel, args);
-		setFunctionName(function);
-	}
-
-	public void setSourceClass(Class cls) { this.cls = cls; }
-
 	public Class getSourceClass() {
 		if (cls != null) return cls;
 		return getClass();

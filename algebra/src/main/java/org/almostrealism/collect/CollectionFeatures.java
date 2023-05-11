@@ -34,6 +34,8 @@ import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.bool.AcceleratedConditionalStatementCollection;
+import org.almostrealism.bool.LessThanCollection;
 import org.almostrealism.collect.computations.ArrayVariableComputation;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.collect.computations.DynamicCollectionProducerComputationAdapter;
@@ -473,6 +475,17 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		Function<List<MultiExpression<Double>>, Expression<Double>> expression= np ->
 			new Sum(IntStream.range(0, size).mapToObj(i -> np.get(1).getValue(i)).toArray(Expression[]::new));
 		return new ExpressionComputation<>(List.of(expression), input);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> _lessThan(Producer<T> a, Producer<T> b,
+																  Producer<T> trueValue, Producer<T> falseValue) {
+		return _lessThan(a, b, trueValue, falseValue, false);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> _lessThan(Producer<?> a, Producer<?> b,
+																  Producer<T> trueValue, Producer<T> falseValue,
+																  boolean includeEqual) {
+		return (CollectionProducer<T>) new LessThanCollection(a, b, trueValue, falseValue, includeEqual);
 	}
 
 	static CollectionFeatures getInstance() {
