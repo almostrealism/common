@@ -38,10 +38,18 @@ import java.util.function.IntFunction;
  */
 @Deprecated
 public interface MultiExpression<T> {
+	boolean enableExpressionSimplification = true;
 
 	default IntFunction<Variable<T, ?>> getAssignmentFunction(Variable<?, ?> outputVariable) {
-		return i ->
-				new Variable(((ArrayVariable) outputVariable).valueAt(i).getExpression(), false, getValue(i), outputVariable.getRootDelegate());
+		if (enableExpressionSimplification) {
+			return i ->
+					new Variable(((ArrayVariable) outputVariable).valueAt(i).simplify().getExpression(),
+							false, getValue(i), outputVariable.getRootDelegate());
+		} else {
+			return i ->
+					new Variable(((ArrayVariable) outputVariable).valueAt(i).getExpression(),
+							false, getValue(i), outputVariable.getRootDelegate());
+		}
 	}
 
 	Expression<T> getValue(int pos);
