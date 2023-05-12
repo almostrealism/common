@@ -16,8 +16,19 @@
 
 package io.almostrealism.expression;
 
+import java.util.List;
+
 public class Exponent extends Expression<Double> {
 	public Exponent(Expression<Double> base, Expression<Double> exponent) {
 		super(Double.class, "pow((" + base.getExpression() + "), (" + exponent.getExpression() + "))", base, exponent);
+	}
+
+	@Override
+	public Expression<Double> generate(List<Expression<?>> children) {
+		if (children.size() != 2) {
+			throw new UnsupportedOperationException();
+		}
+
+		return new Exponent((Expression<Double>) children.get(0), (Expression<Double>) children.get(1));
 	}
 }

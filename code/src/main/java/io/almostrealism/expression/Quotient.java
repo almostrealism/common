@@ -16,8 +16,15 @@
 
 package io.almostrealism.expression;
 
+import java.util.List;
+
 public class Quotient extends NAryExpression<Double> {
 	public Quotient(Expression<Double>... values) {
 		super(Double.class, "/", values);
+	}
+
+	@Override
+	public Expression<Double> generate(List<Expression<?>> children) {
+		return new Quotient(children.toArray(new Expression[0]));
 	}
 }

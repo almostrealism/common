@@ -22,6 +22,8 @@ import io.almostrealism.expression.Exp;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.Variable;
 
+import java.util.Collections;
+
 public interface ExpressionFeatures {
 
 	default Expression e(int value) {
@@ -33,8 +35,9 @@ public interface ExpressionFeatures {
 		return new Expression<>(Double.class, expression, dependencies);
 	}
 
+	@Deprecated
 	default Expression<Double> expression(String expression, Variable<?, ?>... dependencies) {
-		return new Expression<>(Double.class, expression, dependencies);
+		return new Expression<>(Double.class, expression, Collections.emptyList(), dependencies);
 	}
 
 	default Exp exp(Expression expression) {

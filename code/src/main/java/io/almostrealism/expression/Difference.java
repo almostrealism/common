@@ -16,8 +16,15 @@
 
 package io.almostrealism.expression;
 
+import java.util.List;
+
 public class Difference extends NAryExpression<Double> {
 	public Difference(Expression<Double>... values) {
 		super(Double.class, "-", values);
+	}
+
+	@Override
+	public Expression<Double> generate(List<Expression<?>> children) {
+		return new Difference(children.toArray(new Expression[0]));
 	}
 }

@@ -92,10 +92,6 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 		this(name, declaration, (Expression) null, delegate);
 	}
 
-	public Variable(String name, PhysicalScope scope, Supplier<Evaluable<? extends T>> producer) {
-		this(name, scope, (Class) null, producer);
-	}
-
 	public Variable(String name, Class<T> type, T value) {
 		this(name, type, () -> new Provider<>(value));
 	}
@@ -117,17 +113,9 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 		this(name, new Expression(type, expression));
 	}
 
-	public Variable(String name, Class<T> type, String expression, Supplier<Evaluable<? extends T>> producer, int arraySize) {
-		this(name, true, new Expression(type, expression, arraySize), producer);
-	}
-
 	public Variable(String name, Supplier<Evaluable<? extends T>> producer, int arraySize, PhysicalScope scope) {
-		this(name, null, (Supplier) null, producer, arraySize);
+		this(name, true, new Expression(arraySize), producer);
 		setPhysicalScope(scope);
-	}
-
-	public Variable(String name, Class<T> type, Supplier<String> expression, Supplier<Evaluable<? extends T>> producer, int arraySize) {
-		this(name, true, new Expression(type, expression, arraySize), producer);
 	}
 
 	@Override

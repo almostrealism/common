@@ -22,17 +22,22 @@ import io.almostrealism.scope.Variable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.OptionalDouble;
+import java.util.OptionalInt;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
+// TODO  Make abstract
 public class Expression<T> implements Tree<Expression<?>> {
 	private Class<T> type;
 	private Supplier<String> expression;
 	private List<Variable<?, ?>> dependencies = new ArrayList<>();
+	private List<Expression<?>> children = new ArrayList<>();
 	private int arraySize = -1;
 
 	public Expression(Class<T> type) {
@@ -40,56 +45,45 @@ public class Expression<T> implements Tree<Expression<?>> {
 	}
 
 	public Expression(Class<T> type, String expression) {
-		this(type, expression, new Variable[0]);
+		this(type, expression, Collections.emptyList(), new Variable[0]);
 	}
 
-	public Expression(Class<T> type, String expression, Expression<?>... dependencies) {
-		this(type, expression, dependencies(dependencies));
+	public Expression(Class<T> type, String expression, Expression<?>... children) {
+		this(type, expression, List.of(children), dependencies(children));
 	}
 
-	public Expression(Class<T> type, String expression, Variable<?, ?>... dependencies) {
+	public Expression(Class<T> type, String expression, List<Expression<?>> children, Variable<?, ?>... dependencies) {
 		if (type == null) {
 			throw new IllegalArgumentException("Type is required");
 		}
 
 		setType(type);
 		this.expression = () -> expression;
+		this.children = children;
 		this.dependencies = new ArrayList<>();
 		this.dependencies.addAll(Arrays.asList(dependencies));
 	}
 
-	public Expression(Class<T> type, String expression, int arraySize) {
-		setType(type);
-		this.expression = () -> expression;
-		setArraySize(arraySize);
-	}
-
 	public Expression(int arraySize) {
-		this(null, (Supplier) null, arraySize);
-	}
-
-	public Expression(Supplier<String> expression) {
-		this(null, expression);
-	}
-
-	public Expression(Class<T> type, Supplier<String> expression) {
-		setType(type);
-		this.expression = expression;
-	}
-
-	public Expression(Class<T> type, Supplier<String> expression, int arraySize) {
-		setType(type);
-		this.expression = expression;
+		setType(null);
+		setExpression((Supplier<String>) null);
 		setArraySize(arraySize);
 	}
 
 	public void setType(Class<T> t) { this.type = t; }
 	public Class<T> getType() { return this.type; }
 
+	public OptionalInt intValue() { return OptionalInt.empty(); }
+	public OptionalDouble doubleValue() {
+		OptionalInt intValue = intValue();
+		return intValue.isPresent() ? OptionalDouble.of(intValue.getAsInt()) : OptionalDouble.empty();
+	}
+
 	public String getExpression() {
 		if (expression != null) return expression.get();
 		return null;
 	}
+
 	public void setExpression(String expression) { this.expression = () -> expression; }
 	public void setExpression(Supplier<String> expression) { this.expression = expression; }
 
@@ -128,7 +122,19 @@ public class Expression<T> implements Tree<Expression<?>> {
 
 	@Override
 	public Collection<Expression<?>> getChildren() {
+		return children;
+	}
+
+	public Expression<T> generate(List<Expression<?>> children) {
 		throw new UnsupportedOperationException();
+	}
+
+	public Expression<T> flatten() {
+		return generate((List) getChildren().stream().map(Expression::flatten).toList());
+	}
+
+	public Expression<T> simplify() {
+		return generate((List) flatten().getChildren().stream().map(Expression::flatten).toList());
 	}
 
 	@Override

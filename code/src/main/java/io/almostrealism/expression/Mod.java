@@ -16,8 +16,19 @@
 
 package io.almostrealism.expression;
 
+import java.util.List;
+
 public class Mod extends Expression<Double> {
 	public Mod(Expression<Double> a, Expression<Double> b) {
 		super(Double.class, "fmod(" + a.getExpression() + ", " + b.getExpression() + ")", a, b);
+	}
+
+	@Override
+	public Expression<Double> generate(List<Expression<?>> children) {
+		if (children.size() != 2) {
+			throw new UnsupportedOperationException();
+		}
+
+		return new Mod((Expression<Double>) children.get(0), (Expression<Double>) children.get(1));
 	}
 }

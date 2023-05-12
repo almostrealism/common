@@ -16,8 +16,16 @@
 
 package io.almostrealism.expression;
 
+import java.util.List;
+
 public class Minus extends UnaryExpression<Double> {
 	public Minus(Expression<Double> value) {
 		super(Double.class, "-", value);
+	}
+
+	@Override
+	public Expression<Double> generate(List<Expression<?>> children) {
+		if (children.size() != 1)  throw new UnsupportedOperationException();
+		return new Minus((Expression<Double>) children.get(0));
 	}
 }

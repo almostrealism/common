@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,15 +16,18 @@
 
 package io.almostrealism.expression;
 
-import java.util.List;
+import java.util.OptionalDouble;
 
-public class Sum extends NAryExpression<Double> {
-	public Sum(Expression<Double>... values) {
-		super(Double.class, "+", values);
+public class DoubleConstant extends Constant<Double> {
+	private double value;
+
+	public DoubleConstant(Double value) {
+		super(Double.class, String.valueOf(value));
+		this.value = value;
 	}
 
 	@Override
-	public Expression<Double> generate(List<Expression<?>> children) {
-		return new Sum(children.toArray(new Expression[0]));
+	public OptionalDouble doubleValue() {
+		return OptionalDouble.of(value);
 	}
 }

@@ -16,8 +16,19 @@
 
 package io.almostrealism.expression;
 
+import java.util.List;
+
 public class Cosine extends Expression<Double> {
 	public Cosine(Expression<Double> input) {
 		super(Double.class, "cos(" + input.getExpression() + ")", input);
+	}
+
+	@Override
+	public Expression<Double> generate(List<Expression<?>> children) {
+		if (children.size() != 1) {
+			throw new UnsupportedOperationException();
+		}
+
+		return new Cosine((Expression<Double>) children.get(0));
 	}
 }

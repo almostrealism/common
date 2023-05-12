@@ -16,8 +16,19 @@
 
 package io.almostrealism.expression;
 
+import java.util.List;
+
 public class Sine extends Expression<Double> {
 	public Sine(Expression<Double> input) {
 		super(Double.class, "sin(" + input.getExpression() + ")", input);
+	}
+
+	@Override
+	public Expression<Double> generate(List<Expression<?>> children) {
+		if (children.size() != 1) {
+			throw new UnsupportedOperationException();
+		}
+
+		return new Sine((Expression<Double>) children.get(0));
 	}
 }

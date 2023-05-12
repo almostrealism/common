@@ -137,7 +137,7 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 		TransformMatrix m = getTransform(true);
 
 		Producer<Ray> tr = r;
-		// if (m != null) tr = m.getInverse().transform(tr);
+		if (m != null) tr = m.getInverse().transform(tr);
 
 		final Producer<Ray> fr = tr;
 

@@ -16,8 +16,15 @@
 
 package io.almostrealism.expression;
 
+import java.util.List;
+
 public class Product extends NAryExpression<Double> {
 	public Product(Expression<Double>... values) {
 		super(Double.class, "*", values);
+	}
+
+	@Override
+	public Expression<Double> generate(List<Expression<?>> children) {
+		return new Product(children.toArray(new Expression[0]));
 	}
 }

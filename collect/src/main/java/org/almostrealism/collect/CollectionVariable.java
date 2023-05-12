@@ -28,6 +28,7 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Variable;
 
+import java.util.Collections;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -67,7 +68,7 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 		if (parent == null) {
 			return super.get(index, kernelIndex, dependencies);
 		} else {
-			Expression idx = new Expression(Integer.class, index, dependencies);
+			Expression idx = new Expression(Integer.class, index, Collections.emptyList(), dependencies);
 			Expression<?> p = parent.getShape().subset(getShape(), idx, pos);
 			return parent.get(p, -1);
 		}

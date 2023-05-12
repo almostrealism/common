@@ -16,10 +16,20 @@
 
 package io.almostrealism.expression;
 
+import java.util.List;
+
 public class Conditional extends Expression<Double> {
 	public Conditional(Expression<Boolean> condition, Expression<Double> positive, Expression<Double> negative) {
 		super(Double.class,
 				"(" + condition.getExpression() + ") ? (" + positive.getExpression() +
 				") : (" + negative.getExpression() + ")", condition, positive, negative);
+	}
+
+	@Override
+	public Expression<Double> generate(List<Expression<?>> children) {
+		if (children.size() != 3) throw new UnsupportedOperationException();
+		return new Conditional((Expression<Boolean>) children.get(0),
+				(Expression<Double>) children.get(1),
+				(Expression<Double>) children.get(2));
 	}
 }
