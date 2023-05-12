@@ -137,14 +137,16 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 		TransformMatrix m = getTransform(true);
 
 		Producer<Ray> tr = r;
-		if (m != null) tr = m.getInverse().transform(tr);
+		// if (m != null) tr = m.getInverse().transform(tr);
 
 		final Producer<Ray> fr = tr;
 
 		if (enableHardwareAcceleration) {
 			// return new ShadableIntersection(this, r, new SphereIntersectAt(fr));
-			Producer<Scalar> distance = scalar(_lessThan(discriminant(fr), scalar(0.0),
-												scalar(-1.0), closest(t(fr))));
+//			Producer<Scalar> distance = scalar(_lessThan(discriminant(fr), scalar(0.0),
+//												scalar(-1.0), closest(t(fr))));
+			Producer<Scalar> distance = scalar(_greaterThan(discriminant(fr), c(0.0),
+												closest(t(fr)), scalar(-1.0)));
 			return new ShadableIntersection(this, r, distance);
 		} else {
 			Evaluable<Scalar> s = args -> {

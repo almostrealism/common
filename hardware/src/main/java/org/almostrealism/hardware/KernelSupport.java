@@ -47,7 +47,7 @@ public interface KernelSupport {
 	}
 
 	/**
-	 * There must exist some value for kernelSize = m / n, such that every
+	 * There should exist some value for kernelSize = m / n, such that every
 	 * argument is either of size m or size n. (More distinct multiples of
 	 * n could be permitted with kernel operations that are multi-dimensional,
 	 * but currently this is disallowed).

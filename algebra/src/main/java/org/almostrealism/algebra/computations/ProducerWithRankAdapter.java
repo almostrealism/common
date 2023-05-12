@@ -76,5 +76,11 @@ public class ProducerWithRankAdapter<T> implements ProducerWithRank<T, Scalar>, 
 	}
 
 	@Override
-	public Evaluable<T> get() { return p == null ? null : p.get(); }
+	public Evaluable<T> get() {
+		if (getProducer() == this) {
+			throw new UnsupportedOperationException();
+		} else {
+			return getProducer() == null ? null : p.get();
+		}
+	}
 }
