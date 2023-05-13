@@ -108,6 +108,7 @@ public class Expression<T> implements Tree<Expression<?>> {
 
 	public Minus minus() { return new Minus((Expression) this); }
 
+	public Sum add(int operand) { return new Sum((Expression) this, (Expression) new IntegerConstant(operand)); }
 	public Sum add(Expression<Double> operand) { return new Sum((Expression) this, operand); }
 	public Difference subtract(Expression<Double> operand) { return new Difference((Expression) this, operand); }
 
@@ -125,6 +126,8 @@ public class Expression<T> implements Tree<Expression<?>> {
 	public Mod mod(Expression<Double> operand) { return new Mod((Expression) this, operand); }
 
 	public Equals eq(Expression<T> operand) { return new Equals(this, operand); }
+
+	public Cast toInt() { return new Cast("int", this); }
 
 	@Override
 	public Collection<Expression<?>> getChildren() {

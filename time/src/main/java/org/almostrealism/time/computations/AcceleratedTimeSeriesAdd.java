@@ -17,6 +17,8 @@
 package org.almostrealism.time.computations;
 
 import io.almostrealism.code.HybridScope;
+import io.almostrealism.expression.Cast;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.hardware.DynamicOperationComputationAdapter;
 import io.almostrealism.relation.Producer;
@@ -35,16 +37,16 @@ public class AcceleratedTimeSeriesAdd extends DynamicOperationComputationAdapter
 	public Scope<Void> getScope() {
 		HybridScope<Void> scope = new HybridScope<>(this);
 
-		String bank1 = getArgument(0).valueAt(1).getExpression();
-		String banklast0 = getArgument(0).get("2 * (int)" + bank1).getExpression();
-		String banklast1 = getArgument(0).get("2 * (int)" + bank1 + " + 1").getExpression();
+		Expression<?> bank1 = getArgument(0).valueAt(1);
+		String banklast0 = getArgument(0).get(bank1.toInt().multiply(2)).getExpression();
+		String banklast1 = getArgument(0).get(bank1.toInt().multiply(2).add(1)).getExpression();
 		String input0 = getArgument(1).valueAt(0).getExpression();
 		String input1 = getArgument(1).valueAt(1).getExpression();
 
 		Consumer<String> code = scope.code();
 		code.accept(banklast0 + " = " + input0 + ";\n");
 		code.accept(banklast1 + " = " + input1 + ";\n");
-		code.accept(bank1 + " = " + bank1 + " + 1;\n");
+		code.accept(bank1.getExpression() + " = " + bank1.getExpression() + " + 1;\n");
 		return scope;
 	}
 }

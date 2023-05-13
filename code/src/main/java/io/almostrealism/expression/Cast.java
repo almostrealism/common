@@ -31,4 +31,9 @@ public class Cast extends UnaryExpression<Double> {
 		if (children.size() != 1) throw new UnsupportedOperationException();
 		return new Cast(typeName, (Expression) children.get(0));
 	}
+
+	@Override
+	public String toString() {
+		return getExpression();
+	}
 }

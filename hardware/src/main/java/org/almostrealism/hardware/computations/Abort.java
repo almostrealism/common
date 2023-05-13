@@ -17,8 +17,6 @@
 package org.almostrealism.hardware.computations;
 
 import io.almostrealism.code.HybridScope;
-import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.hardware.DynamicOperationComputationAdapter;
@@ -47,7 +45,7 @@ public class Abort extends DynamicOperationComputationAdapter<MemoryData> {
 	public Scope<Void> getScope() {
 		HybridScope<Void> scope = new HybridScope<>(this);
 		scope.code().accept("if (");
-		scope.code().accept(getArgument(0).get((Expression) new IntegerConstant(0)).getExpression());
+		scope.code().accept(getArgument(0).get(e(0)).getExpression());
 		scope.code().accept(" > 0) { return; }");
 		return scope;
 	}

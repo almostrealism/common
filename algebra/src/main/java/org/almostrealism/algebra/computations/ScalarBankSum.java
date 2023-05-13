@@ -18,6 +18,8 @@ package org.almostrealism.algebra.computations;
 
 import io.almostrealism.code.HybridScope;
 import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.StaticReference;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
@@ -42,9 +44,9 @@ public class ScalarBankSum extends CollectionProducerComputationAdapter<ScalarBa
 		HybridScope<Scalar> scope = new HybridScope<>(this);
 		scope.setMetadata(new OperationMetadata(getFunctionName(), "ScalarBankSum"));
 
-		String i = getVariablePrefix() + "_i";
+		Expression<?> i = new StaticReference<>(Integer.class, getVariablePrefix() + "_i");
 		String result = getArgument(0, 2).valueAt(0).getExpression();
-		String value = getArgument(1, 2 * count).get("2 * " + i).getExpression();
+		String value = getArgument(1, 2 * count).get(i.multiply(2)).getExpression();
 
 		scope.code().accept("for (int " + i + " = 0; " + i + " < " + count +"; " + i + "++) {\n");
 		scope.code().accept("    " + result + " = " + result + " + " + value + ";\n");
