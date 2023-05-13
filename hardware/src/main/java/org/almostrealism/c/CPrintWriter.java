@@ -39,6 +39,8 @@ import java.util.function.Consumer;
 import java.util.stream.IntStream;
 
 public class CPrintWriter extends CodePrintWriterAdapter {
+	public static boolean enableSimplification = false;
+
 	private final String topLevelMethodName;
 	private final Stack<Accessibility> accessStack;
 	private final Stack<List<ArrayVariable<?>>> argumentStack;
@@ -248,7 +250,7 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 
 	protected static String encode(Object data) {
 		if (data instanceof Expression) {
-			return ((Expression) data).getExpression();
+			return enableSimplification ? ((Expression) data).getSimpleExpression() : ((Expression) data).getExpression();
 		} else {
 			throw new IllegalArgumentException("Unable to encode " + data);
 		}

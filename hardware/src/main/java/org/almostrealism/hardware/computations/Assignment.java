@@ -48,12 +48,12 @@ public class Assignment<T extends MemoryData> extends DynamicOperationComputatio
 
 		if (getInputs().get(1) instanceof Compactable && ((Compactable) getInputs().get(1)).isStatic()) {
 			IntStream.range(0, memLength).mapToObj(i ->
-					new Variable(getArgument(0, memLength).valueAt(i).getExpression(), false,
+					new Variable(getArgument(0, memLength).valueAt(i).getSimpleExpression(), false,
 							getInputValue(1, i), getArgument(0, memLength))).forEach(this::addVariable);
 		} else {
 			IntStream.range(0, memLength)
 					.mapToObj(i ->
-							new Variable(getArgument(0).valueAt(i).getExpression(), false,
+							new Variable(getArgument(0).valueAt(i).getSimpleExpression(), false,
 									getArgument(1).valueAt(i), getArgument(0)))
 					.forEach(this::addVariable);
 //			IntStream.range(0, memLength)

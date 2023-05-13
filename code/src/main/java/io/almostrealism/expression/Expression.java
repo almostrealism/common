@@ -130,12 +130,12 @@ public class Expression<T> implements Tree<Expression<?>> {
 
 	public Mod mod(Expression<Double> operand) { return new Mod((Expression) this, operand); }
 
-	public Equals eq(Expression<T> operand) { return new Equals(this, operand); }
+	public Equals eq(Expression<?> operand) { return new Equals(this, operand); }
 
 	public Cast toInt() { return new Cast("int", this); }
 
 	@Override
-	public Collection<Expression<?>> getChildren() {
+	public List<Expression<?>> getChildren() {
 		return children;
 	}
 

@@ -88,7 +88,7 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 
 	public InstanceReference<T> get(Expression<?> pos, int kernelIndex) {
 		if (enableSimplification) {
-			return get(pos.simplify().getExpression(), kernelIndex, pos.getDependencies().toArray(Variable[]::new));
+			return get(pos.getSimpleExpression(), kernelIndex, pos.getDependencies().toArray(Variable[]::new));
 		} else {
 			return get(pos.getExpression(), kernelIndex, pos.getDependencies().toArray(Variable[]::new));
 		}
