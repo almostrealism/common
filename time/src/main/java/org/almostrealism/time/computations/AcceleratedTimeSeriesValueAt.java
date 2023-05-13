@@ -55,22 +55,22 @@ public class AcceleratedTimeSeriesValueAt extends DynamicCollectionProducerCompu
 		String t1 = getVariableName(4);
 		String t2 = getVariableName(5);
 
-		scope.getVariables().add(new Variable<>(left.getExpression(), new IntegerConstant(-1)));
-		scope.getVariables().add(new Variable<>(right.getExpression(), new IntegerConstant(-1)));
+		scope.getVariables().add(new Variable<>(left.getSimpleExpression(), new IntegerConstant(-1)));
+		scope.getVariables().add(new Variable<>(right.getSimpleExpression(), new IntegerConstant(-1)));
 		scope.getVariables().add(new Variable<>(v1, new DoubleConstant(0.0)));
 		scope.getVariables().add(new Variable<>(v2, new DoubleConstant(0.0)));
 		scope.getVariables().add(new Variable<>(t1, new DoubleConstant(0.0)));
 		scope.getVariables().add(new Variable<>(t2, new DoubleConstant(0.0)));
 
-		String res = getArgument(0).valueAt(0).getExpression();
-		String bank0 = getArgument(1).valueAt(0).getExpression();
-		String bank1 = getArgument(1).valueAt(1).getExpression();
-		String banki = getArgument(1).get(i.multiply(2)).getExpression();
-		String bankl0 = getArgument(1).get(left.multiply(2)).getExpression();
-		String bankl1 = getArgument(1).get(left.multiply(2).add(1)).getExpression();
-		String bankr0 = getArgument(1).get(right.multiply(2)).getExpression();
-		String bankr1 = getArgument(1).get(right.multiply(2).add(1)).getExpression();
-		String cursor0 = getArgument(2).valueAt(0).getExpression();
+		String res = getArgument(0).valueAt(0).getSimpleExpression();
+		String bank0 = getArgument(1).valueAt(0).getSimpleExpression();
+		String bank1 = getArgument(1).valueAt(1).getSimpleExpression();
+		String banki = getArgument(1).get(i.multiply(2)).getSimpleExpression();
+		String bankl0 = getArgument(1).get(left.multiply(2)).getSimpleExpression();
+		String bankl1 = getArgument(1).get(left.multiply(2).add(1)).getSimpleExpression();
+		String bankr0 = getArgument(1).get(right.multiply(2)).getSimpleExpression();
+		String bankr1 = getArgument(1).get(right.multiply(2).add(1)).getSimpleExpression();
+		String cursor0 = getArgument(2).valueAt(0).getSimpleExpression();
 
 		Consumer<String> code = scope.code();
 		code.accept("for (int i = " + bank0 + "; i < " + bank1 + "; i++) {\n");

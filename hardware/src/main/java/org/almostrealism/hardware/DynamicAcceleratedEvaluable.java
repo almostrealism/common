@@ -70,10 +70,10 @@ public abstract class DynamicAcceleratedEvaluable<I extends MemoryData, O extend
 			out.accept(" ");
 			out.accept(var.getName());
 
-			if (var.getExpression().getExpression() == null) {
+			if (var.getExpression().isNull()) {
 				if (var.getArraySize() != null) {
 					out.accept("[");
-					out.accept(var.getArraySize().getExpression());
+					out.accept(var.getArraySize().getSimpleExpression());
 					out.accept("]");
 				}
 			} else {

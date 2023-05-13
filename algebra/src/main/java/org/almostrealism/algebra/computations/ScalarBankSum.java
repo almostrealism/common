@@ -45,8 +45,8 @@ public class ScalarBankSum extends CollectionProducerComputationAdapter<ScalarBa
 		scope.setMetadata(new OperationMetadata(getFunctionName(), "ScalarBankSum"));
 
 		Expression<?> i = new StaticReference<>(Integer.class, getVariablePrefix() + "_i");
-		String result = getArgument(0, 2).valueAt(0).getExpression();
-		String value = getArgument(1, 2 * count).get(i.multiply(2)).getExpression();
+		String result = getArgument(0, 2).valueAt(0).getSimpleExpression();
+		String value = getArgument(1, 2 * count).get(i.multiply(2)).getSimpleExpression();
 
 		scope.code().accept("for (int " + i + " = 0; " + i + " < " + count +"; " + i + "++) {\n");
 		scope.code().accept("    " + result + " = " + result + " + " + value + ";\n");

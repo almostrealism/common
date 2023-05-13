@@ -34,7 +34,7 @@ public interface Array<T, V extends Array<T, ?>> extends Plural<InstanceReferenc
 	}
 
 	default String ref(int pos) {
-		return valueAt(pos).getExpression();
+		return valueAt(pos).getSimpleExpression();
 	}
 
 	InstanceReference<T> get(Expression<?> pos);

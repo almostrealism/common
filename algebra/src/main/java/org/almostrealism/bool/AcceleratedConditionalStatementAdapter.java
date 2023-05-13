@@ -126,26 +126,26 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCol
 		scope.code().accept(") {\n");
 
 		for (int i = 0; i < getMemLength(); i++) {
-			Variable<?, ?> var = new Variable(outputVariable.valueAt(i).getExpression(), getTrueValueExpression().apply(i), outputVariable);
+			Variable<?, ?> var = new Variable(outputVariable.valueAt(i).getSimpleExpression(), getTrueValueExpression().apply(i), outputVariable);
 			vars.add(var);
 
 			scope.code().accept("\t");
 			scope.code().accept(var.getName());
 			scope.code().accept(" = ");
-			scope.code().accept(var.getExpression().getExpression());
+			scope.code().accept(var.getExpression().getSimpleExpression());
 			scope.code().accept(";\n");
 		}
 
 		scope.code().accept("} else {\n");
 
 		for (int i = 0; i < getMemLength(); i++) {
-			Variable<?, ?> var = new Variable(outputVariable.valueAt(i).getExpression(), getFalseValueExpression().apply(i), outputVariable);
+			Variable<?, ?> var = new Variable(outputVariable.valueAt(i).getSimpleExpression(), getFalseValueExpression().apply(i), outputVariable);
 			vars.add(var);
 
 			scope.code().accept("\t");
 			scope.code().accept(var.getName());
 			scope.code().accept(" = ");
-			scope.code().accept(var.getExpression().getExpression());
+			scope.code().accept(var.getExpression().getSimpleExpression());
 			scope.code().accept(";\n");
 		}
 

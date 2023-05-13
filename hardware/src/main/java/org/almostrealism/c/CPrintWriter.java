@@ -137,7 +137,7 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 
 	protected void copyInline(int index, ArrayVariable<?> variable, boolean write) {
 		String o = "((double *) argArr[" + index + "])";
-		String v = new InstanceReference<>(variable).getExpression();
+		String v = new InstanceReference<>(variable).getSimpleExpression();
 
 		if (!write) println("double *" + v + " = " + o + ";");
 	}

@@ -42,11 +42,11 @@ public class AcceleratedTimeSeriesPurge extends DynamicOperationComputationAdapt
 		HybridScope<Void> scope = new HybridScope<>(this);
 
 		Expression i = new StaticReference(Integer.class, "i");
-		String left = getArgument(0).valueAt(0).getExpression();
-		String right = getArgument(0).valueAt(1).getExpression();
-		String banki = getArgument(0).get(i.multiply(2)).getExpression();
-		String cursor0 = getArgument(1).valueAt(0).getExpression();
-		String count = getArgument(2).valueAt(0).getExpression();
+		String left = getArgument(0).valueAt(0).getSimpleExpression();
+		String right = getArgument(0).valueAt(1).getSimpleExpression();
+		String banki = getArgument(0).get(i.multiply(2)).getSimpleExpression();
+		String cursor0 = getArgument(1).valueAt(0).getSimpleExpression();
+		String count = getArgument(2).valueAt(0).getSimpleExpression();
 
 		Consumer<String> code = scope.code();
 		if (wavelength != 1.0) {

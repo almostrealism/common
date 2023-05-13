@@ -62,25 +62,25 @@ public class Interpolate extends CollectionProducerComputationAdapter<PackedColl
 		String t1 = getVariableName(4);
 		String t2 = getVariableName(5);
 
-		scope.getVariables().add(new Variable<>(left.getExpression(), new Expression<>(Integer.class, "-1")));
-		scope.getVariables().add(new Variable<>(right.getExpression(), new Expression<>(Integer.class, "-1")));
+		scope.getVariables().add(new Variable<>(left.getSimpleExpression(), new Expression<>(Integer.class, "-1")));
+		scope.getVariables().add(new Variable<>(right.getSimpleExpression(), new Expression<>(Integer.class, "-1")));
 		scope.getVariables().add(new Variable<>(v1, new Expression<>(Double.class, "0.0")));
 		scope.getVariables().add(new Variable<>(v2, new Expression<>(Double.class, "0.0")));
 		scope.getVariables().add(new Variable<>(t1, new Expression<>(Double.class, "0.0")));
 		scope.getVariables().add(new Variable<>(t2, new Expression<>(Double.class, "0.0")));
 
-		String res = getArgument(0).valueAt(0).getExpression();
+		String res = getArgument(0).valueAt(0).getSimpleExpression();
 		String start = "0";
-		String end = getArgument(1).length().getExpression();
+		String end = getArgument(1).length().getSimpleExpression();
 		Expression<Double> rate = getArgument(3).valueAt(0);
 
 		Expression i = new StaticReference(Integer.class, "i");
-		String banki = new Product(new Exponent(rate, expressionForDouble(-1.0)), timeForIndex.apply(i)).getExpression();
-		String bankl_time = new Product(new Exponent(rate, expressionForDouble(-1.0)), timeForIndex.apply(left)).getExpression();
-		String bankl_value = getArgument(1).get(left).getExpression();
-		String bankr_time = new Product(new Exponent(rate, expressionForDouble(-1.0)), timeForIndex.apply(right)).getExpression();
-		String bankr_value = getArgument(1).get(right).getExpression();
-		String cursor = getArgument(2).valueAt(0).getExpression();
+		String banki = new Product(new Exponent(rate, expressionForDouble(-1.0)), timeForIndex.apply(i)).getSimpleExpression();
+		String bankl_time = new Product(new Exponent(rate, expressionForDouble(-1.0)), timeForIndex.apply(left)).getSimpleExpression();
+		String bankl_value = getArgument(1).get(left).getSimpleExpression();
+		String bankr_time = new Product(new Exponent(rate, expressionForDouble(-1.0)), timeForIndex.apply(right)).getSimpleExpression();
+		String bankr_value = getArgument(1).get(right).getSimpleExpression();
+		String cursor = getArgument(2).valueAt(0).getSimpleExpression();
 
 		Consumer<String> code = scope.code();
 		code.accept("for (int i = " + start + "; i < " + end + "; i++) {\n");
