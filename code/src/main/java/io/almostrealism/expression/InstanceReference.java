@@ -52,9 +52,9 @@ public class InstanceReference<T> extends Expression<T> {
 
 	public Variable assign(Expression exp) {
 		if (enablePassDelegate) {
-			return new Variable(getExpression(), false, exp, getReferent().getDelegate());
+			return new Variable(getSimpleExpression(), false, exp, getReferent().getDelegate());
 		} else {
-			return new Variable(getExpression(), false, exp);
+			return new Variable(getSimpleExpression(), false, exp);
 		}
 	}
 

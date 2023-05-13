@@ -54,7 +54,7 @@ public class PackedCollectionSegmentsAdd extends Repeated {
 		HybridScope<Void> scope = new HybridScope<>(this);
 
 		Expression i = new StaticReference(Integer.class, getVariablePrefix() + "_i");
-		Expression exp = new InstanceReference(new Variable(i.getExpression(), Double.class, (Double) null));
+		Expression exp = new InstanceReference(new Variable(i.getSimpleExpression(), Double.class, (Double) null));
 
 		String cond = getCondition(exp);
 		scope.setMetadata(new OperationMetadata(getFunctionName(), "PackedCollectionSegmentsAdd"));
