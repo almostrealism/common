@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -30,5 +30,32 @@ public class Exponent extends Expression<Double> {
 		}
 
 		return new Exponent((Expression<Double>) children.get(0), (Expression<Double>) children.get(1));
+	}
+
+	@Override
+	public Expression<Double> simplify() {
+		Expression<?> flat = super.simplify();
+		if (!(flat instanceof Exponent)) return (Expression<Double>) flat;
+
+		Expression base = flat.getChildren().get(0);
+		Expression exponent = flat.getChildren().get(1);
+
+		if (base.doubleValue().isPresent()) {
+			if (base.doubleValue().getAsDouble() == 1.0) {
+				return new DoubleConstant(1.0);
+			} else if (base.doubleValue().getAsDouble() == 0.0) {
+				return new DoubleConstant(0.0);
+			} else if (exponent.doubleValue().isPresent()) {
+				return new DoubleConstant(Math.pow(base.doubleValue().getAsDouble(), exponent.doubleValue().getAsDouble()));
+			}
+		} else if (exponent.doubleValue().isPresent()) {
+			if (exponent.doubleValue().getAsDouble() == 1.0) {
+				return base;
+			} else if (exponent.doubleValue().getAsDouble() == 0.0) {
+				return new DoubleConstant(1.0);
+			}
+		}
+
+		return (Expression<Double>) flat;
 	}
 }

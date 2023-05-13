@@ -17,6 +17,8 @@
 package io.almostrealism.expression;
 
 import java.util.List;
+import java.util.OptionalDouble;
+import java.util.OptionalInt;
 
 public class Cast extends UnaryExpression<Double> {
 	private String typeName;
@@ -30,6 +32,20 @@ public class Cast extends UnaryExpression<Double> {
 	public Expression generate(List children) {
 		if (children.size() != 1) throw new UnsupportedOperationException();
 		return new Cast(typeName, (Expression) children.get(0));
+	}
+
+	@Override
+	public OptionalInt intValue() {
+		OptionalInt i = getChildren().get(0).intValue();
+		if (i.isPresent()) return i;
+		return super.intValue();
+	}
+
+	@Override
+	public OptionalDouble doubleValue() {
+		OptionalDouble d = getChildren().get(0).doubleValue();
+		if (d.isPresent()) return d;
+		return super.doubleValue();
 	}
 
 	@Override

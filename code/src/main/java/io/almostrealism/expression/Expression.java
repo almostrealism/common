@@ -98,8 +98,8 @@ public class Expression<T> implements Tree<Expression<?>> {
 
 	@Deprecated
 	public String getExpression() {
-		if (expression != null) return expression.get();
-		return null;
+		if (isNull()) return null;
+		return expression.get();
 	}
 
 	public void setExpression(String expression) { this.expression = () -> expression; }
