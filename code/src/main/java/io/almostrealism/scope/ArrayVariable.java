@@ -106,6 +106,7 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 		return get(pos, getKernelIndex());
 	}
 
+	@Deprecated
 	@Override
 	public InstanceReference<T> get(String pos, Variable... dependencies) {
 		return get(pos, getKernelIndex(), dependencies);

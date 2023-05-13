@@ -19,6 +19,8 @@ package org.almostrealism.algebra.computations;
 import io.almostrealism.code.HybridScope;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.PhysicalScope;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.StaticReference;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.ScalarBank;
@@ -54,11 +56,11 @@ public class ScalarBankPad extends CollectionProducerComputationAdapter<ScalarBa
 		HybridScope<ScalarBank> scope = new HybridScope<>(this);
 		scope.setMetadata(new OperationMetadata(getFunctionName(), "ScalarBankPad"));
 
-		String i = getVariablePrefix() + "_i";
-		String resultX = getArgument(0, 2 * count).get("2 * " + i).getExpression();
-		String resultY = getArgument(0, 2 * count).get("2 * " + i + " + 1").getExpression();
-		String valueX = getArgument(1, 2 * count).get("2 * " + i).getExpression();
-		String valueY = getArgument(1, 2 * count).get("2 * " + i + " + 1").getExpression();
+		Expression i = new StaticReference(Integer.class, getVariablePrefix() + "_i");
+		String resultX = getArgument(0, 2 * count).get(i.multiply(2)).getExpression();
+		String resultY = getArgument(0, 2 * count).get(i.multiply(2).add(1)).getExpression();
+		String valueX = getArgument(1, 2 * count).get(i.multiply(2)).getExpression();
+		String valueY = getArgument(1, 2 * count).get(i.multiply(2).add(1)).getExpression();
 
 		scope.code().accept("for (int " + i + " = 0; " + i + " < " + count +"; " + i + "++) {\n");
 		scope.code().accept("    if (" + i + " < " + total + ") {\n");
