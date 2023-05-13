@@ -31,6 +31,7 @@ import java.util.OptionalInt;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
 // TODO  Make abstract
 public class Expression<T> implements Tree<Expression<?>> {
@@ -154,11 +155,11 @@ public class Expression<T> implements Tree<Expression<?>> {
 	}
 
 	public Expression<T> flatten() {
-		return generate((List) getChildren().stream().map(Expression::flatten).toList());
+		return generate((List) getChildren().stream().map(Expression::flatten).collect(Collectors.toList()));
 	}
 
 	public Expression<T> simplify() {
-		return generate((List) flatten().getChildren().stream().map(Expression::simplify).toList());
+		return generate((List) flatten().getChildren().stream().map(Expression::simplify).collect(Collectors.toList()));
 	}
 
 	@Override

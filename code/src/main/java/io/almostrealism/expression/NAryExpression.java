@@ -18,6 +18,7 @@ package io.almostrealism.expression;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class NAryExpression<T> extends Expression<T> {
@@ -42,6 +43,14 @@ public class NAryExpression<T> extends Expression<T> {
 		}
 
 		return new NAryExpression<>(getType(), operator, children);
+	}
+
+	@Override
+	public Expression<T> flatten() {
+		List flat = getChildren().stream().map(Expression::flatten).collect(Collectors.toList());
+		if (flat.size() == 1) return (Expression<T>) flat.get(0);
+		if (flat.isEmpty()) throw new UnsupportedOperationException();
+		return generate(flat);
 	}
 
 	private static Expression<?>[] validateExpressions(Expression<?>[] values) {

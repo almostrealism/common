@@ -17,6 +17,8 @@
 package io.almostrealism.expression;
 
 import java.util.List;
+import java.util.OptionalDouble;
+import java.util.OptionalInt;
 
 public class Minus extends UnaryExpression<Double> {
 	public Minus(Expression<Double> value) {
@@ -27,5 +29,19 @@ public class Minus extends UnaryExpression<Double> {
 	public Expression<Double> generate(List<Expression<?>> children) {
 		if (children.size() != 1)  throw new UnsupportedOperationException();
 		return new Minus((Expression<Double>) children.get(0));
+	}
+
+	@Override
+	public OptionalInt intValue() {
+		OptionalInt i = getChildren().get(0).intValue();
+		if (i.isPresent()) return OptionalInt.of(i.getAsInt() * -1);
+		return super.intValue();
+	}
+
+	@Override
+	public OptionalDouble doubleValue() {
+		OptionalDouble d = getChildren().get(0).doubleValue();
+		if (d.isPresent()) return OptionalDouble.of(d.getAsDouble() * -1);
+		return super.doubleValue();
 	}
 }
