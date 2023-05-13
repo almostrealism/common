@@ -17,6 +17,7 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.expression.Cosine;
+import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Minus;
 import io.almostrealism.expression.MultiExpression;
@@ -68,13 +69,13 @@ public interface PairFeatures extends HardwareFeatures {
 	default ScalarExpressionComputation l(Supplier<Evaluable<? extends Pair<?>>> p) {
 		return new ScalarExpressionComputation(List.of(
 				args -> args.get(1).getValue(0),
-				args -> new Expression<>(Double.class, stringForDouble(1.0))), (Supplier) p);
+				args -> new DoubleConstant(1.0)), (Supplier) p);
 	}
 
 	default ScalarExpressionComputation r(Supplier<Evaluable<? extends Pair<?>>> p) {
 		return new ScalarExpressionComputation(List.of(
 				args -> args.get(1).getValue(1),
-				args -> new Expression<>(Double.class, stringForDouble(1.0))), (Supplier) p);
+				args -> new DoubleConstant(1.0)), (Supplier) p);
 	}
 
 	@Deprecated

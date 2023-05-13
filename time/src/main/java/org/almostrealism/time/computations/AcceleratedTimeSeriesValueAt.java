@@ -17,6 +17,8 @@
 package org.almostrealism.time.computations;
 
 import io.almostrealism.code.HybridScope;
+import io.almostrealism.expression.DoubleConstant;
+import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.expression.Expression;
@@ -51,12 +53,12 @@ public class AcceleratedTimeSeriesValueAt extends DynamicCollectionProducerCompu
 		String t1 = getVariableName(4);
 		String t2 = getVariableName(5);
 
-		scope.getVariables().add(new Variable<>(left, new Expression<>(Integer.class, "-1")));
-		scope.getVariables().add(new Variable<>(right, new Expression<>(Integer.class, "-1")));
-		scope.getVariables().add(new Variable<>(v1, new Expression<>(Double.class, "0.0")));
-		scope.getVariables().add(new Variable<>(v2, new Expression<>(Double.class, "0.0")));
-		scope.getVariables().add(new Variable<>(t1, new Expression<>(Double.class, "0.0")));
-		scope.getVariables().add(new Variable<>(t2, new Expression<>(Double.class, "0.0")));
+		scope.getVariables().add(new Variable<>(left, new IntegerConstant(-1)));
+		scope.getVariables().add(new Variable<>(right, new IntegerConstant(-1)));
+		scope.getVariables().add(new Variable<>(v1, new DoubleConstant(0.0)));
+		scope.getVariables().add(new Variable<>(v2, new DoubleConstant(0.0)));
+		scope.getVariables().add(new Variable<>(t1, new DoubleConstant(0.0)));
+		scope.getVariables().add(new Variable<>(t2, new DoubleConstant(0.0)));
 
 		String res = getArgument(0).valueAt(0).getExpression();
 		String bank0 = getArgument(1).valueAt(0).getExpression();
@@ -98,7 +100,7 @@ public class AcceleratedTimeSeriesValueAt extends DynamicCollectionProducerCompu
 
 	@Override
 	public IntFunction<Expression<Double>> getValueFunction() {
-		return i -> new Expression<>(Double.class, "1.0");
+		return i -> new DoubleConstant(1.0);
 	}
 
 	@Override

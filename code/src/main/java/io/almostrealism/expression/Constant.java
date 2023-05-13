@@ -3,6 +3,11 @@ package io.almostrealism.expression;
 import java.util.List;
 
 public class Constant<T> extends Expression<T> {
+	public Constant(Class<T> type) {
+		super(type);
+	}
+
+	@Deprecated
 	public Constant(Class<T> type, String value) {
 		super(type, value);
 	}

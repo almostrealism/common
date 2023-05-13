@@ -44,8 +44,10 @@ public class Expression<T> implements Tree<Expression<?>> {
 		setType(type);
 	}
 
+	@Deprecated
 	public Expression(Class<T> type, String expression) {
 		this(type, expression, Collections.emptyList(), new Variable[0]);
+		System.out.println("WARN: Deprecated Expression construction");
 	}
 
 	public Expression(Class<T> type, String expression, Expression<?>... children) {
@@ -93,10 +95,14 @@ public class Expression<T> implements Tree<Expression<?>> {
 	public void setArraySize(int arraySize) { this.arraySize = arraySize; }
 
 	public T getValue() {
-		if (expression != null) {
+		OptionalDouble v = doubleValue();
+
+		if (v.isPresent()) {
+			return (T) Double.valueOf(v.getAsDouble());
+		} else if (expression != null) {
 			return (T) expression.get();
 		} else {
-			throw new RuntimeException();
+			throw new UnsupportedOperationException();
 		}
 	}
 
@@ -105,10 +111,10 @@ public class Expression<T> implements Tree<Expression<?>> {
 	public Sum add(Expression<Double> operand) { return new Sum((Expression) this, operand); }
 	public Difference subtract(Expression<Double> operand) { return new Difference((Expression) this, operand); }
 
-	public Product multiply(int operand) { return new Product((Expression) this, new Expression(Integer.class, String.valueOf(operand))); }
+	public Product multiply(int operand) { return new Product((Expression) this, (Expression) new IntegerConstant(operand)); }
 	public Product multiply(Expression<Double> operand) { return new Product((Expression) this, operand); }
 
-	public Quotient divide(int operand) { return new Quotient((Expression) this, new Expression(Integer.class, String.valueOf(operand))); }
+	public Quotient divide(int operand) { return new Quotient((Expression) this, (Expression) new IntegerConstant(operand)); }
 	public Quotient divide(Expression<Double> operand) { return new Quotient((Expression) this, operand); }
 
 	public Exponent pow(Expression<Double> operand) { return new Exponent((Expression) this, operand); }
@@ -134,7 +140,7 @@ public class Expression<T> implements Tree<Expression<?>> {
 	}
 
 	public Expression<T> simplify() {
-		return generate((List) flatten().getChildren().stream().map(Expression::flatten).toList());
+		return generate((List) flatten().getChildren().stream().map(Expression::simplify).toList());
 	}
 
 	@Override

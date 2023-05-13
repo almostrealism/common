@@ -19,6 +19,7 @@ package io.almostrealism.scope;
 import io.almostrealism.code.KernelIndex;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
@@ -202,7 +203,7 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 	public Expression<Integer> getArraySize() {
 		if (getExpression() == null) return null;
 		if (getExpression().getArraySize() <= 0) return null;
-		return new Expression<>(Integer.class, String.valueOf(getExpression().getArraySize()));
+		return new IntegerConstant(getExpression().getArraySize());
 	}
 
 	@Override

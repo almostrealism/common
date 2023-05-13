@@ -88,6 +88,7 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 		return get(pos.getExpression(), kernelIndex, pos.getDependencies().toArray(Variable[]::new));
 	}
 
+	@Deprecated
 	public InstanceReference<T> get(String pos, int kernelIndex, Variable... dependencies) {
 		if (getDelegate() == null) {
 			return new InstanceReference(new Variable<>(names.getVariableValueName(this, pos, kernelIndex),
@@ -99,6 +100,10 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 			ref.getReferent().setOriginalProducer(getOriginalProducer());
 			return ref;
 		}
+	}
+
+	public InstanceReference<T> get(Expression<?> pos) {
+		return get(pos, getKernelIndex());
 	}
 
 	@Override

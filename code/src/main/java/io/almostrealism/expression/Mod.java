@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,8 +19,18 @@ package io.almostrealism.expression;
 import java.util.List;
 
 public class Mod extends Expression<Double> {
+	private boolean fp;
+
 	public Mod(Expression<Double> a, Expression<Double> b) {
-		super(Double.class, "fmod(" + a.getExpression() + ", " + b.getExpression() + ")", a, b);
+		this(a, b, true);
+	}
+
+	public Mod(Expression<Double> a, Expression<Double> b, boolean fp) {
+		super(Double.class,
+				fp ? "fmod(" + a.getExpression() + ", " + b.getExpression() + ")" :
+						"(" + a.getExpression() + ") % (" + b.getExpression() + ")",
+				a, b);
+		this.fp = fp;
 	}
 
 	@Override
@@ -29,6 +39,6 @@ public class Mod extends Expression<Double> {
 			throw new UnsupportedOperationException();
 		}
 
-		return new Mod((Expression<Double>) children.get(0), (Expression<Double>) children.get(1));
+		return new Mod((Expression<Double>) children.get(0), (Expression<Double>) children.get(1), fp);
 	}
 }

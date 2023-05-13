@@ -43,8 +43,8 @@ public interface MultiExpression<T> {
 	default IntFunction<Variable<T, ?>> getAssignmentFunction(Variable<?, ?> outputVariable) {
 		if (enableExpressionSimplification) {
 			return i ->
-					new Variable(((ArrayVariable) outputVariable).valueAt(i).simplify().getExpression(),
-							false, getValue(i), outputVariable.getRootDelegate());
+					new Variable(((ArrayVariable) outputVariable).valueAt(i).getExpression(),
+							false, getValue(i).simplify(), outputVariable.getRootDelegate());
 		} else {
 			return i ->
 					new Variable(((ArrayVariable) outputVariable).valueAt(i).getExpression(),

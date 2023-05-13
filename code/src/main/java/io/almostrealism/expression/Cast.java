@@ -16,24 +16,19 @@
 
 package io.almostrealism.expression;
 
-import java.util.OptionalDouble;
-import java.util.function.DoubleFunction;
+import java.util.List;
 
-public class DoubleConstant extends Constant<Double> {
-	public static DoubleFunction<String> stringForDouble = d -> String.valueOf(d);
+public class Cast extends UnaryExpression<Double> {
+	private String typeName;
 
-	private double value;
-
-	public DoubleConstant(Double value) {
-		super(Double.class);
-		this.value = value;
+	public Cast(String typeName, Expression<?> operand) {
+		super(Double.class, "(" + typeName + ")", operand);
+		this.typeName = typeName;
 	}
 
 	@Override
-	public OptionalDouble doubleValue() {
-		return OptionalDouble.of(value);
+	public Expression generate(List children) {
+		if (children.size() != 1) throw new UnsupportedOperationException();
+		return new Cast(typeName, (Expression) children.get(0));
 	}
-
-	@Override
-	public String getExpression() { return stringForDouble.apply(value); }
 }

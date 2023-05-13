@@ -22,6 +22,7 @@ import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.MultiExpression;
+import io.almostrealism.expression.StaticReference;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.CollectionExpression;
@@ -65,7 +66,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 	public void prepareScope(ScopeInputManager manager) {
 		super.prepareScope(manager);
 
-		Expression slice = new Expression(Double.class, KernelSupport.getKernelIndex(0));
+		Expression slice = new StaticReference(Double.class, KernelSupport.getKernelIndex(0));
 
 		ArrayVariable arg = getArgumentForInput(getInputs().get(1));
 		if (arg instanceof CollectionVariable == false) {

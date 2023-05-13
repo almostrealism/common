@@ -17,6 +17,7 @@
 package io.almostrealism.expression;
 
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class Quotient extends NAryExpression<Double> {
 	public Quotient(Expression<Double>... values) {
@@ -26,5 +27,19 @@ public class Quotient extends NAryExpression<Double> {
 	@Override
 	public Expression<Double> generate(List<Expression<?>> children) {
 		return new Quotient(children.toArray(new Expression[0]));
+	}
+
+	@Override
+	public Expression<Double> simplify() {
+		Expression<Double> flat = super.simplify();
+		if (!enableSimplification) return flat;
+		if (!(flat instanceof Quotient)) return flat;
+
+		List<Expression<?>> children = flat.getChildren().stream()
+				.filter(e -> !removeIdentities || e.doubleValue().orElse(-1) != 1.0)
+				.collect(Collectors.toList());
+		if (children.size() == 1) return (Expression<Double>) children.get(0);
+		if (children.isEmpty()) return (Expression) new IntegerConstant(1);
+		return generate(children);
 	}
 }

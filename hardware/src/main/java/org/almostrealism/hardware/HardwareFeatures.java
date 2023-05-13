@@ -18,7 +18,9 @@ package org.almostrealism.hardware;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.almostrealism.code.Computation;
+import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.StaticReference;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.hardware.computations.Loop;
@@ -46,7 +48,7 @@ public interface HardwareFeatures {
 	}
 
 	default IntFunction<Expression> kernelIndex() {
-		return i -> new Expression(Integer.class, KernelSupport.getKernelIndex(i));
+		return i -> new StaticReference(Integer.class, KernelSupport.getKernelIndex(i));
 	}
 
 	default String stringForDouble(double value) {
@@ -54,15 +56,11 @@ public interface HardwareFeatures {
 	}
 
 	default Expression<Double> expressionForDouble(double value) {
-		return new Expression<>(Double.class, stringForDouble(value));
+		return new DoubleConstant(value);
 	}
 
 	default Expression<Double> e(double value) {
 		return expressionForDouble(value);
-	}
-
-	default double doubleForString(String value) {
-		return Hardware.getLocalHardware().doubleForString(value);
 	}
 
 	@JsonIgnore

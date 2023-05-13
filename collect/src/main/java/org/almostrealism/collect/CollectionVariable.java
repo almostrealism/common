@@ -19,8 +19,10 @@ package org.almostrealism.collect;
 import io.almostrealism.code.ExpressionList;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.PhysicalScope;
+import io.almostrealism.expression.Cast;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
+import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.Mod;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
@@ -63,6 +65,16 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 		return getShape().getSize() == 1 ? super.length() : e(getShape().getSize());
 	}
 
+	public InstanceReference<T> get(Expression<?> idx, int kernelIndex) {
+		if (parent == null) {
+			return super.get(idx.getExpression(), kernelIndex, idx.getDependencies().toArray(Variable[]::new));
+		} else {
+			Expression<?> p = parent.getShape().subset(getShape(), idx, pos);
+			return parent.get(p, -1);
+		}
+	}
+
+	@Deprecated
 	@Override
 	public InstanceReference<T> get(String index, int kernelIndex, Variable... dependencies) {
 		if (parent == null) {
@@ -113,7 +125,8 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 		if (getShape().getTotalSize() == 1) {
 			return (Expression) get(e(0), -1);
 		} else {
-			index =  e("((int) (" + index.getExpression() + ")) % " + getShape().getTotalSize(), index);
+			// index =  e("((int) (" + index.simplify().getExpression() + ")) % " + getShape().getTotalSize(), index);
+			index = new Mod(new Cast("int", index), e(getShape().getTotalSize()), false);
 			return (Expression) get(index, -1);
 		}
 	}
@@ -128,7 +141,7 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 
 		Expression[] p = new Expression[pos.length];
 		for (int i = 0; i < pos.length; i++) {
-			p[i] = new Expression(Integer.class, String.valueOf(pos[i]));
+			p[i] = new IntegerConstant(pos[i]);
 		}
 		return get(shape, p);
 	}

@@ -22,12 +22,17 @@ public class IntegerConstant extends Constant<Integer> {
 	private int value;
 
 	public IntegerConstant(Integer value) {
-		super(Integer.class, String.valueOf(value));
+		super(Integer.class);
 		this.value = value;
 	}
 
 	@Override
 	public OptionalInt intValue() {
 		return OptionalInt.of(value);
+	}
+
+	@Override
+	public String getExpression() {
+		return String.valueOf(value);
 	}
 }
