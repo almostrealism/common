@@ -38,8 +38,13 @@ public class Product extends NAryExpression<Double> {
 		List<Expression<?>> children = flat.getChildren().stream()
 				.filter(e -> !removeIdentities || e.doubleValue().orElse(-1) != 1.0)
 				.collect(Collectors.toList());
+
+		if (children.size() != flat.getChildren().size()) {
+			System.out.println("!");
+		}
+
 		if (children.size() == 1) return (Expression<Double>) children.get(0);
-		if (children.size() == 0) return (Expression) new IntegerConstant(1);
+		if (children.size() == 0) return (Expression<Double>) getChildren().iterator().next();
 		return generate(children);
 	}
 }

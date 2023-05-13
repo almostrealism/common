@@ -24,12 +24,24 @@ public class NAryExpression<T> extends Expression<T> {
 	public static boolean enableSimplification = true;
 	public static boolean removeIdentities = false;
 
+	private String operator;
+
 	public NAryExpression(Class<T> type, String operator, List<Expression<?>> values) {
 		this(type, operator, values.toArray(new Expression[0]));
 	}
 
 	public NAryExpression(Class<T> type, String operator, Expression<?>... values) {
 		super(type, concat(operator, Stream.of(validateExpressions(values)).map(Expression::getExpression).map(s -> "(" + s + ")")), values);
+		this.operator = operator;
+	}
+
+	@Override
+	public Expression<T> generate(List<Expression<?>> children) {
+		if (children.isEmpty()) {
+			throw new IllegalArgumentException("NAryExpression must have at least 2 values");
+		}
+
+		return new NAryExpression<>(getType(), operator, children);
 	}
 
 	private static Expression<?>[] validateExpressions(Expression<?>[] values) {

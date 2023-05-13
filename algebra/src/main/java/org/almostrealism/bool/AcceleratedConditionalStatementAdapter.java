@@ -122,7 +122,7 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCol
 		vars.add(condition);
 
 		scope.code().accept("if (");
-		scope.code().accept(condition.getExpression().getExpression());
+		scope.code().accept(condition.getExpression().getSimpleExpression());
 		scope.code().accept(") {\n");
 
 		for (int i = 0; i < getMemLength(); i++) {

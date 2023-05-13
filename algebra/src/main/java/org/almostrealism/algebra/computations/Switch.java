@@ -71,7 +71,7 @@ public class Switch extends DynamicOperationComputationAdapter {
 
 			double val = (i + 1) * interval;
 
-			scope.code().accept("if (" + decisionValue.valueAt(0).getExpression() + " <= " + val + ") {\n");
+			scope.code().accept("if (" + decisionValue.valueAt(0).getSimpleExpression() + " <= " + val + ") {\n");
 			scope.code().accept("\t" + renderMethod(scope.getRequiredScopes().get(i).call()) + "\n");
 			scope.code().accept("}");
 		});

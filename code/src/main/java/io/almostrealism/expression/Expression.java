@@ -81,6 +81,11 @@ public class Expression<T> implements Tree<Expression<?>> {
 		return intValue.isPresent() ? OptionalDouble.of(intValue.getAsInt()) : OptionalDouble.empty();
 	}
 
+	public String getSimpleExpression() {
+		return simplify().getExpression();
+	}
+
+	@Deprecated
 	public String getExpression() {
 		if (expression != null) return expression.get();
 		return null;
