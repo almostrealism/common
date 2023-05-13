@@ -88,8 +88,7 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 		return get(pos.getExpression(), kernelIndex, pos.getDependencies().toArray(Variable[]::new));
 	}
 
-	@Deprecated
-	public InstanceReference<T> get(String pos, int kernelIndex, Variable... dependencies) {
+	private InstanceReference<T> get(String pos, int kernelIndex, Variable... dependencies) {
 		if (getDelegate() == null) {
 			return new InstanceReference(new Variable<>(names.getVariableValueName(this, pos, kernelIndex),
 					false, new Expression(getType()), this), dependencies);

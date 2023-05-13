@@ -67,20 +67,8 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 
 	public InstanceReference<T> get(Expression<?> idx, int kernelIndex) {
 		if (parent == null) {
-			return super.get(idx.getExpression(), kernelIndex, idx.getDependencies().toArray(Variable[]::new));
+			return super.get(idx, kernelIndex);
 		} else {
-			Expression<?> p = parent.getShape().subset(getShape(), idx, pos);
-			return parent.get(p, -1);
-		}
-	}
-
-	@Deprecated
-	@Override
-	public InstanceReference<T> get(String index, int kernelIndex, Variable... dependencies) {
-		if (parent == null) {
-			return super.get(index, kernelIndex, dependencies);
-		} else {
-			Expression idx = new Expression(Integer.class, index, Collections.emptyList(), dependencies);
 			Expression<?> p = parent.getShape().subset(getShape(), idx, pos);
 			return parent.get(p, -1);
 		}
