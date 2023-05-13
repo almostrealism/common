@@ -305,10 +305,6 @@ public final class Hardware {
 	public int getTimeSeriesCount() { return timeSeriesCount; }
 
 	public String stringForDouble(double d) {
-		if (d == 3.5) {
-			System.out.println("!");
-		}
-
 		return "(" + getNumberTypeName() + ") " + rawStringForDouble(d);
 	}
 

@@ -82,6 +82,11 @@ public class Expression<T> implements Tree<Expression<?>> {
 	}
 
 	public String getSimpleExpression() {
+		if (getClass() == Expression.class) {
+			System.out.println("WARN: Unable to retrieve simplified expression");
+			return getExpression();
+		}
+
 		return simplify().getExpression();
 	}
 

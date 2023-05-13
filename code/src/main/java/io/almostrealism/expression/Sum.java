@@ -16,7 +16,9 @@
 
 package io.almostrealism.expression;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class Sum extends NAryExpression<Double> {
 	public Sum(Expression<Double>... values) {
@@ -26,5 +28,27 @@ public class Sum extends NAryExpression<Double> {
 	@Override
 	public Expression<Double> generate(List<Expression<?>> children) {
 		return new Sum(children.toArray(new Expression[0]));
+	}
+
+	@Override
+	public Expression<Double> flatten() {
+		Expression<Double> flat = super.flatten();
+		if (!(flat instanceof Sum)) return flat;
+
+		List<Expression<?>> terms = flat.getChildren().stream()
+				.filter(e -> e instanceof Sum)
+				.flatMap(e -> e.getChildren().stream())
+				.collect(Collectors.toList());
+
+		if (terms.size() == 0) return flat;
+
+		List<Expression<?>> children = new ArrayList<>();
+		children.addAll(terms);
+		children.addAll(flat.getChildren().stream()
+				.filter(e -> !(e instanceof Sum))
+				.collect(Collectors.toList()));
+
+
+		return generate(children);
 	}
 }

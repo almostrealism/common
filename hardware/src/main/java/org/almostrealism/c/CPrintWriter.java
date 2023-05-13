@@ -39,7 +39,7 @@ import java.util.function.Consumer;
 import java.util.stream.IntStream;
 
 public class CPrintWriter extends CodePrintWriterAdapter {
-	public static boolean enableSimplification = false;
+	public static boolean enableSimplification = true;
 
 	private final String topLevelMethodName;
 	private final Stack<Accessibility> accessStack;
