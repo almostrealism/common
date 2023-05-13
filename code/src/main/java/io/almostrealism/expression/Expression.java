@@ -47,13 +47,14 @@ public class Expression<T> implements Tree<Expression<?>> {
 	@Deprecated
 	public Expression(Class<T> type, String expression) {
 		this(type, expression, Collections.emptyList(), new Variable[0]);
-		System.out.println("WARN: Deprecated Expression construction");
+		// System.out.println("WARN: Deprecated Expression construction");
 	}
 
 	public Expression(Class<T> type, String expression, Expression<?>... children) {
 		this(type, expression, List.of(children), dependencies(children));
 	}
 
+	@Deprecated
 	public Expression(Class<T> type, String expression, List<Expression<?>> children, Variable<?, ?>... dependencies) {
 		if (type == null) {
 			throw new IllegalArgumentException("Type is required");
@@ -74,6 +75,10 @@ public class Expression<T> implements Tree<Expression<?>> {
 
 	public void setType(Class<T> t) { this.type = t; }
 	public Class<T> getType() { return this.type; }
+
+	public boolean isNull() {
+		return expression == null || expression.get() == null;
+	}
 
 	public OptionalInt intValue() { return OptionalInt.empty(); }
 	public OptionalDouble doubleValue() {

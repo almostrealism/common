@@ -79,13 +79,13 @@ public class PackedCollectionSegmentsAdd extends Repeated {
 		sourcePosition = sourcePosition.subtract(getDestinationOffsets().valueAt(index));
 		// String sourcePosition = "get_global_id(0) + " + getSourceOffsets().valueAt(index).getExpression() + " - " + getDestinationOffsets().valueAt(index).getExpression();
 
-		return getDestination().valueAt(0).getExpression() + " = " +
+		return getDestination().valueAt(0).getSimpleExpression() + " = " +
 				new Sum(getDestination().valueAt(0),
-						getData().get(sourcePosition)).getExpression();
+						getData().get(sourcePosition)).getSimpleExpression();
 	}
 
 	@Override
 	public String getCondition(Expression<?> index) {
-		return index.getExpression() + " < " + getCount().valueAt(0).getExpression();
+		return index.getSimpleExpression() + " < " + getCount().valueAt(0).getSimpleExpression();
 	}
 }
