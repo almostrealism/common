@@ -30,14 +30,12 @@ public interface Array<T, V extends Array<T, ?>> extends Plural<InstanceReferenc
 	}
 	
 	default InstanceReference<T> valueAt(Expression<?> exp) {
-		return get(exp.getExpression());
+		return get(exp);
 	}
 
 	default String ref(int pos) {
 		return valueAt(pos).getExpression();
 	}
-
-	InstanceReference<T> get(String pos, Variable... dependencies);
 
 	InstanceReference<T> get(Expression<?> pos);
 

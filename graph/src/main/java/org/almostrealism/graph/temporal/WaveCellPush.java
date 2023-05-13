@@ -48,8 +48,9 @@ public class WaveCellPush extends WaveCellComputation {
 		exp.accept(" = ");
 		exp.accept(getAmplitude().valueAt(0).getExpression());
 		exp.accept(" * ");
-		exp.accept(getWave().get("(" + getWaveIndex().valueAt(0).getExpression() +
-				" + floor(" + getWavePosition().valueAt(0).getExpression() + "))").getExpression());
+//		exp.accept(getWave().get("(" + getWaveIndex().valueAt(0).getExpression() +
+//				" + floor(" + getWavePosition().valueAt(0).getExpression() + "))").getExpression());
+		exp.accept(getWave().get(getWaveIndex().valueAt(0).add(getWavePosition().valueAt(0).floor())).getExpression());
 		exp.accept(";\n");
 		exp.accept("} else {\n");
 		exp.accept(getOutput().valueAt(0).getExpression());

@@ -20,6 +20,7 @@ import io.almostrealism.code.HybridScope;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
+import io.almostrealism.expression.StaticReference;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
@@ -52,8 +53,8 @@ public class PackedCollectionSegmentsAdd extends Repeated {
 	public Scope<Void> getScope() {
 		HybridScope<Void> scope = new HybridScope<>(this);
 
-		String i = getVariablePrefix() + "_i";
-		Expression exp = new InstanceReference(new Variable(i, Double.class, (Double) null));
+		Expression i = new StaticReference(Integer.class, getVariablePrefix() + "_i");
+		Expression exp = new InstanceReference(new Variable(i.getExpression(), Double.class, (Double) null));
 
 		String cond = getCondition(exp);
 		scope.setMetadata(new OperationMetadata(getFunctionName(), "PackedCollectionSegmentsAdd"));
@@ -73,7 +74,10 @@ public class PackedCollectionSegmentsAdd extends Repeated {
 
 	@Override
 	public String getInner(Expression<?> index) {
-		String sourcePosition = "get_global_id(0) + " + getSourceOffsets().valueAt(index).getExpression() + " - " + getDestinationOffsets().valueAt(index).getExpression();
+		Expression sourcePosition = new StaticReference(Integer.class, "get_global_id(0)");
+		sourcePosition = sourcePosition.add(getSourceOffsets().valueAt(index));
+		sourcePosition = sourcePosition.subtract(getDestinationOffsets().valueAt(index));
+		// String sourcePosition = "get_global_id(0) + " + getSourceOffsets().valueAt(index).getExpression() + " - " + getDestinationOffsets().valueAt(index).getExpression();
 
 		return getDestination().valueAt(0).getExpression() + " = " +
 				new Sum(getDestination().valueAt(0),
