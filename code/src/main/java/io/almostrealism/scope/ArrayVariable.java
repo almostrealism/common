@@ -29,6 +29,8 @@ import java.util.List;
 import java.util.function.Supplier;
 
 public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements Array<T, ArrayVariable<T>> {
+	public static boolean enableSimplification = true;
+
 	private final NameProvider names;
 
 	private int delegateOffset;
@@ -85,7 +87,11 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 	}
 
 	public InstanceReference<T> get(Expression<?> pos, int kernelIndex) {
-		return get(pos.getExpression(), kernelIndex, pos.getDependencies().toArray(Variable[]::new));
+		if (enableSimplification) {
+			return get(pos.simplify().getExpression(), kernelIndex, pos.getDependencies().toArray(Variable[]::new));
+		} else {
+			return get(pos.getExpression(), kernelIndex, pos.getDependencies().toArray(Variable[]::new));
+		}
 	}
 
 	private InstanceReference<T> get(String pos, int kernelIndex, Variable... dependencies) {

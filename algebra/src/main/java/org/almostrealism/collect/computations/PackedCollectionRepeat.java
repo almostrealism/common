@@ -79,8 +79,7 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		if (var == null) return null;
 
 		// Find the index in that slice
-		Expression offset = e("((int) " + index.getExpression() + ") % " + subsetShape.getTotalSize(), index);
-		// Expression offset = new Mod(new Cast("int", index), e(getShape().getTotalSize()), false);
+		Expression offset = new Mod(new Cast("int", index), e(subsetShape.getTotalSize()), false);
 
 		return var.getValueAt(offset);
 	}

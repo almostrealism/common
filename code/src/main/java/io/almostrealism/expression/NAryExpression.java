@@ -21,7 +21,7 @@ import java.util.Objects;
 import java.util.stream.Stream;
 
 public class NAryExpression<T> extends Expression<T> {
-	public static boolean enableSimplification = false;
+	public static boolean enableSimplification = true;
 	public static boolean removeIdentities = false;
 
 	public NAryExpression(Class<T> type, String operator, List<Expression<?>> values) {
