@@ -35,13 +35,10 @@ public class Quotient extends NAryExpression<Double> {
 		if (!enableSimplification) return flat;
 		if (!(flat instanceof Quotient)) return flat;
 
-		List<Expression<?>> children = flat.getChildren().stream()
+		List<Expression<?>> children = flat.getChildren().subList(1, flat.getChildren().size()).stream()
 				.filter(e -> !removeIdentities || e.doubleValue().orElse(-1) != 1.0)
 				.collect(Collectors.toList());
-
-		if (children.size() != flat.getChildren().size()) {
-			System.out.println("!");
-		}
+		children.add(0, flat.getChildren().get(0));
 
 		if (children.size() == 1) return (Expression<Double>) children.get(0);
 		if (children.isEmpty()) return (Expression) getChildren().iterator().next();

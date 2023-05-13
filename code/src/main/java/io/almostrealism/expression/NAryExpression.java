@@ -22,7 +22,7 @@ import java.util.stream.Stream;
 
 public class NAryExpression<T> extends Expression<T> {
 	public static boolean enableSimplification = true;
-	public static boolean removeIdentities = false;
+	public static boolean removeIdentities = true;
 
 	private String operator;
 
