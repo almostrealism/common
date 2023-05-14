@@ -77,6 +77,10 @@ public class OperationList extends ArrayList<Supplier<Runnable>> implements Oper
 
 	public OperationMetadata getMetadata() { return metadata; }
 
+	public void addCompiled(Supplier<Runnable> op) {
+		add(() -> op.get());
+	}
+
 	public <T extends MemoryData> KernelOperation<T> add(KernelizedProducer<T> producer, MemoryBank destination, MemoryData... arguments) {
 		KernelOperation<T> operation = new KernelOperation<>(producer, destination, arguments);
 		add(operation);
