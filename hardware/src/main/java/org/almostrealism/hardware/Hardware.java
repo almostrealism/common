@@ -19,6 +19,7 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.DataContext;
 import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.expression.Cast;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import org.almostrealism.hardware.cl.CLMemoryProvider;
@@ -43,6 +44,7 @@ import java.util.concurrent.Callable;
 
 public final class Hardware {
 	public static boolean enableVerbose = false;
+	public static boolean enableCast = false;
 	public static final boolean enableMultiThreading = true;
 	public static boolean enableKernelOps = true;
 
@@ -124,6 +126,7 @@ public final class Hardware {
 		// TODO  This is not a very desriable way of ensuring the doubles are properly encoded
 		// TODO  but until we further improve the interaction between org.almostrealism.hardware
 		// TODO  and io.almostrealism.code it will have to do
+		Expression.toDouble = e -> new Cast(Hardware.getLocalHardware().getNumberTypeName(), e);
 		DoubleConstant.stringForDouble = Hardware.getLocalHardware()::stringForDouble;
 	}
 
@@ -305,7 +308,11 @@ public final class Hardware {
 	public int getTimeSeriesCount() { return timeSeriesCount; }
 
 	public String stringForDouble(double d) {
-		return "(" + getNumberTypeName() + ") " + rawStringForDouble(d);
+		if (enableCast) {
+			return "(" + getNumberTypeName() + ") " + rawStringForDouble(d);
+		} else {
+			return rawStringForDouble(d);
+		}
 	}
 
 	private String rawStringForDouble(double d) {

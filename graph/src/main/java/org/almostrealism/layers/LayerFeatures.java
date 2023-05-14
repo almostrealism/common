@@ -19,6 +19,7 @@ package org.almostrealism.layers;
 import io.almostrealism.code.ExpressionList;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionOperationList;
 import org.almostrealism.collect.CollectionProducer;
@@ -35,6 +36,7 @@ import org.almostrealism.hardware.OperationList;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.DefaultBlock;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -42,29 +44,44 @@ import java.util.function.Supplier;
 public interface LayerFeatures extends CollectionFeatures {
 	boolean enableKernelLayers = true;
 
+	@Deprecated
 	default KernelLayer layer(TraversalPolicy inputShape, TraversalPolicy outputShape,
 							  KernelExpression kernel, Propagation backwards) {
 		return new KernelLayer(inputShape, TraversableKernelExpression.withShape(outputShape, kernel), backwards);
 	}
 
+	@Deprecated
 	default KernelLayer layer(TraversalPolicy inputShape, TraversalPolicy outputShape, KernelExpression kernel,
 							  Propagation backwards, List<PackedCollection<?>> weights) {
 		return new KernelLayer(inputShape, TraversableKernelExpression.withShape(outputShape, kernel), backwards, weights);
 	}
 
+	@Deprecated
 	default KernelLayer layer(TraversalPolicy inputShape, TraversalPolicy outputShape, Func.v2e3 kernel,
 							  Propagation backwards, List<PackedCollection<?>> weights, Supplier<Runnable> setup) {
 		return layer(inputShape, outputShape, kernel.toKernel(), backwards, weights, setup);
 	}
 
+	@Deprecated
 	default KernelLayer layer(TraversalPolicy inputShape, TraversalPolicy outputShape, KernelExpression kernel,
 							  Propagation backwards, List<PackedCollection<?>> weights, Supplier<Runnable> setup) {
 		return new KernelLayer(inputShape, TraversableKernelExpression.withShape(outputShape, kernel), backwards, weights, setup);
 	}
 
-	default CellularLayer layer(TraversalPolicy outputShape, Cell<PackedCollection<?>> forward, Cell<PackedCollection<?>> backward,
+	default CellularLayer layer(TraversalPolicy outputShape,
+								Cell<PackedCollection<?>> forward, Cell<PackedCollection<?>> backward) {
+		return new DefaultCellularLayer(outputShape, forward, backward, Collections.emptyList(), new OperationList());
+	}
+
+	default CellularLayer layer(TraversalPolicy outputShape,
+								Cell<PackedCollection<?>> forward, Cell<PackedCollection<?>> backward,
 								List<PackedCollection<?>> weights, Supplier<Runnable> setup) {
 		return new DefaultCellularLayer(outputShape, forward, backward, weights, setup);
+	}
+
+	default CellularLayer layer(TraversalPolicy inputShape, TraversalPolicy outputShape,
+								Cell<PackedCollection<?>> forward, Propagation backward) {
+		return layer(inputShape, outputShape, forward, backward, Collections.emptyList(), new OperationList());
 	}
 
 	default CellularLayer layer(TraversalPolicy inputShape, TraversalPolicy outputShape,
@@ -123,21 +140,16 @@ public interface LayerFeatures extends CollectionFeatures {
 		} else {
 			return layer(inputShape, outputShape,
 					Cell.of((input, next) -> {
+						PackedCollection<?> output = new PackedCollection<>(outputShape);
+
 						OperationList ops = new OperationList();
-						ops.add(() -> {
-							PackedCollection<?> output = new PackedCollection<>(outputShape);
-							KernelizedEvaluable<PackedCollection<?>> ev =
-									c(input).enumerate(1, 3, 1)
-									.enumerate(1, 3, 1)
+						ops.add(c(input).enumerate(1, size, 1)
+									.enumerate(1, size, 1)
 									.traverse(2)
 									.expand(filterCount, v -> v.repeat(filterCount).multiply(p(filters)))
 									.traverse()
-									.reduce(v -> v.sum()).get();
-							return () -> {
-								ev.into(output).evaluate();
-								if (next != null) next.push(p(output));
-							};
-						});
+									.reduce(v -> v.sum()), output.traverseEach());
+						if (next != null) ops.add(next.push(p(output)));
 						return ops;
 					}),
 					(lr, gradient, input, next) -> {
@@ -164,12 +176,9 @@ public interface LayerFeatures extends CollectionFeatures {
 		return shape -> pool2d(shape, size);
 	}
 
-	default KernelLayer pool2d(TraversalPolicy inputShape, int size) {
+	default CellularLayer pool2d(TraversalPolicy inputShape, int size) {
 		TraversalPolicy outputShape = shape(inputShape.length(0) / size, inputShape.length(1) / size, inputShape.length(2));
-		KernelExpression kernel = (i, p) -> i.v(0).get(shape(size, size, 1),
-																p.l(0).multiply(size),
-																p.l(1).multiply(size),
-																p.l(2)).max();
+
 		KernelExpression backward = (i, p) -> {
 			Expression x = p.l(0).divide(size);
 			Expression y = p.l(1).divide(size);
@@ -186,7 +195,30 @@ public interface LayerFeatures extends CollectionFeatures {
 			return ops;
 		};
 
-		return layer(inputShape, outputShape, kernel, propagation);
+		if (enableKernelLayers) {
+			KernelExpression kernel = (i, p) -> i.v(0).get(shape(size, size, 1),
+					p.l(0).multiply(size),
+					p.l(1).multiply(size),
+					p.l(2)).max();
+
+			return layer(inputShape, outputShape, kernel, propagation);
+		} else {
+			return layer(inputShape, outputShape,
+					Cell.of((input, next) -> {
+						PackedCollection<?> output = new PackedCollection<>(outputShape);
+
+						OperationList ops = new OperationList();
+						ops.add(c(input).enumerate(1, size)
+									.enumerate(1, size)
+									.traverse(2)
+									.reduce(v ->
+											enumerate(shape(1, 1, size, size, 1), v)
+											.traverse(1).reduce(slice -> max(slice))),
+								output.traverseEach());
+						if (next != null) ops.add(next.push(p(output)));
+						return ops;
+					}), propagation);
+		}
 	}
 
 	default Function<TraversalPolicy, CellularLayer> dense(int nodes) {

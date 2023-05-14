@@ -26,6 +26,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.function.Supplier;
 
+@Deprecated
 public class KernelLayer implements CellularLayer, Learning {
 	private TraversalPolicy outputShape;
 	private KernelLayerCell forward;

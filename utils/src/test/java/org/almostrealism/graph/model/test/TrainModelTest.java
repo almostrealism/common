@@ -143,7 +143,9 @@ public class TrainModelTest implements TestFeatures {
 		input = output;
 		inputShape = input.getShape();
 
-		output = ((KernelLayerCell) pool.getForward()).getOutput();
+		output = pool instanceof DefaultCellularLayer ?
+				((DefaultCellularLayer) pool).getOutput() :
+				((KernelLayerCell) pool.getForward()).getOutput();
 		outputShape = output.getShape();
 
 		for (int p = 0; p < outputShape.length(0); p++) {

@@ -30,11 +30,14 @@ import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 // TODO  Make abstract
 public class Expression<T> implements Tree<Expression<?>> {
+	public static Function<Expression<?>, Expression<?>> toDouble = e -> new Cast("double", e);
+
 	private Class<T> type;
 	private Supplier<String> expression;
 	private List<Variable<?, ?>> dependencies = new ArrayList<>();
@@ -157,6 +160,8 @@ public class Expression<T> implements Tree<Expression<?>> {
 	public Mod mod(Expression<Double> operand) { return new Mod((Expression) this, operand); }
 
 	public Equals eq(Expression<?> operand) { return new Equals(this, operand); }
+
+	public Expression<?> toDouble() { return toDouble.apply(this); }
 
 	public Cast toInt() { return new Cast("int", this); }
 

@@ -36,6 +36,9 @@ public class DefaultCellularLayer implements CellularLayer, CollectionFeatures, 
 	private Cell<PackedCollection<?>> backward;
 	private List<PackedCollection<?>> weights;
 
+	private Cell<PackedCollection<?>> copyInput;
+	private Cell<PackedCollection<?>> copyOutput;
+
 	private PackedCollection<?> input;
 	private PackedCollection<?> output;
 
@@ -72,6 +75,23 @@ public class DefaultCellularLayer implements CellularLayer, CollectionFeatures, 
 	public void init(TraversalPolicy inputShape) {
 		this.input = new PackedCollection<>(inputShape);
 		this.output = new PackedCollection<>(outputShape);
+
+		this.copyInput = Cell.of((in, next) -> {
+			OperationList op = new OperationList();
+			op.add(new MemoryDataCopy(in.get()::evaluate, () -> input, input.getMemLength()));
+			op.add(next.push(p(input)));
+			return op;
+		});
+
+		this.copyInput.setReceptor(forward);
+
+		this.copyOutput = Cell.of((in, next) -> {
+			OperationList op = new OperationList();
+			op.add(new MemoryDataCopy(in.get()::evaluate, () -> output, output.getMemLength()));
+			return op;
+		});
+
+		this.forward.setReceptor(copyOutput);
 	}
 
 	public PackedCollection<?> getInput() { return input; }
@@ -82,29 +102,12 @@ public class DefaultCellularLayer implements CellularLayer, CollectionFeatures, 
 
 	@Override
 	public Cell<PackedCollection<?>> getForward() {
-		Cell<PackedCollection<?>> copyInput = Cell.of((in, next) ->
-				new MemoryDataCopy(in.get()::evaluate, () -> input, input.getMemLength())
-		);
-
-		return new Cell<>() {
-			@Override
-			public Supplier<Runnable> setup() {
-				return forward.setup();
-			}
-
-			@Override
-			public Supplier<Runnable> push(Producer<PackedCollection<?>> protein) {
-				OperationList op = new OperationList();
-				op.add(copyInput.push(protein));
-				op.add(forward.push(protein));
-				return op;
-			}
-
-			@Override
-			public void setReceptor(Receptor<PackedCollection<?>> r) {
-				forward.setReceptor(r);
-			}
-		};
+		return Cell.of((in, next) -> {
+			OperationList op = new OperationList();
+			op.add(copyInput.push(in));
+			op.add(next.push(p(output)));
+			return op;
+		});
 	}
 
 	@Override
