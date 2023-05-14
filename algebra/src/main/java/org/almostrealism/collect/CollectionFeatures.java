@@ -471,11 +471,25 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return _min(_max(a, c(min)), c(max));
 	}
 
-	default <T extends PackedCollection<?>> ExpressionComputation<T> sum(Supplier<Evaluable<? extends PackedCollection<?>>> input) {
+	default <T extends PackedCollection<?>> ExpressionComputation<T> max(Producer<T> input) {
 		int size = shape(input).getTotalSize();
 		Function<List<MultiExpression<Double>>, Expression<Double>> expression= np ->
-			new Sum(IntStream.range(0, size).mapToObj(i -> np.get(1).getValue(i)).toArray(Expression[]::new));
-		return new ExpressionComputation<>(List.of(expression), input);
+			Max.of(IntStream.range(0, size).mapToObj(i -> np.get(1).getValue(i)).toArray(Expression[]::new));
+		return new ExpressionComputation<>(List.of(expression), (Supplier) input);
+	}
+
+	default <T extends PackedCollection<?>> ExpressionComputation<T> sum(Producer<T> input) {
+		int size = shape(input).getTotalSize();
+		Function<List<MultiExpression<Double>>, Expression<Double>> expression;
+
+		if (size == 1) {
+			expression = np -> np.get(1).getValue(0);
+		} else {
+			expression = np ->
+					new Sum(IntStream.range(0, size).mapToObj(i -> np.get(1).getValue(i)).toArray(Expression[]::new));
+		}
+
+		return new ExpressionComputation<>(List.of(expression), (Supplier) input);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> _greaterThan(Producer<T> a, Producer<T> b,

@@ -142,7 +142,7 @@ public class PropagationTests implements TestFeatures {
 		TraversalPolicy outputShape = shape(h / size, w / size, 1);
 
 		Model model = new Model(inputShape, 1e-1);
-		KernelLayer pool = pool2d(inputShape, size);
+		CellularLayer pool = pool2d(inputShape, size);
 		model.addLayer(pool);
 
 		PackedCollection<?> input = new PackedCollection<>(inputShape);

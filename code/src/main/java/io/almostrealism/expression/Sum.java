@@ -31,34 +31,28 @@ public class Sum extends NAryExpression<Double> {
 	}
 
 	@Override
-	public Expression<Double> flatten() {
-		Expression<Double> flat = super.flatten();
-		if (!(flat instanceof Sum)) return flat;
+	public List<Expression<?>> flatten() {
+		List<Expression<?>> flat = super.flatten();
 
-		List<Expression<?>> terms = flat.getChildren().stream()
+		List<Expression<?>> terms = flat.stream()
 				.filter(e -> e instanceof Sum)
 				.flatMap(e -> e.getChildren().stream())
 				.collect(Collectors.toList());
 
 		if (terms.size() == 0) return flat;
 
-
 		List<Expression<?>> children = new ArrayList<>();
 		terms.forEach(children::add);
-		children.addAll(flat.getChildren().stream()
+		children.addAll(flat.stream()
 				.filter(e -> !(e instanceof Sum))
 				.collect(Collectors.toList()));
 
-		return generate(children);
+		return children;
 	}
 
 	@Override
 	public Expression<Double> simplify() {
-		Expression<Double> flat = super.simplify();
-		if (!enableSimplification) return flat;
-		if (!(flat instanceof Sum)) return flat;
-
-		List<Expression<?>> children = flat.getChildren().stream()
+		List<Expression<?>> children = super.simplify().flatten().stream()
 				.filter(e -> !removeIdentities || e.doubleValue().orElse(-1) != 0.0)
 				.collect(Collectors.toList());
 

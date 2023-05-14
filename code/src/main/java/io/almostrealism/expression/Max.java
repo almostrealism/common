@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -30,5 +30,14 @@ public class Max extends Expression<Double> {
 		}
 
 		return new Max((Expression<Double>) children.get(0), (Expression<Double>) children.get(1));
+	}
+
+	public static Expression<Double> of(Expression<Double>... values) {
+		Expression<Double> result = values[0];
+		for (int i = 1; i < values.length; i++) {
+			result = new Max(result, values[i]);
+		}
+
+		return result;
 	}
 }

@@ -89,7 +89,7 @@ Add utils:
         <dependency>
             <groupId>org.almostrealism</groupId>
             <artifactId>ar-utils</artifactId>
-            <version>0.53</version>
+            <version>0.56</version>
         </dependency>
 
 ### Enabling Your Application

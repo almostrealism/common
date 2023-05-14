@@ -30,11 +30,14 @@ import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 // TODO  Make abstract
 public class Expression<T> implements Tree<Expression<?>> {
+	public static Function<Expression<?>, Expression<?>> toDouble = e -> new Cast("double", e);
+
 	private Class<T> type;
 	private Supplier<String> expression;
 	private List<Variable<?, ?>> dependencies = new ArrayList<>();
@@ -93,7 +96,22 @@ public class Expression<T> implements Tree<Expression<?>> {
 			return getExpression();
 		}
 
-		return simplify().getExpression();
+		Expression<?> simplified = simplify();
+		String exp = simplified.getExpression();
+
+		w: while (true) {
+			Expression<?> next = simplified.simplify();
+			String nextExp = next.getExpression();
+
+			if (nextExp.equals(exp)) {
+				break w;
+			}
+
+			simplified = next;
+			exp = nextExp;
+		}
+
+		return exp;
 	}
 
 	@Deprecated
@@ -143,6 +161,8 @@ public class Expression<T> implements Tree<Expression<?>> {
 
 	public Equals eq(Expression<?> operand) { return new Equals(this, operand); }
 
+	public Expression<?> toDouble() { return toDouble.apply(this); }
+
 	public Cast toInt() { return new Cast("int", this); }
 
 	@Override
@@ -154,12 +174,10 @@ public class Expression<T> implements Tree<Expression<?>> {
 		throw new UnsupportedOperationException();
 	}
 
-	public Expression<T> flatten() {
-		return generate((List) getChildren().stream().map(Expression::flatten).collect(Collectors.toList()));
-	}
+	public List<Expression<?>> flatten() { return getChildren(); }
 
 	public Expression<T> simplify() {
-		return generate((List) flatten().getChildren().stream().map(Expression::simplify).collect(Collectors.toList()));
+		return generate(getChildren().stream().map(Expression::simplify).collect(Collectors.toList()));
 	}
 
 	@Override

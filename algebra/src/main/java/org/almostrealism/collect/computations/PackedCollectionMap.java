@@ -66,7 +66,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 	public void prepareScope(ScopeInputManager manager) {
 		super.prepareScope(manager);
 
-		Expression slice = new StaticReference(Double.class, KernelSupport.getKernelIndex(0));
+		Expression slice = new StaticReference(Double.class, KernelSupport.getKernelIndex(0)).toDouble();
 
 		ArrayVariable arg = getArgumentForInput(getInputs().get(1));
 		if (arg instanceof CollectionVariable == false) {
@@ -103,7 +103,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 		// TODO  TraversableExpression implementations.
 		ExpressionList<Double> exp = input.get(sliceShape, traversalShape.position(slice)).toList();
 
-		computation = new ExpressionComputation<>(inputShape.item(),
+		computation = new ExpressionComputation<>(sliceShape,
 				IntStream.range(0, exp.size())
 						.mapToObj(i -> (Function<List<MultiExpression<Double>>, Expression<Double>>) args -> exp.get(i))
 						.collect(Collectors.toList()));
