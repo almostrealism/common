@@ -64,10 +64,6 @@ public interface NameProvider {
 		return getArgumentValueName(index, pos, assignment, 0);
 	}
 
-	default String getArgumentValueName(int index, int pos, int kernelIndex) {
-		return getArgumentValueName(index, pos, true, kernelIndex);
-	}
-
 	default String getArgumentValueName(int index, int pos, boolean assignment, int kernelIndex) {
 		return getVariableValueName(getArgument(index), pos, assignment, kernelIndex);
 	}
@@ -84,10 +80,6 @@ public interface NameProvider {
 		return getVariableValueName(v, pos, false, kernelIndex);
 	}
 
-	default String getVariableValueName(Variable v, String pos) {
-		return getVariableValueName(v, pos, v.getKernelIndex());
-	}
-
 	default String getVariableValueName(Variable v, String pos, int kernelIndex) {
 		return getVariableValueName(v, pos, false, kernelIndex);
 	}
@@ -101,35 +93,4 @@ public interface NameProvider {
 	String getVariableDimName(ArrayVariable v, int dim);
 
 	String getVariableSizeName(ArrayVariable v);
-
-	default NameProvider withOutputVariable(Variable outputVariable) {
-		NameProvider p = this;
-
-		return new NameProvider() {
-			@Override
-			public String getFunctionName() {
-				return p.getFunctionName();
-			}
-
-			@Override
-			public Variable getOutputVariable() {
-				return outputVariable;
-			}
-
-			@Override
-			public String getVariableValueName(Variable v, String pos, boolean assignment, int kernelIndex) {
-				return p.getVariableValueName(v, pos, assignment, kernelIndex);
-			}
-
-			@Override
-			public String getVariableDimName(ArrayVariable v, int dim) {
-				return p.getVariableDimName(v, dim);
-			}
-
-			@Override
-			public String getVariableSizeName(ArrayVariable v) {
-				return p.getVariableSizeName(v);
-			}
-		};
-	}
 }

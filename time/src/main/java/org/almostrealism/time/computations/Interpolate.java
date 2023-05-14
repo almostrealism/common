@@ -20,6 +20,7 @@ import io.almostrealism.code.HybridScope;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.expression.Exponent;
 import io.almostrealism.expression.Product;
+import io.almostrealism.expression.StaticReference;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.expression.Expression;
@@ -54,31 +55,32 @@ public class Interpolate extends CollectionProducerComputationAdapter<PackedColl
 		HybridScope<PackedCollection<?>> scope = new HybridScope<>(this);
 		scope.setMetadata(new OperationMetadata(getFunctionName(), "Interpolate"));
 
-		String left = getVariableName(0);
-		String right = getVariableName(1);
+		Expression left = new StaticReference(Integer.class, getVariableName(0));
+		Expression right = new StaticReference(Integer.class, getVariableName(1));
 		String v1 = getVariableName(2);
 		String v2 = getVariableName(3);
 		String t1 = getVariableName(4);
 		String t2 = getVariableName(5);
 
-		scope.getVariables().add(new Variable<>(left, new Expression<>(Integer.class, "-1")));
-		scope.getVariables().add(new Variable<>(right, new Expression<>(Integer.class, "-1")));
+		scope.getVariables().add(new Variable<>(left.getSimpleExpression(), new Expression<>(Integer.class, "-1")));
+		scope.getVariables().add(new Variable<>(right.getSimpleExpression(), new Expression<>(Integer.class, "-1")));
 		scope.getVariables().add(new Variable<>(v1, new Expression<>(Double.class, "0.0")));
 		scope.getVariables().add(new Variable<>(v2, new Expression<>(Double.class, "0.0")));
 		scope.getVariables().add(new Variable<>(t1, new Expression<>(Double.class, "0.0")));
 		scope.getVariables().add(new Variable<>(t2, new Expression<>(Double.class, "0.0")));
 
-		String res = getArgument(0).valueAt(0).getExpression();
+		String res = getArgument(0).valueAt(0).getSimpleExpression();
 		String start = "0";
-		String end = getArgument(1).length().getExpression();
+		String end = getArgument(1).length().getSimpleExpression();
 		Expression<Double> rate = getArgument(3).valueAt(0);
 
-		String banki = new Product(new Exponent(rate, expressionForDouble(-1.0)), timeForIndex.apply(new Expression<>(Double.class, "i"))).getExpression();
-		String bankl_time = new Product(new Exponent(rate, expressionForDouble(-1.0)), timeForIndex.apply(new Expression<>(Double.class, left))).getExpression();
-		String bankl_value = getArgument(1).get(left).getExpression();
-		String bankr_time = new Product(new Exponent(rate, expressionForDouble(-1.0)), timeForIndex.apply(new Expression<>(Double.class, right))).getExpression();
-		String bankr_value = getArgument(1).get(right).getExpression();
-		String cursor = getArgument(2).valueAt(0).getExpression();
+		Expression i = new StaticReference(Integer.class, "i");
+		String banki = new Product(new Exponent(rate, expressionForDouble(-1.0)), timeForIndex.apply(i)).getSimpleExpression();
+		String bankl_time = new Product(new Exponent(rate, expressionForDouble(-1.0)), timeForIndex.apply(left)).getSimpleExpression();
+		String bankl_value = getArgument(1).get(left).getSimpleExpression();
+		String bankr_time = new Product(new Exponent(rate, expressionForDouble(-1.0)), timeForIndex.apply(right)).getSimpleExpression();
+		String bankr_value = getArgument(1).get(right).getSimpleExpression();
+		String cursor = getArgument(2).valueAt(0).getSimpleExpression();
 
 		Consumer<String> code = scope.code();
 		code.accept("for (int i = " + start + "; i < " + end + "; i++) {\n");

@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.MultiExpression;
 import org.almostrealism.algebra.Pair;
@@ -153,14 +154,8 @@ public class ExpressionComputation<T extends PackedCollection<?>> extends Dynami
 
 	public static <T extends PackedCollection<?>> ExpressionComputation<T> fixed(T value, BiFunction<MemoryData, Integer, T> postprocessor) {
 		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		IntStream.range(0, value.getShape().getTotalSize()).forEach(i -> comp.add(args -> {
-			String s = HardwareFeatures.ops().stringForDouble(value.getMem().toArray(value.getOffset() + i, 1)[0]);
-			if (s.contains("Infinity")) {
-				throw new IllegalArgumentException("Infinity is not supported");
-			}
-
-			return new Expression<>(Double.class, s);
-		}));
+		IntStream.range(0, value.getShape().getTotalSize()).forEach(i ->
+				comp.add(args -> new DoubleConstant(value.getMem().toArray(value.getOffset() + i, 1)[0])));
 
 		return new ExpressionComputation(comp).setPostprocessor(postprocessor).setShortCircuit(args -> {
 			PackedCollection v = new PackedCollection(value.getShape());

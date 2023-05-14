@@ -38,10 +38,9 @@ import java.util.function.IntFunction;
  */
 @Deprecated
 public interface MultiExpression<T> {
-
 	default IntFunction<Variable<T, ?>> getAssignmentFunction(Variable<?, ?> outputVariable) {
-		return i ->
-				new Variable(((ArrayVariable) outputVariable).valueAt(i).getExpression(), false, getValue(i), outputVariable.getRootDelegate());
+		return i -> new Variable(((ArrayVariable) outputVariable).valueAt(i).getSimpleExpression(),
+							false, getValue(i).simplify(), outputVariable.getRootDelegate());
 	}
 
 	Expression<T> getValue(int pos);

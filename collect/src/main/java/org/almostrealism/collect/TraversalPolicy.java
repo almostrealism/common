@@ -17,6 +17,7 @@
 package org.almostrealism.collect;
 
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.Minus;
 import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Quotient;
@@ -58,10 +59,10 @@ public class TraversalPolicy implements Traversable<TraversalPolicy> {
 	}
 
 	public Expression index(Expression... pos) {
-		Expression index = new Expression(Double.class, "0");
+		Expression index = new IntegerConstant(0);
 
 		for (int i = 0; i < pos.length; i++) {
-			Expression s = new Expression<>(Double.class, String.valueOf(size(i + 1)));
+			Expression s = new IntegerConstant(size(i + 1));
 			index = new Sum(index, new Product(pos[i], s));
 		}
 
@@ -86,7 +87,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy> {
 
 		Expression remaining = index;
 		for (int i = 0; i < pos.length; i++) {
-			Expression s = new Expression<>(Double.class, String.valueOf(size(i + 1)));
+			Expression s = new IntegerConstant(size(i + 1));
 			pos[i] = new Quotient(remaining, s);
 			remaining = new Sum(remaining, new Minus(new Product(pos[i], s)));
 		}
@@ -95,16 +96,16 @@ public class TraversalPolicy implements Traversable<TraversalPolicy> {
 	}
 
 	public Expression subset(TraversalPolicy shape, int index, int... loc) {
-		return subset(shape, new Expression(Integer.class, String.valueOf(index)), loc);
+		return subset(shape, new IntegerConstant(index), loc);
 	}
 
 	public Expression subset(TraversalPolicy shape, Expression index, int... loc) {
 		return subset(shape, index,
-				IntStream.of(loc).mapToObj(i -> new Expression(Integer.class, String.valueOf(i))).toArray(Expression[]::new));
+				IntStream.of(loc).mapToObj(i -> new IntegerConstant(i)).toArray(Expression[]::new));
 	}
 
 	public Expression subset(TraversalPolicy shape, int index, Expression... loc) {
-		return subset(shape, new Expression(Integer.class, String.valueOf(index)), loc);
+		return subset(shape, new IntegerConstant(index), loc);
 	}
 
 	public Expression subset(TraversalPolicy shape, Expression index, Expression... loc) {

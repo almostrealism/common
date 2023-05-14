@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package org.almostrealism.primitives.test;
 
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.PackedCollection;
@@ -42,6 +43,11 @@ public class SphereTest implements TestFeatures {
 		System.out.println(distance);
 		assertEquals(2, distance);
 
+		f = s.intersectAt(ray(0.5, 0.5, 3.0, 0.0, 0.0, -1.0));
+		distance = f.getDistance().get().evaluate();
+		System.out.println(distance);
+		assertEquals(2.2928932188134525, distance);
+
 		Ray r = f.get(0).get().evaluate();
 		System.out.println(r);
 
@@ -54,25 +60,26 @@ public class SphereTest implements TestFeatures {
 	}
 
 	@Test
-	public void intersectionKernel() {
+	public void discriminantKernel() {
+		Producer<Ray> ray = v(Ray.shape(), 0);
+
 		int w = 100;
 		int h = 100;
 
 		Sphere s = new Sphere();
 		s.setSize(0.5);
 
-		ShadableIntersection f = s.intersectAt(v(shape(6), 0));
-
 		PackedCollection<?> rays = new PackedCollection<>(shape(h, w, 6), 2);
 		for (int x = 0; x < w; x++) {
 			for (int y = 0; y < h; y++) {
-				rays.setMem(rays.getShape().index(y, x, 0), x - (w / 2), y - (h / 2), 3, 0, 0, -1);
+				rays.setMem(rays.getShape().index(y, x, 0), (x - (w / 2)) * 0.1, (y - (h / 2)) * 0.1, 3, 0, 0, -1);
 			}
 		}
 
 		PackedCollection<?> destination = new PackedCollection<>(shape(h, w, 2), 2);
 
-		Evaluable<Scalar> ev = s.discriminant(v(shape(6), 0)).get(); // f.getDistance().get();
+		Producer<Scalar> d = s.discriminant(ray); // oDotd(ray).pow(2.0).subtract(dDotd(ray).multiply(oDoto(ray).add(-1.0)));
+		Evaluable<Scalar> ev = scalar(_greaterThan(c(d), c(0.0), scalar(1.0), scalar(-1.0))).get();
 		ev.into(destination).evaluate(rays);
 
 		int hits = 0;
@@ -84,7 +91,40 @@ public class SphereTest implements TestFeatures {
 		}
 
 		System.out.println(hits + " hits");
-		// Assert.assertEquals(4900, hits);
+		Assert.assertEquals(305, hits);
+	}
+
+	@Test
+	public void intersectionKernel() {
+		int w = 100;
+		int h = 100;
+
+		Sphere s = new Sphere();
+
+		ShadableIntersection f = s.intersectAt(v(Ray.shape(), 0));
+
+		PackedCollection<?> rays = new PackedCollection<>(shape(h, w, 6), 2);
+		for (int x = 0; x < w; x++) {
+			for (int y = 0; y < h; y++) {
+				rays.setMem(rays.getShape().index(y, x, 0), (x - (w / 2)) * 0.1, (y - (h / 2)) * 0.1, 3, 0, 0, -1);
+			}
+		}
+
+		PackedCollection<?> destination = new PackedCollection<>(shape(h, w, 2), 2);
+
+		Evaluable<Scalar> ev = f.getDistance().get();
+		ev.into(destination).evaluate(rays);
+
+		int hits = 0;
+
+		for (int x = 0; x < w; x++) {
+			for (int y = 0; y < h; y++) {
+				hits += destination.valueAt(y, x, 0) > 0.0 ? 1 : 0;
+			}
+		}
+
+		System.out.println(hits + " hits");
+		Assert.assertEquals(305, hits);
 	}
 
 	// @Test

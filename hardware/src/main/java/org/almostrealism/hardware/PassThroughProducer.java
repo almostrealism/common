@@ -37,6 +37,7 @@ import org.almostrealism.hardware.mem.MemoryDataDestination;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.IntFunction;
@@ -207,7 +208,8 @@ public class PassThroughProducer<T extends MemoryData>
 	public Expression<Double> getValue(int pos) { return getValueFunction().apply(pos); }
 
 	public IntFunction<Expression<Double>> getValueFunction() {
-		return pos -> new Expression<>(Double.class, getArgumentValueName(0, pos, kernelIndex), getArgument(0));
+		// return pos -> new Expression<>(Double.class, getArgumentValueName(0, pos, kernelIndex), Collections.emptyList(), getArgument(0));
+		return pos -> getArgument(0).valueAt(pos);
 	}
 
 	@Override

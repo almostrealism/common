@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,23 +14,26 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.color.computations;
+package io.almostrealism.expression;
 
-import org.almostrealism.color.RGB;
-import org.almostrealism.color.RGBFeatures;
-import org.almostrealism.hardware.AcceleratedEvaluable;
-import io.almostrealism.relation.Evaluable;
+import java.util.OptionalDouble;
+import java.util.function.DoubleFunction;
 
-import java.util.function.Supplier;
+public class DoubleConstant extends Constant<Double> {
+	public static DoubleFunction<String> stringForDouble = d -> String.valueOf(d);
 
-@Deprecated
-public class RGBAdd extends AcceleratedEvaluable<RGB, RGB> implements RGBFeatures {
-	public RGBAdd(Supplier<Evaluable<? extends RGB>> a, Supplier<Evaluable<? extends RGB>> b) {
-		super("add", RGB.blank(), a, b);
+	private double value;
+
+	public DoubleConstant(Double value) {
+		super(Double.class);
+		this.value = value;
 	}
 
 	@Override
-	public RGB replaceNull(int argIndex) {
-		return black().get().evaluate();
+	public OptionalDouble doubleValue() {
+		return OptionalDouble.of(value);
 	}
+
+	@Override
+	public String getExpression() { return stringForDouble.apply(value); }
 }

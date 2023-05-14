@@ -40,6 +40,21 @@ public class RayTest implements TestFeatures {
 	}
 
 	@Test
+	public void dotProductTests() {
+		Producer<Ray> r = v(Ray.shape(), 0);
+
+		assertEquals(1 + 4 + 9, oDoto(r).get().evaluate(new Ray(
+				new Vector(1, 2, 3),
+				new Vector(7, 4, 2))));
+		assertEquals(49 + 16 + 4, dDotd(r).get().evaluate(new Ray(
+				new Vector(1, 2, 3),
+				new Vector(7, 4, 2))));
+		assertEquals(7 + 8 + 6, oDotd(r).get().evaluate(new Ray(
+				new Vector(1, 2, 3),
+				new Vector(7, 4, 2))));
+	}
+
+	@Test
 	public void staticComputation() {
 		Producer<Ray> comp = value(new Ray(new Vector(1.0, 2.0, 3.0),
 															new Vector(4.0, 5.0, 6.0)));

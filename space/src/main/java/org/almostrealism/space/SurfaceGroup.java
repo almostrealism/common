@@ -24,11 +24,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
 
-import io.almostrealism.relation.Group;
 import io.almostrealism.relation.NodeGroup;
 import org.almostrealism.algebra.*;
 import org.almostrealism.color.RGB;
-import org.almostrealism.color.computations.RGBAdd;
 import org.almostrealism.color.ShaderContext;
 import org.almostrealism.geometry.ContinuousField;
 import org.almostrealism.geometry.Intersectable;
@@ -136,7 +134,7 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 				color = getParent().shade(p);
 			} else {
 				final Producer<RGB> fc = color;
-				color = () -> new RGBAdd(fc, getParent().shade(p));
+				color = add(fc, getParent().shade(p));
 			}
 		}
 		

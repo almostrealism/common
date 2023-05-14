@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -20,28 +20,36 @@ import java.util.List;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 
-public class Minus extends UnaryExpression<Double> {
-	public Minus(Expression<Double> value) {
-		super(Double.class, "-", value);
+public class Cast extends UnaryExpression<Double> {
+	private String typeName;
+
+	public Cast(String typeName, Expression<?> operand) {
+		super(Double.class, "(" + typeName + ")", operand);
+		this.typeName = typeName;
 	}
 
 	@Override
-	public Expression<Double> generate(List<Expression<?>> children) {
-		if (children.size() != 1)  throw new UnsupportedOperationException();
-		return new Minus((Expression<Double>) children.get(0));
+	public Expression generate(List children) {
+		if (children.size() != 1) throw new UnsupportedOperationException();
+		return new Cast(typeName, (Expression) children.get(0));
 	}
 
 	@Override
 	public OptionalInt intValue() {
 		OptionalInt i = getChildren().get(0).intValue();
-		if (i.isPresent()) return OptionalInt.of(i.getAsInt() * -1);
+		if (i.isPresent()) return i;
 		return super.intValue();
 	}
 
 	@Override
 	public OptionalDouble doubleValue() {
 		OptionalDouble d = getChildren().get(0).doubleValue();
-		if (d.isPresent()) return OptionalDouble.of(d.getAsDouble() * -1);
+		if (d.isPresent()) return d;
 		return super.doubleValue();
+	}
+
+	@Override
+	public String toString() {
+		return getExpression();
 	}
 }

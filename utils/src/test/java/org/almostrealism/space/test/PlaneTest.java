@@ -16,7 +16,6 @@
 
 package org.almostrealism.space.test;
 
-import org.almostrealism.geometry.RayProducerBase;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
@@ -84,7 +83,7 @@ public class PlaneTest implements HardwareFeatures, CodeFeatures {
 		Plane p = new Plane(Plane.XZ);
 		p.setLocation(new Vector(0.0, -10, 0.0));
 
-		RayProducerBase t = transform(p.getTransform(true),
+		Producer<Ray> t = transform(p.getTransform(true),
 					ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0));
 		Assert.assertEquals(new Ray(new Vector(0.0, -10.0, 1.0),
 				new Vector(0.0, 0.5, -1.0)), t.get().evaluate());

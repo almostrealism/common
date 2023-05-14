@@ -20,12 +20,15 @@ import io.almostrealism.expression.Conditional;
 import io.almostrealism.expression.Equals;
 import io.almostrealism.expression.Exp;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.scope.Variable;
+
+import java.util.Collections;
 
 public interface ExpressionFeatures {
 
 	default Expression e(int value) {
-		return expression(String.valueOf(value));
+		return new IntegerConstant(value);
 	}
 
 
@@ -33,8 +36,9 @@ public interface ExpressionFeatures {
 		return new Expression<>(Double.class, expression, dependencies);
 	}
 
+	@Deprecated
 	default Expression<Double> expression(String expression, Variable<?, ?>... dependencies) {
-		return new Expression<>(Double.class, expression, dependencies);
+		return new Expression<>(Double.class, expression, Collections.emptyList(), dependencies);
 	}
 
 	default Exp exp(Expression expression) {

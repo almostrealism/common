@@ -54,9 +54,9 @@ public class TimeCellReset extends DynamicOperationComputationAdapter {
 
 		for (int i = 0; i < len; i++) {
 			if (i > 0) exp.accept(" else ");
-			exp.accept("if (" + getTime().valueAt(1).getExpression() + " == " + getResets().valueAt(i).getExpression() + ") {\n");
+			exp.accept("if (" + getTime().valueAt(1).getSimpleExpression() + " == " + getResets().valueAt(i).getSimpleExpression() + ") {\n");
 			exp.accept("\t");
-			exp.accept(getTime().valueAt(0).getExpression());
+			exp.accept(getTime().valueAt(0).getSimpleExpression());
 			exp.accept(" = ");
 			exp.accept(stringForDouble(0.0));
 			exp.accept(";\n");

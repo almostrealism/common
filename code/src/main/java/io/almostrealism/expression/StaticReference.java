@@ -16,15 +16,24 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.scope.Variable;
+
+import java.util.Collections;
 import java.util.List;
 
-public class Difference extends NAryExpression<Double> {
-	public Difference(Expression<Double>... values) {
-		super(Double.class, "-", values);
+public class StaticReference<T> extends Expression<T> {
+	public StaticReference(Class<T> type, String expression) {
+		super(type, expression, Collections.emptyList());
 	}
 
 	@Override
-	public Expression<Double> generate(List<Expression<?>> children) {
-		return new Difference(children.toArray(new Expression[0]));
+	public Expression<T> generate(List<Expression<?>> children) {
+		if (children.size() > 0) throw new UnsupportedOperationException();
+		return this;
+	}
+
+	@Override
+	public String toString() {
+		return getExpression();
 	}
 }

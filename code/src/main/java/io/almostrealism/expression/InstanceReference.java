@@ -20,6 +20,9 @@ import io.almostrealism.code.CodePrintWriter;
 import io.almostrealism.code.CollectionUtils;
 import io.almostrealism.scope.Variable;
 
+import java.util.Collections;
+import java.util.List;
+
 /**
  * {@link InstanceReference} is used to reference a previously declared
  * {@link Variable}. {@link CodePrintWriter} implementations should
@@ -42,16 +45,24 @@ public class InstanceReference<T> extends Expression<T> {
 	}
 
 	public InstanceReference(Class<T> type, String varName, Variable... dependencies) {
-		super(type, varName, dependencies);
+		super(type, varName, Collections.emptyList(), dependencies);
 	}
 
 	public Variable<T, ?> getReferent() { return var; }
 
 	public Variable assign(Expression exp) {
 		if (enablePassDelegate) {
-			return new Variable(getExpression(), false, exp, getReferent().getDelegate());
+			return new Variable(getSimpleExpression(), false, exp, getReferent().getDelegate());
 		} else {
-			return new Variable(getExpression(), false, exp);
+			return new Variable(getSimpleExpression(), false, exp);
 		}
+	}
+
+	public InstanceReference<T> generate(List<Expression<?>> children) {
+		if (children.size() > 0) {
+			throw new UnsupportedOperationException();
+		}
+
+		return this;
 	}
 }

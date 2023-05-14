@@ -17,6 +17,9 @@
 package org.almostrealism.time.computations;
 
 import io.almostrealism.code.HybridScope;
+import io.almostrealism.expression.DoubleConstant;
+import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.expression.StaticReference;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.expression.Expression;
@@ -44,29 +47,30 @@ public class AcceleratedTimeSeriesValueAt extends DynamicCollectionProducerCompu
 		HybridScope<Scalar> scope = new HybridScope<>(this);
 		scope.getVariables().add(parentScope.getVariables().get(1));
 
-		String left = getVariableName(0);
-		String right = getVariableName(1);
+		Expression i = new StaticReference(Integer.class, "i");
+		Expression left = new StaticReference(Integer.class, getVariableName(0));
+		Expression right = new StaticReference(Integer.class, getVariableName(1));
 		String v1 = getVariableName(2);
 		String v2 = getVariableName(3);
 		String t1 = getVariableName(4);
 		String t2 = getVariableName(5);
 
-		scope.getVariables().add(new Variable<>(left, new Expression<>(Integer.class, "-1")));
-		scope.getVariables().add(new Variable<>(right, new Expression<>(Integer.class, "-1")));
-		scope.getVariables().add(new Variable<>(v1, new Expression<>(Double.class, "0.0")));
-		scope.getVariables().add(new Variable<>(v2, new Expression<>(Double.class, "0.0")));
-		scope.getVariables().add(new Variable<>(t1, new Expression<>(Double.class, "0.0")));
-		scope.getVariables().add(new Variable<>(t2, new Expression<>(Double.class, "0.0")));
+		scope.getVariables().add(new Variable<>(left.getSimpleExpression(), new IntegerConstant(-1)));
+		scope.getVariables().add(new Variable<>(right.getSimpleExpression(), new IntegerConstant(-1)));
+		scope.getVariables().add(new Variable<>(v1, new DoubleConstant(0.0)));
+		scope.getVariables().add(new Variable<>(v2, new DoubleConstant(0.0)));
+		scope.getVariables().add(new Variable<>(t1, new DoubleConstant(0.0)));
+		scope.getVariables().add(new Variable<>(t2, new DoubleConstant(0.0)));
 
-		String res = getArgument(0).valueAt(0).getExpression();
-		String bank0 = getArgument(1).valueAt(0).getExpression();
-		String bank1 = getArgument(1).valueAt(1).getExpression();
-		String banki = getArgument(1).get("2 * i").getExpression();
-		String bankl0 = getArgument(1).get("2 * " + left).getExpression();
-		String bankl1 = getArgument(1).get("2 * " + left + " + 1").getExpression();
-		String bankr0 = getArgument(1).get("2 * " + right).getExpression();
-		String bankr1 = getArgument(1).get("2 * " + right + " + 1").getExpression();
-		String cursor0 = getArgument(2).valueAt(0).getExpression();
+		String res = getArgument(0).valueAt(0).getSimpleExpression();
+		String bank0 = getArgument(1).valueAt(0).getSimpleExpression();
+		String bank1 = getArgument(1).valueAt(1).getSimpleExpression();
+		String banki = getArgument(1).get(i.multiply(2)).getSimpleExpression();
+		String bankl0 = getArgument(1).get(left.multiply(2)).getSimpleExpression();
+		String bankl1 = getArgument(1).get(left.multiply(2).add(1)).getSimpleExpression();
+		String bankr0 = getArgument(1).get(right.multiply(2)).getSimpleExpression();
+		String bankr1 = getArgument(1).get(right.multiply(2).add(1)).getSimpleExpression();
+		String cursor0 = getArgument(2).valueAt(0).getSimpleExpression();
 
 		Consumer<String> code = scope.code();
 		code.accept("for (int i = " + bank0 + "; i < " + bank1 + "; i++) {\n");
@@ -98,7 +102,7 @@ public class AcceleratedTimeSeriesValueAt extends DynamicCollectionProducerCompu
 
 	@Override
 	public IntFunction<Expression<Double>> getValueFunction() {
-		return i -> new Expression<>(Double.class, "1.0");
+		return i -> new DoubleConstant(1.0);
 	}
 
 	@Override

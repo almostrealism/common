@@ -22,74 +22,86 @@ import io.almostrealism.scope.Variable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.OptionalDouble;
+import java.util.OptionalInt;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 
+// TODO  Make abstract
 public class Expression<T> implements Tree<Expression<?>> {
 	private Class<T> type;
 	private Supplier<String> expression;
 	private List<Variable<?, ?>> dependencies = new ArrayList<>();
+	private List<Expression<?>> children = new ArrayList<>();
 	private int arraySize = -1;
 
 	public Expression(Class<T> type) {
 		setType(type);
 	}
 
+	@Deprecated
 	public Expression(Class<T> type, String expression) {
-		this(type, expression, new Variable[0]);
+		this(type, expression, Collections.emptyList(), new Variable[0]);
+		// System.out.println("WARN: Deprecated Expression construction");
 	}
 
-	public Expression(Class<T> type, String expression, Expression<?>... dependencies) {
-		this(type, expression, dependencies(dependencies));
+	public Expression(Class<T> type, String expression, Expression<?>... children) {
+		this(type, expression, List.of(children), dependencies(children));
 	}
 
-	public Expression(Class<T> type, String expression, Variable<?, ?>... dependencies) {
+	@Deprecated
+	public Expression(Class<T> type, String expression, List<Expression<?>> children, Variable<?, ?>... dependencies) {
 		if (type == null) {
 			throw new IllegalArgumentException("Type is required");
 		}
 
 		setType(type);
 		this.expression = () -> expression;
+		this.children = children;
 		this.dependencies = new ArrayList<>();
 		this.dependencies.addAll(Arrays.asList(dependencies));
 	}
 
-	public Expression(Class<T> type, String expression, int arraySize) {
-		setType(type);
-		this.expression = () -> expression;
-		setArraySize(arraySize);
-	}
-
 	public Expression(int arraySize) {
-		this(null, (Supplier) null, arraySize);
-	}
-
-	public Expression(Supplier<String> expression) {
-		this(null, expression);
-	}
-
-	public Expression(Class<T> type, Supplier<String> expression) {
-		setType(type);
-		this.expression = expression;
-	}
-
-	public Expression(Class<T> type, Supplier<String> expression, int arraySize) {
-		setType(type);
-		this.expression = expression;
+		setType(null);
+		setExpression((Supplier<String>) null);
 		setArraySize(arraySize);
 	}
 
 	public void setType(Class<T> t) { this.type = t; }
 	public Class<T> getType() { return this.type; }
 
-	public String getExpression() {
-		if (expression != null) return expression.get();
-		return null;
+	public boolean isNull() {
+		return expression == null || expression.get() == null;
 	}
+
+	public OptionalInt intValue() { return OptionalInt.empty(); }
+	public OptionalDouble doubleValue() {
+		OptionalInt intValue = intValue();
+		return intValue.isPresent() ? OptionalDouble.of(intValue.getAsInt()) : OptionalDouble.empty();
+	}
+
+	public String getSimpleExpression() {
+		if (getClass() == Expression.class) {
+			System.out.println("WARN: Unable to retrieve simplified expression");
+			return getExpression();
+		}
+
+		return simplify().getExpression();
+	}
+
+	@Deprecated
+	public String getExpression() {
+		if (isNull()) return null;
+		return expression.get();
+	}
+
 	public void setExpression(String expression) { this.expression = () -> expression; }
 	public void setExpression(Supplier<String> expression) { this.expression = expression; }
 
@@ -99,22 +111,27 @@ public class Expression<T> implements Tree<Expression<?>> {
 	public void setArraySize(int arraySize) { this.arraySize = arraySize; }
 
 	public T getValue() {
-		if (expression != null) {
+		OptionalDouble v = doubleValue();
+
+		if (v.isPresent()) {
+			return (T) Double.valueOf(v.getAsDouble());
+		} else if (expression != null) {
 			return (T) expression.get();
 		} else {
-			throw new RuntimeException();
+			throw new UnsupportedOperationException();
 		}
 	}
 
 	public Minus minus() { return new Minus((Expression) this); }
 
+	public Sum add(int operand) { return new Sum((Expression) this, (Expression) new IntegerConstant(operand)); }
 	public Sum add(Expression<Double> operand) { return new Sum((Expression) this, operand); }
 	public Difference subtract(Expression<Double> operand) { return new Difference((Expression) this, operand); }
 
-	public Product multiply(int operand) { return new Product((Expression) this, new Expression(Integer.class, String.valueOf(operand))); }
+	public Product multiply(int operand) { return new Product((Expression) this, (Expression) new IntegerConstant(operand)); }
 	public Product multiply(Expression<Double> operand) { return new Product((Expression) this, operand); }
 
-	public Quotient divide(int operand) { return new Quotient((Expression) this, new Expression(Integer.class, String.valueOf(operand))); }
+	public Quotient divide(int operand) { return new Quotient((Expression) this, (Expression) new IntegerConstant(operand)); }
 	public Quotient divide(Expression<Double> operand) { return new Quotient((Expression) this, operand); }
 
 	public Exponent pow(Expression<Double> operand) { return new Exponent((Expression) this, operand); }
@@ -124,11 +141,25 @@ public class Expression<T> implements Tree<Expression<?>> {
 
 	public Mod mod(Expression<Double> operand) { return new Mod((Expression) this, operand); }
 
-	public Equals eq(Expression<T> operand) { return new Equals(this, operand); }
+	public Equals eq(Expression<?> operand) { return new Equals(this, operand); }
+
+	public Cast toInt() { return new Cast("int", this); }
 
 	@Override
-	public Collection<Expression<?>> getChildren() {
+	public List<Expression<?>> getChildren() {
+		return children;
+	}
+
+	public Expression<T> generate(List<Expression<?>> children) {
 		throw new UnsupportedOperationException();
+	}
+
+	public Expression<T> flatten() {
+		return generate((List) getChildren().stream().map(Expression::flatten).collect(Collectors.toList()));
+	}
+
+	public Expression<T> simplify() {
+		return generate((List) flatten().getChildren().stream().map(Expression::simplify).collect(Collectors.toList()));
 	}
 
 	@Override

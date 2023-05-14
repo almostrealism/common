@@ -17,6 +17,7 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.Memory;
+import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Delegated;
@@ -112,13 +113,7 @@ public interface MemoryData extends MultiExpression<Double>, Delegated<MemoryDat
 	default Expression<Double> getValue(int pos) {
 		double out[] = new double[1];
 		getMem(pos, out, 0, 1);
-
-		String s = Hardware.getLocalHardware().stringForDouble(out[0]);
-		if (s.contains("Infinity")) {
-			throw new IllegalArgumentException("Infinity is not supported");
-		}
-
-		return new Expression<>(Double.class, s);
+		return new DoubleConstant(out[0]);
 	}
 
 	default void setMem(int offset, double... values) {

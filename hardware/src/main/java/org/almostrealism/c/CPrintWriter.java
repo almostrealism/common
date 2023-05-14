@@ -137,7 +137,7 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 
 	protected void copyInline(int index, ArrayVariable<?> variable, boolean write) {
 		String o = "((double *) argArr[" + index + "])";
-		String v = new InstanceReference<>(variable).getExpression();
+		String v = new InstanceReference<>(variable).getSimpleExpression();
 
 		if (!write) println("double *" + v + " = " + o + ";");
 	}
@@ -146,13 +146,13 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 	public void println(Variable<?, ?> variable) {
 		if (variable.isDeclaration()) {
 			if (variable.getProducer() == null) {
-				if (variable.getExpression() == null || variable.getExpression().getExpression() == null) {
+				if (variable.getExpression() == null || variable.getExpression().isNull()) {
 					if (variable.getArraySize() == null) {
 						println(annotationForVariable(variable) + typePrefix(variable.getType()) +
-										variable.getName());
+										variable.getName() + ";");
 					} else {
 						println(annotationForVariable(variable) + typePrefix(variable.getType()) +
-								variable.getName() + "[" + variable.getArraySize().getExpression() + "];");
+								variable.getName() + "[" + variable.getArraySize().getSimpleExpression() + "];");
 					}
 				} else {
 					println(annotationForVariable(variable) + typePrefix(variable.getType()) + variable.getName() +
@@ -248,7 +248,7 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 
 	protected static String encode(Object data) {
 		if (data instanceof Expression) {
-			return ((Expression) data).getExpression();
+			return ((Expression) data).getSimpleExpression();
 		} else {
 			throw new IllegalArgumentException("Unable to encode " + data);
 		}

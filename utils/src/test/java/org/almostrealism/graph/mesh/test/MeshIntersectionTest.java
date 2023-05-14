@@ -25,7 +25,6 @@ import org.almostrealism.algebra.ScalarProducerBase;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorProducerBase;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.geometry.RayProducerBase;
 import org.almostrealism.geometry.computations.RayExpressionComputation;
 import org.almostrealism.hardware.Input;
 import org.almostrealism.space.DefaultVertexData;
@@ -206,8 +205,8 @@ public class MeshIntersectionTest implements TestFeatures {
 	@Test
 	public void intersectionKernel1() {
 		ScalarBank distances = new ScalarBank(1);
-		RayProducerBase ray = ray(origin1, direction1);
-		data1.evaluateIntersectionKernel(ray.get(), distances, new MemoryBank[0]);
+		Producer<Ray> ray = ray(origin1, direction1);
+		data1.evaluateIntersectionKernel((KernelizedEvaluable<Ray>) ray.get(), distances, new MemoryBank[0]);
 		System.out.println("distance = " + distances.get(0).getValue());
 		Assert.assertEquals(1.0, distances.get(0).getValue(), Math.pow(10, -10));
 	}

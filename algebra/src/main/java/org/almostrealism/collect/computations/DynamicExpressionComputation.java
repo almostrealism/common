@@ -17,6 +17,7 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.StaticReference;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.CollectionExpression;
 import org.almostrealism.collect.CollectionVariable;
@@ -94,7 +95,7 @@ public class DynamicExpressionComputation<T extends PackedCollection<?>> extends
 		return pos -> {
 			if (pos > getMemLength()) throw new IllegalArgumentException();
 
-			Expression<?> index = new Expression(Double.class, KernelSupport.getKernelIndex(0));
+			Expression<?> index = new StaticReference<>(Integer.class, KernelSupport.getKernelIndex(0));
 			index = index.multiply(getMemLength()).add(e(pos));
 
 			return getExpression().getValueAt(index);

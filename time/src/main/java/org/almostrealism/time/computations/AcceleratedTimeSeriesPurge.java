@@ -17,6 +17,8 @@
 package org.almostrealism.time.computations;
 
 import io.almostrealism.code.HybridScope;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.StaticReference;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.Scalar;
@@ -39,11 +41,12 @@ public class AcceleratedTimeSeriesPurge extends DynamicOperationComputationAdapt
 	public Scope<Void> getScope() {
 		HybridScope<Void> scope = new HybridScope<>(this);
 
-		String left = getArgument(0).valueAt(0).getExpression();
-		String right = getArgument(0).valueAt(1).getExpression();
-		String banki = getArgument(0).get("2 * i").getExpression();
-		String cursor0 = getArgument(1).valueAt(0).getExpression();
-		String count = getArgument(2).valueAt(0).getExpression();
+		Expression i = new StaticReference(Integer.class, "i");
+		String left = getArgument(0).valueAt(0).getSimpleExpression();
+		String right = getArgument(0).valueAt(1).getSimpleExpression();
+		String banki = getArgument(0).get(i.multiply(2)).getSimpleExpression();
+		String cursor0 = getArgument(1).valueAt(0).getSimpleExpression();
+		String count = getArgument(2).valueAt(0).getSimpleExpression();
 
 		Consumer<String> code = scope.code();
 		if (wavelength != 1.0) {

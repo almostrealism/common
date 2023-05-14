@@ -16,8 +16,16 @@
 
 package io.almostrealism.expression;
 
+import java.util.List;
+
 public class Equals extends Expression<Boolean> {
 	public Equals(Expression<?> left, Expression<?> right) {
 		super(Boolean.class, "(" + left.getExpression() + ") == (" + right.getExpression() + ")", left, right);
+	}
+
+	@Override
+	public Expression<Boolean> generate(List<Expression<?>> children) {
+		if (children.size() != 2) throw new UnsupportedOperationException();
+		return new Equals(children.get(0), children.get(1));
 	}
 }

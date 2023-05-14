@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,7 +21,6 @@ import java.util.*;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.Triple;
 import org.almostrealism.color.*;
-import org.almostrealism.color.computations.RGBAdd;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.physics.Porous;
 import io.almostrealism.code.Constant;
@@ -516,8 +515,7 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 			if (color == null) {
 				color = getParent().shade(p);
 			} else {
-				final Producer<RGB> fc = color;
-				color = () -> new RGBAdd(fc, getParent().shade(p));
+				color = add(color, getParent().shade(p));
 			}
 		}
 		

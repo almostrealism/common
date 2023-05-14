@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,6 +17,10 @@
 package io.almostrealism.relation;
 
 public interface ProducerWithRank<T, R> extends Producer<T> {
+	@Override
+	default Evaluable<T> get() {
+		return getProducer().get();
+	}
 
 	Producer<T> getProducer();
 

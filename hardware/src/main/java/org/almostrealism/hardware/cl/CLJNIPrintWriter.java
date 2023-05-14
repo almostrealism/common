@@ -17,6 +17,7 @@
 package org.almostrealism.hardware.cl;
 
 import io.almostrealism.code.Accessibility;
+import io.almostrealism.expression.StaticReference;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Method;
 import io.almostrealism.scope.Variable;
@@ -71,7 +72,7 @@ public class CLJNIPrintWriter extends CJNIPrintWriter {
 
 		IntStream.range(0, arguments.size())
 				.mapToObj(i -> new Variable("*" + arguments.get(i).getName(),
-						new Expression<>(Double.class, "(" + numberType + "*) malloc("
+						new StaticReference(Double.class, "(" + numberType + "*) malloc("
 											+ numberSize + " * sizeArr[" + i + "])")))
 				.forEach(this::println);
 		arguments.stream().map(argument -> new Variable<>(argument.getName() + "Offset",

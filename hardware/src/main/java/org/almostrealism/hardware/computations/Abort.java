@@ -45,7 +45,7 @@ public class Abort extends DynamicOperationComputationAdapter<MemoryData> {
 	public Scope<Void> getScope() {
 		HybridScope<Void> scope = new HybridScope<>(this);
 		scope.code().accept("if (");
-		scope.code().accept(getArgument(0).get("0").getExpression());
+		scope.code().accept(getArgument(0).get(e(0)).getSimpleExpression());
 		scope.code().accept(" > 0) { return; }");
 		return scope;
 	}

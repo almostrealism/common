@@ -16,7 +16,10 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.expression.Cast;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.Mod;
+import io.almostrealism.expression.StaticReference;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -59,7 +62,7 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 			if (i != 0)
 				throw new IllegalArgumentException("Invalid position");
 
-			Expression index = new Expression(Double.class, KernelSupport.getKernelIndex(0));
+			Expression index = new StaticReference(Double.class, KernelSupport.getKernelIndex(0));
 			return getValueAt(index);
 		};
 	}
@@ -76,7 +79,7 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		if (var == null) return null;
 
 		// Find the index in that slice
-		Expression offset = e("((int) " + index.getExpression() + ") % " + subsetShape.getTotalSize(), index);
+		Expression offset = new Mod(new Cast("int", index), e(subsetShape.getTotalSize()), false);
 
 		return var.getValueAt(offset);
 	}

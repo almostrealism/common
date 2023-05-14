@@ -18,6 +18,7 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.HybridScope;
 import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.expression.StaticReference;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.expression.Expression;
@@ -45,10 +46,10 @@ public class PackedCollectionMax extends CollectionProducerComputationAdapter<Pa
 		HybridScope<PackedCollection<?>> scope = new HybridScope<>(this);
 		scope.setMetadata(new OperationMetadata(getFunctionName(), "PackedCollectionMax"));
 
-		String i = getVariablePrefix() + "_i";
-		String result = getArgument(0, 2).valueAt(0).getExpression();
-		String value = expression.apply(getArgument(1).get(i)).getExpression();
-		String count = getArgument(1).length().getExpression();
+		Expression i = new StaticReference<>(Integer.class, getVariablePrefix() + "_i");
+		String result = getArgument(0, 2).valueAt(0).getSimpleExpression();
+		String value = expression.apply(getArgument(1).get(i)).getSimpleExpression();
+		String count = getArgument(1).length().getSimpleExpression();
 
 		scope.code().accept("for (int " + i + " = 0; " + i + " < " + count +"; " + i + "++) {\n");
 		scope.code().accept("    if (" + value + " > " + result + ") {\n");

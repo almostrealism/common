@@ -19,6 +19,8 @@ package org.almostrealism.algebra.computations;
 import io.almostrealism.code.HybridScope;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
+import io.almostrealism.expression.DoubleConstant;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
@@ -54,12 +56,13 @@ public abstract class Choice<T extends PackedCollection<?>> extends CollectionPr
 
 		ArrayVariable<?> output = getArgument(0, getMemLength());
 		ArrayVariable<?> input = getArgument(2, getMemLength() * choiceCount);
-		String decision = getArgument(1, 2).valueAt(0).getExpression();
-		String choices = stringForDouble(choiceCount);
-		String decisionChoice = "floor(" + decision + " * " + choices + ") * " + getMemLength();
+		Expression decision = getArgument(1, 2).valueAt(0);
+		Expression choices = new DoubleConstant((double) choiceCount);
+//		String decisionChoice = "floor(" + decision + " * " + choices + ") * " + getMemLength();
+		Expression decisionChoice = decision.multiply(choices).floor().multiply(getMemLength());
 
 		for (int i = 0; i < getMemLength(); i++) {
-			code.accept(output.valueAt(i).getExpression() + " = " + input.get(decisionChoice + " + " + i).getExpression() + ";\n");
+			code.accept(output.valueAt(i).getSimpleExpression() + " = " + input.get(decisionChoice.add(i)).getSimpleExpression() + ";\n");
 		}
 
 		return scope;

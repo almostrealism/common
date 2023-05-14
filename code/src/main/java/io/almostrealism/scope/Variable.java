@@ -19,6 +19,7 @@ package io.almostrealism.scope;
 import io.almostrealism.code.KernelIndex;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
@@ -92,10 +93,6 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 		this(name, declaration, (Expression) null, delegate);
 	}
 
-	public Variable(String name, PhysicalScope scope, Supplier<Evaluable<? extends T>> producer) {
-		this(name, scope, (Class) null, producer);
-	}
-
 	public Variable(String name, Class<T> type, T value) {
 		this(name, type, () -> new Provider<>(value));
 	}
@@ -117,17 +114,9 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 		this(name, new Expression(type, expression));
 	}
 
-	public Variable(String name, Class<T> type, String expression, Supplier<Evaluable<? extends T>> producer, int arraySize) {
-		this(name, true, new Expression(type, expression, arraySize), producer);
-	}
-
 	public Variable(String name, Supplier<Evaluable<? extends T>> producer, int arraySize, PhysicalScope scope) {
-		this(name, null, (Supplier) null, producer, arraySize);
+		this(name, true, new Expression(arraySize), producer);
 		setPhysicalScope(scope);
-	}
-
-	public Variable(String name, Class<T> type, Supplier<String> expression, Supplier<Evaluable<? extends T>> producer, int arraySize) {
-		this(name, true, new Expression(type, expression, arraySize), producer);
 	}
 
 	@Override
@@ -214,7 +203,7 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 	public Expression<Integer> getArraySize() {
 		if (getExpression() == null) return null;
 		if (getExpression().getArraySize() <= 0) return null;
-		return new Expression<>(Integer.class, String.valueOf(getExpression().getArraySize()));
+		return new IntegerConstant(getExpression().getArraySize());
 	}
 
 	@Override

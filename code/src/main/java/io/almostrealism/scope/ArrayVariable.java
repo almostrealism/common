@@ -85,10 +85,14 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 	}
 
 	public InstanceReference<T> get(Expression<?> pos, int kernelIndex) {
-		return get(pos.getExpression(), kernelIndex, pos.getDependencies().toArray(Variable[]::new));
+		return get(pos.getSimpleExpression(), kernelIndex, pos.getDependencies().toArray(Variable[]::new));
 	}
 
-	public InstanceReference<T> get(String pos, int kernelIndex, Variable... dependencies) {
+	private InstanceReference<T> get(String pos, int kernelIndex, Variable... dependencies) {
+		if (pos.contains("(double) 0.0")) {
+			System.out.println("WARN: 0.0 was not eliminated by simplification");
+		}
+
 		if (getDelegate() == null) {
 			return new InstanceReference(new Variable<>(names.getVariableValueName(this, pos, kernelIndex),
 					false, new Expression(getType()), this), dependencies);
@@ -101,9 +105,8 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 		}
 	}
 
-	@Override
-	public InstanceReference<T> get(String pos, Variable... dependencies) {
-		return get(pos, getKernelIndex(), dependencies);
+	public InstanceReference<T> get(Expression<?> pos) {
+		return get(pos, getKernelIndex());
 	}
 
 	public Expression<Integer> length() {

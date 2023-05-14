@@ -16,6 +16,7 @@
 
 package org.almostrealism.algebra;
 
+import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Minus;
 import io.almostrealism.expression.MultiExpression;
@@ -66,7 +67,7 @@ public interface PairBankFeatures extends CollectionFeatures {
 							new Product(args.get(1).getValue(i + 1), args.get(1).getValue(i + 1)));
 				}
 			} else {
-				return new Expression<>(Double.class, "1.0");
+				return new DoubleConstant(1.0);
 			}
 		}));
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,8 +16,70 @@
 
 package io.almostrealism.expression;
 
+import java.util.List;
+import java.util.OptionalInt;
+
 public class Mod extends Expression<Double> {
+	public static boolean enableSimplification = false;
+
+	private boolean fp;
+
 	public Mod(Expression<Double> a, Expression<Double> b) {
-		super(Double.class, "fmod(" + a.getExpression() + ", " + b.getExpression() + ")", a, b);
+		this(a, b, true);
+	}
+
+	public Mod(Expression<Double> a, Expression<Double> b, boolean fp) {
+		super(Double.class,
+				fp ? "fmod(" + a.getExpression() + ", " + b.getExpression() + ")" :
+						"(" + a.getExpression() + ") % (" + b.getExpression() + ")",
+				a, b);
+		this.fp = fp;
+	}
+
+	@Override
+	public Expression<Double> generate(List<Expression<?>> children) {
+		if (children.size() != 2) {
+			throw new UnsupportedOperationException();
+		}
+
+		return new Mod((Expression<Double>) children.get(0), (Expression<Double>) children.get(1), fp);
+	}
+
+	@Override
+	public OptionalInt intValue() {
+		Expression input = getChildren().get(0);
+		Expression mod = getChildren().get(1);
+
+		if (input.intValue().isPresent() && mod.intValue().isPresent() && mod.intValue().getAsInt() != 0) {
+			return OptionalInt.of(input.intValue().getAsInt() % mod.intValue().getAsInt());
+		}
+
+		return super.intValue();
+	}
+
+	@Override
+	public Expression<Double> simplify() {
+		Expression<?> flat = super.simplify();
+		if (!enableSimplification) return (Expression<Double>) flat;
+		if (!(flat instanceof Mod)) return (Expression<Double>) flat;
+
+		Expression input = flat.getChildren().get(0);
+		Expression mod = flat.getChildren().get(1);
+
+		if (input.doubleValue().isPresent()) {
+			if (input.doubleValue().getAsDouble() == 0.0) {
+				return new DoubleConstant(0.0);
+			} else if (mod.doubleValue().isPresent() && !fp) {
+				return new DoubleConstant(input.doubleValue().getAsDouble() % mod.doubleValue().getAsDouble());
+			}
+		} else if (mod.doubleValue().isPresent()) {
+			if (mod.doubleValue().getAsDouble() == 1.0) {
+				return input;
+			} else if (input.doubleValue().orElse(-1.0) == 0.0) {
+				// TODO  return new DoubleConstant(1.0); ?
+			}
+		}
+
+		return (Expression<Double>) flat;
 	}
 }

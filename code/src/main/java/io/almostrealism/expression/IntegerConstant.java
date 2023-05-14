@@ -16,15 +16,23 @@
 
 package io.almostrealism.expression;
 
-import java.util.List;
+import java.util.OptionalInt;
 
-public class Difference extends NAryExpression<Double> {
-	public Difference(Expression<Double>... values) {
-		super(Double.class, "-", values);
+public class IntegerConstant extends Constant<Integer> {
+	private int value;
+
+	public IntegerConstant(Integer value) {
+		super(Integer.class);
+		this.value = value;
 	}
 
 	@Override
-	public Expression<Double> generate(List<Expression<?>> children) {
-		return new Difference(children.toArray(new Expression[0]));
+	public OptionalInt intValue() {
+		return OptionalInt.of(value);
+	}
+
+	@Override
+	public String getExpression() {
+		return String.valueOf(value);
 	}
 }

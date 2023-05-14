@@ -38,21 +38,22 @@ public class WaveCellPush extends WaveCellComputation {
 
 		Consumer<String> exp = scope.code();
 		exp.accept("if ((");
-		exp.accept(getWavePosition().valueAt(0).getExpression());
+		exp.accept(getWavePosition().valueAt(0).getSimpleExpression());
 		exp.accept(" >= 0) & (");
-		exp.accept(getWavePosition().valueAt(0).getExpression());
+		exp.accept(getWavePosition().valueAt(0).getSimpleExpression());
 		exp.accept(" < ");
-		exp.accept(getWaveCount().valueAt(0).getExpression());
+		exp.accept(getWaveCount().valueAt(0).getSimpleExpression());
 		exp.accept(")) {\n");
-		exp.accept(getOutput().valueAt(0).getExpression());
+		exp.accept(getOutput().valueAt(0).getSimpleExpression());
 		exp.accept(" = ");
-		exp.accept(getAmplitude().valueAt(0).getExpression());
+		exp.accept(getAmplitude().valueAt(0).getSimpleExpression());
 		exp.accept(" * ");
-		exp.accept(getWave().get("(" + getWaveIndex().valueAt(0).getExpression() +
-				" + floor(" + getWavePosition().valueAt(0).getExpression() + "))").getExpression());
+//		exp.accept(getWave().get("(" + getWaveIndex().valueAt(0).getExpression() +
+//				" + floor(" + getWavePosition().valueAt(0).getExpression() + "))").getExpression());
+		exp.accept(getWave().get(getWaveIndex().valueAt(0).add(getWavePosition().valueAt(0).floor())).getSimpleExpression());
 		exp.accept(";\n");
 		exp.accept("} else {\n");
-		exp.accept(getOutput().valueAt(0).getExpression());
+		exp.accept(getOutput().valueAt(0).getSimpleExpression());
 		exp.accept(" = 0.0;\n");
 		exp.accept("}\n");
 	}

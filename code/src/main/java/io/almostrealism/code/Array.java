@@ -18,6 +18,7 @@ package io.almostrealism.code;
 
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
+import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.uml.Plural;
@@ -25,18 +26,18 @@ import io.almostrealism.uml.Plural;
 public interface Array<T, V extends Array<T, ?>> extends Plural<InstanceReference<T>>, Delegated<V> {
 	@Override
 	default InstanceReference<T> valueAt(int pos) {
-		return get(String.valueOf(pos));
+		return get(new IntegerConstant(pos));
 	}
 	
 	default InstanceReference<T> valueAt(Expression<?> exp) {
-		return get(exp.getExpression());
+		return get(exp);
 	}
 
 	default String ref(int pos) {
-		return valueAt(pos).getExpression();
+		return valueAt(pos).getSimpleExpression();
 	}
 
-	InstanceReference<T> get(String pos, Variable... dependencies);
+	InstanceReference<T> get(Expression<?> pos);
 
 	Expression<Integer> length();
 }
