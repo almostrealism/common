@@ -20,7 +20,12 @@ import java.util.List;
 
 public class Exp extends Expression<Double> {
 	public Exp(Expression<Double> input) {
-		super(Double.class, "exp(" + input.getExpression() + ")", input);
+		super(Double.class, null, input);
+	}
+
+	@Override
+	public String getExpression() {
+		return "exp(" + getChildren().get(0).getExpression() + ")";
 	}
 
 	@Override

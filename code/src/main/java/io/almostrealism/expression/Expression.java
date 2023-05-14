@@ -93,7 +93,22 @@ public class Expression<T> implements Tree<Expression<?>> {
 			return getExpression();
 		}
 
-		return simplify().getExpression();
+		Expression<?> simplified = simplify();
+		String exp = simplified.getExpression();
+
+		w: while (true) {
+			Expression<?> next = simplified.simplify();
+			String nextExp = next.getExpression();
+
+			if (nextExp.equals(exp)) {
+				break w;
+			}
+
+			simplified = next;
+			exp = nextExp;
+		}
+
+		return exp;
 	}
 
 	@Deprecated
@@ -154,12 +169,10 @@ public class Expression<T> implements Tree<Expression<?>> {
 		throw new UnsupportedOperationException();
 	}
 
-	public Expression<T> flatten() {
-		return generate((List) getChildren().stream().map(Expression::flatten).collect(Collectors.toList()));
-	}
+	public List<Expression<?>> flatten() { return getChildren(); }
 
 	public Expression<T> simplify() {
-		return generate((List) flatten().getChildren().stream().map(Expression::simplify).collect(Collectors.toList()));
+		return generate(getChildren().stream().map(Expression::simplify).collect(Collectors.toList()));
 	}
 
 	@Override

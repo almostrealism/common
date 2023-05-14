@@ -31,11 +31,10 @@ public class Product extends NAryExpression<Double> {
 	}
 
 	@Override
-	public Expression<Double> flatten() {
-		Expression<Double> flat = super.flatten();
-		if (!(flat instanceof Product)) return flat;
+	public List<Expression<?>> flatten() {
+		List<Expression<?>> flat = super.flatten();
 
-		List<Expression<?>> terms = flat.getChildren().stream()
+		List<Expression<?>> terms = flat.stream()
 				.filter(e -> e instanceof Product)
 				.flatMap(e -> e.getChildren().stream())
 				.collect(Collectors.toList());
@@ -44,21 +43,17 @@ public class Product extends NAryExpression<Double> {
 
 		List<Expression<?>> children = new ArrayList<>();
 		children.addAll(terms);
-		children.addAll(flat.getChildren().stream()
+		children.addAll(flat.stream()
 				.filter(e -> !(e instanceof Product))
 				.collect(Collectors.toList()));
 
 
-		return generate(children);
+		return children;
 	}
 
 	@Override
 	public Expression<Double> simplify() {
-		Expression<Double> flat = super.simplify();
-		if (!enableSimplification) return flat;
-		if (!(flat instanceof Product)) return flat;
-
-		List<Expression<?>> children = flat.getChildren().stream()
+		List<Expression<?>> children = super.simplify().flatten().stream()
 				.filter(e -> !removeIdentities || e.doubleValue().orElse(-1) != 1.0)
 				.collect(Collectors.toList());
 

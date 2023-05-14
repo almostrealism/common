@@ -35,6 +35,12 @@ public class Cast extends UnaryExpression<Double> {
 	}
 
 	@Override
+	public Cast toInt() {
+		if (typeName.equals("int")) return this;
+		return super.toInt();
+	}
+
+	@Override
 	public OptionalInt intValue() {
 		OptionalInt i = getChildren().get(0).intValue();
 		if (i.isPresent()) return i;

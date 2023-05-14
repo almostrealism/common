@@ -20,7 +20,12 @@ import java.util.List;
 
 public class Floor extends Expression<Double> {
 	public Floor(Expression<Double> input) {
-		super(Double.class, "floor(" + input.getExpression() + ")", input);
+		super(Double.class, null, input);
+	}
+
+	@Override
+	public String getExpression() {
+		return "floor(" + getChildren().get(0).getExpression() + ")";
 	}
 
 	@Override
