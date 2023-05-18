@@ -29,6 +29,7 @@ import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.ArrayVariableComputation;
+import org.almostrealism.hardware.KernelSupport;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.util.TestFeatures;
@@ -395,7 +396,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 
 		// output[i, j] = np.sum(im_region * self.filters, axis=(1, 2))
 
-		Expression index = new StaticReference(Integer.class, "get_global_id(0)");
+		Expression index = KernelSupport.index();
 		Expression i = outputShape.position(index)[0];
 		Expression j = outputShape.position(index)[1];
 		Expression k = outputShape.position(index)[2];
@@ -473,7 +474,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		TraversalPolicy subsetShape = shape(w, h, d);
 
 		CollectionProducerComputation<PackedCollection<?>> producer =
-				kernel(i -> new StaticReference<>(Integer.class, "get_global_id(" + i + ")"),
+				kernel(i -> KernelSupport.kernelIndex(i),
 						subsetShape, (i, p) -> i.v(0).get(shape(w, h, d), x0, y0, z0).valueAt(subsetShape.index(p)), p(input));
 		KernelizedEvaluable<PackedCollection<?>> ev = producer.get();
 
@@ -506,7 +507,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		PackedCollection<?> input = t.pack();
 
 		CollectionProducerComputation<PackedCollection<?>> producer =
-				kernel(i -> new StaticReference<>(Integer.class, "get_global_id(" + i + ")"),
+				kernel(i -> KernelSupport.kernelIndex(i),
 						outputShape, (i, p) -> {
 							System.out.println("i.v(0).shape = " + i.v(0).getShape());
 							Expression exp = i.v(0).get(shape(size, size), p.l(0), p.l(1)).toList().sum();

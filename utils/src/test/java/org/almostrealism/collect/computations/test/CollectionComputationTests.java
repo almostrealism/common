@@ -70,6 +70,14 @@ public class CollectionComputationTests implements TestFeatures {
 	}
 
 	@Test
+	public void integers() {
+		HardwareOperator.verboseLog(() -> {
+			PackedCollection<?> result = integers(10, 100).get().evaluate();
+			assertEquals(14, result.toDouble(4));
+		});
+	}
+
+	@Test
 	public void multiply() {
 		HardwareOperator.verboseLog(() -> {;
 			PackedCollection<?> testInput = new PackedCollection<>(1);

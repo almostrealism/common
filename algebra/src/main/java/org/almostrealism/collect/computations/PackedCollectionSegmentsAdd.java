@@ -27,6 +27,7 @@ import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.KernelSupport;
 import org.almostrealism.hardware.computations.Repeated;
 
 import java.util.function.Supplier;
@@ -74,10 +75,9 @@ public class PackedCollectionSegmentsAdd extends Repeated {
 
 	@Override
 	public String getInner(Expression<?> index) {
-		Expression sourcePosition = new StaticReference(Integer.class, "get_global_id(0)");
+		Expression sourcePosition = KernelSupport.index();
 		sourcePosition = sourcePosition.add(getSourceOffsets().valueAt(index));
 		sourcePosition = sourcePosition.subtract(getDestinationOffsets().valueAt(index));
-		// String sourcePosition = "get_global_id(0) + " + getSourceOffsets().valueAt(index).getExpression() + " - " + getDestinationOffsets().valueAt(index).getExpression();
 
 		return getDestination().valueAt(0).getSimpleExpression() + " = " +
 				new Sum(getDestination().valueAt(0),

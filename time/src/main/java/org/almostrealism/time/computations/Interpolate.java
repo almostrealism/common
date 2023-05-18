@@ -36,11 +36,12 @@ import java.util.function.IntFunction;
 public class Interpolate extends CollectionProducerComputationAdapter<PackedCollection<?>, PackedCollection<?>> {
 	private Function<Expression, Expression> timeForIndex;
 
-	public Interpolate(Producer<PackedCollection> series, Producer<PackedCollection> position, Producer<PackedCollection> rate) {
+	public Interpolate(Producer<PackedCollection<?>> series, Producer<PackedCollection<?>> position, Producer<PackedCollection<?>> rate) {
 		this(series, position, rate, v -> v);
 	}
 
-	public Interpolate(Producer<PackedCollection> series, Producer<PackedCollection> position, Producer<PackedCollection> rate, Function<Expression, Expression> timeForIndex) {
+	public Interpolate(Producer<PackedCollection<?>> series, Producer<PackedCollection<?>> position,
+					   Producer<PackedCollection<?>> rate, Function<Expression, Expression> timeForIndex) {
 		super(new TraversalPolicy(1), new Producer[] { series, position, rate });
 		this.timeForIndex = timeForIndex;
 	}

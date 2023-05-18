@@ -36,6 +36,7 @@ import org.almostrealism.time.CursorPair;
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
 
+@Deprecated
 public class AcceleratedTimeSeriesValueAt extends DynamicCollectionProducerComputationAdapter<PackedCollection<?>, Scalar> implements ScalarProducerBase {
 	public AcceleratedTimeSeriesValueAt(Producer<AcceleratedTimeSeries> series, Producer<CursorPair> cursors) {
 		super(new TraversalPolicy(2).traverse(0), new Producer[] { series, cursors });
@@ -96,6 +97,10 @@ public class AcceleratedTimeSeriesValueAt extends DynamicCollectionProducerCompu
 		code.accept("		" + res + " = " + v1 + " + (" + t1 + " / " + t2 + ") * (" + v2 + " - " + v1 + ");\n");
 		code.accept("	}\n");
 		code.accept("}\n");
+
+		// code.accept("if (1.0 - " + res + " < 0.01) {\n");
+		// code.accept("    printf(\"left = %i, right = %i\\n\", " + left + ", " + right + ");\n");
+		// code.accept("}\n");
 
 		return scope;
 	}

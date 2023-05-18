@@ -48,6 +48,7 @@ import org.almostrealism.collect.computations.PackedCollectionRepeat;
 import org.almostrealism.collect.computations.PackedCollectionSubset;
 import org.almostrealism.collect.computations.Random;
 import org.almostrealism.collect.computations.ReshapeProducer;
+import org.almostrealism.hardware.KernelSupport;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
@@ -293,39 +294,42 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	default Random randn(TraversalPolicy shape) { return new Random(shape, true); }
 
 	default CollectionProducerComputation<PackedCollection<?>> integers(int from, int to) {
-		return new CollectionProducerComputation() {
-			@Override
-			public TraversalPolicy getShape() {
-				return new TraversalPolicy(from - to);
-			}
+		int len = to - from;
+		return new ExpressionComputation<>(shape(len).traverseEach(), List.of(np -> new Sum(e(from), KernelSupport.index())));
 
-			@Override
-			public Scope getScope() {
-				throw new UnsupportedOperationException();
-			}
-
-			@Override
-			public KernelizedEvaluable<PackedCollection> get() {
-				return new KernelizedEvaluable<>() {
-					@Override
-					public MemoryBank<PackedCollection> createKernelDestination(int size) {
-						throw new UnsupportedOperationException();
-					}
-
-					@Override
-					public PackedCollection evaluate(Object... args) {
-						int len = to - from;
-						PackedCollection collection = new PackedCollection(2, len);
-
-						for (int i = 0; i < len; i++) {
-							collection.setMem(2 * i, from + i, 1.0);
-						}
-
-						return collection;
-					}
-				};
-			}
-		};
+//		return new CollectionProducerComputation() {
+//			@Override
+//			public TraversalPolicy getShape() {
+//				return new TraversalPolicy(to - from);
+//			}
+//
+//			@Override
+//			public Scope getScope() {
+//				throw new UnsupportedOperationException();
+//			}
+//
+//			@Override
+//			public KernelizedEvaluable<PackedCollection> get() {
+//				return new KernelizedEvaluable<>() {
+//					@Override
+//					public MemoryBank<PackedCollection> createKernelDestination(int size) {
+//						throw new UnsupportedOperationException();
+//					}
+//
+//					@Override
+//					public PackedCollection evaluate(Object... args) {
+//						int len = to - from;
+//						PackedCollection collection = new PackedCollection(2, len);
+//
+//						for (int i = 0; i < len; i++) {
+//							collection.setMem(2 * i, from + i, 1.0);
+//						}
+//
+//						return collection;
+//					}
+//				};
+//			}
+//		};
 	}
 
 	default <T extends PackedCollection<?>> ExpressionComputation<T> add(Producer<T> a, Producer<T> b) {

@@ -132,7 +132,7 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 	}
 
 	public PackedCollection<T> range(TraversalPolicy shape, int start) {
-		return new PackedCollection(shape, 0, this, start);
+		return new PackedCollection(shape, shape.getTraversalAxis(), this, start);
 	}
 
 	public PackedCollection<T> value(int pos) {

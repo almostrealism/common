@@ -16,6 +16,8 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.StaticReference;
 import org.almostrealism.collect.TraversalPolicy;
 
 import java.util.stream.IntStream;
@@ -24,6 +26,14 @@ public interface KernelSupport {
 	boolean enableKernelDivisabilityFallback = true;
 
 	default boolean isKernelEnabled() { return true; }
+
+	static Expression index() {
+		return kernelIndex(0);
+	}
+
+	static Expression<?> kernelIndex(int kernelIndex) {
+		return new StaticReference<>(Integer.class, getKernelIndex(kernelIndex));
+	}
 
 	static String getKernelIndex(int kernelIndex) {
 		return "get_global_id(" + kernelIndex + ")";
