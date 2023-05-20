@@ -57,7 +57,7 @@ public class ChoiceGene implements Gene<PackedCollection<?>>, GeneParameters, Sc
 			@Override
 			public Producer<PackedCollection<?>> getResultant(Producer<PackedCollection<?>> value) {
 				value = c(shape(1), p(values), c(pos));
-				return c(shape(1), p(choices), (Supplier) multiply(value, c(choices.getMemLength())));
+				return c(shape(1), p(choices), multiply(value, c(choices.getMemLength())));
 			}
 
 			@Override

@@ -171,12 +171,17 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return new ExpressionComputation<>(List.of(args -> args.get(1).getValue(index)), supplier);
 	}
 
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> c(Producer<T> collection,
+																			   Producer<PackedCollection<?>> index) {
+		return c(shape(collection), collection, index);
+	}
+
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> c(TraversalPolicy shape,
-																			   Supplier<Evaluable<? extends PackedCollection>> collection,
-																			   Supplier<Evaluable<? extends PackedCollection>> index) {
+																			   Producer<T> collection,
+																			   Producer<PackedCollection<?>> index) {
 		DynamicExpressionComputation exp = new DynamicExpressionComputation<>(shape,
-				args -> CollectionExpression.create(shape, idx -> args[1].getValueAt(args[2].getValueAt(e(0)).add(idx))),
-				(Supplier) collection, (Supplier) index);
+				args -> CollectionExpression.create(shape, idx -> args[1].getValueAt(args[2].valueAt(e(0)).add(idx))),
+				(Supplier) collection, index);
 		if (shape.getTotalSize() == 1) {
 			exp.setShortCircuit(args -> {
 				Evaluable<? extends PackedCollection> out = ag -> new PackedCollection(1);
@@ -295,7 +300,12 @@ public interface CollectionFeatures extends ExpressionFeatures {
 
 	default CollectionProducerComputation<PackedCollection<?>> integers(int from, int to) {
 		int len = to - from;
-		return new ExpressionComputation<>(shape(len).traverseEach(), List.of(np -> new Sum(e(from), KernelSupport.index())));
+		return new ExpressionComputation<>(shape(len).traverseEach(), List.of(np -> new Sum(e(from), KernelSupport.index()))) {
+			@Override
+			public Expression getValue(int pos) {
+				return super.getValue(pos);
+			}
+		};
 
 //		return new CollectionProducerComputation() {
 //			@Override

@@ -48,26 +48,6 @@ import java.util.function.Function;
 import java.util.stream.IntStream;
 
 public class CollectionComputationTests implements TestFeatures {
-	private static class TestProducer implements Producer<PackedCollection<?>>, Shape<Producer<PackedCollection<?>>> {
-		@Override
-		public TraversalPolicy getShape() {
-			return new TraversalPolicy(1);
-		}
-
-		@Override
-		public Evaluable<PackedCollection<?>> get() {
-			return args -> {
-				PackedCollection<?> c = new PackedCollection<>(1);
-				c.setMem(0, 9);
-				return c;
-			};
-		}
-
-		@Override
-		public Producer<PackedCollection<?>> reshape(TraversalPolicy shape) {
-			return new ReshapeProducer<>(shape, (Producer) this);
-		}
-	}
 
 	@Test
 	public void integers() {
@@ -78,8 +58,23 @@ public class CollectionComputationTests implements TestFeatures {
 	}
 
 	@Test
+	public void index() {
+		int len = 10000;
+		PackedCollection<?> in = tensor(shape(len, 1)).pack();
+		PackedCollection<?> result = new PackedCollection<>(shape(len, 1).traverse(1));
+
+		HardwareOperator.verboseLog(() -> {
+			CollectionProducer<PackedCollection<?>> product = c(p(in), integers(0, len)).multiply(c(2.0));
+			product.get().into(result).evaluate();
+		});
+
+		System.out.println(result.valueAt(5000, 0));
+		assertEquals(2 * 5000, result.valueAt(5000, 0));
+	}
+
+	@Test
 	public void multiply() {
-		HardwareOperator.verboseLog(() -> {;
+		HardwareOperator.verboseLog(() -> {
 			PackedCollection<?> testInput = new PackedCollection<>(1);
 			testInput.setMem(0, 9);
 			PackedCollection<?> result = c(3).multiply(p(testInput)).get().evaluate();
