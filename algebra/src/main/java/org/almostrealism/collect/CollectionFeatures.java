@@ -300,46 +300,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 
 	default CollectionProducerComputation<PackedCollection<?>> integers(int from, int to) {
 		int len = to - from;
-		return new ExpressionComputation<>(shape(len).traverseEach(), List.of(np -> new Sum(e(from), KernelSupport.index()))) {
-			@Override
-			public Expression getValue(int pos) {
-				return super.getValue(pos);
-			}
-		};
-
-//		return new CollectionProducerComputation() {
-//			@Override
-//			public TraversalPolicy getShape() {
-//				return new TraversalPolicy(to - from);
-//			}
-//
-//			@Override
-//			public Scope getScope() {
-//				throw new UnsupportedOperationException();
-//			}
-//
-//			@Override
-//			public KernelizedEvaluable<PackedCollection> get() {
-//				return new KernelizedEvaluable<>() {
-//					@Override
-//					public MemoryBank<PackedCollection> createKernelDestination(int size) {
-//						throw new UnsupportedOperationException();
-//					}
-//
-//					@Override
-//					public PackedCollection evaluate(Object... args) {
-//						int len = to - from;
-//						PackedCollection collection = new PackedCollection(2, len);
-//
-//						for (int i = 0; i < len; i++) {
-//							collection.setMem(2 * i, from + i, 1.0);
-//						}
-//
-//						return collection;
-//					}
-//				};
-//			}
-//		};
+		return new ExpressionComputation<>(shape(len).traverseEach(), List.of(np -> new Sum(e(from), KernelSupport.index())));
 	}
 
 	default <T extends PackedCollection<?>> ExpressionComputation<T> add(Producer<T> a, Producer<T> b) {
