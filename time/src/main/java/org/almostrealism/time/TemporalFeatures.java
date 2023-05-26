@@ -75,7 +75,8 @@ public interface TemporalFeatures {
 									Producer<PackedCollection<?>> series,
 									Producer<PackedCollection<?>> position,
 									Producer<PackedCollection<?>> rate,
-									Function<Expression, Expression> timeForIndex) {
-		return new Interpolate(series, position, rate, timeForIndex);
+									Function<Expression, Expression> timeForIndex,
+									Function<Expression, Expression> indexForTime) {
+		return new Interpolate(series, position, rate, timeForIndex, indexForTime);
 	}
 }

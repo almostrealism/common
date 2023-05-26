@@ -160,6 +160,7 @@ public class Expression<T> implements Tree<Expression<?>> {
 	public Exp exp() { return new Exp((Expression) this); }
 
 	public Floor floor() { return new Floor((Expression) this); }
+	public Ceiling ceil() { return new Ceiling((Expression) this); }
 
 	public Mod mod(Expression<Double> operand) { return new Mod((Expression) this, operand); }
 
