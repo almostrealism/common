@@ -132,6 +132,10 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 	}
 
 	public PackedCollection<T> range(TraversalPolicy shape, int start) {
+		if (start + shape.getTotalSize() > getShape().getTotalSize()) {
+			throw new IllegalArgumentException("Range exceeds collection size");
+		}
+
 		return new PackedCollection(shape, shape.getTraversalAxis(), this, start);
 	}
 

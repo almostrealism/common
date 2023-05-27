@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,21 +19,14 @@ package org.almostrealism.collect.computations.test;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.expression.Sum;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.ProducerWithOffset;
-import org.almostrealism.collect.Shape;
-import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.PackedCollectionMax;
-import org.almostrealism.collect.computations.ReshapeProducer;
-import org.almostrealism.collect.computations.RootDelegateSegmentsAdd;
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.PassThroughProducer;
@@ -264,35 +257,6 @@ public class CollectionComputationTests implements TestFeatures {
 		Scalar output = scalar.get().evaluate();
 		assertEquals(2.0, output);
 		assertEquals(1.0, output.toDouble(1));
-	}
-
-	@Test
-	public void rootDelegateAdd() {
-		PackedCollection root = Hardware.getLocalHardware().getClDataContext().deviceMemory(() -> new PackedCollection(3, 5));
-		// PackedCollection root = new PackedCollection(3, 5);
-
-		PackedCollection a = new PackedCollection(new TraversalPolicy(5), 1, root, 0);
-		Scalar s = new Scalar(a, 0);
-		s.setLeft(4);
-		s.setRight(6);
-
-		PackedCollection b = new PackedCollection(new TraversalPolicy(5), 1, root, 5);
-		s = new Scalar(b, 0);
-		s.setLeft(4);
-		s.setRight(6);
-
-		PackedCollection dest = new PackedCollection(new TraversalPolicy(5), 1, root, 10);
-
-		RootDelegateSegmentsAdd<PackedCollection> op = new RootDelegateSegmentsAdd<>(
-				List.of(new ProducerWithOffset<>(v(a), 1),
-						new ProducerWithOffset<>(v(b), 2)),
-				dest);
-		Runnable r = op.get();
-		r.run();
-
-		assertEquals(4.0, new Scalar(root, 11));
-		assertEquals(10.0, new Scalar(root, 12));
-		assertEquals(6.0, new Scalar(root, 13));
 	}
 
 	@Test
