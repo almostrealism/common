@@ -190,6 +190,30 @@ public class CollectionComputationTests implements TestFeatures {
 		System.out.println(Arrays.toString(destination.toArray(0, 10)));
 		assertEquals(6.0, destination.toDouble(2));
 		assertEquals(8.0, destination.toDouble(3));
+
+		destination = ev.evaluate();
+		System.out.println(Arrays.toString(destination.toArray(0, 10)));
+		assertEquals(6.0, destination.toDouble(2));
+		assertEquals(8.0, destination.toDouble(3));
+	}
+
+	@Test
+	public void scaleEvaluable() {
+		PackedCollection<?> timeline = new PackedCollection<>(shape(10), 1);
+		IntStream.range(0, 10).forEach(i -> timeline.set(i, i + 1));
+
+		PackedCollection<?> destination = new PackedCollection<>(shape(10), 1);
+
+		KernelizedEvaluable<PackedCollection<?>> ev = multiply(c(2), c(timeline.getShape(), args -> timeline)).get();
+		ev.into(destination.traverseEach()).evaluate();
+		System.out.println(Arrays.toString(destination.toArray(0, 10)));
+		assertEquals(6.0, destination.toDouble(2));
+		assertEquals(8.0, destination.toDouble(3));
+
+		destination = ev.evaluate();
+		System.out.println(Arrays.toString(destination.toArray(0, 10)));
+		assertEquals(6.0, destination.toDouble(2));
+		assertEquals(8.0, destination.toDouble(3));
 	}
 
 	@Test

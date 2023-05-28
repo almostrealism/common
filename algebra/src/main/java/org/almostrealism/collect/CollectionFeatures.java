@@ -31,10 +31,6 @@ import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
-import io.almostrealism.scope.Scope;
-import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.Scalar;
-import org.almostrealism.bool.AcceleratedConditionalStatementCollection;
 import org.almostrealism.bool.GreaterThanCollection;
 import org.almostrealism.bool.LessThanCollection;
 import org.almostrealism.collect.computations.ArrayVariableComputation;
@@ -49,13 +45,10 @@ import org.almostrealism.collect.computations.PackedCollectionSubset;
 import org.almostrealism.collect.computations.Random;
 import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.hardware.KernelSupport;
-import org.almostrealism.hardware.KernelizedEvaluable;
-import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryDataComputation;
 import org.almostrealism.hardware.computations.Assignment;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
 import java.util.function.IntFunction;
@@ -136,6 +129,23 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		PackedCollection<T> c = new PackedCollection<>(shape);
 		c.setMem(0, values);
 		return (CollectionProducerComputation<T>) c(c);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerBase<T, CollectionProducer<T>> c(TraversalPolicy shape, Evaluable<PackedCollection<?>> ev) {
+		return c(new CollectionProducerBase<>() {
+			@Override
+			public Evaluable get() { return ev; }
+
+			@Override
+			public TraversalPolicy getShape() {
+				return shape;
+			}
+
+			@Override
+			public Producer reshape(TraversalPolicy shape) {
+				return (CollectionProducer) CollectionFeatures.this.reshape(shape, this);
+			}
+		});
 	}
 
 	default <T extends PackedCollection<?>> ExpressionComputation<T> c(T value) {

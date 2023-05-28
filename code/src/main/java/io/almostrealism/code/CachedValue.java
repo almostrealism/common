@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +19,7 @@ package io.almostrealism.code;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 
-public class CachedValue<T> implements Producer<T> {
+public class CachedValue<T> implements Evaluable<T> {
 	private Producer<T> source;
 	private Evaluable<T> eval;
 	private T value;
@@ -32,17 +32,10 @@ public class CachedValue<T> implements Producer<T> {
 		this.eval = source;
 	}
 
-	@Override
-	public Evaluable<T> get() {
-		return args -> {
-			evaluate(args);
-			return value;
-		};
-	}
-
-	protected void evaluate(Object... args) {
-		if (value != null) return;
+	public T evaluate(Object... args) {
+		if (value != null) return value;
 		if (eval == null) eval = source.get();
 		value = eval.evaluate(args);
+		return value;
 	}
 }
