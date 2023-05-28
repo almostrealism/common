@@ -17,6 +17,7 @@
 package org.almostrealism.collect;
 
 import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.expression.Conditional;
 import io.almostrealism.expression.Exponent;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Floor;
@@ -25,6 +26,7 @@ import io.almostrealism.expression.Min;
 import io.almostrealism.expression.Minus;
 import io.almostrealism.expression.Mod;
 import io.almostrealism.expression.MultiExpression;
+import io.almostrealism.expression.NAryExpression;
 import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Quotient;
 import io.almostrealism.expression.Sum;
@@ -486,6 +488,22 @@ public interface CollectionFeatures extends ExpressionFeatures {
 																			Producer<T> trueValue, Producer<T> falseValue,
 																			boolean includeEqual) {
 		return (CollectionProducer<T>) new GreaterThanCollection(a, b, trueValue, falseValue, includeEqual);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> greaterThanConditional(Producer<?> a, Producer<?> b,
+																						 Producer<T> trueValue, Producer<T> falseValue) {
+		return greaterThanConditional(a, b, trueValue, falseValue, false);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> greaterThanConditional(Producer<?> a, Producer<?> b,
+																			   Producer<T> trueValue, Producer<T> falseValue,
+																			   boolean includeEqual) {
+		Function<List<MultiExpression<Double>>, Expression<Double>> expression = args ->
+				new Conditional(greater(args.get(1).getValue(0), args.get(2).getValue(0), includeEqual),
+						args.get(3).getValue(0), args.get(4).getValue(0));
+		return new ExpressionComputation<>(List.of(expression),
+											(Supplier) a, (Supplier) b,
+											(Supplier) trueValue, (Supplier) falseValue);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> _lessThan(Producer<T> a, Producer<T> b,
