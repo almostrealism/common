@@ -487,25 +487,22 @@ public class Polynomial extends AbstractSurface {
 	public Operator<Scalar> get() {
 		return new Operator<>() {
 			@Override
-			public Scalar evaluate(Object[] args) {
-				// TODO  Preserve uncertainty in the Vector so that the scalar is as uncertain or more
-				Vector v = getInput().evaluate(args);
-				return new Scalar(Polynomial.this.evaluate(v.getX(), v.getY(), v.getZ()));
+			public Evaluable<Scalar> get() {
+				return args -> {
+					// TODO  Preserve uncertainty in the Vector so that the scalar is as uncertain or more
+					Vector v = getInput().get().evaluate(args);
+					return new Scalar(Polynomial.this.evaluate(v.getX(), v.getY(), v.getZ()));
+				};
 			}
 
 			@Override
 			public Scope<Scalar> getScope() {
-				// TODO  Not sure this is correct
+				// TODO  This is not correct
 				Scope s = new Scope();
-				s.getVariables().add(new Variable("scalar", evaluate()));
+				s.getVariables().add(new Variable("scalar", get().evaluate()));
 				return s;
 			}
 		};
-	}
-
-	@Override
-	public Operator<Scalar> get(long timeout, TimeUnit unit) throws InterruptedException, ExecutionException, TimeoutException {
-		return get();
 	}
 	
 	/** Returns a String representation of this {@link Polynomial}. */

@@ -173,31 +173,29 @@ public class Plane extends AbstractSurface implements ParticleGroup, RayFeatures
 
 	@Override
 	public Operator<Scalar> get() {
-		return new Operator<Scalar>() {
+		return new Operator<>() {
 			@Override
-			public Scalar evaluate(Object[] args) {
-				if (type == Plane.XY)
-					return new Scalar(getInput().evaluate(args).getZ());
-				else if (type == Plane.XZ)
-					return new Scalar(getInput().evaluate(args).getY());
-				else if (type == Plane.YZ)
-					return new Scalar(getInput().evaluate(args).getX());
-				else
-					return null;
+			public Evaluable<Scalar> get() {
+				return args -> {
+					if (type == Plane.XY)
+						return new Scalar(getInput().get().evaluate(args).getZ());
+					else if (type == Plane.XZ)
+						return new Scalar(getInput().get().evaluate(args).getY());
+					else if (type == Plane.YZ)
+						return new Scalar(getInput().get().evaluate(args).getX());
+					else
+						return null;
+				};
 			}
 
-			@Override public Scope<Scalar> getScope() {
+			@Override
+			public Scope<Scalar> getScope() {
 				// TODO  Not sure this is correct
 				Scope s = new Scope();
-				s.getVariables().add(new Variable("scalar", evaluate(new Object[0])));
+				s.getVariables().add(new Variable("scalar", get().evaluate()));
 				return s;
 			}
 		};
-	}
-
-	@Override
-	public Operator<Scalar> get(long timeout, TimeUnit unit) throws InterruptedException, ExecutionException, TimeoutException {
-		return get();
 	}
 
 	/** @see ParticleGroup#getParticleVertices() */

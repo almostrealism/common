@@ -16,5 +16,5 @@
 
 package io.almostrealism.relation;
 
-public interface Pipeline<T> extends Juncture, Evaluable<T> {
+public interface Pipeline<T> extends Juncture, Producer<T> {
 }

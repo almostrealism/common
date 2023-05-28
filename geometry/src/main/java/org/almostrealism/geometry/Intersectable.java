@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,13 +21,13 @@ import io.almostrealism.code.Operator;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.uml.Function;
 
-import java.util.concurrent.Future;
+import java.util.function.Supplier;
 
 /**
  * @author  Michael Murray
  */
 @Function
-public interface Intersectable<T> extends Future<Operator<T>> {
+public interface Intersectable<T> extends Supplier<Operator<T>> {
 	/**
 	 * Returns a {@link ContinuousField} that represents the values for t that solve
 	 * the vector equation p = o + t * d where p is a point of intersection of

@@ -254,7 +254,7 @@ public class GraphicsConverter {
 			}
 
 			if (notify != null) {
-				notify.evaluate(new Object[] { evaluated });
+				notify.get().evaluate(evaluated);
 			}
 		}
 
@@ -312,7 +312,7 @@ public class GraphicsConverter {
 
 			if (notify != null) {
 				Image img = Toolkit.getDefaultToolkit().createImage(new MemoryImageSource(j + 1, image[0].length, data, 0, image.length));
-				notify.evaluate(new Object[] {img});
+				notify.get().evaluate(img);
 			}
 		}
 		
@@ -362,7 +362,7 @@ public class GraphicsConverter {
 
 			if (notify != null) {
 				Image img = Toolkit.getDefaultToolkit().createImage(new MemoryImageSource(j + 1, image[0].length, data, 0, image.length));
-				notify.evaluate(new Object[] {img});
+				notify.get().evaluate(img);
 			}
 		}
 

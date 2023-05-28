@@ -574,14 +574,5 @@ public abstract class AbstractSurface extends TriangulatableGeometry implements 
 	}
 
 	@Override
-	public boolean cancel(boolean mayInterruptIfRunning) { return false; }
-
-	@Override
-	public boolean isCancelled() { return false; }
-
-	@Override
-	public boolean isDone() { return true; }
-
-	@Override
 	public BoundingSolid calculateBoundingSolid() { return null; }
 }
