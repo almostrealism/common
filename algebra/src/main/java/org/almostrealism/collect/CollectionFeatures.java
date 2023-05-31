@@ -17,6 +17,7 @@
 package org.almostrealism.collect;
 
 import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.expression.Conditional;
 import io.almostrealism.expression.Exponent;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Floor;
@@ -25,16 +26,13 @@ import io.almostrealism.expression.Min;
 import io.almostrealism.expression.Minus;
 import io.almostrealism.expression.Mod;
 import io.almostrealism.expression.MultiExpression;
+import io.almostrealism.expression.NAryExpression;
 import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Quotient;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
-import io.almostrealism.scope.Scope;
-import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.Scalar;
-import org.almostrealism.bool.AcceleratedConditionalStatementCollection;
 import org.almostrealism.bool.GreaterThanCollection;
 import org.almostrealism.bool.LessThanCollection;
 import org.almostrealism.collect.computations.ArrayVariableComputation;
@@ -48,13 +46,11 @@ import org.almostrealism.collect.computations.PackedCollectionRepeat;
 import org.almostrealism.collect.computations.PackedCollectionSubset;
 import org.almostrealism.collect.computations.Random;
 import org.almostrealism.collect.computations.ReshapeProducer;
-import org.almostrealism.hardware.KernelizedEvaluable;
-import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.hardware.KernelSupport;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryDataComputation;
 import org.almostrealism.hardware.computations.Assignment;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
 import java.util.function.IntFunction;
@@ -137,6 +133,23 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return (CollectionProducerComputation<T>) c(c);
 	}
 
+	default <T extends PackedCollection<?>> CollectionProducerBase<T, CollectionProducer<T>> c(TraversalPolicy shape, Evaluable<PackedCollection<?>> ev) {
+		return c(new CollectionProducerBase<>() {
+			@Override
+			public Evaluable get() { return ev; }
+
+			@Override
+			public TraversalPolicy getShape() {
+				return shape;
+			}
+
+			@Override
+			public Producer reshape(TraversalPolicy shape) {
+				return (CollectionProducer) CollectionFeatures.this.reshape(shape, this);
+			}
+		});
+	}
+
 	default <T extends PackedCollection<?>> ExpressionComputation<T> c(T value) {
 		return ExpressionComputation.fixed(value);
 	}
@@ -170,12 +183,17 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return new ExpressionComputation<>(List.of(args -> args.get(1).getValue(index)), supplier);
 	}
 
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> c(Producer<T> collection,
+																			   Producer<PackedCollection<?>> index) {
+		return c(shape(collection), collection, index);
+	}
+
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> c(TraversalPolicy shape,
-																			   Supplier<Evaluable<? extends PackedCollection>> collection,
-																			   Supplier<Evaluable<? extends PackedCollection>> index) {
+																			   Producer<T> collection,
+																			   Producer<PackedCollection<?>> index) {
 		DynamicExpressionComputation exp = new DynamicExpressionComputation<>(shape,
-				args -> CollectionExpression.create(shape, idx -> args[1].getValueAt(args[2].getValueAt(e(0)).add(idx))),
-				(Supplier) collection, (Supplier) index);
+				args -> CollectionExpression.create(shape, idx -> args[1].getValueAt(args[2].valueAt(e(0)).add(idx))),
+				(Supplier) collection, index);
 		if (shape.getTotalSize() == 1) {
 			exp.setShortCircuit(args -> {
 				Evaluable<? extends PackedCollection> out = ag -> new PackedCollection(1);
@@ -293,39 +311,8 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	default Random randn(TraversalPolicy shape) { return new Random(shape, true); }
 
 	default CollectionProducerComputation<PackedCollection<?>> integers(int from, int to) {
-		return new CollectionProducerComputation() {
-			@Override
-			public TraversalPolicy getShape() {
-				return new TraversalPolicy(from - to);
-			}
-
-			@Override
-			public Scope getScope() {
-				throw new UnsupportedOperationException();
-			}
-
-			@Override
-			public KernelizedEvaluable<PackedCollection> get() {
-				return new KernelizedEvaluable<>() {
-					@Override
-					public MemoryBank<PackedCollection> createKernelDestination(int size) {
-						throw new UnsupportedOperationException();
-					}
-
-					@Override
-					public PackedCollection evaluate(Object... args) {
-						int len = to - from;
-						PackedCollection collection = new PackedCollection(2, len);
-
-						for (int i = 0; i < len; i++) {
-							collection.setMem(2 * i, from + i, 1.0);
-						}
-
-						return collection;
-					}
-				};
-			}
-		};
+		int len = to - from;
+		return new ExpressionComputation<>(shape(len).traverseEach(), List.of(np -> new Sum(e(from), KernelSupport.index())));
 	}
 
 	default <T extends PackedCollection<?>> ExpressionComputation<T> add(Producer<T> a, Producer<T> b) {
@@ -501,6 +488,22 @@ public interface CollectionFeatures extends ExpressionFeatures {
 																			Producer<T> trueValue, Producer<T> falseValue,
 																			boolean includeEqual) {
 		return (CollectionProducer<T>) new GreaterThanCollection(a, b, trueValue, falseValue, includeEqual);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> greaterThanConditional(Producer<?> a, Producer<?> b,
+																						 Producer<T> trueValue, Producer<T> falseValue) {
+		return greaterThanConditional(a, b, trueValue, falseValue, false);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> greaterThanConditional(Producer<?> a, Producer<?> b,
+																			   Producer<T> trueValue, Producer<T> falseValue,
+																			   boolean includeEqual) {
+		Function<List<MultiExpression<Double>>, Expression<Double>> expression = args ->
+				new Conditional(greater(args.get(1).getValue(0), args.get(2).getValue(0), includeEqual),
+						args.get(3).getValue(0), args.get(4).getValue(0));
+		return new ExpressionComputation<>(List.of(expression),
+											(Supplier) a, (Supplier) b,
+											(Supplier) trueValue, (Supplier) falseValue);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> _lessThan(Producer<T> a, Producer<T> b,

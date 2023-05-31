@@ -49,7 +49,8 @@ public class InterpolateTest implements TestFeatures {
 				new PassThroughProducer<>(10, 0, 0),
 				new PassThroughProducer<>(1, 1, 0),
 				new PassThroughProducer<>(1, 2, 0),
-				v -> new Sum(v, e(1.0)));
+				v -> new Sum(v, e(1.0)),
+				v -> new Sum(v, e(-1.0)));
 		PackedCollection dest = interpolate.get().evaluate(series.traverse(1), cursors.traverse(1), rate.traverse(1));
 
 		System.out.println(Arrays.toString(dest.toArray(0, 2)));
@@ -98,7 +99,8 @@ public class InterpolateTest implements TestFeatures {
 				new PassThroughProducer<>(10, 0, 0),
 				new PassThroughProducer<>(1, 1, 0),
 				new PassThroughProducer<>(1, 2, 0),
-				v -> new Sum(v, e(1.0)));
+				v -> new Sum(v, e(1.0)),
+				v -> new Sum(v, e(-1.0)));
 		PackedCollection dest = interpolate.get().evaluate(series, cursor, rate);
 
 		System.out.println(Arrays.toString(dest.toArray(0, 1)));
@@ -123,7 +125,8 @@ public class InterpolateTest implements TestFeatures {
 				new PassThroughProducer<>(1, 0),
 				new PassThroughProducer<>(1, 1),
 				new PassThroughProducer<>(2, 2),
-				v -> new Sum(v, e(1.0)));
+				v -> new Sum(v, e(1.0)),
+				v -> new Sum(v, e(-1.0)));
 		PackedCollection<?> dest = new PackedCollection(shape(4, 1));
 
 		KernelizedEvaluable<?> eval = interpolate.get();

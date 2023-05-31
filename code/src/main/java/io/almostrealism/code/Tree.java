@@ -26,7 +26,10 @@ import java.util.function.Consumer;
 
 public interface Tree<T extends Tree> extends Graph<T>, NodeGroup<T>, Parent<T>, Node {
 	default void forEach(Consumer<? super T> consumer) {
-		getChildren().forEach(consumer);
+		getChildren().forEach(t -> {
+			consumer.accept(t);
+			t.forEach(consumer);
+		});
 	}
 
 	@Override

@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -199,26 +199,22 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 	}
 
 	@Override
-	public Operator<Scalar> get() throws InterruptedException, ExecutionException {
+	public Operator<Scalar> get() {
 		return new Operator<>() {
+
 			@Override
-			public Scalar evaluate(Object[] args) {
-				return new Scalar(getInput().evaluate(args).lengthSq());
+			public Evaluable<Scalar> get() {
+				return args -> new Scalar(getInput().get().evaluate(args).lengthSq());
 			}
 
 			@Override
 			public Scope<Scalar> getScope() {
-				// TODO  Not sure this is correct
+				// TODO  This is not correct
 				Scope s = new Scope();
-				s.getVariables().add(new Variable("scalar", evaluate(new Object[0])));
+				s.getVariables().add(new Variable("scalar", get().evaluate(new Object[0])));
 				return s;
 			}
 		};
-	}
-
-	@Override
-	public Operator<Scalar> get(long timeout, TimeUnit unit) throws InterruptedException, ExecutionException, TimeoutException {
-		return get();
 	}
 
 	@Override

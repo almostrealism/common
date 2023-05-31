@@ -18,10 +18,15 @@ package org.almostrealism.time;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.cycle.Setup;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.uml.Lifecycle;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.computations.Loop;
+import org.almostrealism.time.computations.Interpolate;
 
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
@@ -51,11 +56,27 @@ public interface TemporalFeatures {
 	default Supplier<Runnable> loop(Temporal t, int iter) {
 		Supplier<Runnable> tick = t.tick();
 
-		if ((tick instanceof OperationList && !((OperationList) tick).isComputation()) || !(tick instanceof Computation)) {
+		if ((tick instanceof OperationList && !((OperationList) tick).isComputation())
+				|| !(tick instanceof Computation)) {
 			Runnable r = tick.get();
 			return () -> () -> IntStream.range(0, iter).forEach(i -> r.run());
 		} else {
 			return new Loop((Computation<Void>) tick, iter);
 		}
+	}
+	
+	default Interpolate interpolate(Producer<PackedCollection<?>> series,
+									Producer<PackedCollection<?>> position,
+									Producer<PackedCollection<?>> rate) {
+		return new Interpolate(series, position, rate);
+	}
+
+	default <T extends PackedCollection<?>> Interpolate interpolate(
+									Producer<PackedCollection<?>> series,
+									Producer<PackedCollection<?>> position,
+									Producer<PackedCollection<?>> rate,
+									Function<Expression, Expression> timeForIndex,
+									Function<Expression, Expression> indexForTime) {
+		return new Interpolate(series, position, rate, timeForIndex, indexForTime);
 	}
 }

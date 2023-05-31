@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,21 +19,14 @@ package org.almostrealism.collect.computations.test;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.expression.Sum;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.ProducerWithOffset;
-import org.almostrealism.collect.Shape;
-import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.PackedCollectionMax;
-import org.almostrealism.collect.computations.ReshapeProducer;
-import org.almostrealism.collect.computations.RootDelegateSegmentsAdd;
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.PassThroughProducer;
@@ -48,30 +41,33 @@ import java.util.function.Function;
 import java.util.stream.IntStream;
 
 public class CollectionComputationTests implements TestFeatures {
-	private static class TestProducer implements Producer<PackedCollection<?>>, Shape<Producer<PackedCollection<?>>> {
-		@Override
-		public TraversalPolicy getShape() {
-			return new TraversalPolicy(1);
-		}
 
-		@Override
-		public Evaluable<PackedCollection<?>> get() {
-			return args -> {
-				PackedCollection<?> c = new PackedCollection<>(1);
-				c.setMem(0, 9);
-				return c;
-			};
-		}
+	@Test
+	public void integers() {
+		HardwareOperator.verboseLog(() -> {
+			PackedCollection<?> result = integers(10, 100).get().evaluate();
+			assertEquals(14, result.toDouble(4));
+		});
+	}
 
-		@Override
-		public Producer<PackedCollection<?>> reshape(TraversalPolicy shape) {
-			return new ReshapeProducer<>(shape, (Producer) this);
-		}
+	@Test
+	public void index() {
+		int len = 10000;
+		PackedCollection<?> in = tensor(shape(len, 1)).pack();
+		PackedCollection<?> result = new PackedCollection<>(shape(len, 1).traverse(1));
+
+		HardwareOperator.verboseLog(() -> {
+			CollectionProducer<PackedCollection<?>> product = c(p(in), integers(0, len)).multiply(c(2.0));
+			product.get().into(result).evaluate();
+		});
+
+		System.out.println(result.valueAt(5000, 0));
+		assertEquals(2 * 5000, result.valueAt(5000, 0));
 	}
 
 	@Test
 	public void multiply() {
-		HardwareOperator.verboseLog(() -> {;
+		HardwareOperator.verboseLog(() -> {
 			PackedCollection<?> testInput = new PackedCollection<>(1);
 			testInput.setMem(0, 9);
 			PackedCollection<?> result = c(3).multiply(p(testInput)).get().evaluate();
@@ -194,6 +190,30 @@ public class CollectionComputationTests implements TestFeatures {
 		System.out.println(Arrays.toString(destination.toArray(0, 10)));
 		assertEquals(6.0, destination.toDouble(2));
 		assertEquals(8.0, destination.toDouble(3));
+
+		destination = ev.evaluate();
+		System.out.println(Arrays.toString(destination.toArray(0, 10)));
+		assertEquals(6.0, destination.toDouble(2));
+		assertEquals(8.0, destination.toDouble(3));
+	}
+
+	@Test
+	public void scaleEvaluable() {
+		PackedCollection<?> timeline = new PackedCollection<>(shape(10), 1);
+		IntStream.range(0, 10).forEach(i -> timeline.set(i, i + 1));
+
+		PackedCollection<?> destination = new PackedCollection<>(shape(10), 1);
+
+		KernelizedEvaluable<PackedCollection<?>> ev = multiply(c(2), c(timeline.getShape(), args -> timeline)).get();
+		ev.into(destination.traverseEach()).evaluate();
+		System.out.println(Arrays.toString(destination.toArray(0, 10)));
+		assertEquals(6.0, destination.toDouble(2));
+		assertEquals(8.0, destination.toDouble(3));
+
+		destination = ev.evaluate();
+		System.out.println(Arrays.toString(destination.toArray(0, 10)));
+		assertEquals(6.0, destination.toDouble(2));
+		assertEquals(8.0, destination.toDouble(3));
 	}
 
 	@Test
@@ -261,35 +281,6 @@ public class CollectionComputationTests implements TestFeatures {
 		Scalar output = scalar.get().evaluate();
 		assertEquals(2.0, output);
 		assertEquals(1.0, output.toDouble(1));
-	}
-
-	@Test
-	public void rootDelegateAdd() {
-		PackedCollection root = Hardware.getLocalHardware().getClDataContext().deviceMemory(() -> new PackedCollection(3, 5));
-		// PackedCollection root = new PackedCollection(3, 5);
-
-		PackedCollection a = new PackedCollection(new TraversalPolicy(5), 1, root, 0);
-		Scalar s = new Scalar(a, 0);
-		s.setLeft(4);
-		s.setRight(6);
-
-		PackedCollection b = new PackedCollection(new TraversalPolicy(5), 1, root, 5);
-		s = new Scalar(b, 0);
-		s.setLeft(4);
-		s.setRight(6);
-
-		PackedCollection dest = new PackedCollection(new TraversalPolicy(5), 1, root, 10);
-
-		RootDelegateSegmentsAdd<PackedCollection> op = new RootDelegateSegmentsAdd<>(
-				List.of(new ProducerWithOffset<>(v(a), 1),
-						new ProducerWithOffset<>(v(b), 2)),
-				dest);
-		Runnable r = op.get();
-		r.run();
-
-		assertEquals(4.0, new Scalar(root, 11));
-		assertEquals(10.0, new Scalar(root, 12));
-		assertEquals(6.0, new Scalar(root, 13));
 	}
 
 	@Test

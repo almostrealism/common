@@ -472,11 +472,6 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 	}
 
 	@Override
-	public Operator<Scalar> get(long timeout, TimeUnit unit) throws InterruptedException, ExecutionException, TimeoutException {
-		return get();
-	}
-
-	@Override
 	public Operator<Scalar> expect() {
 		return new Constant<>(new Scalar(0));
 	}

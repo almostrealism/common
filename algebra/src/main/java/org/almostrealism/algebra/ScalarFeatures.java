@@ -60,7 +60,7 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 
 	default ScalarExpressionComputation scalar(double value) { return value(new Scalar(value)); }
 
-	default ScalarProducerBase scalar(Producer<?> x) {
+	default ScalarExpressionComputation scalar(Producer<?> x) {
 		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
 		IntStream.range(0, 2).forEach(i -> comp.add(args -> args.get(1).getValue(i)));
 		return new ScalarExpressionComputation(comp, (Supplier) x);
@@ -110,9 +110,8 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
 		comp.add(args -> args.get(1).getValue(shape.getSize() * index));
 		comp.add(args -> expressionForDouble(1.0));
-		ExpressionComputation c = new ExpressionComputation(shape(2), comp, collection);
-		c.setPostprocessor(Scalar.postprocessor());
-		return c;
+		return new ExpressionComputation(shape(2), comp, collection)
+				.setPostprocessor(Scalar.postprocessor());
 	}
 
 	default DynamicExpressionComputation<Scalar> scalar(TraversalPolicy shape, Supplier<Evaluable<? extends PackedCollection<?>>> collection, Supplier<Evaluable<? extends Scalar>> index) {

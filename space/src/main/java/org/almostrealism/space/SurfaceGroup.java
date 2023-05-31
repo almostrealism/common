@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -177,7 +177,7 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 	}
 
 	/**
-	 * Returns an {@link Intersection} object that represents the ray-surface intersections
+	 * Returns an {@link ContinuousField} that represents the ray-surface intersections
 	 * for the AbstractSurface object which is intersected closest to the origin of the ray
 	 * (>= 0). If there is no intersection >= 0 along the ray, null is returned.
 	 */
@@ -191,14 +191,9 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 	}
 
 	@Override
-	public Operator<Scalar> get() throws InterruptedException, ExecutionException {
-		// TODO  Aggregate the operators for each surface somehow
+	public Operator<Scalar> get() {
+		// TODO  Aggregate the operators for each surface some how?
 		return null;
-	}
-
-	@Override
-	public Operator<Scalar> get(long timeout, TimeUnit unit) throws InterruptedException, ExecutionException, TimeoutException {
-		return get();
 	}
 
 	public Operator<Scalar> expect() {

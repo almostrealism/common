@@ -443,50 +443,53 @@ public class PackedCollectionMapTests implements TestFeatures {
 
 		input.fill(pos -> pos[0] + pos[1] * 0.1);
 
-		HardwareOperator.verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> conv = c(p(input))
-					.enumerate(1, w, s)
-					.enumerate(1, w, s)
-					.traverse(2)
-					.expand(2, v ->
-							v.repeat(2).multiply(p(filter)));
-			System.out.println(conv.getShape());
+		IntStream.range(0, 20).forEach(n -> {
+			HardwareOperator.verboseLog(() -> {
+				CollectionProducer<PackedCollection<?>> conv = c(p(input))
+						.enumerate(1, w, s)
+						.enumerate(1, w, s)
+						.traverse(2)
+						.expand(2, v ->
+								v.repeat(2).multiply(p(filter)));
+				System.out.println(conv.getShape());
 
-			PackedCollection<?> output = conv.get().evaluate();
-			System.out.println(output.getShape());
+				PackedCollection<?> output = conv.get().evaluate();
+				System.out.println(output.getShape());
 
-			for (int copy = 0; copy < 2; copy++) {
-				for (int i = 0; i < r - pad; i++) {
-					for (int j = 0; j < c - pad; j++) {
-						System.out.println("PackedCollectionMapTests: " + i + ", " + j);
+				for (int copy = 0; copy < 2; copy++) {
+					for (int i = 0; i < r - pad; i++) {
+						for (int j = 0; j < c - pad; j++) {
+							System.out.println("PackedCollectionMapTests: " + i + ", " + j);
 
-						for (int k = 0; k < w; k++) {
-							System.out.print("\t[");
-							for (int l = 0; l < w; l++) {
-								double expected = input.toDouble(input.getShape().index(i + k, j + l)) *
-										filter.toDouble(filter.getShape().index(copy, k, l));
-								double actual = output.toDouble(output.getShape().index(i, j, copy, k, l));
+							for (int k = 0; k < w; k++) {
+								System.out.print("\t[");
+								for (int l = 0; l < w; l++) {
+									double expected = input.toDouble(input.getShape().index(i + k, j + l)) *
+											filter.toDouble(filter.getShape().index(copy, k, l));
+									double actual = output.toDouble(output.getShape().index(i, j, copy, k, l));
 
-								System.out.print(expected + ", ");
+									System.out.print(expected + ", ");
+								}
+
+								System.out.print("]\t[");
+
+								for (int l = 0; l < w; l++) {
+									double expected = input.toDouble(input.getShape().index(i + k, j + l)) *
+											filter.toDouble(filter.getShape().index(copy, k, l));
+
+									double actual = output.toDouble(output.getShape().index(i, j, copy, k, l));
+
+									System.out.print(actual + ", ");
+
+									Assert.assertEquals(expected, actual, 0.0001);
+								}
+
+								System.out.println("]");
 							}
-
-							System.out.print("]\t[");
-
-							for (int l = 0; l < w; l++) {
-								double expected = input.toDouble(input.getShape().index(i + k, j + l)) *
-										filter.toDouble(filter.getShape().index(copy, k, l));;
-								double actual = output.toDouble(output.getShape().index(i, j, copy, k, l));
-
-								System.out.print(actual + ", ");
-
-								Assert.assertEquals(expected, actual, 0.0001);
-							}
-
-							System.out.println("]");
 						}
 					}
 				}
-			}
+			});
 		});
 	}
 

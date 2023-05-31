@@ -46,6 +46,7 @@ public interface GeometryFeatures extends CollectionFeatures {
 		return new ScalarExpressionComputation(expression, (Supplier) input);
 	}
 
+	@Deprecated
 	default DynamicCollectionProducerComputationAdapter<Scalar, Scalar> sinw(Producer<Scalar> input, Producer<Scalar> wavelength,
 				  Producer<Scalar> amp) {
 		return multiply(sin(ScalarFeatures.of(new Scalar(TWO_PI)).multiply(input).divide(wavelength)), amp);
@@ -60,5 +61,12 @@ public interface GeometryFeatures extends CollectionFeatures {
 															 Producer<PackedCollection<?>> wavelength,
 															 Producer<PackedCollection<?>> amp) {
 		return _sin(c(TWO_PI).multiply(input).divide(wavelength)).multiply(amp);
+	}
+
+	default DynamicCollectionProducerComputationAdapter<PackedCollection<?>, PackedCollection<?>> _sinw(Producer<PackedCollection<?>> input,
+																										Producer<PackedCollection<?>> wavelength,
+																										Producer<PackedCollection<?>> phase,
+																										Producer<PackedCollection<?>> amp) {
+		return _sin(c(TWO_PI).multiply(divide(input, wavelength).subtract(phase))).multiply(amp);
 	}
 }

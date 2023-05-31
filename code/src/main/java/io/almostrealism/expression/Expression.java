@@ -36,6 +36,8 @@ import java.util.stream.Collectors;
 
 // TODO  Make abstract
 public class Expression<T> implements Tree<Expression<?>> {
+	public static boolean enableSimplification = true;
+
 	public static Function<Expression<?>, Expression<?>> toDouble = e -> new Cast("double", e);
 
 	private Class<T> type;
@@ -91,6 +93,8 @@ public class Expression<T> implements Tree<Expression<?>> {
 	}
 
 	public String getSimpleExpression() {
+		if (!enableSimplification) return getExpression();
+
 		if (getClass() == Expression.class) {
 			System.out.println("WARN: Unable to retrieve simplified expression");
 			return getExpression();
@@ -156,6 +160,7 @@ public class Expression<T> implements Tree<Expression<?>> {
 	public Exp exp() { return new Exp((Expression) this); }
 
 	public Floor floor() { return new Floor((Expression) this); }
+	public Ceiling ceil() { return new Ceiling((Expression) this); }
 
 	public Mod mod(Expression<Double> operand) { return new Mod((Expression) this, operand); }
 

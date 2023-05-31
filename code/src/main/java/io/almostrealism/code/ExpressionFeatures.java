@@ -21,6 +21,7 @@ import io.almostrealism.expression.Equals;
 import io.almostrealism.expression.Exp;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.expression.NAryExpression;
 import io.almostrealism.scope.Variable;
 
 import java.util.Collections;
@@ -43,6 +44,10 @@ public interface ExpressionFeatures {
 
 	default Exp exp(Expression expression) {
 		return new Exp(expression);
+	}
+
+	default NAryExpression<Boolean> greater(Expression<?> left, Expression<?> right, boolean includeEqual) {
+		return new NAryExpression<>(Boolean.class, includeEqual ? ">=" : ">", left, right);
 	}
 
 	default Equals equals(Expression<?> left, Expression<?> right) {

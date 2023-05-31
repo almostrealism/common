@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2021 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,7 +14,26 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.relation;
+package io.almostrealism.expression;
 
-public interface Pipeline<T> extends Juncture, Producer<T> {
+import java.util.List;
+
+public class Ceiling extends Expression<Double> {
+	public Ceiling(Expression<Double> input) {
+		super(Double.class, null, input);
+	}
+
+	@Override
+	public String getExpression() {
+		return "ceil(" + getChildren().get(0).getExpression() + ")";
+	}
+
+	@Override
+	public Expression<Double> generate(List<Expression<?>> children) {
+		if (children.size() != 1) {
+			throw new UnsupportedOperationException();
+		}
+
+		return new Ceiling((Expression<Double>) children.get(0));
+	}
 }

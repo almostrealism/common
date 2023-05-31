@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -34,15 +34,22 @@ import java.util.function.Function;
 import java.util.function.IntFunction;
 
 public class Interpolate extends CollectionProducerComputationAdapter<PackedCollection<?>, PackedCollection<?>> {
-	private Function<Expression, Expression> timeForIndex;
+	public static boolean enableFunctionalPosition = true;
+	public static boolean enableScanning = false;
 
-	public Interpolate(Producer<PackedCollection> series, Producer<PackedCollection> position, Producer<PackedCollection> rate) {
-		this(series, position, rate, v -> v);
+	private Function<Expression, Expression> timeForIndex;
+	private Function<Expression, Expression> indexForTime;
+
+	public Interpolate(Producer<PackedCollection<?>> series, Producer<PackedCollection<?>> position, Producer<PackedCollection<?>> rate) {
+		this(series, position, rate, v -> v, v -> v);
 	}
 
-	public Interpolate(Producer<PackedCollection> series, Producer<PackedCollection> position, Producer<PackedCollection> rate, Function<Expression, Expression> timeForIndex) {
+	public Interpolate(Producer<PackedCollection<?>> series, Producer<PackedCollection<?>> position,
+					   Producer<PackedCollection<?>> rate, Function<Expression, Expression> timeForIndex,
+					   Function<Expression, Expression> indexForTime) {
 		super(new TraversalPolicy(1), new Producer[] { series, position, rate });
 		this.timeForIndex = timeForIndex;
+		this.indexForTime = indexForTime;
 	}
 
 	@Override
@@ -55,15 +62,23 @@ public class Interpolate extends CollectionProducerComputationAdapter<PackedColl
 		HybridScope<PackedCollection<?>> scope = new HybridScope<>(this);
 		scope.setMetadata(new OperationMetadata(getFunctionName(), "Interpolate"));
 
-		Expression left = new StaticReference(Integer.class, getVariableName(0));
-		Expression right = new StaticReference(Integer.class, getVariableName(1));
-		String v1 = getVariableName(2);
-		String v2 = getVariableName(3);
-		String t1 = getVariableName(4);
-		String t2 = getVariableName(5);
+		Expression idx = new StaticReference(Integer.class, getVariableName(0));
+		Expression left = new StaticReference(Integer.class, getVariableName(1));
+		Expression right = new StaticReference(Integer.class, getVariableName(2));
+		Expression leftO = new StaticReference(Integer.class, getVariableName(3));
+		Expression rightO = new StaticReference(Integer.class, getVariableName(4));
+		Expression bi = new StaticReference(Double.class, getVariableName(5));
+		String v1 = getVariableName(6);
+		String v2 = getVariableName(7);
+		String t1 = getVariableName(8);
+		String t2 = getVariableName(9);
 
+		scope.getVariables().add(new Variable<>(idx.getSimpleExpression(), new Expression<>(Integer.class, "-1")));
 		scope.getVariables().add(new Variable<>(left.getSimpleExpression(), new Expression<>(Integer.class, "-1")));
 		scope.getVariables().add(new Variable<>(right.getSimpleExpression(), new Expression<>(Integer.class, "-1")));
+		scope.getVariables().add(new Variable<>(leftO.getSimpleExpression(), new Expression<>(Integer.class, "-1")));
+		scope.getVariables().add(new Variable<>(rightO.getSimpleExpression(), new Expression<>(Integer.class, "-1")));
+		scope.getVariables().add(new Variable<>(bi.getSimpleExpression(), new Expression<>(Double.class, "-1.0")));
 		scope.getVariables().add(new Variable<>(v1, new Expression<>(Double.class, "0.0")));
 		scope.getVariables().add(new Variable<>(v2, new Expression<>(Double.class, "0.0")));
 		scope.getVariables().add(new Variable<>(t1, new Expression<>(Double.class, "0.0")));
@@ -74,8 +89,6 @@ public class Interpolate extends CollectionProducerComputationAdapter<PackedColl
 		String end = getArgument(1).length().getSimpleExpression();
 		Expression<Double> rate = getArgument(3).valueAt(0);
 
-		Expression i = new StaticReference(Integer.class, "i");
-		String banki = new Product(new Exponent(rate, expressionForDouble(-1.0)), timeForIndex.apply(i)).getSimpleExpression();
 		String bankl_time = new Product(new Exponent(rate, expressionForDouble(-1.0)), timeForIndex.apply(left)).getSimpleExpression();
 		String bankl_value = getArgument(1).get(left).getSimpleExpression();
 		String bankr_time = new Product(new Exponent(rate, expressionForDouble(-1.0)), timeForIndex.apply(right)).getSimpleExpression();
@@ -83,13 +96,44 @@ public class Interpolate extends CollectionProducerComputationAdapter<PackedColl
 		String cursor = getArgument(2).valueAt(0).getSimpleExpression();
 
 		Consumer<String> code = scope.code();
-		code.accept("for (int i = " + start + "; i < " + end + "; i++) {\n");
-		code.accept("	if (" + banki + " >= " + cursor + ") {\n");
-		code.accept("		" + left + " = i > " + start + " ? i - 1 : (" + banki + " == " + cursor + " ? i : -1);\n");
-		code.accept("		" + right + " = i;\n");
-		code.accept("		break;\n");
-		code.accept("	}\n");
-		code.accept("}\n");
+
+		if (enableFunctionalPosition) {
+			Expression<Double> time = getArgument(2).valueAt(0).multiply(rate);
+			Expression index = indexForTime.apply(time);
+
+//			code.accept(left + " = " + idx + " > " + start + " ? " + idx + " - 1 : (" + banki + " == " + cursor + " ? " + idx + " : -1);\n");
+
+			code.accept(idx + " = " + index.ceil().toInt().getSimpleExpression() + " - 1;");
+			code.accept(left + " = " + idx + " > " + start + " ? " + idx + " - 1 : " + idx + ";\n");
+			code.accept(right + " = " + idx + ";\n");
+
+			code.accept("if ((" + timeForIndex.apply(idx).getSimpleExpression() + ") != (" + time.getSimpleExpression() + ")) {\n");
+			code.accept("    " + left + " = " + left + " + 1;\n");
+			code.accept("    " + right + " = " + right + " + 1;\n");
+			code.accept("}\n");
+		}
+
+		if (enableScanning) {
+			Expression i = new StaticReference(Integer.class, "i");
+			String banki = new Product(new Exponent(rate, expressionForDouble(-1.0)), timeForIndex.apply(i)).getSimpleExpression();
+
+			code.accept("for (int i = " + start + "; i < " + end + "; i++) {\n");
+			code.accept("	if (" + banki + " >= " + cursor + ") {\n");
+			code.accept("		" + leftO + " = i > " + start + " ? i - 1 : (" + banki + " == " + cursor + " ? i : -1);\n");
+			code.accept("		" + rightO + " = i;\n");
+			code.accept("		" + bi + " = " + banki + ";\n");
+			code.accept("		break;\n");
+			code.accept("	}\n");
+			code.accept("}\n");
+
+			code.accept("if (" + leftO + " == -1.0) {\n");
+			code.accept("    " + left + " = -1.0;\n");
+			code.accept("}\n");
+
+			code.accept("if (" + rightO + " == -1.0) {\n");
+			code.accept("    " + right + " = -1.0;\n");
+			code.accept("}\n");
+		}
 
 		code.accept("if (" + left + " == -1 || " + right + " == -1) {\n");
 		code.accept("	" + res + " = 0;\n");
@@ -98,8 +142,16 @@ public class Interpolate extends CollectionProducerComputationAdapter<PackedColl
 		code.accept("} else {\n");
 		code.accept("	" + v1 + " = " + bankl_value + ";\n");
 		code.accept("	" + v2 + " = " + bankr_value + ";\n");
-		code.accept("	" + t1 + " = " + cursor + " - " + bankl_time + ";\n");
-		code.accept("	" + t2 + " = " + bankr_time + " - " + bankl_time + ";\n");
+		code.accept("	" + t1 + " = (" + cursor + ") - (" + bankl_time + ");\n");
+		code.accept("	" + t2 + " = (" + bankr_time + ") - (" + bankl_time + ");\n");
+
+		if (enableScanning) {
+			code.accept("if (" + leftO + " != " + left + " || " + rightO + " != " + right + ") {\n");
+			code.accept("printf(\"left = %i, leftO = %i, right = %i, rightO = %i, banki = %f, cursor = %f\\n\", "
+					+ left + ", " + leftO + ", " + right + ", " + rightO + ", " + bi + ", " + cursor + ");\n");
+			code.accept("}\n");
+		}
+
 		code.accept("	if (" + t2 + " == 0) {\n");
 		code.accept("		" + res + " = " + v1 + ";\n");
 		code.accept("	} else {\n");
