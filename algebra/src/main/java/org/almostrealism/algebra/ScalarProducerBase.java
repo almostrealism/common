@@ -88,7 +88,7 @@ public interface ScalarProducerBase extends ProducerComputation<Scalar>, Kerneli
 
 	default ScalarProducerBase pow(Scalar exp) { return pow(this, exp); }
 
-	default ScalarProducerBase pow(double exp) { return pow(this, exp); }
+	// default ScalarProducerBase pow(double exp) { return pow(this, exp); }
 
 	default ScalarProducerBase mod(Supplier<Evaluable<? extends Scalar>> divisor) {
 		return mod(this, divisor);
@@ -187,16 +187,6 @@ public interface ScalarProducerBase extends ProducerComputation<Scalar>, Kerneli
 														   Supplier<Evaluable<? extends Scalar>> falseValue,
 														   boolean includeEqual) {
 		return new LessThanScalar(this, operand, trueValue, falseValue, includeEqual);
-	}
-
-	default AcceleratedConditionalStatementVector lessThanv(Supplier operand) {
-		return lessThanv(operand, null, null);
-	}
-
-	default AcceleratedConditionalStatementVector lessThanv(Evaluable<Scalar> operand,
-															Evaluable<Vector> trueValue,
-															Evaluable<Vector> falseValue) {
-		return lessThanv(() -> operand, () -> trueValue, () -> falseValue);
 	}
 
 	default AcceleratedConditionalStatementVector lessThanv(Supplier<Evaluable<Scalar>> operand,

@@ -23,6 +23,7 @@ import java.util.stream.Stream;
 /**
  * A collection of {@link ScalarBank}s stored in a single {@link io.almostrealism.code.Memory} instance.
  */
+@Deprecated
 public class ScalarBankHeap {
 	private List<ScalarBank> entries;
 	private ScalarBank data;

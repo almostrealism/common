@@ -5,7 +5,7 @@
 	<parent>
 		<artifactId>Common</artifactId>
 		<groupId>org.almostrealism</groupId>
-		<version>0.57</version>
+		<version>0.58</version>
 	</parent>
 	<modelVersion>4.0.0</modelVersion>
 
@@ -15,12 +15,12 @@
 		<dependency>
 			<groupId>org.almostrealism</groupId>
 			<artifactId>ar-graph</artifactId>
-			<version>0.57</version>
+			<version>0.58</version>
 		</dependency>
 		<dependency>
 			<groupId>org.almostrealism</groupId>
 			<artifactId>ar-physics</artifactId>
-			<version>0.57</version>
+			<version>0.58</version>
 		</dependency>
 	</dependencies>
 </project>

@@ -102,8 +102,9 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 	@Test
 	public void compactWithCrossProduct() {
 		LessThan<Scalar> lt1 = lessThan(oDotd(ray(i -> Math.random())), oDotd(v(Ray.shape(), 0)));
-		AcceleratedConditionalStatementScalar lt2 = crossProduct(vector(i -> Math.random()), v(Vector.shape(), 1))
-														.length().lessThan(lt1, v(1), v(2));
+		AcceleratedConditionalStatementScalar lt2 =
+				lessThan(length(crossProduct(vector(i -> Math.random()), v(Vector.shape(), 1))),
+														lt1, v(1), v(2), false);
 
 		double v = lt2.get().evaluate(ray(i -> Math.random()).get().evaluate(), vector(i -> Math.random()).get().evaluate()).getValue();
 		System.out.println(v);

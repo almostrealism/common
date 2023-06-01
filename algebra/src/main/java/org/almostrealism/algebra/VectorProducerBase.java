@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,69 +18,66 @@ package org.almostrealism.algebra;
 
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.algebra.computations.ScalarExpressionComputation;
-import org.almostrealism.algebra.computations.VectorExpressionComputation;
-import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.DynamicExpressionComputation;
+import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.hardware.KernelizedProducer;
 
 import java.util.function.Supplier;
 
 public interface VectorProducerBase extends ProducerComputation<Vector>, KernelizedProducer<Vector>, VectorFeatures {
 
-	default ScalarProducerBase x() {
+	default ExpressionComputation<Scalar> x() {
 		return x(this);
 	}
 
-	default ScalarProducerBase y() {
+	default ExpressionComputation<Scalar> y() {
 		return y(this);
 	}
 
-	default ScalarProducerBase z() {
+	default ExpressionComputation<Scalar> z() {
 		return z(this);
 	}
 
-	default ScalarExpressionComputation dotProduct(Evaluable<Vector> operand) {
+	default ExpressionComputation<Scalar> dotProduct(Evaluable<Vector> operand) {
 		return dotProduct(() -> operand);
 	}
 
-	default ScalarExpressionComputation dotProduct(Supplier<Evaluable<? extends Vector>> operand) {
+	default ExpressionComputation<Scalar> dotProduct(Supplier<Evaluable<? extends Vector>> operand) {
 		return dotProduct(this, operand);
 	}
 
-	default VectorExpressionComputation crossProduct(Supplier<Evaluable<? extends Vector>> operand) {
+	default ExpressionComputation<Vector> crossProduct(Supplier<Evaluable<? extends Vector>> operand) {
 		return crossProduct(this, operand);
 	}
 
-	default VectorProducerBase add(VectorProducerBase operand) {
+	default ExpressionComputation<Vector> add(VectorProducerBase operand) {
 		return add(this, operand);
 	}
 
-	default VectorProducerBase subtract(VectorProducerBase operand) { return subtract(this, operand); }
+	default ExpressionComputation<Vector> subtract(VectorProducerBase operand) { return subtract(this, operand); }
 
-	default VectorExpressionComputation multiply(VectorProducerBase operand) {
+	default ExpressionComputation<Vector> multiply(VectorProducerBase operand) {
 		return multiply(new VectorProducerBase[] { this, operand });
 	}
 
-	default VectorExpressionComputation scalarMultiply(Supplier<Evaluable<? extends Scalar>> operand) { return scalarMultiply(this, operand); }
+	default ExpressionComputation<Vector> scalarMultiply(Supplier<Evaluable<? extends Scalar>> operand) { return scalarMultiply(this, operand); }
 
-	default VectorExpressionComputation scalarMultiply(Scalar operand) {
+	default ExpressionComputation<Vector> scalarMultiply(Scalar operand) {
 		return scalarMultiply(ScalarFeatures.of(operand));
 	}
 
-	default VectorExpressionComputation scalarMultiply(double operand) {
+	default ExpressionComputation<Vector> scalarMultiply(double operand) {
 		return scalarMultiply(new Scalar(operand));
 	}
 
-	default ScalarProducerBase length() {
+	default ExpressionComputation<Scalar> length() {
 		return length(this);
 	}
 
-	default ScalarProducerBase lengthSq() {
+	default ExpressionComputation<Scalar> lengthSq() {
 		return lengthSq(this);
 	}
 
-	default VectorExpressionComputation normalize() {
+	default ExpressionComputation<Vector> normalize() {
 		return normalize(this);
 	}
 }

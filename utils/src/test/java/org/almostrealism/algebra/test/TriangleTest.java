@@ -23,10 +23,10 @@ import io.almostrealism.relation.ProducerWithRank;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorProducerBase;
-import org.almostrealism.algebra.computations.VectorExpressionComputation;
 import org.almostrealism.bool.AcceleratedConjunctionScalar;
 import org.almostrealism.bool.GreaterThanScalar;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.computations.RayExpressionComputation;
 import org.almostrealism.graph.mesh.TriangleIntersectAt;
@@ -47,31 +47,31 @@ public class TriangleTest implements CodeFeatures {
 	}
 
 
-	protected VectorProducerBase originProducer() {
+	protected ExpressionComputation<Vector> originProducer() {
 		Producer<Ray> noRank = ((ProducerWithRank) intersectAt()).getProducer();
-		return (VectorProducerBase) (Supplier) ((RayExpressionComputation) noRank).getInputs().get(1);
+		return (ExpressionComputation<Vector>) (Supplier) ((RayExpressionComputation) noRank).getInputs().get(1);
 	}
 
-	protected VectorExpressionComputation originPointProducer() {
-		VectorProducerBase origin = originProducer();
-		return (VectorExpressionComputation) ((OperationAdapter) origin).getInputs().get(1);
+	protected ExpressionComputation<Vector> originPointProducer() {
+		ExpressionComputation<Vector> origin = originProducer();
+		return (ExpressionComputation<Vector>) ((OperationAdapter) origin).getInputs().get(1);
 	}
 
-	protected VectorExpressionComputation originDirectionProducer() {
-		VectorProducerBase origin = originProducer();
-		return (VectorExpressionComputation) ((OperationAdapter) origin).getInputs().get(2);
+	protected ExpressionComputation<Vector> originDirectionProducer() {
+		ExpressionComputation<Vector> origin = originProducer();
+		return (ExpressionComputation<Vector>) ((OperationAdapter) origin).getInputs().get(2);
 	}
 
 	@Test
 	public void originComposition() {
-		VectorExpressionComputation o = originPointProducer();
+		ExpressionComputation<Vector> o = originPointProducer();
 		Evaluable<Vector> evo = o.get();
 
 		Vector vo = evo.evaluate();
 		System.out.println(vo);
 		Assert.assertEquals(new Vector(0.0, 0.0, 0.0), vo);
 
-		VectorExpressionComputation d = originDirectionProducer();
+		ExpressionComputation<Vector> d = originDirectionProducer();
 		Evaluable<Vector> evd = d.get();
 
 		Vector vd = evd.evaluate();
@@ -81,7 +81,7 @@ public class TriangleTest implements CodeFeatures {
 
 	@Test
 	public void origin() {
-		VectorProducerBase at = originProducer();
+		ExpressionComputation<Vector> at = vector(originProducer());
 		Evaluable<Vector> ev = at.get();
 
 		Vector p = ev.evaluate();

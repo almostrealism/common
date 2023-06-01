@@ -154,11 +154,11 @@ public class Plane extends AbstractSurface implements ParticleGroup, RayFeatures
 		Producer<Scalar> s;
 
 		if (type == Plane.XY) {
-			s = scalar(minus(origin(tr).z()).divide(direction(tr).z()));
+			s = scalar(minus(z(origin(tr))).divide(z(direction(tr))));
 		} else if (type == Plane.XZ) {
-			s = scalar(minus(origin(tr).y()).divide(direction(tr).y()));
+			s = scalar(minus(y(origin(tr))).divide(y(direction(tr))));
 		} else if (type == Plane.YZ) {
-			s = scalar(minus(origin(tr).x()).divide(direction(tr).x()));
+			s = scalar(minus(x(origin(tr))).divide(x(direction(tr))));
 		} else {
 			throw new IllegalArgumentException(String.valueOf(type));
 		}

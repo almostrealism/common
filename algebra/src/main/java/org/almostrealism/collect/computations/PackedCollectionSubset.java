@@ -24,6 +24,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.Shape;
+import org.almostrealism.collect.TraversableExpression;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.DestinationSupport;
 import org.almostrealism.hardware.KernelSupport;
@@ -34,7 +35,8 @@ import java.util.function.Supplier;
 
 @Deprecated
 public class PackedCollectionSubset<T extends PackedCollection<?>>
-		extends DynamicCollectionProducerComputationAdapter<PackedCollection<?>, T> {
+		extends DynamicCollectionProducerComputationAdapter<PackedCollection<?>, T>
+		implements TraversableExpression<Double> {
 	private int pos[];
 
 	public PackedCollectionSubset(TraversalPolicy shape, Producer<?> collection, int... pos) {
@@ -60,9 +62,23 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 	}
 
 	@Override
+	public Expression<Double> getValue(Expression... pos) {
+		// TODO
+		return null;
+	}
+
+	@Override
+	public Expression<Double> getValueAt(Expression index) {
+		TraversalPolicy inputShape = ((Shape) getInputs().get(1)).getShape();
+		Expression<?> p = inputShape.subset(getShape(), index, pos);
+		return getArgument(1, inputShape.getTotalSize()).get(p, -1);
+	}
+
+	@Override
 	public IntFunction<Expression<Double>> getValueFunction() {
 		return i -> {
-			if (i != 0) throw new IllegalArgumentException("Invalid position");
+			if (i != 0)
+				throw new IllegalArgumentException("Invalid position");
 
 			Expression index = new StaticReference(Double.class, KernelSupport.getKernelIndex(0));
 			TraversalPolicy inputShape = ((Shape) getInputs().get(1)).getShape();

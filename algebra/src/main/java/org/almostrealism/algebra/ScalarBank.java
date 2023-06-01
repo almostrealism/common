@@ -37,6 +37,7 @@ import java.util.stream.IntStream;
  *
  * @author  Michael Murray
  */
+@Deprecated
 public class ScalarBank extends PackedCollection<Scalar> {
 	public ScalarBank(int count) {
 		super(new TraversalPolicy(count, 2), 1, delegateSpec ->

@@ -16,8 +16,9 @@
 
 package org.almostrealism.algebra;
 
-import org.almostrealism.algebra.computations.DynamicScalarProducer;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.PooledMem;
 
@@ -67,8 +68,8 @@ public class Scalar extends Pair<Scalar> implements Comparable<Scalar> {
 		return new TraversalPolicy(2);
 	}
 
-	public static ScalarProducerBase blank() {
-		return new DynamicScalarProducer(args -> new Scalar(false));
+	public static Producer<Scalar> blank() {
+		return new DynamicProducerForMemoryData<>(() -> new Scalar(false), ScalarBank::new);
 	}
 
 	public static BiFunction<MemoryData, Integer, Pair<?>> postprocessor() {

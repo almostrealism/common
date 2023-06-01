@@ -23,6 +23,8 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
+import org.almostrealism.algebra.Vector;
+import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.algebra.computations.ScalarExpressionComputation;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
@@ -34,7 +36,7 @@ import java.util.List;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-public interface GeometryFeatures extends CollectionFeatures {
+public interface GeometryFeatures extends ScalarFeatures, RayFeatures {
 	double PI = Math.PI;
 	double TWO_PI = 2 * PI;
 
@@ -68,5 +70,11 @@ public interface GeometryFeatures extends CollectionFeatures {
 																										Producer<PackedCollection<?>> phase,
 																										Producer<PackedCollection<?>> amp) {
 		return _sin(c(TWO_PI).multiply(divide(input, wavelength).subtract(phase))).multiply(amp);
+	}
+
+	default ExpressionComputation<Vector> reflect(Producer<Vector> vector, Producer<Vector> normal) {
+		Producer<Vector> newVector = minus(vector);
+		Producer<Scalar> s = scalar(2).multiply(dotProduct(newVector, normal).divide(lengthSq(normal)));
+		return subtract(newVector, scalarMultiply(normal, s));
 	}
 }

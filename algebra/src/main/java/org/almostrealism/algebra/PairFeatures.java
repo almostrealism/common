@@ -38,26 +38,29 @@ import java.util.stream.IntStream;
 
 public interface PairFeatures extends HardwareFeatures {
 
-	static PairExpressionComputation of(double l, double r) { return of(new Pair<>(l, r)); }
+	static ExpressionComputation<Pair<?>> of(double l, double r) { return of(new Pair<>(l, r)); }
 
-	static PairExpressionComputation of(Pair<?> value) {
+	static ExpressionComputation<Pair<?>> of(Pair<?> value) {
 		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
 		IntStream.range(0, 2).forEach(i -> comp.add(args -> HardwareFeatures.ops().expressionForDouble(value.toDouble(i))));
-		return new PairExpressionComputation(comp);
+		return new ExpressionComputation<Pair<?>>(comp)
+				.setPostprocessor(Pair.postprocessor());
 	}
 
 	default ExpressionComputation<Pair<?>> pair(double x, double y) { return value(new Pair(x, y)); }
 
-	default PairProducerBase pair(Supplier<Evaluable<? extends Scalar>> x, Supplier<Evaluable<? extends Scalar>> y) {
+	default ExpressionComputation<Pair<?>> pair(Supplier<Evaluable<? extends Scalar>> x, Supplier<Evaluable<? extends Scalar>> y) {
 		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
 		IntStream.range(0, 2).forEach(i -> comp.add(args -> args.get(1 + i).getValue(0)));
-		return new PairExpressionComputation(comp, (Supplier) x, (Supplier) y);
+		return new ExpressionComputation<Pair<?>>(comp, (Supplier) x, (Supplier) y)
+				.setPostprocessor(Pair.postprocessor());
 	}
 
-	default PairProducerBase pair(Supplier<Evaluable<? extends PackedCollection<?>>> x) {
+	default ExpressionComputation<Pair<?>> pair(Supplier<Evaluable<? extends PackedCollection<?>>> x) {
 		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
 		IntStream.range(0, 2).forEach(i -> comp.add(args -> args.get(1).getValue(i)));
-		return new PairExpressionComputation(comp, x);
+		return new ExpressionComputation<Pair<?>>(comp, x)
+				.setPostprocessor(Pair.postprocessor());
 	}
 
 	default ExpressionComputation<Pair<?>> v(Pair value) { return value(value); }
@@ -79,11 +82,12 @@ public interface PairFeatures extends HardwareFeatures {
 	}
 
 	@Deprecated
-	default PairExpressionComputation pairAdd(Supplier<Evaluable<? extends Pair<?>>>... values) {
+	default ExpressionComputation<Pair<?>> pairAdd(Supplier<Evaluable<? extends Pair<?>>>... values) {
 		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
 		comp.add(args -> new Sum(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValue(0)).toArray(Expression[]::new)));
 		comp.add(args -> new Sum(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValue(1)).toArray(Expression[]::new)));
-		return new PairExpressionComputation(comp, (Supplier[]) values);
+		return new ExpressionComputation<Pair<?>>(comp, (Supplier[]) values)
+				.setPostprocessor(Pair.postprocessor());
 	}
 
 	default ExpressionComputation<Pair<?>> multiplyComplex(Supplier<Evaluable<? extends Pair<?>>> a, Supplier<Evaluable<? extends Pair<?>>> b) {

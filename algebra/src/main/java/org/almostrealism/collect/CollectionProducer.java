@@ -78,6 +78,10 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 		return divide((Producer) this, value);
 	}
 
+	default <T extends PackedCollection<?>> ExpressionComputation<T> pow(double value) {
+		return pow((Producer) this, c(value));
+	}
+
 	default <T extends PackedCollection<?>> ExpressionComputation<T> pow(Producer<T> value) {
 		return pow((Producer) this, value);
 	}

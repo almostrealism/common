@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -59,7 +59,7 @@ public class ShadableIntersection extends Intersection implements ContinuousFiel
 	/** Returns the viewer direction. */
 	@Override
 	public Producer<Vector> getNormalAt(Producer<Vector> point) {
-		return normalize(incident).scalarMultiply(-1.0);
+		return scalarMultiply(normalize(incident), -1.0);
 	}
 	
 	/** Delegates to {@link #getNormalAt(Producer)}. */

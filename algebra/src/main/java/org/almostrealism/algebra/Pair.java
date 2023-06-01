@@ -170,6 +170,13 @@ public class Pair<T extends PackedCollection> extends PackedCollection<T> {
 		return (delegate, offset) -> new Pair<>(delegate, offset);
 	}
 
+	public static BiFunction<MemoryData, Integer, PackedCollection<Pair<?>>> bankPostprocessor() {
+		return (output, offset) -> {
+			TraversalPolicy shape = ((PackedCollection) output).getShape();
+			return Pair.bank(shape.getTotalSize() / 2, output, offset);
+		};
+	}
+
 	public static ExpressionComputation<Pair<?>> postprocess(ExpressionComputation c) {
 		c.setPostprocessor(postprocessor());
 		return c;

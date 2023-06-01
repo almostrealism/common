@@ -17,14 +17,11 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.Minus;
 import io.almostrealism.expression.MultiExpression;
-import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.computations.ScalarBankExpressionComputation;
-import org.almostrealism.algebra.computations.ScalarBankSum;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.hardware.Input;
 import org.almostrealism.hardware.KernelizedEvaluable;
@@ -79,7 +76,7 @@ public interface ScalarBankFeatures extends ScalarFeatures {
 	default ScalarBankProducerBase ditherAndRemoveDcOffset(int count, Supplier<Evaluable<? extends ScalarBank>> input,
 														   Supplier<Evaluable<? extends Scalar>> ditherValue) {
 		ScalarBankProducerBase dither = dither(count, input, ditherValue);
-		return scalarBankAdd(count, dither, new ScalarBankSum(count, dither).divide(count).multiply(-1));
+		return scalarBankAdd(count, dither, scalar(subset(shape(count, 1), dither, 0).sum().divide(c(count)).multiply(c(-1))));
 	}
 
 	default Producer<ScalarBank> preemphasize(int count, Supplier<Evaluable<? extends ScalarBank>> input,

@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,10 +18,7 @@ package org.almostrealism.algebra.test;
 
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarProducerBase;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorProducerBase;
-import org.almostrealism.algebra.computations.VectorExpressionComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import io.almostrealism.relation.Producer;
@@ -31,12 +28,10 @@ import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
 
-import static org.almostrealism.Ops.ops;
-
 public class VectorMathTest implements TestFeatures {
 	@Test
 	public void scalarPow() {
-		Scalar result = scalar(3).pow(3).get().evaluate();
+		Scalar result = scalar(scalar(3).pow(3)).get().evaluate();
 		assertEquals(27, result);
 	}
 
@@ -53,7 +48,7 @@ public class VectorMathTest implements TestFeatures {
 
 	@Test
 	public void scalarMultiply() {
-		VectorProducerBase product = scalarMultiply(vector(1, 2, 3), 2);
+		ExpressionComputation<Vector> product = scalarMultiply(vector(1, 2, 3), 2);
 		Vector result = product.get().evaluate();
 		assertEquals(2, result.getX());
 		assertEquals(4, result.getY());
@@ -64,7 +59,7 @@ public class VectorMathTest implements TestFeatures {
 	public void productFromVectors1() {
 		Producer<Vector> a = vector(1.0, 2.0, 3.0);
 		Producer<Vector> b = vector(4.0, 5.0, 6.0);
-		ScalarProducerBase s = y(a).multiply(z(b));
+		Producer<Scalar> s = y(a).multiply(z(b));
 		Evaluable<Scalar> so = s.get();
 		// Assert.assertEquals(1, so.getArgsCount());
 	}
@@ -73,8 +68,8 @@ public class VectorMathTest implements TestFeatures {
 	public void productFromVectors2() {
 		Producer<Vector> a = vector(1.0, 2.0, 3.0);
 		Producer<Vector> b = vector(4.0, 5.0, 6.0);
-		ScalarProducerBase s = y(a).multiply(z(b)).add(1);
-		KernelizedEvaluable<Scalar> so = s.get();
+		Producer<Scalar> s = y(a).multiply(z(b)).add(v(1));
+		KernelizedEvaluable<Scalar> so = (KernelizedEvaluable<Scalar>) s.get();
 		Assert.assertEquals(1, so.getArgsCount());
 	}
 
@@ -82,8 +77,8 @@ public class VectorMathTest implements TestFeatures {
 	public void productFromVectors3() {
 		Producer<Vector> a = vector(1.0, 2.0, 3.0);
 		Producer<Vector> b = vector(4.0, 5.0, 6.0);
-		ScalarProducerBase s = y(a).multiply(z(b)).subtract(1);
-		KernelizedEvaluable<Scalar> so = s.get();
+		Producer<Scalar> s = y(a).multiply(z(b)).subtract(v(1));
+		KernelizedEvaluable<Scalar> so = (KernelizedEvaluable<Scalar>) s.get();
 		Assert.assertEquals(1, so.getArgsCount());
 	}
 
@@ -92,21 +87,21 @@ public class VectorMathTest implements TestFeatures {
 		HardwareOperator.verboseLog(() -> {
 			Producer<Vector> a = vector(1.0, 2.0, 3.0);
 			Producer<Vector> b = vector(4.0, 5.0, 6.0);
-			ScalarProducerBase s = y(a).multiply(z(b))
-					.subtract(z(a).multiply(y(b)));
-			KernelizedEvaluable<Scalar> so = s.get();
+			Producer<Scalar> s = scalar(y(a).multiply(z(b))
+					.subtract(z(a).multiply(y(b))));
+			KernelizedEvaluable<Scalar> so = (KernelizedEvaluable<Scalar>) s.get();
 			assertEquals(-3.0, so.evaluate());
 			Assert.assertEquals(1, so.getArgsCount());
 		});
 	}
 
-	protected VectorExpressionComputation crossProduct(Producer<Vector> v) {
+	protected ExpressionComputation<Vector> crossProduct(Producer<Vector> v) {
 		return crossProduct(vector(0.0, 0.0, -1.0), v);
 	}
 
 	@Test
 	public void crossProduct() {
-		VectorProducerBase cp = crossProduct(vector(100.0, -100.0, 0.0)
+		ExpressionComputation<Vector> cp = crossProduct(vector(100.0, -100.0, 0.0)
 						.subtract(vector(0.0, 100.0, 0.0)));
 
 		Vector v = cp.get().evaluate();
@@ -119,7 +114,7 @@ public class VectorMathTest implements TestFeatures {
 
 	@Test
 	public void crossProductCompact() {
-		VectorProducerBase cp = crossProduct(vector(100.0, -200.0, 0.0));
+		ExpressionComputation<Vector> cp = crossProduct(vector(100.0, -200.0, 0.0));
 
 		KernelizedEvaluable<Vector> cpo = cp.get();
 		Assert.assertEquals(1, cpo.getArgsCount());

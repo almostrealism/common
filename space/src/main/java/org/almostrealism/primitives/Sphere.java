@@ -27,6 +27,7 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.bool.AcceleratedConjunctionScalar;
 import org.almostrealism.bool.GreaterThanScalar;
 import org.almostrealism.bool.LessThanScalar;
+import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.color.RGB;
 import org.almostrealism.geometry.Intersection;
 import org.almostrealism.geometry.Ray;
@@ -233,7 +234,7 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 	// TODO  Make private
 	public Producer<Scalar> discriminant(Producer<Ray> ray) {
 		// return oDotd(ray).pow(2.0).add(dDotd(ray).multiply(oDoto(ray).add(-1.0)).multiply(-1));
-		return oDotd(ray).pow(2.0).subtract(dDotd(ray).multiply(oDoto(ray).add(-1.0)));
+		return oDotd(ray).pow(2.0).subtract(dDotd(ray).multiply(oDoto(ray).add(v(-1.0))));
 	}
 
 	// TODO  Make private
@@ -251,9 +252,9 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 				new GreaterThanScalar(r(t), scalar(0)));
 	}
 
-	private PairProducerBase t(Producer<Ray> ray) {
+	private ExpressionComputation<Pair<?>> t(Producer<Ray> ray) {
 		Producer<Scalar> dS = discriminantSqrt(ray);
-		Producer<Scalar> minusODotD = oDotd(ray).multiply(-1.0);
+		Producer<Scalar> minusODotD = oDotd(ray).multiply(v(-1.0));
 		Producer<Scalar> dDotDInv = dDotd(ray).pow(-1.0);
 		return pair(add(minusODotD, dS).multiply(dDotDInv),
 					add(minusODotD, minus(dS)).multiply(dDotDInv));

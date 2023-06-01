@@ -21,9 +21,7 @@ import io.almostrealism.expression.MultiExpression;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorFeatures;
-import org.almostrealism.algebra.VectorProducerBase;
 import org.almostrealism.algebra.computations.ScalarExpressionComputation;
-import org.almostrealism.algebra.computations.VectorExpressionComputation;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.geometry.computations.RayExpressionComputation;
 import io.almostrealism.relation.Evaluable;
@@ -59,31 +57,31 @@ public interface RayFeatures extends VectorFeatures {
 				values.apply(3), values.apply(4), values.apply(5));
 	}
 
-	default VectorProducerBase origin(Supplier<Evaluable<? extends Ray>> r) {
-		return new VectorExpressionComputation(List.of(
+	default ExpressionComputation<Vector> origin(Supplier<Evaluable<? extends Ray>> r) {
+		return new ExpressionComputation<Vector>(List.of(
 				args -> args.get(1).getValue(0),
 				args -> args.get(1).getValue(1),
 				args -> args.get(1).getValue(2)),
-				(Supplier) r);
+				(Supplier) r).setPostprocessor(Vector.postprocessor());
 	}
 
-	default VectorProducerBase direction(Supplier<Evaluable<? extends Ray>> r) {
-		return new VectorExpressionComputation(List.of(
+	default ExpressionComputation<Vector> direction(Supplier<Evaluable<? extends Ray>> r) {
+		return new ExpressionComputation<Vector>(List.of(
 				args -> args.get(1).getValue(3),
 				args -> args.get(1).getValue(4),
 				args -> args.get(1).getValue(5)),
-				(Supplier) r);
+				(Supplier) r).setPostprocessor(Vector.postprocessor());
 	}
 
-	default VectorProducerBase pointAt(Supplier<Evaluable<? extends Ray>> r, Supplier<Evaluable<? extends Scalar>> t) {
-		return add(origin(r), scalarMultiply(direction(r), t));
+	default ExpressionComputation<Vector> pointAt(Supplier<Evaluable<? extends Ray>> r, Supplier<Evaluable<? extends Scalar>> t) {
+		return vector(add(origin(r), scalarMultiply(direction(r), t)));
 	}
 
-	default ScalarExpressionComputation oDoto(Supplier<Evaluable<? extends Ray>> r) { return dotProduct(origin(r), origin(r)); }
+	default ExpressionComputation<Scalar> oDoto(Supplier<Evaluable<? extends Ray>> r) { return dotProduct(origin(r), origin(r)); }
 
-	default ScalarExpressionComputation dDotd(Supplier<Evaluable<? extends Ray>> r) { return dotProduct(direction(r), direction(r)); }
+	default ExpressionComputation<Scalar> dDotd(Supplier<Evaluable<? extends Ray>> r) { return dotProduct(direction(r), direction(r)); }
 
-	default ScalarExpressionComputation oDotd(Supplier<Evaluable<? extends Ray>> r) { return dotProduct(origin(r), direction(r)); }
+	default ExpressionComputation<Scalar> oDotd(Supplier<Evaluable<? extends Ray>> r) { return dotProduct(origin(r), direction(r)); }
 
 	default RayExpressionComputation transform(TransformMatrix t, Supplier<Evaluable<? extends Ray>> r) {
 		return ray(TransformMatrixFeatures.getInstance().transformAsLocation(t, origin(r)), TransformMatrixFeatures.getInstance().transformAsOffset(t, direction(r)));

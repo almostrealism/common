@@ -18,13 +18,14 @@ package org.almostrealism.algebra;
 
 import io.almostrealism.expression.*;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.computations.PairExpressionComputation;
 import org.almostrealism.algebra.computations.ScalarChoice;
 import org.almostrealism.algebra.computations.ScalarExpressionComputation;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.algebra.computations.VectorExpressionComputation;
 import org.almostrealism.bool.AcceleratedConditionalStatementScalar;
+import org.almostrealism.bool.AcceleratedConditionalStatementVector;
 import org.almostrealism.bool.GreaterThanScalar;
+import org.almostrealism.bool.LessThanScalar;
+import org.almostrealism.bool.LessThanVector;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.Shape;
@@ -68,9 +69,20 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 
 	default ExpressionComputation<Scalar> scalar(DynamicCollectionProducerComputationAdapter<?, ?> value) {
 		if (value instanceof ExpressionComputation) {
-			if (((ExpressionComputation) value).expression().size() != 2) throw new IllegalArgumentException();
-			return new ScalarExpressionComputation(((ExpressionComputation) value).expression(),
-					value.getInputs().subList(1, value.getInputs().size()).toArray(Supplier[]::new));
+			int size = ((ExpressionComputation) value).expression().size();
+
+			if (size == 1) {
+				List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
+				comp.add(((ExpressionComputation<?>) value).expression().get(0));
+				comp.add(args -> new DoubleConstant(1.0));
+				return new ScalarExpressionComputation(comp,
+						value.getInputs().subList(1, value.getInputs().size()).toArray(Supplier[]::new));
+			} else if (size == 2) {
+				return new ScalarExpressionComputation(((ExpressionComputation) value).expression(),
+						value.getInputs().subList(1, value.getInputs().size()).toArray(Supplier[]::new));
+			} else {
+				throw new IllegalArgumentException();
+			}
 		} else if (value instanceof Shape) {
 			TraversalPolicy shape = ((Shape) value).getShape();
 
@@ -123,7 +135,7 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 		return c;
 	}
 
-	default ScalarProducerBase scalar() {
+	default Producer<Scalar> scalar() {
 		return Scalar.blank();
 	}
 
@@ -200,10 +212,42 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 
 	default AcceleratedConditionalStatementScalar greaterThan(Supplier<Evaluable<? extends Scalar>> left,
 															  Supplier<Evaluable<? extends Scalar>> right,
+															  boolean includeEqual) {
+		return greaterThan(left, right, null, null, includeEqual);
+	}
+
+	default AcceleratedConditionalStatementScalar greaterThan(Supplier<Evaluable<? extends Scalar>> left,
+															  Supplier<Evaluable<? extends Scalar>> right,
 															  Supplier<Evaluable<? extends Scalar>> trueValue,
 															  Supplier<Evaluable<? extends Scalar>> falseValue,
 															  boolean includeEqual) {
 		return new GreaterThanScalar(left, right, trueValue, falseValue, includeEqual);
+	}
+
+	default AcceleratedConditionalStatementScalar lessThan(Supplier<Evaluable<? extends Scalar>> left,
+															  Supplier<Evaluable<? extends Scalar>> right,
+															  boolean includeEqual) {
+		return lessThan(left, right, null, null, includeEqual);
+	}
+
+	default AcceleratedConditionalStatementScalar lessThan(Supplier<Evaluable<? extends Scalar>> left,
+															  Supplier<Evaluable<? extends Scalar>> right,
+															  Supplier<Evaluable<? extends Scalar>> trueValue,
+															  Supplier<Evaluable<? extends Scalar>> falseValue,
+															  boolean includeEqual) {
+		return new LessThanScalar(left, right, trueValue, falseValue, includeEqual);
+	}
+
+	default AcceleratedConditionalStatementVector lessThanv(Producer<Scalar> left,
+															Producer<Scalar>  right) {
+		return new LessThanVector(left, right, null, null);
+	}
+
+	default AcceleratedConditionalStatementVector lessThanv(Producer<Scalar>  left,
+															Producer<Scalar> right,
+															Producer<Vector> trueValue,
+															Producer<Vector> falseValue) {
+		return new LessThanVector(left, right, (Supplier) trueValue, (Supplier) falseValue);
 	}
 
 	static ScalarFeatures getInstance() { return new ScalarFeatures() { }; }

@@ -69,7 +69,7 @@ import java.util.function.Supplier;
 
 public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 								PairFeatures, PairBankFeatures,
-								TriangleFeatures, RayFeatures,
+								TriangleFeatures,
 								TransformMatrixFeatures, GeometryFeatures,
 								TemporalFeatures, HardwareFeatures {
 

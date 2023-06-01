@@ -6,6 +6,7 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarProducerBase;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.computations.ScalarExpressionComputation;
+import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.CodeFeatures;
 import org.junit.Test;
@@ -23,7 +24,7 @@ public class AcceleratedComputationEvaluableTests implements HardwareFeatures, C
 
 	@Test
 	public void scalarFromVector() {
-		ScalarExpressionComputation res = y(vector(0.0, 1.0, 2.0));
+		ExpressionComputation<Scalar> res = y(vector(0.0, 1.0, 2.0));
 		Evaluable<Scalar> ev = res.get();
 		Scalar s = ev.evaluate();
 		System.out.println(s.getValue());
