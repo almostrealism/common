@@ -18,8 +18,6 @@ package org.almostrealism.physics;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
-import io.almostrealism.relation.Evaluable;
-import org.almostrealism.algebra.VectorProducerBase;
 
 /**
  * An {@link Absorber} instance represents a solid object that absorbs and emits energy

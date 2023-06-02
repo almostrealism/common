@@ -134,36 +134,6 @@ public interface VectorFeatures extends CollectionFeatures, HardwareFeatures {
 				x(a).multiply(y(b)).subtract(y(a).multiply(x(b))));
 	}
 
-	default ExpressionComputation<Vector> add(VectorProducerBase value, VectorProducerBase operand) {
-		// TODO  Delegate to _add
-		List<Function<List<MultiExpression<Double>>, Expression<Double>>> expressions =
-				IntStream.range(0, 3).mapToObj(i -> (Function<List<MultiExpression<Double>>, Expression<Double>>)
-								np -> new Sum(np.get(1).getValue(i), np.get(2).getValue(i)))
-						.collect(Collectors.toList());
-		return new ExpressionComputation<Vector>(expressions, (Supplier) value, (Supplier) operand)
-				.setPostprocessor(Vector.postprocessor());
-	}
-
-	default ExpressionComputation<Vector> subtract(VectorProducerBase value, VectorProducerBase operand) {
-		return vector(add(value, minus(operand)));
-	}
-
-	default ExpressionComputation<Vector> multiply(VectorProducerBase a, VectorProducerBase b) {
-		return multiply(new VectorProducerBase[] { a, b });
-	}
-
-	default ExpressionComputation<Vector> multiply(VectorProducerBase... values) {
-		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		comp.add(args -> new Product(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValue(0)).toArray(Expression[]::new)));
-		comp.add(args -> new Product(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValue(1)).toArray(Expression[]::new)));
-		comp.add(args -> new Product(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValue(2)).toArray(Expression[]::new)));
-		return new ExpressionComputation<Vector>(comp, (Supplier[]) values).setPostprocessor(Vector.postprocessor());
-	}
-
-	default ExpressionComputation<Vector> scalarMultiply(VectorProducerBase a, double b) {
-		return scalarMultiply(a, new Scalar(b));
-	}
-
 	default ExpressionComputation<Vector> scalarMultiply(Producer<Vector> a, double b) {
 		return scalarMultiply(a, new Scalar(b));
 	}

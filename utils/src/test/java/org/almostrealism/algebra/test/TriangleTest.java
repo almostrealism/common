@@ -22,7 +22,6 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.ProducerWithRank;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorProducerBase;
 import org.almostrealism.bool.AcceleratedConjunctionScalar;
 import org.almostrealism.bool.GreaterThanScalar;
 import org.almostrealism.collect.PackedCollection;
