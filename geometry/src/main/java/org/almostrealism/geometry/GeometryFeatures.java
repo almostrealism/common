@@ -18,20 +18,15 @@ package org.almostrealism.geometry;
 
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.MultiExpression;
-import io.almostrealism.expression.Sine;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorFeatures;
-import org.almostrealism.algebra.computations.ScalarExpressionComputation;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DynamicCollectionProducerComputationAdapter;
 import org.almostrealism.collect.computations.ExpressionComputation;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -39,20 +34,6 @@ import java.util.function.Supplier;
 public interface GeometryFeatures extends ScalarFeatures, RayFeatures {
 	double PI = Math.PI;
 	double TWO_PI = 2 * PI;
-
-	@Deprecated
-	default ScalarExpressionComputation sin(Producer<Scalar> input) {
-		List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression = new ArrayList<>();
-		expression.add(args -> new Sine(args.get(1).getValue(0)));
-		expression.add(args -> args.get(1).getValue(1));
-		return new ScalarExpressionComputation(expression, (Supplier) input);
-	}
-
-	@Deprecated
-	default DynamicCollectionProducerComputationAdapter<Scalar, Scalar> sinw(Producer<Scalar> input, Producer<Scalar> wavelength,
-				  Producer<Scalar> amp) {
-		return multiply(sin(ScalarFeatures.of(new Scalar(TWO_PI)).multiply(input).divide(wavelength)), amp);
-	}
 
 	default ExpressionComputation _sin(Supplier<Evaluable<? extends PackedCollection<?>>> input) {
 		Function<List<MultiExpression<Double>>, Expression<Double>> exp = args -> new io.almostrealism.expression.Sine(args.get(1).getValue(0));

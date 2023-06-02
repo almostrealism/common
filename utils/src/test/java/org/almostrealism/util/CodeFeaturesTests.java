@@ -4,11 +4,10 @@ import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarProducerBase;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.KernelizedEvaluable;
+import org.almostrealism.hardware.KernelizedProducer;
 import org.junit.Test;
 
 import java.util.function.Supplier;
@@ -16,8 +15,8 @@ import java.util.function.Supplier;
 public class CodeFeaturesTests implements TestFeatures {
 	@Test
 	public void partialComputation1() {
-		ScalarProducerBase p = scalarsMultiply(scalar(1.0), scalar(2.0));
-		ScalarProducerBase q = scalarAdd(scalar(5.0), p);
+		KernelizedProducer<Scalar> p = scalarsMultiply(scalar(1.0), scalar(2.0));
+		KernelizedProducer<Scalar> q = scalarAdd(scalar(5.0), p);
 
 		KernelizedEvaluable<Scalar> pev = p.get();
 		KernelizedEvaluable<Scalar> qev = q.get();
@@ -28,8 +27,8 @@ public class CodeFeaturesTests implements TestFeatures {
 
 	@Test
 	public void partialComputation2() {
-		ScalarProducerBase p = scalarsMultiply(scalar(1.0), scalar(2.0));
-		ScalarProducerBase q = scalarAdd(scalar(5.0), p);
+		KernelizedProducer<Scalar> p = scalarsMultiply(scalar(1.0), scalar(2.0));
+		KernelizedProducer<Scalar> q = scalarAdd(scalar(5.0), p);
 
 		KernelizedEvaluable<Scalar> pev = p.get();
 		KernelizedEvaluable<Scalar> qev = q.get();
@@ -41,8 +40,8 @@ public class CodeFeaturesTests implements TestFeatures {
 	@Test
 	public void partialComputation3() {
 		Scalar multiplier = new Scalar(1.0);
-		ScalarProducerBase p = scalarsMultiply(p(multiplier), scalar(2.0));
-		ScalarProducerBase q = scalarAdd(scalar(5.0), p);
+		KernelizedProducer<Scalar> p = scalarsMultiply(p(multiplier), scalar(2.0));
+		KernelizedProducer<Scalar> q = scalarAdd(scalar(5.0), p);
 
 		KernelizedEvaluable<Scalar> pev = p.get();
 		KernelizedEvaluable<Scalar> qev = q.get();
@@ -58,8 +57,8 @@ public class CodeFeaturesTests implements TestFeatures {
 	@Test
 	public void partialComputation4() {
 		Scalar multiplier = new Scalar(1.0);
-		ScalarProducerBase p = scalarsMultiply(p(multiplier), scalar(2.0));
-		ScalarProducerBase q = scalarAdd(scalar(5.0), p);
+		KernelizedProducer<Scalar> p = scalarsMultiply(p(multiplier), scalar(2.0));
+		KernelizedProducer<Scalar> q = scalarAdd(scalar(5.0), p);
 
 		Evaluable<Scalar> qev = q.get();
 		assertEquals(7.0, qev.evaluate());
@@ -79,9 +78,9 @@ public class CodeFeaturesTests implements TestFeatures {
 
 	@Test
 	public void partialComputation5() {
-		ScalarProducerBase p = scalarsMultiply(scalar(1.0), scalar(2.0));
-		ScalarProducerBase q = scalarAdd(scalar(5.0), p);
-		ScalarProducerBase r = scalarsMultiply(scalar(5.0), p);
+		KernelizedProducer<Scalar> p = scalarsMultiply(scalar(1.0), scalar(2.0));
+		KernelizedProducer<Scalar> q = scalarAdd(scalar(5.0), p);
+		KernelizedProducer<Scalar> r = scalarsMultiply(scalar(5.0), p);
 
 		KernelizedEvaluable<Scalar> pev = p.get();
 		KernelizedEvaluable<Scalar> qev = q.get();
@@ -95,9 +94,9 @@ public class CodeFeaturesTests implements TestFeatures {
 	@Test
 	public void partialComputation6() {
 		Scalar multiplier = new Scalar(1.0);
-		ScalarProducerBase p = scalarsMultiply(p(multiplier), scalar(2.0));
-		ScalarProducerBase q = scalarAdd(scalar(5.0), p);
-		ScalarProducerBase r = scalarsMultiply(scalar(5.0), p);
+		KernelizedProducer<Scalar> p = scalarsMultiply(p(multiplier), scalar(2.0));
+		KernelizedProducer<Scalar> q = scalarAdd(scalar(5.0), p);
+		KernelizedProducer<Scalar> r = scalarsMultiply(scalar(5.0), p);
 
 		assertEquals(10.0, r.get().evaluate());
 		assertEquals(2.0, p.get().evaluate());
@@ -107,9 +106,9 @@ public class CodeFeaturesTests implements TestFeatures {
 	@Test
 	public void partialComputation7() {
 		Scalar multiplier = new Scalar(1.0);
-		ScalarProducerBase p = scalarsMultiply(() -> args -> multiplier, scalar(2.0));
-		ScalarProducerBase q = scalarAdd(scalar(5.0), p);
-		ScalarProducerBase r = scalarsMultiply(scalar(5.0), p);
+		KernelizedProducer<Scalar> p = scalarsMultiply(() -> args -> multiplier, scalar(2.0));
+		KernelizedProducer<Scalar> q = scalarAdd(scalar(5.0), p);
+		KernelizedProducer<Scalar> r = scalarsMultiply(scalar(5.0), p);
 
 		assertEquals(10.0, r.get().evaluate());
 		assertEquals(2.0, p.get().evaluate());

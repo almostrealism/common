@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,8 +18,7 @@ package org.almostrealism.algebra.computations.jni.test;
 
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.computations.ScalarExpressionComputation;
-import org.almostrealism.hardware.Hardware;
+import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
@@ -28,7 +27,7 @@ import java.io.IOException;
 public class NativeMathTest implements TestFeatures {
 	@Test
 	public void add() throws IOException, InterruptedException {
-		ScalarExpressionComputation sum = scalarAdd(v(1.0), v(2.0));
+		ExpressionComputation<Scalar> sum = scalarAdd(v(1.0), v(2.0));
 		Evaluable ev = sum.get();
 		System.out.println(ev.evaluate());
 		assertEquals(3.0, (Scalar) ev.evaluate());

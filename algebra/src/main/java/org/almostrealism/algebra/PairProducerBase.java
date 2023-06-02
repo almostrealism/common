@@ -20,7 +20,7 @@ import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.computations.ScalarExpressionComputation;
+import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.hardware.KernelizedProducer;
 
 import java.util.function.Supplier;
@@ -28,11 +28,11 @@ import java.util.function.Supplier;
 public interface PairProducerBase extends ProducerComputation<Pair<?>>, KernelizedProducer<Pair<?>>,
         MultiExpression<Double>, PairFeatures {
 
-    default ScalarExpressionComputation l() { return l(this); }
-    default ScalarExpressionComputation r() { return r(this); }
+    default ExpressionComputation<Scalar> l() { return l(this); }
+    default ExpressionComputation<Scalar> r() { return r(this); }
 
-    default ScalarExpressionComputation x() { return l(this); }
-    default ScalarExpressionComputation y() { return r(this); }
+    default ExpressionComputation<Scalar> x() { return l(this); }
+    default ExpressionComputation<Scalar> y() { return r(this); }
 
     default Producer<Pair<?>> multiplyComplex(Supplier<Evaluable<? extends Pair<?>>> p) {
         return multiplyComplex(this, p);

@@ -16,8 +16,8 @@
 
 package org.almostrealism.algebra.computations.test;
 
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarProducerBase;
 import org.almostrealism.algebra.computations.ScalarBankPad;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestFeatures;
@@ -34,7 +34,7 @@ public class ScalarFromScalarBankTest implements TestFeatures {
 
 		assertEquals(4, bank.get(2));
 
-		ScalarProducerBase from = scalar(p(bank), 2);
+		Producer<Scalar> from = scalar(p(bank), 2);
 		assertEquals(4, from.get().evaluate());
 	}
 

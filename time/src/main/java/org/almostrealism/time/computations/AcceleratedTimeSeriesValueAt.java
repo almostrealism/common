@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package org.almostrealism.time.computations;
 
 import io.almostrealism.code.HybridScope;
+import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.StaticReference;
@@ -24,11 +25,11 @@ import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.expression.Expression;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarProducerBase;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.DynamicCollectionProducerComputationAdapter;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.hardware.KernelizedProducer;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.time.CursorPair;
@@ -37,7 +38,7 @@ import java.util.function.Consumer;
 import java.util.function.IntFunction;
 
 @Deprecated
-public class AcceleratedTimeSeriesValueAt extends DynamicCollectionProducerComputationAdapter<PackedCollection<?>, Scalar> implements ScalarProducerBase {
+public class AcceleratedTimeSeriesValueAt extends DynamicCollectionProducerComputationAdapter<PackedCollection<?>, Scalar> implements ProducerComputation<Scalar>, KernelizedProducer<Scalar> {
 	public AcceleratedTimeSeriesValueAt(Producer<AcceleratedTimeSeries> series, Producer<CursorPair> cursors) {
 		super(new TraversalPolicy(2).traverse(0), new Producer[] { series, cursors });
 	}

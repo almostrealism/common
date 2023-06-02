@@ -18,11 +18,8 @@ package org.almostrealism.primitives;
 
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
-import org.almostrealism.Ops;
 import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.PairProducerBase;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarProducerBase;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.bool.AcceleratedConjunctionScalar;
 import org.almostrealism.bool.GreaterThanScalar;
@@ -42,11 +39,6 @@ import org.almostrealism.space.Mesh;
 import org.almostrealism.geometry.ShadableIntersection;
 import org.almostrealism.CodeFeatures;
 import io.almostrealism.relation.Evaluable;
-
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
-import java.util.function.Supplier;
 
 // TODO Add ParticleGroup implementation.
 
@@ -239,7 +231,7 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 
 	// TODO  Make private
 	public Producer<Scalar> discriminantSqrt(Producer<Ray> ray) {
-		return pow(discriminant(ray), scalar(0.5));
+		return scalarPow(discriminant(ray), scalar(0.5));
 	}
 
 	// TODO  Make private

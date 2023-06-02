@@ -21,7 +21,6 @@ import io.almostrealism.expression.MultiExpression;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorFeatures;
-import org.almostrealism.algebra.computations.ScalarExpressionComputation;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.geometry.computations.RayExpressionComputation;
 import io.almostrealism.relation.Evaluable;

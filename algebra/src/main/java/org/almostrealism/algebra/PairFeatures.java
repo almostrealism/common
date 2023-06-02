@@ -69,16 +69,16 @@ public interface PairFeatures extends HardwareFeatures {
 		return ExpressionComputation.fixed((Pair<?>) value, Pair.postprocessor());
 	}
 
-	default ScalarExpressionComputation l(Supplier<Evaluable<? extends Pair<?>>> p) {
-		return new ScalarExpressionComputation(List.of(
+	default ExpressionComputation<Scalar> l(Supplier<Evaluable<? extends Pair<?>>> p) {
+		return new ExpressionComputation<>(List.of(
 				args -> args.get(1).getValue(0),
-				args -> new DoubleConstant(1.0)), (Supplier) p);
+				args -> new DoubleConstant(1.0)), (Supplier) p).setPostprocessor(Scalar.postprocessor());
 	}
 
-	default ScalarExpressionComputation r(Supplier<Evaluable<? extends Pair<?>>> p) {
-		return new ScalarExpressionComputation(List.of(
+	default ExpressionComputation<Scalar> r(Supplier<Evaluable<? extends Pair<?>>> p) {
+		return new ExpressionComputation<>(List.of(
 				args -> args.get(1).getValue(1),
-				args -> new DoubleConstant(1.0)), (Supplier) p);
+				args -> new DoubleConstant(1.0)), (Supplier) p).setPostprocessor(Scalar.postprocessor());
 	}
 
 	@Deprecated

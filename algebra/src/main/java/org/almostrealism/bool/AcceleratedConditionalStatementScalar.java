@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,14 +16,15 @@
 
 package org.almostrealism.bool;
 
+import io.almostrealism.code.ProducerComputation;
 import org.almostrealism.algebra.Scalar;
 import io.almostrealism.code.CollectionUtils;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.algebra.ScalarProducerBase;
+import org.almostrealism.hardware.KernelizedProducer;
 
 import java.util.function.Supplier;
 
-public interface AcceleratedConditionalStatementScalar extends AcceleratedConditionalStatement<Scalar>, ScalarProducerBase {
+public interface AcceleratedConditionalStatementScalar extends AcceleratedConditionalStatement<Scalar>, ProducerComputation<Scalar>, KernelizedProducer<Scalar> {
 	default AcceleratedConjunctionScalar and(AcceleratedConditionalStatement<Scalar> operand, Supplier<Evaluable<Scalar>> trueValue, Supplier<Evaluable<Scalar>> falseValue) {
 		return and(trueValue, falseValue, operand);
 	}

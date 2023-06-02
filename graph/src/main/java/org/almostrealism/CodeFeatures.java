@@ -28,7 +28,6 @@ import org.almostrealism.algebra.PairFeatures;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBankFeatures;
 import org.almostrealism.algebra.ScalarFeatures;
-import org.almostrealism.algebra.ScalarProducerBase;
 import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.algebra.computations.Switch;
 import org.almostrealism.collect.CollectionProducerComputation;
@@ -103,7 +102,7 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 		return new DynamicProducer<>(function);
 	}
 
-	default ScalarProducerBase value(double value) { return scalar(value); }
+	default Producer<Scalar> value(double value) { return scalar(value); }
 
 	default TemporalScalarProducerBase temporal(Supplier<Evaluable<? extends Scalar>> time, Supplier<Evaluable<? extends Scalar>> value) {
 //		return new TemporalScalarFromScalars(time, value);

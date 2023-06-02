@@ -19,7 +19,6 @@ package org.almostrealism.algebra;
 import io.almostrealism.expression.*;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.computations.ScalarChoice;
-import org.almostrealism.algebra.computations.ScalarExpressionComputation;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.bool.AcceleratedConditionalStatementScalar;
 import org.almostrealism.bool.AcceleratedConditionalStatementVector;
@@ -45,26 +44,26 @@ import java.util.stream.IntStream;
 
 public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 
-	static ScalarProducerBase minusOne() { return of(-1.0); }
+	static ExpressionComputation<Scalar> minusOne() { return of(-1.0); }
 
-	static ScalarExpressionComputation of(double value) { return of(new Scalar(value)); }
+	static ExpressionComputation<Scalar> of(double value) { return of(new Scalar(value)); }
 
-	static ScalarExpressionComputation of(Scalar value) {
+	static ExpressionComputation<Scalar> of(Scalar value) {
 		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
 		IntStream.range(0, 2).forEach(i -> comp.add(args -> HardwareFeatures.ops().expressionForDouble(value.getMem().toArray(value.getOffset() + i, 1)[0])));
-		return new ScalarExpressionComputation(comp);
+		return new ExpressionComputation(comp).setPostprocessor(Scalar.postprocessor());
 	}
 
-	default ScalarExpressionComputation v(double value) { return value(new Scalar(value)); }
+	default ExpressionComputation<Scalar> v(double value) { return value(new Scalar(value)); }
 
-	default ScalarExpressionComputation v(Scalar value) { return value(value); }
+	default ExpressionComputation<Scalar> v(Scalar value) { return value(value); }
 
-	default ScalarExpressionComputation scalar(double value) { return value(new Scalar(value)); }
+	default ExpressionComputation<Scalar> scalar(double value) { return value(new Scalar(value)); }
 
-	default ScalarExpressionComputation scalar(Producer<?> x) {
+	default ExpressionComputation<Scalar> scalar(Producer<?> x) {
 		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
 		IntStream.range(0, 2).forEach(i -> comp.add(args -> args.get(1).getValue(i)));
-		return new ScalarExpressionComputation(comp, (Supplier) x);
+		return new ExpressionComputation<>(comp, (Supplier) x).setPostprocessor(Scalar.postprocessor());
 	}
 
 	default ExpressionComputation<Scalar> scalar(DynamicCollectionProducerComputationAdapter<?, ?> value) {
@@ -75,11 +74,13 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 				List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
 				comp.add(((ExpressionComputation<?>) value).expression().get(0));
 				comp.add(args -> new DoubleConstant(1.0));
-				return new ScalarExpressionComputation(comp,
-						value.getInputs().subList(1, value.getInputs().size()).toArray(Supplier[]::new));
+				return new ExpressionComputation(comp,
+							value.getInputs().subList(1, value.getInputs().size()).toArray(Supplier[]::new))
+						.setPostprocessor(Scalar.postprocessor());
 			} else if (size == 2) {
-				return new ScalarExpressionComputation(((ExpressionComputation) value).expression(),
-						value.getInputs().subList(1, value.getInputs().size()).toArray(Supplier[]::new));
+				return new ExpressionComputation(((ExpressionComputation) value).expression(),
+							value.getInputs().subList(1, value.getInputs().size()).toArray(Supplier[]::new))
+						.setPostprocessor(Scalar.postprocessor());
 			} else {
 				throw new IllegalArgumentException();
 			}
@@ -90,31 +91,32 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 					IntStream.range(0, shape.getSize()).mapToObj(i -> (Function<List<MultiExpression<Double>>, Expression<Double>>)
 									np -> np.get(1).getValue(i))
 							.collect(Collectors.toList());
-			return new ScalarExpressionComputation(expressions, (Supplier) value);
+			return new ExpressionComputation<>(expressions, (Supplier) value)
+					.setPostprocessor(Scalar.postprocessor());
 		} else {
 			throw new UnsupportedOperationException();
 		}
 	}
 
-	default ScalarExpressionComputation toScalar(Supplier<Evaluable<? extends PackedCollection<?>>> value) {
+	default ExpressionComputation<Scalar> toScalar(Supplier<Evaluable<? extends PackedCollection<?>>> value) {
 		if (value == null) return null;
 
 		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
 		comp.add(args -> args.get(1).getValue(0));
 		comp.add(args -> expressionForDouble(1.0));
-		return new ScalarExpressionComputation(comp, value);
+		return new ExpressionComputation(comp, value).setPostprocessor(Scalar.postprocessor());
 	}
 
-	default ScalarExpressionComputation value(Scalar value) {
+	default ExpressionComputation<Scalar> value(Scalar value) {
 		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
 		IntStream.range(0, 2).forEach(i -> comp.add(args -> expressionForDouble(value.getMem().toArray(value.getOffset() + i, 1)[0])));
-		return new ScalarExpressionComputation(comp);
+		return new ExpressionComputation(comp).setPostprocessor(Scalar.postprocessor());
 	}
 
-	default ScalarProducerBase scalar(Supplier<Evaluable<? extends MemoryBank<Scalar>>> bank, int index) {
+	default ExpressionComputation<Scalar> scalar(Supplier<Evaluable<? extends MemoryBank<Scalar>>> bank, int index) {
 		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
 		IntStream.range(0, 2).forEach(i -> comp.add(args -> args.get(1).getValue(2 * index + i)));
-		return new ScalarExpressionComputation(comp, (Supplier) bank);
+		return new ExpressionComputation(comp, (Supplier) bank).setPostprocessor(Scalar.postprocessor());
 	}
 
 	default ExpressionComputation<Scalar> scalar(TraversalPolicy shape, Supplier<Evaluable<? extends PackedCollection<?>>> collection, int index) {
@@ -139,71 +141,61 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 		return Scalar.blank();
 	}
 
-	default ScalarExpressionComputation scalarAdd(Supplier<Evaluable<? extends Scalar>>... values) {
+	default ExpressionComputation<Scalar> scalarAdd(Supplier<Evaluable<? extends Scalar>>... values) {
 		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
 		comp.add(args -> new Sum(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValue(0)).toArray(Expression[]::new)));
 		comp.add(args -> expressionForDouble(1.0));
-		return new ScalarExpressionComputation(comp, (Supplier[]) values);
+		return new ExpressionComputation(comp, values).setPostprocessor(Scalar.postprocessor());
 	}
 
-	default ScalarExpressionComputation scalarSubtract(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
+	default ExpressionComputation<Scalar> scalarSubtract(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
 		return scalarAdd(a, scalarMinus(b));
 	}
 
-	default ScalarExpressionComputation scalarsMultiply(Supplier<Evaluable<? extends Scalar>>... values) {
+	default ExpressionComputation<Scalar> scalarsMultiply(Supplier<Evaluable<? extends Scalar>>... values) {
 		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
 		comp.add(args -> new Product(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValue(0)).toArray(Expression[]::new)));
 		comp.add(args -> new Product(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValue(1)).toArray(Expression[]::new)));
-		return new ScalarExpressionComputation(comp, (Supplier[]) values);
+		return new ExpressionComputation<>(comp, (Supplier[]) values).setPostprocessor(Scalar.postprocessor());
 	}
 
-	default ScalarExpressionComputation scalarsDivide(ScalarProducerBase a, ScalarProducerBase b) {
-		return scalarsMultiply(a, pow(b, v(-1.0)));
+	default ExpressionComputation<Scalar> scalarsDivide(Producer<Scalar> a, Producer<Scalar> b) {
+		return scalarsMultiply(a, scalarPow(b, v(-1.0)));
 	}
 
-	default ScalarProducerBase scalarMinus(Supplier<Evaluable<? extends Scalar>> v) {
+	default ExpressionComputation<Scalar> scalarMinus(Supplier<Evaluable<? extends Scalar>> v) {
 		return scalarsMultiply(ScalarFeatures.minusOne(), v);
 	}
 
-	default ScalarProducerBase pow(ScalarProducerBase base, ScalarProducerBase exponent) {
+	default ExpressionComputation<Scalar> scalarPow(Producer<Scalar> base, Producer<Scalar> exponent) {
 		// TODO  Certainty of exponent is ignored
-		return new ScalarExpressionComputation(List.of(
+		return new ExpressionComputation<>(List.of(
 				args -> new Exponent(args.get(1).getValue(0), args.get(2).getValue(0)),
 				args -> new Exponent(args.get(1).getValue(1), args.get(2).getValue(0))),
-				(Supplier) base, (Supplier) exponent);
+				(Supplier) base, (Supplier) exponent)
+				.setPostprocessor(Scalar.postprocessor());
 	}
 
-	default ScalarProducerBase pow(ScalarProducerBase base, Scalar exp) {
-		return pow(base, of(exp));
+	default ExpressionComputation<Scalar> scalarPow(Producer<Scalar> base, Scalar exp) {
+		return scalarPow(base, of(exp));
 	}
 
-	default ScalarProducerBase pow(ScalarProducerBase base, double value) {
-		return pow(base, new Scalar(value));
+	default ExpressionComputation<Scalar> scalarPow(Producer<Scalar>  base, double value) {
+		return scalarPow(base, new Scalar(value));
 	}
 
-	default ScalarProducerBase min(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
-		return new ScalarExpressionComputation(List.of(
+	default ExpressionComputation<Scalar> min(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
+		return new ExpressionComputation<>(List.of(
 				args -> new Min(args.get(1).getValue(0), args.get(2).getValue(0)),
 				args -> new Min(args.get(1).getValue(1), args.get(2).getValue(1))),
-				(Supplier) a, (Supplier) b);
+				(Supplier) a, (Supplier) b).setPostprocessor(Scalar.postprocessor());
 	}
 
-	default ScalarProducerBase max(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
-		return new ScalarExpressionComputation(List.of(
-				args -> new Max(args.get(1).getValue(0), args.get(2).getValue(0)),
-				args -> new Max(args.get(1).getValue(1), args.get(2).getValue(1))),
-				(Supplier) a, (Supplier) b);
-	}
-
-	default ScalarProducerBase mod(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
-		return new ScalarExpressionComputation(List.of(
+	default ExpressionComputation<Scalar> mod(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
+		return new ExpressionComputation<>(List.of(
 				args -> new Mod(args.get(1).getValue(0), args.get(2).getValue(0)),
 				args -> args.get(1).getValue(1)),
-				(Supplier) a, (Supplier) b);
-	}
-
-	default ScalarProducerBase bound(Supplier<Evaluable<? extends Scalar>> a, double min, double max) {
-		return min(max(a, v(min)), v(max));
+				(Supplier) a, (Supplier) b).setPostprocessor(Scalar.postprocessor());
 	}
 
 	default ScalarChoice choice(int choiceCount, Supplier<Evaluable<? extends Scalar>> decision, Supplier<Evaluable<? extends MemoryBank<Scalar>>> choices) {

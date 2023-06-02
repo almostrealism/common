@@ -23,7 +23,6 @@ import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 
-import org.almostrealism.algebra.computations.ScalarExpressionComputation;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.Shape;
@@ -98,15 +97,24 @@ public interface VectorFeatures extends CollectionFeatures, HardwareFeatures {
 	default Producer<Vector> vector() { return Vector.blank(); }
 
 	default ExpressionComputation<Scalar> x(Supplier<Evaluable<? extends Vector>> v) {
-		return new ScalarExpressionComputation(List.of(args -> args.get(1).getValue(0), args -> expressionForDouble(1.0)), (Supplier) v);
+		return new ExpressionComputation<>(List.of(
+				args -> args.get(1).getValue(0),
+				args -> expressionForDouble(1.0)),
+				(Supplier) v).setPostprocessor(Scalar.postprocessor());
 	}
 
 	default ExpressionComputation<Scalar> y(Supplier<Evaluable<? extends Vector>> v) {
-		return new ScalarExpressionComputation(List.of(args -> args.get(1).getValue(1), args -> expressionForDouble(1.0)), (Supplier) v);
+		return new ExpressionComputation<>(List.of(
+				args -> args.get(1).getValue(1),
+				args -> expressionForDouble(1.0)),
+				(Supplier) v).setPostprocessor(Scalar.postprocessor());
 	}
 
 	default ExpressionComputation<Scalar> z(Supplier<Evaluable<? extends Vector>> v) {
-		return new ScalarExpressionComputation(List.of(args -> args.get(1).getValue(2), args -> expressionForDouble(1.0)), (Supplier) v);
+		return new ExpressionComputation<>(List.of(
+				args -> args.get(1).getValue(2),
+				args -> expressionForDouble(1.0)),
+				(Supplier) v).setPostprocessor(Scalar.postprocessor());
 	}
 
 	default ExpressionComputation<Scalar> dotProduct(Supplier<Evaluable<? extends Vector>> a, Supplier<Evaluable<? extends Vector>> b) {
@@ -117,7 +125,7 @@ public interface VectorFeatures extends CollectionFeatures, HardwareFeatures {
 				new Product(args.get(1).getValue(2), args.get(2).getValue(2))
 				));
 		comp.add(args -> expressionForDouble(1.0));
-		return new ScalarExpressionComputation(comp, (Supplier) a, (Supplier) b);
+		return new ExpressionComputation<>(comp, (Supplier) a, (Supplier) b).setPostprocessor(Scalar.postprocessor());
 	}
 
 	default ExpressionComputation<Vector> crossProduct(Supplier<Evaluable<? extends Vector>> a, Supplier<Evaluable<? extends Vector>> b) {

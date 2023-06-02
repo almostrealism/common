@@ -73,7 +73,7 @@ public interface RGBFeatures extends ScalarFeatures {
 
 	default Producer<RGB> attenuation(double da, double db, double dc, Producer<RGB> color, Producer<Scalar> distanceSq) {
 		return multiply((Producer) color, (Producer) cfromScalar(multiply(v(da), distanceSq)
-				.add(v(db).multiply(pow(distanceSq, scalar(0.5))))
+				.add(v(db).multiply(scalarPow(distanceSq, scalar(0.5))))
 				.add(v(dc))));
 	}
 

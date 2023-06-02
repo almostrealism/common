@@ -17,10 +17,9 @@
 package org.almostrealism.hardware.test;
 
 import io.almostrealism.code.ComputeRequirement;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarProducerBase;
-import org.junit.Test;
 
 public class AltComputeContextsTest implements CodeFeatures {
 	// TODO  @Test
@@ -28,8 +27,8 @@ public class AltComputeContextsTest implements CodeFeatures {
 		dc(() -> {
 			Scalar result = new Scalar();
 
-			ScalarProducerBase sum = scalarAdd(v(1.0), v(2.0));
-			ScalarProducerBase product = scalarsMultiply(v(3.0), v(2.0));
+			Producer<Scalar> sum = scalarAdd(v(1.0), v(2.0));
+			Producer<Scalar> product = scalarsMultiply(v(3.0), v(2.0));
 
 			cc(() -> a(2, p(result), sum).get().run(), ComputeRequirement.CL);
 			System.out.println("Result = " + result.getValue());

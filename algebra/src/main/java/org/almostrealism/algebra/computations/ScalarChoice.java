@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,15 +16,16 @@
 
 package org.almostrealism.algebra.computations;
 
+import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarProducerBase;
+import org.almostrealism.hardware.KernelizedProducer;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 
 import java.util.function.Supplier;
 
-public class ScalarChoice extends Choice<Scalar> implements ScalarProducerBase {
+public class ScalarChoice extends Choice<Scalar> implements ProducerComputation<Scalar>, KernelizedProducer<Scalar> {
 	public ScalarChoice(int choiceCount, Supplier<Evaluable<? extends Scalar>> decision, Supplier<Evaluable<? extends MemoryBank<Scalar>>> choices) {
 		super(2, choiceCount, decision, choices);
 	}

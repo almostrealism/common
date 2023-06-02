@@ -25,17 +25,6 @@ import java.util.function.Supplier;
 
 public interface VectorProducerBase extends ProducerComputation<Vector>, KernelizedProducer<Vector>, VectorFeatures {
 
-	default ExpressionComputation<Scalar> x() {
-		return x(this);
-	}
-
-	default ExpressionComputation<Scalar> y() {
-		return y(this);
-	}
-
-	default ExpressionComputation<Scalar> z() {
-		return z(this);
-	}
 
 	default ExpressionComputation<Scalar> dotProduct(Evaluable<Vector> operand) {
 		return dotProduct(() -> operand);

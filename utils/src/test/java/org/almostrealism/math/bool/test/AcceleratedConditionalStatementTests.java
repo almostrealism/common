@@ -1,9 +1,7 @@
 package org.almostrealism.math.bool.test;
 
 import io.almostrealism.code.OperationAdapter;
-import org.almostrealism.algebra.ScalarProducerBase;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.Random;
 import org.almostrealism.hardware.Input;
 import org.almostrealism.util.TestSettings;
 import io.almostrealism.relation.Evaluable;
@@ -11,7 +9,6 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.bool.LessThanScalar;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.bool.AcceleratedConditionalStatementScalar;
 import org.almostrealism.bool.LessThan;
 import io.almostrealism.relation.Producer;
@@ -25,8 +22,8 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 	@Test
 	public void randomLessThan() {
 		IntStream.range(1, 6).forEach(i -> {
-			ScalarProducerBase a = scalar(i * Math.random());
-			ScalarProducerBase b = scalar(i * Math.random());
+			Producer<Scalar> a = scalar(i * Math.random());
+			Producer<Scalar> b = scalar(i * Math.random());
 
 			Evaluable<Scalar> lt = lessThan(a, b).get();
 
@@ -131,10 +128,10 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 			double c = i * Math.random();
 			double d = i * Math.random();
 
-			ScalarProducerBase pa = scalar(a);
-			ScalarProducerBase pb = scalar(b);
-			ScalarProducerBase pc = scalar(c);
-			ScalarProducerBase pd = scalar(d);
+			Producer<Scalar> pa = scalar(a);
+			Producer<Scalar> pb = scalar(b);
+			Producer<Scalar> pc = scalar(c);
+			Producer<Scalar> pd = scalar(d);
 
 			LessThan lt1 = new LessThanScalar(pa, pb, pa, pb, false);
 			LessThan lt2 = new LessThanScalar(pb, pc, lt1, scalar(-a), false);
