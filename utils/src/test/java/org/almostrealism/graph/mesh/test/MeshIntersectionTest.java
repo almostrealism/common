@@ -20,10 +20,8 @@ import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarBank;
-import org.almostrealism.algebra.ScalarProducerBase;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorProducerBase;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.computations.RayExpressionComputation;
@@ -205,9 +203,9 @@ public class MeshIntersectionTest implements TestFeatures {
 
 	@Test
 	public void intersectionKernel1() {
-		ScalarBank distances = new ScalarBank(1);
+		PackedCollection<Scalar> distances = Scalar.scalarBank(1);
 		Producer<Ray> ray = ray(origin1, direction1);
-		data1.evaluateIntersectionKernel((KernelizedEvaluable<Ray>) ray.get(), distances, new MemoryBank[0]);
+		data1.evaluateIntersectionKernelScalar((KernelizedEvaluable<Ray>) ray.get(), distances, new MemoryBank[0]);
 		System.out.println("distance = " + distances.get(0).getValue());
 		Assert.assertEquals(1.0, distances.get(0).getValue(), Math.pow(10, -10));
 	}
@@ -222,9 +220,9 @@ public class MeshIntersectionTest implements TestFeatures {
 
 	@Test
 	public void intersectionKernel2() {
-		ScalarBank distances = new ScalarBank(1);
+		PackedCollection<Scalar> distances = Scalar.scalarBank(1);
 		RayExpressionComputation ray = ray(origin2, direction2);
-		data2.evaluateIntersectionKernel(ray.get(), distances, new MemoryBank[0]);
+		data2.evaluateIntersectionKernelScalar(ray.get(), distances, new MemoryBank[0]);
 		System.out.println("distance = " + distances.get(0).getValue());
 		assertEquals(1.0, distances.get(0));
 	}
@@ -232,8 +230,8 @@ public class MeshIntersectionTest implements TestFeatures {
 	@Test
 	public void intersectionKernel3() {
 		KernelizedEvaluable<Ray> ray = new DynamicProducerForMemoryData<>(args -> ray(i -> Math.random()).get().evaluate()).get();
-		ScalarBank distances = new ScalarBank(100);
-		data2.evaluateIntersectionKernel(ray, distances, new MemoryBank[0]);
+		PackedCollection<Scalar> distances = Scalar.scalarBank(100);
+		data2.evaluateIntersectionKernelScalar(ray, distances, new MemoryBank[0]);
 		// TODO  Assertions
 	}
 }

@@ -17,7 +17,8 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.code.ProducerComputation;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.KernelizedProducer;
 
-public interface ScalarBankProducerBase extends ProducerComputation<ScalarBank>, KernelizedProducer<ScalarBank>, ScalarFeatures {
+public interface ScalarBankProducerBase extends ProducerComputation<PackedCollection<Scalar>>, KernelizedProducer<PackedCollection<Scalar>>, ScalarFeatures {
 }

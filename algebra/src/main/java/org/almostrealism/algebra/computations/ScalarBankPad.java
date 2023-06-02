@@ -18,13 +18,13 @@ package org.almostrealism.algebra.computations;
 
 import io.almostrealism.code.HybridScope;
 import io.almostrealism.code.OperationMetadata;
-import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.StaticReference;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
-import io.almostrealism.relation.Evaluable;
-import org.almostrealism.algebra.ScalarBank;
+import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBankProducerBase;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.CollectionProducerComputationAdapter;
 import org.almostrealism.hardware.ComputerFeatures;
@@ -33,27 +33,27 @@ import org.almostrealism.hardware.MemoryData;
 
 import java.util.function.Supplier;
 
-public class ScalarBankPad extends CollectionProducerComputationAdapter<ScalarBank, ScalarBank> implements ScalarBankProducerBase, DestinationSupport<ScalarBank>, ComputerFeatures {
+public class ScalarBankPad extends CollectionProducerComputationAdapter<PackedCollection<Scalar>, PackedCollection<Scalar>> implements ScalarBankProducerBase, DestinationSupport<PackedCollection<Scalar>>, ComputerFeatures {
 	private final int count;
 	private final int total;
 
-	private Supplier<ScalarBank> destination;
+	private Supplier<PackedCollection<Scalar>> destination;
 
-	public ScalarBankPad(int count, int total, Supplier<Evaluable<? extends ScalarBank>> input) {
-		super(new TraversalPolicy(count, 2), input);
+	public ScalarBankPad(int count, int total, Producer<PackedCollection<Scalar>> input) {
+		super(new TraversalPolicy(count, 2), (Supplier) input);
 		this.count = count;
 		this.total = total;
 	}
 
 	@Override
-	public void setDestination(Supplier<ScalarBank> destination) { this.destination = destination; }
+	public void setDestination(Supplier<PackedCollection<Scalar>> destination) { this.destination = destination; }
 
 	@Override
-	public Supplier<ScalarBank> getDestination() { return destination; }
+	public Supplier<PackedCollection<Scalar>> getDestination() { return destination; }
 
 	@Override
-	public Scope<ScalarBank> getScope() {
-		HybridScope<ScalarBank> scope = new HybridScope<>(this);
+	public Scope<PackedCollection<Scalar>> getScope() {
+		HybridScope<PackedCollection<Scalar>> scope = new HybridScope<>(this);
 		scope.setMetadata(new OperationMetadata(getFunctionName(), "ScalarBankPad"));
 
 		Expression i = new StaticReference(Integer.class, getVariablePrefix() + "_i");
@@ -75,7 +75,7 @@ public class ScalarBankPad extends CollectionProducerComputationAdapter<ScalarBa
 	}
 
 	@Override
-	public ScalarBank postProcessOutput(MemoryData output, int offset) {
-		return new ScalarBank(output.getMemLength() / 2, output, offset);
+	public PackedCollection<Scalar> postProcessOutput(MemoryData output, int offset) {
+		return Scalar.scalarBank(output.getMemLength() / 2, output, offset);
 	}
 }

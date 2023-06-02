@@ -16,16 +16,17 @@
 
 package org.almostrealism.algebra.computations.test;
 
-import org.almostrealism.algebra.ScalarBank;
+import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarProducerBase;
 import org.almostrealism.algebra.computations.ScalarBankPad;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
 public class ScalarFromScalarBankTest implements TestFeatures {
 	@Test
 	public void fromScalarBank() {
-		ScalarBank bank = new ScalarBank(4);
+		PackedCollection<Scalar> bank = Scalar.scalarBank(4);
 		bank.set(0, 1);
 		bank.set(1, 2);
 		bank.set(2, 4);
@@ -39,7 +40,7 @@ public class ScalarFromScalarBankTest implements TestFeatures {
 
 	@Test
 	public void pad() {
-		ScalarBank bank = new ScalarBank(4);
+		PackedCollection<Scalar> bank = Scalar.scalarBank(4);
 		bank.set(0, 1);
 		bank.set(1, 2);
 		bank.set(2, 4);
@@ -48,7 +49,7 @@ public class ScalarFromScalarBankTest implements TestFeatures {
 		assertEquals(4, bank.get(2));
 
 		ScalarBankPad pad = new ScalarBankPad(7, 4, v(bank));
-		ScalarBank padded = pad.get().evaluate();
+		PackedCollection<Scalar> padded = pad.get().evaluate();
 
 		assertEquals(7, padded.getCount());
 		assertEquals(1, padded.get(0));

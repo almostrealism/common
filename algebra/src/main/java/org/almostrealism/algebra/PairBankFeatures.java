@@ -75,7 +75,7 @@ public interface PairBankFeatures extends CollectionFeatures {
 		return new ScalarBankExpressionComputation(expression, (Supplier) input);
 	}
 
-	default Producer<ScalarBank> powerSpectrum(int count, Supplier<Evaluable<? extends PackedCollection<Pair<?>>>> input) {
+	default Producer<PackedCollection<Scalar>> powerSpectrum(int count, Supplier<Evaluable<? extends PackedCollection<Pair<?>>>> input) {
 		return () -> {
 			ScalarFeatures ops = ScalarFeatures.getInstance();
 
@@ -87,9 +87,9 @@ public interface PairBankFeatures extends CollectionFeatures {
 			return args -> {
 				int tot = count / 2 + 1;
 				PackedCollection<Pair<?>> data = in.evaluate(args);
-				ScalarBank out = new ScalarBank(tot);
+				PackedCollection<Scalar> out = Scalar.scalarBank(tot);
 
-				ev.into(out.range(1, tot - 2)).evaluate(
+				ev.into(out.range(shape(tot - 2, 2), 2).traverse(1)).evaluate(
 						data.range(shape(tot - 2, 2), 2).traverse(1),
 						data.range(shape(tot - 2, 2), 3).traverse(1));
 				out.set(0, data.get(0).r() * data.get(0).r(), 1.0);
@@ -100,7 +100,7 @@ public interface PairBankFeatures extends CollectionFeatures {
 	}
 
 	@Deprecated
-	default ScalarBankProducerBase preemphasizeOld(int count, Supplier<Evaluable<? extends ScalarBank>> input,
+	default ScalarBankProducerBase preemphasizeOld(int count, Producer<PackedCollection<Scalar>> input,
 												   Supplier<Evaluable<? extends Scalar>> coeff) {
 		List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression = new ArrayList<>();
 

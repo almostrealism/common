@@ -17,6 +17,7 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.MemoryData;
@@ -68,12 +69,27 @@ public class Scalar extends Pair<Scalar> implements Comparable<Scalar> {
 		return new TraversalPolicy(2);
 	}
 
+	public static PackedCollection<Scalar> scalarBank(int count) {
+		return new PackedCollection<>(new TraversalPolicy(count, 2), 1, delegateSpec ->
+				new Scalar(delegateSpec.getDelegate(), delegateSpec.getOffset()));
+	}
+
+	public static PackedCollection<Scalar> scalarBank(int count, MemoryData delegate, int delegateOffset) {
+		return new PackedCollection<>(new TraversalPolicy(count, 2), 1, delegateSpec ->
+				new Scalar(delegateSpec.getDelegate(), delegateSpec.getOffset()),
+				delegate, delegateOffset);
+	}
+
 	public static Producer<Scalar> blank() {
-		return new DynamicProducerForMemoryData<>(() -> new Scalar(false), ScalarBank::new);
+		return new DynamicProducerForMemoryData<>(() -> new Scalar(false), Scalar::scalarBank);
 	}
 
 	public static BiFunction<MemoryData, Integer, Pair<?>> postprocessor() {
 		return (delegate, offset) -> new Scalar(delegate, offset);
+	}
+
+	public static BiFunction<MemoryData, Integer, PackedCollection<Scalar>> scalarBankPostprocessor() {
+		return (output, offset) -> Scalar.scalarBank(output.getMemLength() / 2, output, offset);
 	}
 
 	/**

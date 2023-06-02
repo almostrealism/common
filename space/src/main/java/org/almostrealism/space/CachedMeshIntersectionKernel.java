@@ -18,7 +18,6 @@ package org.almostrealism.space;
 
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.ZeroVector;
 import org.almostrealism.collect.PackedCollection;
@@ -54,14 +53,10 @@ public class CachedMeshIntersectionKernel implements KernelizedEvaluable<Scalar>
 	}
 
 	@Override
-	public MemoryBank<Scalar> createKernelDestination(int size) { return new ScalarBank(size); }
+	public MemoryBank<Scalar> createKernelDestination(int size) { return Scalar.scalarBank(size); }
 
 	@Override
 	public Evaluable withDestination(MemoryBank<Scalar> destination) {
-		if (destination instanceof ScalarBank == false) {
-			throw new IllegalArgumentException("Kernel output is Scalar, destination must be ScalarBank");
-		}
-
 		return args -> {
 			cache = Pair.bank(destination.getCount());
 			data.evaluateIntersectionKernel(ray, cache, Stream.of(args).map(MemoryData.class::cast).toArray(MemoryData[]::new));

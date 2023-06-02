@@ -19,7 +19,7 @@ package org.almostrealism.algebra.computations;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.algebra.ScalarBank;
+import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBankProducerBase;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
@@ -30,13 +30,13 @@ import java.util.List;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-public class ScalarBankExpressionComputation extends ExpressionComputation<ScalarBank> implements ScalarBankProducerBase {
+public class ScalarBankExpressionComputation extends ExpressionComputation<PackedCollection<Scalar>> implements ScalarBankProducerBase {
 	public ScalarBankExpressionComputation(List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression, Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
 		super(expression, args);
 	}
 
 	@Override
-	public ScalarBank postProcessOutput(MemoryData output, int offset) {
-		return new ScalarBank(((MemoryBank) output).getCount(), output, offset);
+	public PackedCollection<Scalar> postProcessOutput(MemoryData output, int offset) {
+		return Scalar.scalarBank(((MemoryBank) output).getCount(), output, offset);
 	}
 }

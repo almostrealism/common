@@ -26,7 +26,6 @@ import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairBankFeatures;
 import org.almostrealism.algebra.PairFeatures;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.ScalarBankFeatures;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.algebra.ScalarProducerBase;
@@ -38,6 +37,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.Shape;
 import org.almostrealism.collect.TraversableKernelExpression;
 import org.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.geometry.GeometryFeatures;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.algebra.Vector;
@@ -115,7 +115,9 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 
 	default Supplier<Evaluable<? extends Vector>> vector(int argIndex) { return value(Vector.shape(), argIndex); }
 
-	default Supplier<Evaluable<? extends ScalarBank>> scalars(ScalarBank s) { return value(s); }
+	default Producer<PackedCollection<Scalar>> scalars(PackedCollection<Scalar> s) {
+		return ExpressionComputation.fixed(s, Scalar.scalarBankPostprocessor());
+	}
 
 	default Supplier<Evaluable<? extends PackedCollection<?>>> triangle(int argIndex) { return value(shape(4, 3), argIndex); }
 
@@ -124,8 +126,6 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 	default <T> Producer<T> value(T v) {
 		if (v instanceof Scalar) {
 			return (ProducerComputation<T>) ScalarFeatures.of((Scalar) v);
-		} else if (v instanceof ScalarBank) {
-			return (ProducerComputation<T>) ScalarBankFeatures.getInstance().value((ScalarBank) v);
 		} else if (v instanceof Pair) {
 			return (ProducerComputation<T>) PairFeatures.getInstance().value((Pair) v);
 		} else if (v instanceof Vector) {
