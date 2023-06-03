@@ -99,9 +99,9 @@ public class AcceleratedTimeSeriesValueAt extends DynamicCollectionProducerCompu
 		code.accept("	}\n");
 		code.accept("}\n");
 
-		// code.accept("if (1.0 - " + res + " < 0.01) {\n");
-		// code.accept("    printf(\"left = %i, right = %i\\n\", " + left + ", " + right + ");\n");
-		// code.accept("}\n");
+//		code.accept("if (fabs(" + res + ") > 0.99) {\n");
+//		code.accept("    printf(\"left = %i, right = %i -- value = %f\\n\", " + left + ", " + right + ", " + res + ");\n");
+//		code.accept("}\n");
 
 		return scope;
 	}
