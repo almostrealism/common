@@ -22,5 +22,5 @@ package org.almostrealism.swing;
  */
 public interface EventListener {
 	/** Called when an event has been fired. */
-	public void eventFired(Event event);
+	void eventFired(Event event);
 }
