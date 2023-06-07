@@ -19,9 +19,12 @@ package io.almostrealism.code;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 
+import java.util.function.Consumer;
+
 public class CachedValue<T> implements Evaluable<T> {
 	private Producer<T> source;
 	private Evaluable<T> eval;
+	private Consumer<T> clear;
 	private T value;
 
 	public CachedValue(Producer<T> source) {
@@ -29,13 +32,28 @@ public class CachedValue<T> implements Evaluable<T> {
 	}
 
 	public CachedValue(Evaluable<T> source) {
+		this(source, null);
+	}
+
+	public CachedValue(Evaluable<T> source, Consumer<T> clear) {
 		this.eval = source;
 	}
+
+	protected void setEvaluable(Evaluable<T> eval) {
+		this.eval = eval;
+	}
+
+	public boolean isCached() { return value != null; }
 
 	public T evaluate(Object... args) {
 		if (value != null) return value;
 		if (eval == null) eval = source.get();
 		value = eval.evaluate(args);
 		return value;
+	}
+
+	public void clear() {
+		if (clear != null) clear.accept(value);
+		value = null;
 	}
 }
