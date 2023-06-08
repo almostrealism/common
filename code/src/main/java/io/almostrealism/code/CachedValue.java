@@ -37,6 +37,7 @@ public class CachedValue<T> implements Evaluable<T> {
 
 	public CachedValue(Evaluable<T> source, Consumer<T> clear) {
 		this.eval = source;
+		this.clear = clear;
 	}
 
 	protected void setEvaluable(Evaluable<T> eval) {
@@ -53,7 +54,7 @@ public class CachedValue<T> implements Evaluable<T> {
 	}
 
 	public void clear() {
-		if (clear != null) clear.accept(value);
+		if (clear != null && value != null) clear.accept(value);
 		value = null;
 	}
 }

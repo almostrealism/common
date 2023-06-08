@@ -23,6 +23,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.util.stream.Collectors;
 
 public class CacheManager<T> {
 	private HashMap<CachedValue<T>, Long> values;
@@ -42,7 +43,8 @@ public class CacheManager<T> {
 	}
 
 	public List<CachedValue<T>> getCachedOrdered() {
-		List<CachedValue<T>> values = new ArrayList<>(this.values.keySet());
+		List<CachedValue<T>> values = new ArrayList<>(this.values.keySet().stream()
+				.filter(CachedValue::isCached).collect(Collectors.toList()));
 		values.sort((a, b) -> (int) (this.values.get(a) - this.values.get(b)));
 		return values;
 	}
@@ -62,6 +64,8 @@ public class CacheManager<T> {
 			List<CachedValue<T>> ordered = mgr.getCachedOrdered();
 
 			int count = ordered.size() - max;
+			if (count <= 0) return;
+
 			for (int i = 0; i < count; i++) ordered.get(i).clear();
 			System.out.println("CacheManager: Cleared " + count + " cached values");
 		};
