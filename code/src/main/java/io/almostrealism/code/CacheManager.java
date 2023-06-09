@@ -67,7 +67,7 @@ public class CacheManager<T> {
 			if (count <= 0) return;
 
 			for (int i = 0; i < count; i++) ordered.get(i).clear();
-			System.out.println("CacheManager: Cleared " + count + " cached values");
+			// System.out.println("CacheManager: Cleared " + count + " cached values");
 		};
 	}
 }
