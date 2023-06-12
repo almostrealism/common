@@ -58,7 +58,6 @@ public abstract class Choice<T extends PackedCollection<?>> extends CollectionPr
 		ArrayVariable<?> input = getArgument(2, getMemLength() * choiceCount);
 		Expression decision = getArgument(1, 2).valueAt(0);
 		Expression choices = new DoubleConstant((double) choiceCount);
-//		String decisionChoice = "floor(" + decision + " * " + choices + ") * " + getMemLength();
 		Expression decisionChoice = decision.multiply(choices).floor().multiply(getMemLength());
 
 		for (int i = 0; i < getMemLength(); i++) {
