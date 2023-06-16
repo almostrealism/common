@@ -113,6 +113,14 @@ public abstract class OperationComputationBase<I, O> extends OperationAdapter<I>
 	@Override
 	public Variable getOutputVariable() { return null; }
 
+	/**
+	 * Argument variables which are Traversable can be directly
+	 * inspected for their Expression, while this method relies
+	 * on the input Producers being {@link MultiExpression}
+	 * implementors. Since {@link MultiExpression} is deprecated,
+	 * this method should not be used either.
+	 */
+	@Deprecated
 	public Expression<Double> getInputValue(int index, int pos) {
 		if (getArgumentVariables() == null) {
 			throw new IllegalArgumentException("Input value cannot be obtained before arguments are determined");
@@ -128,6 +136,12 @@ public abstract class OperationComputationBase<I, O> extends OperationAdapter<I>
 		return scope;
 	}
 
+	/**
+	 * This method will only return anything useful if the supplied
+	 * argument is a {@link MultiExpression}. Since {@link MultiExpression}
+	 * is deprecated, this method should no longer be used.
+	 */
+	@Deprecated
 	public static Expression<Double> getExpression(ArrayVariable arg, int pos) {
 		if (arg == null) {
 			throw new IllegalArgumentException("Argument cannot be null");
@@ -142,6 +156,12 @@ public abstract class OperationComputationBase<I, O> extends OperationAdapter<I>
 		}
 	}
 
+	/**
+	 * This method will only return anything useful if the supplied
+	 * argument is a {@link MultiExpression}. Since {@link MultiExpression}
+	 * is deprecated, this method should no longer be used.
+	 */
+	@Deprecated
 	public static <T> Optional<MultiExpression> getExpression(Supplier<Evaluable<? extends T>> producer) {
 		if (producer instanceof MultiExpression) {
 			return Optional.of((MultiExpression) producer);

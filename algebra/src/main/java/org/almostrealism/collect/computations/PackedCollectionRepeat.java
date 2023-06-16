@@ -34,6 +34,8 @@ import org.almostrealism.hardware.DestinationSupport;
 import org.almostrealism.hardware.KernelSupport;
 import org.almostrealism.hardware.MemoryBank;
 
+import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
@@ -74,12 +76,24 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		return getValueAt(index);
 	}
 
+	@Override
 	public Expression<Double> getValueAt(Expression index) {
-		CollectionVariable var = getCollectionArgumentVariable(1);
-		if (var == null) return null;
-
 		// Find the index in that slice
 		Expression offset = new Mod(new Cast("int", index), e(subsetShape.getTotalSize()), false);
+
+		// If the offset is a known constant, the value can be
+		// directly obtained
+		OptionalInt offsetValue = offset.intValue();
+		if (offsetValue.isPresent()) {
+			return getInputValue(1, offsetValue.getAsInt());
+		}
+
+		// Otherwise the value will only be available if the
+		// argument is a Shape implementation represented by
+		// a CollectionVariable which supports TraversableExpression
+		// operations like getValueAt
+		CollectionVariable var = getCollectionArgumentVariable(1);
+		if (var == null) return null;
 
 		return var.getValueAt(offset);
 	}

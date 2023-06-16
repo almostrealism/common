@@ -137,7 +137,7 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		int axis = -1;
 
 		for (int i = 0; i < dims.length; i++) {
-			if (dims[i] > 1) {
+			if (dims[i] > 1 || (axis < 0 && (i + 1) >= dims.length)) {
 				if (axis >= 0) {
 					throw new UnsupportedOperationException("Enumeration across more than one axis is not currently supported");
 				} else {

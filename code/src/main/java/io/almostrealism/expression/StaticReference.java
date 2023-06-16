@@ -23,7 +23,7 @@ import java.util.List;
 
 public class StaticReference<T> extends Expression<T> {
 	public StaticReference(Class<T> type, String expression) {
-		super(type, expression, Collections.emptyList());
+		super(type, expression, new Expression[0]);
 	}
 
 	@Override

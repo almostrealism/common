@@ -565,6 +565,55 @@ public class PackedCollectionMapTests implements TestFeatures {
 		});
 	}
 
+	@Test
+	public void enumerateReduceEnumerate() {
+		int r = 8;
+		int c = 8;
+		int d = 1;
+		int w = 2;
+
+		PackedCollection<?> input = tensor(shape(r, c, d)).pack();
+		input.fill(pos -> (3 + (pos[0] % 3) * 0.75) - (3 + (pos[1] % 5) * 1.25));
+
+		HardwareOperator.verboseLog(() -> {
+			CollectionProducer<PackedCollection<?>> pool =
+					c(p(input)).enumerate(1, w)
+							.enumerate(1, w)
+							.traverse(2)
+							.reduce(v ->
+									enumerate(shape(1, 1, w, w, 1), v)
+											.traverse(1).reduce(slice -> max(slice)));
+			System.out.println(pool.getShape());
+
+			PackedCollection<?> output = pool.get().evaluate();
+			System.out.println(output.getShape());
+
+			int r2 = r / w;
+			int c2 = c / w;
+
+			for (int copy = 0; copy < d; copy++) {
+				for (int i = 0; i < r2; i++) {
+					for (int j = 0; j < c2; j++) {
+						System.out.println("PackedCollectionMapTests: " + i + ", " + j);
+
+						double expected = -Math.pow(10, 5);
+
+						for (int k = 0; k < w; k++) {
+							for (int l = 0; l < w; l++) {
+								expected = Math.max(expected, input.valueAt(i * w + k, j * w + l, copy));
+							}
+						}
+
+						double actual = output.toDouble(output.getShape().index(i, j, copy));
+
+						System.out.println("PackedCollectionMapTests[" + i + ", " + j + "]: Expected " + expected + " vs actual " + actual);
+						Assert.assertEquals(expected, actual, 0.0001);
+					}
+				}
+			}
+		});
+	}
+
 	// @Test
 	public void mapConcat() {
 		int r = 10;

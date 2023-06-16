@@ -112,33 +112,35 @@ public class DefaultCellularLayer implements CellularLayer, CollectionFeatures, 
 
 	@Override
 	public Cell<PackedCollection<?>> getBackward() {
-		Cell<PackedCollection<?>> copyOutput = Cell.of((in, next) ->
-				new MemoryDataCopy(in.get()::evaluate, () -> output, output.getMemLength())
-		);
+		return backward;
 
-		backward.setReceptor(copyOutput);
-
-		return new Cell<>() {
-			private Receptor<PackedCollection<?>> r;
-
-			@Override
-			public Supplier<Runnable> setup() {
-				return backward.setup();
-			}
-
-			@Override
-			public Supplier<Runnable> push(Producer<PackedCollection<?>> protein) {
-				OperationList op = new OperationList();
-				op.add(backward.push(protein));
-				if (r != null) op.add(r.push(p(output)));
-				return op;
-			}
-
-			@Override
-			public void setReceptor(Receptor<PackedCollection<?>> r) {
-				this.r = r;
-			}
-		};
+//		Cell<PackedCollection<?>> copyOutput = Cell.of((in, next) ->
+//				new MemoryDataCopy(in.get()::evaluate, () -> output, output.getMemLength())
+//		);
+//
+//		backward.setReceptor(copyOutput);
+//
+//		return new Cell<>() {
+//			private Receptor<PackedCollection<?>> r;
+//
+//			@Override
+//			public Supplier<Runnable> setup() {
+//				return backward.setup();
+//			}
+//
+//			@Override
+//			public Supplier<Runnable> push(Producer<PackedCollection<?>> protein) {
+//				OperationList op = new OperationList();
+//				op.add(backward.push(protein));
+//				if (r != null) op.add(r.push(p(output)));
+//				return op;
+//			}
+//
+//			@Override
+//			public void setReceptor(Receptor<PackedCollection<?>> r) {
+//				this.r = r;
+//			}
+//		};
 	}
 
 	@Override

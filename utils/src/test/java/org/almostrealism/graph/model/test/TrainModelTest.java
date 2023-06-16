@@ -99,8 +99,49 @@ public class TrainModelTest implements TestFeatures {
 		}
 	}
 
+
 	@Test
 	public void conv() {
+		Model model = new Model(inputShape);
+		CellularLayer conv = convolution2d(inputShape, convSize, 8);
+
+		model.addLayer(conv);
+
+		Tensor<Double> t = tensor(inputShape);
+		PackedCollection<?> input = t.pack();
+
+		model.setup().get().run();
+		model.forward(input);
+
+		PackedCollection<?> filter = conv.getWeights().get(0);
+		TraversalPolicy filterShape = filter.getShape();
+
+		PackedCollection<?> output = conv instanceof DefaultCellularLayer ?
+				((DefaultCellularLayer) conv).getOutput() :
+				((KernelLayerCell) conv.getForward()).getOutput();
+		TraversalPolicy outputShape = output.getShape();
+
+		for (int p = 0; p < outputShape.length(0); p++) {
+			for (int q = 0; q < outputShape.length(1); q++) {
+				for (int r = 0; r < outputShape.length(2); r++) {
+					double expected = 0;
+
+					for (int x = 0; x < convSize; x++) {
+						for (int y = 0; y < convSize; y++) {
+							expected += filter.toDouble(filterShape.index(r, x, y)) * input.toDouble(inputShape.index(p + x, q + y));
+						}
+					}
+
+					double actual = output.toDouble(outputShape.index(p, q, r));
+					System.out.println("TrainModelTest: [" + p + ", " + q + ", " + r + "] " + expected + " vs " + actual);
+					Assert.assertEquals(expected, actual, 0.0001);
+				}
+			}
+		}
+	}
+
+	@Test
+	public void convPool() {
 		Model model = new Model(inputShape);
 		CellularLayer conv = convolution2d(inputShape, convSize, 8);
 		CellularLayer pool = pool2d(conv.getOutputShape(), poolSize);

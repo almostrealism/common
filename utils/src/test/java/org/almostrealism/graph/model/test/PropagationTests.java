@@ -152,11 +152,13 @@ public class PropagationTests implements TestFeatures {
 
 		PackedCollection<?> result = new PackedCollection(inputShape);
 
-		pool.getBackward().setReceptor(grad -> () -> {
+		model.backward().setReceptor(grad -> () -> {
 			Evaluable<PackedCollection<?>> gr = grad.get();
 
 			return () -> {
 				PackedCollection<?> out = gr.evaluate();
+				System.out.println("Gradient shape vs input shape: " + out.getShape() + " / " + inputShape);
+
 				System.out.println(Arrays.toString(out.toArray(0, out.getMemLength())));
 
 				result.setMem(0, out, 0, out.getMemLength());

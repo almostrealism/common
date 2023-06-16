@@ -57,7 +57,15 @@ public class Expression<T> implements Tree<Expression<?>> {
 	}
 
 	public Expression(Class<T> type, String expression, Expression<?>... children) {
-		this(type, expression, List.of(children), dependencies(children));
+		if (type == null) {
+			throw new IllegalArgumentException("Type is required");
+		}
+
+		setType(type);
+		this.expression = () -> expression;
+		this.children = List.of(children);
+		this.dependencies = new ArrayList<>();
+		this.dependencies.addAll(dependencies(children));
 	}
 
 	@Deprecated
@@ -71,6 +79,10 @@ public class Expression<T> implements Tree<Expression<?>> {
 		this.children = children;
 		this.dependencies = new ArrayList<>();
 		this.dependencies.addAll(Arrays.asList(dependencies));
+
+		if (dependencies.length > 0) {
+			System.out.println("WARN: Deprecated Expression construction");
+		}
 	}
 
 	public Expression(int arraySize) {
@@ -200,9 +212,9 @@ public class Expression<T> implements Tree<Expression<?>> {
 	@Override
 	public int hashCode() { return getValue().hashCode(); }
 
-	private static Variable[] dependencies(Expression expressions[]) {
+	private static Set<Variable<?, ?>> dependencies(Expression expressions[]) {
 		Set<Variable<?, ?>> dependencies = new HashSet<>();
 		for (Expression e : expressions) dependencies.addAll(e.getDependencies());
-		return dependencies.toArray(new Variable[0]);
+		return dependencies;
 	}
 }
