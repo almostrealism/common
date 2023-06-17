@@ -20,6 +20,7 @@ import io.almostrealism.code.HybridScope;
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
@@ -39,7 +40,7 @@ import java.util.function.IntFunction;
 
 @Deprecated
 public class AcceleratedTimeSeriesValueAt extends DynamicCollectionProducerComputationAdapter<PackedCollection<?>, Scalar>
-		implements ProducerComputation<Scalar>, KernelizedProducer<Scalar> {
+		implements MultiExpression<Double>, ProducerComputation<Scalar>, KernelizedProducer<Scalar> {
 	public AcceleratedTimeSeriesValueAt(Producer<AcceleratedTimeSeries> series, Producer<CursorPair> cursors) {
 		super(new TraversalPolicy(2).traverse(0), new Producer[] { series, cursors });
 	}
@@ -105,6 +106,16 @@ public class AcceleratedTimeSeriesValueAt extends DynamicCollectionProducerCompu
 //		code.accept("}\n");
 
 		return scope;
+	}
+
+	@Override
+	public Expression<Double> getValue(Expression... pos) {
+		return null;
+	}
+
+	@Override
+	public Expression<Double> getValueAt(Expression index) {
+		return null;
 	}
 
 	@Override

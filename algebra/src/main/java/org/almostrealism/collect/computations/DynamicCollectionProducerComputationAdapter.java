@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.expression.InstanceReference;
@@ -28,12 +29,14 @@ import io.almostrealism.collect.CollectionVariable;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 
+import java.util.OptionalInt;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public abstract class DynamicCollectionProducerComputationAdapter<I extends PackedCollection<?>, O extends PackedCollection<?>>
-		extends CollectionProducerComputationAdapter<I, O> implements MultiExpression<Double> {
+		extends CollectionProducerComputationAdapter<I, O>
+		implements MultiExpression<Double> {
 
 	/**
 	 * If set to true, then {@link #convertToVariableRef()} can be used
@@ -73,7 +76,29 @@ public abstract class DynamicCollectionProducerComputationAdapter<I extends Pack
 		return scope;
 	}
 
+	protected IntFunction<Variable<Double, ?>> getAssignmentFunction(Variable<?, ?> outputVariable) {
+		return i -> new Variable(((ArrayVariable) outputVariable).valueAt(i).getSimpleExpression(),
+				false, getValue(i).simplify(), outputVariable.getRootDelegate());
+	}
+
+	// @Override
+	public Expression<Double> getValue(Expression... pos) {
+		return getValueAt(getShape().index(pos));
+	}
+
+	// @Override
+	public Expression<Double> getValueAt(Expression index) {
+		OptionalInt i = index.intValue();
+
+		if (i.isPresent()) {
+			return getValueFunction().apply(i.getAsInt());
+		} else {
+			return null;
+		}
+	}
+
 	@Override
+	@Deprecated
 	public Expression getValue(int pos) {
 		return (isVariableRef() ? variableRef : getValueFunction()).apply(pos);
 	}

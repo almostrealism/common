@@ -119,6 +119,11 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 	}
 
 	@Override
+	public Expression<Double> getValueAt(Expression index) {
+		return null;
+	}
+
+	@Override
 	public IntFunction<Expression<Double>> getValueFunction() {
 		return i -> {
 			if (i >= getMemLength()) throw new IllegalArgumentException("Invalid position");

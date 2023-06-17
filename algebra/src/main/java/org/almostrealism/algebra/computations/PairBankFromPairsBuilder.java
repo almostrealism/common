@@ -84,4 +84,14 @@ public class PairBankFromPairsBuilder extends DynamicCollectionProducerComputati
 	public IntFunction<Expression<Double>> getValueFunction() {
 		return i -> getExpression(producers[arg(i)]).get().getValue(pos(i));
 	}
+
+	@Override
+	public Expression<Double> getValue(Expression... pos) {
+		return null;
+	}
+
+	@Override
+	public Expression<Double> getValueAt(Expression index) {
+		return null;
+	}
 }

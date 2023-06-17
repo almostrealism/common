@@ -91,22 +91,6 @@ public class ExpressionComputation<T extends PackedCollection<?>>
 	}
 
 	@Override
-	public Expression<Double> getValue(Expression... pos) {
-		return getValueAt(getShape().index(pos));
-	}
-
-	@Override
-	public Expression<Double> getValueAt(Expression index) {
-		OptionalInt i = index.intValue();
-
-		if (i.isPresent()) {
-			return expression.get(i.getAsInt()).apply(getExpressions());
-		} else {
-			return null;
-		}
-	}
-
-	@Override
 	public IntFunction<Expression<Double>> getValueFunction() {
 		return pos -> {
 			if (pos >= expression.size()) {
