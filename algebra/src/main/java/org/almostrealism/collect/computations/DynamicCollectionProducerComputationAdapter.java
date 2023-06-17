@@ -35,8 +35,7 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public abstract class DynamicCollectionProducerComputationAdapter<I extends PackedCollection<?>, O extends PackedCollection<?>>
-		extends CollectionProducerComputationAdapter<I, O>
-		implements MultiExpression<Double> {
+		extends CollectionProducerComputationAdapter<I, O> {
 
 	/**
 	 * If set to true, then {@link #convertToVariableRef()} can be used
@@ -97,7 +96,7 @@ public abstract class DynamicCollectionProducerComputationAdapter<I extends Pack
 		}
 	}
 
-	@Override
+	// @Override
 	@Deprecated
 	public Expression getValue(int pos) {
 		return (isVariableRef() ? variableRef : getValueFunction()).apply(pos);
