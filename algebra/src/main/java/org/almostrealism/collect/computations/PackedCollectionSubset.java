@@ -17,7 +17,6 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.IgnoreMultiExpression;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;

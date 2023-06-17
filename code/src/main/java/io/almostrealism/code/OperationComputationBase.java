@@ -17,7 +17,6 @@
 package io.almostrealism.code;
 
 import io.almostrealism.collect.TraversableExpression;
-import io.almostrealism.expression.IgnoreMultiExpression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.Argument.Expectation;
@@ -142,28 +141,5 @@ public abstract class OperationComputationBase<I, O> extends OperationAdapter<I>
 		Scope<O> scope = new Scope<>(getFunctionName(), new OperationMetadata(getFunctionName(), getClass().getSimpleName()));
 		scope.getVariables().addAll(getVariables());
 		return scope;
-	}
-
-	/**
-	 * This method will only return anything useful if the supplied
-	 * argument is a {@link MultiExpression}. Since {@link MultiExpression}
-	 * is deprecated, this method should no longer be used.
-	 */
-	@Deprecated
-	public static <T> Optional<MultiExpression> getExpression(Supplier<Evaluable<? extends T>> producer) {
-		if (producer instanceof MultiExpression) {
-			return Optional.of((MultiExpression) producer);
-		}
-
-		if (producer instanceof Delegated && ((Delegated) producer).getDelegate() instanceof MultiExpression) {
-			return Optional.of((MultiExpression) ((Delegated) producer).getDelegate());
-		}
-
-		Evaluable<? extends T> evaluable = producer.get();
-		if (enableStaticProviders && evaluable instanceof Provider && ((Provider) evaluable).get() instanceof MultiExpression) {
-			return Optional.of((MultiExpression) ((Provider) evaluable).get());
-		}
-
-		return Optional.empty();
 	}
 }

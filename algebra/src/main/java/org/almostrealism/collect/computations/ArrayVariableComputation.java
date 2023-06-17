@@ -18,7 +18,6 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.IgnoreMultiExpression;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;

@@ -26,9 +26,9 @@ import java.util.ArrayList;
 import java.util.stream.Collector;
 import java.util.stream.Collectors;
 
-public class ExpressionList<T> extends ArrayList<Expression<T>> implements MultiExpression<T> {
+public class ExpressionList<T> extends ArrayList<Expression<T>> {
 
-	@Override
+	// @Override
 	public Expression<T> getValue(int pos) {
 		return get(pos);
 	}
