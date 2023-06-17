@@ -14,8 +14,14 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.collect;
+package io.almostrealism.collect;
 
-public interface KernelInput {
-	CollectionVariable v(int index);
+import io.almostrealism.expression.Expression;
+
+public interface PositionExpression {
+	default Expression l(int index) {
+		return toArray()[index];
+	}
+
+	Expression[] toArray();
 }

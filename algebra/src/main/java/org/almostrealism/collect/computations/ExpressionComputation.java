@@ -21,7 +21,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.MultiExpression;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.ComputerFeatures;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.DestinationEvaluable;

@@ -25,13 +25,13 @@ import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
-import org.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.CollectionExpression;
 import org.almostrealism.collect.CollectionProducerComputation;
-import org.almostrealism.collect.CollectionVariable;
+import io.almostrealism.collect.CollectionVariable;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.Shape;
-import org.almostrealism.collect.TraversableExpression;
-import org.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.Shape;
+import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.KernelSupport;
 
 import java.util.List;

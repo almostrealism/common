@@ -18,8 +18,8 @@ package org.almostrealism.layers;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.TraversableKernelExpression;
-import org.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.TraversableKernelExpression;
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.OperationList;
 
 import java.util.Collections;

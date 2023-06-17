@@ -19,14 +19,12 @@ package org.almostrealism.model;
 import io.almostrealism.cycle.Setup;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.mem.MemoryDataCopy;
 import org.almostrealism.layers.CellularLayer;
-import org.almostrealism.layers.KernelLayer;
 import org.almostrealism.layers.Learning;
-import org.almostrealism.layers.PropagationCell;
 
 import java.util.ArrayList;
 import java.util.Collections;

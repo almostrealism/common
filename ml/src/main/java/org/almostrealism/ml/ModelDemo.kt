@@ -2,7 +2,7 @@ package org.almostrealism.ml
 
 import org.almostrealism.CodeFeatures
 import org.almostrealism.algebra.Tensor
-import org.almostrealism.collect.TraversalPolicy
+import io.almostrealism.collect.TraversalPolicy
 import org.almostrealism.model.Model
 
 fun main() {

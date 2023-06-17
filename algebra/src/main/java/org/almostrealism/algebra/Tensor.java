@@ -28,7 +28,7 @@ import io.almostrealism.html.Div;
 import io.almostrealism.html.HTMLContent;
 import io.almostrealism.html.HTMLString;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.MemoryData;
 
 /**

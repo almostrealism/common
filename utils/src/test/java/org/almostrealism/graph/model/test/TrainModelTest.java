@@ -18,10 +18,9 @@ package org.almostrealism.graph.model.test;
 
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.DefaultCellularLayer;
-import org.almostrealism.layers.KernelLayer;
 import org.almostrealism.layers.KernelLayerCell;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.TestFeatures;

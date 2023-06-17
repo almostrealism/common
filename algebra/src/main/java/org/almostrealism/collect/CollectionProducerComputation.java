@@ -18,15 +18,13 @@ package org.almostrealism.collect;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ProducerComputation;
+import io.almostrealism.collect.Shape;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.bool.AcceleratedConditionalStatementCollection;
-import org.almostrealism.bool.GreaterThanCollection;
-import org.almostrealism.bool.LessThanCollection;
 import org.almostrealism.collect.computations.DefaultCollectionEvaluable;
-import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.DestinationEvaluable;
@@ -38,7 +36,6 @@ import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.MemoryDataAdapter;
 
 import java.util.function.Function;
-import java.util.function.Supplier;
 
 public interface CollectionProducerComputation<T extends PackedCollection<?>> extends
 		CollectionProducer<T>, ProducerComputation<T>, KernelizedProducer<T> {

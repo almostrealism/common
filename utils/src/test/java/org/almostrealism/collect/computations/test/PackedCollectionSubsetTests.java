@@ -17,17 +17,15 @@
 package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.StaticReference;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.CollectionProducer;
-import org.almostrealism.collect.CollectionProducerBase;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.ArrayVariableComputation;
 import org.almostrealism.hardware.KernelSupport;
 import org.almostrealism.hardware.KernelizedEvaluable;

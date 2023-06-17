@@ -18,11 +18,10 @@ package org.almostrealism.algebra;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.mem.MemoryDataAdapter;
 import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.hardware.MemoryBank;
 

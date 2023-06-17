@@ -14,14 +14,18 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.collect;
+package io.almostrealism.collect;
 
+import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.Expression;
 
-public interface PositionExpression {
-	default Expression l(int index) {
-		return toArray()[index];
+public interface TraversableExpression<T> extends ExpressionFeatures {
+
+	default Expression<T> getValue(PositionExpression pos) {
+		return getValue(pos.toArray());
 	}
 
-	Expression[] toArray();
+	Expression<T> getValue(Expression... pos);
+
+	Expression<T> getValueAt(Expression index);
 }

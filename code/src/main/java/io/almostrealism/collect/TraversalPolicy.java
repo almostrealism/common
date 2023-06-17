@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.collect;
+package io.almostrealism.collect;
 
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;

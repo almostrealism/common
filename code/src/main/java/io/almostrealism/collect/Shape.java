@@ -14,20 +14,21 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.collect;
+package io.almostrealism.collect;
 
-import io.almostrealism.code.DefaultScopeInputManager;
+public interface Shape<T> extends Traversable<T> {
+	TraversalPolicy getShape();
 
-public class CollectionScopeInputManager extends DefaultScopeInputManager {
-	private static CollectionScopeInputManager instance = new CollectionScopeInputManager();
+	T reshape(TraversalPolicy shape);
 
-	private int counter;
-
-	public CollectionScopeInputManager() {
-		setVariableFactory((p, input) -> CollectionVariable.create(p, p.getArgumentName(counter++), input));
+	@Override
+	default T traverse(int axis) {
+		return reshape(getShape().traverse(axis));
 	}
 
-	public static CollectionScopeInputManager getInstance() {
-		return instance;
+	default T traverseEach() {
+		return traverse(getShape().getDimensions());
 	}
+
+	default T traverse() { return traverse(getShape().getTraversalAxis() + 1); }
 }

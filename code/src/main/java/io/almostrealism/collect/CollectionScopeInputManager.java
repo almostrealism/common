@@ -14,9 +14,20 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.collect;
+package io.almostrealism.collect;
 
-import io.almostrealism.relation.Producer;
+import io.almostrealism.code.DefaultScopeInputManager;
 
-public interface CollectionProducerBase<T, P extends Producer<T>> extends Producer<T>, Shape<P> {
+public class CollectionScopeInputManager extends DefaultScopeInputManager {
+	private static CollectionScopeInputManager instance = new CollectionScopeInputManager();
+
+	private int counter;
+
+	public CollectionScopeInputManager() {
+		setVariableFactory((p, input) -> CollectionVariable.create(p, p.getArgumentName(counter++), input));
+	}
+
+	public static CollectionScopeInputManager getInstance() {
+		return instance;
+	}
 }

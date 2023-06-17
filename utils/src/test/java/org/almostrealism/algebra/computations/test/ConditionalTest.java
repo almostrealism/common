@@ -19,7 +19,7 @@ package org.almostrealism.algebra.computations.test;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.collect.CollectionProducerBase;
+import io.almostrealism.collect.CollectionProducerBase;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.util.TestFeatures;

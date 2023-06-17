@@ -17,7 +17,7 @@
 package org.almostrealism.bool;
 
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.TraversalPolicy;
 
 import java.util.function.Supplier;
 

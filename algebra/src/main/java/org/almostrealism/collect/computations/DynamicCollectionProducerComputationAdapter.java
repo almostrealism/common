@@ -24,9 +24,9 @@ import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.collect.CollectionVariable;
+import io.almostrealism.collect.CollectionVariable;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.TraversalPolicy;
 
 import java.util.function.IntFunction;
 import java.util.function.Supplier;

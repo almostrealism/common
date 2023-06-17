@@ -14,21 +14,8 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.collect;
+package io.almostrealism.collect;
 
-public interface Shape<T> extends Traversable<T> {
-	TraversalPolicy getShape();
-
-	T reshape(TraversalPolicy shape);
-
-	@Override
-	default T traverse(int axis) {
-		return reshape(getShape().traverse(axis));
-	}
-
-	default T traverseEach() {
-		return traverse(getShape().getDimensions());
-	}
-
-	default T traverse() { return traverse(getShape().getTraversalAxis() + 1); }
+public interface KernelInput {
+	CollectionVariable v(int index);
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,8 +14,9 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.collect;
+package io.almostrealism.collect;
 
-public interface Traversable<T> {
-	T traverse(int axis);
+import io.almostrealism.relation.Producer;
+
+public interface CollectionProducerBase<T, P extends Producer<T>> extends Producer<T>, Shape<P> {
 }

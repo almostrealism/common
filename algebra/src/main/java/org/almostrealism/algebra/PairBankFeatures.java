@@ -24,9 +24,7 @@ import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.computations.PairFromPairBank;
 import org.almostrealism.algebra.computations.ScalarBankExpressionComputation;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.hardware.Input;
@@ -48,7 +46,6 @@ public interface PairBankFeatures extends ScalarFeatures {
 	}
 
 	default Producer<Pair<?>> pairFromBank(Producer<PackedCollection<Pair<?>>> bank, Producer<PackedCollection<?>> index) {
-		// return new PairFromPairBank(bank, index);
 		return c(shape(2), bank, (Producer) multiply(c(2), floor(index)));
 	}
 

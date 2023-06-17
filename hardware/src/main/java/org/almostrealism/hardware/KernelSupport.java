@@ -18,7 +18,6 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.StaticReference;
-import org.almostrealism.collect.TraversalPolicy;
 
 import java.util.stream.IntStream;
 

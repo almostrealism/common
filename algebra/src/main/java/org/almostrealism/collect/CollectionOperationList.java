@@ -16,6 +16,9 @@
 
 package org.almostrealism.collect;
 
+import io.almostrealism.collect.Func;
+import io.almostrealism.collect.KernelExpression;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.hardware.KernelOperation;
 import org.almostrealism.hardware.MemoryBank;

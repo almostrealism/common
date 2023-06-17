@@ -22,14 +22,11 @@ import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.collect.CollectionExpression;
 import org.almostrealism.collect.CollectionProducer;
-import org.almostrealism.collect.Shape;
-import org.almostrealism.collect.TraversableExpression;
-import org.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.Shape;
+import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.KernelSupport;
-
-import java.util.stream.Stream;
 
 public class ReshapeProducer<T extends Shape<T>> implements CollectionProducer<T>, ScopeLifecycle, TraversableExpression<Double>, KernelSupport {
 	private TraversalPolicy shape;

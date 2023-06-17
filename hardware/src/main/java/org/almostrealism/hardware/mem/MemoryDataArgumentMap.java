@@ -22,7 +22,7 @@ import io.almostrealism.code.NameProvider;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
-import org.almostrealism.collect.CollectionScopeInputManager;
+import io.almostrealism.collect.CollectionScopeInputManager;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.KernelSupport;
 import org.almostrealism.hardware.OperationList;

@@ -23,7 +23,7 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.expression.Expression;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 
 import java.util.function.Function;

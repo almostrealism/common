@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2022 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,18 +14,8 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.collect;
+package io.almostrealism.collect;
 
-import io.almostrealism.code.ExpressionFeatures;
-import io.almostrealism.expression.Expression;
-
-public interface TraversableExpression<T> extends ExpressionFeatures {
-
-	default Expression<T> getValue(PositionExpression pos) {
-		return getValue(pos.toArray());
-	}
-
-	Expression<T> getValue(Expression... pos);
-
-	Expression<T> getValueAt(Expression index);
+public interface Traversable<T> {
+	T traverse(int axis);
 }

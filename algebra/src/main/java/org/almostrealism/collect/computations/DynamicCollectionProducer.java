@@ -18,9 +18,8 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
-import org.almostrealism.collect.CollectionProducerBase;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
 
 import java.util.function.Function;

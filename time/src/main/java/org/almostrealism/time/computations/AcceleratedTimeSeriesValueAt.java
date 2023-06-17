@@ -26,7 +26,7 @@ import io.almostrealism.scope.Variable;
 import io.almostrealism.expression.Expression;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.DynamicCollectionProducerComputationAdapter;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.hardware.KernelizedProducer;

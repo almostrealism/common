@@ -25,7 +25,7 @@ import java.util.function.BiFunction;
 import io.almostrealism.code.Memory;
 import org.almostrealism.algebra.Triple;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.KernelizedProducer;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.algebra.Defaults;

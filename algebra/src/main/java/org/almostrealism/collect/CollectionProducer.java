@@ -16,13 +16,14 @@
 
 package org.almostrealism.collect;
 
+import io.almostrealism.collect.CollectionProducerBase;
+import io.almostrealism.collect.Shape;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.bool.AcceleratedConditionalStatementCollection;
 import org.almostrealism.bool.GreaterThanCollection;
-import org.almostrealism.bool.LessThanCollection;
 import org.almostrealism.collect.computations.DynamicCollectionProducerComputationAdapter;
-import org.almostrealism.collect.computations.DynamicExpressionComputation;
 import org.almostrealism.collect.computations.ExpressionComputation;
 
 import java.util.function.Function;

@@ -1,4 +1,4 @@
-package org.almostrealism.collect;
+package io.almostrealism.collect;
 
 import io.almostrealism.expression.Expression;
 

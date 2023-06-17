@@ -25,13 +25,12 @@ import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.expression.Expression;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.CollectionProducerComputationAdapter;
 import io.almostrealism.relation.Producer;
 
 import java.util.function.Consumer;
 import java.util.function.Function;
-import java.util.function.IntFunction;
 
 public class Interpolate extends CollectionProducerComputationAdapter<PackedCollection<?>, PackedCollection<?>> {
 	public static boolean enableFunctionalPosition = true;

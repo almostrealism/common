@@ -14,9 +14,8 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.collect;
+package io.almostrealism.collect;
 
-import io.almostrealism.code.ExpressionList;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.expression.Cast;
@@ -28,12 +27,8 @@ import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.scope.Variable;
 
-import java.util.Collections;
 import java.util.function.Supplier;
-import java.util.stream.IntStream;
-import java.util.stream.Stream;
 
 public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implements CollectionExpression {
 	private TraversalPolicy shape;

@@ -17,12 +17,11 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.ProducerComputation;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.uml.Plural;
-import org.almostrealism.collect.Shape;
-import org.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.Shape;
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.computations.Assignment;
 
 import java.util.HashMap;
