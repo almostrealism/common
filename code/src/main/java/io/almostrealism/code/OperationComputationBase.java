@@ -16,6 +16,8 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.expression.Expression;
@@ -124,6 +126,13 @@ public abstract class OperationComputationBase<I, O> extends OperationAdapter<I>
 	public Expression<Double> getInputValue(int index, int pos) {
 		if (getArgumentVariables() == null) {
 			throw new IllegalArgumentException("Input value cannot be obtained before arguments are determined");
+		}
+
+		if (getInputs().get(index) instanceof TraversableExpression) {
+			Expression<Double> value = ((TraversableExpression) getInputs().get(index)).getValueAt(new IntegerConstant(pos));
+
+			// if (!(value instanceof InstanceReference)) return value;
+			if (value != null) return value;
 		}
 
 		return getExpression(getArgumentForInput(getInputs().get(index)), pos);
