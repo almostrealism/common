@@ -35,7 +35,7 @@ import java.util.stream.IntStream;
 
 public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		extends DynamicCollectionProducerComputationAdapter<PackedCollection<?>, T>
-		implements TraversableExpression<Double>, IgnoreMultiExpression<Double> {
+		implements TraversableExpression<Double> {
 
 	private TraversalPolicy strideShape;
 	private TraversalPolicy subsetShape;

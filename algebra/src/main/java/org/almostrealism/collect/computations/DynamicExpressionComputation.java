@@ -45,7 +45,7 @@ import java.util.stream.Stream;
 // TODO  DynamicCollectionProducerComputationAdapter, which can then be renamed to DynamicCollectionProducerComputation.
 public class DynamicExpressionComputation<T extends PackedCollection<?>>
 									extends DynamicCollectionProducerComputationAdapter<T, T>
-									implements TraversableExpression<Double>, IgnoreMultiExpression<Double>, ComputerFeatures {
+									implements TraversableExpression<Double>, ComputerFeatures {
 	private Function<CollectionVariable[], CollectionExpression> expression;
 	private BiFunction<MemoryData, Integer, T> postprocessor;
 

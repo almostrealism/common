@@ -16,15 +16,8 @@
 
 package io.almostrealism.expression;
 
-import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.scope.Variable;
-
-import java.util.function.IntFunction;
-
 /**
- * Implementors of MultiExpression should migrate to implementing TraversableExpression
- * while the {@link MultiExpression#getAssignmentFunction(Variable)} need not be part of
- * the interface, and should eventually be part of {@link io.almostrealism.code.ProducerComputationBase}.
+ * Implementors of MultiExpression should migrate to implementing TraversableExpression.
  *
  * The problem with this interface is that because it does not allow for retrieving values
  * using an {@link Expression} for the index, it is not possible to embed computations

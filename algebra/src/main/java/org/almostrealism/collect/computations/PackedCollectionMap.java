@@ -36,6 +36,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.KernelSupport;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
@@ -45,7 +46,7 @@ import java.util.stream.Stream;
 
 public class PackedCollectionMap<T extends PackedCollection<?>>
 		extends DynamicCollectionProducerComputationAdapter<PackedCollection<?>, T>
-		implements IgnoreMultiExpression<Double> {
+		implements MultiExpression<Double> {
 	private Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper;
 	private ExpressionList<Double> result;
 	private TraversalPolicy inputShape;
@@ -114,7 +115,18 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 		ScopeLifecycle.prepareScope(Stream.of(altMapped), manager);
 
 		result = IntStream.range(0, getShape().item().getTotalSize())
-					.mapToObj(i -> OperationComputationBase.getExpression(altMapped).orElseThrow().getValue(i))
+					.mapToObj(i -> {
+						if (altMapped instanceof PackedCollectionMap) {
+							return ((PackedCollectionMap) altMapped).getValue(i);
+						}
+
+						Optional<MultiExpression> ex = Optional.empty(); // OperationComputationBase.getExpression(altMapped);
+						if (ex.isPresent()) {
+							return ex.get().getValue(i);
+						} else {
+							throw new UnsupportedOperationException();
+						}
+					})
 					.collect(ExpressionList.collector());
 	}
 

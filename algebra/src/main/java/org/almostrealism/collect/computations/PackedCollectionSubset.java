@@ -36,7 +36,7 @@ import java.util.function.Supplier;
 @Deprecated
 public class PackedCollectionSubset<T extends PackedCollection<?>>
 		extends DynamicCollectionProducerComputationAdapter<PackedCollection<?>, T>
-		implements TraversableExpression<Double>, IgnoreMultiExpression<Double> {
+		implements TraversableExpression<Double> {
 	private int pos[];
 
 	public PackedCollectionSubset(TraversalPolicy shape, Producer<?> collection, int... pos) {

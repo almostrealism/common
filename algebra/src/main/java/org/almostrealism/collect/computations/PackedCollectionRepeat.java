@@ -35,7 +35,7 @@ import java.util.function.Supplier;
 
 public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		extends DynamicCollectionProducerComputationAdapter<PackedCollection<?>, T>
-		implements TraversableExpression<Double>, IgnoreMultiExpression<Double> {
+		implements TraversableExpression<Double> {
 	private TraversalPolicy subsetShape;
 
 	public PackedCollectionRepeat(int repeat, Producer<?> collection) {
