@@ -132,9 +132,6 @@ public abstract class OperationComputationBase<I, O> extends OperationAdapter<I>
 		if (getInputs().get(index) instanceof TraversableExpression) {
 			Expression<Double> value = ((TraversableExpression) getInputs().get(index)).getValueAt(new IntegerConstant(pos));
 			if (value != null) return value;
-		} else if (getInputs().get(index) instanceof MultiExpression &&
-				!(getInputs().get(index) instanceof IgnoreMultiExpression)) {
-			return ((MultiExpression) getInputs().get(index)).getValue(pos);
 		}
 
 		return getArgument(index).valueAt(pos);
