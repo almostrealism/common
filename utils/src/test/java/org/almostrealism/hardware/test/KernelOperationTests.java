@@ -90,14 +90,14 @@ public class KernelOperationTests implements TestFeatures {
 		int s = 1;
 		int pad = 2;
 
-		int n = 4;
+		int n = 4; // 8;
 
 		PackedCollection<?> input = tensor(shape(r, c)).pack();
 		PackedCollection<?> filter = tensor(shape(n, w, w)).pack();
 
-		PackedCollection<?> output = new PackedCollection<>(shape(8, 8, 4, 1));
+		HardwareOperator.verboseLog(() -> {
+			PackedCollection<?> output = new PackedCollection<>(shape(8, 8, 4, 1));
 
-//		HardwareOperator.verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> conv = c(p(input))
 					.enumerate(1, w, s)
 					.enumerate(1, w, s)
@@ -131,6 +131,6 @@ public class KernelOperationTests implements TestFeatures {
 					}
 				}
 			}
-//		});
+		});
 	}
 }

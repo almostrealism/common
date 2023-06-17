@@ -42,7 +42,8 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 public interface LayerFeatures extends CollectionFeatures {
-	boolean enableKernelLayers = true;
+	boolean enableKernelLayers = false;
+	boolean enableKernelPool = true;
 
 	@Deprecated
 	default KernelLayer layer(TraversalPolicy inputShape, TraversalPolicy outputShape,
@@ -195,7 +196,7 @@ public interface LayerFeatures extends CollectionFeatures {
 			return ops;
 		};
 
-		if (enableKernelLayers) {
+		if (enableKernelLayers || enableKernelPool) {
 			KernelExpression kernel = (i, p) -> i.v(0).get(shape(size, size, 1),
 					p.l(0).multiply(size),
 					p.l(1).multiply(size),

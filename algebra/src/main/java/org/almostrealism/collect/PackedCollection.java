@@ -223,6 +223,14 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 		return clone;
 	}
 
+	public static PackedCollection<?> range(MemoryData data, TraversalPolicy shape, int start) {
+		if (start + shape.getTotalSize() > data.getMemLength()) {
+			throw new IllegalArgumentException("Range exceeds collection size");
+		}
+
+		return new PackedCollection(shape, shape.getTraversalAxis(), data, start);
+	}
+
 	public static DynamicCollectionProducer blank(int... dims) {
 		return blank(new TraversalPolicy(dims));
 	}

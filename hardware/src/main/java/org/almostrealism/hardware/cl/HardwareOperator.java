@@ -203,4 +203,11 @@ public class HardwareOperator<T extends MemoryData> implements Consumer<Object[]
 		r.run();
 		enableVerboseLog = log;
 	}
+
+	public static void disableDimensionMasks(Runnable r) {
+		boolean masks = enableDimensionMasks;
+		enableDimensionMasks = false;
+		r.run();
+		enableDimensionMasks = masks;
+	}
 }

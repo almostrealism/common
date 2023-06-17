@@ -38,7 +38,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
-public interface PairBankFeatures extends CollectionFeatures {
+public interface PairBankFeatures extends ScalarFeatures {
 
 	default ExpressionComputation<PackedCollection<Pair<?>>> pairBank(Supplier<Evaluable<? extends Pair<?>>>... input) {
 		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
@@ -47,8 +47,9 @@ public interface PairBankFeatures extends CollectionFeatures {
 				.setPostprocessor(Pair.bankPostprocessor());
 	}
 
-	default PairProducerBase pairFromBank(Supplier<Evaluable<? extends PackedCollection<Pair<?>>>> bank, Supplier<Evaluable<? extends Scalar>> index) {
-		return new PairFromPairBank(bank, index);
+	default Producer<Pair<?>> pairFromBank(Producer<PackedCollection<Pair<?>>> bank, Producer<PackedCollection<?>> index) {
+		// return new PairFromPairBank(bank, index);
+		return c(shape(2), bank, (Producer) multiply(c(2), floor(index)));
 	}
 
 	@Deprecated

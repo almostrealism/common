@@ -18,6 +18,7 @@ package org.almostrealism.collect;
 
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.Conditional;
+import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Exponent;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Floor;
@@ -46,6 +47,7 @@ import org.almostrealism.collect.computations.PackedCollectionRepeat;
 import org.almostrealism.collect.computations.PackedCollectionSubset;
 import org.almostrealism.collect.computations.Random;
 import org.almostrealism.collect.computations.ReshapeProducer;
+import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.KernelSupport;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryDataComputation;
@@ -312,7 +314,8 @@ public interface CollectionFeatures extends ExpressionFeatures {
 
 	default CollectionProducerComputation<PackedCollection<?>> integers(int from, int to) {
 		int len = to - from;
-		return new ExpressionComputation<>(shape(len).traverseEach(), List.of(np -> new Sum(e(from), KernelSupport.index())));
+		return new ExpressionComputation<>(shape(len).traverseEach(),
+				List.of(np -> new Sum(new DoubleConstant((double) from), KernelSupport.index())));
 	}
 
 	default <T extends PackedCollection<?>> ExpressionComputation<T> add(Producer<T> a, Producer<T> b) {
