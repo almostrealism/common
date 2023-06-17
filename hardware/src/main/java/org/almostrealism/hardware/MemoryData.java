@@ -17,8 +17,8 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.Memory;
+import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.DoubleConstant;
-import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Node;
@@ -28,7 +28,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 
-public interface MemoryData extends MultiExpression<Double>, Delegated<MemoryData>, Node {
+public interface MemoryData extends TraversableExpression<Double>, Delegated<MemoryData>, Node {
 	int sizeOf = Hardware.getLocalHardware().getNumberSize();
 
 	Memory getMem();
@@ -110,9 +110,16 @@ public interface MemoryData extends MultiExpression<Double>, Delegated<MemoryDat
 	}
 
 	@Override
-	default Expression<Double> getValue(int pos) {
+	default Expression<Double> getValue(Expression... pos) {
+		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	default Expression<Double> getValueAt(Expression pos) {
+		int i = pos.intValue().orElseThrow(UnsupportedOperationException::new);
+
 		double out[] = new double[1];
-		getMem(pos, out, 0, 1);
+		getMem(i, out, 0, 1);
 		return new DoubleConstant(out[0]);
 	}
 

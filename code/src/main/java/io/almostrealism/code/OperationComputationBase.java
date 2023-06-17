@@ -17,6 +17,7 @@
 package io.almostrealism.code;
 
 import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.expression.IgnoreMultiExpression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.Argument.Expectation;
@@ -132,7 +133,8 @@ public abstract class OperationComputationBase<I, O> extends OperationAdapter<I>
 		if (getInputs().get(index) instanceof TraversableExpression) {
 			Expression<Double> value = ((TraversableExpression) getInputs().get(index)).getValueAt(new IntegerConstant(pos));
 			if (value != null) return value;
-		} else if (getInputs().get(index) instanceof MultiExpression) {
+		} else if (getInputs().get(index) instanceof MultiExpression &&
+				!(getInputs().get(index) instanceof IgnoreMultiExpression)) {
 			return ((MultiExpression) getInputs().get(index)).getValue(pos);
 		}
 

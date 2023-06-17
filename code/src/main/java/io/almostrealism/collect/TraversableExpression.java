@@ -18,8 +18,17 @@ package io.almostrealism.collect;
 
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.Variable;
+
+import java.util.function.IntFunction;
 
 public interface TraversableExpression<T> extends ExpressionFeatures {
+	default IntFunction<Variable<T, ?>> getKernelAssignmentFunction(Variable<?, ?> outputVariable) {
+		return i -> new Variable(((ArrayVariable) outputVariable).valueAt(i).getSimpleExpression(),
+				false, getValueAt(new IntegerConstant(i)).simplify(), outputVariable.getRootDelegate());
+	}
 
 	default Expression<T> getValue(PositionExpression pos) {
 		return getValue(pos.toArray());

@@ -45,7 +45,7 @@ public class PassThroughProducer<T extends MemoryData>
 		extends ProducerComputationBase<T, T>
 		implements ProducerArgumentReference,
 		MemoryDataComputation<T>, KernelizedProducer<T>,
-		DestinationSupport<T>, MultiExpression<Double>,
+		DestinationSupport<T>,
 		TraversableExpression<Double>,
 		Shape<PassThroughProducer<T>>, KernelIndex,
 		ComputerFeatures  {
@@ -148,7 +148,7 @@ public class PassThroughProducer<T extends MemoryData>
 	public Scope<T> getScope() {
 		Scope<T> scope = super.getScope();
 		IntStream.range(0, getMemLength())
-				.mapToObj(getAssignmentFunction(getOutputVariable()))
+				.mapToObj(getKernelAssignmentFunction(getOutputVariable()))
 				.forEach(v -> scope.getVariables().add((Variable) v));
 		return scope;
 	}
@@ -202,9 +202,10 @@ public class PassThroughProducer<T extends MemoryData>
 	}
 
 
-	@Override
+	@Deprecated
 	public Expression<Double> getValue(int pos) { return getValueFunction().apply(pos); }
 
+	@Deprecated
 	public IntFunction<Expression<Double>> getValueFunction() {
 		// return pos -> new Expression<>(Double.class, getArgumentValueName(0, pos, kernelIndex), Collections.emptyList(), getArgument(0));
 		return pos -> getArgument(0).valueAt(pos);

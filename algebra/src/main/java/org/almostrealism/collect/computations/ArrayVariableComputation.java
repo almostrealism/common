@@ -16,7 +16,9 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.IgnoreMultiExpression;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
@@ -35,7 +37,10 @@ import java.util.stream.Stream;
 
 // Use DynamicExpressionComputation instead
 @Deprecated
-public class ArrayVariableComputation<T extends PackedCollection<?>> extends DynamicCollectionProducerComputationAdapter<T, T> implements ComputerFeatures {
+public class ArrayVariableComputation<T extends PackedCollection<?>> extends DynamicCollectionProducerComputationAdapter<T, T>
+																implements IgnoreMultiExpression<Double>,
+																	TraversableExpression<Double>,
+																	ComputerFeatures {
 	private List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression;
 
 	private Evaluable<T> shortCircuit;
@@ -53,6 +58,17 @@ public class ArrayVariableComputation<T extends PackedCollection<?>> extends Dyn
 
 	public void setShortCircuit(Evaluable<T> shortCircuit) {
 		this.shortCircuit = shortCircuit;
+	}
+
+	@Override
+	public Expression<Double> getValue(Expression... pos) {
+		return getValueAt(getShape().index(pos));
+	}
+
+	@Override
+	public Expression<Double> getValueAt(Expression index) {
+		int i = index.intValue().orElseThrow(UnsupportedOperationException::new);
+		return expression.get(i).apply((List) getArgumentVariables());
 	}
 
 	@Override
