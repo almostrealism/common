@@ -18,6 +18,7 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.expression.Cast;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.IgnoreMultiExpression;
 import io.almostrealism.expression.Mod;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.relation.Producer;
@@ -34,7 +35,7 @@ import java.util.function.Supplier;
 
 public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		extends DynamicCollectionProducerComputationAdapter<PackedCollection<?>, T>
-		implements TraversableExpression<Double> {
+		implements TraversableExpression<Double>, IgnoreMultiExpression<Double> {
 	private TraversalPolicy subsetShape;
 
 	public PackedCollectionRepeat(int repeat, Producer<?> collection) {

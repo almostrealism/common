@@ -17,6 +17,7 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.IgnoreMultiExpression;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.collect.CollectionExpression;
@@ -42,7 +43,9 @@ import java.util.stream.Stream;
 // TODO  As other implementations of DynamicCollectionProducerComputationAdapter are gradually made unnecessary
 // TODO  by the existence of this class, the functionality here can just be migrated into
 // TODO  DynamicCollectionProducerComputationAdapter, which can then be renamed to DynamicCollectionProducerComputation.
-public class DynamicExpressionComputation<T extends PackedCollection<?>> extends DynamicCollectionProducerComputationAdapter<T, T> implements TraversableExpression, ComputerFeatures {
+public class DynamicExpressionComputation<T extends PackedCollection<?>>
+									extends DynamicCollectionProducerComputationAdapter<T, T>
+									implements TraversableExpression, IgnoreMultiExpression<Double>, ComputerFeatures {
 	private Function<CollectionVariable[], CollectionExpression> expression;
 	private BiFunction<MemoryData, Integer, T> postprocessor;
 

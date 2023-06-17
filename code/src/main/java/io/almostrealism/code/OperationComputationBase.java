@@ -36,7 +36,6 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 public abstract class OperationComputationBase<I, O> extends OperationAdapter<I> implements Computation<O>, Compactable {
-	public static boolean enableMultiExpression = false;
 
 	/**
 	 * If set to true, then {@link Provider}s are treated as static for

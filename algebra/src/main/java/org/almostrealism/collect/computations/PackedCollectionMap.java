@@ -21,6 +21,7 @@ import io.almostrealism.code.OperationComputationBase;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.IgnoreMultiExpression;
 import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.relation.Producer;
@@ -43,7 +44,8 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class PackedCollectionMap<T extends PackedCollection<?>>
-		extends DynamicCollectionProducerComputationAdapter<PackedCollection<?>, T> {
+		extends DynamicCollectionProducerComputationAdapter<PackedCollection<?>, T>
+		implements IgnoreMultiExpression<Double> {
 	private Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper;
 	private ExpressionList<Double> result;
 	private TraversalPolicy inputShape;

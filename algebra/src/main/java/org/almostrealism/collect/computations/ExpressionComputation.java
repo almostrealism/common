@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.MultiExpression;
@@ -32,6 +33,7 @@ import org.almostrealism.hardware.MemoryData;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.OptionalInt;
 import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -41,7 +43,9 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-public class ExpressionComputation<T extends PackedCollection<?>> extends DynamicCollectionProducerComputationAdapter<T, T> implements ComputerFeatures {
+public class ExpressionComputation<T extends PackedCollection<?>>
+		extends DynamicCollectionProducerComputationAdapter<T, T>
+		implements TraversableExpression<Double>, ComputerFeatures {
 	private List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression;
 	private BiFunction<MemoryData, Integer, T> postprocessor;
 	private Evaluable<T> shortCircuit;
@@ -84,6 +88,22 @@ public class ExpressionComputation<T extends PackedCollection<?>> extends Dynami
 		return IntStream.range(0, getInputs().size())
 				.mapToObj(i -> (MultiExpression<Double>) pos -> getInputValue(i, pos))
 				.collect(Collectors.toList());
+	}
+
+	@Override
+	public Expression<Double> getValue(Expression... pos) {
+		return getValueAt(getShape().index(pos));
+	}
+
+	@Override
+	public Expression<Double> getValueAt(Expression index) {
+		OptionalInt i = index.intValue();
+
+		if (i.isPresent()) {
+			return expression.get(i.getAsInt()).apply(getExpressions());
+		} else {
+			return null;
+		}
 	}
 
 	@Override

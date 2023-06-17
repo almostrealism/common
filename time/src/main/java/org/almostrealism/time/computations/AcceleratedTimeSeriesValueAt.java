@@ -38,7 +38,8 @@ import java.util.function.Consumer;
 import java.util.function.IntFunction;
 
 @Deprecated
-public class AcceleratedTimeSeriesValueAt extends DynamicCollectionProducerComputationAdapter<PackedCollection<?>, Scalar> implements ProducerComputation<Scalar>, KernelizedProducer<Scalar> {
+public class AcceleratedTimeSeriesValueAt extends DynamicCollectionProducerComputationAdapter<PackedCollection<?>, Scalar>
+		implements ProducerComputation<Scalar>, KernelizedProducer<Scalar> {
 	public AcceleratedTimeSeriesValueAt(Producer<AcceleratedTimeSeries> series, Producer<CursorPair> cursors) {
 		super(new TraversalPolicy(2).traverse(0), new Producer[] { series, cursors });
 	}
