@@ -35,6 +35,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 public abstract class OperationComputationBase<I, O> extends OperationAdapter<I> implements Computation<O>, Compactable {
+	public static boolean enableMultiExpression = false;
 
 	/**
 	 * If set to true, then {@link Provider}s are treated as static for
@@ -130,12 +131,12 @@ public abstract class OperationComputationBase<I, O> extends OperationAdapter<I>
 
 		if (getInputs().get(index) instanceof TraversableExpression) {
 			Expression<Double> value = ((TraversableExpression) getInputs().get(index)).getValueAt(new IntegerConstant(pos));
-
-			// if (!(value instanceof InstanceReference)) return value;
 			if (value != null) return value;
+		} else if (getInputs().get(index) instanceof MultiExpression) {
+			return ((MultiExpression) getInputs().get(index)).getValue(pos);
 		}
 
-		return getExpression(getArgumentForInput(getInputs().get(index)), pos);
+		return getArgument(index).valueAt(pos);
 	}
 
 	@Override
@@ -143,26 +144,6 @@ public abstract class OperationComputationBase<I, O> extends OperationAdapter<I>
 		Scope<O> scope = new Scope<>(getFunctionName(), new OperationMetadata(getFunctionName(), getClass().getSimpleName()));
 		scope.getVariables().addAll(getVariables());
 		return scope;
-	}
-
-	/**
-	 * This method will only return anything useful if the supplied
-	 * argument is a {@link MultiExpression}. Since {@link MultiExpression}
-	 * is deprecated, this method should no longer be used.
-	 */
-	@Deprecated
-	public static Expression<Double> getExpression(ArrayVariable arg, int pos) {
-		if (arg == null) {
-			throw new IllegalArgumentException("Argument cannot be null");
-		}
-
-		Optional<MultiExpression> exp = getExpression(arg.getProducer());
-
-		if (exp.isPresent()) {
-			return exp.get().getValue(pos);
-		} else {
-			return arg.valueAt(pos);
-		}
 	}
 
 	/**

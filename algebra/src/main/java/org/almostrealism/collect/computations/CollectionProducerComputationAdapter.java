@@ -123,20 +123,6 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 	public PhysicalScope getDefaultPhysicalScope() { return PhysicalScope.GLOBAL; }
 
 	@Override
-	public Expression<Double> getInputValue(int index, int pos) {
-		if (enableEmbeddedInputs) {
-			if (getInputs().get(index) instanceof TraversableExpression) {
-				Expression<Double> value = ((TraversableExpression) getInputs().get(index)).getValueAt(e(pos));
-
-				// if (!(value instanceof InstanceReference)) return value;
-				if (value != null) return value;
-			}
-		}
-
-		return super.getInputValue(index, pos);
-	}
-
-	@Override
 	public void destroy() {
 		super.destroy();
 		ProducerCache.purgeEvaluableCache(this);

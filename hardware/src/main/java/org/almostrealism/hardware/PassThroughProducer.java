@@ -18,6 +18,7 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
+import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.Argument.Expectation;
@@ -45,6 +46,7 @@ public class PassThroughProducer<T extends MemoryData>
 		implements ProducerArgumentReference,
 		MemoryDataComputation<T>, KernelizedProducer<T>,
 		DestinationSupport<T>, MultiExpression<Double>,
+		TraversableExpression<Double>,
 		Shape<PassThroughProducer<T>>, KernelIndex,
 		ComputerFeatures  {
 	private TraversalPolicy shape;
@@ -206,6 +208,16 @@ public class PassThroughProducer<T extends MemoryData>
 	public IntFunction<Expression<Double>> getValueFunction() {
 		// return pos -> new Expression<>(Double.class, getArgumentValueName(0, pos, kernelIndex), Collections.emptyList(), getArgument(0));
 		return pos -> getArgument(0).valueAt(pos);
+	}
+
+	@Override
+	public Expression<Double> getValue(Expression... pos) {
+		return getValueAt(shape.index(pos));
+	}
+
+	@Override
+	public Expression<Double> getValueAt(Expression index) {
+		return getArgument(0).get(index);
 	}
 
 	@Override
