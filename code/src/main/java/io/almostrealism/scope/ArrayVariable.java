@@ -126,7 +126,7 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 	public InstanceReference<T> getRaw(Expression<?> pos) {
 		if (getDelegate() == null) {
 			return new InstanceReference(new Variable<>(dereference.apply(getName(), pos.toInt().getSimpleExpression()),
-					false, new Expression(getType()), this), pos.getDependencies().toArray(Variable[]::new));
+					false, new Expression(getType()), this), pos);
 		} else if (getDelegate() == this) {
 			throw new IllegalArgumentException("Circular delegate reference");
 		} else {

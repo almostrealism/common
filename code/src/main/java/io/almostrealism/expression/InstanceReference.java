@@ -35,17 +35,16 @@ public class InstanceReference<T> extends Expression<T> {
 	private Variable<T, ?> var;
 
 	public InstanceReference(Variable<T, ?> v) {
-		this(v.getType(), v.getName(), v);
-		this.var = v;
+		this(v, null);
 	}
 
-	public InstanceReference(Variable<T, ?> v, Variable... dependencies) {
-		this(v.getType(), v.getName(), CollectionUtils.include(new Variable[0], v, dependencies));
-		this.var = v;
+	public InstanceReference(Variable<T, ?> referent, Expression<?> argument) {
+		super(referent.getType(), referent.getName(), referent, argument);
+		this.var = referent;
 	}
 
-	public InstanceReference(Class<T> type, String varName, Variable... dependencies) {
-		super(type, varName, Collections.emptyList(), dependencies);
+	public InstanceReference(Class<T> type, String varName) {
+		super(type, varName, Collections.emptyList());
 	}
 
 	public Variable<T, ?> getReferent() { return var; }
@@ -59,7 +58,7 @@ public class InstanceReference<T> extends Expression<T> {
 	}
 
 	public InstanceReference<T> generate(List<Expression<?>> children) {
-		if (children.size() > 0) {
+		if (children.size() > 1) {
 			throw new UnsupportedOperationException();
 		}
 

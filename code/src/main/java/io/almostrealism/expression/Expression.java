@@ -68,6 +68,19 @@ public class Expression<T> implements Tree<Expression<?>> {
 		this.dependencies.addAll(dependencies(children));
 	}
 
+	public Expression(Class<T> type, String expression, Variable<T, ?> referent, Expression<?> argument) {
+		if (type == null) {
+			throw new IllegalArgumentException("Type is required");
+		}
+
+		setType(type);
+		this.expression = () -> expression;
+		this.children = argument == null ? Collections.emptyList() : List.of(argument);
+		this.dependencies = new ArrayList<>();
+		this.dependencies.add(referent);
+		if (argument != null) this.dependencies.addAll(argument.getDependencies());
+	}
+
 	@Deprecated
 	public Expression(Class<T> type, String expression, List<Expression<?>> children, Variable<?, ?>... dependencies) {
 		if (type == null) {
