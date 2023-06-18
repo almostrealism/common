@@ -20,8 +20,11 @@ import io.almostrealism.code.Array;
 import io.almostrealism.code.KernelIndex;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.PhysicalScope;
+import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
+import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 
 import java.util.Collections;
@@ -82,6 +85,19 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 		} else {
 			return getDelegate().getOffset() + getDelegateOffset();
 		}
+	}
+
+	public Expression<Double> getValueAt(int index) {
+		if (getProducer() instanceof TraversableExpression) {
+			Expression<Double> value = ((TraversableExpression) getProducer()).getValueAt(new IntegerConstant(index));
+			if (value != null) return value;
+		} else if (getProducer() instanceof Delegated && ((Delegated) getProducer()).getDelegate() instanceof TraversableExpression) {
+			Expression<Double> value = ((TraversableExpression) ((Delegated) getProducer()).getDelegate())
+											.getValueAt(new IntegerConstant(index));
+			if (value != null) return value;
+		}
+
+		return (Expression) valueAt(index);
 	}
 
 	public InstanceReference<T> get(Expression<?> pos, int kernelIndex) {

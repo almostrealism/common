@@ -30,6 +30,7 @@ import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 
+import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -128,12 +129,23 @@ public abstract class OperationComputationBase<I, O> extends OperationAdapter<I>
 			throw new IllegalArgumentException("Input value cannot be obtained before arguments are determined");
 		}
 
+		return getArgument(index).getValueAt(pos);
+
+		/*
 		if (getInputs().get(index) instanceof TraversableExpression) {
 			Expression<Double> value = ((TraversableExpression) getInputs().get(index)).getValueAt(new IntegerConstant(pos));
-			if (value != null) return value;
+
+			if (value != null) {
+//				if (!Objects.equals(value.getExpression(), getArgument(index).getValueAt(pos).getExpression())) {
+//					throw new IllegalStateException("TraversableExpression value does not match argument value");
+//				}
+
+				return value;
+			}
 		}
 
 		return getArgument(index).valueAt(pos);
+		 */
 	}
 
 	@Override
