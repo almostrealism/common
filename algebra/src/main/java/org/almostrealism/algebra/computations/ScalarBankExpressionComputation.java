@@ -30,6 +30,7 @@ import java.util.List;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
+@Deprecated
 public class ScalarBankExpressionComputation extends ExpressionComputation<PackedCollection<Scalar>> implements ScalarBankProducerBase {
 	public ScalarBankExpressionComputation(List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression, Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
 		super(expression, args);

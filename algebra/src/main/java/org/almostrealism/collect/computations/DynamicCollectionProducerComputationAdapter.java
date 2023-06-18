@@ -93,12 +93,16 @@ public abstract class DynamicCollectionProducerComputationAdapter<I extends Pack
 
 	// @Override
 	public Expression<Double> getValueAt(Expression index) {
-		OptionalInt i = index.intValue();
-
-		if (i.isPresent()) {
-			return getValueFunction().apply(i.getAsInt());
+		if (enableAbsoluteIndex) {
+			throw new UnsupportedOperationException();
 		} else {
-			return null;
+			OptionalInt i = index.intValue();
+
+			if (i.isPresent()) {
+				return getValueFunction().apply(i.getAsInt());
+			} else {
+				return null;
+			}
 		}
 	}
 

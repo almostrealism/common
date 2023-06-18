@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
+@Deprecated
 public class TemporalScalarExpressionComputation extends ExpressionComputation<TemporalScalar> implements TemporalScalarProducerBase {
 	public TemporalScalarExpressionComputation(List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression, Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
 		super(expression, args);
