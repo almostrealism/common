@@ -336,8 +336,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 																		 Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expressions =
 				IntStream.range(0, depth).mapToObj(i -> (Function<List<ArrayVariable<Double>>, Expression<Double>>)
-								np ->
-										new Sum(np.get(1).getValueAt(i), np.get(2).getValueAt(i)))
+								np -> new Sum(np.get(1).getValueAt(i), np.get(2).getValueAt(i)))
 						.collect(Collectors.toList());
 		return new ExpressionComputation<>(expressions, a, b);
 	}

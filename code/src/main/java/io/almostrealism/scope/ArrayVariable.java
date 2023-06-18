@@ -33,6 +33,8 @@ import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
 public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements Array<T, ArrayVariable<T>> {
+	public static boolean enableRelativeGet = true;
+
 	public static BiFunction<String, String, String> dereference = (name, pos) -> name + "[" + pos + "]";
 
 	private final NameProvider names;
@@ -90,6 +92,7 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 		}
 	}
 
+	// TODO  Rename to getValueRelative?
 	public Expression<Double> getValueAt(int index) {
 		if (getProducer() instanceof TraversableExpression) {
 			Expression<Double> value = ((TraversableExpression) getProducer()).getValueAt(new IntegerConstant(index));
@@ -98,17 +101,31 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 			Expression<Double> value = ((TraversableExpression) ((Delegated) getProducer()).getDelegate())
 											.getValueAt(new IntegerConstant(index));
 			if (value != null) return value;
+		} else if (!enableRelativeGet && getDelegate() != null) {
+			Expression<Double> v = getDelegate().getValueAt(index + getDelegateOffset());
+			if (v instanceof InstanceReference) {
+				((InstanceReference) v).getReferent().setOriginalProducer(getOriginalProducer());
+			}
+			return v;
 		}
 
-		return (Expression) get(new IntegerConstant(index));
+		if (enableRelativeGet) {
+			return (Expression) get(new IntegerConstant(index));
+		} else {
+			return (Expression) getRaw(names.getArrayPosition(this, new IntegerConstant(index), getKernelIndex()));
+		}
 	}
 
+	// TODO  Rename to getRelative
 	public InstanceReference<T> get(Expression<?> pos) {
-		return get(pos, getKernelIndex());
+		if (enableRelativeGet) {
+			return get(pos, getKernelIndex());
+		} else {
+			return getRaw(names.getArrayPosition(this, pos, getKernelIndex()));
+		}
 	}
 
-	// public InstanceReference<T> getRaw(Expression<?> pos) { return get(pos, -1); }
-
+	@Deprecated
 	public InstanceReference<T> get(Expression<?> pos, int kernelIndex) {
 		if (kernelIndex < 0) return getRaw(pos);
 
