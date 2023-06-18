@@ -20,12 +20,11 @@ import io.almostrealism.expression.Cosine;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Minus;
-import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Sine;
 import io.almostrealism.expression.Sum;
-import org.almostrealism.algebra.computations.*;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.hardware.HardwareFeatures;
@@ -41,7 +40,7 @@ public interface PairFeatures extends HardwareFeatures {
 	static ExpressionComputation<Pair<?>> of(double l, double r) { return of(new Pair<>(l, r)); }
 
 	static ExpressionComputation<Pair<?>> of(Pair<?> value) {
-		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
+		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
 		IntStream.range(0, 2).forEach(i -> comp.add(args -> HardwareFeatures.ops().expressionForDouble(value.toDouble(i))));
 		return new ExpressionComputation<Pair<?>>(comp)
 				.setPostprocessor(Pair.postprocessor());
@@ -50,15 +49,15 @@ public interface PairFeatures extends HardwareFeatures {
 	default ExpressionComputation<Pair<?>> pair(double x, double y) { return value(new Pair(x, y)); }
 
 	default ExpressionComputation<Pair<?>> pair(Supplier<Evaluable<? extends Scalar>> x, Supplier<Evaluable<? extends Scalar>> y) {
-		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		IntStream.range(0, 2).forEach(i -> comp.add(args -> args.get(1 + i).getValue(0)));
+		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
+		IntStream.range(0, 2).forEach(i -> comp.add(args -> args.get(1 + i).getValueAt(0)));
 		return new ExpressionComputation<Pair<?>>(comp, (Supplier) x, (Supplier) y)
 				.setPostprocessor(Pair.postprocessor());
 	}
 
 	default ExpressionComputation<Pair<?>> pair(Supplier<Evaluable<? extends PackedCollection<?>>> x) {
-		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		IntStream.range(0, 2).forEach(i -> comp.add(args -> args.get(1).getValue(i)));
+		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
+		IntStream.range(0, 2).forEach(i -> comp.add(args -> args.get(1).getValueAt(i)));
 		return new ExpressionComputation<Pair<?>>(comp, x)
 				.setPostprocessor(Pair.postprocessor());
 	}
@@ -71,32 +70,32 @@ public interface PairFeatures extends HardwareFeatures {
 
 	default ExpressionComputation<Scalar> l(Supplier<Evaluable<? extends Pair<?>>> p) {
 		return new ExpressionComputation<>(List.of(
-				args -> args.get(1).getValue(0),
+				args -> args.get(1).getValueAt(0),
 				args -> new DoubleConstant(1.0)), (Supplier) p).setPostprocessor(Scalar.postprocessor());
 	}
 
 	default ExpressionComputation<Scalar> r(Supplier<Evaluable<? extends Pair<?>>> p) {
 		return new ExpressionComputation<>(List.of(
-				args -> args.get(1).getValue(1),
+				args -> args.get(1).getValueAt(1),
 				args -> new DoubleConstant(1.0)), (Supplier) p).setPostprocessor(Scalar.postprocessor());
 	}
 
 	@Deprecated
 	default ExpressionComputation<Pair<?>> pairAdd(Supplier<Evaluable<? extends Pair<?>>>... values) {
-		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		comp.add(args -> new Sum(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValue(0)).toArray(Expression[]::new)));
-		comp.add(args -> new Sum(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValue(1)).toArray(Expression[]::new)));
+		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
+		comp.add(args -> new Sum(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValueAt(0)).toArray(Expression[]::new)));
+		comp.add(args -> new Sum(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValueAt(1)).toArray(Expression[]::new)));
 		return new ExpressionComputation<Pair<?>>(comp, (Supplier[]) values)
 				.setPostprocessor(Pair.postprocessor());
 	}
 
 	default ExpressionComputation<Pair<?>> multiplyComplex(Supplier<Evaluable<? extends Pair<?>>> a, Supplier<Evaluable<? extends Pair<?>>> b) {
-		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
+		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
 		IntStream.range(0, 2).forEach(i -> comp.add(args -> {
-			Expression p = args.get(1).getValue(0);
-			Expression q = args.get(1).getValue(1);
-			Expression r = args.get(2).getValue(0);
-			Expression s = args.get(2).getValue(1);
+			Expression p = args.get(1).getValueAt(0);
+			Expression q = args.get(1).getValueAt(1);
+			Expression r = args.get(2).getValueAt(0);
+			Expression s = args.get(2).getValueAt(1);
 
 			if (i == 0) {
 				return new Sum(new Product(p, r), new Minus(new Product(q, s)));
@@ -110,9 +109,9 @@ public interface PairFeatures extends HardwareFeatures {
 	}
 
 	default ExpressionComputation<Pair<?>> complexFromAngle(Supplier<Evaluable<? extends Scalar>> angle) {
-		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		comp.add(args -> new Cosine(args.get(1).getValue(0)));
-		comp.add(args -> new Sine(args.get(1).getValue(0)));
+		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
+		comp.add(args -> new Cosine(args.get(1).getValueAt(0)));
+		comp.add(args -> new Sine(args.get(1).getValueAt(0)));
 		return Pair.postprocess(new ExpressionComputation<>(comp, (Supplier) angle));
 	}
 

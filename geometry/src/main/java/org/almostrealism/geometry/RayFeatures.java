@@ -17,7 +17,7 @@
 package org.almostrealism.geometry;
 
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.MultiExpression;
+import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.algebra.VectorFeatures;
@@ -46,8 +46,8 @@ public interface RayFeatures extends VectorFeatures {
 
 	default RayExpressionComputation ray(Supplier<Evaluable<? extends Vector>> origin,
 											Supplier<Evaluable<? extends Vector>> direction) {
-		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		IntStream.range(0, 6).forEach(i -> comp.add(args -> args.get(1 + i / 3).getValue(i % 3)));
+		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
+		IntStream.range(0, 6).forEach(i -> comp.add(args -> args.get(1 + i / 3).getValueAt(i % 3)));
 		return new RayExpressionComputation(comp, (Supplier) origin, (Supplier) direction);
 	}
 
@@ -58,17 +58,17 @@ public interface RayFeatures extends VectorFeatures {
 
 	default ExpressionComputation<Vector> origin(Supplier<Evaluable<? extends Ray>> r) {
 		return new ExpressionComputation<Vector>(List.of(
-				args -> args.get(1).getValue(0),
-				args -> args.get(1).getValue(1),
-				args -> args.get(1).getValue(2)),
+				args -> args.get(1).getValueAt(0),
+				args -> args.get(1).getValueAt(1),
+				args -> args.get(1).getValueAt(2)),
 				(Supplier) r).setPostprocessor(Vector.postprocessor());
 	}
 
 	default ExpressionComputation<Vector> direction(Supplier<Evaluable<? extends Ray>> r) {
 		return new ExpressionComputation<Vector>(List.of(
-				args -> args.get(1).getValue(3),
-				args -> args.get(1).getValue(4),
-				args -> args.get(1).getValue(5)),
+				args -> args.get(1).getValueAt(3),
+				args -> args.get(1).getValueAt(4),
+				args -> args.get(1).getValueAt(5)),
 				(Supplier) r).setPostprocessor(Vector.postprocessor());
 	}
 

@@ -17,9 +17,9 @@
 package org.almostrealism.algebra.computations.test;
 
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.collect.CollectionProducerBase;
+import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.util.TestFeatures;
@@ -36,9 +36,9 @@ public class ConditionalTest implements TestFeatures {
 		CollectionProducerBase c = c(3);
 		CollectionProducerBase d = c(5);
 
-		Function<List<MultiExpression<Double>>, Expression<Double>> expression =
-				args -> conditional(equals(args.get(1).getValue(0), args.get(2).getValue(0)),
-						args.get(3).getValue(0), args.get(4).getValue(0));
+		Function<List<ArrayVariable<Double>>, Expression<Double>> expression =
+				args -> conditional(equals(args.get(1).getValueAt(0), args.get(2).getValueAt(0)),
+						args.get(3).getValueAt(0), args.get(4).getValueAt(0));
 		Evaluable<PackedCollection<?>> ev = new ExpressionComputation<>(List.of(expression), a, b, c, d).get();
 
 		PackedCollection<?> result = ev.evaluate();
@@ -53,9 +53,9 @@ public class ConditionalTest implements TestFeatures {
 		CollectionProducerBase c = c(3);
 		CollectionProducerBase d = c(5);
 
-		Function<List<MultiExpression<Double>>, Expression<Double>> expression =
-				args -> conditional(equals(args.get(1).getValue(0), args.get(2).getValue(0)),
-						args.get(3).getValue(0), args.get(4).getValue(0));
+		Function<List<ArrayVariable<Double>>, Expression<Double>> expression =
+				args -> conditional(equals(args.get(1).getValueAt(0), args.get(2).getValueAt(0)),
+						args.get(3).getValueAt(0), args.get(4).getValueAt(0));
 		Evaluable<PackedCollection<?>> ev = new ExpressionComputation<>(List.of(expression), a, b, c, d).get();
 
 		PackedCollection<?> result = ev.evaluate();

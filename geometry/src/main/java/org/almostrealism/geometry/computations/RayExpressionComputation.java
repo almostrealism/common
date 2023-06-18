@@ -17,8 +17,8 @@
 package org.almostrealism.geometry.computations;
 
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.geometry.Ray;
@@ -30,7 +30,7 @@ import java.util.function.Supplier;
 
 @Deprecated
 public class RayExpressionComputation extends ExpressionComputation<Ray> {
-	public RayExpressionComputation(List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression, Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+	public RayExpressionComputation(List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression, Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
 		super(expression, args);
 	}
 

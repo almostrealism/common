@@ -1,11 +1,11 @@
 package org.almostrealism.hardware.test;
 
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
+import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
@@ -29,8 +29,8 @@ public class AcceleratedComputationOperationTest implements HardwareFeatures, Te
 
 	@Test
 	public void providerExpressionComputation() {
-		Function<List<MultiExpression<Double>>, Expression<Double>> expression = args ->
-				new Sum(args.get(1).getValue(0), args.get(2).getValue(0));
+		Function<List<ArrayVariable<Double>>, Expression<Double>> expression = args ->
+				new Sum(args.get(1).getValueAt(0), args.get(2).getValueAt(0));
 
 		PackedCollection<?> a = new PackedCollection(1);
 		PackedCollection<?> b = new PackedCollection(1);

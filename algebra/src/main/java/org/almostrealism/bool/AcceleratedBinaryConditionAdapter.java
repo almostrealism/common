@@ -17,7 +17,6 @@
 package org.almostrealism.bool;
 
 import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
@@ -52,7 +51,9 @@ public abstract class AcceleratedBinaryConditionAdapter<T extends PackedCollecti
 	@Override
 	public Expression getCondition() {
 		if (condition == null) {
-			return new NAryExpression(Boolean.class, operator, getInputValue(1, 0), getInputValue(2, 0));
+			return new NAryExpression(Boolean.class, operator,
+					getArgument(1).getValueAt(0),
+					getArgument(2).getValueAt(0));
 		} else {
 			return condition;
 		}
@@ -74,12 +75,12 @@ public abstract class AcceleratedBinaryConditionAdapter<T extends PackedCollecti
 
 	@Override
 	public IntFunction<Expression<Double>> getTrueValueExpression() {
-		return i -> getInputValue(3, i);
+		return i -> getArgument(3).getValueAt(i);
 	}
 
 	@Override
 	public IntFunction<Expression<Double>> getFalseValueExpression() {
-		return i -> getInputValue(4, i);
+		return i -> getArgument(4).getValueAt(i);
 	}
 
 	@Override

@@ -17,10 +17,10 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.algebra.computations.ScalarBankExpressionComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
@@ -91,10 +91,10 @@ public interface ScalarBankFeatures extends ScalarFeatures {
 	@Deprecated
 	default ScalarBankProducerBase scalarBankAdd(int count, Producer<PackedCollection<Scalar>> input,
 						  						Supplier<Evaluable<? extends Scalar>> value) {
-		List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression = new ArrayList<>();
+		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression = new ArrayList<>();
 		IntStream.range(0, 2 * count).forEach(i ->
 				expression.add(args -> i % 2 == 0 ?
-						new Sum(args.get(1).getValue(i), args.get(2).getValue(0)) : args.get(1).getValue(i)));
+						new Sum(args.get(1).getValueAt(i), args.get(2).getValueAt(0)) : args.get(1).getValueAt(i)));
 		return new ScalarBankExpressionComputation(expression, (Supplier) input, (Supplier) value);
 	}
 
@@ -160,8 +160,8 @@ public interface ScalarBankFeatures extends ScalarFeatures {
 	}
 
 	default ScalarBankProducerBase scalars(Supplier<Evaluable<? extends Scalar>>... values) {
-		List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression = new ArrayList<>();
-		IntStream.range(0, 2 * values.length).forEach(i -> expression.add(args -> args.get(i / 2 + 1).getValue(i % 2)));
+		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression = new ArrayList<>();
+		IntStream.range(0, 2 * values.length).forEach(i -> expression.add(args -> args.get(i / 2 + 1).getValueAt(i % 2)));
 		return new ScalarBankExpressionComputation(expression, (Supplier[]) values);
 	}
 

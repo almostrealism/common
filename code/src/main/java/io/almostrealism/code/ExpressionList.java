@@ -18,7 +18,6 @@ package io.almostrealism.code;
 
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Max;
-import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Sum;
 

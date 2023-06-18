@@ -78,7 +78,7 @@ public class PairBankTest implements CodeFeatures {
 		HardwareOperator.disableDimensionMasks(() -> {
 			PackedCollection<?> destination = new PackedCollection<>(shape(4));
 
-			Producer<PackedCollection<?>> c = new ExpressionComputation<>(List.of(args -> args.get(1).getValue(1)),
+			Producer<PackedCollection<?>> c = new ExpressionComputation<>(List.of(args -> args.get(1).getValueAt(1)),
 					v(shape(len, 2).traverse(1), 0));
 
 			TraversalPolicy subset = shape(bank.getShape().length(0) - 1, bank.getShape().length(1));

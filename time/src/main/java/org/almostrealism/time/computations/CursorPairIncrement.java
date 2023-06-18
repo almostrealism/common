@@ -38,13 +38,18 @@ public class CursorPairIncrement extends DynamicOperationComputationAdapter {
 		super.prepareScope(manager);
 		if (prepared) return;
 
-		if (getArgument(1).isStatic()) {
-			addVariable(getArgument(0).valueAt(0).assign(new Sum(getArgument(0).valueAt(0), getInputValue(1, 0))));
-			addVariable(getArgument(0).valueAt(1).assign(new Sum(getArgument(0).valueAt(1), getInputValue(1, 0))));
-		} else {
-			addVariable(getArgument(0).valueAt(0).assign(new Sum(getArgument(0).valueAt(0), getArgument(1).valueAt(0))));
-			addVariable(getArgument(0).valueAt(1).assign(new Sum(getArgument(0).valueAt(1), getArgument(1).valueAt(0))));
-		}
+		addVariable(getArgument(0).valueAt(0)
+				.assign(new Sum(getArgument(0).valueAt(0), getArgument(1).getValueAt(0))));
+		addVariable(getArgument(0).valueAt(1)
+				.assign(new Sum(getArgument(0).valueAt(1), getArgument(1).getValueAt(0))));
+
+//		if (getArgument(1).isStatic()) {
+//			addVariable(getArgument(0).valueAt(0).assign(new Sum(getArgument(0).valueAt(0), getInputValue(1, 0))));
+//			addVariable(getArgument(0).valueAt(1).assign(new Sum(getArgument(0).valueAt(1), getInputValue(1, 0))));
+//		} else {
+//			addVariable(getArgument(0).valueAt(0).assign(new Sum(getArgument(0).valueAt(0), getArgument(1).valueAt(0))));
+//			addVariable(getArgument(0).valueAt(1).assign(new Sum(getArgument(0).valueAt(1), getArgument(1).valueAt(0))));
+//		}
 
 		prepared = true;
 	}

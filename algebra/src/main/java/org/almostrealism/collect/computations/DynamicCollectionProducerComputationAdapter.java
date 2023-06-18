@@ -16,12 +16,10 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.relation.Evaluable;

@@ -76,7 +76,7 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		// directly obtained
 		OptionalInt offsetValue = offset.intValue();
 		if (offsetValue.isPresent()) {
-			return getInputValue(1, offsetValue.getAsInt());
+			return getArgument(1).getValueAt(offsetValue.getAsInt());
 		}
 
 		// Otherwise the value will only be available if the

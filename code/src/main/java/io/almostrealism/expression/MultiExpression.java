@@ -32,5 +32,5 @@ package io.almostrealism.expression;
 @Deprecated
 public interface MultiExpression<T> {
 
-	Expression<T> getValue(int pos);
+	Expression<T> getValueAt(int pos);
 }

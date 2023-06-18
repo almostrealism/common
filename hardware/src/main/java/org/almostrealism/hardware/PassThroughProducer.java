@@ -19,7 +19,6 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
 import io.almostrealism.collect.TraversableExpression;
-import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.code.ArgumentMap;

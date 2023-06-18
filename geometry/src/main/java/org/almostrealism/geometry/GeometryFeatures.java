@@ -17,9 +17,9 @@
 package org.almostrealism.geometry;
 
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.algebra.Vector;
@@ -36,7 +36,7 @@ public interface GeometryFeatures extends ScalarFeatures, RayFeatures {
 	double TWO_PI = 2 * PI;
 
 	default ExpressionComputation _sin(Supplier<Evaluable<? extends PackedCollection<?>>> input) {
-		Function<List<MultiExpression<Double>>, Expression<Double>> exp = args -> new io.almostrealism.expression.Sine(args.get(1).getValue(0));
+		Function<List<ArrayVariable<Double>>, Expression<Double>> exp = args -> new io.almostrealism.expression.Sine(args.get(1).getValueAt(0));
 		return new ExpressionComputation(List.of(exp), input);
 	}
 

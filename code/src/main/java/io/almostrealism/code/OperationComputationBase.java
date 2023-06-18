@@ -16,21 +16,15 @@
 
 package io.almostrealism.code;
 
-import io.almostrealism.collect.TraversableExpression;
-import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.relation.Compactable;
-import io.almostrealism.relation.Delegated;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 
-import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -115,38 +109,6 @@ public abstract class OperationComputationBase<I, O> extends OperationAdapter<I>
 	/** @return  null */
 	@Override
 	public Variable getOutputVariable() { return null; }
-
-	/**
-	 * Argument variables which are Traversable can be directly
-	 * inspected for their Expression, while this method relies
-	 * on the input Producers being {@link MultiExpression}
-	 * implementors. Since {@link MultiExpression} is deprecated,
-	 * this method should not be used either.
-	 */
-	@Deprecated
-	public Expression<Double> getInputValue(int index, int pos) {
-		if (getArgumentVariables() == null) {
-			throw new IllegalArgumentException("Input value cannot be obtained before arguments are determined");
-		}
-
-		return getArgument(index).getValueAt(pos);
-
-		/*
-		if (getInputs().get(index) instanceof TraversableExpression) {
-			Expression<Double> value = ((TraversableExpression) getInputs().get(index)).getValueAt(new IntegerConstant(pos));
-
-			if (value != null) {
-//				if (!Objects.equals(value.getExpression(), getArgument(index).getValueAt(pos).getExpression())) {
-//					throw new IllegalStateException("TraversableExpression value does not match argument value");
-//				}
-
-				return value;
-			}
-		}
-
-		return getArgument(index).valueAt(pos);
-		 */
-	}
 
 	@Override
 	public Scope<O> getScope() {

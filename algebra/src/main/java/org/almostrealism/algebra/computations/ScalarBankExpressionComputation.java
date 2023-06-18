@@ -17,8 +17,8 @@
 package org.almostrealism.algebra.computations;
 
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBankProducerBase;
 import org.almostrealism.collect.PackedCollection;
@@ -31,7 +31,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 public class ScalarBankExpressionComputation extends ExpressionComputation<PackedCollection<Scalar>> implements ScalarBankProducerBase {
-	public ScalarBankExpressionComputation(List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression, Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+	public ScalarBankExpressionComputation(List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression, Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
 		super(expression, args);
 	}
 

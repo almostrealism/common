@@ -19,7 +19,7 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.MultiExpression;
+import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
@@ -46,19 +46,19 @@ import java.util.stream.Stream;
 public class ExpressionComputation<T extends PackedCollection<?>>
 		extends DynamicCollectionProducerComputationAdapter<T, T>
 		implements TraversableExpression<Double>, ComputerFeatures {
-	private List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression;
+	private List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression;
 	private BiFunction<MemoryData, Integer, T> postprocessor;
 	private Evaluable<T> shortCircuit;
 
 	@SafeVarargs
-	public ExpressionComputation(List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression,
+	public ExpressionComputation(List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression,
 								 Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
 		// this(shape(expression.size(), args), expression, args);
 		this(new TraversalPolicy(expression.size()), expression, args);
 	}
 
 	@SafeVarargs
-	public ExpressionComputation(TraversalPolicy shape, List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression,
+	public ExpressionComputation(TraversalPolicy shape, List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression,
 							   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
 		super(shape, validateArgs(args));
 		if (shape.getSize() != expression.size())
@@ -80,14 +80,12 @@ public class ExpressionComputation<T extends PackedCollection<?>>
 		return this;
 	}
 
-	public List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression() {
+	public List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression() {
 		return expression;
 	}
 
-	public List<MultiExpression<Double>> getExpressions() {
-		return IntStream.range(0, getInputs().size())
-				.mapToObj(i -> (MultiExpression<Double>) pos -> getInputValue(i, pos))
-				.collect(Collectors.toList());
+	protected List<ArrayVariable<Double>> getInputArguments() {
+		return (List) getInputs().stream().map(this::getArgumentForInput).collect(Collectors.toList());
 	}
 
 	@Override
@@ -96,7 +94,7 @@ public class ExpressionComputation<T extends PackedCollection<?>>
 			if (pos >= expression.size()) {
 				throw new IllegalArgumentException();
 			} else {
-				return expression.get(pos).apply(getExpressions());
+				return expression.get(pos).apply(getInputArguments());
 			}
 		};
 	}
@@ -151,7 +149,7 @@ public class ExpressionComputation<T extends PackedCollection<?>>
 	}
 
 	public static <T extends PackedCollection<?>> ExpressionComputation<T> fixed(T value, BiFunction<MemoryData, Integer, T> postprocessor) {
-		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
+		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
 		IntStream.range(0, value.getShape().getTotalSize()).forEach(i ->
 				comp.add(args -> new DoubleConstant(value.getMem().toArray(value.getOffset() + i, 1)[0])));
 

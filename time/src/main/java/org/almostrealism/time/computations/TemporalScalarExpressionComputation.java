@@ -17,8 +17,8 @@
 package org.almostrealism.time.computations;
 
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.hardware.MemoryData;
@@ -30,7 +30,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 public class TemporalScalarExpressionComputation extends ExpressionComputation<TemporalScalar> implements TemporalScalarProducerBase {
-	public TemporalScalarExpressionComputation(List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression, Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+	public TemporalScalarExpressionComputation(List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression, Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
 		super(expression, args);
 	}
 

@@ -20,7 +20,6 @@ import io.almostrealism.code.HybridScope;
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;

@@ -33,13 +33,13 @@ import io.almostrealism.expression.Max;
 import io.almostrealism.expression.Min;
 import io.almostrealism.expression.Minus;
 import io.almostrealism.expression.Mod;
-import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Quotient;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
+import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.bool.GreaterThanCollection;
 import org.almostrealism.bool.LessThanCollection;
 import org.almostrealism.collect.computations.ArrayVariableComputation;
@@ -166,8 +166,8 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> concat(int axis, Producer<PackedCollection<?>>... producers) {
-		List<Function<List<MultiExpression<Double>>, Expression<Double>>> expressions = IntStream.range(0, producers.length)
-				.mapToObj(i -> (Function<List<MultiExpression<Double>>, Expression<Double>>) args -> args.get(i + 1).getValue(0))
+		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expressions = IntStream.range(0, producers.length)
+				.mapToObj(i -> (Function<List<ArrayVariable<Double>>, Expression<Double>>) args -> args.get(i + 1).getValueAt(0))
 				.collect(Collectors.toList());
 		if (axis != 0) {
 			return new ExpressionComputation(shape(producers.length, 1), expressions, producers).traverse(axis);
@@ -187,7 +187,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> c(Producer supplier, int index) {
-		return new ExpressionComputation<>(List.of(args -> args.get(1).getValue(index)), supplier);
+		return new ExpressionComputation<>(List.of(args -> args.get(1).getValueAt(index)), supplier);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> c(Producer<T> collection,
@@ -334,9 +334,10 @@ public interface CollectionFeatures extends ExpressionFeatures {
 
 	default <T extends PackedCollection<?>> ExpressionComputation<T> add(int depth,
 																		 Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
-		List<Function<List<MultiExpression<Double>>, Expression<Double>>> expressions =
-				IntStream.range(0, depth).mapToObj(i -> (Function<List<MultiExpression<Double>>, Expression<Double>>)
-								np -> new Sum(np.get(1).getValue(i), np.get(2).getValue(i)))
+		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expressions =
+				IntStream.range(0, depth).mapToObj(i -> (Function<List<ArrayVariable<Double>>, Expression<Double>>)
+								np ->
+										new Sum(np.get(1).getValueAt(i), np.get(2).getValueAt(i)))
 						.collect(Collectors.toList());
 		return new ExpressionComputation<>(expressions, a, b);
 	}
@@ -379,9 +380,9 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	default <T extends PackedCollection<?>> ExpressionComputation<T> multiply(TraversalPolicy shape,
 																			  Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b,
 																			  Evaluable<T> shortCircuit) {
-		List<Function<List<MultiExpression<Double>>, Expression<Double>>> expressions =
-				IntStream.range(0, shape.getSize()).mapToObj(i -> (Function<List<MultiExpression<Double>>, Expression<Double>>)
-								np -> new Product(np.get(1).getValue(i), np.get(2).getValue(i)))
+		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expressions =
+				IntStream.range(0, shape.getSize()).mapToObj(i -> (Function<List<ArrayVariable<Double>>, Expression<Double>>)
+								np -> new Product(np.get(1).getValueAt(i), np.get(2).getValueAt(i)))
 						.collect(Collectors.toList());
 		ExpressionComputation<T> exp = new ExpressionComputation<>(shape, expressions, a, b);
 		exp.setShortCircuit(shortCircuit);
@@ -401,9 +402,9 @@ public interface CollectionFeatures extends ExpressionFeatures {
 					args -> CollectionExpression.create(shape, index -> new Quotient(args[1].getValueAt(index), args[2].getValueAt(index))),
 					(Supplier) a, (Supplier) b);
 		} else {
-			List<Function<List<MultiExpression<Double>>, Expression<Double>>> expressions =
-					IntStream.range(0, shape.getSize()).mapToObj(i -> (Function<List<MultiExpression<Double>>, Expression<Double>>)
-									np -> new Quotient(np.get(1).getValue(i), np.get(2).getValue(i)))
+			List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expressions =
+					IntStream.range(0, shape.getSize()).mapToObj(i -> (Function<List<ArrayVariable<Double>>, Expression<Double>>)
+									np -> new Quotient(np.get(1).getValueAt(i), np.get(2).getValueAt(i)))
 							.collect(Collectors.toList());
 			return new ExpressionComputation<>(shape, expressions, (Supplier) a, (Supplier) b);
 		}
@@ -415,9 +416,9 @@ public interface CollectionFeatures extends ExpressionFeatures {
 					args -> CollectionExpression.create(shape(a), index -> new Minus(args[1].getValueAt(index))),
 					(Supplier) a);
 		} else {
-			List<Function<List<MultiExpression<Double>>, Expression<Double>>> expressions =
-					IntStream.range(0, shape(a).getSize()).mapToObj(i -> (Function<List<MultiExpression<Double>>, Expression<Double>>)
-									np -> new Minus(np.get(1).getValue(i)))
+			List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expressions =
+					IntStream.range(0, shape(a).getSize()).mapToObj(i -> (Function<List<ArrayVariable<Double>>, Expression<Double>>)
+									np -> new Minus(np.get(1).getValueAt(i)))
 							.collect(Collectors.toList());
 			return new ExpressionComputation<>(shape(a), expressions, (Supplier) a);
 		}
@@ -430,35 +431,35 @@ public interface CollectionFeatures extends ExpressionFeatures {
 
 	default <T extends PackedCollection<?>> ExpressionComputation<T> pow(int depth,
 																		 Supplier<Evaluable<? extends PackedCollection<?>>> base, Supplier<Evaluable<? extends PackedCollection<?>>> exp) {
-		List<Function<List<MultiExpression<Double>>, Expression<Double>>> expressions =
-				IntStream.range(0, depth).mapToObj(i -> (Function<List<MultiExpression<Double>>, Expression<Double>>)
-								np -> new Exponent(np.get(1).getValue(i), np.get(2).getValue(i)))
+		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expressions =
+				IntStream.range(0, depth).mapToObj(i -> (Function<List<ArrayVariable<Double>>, Expression<Double>>)
+								np -> new Exponent(np.get(1).getValueAt(i), np.get(2).getValueAt(i)))
 						.collect(Collectors.toList());
 		return new ExpressionComputation<>(expressions, base, exp);
 	}
 
 	default <T extends PackedCollection<?>> ExpressionComputation<T> floor(
 			Supplier<Evaluable<? extends PackedCollection<?>>> value) {
-		Function<List<MultiExpression<Double>>, Expression<Double>> expression = np ->
-				new Floor(np.get(1).getValue(0));
+		Function<List<ArrayVariable<Double>>, Expression<Double>> expression = np ->
+				new Floor(np.get(1).getValueAt(0));
 		return new ExpressionComputation<>(List.of(expression), value);
 	}
 
 	default <T extends PackedCollection<?>> ExpressionComputation<T> _min(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
-		Function<List<MultiExpression<Double>>, Expression<Double>> expression = args ->
-				new Min(args.get(1).getValue(0), args.get(2).getValue(0));
+		Function<List<ArrayVariable<Double>>, Expression<Double>> expression = args ->
+				new Min(args.get(1).getValueAt(0), args.get(2).getValueAt(0));
 		return new ExpressionComputation<>(List.of(expression), a, b);
 	}
 
 	default <T extends PackedCollection<?>> ExpressionComputation<T> _max(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
-		Function<List<MultiExpression<Double>>, Expression<Double>> expression = args ->
-				new Max(args.get(1).getValue(0), args.get(2).getValue(0));
+		Function<List<ArrayVariable<Double>>, Expression<Double>> expression = args ->
+				new Max(args.get(1).getValueAt(0), args.get(2).getValueAt(0));
 		return new ExpressionComputation<>(List.of(expression), a, b);
 	}
 
 	default <T extends PackedCollection<?>> ExpressionComputation<T> _mod(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
-		Function<List<MultiExpression<Double>>, Expression<Double>> expression = args ->
-				new Mod(args.get(1).getValue(0), args.get(2).getValue(0));
+		Function<List<ArrayVariable<Double>>, Expression<Double>> expression = args ->
+				new Mod(args.get(1).getValueAt(0), args.get(2).getValueAt(0));
 		return new ExpressionComputation<>(List.of(expression), a, b);
 	}
 
@@ -468,20 +469,20 @@ public interface CollectionFeatures extends ExpressionFeatures {
 
 	default <T extends PackedCollection<?>> ExpressionComputation<T> max(Producer<T> input) {
 		int size = shape(input).getTotalSize();
-		Function<List<MultiExpression<Double>>, Expression<Double>> expression= np ->
-			Max.of(IntStream.range(0, size).mapToObj(i -> np.get(1).getValue(i)).toArray(Expression[]::new));
+		Function<List<ArrayVariable<Double>>, Expression<Double>> expression= np ->
+			Max.of(IntStream.range(0, size).mapToObj(i -> np.get(1).getValueAt(i)).toArray(Expression[]::new));
 		return new ExpressionComputation<>(List.of(expression), (Supplier) input);
 	}
 
 	default <T extends PackedCollection<?>> ExpressionComputation<T> sum(Producer<T> input) {
 		int size = shape(input).getTotalSize();
-		Function<List<MultiExpression<Double>>, Expression<Double>> expression;
+		Function<List<ArrayVariable<Double>>, Expression<Double>> expression;
 
 		if (size == 1) {
-			expression = np -> np.get(1).getValue(0);
+			expression = np -> np.get(1).getValueAt(0);
 		} else {
 			expression = np ->
-					new Sum(IntStream.range(0, size).mapToObj(i -> np.get(1).getValue(i)).toArray(Expression[]::new));
+					new Sum(IntStream.range(0, size).mapToObj(i -> np.get(1).getValueAt(i)).toArray(Expression[]::new));
 		}
 
 		return new ExpressionComputation<>(List.of(expression), (Supplier) input);
@@ -506,9 +507,9 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	default <T extends PackedCollection<?>> CollectionProducer<T> greaterThanConditional(Producer<?> a, Producer<?> b,
 																			   Producer<T> trueValue, Producer<T> falseValue,
 																			   boolean includeEqual) {
-		Function<List<MultiExpression<Double>>, Expression<Double>> expression = args ->
-				new Conditional(greater(args.get(1).getValue(0), args.get(2).getValue(0), includeEqual),
-						args.get(3).getValue(0), args.get(4).getValue(0));
+		Function<List<ArrayVariable<Double>>, Expression<Double>> expression = args ->
+				new Conditional(greater(args.get(1).getValueAt(0), args.get(2).getValueAt(0), includeEqual),
+						args.get(3).getValueAt(0), args.get(4).getValueAt(0));
 		return new ExpressionComputation<>(List.of(expression),
 											(Supplier) a, (Supplier) b,
 											(Supplier) trueValue, (Supplier) falseValue);

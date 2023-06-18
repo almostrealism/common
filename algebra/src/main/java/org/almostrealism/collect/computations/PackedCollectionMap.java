@@ -17,11 +17,9 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.ExpressionList;
-import io.almostrealism.code.OperationComputationBase;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
@@ -106,7 +104,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 
 		computation = new ExpressionComputation<>(sliceShape,
 				IntStream.range(0, exp.size())
-						.mapToObj(i -> (Function<List<MultiExpression<Double>>, Expression<Double>>) args -> exp.get(i))
+						.mapToObj(i -> (Function<List<ArrayVariable<Double>>, Expression<Double>>) args -> exp.get(i))
 						.collect(Collectors.toList()));
 		computation.setFixedDestinationShape(true);
 		CollectionProducerComputation<?> altMapped = mapper.apply(computation);
@@ -118,12 +116,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 							return ((PackedCollectionMap) altMapped).getValue(i);
 						}
 
-						Optional<MultiExpression> ex = Optional.empty(); // OperationComputationBase.getExpression(altMapped);
-						if (ex.isPresent()) {
-							return ex.get().getValue(i);
-						} else {
-							throw new UnsupportedOperationException();
-						}
+						throw new UnsupportedOperationException();
 					})
 					.collect(ExpressionList.collector());
 	}

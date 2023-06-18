@@ -19,11 +19,11 @@ package org.almostrealism.algebra;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Minus;
-import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.algebra.computations.ScalarBankExpressionComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
@@ -39,8 +39,8 @@ import java.util.stream.IntStream;
 public interface PairBankFeatures extends ScalarFeatures {
 
 	default ExpressionComputation<PackedCollection<Pair<?>>> pairBank(Supplier<Evaluable<? extends Pair<?>>>... input) {
-		List<Function<List<MultiExpression<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		IntStream.range(0, 2 * input.length).forEach(i -> comp.add(args -> args.get(1 + i / 2).getValue(i % 2)));
+		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
+		IntStream.range(0, 2 * input.length).forEach(i -> comp.add(args -> args.get(1 + i / 2).getValueAt(i % 2)));
 		return new ExpressionComputation(shape(input.length, 2).traverse(0), comp, input)
 				.setPostprocessor(Pair.bankPostprocessor());
 	}
@@ -53,17 +53,17 @@ public interface PairBankFeatures extends ScalarFeatures {
 	default ScalarBankProducerBase powerSpectrumOld(int count, Supplier<Evaluable<? extends PackedCollection<Pair<?>>>> input) {
 		int memLength = 2 * (count / 2 + 1);
 
-		List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression = new ArrayList<>();
+		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression = new ArrayList<>();
 		IntStream.range(0, memLength).forEach(i -> expression.add(args -> {
 			if (i % 2 == 0) {
 				if (i == 0) {
-					return new Product(args.get(1).getValue(0), args.get(1).getValue(0));
+					return new Product(args.get(1).getValueAt(0), args.get(1).getValueAt(0));
 				} else if (i == memLength - 2) {
-					return new Product(args.get(1).getValue(1), args.get(1).getValue(1));
+					return new Product(args.get(1).getValueAt(1), args.get(1).getValueAt(1));
 				} else {
 					return new Sum(
-							new Product(args.get(1).getValue(i), args.get(1).getValue(i)),
-							new Product(args.get(1).getValue(i + 1), args.get(1).getValue(i + 1)));
+							new Product(args.get(1).getValueAt(i), args.get(1).getValueAt(i)),
+							new Product(args.get(1).getValueAt(i + 1), args.get(1).getValueAt(i + 1)));
 				}
 			} else {
 				return new DoubleConstant(1.0);
@@ -100,17 +100,17 @@ public interface PairBankFeatures extends ScalarFeatures {
 	@Deprecated
 	default ScalarBankProducerBase preemphasizeOld(int count, Producer<PackedCollection<Scalar>> input,
 												   Supplier<Evaluable<? extends Scalar>> coeff) {
-		List<Function<List<MultiExpression<Double>>, Expression<Double>>> expression = new ArrayList<>();
+		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression = new ArrayList<>();
 
 		IntStream.range(0, 2 * count).forEach(i -> expression.add(args -> {
 			if (i == 0) {
-				return new Sum(args.get(1).getValue(i),
-						new Minus(new Product(args.get(2).getValue(0), args.get(1).getValue(i))));
+				return new Sum(args.get(1).getValueAt(i),
+						new Minus(new Product(args.get(2).getValueAt(0), args.get(1).getValueAt(i))));
 			} else if (i % 2 == 0) {
-				return new Sum(args.get(1).getValue(i),
-						new Minus(new Product(args.get(2).getValue(0), args.get(1).getValue(i - 2))));
+				return new Sum(args.get(1).getValueAt(i),
+						new Minus(new Product(args.get(2).getValueAt(0), args.get(1).getValueAt(i - 2))));
 			} else {
-				return args.get(1).getValue(i);
+				return args.get(1).getValueAt(i);
 			}
 		}));
 
