@@ -44,6 +44,7 @@ import java.util.stream.Stream;
 public class PackedCollectionMap<T extends PackedCollection<?>>
 		extends DynamicCollectionProducerComputationAdapter<PackedCollection<?>, T> {
 	private Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper;
+	private TraversableExpression<Double> mapped;
 	private ExpressionList<Double> result;
 	private TraversalPolicy inputShape;
 
@@ -89,8 +90,9 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 
 		CollectionProducerComputation<?> mapped = mapper.apply(computation);
 
-		if (mapped instanceof TraversableExpression) {
+		if (mapped instanceof TraversableExpression && !(mapped instanceof PackedCollectionMap)) {
 			ScopeLifecycle.prepareScope(Stream.of(mapped), manager);
+			this.mapped = (TraversableExpression<Double>) mapped;
 			result = IntStream.range(0, getShape().item().getTotalSize())
 					.mapToObj(i -> ((TraversableExpression<Double>) mapped).getValueAt(e(i)))
 					.collect(ExpressionList.collector());
@@ -123,7 +125,8 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
-		return null;
+		// TODO  There's a mixup here between absolute and relative indices
+		return mapped == null ? null : mapped.getValueAt(index);
 	}
 
 	@Override

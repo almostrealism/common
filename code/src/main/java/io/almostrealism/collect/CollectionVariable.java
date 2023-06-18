@@ -71,16 +71,6 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 	}
 
 	@Override
-	public InstanceReference<T> get(Expression<?> idx, int kernelIndex) {
-		if (parent == null) {
-			return super.get(idx, kernelIndex);
-		} else {
-			Expression<?> p = parent.getShape().subset(getShape(), idx, pos);
-			return parent.getRaw(p);
-		}
-	}
-
-	@Override
 	public Expression<Double> getValue(Expression... pos) {
 		if (parent != null) {
 			Expression<?> index = getShape().index(pos);
