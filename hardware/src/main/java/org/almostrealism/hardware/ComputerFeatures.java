@@ -16,6 +16,9 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.KernelIndex;
+import io.almostrealism.expression.StaticReference;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.scope.Variable;
@@ -74,5 +77,22 @@ public interface ComputerFeatures extends HardwareFeatures, NameProvider {
 	@Override
 	default String getVariableSizeName(ArrayVariable v) {
 		return KernelSupport.getValueSizeName(v.getName());
+	}
+
+	@Override
+	default Expression<?> getArrayPosition(ArrayVariable v, Expression pos, int kernelIndex) {
+		Expression offset = new StaticReference(Integer.class, KernelSupport.getValueOffsetName(v.getName()));
+
+		if (isContextKernelEnabled() && v.getProducer() instanceof KernelSupport
+				&& ((KernelSupport) v.getProducer()).isKernelEnabled()) {
+			KernelIndex idx = new KernelIndex(kernelIndex);
+			Expression dim = new StaticReference(Integer.class, KernelSupport.getValueDimName(v.getName(), kernelIndex));
+
+			Expression kernelOffset = idx.multiply(dim);
+
+			return kernelOffset.add(offset).add(pos.toInt());
+		} else {
+			return offset.add(pos).toInt();
+		}
 	}
 }

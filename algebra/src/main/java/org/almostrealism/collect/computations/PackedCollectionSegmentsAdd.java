@@ -32,6 +32,7 @@ import org.almostrealism.hardware.computations.Repeated;
 
 import java.util.function.Supplier;
 
+@Deprecated
 public class PackedCollectionSegmentsAdd extends Repeated {
 	public PackedCollectionSegmentsAdd(Producer<PackedCollection> destination,
 									   Producer<PackedCollection> data,

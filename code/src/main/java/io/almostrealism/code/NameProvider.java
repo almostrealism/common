@@ -93,4 +93,6 @@ public interface NameProvider {
 	String getVariableDimName(ArrayVariable v, int dim);
 
 	String getVariableSizeName(ArrayVariable v);
+
+	Expression<?> getArrayPosition(ArrayVariable v, Expression<?> pos, int kernelIndex);
 }

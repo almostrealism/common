@@ -47,6 +47,10 @@ public interface KernelSupport {
 				getKernelIndex(kernelIndex) + " * " + getValueDimName(variableName, kernelIndex) + " + ";
 	}
 
+	static String getValueOffsetName(String variableName) {
+		return variableName + "Offset";
+	}
+
 	static String getValueDimName(String variableName, int dim) {
 		return variableName + "Dim" + dim;
 	}

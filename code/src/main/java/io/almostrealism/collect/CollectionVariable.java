@@ -65,7 +65,7 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 			return super.get(idx, kernelIndex);
 		} else {
 			Expression<?> p = parent.getShape().subset(getShape(), idx, pos);
-			return parent.get(p, -1);
+			return parent.getRaw(p);
 		}
 	}
 
@@ -106,11 +106,11 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 		if (result != null) return result;
 
 		if (getShape().getTotalSize() == 1) {
-			return (Expression) get(e(0), -1);
+			return (Expression) getRaw(e(0));
 		} else {
 			// index =  e("((int) (" + index.simplify().getExpression() + ")) % " + getShape().getTotalSize(), index);
 			index = new Mod(new Cast("int", index), e(getShape().getTotalSize()), false);
-			return (Expression) get(index, -1);
+			return (Expression) getRaw(index);
 		}
 	}
 

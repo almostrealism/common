@@ -29,9 +29,12 @@ import io.almostrealism.relation.Evaluable;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
 public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements Array<T, ArrayVariable<T>> {
+	public static BiFunction<String, String, String> dereference = (name, pos) -> name + "[" + pos + "]";
+
 	private final NameProvider names;
 
 	private int delegateOffset;
@@ -97,28 +100,42 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 			if (value != null) return value;
 		}
 
-		return (Expression) valueAt(index);
+		return (Expression) get(new IntegerConstant(index));
 	}
+
+	public InstanceReference<T> get(Expression<?> pos) {
+		return get(pos, getKernelIndex());
+	}
+
+	// public InstanceReference<T> getRaw(Expression<?> pos) { return get(pos, -1); }
 
 	public InstanceReference<T> get(Expression<?> pos, int kernelIndex) {
-		return get(pos.getSimpleExpression(), kernelIndex, pos.getDependencies().toArray(Variable[]::new));
-	}
+		if (kernelIndex < 0) return getRaw(pos);
 
-	private InstanceReference<T> get(String pos, int kernelIndex, Variable... dependencies) {
 		if (getDelegate() == null) {
-			return new InstanceReference(new Variable<>(names.getVariableValueName(this, pos, kernelIndex),
-					false, new Expression(getType()), this), dependencies);
+			String refName = dereference.apply(getName(), names.getArrayPosition(this, pos, kernelIndex).getSimpleExpression());
+			return new InstanceReference(new Variable<>(refName,
+					false, new Expression(getType()), this), pos.getDependencies().toArray(Variable[]::new));
 		} else if (getDelegate() == this) {
 			throw new IllegalArgumentException("Circular delegate reference");
 		} else {
-			InstanceReference ref = getDelegate().get(pos + " + " + getDelegateOffset(), kernelIndex, dependencies);
+			InstanceReference ref = getDelegate().get(pos.add(getDelegateOffset()), kernelIndex);
 			ref.getReferent().setOriginalProducer(getOriginalProducer());
 			return ref;
 		}
 	}
 
-	public InstanceReference<T> get(Expression<?> pos) {
-		return get(pos, getKernelIndex());
+	public InstanceReference<T> getRaw(Expression<?> pos) {
+		if (getDelegate() == null) {
+			return new InstanceReference(new Variable<>(dereference.apply(getName(), pos.toInt().getSimpleExpression()),
+					false, new Expression(getType()), this), pos.getDependencies().toArray(Variable[]::new));
+		} else if (getDelegate() == this) {
+			throw new IllegalArgumentException("Circular delegate reference");
+		} else {
+			InstanceReference ref = getDelegate().get(pos.add(getDelegateOffset()));
+			ref.getReferent().setOriginalProducer(getOriginalProducer());
+			return ref;
+		}
 	}
 
 	public Expression<Integer> length() {

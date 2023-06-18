@@ -22,6 +22,7 @@ import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.expression.Cast;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.KernelIndex;
 import org.almostrealism.hardware.cl.CLMemoryProvider;
 import org.almostrealism.hardware.cl.CLMemoryProvider.Location;
 import org.almostrealism.hardware.cl.CLComputeContext;
@@ -123,11 +124,14 @@ public final class Hardware {
 						"external".equalsIgnoreCase(exec), location);
 		}
 
-		// TODO  This is not a very desriable way of ensuring the doubles are properly encoded
+		// TODO  This is not a very desirable way of ensuring the doubles are properly encoded
 		// TODO  but until we further improve the interaction between org.almostrealism.hardware
 		// TODO  and io.almostrealism.code it will have to do
 		Expression.toDouble = e -> new Cast(Hardware.getLocalHardware().getNumberTypeName(), e);
 		DoubleConstant.stringForDouble = Hardware.getLocalHardware()::stringForDouble;
+
+		// TODO  This is not a very desirable way to configure kernel support either
+		KernelIndex.kernelIndex = KernelSupport::getKernelIndex;
 	}
 
 	private final String name;

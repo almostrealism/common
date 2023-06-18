@@ -70,7 +70,7 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 	public Expression<Double> getValueAt(Expression index) {
 		TraversalPolicy inputShape = ((Shape) getInputs().get(1)).getShape();
 		Expression<?> p = inputShape.subset(getShape(), index, pos);
-		return getArgument(1, inputShape.getTotalSize()).get(p, -1);
+		return getArgument(1, inputShape.getTotalSize()).getRaw(p);
 	}
 
 	@Override
@@ -82,7 +82,7 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 			Expression index = new StaticReference(Double.class, KernelSupport.getKernelIndex(0));
 			TraversalPolicy inputShape = ((Shape) getInputs().get(1)).getShape();
 			Expression<?> p = inputShape.subset(getShape(), index, pos);
-			return getArgument(1, inputShape.getTotalSize()).get(p, -1);
+			return getArgument(1, inputShape.getTotalSize()).getRaw(p);
 		};
 	}
 
