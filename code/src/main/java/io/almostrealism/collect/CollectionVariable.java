@@ -60,6 +60,17 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 		return getShape().getSize() == 1 ? super.length() : e(getShape().getSize());
 	}
 
+	@Override
+	public InstanceReference<T> get(Expression<?> idx) {
+		if (parent == null) {
+			return super.get(idx);
+		} else {
+			Expression<?> p = parent.getShape().subset(getShape(), idx, pos);
+			return parent.getRaw(p);
+		}
+	}
+
+	@Override
 	public InstanceReference<T> get(Expression<?> idx, int kernelIndex) {
 		if (parent == null) {
 			return super.get(idx, kernelIndex);

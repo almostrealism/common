@@ -31,6 +31,7 @@ import org.almostrealism.hardware.MemoryBank;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
+// TODO  Why can't this be a child of DynamicCollectionProducerComputationAdapter
 public abstract class Choice<T extends PackedCollection<?>> extends CollectionProducerComputationAdapter<T, T> {
 	private int choiceCount;
 

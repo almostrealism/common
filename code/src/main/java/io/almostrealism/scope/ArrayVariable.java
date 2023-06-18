@@ -33,7 +33,7 @@ import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
 public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements Array<T, ArrayVariable<T>> {
-	public static boolean enableRelativeGet = true;
+	public static boolean enableRelativeGet = false;
 
 	public static BiFunction<String, String, String> dereference = (name, pos) -> name + "[" + pos + "]";
 
@@ -120,6 +120,12 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 	public InstanceReference<T> get(Expression<?> pos) {
 		if (enableRelativeGet) {
 			return get(pos, getKernelIndex());
+		} else if (getDelegate() != null) {
+			InstanceReference<T> v = getDelegate().get(pos.add(getDelegateOffset()));
+			((InstanceReference) v).getReferent().setOriginalProducer(getOriginalProducer());
+			return v;
+		} else if (getKernelIndex() < 0) {
+			return getRaw(pos);
 		} else {
 			return getRaw(names.getArrayPosition(this, pos, getKernelIndex()));
 		}
