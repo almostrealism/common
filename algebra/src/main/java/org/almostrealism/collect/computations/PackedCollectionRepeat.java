@@ -38,7 +38,7 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 
 	public PackedCollectionRepeat(TraversalPolicy shape, int repeat, Producer<?> collection) {
 		super(shape(collection).replace(shape.prependDimension(repeat)), (Supplier) collection);
-		this.subsetShape = shape;
+		this.subsetShape = shape.getDimensions() == 0 ? shape(1) : shape;
 	}
 
 	@Override

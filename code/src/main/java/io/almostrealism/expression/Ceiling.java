@@ -17,6 +17,7 @@
 package io.almostrealism.expression;
 
 import java.util.List;
+import java.util.OptionalDouble;
 
 public class Ceiling extends Expression<Double> {
 	public Ceiling(Expression<Double> input) {
@@ -25,7 +26,15 @@ public class Ceiling extends Expression<Double> {
 
 	@Override
 	public String getExpression() {
-		return "ceil(" + getChildren().get(0).getExpression() + ")";
+		OptionalDouble v = getChildren().get(0).doubleValue();
+		return v.isPresent() ? "ceil(" + v.getAsDouble()+ ")" : "ceil(" + getChildren().get(0).getExpression() + ")";
+	}
+
+	@Override
+	public OptionalDouble doubleValue() {
+		OptionalDouble v = getChildren().get(0).doubleValue();
+		if (v.isPresent()) return OptionalDouble.of(Math.ceil(v.getAsDouble()));
+		return OptionalDouble.empty();
 	}
 
 	@Override

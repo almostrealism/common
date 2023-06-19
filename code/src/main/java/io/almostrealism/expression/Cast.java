@@ -29,6 +29,17 @@ public class Cast extends UnaryExpression<Double> {
 	}
 
 	@Override
+	public Expression<Double> simplify() {
+		Expression<Double> flat = super.simplify();
+		if (!(flat instanceof Cast)) return flat;
+		if (flat.getChildren().get(0) instanceof Cast) {
+			return new Cast(typeName, flat.getChildren().get(0).getChildren().get(0));
+		}
+
+		return flat;
+	}
+
+	@Override
 	public Expression generate(List children) {
 		if (children.size() != 1) throw new UnsupportedOperationException();
 		return new Cast(typeName, (Expression) children.get(0));

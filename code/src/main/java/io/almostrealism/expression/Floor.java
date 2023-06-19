@@ -31,6 +31,13 @@ public class Floor extends Expression<Double> {
 	}
 
 	@Override
+	public OptionalDouble doubleValue() {
+		OptionalDouble v = getChildren().get(0).doubleValue();
+		if (v.isPresent()) return OptionalDouble.of(Math.floor(v.getAsDouble()));
+		return OptionalDouble.empty();
+	}
+
+	@Override
 	public Expression<Double> generate(List<Expression<?>> children) {
 		if (children.size() != 1) {
 			throw new UnsupportedOperationException();

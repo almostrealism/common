@@ -64,20 +64,20 @@ public class PackedCollectionMapTests implements TestFeatures {
 		IntStream.range(0, 5).forEach(i -> scale.set(i, i + 2));
 		System.out.println(Arrays.toString(scale.toArray(0, 5)));
 
-		PackedCollection<?> destination = new PackedCollection<>(shape(5, 10), 1);
+		HardwareOperator.verboseLog(() -> {
+			Producer<PackedCollection<?>> repeated = c(p(scale)).traverse(1).expand(10, v -> v.repeat(10));
 
-		Producer<PackedCollection<?>> repeated = c(p(scale)).traverse(1).expand(10, v -> v.repeat(10));
+			Producer<PackedCollection<?>> repeatedTimeline = c(p(timeline)).traverse(0).expand(5, v -> v.repeat(5));
 
-		Producer<PackedCollection<?>> repeatedTimeline = c(p(timeline)).traverse(0).expand(5, v -> v.repeat(5));
+			KernelizedEvaluable<PackedCollection<?>> ev = multiply(traverseEach(repeated), traverseEach(repeatedTimeline)).get();
+			PackedCollection<?> destination = ev.evaluate();
+			System.out.println(destination.getShape());
+			System.out.println(Arrays.toString(destination.toArray(0, 10)));
+			System.out.println(Arrays.toString(destination.toArray(10, 10)));
 
-		KernelizedEvaluable<PackedCollection<?>> ev = multiply(traverseEach(repeated), traverseEach(repeatedTimeline)).get();
-		destination = ev.evaluate();
-		System.out.println(destination.getShape());
-		System.out.println(Arrays.toString(destination.toArray(0, 10)));
-		System.out.println(Arrays.toString(destination.toArray(10, 10)));
-
-		assertEquals(8, destination.toDouble(3));
-		assertEquals(12, destination.toDouble(13));
+			assertEquals(8, destination.toDouble(3));
+			assertEquals(12, destination.toDouble(13));
+		});
 	}
 
 	@Test
