@@ -29,7 +29,6 @@ import org.almostrealism.hardware.MemoryBank;
 
 import java.util.function.Supplier;
 
-@Deprecated
 public class PackedCollectionSubset<T extends PackedCollection<?>>
 		extends KernelProducerComputationAdapter<PackedCollection<?>, T> {
 	private int pos[];
@@ -48,18 +47,14 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 
 	public int getMemLength() { return 1; }
 
+
+	// TODO  This custom destination creation should not be necessary
 	@Override
 	protected MemoryBank<?> createKernelDestination(int len) {
 		if (len != getShape().getTotalSize())
 			throw new IllegalArgumentException("Subset kernel size must match subset shape (" + getShape().getTotalSize() + ")");
 
 		return new PackedCollection<>(getShape().traverseEach());
-	}
-
-	@Override
-	public Expression<Double> getValue(Expression... pos) {
-		// TODO
-		return null;
 	}
 
 	@Override
