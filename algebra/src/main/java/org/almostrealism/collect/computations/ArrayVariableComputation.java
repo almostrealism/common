@@ -34,7 +34,7 @@ import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
-// Use DynamicExpressionComputation instead
+// Use ExpressionComputation instead
 @Deprecated
 public class ArrayVariableComputation<T extends PackedCollection<?>>
 		extends DynamicCollectionProducerComputationAdapter<T, T>

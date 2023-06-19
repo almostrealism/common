@@ -67,9 +67,14 @@ public abstract class TraversableProducerComputationBase<I extends PackedCollect
 	@Override
 	public Scope<O> getScope() {
 		Scope<O> scope = super.getScope();
-		IntStream.range(0, getMemLength())
-				.mapToObj(getAssignmentFunction(getOutputVariable()))
-				.forEach(v -> scope.getVariables().add((Variable) v));
+
+		if (isVariableRef()) {
+			throw new UnsupportedOperationException();
+		} else {
+			IntStream.range(0, getMemLength())
+					.mapToObj(getAssignmentFunction(getOutputVariable()))
+					.forEach(v -> scope.getVariables().add((Variable) v));
+		}
 		return scope;
 	}
 
