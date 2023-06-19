@@ -17,25 +17,21 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.StaticReference;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.Shape;
-import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.DestinationSupport;
 import org.almostrealism.hardware.KernelSupport;
 import org.almostrealism.hardware.MemoryBank;
 
-import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
 @Deprecated
 public class PackedCollectionSubset<T extends PackedCollection<?>>
-		extends DynamicCollectionProducerComputationAdapter<PackedCollection<?>, T>
-		implements TraversableExpression<Double> {
+		extends KernelProducerComputationAdapter<PackedCollection<?>, T> {
 	private int pos[];
 
 	public PackedCollectionSubset(TraversalPolicy shape, Producer<?> collection, int... pos) {
@@ -71,19 +67,6 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 		TraversalPolicy inputShape = ((Shape) getInputs().get(1)).getShape();
 		Expression<?> p = inputShape.subset(getShape(), index, pos);
 		return getArgument(1, inputShape.getTotalSize()).getRaw(p); // TODO  Should be getValueAt(p)?
-	}
-
-	@Override
-	public IntFunction<Expression<Double>> getValueFunction() {
-		return i -> {
-			if (i != 0)
-				throw new IllegalArgumentException("Invalid position");
-
-			Expression index = new StaticReference(Double.class, KernelSupport.getKernelIndex(0));
-			TraversalPolicy inputShape = ((Shape) getInputs().get(1)).getShape();
-			Expression<?> p = inputShape.subset(getShape(), index, pos);
-			return getArgument(1, inputShape.getTotalSize()).getRaw(p); // TODO  Should be getValueAt(p)?
-		};
 	}
 
 	private class Destination implements Producer<PackedCollection<?>>, Delegated<DestinationSupport<T>>, KernelSupport {
