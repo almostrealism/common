@@ -22,26 +22,19 @@ import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.relation.Compactable;
-import io.almostrealism.relation.Delegated;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Factory;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.PairBankFeatures;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.computations.DynamicCollectionProducerComputationAdapter;
 import org.almostrealism.collect.computations.TraversableProducerComputationAdapter;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.KernelizedProducer;
 
 import java.util.Objects;
-import java.util.Optional;
 import java.util.function.IntFunction;
-import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 public class PairBankFromPairsBuilder extends TraversableProducerComputationAdapter<Pair<?>, PackedCollection<Pair<?>>>
