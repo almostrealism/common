@@ -17,6 +17,7 @@
 package io.almostrealism.expression;
 
 import java.util.List;
+import java.util.OptionalDouble;
 
 public class Floor extends Expression<Double> {
 	public Floor(Expression<Double> input) {
@@ -25,7 +26,8 @@ public class Floor extends Expression<Double> {
 
 	@Override
 	public String getExpression() {
-		return "floor(" + getChildren().get(0).getExpression() + ")";
+		OptionalDouble v = getChildren().get(0).doubleValue();
+		return v.isPresent() ? "floor(" + v.getAsDouble()+ ")" : "floor(" + getChildren().get(0).getExpression() + ")";
 	}
 
 	@Override

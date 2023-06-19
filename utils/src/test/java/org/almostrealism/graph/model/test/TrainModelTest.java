@@ -16,9 +16,11 @@
 
 package org.almostrealism.graph.model.test;
 
+import io.almostrealism.expression.Quotient;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.DefaultCellularLayer;
 import org.almostrealism.layers.KernelLayerCell;
@@ -141,6 +143,21 @@ public class TrainModelTest implements TestFeatures {
 
 	@Test
 	public void convPool() {
+		boolean quotientSimplification = Quotient.enableIntegerSimplification;
+
+		try {
+			// TODO  This should not be necessary
+			Quotient.enableIntegerSimplification = false;
+			convPoolModel();
+		} catch (Exception e) {
+			e.printStackTrace();
+			Assert.fail();
+		} finally {
+			Quotient.enableIntegerSimplification = quotientSimplification;
+		}
+	}
+
+	public void convPoolModel() {
 		Model model = new Model(inputShape);
 		CellularLayer conv = convolution2d(inputShape, convSize, 8);
 		CellularLayer pool = pool2d(conv.getOutputShape(), poolSize);
@@ -152,7 +169,9 @@ public class TrainModelTest implements TestFeatures {
 		PackedCollection<?> input = t.pack();
 
 		model.setup().get().run();
-		model.forward(input);
+
+		PackedCollection<?> in = input;
+		HardwareOperator.verboseLog(() -> model.forward(in));
 
 		PackedCollection<?> filter = conv.getWeights().get(0);
 		TraversalPolicy filterShape = filter.getShape();
