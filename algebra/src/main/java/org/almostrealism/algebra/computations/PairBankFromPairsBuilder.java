@@ -34,6 +34,7 @@ import org.almostrealism.algebra.PairBankFeatures;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.DynamicCollectionProducerComputationAdapter;
+import org.almostrealism.collect.computations.TraversableProducerComputationAdapter;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.KernelizedProducer;
 
@@ -43,7 +44,7 @@ import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
-public class PairBankFromPairsBuilder extends DynamicCollectionProducerComputationAdapter<Pair<?>, PackedCollection<Pair<?>>>
+public class PairBankFromPairsBuilder extends TraversableProducerComputationAdapter<Pair<?>, PackedCollection<Pair<?>>>
 									implements Factory<KernelizedProducer<PackedCollection<Pair<?>>>>, PairBankFeatures {
 	private Producer<Pair<?>> producers[];
 
@@ -93,38 +94,5 @@ public class PairBankFromPairsBuilder extends DynamicCollectionProducerComputati
 //		return i -> getExpression(producers[arg(i)]).get().getValue(pos(i));
 		return i ->
 			((TraversableExpression) producers[arg(i)]).getValueAt(new IntegerConstant(pos(i)));
-	}
-
-	@Override
-	public Expression<Double> getValue(Expression... pos) {
-		return null;
-	}
-
-	@Override
-	public Expression<Double> getValueAt(Expression index) {
-		return null;
-	}
-
-	/**
-	 * This method will only return anything useful if the supplied
-	 * argument is a {@link MultiExpression}. Since {@link MultiExpression}
-	 * is deprecated, this method should no longer be used.
-	 */
-	@Deprecated
-	private static <T> Optional<MultiExpression> getExpression(Supplier<Evaluable<? extends T>> producer) {
-		if (producer instanceof MultiExpression) {
-			return Optional.of((MultiExpression) producer);
-		}
-
-		if (producer instanceof Delegated && ((Delegated) producer).getDelegate() instanceof MultiExpression) {
-			return Optional.of((MultiExpression) ((Delegated) producer).getDelegate());
-		}
-
-		Evaluable<? extends T> evaluable = producer.get();
-		if (enableStaticProviders && evaluable instanceof Provider && ((Provider) evaluable).get() instanceof MultiExpression) {
-			return Optional.of((MultiExpression) ((Provider) evaluable).get());
-		}
-
-		return Optional.empty();
 	}
 }
