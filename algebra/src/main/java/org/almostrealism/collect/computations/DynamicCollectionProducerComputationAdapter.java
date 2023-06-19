@@ -23,7 +23,6 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.collect.CollectionVariable;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 
@@ -33,7 +32,7 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public abstract class DynamicCollectionProducerComputationAdapter<I extends PackedCollection<?>, O extends PackedCollection<?>>
-		extends CollectionProducerComputationAdapter<I, O>
+		extends CollectionProducerComputationBase<I, O>
 //		implements TraversableExpression<Double>
 {
 

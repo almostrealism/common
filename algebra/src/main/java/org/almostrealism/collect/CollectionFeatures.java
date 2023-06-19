@@ -43,9 +43,8 @@ import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.bool.GreaterThanCollection;
 import org.almostrealism.bool.LessThanCollection;
 import org.almostrealism.collect.computations.ArrayVariableComputation;
-import org.almostrealism.collect.computations.CollectionProducerComputationAdapter;
+import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
-import org.almostrealism.collect.computations.DynamicCollectionProducerComputationAdapter;
 import org.almostrealism.collect.computations.DynamicExpressionComputation;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.PackedCollectionEnumerate;
@@ -346,12 +345,12 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return add(a, minus(b));
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationAdapter<T, T> multiply(
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> multiply(
 			Producer<T> a, Producer<T> b) {
 		return multiply(a, b, null);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationAdapter<T, T> multiply(
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> multiply(
 			Producer<T> a, Producer<T> b,
 			Evaluable<T> shortCircuit) {
 		if (enableDynamicExpressions) {
@@ -389,7 +388,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return exp;
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationAdapter<T, T> divide(Producer<T> a, Producer<T> b) {
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> divide(Producer<T> a, Producer<T> b) {
 		TraversalPolicy shape = shape(a);
 		int size = shape(b).getSize();
 		if (shape.getSize() != size) {
@@ -410,7 +409,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		}
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationAdapter<T, T> minus(Producer<T> a) {
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> minus(Producer<T> a) {
 		if (enableDynamicExpressions) {
 			return new DynamicExpressionComputation<>(shape(a),
 					args -> CollectionExpression.create(shape(a), index -> new Minus(args[1].getValueAt(index))),

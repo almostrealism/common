@@ -33,7 +33,6 @@ import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.KernelSupport;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
@@ -86,7 +85,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 		CollectionVariable inputSlice = input.get(sliceShape, traversalShape.position(slice));
 		CollectionExpression expression = CollectionExpression.create(sliceShape, index -> inputSlice.getValueAt(index));
 
-		CollectionProducerComputationAdapter computation = new DynamicExpressionComputation(sliceShape, args -> expression);
+		CollectionProducerComputationBase computation = new DynamicExpressionComputation(sliceShape, args -> expression);
 
 		CollectionProducerComputation<?> mapped = mapper.apply(computation);
 

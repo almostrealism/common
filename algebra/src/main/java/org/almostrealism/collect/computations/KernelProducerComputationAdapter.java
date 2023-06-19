@@ -32,7 +32,7 @@ import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
 public abstract class KernelProducerComputationAdapter<I extends PackedCollection<?>, O extends PackedCollection<?>>
-		extends CollectionProducerComputationAdapter<I, O>
+		extends CollectionProducerComputationBase<I, O>
 		implements TraversableExpression<Double> {
 
 	/**

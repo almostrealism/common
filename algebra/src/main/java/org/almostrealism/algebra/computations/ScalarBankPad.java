@@ -26,14 +26,14 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBankProducerBase;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.computations.CollectionProducerComputationAdapter;
+import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.hardware.ComputerFeatures;
 import org.almostrealism.hardware.DestinationSupport;
 import org.almostrealism.hardware.MemoryData;
 
 import java.util.function.Supplier;
 
-public class ScalarBankPad extends CollectionProducerComputationAdapter<PackedCollection<Scalar>, PackedCollection<Scalar>> implements ScalarBankProducerBase, DestinationSupport<PackedCollection<Scalar>>, ComputerFeatures {
+public class ScalarBankPad extends CollectionProducerComputationBase<PackedCollection<Scalar>, PackedCollection<Scalar>> implements ScalarBankProducerBase, DestinationSupport<PackedCollection<Scalar>>, ComputerFeatures {
 	private final int count;
 	private final int total;
 

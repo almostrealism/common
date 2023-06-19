@@ -23,8 +23,7 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.bool.AcceleratedConditionalStatementCollection;
 import org.almostrealism.bool.GreaterThanCollection;
-import org.almostrealism.collect.computations.CollectionProducerComputationAdapter;
-import org.almostrealism.collect.computations.DynamicCollectionProducerComputationAdapter;
+import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.ExpressionComputation;
 
 import java.util.function.Function;
@@ -72,11 +71,11 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 		return subtract((Producer) this, value);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationAdapter<T, T> multiply(Producer<T> value) {
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> multiply(Producer<T> value) {
 		return multiply((Producer) this, value);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationAdapter<T, T> divide(Producer<T> value) {
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> divide(Producer<T> value) {
 		return divide((Producer) this, value);
 	}
 
@@ -88,7 +87,7 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 		return pow((Producer) this, value);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationAdapter<T, T> minus() {
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> minus() {
 		return minus((Producer) this);
 	}
 

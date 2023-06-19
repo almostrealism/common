@@ -31,8 +31,8 @@ import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
-public abstract class TraversableProducerComputationAdapter<I extends PackedCollection<?>, O extends PackedCollection<?>>
-		extends CollectionProducerComputationAdapter<I, O>
+public abstract class TraversableProducerComputationBase<I extends PackedCollection<?>, O extends PackedCollection<?>>
+		extends CollectionProducerComputationBase<I, O>
 		implements TraversableExpression<Double> {
 
 	/**
@@ -47,9 +47,9 @@ public abstract class TraversableProducerComputationAdapter<I extends PackedColl
 
 	private IntFunction<InstanceReference> variableRef;
 
-	protected TraversableProducerComputationAdapter() { }
+	protected TraversableProducerComputationBase() { }
 
-	public TraversableProducerComputationAdapter(TraversalPolicy outputShape, Supplier<Evaluable<? extends I>>... arguments) {
+	public TraversableProducerComputationBase(TraversalPolicy outputShape, Supplier<Evaluable<? extends I>>... arguments) {
 		super(outputShape, arguments);
 	}
 

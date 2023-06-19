@@ -26,13 +26,13 @@ import io.almostrealism.scope.Variable;
 import io.almostrealism.expression.Expression;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.computations.CollectionProducerComputationAdapter;
+import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import io.almostrealism.relation.Producer;
 
 import java.util.function.Consumer;
 import java.util.function.Function;
 
-public class Interpolate extends CollectionProducerComputationAdapter<PackedCollection<?>, PackedCollection<?>> {
+public class Interpolate extends CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> {
 	public static boolean enableFunctionalPosition = true;
 	public static boolean enableScanning = false;
 

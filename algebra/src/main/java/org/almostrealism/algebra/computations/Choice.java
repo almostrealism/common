@@ -25,14 +25,14 @@ import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.computations.CollectionProducerComputationAdapter;
+import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.hardware.MemoryBank;
 
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 // TODO  Why can't this be a child of DynamicCollectionProducerComputationAdapter
-public abstract class Choice<T extends PackedCollection<?>> extends CollectionProducerComputationAdapter<T, T> {
+public abstract class Choice<T extends PackedCollection<?>> extends CollectionProducerComputationBase<T, T> {
 	private int choiceCount;
 
 	public Choice(int memLength, int choiceCount, Supplier<Evaluable<? extends Scalar>> decision,

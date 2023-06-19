@@ -20,12 +20,10 @@ import io.almostrealism.code.CollectionUtils;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
 import io.almostrealism.collect.CollectionVariable;
-import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.ComputerFeatures;
 import org.almostrealism.hardware.DestinationConsolidationArgumentMap;
@@ -38,7 +36,7 @@ import org.almostrealism.hardware.mem.MemoryDataDestination;
 
 import java.util.function.Supplier;
 
-public abstract class CollectionProducerComputationAdapter<I extends PackedCollection<?>, O extends PackedCollection<?>>
+public abstract class CollectionProducerComputationBase<I extends PackedCollection<?>, O extends PackedCollection<?>>
 												extends ProducerComputationBase<I, O>
 												implements CollectionProducerComputation<O>, MemoryDataComputation<O>,
 														KernelizedProducer<O>, DestinationSupport<O>,
@@ -47,9 +45,9 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 	private Supplier<? extends PackedCollection> destination;
 	private boolean fixedDestinationShape;
 
-	protected CollectionProducerComputationAdapter() { }
+	protected CollectionProducerComputationBase() { }
 
-	public CollectionProducerComputationAdapter(TraversalPolicy outputShape, Supplier<Evaluable<? extends I>>... arguments) {
+	public CollectionProducerComputationBase(TraversalPolicy outputShape, Supplier<Evaluable<? extends I>>... arguments) {
 		if (outputShape.getTotalSize() <= 0) {
 			throw new IllegalArgumentException("Output shape must have a total size greater than 0");
 		}
