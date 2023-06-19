@@ -90,8 +90,15 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 			TraversalPolicy shape = ((Shape) value).getShape();
 
 			List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expressions =
-					IntStream.range(0, shape.getSize()).mapToObj(i -> (Function<List<ArrayVariable<Double>>, Expression<Double>>)
-									np -> np.get(1).getValueAt(i))
+					IntStream.range(0, 2).mapToObj(i -> {
+								if (i < shape.getSize()) {
+									return (Function<List<ArrayVariable<Double>>, Expression<Double>>)
+											np -> np.get(1).getValueAt(i);
+								} else {
+									return (Function<List<ArrayVariable<Double>>, Expression<Double>>)
+											np -> new DoubleConstant(1.0);
+								}
+							})
 							.collect(Collectors.toList());
 			return new ExpressionComputation<>(expressions, (Supplier) value)
 					.setPostprocessor(Scalar.postprocessor());
