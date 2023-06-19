@@ -17,38 +17,40 @@
 package org.almostrealism.time.computations;
 
 import io.almostrealism.code.HybridScope;
-import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.StaticReference;
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.expression.Expression;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.computations.DynamicCollectionProducerComputationAdapter;
+import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.hardware.KernelizedProducer;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.time.CursorPair;
 
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
+import java.util.stream.IntStream;
 
 @Deprecated
-public class AcceleratedTimeSeriesValueAt extends DynamicCollectionProducerComputationAdapter<PackedCollection<?>, Scalar>
-		implements ProducerComputation<Scalar>, KernelizedProducer<Scalar> {
+public class AcceleratedTimeSeriesValueAt extends CollectionProducerComputationBase<PackedCollection<?>, Scalar> {
 	public AcceleratedTimeSeriesValueAt(Producer<AcceleratedTimeSeries> series, Producer<CursorPair> cursors) {
 		super(new TraversalPolicy(2).traverse(0), new Producer[] { series, cursors });
 	}
 
 	@Override
 	public Scope<Scalar> getScope() {
-		Scope<Scalar> parentScope = super.getScope();
 		HybridScope<Scalar> scope = new HybridScope<>(this);
-		scope.getVariables().add(parentScope.getVariables().get(1));
+
+		ArrayVariable<?> outputVariable = (ArrayVariable) getOutputVariable();
+
+		scope.getVariables().add(new Variable(outputVariable.valueAt(1).getSimpleExpression(),
+				false, new DoubleConstant(1.0), outputVariable.getRootDelegate()));
 
 		Expression i = new StaticReference(Integer.class, "i");
 		Expression left = new StaticReference(Integer.class, getVariableName(0));
@@ -105,21 +107,6 @@ public class AcceleratedTimeSeriesValueAt extends DynamicCollectionProducerCompu
 //		code.accept("}\n");
 
 		return scope;
-	}
-
-	@Override
-	public Expression<Double> getValue(Expression... pos) {
-		return null;
-	}
-
-	@Override
-	public Expression<Double> getValueAt(Expression index) {
-		return null;
-	}
-
-	@Override
-	public IntFunction<Expression<Double>> getValueFunction() {
-		return i -> new DoubleConstant(1.0);
 	}
 
 	@Override
