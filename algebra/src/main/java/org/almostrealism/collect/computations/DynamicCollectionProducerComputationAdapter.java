@@ -33,23 +33,7 @@ import java.util.stream.IntStream;
 
 @Deprecated
 public abstract class DynamicCollectionProducerComputationAdapter<I extends PackedCollection<?>, O extends PackedCollection<?>>
-		extends CollectionProducerComputationBase<I, O>
-//		implements TraversableExpression<Double>
-{
-
-	/**
-	 * If set to true, then {@link #convertToVariableRef()} can be used
-	 * to take the {@link Expression} from {@link #getValueFunction()} to
-	 * a local variable in the rendered code. This can prevent
-	 * {@link Expression}s from growing too large during compaction, when
-	 * values are repeatedly embedded to form bigger and bigger
-	 * {@link Expression}s.
-	 */
-	public static final boolean enableVariableRefConversion = false;
-
-	public static boolean enableAbsoluteIndex = false;
-
-	private IntFunction<InstanceReference> variableRef;
+		extends CollectionProducerComputationBase<I, O> {
 
 	protected DynamicCollectionProducerComputationAdapter() { }
 
@@ -92,42 +76,15 @@ public abstract class DynamicCollectionProducerComputationAdapter<I extends Pack
 
 	// @Override
 	public Expression<Double> getValueAt(Expression index) {
-		if (enableAbsoluteIndex) {
-			throw new UnsupportedOperationException();
-		} else {
-			OptionalInt i = index.intValue();
+		OptionalInt i = index.intValue();
 
-			if (i.isPresent()) {
-				return getValueFunction().apply(i.getAsInt());
-			} else {
-				return null;
-			}
+		if (i.isPresent()) {
+			return getValue(i.getAsInt());
+		} else {
+			return null;
 		}
 	}
 
 	@Deprecated
-	public Expression getValue(int pos) {
-		if (enableAbsoluteIndex) {
-			return getValueAt(getArrayPosition((ArrayVariable) getOutputVariable(), e(pos), getOutputVariable().getKernelIndex()));
-		}
-
-		return (isVariableRef() ? variableRef : getValueFunction()).apply(pos);
-	}
-
-	public abstract IntFunction<Expression<Double>> getValueFunction();
-
-	public boolean isVariableRef() { return variableRef != null;}
-
-	public void convertToVariableRef() {
-		if (enableVariableRefConversion && variableRef == null) {
-			IntStream.range(0, getMemLength())
-					.mapToObj(variableForIndex(getValueFunction()))
-					.forEach(this::addVariable);
-			variableRef = i -> new InstanceReference(getVariable(i));
-		}
-	}
-
-	protected IntFunction<Variable<Double, ?>> variableForIndex(IntFunction<Expression<Double>> valueFunction) {
-		return i -> new Variable(getVariableName(i), true, valueFunction.apply(i), this);
-	}
+	public abstract Expression getValue(int pos);
 }

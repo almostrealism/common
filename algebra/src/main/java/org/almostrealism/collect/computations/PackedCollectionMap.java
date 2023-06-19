@@ -24,6 +24,8 @@ import io.almostrealism.expression.StaticReference;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.scope.Scope;
+import io.almostrealism.scope.Variable;
 import org.almostrealism.collect.CollectionProducerComputation;
 import io.almostrealism.collect.CollectionVariable;
 import org.almostrealism.collect.PackedCollection;
@@ -40,8 +42,9 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
+// TODO  This should be a KernelProducerComputationAdapter subclass
 public class PackedCollectionMap<T extends PackedCollection<?>>
-		extends DynamicCollectionProducerComputationAdapter<PackedCollection<?>, T> {
+		extends CollectionProducerComputationBase<PackedCollection<?>, T> {
 	private Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper;
 	private TraversableExpression<Double> mapped;
 	private ExpressionList<Double> result;
@@ -62,8 +65,31 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 	}
 
 	@Override
+	public Scope<T> getScope() {
+		Scope<T> scope = super.getScope();
+		IntStream.range(0, getMemLength())
+				.mapToObj(getRelativeAssignmentFunction(getOutputVariable()))
+				.forEach(v -> scope.getVariables().add((Variable) v));
+		return scope;
+	}
+
+	// TODO  Assign the "relative" index i to the "relative" value i
+	// TODO  Switching this out for absolute indices, by delegating to
+	// TODO  getValueAt will simply not work
+	protected IntFunction<Variable<Double, ?>> getRelativeAssignmentFunction(Variable<?, ?> outputVariable) {
+		return i -> new Variable(((ArrayVariable) outputVariable).valueAt(i).getSimpleExpression(),
+				false, getValue(i).simplify(), outputVariable.getRootDelegate());
+	}
+
+	@Override
 	public void prepareScope(ScopeInputManager manager) {
 		super.prepareScope(manager);
+
+		// Result should always be first
+		// TODO  This causes cascading issues, as the output variable is reused by the referring
+		// TODO  producer and then multiple arguments are sorted to be "first"
+		ArrayVariable out = getArgumentForInput(getInputs().get(0));
+		if (out != null) out.setSortHint(-1);
 
 		Expression slice = new StaticReference(Double.class, KernelSupport.getKernelIndex(0)).toDouble();
 
@@ -122,18 +148,32 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 					.collect(ExpressionList.collector());
 	}
 
-	@Override
+
+	// @Override
+	public Expression<Double> getValue(Expression... pos) {
+		return getValueAt(getShape().index(pos));
+	}
+
+	// @Override
+//	public Expression<Double> getValueAt(Expression index) {
+//		OptionalInt i = index.intValue();
+//
+//		if (i.isPresent()) {
+//			return getValue(i.getAsInt());
+//		} else {
+//			return null;
+//		}
+//	}
+
+//	@Override
 	public Expression<Double> getValueAt(Expression index) {
 		// TODO  There's a mixup here between absolute and relative indices
 		return mapped == null ? null : mapped.getValueAt(index);
 	}
 
-	@Override
-	public IntFunction<Expression<Double>> getValueFunction() {
-		return i -> {
-			if (i >= getMemLength()) throw new IllegalArgumentException("Invalid position");
-			return result.get(i);
-		};
+	private Expression<Double> getValue(int i) {
+		if (i >= getMemLength()) throw new IllegalArgumentException("Invalid position");
+		return result.get(i);
 	}
 
 	private static TraversalPolicy shape(Producer<?> collection) {
