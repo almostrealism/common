@@ -36,7 +36,8 @@ import java.util.stream.Stream;
 
 // Use DynamicExpressionComputation instead
 @Deprecated
-public class ArrayVariableComputation<T extends PackedCollection<?>> extends DynamicCollectionProducerComputationAdapter<T, T>
+public class ArrayVariableComputation<T extends PackedCollection<?>>
+		extends DynamicCollectionProducerComputationAdapter<T, T>
 																implements
 																	TraversableExpression<Double>,
 																	ComputerFeatures {

@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,8 +19,10 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.code.CollectionUtils;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
+import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversableExpression;
@@ -41,8 +43,6 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 												implements CollectionProducerComputation<O>, MemoryDataComputation<O>,
 														KernelizedProducer<O>, DestinationSupport<O>,
 														ComputerFeatures {
-	public static boolean enableEmbeddedInputs = true;
-
 	private TraversalPolicy shape;
 	private Supplier<? extends PackedCollection> destination;
 	private boolean fixedDestinationShape;
@@ -121,6 +121,16 @@ public abstract class CollectionProducerComputationAdapter<I extends PackedColle
 	 */
 	@Override
 	public PhysicalScope getDefaultPhysicalScope() { return PhysicalScope.GLOBAL; }
+
+	public CollectionVariable getCollectionArgumentVariable(int argIndex) {
+		ArrayVariable<?> arg = getArgumentForInput(getInputs().get(argIndex));
+
+		if (arg instanceof CollectionVariable) {
+			return (CollectionVariable) arg;
+		} else {
+			return null;
+		}
+	}
 
 	@Override
 	public void destroy() {

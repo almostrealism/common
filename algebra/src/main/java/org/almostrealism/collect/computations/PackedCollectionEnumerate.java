@@ -33,8 +33,7 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public class PackedCollectionEnumerate<T extends PackedCollection<?>>
-		extends DynamicCollectionProducerComputationAdapter<PackedCollection<?>, T>
-		implements TraversableExpression<Double> {
+		extends KernelProducerComputationAdapter<PackedCollection<?>, T> {
 
 	private TraversalPolicy strideShape;
 	private TraversalPolicy subsetShape;
@@ -51,23 +50,6 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 
 	@Override
 	public int getMemLength() { return 1; }
-
-	@Override
-	public IntFunction<Expression<Double>> getValueFunction() {
-		return i -> {
-			if (i != 0) throw new IllegalArgumentException("Invalid position");
-
-			Expression index = new StaticReference(Double.class, KernelSupport.getKernelIndex(0));
-			return getValueAt(index);
-		};
-	}
-
-	@Override
-	public Expression<Double> getValue(Expression... pos) {
-		// Find the index in the output shape
-		Expression index = getShape().index(pos);
-		return getValueAt(index);
-	}
 
 	public Expression<Double> getValueAt(Expression index) {
 		CollectionVariable var = getCollectionArgumentVariable(1);

@@ -25,8 +25,7 @@ import io.almostrealism.scope.Variable;
 import java.util.function.IntFunction;
 
 public interface TraversableExpression<T> extends ExpressionFeatures {
-	// TODO  Rename to getAbsoluteAssignmentFunction - this does not use kernel-relative indexing
-	default IntFunction<Variable<T, ?>> getKernelAssignmentFunction(Variable<?, ?> outputVariable) {
+	default IntFunction<Variable<T, ?>> getAssignmentFunction(Variable<?, ?> outputVariable) {
 		return i -> new Variable(((ArrayVariable) outputVariable).valueAt(i).getSimpleExpression(),
 				false, getValueAt(new IntegerConstant(i)).simplify(), outputVariable.getRootDelegate());
 	}

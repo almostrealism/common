@@ -39,9 +39,6 @@ import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
-// TODO  As other implementations of DynamicCollectionProducerComputationAdapter are gradually made unnecessary
-// TODO  by the existence of this class, the functionality here can just be migrated into
-// TODO  DynamicCollectionProducerComputationAdapter, which can then be renamed to DynamicCollectionProducerComputation.
 public class DynamicExpressionComputation<T extends PackedCollection<?>>
 									extends DynamicCollectionProducerComputationAdapter<T, T>
 									implements TraversableExpression<Double>, ComputerFeatures {

@@ -19,22 +19,17 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.expression.Cast;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Mod;
-import io.almostrealism.expression.StaticReference;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.collect.CollectionVariable;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.Shape;
-import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.hardware.KernelSupport;
 
 import java.util.OptionalInt;
-import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
 public class PackedCollectionRepeat<T extends PackedCollection<?>>
-		extends DynamicCollectionProducerComputationAdapter<PackedCollection<?>, T>
-		implements TraversableExpression<Double> {
+		extends KernelProducerComputationAdapter<PackedCollection<?>, T> {
 	private TraversalPolicy subsetShape;
 
 	public PackedCollectionRepeat(int repeat, Producer<?> collection) {
@@ -48,24 +43,6 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 
 	@Override
 	public int getMemLength() { return 1; }
-
-	@Override
-	public IntFunction<Expression<Double>> getValueFunction() {
-		return i -> {
-			if (i != 0)
-				throw new IllegalArgumentException("Invalid position");
-
-			Expression index = new StaticReference(Double.class, KernelSupport.getKernelIndex(0));
-			return getValueAt(index);
-		};
-	}
-
-	@Override
-	public Expression<Double> getValue(Expression... pos) {
-		// Find the index in the output shape
-		Expression index = getShape().index(pos);
-		return getValueAt(index);
-	}
 
 	@Override
 	public Expression<Double> getValueAt(Expression index) {

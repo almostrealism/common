@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.expression.InstanceReference;
@@ -23,23 +24,20 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.collect.CollectionVariable;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 
-import java.util.OptionalInt;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
-public abstract class DynamicCollectionProducerComputationAdapter<I extends PackedCollection<?>, O extends PackedCollection<?>>
+public abstract class TraversableProducerComputationAdapter<I extends PackedCollection<?>, O extends PackedCollection<?>>
 		extends CollectionProducerComputationAdapter<I, O>
-//		implements TraversableExpression<Double>
-{
+		implements TraversableExpression<Double> {
 
 	/**
 	 * If set to true, then {@link #convertToVariableRef()} can be used
-	 * to take the {@link Expression} from {@link #getValueFunction()} to
+	 * to take the {@link Expression} from {@link #getValueAt(Expression)} to
 	 * a local variable in the rendered code. This can prevent
 	 * {@link Expression}s from growing too large during compaction, when
 	 * values are repeatedly embedded to form bigger and bigger
@@ -47,13 +45,11 @@ public abstract class DynamicCollectionProducerComputationAdapter<I extends Pack
 	 */
 	public static final boolean enableVariableRefConversion = false;
 
-	public static boolean enableAbsoluteIndex = false;
-
 	private IntFunction<InstanceReference> variableRef;
 
-	protected DynamicCollectionProducerComputationAdapter() { }
+	protected TraversableProducerComputationAdapter() { }
 
-	public DynamicCollectionProducerComputationAdapter(TraversalPolicy outputShape, Supplier<Evaluable<? extends I>>... arguments) {
+	public TraversableProducerComputationAdapter(TraversalPolicy outputShape, Supplier<Evaluable<? extends I>>... arguments) {
 		super(outputShape, arguments);
 	}
 
@@ -72,62 +68,28 @@ public abstract class DynamicCollectionProducerComputationAdapter<I extends Pack
 	public Scope<O> getScope() {
 		Scope<O> scope = super.getScope();
 		IntStream.range(0, getMemLength())
-				.mapToObj(getRelativeAssignmentFunction(getOutputVariable()))
+				.mapToObj(getAssignmentFunction(getOutputVariable()))
 				.forEach(v -> scope.getVariables().add((Variable) v));
 		return scope;
 	}
 
-	// TODO  Assign the "relative" index i to the "relative" value i
-	// TODO  Switching this out for absolute indices, by delegating to
-	// TODO  getValueAt will simply not work
-	protected IntFunction<Variable<Double, ?>> getRelativeAssignmentFunction(Variable<?, ?> outputVariable) {
-		return i -> new Variable(((ArrayVariable) outputVariable).valueAt(i).getSimpleExpression(),
-				false, getValue(i).simplify(), outputVariable.getRootDelegate());
-	}
-
-	// @Override
+	@Override
 	public Expression<Double> getValue(Expression... pos) {
 		return getValueAt(getShape().index(pos));
 	}
-
-	// @Override
-	public Expression<Double> getValueAt(Expression index) {
-		if (enableAbsoluteIndex) {
-			throw new UnsupportedOperationException();
-		} else {
-			OptionalInt i = index.intValue();
-
-			if (i.isPresent()) {
-				return getValueFunction().apply(i.getAsInt());
-			} else {
-				return null;
-			}
-		}
-	}
-
-	@Deprecated
-	public Expression getValue(int pos) {
-		if (enableAbsoluteIndex) {
-			return getValueAt(getArrayPosition((ArrayVariable) getOutputVariable(), e(pos), getOutputVariable().getKernelIndex()));
-		}
-
-		return (isVariableRef() ? variableRef : getValueFunction()).apply(pos);
-	}
-
-	public abstract IntFunction<Expression<Double>> getValueFunction();
 
 	public boolean isVariableRef() { return variableRef != null;}
 
 	public void convertToVariableRef() {
 		if (enableVariableRefConversion && variableRef == null) {
 			IntStream.range(0, getMemLength())
-					.mapToObj(variableForIndex(getValueFunction()))
+					.mapToObj(variableForIndex())
 					.forEach(this::addVariable);
 			variableRef = i -> new InstanceReference(getVariable(i));
 		}
 	}
 
-	protected IntFunction<Variable<Double, ?>> variableForIndex(IntFunction<Expression<Double>> valueFunction) {
-		return i -> new Variable(getVariableName(i), true, valueFunction.apply(i), this);
+	protected IntFunction<Variable<Double, ?>> variableForIndex() {
+		return i -> new Variable(getVariableName(i), true, getValueAt(e(i)), this);
 	}
 }

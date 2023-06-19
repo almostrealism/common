@@ -147,7 +147,7 @@ public class PassThroughProducer<T extends MemoryData>
 	public Scope<T> getScope() {
 		Scope<T> scope = super.getScope();
 		IntStream.range(0, getMemLength())
-				.mapToObj(getKernelAssignmentFunction(getOutputVariable()))
+				.mapToObj(getAssignmentFunction(getOutputVariable()))
 				.forEach(v -> scope.getVariables().add((Variable) v));
 		return scope;
 	}
