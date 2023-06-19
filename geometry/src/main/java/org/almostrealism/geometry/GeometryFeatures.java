@@ -24,6 +24,7 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.CollectionProducerComputationAdapter;
 import org.almostrealism.collect.computations.DynamicCollectionProducerComputationAdapter;
 import org.almostrealism.collect.computations.ExpressionComputation;
 
@@ -40,13 +41,13 @@ public interface GeometryFeatures extends ScalarFeatures, RayFeatures {
 		return new ExpressionComputation(List.of(exp), input);
 	}
 
-	default DynamicCollectionProducerComputationAdapter<PackedCollection<?>, PackedCollection<?>> _sinw(Producer<PackedCollection<?>> input,
-															 Producer<PackedCollection<?>> wavelength,
-															 Producer<PackedCollection<?>> amp) {
+	default CollectionProducerComputationAdapter<PackedCollection<?>, PackedCollection<?>> _sinw(Producer<PackedCollection<?>> input,
+																								 Producer<PackedCollection<?>> wavelength,
+																								 Producer<PackedCollection<?>> amp) {
 		return _sin(c(TWO_PI).multiply(input).divide(wavelength)).multiply(amp);
 	}
 
-	default DynamicCollectionProducerComputationAdapter<PackedCollection<?>, PackedCollection<?>> _sinw(Producer<PackedCollection<?>> input,
+	default CollectionProducerComputationAdapter<PackedCollection<?>, PackedCollection<?>> _sinw(Producer<PackedCollection<?>> input,
 																										Producer<PackedCollection<?>> wavelength,
 																										Producer<PackedCollection<?>> phase,
 																										Producer<PackedCollection<?>> amp) {

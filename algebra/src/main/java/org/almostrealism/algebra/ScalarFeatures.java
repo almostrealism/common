@@ -61,14 +61,15 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 
 	default ExpressionComputation<Scalar> scalar(double value) { return value(new Scalar(value)); }
 
-	default ExpressionComputation<Scalar> scalar(Producer<?> x) {
-		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		IntStream.range(0, 2).forEach(i -> comp.add(args -> args.get(1).getValueAt(i)));
-		return new ExpressionComputation<>(comp, (Supplier) x).setPostprocessor(Scalar.postprocessor());
-	}
+//	default ExpressionComputation<Scalar> scalar(Producer<?> x) {
+//		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
+//		IntStream.range(0, 2).forEach(i -> comp.add(args -> args.get(1).getValueAt(i)));
+//		return new ExpressionComputation<>(comp, (Supplier) x).setPostprocessor(Scalar.postprocessor());
+//	}
 
-	default ExpressionComputation<Scalar> scalar(DynamicCollectionProducerComputationAdapter<?, ?> value) {
+	default ExpressionComputation<Scalar> scalar(Producer<?> value) {
 		if (value instanceof ExpressionComputation) {
+			ExpressionComputation<?> c = (ExpressionComputation) value;
 			int size = ((ExpressionComputation) value).expression().size();
 
 			if (size == 1) {
@@ -76,11 +77,11 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 				comp.add(((ExpressionComputation<?>) value).expression().get(0));
 				comp.add(args -> new DoubleConstant(1.0));
 				return new ExpressionComputation(comp,
-							value.getInputs().subList(1, value.getInputs().size()).toArray(Supplier[]::new))
+							c.getInputs().subList(1, c.getInputs().size()).toArray(Supplier[]::new))
 						.setPostprocessor(Scalar.postprocessor());
 			} else if (size == 2) {
-				return new ExpressionComputation(((ExpressionComputation) value).expression(),
-							value.getInputs().subList(1, value.getInputs().size()).toArray(Supplier[]::new))
+				return new ExpressionComputation(c.expression(),
+							c.getInputs().subList(1, c.getInputs().size()).toArray(Supplier[]::new))
 						.setPostprocessor(Scalar.postprocessor());
 			} else {
 				throw new IllegalArgumentException();

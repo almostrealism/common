@@ -86,7 +86,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 		CollectionVariable inputSlice = input.get(sliceShape, traversalShape.position(slice));
 		CollectionExpression expression = CollectionExpression.create(sliceShape, index -> inputSlice.getValueAt(index));
 
-		DynamicCollectionProducerComputationAdapter computation = new DynamicExpressionComputation(sliceShape, args -> expression);
+		CollectionProducerComputationAdapter computation = new DynamicExpressionComputation(sliceShape, args -> expression);
 
 		CollectionProducerComputation<?> mapped = mapper.apply(computation);
 

@@ -27,6 +27,7 @@ import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.computations.CollectionProducerComputationAdapter;
 import org.almostrealism.collect.computations.DynamicCollectionProducerComputationAdapter;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.hardware.HardwareFeatures;
@@ -72,7 +73,7 @@ public interface VectorFeatures extends CollectionFeatures, HardwareFeatures {
 		return new ExpressionComputation<Vector>(expression, bank).setPostprocessor(Vector.postprocessor());
 	}
 
-	default ExpressionComputation<Vector> vector(DynamicCollectionProducerComputationAdapter<?, ?> value) {
+	default ExpressionComputation<Vector> vector(CollectionProducerComputationAdapter<?, ?> value) {
 		if (value instanceof ExpressionComputation) {
 			if (((ExpressionComputation) value).expression().size() != 3)
 				throw new IllegalArgumentException();

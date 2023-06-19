@@ -40,8 +40,8 @@ import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 public class DynamicExpressionComputation<T extends PackedCollection<?>>
-									extends DynamicCollectionProducerComputationAdapter<T, T>
-									implements TraversableExpression<Double>, ComputerFeatures {
+									extends KernelProducerComputationAdapter<T, T>
+									implements ComputerFeatures {
 	private Function<CollectionVariable[], CollectionExpression> expression;
 	private BiFunction<MemoryData, Integer, T> postprocessor;
 
@@ -63,9 +63,6 @@ public class DynamicExpressionComputation<T extends PackedCollection<?>>
 		this.expression = expression;
 	}
 
-	@Override
-	public int getMemLength() { return getShape().getSize(); }
-
 	public void setShortCircuit(Evaluable<T> shortCircuit) {
 		this.shortCircuit = shortCircuit;
 	}
@@ -86,18 +83,6 @@ public class DynamicExpressionComputation<T extends PackedCollection<?>>
 		}
 
 		return expression.apply(vars);
-	}
-
-	@Override
-	public IntFunction<Expression<Double>> getValueFunction() {
-		return pos -> {
-			if (pos > getMemLength()) throw new IllegalArgumentException();
-
-			Expression<?> index = new StaticReference<>(Integer.class, KernelSupport.getKernelIndex(0));
-			index = index.multiply(getMemLength()).add(e(pos));
-
-			return getExpression().getValueAt(index);
-		};
 	}
 
 	private static Supplier[] validateArgs(Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
