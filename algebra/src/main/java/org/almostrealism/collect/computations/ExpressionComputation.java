@@ -16,14 +16,12 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.hardware.ComputerFeatures;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.DestinationEvaluable;
 import org.almostrealism.hardware.KernelizedEvaluable;
@@ -33,7 +31,6 @@ import org.almostrealism.hardware.MemoryData;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.OptionalInt;
 import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -44,8 +41,7 @@ import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class ExpressionComputation<T extends PackedCollection<?>>
-		extends DynamicCollectionProducerComputationAdapter<T, T>
-		implements TraversableExpression<Double>, ComputerFeatures {
+		extends TraversableProducerComputationAdapter<T, T> {
 	private List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression;
 	private BiFunction<MemoryData, Integer, T> postprocessor;
 	private Evaluable<T> shortCircuit;

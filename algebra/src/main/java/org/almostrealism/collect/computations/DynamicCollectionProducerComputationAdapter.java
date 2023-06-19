@@ -31,6 +31,7 @@ import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
+@Deprecated
 public abstract class DynamicCollectionProducerComputationAdapter<I extends PackedCollection<?>, O extends PackedCollection<?>>
 		extends CollectionProducerComputationBase<I, O>
 //		implements TraversableExpression<Double>
