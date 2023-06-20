@@ -92,7 +92,7 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 					IntStream.range(0, 2).mapToObj(i -> {
 								if (i < shape.getSize()) {
 									return (Function<List<ArrayVariable<Double>>, Expression<Double>>)
-											np -> np.get(1).getValueAt(i);
+											np -> np.get(1).getValueRelative(i);
 								} else {
 									return (Function<List<ArrayVariable<Double>>, Expression<Double>>)
 											np -> new DoubleConstant(1.0);
@@ -110,7 +110,7 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 		if (value == null) return null;
 
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		comp.add(args -> args.get(1).getValueAt(0));
+		comp.add(args -> args.get(1).getValueRelative(0));
 		comp.add(args -> expressionForDouble(1.0));
 		return new ExpressionComputation(comp, value).setPostprocessor(Scalar.postprocessor());
 	}
@@ -123,14 +123,14 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 
 	default ExpressionComputation<Scalar> scalar(Supplier<Evaluable<? extends MemoryBank<Scalar>>> bank, int index) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		IntStream.range(0, 2).forEach(i -> comp.add(args -> args.get(1).getValueAt(2 * index + i)));
+		IntStream.range(0, 2).forEach(i -> comp.add(args -> args.get(1).getValueRelative(2 * index + i)));
 		return new ExpressionComputation(comp, (Supplier) bank).setPostprocessor(Scalar.postprocessor());
 	}
 
 	default ExpressionComputation<Scalar> scalar(TraversalPolicy shape, Supplier<Evaluable<? extends PackedCollection<?>>> collection, int index) {
 		// return scalar(shape, collection, v((double) index));
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		comp.add(args -> args.get(1).getValueAt(shape.getSize() * index));
+		comp.add(args -> args.get(1).getValueRelative(shape.getSize() * index));
 		comp.add(args -> expressionForDouble(1.0));
 		return new ExpressionComputation(shape(2), comp, collection)
 				.setPostprocessor(Scalar.postprocessor());
@@ -151,7 +151,7 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 
 	default ExpressionComputation<Scalar> scalarAdd(Supplier<Evaluable<? extends Scalar>>... values) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		comp.add(args -> new Sum(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValueAt(0)).toArray(Expression[]::new)));
+		comp.add(args -> new Sum(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValueRelative(0)).toArray(Expression[]::new)));
 		comp.add(args -> expressionForDouble(1.0));
 		return new ExpressionComputation(comp, values).setPostprocessor(Scalar.postprocessor());
 	}
@@ -162,8 +162,8 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 
 	default ExpressionComputation<Scalar> scalarsMultiply(Supplier<Evaluable<? extends Scalar>>... values) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		comp.add(args -> new Product(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValueAt(0)).toArray(Expression[]::new)));
-		comp.add(args -> new Product(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValueAt(1)).toArray(Expression[]::new)));
+		comp.add(args -> new Product(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValueRelative(0)).toArray(Expression[]::new)));
+		comp.add(args -> new Product(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValueRelative(1)).toArray(Expression[]::new)));
 		return new ExpressionComputation<>(comp, (Supplier[]) values).setPostprocessor(Scalar.postprocessor());
 	}
 
@@ -178,8 +178,8 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 	default ExpressionComputation<Scalar> scalarPow(Producer<Scalar> base, Producer<Scalar> exponent) {
 		// TODO  Certainty of exponent is ignored
 		return new ExpressionComputation<>(List.of(
-				args -> new Exponent(args.get(1).getValueAt(0), args.get(2).getValueAt(0)),
-				args -> new Exponent(args.get(1).getValueAt(1), args.get(2).getValueAt(0))),
+				args -> new Exponent(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0)),
+				args -> new Exponent(args.get(1).getValueRelative(1), args.get(2).getValueRelative(0))),
 				(Supplier) base, (Supplier) exponent)
 				.setPostprocessor(Scalar.postprocessor());
 	}
@@ -194,15 +194,15 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 
 	default ExpressionComputation<Scalar> min(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
 		return new ExpressionComputation<>(List.of(
-				args -> new Min(args.get(1).getValueAt(0), args.get(2).getValueAt(0)),
-				args -> new Min(args.get(1).getValueAt(1), args.get(2).getValueAt(1))),
+				args -> new Min(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0)),
+				args -> new Min(args.get(1).getValueRelative(1), args.get(2).getValueRelative(1))),
 				(Supplier) a, (Supplier) b).setPostprocessor(Scalar.postprocessor());
 	}
 
 	default ExpressionComputation<Scalar> mod(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
 		return new ExpressionComputation<>(List.of(
-				args -> new Mod(args.get(1).getValueAt(0), args.get(2).getValueAt(0)),
-				args -> args.get(1).getValueAt(1)),
+				args -> new Mod(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0)),
+				args -> args.get(1).getValueRelative(1)),
 				(Supplier) a, (Supplier) b).setPostprocessor(Scalar.postprocessor());
 	}
 

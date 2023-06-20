@@ -38,13 +38,13 @@ public interface RGBFeatures extends ScalarFeatures {
 
 	default ExpressionComputation<RGB> rgb(Producer<RGB> rgb) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		IntStream.range(0, 3).forEach(i -> comp.add(args -> args.get(1).getValueAt(i)));
+		IntStream.range(0, 3).forEach(i -> comp.add(args -> args.get(1).getValueRelative(i)));
 		return new ExpressionComputation<>(comp, (Supplier) rgb).setPostprocessor(RGB.postprocessor());
 	}
 
 	default ExpressionComputation<RGB> rgb(Supplier<Evaluable<? extends Scalar>> r, Supplier<Evaluable<? extends Scalar>> g, Supplier<Evaluable<? extends Scalar>> b) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		IntStream.range(0, 3).forEach(i -> comp.add(args -> args.get(1 + i).getValueAt(0)));
+		IntStream.range(0, 3).forEach(i -> comp.add(args -> args.get(1 + i).getValueRelative(0)));
 		return new ExpressionComputation<>(comp, (Supplier) r, (Supplier) g, (Supplier) b).setPostprocessor(RGB.postprocessor());
 	}
 

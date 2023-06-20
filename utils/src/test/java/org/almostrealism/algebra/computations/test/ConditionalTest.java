@@ -37,8 +37,8 @@ public class ConditionalTest implements TestFeatures {
 		CollectionProducerBase d = c(5);
 
 		Function<List<ArrayVariable<Double>>, Expression<Double>> expression =
-				args -> conditional(equals(args.get(1).getValueAt(0), args.get(2).getValueAt(0)),
-						args.get(3).getValueAt(0), args.get(4).getValueAt(0));
+				args -> conditional(equals(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0)),
+						args.get(3).getValueRelative(0), args.get(4).getValueRelative(0));
 		Evaluable<PackedCollection<?>> ev = new ExpressionComputation<>(List.of(expression), a, b, c, d).get();
 
 		PackedCollection<?> result = ev.evaluate();
@@ -54,8 +54,8 @@ public class ConditionalTest implements TestFeatures {
 		CollectionProducerBase d = c(5);
 
 		Function<List<ArrayVariable<Double>>, Expression<Double>> expression =
-				args -> conditional(equals(args.get(1).getValueAt(0), args.get(2).getValueAt(0)),
-						args.get(3).getValueAt(0), args.get(4).getValueAt(0));
+				args -> conditional(equals(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0)),
+						args.get(3).getValueRelative(0), args.get(4).getValueRelative(0));
 		Evaluable<PackedCollection<?>> ev = new ExpressionComputation<>(List.of(expression), a, b, c, d).get();
 
 		PackedCollection<?> result = ev.evaluate();

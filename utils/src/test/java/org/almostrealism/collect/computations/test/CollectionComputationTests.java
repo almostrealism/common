@@ -95,7 +95,7 @@ public class CollectionComputationTests implements TestFeatures {
 	@Test
 	public void expressionComputation() {
 		Function<List<ArrayVariable<Double>>, Expression<Double>> expression = args ->
-				new Sum(args.get(1).getValueAt(0), args.get(2).getValueAt(0));
+				new Sum(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0));
 
 		ExpressionComputation<?> computation =
 				new ExpressionComputation(List.of(expression),
@@ -115,7 +115,7 @@ public class CollectionComputationTests implements TestFeatures {
 	@Test
 	public void expressionComputationDynamic() {
 		Function<List<ArrayVariable<Double>>, Expression<Double>> expression = args ->
-				new Sum(args.get(1).getValueAt(0), args.get(2).getValueAt(0));
+				new Sum(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0));
 
 		ExpressionComputation<?> computation =
 				new ExpressionComputation(List.of(expression),
@@ -136,7 +136,7 @@ public class CollectionComputationTests implements TestFeatures {
 	@Test
 	public void providerExpressionComputation() {
 		Function<List<ArrayVariable<Double>>, Expression<Double>> expression = args ->
-				new Sum(args.get(1).getValueAt(0), args.get(2).getValueAt(0));
+				new Sum(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0));
 
 		PackedCollection<?> a = new PackedCollection(1);
 		PackedCollection<?> b = new PackedCollection(1);
@@ -158,7 +158,7 @@ public class CollectionComputationTests implements TestFeatures {
 	@Test
 	public void expressionComputationKernel() {
 		Function<List<ArrayVariable<Double>>, Expression<Double>> expression = args ->
-				new Sum(args.get(1).getValueAt(0), args.get(2).getValueAt(0));
+				new Sum(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0));
 
 		ExpressionComputation<?> computation =
 				new ExpressionComputation(List.of(expression),

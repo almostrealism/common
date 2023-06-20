@@ -217,7 +217,7 @@ public class PassThroughProducer<T extends MemoryData>
 
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
-		return getArgument(0).get(index);
+		return getArgument(0).getRelative(index);
 	}
 
 	@Override

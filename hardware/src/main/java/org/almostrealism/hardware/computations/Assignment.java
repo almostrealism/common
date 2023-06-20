@@ -18,7 +18,6 @@ package org.almostrealism.hardware.computations;
 
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.scope.Variable;
-import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.code.ScopeInputManager;
 import org.almostrealism.hardware.DynamicOperationComputationAdapter;
@@ -48,7 +47,7 @@ public class Assignment<T extends MemoryData> extends DynamicOperationComputatio
 
 		IntStream.range(0, memLength).mapToObj(i ->
 				new Variable(getArgument(0, memLength).valueAt(i).getSimpleExpression(), false,
-						getArgument(1).getValueAt(i), getArgument(0, memLength))).forEach(this::addVariable);
+						getArgument(1).getValueRelative(i), getArgument(0, memLength))).forEach(this::addVariable);
 
 //		if (getInputs().get(1) instanceof Compactable && ((Compactable) getInputs().get(1)).isStatic()) {
 //			IntStream.range(0, memLength).mapToObj(i ->

@@ -50,14 +50,14 @@ public interface PairFeatures extends HardwareFeatures {
 
 	default ExpressionComputation<Pair<?>> pair(Supplier<Evaluable<? extends Scalar>> x, Supplier<Evaluable<? extends Scalar>> y) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		IntStream.range(0, 2).forEach(i -> comp.add(args -> args.get(1 + i).getValueAt(0)));
+		IntStream.range(0, 2).forEach(i -> comp.add(args -> args.get(1 + i).getValueRelative(0)));
 		return new ExpressionComputation<Pair<?>>(comp, (Supplier) x, (Supplier) y)
 				.setPostprocessor(Pair.postprocessor());
 	}
 
 	default ExpressionComputation<Pair<?>> pair(Supplier<Evaluable<? extends PackedCollection<?>>> x) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		IntStream.range(0, 2).forEach(i -> comp.add(args -> args.get(1).getValueAt(i)));
+		IntStream.range(0, 2).forEach(i -> comp.add(args -> args.get(1).getValueRelative(i)));
 		return new ExpressionComputation<Pair<?>>(comp, x)
 				.setPostprocessor(Pair.postprocessor());
 	}
@@ -70,21 +70,21 @@ public interface PairFeatures extends HardwareFeatures {
 
 	default ExpressionComputation<Scalar> l(Supplier<Evaluable<? extends Pair<?>>> p) {
 		return new ExpressionComputation<>(List.of(
-				args -> args.get(1).getValueAt(0),
+				args -> args.get(1).getValueRelative(0),
 				args -> new DoubleConstant(1.0)), (Supplier) p).setPostprocessor(Scalar.postprocessor());
 	}
 
 	default ExpressionComputation<Scalar> r(Supplier<Evaluable<? extends Pair<?>>> p) {
 		return new ExpressionComputation<>(List.of(
-				args -> args.get(1).getValueAt(1),
+				args -> args.get(1).getValueRelative(1),
 				args -> new DoubleConstant(1.0)), (Supplier) p).setPostprocessor(Scalar.postprocessor());
 	}
 
 	@Deprecated
 	default ExpressionComputation<Pair<?>> pairAdd(Supplier<Evaluable<? extends Pair<?>>>... values) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		comp.add(args -> new Sum(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValueAt(0)).toArray(Expression[]::new)));
-		comp.add(args -> new Sum(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValueAt(1)).toArray(Expression[]::new)));
+		comp.add(args -> new Sum(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValueRelative(0)).toArray(Expression[]::new)));
+		comp.add(args -> new Sum(IntStream.range(0, values.length).mapToObj(i -> args.get(i + 1).getValueRelative(1)).toArray(Expression[]::new)));
 		return new ExpressionComputation<Pair<?>>(comp, (Supplier[]) values)
 				.setPostprocessor(Pair.postprocessor());
 	}
@@ -92,10 +92,10 @@ public interface PairFeatures extends HardwareFeatures {
 	default ExpressionComputation<Pair<?>> multiplyComplex(Supplier<Evaluable<? extends Pair<?>>> a, Supplier<Evaluable<? extends Pair<?>>> b) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
 		IntStream.range(0, 2).forEach(i -> comp.add(args -> {
-			Expression p = args.get(1).getValueAt(0);
-			Expression q = args.get(1).getValueAt(1);
-			Expression r = args.get(2).getValueAt(0);
-			Expression s = args.get(2).getValueAt(1);
+			Expression p = args.get(1).getValueRelative(0);
+			Expression q = args.get(1).getValueRelative(1);
+			Expression r = args.get(2).getValueRelative(0);
+			Expression s = args.get(2).getValueRelative(1);
 
 			if (i == 0) {
 				return new Sum(new Product(p, r), new Minus(new Product(q, s)));
@@ -110,8 +110,8 @@ public interface PairFeatures extends HardwareFeatures {
 
 	default ExpressionComputation<Pair<?>> complexFromAngle(Supplier<Evaluable<? extends Scalar>> angle) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		comp.add(args -> new Cosine(args.get(1).getValueAt(0)));
-		comp.add(args -> new Sine(args.get(1).getValueAt(0)));
+		comp.add(args -> new Cosine(args.get(1).getValueRelative(0)));
+		comp.add(args -> new Sine(args.get(1).getValueRelative(0)));
 		return Pair.postprocess(new ExpressionComputation<>(comp, (Supplier) angle));
 	}
 

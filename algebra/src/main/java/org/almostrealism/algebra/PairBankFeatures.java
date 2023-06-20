@@ -40,7 +40,7 @@ public interface PairBankFeatures extends ScalarFeatures {
 
 	default ExpressionComputation<PackedCollection<Pair<?>>> pairBank(Supplier<Evaluable<? extends Pair<?>>>... input) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		IntStream.range(0, 2 * input.length).forEach(i -> comp.add(args -> args.get(1 + i / 2).getValueAt(i % 2)));
+		IntStream.range(0, 2 * input.length).forEach(i -> comp.add(args -> args.get(1 + i / 2).getValueRelative(i % 2)));
 		return new ExpressionComputation(shape(input.length, 2).traverse(0), comp, input)
 				.setPostprocessor(Pair.bankPostprocessor());
 	}
@@ -57,13 +57,13 @@ public interface PairBankFeatures extends ScalarFeatures {
 		IntStream.range(0, memLength).forEach(i -> expression.add(args -> {
 			if (i % 2 == 0) {
 				if (i == 0) {
-					return new Product(args.get(1).getValueAt(0), args.get(1).getValueAt(0));
+					return new Product(args.get(1).getValueRelative(0), args.get(1).getValueRelative(0));
 				} else if (i == memLength - 2) {
-					return new Product(args.get(1).getValueAt(1), args.get(1).getValueAt(1));
+					return new Product(args.get(1).getValueRelative(1), args.get(1).getValueRelative(1));
 				} else {
 					return new Sum(
-							new Product(args.get(1).getValueAt(i), args.get(1).getValueAt(i)),
-							new Product(args.get(1).getValueAt(i + 1), args.get(1).getValueAt(i + 1)));
+							new Product(args.get(1).getValueRelative(i), args.get(1).getValueRelative(i)),
+							new Product(args.get(1).getValueRelative(i + 1), args.get(1).getValueRelative(i + 1)));
 				}
 			} else {
 				return new DoubleConstant(1.0);
@@ -104,13 +104,13 @@ public interface PairBankFeatures extends ScalarFeatures {
 
 		IntStream.range(0, 2 * count).forEach(i -> expression.add(args -> {
 			if (i == 0) {
-				return new Sum(args.get(1).getValueAt(i),
-						new Minus(new Product(args.get(2).getValueAt(0), args.get(1).getValueAt(i))));
+				return new Sum(args.get(1).getValueRelative(i),
+						new Minus(new Product(args.get(2).getValueRelative(0), args.get(1).getValueRelative(i))));
 			} else if (i % 2 == 0) {
-				return new Sum(args.get(1).getValueAt(i),
-						new Minus(new Product(args.get(2).getValueAt(0), args.get(1).getValueAt(i - 2))));
+				return new Sum(args.get(1).getValueRelative(i),
+						new Minus(new Product(args.get(2).getValueRelative(0), args.get(1).getValueRelative(i - 2))));
 			} else {
-				return args.get(1).getValueAt(i);
+				return args.get(1).getValueRelative(i);
 			}
 		}));
 

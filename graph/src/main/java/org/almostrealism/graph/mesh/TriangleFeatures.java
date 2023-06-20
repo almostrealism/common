@@ -71,13 +71,13 @@ public interface TriangleFeatures extends VectorFeatures {
 																	 Supplier<Evaluable<? extends Vector>> jkl,
 																	 Supplier<Evaluable<? extends Vector>> normal) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression = new ArrayList<>();
-		IntStream.range(0, 12).forEach(i -> expression.add(args -> args.get(i / 3 + 1).getValueAt(i % 3)));
+		IntStream.range(0, 12).forEach(i -> expression.add(args -> args.get(i / 3 + 1).getValueRelative(i % 3)));
 		return new ExpressionComputation<>(shape(4, 3), expression, (Supplier) abc, (Supplier) def, (Supplier) jkl, (Supplier) normal);
 	}
 
 	default ExpressionComputation<Vector> point(Supplier<Evaluable<? extends PackedCollection<?>>> points, int index) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression = new ArrayList<>();
-		IntStream.range(0, 3).forEach(i -> expression.add(args -> args.get(1).getValueAt(index * 3 + i)));
+		IntStream.range(0, 3).forEach(i -> expression.add(args -> args.get(1).getValueRelative(index * 3 + i)));
 		return new ExpressionComputation<>(shape(3), expression, (Supplier) points);
 	}
 
@@ -85,7 +85,7 @@ public interface TriangleFeatures extends VectorFeatures {
 										 Supplier<Evaluable<? extends Vector>> p2,
 										 Supplier<Evaluable<? extends Vector>> p3) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression = new ArrayList<>();
-		IntStream.range(0, 9).forEach(i -> expression.add(args -> args.get(i / 3 + 1).getValueAt(i % 3)));
+		IntStream.range(0, 9).forEach(i -> expression.add(args -> args.get(i / 3 + 1).getValueRelative(i % 3)));
 		return new ExpressionComputation<>(expression, (Supplier) p1, (Supplier) p2, (Supplier) p3);
 		// TODO  return new DynamicExpressionComputation<>(shape(9), (args, index) -> args[???].getValueAt(index.mod(3)),
 		// TODO            (Supplier) p1, (Supplier) p2, (Supplier) p3);

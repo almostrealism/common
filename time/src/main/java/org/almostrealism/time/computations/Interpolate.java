@@ -89,9 +89,9 @@ public class Interpolate extends CollectionProducerComputationBase<PackedCollect
 		Expression<Double> rate = getArgument(3).valueAt(0);
 
 		String bankl_time = new Product(new Exponent(rate, expressionForDouble(-1.0)), timeForIndex.apply(left)).getSimpleExpression();
-		String bankl_value = getArgument(1).get(left).getSimpleExpression();
+		String bankl_value = getArgument(1).getRelative(left).getSimpleExpression();
 		String bankr_time = new Product(new Exponent(rate, expressionForDouble(-1.0)), timeForIndex.apply(right)).getSimpleExpression();
-		String bankr_value = getArgument(1).get(right).getSimpleExpression();
+		String bankr_value = getArgument(1).getRelative(right).getSimpleExpression();
 		String cursor = getArgument(2).valueAt(0).getSimpleExpression();
 
 		Consumer<String> code = scope.code();

@@ -226,15 +226,15 @@ public interface LayerFeatures extends CollectionFeatures {
 		TraversalPolicy outputShape = shape(nodes);
 		KernelExpression kernel = (i, p) -> i.v(0).multiply(i.v(1)
 				.get(shape(size, 1), e(0), p.l(0)))
-				.sum().add(i.v(2).get(p.l(0)));
+				.sum().add(i.v(2).getRelative(p.l(0)));
 
 		PackedCollection<?> weights = new PackedCollection<>(shape(size, nodes));
 		PackedCollection<?> biases = new PackedCollection<>(shape(nodes));
 
 		KernelExpression outputGradient = (i, p) -> i.v(0).get(shape(1, nodes), p.l(0)).multiply(i.v(1)).sum();
-		KernelExpression weightGradient = (i, p) -> i.v(0).get(p.l(0)).multiply(i.v(1).get(p.l(1)));
+		KernelExpression weightGradient = (i, p) -> i.v(0).getRelative(p.l(0)).multiply(i.v(1).getRelative(p.l(1)));
 		KernelExpression adjustWeights = (i, p) -> i.v(0).get(p.l(0), p.l(1)).subtract(i.v(1).get(p.l(0), p.l(1)).multiply(i.v(2).valueAt(0)));
-		KernelExpression adjustBiases = (i, p) -> i.v(0).get(p.l(0)).subtract(i.v(1).get(p.l(0)).multiply(i.v(2).valueAt(0)));
+		KernelExpression adjustBiases = (i, p) -> i.v(0).getRelative(p.l(0)).subtract(i.v(1).getRelative(p.l(0)).multiply(i.v(2).valueAt(0)));
 
 		Propagation backwards = (lr, gradient, input, next) -> {
 			OperationList ops = new OperationList();
@@ -263,14 +263,14 @@ public interface LayerFeatures extends CollectionFeatures {
 
 	default CellularLayer softmax(int size) {
 		TraversalPolicy shape = shape(size);
-		KernelExpression forward = (i, p) -> exp(i.v(0).get(p.l(0))).divide(i.v(0).exp().sum());
+		KernelExpression forward = (i, p) -> exp(i.v(0).getRelative(p.l(0))).divide(i.v(0).exp().sum());
 		KernelExpression backward = (i, p) -> {
 			ExpressionList gradient = i.v(0).toList();
 			ExpressionList in = i.v(1).toList().exp();
 
-			Expression t = i.v(1).get(p.l(0)).exp();
+			Expression t = i.v(1).getRelative(p.l(0)).exp();
 			Expression s = in.sum();
-			Expression gr = i.v(0).get(p.l(0));
+			Expression gr = i.v(0).getRelative(p.l(0));
 
 			return gradient.sum().multiply(
 					in.minus().multiply(gradient).sum().multiply(t)

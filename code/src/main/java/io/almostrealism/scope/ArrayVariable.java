@@ -92,7 +92,7 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 	}
 
 	// TODO  Rename to getValueRelative?
-	public Expression<Double> getValueAt(int index) {
+	public Expression<Double> getValueRelative(int index) {
 		if (getProducer() instanceof TraversableExpression && !(getProducer() instanceof RelativeSupport)) {
 			Expression<Double> value = ((TraversableExpression) getProducer()).getValueAt(new IntegerConstant(index));
 			if (value != null) return value;
@@ -103,7 +103,7 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 											.getValueAt(new IntegerConstant(index));
 			if (value != null) return value;
 		} else if (getDelegate() != null) {
-			Expression<Double> v = getDelegate().getValueAt(index + getDelegateOffset());
+			Expression<Double> v = getDelegate().getValueRelative(index + getDelegateOffset());
 			if (v instanceof InstanceReference) {
 				((InstanceReference) v).getReferent().setOriginalProducer(getOriginalProducer());
 			}
@@ -114,9 +114,9 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 	}
 
 	// TODO  Rename to getRelative
-	public InstanceReference<T> get(Expression<?> pos) {
+	public InstanceReference<T> getRelative(Expression<?> pos) {
 		if (getDelegate() != null) {
-			InstanceReference<T> v = getDelegate().get(pos.add(getDelegateOffset()));
+			InstanceReference<T> v = getDelegate().getRelative(pos.add(getDelegateOffset()));
 			((InstanceReference) v).getReferent().setOriginalProducer(getOriginalProducer());
 			return v;
 		} else if (getKernelIndex() < 0) {
@@ -133,7 +133,7 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 		} else if (getDelegate() == this) {
 			throw new IllegalArgumentException("Circular delegate reference");
 		} else {
-			InstanceReference ref = getDelegate().get(pos.add(getDelegateOffset()));
+			InstanceReference ref = getDelegate().getRelative(pos.add(getDelegateOffset()));
 			ref.getReferent().setOriginalProducer(getOriginalProducer());
 			return ref;
 		}

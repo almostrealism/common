@@ -34,8 +34,6 @@ import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.time.CursorPair;
 
 import java.util.function.Consumer;
-import java.util.function.IntFunction;
-import java.util.stream.IntStream;
 
 @Deprecated
 public class AcceleratedTimeSeriesValueAt extends CollectionProducerComputationBase<PackedCollection<?>, Scalar> {
@@ -70,11 +68,11 @@ public class AcceleratedTimeSeriesValueAt extends CollectionProducerComputationB
 		String res = getArgument(0).valueAt(0).getSimpleExpression();
 		String bank0 = getArgument(1).valueAt(0).getSimpleExpression();
 		String bank1 = getArgument(1).valueAt(1).getSimpleExpression();
-		String banki = getArgument(1).get(i.multiply(2)).getSimpleExpression();
-		String bankl0 = getArgument(1).get(left.multiply(2)).getSimpleExpression();
-		String bankl1 = getArgument(1).get(left.multiply(2).add(1)).getSimpleExpression();
-		String bankr0 = getArgument(1).get(right.multiply(2)).getSimpleExpression();
-		String bankr1 = getArgument(1).get(right.multiply(2).add(1)).getSimpleExpression();
+		String banki = getArgument(1).getRelative(i.multiply(2)).getSimpleExpression();
+		String bankl0 = getArgument(1).getRelative(left.multiply(2)).getSimpleExpression();
+		String bankl1 = getArgument(1).getRelative(left.multiply(2).add(1)).getSimpleExpression();
+		String bankr0 = getArgument(1).getRelative(right.multiply(2)).getSimpleExpression();
+		String bankr1 = getArgument(1).getRelative(right.multiply(2).add(1)).getSimpleExpression();
 		String cursor0 = getArgument(2).valueAt(0).getSimpleExpression();
 
 		Consumer<String> code = scope.code();

@@ -39,9 +39,9 @@ public class CursorPairIncrement extends DynamicOperationComputationAdapter {
 		if (prepared) return;
 
 		addVariable(getArgument(0).valueAt(0)
-				.assign(new Sum(getArgument(0).valueAt(0), getArgument(1).getValueAt(0))));
+				.assign(new Sum(getArgument(0).valueAt(0), getArgument(1).getValueRelative(0))));
 		addVariable(getArgument(0).valueAt(1)
-				.assign(new Sum(getArgument(0).valueAt(1), getArgument(1).getValueAt(0))));
+				.assign(new Sum(getArgument(0).valueAt(1), getArgument(1).getValueRelative(0))));
 
 //		if (getArgument(1).isStatic()) {
 //			addVariable(getArgument(0).valueAt(0).assign(new Sum(getArgument(0).valueAt(0), getInputValue(1, 0))));

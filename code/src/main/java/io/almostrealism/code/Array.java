@@ -20,24 +20,23 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.relation.Delegated;
-import io.almostrealism.scope.Variable;
 import io.almostrealism.uml.Plural;
 
 public interface Array<T, V extends Array<T, ?>> extends Plural<InstanceReference<T>>, Delegated<V> {
 	@Override
 	default InstanceReference<T> valueAt(int pos) {
-		return get(new IntegerConstant(pos));
+		return getRelative(new IntegerConstant(pos));
 	}
 	
 	default InstanceReference<T> valueAt(Expression<?> exp) {
-		return get(exp);
+		return getRelative(exp);
 	}
 
 	default String ref(int pos) {
 		return valueAt(pos).getSimpleExpression();
 	}
 
-	InstanceReference<T> get(Expression<?> pos);
+	InstanceReference<T> getRelative(Expression<?> pos);
 
 	Expression<Integer> length();
 }

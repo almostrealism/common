@@ -94,7 +94,7 @@ public interface ScalarBankFeatures extends ScalarFeatures {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression = new ArrayList<>();
 		IntStream.range(0, 2 * count).forEach(i ->
 				expression.add(args -> i % 2 == 0 ?
-						new Sum(args.get(1).getValueAt(i), args.get(2).getValueAt(0)) : args.get(1).getValueAt(i)));
+						new Sum(args.get(1).getValueRelative(i), args.get(2).getValueRelative(0)) : args.get(1).getValueRelative(i)));
 		return new ScalarBankExpressionComputation(expression, (Supplier) input, (Supplier) value);
 	}
 
@@ -161,7 +161,7 @@ public interface ScalarBankFeatures extends ScalarFeatures {
 
 	default ScalarBankProducerBase scalars(Supplier<Evaluable<? extends Scalar>>... values) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression = new ArrayList<>();
-		IntStream.range(0, 2 * values.length).forEach(i -> expression.add(args -> args.get(i / 2 + 1).getValueAt(i % 2)));
+		IntStream.range(0, 2 * values.length).forEach(i -> expression.add(args -> args.get(i / 2 + 1).getValueRelative(i % 2)));
 		return new ScalarBankExpressionComputation(expression, (Supplier[]) values);
 	}
 

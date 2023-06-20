@@ -48,7 +48,7 @@ public class PackedCollectionMax extends CollectionProducerComputationBase<Packe
 
 		Expression i = new StaticReference<>(Integer.class, getVariablePrefix() + "_i");
 		String result = getArgument(0, 2).valueAt(0).getSimpleExpression();
-		String value = expression.apply(getArgument(1).get(i)).getSimpleExpression();
+		String value = expression.apply(getArgument(1).getRelative(i)).getSimpleExpression();
 		String count = getArgument(1).length().getSimpleExpression();
 
 		scope.code().accept("for (int " + i + " = 0; " + i + " < " + count +"; " + i + "++) {\n");
