@@ -91,7 +91,6 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 		}
 	}
 
-	// TODO  Rename to getValueRelative?
 	public Expression<Double> getValueRelative(int index) {
 		if (getProducer() instanceof TraversableExpression && !(getProducer() instanceof RelativeSupport)) {
 			Expression<Double> value = ((TraversableExpression) getProducer()).getValueAt(new IntegerConstant(index));
@@ -113,7 +112,6 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 		return (Expression) getRaw(names.getArrayPosition(this, new IntegerConstant(index), getKernelIndex()));
 	}
 
-	// TODO  Rename to getRelative
 	public InstanceReference<T> getRelative(Expression<?> pos) {
 		if (getDelegate() != null) {
 			InstanceReference<T> v = getDelegate().getRelative(pos.add(getDelegateOffset()));
