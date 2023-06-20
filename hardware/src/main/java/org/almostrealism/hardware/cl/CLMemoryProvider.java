@@ -35,6 +35,7 @@ import java.util.Optional;
 import java.util.stream.IntStream;
 
 public class CLMemoryProvider implements MemoryProvider<RAM> {
+	public static boolean enableLargeAllocationLogging = false;
 	public static boolean enableWarnings = SystemUtils.isEnabled("AR_HARDWARE_MEMORY_WARNINGS").orElse(true);
 
 	public enum Location {
@@ -72,6 +73,10 @@ public class CLMemoryProvider implements MemoryProvider<RAM> {
 
 	@Override
 	public CLMemory allocate(int size) {
+		if (enableLargeAllocationLogging && size > (1024 * 1024)) {
+			System.out.println("CLMemoryProvider: Allocating " + (numberSize * (long) size) / 1024 / 1024 + "mb");
+		}
+
 		try {
 			CLMemory mem = new CLMemory(this, buffer(size), numberSize * (long) size);
 			allocated.add(mem);
