@@ -124,7 +124,7 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 		}
 	}
 
-	public InstanceReference<T> getRaw(Expression<?> pos) {
+	protected InstanceReference<T> getRaw(Expression<?> pos) {
 		if (getDelegate() == null) {
 			return new InstanceReference(new Variable<>(dereference.apply(getName(), pos.toInt().getSimpleExpression()),
 					false, new Expression(getType()), this), pos);
