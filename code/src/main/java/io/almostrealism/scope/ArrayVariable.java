@@ -20,6 +20,7 @@ import io.almostrealism.code.Array;
 import io.almostrealism.code.KernelIndex;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.PhysicalScope;
+import io.almostrealism.collect.RelativeSupport;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
@@ -92,10 +93,12 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 
 	// TODO  Rename to getValueRelative?
 	public Expression<Double> getValueAt(int index) {
-		if (getProducer() instanceof TraversableExpression) {
+		if (getProducer() instanceof TraversableExpression && !(getProducer() instanceof RelativeSupport)) {
 			Expression<Double> value = ((TraversableExpression) getProducer()).getValueAt(new IntegerConstant(index));
 			if (value != null) return value;
-		} else if (getProducer() instanceof Delegated && ((Delegated) getProducer()).getDelegate() instanceof TraversableExpression) {
+		} else if (getProducer() instanceof Delegated &&
+				((Delegated) getProducer()).getDelegate() instanceof TraversableExpression &&
+				!(((Delegated) getProducer()).getDelegate() instanceof RelativeSupport)) {
 			Expression<Double> value = ((TraversableExpression) ((Delegated) getProducer()).getDelegate())
 											.getValueAt(new IntegerConstant(index));
 			if (value != null) return value;

@@ -54,9 +54,6 @@ public abstract class KernelProducerComputationAdapter<I extends PackedCollectio
 	}
 
 	@Override
-	public int getMemLength() { return getShape().getSize(); }
-
-	@Override
 	public void prepareScope(ScopeInputManager manager) {
 		super.prepareScope(manager);
 
@@ -93,6 +90,7 @@ public abstract class KernelProducerComputationAdapter<I extends PackedCollectio
 
 	public void convertToVariableRef() {
 		if (enableVariableRefConversion && variableRef == null) {
+			// TODO  This does not work for shapes with sizes greater than 1
 			addVariable(new Variable(getVariableName(0), true, getValueAt(new KernelIndex(0)), this));
 			variableRef = i -> new InstanceReference(getVariable(0));
 		}

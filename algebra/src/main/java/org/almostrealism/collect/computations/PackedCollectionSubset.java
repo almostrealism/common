@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
@@ -61,7 +62,9 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 	public Expression<Double> getValueAt(Expression index) {
 		TraversalPolicy inputShape = ((Shape) getInputs().get(1)).getShape();
 		Expression<?> p = inputShape.subset(getShape(), index, pos);
-		return getArgument(1, inputShape.getTotalSize()).getRaw(p); // TODO  Should be getValueAt(p)?
+
+		// return getArgument(1, inputShape.getTotalSize()).getRaw(p);
+		return getCollectionArgumentVariable(1).getValueAt(p);
 	}
 
 	private class Destination implements Producer<PackedCollection<?>>, Delegated<DestinationSupport<T>>, KernelSupport {

@@ -19,6 +19,7 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.code.ExpressionList;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
+import io.almostrealism.collect.RelativeSupport;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.relation.Producer;
@@ -35,6 +36,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.KernelSupport;
 
 import java.util.List;
+import java.util.OptionalInt;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
@@ -44,7 +46,10 @@ import java.util.stream.Stream;
 
 // TODO  This should be a KernelProducerComputationAdapter subclass
 public class PackedCollectionMap<T extends PackedCollection<?>>
-		extends CollectionProducerComputationBase<PackedCollection<?>, T> {
+		extends CollectionProducerComputationBase<PackedCollection<?>, T>
+		implements TraversableExpression<Double>, RelativeSupport {
+	public static boolean enableMapFallback = true;
+
 	private Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper;
 	private TraversableExpression<Double> mapped;
 	private ExpressionList<Double> result;
@@ -115,60 +120,55 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 
 		CollectionProducerComputation<?> mapped = mapper.apply(computation);
 
-		if (mapped instanceof TraversableExpression && !(mapped instanceof PackedCollectionMap)) {
+		if (enableMapFallback && mapped instanceof PackedCollectionMap) {
+			System.out.println("WARN: Using fallback mapping for PackedCollectionMap");
+
+			// TODO  This fallback to using ExpressionComputation as input to the mapping function
+			// TODO  can eventually be removed when all CollectionProducerComputations are
+			// TODO  TraversableExpression implementations.
+			ExpressionList<Double> exp = input.get(sliceShape, traversalShape.position(slice)).toList();
+
+			computation = new ExpressionComputation<>(sliceShape,
+					IntStream.range(0, exp.size())
+							.mapToObj(i -> (Function<List<ArrayVariable<Double>>, Expression<Double>>) args -> exp.get(i))
+							.collect(Collectors.toList()));
+			computation.setFixedDestinationShape(true);
+			CollectionProducerComputation<?> altMapped = mapper.apply(computation);
+
+			if (altMapped instanceof PackedCollectionMap == false) throw new UnsupportedOperationException();
+			ScopeLifecycle.prepareScope(Stream.of(altMapped), manager);
+
+			result = IntStream.range(0, getShape().item().getTotalSize())
+					.mapToObj(i -> ((PackedCollectionMap) altMapped).getValue(i))
+					.collect(ExpressionList.collector());
+		} else if (mapped instanceof TraversableExpression) {
 			ScopeLifecycle.prepareScope(Stream.of(mapped), manager);
 			this.mapped = (TraversableExpression<Double>) mapped;
 			result = IntStream.range(0, getShape().item().getTotalSize())
 					.mapToObj(i -> ((TraversableExpression<Double>) mapped).getValueAt(e(i)))
 					.collect(ExpressionList.collector());
-			return;
+		} else {
+			throw new UnsupportedOperationException();
 		}
-
-		// TODO  This fallback to using ExpressionComputation as input to the mapping function
-		// TODO  can eventually be removed when all CollectionProducerComputations are
-		// TODO  TraversableExpression implementations.
-		ExpressionList<Double> exp = input.get(sliceShape, traversalShape.position(slice)).toList();
-
-		computation = new ExpressionComputation<>(sliceShape,
-				IntStream.range(0, exp.size())
-						.mapToObj(i -> (Function<List<ArrayVariable<Double>>, Expression<Double>>) args -> exp.get(i))
-						.collect(Collectors.toList()));
-		computation.setFixedDestinationShape(true);
-		CollectionProducerComputation<?> altMapped = mapper.apply(computation);
-		ScopeLifecycle.prepareScope(Stream.of(altMapped), manager);
-
-		result = IntStream.range(0, getShape().item().getTotalSize())
-					.mapToObj(i -> {
-						if (altMapped instanceof PackedCollectionMap) {
-							return ((PackedCollectionMap) altMapped).getValue(i);
-						}
-
-						throw new UnsupportedOperationException();
-					})
-					.collect(ExpressionList.collector());
 	}
 
 
-	// @Override
+	@Override
 	public Expression<Double> getValue(Expression... pos) {
 		return getValueAt(getShape().index(pos));
 	}
 
-	// @Override
-//	public Expression<Double> getValueAt(Expression index) {
-//		OptionalInt i = index.intValue();
-//
-//		if (i.isPresent()) {
-//			return getValue(i.getAsInt());
-//		} else {
-//			return null;
-//		}
-//	}
-
-//	@Override
+	@Override
 	public Expression<Double> getValueAt(Expression index) {
-		// TODO  There's a mixup here between absolute and relative indices
-		return mapped == null ? null : mapped.getValueAt(index);
+		OptionalInt i = index.intValue();
+
+		if (mapped != null) {
+			return mapped.getValueAt(index);
+		} else if (i.isPresent()) {
+			return result.get(i.getAsInt());
+		} else {
+			throw new UnsupportedOperationException();
+		}
 	}
 
 	private Expression<Double> getValue(int i) {

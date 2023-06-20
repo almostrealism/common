@@ -19,6 +19,7 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
+import io.almostrealism.collect.RelativeSupport;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -81,6 +82,8 @@ public class ReshapeProducer<T extends Shape<T>> implements CollectionProducer<T
 
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
+		if (producer instanceof RelativeSupport) return null;
+		
 		return producer instanceof TraversableExpression ? ((TraversableExpression) producer).getValueAt(index) : null;
 	}
 
