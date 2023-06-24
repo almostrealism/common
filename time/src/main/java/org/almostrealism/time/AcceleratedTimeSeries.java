@@ -29,7 +29,7 @@ import org.almostrealism.time.computations.AcceleratedTimeSeriesValueAt;
 import java.util.function.Supplier;
 
 public class AcceleratedTimeSeries extends TemporalScalarBank implements Lifecycle, HardwareFeatures {
-	public static final int defaultSize = 20000000;
+	public static final int defaultSize = 16 * 1024 * 1024;
 
 	public static CacheLevel defaultCacheLevel = CacheLevel.NONE;
 
