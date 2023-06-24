@@ -73,7 +73,7 @@ public class CLMemoryProvider implements MemoryProvider<RAM> {
 
 	@Override
 	public CLMemory allocate(int size) {
-		if (enableLargeAllocationLogging && size > (1024 * 1024)) {
+		if (enableLargeAllocationLogging && size > (10 * 1024 * 1024)) {
 			System.out.println("CLMemoryProvider: Allocating " + (numberSize * (long) size) / 1024 / 1024 + "mb");
 		}
 
