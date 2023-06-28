@@ -144,7 +144,7 @@ public class DestinationConsolidationArgumentMap<S, A> extends MemoryDataArgumen
 		public T get() {
 			T value = Hardware.enableMultiThreading ? localByThread.get() : local;
 
-			if (value == null) {
+			if (value == null || value.getMem() == null) {
 				value = supplier.get();
 
 				if (Hardware.enableMultiThreading) {
@@ -161,6 +161,7 @@ public class DestinationConsolidationArgumentMap<S, A> extends MemoryDataArgumen
 		 * Remove data for the current thread and eliminate
 		 * the {@link ThreadLocal} storage.
 		 */
+		// TODO  Shouldn't this destroy the MemoryData also?
 		public void destroy() {
 			if (Hardware.enableMultiThreading) {
 				localByThread.remove();

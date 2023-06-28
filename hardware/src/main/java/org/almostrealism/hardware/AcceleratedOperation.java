@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -50,7 +50,9 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Callable;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -62,6 +64,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	public static boolean enableKernelSizeWarnings = SystemUtils.isEnabled("AR_HARDWARE_KERNEL_SIZE_WARNINGS").orElse(true);
 
 	private static final Map<String, ThreadLocal<HardwareOperator>> operators = new HashMap<>();
+	private static final ThreadLocal<CreatedMemoryData> created = new ThreadLocal<>();
 
 	private final boolean kernel;
 	private boolean argumentMapping;
@@ -422,6 +425,8 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			} else if (c instanceof KernelizedEvaluable && Stream.of(args).filter(a -> !(a instanceof MemoryData)).findAny().isEmpty()) {
 				KernelizedEvaluable kp = (KernelizedEvaluable) c;
 				kernelArgs[i] = kp.createKernelDestination(kernelSize);
+				if (created.get() != null) created.get().add(kernelArgs[i]);
+
 				kp.into((MemoryBank) kernelArgs[i]).evaluate(Stream.of(args).map(MemoryData.class::cast).toArray(MemoryData[]::new));
 
 //				if (kernelSize > 1) {
@@ -473,5 +478,31 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	public void destroy() {
 		argumentMaps.forEach(ArgumentMap::destroy);
 		argumentMaps = new ArrayList<>();
+	}
+
+	public static <T> T record(CreatedMemoryData data, Callable<T> exec) {
+		CreatedMemoryData last = created.get();
+
+		try {
+			created.set(data);
+			return exec.call();
+		} catch (RuntimeException e) {
+			throw e;
+		} catch (Exception e) {
+			throw new RuntimeException(e);
+		} finally {
+			created.set(last);
+		}
+	}
+
+	public static <I, O> O apply(Supplier<I> input, Function<I, O> process) {
+		CreatedMemoryData data = new CreatedMemoryData();
+
+		try {
+			I in = record(data, () -> input.get());
+			return process.apply(in);
+		} finally {
+			data.destroy();
+		}
 	}
 }

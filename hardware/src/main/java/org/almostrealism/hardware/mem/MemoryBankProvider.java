@@ -37,7 +37,7 @@ public class MemoryBankProvider<T extends MemoryData> implements IntFunction<Mem
 	}
 
 	public MemoryBank<T> apply(int size) {
-		if (lastSize == size) {
+		if (lastSize == size && last != null && last.getMem() != null) {
 			return last;
 		}
 
