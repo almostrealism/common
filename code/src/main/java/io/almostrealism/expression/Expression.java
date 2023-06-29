@@ -18,6 +18,7 @@ package io.almostrealism.expression;
 
 import io.almostrealism.code.Tree;
 import io.almostrealism.scope.Variable;
+import org.almostrealism.io.SystemUtils;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -37,6 +38,7 @@ import java.util.stream.Collectors;
 // TODO  Make abstract
 public class Expression<T> implements Tree<Expression<?>> {
 	public static boolean enableSimplification = true;
+	public static boolean enableWarnings = SystemUtils.isEnabled("AR_CODE_EXPRESSION_WARNINGS").orElse(true);
 
 	public static Function<Expression<?>, Expression<?>> toDouble = e -> new Cast("double", e);
 
@@ -93,7 +95,7 @@ public class Expression<T> implements Tree<Expression<?>> {
 		this.dependencies = new ArrayList<>();
 		this.dependencies.addAll(Arrays.asList(dependencies));
 
-		if (dependencies.length > 0) {
+		if (enableWarnings && dependencies.length > 0) {
 			System.out.println("WARN: Deprecated Expression construction");
 		}
 	}
@@ -121,7 +123,7 @@ public class Expression<T> implements Tree<Expression<?>> {
 		if (!enableSimplification) return getExpression();
 
 		if (getClass() == Expression.class) {
-			System.out.println("WARN: Unable to retrieve simplified expression");
+			if (enableWarnings) System.out.println("WARN: Unable to retrieve simplified expression");
 			return getExpression();
 		}
 
