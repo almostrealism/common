@@ -18,6 +18,7 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.expression.Cast;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.Mod;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.relation.Producer;
@@ -28,12 +29,14 @@ import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.KernelSupport;
 
+import java.util.Objects;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		extends KernelProducerComputationAdapter<PackedCollection<?>, T> {
+	public static boolean enableSubset = false;
 
 	private TraversalPolicy strideShape;
 	private TraversalPolicy subsetShape;
@@ -55,25 +58,83 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		CollectionVariable var = getCollectionArgumentVariable(1);
 		if (var == null) return null;
 
-		// Determine which slice to extract
-		Expression slice = index.divide(e((double) subsetShape.getTotalSize())).floor();
+		if (enableSubset) {
+			// Determine which slice to extract
+			Expression slice;
 
-		// Find the index in that slice
-		// Expression offset = e("((int) " + index.getExpression() + ") % " + subsetShape.getTotalSize(), index);
-		Expression offset = new Mod(new Cast("int", index), e(subsetShape.getTotalSize()), false);
-
-		// Determine the location of the slice
-		Expression<?> p[] = new Expression[subsetShape.getDimensions()];
-
-		for (int j = 0; j < subsetShape.getDimensions(); j++) {
-			if (strideShape.length(j) > 0) {
-				p[j] = slice.multiply(e(strideShape.length(j)));
+			if (subsetShape.getTotalSize() == 1) {
+				slice = index;
+			} else if (index.getType() == Integer.class ||
+					(index instanceof Cast && Objects.equals("int", ((Cast) index).getTypeName()))) {
+				slice = index.divide(e(subsetShape.getTotalSize()));
 			} else {
-				p[j] = e(0);
+				slice = index.divide(e((double) subsetShape.getTotalSize())).floor();
 			}
-		}
 
-		return var.get(subsetShape, p).getValueAt(offset);
+			// Find the index in that slice
+			Expression offset = new Mod(new Cast("int", index), e(subsetShape.getTotalSize()), false);
+
+			// Determine the location of the slice
+			Expression<?> p[] = new Expression[subsetShape.getDimensions()];
+
+			for (int j = 0; j < subsetShape.getDimensions(); j++) {
+				if (strideShape.length(j) > 0) {
+					p[j] = slice.multiply(e(strideShape.length(j)));
+				} else {
+					p[j] = e(0);
+				}
+			}
+
+			return var.get(subsetShape, p).getValueAt(offset);
+		} else {
+			TraversalPolicy blockShape = getShape();
+
+			Expression block;
+
+			// Determine the current block
+			if (blockShape.getTotalSize() == 1) {
+				block = index;
+			} else if (index.getType() == Integer.class ||
+					(index instanceof Cast && Objects.equals("int", ((Cast) index).getTypeName()))) {
+				block = index.divide(e(blockShape.getTotalSize()));
+			} else {
+				block = index.divide(e((double) blockShape.getTotalSize())).floor();
+			}
+
+			index = index.toInt().mod(e(blockShape.getTotalSize()), false);
+
+			// Determine which slice to extract
+			// Starting over from the beginning for each new block
+			Expression slice;
+
+			if (subsetShape.getTotalSize() == 1) {
+				slice = index;
+			} else if (index.getType() == Integer.class ||
+					(index instanceof Cast && Objects.equals("int", ((Cast) index).getTypeName()))) {
+				slice = index.divide(e(subsetShape.getTotalSize()));
+			} else {
+				slice = index.divide(e((double) subsetShape.getTotalSize())).floor();
+			}
+
+			// Find the index in that slice
+			// Expression offset = new Mod(new Cast("int", index), e(subsetShape.getTotalSize()), false);
+			Expression offset = index.toInt().mod(e(subsetShape.getTotalSize()), false);
+
+			// Determine the location of the slice
+			Expression<?> p[] = new Expression[subsetShape.getDimensions()];
+
+			for (int j = 0; j < subsetShape.getDimensions(); j++) {
+				if (strideShape.length(j) > 0) {
+					p[j] = slice.multiply(e(strideShape.length(j)));
+				} else {
+					p[j] = e(0);
+				}
+			}
+
+			Expression blockOffset = var.getShape().subset(subsetShape, offset, p);
+
+			return var.getValueAt(block.multiply(e(blockShape.getTotalSize())).add(blockOffset));
+		}
 	}
 
 	private static TraversalPolicy shape(Producer<?> collection) {

@@ -567,8 +567,8 @@ public class PackedCollectionMapTests implements TestFeatures {
 
 	@Test
 	public void enumerateReduceEnumerate() {
-		int r = 8;
-		int c = 8;
+		int r = 12;
+		int c = 16;
 		int d = 1;
 		int w = 2;
 

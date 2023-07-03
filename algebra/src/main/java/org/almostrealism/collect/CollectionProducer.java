@@ -35,6 +35,10 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 		return repeat(repeat, this);
 	}
 
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> enumerate(int len) {
+		return enumerate(0, len, len, 1);
+	}
+
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> enumerate(int axis, int len) {
 		return enumerate(axis, len, len, 1);
 	}

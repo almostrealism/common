@@ -16,12 +16,15 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.code.ExpressionList;
+import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.collect.RelativeSupport;
+import io.almostrealism.expression.Cast;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.StaticReference;
+import io.almostrealism.expression.KernelIndex;
+import io.almostrealism.expression.Mod;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.collect.CollectionExpression;
@@ -33,26 +36,21 @@ import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.hardware.KernelSupport;
 
-import java.util.List;
-import java.util.OptionalInt;
+import java.util.Objects;
 import java.util.function.Function;
-import java.util.function.IntFunction;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 // TODO  This should be a KernelProducerComputationAdapter subclass
 public class PackedCollectionMap<T extends PackedCollection<?>>
 		extends CollectionProducerComputationBase<PackedCollection<?>, T>
 		implements TraversableExpression<Double>, RelativeSupport {
-	public static boolean enableMapFallback = true;
+	public static boolean enableAbsoluteValueAt = true;
+	public static boolean enableSubset = false;
 
 	private Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper;
 	private TraversableExpression<Double> mapped;
-	private ExpressionList<Double> result;
 	private TraversalPolicy inputShape;
 
 	public PackedCollectionMap(Producer<?> collection, Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper) {
@@ -72,18 +70,30 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 	@Override
 	public Scope<T> getScope() {
 		Scope<T> scope = super.getScope();
-		IntStream.range(0, getMemLength())
-				.mapToObj(getRelativeAssignmentFunction(getOutputVariable()))
-				.forEach(v -> scope.getVariables().add((Variable) v));
-		return scope;
-	}
 
-	// TODO  Assign the "relative" index i to the "relative" value i
-	// TODO  Switching this out for absolute indices, by delegating to
-	// TODO  getValueAt will simply not work
-	protected IntFunction<Variable<Double, ?>> getRelativeAssignmentFunction(Variable<?, ?> outputVariable) {
-		return i -> new Variable(((ArrayVariable) outputVariable).valueAt(i).getSimpleExpression(),
-				false, getValue(i).simplify(), outputVariable.getRootDelegate());
+		ArrayVariable<Double> output = (ArrayVariable<Double>) getOutputVariable();
+
+		for (int i = 0; i < getMemLength(); i++) {
+			Expression index = new KernelIndex(0);
+			if (getMemLength() > 1) index = index.multiply(getMemLength()).add(i);
+
+			Expression<Double> value = enableAbsoluteValueAt ? getValueAt(index) : null;
+
+			if (value == null && mapped instanceof OperationAdapter) {
+				OperationAdapter<?> op = (OperationAdapter) mapped;
+				Supplier in = op.getInputs().get(0);
+				ArrayVariable v = op.getArgumentForInput(in);
+				value = v.getRelative(e(i));
+			}
+
+			if (value == null) throw new UnsupportedOperationException();
+
+			Variable v = new Variable(output.valueAt(i).getSimpleExpression(),
+					false, value.simplify(), output.getRootDelegate());
+			scope.getVariables().add(v);
+		}
+
+		return scope;
 	}
 
 	@Override
@@ -95,8 +105,6 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 		// TODO  producer and then multiple arguments are sorted to be "first"
 		ArrayVariable out = getArgumentForInput(getInputs().get(0));
 		if (out != null) out.setSortHint(-1);
-
-		Expression slice = new StaticReference(Double.class, KernelSupport.getKernelIndex(0)).toDouble();
 
 		ArrayVariable arg = getArgumentForInput(getInputs().get(1));
 		if (arg instanceof CollectionVariable == false) {
@@ -113,45 +121,22 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 			traversalShape = traversalShape.appendDimension(inputShape.length(i));
 		}
 
-		CollectionVariable inputSlice = input.get(sliceShape, traversalShape.position(slice));
-		CollectionExpression expression = CollectionExpression.create(sliceShape, index -> inputSlice.getValueAt(index));
-
-		CollectionProducerComputationBase computation = new DynamicExpressionComputation(sliceShape, args -> expression);
+		CollectionExpression expression = createCollectionExpression(input, sliceShape, traversalShape);
+		CollectionProducerComputationBase computation = new ItemComputation(sliceShape, args -> expression);
 
 		CollectionProducerComputation<?> mapped = mapper.apply(computation);
 
-		if (enableMapFallback && mapped instanceof PackedCollectionMap) {
-			System.out.println("WARN: Using fallback mapping for PackedCollectionMap");
+		if (mapped instanceof PackedCollectionMap) {
+			System.out.println("WARN: Embedded PackedCollectionMap");
+		}
 
-			// TODO  This fallback to using ExpressionComputation as input to the mapping function
-			// TODO  can eventually be removed when all CollectionProducerComputations are
-			// TODO  TraversableExpression implementations.
-			ExpressionList<Double> exp = input.get(sliceShape, traversalShape.position(slice)).toList();
-
-			computation = new ExpressionComputation<>(sliceShape,
-					IntStream.range(0, exp.size())
-							.mapToObj(i -> (Function<List<ArrayVariable<Double>>, Expression<Double>>) args -> exp.get(i))
-							.collect(Collectors.toList()));
-			computation.setFixedDestinationShape(true);
-			CollectionProducerComputation<?> altMapped = mapper.apply(computation);
-
-			if (altMapped instanceof PackedCollectionMap == false) throw new UnsupportedOperationException();
-			ScopeLifecycle.prepareScope(Stream.of(altMapped), manager);
-
-			result = IntStream.range(0, getShape().item().getTotalSize())
-					.mapToObj(i -> ((PackedCollectionMap) altMapped).getValue(i))
-					.collect(ExpressionList.collector());
-		} else if (mapped instanceof TraversableExpression) {
+		if (mapped instanceof TraversableExpression) {
 			ScopeLifecycle.prepareScope(Stream.of(mapped), manager);
 			this.mapped = (TraversableExpression<Double>) mapped;
-			result = IntStream.range(0, getShape().item().getTotalSize())
-					.mapToObj(i -> ((TraversableExpression<Double>) mapped).getValueAt(e(i)))
-					.collect(ExpressionList.collector());
 		} else {
 			throw new UnsupportedOperationException();
 		}
 	}
-
 
 	@Override
 	public Expression<Double> getValue(Expression... pos) {
@@ -160,20 +145,63 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
-		OptionalInt i = index.intValue();
-
 		if (mapped != null) {
-			return mapped.getValueAt(index);
-		} else if (i.isPresent()) {
-			return result.get(i.getAsInt());
+			Expression<Double> result = mapped.getValueAt(index);
+			return result;
 		} else {
 			throw new UnsupportedOperationException();
 		}
 	}
 
-	private Expression<Double> getValue(int i) {
-		if (i >= getMemLength()) throw new IllegalArgumentException("Invalid position");
-		return result.get(i);
+	private CollectionExpression createCollectionExpression(CollectionVariable input, TraversalPolicy sliceShape, TraversalPolicy traversalShape) {
+		if (enableSubset) {
+			return CollectionExpression.create(sliceShape,
+					index -> {
+						// Determine which slice to extract
+						Expression slice;
+
+						if (sliceShape.getTotalSize() == 1) {
+							slice = index;
+						} else if (index.getType() == Integer.class ||
+								(index instanceof Cast && Objects.equals("int", ((Cast) index).getTypeName()))) {
+							slice = index.divide(e(sliceShape.getTotalSize()));
+						} else {
+							slice = index.divide(e((double) sliceShape.getTotalSize())).floor();
+						}
+
+						// Find the index in that slice
+						Expression offset = new Mod(new Cast("int", index), e(sliceShape.getTotalSize()), false);
+
+						// Determine the location of the slice
+						Expression<?> p[] = traversalShape.position(slice);
+
+						return input.get(sliceShape, p).getValueAt(offset);
+					});
+		} else {
+			return CollectionExpression.create(sliceShape,
+					index -> {
+						// Determine which slice to extract
+						Expression slice;
+
+						if (sliceShape.getTotalSize() == 1) {
+							slice = index;
+						} else if (index.getType() == Integer.class ||
+								(index instanceof Cast && Objects.equals("int", ((Cast) index).getTypeName()))) {
+							slice = index.divide(e(sliceShape.getTotalSize()));
+						} else {
+							slice = index.divide(e((double) sliceShape.getTotalSize())).floor();
+						}
+
+						// Find the index in that slice
+						Expression offset = new Mod(new Cast("int", index), e(sliceShape.getTotalSize()), false);
+
+						// Determine the location of the slice
+						Expression<?> p[] = traversalShape.position(slice);
+
+						// return input.get(sliceShape, p).getValueAt(offset);
+						return input.getValueAt(slice.multiply(e(sliceShape.getTotalSize())).add(offset));
+					});
+		}
 	}
 
 	private static TraversalPolicy shape(Producer<?> collection) {
@@ -181,5 +209,13 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 			throw new IllegalArgumentException("Map cannot be performed without a TraversalPolicy");
 
 		return ((Shape) collection).getShape();
+	}
+
+	private static class ItemComputation<T extends PackedCollection<?>> extends DynamicExpressionComputation<T> implements RelativeSupport {
+		public ItemComputation(TraversalPolicy shape,
+											Function<CollectionVariable[], CollectionExpression> expression,
+											Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+			super(shape, expression, args);
+		}
 	}
 }

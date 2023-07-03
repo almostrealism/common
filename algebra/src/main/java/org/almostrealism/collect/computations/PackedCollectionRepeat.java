@@ -25,12 +25,15 @@ import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 
+import java.util.Objects;
+import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.function.Supplier;
 
 public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		extends KernelProducerComputationAdapter<PackedCollection<?>, T> {
 	private TraversalPolicy subsetShape;
+	private TraversalPolicy sliceShape;
 
 	public PackedCollectionRepeat(int repeat, Producer<?> collection) {
 		this(shape(collection).item(), repeat, collection);
@@ -39,6 +42,7 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 	public PackedCollectionRepeat(TraversalPolicy shape, int repeat, Producer<?> collection) {
 		super(shape(collection).replace(shape.prependDimension(repeat)), (Supplier) collection);
 		this.subsetShape = shape.getDimensions() == 0 ? shape(1) : shape;
+		this.sliceShape = subsetShape.prependDimension(repeat);
 	}
 
 	@Override
@@ -46,14 +50,33 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
+		// Identify the slice
+		Expression slice;
+
+		if (subsetShape.getTotalSize() == 1) {
+			slice = index;
+		} else if (index.getType() == Integer.class ||
+				(index instanceof Cast && Objects.equals("int", ((Cast) index).getTypeName()))) {
+			slice = index.divide(e(sliceShape.getTotalSize()));
+		} else {
+			slice = index.divide(e((double) sliceShape.getTotalSize())).floor();
+		}
+
 		// Find the index in that slice
 		Expression offset = new Mod(new Cast("int", index), e(subsetShape.getTotalSize()), false);
 
+		// Position the offset relative to the slice
+		offset = slice.multiply(e(subsetShape.getTotalSize())).add(offset);
+
 		// If the offset is a known constant, the value can be
 		// directly obtained
-		OptionalInt offsetValue = offset.intValue();
+//		OptionalInt offsetValue = offset.intValue();
+//		if (offsetValue.isPresent()) {
+//			return getArgument(1).getValueRelative(offsetValue.getAsInt());
+//		}
+		OptionalDouble offsetValue = offset.getSimplified().doubleValue();
 		if (offsetValue.isPresent()) {
-			return getArgument(1).getValueRelative(offsetValue.getAsInt());
+			return getArgument(1).getValueRelative((int) offsetValue.getAsDouble());
 		}
 
 		// Otherwise the value will only be available if the
