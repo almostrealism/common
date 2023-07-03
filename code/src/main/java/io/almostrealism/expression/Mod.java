@@ -86,7 +86,7 @@ public class Mod extends Expression<Double> {
 			}
 		} else if (enableIntegerSimplification && mod.intValue().isPresent()) {
 			if (mod.intValue().getAsInt() == 1) {
-				return input;
+				return (Expression) new IntegerConstant(0);
 			}
 		} else if (enableFpSimplification && input.doubleValue().isPresent()) {
 			if (input.doubleValue().getAsDouble() == 0.0) {

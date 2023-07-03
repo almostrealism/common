@@ -39,6 +39,7 @@ import java.util.stream.Collectors;
 
 public abstract class OperationAdapter<T> implements Compactable, NameProvider, NamedFunction, Named {
 
+	public static boolean enableFunctionPrefix = false;
 	private static long functionId = 0;
 
 	private String function;
@@ -68,6 +69,17 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 
 	@Override
 	public String getFunctionName() { return function; }
+
+	@Override
+	public String getVariablePrefix() {
+		if (enableFunctionPrefix) {
+			return getFunctionName();
+		} else {
+			String f = getFunctionName();
+			if (f.contains("_")) f = f.substring(f.lastIndexOf("_"));
+			return f;
+		}
+	}
 
 	public OperationMetadata getMetadata() { return metadata; }
 

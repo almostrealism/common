@@ -21,11 +21,10 @@ import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Variable;
 
 public interface NameProvider {
-	boolean enableFunctionPrefix = false;
 
 	String getFunctionName();
 
-	default String getVariablePrefix() { return enableFunctionPrefix ? getFunctionName() : ""; }
+	default String getVariablePrefix() { return getFunctionName(); }
 
 	default PhysicalScope getDefaultPhysicalScope() { return null; }
 

@@ -119,12 +119,12 @@ public class Expression<T> implements Tree<Expression<?>> {
 		return intValue.isPresent() ? OptionalDouble.of(intValue.getAsInt()) : OptionalDouble.empty();
 	}
 
-	public String getSimpleExpression() {
-		if (!enableSimplification) return getExpression();
+	public Expression<?> getSimplified() {
+		if (!enableSimplification) return this;
 
 		if (getClass() == Expression.class) {
 			if (enableWarnings) System.out.println("WARN: Unable to retrieve simplified expression");
-			return getExpression();
+			return this;
 		}
 
 		Expression<?> simplified = simplify();
@@ -142,7 +142,11 @@ public class Expression<T> implements Tree<Expression<?>> {
 			exp = nextExp;
 		}
 
-		return exp;
+		return simplified;
+	}
+
+	public String getSimpleExpression() {
+		return getSimplified().getExpression();
 	}
 
 	@Deprecated
@@ -190,6 +194,7 @@ public class Expression<T> implements Tree<Expression<?>> {
 	public Ceiling ceil() { return new Ceiling((Expression) this); }
 
 	public Mod mod(Expression<Double> operand) { return new Mod((Expression) this, operand); }
+	public Mod mod(Expression<Double> operand, boolean fp) { return new Mod((Expression) this, operand, fp); }
 
 	public Equals eq(Expression<?> operand) { return new Equals(this, operand); }
 

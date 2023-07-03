@@ -34,6 +34,8 @@ import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
 public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements Array<T, ArrayVariable<T>> {
+	public static boolean enableRelativeTraversableExpressions = false;
+
 	public static BiFunction<String, String, String> dereference = (name, pos) -> name + "[" + pos + "]";
 
 	private final NameProvider names;
@@ -92,16 +94,20 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 	}
 
 	public Expression<Double> getValueRelative(int index) {
-		if (getProducer() instanceof TraversableExpression && !(getProducer() instanceof RelativeSupport)) {
-			Expression<Double> value = ((TraversableExpression) getProducer()).getValueAt(new IntegerConstant(index));
-			if (value != null) return value;
-		} else if (getProducer() instanceof Delegated &&
-				((Delegated) getProducer()).getDelegate() instanceof TraversableExpression &&
-				!(((Delegated) getProducer()).getDelegate() instanceof RelativeSupport)) {
-			Expression<Double> value = ((TraversableExpression) ((Delegated) getProducer()).getDelegate())
-											.getValueAt(new IntegerConstant(index));
-			if (value != null) return value;
-		} else if (getDelegate() != null) {
+		if (!enableRelativeTraversableExpressions) {
+			if (getProducer() instanceof TraversableExpression && !(getProducer() instanceof RelativeSupport)) {
+				Expression<Double> value = ((TraversableExpression) getProducer()).getValueAt(new IntegerConstant(index));
+				if (value != null) return value;
+			} else if (getProducer() instanceof Delegated &&
+					((Delegated) getProducer()).getDelegate() instanceof TraversableExpression &&
+					!(((Delegated) getProducer()).getDelegate() instanceof RelativeSupport)) {
+				Expression<Double> value = ((TraversableExpression) ((Delegated) getProducer()).getDelegate())
+						.getValueAt(new IntegerConstant(index));
+				if (value != null) return value;
+			}
+		}
+
+		if (getDelegate() != null) {
 			Expression<Double> v = getDelegate().getValueRelative(index + getDelegateOffset());
 			if (v instanceof InstanceReference) {
 				((InstanceReference) v).getReferent().setOriginalProducer(getOriginalProducer());

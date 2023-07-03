@@ -28,6 +28,10 @@ public class Cast extends UnaryExpression<Double> {
 		this.typeName = typeName;
 	}
 
+	public String getTypeName() {
+		return typeName;
+	}
+
 	@Override
 	public Expression<Double> simplify() {
 		Expression<Double> flat = super.simplify();
