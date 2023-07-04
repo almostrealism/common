@@ -16,12 +16,9 @@
 
 package org.almostrealism.collect.computations.test;
 
-import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.Max;
-import io.almostrealism.expression.Product;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.CodeFeatures;
@@ -34,12 +31,12 @@ import org.almostrealism.util.TensorTestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
-import java.util.stream.IntStream;
 
 public class EmbeddedCollectionMapTests implements CodeFeatures, TensorTestFeatures {
 	protected <T extends PackedCollection<?>> DynamicExpressionComputation<T> dynamicMax(Producer<T> input) {
@@ -64,41 +61,16 @@ public class EmbeddedCollectionMapTests implements CodeFeatures, TensorTestFeatu
 	}
 
 	protected <T extends PackedCollection<?>> ExpressionComputation<T> first(Producer<T> input) {
-		Function<List<ArrayVariable<Double>>, Expression<Double>> expression= np -> np.get(1).getValueRelative(0);
+		Function<List<ArrayVariable<Double>>, Expression<Double>> expression= np ->
+				np.get(1).getValueRelative(0);
 		return new ExpressionComputation<>(List.of(expression), (Supplier) input);
 	}
 
-	private void examples() {
-		int c = 16;
-		int d = 1;
-		int w = 2;
-
-		PackedCollection<?> input = null;
-
-		// Reduce works over 8x2x1
-		c(p(input)).traverse(1).reduce(v -> dynamicMax(v));
-
-		// Single enumeration works over 1x16x1
-		enumerate(shape(1, c, d), c(p(input)))
-				.traverse(1).reduce(slice -> dynamicMax(slice));
-
-		// Reduce over enumeration works over 16x1
-		enumerate(shape(w, d), c(p(input)))
-				.traverse(1).reduce(slice -> dynamicMax(slice));
-
-		// Reduce fails over 16x1x1
-		c(p(input)).traverse(1)
-				.reduce(v ->
-						enumerate(shape(1, w, 1), v)
-								.traverse(1).reduce(slice -> dynamicMax(slice)));
-
-		// Reduce fails over 8x2x1
-		c(p(input)).traverse(1)
-				.reduce(v ->
-						enumerate(shape(1, w, 1), v)
-								.traverse(1).reduce(slice -> dynamicMax(slice)));
-
-
+	protected <T extends PackedCollection<?>> ExpressionComputation<T> duo(Producer<T> input) {
+		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression= new ArrayList<>();
+		expression.add(np -> np.get(1).getValueRelative(0));
+		expression.add(np -> np.get(1).getValueRelative(0));
+		return new ExpressionComputation<>(expression, (Supplier) input);
 	}
 
 	@Test
@@ -446,7 +418,7 @@ public class EmbeddedCollectionMapTests implements CodeFeatures, TensorTestFeatu
 	}
 
 	@Test
-	public void reduceFirstEnumerate3d() {
+	public void reduceFirstEnumerate3dSingle() {
 		int n = 4;
 		int w = 2;
 		int d = 1;
@@ -472,6 +444,149 @@ public class EmbeddedCollectionMapTests implements CodeFeatures, TensorTestFeatu
 				for (int j = 0; j < d; j++) {
 					double expected = input.valueAt(i, 0, j);
 					double actual = output.valueAt(i, j);
+
+					System.out.println("EmbeddedCollectionMapTests[" + i + "]: Expected " + expected + " vs actual " + actual);
+					Assert.assertEquals(expected, actual, 0.0001);
+				}
+			}
+		});
+	}
+
+	@Test
+	public void mapEnumerate3d() {
+		int n = 4;
+		int w = 2;
+		int d = 3;
+
+		PackedCollection<?> input = tensor(shape(n, w, d)).pack();
+		input.fill(pos -> Math.random());
+
+		System.out.println(Arrays.toString(input.toArray(0, 8)));
+
+		HardwareOperator.verboseLog(() -> {
+			CollectionProducer<PackedCollection<?>> pool =
+					c(p(input)).traverse(1)
+							.map(shape(d, 1, w, 1),
+									v -> enumerate(shape(1, w, 1), v));
+			System.out.println(pool.getShape());
+
+			PackedCollection<?> output = pool.get().evaluate();
+			System.out.println(output.getShape());
+			System.out.println(Arrays.toString(output.toArray(0, 4)));
+
+			for (int i = 0; i < n; i++) {
+				for (int j = 0; j < w; j++) {
+					for (int k = 0; k < d; k++) {
+						double expected = input.valueAt(i, j, k);
+						double actual = output.valueAt(i, k, 0, j, 0);
+
+						System.out.println("EmbeddedCollectionMapTests[" + i + "]: Expected " + expected + " vs actual " + actual);
+						Assert.assertEquals(expected, actual, 0.0001);
+					}
+				}
+			}
+		});
+	}
+
+	@Test
+	public void embeddedMap() {
+		int n = 4;
+		int d = 3;
+
+		PackedCollection<?> input = tensor(shape(n, d)).pack();
+		input.fill(pos -> Math.random());
+
+		System.out.println(Arrays.toString(input.toArray(0, 12)));
+
+		HardwareOperator.verboseLog(() -> {
+			CollectionProducer<PackedCollection<?>> pool =
+					c(p(input)).traverse(1)
+							.map(shape(1, 2),
+									p -> p.map(shape(1, 2),
+											q -> duo(q)));
+			System.out.println(pool.getShape());
+
+			PackedCollection<?> output = pool.get().evaluate();
+			System.out.println(output.getShape());
+			System.out.println(Arrays.toString(output.toArray(0, 4)));
+
+			for (int i = 0; i < n; i++) {
+				for (int j = 0; j < 2; j++) {
+					double expected = input.valueAt(i, 0);
+					double actual = output.valueAt(i, 0, j);
+
+					System.out.println("EmbeddedCollectionMapTests[" + i + "]: Expected " + expected + " vs actual " + actual);
+					Assert.assertEquals(expected, actual, 0.0001);
+				}
+			}
+		});
+	}
+
+	@Test
+	public void mapFirstEnumerate2d() {
+		int n = 4;
+		int d = 6;
+		int w = 2;
+
+		PackedCollection<?> input = tensor(shape(n, d)).pack();
+		input.fill(pos -> Math.random());
+
+		System.out.println(Arrays.toString(input.toArray(0, 12)));
+
+		HardwareOperator.verboseLog(() -> {
+			CollectionProducer<PackedCollection<?>> pool =
+					c(p(input)).traverse(1)
+							.map(shape(3, 1),
+									p ->
+										enumerate(shape(1, w), p).traverse(1)
+												.map(shape(1), q -> first(q)));
+			System.out.println(pool.getShape());
+
+			PackedCollection<?> output = pool.get().evaluate();
+			System.out.println(output.getShape());
+			System.out.println(Arrays.toString(output.toArray(0, 12)));
+
+			int c = d / w;
+
+			for (int i = 0; i < n; i++) {
+				for (int j = 0; j < c; j++) {
+					double expected = input.valueAt(i, 2 * j);
+					double actual = output.valueAt(i, j, 0);
+
+					System.out.println("EmbeddedCollectionMapTests[" + i + "]: Expected " + expected + " vs actual " + actual);
+					Assert.assertEquals(expected, actual, 0.0001);
+				}
+			}
+		});
+	}
+
+	@Test
+	public void mapFirstEnumerate3d() {
+		int n = 4;
+		int w = 2;
+		int d = 3;
+
+		PackedCollection<?> input = tensor(shape(n, w, d)).pack();
+		input.fill(pos -> Math.random());
+
+		System.out.println(Arrays.toString(input.toArray(0, 8)));
+
+		HardwareOperator.verboseLog(() -> {
+			CollectionProducer<PackedCollection<?>> pool =
+					c(p(input)).traverse(1)
+							.map(shape(3, 1), v ->
+									enumerate(shape(1, w, 1), v)
+											.traverse(1).reduce(slice -> first(slice)));
+			System.out.println(pool.getShape());
+
+			PackedCollection<?> output = pool.get().evaluate();
+			System.out.println(output.getShape());
+			System.out.println(Arrays.toString(output.toArray(0, 4)));
+
+			for (int i = 0; i < n; i++) {
+				for (int j = 0; j < d; j++) {
+					double expected = input.valueAt(i, 0, j);
+					double actual = output.valueAt(i, j, 0);
 
 					System.out.println("EmbeddedCollectionMapTests[" + i + "]: Expected " + expected + " vs actual " + actual);
 					Assert.assertEquals(expected, actual, 0.0001);
@@ -547,6 +662,55 @@ public class EmbeddedCollectionMapTests implements CodeFeatures, TensorTestFeatu
 
 					System.out.println("EmbeddedCollectionMapTests[" + j + "]: Expected " + expected + " vs actual " + actual);
 					Assert.assertEquals(expected, actual, 0.0001);
+				}
+			}
+		});
+	}
+
+	@Test
+	public void pool2d() {
+		int r = 12;
+		int c = 16;
+		int d = 3;
+		int w = 2;
+
+		PackedCollection<?> input = tensor(shape(r, c, d)).pack();
+		input.fill(pos -> Math.random());
+
+		HardwareOperator.verboseLog(() -> {
+			CollectionProducer<PackedCollection<?>> pool =
+					c(p(input)).enumerate(1, w)
+							.enumerate(1, w)
+							.traverse(2)
+							.reduce(v ->
+									enumerate(shape(1, 1, w, w, 1), v)
+											.traverse(1).reduce(slice -> max(slice)));
+			System.out.println(pool.getShape());
+
+			PackedCollection<?> output = pool.get().evaluate();
+			System.out.println(output.getShape());
+
+			int r2 = r / w;
+			int c2 = c / w;
+
+			for (int copy = 0; copy < d; copy++) {
+				for (int i = 0; i < r2; i++) {
+					for (int j = 0; j < c2; j++) {
+						System.out.println("EmbeddedCollectionMapTests: " + i + ", " + j);
+
+						double expected = -Math.pow(10, 5);
+
+						for (int k = 0; k < w; k++) {
+							for (int l = 0; l < w; l++) {
+								expected = Math.max(expected, input.valueAt(i * w + k, j * w + l, copy));
+							}
+						}
+
+						double actual = output.toDouble(output.getShape().index(i, j, copy));
+
+						System.out.println("EmbeddedCollectionMapTests[" + i + ", " + j + "]: Expected " + expected + " vs actual " + actual);
+						Assert.assertEquals(expected, actual, 0.0001);
+					}
 				}
 			}
 		});

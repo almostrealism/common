@@ -73,9 +73,9 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	protected MemoryBank<?> createKernelDestination(int len) {
 		if (fixedDestinationShape) return new PackedCollection<>(getShape());
 
-		if (len > 1 && len % getShape().getCount() != 0) {
-			throw new IllegalArgumentException("Kernel length must be a multiple of the shape count");
-		}
+//		if (len > 1 && len % getShape().getCount() != 0) {
+//			throw new IllegalArgumentException("Kernel length must be a multiple of the shape count");
+//		}
 
 		int count = len / getShape().getCount();
 

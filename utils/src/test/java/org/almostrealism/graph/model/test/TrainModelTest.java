@@ -147,7 +147,7 @@ public class TrainModelTest implements TestFeatures {
 
 		try {
 			// TODO  This should not be necessary
-			Quotient.enableIntegerSimplification = false;
+			// Quotient.enableIntegerSimplification = false;
 			convPoolModel();
 		} catch (Exception e) {
 			e.printStackTrace();

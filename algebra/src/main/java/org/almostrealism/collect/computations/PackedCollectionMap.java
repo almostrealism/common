@@ -45,13 +45,16 @@ import java.util.stream.Stream;
 // TODO  This should be a KernelProducerComputationAdapter subclass
 public class PackedCollectionMap<T extends PackedCollection<?>>
 		extends CollectionProducerComputationBase<PackedCollection<?>, T>
-		implements TraversableExpression<Double>, RelativeSupport {
+		implements TraversableExpression<Double> {
+//		RelativeSupport {
 	public static boolean enableAbsoluteValueAt = true;
-	public static boolean enableSubset = false;
+	public static boolean enableAtomicKernel = false;
 
 	private Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper;
 	private TraversableExpression<Double> mapped;
 	private TraversalPolicy inputShape;
+
+	private boolean ignoreTraversalAxis;
 
 	public PackedCollectionMap(Producer<?> collection, Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper) {
 		this(shape(collection), collection, mapper);
@@ -65,6 +68,19 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 		if (inputShape.getTraversalAxis() != shape.getTraversalAxis()) {
 			throw new IllegalArgumentException("Input and output shapes must have the same traversal axis");
 		}
+	}
+
+	public boolean isIgnoreTraversalAxis() {
+		return ignoreTraversalAxis;
+	}
+
+	public void setIgnoreTraversalAxis(boolean ignoreTraversalAxis) {
+		this.ignoreTraversalAxis = ignoreTraversalAxis;
+	}
+
+	@Override
+	public int getMemLength() {
+		return enableAtomicKernel ? 1 : isIgnoreTraversalAxis() ? getShape().getTotalSize() : super.getMemLength();
 	}
 
 	@Override
@@ -88,6 +104,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 
 			if (value == null) throw new UnsupportedOperationException();
 
+			// TODO  Replace value.simplify() with value.getSimplified()
 			Variable v = new Variable(output.valueAt(i).getSimpleExpression(),
 					false, value.simplify(), output.getRootDelegate());
 			scope.getVariables().add(v);
@@ -128,6 +145,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 
 		if (mapped instanceof PackedCollectionMap) {
 			System.out.println("WARN: Embedded PackedCollectionMap");
+			((PackedCollectionMap<?>) mapped).setIgnoreTraversalAxis(true);
 		}
 
 		if (mapped instanceof TraversableExpression) {
@@ -154,54 +172,26 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 	}
 
 	private CollectionExpression createCollectionExpression(CollectionVariable input, TraversalPolicy sliceShape, TraversalPolicy traversalShape) {
-		if (enableSubset) {
-			return CollectionExpression.create(sliceShape,
-					index -> {
-						// Determine which slice to extract
-						Expression slice;
+		return CollectionExpression.create(sliceShape,
+				index -> {
+					// Determine which slice to extract
+					Expression slice;
 
-						if (sliceShape.getTotalSize() == 1) {
-							slice = index;
-						} else if (index.getType() == Integer.class ||
-								(index instanceof Cast && Objects.equals("int", ((Cast) index).getTypeName()))) {
-							slice = index.divide(e(sliceShape.getTotalSize()));
-						} else {
-							slice = index.divide(e((double) sliceShape.getTotalSize())).floor();
-						}
+					if (sliceShape.getTotalSize() == 1) {
+						slice = index;
+					} else if (index.getType() == Integer.class ||
+							(index instanceof Cast && Objects.equals("int", ((Cast) index).getTypeName()))) {
+						slice = index.divide(e(sliceShape.getTotalSize()));
+					} else {
+						slice = index.divide(e((double) sliceShape.getTotalSize())).floor();
+					}
 
-						// Find the index in that slice
-						Expression offset = new Mod(new Cast("int", index), e(sliceShape.getTotalSize()), false);
+					// Find the index in that slice
+					Expression offset = new Mod(new Cast("int", index), e(sliceShape.getTotalSize()), false);
 
-						// Determine the location of the slice
-						Expression<?> p[] = traversalShape.position(slice);
-
-						return input.get(sliceShape, p).getValueAt(offset);
-					});
-		} else {
-			return CollectionExpression.create(sliceShape,
-					index -> {
-						// Determine which slice to extract
-						Expression slice;
-
-						if (sliceShape.getTotalSize() == 1) {
-							slice = index;
-						} else if (index.getType() == Integer.class ||
-								(index instanceof Cast && Objects.equals("int", ((Cast) index).getTypeName()))) {
-							slice = index.divide(e(sliceShape.getTotalSize()));
-						} else {
-							slice = index.divide(e((double) sliceShape.getTotalSize())).floor();
-						}
-
-						// Find the index in that slice
-						Expression offset = new Mod(new Cast("int", index), e(sliceShape.getTotalSize()), false);
-
-						// Determine the location of the slice
-						Expression<?> p[] = traversalShape.position(slice);
-
-						// return input.get(sliceShape, p).getValueAt(offset);
-						return input.getValueAt(slice.multiply(e(sliceShape.getTotalSize())).add(offset));
-					});
-		}
+					// return input.get(sliceShape, p).getValueAt(offset);
+					return input.getValueAt(slice.multiply(e(sliceShape.getTotalSize())).add(offset));
+				});
 	}
 
 	private static TraversalPolicy shape(Producer<?> collection) {
@@ -211,7 +201,8 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 		return ((Shape) collection).getShape();
 	}
 
-	private static class ItemComputation<T extends PackedCollection<?>> extends DynamicExpressionComputation<T> implements RelativeSupport {
+	private static class ItemComputation<T extends PackedCollection<?>> extends DynamicExpressionComputation<T>
+			implements RelativeSupport {
 		public ItemComputation(TraversalPolicy shape,
 											Function<CollectionVariable[], CollectionExpression> expression,
 											Supplier<Evaluable<? extends PackedCollection<?>>>... args) {

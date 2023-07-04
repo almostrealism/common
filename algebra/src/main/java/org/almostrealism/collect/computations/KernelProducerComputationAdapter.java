@@ -45,12 +45,27 @@ public abstract class KernelProducerComputationAdapter<I extends PackedCollectio
 	 */
 	public static final boolean enableVariableRefConversion = false;
 
+	private boolean ignoreTraversalAxis;
+
 	private IntFunction<InstanceReference> variableRef;
 
 	protected KernelProducerComputationAdapter() { }
 
 	public KernelProducerComputationAdapter(TraversalPolicy outputShape, Supplier<Evaluable<? extends I>>... arguments) {
 		super(outputShape, arguments);
+	}
+
+	public boolean isIgnoreTraversalAxis() {
+		return ignoreTraversalAxis;
+	}
+
+	public void setIgnoreTraversalAxis(boolean ignoreTraversalAxis) {
+		this.ignoreTraversalAxis = ignoreTraversalAxis;
+	}
+
+	@Override
+	public int getMemLength() {
+		return isIgnoreTraversalAxis() ? getShape().getTotalSize() : super.getMemLength();
 	}
 
 	@Override
