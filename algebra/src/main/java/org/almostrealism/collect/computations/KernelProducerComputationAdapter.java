@@ -89,7 +89,7 @@ public abstract class KernelProducerComputationAdapter<I extends PackedCollectio
 			if (getMemLength() > 1) index = index.multiply(getMemLength()).add(i);
 
 			Variable v = new Variable(output.valueAt(i).getSimpleExpression(),
-					false, getValueAt(index).simplify(), output.getRootDelegate());
+					false, getValueAt(index).getSimplified(), output.getRootDelegate());
 			scope.getVariables().add(v);
 		}
 

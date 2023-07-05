@@ -523,6 +523,68 @@ public class EmbeddedCollectionMapTests implements CodeFeatures, TensorTestFeatu
 	}
 
 	@Test
+	public void enumerate() {
+		int n = 4;
+		int d = 6;
+		int w = 2;
+
+		PackedCollection<?> input = tensor(shape(n, d)).pack();
+		input.fill(pos -> Math.random());
+
+		HardwareOperator.verboseLog(() -> {
+			CollectionProducer<PackedCollection<?>> en = enumerate(shape(n, w), c(p(input)));
+
+			System.out.println(en.getShape());
+
+			PackedCollection<?> output = en.get().evaluate();
+			System.out.println(output.getShape());
+
+			for (int i = 0; i < n; i++) {
+				for (int j = 0; j < d; j++) {
+					double expected = input.valueAt(i, j);
+					double actual = output.valueAt(j / w, i, j % w);
+
+					System.out.println("EmbeddedCollectionMapTests[" + i + "]: Expected " + expected + " vs actual " + actual);
+					Assert.assertEquals(expected, actual, 0.0001);
+				}
+			}
+		});
+	}
+
+	@Test
+	public void enumerateExpression() {
+		int n = 4;
+		int d = 6;
+		int w = 2;
+
+		PackedCollection<?> a = tensor(shape(n, d)).pack();
+		PackedCollection<?> b = tensor(shape(n, d)).pack();
+		a.fill(pos -> Math.random());
+		b.fill(pos -> Math.random());
+
+		HardwareOperator.verboseLog(() -> {
+			CollectionProducer<PackedCollection<?>> product =
+					multiply(c(p(a)).traverse(1), c(p(b)).traverse(1));
+			product = enumerate(shape(n, w), product);
+
+			System.out.println(product.getShape());
+
+			PackedCollection<?> output = product.get().evaluate();
+			System.out.println(output.getShape());
+
+			for (int i = 0; i < n; i++) {
+				for (int j = 0; j < d; j++) {
+					double expected = a.valueAt(i, j) * b.valueAt(i, j);
+					double actual = output.valueAt(j / w, i, j % w);
+
+					System.out.println("EmbeddedCollectionMapTests[" + i + "]: Expected " + expected + " vs actual " + actual);
+					Assert.assertEquals(expected, actual, 0.0001);
+				}
+			}
+		});
+	}
+
+	@Test
 	public void mapFirstEnumerate2d() {
 		int n = 4;
 		int d = 6;

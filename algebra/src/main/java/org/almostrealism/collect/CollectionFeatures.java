@@ -398,7 +398,8 @@ public interface CollectionFeatures extends ExpressionFeatures {
 
 		if (enableDynamicExpressions) {
 			return new DynamicExpressionComputation<>(shape,
-					args -> CollectionExpression.create(shape, index -> new Quotient(args[1].getValueAt(index), args[2].getValueAt(index))),
+					args -> CollectionExpression.create(shape, index ->
+							new Quotient(args[1].getValueAt(index), args[2].getValueAt(index))),
 					(Supplier) a, (Supplier) b);
 		} else {
 			List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expressions =

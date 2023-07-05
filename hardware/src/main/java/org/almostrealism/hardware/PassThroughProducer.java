@@ -18,6 +18,7 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
+import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.Argument.Expectation;
@@ -48,6 +49,9 @@ public class PassThroughProducer<T extends MemoryData>
 		TraversableExpression<Double>,
 		Shape<PassThroughProducer<T>>, KernelIndex,
 		ComputerFeatures  {
+
+	public static boolean enableRelativeValueAt = true;
+
 	private TraversalPolicy shape;
 	private int argIndex;
 	private int kernelIndex;
@@ -200,16 +204,6 @@ public class PassThroughProducer<T extends MemoryData>
 		return getArgumentVariables().get(index);
 	}
 
-
-	@Deprecated
-	public Expression<Double> getValue(int pos) { return getValueFunction().apply(pos); }
-
-	@Deprecated
-	public IntFunction<Expression<Double>> getValueFunction() {
-		// return pos -> new Expression<>(Double.class, getArgumentValueName(0, pos, kernelIndex), Collections.emptyList(), getArgument(0));
-		return pos -> getArgument(0).valueAt(pos);
-	}
-
 	@Override
 	public Expression<Double> getValue(Expression... pos) {
 		return getValueAt(shape.index(pos));
@@ -217,7 +211,7 @@ public class PassThroughProducer<T extends MemoryData>
 
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
-		return getArgument(0).getRelative(index);
+		return enableRelativeValueAt ? getArgument(0).getRelative(index) : getArgument(0).getAbsolute(index);
 	}
 
 	@Override

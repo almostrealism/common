@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.expression.Conditional;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.PackedCollection;
@@ -27,6 +28,8 @@ import java.util.function.Supplier;
 
 public abstract class TraversableProducerComputationAdapter<I extends PackedCollection<?>, O extends PackedCollection<?>>
 		extends TraversableProducerComputationBase<I, O> {
+
+	public static boolean enableConditionalValue = false;
 
 	protected TraversableProducerComputationAdapter() { }
 
@@ -40,9 +43,17 @@ public abstract class TraversableProducerComputationAdapter<I extends PackedColl
 
 		if (i.isPresent()) {
 			return getValueFunction().apply(i.getAsInt());
-		} else {
-			return null;
+		} else if (enableConditionalValue) {
+			Expression value = getValueFunction().apply(0);
+
+			for (int j = 1; j < getMemLength(); j++) {
+				value = new Conditional(index.eq(e(j)), getValueFunction().apply(j), value);
+			}
+
+			return value;
 		}
+
+		return null;
 	}
 
 	public abstract IntFunction<Expression<Double>> getValueFunction();
