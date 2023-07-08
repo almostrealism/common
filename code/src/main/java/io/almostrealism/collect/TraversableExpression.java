@@ -27,7 +27,7 @@ import java.util.function.IntFunction;
 public interface TraversableExpression<T> extends ExpressionFeatures {
 	default IntFunction<Variable<T, ?>> getAssignmentFunction(Variable<?, ?> outputVariable) {
 		return i -> new Variable(((ArrayVariable) outputVariable).valueAt(i).getSimpleExpression(),
-				false, getValueAt(new IntegerConstant(i)).getSimplified(), outputVariable.getRootDelegate());
+				false, getValueRelative(new IntegerConstant(i)).getSimplified(), outputVariable.getRootDelegate());
 	}
 
 	default Expression<T> getValue(PositionExpression pos) {
@@ -37,4 +37,8 @@ public interface TraversableExpression<T> extends ExpressionFeatures {
 	Expression<T> getValue(Expression... pos);
 
 	Expression<T> getValueAt(Expression index);
+
+	default Expression<T> getValueRelative(Expression index) {
+		return getValueAt(index);
+	}
 }

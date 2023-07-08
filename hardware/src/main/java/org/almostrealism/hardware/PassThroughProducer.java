@@ -20,6 +20,7 @@ import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
 import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.code.ArgumentMap;
@@ -37,6 +38,8 @@ import org.almostrealism.hardware.mem.MemoryDataDestination;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
@@ -49,8 +52,6 @@ public class PassThroughProducer<T extends MemoryData>
 		TraversableExpression<Double>,
 		Shape<PassThroughProducer<T>>, KernelIndex,
 		ComputerFeatures  {
-
-	public static boolean enableRelativeValueAt = true;
 
 	private TraversalPolicy shape;
 	private int argIndex;
@@ -93,10 +94,6 @@ public class PassThroughProducer<T extends MemoryData>
 		this.destination = () -> null;
 		this.setInputs(Arrays.asList(new MemoryDataDestination(this, null)));
 		init();
-	}
-
-	protected IntFunction<Variable<Double, ?>> variableForIndex(IntFunction<Expression<Double>> valueFunction) {
-		return i -> new Variable(getVariableName(i), true, valueFunction.apply(i), this);
 	}
 
 	/**
@@ -211,7 +208,21 @@ public class PassThroughProducer<T extends MemoryData>
 
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
-		return enableRelativeValueAt ? getArgument(0).getRelative(index) : getArgument(0).getAbsolute(index);
+		if (!ArrayVariable.enableRelative) {
+			return getArgument(0).getAbsolute(index);
+//		} else if (ArrayVariable.forceTraversable) {
+//			ArrayVariable arg = getArgument(0);
+//			Expression dim = index.toInt().divide(e(shape.getTotalSize())).multiply(arg.getDimValue());
+//			Expression offset = index.toInt().mod(e(shape.getTotalSize()), false);
+//			return arg.getAbsolute(dim.add(offset));
+		} else {
+			return getArgument(0).getRelative(index);
+		}
+	}
+
+	@Override
+	public Expression<Double> getValueRelative(Expression index) {
+		return getArgument(0).getRelative(index);
 	}
 
 	@Override

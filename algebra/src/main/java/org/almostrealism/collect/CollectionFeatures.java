@@ -356,7 +356,8 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		if (enableDynamicExpressions) {
 			TraversalPolicy shape = shape(a);
 			int size = shape(b).getSize();
-			if (shape.getSize() != size) {
+			// TODO This should actually just call traverseEach if the shapes don't match, but one size is = 1
+			if (shape.getSize() != 1 && size != 1 && shape.getSize() != size) {
 				throw new IllegalArgumentException("Cannot multiply a collection of size " + shape.getSize() +
 						" with a collection of size " + size);
 			}

@@ -17,6 +17,7 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.expression.InstanceReference;
@@ -68,13 +69,25 @@ public abstract class TraversableProducerComputationBase<I extends PackedCollect
 	public Scope<O> getScope() {
 		Scope<O> scope = super.getScope();
 
-		if (isVariableRef()) {
-			throw new UnsupportedOperationException();
-		} else {
+		if (isVariableRef()) throw new UnsupportedOperationException();
+
+		ArrayVariable<Double> output = (ArrayVariable<Double>) getOutputVariable();
+
+//		if (ArrayVariable.enableRelative) {
 			IntStream.range(0, getMemLength())
-					.mapToObj(getAssignmentFunction(getOutputVariable()))
-					.forEach(v -> scope.getVariables().add((Variable) v));
-		}
+						.mapToObj(getAssignmentFunction(getOutputVariable()))
+						.forEach(v -> scope.getVariables().add((Variable) v));
+//		} else {
+//			for (int i = 0; i < getMemLength(); i++) {
+//				Expression index = new KernelIndex(0);
+//				if (getMemLength() > 1) index = index.multiply(getMemLength()).add(i);
+//
+//				Variable v = new Variable(output.valueAt(i).getSimpleExpression(),
+//						false, getValueAt(index).getSimplified(), output.getRootDelegate());
+//				scope.getVariables().add(v);
+//			}
+//		}
+
 		return scope;
 	}
 

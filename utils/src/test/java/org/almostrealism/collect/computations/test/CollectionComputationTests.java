@@ -57,7 +57,7 @@ public class CollectionComputationTests implements TestFeatures {
 		PackedCollection<?> result = new PackedCollection<>(shape(len, 1).traverse(1));
 
 		HardwareOperator.verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> product = c(p(in), integers(0, len)).multiply(c(2.0));
+			CollectionProducer<PackedCollection<?>> product = c(p(in), integers(0, len)).traverseEach().multiply(c(2.0));
 			product.get().into(result).evaluate();
 		});
 

@@ -80,10 +80,6 @@ public class ExpressionComputation<T extends PackedCollection<?>>
 		return expression;
 	}
 
-	protected List<ArrayVariable<Double>> getInputArguments() {
-		return (List) getInputs().stream().map(this::getArgumentForInput).collect(Collectors.toList());
-	}
-
 	@Override
 	public IntFunction<Expression<Double>> getValueFunction() {
 		return pos -> {
@@ -93,6 +89,10 @@ public class ExpressionComputation<T extends PackedCollection<?>>
 				return expression.get(pos).apply(getInputArguments());
 			}
 		};
+	}
+
+	public Expression<Double> getValue(List<ArrayVariable<Double>> args, int index) {
+		return expression.get(index).apply(args);
 	}
 
 	private static Supplier[] validateArgs(Supplier<Evaluable<? extends PackedCollection<?>>>... args) {

@@ -204,8 +204,8 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 	private static class ItemComputation<T extends PackedCollection<?>> extends DynamicExpressionComputation<T>
 			implements RelativeSupport {
 		public ItemComputation(TraversalPolicy shape,
-											Function<CollectionVariable[], CollectionExpression> expression,
-											Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+							   Function<CollectionVariable[], CollectionExpression> expression,
+							   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
 			super(shape, expression, args);
 		}
 	}
