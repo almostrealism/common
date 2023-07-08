@@ -88,6 +88,18 @@ public class ReshapeProducer<T extends Shape<T>> implements CollectionProducer<T
 	}
 
 	@Override
+	public Expression<Double> getValueRelative(Expression index) {
+		return producer instanceof TraversableExpression ? ((TraversableExpression) producer).getValueRelative(index) : null;
+	}
+
+	@Override
+	public boolean isTraversable() {
+		if (producer instanceof RelativeSupport) return false;
+		if (producer instanceof TraversableExpression) return ((TraversableExpression) producer).isTraversable();
+		return false;
+	}
+
+	@Override
 	public CollectionProducer<T> reshape(TraversalPolicy shape) {
 		return new ReshapeProducer<>(shape, producer);
 	}

@@ -41,4 +41,14 @@ public interface TraversableExpression<T> extends ExpressionFeatures {
 	default Expression<T> getValueRelative(Expression index) {
 		return getValueAt(index);
 	}
+
+	default boolean isTraversable() {
+		return true;
+	}
+
+	static TraversableExpression traverse(Object o) {
+		if (!(o instanceof TraversableExpression)) return null;
+		if (!((TraversableExpression) o).isTraversable()) return null;
+		return (TraversableExpression) o;
+	}
 }

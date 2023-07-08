@@ -34,46 +34,13 @@ public class RelativeArrayVariable extends ArrayVariable<Double> {
 
 	@Override
 	public Expression<Double> getValueRelative(int index) {
-		boolean fallback = true;
-		Expression<Double> value = null;
+		if (ref.getDelegate() != null) return ref.getValueRelative(index);
 
-		if (ref.getProducer() instanceof TraversableExpression) {
-			value = ((TraversableExpression) ref.getProducer()).getValueRelative(new IntegerConstant(index));
-		} else if (ref.getProducer() instanceof Delegated &&
-				((Delegated) ref.getProducer()).getDelegate() instanceof TraversableExpression) {
-			value = ((TraversableExpression) ((Delegated) ref.getProducer()).getDelegate())
-					.getValueRelative(new IntegerConstant(index));
-		} else {
-			fallback = false;
-		}
+		TraversableExpression exp = TraversableExpression.traverse(ref.getProducer());
+		if (exp == null && ref.getProducer() instanceof Delegated)
+			exp = TraversableExpression.traverse(((Delegated) ref.getProducer()).getDelegate());
+		if (exp != null) return ref.getValueRelative(index);
 
-		if (ignore(fallback && value == null)) return ref.getValueRelative(index);
-
-		Expression idx = offset.add(new IntegerConstant(index));
-
-		if (ref.getProducer() instanceof TraversableExpression
-				&& !(ref.getProducer() instanceof RelativeSupport)
-		) {
-			value = ((TraversableExpression) ref.getProducer()).getValueAt(idx);
-			if (value != null) return value;
-		} else if (ref.getProducer() instanceof Delegated &&
-				((Delegated) ref.getProducer()).getDelegate() instanceof TraversableExpression
-				&& !(((Delegated) ref.getProducer()).getDelegate() instanceof RelativeSupport)
-		) {
-			value = ((TraversableExpression) ((Delegated) ref.getProducer()).getDelegate())
-					.getValueAt(idx);
-			if (value != null) return value;
-		}
-
-		return ref.getRaw(idx);
-	}
-
-	private boolean ignore(boolean nonTraversable) {
-		if (ref.getDelegate() != null) return true;
-		if (nonTraversable) return false;
-//		return false;
-		return (ref.getProducer() instanceof TraversableExpression ||
-				ref.getProducer() instanceof Delegated &&
-						((Delegated) ref.getProducer()).getDelegate() instanceof TraversableExpression);
+		return ref.getRaw(offset.add(new IntegerConstant(index)));
 	}
 }
