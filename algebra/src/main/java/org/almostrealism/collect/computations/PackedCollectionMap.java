@@ -103,9 +103,8 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 
 			if (value == null) throw new UnsupportedOperationException();
 
-			// TODO  Replace value.simplify() with value.getSimplified()
 			Variable v = new Variable(output.valueAt(i).getSimpleExpression(),
-					false, value.simplify(), output.getRootDelegate());
+					false, value.getSimplified(), output.getRootDelegate());
 			scope.getVariables().add(v);
 		}
 

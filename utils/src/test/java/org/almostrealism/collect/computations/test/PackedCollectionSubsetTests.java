@@ -475,6 +475,11 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		CollectionProducerComputation<PackedCollection<?>> producer =
 				kernel(i -> KernelSupport.kernelIndex(i),
 						subsetShape, (i, p) -> i.v(0).get(shape(w, h, d), x0, y0, z0).valueAt(subsetShape.index(p)), p(input));
+
+//		TODO  Why does this version not work? Should be equivalent to the above
+//		CollectionProducerComputation<PackedCollection<?>> producer =
+//				kernel(i -> KernelSupport.kernelIndex(i),
+//						subsetShape, (i, p) -> i.v(0).get(shape(w, h, d), x0, y0, z0).getValue(p), p(input));
 		KernelizedEvaluable<PackedCollection<?>> ev = producer.get();
 
 		PackedCollection<?> result = new PackedCollection(subsetShape);

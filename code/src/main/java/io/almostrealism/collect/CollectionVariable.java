@@ -62,12 +62,12 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 
 	@Override
 	public InstanceReference<T> getRelative(Expression<?> idx) {
-		if (parent == null) {
-			return super.getRelative(idx);
-		} else {
+		if (parent != null) {
 			Expression<?> p = parent.getShape().subset(getShape(), idx, pos);
 			return parent.getRaw(p);
 		}
+
+		return super.getRelative(idx);
 	}
 
 	@Override
@@ -109,7 +109,6 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 		if (getShape().getTotalSize() == 1) {
 			return (Expression) getRaw(e(0));
 		} else {
-			// index =  e("((int) (" + index.simplify().getExpression() + ")) % " + getShape().getTotalSize(), index);
 			index = new Mod(new Cast("int", index), e(getShape().getTotalSize()), false);
 			return (Expression) getRaw(index);
 		}

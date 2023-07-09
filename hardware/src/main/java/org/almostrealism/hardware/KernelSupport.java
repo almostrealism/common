@@ -17,7 +17,7 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.StaticReference;
+import io.almostrealism.expression.KernelIndex;
 
 import java.util.stream.IntStream;
 
@@ -31,7 +31,7 @@ public interface KernelSupport {
 	}
 
 	static Expression<?> kernelIndex(int kernelIndex) {
-		return new StaticReference<>(Integer.class, getKernelIndex(kernelIndex));
+		return new KernelIndex(kernelIndex);
 	}
 
 	static String getKernelIndex(int kernelIndex) {
