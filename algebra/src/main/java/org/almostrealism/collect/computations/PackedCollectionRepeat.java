@@ -32,6 +32,8 @@ import java.util.function.Supplier;
 
 public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		extends KernelProducerComputationAdapter<PackedCollection<?>, T> {
+	public static boolean enableRelativeFallback = true;
+
 	private TraversalPolicy subsetShape;
 	private TraversalPolicy sliceShape;
 
@@ -68,15 +70,13 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		// Position the offset relative to the slice
 		offset = slice.multiply(e(subsetShape.getTotalSize())).add(offset);
 
-		// If the offset is a known constant, the value can be
-		// directly obtained
-//		OptionalInt offsetValue = offset.intValue();
-//		if (offsetValue.isPresent()) {
-//			return getArgument(1).getValueRelative(offsetValue.getAsInt());
-//		}
-		OptionalDouble offsetValue = offset.getSimplified().doubleValue();
-		if (offsetValue.isPresent()) {
-			return getArgument(1).getValueRelative((int) offsetValue.getAsDouble());
+		if (enableRelativeFallback) {
+			// If the offset is a known constant, the value can be
+			// directly obtained
+			OptionalDouble offsetValue = offset.getSimplified().doubleValue();
+			if (offsetValue.isPresent()) {
+				return getArgument(1).getValueRelative((int) offsetValue.getAsDouble());
+			}
 		}
 
 		// Otherwise the value will only be available if the

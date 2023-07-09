@@ -55,14 +55,6 @@ public interface HardwareFeatures {
 		return Hardware.getLocalHardware().stringForDouble(value);
 	}
 
-	default Expression<Double> expressionForDouble(double value) {
-		return new DoubleConstant(value);
-	}
-
-	default Expression<Double> e(double value) {
-		return expressionForDouble(value);
-	}
-
 	@JsonIgnore
 	default String getNumberTypeName() {
 		return Hardware.getLocalHardware().getNumberTypeName();

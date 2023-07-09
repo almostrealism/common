@@ -22,7 +22,7 @@ import java.util.stream.Collectors;
 
 public class Quotient extends NAryExpression<Double> {
 	public static boolean enableIntegerSimplification = true;
-	public static boolean enableFpSimplification = false;
+	public static boolean enableFpSimplification = true;
 
 	public Quotient(Expression<Double>... values) {
 		super(Double.class, "/", values);

@@ -16,6 +16,7 @@
 
 package org.almostrealism.algebra;
 
+import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.Cosine;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
@@ -41,7 +42,7 @@ public interface PairFeatures extends HardwareFeatures {
 
 	static ExpressionComputation<Pair<?>> of(Pair<?> value) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		IntStream.range(0, 2).forEach(i -> comp.add(args -> HardwareFeatures.ops().expressionForDouble(value.toDouble(i))));
+		IntStream.range(0, 2).forEach(i -> comp.add(args -> ExpressionFeatures.getInstance().e(value.toDouble(i))));
 		return new ExpressionComputation<Pair<?>>(comp)
 				.setPostprocessor(Pair.postprocessor());
 	}

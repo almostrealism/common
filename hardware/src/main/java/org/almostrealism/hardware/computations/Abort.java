@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware.computations;
 
+import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.code.HybridScope;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.relation.Provider;
@@ -26,7 +27,7 @@ import org.almostrealism.hardware.mem.Bytes;
 import java.util.Optional;
 import java.util.function.Supplier;
 
-public class Abort extends DynamicOperationComputationAdapter<MemoryData> {
+public class Abort extends DynamicOperationComputationAdapter<MemoryData> implements ExpressionFeatures {
 	private static MemoryData abortFallback;
 
 	static {
@@ -45,7 +46,7 @@ public class Abort extends DynamicOperationComputationAdapter<MemoryData> {
 	public Scope<Void> getScope() {
 		HybridScope<Void> scope = new HybridScope<>(this);
 		scope.code().accept("if (");
-		scope.code().accept(getArgument(0).getRelative(e(0)).getSimpleExpression());
+		scope.code().accept(getArgument(0).getRelative(e(0.0)).getSimpleExpression());
 		scope.code().accept(" > 0) { return; }");
 		return scope;
 	}

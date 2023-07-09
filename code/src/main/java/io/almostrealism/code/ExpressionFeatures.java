@@ -17,6 +17,7 @@
 package io.almostrealism.code;
 
 import io.almostrealism.expression.Conditional;
+import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Equals;
 import io.almostrealism.expression.Exp;
 import io.almostrealism.expression.Expression;
@@ -32,6 +33,13 @@ public interface ExpressionFeatures {
 		return new IntegerConstant(value);
 	}
 
+	default Expression<Double> expressionForDouble(double value) {
+		return new DoubleConstant(value);
+	}
+
+	default Expression<Double> e(double value) {
+		return expressionForDouble(value);
+	}
 
 	default Expression<Double> e(String expression, Expression<?>... dependencies) {
 		return new Expression<>(Double.class, expression, dependencies);
@@ -56,5 +64,9 @@ public interface ExpressionFeatures {
 
 	default Conditional conditional(Expression<Boolean> condition, Expression<Double> positive, Expression<Double> negative) {
 		return new Conditional(condition, positive, negative);
+	}
+
+	static ExpressionFeatures getInstance() {
+		return new ExpressionFeatures() { };
 	}
 }

@@ -16,6 +16,7 @@
 
 package org.almostrealism.algebra;
 
+import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.*;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
@@ -50,7 +51,7 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 
 	static ExpressionComputation<Scalar> of(Scalar value) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
-		IntStream.range(0, 2).forEach(i -> comp.add(args -> HardwareFeatures.ops().expressionForDouble(value.getMem().toArray(value.getOffset() + i, 1)[0])));
+		IntStream.range(0, 2).forEach(i -> comp.add(args -> ExpressionFeatures.getInstance().e(value.getMem().toArray(value.getOffset() + i, 1)[0])));
 		return new ExpressionComputation(comp).setPostprocessor(Scalar.postprocessor());
 	}
 

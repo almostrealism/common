@@ -30,6 +30,8 @@ import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.KernelSupport;
 
 public class ReshapeProducer<T extends Shape<T>> implements CollectionProducer<T>, ScopeLifecycle, TraversableExpression<Double>, KernelSupport {
+	public static boolean enableRelativeSupport = false;
+
 	private TraversalPolicy shape;
 	private int traversalAxis;
 	private Producer<T> producer;
@@ -82,7 +84,7 @@ public class ReshapeProducer<T extends Shape<T>> implements CollectionProducer<T
 
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
-		if (producer instanceof RelativeSupport) return null;
+		if (!enableRelativeSupport && producer instanceof RelativeSupport) return null;
 		
 		return producer instanceof TraversableExpression ? ((TraversableExpression) producer).getValueAt(index) : null;
 	}
@@ -94,7 +96,7 @@ public class ReshapeProducer<T extends Shape<T>> implements CollectionProducer<T
 
 	@Override
 	public boolean isTraversable() {
-		if (producer instanceof RelativeSupport) return false;
+		if (!enableRelativeSupport && producer instanceof RelativeSupport) return false;
 		if (producer instanceof TraversableExpression) return ((TraversableExpression) producer).isTraversable();
 		return false;
 	}
