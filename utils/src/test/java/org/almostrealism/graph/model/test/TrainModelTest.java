@@ -17,6 +17,7 @@
 package org.almostrealism.graph.model.test;
 
 import io.almostrealism.expression.Quotient;
+import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
@@ -111,8 +112,16 @@ public class TrainModelTest implements TestFeatures {
 		Tensor<Double> t = tensor(inputShape);
 		PackedCollection<?> input = t.pack();
 
-		model.setup().get().run();
-		model.forward(input);
+		boolean enableRelative = ArrayVariable.enableRelative;
+
+		try {
+			ArrayVariable.enableRelative = true;
+
+			model.setup().get().run();
+			model.forward(input);
+		} finally {
+			ArrayVariable.enableRelative = enableRelative;
+		}
 
 		PackedCollection<?> filter = conv.getWeights().get(0);
 		TraversalPolicy filterShape = filter.getShape();
@@ -143,21 +152,6 @@ public class TrainModelTest implements TestFeatures {
 
 	@Test
 	public void convPool() {
-		boolean quotientSimplification = Quotient.enableIntegerSimplification;
-
-		try {
-			// TODO  This should not be necessary
-			// Quotient.enableIntegerSimplification = false;
-			convPoolModel();
-		} catch (Exception e) {
-			e.printStackTrace();
-			Assert.fail();
-		} finally {
-			Quotient.enableIntegerSimplification = quotientSimplification;
-		}
-	}
-
-	public void convPoolModel() {
 		Model model = new Model(inputShape);
 		CellularLayer conv = convolution2d(inputShape, convSize, 8);
 		CellularLayer pool = pool2d(conv.getOutputShape(), poolSize);
@@ -168,10 +162,18 @@ public class TrainModelTest implements TestFeatures {
 		Tensor<Double> t = tensor(inputShape);
 		PackedCollection<?> input = t.pack();
 
-		model.setup().get().run();
+		boolean enableRelative = ArrayVariable.enableRelative;
 
-		PackedCollection<?> in = input;
-		HardwareOperator.verboseLog(() -> model.forward(in));
+		try {
+			ArrayVariable.enableRelative = true;
+
+			model.setup().get().run();
+
+			PackedCollection<?> in = input;
+			HardwareOperator.verboseLog(() -> model.forward(in));
+		} finally {
+			ArrayVariable.enableRelative = enableRelative;
+		}
 
 		PackedCollection<?> filter = conv.getWeights().get(0);
 		TraversalPolicy filterShape = filter.getShape();

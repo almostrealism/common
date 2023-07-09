@@ -36,7 +36,6 @@ import java.util.function.Supplier;
 
 public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements Array<T, ArrayVariable<T>> {
 	public static boolean enableRelative = false;
-	public static boolean enableRelativeTraversableExpressions = false;
 
 	public static BiFunction<String, String, String> dereference = (name, pos) -> name + "[" + pos + "]";
 
@@ -96,17 +95,15 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 	}
 
 	public Expression<Double> getValueRelative(int index) {
-		if (!enableRelativeTraversableExpressions) {
-			if (getProducer() instanceof TraversableExpression && !(getProducer() instanceof RelativeSupport)) {
-				Expression<Double> value = ((TraversableExpression) getProducer()).getValueRelative(new IntegerConstant(index));
-				if (value != null) return value;
-			} else if (getProducer() instanceof Delegated &&
-					((Delegated) getProducer()).getDelegate() instanceof TraversableExpression &&
-					!(((Delegated) getProducer()).getDelegate() instanceof RelativeSupport)) {
-				Expression<Double> value = ((TraversableExpression) ((Delegated) getProducer()).getDelegate())
-						.getValueRelative(new IntegerConstant(index));
-				if (value != null) return value;
-			}
+		if (getProducer() instanceof TraversableExpression && !(getProducer() instanceof RelativeSupport)) {
+			Expression<Double> value = ((TraversableExpression) getProducer()).getValueRelative(new IntegerConstant(index));
+			if (value != null) return value;
+		} else if (getProducer() instanceof Delegated &&
+				((Delegated) getProducer()).getDelegate() instanceof TraversableExpression &&
+				!(((Delegated) getProducer()).getDelegate() instanceof RelativeSupport)) {
+			Expression<Double> value = ((TraversableExpression) ((Delegated) getProducer()).getDelegate())
+					.getValueRelative(new IntegerConstant(index));
+			if (value != null) return value;
 		}
 
 		if (getDelegate() != null) {

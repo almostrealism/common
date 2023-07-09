@@ -46,7 +46,6 @@ import java.util.stream.Stream;
 public class PackedCollectionMap<T extends PackedCollection<?>>
 		extends CollectionProducerComputationBase<PackedCollection<?>, T>
 		implements TraversableExpression<Double> {
-//		RelativeSupport {
 	public static boolean enableAbsoluteValueAt = true;
 	public static boolean enableAtomicKernel = false;
 
@@ -188,9 +187,8 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 
 					// Find the index in that slice
 					Expression offset = new Mod(new Cast("int", index), e(sliceShape.getTotalSize()), false);
-
-					// return input.get(sliceShape, p).getValueAt(offset);
-					return input.getValueAt(slice.multiply(e(sliceShape.getTotalSize())).add(offset));
+					offset = slice.multiply(e(sliceShape.getTotalSize())).add(offset);
+					return input.getValueAt(offset);
 				});
 	}
 

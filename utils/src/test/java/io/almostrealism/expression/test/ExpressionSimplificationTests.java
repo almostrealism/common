@@ -31,7 +31,7 @@ public class ExpressionSimplificationTests implements ExpressionFeatures {
 		Expression out = e(25).add(d).toInt();
 
 		System.out.println(out.getSimpleExpression());
-		Assert.assertEquals("(int)(25)", out.getSimpleExpression());
+		Assert.assertEquals("25", out.getSimpleExpression());
 	}
 
 	@Test
@@ -42,7 +42,7 @@ public class ExpressionSimplificationTests implements ExpressionFeatures {
 		Expression out = b.add(d).toInt();
 
 		System.out.println(out.getSimpleExpression());
-		Assert.assertEquals("(int)(25.0)", out.getSimpleExpression());
+		Assert.assertEquals("25", out.getSimpleExpression());
 	}
 
 	@Test
@@ -55,5 +55,14 @@ public class ExpressionSimplificationTests implements ExpressionFeatures {
 		out = new Mod(out, e(5), false);
 
 		System.out.println(out.getSimpleExpression());
+	}
+
+	@Test
+	public void castFloorDivide() {
+		Expression exp = e(0.0).divide(e(4.0)).floor()
+				.multiply(e(4)).add(e(0.0).toInt()
+						.mod(e(4), false)).toInt();
+		System.out.println(exp.getExpression());
+		Assert.assertEquals("0", exp.getSimpleExpression());
 	}
 }

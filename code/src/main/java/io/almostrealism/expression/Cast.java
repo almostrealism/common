@@ -36,6 +36,11 @@ public class Cast extends UnaryExpression<Double> {
 	public Expression<Double> simplify() {
 		Expression<Double> flat = super.simplify();
 		if (!(flat instanceof Cast)) return flat;
+
+		OptionalDouble d = flat.getChildren().get(0).doubleValue();
+		if (d.isPresent() && typeName.equals("int"))
+			return (Expression) new IntegerConstant((int) d.getAsDouble());
+
 		if (flat.getChildren().get(0) instanceof Cast) {
 			return new Cast(typeName, flat.getChildren().get(0).getChildren().get(0));
 		}
@@ -59,6 +64,10 @@ public class Cast extends UnaryExpression<Double> {
 	public OptionalInt intValue() {
 		OptionalInt i = getChildren().get(0).intValue();
 		if (i.isPresent()) return i;
+		if (typeName.equals("int")) {
+			OptionalDouble d = getChildren().get(0).doubleValue();
+			if (d.isPresent()) return OptionalInt.of((int) d.getAsDouble());
+		}
 		return super.intValue();
 	}
 

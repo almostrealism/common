@@ -21,11 +21,13 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.RelativeArrayVariable;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DynamicExpressionComputation;
 import org.almostrealism.collect.computations.ExpressionComputation;
+import org.almostrealism.collect.computations.PackedCollectionMap;
 import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.util.TensorTestFeatures;
 import org.junit.Assert;
@@ -600,8 +602,8 @@ public class EmbeddedCollectionMapTests implements CodeFeatures, TensorTestFeatu
 					c(p(input)).traverse(1)
 							.map(shape(3, 1),
 									p ->
-										enumerate(shape(1, w), p).traverse(1)
-												.map(shape(1), q -> first(q)));
+											enumerate(shape(1, w), p).traverse(1)
+													.map(shape(1), q -> first(q)));
 			System.out.println(pool.getShape());
 
 			PackedCollection<?> output = pool.get().evaluate();

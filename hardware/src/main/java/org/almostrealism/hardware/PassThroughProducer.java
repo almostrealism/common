@@ -208,16 +208,7 @@ public class PassThroughProducer<T extends MemoryData>
 
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
-		if (!ArrayVariable.enableRelative) {
-			return getArgument(0).getAbsolute(index);
-//		} else if (ArrayVariable.forceTraversable) {
-//			ArrayVariable arg = getArgument(0);
-//			Expression dim = index.toInt().divide(e(shape.getTotalSize())).multiply(arg.getDimValue());
-//			Expression offset = index.toInt().mod(e(shape.getTotalSize()), false);
-//			return arg.getAbsolute(dim.add(offset));
-		} else {
-			return getArgument(0).getRelative(index);
-		}
+		return getArgument(0).getAbsolute(index);
 	}
 
 	@Override
