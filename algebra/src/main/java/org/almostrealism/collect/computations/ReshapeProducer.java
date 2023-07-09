@@ -30,7 +30,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.KernelSupport;
 
 public class ReshapeProducer<T extends Shape<T>> implements CollectionProducer<T>, ScopeLifecycle, TraversableExpression<Double>, KernelSupport {
-	public static boolean enableRelativeSupport = false;
+	public static boolean enableRelativeSupport = true;
 
 	private TraversalPolicy shape;
 	private int traversalAxis;

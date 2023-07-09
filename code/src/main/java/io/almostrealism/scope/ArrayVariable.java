@@ -95,14 +95,13 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 	}
 
 	public Expression<Double> getValueRelative(int index) {
-		if (getProducer() instanceof TraversableExpression && !(getProducer() instanceof RelativeSupport)) {
-			Expression<Double> value = ((TraversableExpression) getProducer()).getValueRelative(new IntegerConstant(index));
-			if (value != null) return value;
-		} else if (getProducer() instanceof Delegated &&
-				((Delegated) getProducer()).getDelegate() instanceof TraversableExpression &&
-				!(((Delegated) getProducer()).getDelegate() instanceof RelativeSupport)) {
-			Expression<Double> value = ((TraversableExpression) ((Delegated) getProducer()).getDelegate())
-					.getValueRelative(new IntegerConstant(index));
+		TraversableExpression exp = TraversableExpression.traverse(getProducer());
+
+		boolean ignore = false;
+		ignore = exp instanceof RelativeSupport;
+
+		if (exp != null && !ignore) {
+			Expression<Double> value = exp.getValueRelative(new IntegerConstant(index));
 			if (value != null) return value;
 		}
 

@@ -20,7 +20,6 @@ import io.almostrealism.collect.RelativeSupport;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.relation.Delegated;
 
 public class RelativeArrayVariable extends ArrayVariable<Double> {
 	public static boolean enableRelativeSupport = true;
@@ -39,8 +38,6 @@ public class RelativeArrayVariable extends ArrayVariable<Double> {
 		if (ref.getDelegate() != null) return ref.getValueRelative(index);
 
 		TraversableExpression exp = TraversableExpression.traverse(ref.getProducer());
-		if (exp == null && ref.getProducer() instanceof Delegated)
-			exp = TraversableExpression.traverse(((Delegated) ref.getProducer()).getDelegate());
 
 		if (enableRelativeSupport && exp instanceof RelativeSupport) {
 			return exp.getValueAt(offset.add(new IntegerConstant(index)));

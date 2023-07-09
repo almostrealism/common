@@ -19,6 +19,7 @@ package io.almostrealism.collect;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.relation.Delegated;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Variable;
 
@@ -47,8 +48,13 @@ public interface TraversableExpression<T> extends ExpressionFeatures {
 	}
 
 	static TraversableExpression traverse(Object o) {
-		if (!(o instanceof TraversableExpression)) return null;
-		if (!((TraversableExpression) o).isTraversable()) return null;
-		return (TraversableExpression) o;
+		if (o instanceof TraversableExpression) {
+			if (!((TraversableExpression) o).isTraversable()) return null;
+			return (TraversableExpression) o;
+		} else if (o instanceof Delegated) {
+			return traverse(((Delegated) o).getDelegate());
+		} else {
+			return null;
+		}
 	}
 }
