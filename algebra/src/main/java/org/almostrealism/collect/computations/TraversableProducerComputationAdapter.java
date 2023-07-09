@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.expression.Conditional;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Evaluable;
@@ -45,7 +46,9 @@ public abstract class TraversableProducerComputationAdapter<I extends PackedColl
 		List<ArrayVariable<Double>> relativeArgs = new ArrayList<>();
 
 		for (ArrayVariable v : args) {
-			Expression dim = index.toInt().divide(e(getMemLength())).multiply(getMemLength());
+			int size = v instanceof CollectionVariable ? ((CollectionVariable) v).getShape().getSize() : getMemLength();
+
+			Expression dim = index.toInt().divide(e(getMemLength())).multiply(size);
 			relativeArgs.add(new RelativeArrayVariable(v, dim));
 		}
 

@@ -34,6 +34,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 // TODO  Make abstract
 public class Expression<T> implements Tree<Expression<?>> {
@@ -117,6 +118,20 @@ public class Expression<T> implements Tree<Expression<?>> {
 	public OptionalDouble doubleValue() {
 		OptionalInt intValue = intValue();
 		return intValue.isPresent() ? OptionalDouble.of(intValue.getAsInt()) : OptionalDouble.empty();
+	}
+
+	public Number kernelValue(int kernelIndex) {
+		throw new UnsupportedOperationException();
+	}
+
+	public int[] kernelSeq(int len) {
+		Expression exp = toInt().getSimplified();
+
+		if (!(exp.kernelValue(0) instanceof Integer)) {
+			throw new UnsupportedOperationException();
+		}
+
+		return IntStream.range(0, len).map(i -> exp.kernelValue(i).intValue()).toArray();
 	}
 
 	public Expression<?> getSimplified() {

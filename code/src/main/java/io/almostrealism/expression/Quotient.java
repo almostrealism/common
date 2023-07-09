@@ -87,4 +87,19 @@ public class Quotient extends NAryExpression<Double> {
 
 		return generate(children);
 	}
+
+	@Override
+	public Number kernelValue(int kernelIndex) {
+		if (getChildren().size() > 2)
+			throw new UnsupportedOperationException();
+
+		Number numerator = getChildren().get(0).kernelValue(kernelIndex);
+		Number denominator = getChildren().get(1).kernelValue(kernelIndex);
+
+		if (numerator instanceof Integer && denominator instanceof Integer) {
+			return ((Integer) numerator) / ((Integer) denominator);
+		} else {
+			return numerator.doubleValue() / denominator.doubleValue();
+		}
+	}
 }

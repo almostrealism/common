@@ -44,4 +44,11 @@ public class Minus extends UnaryExpression<Double> {
 		if (d.isPresent()) return OptionalDouble.of(d.getAsDouble() * -1);
 		return super.doubleValue();
 	}
+
+	@Override
+	public Number kernelValue(int kernelIndex) {
+		Number v = getChildren().get(0).kernelValue(kernelIndex);
+		if (v instanceof Integer) return -1 * (Integer) v;
+		return -1.0 * (Double) v;
+	}
 }

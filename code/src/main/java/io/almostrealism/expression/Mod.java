@@ -102,4 +102,13 @@ public class Mod extends Expression<Double> {
 
 		return (Expression<Double>) flat;
 	}
+
+	@Override
+	public Number kernelValue(int kernelIndex) {
+		if (fp) {
+			return getChildren().get(0).kernelValue(kernelIndex).doubleValue() % getChildren().get(1).kernelValue(kernelIndex).doubleValue();
+		} else {
+			return getChildren().get(0).kernelValue(kernelIndex).intValue() % getChildren().get(1).kernelValue(kernelIndex).intValue();
+		}
+	}
 }

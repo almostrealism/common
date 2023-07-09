@@ -90,4 +90,17 @@ public class Product extends NAryExpression<Double> {
 			return generate(newChildren);
 		}
 	}
+
+	@Override
+	public Number kernelValue(int kernelIndex) {
+		List<Number> values = getChildren().stream()
+				.map(e -> e.kernelValue(kernelIndex))
+				.collect(Collectors.toList());
+
+		if (values.stream().anyMatch(v -> !(v instanceof Integer))) {
+			return values.stream().mapToDouble(v -> v.doubleValue()).reduce(1.0, (a, b) -> a * b);
+		} else {
+			return values.stream().mapToInt(v -> v.intValue()).reduce(1, (a, b) -> a * b);
+		}
+	}
 }

@@ -24,4 +24,9 @@ public class KernelIndex extends StaticReference<Integer> {
 	public KernelIndex(int index) {
 		super(Integer.class, kernelIndex.apply(index));
 	}
+
+	@Override
+	public Number kernelValue(int kernelIndex) {
+		return Integer.valueOf(kernelIndex);
+	}
 }

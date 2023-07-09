@@ -70,6 +70,17 @@ public class Cast extends UnaryExpression<Double> {
 	}
 
 	@Override
+	public Number kernelValue(int kernelIndex) {
+		double v = getChildren().get(0).kernelValue(kernelIndex).doubleValue();
+
+		if (typeName.equals("int")) {
+			return Integer.valueOf((int) v);
+		} else {
+			return Double.valueOf(v);
+		}
+	}
+
+	@Override
 	public String toString() {
 		return getExpression();
 	}
