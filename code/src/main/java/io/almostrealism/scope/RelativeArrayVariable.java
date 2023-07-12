@@ -16,14 +16,11 @@
 
 package io.almostrealism.scope;
 
-import io.almostrealism.collect.RelativeSupport;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 
 public class RelativeArrayVariable extends ArrayVariable<Double> {
-	public static boolean enableRelativeSupport = true;
-
 	private ArrayVariable<Double> ref;
 	private Expression offset;
 
@@ -39,11 +36,13 @@ public class RelativeArrayVariable extends ArrayVariable<Double> {
 
 		TraversableExpression exp = TraversableExpression.traverse(ref.getProducer());
 
-		if (enableRelativeSupport && exp instanceof RelativeSupport) {
-			return exp.getValueAt(offset.add(new IntegerConstant(index)));
+		if (exp != null && exp.isRelative()) {
+			return ref.getValueRelative(index);
 		}
 
-		if (exp != null) return ref.getValueRelative(index);
+		if (exp != null) {
+			return exp.getValueAt(offset.add(new IntegerConstant(index)));
+		}
 
 		return ref.getRaw(offset.add(new IntegerConstant(index)));
 	}

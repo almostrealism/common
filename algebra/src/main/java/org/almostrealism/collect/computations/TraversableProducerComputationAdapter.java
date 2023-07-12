@@ -34,6 +34,7 @@ import java.util.stream.Collectors;
 
 public abstract class TraversableProducerComputationAdapter<I extends PackedCollection<?>, O extends PackedCollection<?>>
 		extends TraversableProducerComputationBase<I, O> {
+	public static boolean enableAbsolute = true;
 
 	protected TraversableProducerComputationAdapter() { }
 
@@ -72,7 +73,7 @@ public abstract class TraversableProducerComputationAdapter<I extends PackedColl
 
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
-		if (!ArrayVariable.enableRelative) {
+		if (enableAbsolute) {
 			List<ArrayVariable<Double>> args = getInputArguments(index);
 			index = index.toInt().mod(e(getMemLength()), false);
 
@@ -87,6 +88,9 @@ public abstract class TraversableProducerComputationAdapter<I extends PackedColl
 
 		return null;
 	}
+
+	@Override
+	public boolean isRelative() { return true; }
 
 	public abstract IntFunction<Expression<Double>> getValueFunction();
 

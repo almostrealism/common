@@ -19,7 +19,6 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
-import io.almostrealism.collect.RelativeSupport;
 import io.almostrealism.expression.Cast;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.KernelIndex;
@@ -46,6 +45,7 @@ import java.util.stream.Stream;
 public class PackedCollectionMap<T extends PackedCollection<?>>
 		extends CollectionProducerComputationBase<PackedCollection<?>, T>
 		implements TraversableExpression<Double> {
+	public static boolean enableRelativeItems = false;
 	public static boolean enableAbsoluteValueAt = true;
 	public static boolean enableAtomicKernel = false;
 
@@ -198,12 +198,17 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 		return ((Shape) collection).getShape();
 	}
 
-	private static class ItemComputation<T extends PackedCollection<?>> extends DynamicExpressionComputation<T>
-			implements RelativeSupport {
+	private static class ItemComputation<T extends PackedCollection<?>> extends DynamicExpressionComputation<T> {
 		public ItemComputation(TraversalPolicy shape,
 							   Function<CollectionVariable[], CollectionExpression> expression,
 							   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
 			super(shape, expression, args);
 		}
+
+		@Override
+		public boolean isRelative() { return enableRelativeItems; }
+
+		@Override
+		public boolean isItem() { return enableRelativeItems; }
 	}
 }

@@ -27,12 +27,11 @@ import io.almostrealism.collect.TraversalPolicy;
 
 import java.util.Objects;
 import java.util.OptionalDouble;
-import java.util.OptionalInt;
 import java.util.function.Supplier;
 
 public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		extends KernelProducerComputationAdapter<PackedCollection<?>, T> {
-	public static boolean enableRelativeFallback = true;
+	public static boolean enableRelative = false;
 
 	private TraversalPolicy subsetShape;
 	private TraversalPolicy sliceShape;
@@ -50,8 +49,7 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 	@Override
 	public int getMemLength() { return 1; }
 
-	@Override
-	public Expression<Double> getValueAt(Expression index) {
+	protected Expression offsetForIndex(Expression index) {
 		// Identify the slice
 		Expression slice;
 
@@ -70,14 +68,12 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		// Position the offset relative to the slice
 		offset = slice.multiply(e(subsetShape.getTotalSize())).add(offset);
 
-		if (enableRelativeFallback) {
-			// If the offset is a known constant, the value can be
-			// directly obtained
-			OptionalDouble offsetValue = offset.getSimplified().doubleValue();
-			if (offsetValue.isPresent()) {
-				return getArgument(1).getValueRelative((int) offsetValue.getAsDouble());
-			}
-		}
+		return offset;
+	}
+
+	@Override
+	public Expression<Double> getValueAt(Expression index) {
+		Expression offset = offsetForIndex(index);
 
 		// Otherwise the value will only be available if the
 		// argument is a Shape implementation represented by
@@ -87,6 +83,20 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		if (var == null) return null;
 
 		return var.getValueAt(offset);
+	}
+
+	@Override
+	public Expression<Double> getValueRelative(Expression index) {
+		Expression offset = offsetForIndex(index);
+		OptionalDouble offsetValue = offset.getSimplified().doubleValue();
+		if (offsetValue.isEmpty()) throw new UnsupportedOperationException();
+
+		return getArgument(1).getValueRelative((int) offsetValue.getAsDouble());
+	}
+
+	@Override
+	public boolean isRelative() {
+		return enableRelative;
 	}
 
 	private static TraversalPolicy shape(Producer<?> collection) {

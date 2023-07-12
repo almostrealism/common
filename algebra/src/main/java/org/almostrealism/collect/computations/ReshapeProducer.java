@@ -19,7 +19,6 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
-import io.almostrealism.collect.RelativeSupport;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -30,8 +29,6 @@ import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.KernelSupport;
 
 public class ReshapeProducer<T extends Shape<T>> implements CollectionProducer<T>, ScopeLifecycle, TraversableExpression<Double>, KernelSupport {
-	public static boolean enableRelativeSupport = true;
-
 	private TraversalPolicy shape;
 	private int traversalAxis;
 	private Producer<T> producer;
@@ -84,8 +81,6 @@ public class ReshapeProducer<T extends Shape<T>> implements CollectionProducer<T
 
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
-		if (!enableRelativeSupport && producer instanceof RelativeSupport) return null;
-		
 		return producer instanceof TraversableExpression ? ((TraversableExpression) producer).getValueAt(index) : null;
 	}
 
@@ -96,8 +91,19 @@ public class ReshapeProducer<T extends Shape<T>> implements CollectionProducer<T
 
 	@Override
 	public boolean isTraversable() {
-		if (!enableRelativeSupport && producer instanceof RelativeSupport) return false;
 		if (producer instanceof TraversableExpression) return ((TraversableExpression) producer).isTraversable();
+		return false;
+	}
+
+	@Override
+	public boolean isRelative() {
+		if (producer instanceof TraversableExpression) return ((TraversableExpression) producer).isRelative();
+		return true;
+	}
+
+	@Override
+	public boolean isItem() {
+		if (producer instanceof TraversableExpression) return ((TraversableExpression) producer).isItem();
 		return false;
 	}
 

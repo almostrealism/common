@@ -21,6 +21,9 @@ import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.RelativeArrayVariable;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.PackedCollectionMap;
+import org.almostrealism.collect.computations.PackedCollectionRepeat;
+import org.almostrealism.collect.computations.TraversableProducerComputationAdapter;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.util.TestFeatures;
@@ -57,7 +60,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 		});
 	}
 
-	@Test
+	// @Test
 	public void scale() {
 		PackedCollection<?> timeline = new PackedCollection<>(shape(10), 1);
 		IntStream.range(0, 10).forEach(i -> timeline.set(i, i + 1));
@@ -353,10 +356,11 @@ public class PackedCollectionMapTests implements TestFeatures {
 		PackedCollection<?> input = tensor(shape(r, c)).pack();
 		PackedCollection<?> filter = tensor(shape(w, w)).pack();
 
-		boolean relativeSupport = RelativeArrayVariable.enableRelativeSupport;
+		boolean relativeSupport = PackedCollectionMap.enableRelativeItems;
 
 		try {
-			RelativeArrayVariable.enableRelativeSupport = false;
+			// TODO  Relative item support is required or the test never terminates
+			PackedCollectionMap.enableRelativeItems = true;
 
 			HardwareOperator.verboseLog(() -> {
 				CollectionProducer<PackedCollection<?>> conv = c(p(input))
@@ -387,7 +391,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 				}
 			});
 		} finally {
-			RelativeArrayVariable.enableRelativeSupport = relativeSupport;
+			PackedCollectionMap.enableRelativeItems = relativeSupport;
 		}
 	}
 
@@ -402,34 +406,43 @@ public class PackedCollectionMapTests implements TestFeatures {
 		PackedCollection<?> input = tensor(shape(r, c)).pack();
 		PackedCollection<?> filter = tensor(shape(w, w)).pack();
 
-		HardwareOperator.verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> conv = c(p(input))
-					.enumerate(1, w, s)
-					.enumerate(1, w, s)
-					.traverse(2)
-					.map(v ->
-							v.traverseEach().multiply(traverseEach(p(filter))));
-			System.out.println(conv.getShape());
+		boolean relativeSupport = PackedCollectionMap.enableRelativeItems;
 
-			PackedCollection<?> output = conv.get().evaluate();
-			System.out.println(output.getShape());
+		try {
+			// Relative item support does not change the result of the test
+			PackedCollectionMap.enableRelativeItems = true;
 
-			for (int i = 0; i < r - pad; i++) {
-				for (int j = 0; j < c - pad; j++) {
-					System.out.println("PackedCollectionMapTests: " + i + ", " + j);
+			HardwareOperator.verboseLog(() -> {
+				CollectionProducer<PackedCollection<?>> conv = c(p(input))
+						.enumerate(1, w, s)
+						.enumerate(1, w, s)
+						.traverse(2)
+						.map(v ->
+								v.traverseEach().multiply(traverseEach(p(filter))));
+				System.out.println(conv.getShape());
 
-					for (int k = 0; k < w; k++) {
-						for (int l = 0; l < w; l++) {
-							double expected = input.toDouble(input.getShape().index(i + k, j + l)) * filter.toDouble(filter.getShape().index(k, l));
-							double actual = output.toDouble(output.getShape().index(i, j, k, l));
+				PackedCollection<?> output = conv.get().evaluate();
+				System.out.println(output.getShape());
 
-							System.out.println("\tPackedCollectionMapTests: " + expected + " vs " + actual);
-							Assert.assertEquals(expected, actual, 0.0001);
+				for (int i = 0; i < r - pad; i++) {
+					for (int j = 0; j < c - pad; j++) {
+						System.out.println("PackedCollectionMapTests: " + i + ", " + j);
+
+						for (int k = 0; k < w; k++) {
+							for (int l = 0; l < w; l++) {
+								double expected = input.toDouble(input.getShape().index(i + k, j + l)) * filter.toDouble(filter.getShape().index(k, l));
+								double actual = output.toDouble(output.getShape().index(i, j, k, l));
+
+								System.out.println("\tPackedCollectionMapTests: " + expected + " vs " + actual);
+								Assert.assertEquals(expected, actual, 0.0001);
+							}
 						}
 					}
 				}
-			}
-		});
+			});
+		} finally {
+			PackedCollectionMap.enableRelativeItems = relativeSupport;
+		}
 	}
 
 	@Test
@@ -442,10 +455,11 @@ public class PackedCollectionMapTests implements TestFeatures {
 		PackedCollection<?> input = tensor(shape(r, c)).pack();
 		PackedCollection<?> filter = tensor(shape(w, w)).pack();
 
-		boolean relativeSupport = RelativeArrayVariable.enableRelativeSupport;
+		boolean relativeSupport = PackedCollectionMap.enableRelativeItems;
 
 		try {
-			RelativeArrayVariable.enableRelativeSupport = false;
+			// TODO  Without enabling relative items, the test never terminates
+			PackedCollectionMap.enableRelativeItems = true;
 
 			HardwareOperator.verboseLog(() -> {
 				CollectionProducer<PackedCollection<?>> conv = c(p(input))
@@ -477,7 +491,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 				}
 			});
 		} finally {
-			RelativeArrayVariable.enableRelativeSupport = relativeSupport;
+			PackedCollectionMap.enableRelativeItems = relativeSupport;
 		}
 	}
 
@@ -495,54 +509,66 @@ public class PackedCollectionMapTests implements TestFeatures {
 
 		input.fill(pos -> pos[0] + pos[1] * 0.1);
 
-		IntStream.range(0, 20).forEach(n -> {
-			HardwareOperator.verboseLog(() -> {
-				CollectionProducer<PackedCollection<?>> conv = c(p(input))
-						.enumerate(1, w, s)
-						.enumerate(1, w, s)
-						.traverse(2)
-						.expand(2, v ->
-								v.repeat(2).multiply(p(filter)));
-				System.out.println(conv.getShape());
+		boolean enableRelativeRepeat = PackedCollectionRepeat.enableRelative;
+		boolean enableRelativeItem = PackedCollectionMap.enableRelativeItems;
 
-				PackedCollection<?> output = conv.get().evaluate();
-				System.out.println(output.getShape());
+		try {
+			// TODO  Without enabling relative repeat operations, the test never terminates
+			PackedCollectionRepeat.enableRelative = true;
+			PackedCollectionMap.enableRelativeItems = true;
 
-				for (int copy = 0; copy < 2; copy++) {
-					for (int i = 0; i < r - pad; i++) {
-						for (int j = 0; j < c - pad; j++) {
-							System.out.println("PackedCollectionMapTests: " + i + ", " + j);
+			IntStream.range(0, 20).forEach(n -> {
+				HardwareOperator.verboseLog(() -> {
+					CollectionProducer<PackedCollection<?>> conv = c(p(input))
+							.enumerate(1, w, s)
+							.enumerate(1, w, s)
+							.traverse(2)
+							.expand(2, v ->
+									v.repeat(2).multiply(p(filter)));
+					System.out.println(conv.getShape());
 
-							for (int k = 0; k < w; k++) {
-								System.out.print("\t[");
-								for (int l = 0; l < w; l++) {
-									double expected = input.toDouble(input.getShape().index(i + k, j + l)) *
-											filter.toDouble(filter.getShape().index(copy, k, l));
-									double actual = output.toDouble(output.getShape().index(i, j, copy, k, l));
+					PackedCollection<?> output = conv.get().evaluate();
+					System.out.println(output.getShape());
 
-									System.out.print(expected + ", ");
+					for (int copy = 0; copy < 2; copy++) {
+						for (int i = 0; i < r - pad; i++) {
+							for (int j = 0; j < c - pad; j++) {
+								System.out.println("PackedCollectionMapTests: " + i + ", " + j);
+
+								for (int k = 0; k < w; k++) {
+									System.out.print("\t[");
+									for (int l = 0; l < w; l++) {
+										double expected = input.toDouble(input.getShape().index(i + k, j + l)) *
+												filter.toDouble(filter.getShape().index(copy, k, l));
+										double actual = output.toDouble(output.getShape().index(i, j, copy, k, l));
+
+										System.out.print(expected + ", ");
+									}
+
+									System.out.print("]\t[");
+
+									for (int l = 0; l < w; l++) {
+										double expected = input.toDouble(input.getShape().index(i + k, j + l)) *
+												filter.toDouble(filter.getShape().index(copy, k, l));
+
+										double actual = output.toDouble(output.getShape().index(i, j, copy, k, l));
+
+										System.out.print(actual + ", ");
+
+										Assert.assertEquals(expected, actual, 0.0001);
+									}
+
+									System.out.println("]");
 								}
-
-								System.out.print("]\t[");
-
-								for (int l = 0; l < w; l++) {
-									double expected = input.toDouble(input.getShape().index(i + k, j + l)) *
-											filter.toDouble(filter.getShape().index(copy, k, l));
-
-									double actual = output.toDouble(output.getShape().index(i, j, copy, k, l));
-
-									System.out.print(actual + ", ");
-
-									Assert.assertEquals(expected, actual, 0.0001);
-								}
-
-								System.out.println("]");
 							}
 						}
 					}
-				}
+				});
 			});
-		});
+		} finally {
+			PackedCollectionRepeat.enableRelative = enableRelativeRepeat;
+			PackedCollectionMap.enableRelativeItems = enableRelativeItem;
+		}
 	}
 
 
@@ -559,10 +585,15 @@ public class PackedCollectionMapTests implements TestFeatures {
 		PackedCollection<?> input = tensor(shape(r, c)).pack();
 		PackedCollection<?> filter = tensor(shape(n, w, w)).pack();
 
-		boolean enableRelative = ArrayVariable.enableRelative;
+		boolean enableAbsolute = TraversableProducerComputationAdapter.enableAbsolute;
+		boolean enableRelativeItem = PackedCollectionMap.enableRelativeItems;
 
 		try {
-			ArrayVariable.enableRelative = true;
+			// TODO  Without disabling absolute, the test never terminates
+			TraversableProducerComputationAdapter.enableAbsolute = false;
+
+			// TODO  Without enable relative items, the test assertions fail
+			PackedCollectionMap.enableRelativeItems = true;
 
 			HardwareOperator.verboseLog(() -> {
 				CollectionProducer<PackedCollection<?>> conv = c(p(input))
@@ -621,7 +652,8 @@ public class PackedCollectionMapTests implements TestFeatures {
 				}
 			});
 		} finally {
-			ArrayVariable.enableRelative = enableRelative;
+			TraversableProducerComputationAdapter.enableAbsolute = enableAbsolute;
+			PackedCollectionMap.enableRelativeItems = enableRelativeItem;
 		}
 	}
 

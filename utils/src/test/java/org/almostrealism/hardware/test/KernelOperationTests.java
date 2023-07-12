@@ -20,6 +20,8 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.PackedCollectionMap;
+import org.almostrealism.collect.computations.TraversableProducerComputationAdapter;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.cl.HardwareOperator;
@@ -96,10 +98,12 @@ public class KernelOperationTests implements TestFeatures {
 		PackedCollection<?> input = tensor(shape(r, c)).pack();
 		PackedCollection<?> filter = tensor(shape(n, w, w)).pack();
 
-		boolean enableRelative = ArrayVariable.enableRelative;
+		boolean enableAbsolute = TraversableProducerComputationAdapter.enableAbsolute;
+		boolean enableRelativeItem = PackedCollectionMap.enableRelativeItems;
 
 		try {
-			ArrayVariable.enableRelative = true;
+			TraversableProducerComputationAdapter.enableAbsolute = false;
+			PackedCollectionMap.enableRelativeItems = true;
 
 			HardwareOperator.verboseLog(() -> {
 				PackedCollection<?> output = new PackedCollection<>(shape(8, 8, 4, 1));
@@ -139,7 +143,8 @@ public class KernelOperationTests implements TestFeatures {
 				}
 			});
 		} finally {
-			ArrayVariable.enableRelative = enableRelative;
+			TraversableProducerComputationAdapter.enableAbsolute = enableAbsolute;
+			PackedCollectionMap.enableRelativeItems = enableRelativeItem;
 		}
 	}
 }

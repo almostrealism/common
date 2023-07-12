@@ -20,13 +20,11 @@ import io.almostrealism.code.Array;
 import io.almostrealism.code.KernelIndex;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.PhysicalScope;
-import io.almostrealism.collect.RelativeSupport;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.StaticReference;
-import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 
 import java.util.Collections;
@@ -35,8 +33,6 @@ import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
 public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements Array<T, ArrayVariable<T>> {
-	public static boolean enableRelative = false;
-
 	public static BiFunction<String, String, String> dereference = (name, pos) -> name + "[" + pos + "]";
 
 	private final NameProvider names;
@@ -97,10 +93,7 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 	public Expression<Double> getValueRelative(int index) {
 		TraversableExpression exp = TraversableExpression.traverse(getProducer());
 
-		boolean ignore = false;
-		ignore = exp instanceof RelativeSupport;
-
-		if (exp != null && !ignore) {
+		if (exp != null && !exp.isItem()) {
 			Expression<Double> value = exp.getValueRelative(new IntegerConstant(index));
 			if (value != null) return value;
 		}

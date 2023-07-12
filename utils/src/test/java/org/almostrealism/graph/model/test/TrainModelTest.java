@@ -21,6 +21,8 @@ import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.computations.PackedCollectionMap;
+import org.almostrealism.collect.computations.TraversableProducerComputationAdapter;
 import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.DefaultCellularLayer;
@@ -112,15 +114,18 @@ public class TrainModelTest implements TestFeatures {
 		Tensor<Double> t = tensor(inputShape);
 		PackedCollection<?> input = t.pack();
 
-		boolean enableRelative = ArrayVariable.enableRelative;
+		boolean enableAbsolute = TraversableProducerComputationAdapter.enableAbsolute;
+		boolean enableRelativeItem = PackedCollectionMap.enableRelativeItems;
 
 		try {
-			ArrayVariable.enableRelative = true;
+			TraversableProducerComputationAdapter.enableAbsolute = false;
+			PackedCollectionMap.enableRelativeItems = true;
 
 			model.setup().get().run();
 			model.forward(input);
 		} finally {
-			ArrayVariable.enableRelative = enableRelative;
+			TraversableProducerComputationAdapter.enableAbsolute = enableAbsolute;
+			PackedCollectionMap.enableRelativeItems = enableRelativeItem;
 		}
 
 		PackedCollection<?> filter = conv.getWeights().get(0);
@@ -162,17 +167,20 @@ public class TrainModelTest implements TestFeatures {
 		Tensor<Double> t = tensor(inputShape);
 		PackedCollection<?> input = t.pack();
 
-		boolean enableRelative = ArrayVariable.enableRelative;
+		boolean enableAbsolute = TraversableProducerComputationAdapter.enableAbsolute;
+		boolean enableRelativeItem = PackedCollectionMap.enableRelativeItems;
 
 		try {
-			ArrayVariable.enableRelative = true;
+			TraversableProducerComputationAdapter.enableAbsolute = false;
+			PackedCollectionMap.enableRelativeItems = true;
 
 			model.setup().get().run();
 
 			PackedCollection<?> in = input;
 			HardwareOperator.verboseLog(() -> model.forward(in));
 		} finally {
-			ArrayVariable.enableRelative = enableRelative;
+			TraversableProducerComputationAdapter.enableAbsolute = enableAbsolute;
+			PackedCollectionMap.enableRelativeItems = enableRelativeItem;
 		}
 
 		PackedCollection<?> filter = conv.getWeights().get(0);
