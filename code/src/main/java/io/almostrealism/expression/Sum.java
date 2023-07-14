@@ -100,4 +100,8 @@ public class Sum extends NAryExpression<Double> {
 			return values.stream().mapToInt(v -> v.intValue()).reduce(0, (a, b) -> a + b);
 		}
 	}
+
+	public static <T> Expression<T> of(Expression... values) {
+		return values.length == 1 ? values[0] : (Expression) new Sum(values);
+	}
 }

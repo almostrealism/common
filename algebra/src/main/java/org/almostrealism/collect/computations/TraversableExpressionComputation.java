@@ -17,17 +17,14 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.StaticReference;
-import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.collect.CollectionExpression;
-import io.almostrealism.collect.CollectionVariable;
+import io.almostrealism.expression.IntegerConstant;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.ComputerFeatures;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.DestinationEvaluable;
-import org.almostrealism.hardware.KernelSupport;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
@@ -35,30 +32,28 @@ import org.almostrealism.hardware.MemoryData;
 import java.util.Objects;
 import java.util.function.BiFunction;
 import java.util.function.Function;
-import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
-@Deprecated
-public class DynamicExpressionComputation<T extends PackedCollection<?>>
-									extends KernelProducerComputationAdapter<T, T>
-									implements ComputerFeatures {
-	private Function<CollectionVariable[], CollectionExpression> expression;
+public class TraversableExpressionComputation<T extends PackedCollection<?>>
+		extends KernelProducerComputationAdapter<T, T>
+		implements ComputerFeatures {
+	private Function<TraversableExpression[], CollectionExpression> expression;
 	private BiFunction<MemoryData, Integer, T> postprocessor;
 
 	private Evaluable<T> shortCircuit;
 
 	@SafeVarargs
-	public DynamicExpressionComputation(TraversalPolicy shape,
-										BiFunction<CollectionVariable[], Expression, Expression> expression,
+	public TraversableExpressionComputation(TraversalPolicy shape,
+										BiFunction<TraversableExpression[], Expression, Expression> expression,
 										Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
 		super(shape, validateArgs(args));
 		this.expression = vars -> CollectionExpression.create(shape, index -> expression.apply(vars, index));
 	}
 
 	@SafeVarargs
-	public DynamicExpressionComputation(TraversalPolicy shape,
-										Function<CollectionVariable[], CollectionExpression> expression,
+	public TraversableExpressionComputation(TraversalPolicy shape,
+										Function<TraversableExpression[], CollectionExpression> expression,
 										Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
 		super(shape, validateArgs(args));
 		this.expression = expression;
@@ -76,11 +71,11 @@ public class DynamicExpressionComputation<T extends PackedCollection<?>>
 		this.postprocessor = postprocessor;
 	}
 
-	protected CollectionExpression getExpression() {
-		CollectionVariable vars[] = new CollectionVariable[getInputs().size()];
+	protected CollectionExpression getExpression(Expression index) {
+		TraversableExpression vars[] = new TraversableExpression[getInputs().size()];
 		for (int i = 0; i < vars.length; i++) {
-			ArrayVariable arg = getArgumentForInput(getInputs().get(i));
-			vars[i] = arg instanceof CollectionVariable ? (CollectionVariable) arg : null;
+			vars[i] = CollectionExpression.traverse(getArgumentForInput(getInputs().get(i)),
+					size -> index.toInt().divide(e(getMemLength())).multiply(size));
 		}
 
 		return expression.apply(vars);
@@ -92,18 +87,16 @@ public class DynamicExpressionComputation<T extends PackedCollection<?>>
 	}
 
 	@Override
-	public Expression getValue(Expression[] pos) {
-		return getExpression().getValue(pos);
-	}
+	public Expression<Double> getValue(Expression... pos) { return getValueAt(getShape().index(pos)); }
 
 	@Override
 	public Expression getValueAt(Expression index) {
-		return getExpression().getValueAt(index);
+		return getExpression(index).getValueAt(index);
 	}
 
 	@Override
 	public Expression<Double> getValueRelative(Expression index) {
-		return getExpression().getValueRelative(index);
+		return getExpression(new IntegerConstant(0)).getValueRelative(index);
 	}
 
 	@Override
@@ -113,7 +106,7 @@ public class DynamicExpressionComputation<T extends PackedCollection<?>>
 
 			private KernelizedEvaluable<T> getKernel() {
 				if (kernel == null) {
-					kernel = DynamicExpressionComputation.super.get();
+					kernel = TraversableExpressionComputation.super.get();
 				}
 
 				return kernel;

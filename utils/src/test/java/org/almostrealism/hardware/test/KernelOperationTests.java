@@ -20,11 +20,13 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.PackedCollectionMap;
 import org.almostrealism.collect.computations.TraversableProducerComputationAdapter;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.cl.HardwareOperator;
+import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
@@ -98,12 +100,12 @@ public class KernelOperationTests implements TestFeatures {
 		PackedCollection<?> input = tensor(shape(r, c)).pack();
 		PackedCollection<?> filter = tensor(shape(n, w, w)).pack();
 
-		boolean enableAbsolute = TraversableProducerComputationAdapter.enableAbsolute;
-		boolean enableRelativeItem = PackedCollectionMap.enableRelativeItems;
+		boolean enableDynamic = ExpressionComputation.enableDynamicComputation;
+		boolean enableRelativeAssignment = Assignment.enableRelative;
 
 		try {
-			TraversableProducerComputationAdapter.enableAbsolute = false;
-			PackedCollectionMap.enableRelativeItems = true;
+			ExpressionComputation.enableDynamicComputation = true;
+			Assignment.enableRelative = false;
 
 			HardwareOperator.verboseLog(() -> {
 				PackedCollection<?> output = new PackedCollection<>(shape(8, 8, 4, 1));
@@ -143,8 +145,8 @@ public class KernelOperationTests implements TestFeatures {
 				}
 			});
 		} finally {
-			TraversableProducerComputationAdapter.enableAbsolute = enableAbsolute;
-			PackedCollectionMap.enableRelativeItems = enableRelativeItem;
+			ExpressionComputation.enableDynamicComputation = enableDynamic;
+			Assignment.enableRelative = enableRelativeAssignment;
 		}
 	}
 }

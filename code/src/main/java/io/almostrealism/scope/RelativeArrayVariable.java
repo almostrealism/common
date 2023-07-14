@@ -37,6 +37,8 @@ public class RelativeArrayVariable extends ArrayVariable<Double> {
 		TraversableExpression exp = TraversableExpression.traverse(ref.getProducer());
 
 		if (exp != null && exp.isRelative()) {
+			Expression alt = exp.getValueAt(offset.add(new IntegerConstant(index)));
+
 			return ref.getValueRelative(index);
 		}
 

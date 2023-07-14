@@ -95,7 +95,7 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 		return minus((Producer) this);
 	}
 
-	default <T extends PackedCollection<?>> ExpressionComputation<T> sum() {
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> sum() {
 		return sum((Producer) this);
 	}
 

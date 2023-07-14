@@ -45,7 +45,6 @@ import java.util.stream.Stream;
 public class PackedCollectionMap<T extends PackedCollection<?>>
 		extends CollectionProducerComputationBase<PackedCollection<?>, T>
 		implements TraversableExpression<Double> {
-	public static boolean enableRelativeItems = false;
 	public static boolean enableAbsoluteValueAt = true;
 	public static boolean enableAtomicKernel = false;
 
@@ -204,11 +203,5 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 							   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
 			super(shape, expression, args);
 		}
-
-		@Override
-		public boolean isRelative() { return enableRelativeItems; }
-
-		@Override
-		public boolean isItem() { return enableRelativeItems; }
 	}
 }

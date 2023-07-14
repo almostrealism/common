@@ -40,8 +40,12 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
+@Deprecated
 public class ExpressionComputation<T extends PackedCollection<?>>
 		extends TraversableProducerComputationAdapter<T, T> {
+	public static boolean enableDynamicComputation = false;
+	public static boolean enableTraversableComputation = true;
+
 	private List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression;
 	private BiFunction<MemoryData, Integer, T> postprocessor;
 	private Evaluable<T> shortCircuit;

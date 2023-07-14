@@ -20,9 +20,11 @@ import io.almostrealism.code.ExpressionList;
 import io.almostrealism.expression.Expression;
 
 import java.util.function.Function;
+import java.util.function.IntFunction;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
+// TODO  Shouldn't this implement Shape?
 public interface CollectionExpression extends TraversableExpression<Double> {
 
 	TraversalPolicy getShape();
@@ -64,6 +66,24 @@ public interface CollectionExpression extends TraversableExpression<Double> {
 			public Expression<Double> getValueAt(Expression index) {
 				return valueAt.apply(index);
 			}
+
+			@Override
+			public Expression<Double> getValueRelative(Expression index) {
+				return CollectionExpression.super.getValueRelative(index);
+			}
 		};
+	}
+
+	static TraversableExpression traverse(Object o, IntFunction<Expression> offset) {
+		TraversableExpression exp = TraversableExpression.traverse(o);
+		if (exp == null) return null;
+
+		if (exp instanceof Shape) {
+			return new RelativeTraversableExpression(exp, offset.apply(((Shape) exp).getShape().getSize()));
+		} else if (exp instanceof CollectionExpression) {
+			return new RelativeTraversableExpression(exp, offset.apply(((CollectionExpression) exp).getShape().getSize()));
+		} else {
+			return exp;
+		}
 	}
 }

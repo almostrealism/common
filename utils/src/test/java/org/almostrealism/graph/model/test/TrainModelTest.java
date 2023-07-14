@@ -21,6 +21,7 @@ import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.PackedCollectionMap;
 import org.almostrealism.collect.computations.TraversableProducerComputationAdapter;
 import org.almostrealism.hardware.cl.HardwareOperator;
@@ -114,18 +115,15 @@ public class TrainModelTest implements TestFeatures {
 		Tensor<Double> t = tensor(inputShape);
 		PackedCollection<?> input = t.pack();
 
-		boolean enableAbsolute = TraversableProducerComputationAdapter.enableAbsolute;
-		boolean enableRelativeItem = PackedCollectionMap.enableRelativeItems;
+		boolean enableDynamic = ExpressionComputation.enableDynamicComputation;
 
 		try {
-			TraversableProducerComputationAdapter.enableAbsolute = false;
-			PackedCollectionMap.enableRelativeItems = true;
+			ExpressionComputation.enableDynamicComputation = true;
 
 			model.setup().get().run();
 			model.forward(input);
 		} finally {
-			TraversableProducerComputationAdapter.enableAbsolute = enableAbsolute;
-			PackedCollectionMap.enableRelativeItems = enableRelativeItem;
+			ExpressionComputation.enableDynamicComputation = enableDynamic;
 		}
 
 		PackedCollection<?> filter = conv.getWeights().get(0);
@@ -167,20 +165,17 @@ public class TrainModelTest implements TestFeatures {
 		Tensor<Double> t = tensor(inputShape);
 		PackedCollection<?> input = t.pack();
 
-		boolean enableAbsolute = TraversableProducerComputationAdapter.enableAbsolute;
-		boolean enableRelativeItem = PackedCollectionMap.enableRelativeItems;
+		boolean enableDynamic = ExpressionComputation.enableDynamicComputation;
 
 		try {
-			TraversableProducerComputationAdapter.enableAbsolute = false;
-			PackedCollectionMap.enableRelativeItems = true;
+			ExpressionComputation.enableDynamicComputation = true;
 
 			model.setup().get().run();
 
 			PackedCollection<?> in = input;
 			HardwareOperator.verboseLog(() -> model.forward(in));
 		} finally {
-			TraversableProducerComputationAdapter.enableAbsolute = enableAbsolute;
-			PackedCollectionMap.enableRelativeItems = enableRelativeItem;
+			ExpressionComputation.enableDynamicComputation = enableDynamic;
 		}
 
 		PackedCollection<?> filter = conv.getWeights().get(0);

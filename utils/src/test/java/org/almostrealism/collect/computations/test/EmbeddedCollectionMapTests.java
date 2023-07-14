@@ -748,7 +748,8 @@ public class EmbeddedCollectionMapTests implements CodeFeatures, TensorTestFeatu
 							.traverse(2)
 							.reduce(v ->
 									enumerate(shape(1, 1, w, w, 1), v)
-											.traverse(1).reduce(slice -> max(slice)));
+											.traverse(1).reduce(slice ->
+													max(slice)));
 			System.out.println(pool.getShape());
 
 			PackedCollection<?> output = pool.get().evaluate();

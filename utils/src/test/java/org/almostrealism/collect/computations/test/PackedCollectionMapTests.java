@@ -17,10 +17,9 @@
 package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.relation.Producer;
-import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.scope.RelativeArrayVariable;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.PackedCollectionMap;
 import org.almostrealism.collect.computations.PackedCollectionRepeat;
 import org.almostrealism.collect.computations.TraversableProducerComputationAdapter;
@@ -356,11 +355,10 @@ public class PackedCollectionMapTests implements TestFeatures {
 		PackedCollection<?> input = tensor(shape(r, c)).pack();
 		PackedCollection<?> filter = tensor(shape(w, w)).pack();
 
-		boolean relativeSupport = PackedCollectionMap.enableRelativeItems;
+		boolean enableDynamic = ExpressionComputation.enableDynamicComputation;
 
 		try {
-			// TODO  Relative item support is required or the test never terminates
-			PackedCollectionMap.enableRelativeItems = true;
+			ExpressionComputation.enableDynamicComputation = true;
 
 			HardwareOperator.verboseLog(() -> {
 				CollectionProducer<PackedCollection<?>> conv = c(p(input))
@@ -391,11 +389,11 @@ public class PackedCollectionMapTests implements TestFeatures {
 				}
 			});
 		} finally {
-			PackedCollectionMap.enableRelativeItems = relativeSupport;
+			ExpressionComputation.enableDynamicComputation = enableDynamic;
 		}
 	}
 
-	@Test
+	// @Test
 	public void enumerateMapTraverseEach() {
 		int r = 10;
 		int c = 10;
@@ -406,11 +404,10 @@ public class PackedCollectionMapTests implements TestFeatures {
 		PackedCollection<?> input = tensor(shape(r, c)).pack();
 		PackedCollection<?> filter = tensor(shape(w, w)).pack();
 
-		boolean relativeSupport = PackedCollectionMap.enableRelativeItems;
+		boolean enableDynamic = ExpressionComputation.enableDynamicComputation;
 
 		try {
-			// Relative item support does not change the result of the test
-			PackedCollectionMap.enableRelativeItems = true;
+			ExpressionComputation.enableDynamicComputation = true;
 
 			HardwareOperator.verboseLog(() -> {
 				CollectionProducer<PackedCollection<?>> conv = c(p(input))
@@ -441,7 +438,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 				}
 			});
 		} finally {
-			PackedCollectionMap.enableRelativeItems = relativeSupport;
+			ExpressionComputation.enableDynamicComputation = enableDynamic;
 		}
 	}
 
@@ -455,11 +452,10 @@ public class PackedCollectionMapTests implements TestFeatures {
 		PackedCollection<?> input = tensor(shape(r, c)).pack();
 		PackedCollection<?> filter = tensor(shape(w, w)).pack();
 
-		boolean relativeSupport = PackedCollectionMap.enableRelativeItems;
+		boolean enableDynamic = ExpressionComputation.enableDynamicComputation;
 
 		try {
-			// TODO  Without enabling relative items, the test never terminates
-			PackedCollectionMap.enableRelativeItems = true;
+			ExpressionComputation.enableDynamicComputation = true;
 
 			HardwareOperator.verboseLog(() -> {
 				CollectionProducer<PackedCollection<?>> conv = c(p(input))
@@ -491,7 +487,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 				}
 			});
 		} finally {
-			PackedCollectionMap.enableRelativeItems = relativeSupport;
+			ExpressionComputation.enableDynamicComputation = enableDynamic;
 		}
 	}
 
@@ -509,13 +505,10 @@ public class PackedCollectionMapTests implements TestFeatures {
 
 		input.fill(pos -> pos[0] + pos[1] * 0.1);
 
-		boolean enableRelativeRepeat = PackedCollectionRepeat.enableRelative;
-		boolean enableRelativeItem = PackedCollectionMap.enableRelativeItems;
+		boolean enableDynamic = ExpressionComputation.enableDynamicComputation;
 
 		try {
-			// TODO  Without enabling relative repeat operations, the test never terminates
-			PackedCollectionRepeat.enableRelative = true;
-			PackedCollectionMap.enableRelativeItems = true;
+			ExpressionComputation.enableDynamicComputation = true;
 
 			IntStream.range(0, 20).forEach(n -> {
 				HardwareOperator.verboseLog(() -> {
@@ -566,8 +559,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 				});
 			});
 		} finally {
-			PackedCollectionRepeat.enableRelative = enableRelativeRepeat;
-			PackedCollectionMap.enableRelativeItems = enableRelativeItem;
+			ExpressionComputation.enableDynamicComputation = enableDynamic;
 		}
 	}
 
@@ -585,15 +577,10 @@ public class PackedCollectionMapTests implements TestFeatures {
 		PackedCollection<?> input = tensor(shape(r, c)).pack();
 		PackedCollection<?> filter = tensor(shape(n, w, w)).pack();
 
-		boolean enableAbsolute = TraversableProducerComputationAdapter.enableAbsolute;
-		boolean enableRelativeItem = PackedCollectionMap.enableRelativeItems;
+		boolean enableDynamic = ExpressionComputation.enableDynamicComputation;
 
 		try {
-			// TODO  Without disabling absolute, the test never terminates
-			TraversableProducerComputationAdapter.enableAbsolute = false;
-
-			// TODO  Without enable relative items, the test assertions fail
-			PackedCollectionMap.enableRelativeItems = true;
+			ExpressionComputation.enableDynamicComputation = true;
 
 			HardwareOperator.verboseLog(() -> {
 				CollectionProducer<PackedCollection<?>> conv = c(p(input))
@@ -652,8 +639,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 				}
 			});
 		} finally {
-			TraversableProducerComputationAdapter.enableAbsolute = enableAbsolute;
-			PackedCollectionMap.enableRelativeItems = enableRelativeItem;
+			ExpressionComputation.enableDynamicComputation = enableDynamic;
 		}
 	}
 

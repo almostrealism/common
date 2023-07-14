@@ -31,8 +31,6 @@ import java.util.function.Supplier;
 
 public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		extends KernelProducerComputationAdapter<PackedCollection<?>, T> {
-	public static boolean enableRelative = false;
-
 	private TraversalPolicy subsetShape;
 	private TraversalPolicy sliceShape;
 
@@ -92,11 +90,6 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		if (offsetValue.isEmpty()) throw new UnsupportedOperationException();
 
 		return getArgument(1).getValueRelative((int) offsetValue.getAsDouble());
-	}
-
-	@Override
-	public boolean isRelative() {
-		return enableRelative;
 	}
 
 	private static TraversalPolicy shape(Producer<?> collection) {
