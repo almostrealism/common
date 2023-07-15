@@ -71,6 +71,7 @@ import java.util.stream.IntStream;
 
 public interface CollectionFeatures extends ExpressionFeatures {
 	boolean enableShapelessWarning = false;
+	boolean enableTraversableComputation = true;
 
 	default TraversalPolicy shape(int... dims) { return new TraversalPolicy(dims); }
 
@@ -448,11 +449,18 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return new ExpressionComputation<>(expressions, base, exp);
 	}
 
-	default <T extends PackedCollection<?>> ExpressionComputation<T> floor(
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> floor(
 			Supplier<Evaluable<? extends PackedCollection<?>>> value) {
-		Function<List<ArrayVariable<Double>>, Expression<Double>> expression = np ->
-				new Floor(np.get(1).getValueRelative(0));
-		return new ExpressionComputation<>(List.of(expression), value);
+		if (ExpressionComputation.enableTraversableComputation) {
+			return new TraversableExpressionComputation<>(shape(value),
+					(BiFunction<TraversableExpression[], Expression, Expression>) (args, index) ->
+							new Floor(args[1].getValueAt(index)),
+					(Supplier) value);
+		} else {
+			Function<List<ArrayVariable<Double>>, Expression<Double>> expression = np ->
+					new Floor(np.get(1).getValueRelative(0));
+			return new ExpressionComputation<>(List.of(expression), value);
+		}
 	}
 
 	default <T extends PackedCollection<?>> ExpressionComputation<T> _min(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
@@ -477,8 +485,8 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return _min(_max(a, c(min)), c(max));
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase max(Producer<T> input) {
-		if (ExpressionComputation.enableTraversableComputation) {
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> max(Producer<T> input) {
+		if (enableTraversableComputation) {
 			TraversalPolicy shape = shape(input);
 			int size = shape.getSize();
 
@@ -495,7 +503,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> sum(Producer<T> input) {
-		if (ExpressionComputation.enableTraversableComputation) {
+		if (enableTraversableComputation) {
 			TraversalPolicy shape = shape(input);
 			int size = shape.getSize();
 

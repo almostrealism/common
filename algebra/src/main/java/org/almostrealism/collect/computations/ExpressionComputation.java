@@ -44,7 +44,7 @@ import java.util.stream.Stream;
 public class ExpressionComputation<T extends PackedCollection<?>>
 		extends TraversableProducerComputationAdapter<T, T> {
 	public static boolean enableDynamicComputation = false;
-	public static boolean enableTraversableComputation = true;
+	public static boolean enableTraversableComputation = false;
 
 	private List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression;
 	private BiFunction<MemoryData, Integer, T> postprocessor;
