@@ -52,6 +52,7 @@ public class PassThroughProducer<T extends MemoryData>
 		TraversableExpression<Double>,
 		Shape<PassThroughProducer<T>>, KernelIndex,
 		ComputerFeatures  {
+	public static boolean enableDimSupport = false;
 
 	private TraversalPolicy shape;
 	private int argIndex;
@@ -208,7 +209,13 @@ public class PassThroughProducer<T extends MemoryData>
 
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
-		return getArgument(0).getAbsolute(index);
+		ArrayVariable var = getArgument(0);
+
+		if (enableDimSupport) {
+			return var.getAbsolute(index.toInt().divide(var.length()).multiply(var.getDimValue()));
+		} else {
+			return var.getAbsolute(index);
+		}
 	}
 
 	@Override

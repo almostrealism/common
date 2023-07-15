@@ -144,11 +144,11 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 	}
 
 	public Expression getDimValue() {
-		return new StaticReference<>(Integer.class, names.getVariableDimName(this, 0));
+		return new StaticReference<>(Integer.class, names.getVariableDimName(this, 0), this);
 	}
 
 	public Expression<Integer> length() {
-		return new Expression<>(Integer.class, names.getVariableSizeName(this), Collections.emptyList(), this);
+		return new StaticReference<>(Integer.class, names.getVariableSizeName(this), this);
 	}
 
 	@Override
