@@ -176,7 +176,7 @@ public class EmbeddedCollectionMapTests implements CodeFeatures, TensorTestFeatu
 		HardwareOperator.verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> pool =
 					enumerate(shape(1, c, d), c(p(input)))
-							.traverse(1).reduce(slice -> dynamicMax(slice));
+							.traverse(1).reduce(slice -> max(slice));
 			System.out.println(pool.getShape());
 
 			PackedCollection<?> output = pool.get().evaluate();
@@ -693,8 +693,8 @@ public class EmbeddedCollectionMapTests implements CodeFeatures, TensorTestFeatu
 
 	@Test
 	public void enumerateReduceEnumerateMax() {
-		int c = 16;
-		int d = 1;
+		int c = 8;
+		int d = 3;
 		int w = 2;
 
 		PackedCollection<?> input = tensor(shape(c, d)).pack();
@@ -704,7 +704,7 @@ public class EmbeddedCollectionMapTests implements CodeFeatures, TensorTestFeatu
 			CollectionProducer<PackedCollection<?>> pool =
 					c(p(input)).enumerate(w)
 							.traverse(1)
-							.reduce(v ->
+							.map(shape(d, 1), v ->
 									enumerate(shape(1, w, 1), v)
 											.traverse(1).reduce(slice -> max(slice)));
 			System.out.println(pool.getShape());
@@ -746,7 +746,7 @@ public class EmbeddedCollectionMapTests implements CodeFeatures, TensorTestFeatu
 					c(p(input)).enumerate(1, w)
 							.enumerate(1, w)
 							.traverse(2)
-							.reduce(v ->
+							.map(shape(d, 1), v ->
 									enumerate(shape(1, 1, w, w, 1), v)
 											.traverse(1).reduce(slice ->
 													max(slice)));

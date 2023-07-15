@@ -140,6 +140,11 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 
 		CollectionProducerComputation<?> mapped = mapper.apply(computation);
 
+		if (mapped.getShape().getTotalSize() != getShape().getSize()) {
+			throw new IllegalArgumentException("Mapping returned " + mapped.getShape() +
+					" while attempting to map items to " + getShape().item());
+		}
+
 		if (mapped instanceof PackedCollectionMap) {
 			System.out.println("WARN: Embedded PackedCollectionMap");
 			((PackedCollectionMap<?>) mapped).setIgnoreTraversalAxis(true);

@@ -204,11 +204,13 @@ public interface LayerFeatures extends CollectionFeatures {
 					Cell.of((input, next) -> {
 						PackedCollection<?> output = new PackedCollection<>(outputShape);
 
+						int d = outputShape.length(2);
+
 						OperationList ops = new OperationList();
 						ops.add(c(input).enumerate(1, size)
 									.enumerate(1, size)
 									.traverse(2)
-									.reduce(v ->
+									.map(shape(d, 1), v ->
 											enumerate(shape(1, 1, size, size, 1), v)
 											.traverse(1).reduce(slice -> max(slice))),
 								output.traverseEach());

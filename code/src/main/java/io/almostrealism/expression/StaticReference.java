@@ -26,6 +26,10 @@ public class StaticReference<T> extends Expression<T> {
 		super(type, expression, new Expression[0]);
 	}
 
+	public StaticReference(Class<T> type, String expression, Variable referent) {
+		super(type, expression, referent, null);
+	}
+
 	@Override
 	public Expression<T> generate(List<Expression<?>> children) {
 		if (children.size() > 0) throw new UnsupportedOperationException();
