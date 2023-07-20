@@ -20,6 +20,8 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.PassThroughProducer;
+import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
@@ -36,17 +38,19 @@ public class ScalarBankDotProductTest implements TestFeatures {
 
 	@Test
 	public void scalarBankDotProduct32() {
-		PackedCollection<Scalar>  window = window();
+		PackedCollection<Scalar> window = window();
 
 		Scalar given = new Scalar(IntStream.range(0, SIZE)
 				.mapToDouble(i -> window.get(i).getValue() * window.get(i).getValue()).sum());
 
-		Producer<PackedCollection<?>> a = subset(shape(SIZE, 1), v(shape(SIZE, 2), 0), 0);
-		Producer<PackedCollection<?>> b = subset(shape(SIZE, 1), v(shape(SIZE, 2), 1), 0);
-		Evaluable<? extends Scalar> ev = scalar(multiply(a, b).sum()).get();
+		HardwareOperator.verboseLog(() -> {
+			Producer<PackedCollection<?>> a = subset(shape(SIZE, 1), v(shape(SIZE, 2), 0), 0);
+			Producer<PackedCollection<?>> b = subset(shape(SIZE, 1), v(shape(SIZE, 2), 1), 0);
+			Evaluable<? extends Scalar> ev = scalar(multiply(a, b).sum()).get();
 
-		Scalar test = ev.evaluate(window(), window());
-		System.out.println(test);
-		assertEquals(given, test);
+			Scalar test = ev.evaluate(window().traverse(0), window().traverse(0));
+			System.out.println(test);
+			assertEquals(given, test);
+		});
 	}
 }

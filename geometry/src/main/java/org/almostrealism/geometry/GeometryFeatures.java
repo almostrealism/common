@@ -53,7 +53,7 @@ public interface GeometryFeatures extends ScalarFeatures, RayFeatures {
 		return _sin(c(TWO_PI).multiply(divide(input, wavelength).subtract(phase))).multiply(amp);
 	}
 
-	default ExpressionComputation<Vector> reflect(Producer<Vector> vector, Producer<Vector> normal) {
+	default Producer<Vector> reflect(Producer<Vector> vector, Producer<Vector> normal) {
 		Producer<Vector> newVector = minus(vector);
 		Producer<Scalar> s = scalar(2).multiply(dotProduct(newVector, normal).divide(lengthSq(normal)));
 		return subtract(newVector, scalarMultiply(normal, s));

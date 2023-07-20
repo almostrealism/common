@@ -67,11 +67,11 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 		return expand(repeat, this, mapper);
 	}
 
-	default <T extends PackedCollection<?>> ExpressionComputation<T> add(Producer<T> value) {
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> add(Producer<T> value) {
 		return add((Producer) this, value);
 	}
 
-	default <T extends PackedCollection<?>> ExpressionComputation<T> subtract(Producer<T> value) {
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> subtract(Producer<T> value) {
 		return subtract((Producer) this, value);
 	}
 
@@ -83,11 +83,11 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 		return divide((Producer) this, value);
 	}
 
-	default <T extends PackedCollection<?>> ExpressionComputation<T> pow(double value) {
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> pow(double value) {
 		return pow((Producer) this, c(value));
 	}
 
-	default <T extends PackedCollection<?>> ExpressionComputation<T> pow(Producer<T> value) {
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> pow(Producer<T> value) {
 		return pow((Producer) this, value);
 	}
 

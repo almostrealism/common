@@ -27,6 +27,7 @@ import org.almostrealism.hardware.DestinationEvaluable;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.io.SystemUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -43,8 +44,9 @@ import java.util.stream.Stream;
 @Deprecated
 public class ExpressionComputation<T extends PackedCollection<?>>
 		extends TraversableProducerComputationAdapter<T, T> {
-	public static boolean enableDynamicComputation = false;
-	public static boolean enableTraversableComputation = false;
+	public static boolean enableDynamicComputation = SystemUtils.isEnabled("AR_LEGACY").orElse(false) ? false : true;
+
+	public static boolean enableTraversableComputation = SystemUtils.isEnabled("AR_LEGACY").orElse(false) ? false : true;
 
 	private List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression;
 	private BiFunction<MemoryData, Integer, T> postprocessor;

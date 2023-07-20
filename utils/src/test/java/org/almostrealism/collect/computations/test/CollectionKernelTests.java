@@ -33,7 +33,7 @@ import java.util.Arrays;
 public class CollectionKernelTests implements TestFeatures {
 	@Test
 	public void func() {
-		DynamicCollectionProducer a = func(shape(2, 5), args ->
+		DynamicCollectionProducer<PackedCollection<?>> a = func(shape(2, 5), args ->
 				c(shape(2, 5), 2.0, 3.0, 4.0, 6.0, 7.0, 8.0, 11.0, 13.0, 15.0, 17.0)
 						.get().evaluate(args));
 		PackedCollection<?> out = a.traverse(1).get().evaluate();

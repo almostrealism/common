@@ -24,6 +24,7 @@ import io.almostrealism.relation.Producer;
 
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
@@ -147,16 +148,16 @@ public interface VectorFeatures extends CollectionFeatures, HardwareFeatures {
 		return vector(multiply(a, vector(b, b, b)));
 	}
 
-	default ExpressionComputation<Scalar> length(Supplier<Evaluable<? extends Vector>> v) {
+	default CollectionProducer<Scalar> length(Supplier<Evaluable<? extends Vector>> v) {
 		return x(v).pow(two).add(y(v).pow(two)).add(z(v).pow(two)).pow(half);
 	}
 
-	default ExpressionComputation<Scalar> lengthSq(Supplier<Evaluable<? extends Vector>> v) {
+	default CollectionProducer<Scalar> lengthSq(Supplier<Evaluable<? extends Vector>> v) {
 		return x(v).pow(two).add(y(v).pow(two)).add(z(v).pow(two));
 	}
 
 	default ExpressionComputation<Vector> normalize(Supplier<Evaluable<? extends Vector>> p) {
-		ExpressionComputation<Scalar> oneOverLength = length(p).pow(ScalarFeatures.minusOne());
+		Producer<Scalar> oneOverLength = pow(length(p), ScalarFeatures.minusOne());
 		return vector(x(p).multiply(oneOverLength),
 				y(p).multiply(oneOverLength),
 				z(p).multiply(oneOverLength));

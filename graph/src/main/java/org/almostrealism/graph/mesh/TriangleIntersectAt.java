@@ -21,6 +21,7 @@ import org.almostrealism.Ops;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.algebra.Vector;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.geometry.Intersection;
@@ -107,7 +108,7 @@ public class TriangleIntersectAt extends LessThanScalar {
 	}
 
 	// TODO  Make private
-	public static Producer<Scalar> u(Producer<Vector> s, Producer<Vector> h, ExpressionComputation<Scalar> f) {
+	public static Producer<Scalar> u(Producer<Vector> s, Producer<Vector> h, CollectionProducer<Scalar> f) {
 		return Ops.ops().scalar(f.multiply(Ops.ops().dotProduct(s, h)));
 	}
 
@@ -117,7 +118,7 @@ public class TriangleIntersectAt extends LessThanScalar {
 	}
 
 	// TODO  Make private
-	public static Producer<Scalar> v(Producer<Vector> direction, ExpressionComputation<Scalar> f, ExpressionComputation<Vector> q) {
+	public static Producer<Scalar> v(Producer<Vector> direction, CollectionProducer<Scalar> f, ExpressionComputation<Vector> q) {
 		return Ops.ops().scalar(f.multiply(Ops.ops().dotProduct(direction, q)));
 	}
 

@@ -16,8 +16,8 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -29,12 +29,17 @@ import org.almostrealism.hardware.KernelSupport;
 import org.almostrealism.hardware.MemoryBank;
 
 import java.util.function.Supplier;
+import java.util.stream.IntStream;
 
 public class PackedCollectionSubset<T extends PackedCollection<?>>
 		extends KernelProducerComputationAdapter<PackedCollection<?>, T> {
-	private int pos[];
+	private Expression pos[];
 
 	public PackedCollectionSubset(TraversalPolicy shape, Producer<?> collection, int... pos) {
+		this(shape, collection, IntStream.of(pos).mapToObj(i -> new IntegerConstant(i)).toArray(Expression[]::new));
+	}
+
+	public PackedCollectionSubset(TraversalPolicy shape, Producer<?> collection, Expression... pos) {
 		super(shape, (Supplier) collection);
 		if (!(collection instanceof Shape))
 			throw new IllegalArgumentException("Subset cannot be performed without a TraversalPolicy");

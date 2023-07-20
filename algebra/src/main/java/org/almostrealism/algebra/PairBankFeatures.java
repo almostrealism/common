@@ -46,7 +46,11 @@ public interface PairBankFeatures extends ScalarFeatures {
 	}
 
 	default Producer<Pair<?>> pairFromBank(Producer<PackedCollection<Pair<?>>> bank, Producer<PackedCollection<?>> index) {
-		return c(shape(2), bank, (Producer) multiply(c(2), floor(index)));
+		Producer<PackedCollection<?>> pair = map(shape(2), traverse(1, floor(index)),
+				v -> concat((Producer) c(2.0).multiply(v), (Producer) c(2.0).multiply(v).add(c(1.0))));
+
+
+		return (Producer) c(shape(2), bank, pair);
 	}
 
 	@Deprecated

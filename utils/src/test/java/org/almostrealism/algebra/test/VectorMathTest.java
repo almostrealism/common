@@ -20,6 +20,7 @@ import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.hardware.KernelizedEvaluable;
@@ -37,7 +38,7 @@ public class VectorMathTest implements TestFeatures {
 
 	@Test
 	public void scalarPowDynamic() {
-		Producer<Scalar> d = () -> args -> new Scalar(3);
+		Producer<Scalar> d = new DynamicCollectionProducer<>(shape(2), args -> new Scalar(3));
 		ExpressionComputation<Scalar> s = scalar(3);
 		Producer<Scalar> p = s.pow(d);
 		Evaluable<Scalar> ev = p.get();
@@ -125,5 +126,14 @@ public class VectorMathTest implements TestFeatures {
 		Assert.assertEquals(-200, v.getX(), Math.pow(10, -10));
 		Assert.assertEquals(-100, v.getY(), Math.pow(10, -10));
 		Assert.assertEquals(0, v.getZ(), Math.pow(10, -10));
+	}
+
+	@Test
+	public void vectorPow() {
+		Vector in = new Vector(3, 4, 5);
+		Vector result = vector(c(in).pow(2)).get().evaluate();
+		assertEquals(9, result.getX());
+		assertEquals(16, result.getY());
+		assertEquals(25, result.getZ());
 	}
 }

@@ -34,6 +34,7 @@ import io.almostrealism.scope.Variable;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.mem.MemoryDataDestination;
+import org.almostrealism.io.SystemUtils;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -52,7 +53,7 @@ public class PassThroughProducer<T extends MemoryData>
 		TraversableExpression<Double>,
 		Shape<PassThroughProducer<T>>, KernelIndex,
 		ComputerFeatures  {
-	public static boolean enableDimSupport = false;
+	public static boolean enableDimSupport = SystemUtils.isEnabled("AR_LEGACY").orElse(false) ? false : true;
 
 	private TraversalPolicy shape;
 	private int argIndex;
@@ -212,7 +213,8 @@ public class PassThroughProducer<T extends MemoryData>
 		ArrayVariable var = getArgument(0);
 
 		if (enableDimSupport) {
-			return var.getAbsolute(index.toInt().divide(var.length()).multiply(var.getDimValue()));
+//			return var.getAbsolute(index.multiply(var.getDimValue().divide(var.length())));
+			return var.getAbsolute(index.toInt().divide(var.length()).multiply(var.getDimValue()).add(index.toInt().mod(var.length(), false)));
 		} else {
 			return var.getAbsolute(index);
 		}

@@ -24,11 +24,10 @@ import org.almostrealism.hardware.DynamicProducerForMemoryData;
 
 import java.util.function.Function;
 
-// TODO  This needs to take a generic argument for the type of collection to produce (maybe)
-public class DynamicCollectionProducer extends DynamicProducerForMemoryData<PackedCollection<?>> implements CollectionProducer<PackedCollection<?>> {
+public class DynamicCollectionProducer<T extends PackedCollection<?>> extends DynamicProducerForMemoryData<T> implements CollectionProducer<T> {
 	private TraversalPolicy shape;
 
-	public DynamicCollectionProducer(TraversalPolicy shape, Function<Object[], PackedCollection<?>> function) {
+	public DynamicCollectionProducer(TraversalPolicy shape, Function<Object[], T> function) {
 		super(function, len -> new PackedCollection(shape.prependDimension(len)));
 		this.shape = shape;
 	}
@@ -39,7 +38,7 @@ public class DynamicCollectionProducer extends DynamicProducerForMemoryData<Pack
 	}
 
 	@Override
-	public CollectionProducer<PackedCollection<?>> reshape(TraversalPolicy shape) {
+	public CollectionProducer<T> reshape(TraversalPolicy shape) {
 		return new ReshapeProducer<>(shape, (Producer) this);
 	}
 }

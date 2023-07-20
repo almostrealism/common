@@ -38,6 +38,7 @@ public class HardwareOperator<T extends MemoryData> implements Consumer<Object[]
 	public static boolean enableLog;
 	public static boolean enableVerboseLog;
 	public static boolean enableDimensionMasks = true;
+	public static boolean enableAtomicDimensionMasks = true;
 
 	private static long totalInvocations;
 
@@ -178,7 +179,7 @@ public class HardwareOperator<T extends MemoryData> implements Consumer<Object[]
 			}
 		}
 
-		if (globalWorkSize == 1) {
+		if (enableAtomicDimensionMasks && globalWorkSize == 1) {
 			return IntStream.range(0, argCount).map(i -> 0).toArray();
 		} else {
 			if (globalWorkSize > Integer.MAX_VALUE) {

@@ -17,6 +17,7 @@
 package org.almostrealism.space;
 
 import io.almostrealism.code.AdaptEvaluable;
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.algebra.*;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
@@ -63,10 +64,13 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 	public static final KernelizedEvaluable<Scalar> intersectAt;
 	
 	static {
-		ExpressionComputation<PackedCollection<Vector>> triangle = triangleFeat.triangle(Input.value(Vector.shape(), 0));
+//		ExpressionComputation<PackedCollection<Vector>> triangle = triangleFeat.triangle(Input.value(Vector.shape(), 0));
+		ExpressionComputation<PackedCollection<Vector>> triangle = triangleFeat.triangle(Input.value(new TraversalPolicy(3, 3), 0));
 		dataProducer = triangle.get();
 
-		intersectAt = TriangleIntersectAt.construct(Input.value(Vector.shape(), 1),
+//		intersectAt = TriangleIntersectAt.construct(Input.value(Vector.shape(), 1),
+//				Input.value(Ray.shape(), 0, -1)).get();
+		intersectAt = TriangleIntersectAt.construct(Input.value(new TraversalPolicy(4, 3), 1),
 				Input.value(Ray.shape(), 0, -1)).get();
 	}
 

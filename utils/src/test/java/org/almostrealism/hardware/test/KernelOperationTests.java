@@ -16,13 +16,9 @@
 
 package org.almostrealism.hardware.test;
 
-import io.almostrealism.relation.Evaluable;
-import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
-import org.almostrealism.collect.computations.PackedCollectionMap;
-import org.almostrealism.collect.computations.TraversableProducerComputationAdapter;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.cl.HardwareOperator;
@@ -41,11 +37,19 @@ public class KernelOperationTests implements TestFeatures {
 		PackedCollection<?> a = tensor(shape(10)).pack().traverse();
 		PackedCollection<?> b = tensor(shape(10)).pack().traverse();
 
-		HardwareOperator.verboseLog(() -> {
-			OperationList op = new OperationList();
-			op.add(a(1, traverse(1, p(x)), add(traverse(1, p(a)), traverse(1, p(b)))));
-			op.get().run();
-		});
+		boolean enableRelativeAssignment = Assignment.enableRelative;
+
+		try {
+			Assignment.enableRelative = false;
+
+			HardwareOperator.verboseLog(() -> {
+				OperationList op = new OperationList();
+				op.add(a(1, traverse(1, p(x)), add(traverse(1, p(a)), traverse(1, p(b)))));
+				op.get().run();
+			});
+		} finally {
+			Assignment.enableRelative = enableRelativeAssignment;
+		}
 
 		for (int i = 0; i < x.getShape().length(0); i++) {
 			assertEquals(a.toDouble(i) + b.toDouble(i), x.toDouble(i));
@@ -59,12 +63,20 @@ public class KernelOperationTests implements TestFeatures {
 		PackedCollection<?> a = tensor(shape(10)).pack().traverse();
 		PackedCollection<?> b = tensor(shape(10)).pack().traverse();
 
-		HardwareOperator.verboseLog(() -> {
-			OperationList op = new OperationList();
-			op.add(a(1, traverse(1, p(x)), add(traverse(1, p(a)), traverse(1, p(b)))));
-			op.add(a(1, traverse(1, p(y)), multiply(traverse(1, p(a)), traverse(1, p(b)))));
-			op.get().run();
-		});
+		boolean enableRelativeAssignment = Assignment.enableRelative;
+
+		try {
+			Assignment.enableRelative = false;
+
+			HardwareOperator.verboseLog(() -> {
+				OperationList op = new OperationList();
+				op.add(a(1, traverse(1, p(x)), add(traverse(1, p(a)), traverse(1, p(b)))));
+				op.add(a(1, traverse(1, p(y)), multiply(traverse(1, p(a)), traverse(1, p(b)))));
+				op.get().run();
+			});
+		} finally {
+			Assignment.enableRelative = enableRelativeAssignment;
+		}
 
 		for (int i = 0; i < x.getShape().length(0); i++) {
 			assertEquals(a.toDouble(i) + b.toDouble(i), x.toDouble(i));

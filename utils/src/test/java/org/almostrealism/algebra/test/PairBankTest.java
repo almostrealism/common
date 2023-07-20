@@ -3,9 +3,11 @@ package org.almostrealism.algebra.test;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.algebra.Pair;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.ExpressionComputation;
+import org.almostrealism.hardware.PassThroughProducer;
 import org.almostrealism.hardware.cl.HardwareOperator;
 import org.junit.Assert;
 import org.junit.Test;
@@ -26,6 +28,58 @@ public class PairBankTest implements CodeFeatures {
 	}
 
 	@Test
+	public void concat() {
+		Producer<PackedCollection<?>> in = v(shape(4, 1), 0);
+
+		CollectionProducer<PackedCollection<?>> concat = concat(in, in);
+
+		PackedCollection<?> timeline = new PackedCollection<>(shape(4, 1));
+		timeline.setMem(1.0, 2.0, 3.0, 4.0);
+
+		PackedCollection<?> destination = new PackedCollection<>(shape(4, 2));
+
+		HardwareOperator.verboseLog(() -> {
+			concat.get().into(destination.traverse(1)).evaluate(timeline.traverse(1));
+			System.out.println(Arrays.toString(destination.toArray(0, 8)));
+		});
+
+		Assert.assertEquals(3.0, destination.valueAt(2, 0), Math.pow(10, -10));
+		Assert.assertEquals(3.0, destination.valueAt(2, 1), Math.pow(10, -10));
+	}
+
+	@Test
+	public void map() {
+		Producer<PackedCollection<?>> in = v(shape(4, 1), 0);
+
+		CollectionProducer<PackedCollection<?>> concat = map(shape(2), traverse(1, in),
+				v -> concat((Producer) c(2.0).multiply(v), (Producer) c(2.0).multiply(v).add(c(1.0))));
+
+		PackedCollection<?> timeline = new PackedCollection<>(shape(4, 1));
+		timeline.setMem(1.0, 2.0, 3.0, 4.0);
+
+		PackedCollection<?> destination = new PackedCollection<>(shape(4, 2));
+
+		boolean enableDimSupport = PassThroughProducer.enableDimSupport;
+		boolean enableDynamic = ExpressionComputation.enableDynamicComputation;
+
+		try {
+			PassThroughProducer.enableDimSupport = true;
+			ExpressionComputation.enableDynamicComputation = true;
+
+			HardwareOperator.verboseLog(() -> {
+				concat.get().into(destination.traverse(1)).evaluate(timeline.traverse(1));
+				System.out.println(Arrays.toString(destination.toArray(0, 8)));
+			});
+		} finally {
+			PassThroughProducer.enableDimSupport = enableDimSupport;
+			ExpressionComputation.enableDynamicComputation = enableDynamic;
+		}
+
+		Assert.assertEquals(6.0, destination.valueAt(2, 0), Math.pow(10, -10));
+		Assert.assertEquals(7.0, destination.valueAt(2, 1), Math.pow(10, -10));
+	}
+
+	@Test
 	public void pairFromPairBank() {
 		PackedCollection<Pair<?>> bank = Pair.bank(10);
 		bank.set(0, new Pair(1, 2));
@@ -39,9 +93,12 @@ public class PairBankTest implements CodeFeatures {
 		bank.set(8, new Pair(17, 18));
 		bank.set(9, new Pair(19, 20));
 
+//		Producer<Pair<?>> pairFromPairBank =
+//				pairFromBank(v(shape(10, 2).traverse(1), 0),
+//					c(2).multiply(v(shape(1), 1)).add(c(1.0)));
 		Producer<Pair<?>> pairFromPairBank =
-				pairFromBank(v(shape(10, 2).traverse(1), 0),
-					c(2).multiply(v(shape(1), 1)).add(c(1.0)));
+				pairFromBank(v(shape(10, 2), 0),
+					c(2).multiply(v(shape(4, 1), 1)).add(c(1.0)));
 
 		PackedCollection<?> timeline = new PackedCollection<>(shape(4, 1));
 		timeline.setMem(1.0, 2.0, 3.0, 4.0);
@@ -49,14 +106,13 @@ public class PairBankTest implements CodeFeatures {
 		PackedCollection<?> destination = new PackedCollection<>(shape(4, 2));
 
 		pairFromPairBank.get().into(destination.traverse(1))
-				.evaluate(bank.traverse(1),
-						timeline.range(shape(destination.getCount(), 1).traverse(1)));
+				.evaluate(bank, timeline.traverse(1));
 
 		System.out.println(Arrays.toString(destination.toArray(0, 8)));
-		Assert.assertEquals(9.0, destination.valueAt(1, 0), Math.pow(10, -10));
-		Assert.assertEquals(10.0, destination.valueAt(1, 1), Math.pow(10, -10));
-		Assert.assertEquals(13.0, destination.valueAt(3, 0), Math.pow(10, -10));
-		Assert.assertEquals(14.0, destination.valueAt(3, 1), Math.pow(10, -10));
+		Assert.assertEquals(11.0, destination.valueAt(1, 0), Math.pow(10, -10));
+		Assert.assertEquals(12.0, destination.valueAt(1, 1), Math.pow(10, -10));
+		Assert.assertEquals(19.0, destination.valueAt(3, 0), Math.pow(10, -10));
+		Assert.assertEquals(20.0, destination.valueAt(3, 1), Math.pow(10, -10));
 	}
 
 	@Test

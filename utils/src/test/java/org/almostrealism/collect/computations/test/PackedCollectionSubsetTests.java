@@ -27,6 +27,7 @@ import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.ArrayVariableComputation;
+import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.hardware.KernelSupport;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.cl.HardwareOperator;
@@ -355,25 +356,33 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 
 		PackedCollection<?> input = t.pack();
 
-		HardwareOperator.verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> subset = subset(shape(size, size), p(input), x0, y0);
+		boolean enableDynamic = ExpressionComputation.enableDynamicComputation;
+
+		try {
+			ExpressionComputation.enableDynamicComputation = false;
+
+			HardwareOperator.verboseLog(() -> {
+				CollectionProducer<PackedCollection<?>> subset = subset(shape(size, size), p(input), x0, y0);
 //			Producer<PackedCollection<?>> product = multiply(traverseEach(p(filter)), traverseEach(subset)).reshape(filterShape);
-			Producer<PackedCollection<?>> product = multiply(p(filter), subset);
-			Evaluable<PackedCollection<?>> ev = product.get();
-			PackedCollection<?> result = ev.evaluate();
+				Producer<PackedCollection<?>> product = multiply(p(filter), subset);
+				Evaluable<PackedCollection<?>> ev = product.get();
+				PackedCollection<?> result = ev.evaluate();
 
-			Assert.assertEquals(size, result.getShape().length(0));
-			Assert.assertEquals(size, result.getShape().length(1));
+				Assert.assertEquals(size, result.getShape().length(0));
+				Assert.assertEquals(size, result.getShape().length(1));
 
-			for (int i = 0; i < size; i++) {
-				for (int j = 0; j < size; j++) {
-					double expected = filter.toDouble(filterShape.index(i, j)) * (x0 + i + y0 + j);
-					double actual = result.toDouble(subset.getShape().index(i, j));
-					System.out.println("PackedCollectionSubsetTests: [" + i + ", " + j + "] " + expected + " vs " + actual);
-					Assert.assertEquals(expected, actual, 0.0001);
+				for (int i = 0; i < size; i++) {
+					for (int j = 0; j < size; j++) {
+						double expected = filter.toDouble(filterShape.index(i, j)) * (x0 + i + y0 + j);
+						double actual = result.toDouble(subset.getShape().index(i, j));
+						System.out.println("PackedCollectionSubsetTests: [" + i + ", " + j + "] " + expected + " vs " + actual);
+						Assert.assertEquals(expected, actual, 0.0001);
+					}
 				}
-			}
-		});
+			});
+		} finally {
+			ExpressionComputation.enableDynamicComputation = enableDynamic;
+		}
 	}
 
 	@Test
