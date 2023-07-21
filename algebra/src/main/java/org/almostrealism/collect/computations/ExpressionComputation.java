@@ -44,9 +44,9 @@ import java.util.stream.Stream;
 @Deprecated
 public class ExpressionComputation<T extends PackedCollection<?>>
 		extends TraversableProducerComputationAdapter<T, T> {
-//	public static boolean enableTraversableAdd = SystemUtils.isEnabled("AR_LEGACY").orElse(false) ? false : true;
 	public static boolean enableTraversableAdd = true;
 	public static boolean enableTraversableMultiply = SystemUtils.isEnabled("AR_LEGACY").orElse(false) ? false : true;
+	public static boolean enableTraversableMax = SystemUtils.isEnabled("AR_LEGACY").orElse(false) ? false : true;
 	public static boolean enableTraversableComputation = true;
 	public static boolean enableExpressionFallback = false;
 

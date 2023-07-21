@@ -564,10 +564,21 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return new ExpressionComputation<>(List.of(expression), a, b);
 	}
 
-	default <T extends PackedCollection<?>> ExpressionComputation<T> _max(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
-		Function<List<ArrayVariable<Double>>, Expression<Double>> expression = args ->
-				new Max(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0));
-		return new ExpressionComputation<>(List.of(expression), a, b);
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> _max(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
+		if (ExpressionComputation.enableTraversableMax) {
+			TraversalPolicy shape = shape(1);
+			if (shape(a).getSize() == shape(b).getSize()) {
+				shape = shape(a);
+			}
+
+			return new TraversableExpressionComputation<>(shape,
+					(args, index) -> new Max(args[1].getValueAt(index), args[2].getValueAt(index)),
+					a, b);
+		} else {
+			Function<List<ArrayVariable<Double>>, Expression<Double>> expression = args ->
+					new Max(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0));
+			return new ExpressionComputation<>(List.of(expression), a, b);
+		}
 	}
 
 	default <T extends PackedCollection<?>> ExpressionComputation<T> _mod(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
