@@ -363,14 +363,25 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> add(int depth,
-																		 Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
-		if (ExpressionComputation.enableDynamicComputation) {
+																		 				Supplier<Evaluable<? extends PackedCollection<?>>> a,
+																						Supplier<Evaluable<? extends PackedCollection<?>>> b) {
+		d: if (ExpressionComputation.enableTraversableAdd) {
 			TraversalPolicy shape = shape(a);
 			int size = shape(b).getSize();
 
 			if (shape.getSize() != size) {
-				throw new IllegalArgumentException("Cannot add a collection of size " + shape.getSize() +
-						" with a collection of size " + size);
+				if (ExpressionComputation.enableExpressionFallback) {
+					break d;
+				} else {
+					if (shape.getSize() == 1) {
+						return add(1, a, traverseEach((Producer) b));
+					} else if (size == 1) {
+						return add(1, traverseEach((Producer) a), b);
+					}
+
+					throw new IllegalArgumentException("Cannot add a collection of size " + shape.getSize() +
+							" with a collection of size " + size);
+				}
 			}
 
 			DynamicExpressionComputation exp = new DynamicExpressionComputation<>(shape,
@@ -380,6 +391,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 			// exp.setShortCircuit(shortCircuit);
 			return exp;
 		}
+
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expressions =
 				IntStream.range(0, depth).mapToObj(i -> (Function<List<ArrayVariable<Double>>, Expression<Double>>)
 								np -> new Sum(np.get(1).getValueRelative(i), np.get(2).getValueRelative(i)))
@@ -387,8 +399,27 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return new ExpressionComputation<>(expressions, a, b);
 	}
 
+	@Deprecated
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> relativeAdd(Producer<T> a, Producer<T> b) {
+		TraversalPolicy shape = shape(1);
+		if (shape(a).getSize() == shape(b).getSize()) {
+			shape = shape(a);
+		}
+
+		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expressions =
+				IntStream.range(0, shape.getSize()).mapToObj(i -> (Function<List<ArrayVariable<Double>>, Expression<Double>>)
+								np -> new Sum(np.get(1).getValueRelative(i), np.get(2).getValueRelative(i)))
+						.collect(Collectors.toList());
+		return new ExpressionComputation<>(expressions, (Supplier) a, (Supplier) b);
+	}
+
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> subtract(Producer<T> a, Producer<T> b) {
 		return add(a, minus(b));
+	}
+
+	@Deprecated
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> relativeSubtract(Producer<T> a, Producer<T> b) {
+		return relativeAdd(a, minus(b));
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> multiply(
@@ -399,7 +430,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> multiply(
 			Producer<T> a, Producer<T> b,
 			Evaluable<T> shortCircuit) {
-		if (ExpressionComputation.enableDynamicComputation) {
+		if (ExpressionComputation.enableTraversableMultiply) {
 			TraversalPolicy shape = shape(a);
 			int size = shape(b).getSize();
 
@@ -420,18 +451,25 @@ public interface CollectionFeatures extends ExpressionFeatures {
 			exp.setShortCircuit(shortCircuit);
 			return exp;
 		} else {
-			TraversalPolicy shape = shape(1);
-			if (shape(a).getSize() == shape(b).getSize()) {
-				shape = shape(a);
-			}
-
-			return multiply(shape, (Supplier) a, (Supplier) b, shortCircuit);
+			return relativeMultiply((Supplier) a, (Supplier) b, shortCircuit);
 		}
 	}
 
-	default <T extends PackedCollection<?>> ExpressionComputation<T> multiply(TraversalPolicy shape,
-																			  Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b,
-																			  Evaluable<T> shortCircuit) {
+	@Deprecated
+	default <T extends PackedCollection<?>> ExpressionComputation<T> relativeMultiply(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b,
+																					  Evaluable<T> shortCircuit) {
+		TraversalPolicy shape = shape(1);
+		if (shape(a).getSize() == shape(b).getSize()) {
+			shape = shape(a);
+		}
+
+		return relativeMultiply(shape, a, b, shortCircuit);
+	}
+
+	@Deprecated
+	default <T extends PackedCollection<?>> ExpressionComputation<T> relativeMultiply(TraversalPolicy shape,
+																					  Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b,
+																					  Evaluable<T> shortCircuit) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expressions =
 				IntStream.range(0, shape.getSize()).mapToObj(i -> (Function<List<ArrayVariable<Double>>, Expression<Double>>)
 								np -> new Product(np.get(1).getValueRelative(i), np.get(2).getValueRelative(i)))
@@ -449,7 +487,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 					" with a collection of size " + size);
 		}
 
-		if (ExpressionComputation.enableDynamicComputation) {
+		if (ExpressionComputation.enableTraversableComputation) {
 			return new DynamicExpressionComputation<>(shape,
 					args -> CollectionExpression.create(shape, index ->
 							new Quotient(args[1].getValueAt(index), args[2].getValueAt(index))),
@@ -464,7 +502,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> minus(Producer<T> a) {
-		if (ExpressionComputation.enableDynamicComputation) {
+		if (ExpressionComputation.enableTraversableComputation) {
 			return new DynamicExpressionComputation<>(shape(a),
 					args -> CollectionExpression.create(shape(a), index -> new Minus(args[1].getValueAt(index))),
 					(Supplier) a);

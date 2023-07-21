@@ -71,12 +71,27 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 		return add((Producer) this, value);
 	}
 
+	@Deprecated
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> relativeAdd(Producer<T> value) {
+		return relativeAdd((Producer) this, value);
+	}
+
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> subtract(Producer<T> value) {
 		return subtract((Producer) this, value);
 	}
 
+	@Deprecated
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> relativeSubtract(Producer<T> value) {
+		return relativeSubtract((Producer) this, value);
+	}
+
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> multiply(Producer<T> value) {
 		return multiply((Producer) this, value);
+	}
+
+	@Deprecated
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> relativeMultiply(Producer<T> value) {
+		return relativeMultiply((Supplier) this, (Supplier) value, null);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> divide(Producer<T> value) {

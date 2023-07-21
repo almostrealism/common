@@ -356,10 +356,10 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 
 		PackedCollection<?> input = t.pack();
 
-		boolean enableDynamic = ExpressionComputation.enableDynamicComputation;
+		boolean enableMultiply = ExpressionComputation.enableTraversableMultiply;
 
 		try {
-			ExpressionComputation.enableDynamicComputation = false;
+			ExpressionComputation.enableTraversableMultiply = false;
 
 			HardwareOperator.verboseLog(() -> {
 				CollectionProducer<PackedCollection<?>> subset = subset(shape(size, size), p(input), x0, y0);
@@ -381,7 +381,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 				}
 			});
 		} finally {
-			ExpressionComputation.enableDynamicComputation = enableDynamic;
+			ExpressionComputation.enableTraversableMultiply = enableMultiply;
 		}
 	}
 

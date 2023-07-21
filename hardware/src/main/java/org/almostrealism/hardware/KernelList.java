@@ -95,7 +95,7 @@ public class KernelList<T extends MemoryData> implements Supplier<Runnable>, Plu
 					System.out.println("KernelList: Evaluating kernel " + i + " against " + input.getCount() + " values...");
 				}
 
-				ev.into(data.get(i)).evaluate(input, this.parameters);
+				ev.into(data.get(i)).evaluate(input, ((Shape) this.parameters).traverse(0));
 			});
 		});
 

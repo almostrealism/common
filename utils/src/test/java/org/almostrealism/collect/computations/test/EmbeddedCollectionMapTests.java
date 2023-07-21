@@ -30,6 +30,7 @@ import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.PackedCollectionMap;
 import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.util.TensorTestFeatures;
+import org.almostrealism.util.TestSettings;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -733,6 +734,8 @@ public class EmbeddedCollectionMapTests implements CodeFeatures, TensorTestFeatu
 
 	@Test
 	public void pool2d() {
+		if (TestSettings.skipLongTests) return;
+
 		int r = 12;
 		int c = 16;
 		int d = 3;

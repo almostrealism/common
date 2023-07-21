@@ -53,7 +53,7 @@ public class PassThroughProducer<T extends MemoryData>
 		TraversableExpression<Double>,
 		Shape<PassThroughProducer<T>>, KernelIndex,
 		ComputerFeatures  {
-	public static boolean enableDimSupport = SystemUtils.isEnabled("AR_LEGACY").orElse(false) ? false : true;
+	public static boolean enableDimSupport = true;
 
 	private TraversalPolicy shape;
 	private int argIndex;
@@ -213,7 +213,6 @@ public class PassThroughProducer<T extends MemoryData>
 		ArrayVariable var = getArgument(0);
 
 		if (enableDimSupport) {
-//			return var.getAbsolute(index.multiply(var.getDimValue().divide(var.length())));
 			return var.getAbsolute(index.toInt().divide(var.length()).multiply(var.getDimValue()).add(index.toInt().mod(var.length(), false)));
 		} else {
 			return var.getAbsolute(index);

@@ -355,10 +355,10 @@ public class PackedCollectionMapTests implements TestFeatures {
 		PackedCollection<?> input = tensor(shape(r, c)).pack();
 		PackedCollection<?> filter = tensor(shape(w, w)).pack();
 
-		boolean enableDynamic = ExpressionComputation.enableDynamicComputation;
+		boolean enableMultiply = ExpressionComputation.enableTraversableMultiply;
 
 		try {
-			ExpressionComputation.enableDynamicComputation = true;
+			ExpressionComputation.enableTraversableMultiply = true;
 
 			HardwareOperator.verboseLog(() -> {
 				CollectionProducer<PackedCollection<?>> conv = c(p(input))
@@ -389,7 +389,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 				}
 			});
 		} finally {
-			ExpressionComputation.enableDynamicComputation = enableDynamic;
+			ExpressionComputation.enableTraversableMultiply = enableMultiply;
 		}
 	}
 
@@ -404,10 +404,10 @@ public class PackedCollectionMapTests implements TestFeatures {
 		PackedCollection<?> input = tensor(shape(r, c)).pack();
 		PackedCollection<?> filter = tensor(shape(w, w)).pack();
 
-		boolean enableDynamic = ExpressionComputation.enableDynamicComputation;
+		boolean enableMultiply = ExpressionComputation.enableTraversableMultiply;
 
 		try {
-			ExpressionComputation.enableDynamicComputation = true;
+			ExpressionComputation.enableTraversableMultiply = true;
 
 			HardwareOperator.verboseLog(() -> {
 				CollectionProducer<PackedCollection<?>> conv = c(p(input))
@@ -438,7 +438,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 				}
 			});
 		} finally {
-			ExpressionComputation.enableDynamicComputation = enableDynamic;
+			ExpressionComputation.enableTraversableMultiply = enableMultiply;
 		}
 	}
 
@@ -452,10 +452,10 @@ public class PackedCollectionMapTests implements TestFeatures {
 		PackedCollection<?> input = tensor(shape(r, c)).pack();
 		PackedCollection<?> filter = tensor(shape(w, w)).pack();
 
-		boolean enableDynamic = ExpressionComputation.enableDynamicComputation;
+		boolean enableMultiply = ExpressionComputation.enableTraversableMultiply;
 
 		try {
-			ExpressionComputation.enableDynamicComputation = true;
+			ExpressionComputation.enableTraversableMultiply = true;
 
 			HardwareOperator.verboseLog(() -> {
 				CollectionProducer<PackedCollection<?>> conv = c(p(input))
@@ -487,7 +487,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 				}
 			});
 		} finally {
-			ExpressionComputation.enableDynamicComputation = enableDynamic;
+			ExpressionComputation.enableTraversableMultiply = enableMultiply;
 		}
 	}
 
@@ -505,10 +505,10 @@ public class PackedCollectionMapTests implements TestFeatures {
 
 		input.fill(pos -> pos[0] + pos[1] * 0.1);
 
-		boolean enableDynamic = ExpressionComputation.enableDynamicComputation;
+		boolean enableMultiply = ExpressionComputation.enableTraversableMultiply;
 
 		try {
-			ExpressionComputation.enableDynamicComputation = true;
+			ExpressionComputation.enableTraversableMultiply = true;
 
 			IntStream.range(0, 20).forEach(n -> {
 				HardwareOperator.verboseLog(() -> {
@@ -559,7 +559,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 				});
 			});
 		} finally {
-			ExpressionComputation.enableDynamicComputation = enableDynamic;
+			ExpressionComputation.enableTraversableMultiply = enableMultiply;
 		}
 	}
 
@@ -577,10 +577,10 @@ public class PackedCollectionMapTests implements TestFeatures {
 		PackedCollection<?> input = tensor(shape(r, c)).pack();
 		PackedCollection<?> filter = tensor(shape(n, w, w)).pack();
 
-		boolean enableDynamic = ExpressionComputation.enableDynamicComputation;
+		boolean enableMultiply = ExpressionComputation.enableTraversableMultiply;
 
 		try {
-			ExpressionComputation.enableDynamicComputation = true;
+			ExpressionComputation.enableTraversableMultiply = true;
 
 			HardwareOperator.verboseLog(() -> {
 				CollectionProducer<PackedCollection<?>> conv = c(p(input))
@@ -639,7 +639,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 				}
 			});
 		} finally {
-			ExpressionComputation.enableDynamicComputation = enableDynamic;
+			ExpressionComputation.enableTraversableMultiply = enableMultiply;
 		}
 	}
 

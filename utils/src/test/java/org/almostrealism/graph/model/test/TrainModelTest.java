@@ -115,15 +115,15 @@ public class TrainModelTest implements TestFeatures {
 		Tensor<Double> t = tensor(inputShape);
 		PackedCollection<?> input = t.pack();
 
-		boolean enableDynamic = ExpressionComputation.enableDynamicComputation;
+		boolean enableMultiply = ExpressionComputation.enableTraversableMultiply;
 
 		try {
-			ExpressionComputation.enableDynamicComputation = true;
+			ExpressionComputation.enableTraversableMultiply = true;
 
 			model.setup().get().run();
 			model.forward(input);
 		} finally {
-			ExpressionComputation.enableDynamicComputation = enableDynamic;
+			ExpressionComputation.enableTraversableMultiply = enableMultiply;
 		}
 
 		PackedCollection<?> filter = conv.getWeights().get(0);
@@ -165,17 +165,17 @@ public class TrainModelTest implements TestFeatures {
 		Tensor<Double> t = tensor(inputShape);
 		PackedCollection<?> input = t.pack();
 
-		boolean enableDynamic = ExpressionComputation.enableDynamicComputation;
+		boolean enableMultiply = ExpressionComputation.enableTraversableMultiply;
 
 		try {
-			ExpressionComputation.enableDynamicComputation = true;
+			ExpressionComputation.enableTraversableMultiply = true;
 
 			model.setup().get().run();
 
 			PackedCollection<?> in = input;
 			HardwareOperator.verboseLog(() -> model.forward(in));
 		} finally {
-			ExpressionComputation.enableDynamicComputation = enableDynamic;
+			ExpressionComputation.enableTraversableMultiply = enableMultiply;
 		}
 
 		PackedCollection<?> filter = conv.getWeights().get(0);

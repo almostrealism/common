@@ -112,11 +112,11 @@ public class KernelOperationTests implements TestFeatures {
 		PackedCollection<?> input = tensor(shape(r, c)).pack();
 		PackedCollection<?> filter = tensor(shape(n, w, w)).pack();
 
-		boolean enableDynamic = ExpressionComputation.enableDynamicComputation;
+		boolean enableMultiply = ExpressionComputation.enableTraversableMultiply;
 		boolean enableRelativeAssignment = Assignment.enableRelative;
 
 		try {
-			ExpressionComputation.enableDynamicComputation = true;
+			ExpressionComputation.enableTraversableMultiply = true;
 			Assignment.enableRelative = false;
 
 			HardwareOperator.verboseLog(() -> {
@@ -157,7 +157,7 @@ public class KernelOperationTests implements TestFeatures {
 				}
 			});
 		} finally {
-			ExpressionComputation.enableDynamicComputation = enableDynamic;
+			ExpressionComputation.enableTraversableMultiply = enableMultiply;
 			Assignment.enableRelative = enableRelativeAssignment;
 		}
 	}
