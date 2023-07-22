@@ -126,4 +126,23 @@ public class CollectionKernelTests implements TestFeatures {
 			}
 		});
 	}
+
+	@Test
+	public void conditionalKernel() {
+		Producer<PackedCollection<?>> in = v(1, 0);
+		Producer<PackedCollection<?>> t = integers(0, 100);
+		Producer<PackedCollection<?>> conditional =
+				greaterThanConditional(t, c(50),
+						multiply(in, c(0.5)),
+						multiply(in, c(1.5)));
+
+		PackedCollection<?> value = tensor(shape(100)).pack();
+		PackedCollection<?> out = conditional.get().evaluate(value.traverseEach());
+
+		System.out.println(out.valueAt(45));
+		System.out.println(out.valueAt(60));
+
+		assertEquals(67.5, out.valueAt(45));
+		assertEquals(30.0, out.valueAt(60));
+	}
 }

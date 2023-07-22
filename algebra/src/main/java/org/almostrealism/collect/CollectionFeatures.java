@@ -365,23 +365,19 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> add(int depth,
 																		 				Supplier<Evaluable<? extends PackedCollection<?>>> a,
 																						Supplier<Evaluable<? extends PackedCollection<?>>> b) {
-		d: if (ExpressionComputation.enableTraversableAdd) {
+		if (ExpressionComputation.enableTraversableAdd) {
 			TraversalPolicy shape = shape(a);
 			int size = shape(b).getSize();
 
 			if (shape.getSize() != size) {
-				if (ExpressionComputation.enableExpressionFallback) {
-					break d;
-				} else {
-					if (shape.getSize() == 1) {
-						return add(1, a, traverseEach((Producer) b));
-					} else if (size == 1) {
-						return add(1, traverseEach((Producer) a), b);
-					}
-
-					throw new IllegalArgumentException("Cannot add a collection of size " + shape.getSize() +
-							" with a collection of size " + size);
+				if (shape.getSize() == 1) {
+					return add(1, a, traverseEach((Producer) b));
+				} else if (size == 1) {
+					return add(1, traverseEach((Producer) a), b);
 				}
+
+				throw new IllegalArgumentException("Cannot add a collection of size " + shape.getSize() +
+						" with a collection of size " + size);
 			}
 
 			DynamicExpressionComputation exp = new DynamicExpressionComputation<>(shape,
@@ -558,7 +554,22 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		}
 	}
 
-	default <T extends PackedCollection<?>> ExpressionComputation<T> _min(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> _min(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
+		if (ExpressionComputation.enableTraversableMin) {
+			TraversalPolicy shape = shape(1);
+			if (shape(a).getSize() == shape(b).getSize()) {
+				shape = shape(a);
+			}
+
+			return new TraversableExpressionComputation<>(shape,
+					(args, index) -> new Min(args[1].getValueAt(index), args[2].getValueAt(index)),
+					a, b);
+		} else {
+			return relativeMin(a, b);
+		}
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> relativeMin(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
 		Function<List<ArrayVariable<Double>>, Expression<Double>> expression = args ->
 				new Min(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0));
 		return new ExpressionComputation<>(List.of(expression), a, b);
@@ -575,10 +586,14 @@ public interface CollectionFeatures extends ExpressionFeatures {
 					(args, index) -> new Max(args[1].getValueAt(index), args[2].getValueAt(index)),
 					a, b);
 		} else {
-			Function<List<ArrayVariable<Double>>, Expression<Double>> expression = args ->
-					new Max(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0));
-			return new ExpressionComputation<>(List.of(expression), a, b);
+			return relativeMax(a, b);
 		}
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> relativeMax(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
+		Function<List<ArrayVariable<Double>>, Expression<Double>> expression = args ->
+				new Max(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0));
+		return new ExpressionComputation<>(List.of(expression), a, b);
 	}
 
 	default <T extends PackedCollection<?>> ExpressionComputation<T> _mod(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
@@ -587,8 +602,12 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return new ExpressionComputation<>(List.of(expression), a, b);
 	}
 
-	default <T extends PackedCollection<?>> ExpressionComputation<T> _bound(Supplier<Evaluable<? extends PackedCollection<?>>> a, double min, double max) {
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> _bound(Supplier<Evaluable<? extends PackedCollection<?>>> a, double min, double max) {
 		return _min(_max(a, c(min)), c(max));
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> relativeBound(Supplier<Evaluable<? extends PackedCollection<?>>> a, double min, double max) {
+		return relativeMin(relativeMax(a, c(min)), c(max));
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> max(Producer<T> input) {
@@ -651,12 +670,26 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	default <T extends PackedCollection<?>> CollectionProducer<T> greaterThanConditional(Producer<?> a, Producer<?> b,
 																			   Producer<T> trueValue, Producer<T> falseValue,
 																			   boolean includeEqual) {
-		Function<List<ArrayVariable<Double>>, Expression<Double>> expression = args ->
-				new Conditional(greater(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0), includeEqual),
-						args.get(3).getValueRelative(0), args.get(4).getValueRelative(0));
-		return new ExpressionComputation<>(List.of(expression),
-											(Supplier) a, (Supplier) b,
-											(Supplier) trueValue, (Supplier) falseValue);
+		if (ExpressionComputation.enableTraversableConditional) {
+			TraversalPolicy shape = shape(1);
+//			if (shape(a).getSize() == shape(b).getSize()) {
+//				shape = shape(a);
+//			}
+
+			return new TraversableExpressionComputation<>(shape,
+					(args, index) -> new Conditional(
+							greater(args[1].getValueAt(index), args[2].getValueAt(index), includeEqual),
+										args[3].getValueAt(index), args[4].getValueAt(index)),
+					(Supplier) a, (Supplier) b,
+					(Supplier) trueValue, (Supplier) falseValue);
+		} else {
+			Function<List<ArrayVariable<Double>>, Expression<Double>> expression = args ->
+					new Conditional(greater(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0), includeEqual),
+							args.get(3).getValueRelative(0), args.get(4).getValueRelative(0));
+			return new ExpressionComputation<>(List.of(expression),
+					(Supplier) a, (Supplier) b,
+					(Supplier) trueValue, (Supplier) falseValue);
+		}
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> _lessThan(Producer<T> a, Producer<T> b,
