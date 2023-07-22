@@ -221,27 +221,45 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> c(TraversalPolicy shape,
 																			   Producer<T> collection,
 																			   Producer<PackedCollection<?>> index) {
-//		DynamicExpressionComputation exp = new DynamicExpressionComputation<>(shape,
-//				args -> CollectionExpression.create(shape, idx -> args[1].getValueAt(args[2].valueAt(e(0)).add(idx))),
-//				(Supplier) collection, index);
-		DynamicExpressionComputation exp = new DynamicExpressionComputation<>(shape,
-				args -> CollectionExpression.create(shape, idx -> args[1].getValueAt(args[2].getValueAt(idx))),
-				(Supplier) collection, index);
-		if (shape.getTotalSize() == 1) {
-			exp.setShortCircuit(args -> {
-				Evaluable<? extends PackedCollection> out = ag -> new PackedCollection(1);
-				Evaluable<? extends PackedCollection> c = collection.get();
-				Evaluable<? extends PackedCollection> i = index.get();
+		if (ExpressionComputation.enableTraversableC) {
+			TraversableExpressionComputation exp = new TraversableExpressionComputation<>(shape,
+					args -> CollectionExpression.create(shape, idx -> args[1].getValueAt(args[2].getValueAt(idx))),
+					(Supplier) collection, index);
+			if (shape.getTotalSize() == 1) {
+				exp.setShortCircuit(args -> {
+					Evaluable<? extends PackedCollection> out = ag -> new PackedCollection(1);
+					Evaluable<? extends PackedCollection> c = collection.get();
+					Evaluable<? extends PackedCollection> i = index.get();
 
-				PackedCollection<?> col = c.evaluate(args);
-				PackedCollection idx = i.evaluate(args);
-				PackedCollection dest = out.evaluate(args);
-				dest.setMem(col.toDouble((int) idx.toDouble(0)));
-				return dest;
-			});
+					PackedCollection<?> col = c.evaluate(args);
+					PackedCollection idx = i.evaluate(args);
+					PackedCollection dest = out.evaluate(args);
+					dest.setMem(col.toDouble((int) idx.toDouble(0)));
+					return dest;
+				});
+			}
+
+			return exp;
+		} else {
+			DynamicExpressionComputation exp = new DynamicExpressionComputation<>(shape,
+					args -> CollectionExpression.create(shape, idx -> args[1].getValueAt(args[2].getValueAt(idx))),
+					(Supplier) collection, index);
+			if (shape.getTotalSize() == 1) {
+				exp.setShortCircuit(args -> {
+					Evaluable<? extends PackedCollection> out = ag -> new PackedCollection(1);
+					Evaluable<? extends PackedCollection> c = collection.get();
+					Evaluable<? extends PackedCollection> i = index.get();
+
+					PackedCollection<?> col = c.evaluate(args);
+					PackedCollection idx = i.evaluate(args);
+					PackedCollection dest = out.evaluate(args);
+					dest.setMem(col.toDouble((int) idx.toDouble(0)));
+					return dest;
+				});
+			}
+
+			return exp;
 		}
-
-		return exp;
 	}
 
 	default DynamicCollectionProducer func(TraversalPolicy shape, Function<Object[], PackedCollection<?>> function) {

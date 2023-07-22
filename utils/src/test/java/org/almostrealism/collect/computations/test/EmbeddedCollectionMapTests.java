@@ -42,26 +42,6 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 public class EmbeddedCollectionMapTests implements CodeFeatures, TensorTestFeatures {
-	protected <T extends PackedCollection<?>> DynamicExpressionComputation<T> dynamicMax(Producer<T> input) {
-		TraversalPolicy shape = shape(input);
-
-		return new DynamicExpressionComputation<>(shape,
-				(BiFunction<CollectionVariable[], Expression, Expression>) (args, index) -> {
-					return args[1].toList().max();
-				},
-				(Supplier) input);
-	}
-
-	protected <T extends PackedCollection<?>> DynamicExpressionComputation<T> dynamicMultiply(Producer a, Producer b) {
-		TraversalPolicy shape = shape(a);
-
-		return new DynamicExpressionComputation<>(shape,
-				(BiFunction<CollectionVariable[], Expression, Expression>) (args, index) -> {
-//					return args[1].getValueRelative(index).multiply(args[2].getValueRelative(0));
-					return args[1].getValueAt(index).multiply(args[2].getValueAt(index));
-				},
-				(Supplier) a, (Supplier) b);
-	}
 
 	protected <T extends PackedCollection<?>> ExpressionComputation<T> first(Producer<T> input) {
 		Function<List<ArrayVariable<Double>>, Expression<Double>> expression= np ->
@@ -85,32 +65,7 @@ public class EmbeddedCollectionMapTests implements CodeFeatures, TensorTestFeatu
 	}
 
 	@Test
-	public void dynamicMultiplyMap() {
-		int n = 2;
-
-		PackedCollection<?> input = tensor(shape(8, n)).pack();
-		PackedCollection<?> filter = tensor(shape(n)).pack();
-		filter.fill(pos -> Math.random());
-
-		HardwareOperator.verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> product = traverse(1, p(input)).map(v -> dynamicMultiply(v, p(filter)));
-			PackedCollection<?> output = product.get().evaluate();
-			System.out.println(output.getShape());
-
-			Assert.assertEquals(8, output.getShape().length(0));
-			Assert.assertEquals(n, output.getShape().length(1));
-
-			for (int i = 0; i < 8; i++) {
-				for (int j = 0; j < n; j++) {
-					Assert.assertEquals(input.valueAt(i, j) * filter.valueAt(j),
-								output.valueAt(i, j), 0.0001);
-				}
-			}
-		});
-	}
-
-	@Test
-	public void expressionMultiplyMap() {
+	public void multiplyMap() {
 		int n = 2;
 
 		PackedCollection<?> input = tensor(shape(8, n)).pack();
@@ -128,7 +83,7 @@ public class EmbeddedCollectionMapTests implements CodeFeatures, TensorTestFeatu
 			for (int i = 0; i < 8; i++) {
 				for (int j = 0; j < n; j++) {
 					Assert.assertEquals(input.valueAt(i, j) * filter.valueAt(j),
-							output.valueAt(i, j), 0.0001);
+								output.valueAt(i, j), 0.0001);
 				}
 			}
 		});

@@ -28,11 +28,13 @@ import org.almostrealism.bool.GreaterThanScalar;
 import org.almostrealism.bool.LessThanScalar;
 import org.almostrealism.bool.LessThanVector;
 import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.DynamicExpressionComputation;
 import org.almostrealism.collect.computations.ExpressionComputation;
+import org.almostrealism.collect.computations.TraversableExpressionComputation;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.MemoryBank;
 
@@ -137,13 +139,22 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 				.setPostprocessor(Scalar.postprocessor());
 	}
 
-	default DynamicExpressionComputation<Scalar> scalar(TraversalPolicy shape, Supplier<Evaluable<? extends PackedCollection<?>>> collection, Supplier<Evaluable<? extends Scalar>> index) {
-		DynamicExpressionComputation c =  new DynamicExpressionComputation<Scalar>(shape,
-				(args, i) ->
-						conditional(i.eq(e(0.0)), args[1].getValueAt(args[2].getValueAt(e(0)).multiply(shape.getSize())), e(1.0)),
-				collection, (Supplier) index);
-		c.setPostprocessor(Scalar.postprocessor());
-		return c;
+	default CollectionProducerComputation<Scalar> scalar(TraversalPolicy shape, Supplier<Evaluable<? extends PackedCollection<?>>> collection, Supplier<Evaluable<? extends Scalar>> index) {
+		if (ExpressionComputation.enableTraversableScalar) {
+			TraversableExpressionComputation c = new TraversableExpressionComputation<Scalar>(shape,
+					(args, i) ->
+							conditional(i.eq(e(0.0)), args[1].getValueAt(args[2].getValueAt(e(0)).multiply(shape.getSize())), e(1.0)),
+					collection, (Supplier) index);
+			c.setPostprocessor(Scalar.postprocessor());
+			return c;
+		} else {
+			DynamicExpressionComputation c = new DynamicExpressionComputation<Scalar>(shape,
+					(args, i) ->
+							conditional(i.eq(e(0.0)), args[1].getValueAt(args[2].getValueAt(e(0)).multiply(shape.getSize())), e(1.0)),
+					collection, (Supplier) index);
+			c.setPostprocessor(Scalar.postprocessor());
+			return c;
+		}
 	}
 
 	default Producer<Scalar> scalar() {
