@@ -81,7 +81,7 @@ public interface TriangleFeatures extends VectorFeatures {
 	}
 
 	default CollectionProducerComputationBase<Vector, Vector> point(Supplier<Evaluable<? extends PackedCollection<?>>> points, int index) {
-		if (ExpressionComputation.enableTraversablePoints) {
+		if (ExpressionComputation.enableTraversableComputation) {
 			return new TraversableExpressionComputation<>(shape(3),
 					(BiFunction<TraversableExpression[], Expression, Expression>) (args, idx) ->
 							args[1].getValueAt(e(index * 3).add(idx.mod(e(3)))),

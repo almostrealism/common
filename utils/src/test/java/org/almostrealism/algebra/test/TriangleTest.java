@@ -26,6 +26,7 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.bool.AcceleratedConjunctionScalar;
 import org.almostrealism.bool.GreaterThanScalar;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
@@ -87,7 +88,7 @@ public class TriangleTest implements TestFeatures {
 		Producer<Ray> noRank = ((ProducerWithRank) intersectAt()).getProducer();
 		ExpressionComputation originVector = (ExpressionComputation<Vector>) (Supplier) ((RayExpressionComputation) noRank).getInputs().get(1);
 
-		if (!ExpressionComputation.enableTraversableComputation) {
+		if (!CollectionFeatures.enableTraversableComputation) {
 			return originVector;
 		} else {
 			return (CollectionProducerComputationBase<Vector, Vector>) originVector.getInputs().get(1);

@@ -44,10 +44,6 @@ import java.util.stream.Stream;
 public class ExpressionComputation<T extends PackedCollection<?>>
 		extends TraversableProducerComputationAdapter<T, T> {
 	// SystemUtils.isEnabled("AR_LEGACY").orElse(false) ? false : true;
-	public static boolean enableTraversableC = true;
-	public static boolean enableTraversableScalar = true;
-	public static boolean enableTraversableTransform = true;
-	public static boolean enableTraversablePoints = true;
 	public static boolean enableTraversableComputation = true;
 
 	private List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression;
