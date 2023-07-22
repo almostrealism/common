@@ -115,16 +115,8 @@ public class TrainModelTest implements TestFeatures {
 		Tensor<Double> t = tensor(inputShape);
 		PackedCollection<?> input = t.pack();
 
-		boolean enableMultiply = ExpressionComputation.enableTraversableMultiply;
-
-		try {
-			ExpressionComputation.enableTraversableMultiply = true;
-
-			model.setup().get().run();
-			model.forward(input);
-		} finally {
-			ExpressionComputation.enableTraversableMultiply = enableMultiply;
-		}
+		model.setup().get().run();
+		model.forward(input);
 
 		PackedCollection<?> filter = conv.getWeights().get(0);
 		TraversalPolicy filterShape = filter.getShape();
@@ -165,18 +157,10 @@ public class TrainModelTest implements TestFeatures {
 		Tensor<Double> t = tensor(inputShape);
 		PackedCollection<?> input = t.pack();
 
-		boolean enableMultiply = ExpressionComputation.enableTraversableMultiply;
+		model.setup().get().run();
 
-		try {
-			ExpressionComputation.enableTraversableMultiply = true;
-
-			model.setup().get().run();
-
-			PackedCollection<?> in = input;
-			HardwareOperator.verboseLog(() -> model.forward(in));
-		} finally {
-			ExpressionComputation.enableTraversableMultiply = enableMultiply;
-		}
+		PackedCollection<?> in = input;
+		HardwareOperator.verboseLog(() -> model.forward(in));
 
 		PackedCollection<?> filter = conv.getWeights().get(0);
 		TraversalPolicy filterShape = filter.getShape();

@@ -59,24 +59,10 @@ public class PairBankTest implements CodeFeatures {
 
 		PackedCollection<?> destination = new PackedCollection<>(shape(4, 2));
 
-		boolean enableDimSupport = PassThroughProducer.enableDimSupport;
-		boolean enableAdd = ExpressionComputation.enableTraversableAdd;
-		boolean enableMultiply = ExpressionComputation.enableTraversableMultiply;
-
-		try {
-			PassThroughProducer.enableDimSupport = true;
-			ExpressionComputation.enableTraversableAdd = true;
-			ExpressionComputation.enableTraversableMultiply = true;
-
-			HardwareOperator.verboseLog(() -> {
-				concat.get().into(destination.traverse(1)).evaluate(timeline.traverse(1));
-				System.out.println(Arrays.toString(destination.toArray(0, 8)));
-			});
-		} finally {
-			PassThroughProducer.enableDimSupport = enableDimSupport;
-			ExpressionComputation.enableTraversableAdd = enableAdd;
-			ExpressionComputation.enableTraversableMultiply = enableMultiply;
-		}
+		HardwareOperator.verboseLog(() -> {
+			concat.get().into(destination.traverse(1)).evaluate(timeline.traverse(1));
+			System.out.println(Arrays.toString(destination.toArray(0, 8)));
+		});
 
 		Assert.assertEquals(6.0, destination.valueAt(2, 0), Math.pow(10, -10));
 		Assert.assertEquals(7.0, destination.valueAt(2, 1), Math.pow(10, -10));

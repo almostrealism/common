@@ -41,15 +41,9 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-@Deprecated
 public class ExpressionComputation<T extends PackedCollection<?>>
 		extends TraversableProducerComputationAdapter<T, T> {
 	// SystemUtils.isEnabled("AR_LEGACY").orElse(false) ? false : true;
-	public static boolean enableTraversableAdd = true;
-	public static boolean enableTraversableMultiply = true;
-	public static boolean enableTraversableMin = true;
-	public static boolean enableTraversableMax = true;
-	public static boolean enableTraversableConditional = true;
 	public static boolean enableTraversableComputation = true;
 
 	private List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression;

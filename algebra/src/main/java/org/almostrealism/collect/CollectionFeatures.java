@@ -365,7 +365,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> add(int depth,
 																		 				Supplier<Evaluable<? extends PackedCollection<?>>> a,
 																						Supplier<Evaluable<? extends PackedCollection<?>>> b) {
-		if (ExpressionComputation.enableTraversableAdd) {
+		if (ExpressionComputation.enableTraversableComputation) {
 			TraversalPolicy shape = shape(a);
 			int size = shape(b).getSize();
 
@@ -426,7 +426,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> multiply(
 			Producer<T> a, Producer<T> b,
 			Evaluable<T> shortCircuit) {
-		if (ExpressionComputation.enableTraversableMultiply) {
+		if (ExpressionComputation.enableTraversableComputation) {
 			TraversalPolicy shape = shape(a);
 			int size = shape(b).getSize();
 
@@ -483,7 +483,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 					" with a collection of size " + size);
 		}
 
-		if (ExpressionComputation.enableTraversableComputation) {
+		if (enableTraversableComputation) {
 			return new DynamicExpressionComputation<>(shape,
 					args -> CollectionExpression.create(shape, index ->
 							new Quotient(args[1].getValueAt(index), args[2].getValueAt(index))),
@@ -498,7 +498,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> minus(Producer<T> a) {
-		if (ExpressionComputation.enableTraversableComputation) {
+		if (enableTraversableComputation) {
 			return new DynamicExpressionComputation<>(shape(a),
 					args -> CollectionExpression.create(shape(a), index -> new Minus(args[1].getValueAt(index))),
 					(Supplier) a);
@@ -512,7 +512,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> pow(Producer<T> base, Producer<T> exp) {
-		if (ExpressionComputation.enableTraversableComputation) {
+		if (enableTraversableComputation) {
 			if (shape(base).getSize() != 1 && shape(exp).getSize() != 1 && shape(base).getSize() != shape(exp).getSize()) {
 				throw new IllegalArgumentException("Cannot raise a collection of size " + shape(base).getSize() +
 						" to a collection of size " + shape(exp).getSize());
@@ -542,7 +542,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> floor(
 			Supplier<Evaluable<? extends PackedCollection<?>>> value) {
-		if (ExpressionComputation.enableTraversableComputation) {
+		if (enableTraversableComputation) {
 			return new TraversableExpressionComputation<>(shape(value),
 					(BiFunction<TraversableExpression[], Expression, Expression>) (args, index) ->
 							new Floor(args[1].getValueAt(index)),
@@ -555,7 +555,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> _min(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
-		if (ExpressionComputation.enableTraversableMin) {
+		if (ExpressionComputation.enableTraversableComputation) {
 			TraversalPolicy shape = shape(1);
 			if (shape(a).getSize() == shape(b).getSize()) {
 				shape = shape(a);
@@ -569,6 +569,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		}
 	}
 
+	@Deprecated
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> relativeMin(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
 		Function<List<ArrayVariable<Double>>, Expression<Double>> expression = args ->
 				new Min(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0));
@@ -576,7 +577,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> _max(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
-		if (ExpressionComputation.enableTraversableMax) {
+		if (ExpressionComputation.enableTraversableComputation) {
 			TraversalPolicy shape = shape(1);
 			if (shape(a).getSize() == shape(b).getSize()) {
 				shape = shape(a);
@@ -590,6 +591,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		}
 	}
 
+	@Deprecated
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> relativeMax(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
 		Function<List<ArrayVariable<Double>>, Expression<Double>> expression = args ->
 				new Max(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0));
@@ -606,6 +608,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return _min(_max(a, c(min)), c(max));
 	}
 
+	@Deprecated
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> relativeBound(Supplier<Evaluable<? extends PackedCollection<?>>> a, double min, double max) {
 		return relativeMin(relativeMax(a, c(min)), c(max));
 	}
@@ -670,7 +673,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	default <T extends PackedCollection<?>> CollectionProducer<T> greaterThanConditional(Producer<?> a, Producer<?> b,
 																			   Producer<T> trueValue, Producer<T> falseValue,
 																			   boolean includeEqual) {
-		if (ExpressionComputation.enableTraversableConditional) {
+		if (ExpressionComputation.enableTraversableComputation) {
 			TraversalPolicy shape = shape(1);
 //			if (shape(a).getSize() == shape(b).getSize()) {
 //				shape = shape(a);

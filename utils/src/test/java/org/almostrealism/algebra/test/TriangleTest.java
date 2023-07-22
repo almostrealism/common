@@ -87,7 +87,7 @@ public class TriangleTest implements TestFeatures {
 		Producer<Ray> noRank = ((ProducerWithRank) intersectAt()).getProducer();
 		ExpressionComputation originVector = (ExpressionComputation<Vector>) (Supplier) ((RayExpressionComputation) noRank).getInputs().get(1);
 
-		if (!ExpressionComputation.enableTraversableAdd) {
+		if (!ExpressionComputation.enableTraversableComputation) {
 			return originVector;
 		} else {
 			return (CollectionProducerComputationBase<Vector, Vector>) originVector.getInputs().get(1);
