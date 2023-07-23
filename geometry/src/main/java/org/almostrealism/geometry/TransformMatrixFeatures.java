@@ -61,7 +61,7 @@ public interface TransformMatrixFeatures extends CollectionFeatures {
 	}
 
 	default CollectionProducerComputation<Vector> transform(Producer<TransformMatrix> matrix, Supplier<Evaluable<? extends Vector>> vector, boolean includeTranslation) {
-		if (ExpressionComputation.enableTraversableComputation) {
+		if (enableTraversableComputation) {
 			TraversableExpressionComputation c = new TraversableExpressionComputation<>(shape(3), (BiFunction<TraversableExpression[], Expression, Expression>) (args, index) -> {
 				Function<Integer, Expression<Double>> t = (i) -> args[2].getValueAt(index.multiply(4).add(e(i)));
 				Function<Integer, Expression<Double>> v = (i) -> args[1].getValueAt(e(i));
