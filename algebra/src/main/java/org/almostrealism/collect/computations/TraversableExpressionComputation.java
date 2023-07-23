@@ -154,14 +154,14 @@ public class TraversableExpressionComputation<T extends PackedCollection<?>>
 
 	public static <T extends PackedCollection<?>> TraversableExpressionComputation<T> fixed(T value, BiFunction<MemoryData, Integer, T> postprocessor) {
 		BiFunction<TraversableExpression[], Expression, Expression> comp = (args, index) -> {
+			index = index.toInt().mod(new IntegerConstant(value.getShape().getTotalSize()), false);
 			index = index.getSimplified();
+
 			OptionalInt i = index.intValue();
 
 			if (i.isPresent()) {
 				return value.getValueAt(index);
 			} else {
-				index = index.toInt().mod(new IntegerConstant(value.getShape().getTotalSize()), false);
-
 				Expression v = value.getValueAt(new IntegerConstant(0));
 
 				for (int j = 1; j < value.getShape().getTotalSize(); j++) {
