@@ -45,6 +45,8 @@ public class ExpressionComputation<T extends PackedCollection<?>>
 		extends TraversableProducerComputationAdapter<T, T> {
 	// SystemUtils.isEnabled("AR_LEGACY").orElse(false) ? false : true;
 	public static boolean enableTraversableAdd = true;
+	public static boolean enableTraversableMultiply = true;
+	public static boolean enableTraversableDivide = true;
 	public static boolean enableTraversableMinus = true;
 	public static boolean enableTraversableComputation = true;
 

@@ -459,7 +459,27 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> multiply(
 			Producer<T> a, Producer<T> b,
 			Evaluable<T> shortCircuit) {
-		if (enableTraversableComputation) {
+		if (ExpressionComputation.enableTraversableMultiply) {
+			TraversalPolicy shape = shape(a);
+			int size = shape(b).getSize();
+
+			if (shape.getSize() != size) {
+				if (shape.getSize() != 1 && size != 1) {
+					throw new IllegalArgumentException("Cannot multiply a collection of size " + shape.getSize() +
+							" with a collection of size " + size);
+				} else {
+					// TODO This should actually just call traverseEach if the shapes don't match, but one size is = 1
+					System.out.println("WARN: Multiplying a collection of size " + shape.getSize() +
+							" with a collection of size " + size + " (will broadcast)");
+				}
+			}
+
+			TraversableExpressionComputation exp = new TraversableExpressionComputation<>(shape,
+							args -> CollectionExpression.create(shape, index -> new Product(args[1].getValueAt(index), args[2].getValueAt(index))),
+							(Supplier) a, (Supplier) b);
+			exp.setShortCircuit(shortCircuit);
+			return exp;
+		} else {
 			TraversalPolicy shape = shape(a);
 			int size = shape(b).getSize();
 
@@ -475,12 +495,10 @@ public interface CollectionFeatures extends ExpressionFeatures {
 			}
 
 			DynamicExpressionComputation exp = new DynamicExpressionComputation<>(shape,
-							args -> CollectionExpression.create(shape, index -> new Product(args[1].getValueAt(index), args[2].getValueAt(index))),
-							(Supplier) a, (Supplier) b);
+					args -> CollectionExpression.create(shape, index -> new Product(args[1].getValueAt(index), args[2].getValueAt(index))),
+					(Supplier) a, (Supplier) b);
 			exp.setShortCircuit(shortCircuit);
 			return exp;
-		} else {
-			return relativeMultiply((Supplier) a, (Supplier) b, shortCircuit);
 		}
 	}
 
@@ -516,10 +534,17 @@ public interface CollectionFeatures extends ExpressionFeatures {
 					" with a collection of size " + size);
 		}
 
-		return new DynamicExpressionComputation<>(shape,
-				args -> CollectionExpression.create(shape, index ->
-						new Quotient(args[1].getValueAt(index), args[2].getValueAt(index))),
-				(Supplier) a, (Supplier) b);
+		if (ExpressionComputation.enableTraversableDivide) {
+			return new TraversableExpressionComputation<>(shape,
+					args -> CollectionExpression.create(shape, index ->
+							new Quotient(args[1].getValueAt(index), args[2].getValueAt(index))),
+					(Supplier) a, (Supplier) b);
+		} else {
+			return new DynamicExpressionComputation<>(shape,
+					args -> CollectionExpression.create(shape, index ->
+							new Quotient(args[1].getValueAt(index), args[2].getValueAt(index))),
+					(Supplier) a, (Supplier) b);
+		}
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> minus(Producer<T> a) {
