@@ -32,7 +32,6 @@ import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.computations.DynamicExpressionComputation;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.TraversableExpressionComputation;
 import org.almostrealism.hardware.HardwareFeatures;

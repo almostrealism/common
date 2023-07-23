@@ -24,10 +24,7 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionFeatures;
-import io.almostrealism.collect.CollectionVariable;
 import org.almostrealism.collect.CollectionProducerComputation;
-import org.almostrealism.collect.computations.CollectionProducerComputationBase;
-import org.almostrealism.collect.computations.DynamicExpressionComputation;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.TraversableExpressionComputation;
 

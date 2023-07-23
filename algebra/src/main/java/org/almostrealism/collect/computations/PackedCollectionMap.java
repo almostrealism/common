@@ -209,12 +209,4 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 			super(shape, expression, args);
 		}
 	}
-
-//	private static class ItemComputation<T extends PackedCollection<?>> extends DynamicExpressionComputation<T> {
-//		public ItemComputation(TraversalPolicy shape,
-//							   Function<CollectionVariable[], CollectionExpression> expression,
-//							   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-//			super(shape, expression, args);
-//		}
-//	}
 }

@@ -25,7 +25,6 @@ import io.almostrealism.scope.RelativeArrayVariable;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.DynamicExpressionComputation;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.PackedCollectionMap;
 import org.almostrealism.hardware.cl.HardwareOperator;

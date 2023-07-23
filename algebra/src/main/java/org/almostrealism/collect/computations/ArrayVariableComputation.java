@@ -32,7 +32,7 @@ import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
-// Use ExpressionComputation or DynamicExpressionComputation instead
+// Use ExpressionComputation or TraversableExpressionComputation instead
 @Deprecated
 public class ArrayVariableComputation<T extends PackedCollection<?>>
 		extends TraversableProducerComputationAdapter<T, T> {
