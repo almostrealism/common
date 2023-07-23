@@ -202,11 +202,19 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 		return ((Shape) collection).getShape();
 	}
 
-	private static class ItemComputation<T extends PackedCollection<?>> extends DynamicExpressionComputation<T> {
+	private static class ItemComputation<T extends PackedCollection<?>> extends TraversableExpressionComputation<T> {
 		public ItemComputation(TraversalPolicy shape,
-							   Function<CollectionVariable[], CollectionExpression> expression,
+							   Function<TraversableExpression[], CollectionExpression> expression,
 							   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
 			super(shape, expression, args);
 		}
 	}
+
+//	private static class ItemComputation<T extends PackedCollection<?>> extends DynamicExpressionComputation<T> {
+//		public ItemComputation(TraversalPolicy shape,
+//							   Function<CollectionVariable[], CollectionExpression> expression,
+//							   Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+//			super(shape, expression, args);
+//		}
+//	}
 }
