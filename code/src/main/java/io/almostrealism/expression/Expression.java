@@ -209,7 +209,7 @@ public class Expression<T> implements Tree<Expression<?>> {
 	public Ceiling ceil() { return new Ceiling((Expression) this); }
 
 	public Mod mod(Expression<Double> operand) { return new Mod((Expression) this, operand); }
-	public Mod mod(Expression<Double> operand, boolean fp) { return new Mod((Expression) this, operand, fp); }
+	public Mod mod(Expression<?> operand, boolean fp) { return new Mod((Expression) this, (Expression) operand, fp); }
 
 	public Equals eq(Expression<?> operand) { return new Equals(this, operand); }
 

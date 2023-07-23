@@ -159,8 +159,12 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		});
 	}
 
-	default <T extends PackedCollection<?>> ExpressionComputation<T> c(T value) {
-		return ExpressionComputation.fixed(value);
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> c(T value) {
+		if (ExpressionComputation.enableTraversableFixed) {
+			return TraversableExpressionComputation.fixed(value);
+		} else {
+			return ExpressionComputation.fixed(value);
+		}
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> concat(Producer<PackedCollection<?>>... producers) {

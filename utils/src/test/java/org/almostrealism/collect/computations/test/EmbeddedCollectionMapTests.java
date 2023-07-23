@@ -694,7 +694,21 @@ public class EmbeddedCollectionMapTests implements CodeFeatures, TensorTestFeatu
 		int c = 16;
 		int d = 3;
 		int w = 2;
+		pool(r, c, d, w);
+	}
 
+	@Test
+	public void pool2dSquare() {
+		if (TestSettings.skipLongTests) return;
+
+		int r = 8;
+		int c = 8;
+		int d = 8;
+		int w = 2;
+		pool(r, c, d, w);
+	}
+
+	public void pool(int r, int c, int d, int w) {
 		PackedCollection<?> input = tensor(shape(r, c, d)).pack();
 		input.fill(pos -> Math.random());
 
@@ -728,7 +742,7 @@ public class EmbeddedCollectionMapTests implements CodeFeatures, TensorTestFeatu
 							}
 						}
 
-						double actual = output.toDouble(output.getShape().index(i, j, copy));
+						double actual = output.valueAt(i, j, copy);
 
 						System.out.println("EmbeddedCollectionMapTests[" + i + ", " + j + "]: Expected " + expected + " vs actual " + actual);
 						Assert.assertEquals(expected, actual, 0.0001);

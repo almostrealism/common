@@ -25,6 +25,7 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
@@ -73,13 +74,15 @@ public interface VectorFeatures extends CollectionFeatures, HardwareFeatures {
 		return new ExpressionComputation<Vector>(expression, bank).setPostprocessor(Vector.postprocessor());
 	}
 
-	default ExpressionComputation<Vector> vector(CollectionProducerComputationBase<?, ?> value) {
+	default ExpressionComputation<Vector> vector(CollectionProducerComputation<?> value) {
 		if (value instanceof ExpressionComputation) {
 			if (((ExpressionComputation) value).expression().size() != 3)
 				throw new IllegalArgumentException();
 
-			return new ExpressionComputation<Vector>(((ExpressionComputation) value).expression(),
-						value.getInputs().subList(1, value.getInputs().size()).toArray(Supplier[]::new))
+			ExpressionComputation<Vector> c = (ExpressionComputation) value;
+
+			return new ExpressionComputation<Vector>(c.expression(),
+						c.getInputs().subList(1, c.getInputs().size()).toArray(Supplier[]::new))
 					.setPostprocessor(Vector.postprocessor());
 		} else if (value instanceof Shape) {
 			TraversalPolicy shape = ((Shape) value).getShape();

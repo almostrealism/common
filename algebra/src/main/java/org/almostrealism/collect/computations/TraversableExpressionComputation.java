@@ -16,9 +16,12 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.expression.Conditional;
+import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
@@ -29,10 +32,14 @@ import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
+import java.util.OptionalInt;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class TraversableExpressionComputation<T extends PackedCollection<?>>
@@ -59,16 +66,18 @@ public class TraversableExpressionComputation<T extends PackedCollection<?>>
 		this.expression = expression;
 	}
 
-	public void setShortCircuit(Evaluable<T> shortCircuit) {
+	public TraversableExpressionComputation<T> setShortCircuit(Evaluable<T> shortCircuit) {
 		this.shortCircuit = shortCircuit;
+		return this;
 	}
 
 	public BiFunction<MemoryData, Integer, T> getPostprocessor() {
 		return postprocessor;
 	}
 
-	public void setPostprocessor(BiFunction<MemoryData, Integer, T> postprocessor) {
+	public TraversableExpressionComputation<T> setPostprocessor(BiFunction<MemoryData, Integer, T> postprocessor) {
 		this.postprocessor = postprocessor;
+		return this;
 	}
 
 	protected CollectionExpression getExpression(Expression index) {
@@ -137,5 +146,36 @@ public class TraversableExpressionComputation<T extends PackedCollection<?>>
 	@Override
 	public T postProcessOutput(MemoryData output, int offset) {
 		return getPostprocessor() == null ? super.postProcessOutput(output, offset) : getPostprocessor().apply(output, offset);
+	}
+
+	public static <T extends PackedCollection<?>> TraversableExpressionComputation<T> fixed(T value) {
+		return fixed(value, null);
+	}
+
+	public static <T extends PackedCollection<?>> TraversableExpressionComputation<T> fixed(T value, BiFunction<MemoryData, Integer, T> postprocessor) {
+		BiFunction<TraversableExpression[], Expression, Expression> comp = (args, index) -> {
+			index = index.getSimplified();
+			OptionalInt i = index.intValue();
+
+			if (i.isPresent()) {
+				return value.getValueAt(index);
+			} else {
+				index = index.toInt().mod(new IntegerConstant(value.getShape().getTotalSize()), false);
+
+				Expression v = value.getValueAt(new IntegerConstant(0));
+
+				for (int j = 1; j < value.getShape().getTotalSize(); j++) {
+					v = new Conditional(index.eq(new IntegerConstant(j)), value.getValueAt(new IntegerConstant(j)), v);
+				}
+
+				return v;
+			}
+		};
+
+		return new TraversableExpressionComputation<T>(value.getShape(), comp).setPostprocessor(postprocessor).setShortCircuit(args -> {
+			PackedCollection v = new PackedCollection(value.getShape());
+			v.setMem(value.toArray(0, value.getMemLength()));
+			return postprocessor == null ? (T) v : postprocessor.apply(v, 0);
+		});
 	}
 }
