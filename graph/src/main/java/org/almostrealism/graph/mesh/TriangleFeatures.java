@@ -81,16 +81,10 @@ public interface TriangleFeatures extends VectorFeatures {
 	}
 
 	default CollectionProducerComputationBase<Vector, Vector> point(Supplier<Evaluable<? extends PackedCollection<?>>> points, int index) {
-		if (enableTraversableComputation) {
-			return new TraversableExpressionComputation<>(shape(3),
-					(BiFunction<TraversableExpression[], Expression, Expression>) (args, idx) ->
-							args[1].getValueAt(e(index * 3).add(idx.mod(e(3)))),
-					(Supplier) points);
-		} else {
-			List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression = new ArrayList<>();
-			IntStream.range(0, 3).forEach(i -> expression.add(args -> args.get(1).getValueRelative(index * 3 + i)));
-			return new ExpressionComputation<>(shape(3), expression, (Supplier) points);
-		}
+		return new TraversableExpressionComputation<>(shape(3),
+				(BiFunction<TraversableExpression[], Expression, Expression>) (args, idx) ->
+						args[1].getValueAt(e(index * 3).add(idx.mod(e(3)))),
+				(Supplier) points);
 	}
 
 	default ExpressionComputation<PackedCollection<Vector>> points(Supplier<Evaluable<? extends Vector>> p1,

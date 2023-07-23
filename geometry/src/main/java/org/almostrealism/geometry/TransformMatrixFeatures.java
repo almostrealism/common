@@ -61,45 +61,24 @@ public interface TransformMatrixFeatures extends CollectionFeatures {
 	}
 
 	default CollectionProducerComputation<Vector> transform(Producer<TransformMatrix> matrix, Supplier<Evaluable<? extends Vector>> vector, boolean includeTranslation) {
-		if (enableTraversableComputation) {
-			TraversableExpressionComputation c = new TraversableExpressionComputation<>(shape(3), (BiFunction<TraversableExpression[], Expression, Expression>) (args, index) -> {
-				Function<Integer, Expression<Double>> t = (i) -> args[2].getValueAt(index.multiply(4).add(e(i)));
-				Function<Integer, Expression<Double>> v = (i) -> args[1].getValueAt(e(i));
-				Function<Integer, Expression<Double>> p = (i) -> new Product(t.apply(i), v.apply(i));
+		TraversableExpressionComputation c = new TraversableExpressionComputation<>(shape(3), (BiFunction<TraversableExpression[], Expression, Expression>) (args, index) -> {
+			Function<Integer, Expression<Double>> t = (i) -> args[2].getValueAt(index.multiply(4).add(e(i)));
+			Function<Integer, Expression<Double>> v = (i) -> args[1].getValueAt(e(i));
+			Function<Integer, Expression<Double>> p = (i) -> new Product(t.apply(i), v.apply(i));
 
-				List<Expression<Double>> sum = new ArrayList<>();
-				sum.add(p.apply(0));
-				sum.add(p.apply(1));
-				sum.add(p.apply(2));
+			List<Expression<Double>> sum = new ArrayList<>();
+			sum.add(p.apply(0));
+			sum.add(p.apply(1));
+			sum.add(p.apply(2));
 
-				if (includeTranslation) {
-					sum.add(t.apply(3));
-				}
+			if (includeTranslation) {
+				sum.add(t.apply(3));
+			}
 
-				return new Sum(sum.toArray(Expression[]::new));
-			}, (Supplier) vector, (Supplier) matrix);
-			c.setPostprocessor(Vector.postprocessor());
-			return c;
-		} else {
-			DynamicExpressionComputation c = new DynamicExpressionComputation<>(shape(3), (BiFunction<CollectionVariable[], Expression, Expression>) (args, index) -> {
-				Function<Integer, Expression<Double>> t = (i) -> args[2].getValueAt(index.multiply(4).add(e(i)));
-				Function<Integer, Expression<Double>> v = (i) -> args[1].getValueAt(e(i));
-				Function<Integer, Expression<Double>> p = (i) -> new Product(t.apply(i), v.apply(i));
-
-				List<Expression<Double>> sum = new ArrayList<>();
-				sum.add(p.apply(0));
-				sum.add(p.apply(1));
-				sum.add(p.apply(2));
-
-				if (includeTranslation) {
-					sum.add(t.apply(3));
-				}
-
-				return new Sum(sum.toArray(Expression[]::new));
-			}, (Supplier) vector, (Supplier) matrix);
-			c.setPostprocessor(Vector.postprocessor());
-			return c;
-		}
+			return new Sum(sum.toArray(Expression[]::new));
+		}, (Supplier) vector, (Supplier) matrix);
+		c.setPostprocessor(Vector.postprocessor());
+		return c;
 	}
 
 	static TransformMatrixFeatures getInstance() {

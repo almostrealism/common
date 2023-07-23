@@ -140,21 +140,12 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 	}
 
 	default CollectionProducerComputation<Scalar> scalar(TraversalPolicy shape, Supplier<Evaluable<? extends PackedCollection<?>>> collection, Supplier<Evaluable<? extends Scalar>> index) {
-		if (enableTraversableComputation) {
-			TraversableExpressionComputation c = new TraversableExpressionComputation<Scalar>(shape,
-					(args, i) ->
-							conditional(i.eq(e(0.0)), args[1].getValueAt(args[2].getValueAt(e(0)).multiply(shape.getSize())), e(1.0)),
-					collection, (Supplier) index);
-			c.setPostprocessor(Scalar.postprocessor());
-			return c;
-		} else {
-			DynamicExpressionComputation c = new DynamicExpressionComputation<Scalar>(shape,
-					(args, i) ->
-							conditional(i.eq(e(0.0)), args[1].getValueAt(args[2].getValueAt(e(0)).multiply(shape.getSize())), e(1.0)),
-					collection, (Supplier) index);
-			c.setPostprocessor(Scalar.postprocessor());
-			return c;
-		}
+		TraversableExpressionComputation c = new TraversableExpressionComputation<Scalar>(shape,
+				(args, i) ->
+						conditional(i.eq(e(0.0)), args[1].getValueAt(args[2].getValueAt(e(0)).multiply(shape.getSize())), e(1.0)),
+				collection, (Supplier) index);
+		c.setPostprocessor(Scalar.postprocessor());
+		return c;
 	}
 
 	default Producer<Scalar> scalar() {

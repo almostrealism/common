@@ -221,45 +221,24 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> c(TraversalPolicy shape,
 																			   Producer<T> collection,
 																			   Producer<PackedCollection<?>> index) {
-		if (enableTraversableComputation) {
-			TraversableExpressionComputation exp = new TraversableExpressionComputation<>(shape,
-					args -> CollectionExpression.create(shape, idx -> args[1].getValueAt(args[2].getValueAt(idx))),
-					(Supplier) collection, index);
-			if (shape.getTotalSize() == 1) {
-				exp.setShortCircuit(args -> {
-					Evaluable<? extends PackedCollection> out = ag -> new PackedCollection(1);
-					Evaluable<? extends PackedCollection> c = collection.get();
-					Evaluable<? extends PackedCollection> i = index.get();
+		TraversableExpressionComputation exp = new TraversableExpressionComputation<>(shape,
+				args -> CollectionExpression.create(shape, idx -> args[1].getValueAt(args[2].getValueAt(idx))),
+				(Supplier) collection, index);
+		if (shape.getTotalSize() == 1) {
+			exp.setShortCircuit(args -> {
+				Evaluable<? extends PackedCollection> out = ag -> new PackedCollection(1);
+				Evaluable<? extends PackedCollection> c = collection.get();
+				Evaluable<? extends PackedCollection> i = index.get();
 
-					PackedCollection<?> col = c.evaluate(args);
-					PackedCollection idx = i.evaluate(args);
-					PackedCollection dest = out.evaluate(args);
-					dest.setMem(col.toDouble((int) idx.toDouble(0)));
-					return dest;
-				});
-			}
-
-			return exp;
-		} else {
-			DynamicExpressionComputation exp = new DynamicExpressionComputation<>(shape,
-					args -> CollectionExpression.create(shape, idx -> args[1].getValueAt(args[2].getValueAt(idx))),
-					(Supplier) collection, index);
-			if (shape.getTotalSize() == 1) {
-				exp.setShortCircuit(args -> {
-					Evaluable<? extends PackedCollection> out = ag -> new PackedCollection(1);
-					Evaluable<? extends PackedCollection> c = collection.get();
-					Evaluable<? extends PackedCollection> i = index.get();
-
-					PackedCollection<?> col = c.evaluate(args);
-					PackedCollection idx = i.evaluate(args);
-					PackedCollection dest = out.evaluate(args);
-					dest.setMem(col.toDouble((int) idx.toDouble(0)));
-					return dest;
-				});
-			}
-
-			return exp;
+				PackedCollection<?> col = c.evaluate(args);
+				PackedCollection idx = i.evaluate(args);
+				PackedCollection dest = out.evaluate(args);
+				dest.setMem(col.toDouble((int) idx.toDouble(0)));
+				return dest;
+			});
 		}
+
+		return exp;
 	}
 
 	default DynamicCollectionProducer func(TraversalPolicy shape, Function<Object[], PackedCollection<?>> function) {
@@ -383,7 +362,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> add(int depth,
 																		 				Supplier<Evaluable<? extends PackedCollection<?>>> a,
 																						Supplier<Evaluable<? extends PackedCollection<?>>> b) {
-		if (ExpressionComputation.enableTraversableComputation) {
+		if (enableTraversableComputation) {
 			TraversalPolicy shape = shape(a);
 			int size = shape(b).getSize();
 
@@ -459,7 +438,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> multiply(
 			Producer<T> a, Producer<T> b,
 			Evaluable<T> shortCircuit) {
-		if (ExpressionComputation.enableTraversableComputation) {
+		if (enableTraversableComputation) {
 			TraversalPolicy shape = shape(a);
 			int size = shape(b).getSize();
 
@@ -534,7 +513,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 					" with a collection of size " + size);
 		}
 
-		if (ExpressionComputation.enableTraversableComputation) {
+		if (enableTraversableComputation) {
 			return new TraversableExpressionComputation<>(shape,
 					args -> CollectionExpression.create(shape, index ->
 							new Quotient(args[1].getValueAt(index), args[2].getValueAt(index))),
@@ -548,7 +527,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> minus(Producer<T> a) {
-		if (ExpressionComputation.enableTraversableComputation) {
+		if (enableTraversableComputation) {
 			return new TraversableExpressionComputation<>(shape(a),
 					args -> CollectionExpression.create(shape(a), index -> new Minus(args[1].getValueAt(index))),
 					(Supplier) a);
