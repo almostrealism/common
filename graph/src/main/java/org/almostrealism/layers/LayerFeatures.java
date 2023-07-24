@@ -39,7 +39,7 @@ import java.util.function.Supplier;
 
 public interface LayerFeatures extends CollectionFeatures {
 	boolean enableKernelLayers = false;
-	boolean enableKernelPool = true;
+	boolean enableKernelPool = false;
 
 	@Deprecated
 	default KernelLayer layer(TraversalPolicy inputShape, TraversalPolicy outputShape,
@@ -213,7 +213,7 @@ public interface LayerFeatures extends CollectionFeatures {
 									.map(shape(d, 1), v ->
 											enumerate(shape(1, 1, size, size, 1), v)
 											.traverse(1).reduce(slice -> max(slice))),
-								output.traverseEach());
+								output.traverse(2));
 						if (next != null) ops.add(next.push(p(output)));
 						return ops;
 					}), propagation);
