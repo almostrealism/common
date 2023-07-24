@@ -21,10 +21,14 @@ import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.PackedCollectionMap;
 import org.almostrealism.collect.computations.TraversableProducerComputationAdapter;
+import org.almostrealism.collect.computations.test.EmbeddedCollectionMapTests;
+import org.almostrealism.collect.computations.test.KernelAssertions;
 import org.almostrealism.hardware.cl.HardwareOperator;
+import org.almostrealism.hardware.test.KernelOperationTests;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.DefaultCellularLayer;
 import org.almostrealism.layers.KernelLayerCell;
@@ -35,7 +39,7 @@ import org.junit.Test;
 
 import java.util.stream.IntStream;
 
-public class TrainModelTest implements TestFeatures {
+public class TrainModelTest implements TestFeatures, KernelAssertions {
 	private int convSize = 3;
 	private int poolSize = 2;
 	private int w = 10;
@@ -161,11 +165,16 @@ public class TrainModelTest implements TestFeatures {
 		model.setup().get().run();
 
 		PackedCollection<?> in = input;
-		HardwareOperator.verboseLog(() -> model.forward(in));
+//		HardwareOperator.verboseLog(() -> model.forward(in));
+		model.forward(in);
 
 		PackedCollection<?> output = pool instanceof DefaultCellularLayer ?
 				((DefaultCellularLayer) pool).getOutput() :
 				((KernelLayerCell) pool.getForward()).getOutput();
+
+		pool2d(inputShape.length(0), inputShape.length(1), 8, 2, input, output);
+
+		/*
 		TraversalPolicy outputShape = output.getShape();
 
 		for (int p = 0; p < outputShape.length(0); p++) {
@@ -188,6 +197,7 @@ public class TrainModelTest implements TestFeatures {
 				}
 			}
 		}
+		*/
 	}
 
 	@Test
@@ -261,6 +271,15 @@ public class TrainModelTest implements TestFeatures {
 				}
 			}
 		}
+	}
+
+	@Test
+	public void poolAttempts() {
+		CollectionProducerComputationBase.destinationLog(() -> {
+			new EmbeddedCollectionMapTests().pool2dSquare();
+			new KernelOperationTests().pool2dSquare();
+			pool();
+		});
 	}
 
 	// @Test

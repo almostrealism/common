@@ -361,7 +361,11 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			Evaluable<T> c = (Evaluable<T>) ProducerCache.getEvaluableForSupplier(arguments.get(i).getProducer());
 
 			if (!(c instanceof KernelizedEvaluable)) {
-				kernelArgs[i] = (MemoryData) c.evaluate((Object[]) args);
+				Object o = c.evaluate((Object[]) args);
+				if (!(o instanceof MemoryData))
+					throw new IllegalArgumentException();
+
+				kernelArgs[i] = (MemoryData) o;
 
 				if (kernelArgs[i] instanceof MemoryBank) {
 					sizes.add(((MemoryBank<?>) kernelArgs[i]).getCount());

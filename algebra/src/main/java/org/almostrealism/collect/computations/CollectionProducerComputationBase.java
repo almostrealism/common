@@ -41,9 +41,10 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 												implements CollectionProducerComputation<O>, MemoryDataComputation<O>,
 														KernelizedProducer<O>, DestinationSupport<O>,
 														ComputerFeatures {
+	public static boolean enableDestinationLogging = false;
+
 	private TraversalPolicy shape;
 	private Supplier<? extends PackedCollection> destination;
-	private boolean fixedDestinationShape;
 
 	protected CollectionProducerComputationBase() { }
 
@@ -58,34 +59,19 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		init();
 	}
 
-	public boolean isFixedDestinationShape() {
-		return fixedDestinationShape;
-	}
-
-	public void setFixedDestinationShape(boolean fixedDestinationShape) {
-		this.fixedDestinationShape = fixedDestinationShape;
-	}
-
 	protected void setShape(TraversalPolicy shape) {
 		this.shape = shape;
 	}
 
 	protected MemoryBank<?> createKernelDestination(int len) {
-		if (fixedDestinationShape) return new PackedCollection<>(getShape());
-
-//		if (len > 1 && len % getShape().getCount() != 0) {
-//			throw new IllegalArgumentException("Kernel length must be a multiple of the shape count");
-//		}
-
 		int count = len / getShape().getCount();
 
 		TraversalPolicy shape;
 
-		// When kernel length is 1, or identical to the output count, an
+		// When kernel length is less than, or identical to the output count, an
 		// assumption is made that the intended shape is the original shape.
 		// This is a bit of a hack, but it's by far the simplest solution
 		// available
-//		if (count == 0 || (len == getShape().length(0) && count == 1)) {
 		if (count == 0 || len == getShape().getCount()) {
 			// It is not necessary to prepend a (usually) unnecessary dimension
 			shape = getShape();
@@ -93,8 +79,11 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 			shape = getShape().prependDimension(count);
 		}
 
-//		System.out.println("CollectionProducerComputationAdapter: createKernelDestination(" + len + "): "
-//							+ shape + "[" + shape.getTraversalAxis() + "]");
+		if (enableDestinationLogging) {
+			System.out.println("CollectionProducerComputationBase: createKernelDestination(" + len +
+								"): " + shape + "[" + shape.getTraversalAxis() + "]");
+		}
+
 		return new PackedCollection<>(shape);
 	}
 
@@ -136,6 +125,17 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		ProducerCache.purgeEvaluableCache(this);
 		if (destination instanceof DestinationConsolidationArgumentMap.DestinationThreadLocal) {
 			((DestinationConsolidationArgumentMap.DestinationThreadLocal) destination).destroy();
+		}
+	}
+
+	public static void destinationLog(Runnable r) {
+		boolean log = enableDestinationLogging;
+
+		try {
+			enableDestinationLogging = true;
+			r.run();
+		} finally {
+			enableDestinationLogging = log;
 		}
 	}
 }

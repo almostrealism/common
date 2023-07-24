@@ -100,7 +100,9 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	}
 
 	default <T> Producer<T> p(T value) {
-		if (value instanceof Shape) {
+		if (value instanceof Producer) {
+			throw new IllegalArgumentException();
+		} else if (value instanceof Shape) {
 			return new CollectionProducerBase<>() {
 				@Override
 				public Evaluable get() {

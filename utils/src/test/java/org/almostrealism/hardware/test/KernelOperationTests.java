@@ -18,19 +18,24 @@ package org.almostrealism.hardware.test;
 
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.ExpressionComputation;
+import org.almostrealism.collect.computations.test.KernelAssertions;
 import org.almostrealism.hardware.KernelizedEvaluable;
+import org.almostrealism.hardware.KernelizedProducer;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSettings;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.Arrays;
 import java.util.stream.IntStream;
 
-public class KernelOperationTests implements TestFeatures {
+public class KernelOperationTests implements TestFeatures, KernelAssertions {
+	public static boolean enableAssignment = false;
+
 	@Test
 	public void assignment() {
 		PackedCollection<?> x = new PackedCollection<>(shape(10)).traverse();
@@ -157,5 +162,56 @@ public class KernelOperationTests implements TestFeatures {
 		} finally {
 			Assignment.enableRelative = enableRelativeAssignment;
 		}
+	}
+
+	@Test
+	public void pool2d() {
+		if (TestSettings.skipLongTests) return;
+
+		int r = 12;
+		int c = 16;
+		int d = 3;
+		int w = 2;
+		pool(r, c, d, w);
+	}
+
+	@Test
+	public void pool2dSquare() {
+		if (TestSettings.skipLongTests) return;
+
+		int r = 8;
+		int c = 8;
+		int d = 8;
+		int w = 2;
+		pool(r, c, d, w);
+	}
+
+	public void pool(int r, int c, int d, int w) {
+		PackedCollection<?> input = tensor(shape(r, c, d)).pack();
+		input.fill(pos -> Math.random());
+
+		CollectionProducer<PackedCollection<?>> pool =
+				c(p(input)).enumerate(1, w)
+						.enumerate(1, w)
+						.traverse(2)
+						.map(shape(d, 1), v ->
+								enumerate(shape(1, 1, w, w, 1), v)
+										.traverse(1).reduce(slice ->
+												max(slice)));
+		System.out.println("KernelOperationTests: Computation shape = " + pool.getShape());
+
+		PackedCollection<?> output = new PackedCollection<>(shape(r / w, c / w, d)).traverse(2);
+
+		if (enableAssignment) {
+			OperationList op = new OperationList();
+			op.add(a(1, traverse(3, p(output)), pool));
+			op.get().run();
+		} else {
+			OperationList op = new OperationList();
+			op.add((KernelizedProducer<? extends MemoryData>) pool, output);
+			op.get().run();
+		}
+
+		pool2d(r, c, d, w, input, output);
 	}
 }

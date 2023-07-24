@@ -16,17 +16,13 @@
 
 package org.almostrealism.collect.computations.test;
 
-import io.almostrealism.collect.CollectionVariable;
-import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.scope.RelativeArrayVariable;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
-import org.almostrealism.collect.computations.PackedCollectionMap;
 import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.util.TensorTestFeatures;
 import org.almostrealism.util.TestSettings;
@@ -36,11 +32,10 @@ import org.junit.Test;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-public class EmbeddedCollectionMapTests implements CodeFeatures, TensorTestFeatures {
+public class EmbeddedCollectionMapTests implements CodeFeatures, TensorTestFeatures, KernelAssertions {
 
 	protected <T extends PackedCollection<?>> ExpressionComputation<T> first(Producer<T> input) {
 		Function<List<ArrayVariable<Double>>, Expression<Double>> expression= np ->
@@ -686,6 +681,7 @@ public class EmbeddedCollectionMapTests implements CodeFeatures, TensorTestFeatu
 		});
 	}
 
+
 	@Test
 	public void pool2d() {
 		if (TestSettings.skipLongTests) return;
@@ -712,43 +708,37 @@ public class EmbeddedCollectionMapTests implements CodeFeatures, TensorTestFeatu
 		PackedCollection<?> input = tensor(shape(r, c, d)).pack();
 		input.fill(pos -> Math.random());
 
-		HardwareOperator.verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> pool =
-					c(p(input)).enumerate(1, w)
-							.enumerate(1, w)
-							.traverse(2)
-							.map(shape(d, 1), v ->
-									enumerate(shape(1, 1, w, w, 1), v)
-											.traverse(1).reduce(slice ->
-													max(slice)));
-			System.out.println(pool.getShape());
+		{
+			CollectionProducer<?> pt = c(p(input));
+			System.out.println("1: " + pt.getShape() + " - " + pt.getShape().getSize() +
+								" / " + pt.getShape().getTotalSize());
+			pt = pt.enumerate(1, w);
+			System.out.println("2: " + pt.getShape() + " - " + pt.getShape().getSize() +
+								" / " + pt.getShape().getTotalSize());
+			pt = pt.enumerate(1, w);
+			System.out.println("3: " + pt.getShape() + " - " + pt.getShape().getSize() +
+								" / " + pt.getShape().getTotalSize());
+			pt = pt.traverse(2);
+			System.out.println("4: " + pt.getShape() + " - " + pt.getShape().getSize() +
+								" / " + pt.getShape().getTotalSize());
+			pt = pt.map(shape(d, 1), v ->
+					enumerate(shape(1, 1, w, w, 1), v)
+							.traverse(1).reduce(slice ->
+									max(slice)));
+			System.out.println("5: " + pt.getShape() + " - " + pt.getShape().getSize());
+		}
 
-			PackedCollection<?> output = pool.get().evaluate();
-			System.out.println(output.getShape());
+		CollectionProducer<PackedCollection<?>> pool =
+				c(p(input)).enumerate(1, w)
+						.enumerate(1, w)
+						.traverse(2)
+						.map(shape(d, 1), v ->
+								enumerate(shape(1, 1, w, w, 1), v)
+										.traverse(1).reduce(slice ->
+												max(slice)));
+		System.out.println("EmbeddedCollectionMapTests: Computation shape = " + pool.getShape());
 
-			int r2 = r / w;
-			int c2 = c / w;
-
-			for (int copy = 0; copy < d; copy++) {
-				for (int i = 0; i < r2; i++) {
-					for (int j = 0; j < c2; j++) {
-						System.out.println("EmbeddedCollectionMapTests: " + i + ", " + j);
-
-						double expected = -Math.pow(10, 5);
-
-						for (int k = 0; k < w; k++) {
-							for (int l = 0; l < w; l++) {
-								expected = Math.max(expected, input.valueAt(i * w + k, j * w + l, copy));
-							}
-						}
-
-						double actual = output.valueAt(i, j, copy);
-
-						System.out.println("EmbeddedCollectionMapTests[" + i + ", " + j + "]: Expected " + expected + " vs actual " + actual);
-						Assert.assertEquals(expected, actual, 0.0001);
-					}
-				}
-			}
-		});
+		PackedCollection<?> output = pool.get().evaluate();
+		pool2d(r, c, d, w, input, output);
 	}
 }
