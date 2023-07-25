@@ -18,7 +18,7 @@ package io.almostrealism.code;
 
 import io.almostrealism.scope.Variable;
 
-public abstract class ProducerComputationBase<I, O> extends ComputationBase<I, O> implements Operator<O>, ProducerComputation<O> {
+public abstract class ProducerComputationBase<I, O> extends ComputationBase<I, O> implements Operator<O> {
 	private Variable outputVariable;
 
 	@Override

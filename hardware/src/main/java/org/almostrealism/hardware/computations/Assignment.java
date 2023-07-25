@@ -17,7 +17,6 @@
 package org.almostrealism.hardware.computations;
 
 import io.almostrealism.code.ArgumentMap;
-import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.KernelIndex;
@@ -26,13 +25,13 @@ import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.code.ScopeInputManager;
-import org.almostrealism.hardware.DynamicOperationComputationAdapter;
+import org.almostrealism.hardware.OperationComputationAdapter;
 import org.almostrealism.hardware.MemoryData;
 
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
-public class Assignment<T extends MemoryData> extends DynamicOperationComputationAdapter<T> {
+public class Assignment<T extends MemoryData> extends OperationComputationAdapter<T> {
 	public static boolean enableRelative = true;
 
 	private final int memLength;

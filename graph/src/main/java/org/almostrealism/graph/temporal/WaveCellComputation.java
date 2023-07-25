@@ -23,12 +23,12 @@ import io.almostrealism.scope.Scope;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.DynamicOperationComputationAdapter;
+import org.almostrealism.hardware.OperationComputationAdapter;
 
 import java.util.Objects;
 import java.util.function.Supplier;
 
-public abstract class WaveCellComputation extends DynamicOperationComputationAdapter {
+public abstract class WaveCellComputation extends OperationComputationAdapter {
 	protected HybridScope scope;
 
 	public WaveCellComputation(WaveCellData data, PackedCollection<?> wave, Producer<Scalar> frame, Scalar output) {

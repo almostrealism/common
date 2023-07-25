@@ -17,17 +17,16 @@
 package org.almostrealism.graph.computations;
 
 import io.almostrealism.expression.Sum;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.SummationCell;
-import org.almostrealism.hardware.DynamicOperationComputationAdapter;
+import org.almostrealism.hardware.OperationComputationAdapter;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.code.ScopeInputManager;
 
 import java.util.function.Supplier;
 
-public class SummationCellOperation extends DynamicOperationComputationAdapter<PackedCollection<?>> {
+public class SummationCellOperation extends OperationComputationAdapter<PackedCollection<?>> {
 	private boolean prepared;
 
 	public SummationCellOperation(SummationCell cell, Supplier<Evaluable<? extends PackedCollection<?>>> protein) {

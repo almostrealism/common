@@ -16,12 +16,12 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Compactable;
-import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
@@ -30,20 +30,16 @@ import java.util.Optional;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-public abstract class ComputationBase<I, O> extends OperationAdapter<I> implements Process, Computation<O>, Compactable {
-
-	/**
-	 * If set to true, then {@link Provider}s are treated as static for
-	 * compaction. This is often desirable, because Providers may not
-	 * change, but it is also likely to make many types of operations
-	 * that update Provider values in place only execute properly the
-	 * first time, since the original Provider value will be reused on
-	 * the next run of the operation.
-	 */
-	public static final boolean enableStaticProviders = false;
+public abstract class ComputationBase<I, O> extends OperationAdapter<I> implements Computation<O>, ParallelProcess, Compactable {
 
 	public ComputationBase() {
 		super(new Supplier[0]);
+	}
+
+	@Override
+	public int getCount() {
+		// TODO  There should be some way to know this
+		throw new UnsupportedOperationException();
 	}
 
 	@Override

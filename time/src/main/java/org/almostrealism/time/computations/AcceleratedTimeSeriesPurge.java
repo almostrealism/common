@@ -22,14 +22,14 @@ import io.almostrealism.expression.StaticReference;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.hardware.DynamicOperationComputationAdapter;
+import org.almostrealism.hardware.OperationComputationAdapter;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.time.CursorPair;
 
 import java.util.function.Consumer;
 
-public class AcceleratedTimeSeriesPurge extends DynamicOperationComputationAdapter {
+public class AcceleratedTimeSeriesPurge extends OperationComputationAdapter {
 	private double wavelength;
 
 	public AcceleratedTimeSeriesPurge(Producer<AcceleratedTimeSeries> series, Producer<CursorPair> cursors, double frequency) {

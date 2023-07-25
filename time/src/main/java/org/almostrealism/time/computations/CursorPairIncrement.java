@@ -18,14 +18,14 @@ package org.almostrealism.time.computations;
 
 import io.almostrealism.expression.Sum;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.hardware.DynamicOperationComputationAdapter;
+import org.almostrealism.hardware.OperationComputationAdapter;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.code.ScopeInputManager;
 import org.almostrealism.time.CursorPair;
 
 import java.util.function.Supplier;
 
-public class CursorPairIncrement extends DynamicOperationComputationAdapter {
+public class CursorPairIncrement extends OperationComputationAdapter {
 	private boolean prepared = false;
 
 	public CursorPairIncrement(Supplier<Evaluable<? extends CursorPair>> cursors,

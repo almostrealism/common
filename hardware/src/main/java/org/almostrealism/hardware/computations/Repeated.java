@@ -23,11 +23,11 @@ import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
-import org.almostrealism.hardware.DynamicOperationComputationAdapter;
+import org.almostrealism.hardware.OperationComputationAdapter;
 
 import java.util.function.Supplier;
 
-public abstract class Repeated extends DynamicOperationComputationAdapter<Void> {
+public abstract class Repeated extends OperationComputationAdapter<Void> {
 
 	public Repeated(Supplier<Evaluable<? extends Void>>... inputArgs) {
 		super(inputArgs);

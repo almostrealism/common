@@ -24,12 +24,12 @@ import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.DynamicOperationComputationAdapter;
+import org.almostrealism.hardware.OperationComputationAdapter;
 
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-public class TimeCellReset extends DynamicOperationComputationAdapter {
+public class TimeCellReset extends OperationComputationAdapter {
 	protected HybridScope scope;
 	private int len;
 

@@ -24,10 +24,10 @@ import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.relation.Compactable;
 import org.almostrealism.c.OpenCLPrintWriter;
-import org.almostrealism.hardware.DynamicOperationComputationAdapter;
+import org.almostrealism.hardware.OperationComputationAdapter;
 
 // TODO  Should extend Repeated
-public class Loop extends DynamicOperationComputationAdapter<Void> {
+public class Loop extends OperationComputationAdapter<Void> {
 	public static final boolean enableCompaction = true;
 
 	private final Computation atom;

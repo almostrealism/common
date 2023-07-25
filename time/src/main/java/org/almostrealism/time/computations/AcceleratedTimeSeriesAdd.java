@@ -19,7 +19,7 @@ package org.almostrealism.time.computations;
 import io.almostrealism.code.HybridScope;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.Scope;
-import org.almostrealism.hardware.DynamicOperationComputationAdapter;
+import org.almostrealism.hardware.OperationComputationAdapter;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.time.TemporalScalar;
@@ -27,7 +27,7 @@ import org.almostrealism.time.TemporalScalar;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-public class AcceleratedTimeSeriesAdd extends DynamicOperationComputationAdapter<AcceleratedTimeSeries> {
+public class AcceleratedTimeSeriesAdd extends OperationComputationAdapter<AcceleratedTimeSeries> {
 	public AcceleratedTimeSeriesAdd(Producer<AcceleratedTimeSeries> series, Producer<TemporalScalar> addition) {
 		super(new Supplier[] { series, addition } );
 	}

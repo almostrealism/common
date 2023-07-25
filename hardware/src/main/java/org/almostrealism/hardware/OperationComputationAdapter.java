@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,25 +17,20 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.OperationComputation;
-import io.almostrealism.scope.Method;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.ComputationBase;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Operation;
+import io.almostrealism.scope.Method;
 import org.almostrealism.c.OpenCLPrintWriter;
 
 import java.util.function.Supplier;
 
-public abstract class DynamicOperationComputationAdapter<T> extends ComputationBase<T, Void> implements OperationComputation<Void>, ComputerFeatures {
+public abstract class OperationComputationAdapter<T> extends ComputationBase<T, Void> implements OperationComputation<Void>, ComputerFeatures {
 	@SafeVarargs
-	public DynamicOperationComputationAdapter(Supplier<Evaluable<? extends T>>... inputArgs) {
+	public OperationComputationAdapter(Supplier<Evaluable<? extends T>>... inputArgs) {
 		this.setInputs(inputArgs);
 		init();
-	}
-
-	protected String renderMethod(Method method) {
-		return new OpenCLPrintWriter(null).renderMethod(method);
 	}
 
 	/**
@@ -43,6 +38,10 @@ public abstract class DynamicOperationComputationAdapter<T> extends ComputationB
 	 */
 	@Override
 	public PhysicalScope getDefaultPhysicalScope() { return PhysicalScope.GLOBAL; }
+
+	protected String renderMethod(Method method) {
+		return new OpenCLPrintWriter(null).renderMethod(method);
+	}
 
 	@Override
 	public Runnable get() {

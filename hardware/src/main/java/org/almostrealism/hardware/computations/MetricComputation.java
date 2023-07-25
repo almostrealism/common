@@ -20,12 +20,12 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.Metric;
 import io.almostrealism.scope.Scope;
-import org.almostrealism.hardware.DynamicOperationComputationAdapter;
+import org.almostrealism.hardware.OperationComputationAdapter;
 import org.almostrealism.hardware.mem.Bytes;
 
 import java.util.function.Supplier;
 
-public class MetricComputation<T> extends DynamicOperationComputationAdapter<T> {
+public class MetricComputation<T> extends OperationComputationAdapter<T> {
 	private String message;
 	private int logFrequency;
 	private int pos, memLength;
