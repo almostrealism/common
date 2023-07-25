@@ -89,6 +89,70 @@ public class KernelOperationTests implements TestFeatures, KernelAssertions {
 		}
 	}
 
+	// TODO  This should notice that the two assignments have different counts,
+	// TODO  breaking them up into two stages with different parallelism
+	@Test
+	public void doubleAssignmentMultipleCount() {
+		PackedCollection<?> x = new PackedCollection<>(shape(10)).traverse();
+		PackedCollection<?> y = new PackedCollection<>(shape(6)).traverse();
+		PackedCollection<?> a = tensor(shape(10)).pack().traverse();
+		PackedCollection<?> b = tensor(shape(6)).pack().traverse();
+
+		boolean enableRelativeAssignment = Assignment.enableRelative;
+
+		try {
+			Assignment.enableRelative = false;
+
+			HardwareOperator.verboseLog(() -> {
+				OperationList op = new OperationList();
+				op.add(a(1, traverse(1, p(x)), add(traverse(1, p(a)), traverse(1, p(a)))));
+				op.add(a(1, traverse(1, p(y)), multiply(traverse(1, p(b)), traverse(1, p(b)))));
+				op.get().run();
+			});
+		} finally {
+			Assignment.enableRelative = enableRelativeAssignment;
+		}
+
+		for (int i = 0; i < x.getShape().length(0); i++) {
+			assertEquals(a.toDouble(i) + a.toDouble(i), x.toDouble(i));
+		}
+
+		for (int i = 0; i < y.getShape().length(0); i++) {
+			assertEquals(b.toDouble(i) * b.toDouble(i), y.toDouble(i));
+		}
+	}
+
+	// TODO  This should notice that 10 multiplications can be done in parallel
+	// TODO  even though the final output is only one value, breaking it up into
+	// TODO  two stages of 10 parallel multiplications followed by one sum.
+	@Test
+	public void doubleAssignmentReduceCount() {
+		PackedCollection<?> x = new PackedCollection<>(shape(1)).traverse();
+		PackedCollection<?> a = tensor(shape(10)).pack().traverse();
+		PackedCollection<?> b = tensor(shape(10)).pack().traverse();
+
+		boolean enableRelativeAssignment = Assignment.enableRelative;
+
+		try {
+			Assignment.enableRelative = false;
+
+			HardwareOperator.verboseLog(() -> {
+				OperationList op = new OperationList();
+				op.add(a(1, traverse(1, p(x)), multiply(traverse(1, p(a)), traverse(1, p(b))).traverse(0).sum()));
+				op.get().run();
+			});
+		} finally {
+			Assignment.enableRelative = enableRelativeAssignment;
+		}
+
+		double expected = 0;
+		for (int i = 0; i < a.getShape().length(0); i++) {
+			expected += a.toDouble(i) * b.toDouble(i);
+		}
+
+		assertEquals(expected, x.toDouble(0));
+	}
+
 	// @Test
 	public void kernelList() {
 		PackedCollection<?> timeline = new PackedCollection<>(shape(10), 1);
