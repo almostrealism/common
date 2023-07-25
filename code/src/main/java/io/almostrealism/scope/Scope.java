@@ -22,7 +22,7 @@ import io.almostrealism.code.Computation;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.ProducerArgumentReference;
-import io.almostrealism.code.Tree;
+import io.almostrealism.relation.Tree;
 import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;

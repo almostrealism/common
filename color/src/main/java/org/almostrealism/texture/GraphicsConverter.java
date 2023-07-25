@@ -27,9 +27,9 @@ import java.util.function.Function;
 
 import javax.swing.ImageIcon;
 
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.color.RGB;
-import io.almostrealism.relation.Pipeline;
 import io.almostrealism.relation.Evaluable;
 
 /**
@@ -218,13 +218,13 @@ public class GraphicsConverter {
 	 * Evaluates the specified array of {@link Evaluable}s, producing {@link RGB}s.
 	 */
 	public static RGB[][] convertToRGBArray(Evaluable<RGB> image[][]) {
-		return convertToRGBArray(image, (Pipeline) null);
+		return convertToRGBArray(image, (Producer) null);
 	}
 
 	/**
 	 * Evaluates the specified array of {@link Evaluable}s, producing {@link RGB}s.
 	 */
-	public static RGB[][] convertToRGBArray(Evaluable<RGB> image[][], Pipeline notify) {
+	public static RGB[][] convertToRGBArray(Evaluable<RGB> image[][], Producer notify) {
 		return convertToRGBArray(image, p -> new Pair(p.getX(), image[(int) p.getX()].length - 1 - p.getY()), notify);
 	}
 
@@ -238,7 +238,7 @@ public class GraphicsConverter {
 	/**
 	 * Evaluates the specified array of {@link Evaluable}s, producing {@link RGB}s.
 	 */
-	public static RGB[][] convertToRGBArray(Evaluable<RGB> image[][], Function<Pair, Pair> positionForImageIndices, Pipeline notify) {
+	public static RGB[][] convertToRGBArray(Evaluable<RGB> image[][], Function<Pair, Pair> positionForImageIndices, Producer notify) {
 		RGB evaluated[][] = new RGB[image.length][image[0].length];
 
 		boolean wasNull = false;
@@ -278,7 +278,7 @@ public class GraphicsConverter {
 	 * The array locations map to pixels in the image. The image produced
 	 * uses the RGB color model with no alpha channel.
 	 */
-	public static Image convertToAWTImage(Evaluable<RGB> image[][], Pipeline notify) {
+	public static Image convertToAWTImage(Evaluable<RGB> image[][], Producer notify) {
 		return convertToAWTImage(image,  p -> new Pair(p.getX(), image[(int) p.getX()].length - 1 - p.getY()), notify);
 	}
 
@@ -287,7 +287,7 @@ public class GraphicsConverter {
 	 * The array locations map to pixels in the image. The image produced
 	 * uses the RGB color model with no alpha channel.
 	 */
-	public static Image convertToAWTImage(Evaluable<RGB> image[][], Function<Pair, Pair> positionForImageIndices, Pipeline notify) {
+	public static Image convertToAWTImage(Evaluable<RGB> image[][], Function<Pair, Pair> positionForImageIndices, Producer notify) {
 		int data[] = new int[image.length * image[0].length];
 		
 		int index = 0;
@@ -337,7 +337,7 @@ public class GraphicsConverter {
 	 * uses the RGB color model with no alpha channel.
 	 */
 	// TODO  Accelerated
-	public static Image convertToAWTImage(RGB image[][], Pipeline notify) {
+	public static Image convertToAWTImage(RGB image[][], Producer notify) {
 		int data[] = new int[image.length * image[0].length];
 
 		int index = 0;

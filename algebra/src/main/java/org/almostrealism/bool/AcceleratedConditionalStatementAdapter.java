@@ -39,6 +39,7 @@ import java.util.function.BiFunction;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
+// TODO  This should extend CollectionProducerComputationBase
 public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCollection<?>>
 											extends ProducerComputationBase<MemoryData, T>
 											implements CollectionProducerComputation<T>,
@@ -80,9 +81,10 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCol
 	public int getMemLength() { return memLength; }
 
 	@Override
-	public TraversalPolicy getShape() {
-		return new TraversalPolicy(memLength);
-	}
+	public TraversalPolicy getShape() { return new TraversalPolicy(memLength); }
+
+	@Override
+	public int getCount() { return getShape().getCount(); }
 
 	/**
 	 * @return  GLOBAL

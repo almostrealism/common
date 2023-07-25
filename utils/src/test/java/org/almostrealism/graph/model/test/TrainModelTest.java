@@ -34,6 +34,7 @@ import org.almostrealism.layers.DefaultCellularLayer;
 import org.almostrealism.layers.KernelLayerCell;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.TestFeatures;
+import org.almostrealism.util.TestSettings;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -151,6 +152,8 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 
 	@Test
 	public void pool() {
+		if (TestSettings.skipLongTests) return;
+
 		CellularLayer conv = convolution2d(inputShape, convSize, 8);
 		TraversalPolicy inputShape = conv.getOutputShape();
 

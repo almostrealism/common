@@ -14,12 +14,7 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.code;
-
-import io.almostrealism.relation.Graph;
-import io.almostrealism.relation.Node;
-import io.almostrealism.relation.NodeGroup;
-import io.almostrealism.relation.Parent;
+package io.almostrealism.relation;
 
 import java.util.Collection;
 import java.util.function.Consumer;

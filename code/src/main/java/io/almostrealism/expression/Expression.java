@@ -16,13 +16,12 @@
 
 package io.almostrealism.expression;
 
-import io.almostrealism.code.Tree;
+import io.almostrealism.relation.Tree;
 import io.almostrealism.scope.Variable;
 import org.almostrealism.io.SystemUtils;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -30,7 +29,6 @@ import java.util.Objects;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.Set;
-import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;

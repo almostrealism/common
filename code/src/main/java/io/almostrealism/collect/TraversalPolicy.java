@@ -22,12 +22,13 @@ import io.almostrealism.expression.Minus;
 import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Quotient;
 import io.almostrealism.expression.Sum;
+import io.almostrealism.relation.Countable;
 
 import java.util.Arrays;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-public class TraversalPolicy implements Traversable<TraversalPolicy> {
+public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable {
 	private int dims[];
 	private int traversalAxis;
 
@@ -212,6 +213,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy> {
 
 	public int getTotalSize() { return size(0); }
 
+	@Override
 	public int getCount() { return getTotalSize() / getSize(); }
 
 	public int getDimensions() { return dims.length; }

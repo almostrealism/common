@@ -21,6 +21,7 @@ import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.Scalar;
@@ -38,7 +39,7 @@ import org.almostrealism.hardware.mem.MemoryDataAdapter;
 import java.util.function.Function;
 
 public interface CollectionProducerComputation<T extends PackedCollection<?>> extends
-		CollectionProducer<T>, ProducerComputation<T>, KernelizedProducer<T> {
+		CollectionProducer<T>, ProducerComputation<T>, ParallelProcess, KernelizedProducer<T> {
 	boolean enableShapeTrim = false;
 
 	// This should be 0, but Scalar is actually a Pair so a set of scalars is 2D not 1D
@@ -83,47 +84,6 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 	@Override
 	default CollectionProducer<T> reshape(TraversalPolicy shape) {
 		return new ReshapeProducer<>(shape, (Producer) this);
-	}
-
-	@Deprecated
-	default CollectionProducerComputation<PackedCollection<?>> scalarMap(Function<Producer<Scalar>, Producer<Scalar>> f) {
-		Producer<Scalar> p = f.apply(Input.value(Scalar.shape(), 0));
-
-		return new CollectionProducerComputation<>() {
-			@Override
-			public TraversalPolicy getShape() {
-				throw new UnsupportedOperationException();
-			}
-
-			@Override
-			public CollectionProducerComputation<PackedCollection<?>> traverse(int axis) {
-				throw new UnsupportedOperationException();
-			}
-
-			@Override
-			public Scope<PackedCollection<?>> getScope() {
-				throw new UnsupportedOperationException();
-			}
-
-			@Override
-			public KernelizedEvaluable<PackedCollection<?>> get() {
-				return new KernelizedEvaluable<>() {
-					@Override
-					public MemoryBank<PackedCollection<?>> createKernelDestination(int size) {
-						throw new UnsupportedOperationException();
-					}
-
-					@Override
-					public PackedCollection<?> evaluate(Object... args) {
-						PackedCollection<?> c = get().evaluate();
-						KernelizedEvaluable<Scalar> ev = (KernelizedEvaluable<Scalar>) p.get();
-						MemoryBank<Scalar> bank = ev.createKernelDestination(c.getShape().length(SCALAR_AXIS));
-						ev.into(bank).evaluate(c.traverse(SCALAR_AXIS));
-						return new PackedCollection<>(c.getShape(), c.getShape().getDimensions(), bank, 0);
-					}
-				};
-			}
-		};
 	}
 
 	default <T extends MemoryDataAdapter> T collect(Function<TraversalPolicy, T> factory) {

@@ -196,6 +196,7 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 		return null;
 	}
 
+	@Override
 	public Operator<Scalar> expect() {
 		// TODO  This isn't right
 		return new Constant<>(new Scalar(0));

@@ -16,18 +16,18 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.OperationComputation;
 import io.almostrealism.scope.Method;
 import io.almostrealism.code.OperationAdapter;
-import io.almostrealism.code.OperationComputationBase;
+import io.almostrealism.code.ComputationBase;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Operation;
 import org.almostrealism.c.OpenCLPrintWriter;
 
-import java.util.Arrays;
 import java.util.function.Supplier;
 
-public abstract class DynamicOperationComputationAdapter<T> extends OperationComputationBase<T, Void> implements Operation, ComputerFeatures {
+public abstract class DynamicOperationComputationAdapter<T> extends ComputationBase<T, Void> implements OperationComputation<Void>, ComputerFeatures {
 	@SafeVarargs
 	public DynamicOperationComputationAdapter(Supplier<Evaluable<? extends T>>... inputArgs) {
 		this.setInputs(inputArgs);

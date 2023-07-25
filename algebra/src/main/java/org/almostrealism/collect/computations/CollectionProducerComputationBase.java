@@ -98,6 +98,9 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	}
 
 	@Override
+	public int getCount() { return getShape().getCount(); }
+
+	@Override
 	public void setDestination(Supplier<O> destination) { this.destination = destination; }
 
 	@Override
