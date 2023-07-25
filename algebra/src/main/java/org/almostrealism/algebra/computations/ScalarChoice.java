@@ -19,14 +19,13 @@ package org.almostrealism.algebra.computations;
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.hardware.KernelizedProducer;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 
 import java.util.function.Supplier;
 
 @Deprecated
-public class ScalarChoice extends Choice<Scalar> implements ProducerComputation<Scalar>, KernelizedProducer<Scalar> {
+public class ScalarChoice extends Choice<Scalar> implements ProducerComputation<Scalar> {
 	public ScalarChoice(int choiceCount, Supplier<Evaluable<? extends Scalar>> decision, Supplier<Evaluable<? extends MemoryBank<Scalar>>> choices) {
 		super(2, choiceCount, decision, choices);
 	}

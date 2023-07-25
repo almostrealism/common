@@ -21,8 +21,7 @@ import org.almostrealism.algebra.Scalar;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
-public class AcceleratedConjunctionScalar extends AcceleratedConjunctionAdapter<Scalar>
-		implements AcceleratedConditionalStatementScalar {
+public class AcceleratedConjunctionScalar extends AcceleratedConjunctionAdapter<Scalar> {
 	public AcceleratedConjunctionScalar() {
 		this(null, null);
 	}

@@ -18,6 +18,7 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -72,7 +73,7 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 		return getCollectionArgumentVariable(1).getValueAt(p);
 	}
 
-	private class Destination implements Producer<PackedCollection<?>>, Delegated<DestinationSupport<T>>, KernelSupport {
+	private class Destination implements Producer<PackedCollection<?>>, Delegated<DestinationSupport<T>>, Countable, KernelSupport {
 		@Override
 		public Evaluable<PackedCollection<?>> get() {
 			return args -> new PackedCollection<>(getShape().traverseEach());
@@ -82,5 +83,8 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 		public DestinationSupport<T> getDelegate() {
 			return PackedCollectionSubset.this;
 		}
+
+		@Override
+		public int getCount() { return getShape().getTotalSize(); }
 	}
 }

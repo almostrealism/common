@@ -19,11 +19,10 @@ package org.almostrealism.bool;
 import io.almostrealism.code.ProducerComputation;
 import org.almostrealism.algebra.Vector;
 import io.almostrealism.code.CollectionUtils;
-import org.almostrealism.hardware.KernelizedProducer;
 
 import java.util.function.Supplier;
 
-public interface AcceleratedConditionalStatementVector extends AcceleratedConditionalStatement<Vector>, ProducerComputation<Vector>, KernelizedProducer<Vector> {
+public interface AcceleratedConditionalStatementVector extends AcceleratedConditionalStatement<Vector>, ProducerComputation<Vector> {
 	default AcceleratedConjunctionVector and(AcceleratedConditionalStatement<Vector> operand, Supplier trueValue, Supplier falseValue) {
 		return and(trueValue, falseValue, operand);
 	}

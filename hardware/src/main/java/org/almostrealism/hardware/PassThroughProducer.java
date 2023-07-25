@@ -48,7 +48,7 @@ import java.util.stream.IntStream;
 public class PassThroughProducer<T extends MemoryData>
 		extends ProducerComputationBase<T, T>
 		implements ProducerArgumentReference,
-		MemoryDataComputation<T>, KernelizedProducer<T>,
+		MemoryDataComputation<T>,
 		DestinationSupport<T>,
 		TraversableExpression<Double>,
 		Shape<PassThroughProducer<T>>, KernelIndex,
@@ -108,7 +108,10 @@ public class PassThroughProducer<T extends MemoryData>
 	public TraversalPolicy getShape() { return shape; }
 
 	@Override
-	public int getMemLength() { return shape.getSize(); }
+	public int getMemLength() { return getShape().getSize(); }
+
+	@Override
+	public int getCount() { return getShape().getCount(); }
 
 	@Override
 	public void setDestination(Supplier<T> destination) { this.destination = destination; }

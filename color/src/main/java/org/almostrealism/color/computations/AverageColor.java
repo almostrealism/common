@@ -18,18 +18,15 @@ package org.almostrealism.color.computations;
 
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.scope.Scope;
-import org.almostrealism.algebra.Triple;
-import org.almostrealism.algebra.TripleFunction;
 import org.almostrealism.color.DynamicRGBProducer;
 import org.almostrealism.color.RGB;
 import org.almostrealism.hardware.KernelizedEvaluable;
-import org.almostrealism.hardware.KernelizedProducer;
 
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
-public class AverageColor implements ProducerComputation<RGB>, KernelizedProducer<RGB> {
+public class AverageColor implements ProducerComputation<RGB> {
 	private static class Color {
 		double p;
 		RGB c;

@@ -51,7 +51,6 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.Input;
 import org.almostrealism.hardware.KernelOperation;
-import org.almostrealism.hardware.KernelizedProducer;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.layers.LayerFeatures;
@@ -170,7 +169,7 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 		return kernel(((Shape) argument).getShape(), (i, p) -> i.v(0).getValue(p), argument);
 	}
 
-	default <T extends MemoryData> Supplier<Runnable> run(KernelizedProducer<T> kernel, MemoryBank destination, MemoryData... arguments) {
+	default <T extends MemoryData> Supplier<Runnable> run(Producer<T> kernel, MemoryBank destination, MemoryData... arguments) {
 		return new KernelOperation<>(kernel, destination, arguments);
 	}
 

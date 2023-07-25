@@ -23,13 +23,12 @@ import org.almostrealism.color.DynamicRGBProducer;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBFeatures;
 import org.almostrealism.hardware.KernelizedEvaluable;
-import org.almostrealism.hardware.KernelizedProducer;
 
 /**
  * 
  * @author Michael Murray
  */
-public class RandomColorGenerator implements ProducerComputation<RGB>, KernelizedProducer<RGB> {
+public class RandomColorGenerator implements ProducerComputation<RGB> {
  	private Producer<RGB> baseRGB, offsetRGB;
  
 	public RandomColorGenerator() {

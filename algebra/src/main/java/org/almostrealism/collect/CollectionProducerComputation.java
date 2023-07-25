@@ -23,15 +23,11 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.scope.Scope;
-import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.computations.DefaultCollectionEvaluable;
 import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.DestinationEvaluable;
-import org.almostrealism.hardware.Input;
 import org.almostrealism.hardware.KernelizedEvaluable;
-import org.almostrealism.hardware.KernelizedProducer;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.MemoryDataAdapter;
@@ -39,7 +35,7 @@ import org.almostrealism.hardware.mem.MemoryDataAdapter;
 import java.util.function.Function;
 
 public interface CollectionProducerComputation<T extends PackedCollection<?>> extends
-		CollectionProducer<T>, ProducerComputation<T>, ParallelProcess, KernelizedProducer<T> {
+		CollectionProducer<T>, ProducerComputation<T>, ParallelProcess {
 	boolean enableShapeTrim = false;
 
 	// This should be 0, but Scalar is actually a Pair so a set of scalars is 2D not 1D

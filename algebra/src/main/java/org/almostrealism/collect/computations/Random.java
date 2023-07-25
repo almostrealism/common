@@ -22,13 +22,11 @@ import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.KernelizedEvaluable;
-import org.almostrealism.hardware.KernelizedProducer;
 import org.almostrealism.hardware.MemoryBank;
 
 import java.util.stream.IntStream;
 
-public class
-Random implements KernelizedProducer<PackedCollection<?>>, Shape<Producer<PackedCollection<?>>> {
+public class Random implements Producer<PackedCollection<?>>, Shape<Producer<PackedCollection<?>>> {
 	private java.util.Random random;
 	private TraversalPolicy shape;
 	private boolean normal;

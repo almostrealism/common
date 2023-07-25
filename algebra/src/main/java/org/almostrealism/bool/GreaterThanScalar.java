@@ -21,7 +21,7 @@ import org.almostrealism.algebra.Scalar;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
-public class GreaterThanScalar extends GreaterThan<Scalar> implements AcceleratedConditionalStatementScalar {
+public class GreaterThanScalar extends GreaterThan<Scalar> {
 	public GreaterThanScalar(
 			Supplier leftOperand,
 			Supplier rightOperand) {

@@ -20,6 +20,7 @@ import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.NamedFunction;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.OperationComputation;
@@ -77,7 +78,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>> implements Oper
 		add(() -> op.get());
 	}
 
-	public <T extends MemoryData> KernelOperation<T> add(KernelizedProducer<T> producer, MemoryBank destination, MemoryData... arguments) {
+	public <T extends MemoryData> KernelOperation<T> add(Producer<T> producer, MemoryBank destination, MemoryData... arguments) {
 		KernelOperation<T> operation = new KernelOperation<>(producer, destination, arguments);
 		add(operation);
 		return operation;

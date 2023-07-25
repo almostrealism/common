@@ -22,7 +22,7 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.algebra.computations.ScalarChoice;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.bool.AcceleratedConditionalStatementScalar;
+import org.almostrealism.bool.AcceleratedConditionalStatement;
 import org.almostrealism.bool.AcceleratedConditionalStatementVector;
 import org.almostrealism.bool.GreaterThanScalar;
 import org.almostrealism.bool.LessThanScalar;
@@ -61,12 +61,6 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 	default ExpressionComputation<Scalar> v(Scalar value) { return value(value); }
 
 	default ExpressionComputation<Scalar> scalar(double value) { return value(new Scalar(value)); }
-
-//	default ExpressionComputation<Scalar> scalar(Producer<?> x) {
-//		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
-//		IntStream.range(0, 2).forEach(i -> comp.add(args -> args.get(1).getValueAt(i)));
-//		return new ExpressionComputation<>(comp, (Supplier) x).setPostprocessor(Scalar.postprocessor());
-//	}
 
 	default ExpressionComputation<Scalar> scalar(Producer<?> value) {
 		if (value instanceof ExpressionComputation) {
@@ -212,27 +206,27 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 		return new ScalarChoice(choiceCount, decision, choices);
 	}
 
-	default AcceleratedConditionalStatementScalar greaterThan(Supplier<Evaluable<? extends Scalar>> left,
+	default AcceleratedConditionalStatement<Scalar> greaterThan(Supplier<Evaluable<? extends Scalar>> left,
 															  Supplier<Evaluable<? extends Scalar>> right,
 															  boolean includeEqual) {
 		return greaterThan(left, right, null, null, includeEqual);
 	}
 
-	default AcceleratedConditionalStatementScalar greaterThan(Supplier<Evaluable<? extends Scalar>> left,
-															  Supplier<Evaluable<? extends Scalar>> right,
-															  Supplier<Evaluable<? extends Scalar>> trueValue,
-															  Supplier<Evaluable<? extends Scalar>> falseValue,
-															  boolean includeEqual) {
+	default AcceleratedConditionalStatement<Scalar> greaterThan(Supplier<Evaluable<? extends Scalar>> left,
+																Supplier<Evaluable<? extends Scalar>> right,
+																Supplier<Evaluable<? extends Scalar>> trueValue,
+																Supplier<Evaluable<? extends Scalar>> falseValue,
+																boolean includeEqual) {
 		return new GreaterThanScalar(left, right, trueValue, falseValue, includeEqual);
 	}
 
-	default AcceleratedConditionalStatementScalar lessThan(Supplier<Evaluable<? extends Scalar>> left,
+	default AcceleratedConditionalStatement<Scalar> lessThan(Supplier<Evaluable<? extends Scalar>> left,
 															  Supplier<Evaluable<? extends Scalar>> right,
 															  boolean includeEqual) {
 		return lessThan(left, right, null, null, includeEqual);
 	}
 
-	default AcceleratedConditionalStatementScalar lessThan(Supplier<Evaluable<? extends Scalar>> left,
+	default AcceleratedConditionalStatement<Scalar> lessThan(Supplier<Evaluable<? extends Scalar>> left,
 															  Supplier<Evaluable<? extends Scalar>> right,
 															  Supplier<Evaluable<? extends Scalar>> trueValue,
 															  Supplier<Evaluable<? extends Scalar>> falseValue,

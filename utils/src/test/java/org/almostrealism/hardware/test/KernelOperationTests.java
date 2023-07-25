@@ -16,11 +16,11 @@
 
 package org.almostrealism.hardware.test;
 
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.test.KernelAssertions;
 import org.almostrealism.hardware.KernelizedEvaluable;
-import org.almostrealism.hardware.KernelizedProducer;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.cl.HardwareOperator;
@@ -208,7 +208,7 @@ public class KernelOperationTests implements TestFeatures, KernelAssertions {
 			op.get().run();
 		} else {
 			OperationList op = new OperationList();
-			op.add((KernelizedProducer<? extends MemoryData>) pool, output);
+			op.add((Producer<? extends MemoryData>) pool, output);
 			op.get().run();
 		}
 

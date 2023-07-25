@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,12 +19,11 @@ package org.almostrealism.color.computations;
 import org.almostrealism.color.RGB;
 import io.almostrealism.code.AdaptProducer;
 import org.almostrealism.hardware.KernelizedEvaluable;
-import org.almostrealism.hardware.KernelizedProducer;
 import org.almostrealism.hardware.MemoryBank;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 
-public class AdaptProducerRGB extends AdaptProducer<RGB> implements KernelizedProducer<RGB> {
+public class AdaptProducerRGB extends AdaptProducer<RGB> {
 	public AdaptProducerRGB(Producer<RGB> p, Producer... args) {
 		super(p, args);
 	}

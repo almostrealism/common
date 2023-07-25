@@ -64,7 +64,7 @@ public class MeshData extends PackedCollection<PackedCollection<?>> {
 		}
 	}
 
-	public void evaluateIntersectionKernel(KernelizedEvaluable<Ray> ray, PackedCollection<Pair<?>> destination, MemoryData args[]) {
+	public void evaluateIntersectionKernel(Evaluable<Ray> ray, PackedCollection<Pair<?>> destination, MemoryData args[]) {
 		long startTime = System.currentTimeMillis();
 		PackedCollection<Ray> rays = Ray.bank(destination.getCount());
 		ray.into(rays).evaluate(args);

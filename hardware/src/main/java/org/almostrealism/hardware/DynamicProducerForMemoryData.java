@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,18 +16,15 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.code.OperationAdapter;
+import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.DynamicProducer;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Named;
-import org.jocl.CLException;
 
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
-import java.util.stream.Stream;
 
-public class DynamicProducerForMemoryData<T extends MemoryData> extends DynamicProducer<T> implements KernelizedProducer<T> {
+public class DynamicProducerForMemoryData<T extends MemoryData> extends DynamicProducer<T> implements Countable {
 
 	private final IntFunction<MemoryBank<T>> kernelDestination;
 
@@ -47,6 +44,9 @@ public class DynamicProducerForMemoryData<T extends MemoryData> extends DynamicP
 		super(function);
 		this.kernelDestination = kernelDestination;
 	}
+
+	@Override
+	public int getCount() { return 1; }
 
 	@Override
 	public KernelizedEvaluable<T> get() {

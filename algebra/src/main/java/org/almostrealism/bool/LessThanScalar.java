@@ -22,7 +22,7 @@ import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
 @Deprecated
-public class LessThanScalar extends LessThan<Scalar> implements AcceleratedConditionalStatementScalar {
+public class LessThanScalar extends LessThan<Scalar> {
 	public LessThanScalar(
 			Supplier leftOperand, Supplier rightOperand,
 			Supplier trueValue, Supplier falseValue) {

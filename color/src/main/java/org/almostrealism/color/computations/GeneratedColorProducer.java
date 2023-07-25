@@ -17,7 +17,6 @@
 package org.almostrealism.color.computations;
 
 import io.almostrealism.code.ArgumentMap;
-import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ScopeInputManager;
@@ -27,14 +26,14 @@ import io.almostrealism.relation.Generated;
 import org.almostrealism.algebra.Triple;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.color.RGB;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.KernelizedEvaluable;
-import org.almostrealism.hardware.KernelizedProducer;
 
-public class GeneratedColorProducer<T> implements Generated<T, Producer<RGB>>, ProducerComputation<RGB>,
-													KernelizedProducer<RGB>, Shape<Producer<RGB>> {
+public class GeneratedColorProducer<T> implements Generated<T, Producer<RGB>>, CollectionProducerComputation<RGB> {
 	private Producer<RGB> p;
 	private T generator;
 
@@ -61,8 +60,11 @@ public class GeneratedColorProducer<T> implements Generated<T, Producer<RGB>>, P
 	}
 
 	@Override
-	public Producer<RGB> reshape(TraversalPolicy shape) {
-		return (Producer) ((Shape) getGenerated()).reshape(shape);
+	public int getCount() { return getShape().getCount(); }
+
+	@Override
+	public CollectionProducer<RGB> reshape(TraversalPolicy shape) {
+		return (CollectionProducer) ((Shape) getGenerated()).reshape(shape);
 	}
 
 	@Override

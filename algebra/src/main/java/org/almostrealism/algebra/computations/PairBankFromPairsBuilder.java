@@ -31,14 +31,13 @@ import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.TraversableProducerComputationAdapter;
 import org.almostrealism.hardware.KernelizedEvaluable;
-import org.almostrealism.hardware.KernelizedProducer;
 
 import java.util.Objects;
 import java.util.function.IntFunction;
 import java.util.stream.Stream;
 
 public class PairBankFromPairsBuilder extends TraversableProducerComputationAdapter<Pair<?>, PackedCollection<Pair<?>>>
-									implements Factory<KernelizedProducer<PackedCollection<Pair<?>>>>, PairBankFeatures {
+									implements Factory<Producer<PackedCollection<Pair<?>>>>, PairBankFeatures {
 	private Producer<Pair<?>> producers[];
 
 	public PairBankFromPairsBuilder(int count) {
@@ -74,10 +73,12 @@ public class PairBankFromPairsBuilder extends TraversableProducerComputationAdap
 	}
 
 	@Override
-	public KernelizedEvaluable<PackedCollection<Pair<?>>> get() { return construct().get(); }
+	public KernelizedEvaluable<PackedCollection<Pair<?>>> get() {
+		return (KernelizedEvaluable<PackedCollection<Pair<?>>>) construct().get();
+	}
 
 	@Override
-	public KernelizedProducer<PackedCollection<Pair<?>>> construct() { return pairBank(producers); }
+	public Producer<PackedCollection<Pair<?>>> construct() { return pairBank(producers); }
 
 	private int arg(int index) { return index / 2; }
 	private int pos(int index) { return index % 2; }

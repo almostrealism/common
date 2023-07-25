@@ -20,6 +20,8 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.expression.StaticReference;
+import io.almostrealism.relation.Countable;
+import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.scope.Variable;
@@ -43,8 +45,8 @@ public interface ComputerFeatures extends HardwareFeatures, NameProvider {
 		String name;
 
 		if (v instanceof ArrayVariable) {
-			if (isContextKernelEnabled() && v.getProducer() instanceof KernelSupport
-					&& ((KernelSupport) v.getProducer()).isKernelEnabled()) {
+			if (isContextKernelEnabled() && v.getProducer() instanceof ParallelProcess
+					&& ((ParallelProcess) v.getProducer()).getCount() > 1) {
 				String kernelOffset = ((KernelSupport) v.getProducer()).getKernelIndex(v.getName(), kernelIndex);
 
 				if (pos.equals("0") || pos.equals("(0)")) {
@@ -82,10 +84,9 @@ public interface ComputerFeatures extends HardwareFeatures, NameProvider {
 
 	@Override
 	default Expression<?> getArrayPosition(ArrayVariable v, Expression pos, int kernelIndex) {
-		Expression offset = new IntegerConstant(0); // new StaticReference(Integer.class, KernelSupport.getValueOffsetName(v.getName()));
+		Expression offset = new IntegerConstant(0);
 
-		if (isContextKernelEnabled() && v.getProducer() instanceof KernelSupport
-				&& ((KernelSupport) v.getProducer()).isKernelEnabled()) {
+		if (isContextKernelEnabled() && v.getProducer() instanceof Countable) {
 			KernelIndex idx = new KernelIndex(kernelIndex);
 			Expression dim = new StaticReference(Integer.class, KernelSupport.getValueDimName(v.getName(), kernelIndex));
 
