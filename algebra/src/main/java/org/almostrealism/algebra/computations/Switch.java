@@ -32,7 +32,7 @@ import org.almostrealism.hardware.OperationComputationAdapter;
 import java.util.List;
 import java.util.stream.IntStream;
 
-public class Switch extends OperationComputationAdapter {
+public class Switch extends OperationComputationAdapter<PackedCollection<?>> {
 	private final List<Computation> choices;
 
 	public Switch(ProducerComputation<PackedCollection<?>> decision, List<Computation> choices) {

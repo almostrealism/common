@@ -16,5 +16,5 @@
 
 package io.almostrealism.relation;
 
-public interface Process extends Node {
+public interface Process<T extends Process<?>> extends Node, Tree<T> {
 }

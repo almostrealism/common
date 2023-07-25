@@ -16,5 +16,5 @@
 
 package io.almostrealism.relation;
 
-public interface ParallelProcess extends Process, Countable {
+public interface ParallelProcess<T extends Process<?>> extends Process<T>, Countable {
 }

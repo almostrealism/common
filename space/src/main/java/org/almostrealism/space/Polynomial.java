@@ -17,11 +17,14 @@
 package org.almostrealism.space;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
+import io.almostrealism.relation.Process;
 import org.almostrealism.algebra.PolynomialTerm;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
@@ -501,6 +504,11 @@ public class Polynomial extends AbstractSurface {
 				Scope s = new Scope();
 				s.getVariables().add(new Variable("scalar", get().evaluate()));
 				return s;
+			}
+
+			@Override
+			public Collection<Process<?>> getChildren() {
+				return Collections.emptyList();
 			}
 		};
 	}

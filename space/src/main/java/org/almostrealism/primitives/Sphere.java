@@ -16,6 +16,7 @@
 
 package org.almostrealism.primitives;
 
+import io.almostrealism.relation.Process;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 import org.almostrealism.algebra.Pair;
@@ -39,6 +40,9 @@ import org.almostrealism.space.Mesh;
 import org.almostrealism.geometry.ShadableIntersection;
 import org.almostrealism.CodeFeatures;
 import io.almostrealism.relation.Evaluable;
+
+import java.util.Collection;
+import java.util.Collections;
 
 // TODO Add ParticleGroup implementation.
 
@@ -207,6 +211,11 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 				Scope s = new Scope();
 				s.getVariables().add(new Variable("scalar", get().evaluate(new Object[0])));
 				return s;
+			}
+
+			@Override
+			public Collection<Process<?>> getChildren() {
+				return Collections.emptyList();
 			}
 		};
 	}

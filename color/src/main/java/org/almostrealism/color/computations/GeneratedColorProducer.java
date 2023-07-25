@@ -17,6 +17,7 @@
 package org.almostrealism.color.computations;
 
 import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.relation.Process;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ScopeInputManager;
@@ -32,6 +33,9 @@ import org.almostrealism.color.RGB;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.KernelizedEvaluable;
+
+import java.util.Collection;
+import java.util.Collections;
 
 public class GeneratedColorProducer<T> implements Generated<T, Producer<RGB>>, CollectionProducerComputation<RGB> {
 	private Producer<RGB> p;
@@ -57,6 +61,11 @@ public class GeneratedColorProducer<T> implements Generated<T, Producer<RGB>>, C
 	@Override
 	public TraversalPolicy getShape() {
 		return ((Shape) getGenerated()).getShape();
+	}
+
+	@Override
+	public Collection<Process<?>> getChildren() {
+		return p instanceof Process ? ((Process) p).getChildren() : Collections.emptyList();
 	}
 
 	@Override

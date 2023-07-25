@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@ package org.almostrealism.time.computations;
 
 import io.almostrealism.expression.Sum;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationComputationAdapter;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.code.ScopeInputManager;
@@ -25,7 +26,7 @@ import org.almostrealism.time.CursorPair;
 
 import java.util.function.Supplier;
 
-public class CursorPairIncrement extends OperationComputationAdapter {
+public class CursorPairIncrement extends OperationComputationAdapter<PackedCollection<?>> {
 	private boolean prepared = false;
 
 	public CursorPairIncrement(Supplier<Evaluable<? extends CursorPair>> cursors,

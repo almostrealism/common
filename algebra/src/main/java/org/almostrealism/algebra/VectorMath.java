@@ -30,19 +30,6 @@ public class VectorMath {
 	 * @param x  {x, y, z} - Vector to copy.
 	 */
 	public static double[] clone(double x[]) { return new double[] {x[0], x[1], x[2]}; }
-
-	public static double[] normalize(double x[], boolean clone) {
-		double l = VectorMath.length(x);
-		
-		if (clone) {
-			return new double[] {x[0] / l, x[1] / l, x[2] / l};
-		} else {
-			x[0] = x[0] / l;
-			x[1] = x[1] / l;
-			x[2] = x[2] / l;
-			return x;
-		}
-	}
 	
 	public static double length(double x[]) {
 		return Math.sqrt(x[0] * x[0] + x[1] * x[1] + x[2] * x[2]);

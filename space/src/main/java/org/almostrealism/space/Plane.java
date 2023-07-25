@@ -16,6 +16,7 @@
 
 package org.almostrealism.space;
 
+import io.almostrealism.relation.Process;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 import org.almostrealism.algebra.*;
@@ -30,6 +31,8 @@ import io.almostrealism.code.Operator;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 
+import java.util.Collection;
+import java.util.Collections;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -194,6 +197,11 @@ public class Plane extends AbstractSurface implements ParticleGroup, RayFeatures
 				Scope s = new Scope();
 				s.getVariables().add(new Variable("scalar", get().evaluate()));
 				return s;
+			}
+
+			@Override
+			public Collection<Process<?>> getChildren() {
+				return Collections.emptyList();
 			}
 		};
 	}

@@ -18,13 +18,12 @@ package io.almostrealism.relation;
 
 import java.util.Collection;
 import java.util.function.Consumer;
+import java.util.stream.Stream;
 
 public interface Tree<T extends Tree> extends Graph<T>, NodeGroup<T>, Parent<T>, Node {
-	default void forEach(Consumer<? super T> consumer) {
-		getChildren().forEach(t -> {
-			consumer.accept(t);
-			t.forEach(consumer);
-		});
+
+	default Stream<T> all() {
+		return Stream.concat(Stream.of((T) this), getChildren().stream().flatMap(Tree::all));
 	}
 
 	@Override

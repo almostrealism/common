@@ -26,11 +26,12 @@ import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 
+import java.util.Collection;
 import java.util.Optional;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-public abstract class ComputationBase<I, O> extends OperationAdapter<I> implements Computation<O>, ParallelProcess, Compactable {
+public abstract class ComputationBase<I, O> extends OperationAdapter<I> implements Computation<O>, ParallelProcess<Process<?>>, Compactable {
 
 	public ComputationBase() {
 		super(new Supplier[0]);
@@ -101,6 +102,14 @@ public abstract class ComputationBase<I, O> extends OperationAdapter<I> implemen
 		}
 
 		return v;
+	}
+
+	@Override
+	public Collection<Process<?>> getChildren() {
+		return getInputs().stream()
+				.filter(i -> i instanceof Process<?>)
+				.map(i -> (Process<?>) i)
+				.collect(Collectors.toList());
 	}
 
 	/** @return  null */

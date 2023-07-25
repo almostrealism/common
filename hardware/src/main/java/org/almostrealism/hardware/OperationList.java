@@ -20,6 +20,8 @@ import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.NamedFunction;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.Computation;
@@ -30,6 +32,7 @@ import io.almostrealism.relation.Compactable;
 import org.almostrealism.hardware.computations.Abort;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Predicate;
@@ -38,7 +41,7 @@ import java.util.stream.Collector;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-public class OperationList extends ArrayList<Supplier<Runnable>> implements OperationComputation<Void>, NamedFunction, HardwareFeatures {
+public class OperationList extends ArrayList<Supplier<Runnable>> implements OperationComputation<Void>, ParallelProcess<Process<?>>, NamedFunction, HardwareFeatures {
 	private static ThreadLocal<MemoryData> abortFlag;
 	private static boolean abortArgs, abortScope;
 	private static Abort abort;
@@ -78,10 +81,16 @@ public class OperationList extends ArrayList<Supplier<Runnable>> implements Oper
 		add(() -> op.get());
 	}
 
+	@Deprecated
 	public <T extends MemoryData> KernelOperation<T> add(Producer<T> producer, MemoryBank destination, MemoryData... arguments) {
 		KernelOperation<T> operation = new KernelOperation<>(producer, destination, arguments);
 		add(operation);
 		return operation;
+	}
+
+	@Override
+	public int getCount() {
+		throw new UnsupportedOperationException();
 	}
 
 	@Override
@@ -157,6 +166,14 @@ public class OperationList extends ArrayList<Supplier<Runnable>> implements Oper
 		return scope;
 	}
 
+	@Override
+	public Collection<Process<?>> getChildren() {
+		return stream()
+				.map(o -> o instanceof Process ? (Process<?>) o : null)
+				.filter(Objects::nonNull)
+				.collect(Collectors.toList());
+	}
+
 	public boolean isFunctionallyEmpty() {
 		if (isEmpty()) return true;
 		return stream().noneMatch(o -> !(o instanceof OperationList) || !((OperationList) o).isFunctionallyEmpty());
@@ -206,6 +223,8 @@ public class OperationList extends ArrayList<Supplier<Runnable>> implements Oper
 			this.metadata = metadata;
 			this.run = run;
 		}
+
+		public OperationMetadata getMetadata() { return metadata; }
 
 		public List<Runnable> getOperations() { return run; }
 

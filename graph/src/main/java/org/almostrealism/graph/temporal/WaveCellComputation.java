@@ -28,7 +28,7 @@ import org.almostrealism.hardware.OperationComputationAdapter;
 import java.util.Objects;
 import java.util.function.Supplier;
 
-public abstract class WaveCellComputation extends OperationComputationAdapter {
+public abstract class WaveCellComputation extends OperationComputationAdapter<PackedCollection<?>> {
 	protected HybridScope scope;
 
 	public WaveCellComputation(WaveCellData data, PackedCollection<?> wave, Producer<Scalar> frame, Scalar output) {

@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import io.almostrealism.expression.StaticReference;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.Scalar;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationComputationAdapter;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.time.AcceleratedTimeSeries;
@@ -29,7 +30,7 @@ import org.almostrealism.time.CursorPair;
 
 import java.util.function.Consumer;
 
-public class AcceleratedTimeSeriesPurge extends OperationComputationAdapter {
+public class AcceleratedTimeSeriesPurge extends OperationComputationAdapter<PackedCollection<?>> {
 	private double wavelength;
 
 	public AcceleratedTimeSeriesPurge(Producer<AcceleratedTimeSeries> series, Producer<CursorPair> cursors, double frequency) {

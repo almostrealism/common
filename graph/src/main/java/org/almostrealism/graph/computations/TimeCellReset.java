@@ -29,7 +29,7 @@ import org.almostrealism.hardware.OperationComputationAdapter;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-public class TimeCellReset extends OperationComputationAdapter {
+public class TimeCellReset extends OperationComputationAdapter<PackedCollection<?>> {
 	protected HybridScope scope;
 	private int len;
 
