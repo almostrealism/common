@@ -18,5 +18,5 @@ package io.almostrealism.relation;
 
 import java.util.function.Supplier;
 
-public interface Operation extends Process<Process<?>>, Supplier<Runnable>, Compactable {
+public interface Operation extends Process<Process<?, ?>, Runnable>, Supplier<Runnable>, Compactable {
 }

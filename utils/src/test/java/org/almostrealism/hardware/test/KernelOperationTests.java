@@ -77,6 +77,8 @@ public class KernelOperationTests implements TestFeatures, KernelAssertions {
 				OperationList op = new OperationList();
 				op.add(a(1, traverse(1, p(x)), add(traverse(1, p(a)), traverse(1, p(b)))));
 				op.add(a(1, traverse(1, p(y)), multiply(traverse(1, p(a)), traverse(1, p(b)))));
+
+				Assert.assertEquals(10, op.getCount());
 				op.get().run();
 			});
 		} finally {
@@ -107,6 +109,8 @@ public class KernelOperationTests implements TestFeatures, KernelAssertions {
 				OperationList op = new OperationList();
 				op.add(a(1, traverse(1, p(x)), add(traverse(1, p(a)), traverse(1, p(a)))));
 				op.add(a(1, traverse(1, p(y)), multiply(traverse(1, p(b)), traverse(1, p(b)))));
+
+				Assert.assertEquals(1, op.getCount());
 				op.get().run();
 			});
 		} finally {

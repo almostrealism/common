@@ -41,7 +41,9 @@ import java.util.stream.Collector;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-public class OperationList extends ArrayList<Supplier<Runnable>> implements OperationComputation<Void>, ParallelProcess<Process<?>>, NamedFunction, HardwareFeatures {
+public class OperationList extends ArrayList<Supplier<Runnable>>
+		implements OperationComputation<Void>, ParallelProcess<Process<?, ?>, Runnable>,
+					NamedFunction, HardwareFeatures {
 	private static ThreadLocal<MemoryData> abortFlag;
 	private static boolean abortArgs, abortScope;
 	private static Abort abort;
@@ -167,9 +169,9 @@ public class OperationList extends ArrayList<Supplier<Runnable>> implements Oper
 	}
 
 	@Override
-	public Collection<Process<?>> getChildren() {
+	public Collection<Process<?, ?>> getChildren() {
 		return stream()
-				.map(o -> o instanceof Process ? (Process<?>) o : null)
+				.map(o -> o instanceof Process ? (Process<?, ?>) o : null)
 				.filter(Objects::nonNull)
 				.collect(Collectors.toList());
 	}

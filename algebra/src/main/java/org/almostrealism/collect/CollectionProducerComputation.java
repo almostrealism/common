@@ -36,7 +36,7 @@ import org.almostrealism.hardware.mem.MemoryDataAdapter;
 import java.util.function.Function;
 
 public interface CollectionProducerComputation<T extends PackedCollection<?>> extends
-		CollectionProducer<T>, ProducerComputation<T>, ParallelProcess<Process<?>> {
+		CollectionProducer<T>, ProducerComputation<T>, ParallelProcess<Process<?, ?>, Evaluable<? extends T>> {
 	boolean enableShapeTrim = false;
 
 	// This should be 0, but Scalar is actually a Pair so a set of scalars is 2D not 1D

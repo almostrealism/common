@@ -200,7 +200,7 @@ public class Plane extends AbstractSurface implements ParticleGroup, RayFeatures
 			}
 
 			@Override
-			public Collection<Process<?>> getChildren() {
+			public Collection<Process<?, ?>> getChildren() {
 				return Collections.emptyList();
 			}
 		};

@@ -70,6 +70,7 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 								TriangleFeatures,
 								TransformMatrixFeatures, GeometryFeatures,
 								TemporalFeatures, HardwareFeatures {
+	boolean enableFixedCollections = true;
 
 	default Producer<CursorPair> v(CursorPair p) {
 		throw new UnsupportedOperationException();
@@ -132,6 +133,8 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 			return (ProducerComputation<T>) RayFeatures.getInstance().value((Ray) v);
 		} else if (v instanceof TransformMatrix) {
 			return (ProducerComputation<T>) TransformMatrixFeatures.getInstance().value((TransformMatrix) v);
+		} else if (enableFixedCollections && v instanceof PackedCollection) {
+			return (ProducerComputation) c((PackedCollection) v);
 		} else if (v == null) {
 			return null;
 		} else {

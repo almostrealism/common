@@ -214,7 +214,7 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 			}
 
 			@Override
-			public Collection<Process<?>> getChildren() {
+			public Collection<Process<?, ?>> getChildren() {
 				return Collections.emptyList();
 			}
 		};

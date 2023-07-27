@@ -98,9 +98,9 @@ public class TemporalRunner implements Setup, Temporal, OperationComputation<Voi
 	}
 
 	@Override
-	public Collection<Process<?>> getChildren() {
+	public Collection<Process<?, ?>> getChildren() {
 		return Stream.of(s, r)
-				.map(o -> o instanceof Process ? (Process<?>) o : null)
+				.map(o -> o instanceof Process ? (Process<?, ?>) o : null)
 				.filter(Objects::nonNull)
 				.collect(Collectors.toList());
 	}

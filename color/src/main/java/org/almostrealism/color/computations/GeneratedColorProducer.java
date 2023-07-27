@@ -64,7 +64,7 @@ public class GeneratedColorProducer<T> implements Generated<T, Producer<RGB>>, C
 	}
 
 	@Override
-	public Collection<Process<?>> getChildren() {
+	public Collection<Process<?, ?>> getChildren() {
 		return p instanceof Process ? ((Process) p).getChildren() : Collections.emptyList();
 	}
 

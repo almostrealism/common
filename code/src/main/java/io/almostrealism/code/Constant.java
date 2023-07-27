@@ -35,7 +35,7 @@ public class Constant<T> implements Operator<T> {
 	}
 
 	@Override
-	public Collection<Process<?>> getChildren() { return Collections.emptyList(); }
+	public Collection<Process<?, ?>> getChildren() { return Collections.emptyList(); }
 
 	@Override
 	public Scope<T> getScope() {

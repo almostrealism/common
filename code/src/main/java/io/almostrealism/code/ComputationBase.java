@@ -31,7 +31,7 @@ import java.util.Optional;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-public abstract class ComputationBase<I, O> extends OperationAdapter<I> implements Computation<O>, ParallelProcess<Process<?>>, Compactable {
+public abstract class ComputationBase<I, O, T> extends OperationAdapter<I> implements Computation<O>, ParallelProcess<Process<?, ?>, T>, Compactable {
 
 	public ComputationBase() {
 		super(new Supplier[0]);
@@ -105,10 +105,10 @@ public abstract class ComputationBase<I, O> extends OperationAdapter<I> implemen
 	}
 
 	@Override
-	public Collection<Process<?>> getChildren() {
+	public Collection<Process<?, ?>> getChildren() {
 		return getInputs().stream()
-				.filter(i -> i instanceof Process<?>)
-				.map(i -> (Process<?>) i)
+				.filter(i -> i instanceof Process<?, ?>)
+				.map(i -> (Process<?, ?>) i)
 				.collect(Collectors.toList());
 	}
 

@@ -26,7 +26,7 @@ import org.almostrealism.c.OpenCLPrintWriter;
 
 import java.util.function.Supplier;
 
-public abstract class OperationComputationAdapter<T> extends ComputationBase<T, Void> implements OperationComputation<Void>, ComputerFeatures {
+public abstract class OperationComputationAdapter<T> extends ComputationBase<T, Void, Runnable> implements OperationComputation<Void>, ComputerFeatures {
 	@SafeVarargs
 	public OperationComputationAdapter(Supplier<Evaluable<? extends T>>... inputArgs) {
 		this.setInputs(inputArgs);

@@ -25,6 +25,7 @@ import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.code.ScopeInputManager;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.OperationComputationAdapter;
 import org.almostrealism.hardware.MemoryData;
 
@@ -32,7 +33,7 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public class Assignment<T extends MemoryData> extends OperationComputationAdapter<T> {
-	public static boolean enableRelative = true;
+	public static boolean enableRelative = !Hardware.enableKernelOps;
 
 	private final int memLength;
 
@@ -72,7 +73,8 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 
 				TraversableExpression exp = TraversableExpression.traverse(getArgument(1));
 				Expression<Double> value = exp == null ? null : exp.getValueAt(index);
-				if (value == null) throw new UnsupportedOperationException();
+				if (value == null)
+					throw new UnsupportedOperationException();
 
 				Variable v = new Variable(output.valueAt(i).getSimpleExpression(),
 						false, value.getSimplified(), output.getRootDelegate());

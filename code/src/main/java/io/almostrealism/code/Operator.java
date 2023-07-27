@@ -16,7 +16,8 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
 
-public interface Operator<T> extends Process<Process<?>>, ProducerComputation<T> {
+public interface Operator<T> extends Process<Process<?, ?>, Evaluable<? extends T>>, ProducerComputation<T> {
 }

@@ -47,7 +47,7 @@ public final class Hardware {
 	public static boolean enableVerbose = false;
 	public static boolean enableCast = false;
 	public static final boolean enableMultiThreading = true;
-	public static boolean enableKernelOps = true;
+	public static boolean enableKernelOps;
 
 	protected static final int MEMORY_SCALE;
 	protected static final boolean ENABLE_POOLING;

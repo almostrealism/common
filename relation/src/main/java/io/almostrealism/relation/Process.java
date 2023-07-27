@@ -16,5 +16,7 @@
 
 package io.almostrealism.relation;
 
-public interface Process<T extends Process<?>> extends Node, Tree<T> {
+import java.util.function.Supplier;
+
+public interface Process<P extends Process<?, ?>, T> extends Node, Supplier<T>, Tree<P> {
 }
