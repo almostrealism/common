@@ -18,6 +18,31 @@ package io.almostrealism.code;
 
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
+import io.almostrealism.relation.Producer;
+
+import java.util.Collection;
 
 public interface Operator<T> extends Process<Process<?, ?>, Evaluable<? extends T>>, ProducerComputation<T> {
+	@Override
+	default Process<Process<?, ?>, Evaluable<? extends T>> isolate() {
+		return new IsolatedProcess<>(this);
+	}
+
+	class IsolatedProcess<T> implements Process<Process<?, ?>, Evaluable<? extends T>>, Producer<T> {
+		private Operator<T> op;
+
+		private IsolatedProcess(Operator<T> op) {
+			this.op = op;
+		}
+
+		@Override
+		public Collection<Process<?, ?>> getChildren() {
+			return op.getChildren();
+		}
+
+		@Override
+		public Evaluable<T> get() {
+			return op.get();
+		}
+	}
 }

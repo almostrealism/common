@@ -16,5 +16,41 @@
 
 package io.almostrealism.relation;
 
+import java.util.Collection;
+import java.util.List;
+import java.util.stream.Collectors;
+
 public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, T>, Countable {
+	@Override
+	default ParallelProcess<P, T> generate(List<P> children) {
+		return (ParallelProcess<P, T>) Process.super.generate(children);
+	}
+
+	@Override
+	default ParallelProcess<P, T> optimize() {
+		Collection<? extends Process> children = getChildren();
+		if (children.isEmpty()) return this;
+
+		children = children.stream().map(Process::optimize).collect(Collectors.toList());
+
+		long p = children.stream().mapToInt(ParallelProcess::count).distinct().count();
+		if (p <= 1 && children.stream().mapToInt(ParallelProcess::count).distinct().sum() == getCount()) {
+			return generate(children.stream().map(c -> (P) c).collect(Collectors.toList()));
+		}
+
+		return generate(children.stream().map(c -> (P) c.isolate()).collect(Collectors.toList()));
+	}
+
+	default boolean isUniform() {
+		long p = getChildren().stream().mapToInt(ParallelProcess::count).distinct().count();
+		return p == 1;
+	}
+
+	static <T> int count(T c) {
+		if (c instanceof Countable) {
+			return ((Countable) c).getCount();
+		}
+
+		return 1;
+	}
 }

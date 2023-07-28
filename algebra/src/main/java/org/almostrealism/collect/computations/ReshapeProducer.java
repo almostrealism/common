@@ -22,6 +22,8 @@ import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import io.almostrealism.collect.Shape;
@@ -29,7 +31,14 @@ import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.KernelSupport;
 
-public class ReshapeProducer<T extends Shape<T>> implements CollectionProducer<T>, ScopeLifecycle, TraversableExpression<Double>, Countable, KernelSupport {
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+
+public class ReshapeProducer<T extends Shape<T>>
+		implements CollectionProducer<T>, TraversableExpression<Double>,
+					ParallelProcess<Process<?, ?>, Evaluable<? extends T>>,
+					ScopeLifecycle, KernelSupport {
 	private TraversalPolicy shape;
 	private int traversalAxis;
 	private Producer<T> producer;
@@ -56,6 +65,20 @@ public class ReshapeProducer<T extends Shape<T>> implements CollectionProducer<T
 
 	@Override
 	public int getCount() { return getShape().getCount(); }
+
+	@Override
+	public Collection<Process<?, ?>> getChildren() {
+		return producer instanceof Process ? List.of((Process) producer) : Collections.emptyList();
+	}
+
+	@Override
+	public ParallelProcess<Process<?, ?>, Evaluable<? extends T>> generate(List<Process<?, ?>> children) {
+		if (children.size() != 1) return this;
+
+		return shape == null ?
+				new ReshapeProducer<>(traversalAxis, (Producer<T>) children.get(0)) :
+				new ReshapeProducer<>(shape, (Producer<T>) children.get(0));
+	}
 
 	@Override
 	public void prepareArguments(ArgumentMap map) {

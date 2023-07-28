@@ -16,7 +16,31 @@
 
 package io.almostrealism.relation;
 
+import java.util.Collection;
+import java.util.Collections;
 import java.util.function.Supplier;
 
 public interface Process<P extends Process<?, ?>, T> extends Node, Supplier<T>, Tree<P> {
+	default Process<P, T> optimize() {
+		return this;
+	}
+
+	default Process<P, T> isolate() {
+		return Process.of(this);
+	}
+
+	static <P extends Process<?, ?>, T> Process<P, T> of(Supplier<T> supplier) {
+		return new Process<>() {
+			@Override
+			public Collection<P> getChildren() {
+				return supplier instanceof Process ?
+						((Process<P, T>) supplier).getChildren() : Collections.emptyList();
+			}
+
+			@Override
+			public T get() {
+				return supplier.get();
+			}
+		};
+	}
 }

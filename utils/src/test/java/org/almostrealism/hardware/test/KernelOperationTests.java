@@ -20,6 +20,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.test.KernelAssertions;
+import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.OperationList;
@@ -143,7 +144,14 @@ public class KernelOperationTests implements TestFeatures, KernelAssertions {
 			HardwareOperator.verboseLog(() -> {
 				OperationList op = new OperationList();
 				op.add(a(1, traverse(1, p(x)), multiply(traverse(1, p(a)), traverse(1, p(b))).traverse(0).sum()));
-				op.get().run();
+
+				Runnable o = op.optimize().get();
+				Assert.assertEquals(2, ((AcceleratedComputationOperation) o).getInputs().size());
+
+				Runnable r = op.get();
+				Assert.assertEquals(3, ((AcceleratedComputationOperation) r).getInputs().size());
+
+				o.run();
 			});
 		} finally {
 			Assignment.enableRelative = enableRelativeAssignment;

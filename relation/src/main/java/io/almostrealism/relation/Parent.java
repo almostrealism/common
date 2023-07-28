@@ -17,6 +17,7 @@
 package io.almostrealism.relation;
 
 import java.util.Collection;
+import java.util.List;
 
 /**
  * Anything with a child is a Parent.
@@ -25,4 +26,8 @@ import java.util.Collection;
  */
 public interface Parent<T> {
 	Collection<T> getChildren();
+
+	default Parent<T> generate(List<T> children) {
+		throw new UnsupportedOperationException();
+	}
 }

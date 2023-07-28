@@ -21,6 +21,8 @@ import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Process;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversableExpression;
@@ -90,9 +92,10 @@ public class TraversableExpressionComputation<T extends PackedCollection<?>>
 		return expression.apply(vars);
 	}
 
-	private static Supplier[] validateArgs(Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		Stream.of(args).forEach(Objects::requireNonNull);
-		return args;
+	@Override
+	public TraversableExpressionComputation<T> generate(List<Process<?, ?>> children) {
+		return new TraversableExpressionComputation(getShape(), expression, children.toArray(new Supplier[0]))
+				.setPostprocessor(getPostprocessor()).setShortCircuit(shortCircuit);
 	}
 
 	@Override
@@ -146,6 +149,11 @@ public class TraversableExpressionComputation<T extends PackedCollection<?>>
 	@Override
 	public T postProcessOutput(MemoryData output, int offset) {
 		return getPostprocessor() == null ? super.postProcessOutput(output, offset) : getPostprocessor().apply(output, offset);
+	}
+
+	private static Supplier[] validateArgs(Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
+		Stream.of(args).forEach(Objects::requireNonNull);
+		return args;
 	}
 
 	public static <T extends PackedCollection<?>> TraversableExpressionComputation<T> fixed(T value) {

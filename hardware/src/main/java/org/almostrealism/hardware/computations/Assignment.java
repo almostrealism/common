@@ -20,6 +20,9 @@ import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.KernelIndex;
+import io.almostrealism.relation.Countable;
+import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Process;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
@@ -29,6 +32,7 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.OperationComputationAdapter;
 import org.almostrealism.hardware.MemoryData;
 
+import java.util.List;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
@@ -61,6 +65,11 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 	}
 
 	@Override
+	public int getCount() {
+		return getInputs().get(0) instanceof Countable ? ((Countable) getInputs().get(0)).getCount() : 1;
+	}
+
+	@Override
 	public Scope<Void> getScope() {
 		Scope<Void> scope = super.getScope();
 
@@ -83,5 +92,12 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 		}
 
 		return scope;
+	}
+
+	@Override
+	public Assignment<T> generate(List<Process<?, ?>> children) {
+		if (children.size() != 2) return this;
+
+		return new Assignment<>(memLength, (Supplier) children.get(0), (Supplier) children.get(1));
 	}
 }

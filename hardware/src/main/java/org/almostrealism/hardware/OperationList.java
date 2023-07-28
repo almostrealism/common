@@ -20,6 +20,7 @@ import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.NamedFunction;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
@@ -44,6 +45,8 @@ import java.util.stream.Stream;
 public class OperationList extends ArrayList<Supplier<Runnable>>
 		implements OperationComputation<Void>, ParallelProcess<Process<?, ?>, Runnable>,
 					NamedFunction, HardwareFeatures {
+	public static boolean enableOptimization = false;
+
 	private static ThreadLocal<MemoryData> abortFlag;
 	private static boolean abortArgs, abortScope;
 	private static Abort abort;
@@ -92,14 +95,22 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 
 	@Override
 	public int getCount() {
-		throw new UnsupportedOperationException();
+		if (isEmpty()) return 0;
+
+		if (isUniform() && get(0) instanceof Countable) {
+			return ((Countable) get(0)).getCount();
+		}
+
+		return 1;
 	}
 
 	@Override
 	public Runnable get() {
 		if (isFunctionallyEmpty()) return () -> { };
 
-		if (isComputation()) {
+		if (enableOptimization && !isUniform()) {
+			return optimize().get();
+		} else if (isComputation()) {
 			OperationAdapter op = (OperationAdapter) compileRunnable(this);
 			op.setFunctionName(functionName);
 			op.compile();
@@ -166,6 +177,13 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		}
 
 		return scope;
+	}
+
+	@Override
+	public OperationList generate(List<Process<?, ?>> children) {
+		OperationList list = new OperationList();
+		children.forEach(c -> list.add((Supplier) c));
+		return list;
 	}
 
 	@Override
