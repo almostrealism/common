@@ -21,6 +21,9 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.Mod;
 import io.almostrealism.expression.StaticReference;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.collect.CollectionVariable;
 import org.almostrealism.collect.PackedCollection;
@@ -29,6 +32,7 @@ import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.KernelSupport;
 
+import java.util.List;
 import java.util.Objects;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
@@ -104,6 +108,11 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		Expression blockOffset = var.getShape().subset(subsetShape, offset, p);
 
 		return var.getValueAt(block.multiply(e(blockShape.getTotalSize())).add(blockOffset));
+	}
+
+	@Override
+	public PackedCollectionEnumerate<T> generate(List<Process<?, ?>> children) {
+		return new PackedCollectionEnumerate<>(subsetShape, strideShape, (Producer) children.get(0));
 	}
 
 	private static TraversalPolicy shape(Producer<?> collection) {

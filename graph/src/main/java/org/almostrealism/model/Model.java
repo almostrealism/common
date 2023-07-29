@@ -17,6 +17,7 @@
 package org.almostrealism.model;
 
 import io.almostrealism.cycle.Setup;
+import io.almostrealism.relation.ParallelProcess;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
@@ -33,6 +34,8 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 public class Model implements Setup, CodeFeatures {
+	public static boolean enableOptimization = false;
+
 	private List<Block> blocks;
 	private TraversalPolicy shape;
 
@@ -123,7 +126,9 @@ public class Model implements Setup, CodeFeatures {
 		PackedCollection<?> output = new PackedCollection<>(lastBlock().getOutputShape());
 		lastBlock().forward().setReceptor(out ->
 				new MemoryDataCopy("Model Output", () -> out.get().evaluate(), () -> output, output.getMemLength()));
-		forward().push(p(input)).get().run();
+		ParallelProcess<?, Runnable> p = (ParallelProcess<?, Runnable>) forward().push(p(input));
+		if (enableOptimization) p = p.optimize();
+		p.get().run();
 		return output;
 	}
 

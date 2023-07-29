@@ -24,6 +24,8 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.expression.Mod;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.collect.CollectionExpression;
@@ -36,6 +38,7 @@ import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 
+import java.util.List;
 import java.util.Objects;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -171,6 +174,11 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 		} else {
 			throw new UnsupportedOperationException();
 		}
+	}
+
+	@Override
+	public PackedCollectionMap<T> generate(List<Process<?, ?>> children) {
+		return new PackedCollectionMap<>(getShape(), (Producer) getInputs().get(1), mapper);
 	}
 
 	private CollectionExpression createCollectionExpression(CollectionVariable input, TraversalPolicy sliceShape, TraversalPolicy traversalShape) {

@@ -27,7 +27,9 @@ import org.almostrealism.collect.computations.PackedCollectionMap;
 import org.almostrealism.collect.computations.TraversableProducerComputationAdapter;
 import org.almostrealism.collect.computations.test.EmbeddedCollectionMapTests;
 import org.almostrealism.collect.computations.test.KernelAssertions;
+import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.cl.HardwareOperator;
+import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.hardware.test.KernelOperationTests;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.DefaultCellularLayer;
@@ -120,8 +122,16 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		Tensor<Double> t = tensor(inputShape);
 		PackedCollection<?> input = t.pack();
 
-		model.setup().get().run();
-		model.forward(input);
+		boolean enableOptimization = Model.enableOptimization;
+
+		try {
+			// Model.enableOptimization = false;
+
+			model.setup().get().run();
+			model.forward(input);
+		} finally {
+			Model.enableOptimization = enableOptimization;
+		}
 
 		PackedCollection<?> filter = conv.getWeights().get(0);
 		TraversalPolicy filterShape = filter.getShape();
@@ -278,7 +288,9 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		}
 	}
 
-	@Test
+	// TODO  The tests delegated to here should probably all be moved to
+	// TODO  a specific class together as PoolTests
+	// @Test
 	public void poolAttempts() {
 		CollectionProducerComputationBase.destinationLog(() -> {
 			new EmbeddedCollectionMapTests().pool2dSquare();

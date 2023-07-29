@@ -31,6 +31,7 @@ import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.relation.Compactable;
 import org.almostrealism.hardware.computations.Abort;
+import org.almostrealism.hardware.computations.Assignment;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -84,6 +85,10 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 
 	public void addCompiled(Supplier<Runnable> op) {
 		add(() -> op.get());
+	}
+
+	public <T extends MemoryData> void add(int memLength, Producer<T> producer, Producer<T> destination) {
+		add(new Assignment<>(memLength, destination, producer));
 	}
 
 	@Deprecated

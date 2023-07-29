@@ -112,7 +112,7 @@ public class KernelOperationTests implements TestFeatures, KernelAssertions {
 				op.add(a(1, traverse(1, p(y)), multiply(traverse(1, p(b)), traverse(1, p(b)))));
 
 				Assert.assertEquals(1, op.getCount());
-				op.get().run();
+				op.optimize().get().run();
 			});
 		} finally {
 			Assignment.enableRelative = enableRelativeAssignment;

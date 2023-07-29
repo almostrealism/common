@@ -18,8 +18,10 @@ package org.almostrealism.layers;
 
 import io.almostrealism.code.ExpressionList;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionOperationList;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import io.almostrealism.collect.Func;
 import io.almostrealism.collect.KernelExpression;
@@ -40,6 +42,7 @@ import java.util.function.Supplier;
 public interface LayerFeatures extends CollectionFeatures {
 	boolean enableKernelLayers = false;
 	boolean enableKernelPool = false;
+	boolean enableAssignment = false;
 
 	@Deprecated
 	default KernelLayer layer(TraversalPolicy inputShape, TraversalPolicy outputShape,
@@ -139,13 +142,22 @@ public interface LayerFeatures extends CollectionFeatures {
 					Cell.of((input, next) -> {
 						PackedCollection<?> output = new PackedCollection<>(outputShape);
 
+						Producer<PackedCollection<?>> conv =
+								c(input).enumerate(1, size, 1)
+								.enumerate(1, size, 1)
+								.traverse(2)
+								.expand(filterCount, v -> v.repeat(filterCount).multiply(p(filters)))
+								.traverse()
+								.reduce(v -> v.sum());
+
 						OperationList ops = new OperationList();
-						ops.add(c(input).enumerate(1, size, 1)
-									.enumerate(1, size, 1)
-									.traverse(2)
-									.expand(filterCount, v -> v.repeat(filterCount).multiply(p(filters)))
-									.traverse()
-									.reduce(v -> v.sum()), output.traverseEach());
+
+						if (enableAssignment) {
+							ops.add(1, conv, p(output.traverseEach()));
+						} else {
+							ops.add(conv, output.traverseEach());
+						}
+
 						if (next != null) ops.add(next.push(p(output)));
 						return ops;
 					}),

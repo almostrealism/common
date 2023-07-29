@@ -17,6 +17,7 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.code.Operator;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.expression.Expression;
@@ -29,6 +30,7 @@ import org.almostrealism.collect.CollectionProducer;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.hardware.KernelSupport;
 
 import java.util.Collection;
@@ -78,6 +80,11 @@ public class ReshapeProducer<T extends Shape<T>>
 		return shape == null ?
 				new ReshapeProducer<>(traversalAxis, (Producer<T>) children.get(0)) :
 				new ReshapeProducer<>(shape, (Producer<T>) children.get(0));
+	}
+
+	@Override
+	public Process<Process<?, ?>, Evaluable<? extends T>> isolate() {
+		return new CollectionProducerComputation.IsolatedProcess(this);
 	}
 
 	@Override

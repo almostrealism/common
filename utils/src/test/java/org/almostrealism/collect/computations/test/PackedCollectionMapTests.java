@@ -24,12 +24,15 @@ import org.almostrealism.collect.computations.PackedCollectionMap;
 import org.almostrealism.collect.computations.PackedCollectionRepeat;
 import org.almostrealism.collect.computations.TraversableProducerComputationAdapter;
 import org.almostrealism.hardware.KernelizedEvaluable;
+import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.Arrays;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public class PackedCollectionMapTests implements TestFeatures {
@@ -38,11 +41,10 @@ public class PackedCollectionMapTests implements TestFeatures {
 		PackedCollection<?> input = tensor(shape(8, 3, 3)).pack();
 		PackedCollection<?> filter = tensor(shape(3, 3)).pack();
 
-		HardwareOperator.verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> product = traverse(1, p(input)).map(v -> v.multiply(p(filter)));
-			PackedCollection<?> output = product.get().evaluate();
-			System.out.println(output.getShape());
+		Supplier<Producer<PackedCollection<?>>> product =
+				() -> traverse(1, p(input)).map(v -> v.multiply(p(filter)));
 
+		Consumer<PackedCollection<?>> valid = output -> {
 			Assert.assertEquals(8, output.getShape().length(0));
 			Assert.assertEquals(3, output.getShape().length(1));
 			Assert.assertEquals(3, output.getShape().length(2));
@@ -56,7 +58,9 @@ public class PackedCollectionMapTests implements TestFeatures {
 					}
 				}
 			}
-		});
+		};
+
+		kernelTest(product, valid);
 	}
 
 	// @Test
@@ -234,13 +238,12 @@ public class PackedCollectionMapTests implements TestFeatures {
 		PackedCollection<?> input = tensor(shape(8, 3, 3)).pack();
 		PackedCollection<?> filter = tensor(shape(3, 3)).pack();
 
-		HardwareOperator.verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> product = traverse(1, p(input))
-														.map(v -> v.multiply(p(filter)))
-														.reduce(v -> v.sum());
-			PackedCollection<?> output = product.get().evaluate();
-			System.out.println(output.getShape());
+		Supplier<Producer<PackedCollection<?>>> product =
+				() -> traverse(1, p(input))
+					.map(v -> v.multiply(p(filter)))
+					.reduce(v -> v.sum());
 
+		Consumer<PackedCollection<?>> validate = output -> {
 			for (int i = 0; i < 8; i++) {
 				double expected = 0;
 
@@ -253,7 +256,9 @@ public class PackedCollectionMapTests implements TestFeatures {
 				System.out.println("PackedCollectionMapTests: " + expected + " vs " + output.toDouble(output.getShape().index(i, 0)));
 				Assert.assertEquals(expected, output.toDouble(output.getShape().index(i, 0)), 0.0001);
 			}
-		});
+		};
+
+		kernelTest(product, validate);
 	}
 
 	@Test
@@ -265,14 +270,13 @@ public class PackedCollectionMapTests implements TestFeatures {
 		PackedCollection<?> input = tensor(shape(r, c)).pack();
 		PackedCollection<?> filter = tensor(shape(w, c)).pack();
 
-		HardwareOperator.verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> product = traverse(1, p(input))
-					.expand(w, v -> v.repeat(w).multiply(p(filter)))
-					.traverse()
-					.reduce(v -> v.sum());
-			PackedCollection<?> output = product.get().evaluate();
-			System.out.println(output.getShape());
+		Supplier<CollectionProducer<PackedCollection<?>>> product =
+				() -> traverse(1, p(input))
+						.expand(w, v -> v.repeat(w).multiply(p(filter)))
+						.traverse()
+						.reduce(v -> v.sum());
 
+		Consumer<PackedCollection<?>> validate = output -> {
 			for (int i = 0; i < r; i++) {
 				for (int j = 0; j < w; j++) {
 					double expected = 0;
@@ -285,7 +289,9 @@ public class PackedCollectionMapTests implements TestFeatures {
 					Assert.assertEquals(expected, output.valueAt(i, j, 0), 0.0001);
 				}
 			}
-		});
+		};
+
+		kernelTest(product, validate);
 	}
 
 	@Test
