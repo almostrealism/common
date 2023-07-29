@@ -31,7 +31,7 @@ public interface Operator<T> extends Process<Process<?, ?>, Evaluable<? extends 
 	class IsolatedProcess<T> implements Process<Process<?, ?>, Evaluable<? extends T>>, Producer<T> {
 		private Operator<T> op;
 
-		private IsolatedProcess(Operator<T> op) {
+		public IsolatedProcess(Operator<T> op) {
 			this.op = op;
 		}
 
