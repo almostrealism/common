@@ -18,6 +18,7 @@ package org.almostrealism.collect;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ProducerComputation;
+import io.almostrealism.collect.CollectionProducerBase;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
@@ -33,6 +34,8 @@ import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.MemoryDataAdapter;
 
+import java.util.Collection;
+import java.util.Collections;
 import java.util.function.Function;
 
 public interface CollectionProducerComputation<T extends PackedCollection<?>> extends
@@ -119,5 +122,33 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 				return kernel;
 			}
 		};
+	}
+
+	class IsolatedProcess<T extends PackedCollection<?>> implements Process<Process<?, ?>, Evaluable<? extends T>>, CollectionProducerBase<T, Producer<T>> {
+		private CollectionProducer<T> op;
+
+		public IsolatedProcess(CollectionProducer<T> op) {
+			this.op = op;
+		}
+
+		@Override
+		public Collection<Process<?, ?>> getChildren() {
+			return op instanceof Process ? ((Process) op).getChildren() : Collections.emptyList();
+		}
+
+		@Override
+		public Evaluable<T> get() {
+			return op.get();
+		}
+
+		@Override
+		public TraversalPolicy getShape() {
+			return op.getShape();
+		}
+
+		@Override
+		public Producer<T> reshape(TraversalPolicy shape) {
+			throw new UnsupportedOperationException();
+		}
 	}
 }

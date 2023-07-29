@@ -21,6 +21,7 @@ import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
 import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Process;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
@@ -98,6 +99,12 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 
 	@Override
 	public int getCount() { return getShape().getCount(); }
+
+
+	@Override
+	public Process<Process<?, ?>, Evaluable<? extends O>> isolate() {
+		return new CollectionProducerComputation.IsolatedProcess<>(this);
+	}
 
 	@Override
 	public void setDestination(Supplier<O> destination) { this.destination = destination; }
