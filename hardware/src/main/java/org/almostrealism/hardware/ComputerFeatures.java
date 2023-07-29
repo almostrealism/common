@@ -86,7 +86,9 @@ public interface ComputerFeatures extends HardwareFeatures, NameProvider {
 	default Expression<?> getArrayPosition(ArrayVariable v, Expression pos, int kernelIndex) {
 		Expression offset = new IntegerConstant(0);
 
-		if (isContextKernelEnabled() && v.getProducer() instanceof Countable) {
+		if (isContextKernelEnabled() &&
+				(v.getProducer() instanceof Countable ||
+				(v.getProducer() instanceof KernelSupport && ((KernelSupport) v.getProducer()).isKernelEnabled()))) {
 			KernelIndex idx = new KernelIndex(kernelIndex);
 			Expression dim = new StaticReference(Integer.class, KernelSupport.getValueDimName(v.getName(), kernelIndex));
 
