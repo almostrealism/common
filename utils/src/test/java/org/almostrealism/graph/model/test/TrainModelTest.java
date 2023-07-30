@@ -177,9 +177,9 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 
 		model.setup().get().run();
 
-		PackedCollection<?> in = input;
+//		PackedCollection<?> in = input;
 //		HardwareOperator.verboseLog(() -> model.forward(in));
-		model.forward(in);
+		model.forward(input);
 
 		PackedCollection<?> output = pool instanceof DefaultCellularLayer ?
 				((DefaultCellularLayer) pool).getOutput() :
