@@ -16,7 +16,10 @@
 
 package io.almostrealism.collect;
 
+import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Producer;
 
-public interface CollectionProducerBase<T, P extends Producer<T>> extends Producer<T>, Shape<P> {
+public interface CollectionProducerBase<T, P extends Producer<T>> extends Producer<T>, Shape<P>, Countable {
+	@Override
+	default int getCount() { return getShape().getCount(); }
 }

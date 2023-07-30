@@ -94,11 +94,10 @@ public class PackedCollectionMapTests implements TestFeatures {
 		PackedCollection<?> source = tensor(shape(3, 1)).pack();
 		PackedCollection<?> filter = tensor(shape(3, 1)).pack();
 
-		HardwareOperator.verboseLog(() -> {
-			CollectionProducer<PackedCollection<?>> product = traverse(1, p(input)).map(shape(3, 1), v -> add(p(source), p(filter)));
-			PackedCollection<?> output = product.get().evaluate();
-			System.out.println(output.getShape());
+		Supplier<Producer<PackedCollection<?>>> product =
+				() -> traverse(1, p(input)).map(shape(3, 1), v -> add(p(source), p(filter)));
 
+		Consumer<PackedCollection<?>> valid = output -> {
 			Assert.assertEquals(8, output.getShape().length(0));
 			Assert.assertEquals(3, output.getShape().length(1));
 			Assert.assertEquals(1, output.getShape().length(2));
@@ -112,7 +111,9 @@ public class PackedCollectionMapTests implements TestFeatures {
 					}
 				}
 			}
-		});
+		};
+
+		kernelTest(product, valid);
 	}
 
 	@Test

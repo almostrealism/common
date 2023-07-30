@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware.mem;
 
+import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.NameProvider;
@@ -58,7 +59,7 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 	private int aggregateLength;
 
 	private MemoryData aggregateData;
-	private Supplier<? extends Evaluable<MemoryData>> aggregateSupplier;
+	private Producer<MemoryData> aggregateSupplier;
 	private ArrayVariable<A> aggregateArgument;
 
 	public MemoryDataArgumentMap() { this(null); }
@@ -183,7 +184,7 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 		return aggregateData;
 	}
 
-	protected Supplier<? extends Evaluable<MemoryData>> getAggregateSupplier() {
+	protected Producer<MemoryData> getAggregateSupplier() {
 		if (aggregateSupplier == null) {
 			aggregateSupplier = () -> new Provider<>(getAggregateData());
 		}

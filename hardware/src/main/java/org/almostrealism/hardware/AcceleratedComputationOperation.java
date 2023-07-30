@@ -21,6 +21,7 @@ import io.almostrealism.code.Computation;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.relation.Compactable;
+import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Named;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.OperationAdapter;
@@ -31,7 +32,7 @@ import org.almostrealism.hardware.mem.Bytes;
 import java.util.List;
 import java.util.function.Consumer;
 
-public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperation<MemoryData> implements NameProvider {
+public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperation<MemoryData> implements NameProvider, Countable {
 	public static boolean enableRequiredScopes = true;
 	public static boolean enableOperationInputAggregation = true;
 
@@ -55,6 +56,11 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	public Computation<T> getComputation() { return computation; }
+
+	@Override
+	public int getCount() {
+		return getComputation() instanceof Countable ? ((Countable) getComputation()).getCount() : 1;
+	}
 
 	@Override
 	public String getName() {

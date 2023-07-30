@@ -18,6 +18,7 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.KernelIndex;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.relation.Countable;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.code.ArgumentMap;
@@ -331,6 +332,9 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		}
 
 		List<Integer> sizes = new ArrayList<>();
+
+		if (this instanceof Countable)
+			sizes.add(((Countable) this).getCount());
 
 		/*
 		 * In the second pass, kernel size is inferred from Producer arguments

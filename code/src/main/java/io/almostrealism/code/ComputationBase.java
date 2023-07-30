@@ -39,7 +39,12 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I> imple
 
 	@Override
 	public int getCount() {
-		// TODO  There should be some way to know this
+		long p = getInputs().stream().mapToInt(ParallelProcess::count).distinct().count();
+
+		if (p == 1) {
+			return getInputs().stream().mapToInt(ParallelProcess::count).distinct().sum();
+		}
+
 		throw new UnsupportedOperationException();
 	}
 

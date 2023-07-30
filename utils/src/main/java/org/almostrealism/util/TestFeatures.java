@@ -30,7 +30,7 @@ import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 public interface TestFeatures extends CodeFeatures, HardwareFeatures, TensorTestFeatures, TestSettings {
-	boolean enableKernelOperationTests = false;
+	boolean enableKernelOperationTests = true;
 
 	default void assertEquals(Scalar a, Scalar b) {
 		assertEquals(a.getValue(), b.getValue());
@@ -76,7 +76,8 @@ public interface TestFeatures extends CodeFeatures, HardwareFeatures, TensorTest
 		HardwareOperator.verboseLog(() -> {
 			System.out.println("TestFeatures: Running kernel evaluation...");
 			PackedCollection<?> output = supply.get().get().evaluate();
-			System.out.println("TestFeatures: Kernel Test Output Shape = " + output.getShape());
+			System.out.println("TestFeatures: Output Shape = " + output.getShape() +
+					" [" + output.getShape().getCount() + "x" + output.getShape().getSize() + "]");
 			System.out.println("TestFeatures: Validating kernel output...");
 			validate.accept(output);
 			outputRef.set(output);

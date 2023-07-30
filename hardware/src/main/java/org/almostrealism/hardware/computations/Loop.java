@@ -20,6 +20,7 @@ import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.HybridScope;
 import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.relation.Countable;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.relation.Compactable;
@@ -48,6 +49,11 @@ public class Loop extends OperationComputationAdapter<Void> {
 	public void prepareScope(ScopeInputManager manager) {
 		super.prepareScope(manager);
 		atom.prepareScope(manager);
+	}
+
+	@Override
+	public int getCount() {
+		return atom instanceof Countable ? ((Countable) atom).getCount() : 1;
 	}
 
 	@Override
