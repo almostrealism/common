@@ -274,11 +274,6 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData> extends Dyna
 	}
 
 	@Override
-	protected T handleNull(int argIndex) {
-		return onNull == null ? (T) super.handleNull(argIndex) : onNull.get();
-	}
-
-	@Override
 	public MemoryBank<T> createKernelDestination(int size) { return forKernel.apply(size); }
 
 	private static <T> Supplier[] generateArgs(List<ProducerWithRank<T, Scalar>> values, Supplier<Evaluable<? extends T>> defaultValue) {

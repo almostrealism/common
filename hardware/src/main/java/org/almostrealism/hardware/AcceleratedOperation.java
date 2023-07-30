@@ -446,28 +446,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				this::createAggregatedInput, kernelSize);
 	}
 
-	/**
-	 * Override this method to provide a value to use in place of null
-	 * when a null parameter is encountered.
-	 *
-	 * @param argIndex  The index of the argument that is null.
-	 * @return  null
-	 */
-	protected Object replaceNull(int argIndex) {
-		return null;
-	}
-
-	/**
-	 * Override this method to provide a value to return from the function
-	 * should one of the parameters be null. The default implementation
-	 * throws a {@link NullPointerException}.
-	 *
-	 * @param argIndex  The index of the argument that is null.
-	 */
-	protected Object handleNull(int argIndex) {
-		throw new NullPointerException("argument " + argIndex + " to function " + getFunctionName());
-	}
-
 	public boolean isKernel() { return kernel; }
 
 	@Override
