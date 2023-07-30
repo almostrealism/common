@@ -85,8 +85,17 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 				if (value == null)
 					throw new UnsupportedOperationException();
 
-				Variable v = new Variable(output.valueAt(i).getSimpleExpression(),
+				Variable v;
+				TraversableExpression out = TraversableExpression.traverse(output);
+
+				if (out == null) {
+					v = new Variable(output.valueAt(i).getSimpleExpression(),
 						false, value.getSimplified(), output.getRootDelegate());
+				} else {
+					v = new Variable(out.getValueAt(index).getSimpleExpression(),
+							false, value.getSimplified(), output.getRootDelegate());
+				}
+
 				scope.getVariables().add(v);
 			}
 		}
