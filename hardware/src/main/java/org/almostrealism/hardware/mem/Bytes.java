@@ -16,7 +16,9 @@
 
 package org.almostrealism.hardware.mem;
 
-public class Bytes extends MemoryDataAdapter {
+import io.almostrealism.relation.Countable;
+
+public class Bytes extends MemoryDataAdapter implements Countable {
 	private final int atomicLength;
 	private final int memLength;
 
@@ -38,6 +40,7 @@ public class Bytes extends MemoryDataAdapter {
 		init();
 	}
 
+	@Override
 	public int getCount() { return getMemLength() / getAtomicMemLength(); }
 
 	@Override
