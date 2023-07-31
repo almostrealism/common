@@ -24,6 +24,7 @@ import io.almostrealism.expression.StaticReference;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.hardware.computations.Loop;
+import org.almostrealism.hardware.mem.MemoryDataCopy;
 
 import java.util.Optional;
 import java.util.function.IntFunction;
@@ -31,6 +32,8 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public interface HardwareFeatures {
+	boolean enableAssignmentCopy = false;
+
 	default Runnable compileRunnable(Computation<?> c) {
 		return Hardware.getLocalHardware().getComputeContext().getComputer().compileRunnable(c);
 	}
@@ -63,6 +66,24 @@ public interface HardwareFeatures {
 	@JsonIgnore
 	default boolean isCastEnabled() {
 		return Hardware.getLocalHardware().isGPU() && Hardware.getLocalHardware().isDoublePrecision();
+	}
+
+	default <T extends MemoryData> Assignment<T> a(int memLength, Supplier<Evaluable<? extends T>> result, Supplier<Evaluable<? extends T>> value) {
+		return new Assignment<>(memLength, result, value);
+	}
+
+	default Supplier<Runnable> copy(Supplier<MemoryData> source, Supplier<MemoryData> target, int length) {
+		return copy(null, source, target, length);
+	}
+
+	default Supplier<Runnable> copy(String name, Supplier<MemoryData> source, Supplier<MemoryData> target, int length) {
+		if (enableAssignmentCopy) {
+			return new Assignment(length,
+					() -> (Evaluable<MemoryData>) args -> target.get(),
+					() -> (Evaluable<MemoryData>) args -> source.get());
+		} else {
+			return new MemoryDataCopy(name, source, target, length);
+		}
 	}
 
 	default Supplier<Runnable> loop(Computation<Void> c, int iterations) {

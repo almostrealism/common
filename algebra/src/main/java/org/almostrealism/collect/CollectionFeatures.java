@@ -124,10 +124,6 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		}
 	}
 
-	default <T extends MemoryData> Assignment<T> a(int memLength, Supplier<Evaluable<? extends T>> result, Supplier<Evaluable<? extends T>> value) {
-		return new Assignment<>(memLength, result, value);
-	}
-
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> c(double... values) {
 		PackedCollection<T> c = new PackedCollection<>(values.length);
 		c.setMem(0, values);

@@ -125,7 +125,7 @@ public class Model implements Setup, CodeFeatures {
 	public PackedCollection<?> forward(PackedCollection<?> input) {
 		PackedCollection<?> output = new PackedCollection<>(lastBlock().getOutputShape());
 		lastBlock().forward().setReceptor(out ->
-				new MemoryDataCopy("Model Output", () -> out.get().evaluate(), () -> output, output.getMemLength()));
+				copy("Model Output", () -> out.get().evaluate(), () -> output, output.getMemLength()));
 		ParallelProcess<?, Runnable> p = (ParallelProcess<?, Runnable>) forward().push(p(input));
 		if (enableOptimization) p = p.optimize();
 		p.get().run();

@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
 
+@Deprecated
 public class KernelLayerCell implements Cell<PackedCollection<?>>, CodeFeatures {
 	private final Supplier<Runnable> setup;
 	private final PackedCollection<?> input;

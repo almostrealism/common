@@ -40,26 +40,12 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 public interface LayerFeatures extends CollectionFeatures {
-	boolean enableKernelLayers = false;
-	boolean enableKernelPool = false;
-	boolean enableAssignment = false;
+	boolean enableAssignment = true;
 
 	@Deprecated
 	default KernelLayer layer(TraversalPolicy inputShape, TraversalPolicy outputShape,
 							  KernelExpression kernel, Propagation backwards) {
 		return new KernelLayer(inputShape, TraversableKernelExpression.withShape(outputShape, kernel), backwards);
-	}
-
-	@Deprecated
-	default KernelLayer layer(TraversalPolicy inputShape, TraversalPolicy outputShape, KernelExpression kernel,
-							  Propagation backwards, List<PackedCollection<?>> weights) {
-		return new KernelLayer(inputShape, TraversableKernelExpression.withShape(outputShape, kernel), backwards, weights);
-	}
-
-	@Deprecated
-	default KernelLayer layer(TraversalPolicy inputShape, TraversalPolicy outputShape, Func.v2e3 kernel,
-							  Propagation backwards, List<PackedCollection<?>> weights, Supplier<Runnable> setup) {
-		return layer(inputShape, outputShape, kernel.toKernel(), backwards, weights, setup);
 	}
 
 	@Deprecated
@@ -116,69 +102,45 @@ public interface LayerFeatures extends CollectionFeatures {
 		Supplier<Runnable> init = new KernelOperation<>(
 				divide(randn(filterShape).traverseEach(), c(9).traverse(0)), filters.traverseEach());
 
-		if (enableKernelLayers) {
-			return layer(inputShape, outputShape,
-					(in, filter, x, y, z) ->
-							filter.get(shape(1, size, size), z).multiply(in.get(shape(size, size), x, y)).sum(),
-					(lr, gradient, input, next) -> {
-						CollectionOperationList ops = new CollectionOperationList();
-						PackedCollection<?> filterGrad = new PackedCollection<>(filterShape);
+		return layer(inputShape, outputShape,
+				Cell.of((input, next) -> {
+					PackedCollection<?> output = new PackedCollection<>(outputShape);
 
-						ops.kernel((_gradient, _input, f, fx, fy) ->
-								shape(outputShape.length(0), outputShape.length(1)).stream()
-										.map(pos -> _gradient.get(e(pos[0]), e(pos[1]), f).multiply(_input.get(e(pos[0]).add(fx), e(pos[1]).add(fy))))
-										.collect(ExpressionList.collector())
-										.sum(), filterGrad.traverseEach(), gradient, input);
-						ops.kernel((_filters, _gradient, _lr, x, y, z) ->
-										_filters.get(x, y, z).subtract(_gradient.get(x, y, z).multiply(_lr.valueAt(0))),
-								filters.traverseEach(), p(filters), p(filterGrad), lr);
-						if (next != null) {
-							System.out.println("WARN: convolution2d does not support backpropagation");
-						}
-						return ops;
-					}, List.of(filters), init);
-		} else {
-			return layer(inputShape, outputShape,
-					Cell.of((input, next) -> {
-						PackedCollection<?> output = new PackedCollection<>(outputShape);
+					OperationList ops = new OperationList();
+					Producer<PackedCollection<?>> conv =
+							c(input).enumerate(1, size, 1)
+									.enumerate(1, size, 1)
+									.traverse(2)
+									.expand(filterCount, v -> v.repeat(filterCount).multiply(p(filters)))
+									.traverse()
+									.reduce(v -> v.sum());
 
-						Producer<PackedCollection<?>> conv =
-								c(input).enumerate(1, size, 1)
-								.enumerate(1, size, 1)
-								.traverse(2)
-								.expand(filterCount, v -> v.repeat(filterCount).multiply(p(filters)))
-								.traverse()
-								.reduce(v -> v.sum());
+					if (enableAssignment) {
+						ops.add(1, conv, p(output.traverseEach()));
+					} else {
+						ops.add(conv, output.traverseEach());
+					}
 
-						OperationList ops = new OperationList();
+					if (next != null) ops.add(next.push(p(output)));
+					return ops;
+				}),
+				(lr, gradient, input, next) -> {
+					CollectionOperationList ops = new CollectionOperationList();
+					PackedCollection<?> filterGrad = new PackedCollection<>(filterShape);
 
-						if (enableAssignment) {
-							ops.add(1, conv, p(output.traverseEach()));
-						} else {
-							ops.add(conv, output.traverseEach());
-						}
-
-						if (next != null) ops.add(next.push(p(output)));
-						return ops;
-					}),
-					(lr, gradient, input, next) -> {
-						CollectionOperationList ops = new CollectionOperationList();
-						PackedCollection<?> filterGrad = new PackedCollection<>(filterShape);
-
-						ops.kernel((_gradient, _input, f, fx, fy) ->
-								shape(outputShape.length(0), outputShape.length(1)).stream()
-										.map(pos -> _gradient.get(e(pos[0]), e(pos[1]), f).multiply(_input.get(e(pos[0]).add(fx), e(pos[1]).add(fy))))
-										.collect(ExpressionList.collector())
-										.sum(), filterGrad.traverseEach(), gradient, input);
-						ops.kernel((_filters, _gradient, _lr, x, y, z) ->
-										_filters.get(x, y, z).subtract(_gradient.get(x, y, z).multiply(_lr.valueAt(0))),
-								filters.traverseEach(), p(filters), p(filterGrad), lr);
-						if (next != null) {
-							System.out.println("WARN: convolution2d does not support backpropagation");
-						}
-						return ops;
-					}, List.of(filters), init);
-		}
+					ops.kernel((_gradient, _input, f, fx, fy) ->
+							shape(outputShape.length(0), outputShape.length(1)).stream()
+									.map(pos -> _gradient.get(e(pos[0]), e(pos[1]), f).multiply(_input.get(e(pos[0]).add(fx), e(pos[1]).add(fy))))
+									.collect(ExpressionList.collector())
+									.sum(), filterGrad.traverseEach(), gradient, input);
+					ops.kernel((_filters, _gradient, _lr, x, y, z) ->
+									_filters.get(x, y, z).subtract(_gradient.get(x, y, z).multiply(_lr.valueAt(0))),
+							filters.traverseEach(), p(filters), p(filterGrad), lr);
+					if (next != null) {
+						System.out.println("WARN: convolution2d does not support backpropagation");
+					}
+					return ops;
+				}, List.of(filters), init);
 	}
 
 	default Function<TraversalPolicy, CellularLayer> pool2d(int size) {
@@ -204,32 +166,29 @@ public interface LayerFeatures extends CollectionFeatures {
 			return ops;
 		};
 
-		if (enableKernelLayers || enableKernelPool) {
-			KernelExpression kernel = (i, p) -> i.v(0).get(shape(size, size, 1),
-					p.l(0).multiply(size),
-					p.l(1).multiply(size),
-					p.l(2)).max();
+		return layer(inputShape, outputShape,
+				Cell.of((input, next) -> {
+					PackedCollection<?> output = new PackedCollection<>(outputShape);
+					int d = outputShape.length(2);
 
-			return layer(inputShape, outputShape, kernel, propagation);
-		} else {
-			return layer(inputShape, outputShape,
-					Cell.of((input, next) -> {
-						PackedCollection<?> output = new PackedCollection<>(outputShape);
-
-						int d = outputShape.length(2);
-
-						OperationList ops = new OperationList();
-						ops.add(c(input).enumerate(1, size)
+					OperationList ops = new OperationList();
+					Producer<PackedCollection<?>> pool = c(input).enumerate(1, size)
 									.enumerate(1, size)
 									.traverse(2)
 									.map(shape(d, 1), v ->
 											enumerate(shape(1, 1, size, size, 1), v)
-											.traverse(1).reduce(slice -> max(slice))),
-								output.traverse(2));
-						if (next != null) ops.add(next.push(p(output)));
-						return ops;
-					}), propagation);
-		}
+													.traverse(1).reduce(slice -> max(slice)));
+
+					if (enableAssignment) {
+						ops.add(output.traverse(2).getShape().getSize(),
+								pool, p(output.traverse(2)));
+					} else {
+						ops.add(pool, output.traverse(2));
+					}
+
+					if (next != null) ops.add(next.push(p(output)));
+					return ops;
+				}), propagation);
 	}
 
 	default Function<TraversalPolicy, CellularLayer> dense(int nodes) {
