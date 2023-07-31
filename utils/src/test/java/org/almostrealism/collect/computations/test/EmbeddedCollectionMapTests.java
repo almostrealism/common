@@ -25,6 +25,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.util.TensorTestFeatures;
+import org.almostrealism.util.TestFeatures;
 import org.almostrealism.util.TestSettings;
 import org.junit.Assert;
 import org.junit.Test;
@@ -35,7 +36,7 @@ import java.util.List;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-public class EmbeddedCollectionMapTests implements CodeFeatures, TensorTestFeatures, KernelAssertions {
+public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertions {
 
 	protected <T extends PackedCollection<?>> ExpressionComputation<T> first(Producer<T> input) {
 		Function<List<ArrayVariable<Double>>, Expression<Double>> expression= np ->
@@ -728,17 +729,19 @@ public class EmbeddedCollectionMapTests implements CodeFeatures, TensorTestFeatu
 			System.out.println("5: " + pt.getShape() + " - " + pt.getShape().getSize());
 		}
 
-		CollectionProducer<PackedCollection<?>> pool =
-				c(p(input)).enumerate(1, w)
+		Supplier<CollectionProducer<PackedCollection<?>>> pool =
+				() -> c(p(input)).enumerate(1, w)
 						.enumerate(1, w)
 						.traverse(2)
 						.map(shape(d, 1), v ->
 								enumerate(shape(1, 1, w, w, 1), v)
 										.traverse(1).reduce(slice ->
 												max(slice)));
-		System.out.println("EmbeddedCollectionMapTests: Computation shape = " + pool.getShape());
 
-		PackedCollection<?> output = pool.get().evaluate();
-		pool2d(r, c, d, w, input, output);
+//		System.out.println("EmbeddedCollectionMapTests: Computation shape = " + pool.getShape());
+//		PackedCollection<?> output = pool.get().evaluate();
+//		pool2d(r, c, d, w, input, output);
+
+		kernelTest(pool, output -> pool2d(r, c, d, w, input, output));
 	}
 }

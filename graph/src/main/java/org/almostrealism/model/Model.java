@@ -18,10 +18,12 @@ package org.almostrealism.model;
 
 import io.almostrealism.cycle.Setup;
 import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.graph.Cell;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.mem.MemoryDataCopy;
 import org.almostrealism.layers.CellularLayer;
@@ -124,8 +126,10 @@ public class Model implements Setup, CodeFeatures {
 	public Cell<PackedCollection<?>> forward() { return blocks.get(0).forward(); }
 	public PackedCollection<?> forward(PackedCollection<?> input) {
 		PackedCollection<?> output = new PackedCollection<>(lastBlock().getOutputShape());
+//		lastBlock().forward().setReceptor(out ->
+//				copy("Model Output", () -> out.get().evaluate(), () -> output, output.getMemLength()));
 		lastBlock().forward().setReceptor(out ->
-				copy("Model Output", () -> out.get().evaluate(), () -> output, output.getMemLength()));
+				copy("Model Output", out, p(output), output.getMemLength()));
 		ParallelProcess<?, Runnable> p = (ParallelProcess<?, Runnable>) forward().push(p(input));
 		if (enableOptimization) p = p.optimize();
 		p.get().run();

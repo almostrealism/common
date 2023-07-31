@@ -22,6 +22,7 @@ import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.hardware.computations.Loop;
 import org.almostrealism.hardware.mem.MemoryDataCopy;
@@ -83,6 +84,20 @@ public interface HardwareFeatures {
 					() -> (Evaluable<MemoryData>) args -> source.get());
 		} else {
 			return new MemoryDataCopy(name, source, target, length);
+		}
+	}
+
+	default Supplier<Runnable> copy(Producer<? extends MemoryData> source,
+									Producer<? extends MemoryData> target, int length) {
+		return copy(null, source, target, length);
+	}
+
+	default Supplier<Runnable> copy(String name, Producer<? extends MemoryData> source,
+									Producer<? extends MemoryData> target, int length) {
+		if (enableAssignmentCopy) {
+			return new Assignment(length, target, source);
+		} else {
+			return new MemoryDataCopy(name, source.get()::evaluate, target.get()::evaluate, length);
 		}
 	}
 

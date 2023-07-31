@@ -17,6 +17,7 @@
 package org.almostrealism.layers;
 
 import io.almostrealism.relation.Producer;
+import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
@@ -28,7 +29,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.function.Supplier;
 
-public class DefaultCellularLayer implements CellularLayer, CollectionFeatures, Learning {
+public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learning {
 	private TraversalPolicy outputShape;
 	private Supplier<Runnable> setup;
 	private Cell<PackedCollection<?>> forward;
@@ -77,7 +78,8 @@ public class DefaultCellularLayer implements CellularLayer, CollectionFeatures, 
 
 		this.copyInput = Cell.of((in, next) -> {
 			OperationList op = new OperationList();
-			op.add(new MemoryDataCopy(in.get()::evaluate, () -> input, input.getMemLength()));
+//			op.add(copy(in.get()::evaluate, () -> input, input.getMemLength()));
+			op.add(copy(in, p(input), input.getMemLength()));
 			op.add(next.push(p(input)));
 			return op;
 		});
@@ -86,7 +88,8 @@ public class DefaultCellularLayer implements CellularLayer, CollectionFeatures, 
 
 		this.copyOutput = Cell.of((in, next) -> {
 			OperationList op = new OperationList();
-			op.add(new MemoryDataCopy(in.get()::evaluate, () -> output, output.getMemLength()));
+//			op.add(copy(in.get()::evaluate, () -> output, output.getMemLength()));
+			op.add(copy(in, p(output), output.getMemLength()));
 			return op;
 		});
 
