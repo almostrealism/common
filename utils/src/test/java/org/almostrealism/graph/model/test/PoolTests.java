@@ -107,7 +107,7 @@ public class PoolTests implements TestFeatures, KernelAssertions {
 				return step2Out;
 			};
 
-			kernelTest(pool, output -> pool2d(r, c, d, w, input, output));
+			kernelTest(pool, output -> pool2d(r, c, d, w, input, output), true, false, false);
 		} else {
 			Supplier<CollectionProducer<PackedCollection<?>>> pool =
 					() -> c(p(input)).enumerate(1, w)
@@ -118,7 +118,7 @@ public class PoolTests implements TestFeatures, KernelAssertions {
 											.traverse(1).reduce(slice ->
 													max(slice)));
 
-			kernelTest(pool, output -> pool2d(r, c, d, w, input, output));
+			kernelTest(pool, output -> pool2d(r, c, d, w, input, output), false, false, true);
 		}
 	}
 }
