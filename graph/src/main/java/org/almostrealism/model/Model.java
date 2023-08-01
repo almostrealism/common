@@ -36,7 +36,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 public class Model implements Setup, CodeFeatures {
-	public static boolean enableOptimization = false;
+	public static boolean enableOptimization = true;
 
 	private List<Block> blocks;
 	private TraversalPolicy shape;

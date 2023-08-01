@@ -16,6 +16,7 @@
 
 package org.almostrealism.util;
 
+import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.algebra.Scalar;
@@ -29,8 +30,9 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-public interface TestFeatures extends CodeFeatures, HardwareFeatures, TensorTestFeatures, TestSettings {
+public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSettings {
 	boolean enableKernelOperationTests = true;
+	boolean enableOptimizationTests = true;
 
 	default void assertEquals(Scalar a, Scalar b) {
 		assertEquals(a.getValue(), b.getValue());
@@ -96,6 +98,26 @@ public interface TestFeatures extends CodeFeatures, HardwareFeatures, TensorTest
 			op.get().run();
 			System.out.println("TestFeatures: Validating kernel output...");
 			validate.accept(output);
+		});
+
+		if (!enableOptimizationTests) return;
+
+		outputRef.get().clear();
+
+		HardwareOperator.verboseLog(() -> {
+			PackedCollection<?> output = outputRef.get();
+			PackedCollection<?> dest = new PackedCollection<>(output.getShape());
+
+			System.out.println("TestFeatures: Running optimized kernel operation...");
+			OperationList op = new OperationList();
+			op.add(output.getAtomicMemLength(), supply.get(), p(output));
+			op.add(copy(p(output), p(dest), output.getMemLength()));
+
+			ParallelProcess<?, Runnable> p = op.optimize();
+			p.get().run();
+			System.out.println("TestFeatures: Validating optimized kernel output...");
+			validate.accept(output);
+			validate.accept(dest);
 		});
 	}
 }

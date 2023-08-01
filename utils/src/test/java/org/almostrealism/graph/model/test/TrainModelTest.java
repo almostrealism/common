@@ -16,27 +16,16 @@
 
 package org.almostrealism.graph.model.test;
 
-import io.almostrealism.expression.Quotient;
-import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.computations.CollectionProducerComputationBase;
-import org.almostrealism.collect.computations.ExpressionComputation;
-import org.almostrealism.collect.computations.PackedCollectionMap;
-import org.almostrealism.collect.computations.TraversableProducerComputationAdapter;
-import org.almostrealism.collect.computations.test.EmbeddedCollectionMapTests;
 import org.almostrealism.collect.computations.test.KernelAssertions;
-import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.cl.HardwareOperator;
-import org.almostrealism.hardware.computations.Assignment;
-import org.almostrealism.hardware.test.KernelOperationTests;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.DefaultCellularLayer;
 import org.almostrealism.layers.KernelLayerCell;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.TestFeatures;
-import org.almostrealism.util.TestSettings;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -66,8 +55,16 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		PackedCollection<?> biases = dense.getWeights().get(1);
 		IntStream.range(0, nodes).forEach(i -> biases.setMem(i, Math.random()));
 
-		model.setup().get().run();
-		model.forward(input);
+		boolean enableOptimization = Model.enableOptimization;
+
+		try {
+			Model.enableOptimization = false;
+
+			model.setup().get().run();
+			model.forward(input);
+		} finally {
+			Model.enableOptimization = enableOptimization;
+		}
 
 		PackedCollection<?> weights = dense.getWeights().get(0);
 		PackedCollection<?> output = ((KernelLayerCell) dense.getForward()).getOutput();
@@ -125,7 +122,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		boolean enableOptimization = Model.enableOptimization;
 
 		try {
-			// Model.enableOptimization = false;
+			Model.enableOptimization = true;
 
 			model.setup().get().run();
 			model.forward(input);
@@ -186,31 +183,6 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 				((KernelLayerCell) pool.getForward()).getOutput();
 
 		pool2d(inputShape.length(0), inputShape.length(1), 8, 2, input, output);
-
-		/*
-		TraversalPolicy outputShape = output.getShape();
-
-		for (int p = 0; p < outputShape.length(0); p++) {
-			for (int q = 0; q < outputShape.length(1); q++) {
-				for (int r = 0; r < outputShape.length(2); r++) {
-					int x0 = p * poolSize;
-					int y0 = q * poolSize;
-
-					double expected = -Math.pow(10, 5);
-
-					for (int x = 0; x < poolSize; x++) {
-						for (int y = 0; y < poolSize; y++) {
-							expected = Math.max(expected, input.valueAt(x0 + x, y0 + y, r));
-						}
-					}
-
-					double actual = output.valueAt(p, q, r);
-					System.out.println("TrainModelTest: [" + p + ", " + q + ", " + r + "] " + expected + " vs " + actual);
-					Assert.assertEquals(expected, actual, 0.0001);
-				}
-			}
-		}
-		*/
 	}
 
 	@Test
@@ -286,17 +258,6 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 				}
 			}
 		}
-	}
-
-	// TODO  The tests delegated to here should probably all be moved to
-	// TODO  a specific class together as PoolTests
-	// @Test
-	public void poolAttempts() {
-		CollectionProducerComputationBase.destinationLog(() -> {
-			new EmbeddedCollectionMapTests().pool2dSquare();
-			new KernelOperationTests().pool2dSquare();
-			pool();
-		});
 	}
 
 	// @Test

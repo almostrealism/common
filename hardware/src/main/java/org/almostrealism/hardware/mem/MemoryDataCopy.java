@@ -1,10 +1,13 @@
 package org.almostrealism.hardware.mem;
 
+import io.almostrealism.relation.Process;
 import org.almostrealism.hardware.MemoryData;
 
+import java.util.Collection;
+import java.util.Collections;
 import java.util.function.Supplier;
 
-public class MemoryDataCopy implements Supplier<Runnable> {
+public class MemoryDataCopy implements Process<Process<?, Runnable>, Runnable> {
 	public static boolean enableVerbose = false;
 
 	private String name;
@@ -36,6 +39,11 @@ public class MemoryDataCopy implements Supplier<Runnable> {
 		this.sourcePosition = sourcePosition;
 		this.targetPosition = targetPosition;
 		this.length = length;
+	}
+
+	@Override
+	public Collection<Process<?, Runnable>> getChildren() {
+		return Collections.emptyList();
 	}
 
 	@Override

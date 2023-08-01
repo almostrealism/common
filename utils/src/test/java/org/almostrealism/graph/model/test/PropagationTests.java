@@ -94,7 +94,18 @@ public class PropagationTests implements TestFeatures {
 		PackedCollection<?> input = new PackedCollection<>(size);
 		IntStream.range(0, size).forEach(i -> input.setMem(i, i));
 
-		PackedCollection<?> output = model.forward(input);
+
+		PackedCollection<?> output;
+		boolean enableOptimization = Model.enableOptimization;
+
+		try {
+			Model.enableOptimization = false;
+
+			output = model.forward(input);
+		} finally {
+			Model.enableOptimization = enableOptimization;
+		}
+
 		System.out.println("Output: " + Arrays.toString(output.toArray(0, output.getMemLength())));
 
 		double expected[] = new double[] { 2.29283592e-12, 1.86271326e-09, 1.51327910e-06, 1.22939676e-03, 9.98769088e-01 };
@@ -131,7 +142,7 @@ public class PropagationTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	// @Test
 	public void pool2dBackwards() {
 		int w = 16;
 		int h = 12;

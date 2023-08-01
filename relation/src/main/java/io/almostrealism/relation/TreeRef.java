@@ -17,27 +17,17 @@
 package io.almostrealism.relation;
 
 import java.util.Collection;
-import java.util.List;
-import java.util.function.Consumer;
-import java.util.stream.Stream;
+import java.util.stream.Collectors;
 
-public interface Tree<T extends Tree> extends Graph<T>, NodeGroup<T>, Parent<T>, Node {
+public class TreeRef<T extends Tree> implements Tree<T> {
+	private Tree<?> tree;
 
-	default Stream<T> all() {
-		return Stream.concat(Stream.of((T) this), getChildren().stream().flatMap(Tree::all));
-	}
-
-	default TreeRef<T> ref() {
-		return new TreeRef<>(this);
-	}
-	
-	@Override
-	default Collection<T> neighbors(T node) {
-		throw new UnsupportedOperationException();
+	public TreeRef(Tree tree) {
+		this.tree = tree;
 	}
 
 	@Override
-	default int countNodes() {
-		throw new UnsupportedOperationException();
+	public Collection<T> getChildren() {
+		return (Collection<T>) tree.getChildren().stream().map(TreeRef::new).collect(Collectors.toList());
 	}
 }

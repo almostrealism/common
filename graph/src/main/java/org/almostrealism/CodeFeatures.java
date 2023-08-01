@@ -37,6 +37,7 @@ import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableKernelExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.ExpressionComputation;
+import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.geometry.GeometryFeatures;
 import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.algebra.Vector;
@@ -53,6 +54,8 @@ import org.almostrealism.hardware.Input;
 import org.almostrealism.hardware.KernelOperation;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.computations.Assignment;
+import org.almostrealism.hardware.mem.MemoryDataCopy;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.time.CursorPair;
 import org.almostrealism.time.TemporalFeatures;
@@ -158,6 +161,18 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 	@Deprecated
 	default <T> Producer<T> value(int memLength, int argIndex, int kernelDimension) {
 		return Input.value(memLength, argIndex, kernelDimension);
+	}
+
+	@Override
+	default Supplier<Runnable> copy(String name, Producer<? extends MemoryData> source,
+									Producer<? extends MemoryData> target, int length) {
+		if (enableAssignmentCopy) {
+			if (source instanceof Shape) source = new ReshapeProducer(((Shape) source).getShape().traverseEach(), source);
+			if (target instanceof Shape) target = new ReshapeProducer(((Shape) target).getShape().traverseEach(), target);
+			return new Assignment(1, target, source);
+		} else {
+			return new MemoryDataCopy(name, source.get()::evaluate, target.get()::evaluate, length);
+		}
 	}
 
 	default <T> Switch choice(ProducerComputation<PackedCollection<?>> decision, Computation<T>... choices) {
