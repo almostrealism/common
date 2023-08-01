@@ -82,8 +82,10 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 
 				TraversableExpression exp = TraversableExpression.traverse(getArgument(1));
 				Expression<Double> value = exp == null ? null : exp.getValueAt(index);
-				if (value == null)
+				if (value == null) {
+//					value = getArgument(1).valueAt(i);
 					throw new UnsupportedOperationException();
+				}
 
 				Variable v;
 				TraversableExpression out = TraversableExpression.traverse(output);
