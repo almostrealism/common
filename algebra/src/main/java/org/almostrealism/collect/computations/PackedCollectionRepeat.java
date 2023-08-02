@@ -105,7 +105,7 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 
 	@Override
 	public PackedCollectionRepeat<T> generate(List<Process<?, ?>> children) {
-		return new PackedCollectionRepeat<>(getShape(), subsetShape, sliceShape, (Producer<?>) children.get(0));
+		return new PackedCollectionRepeat<>(getShape(), subsetShape, sliceShape, (Producer<?>) children.get(1));
 	}
 
 	private static TraversalPolicy shape(Producer<?> collection) {
