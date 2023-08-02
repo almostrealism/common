@@ -19,12 +19,16 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.expression.Cast;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Mod;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.collect.CollectionVariable;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
 
+import java.util.List;
 import java.util.Objects;
 import java.util.OptionalDouble;
 import java.util.function.Supplier;
@@ -42,6 +46,13 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		super(shape(collection).replace(shape.prependDimension(repeat)), (Supplier) collection);
 		this.subsetShape = shape.getDimensions() == 0 ? shape(1) : shape;
 		this.sliceShape = subsetShape.prependDimension(repeat);
+	}
+
+	private PackedCollectionRepeat(TraversalPolicy shape, TraversalPolicy subsetShape, TraversalPolicy sliceShape,
+								   Producer<?> collection) {
+		super(shape, (Supplier) collection);
+		this.subsetShape = subsetShape;
+		this.sliceShape = sliceShape;
 	}
 
 	@Override
@@ -90,6 +101,11 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		if (offsetValue.isEmpty()) throw new UnsupportedOperationException();
 
 		return getArgument(1).getValueRelative((int) offsetValue.getAsDouble());
+	}
+
+	@Override
+	public PackedCollectionRepeat<T> generate(List<Process<?, ?>> children) {
+		return new PackedCollectionRepeat<>(getShape(), subsetShape, sliceShape, (Producer<?>) children.get(0));
 	}
 
 	private static TraversalPolicy shape(Producer<?> collection) {
