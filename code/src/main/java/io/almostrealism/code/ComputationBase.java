@@ -112,8 +112,7 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I> imple
 	@Override
 	public Collection<Process<?, ?>> getChildren() {
 		return getInputs().stream()
-				.filter(i -> i instanceof Process<?, ?>)
-				.map(i -> (Process<?, ?>) i)
+				.map(in -> in instanceof Process<?, ?> ? (Process<?, ?>) in : Process.of(in))
 				.collect(Collectors.toList());
 	}
 

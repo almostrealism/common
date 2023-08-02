@@ -55,6 +55,30 @@ public class PoolTests implements TestFeatures, KernelAssertions {
 		pool(r, c, d, w, true);
 	}
 
+	@Test
+	public void pool2dSquareOptimize() {
+		if (skipLongTests) return;
+
+		int r = 8;
+		int c = 8;
+		int d = 8;
+		int w = 2;
+
+		PackedCollection<?> input = tensor(shape(r, c, d)).pack();
+		input.fill(pos -> Math.random());
+
+		Supplier<Producer<PackedCollection<?>>> pool =
+				() -> (Producer) c(p(input)).enumerate(1, w)
+						.enumerate(1, w)
+						.traverse(2)
+						.map(shape(d, 1), v ->
+								enumerate(shape(1, 1, w, w, 1), v)
+										.traverse(1).reduce(slice ->
+												max(slice))).optimize();
+
+		kernelTest(pool, output -> pool2d(r, c, d, w, input, output), true, false, false);
+	}
+
 	public void pool(int r, int c, int d, int w, boolean steps) {
 		if (skipLongTests) return;
 

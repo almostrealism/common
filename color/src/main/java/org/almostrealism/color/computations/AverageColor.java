@@ -18,7 +18,7 @@ package org.almostrealism.color.computations;
 
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.scope.Scope;
-import org.almostrealism.color.DynamicRGBProducer;
+import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.color.RGB;
 import org.almostrealism.hardware.KernelizedEvaluable;
 
@@ -54,7 +54,7 @@ public class AverageColor implements ProducerComputation<RGB> {
 
 	@Override
 	public KernelizedEvaluable<RGB> get() {
-		return new DynamicRGBProducer(args -> {
+		return new DynamicCollectionProducer<>(RGB.shape(), args -> {
 			RGB c = new RGB(0.0, 0.0, 0.0);
 			Iterator itr = this.colors.iterator();
 

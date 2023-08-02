@@ -178,7 +178,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 
 	@Override
 	public PackedCollectionMap<T> generate(List<Process<?, ?>> children) {
-		return new PackedCollectionMap<>(getShape(), (Producer) getInputs().get(1), mapper);
+		return new PackedCollectionMap<>(getShape(), (Producer) children.get(1), mapper);
 	}
 
 	private CollectionExpression createCollectionExpression(CollectionVariable input, TraversalPolicy sliceShape, TraversalPolicy traversalShape) {

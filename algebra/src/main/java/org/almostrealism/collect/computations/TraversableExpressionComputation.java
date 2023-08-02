@@ -94,7 +94,8 @@ public class TraversableExpressionComputation<T extends PackedCollection<?>>
 
 	@Override
 	public TraversableExpressionComputation<T> generate(List<Process<?, ?>> children) {
-		return new TraversableExpressionComputation(getShape(), expression, children.toArray(new Supplier[0]))
+		return new TraversableExpressionComputation(getShape(), expression,
+					children.stream().skip(1).toArray(Supplier[]::new))
 				.setPostprocessor(getPostprocessor()).setShortCircuit(shortCircuit);
 	}
 

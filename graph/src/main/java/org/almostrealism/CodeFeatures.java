@@ -179,21 +179,8 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 		return new Switch(decision, Arrays.asList(choices));
 	}
 
-	default CollectionProducerComputation<PackedCollection<?>> identity(Producer<PackedCollection<?>> argument) {
-		if (!(argument instanceof Shape)) {
-			throw new IllegalArgumentException("Argument to identity kernel must be traversable");
-		}
-
-		return kernel(((Shape) argument).getShape(), (i, p) -> i.v(0).getValue(p), argument);
-	}
-
 	default <T extends MemoryData> Supplier<Runnable> run(Producer<T> kernel, MemoryBank destination, MemoryData... arguments) {
 		return new KernelOperation<>(kernel, destination, arguments);
-	}
-
-	default CollectionProducerComputation<PackedCollection<?>> kernel(TraversableKernelExpression kernel,
-																	  Producer... arguments) {
-		return kernel(kernel.getShape(), kernel, arguments);
 	}
 
 	default CollectionProducerComputation<PackedCollection<?>> kernel(TraversalPolicy shape,

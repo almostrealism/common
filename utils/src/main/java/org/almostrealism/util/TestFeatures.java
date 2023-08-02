@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -81,7 +81,8 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		if (kernel) {
 			HardwareOperator.verboseLog(() -> {
 				System.out.println("TestFeatures: Running kernel evaluation...");
-				PackedCollection<?> output = supply.get().get().evaluate();
+				Producer<PackedCollection<?>> p = supply.get();
+				PackedCollection<?> output = p.get().evaluate();
 				System.out.println("TestFeatures: Output Shape = " + output.getShape() +
 						" [" + output.getShape().getCount() + "x" + output.getShape().getSize() + "]");
 				System.out.println("TestFeatures: Validating kernel output...");

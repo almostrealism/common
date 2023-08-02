@@ -39,15 +39,7 @@ public class CollectionOperationList extends OperationList implements Collection
 		return kernel(Func.kernel3(f), destination, arguments);
 	}
 
-	public KernelOperation kernel(Func.v2e3 f, TraversalPolicy shape, MemoryBank destination, Producer<? extends MemoryData>... arguments) {
-		return kernel(Func.kernel3(f), shape, destination, arguments);
-	}
-
 	public KernelOperation kernel(Func.v3e3 f, PackedCollection<?> destination, Producer<? extends MemoryData>... arguments) {
 		return kernel(Func.kernel3(f), destination, arguments);
-	}
-
-	public KernelOperation kernel(Func.v3e3 f, TraversalPolicy shape, MemoryBank destination, Producer<? extends MemoryData>... arguments) {
-		return kernel(Func.kernel3(f), shape, destination, arguments);
 	}
 }

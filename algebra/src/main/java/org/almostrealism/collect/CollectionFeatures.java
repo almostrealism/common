@@ -45,6 +45,7 @@ import org.almostrealism.bool.GreaterThanCollection;
 import org.almostrealism.bool.LessThanCollection;
 import org.almostrealism.collect.computations.ArrayVariableComputation;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
+import org.almostrealism.collect.computations.CollectionProviderProducer;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.PackedCollectionEnumerate;
@@ -55,9 +56,7 @@ import org.almostrealism.collect.computations.Random;
 import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.collect.computations.TraversableExpressionComputation;
 import org.almostrealism.hardware.KernelSupport;
-import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryDataComputation;
-import org.almostrealism.hardware.computations.Assignment;
 
 import java.util.List;
 import java.util.function.BiFunction;
@@ -69,7 +68,6 @@ import java.util.stream.IntStream;
 
 public interface CollectionFeatures extends ExpressionFeatures {
 	boolean enableShapelessWarning = false;
-	boolean enableTraversableComputation = true;
 
 	default TraversalPolicy shape(int... dims) { return new TraversalPolicy(dims); }
 
@@ -103,22 +101,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		if (value instanceof Producer) {
 			throw new IllegalArgumentException();
 		} else if (value instanceof Shape) {
-			return new CollectionProducerBase<>() {
-				@Override
-				public Evaluable get() {
-					return new Provider<>(value);
-				}
-
-				@Override
-				public TraversalPolicy getShape() {
-					return ((Shape) value).getShape();
-				}
-
-				@Override
-				public Producer reshape(TraversalPolicy shape) {
-					return CollectionFeatures.this.reshape(shape, this);
-				}
-			};
+			return new CollectionProviderProducer((Shape) value);
 		} else {
 			return () -> new Provider<>(value);
 		}
@@ -244,12 +227,6 @@ public interface CollectionFeatures extends ExpressionFeatures {
 
 	default DynamicCollectionProducer func(TraversalPolicy shape, Function<Object[], PackedCollection<?>> function) {
 		return new DynamicCollectionProducer(shape, function);
-	}
-
-	default CollectionProducerComputation<PackedCollection<?>> kernel(IntFunction<Expression> kernelIndex,
-																	  TraversableKernelExpression kernel,
-																	  Producer... arguments) {
-		return kernel(kernelIndex, kernel.getShape(), kernel, arguments);
 	}
 
 	default CollectionProducerComputation<PackedCollection<?>> kernel(IntFunction<Expression> kernelIndex, TraversalPolicy shape,
