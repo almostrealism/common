@@ -67,7 +67,9 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		}
 
 		PackedCollection<?> weights = dense.getWeights().get(0);
-		PackedCollection<?> output = ((KernelLayerCell) dense.getForward()).getOutput();
+		PackedCollection<?> output = dense instanceof DefaultCellularLayer ?
+				((DefaultCellularLayer) dense).getOutput() :
+				((KernelLayerCell) dense.getForward()).getOutput();
 
 		for (int i = 0; i < nodes; i++) {
 			double expected = 0;
@@ -260,7 +262,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		}
 	}
 
-	// @Test
+	@Test
 	public void train() {
 		Tensor<Double> t = tensor(inputShape);
 		PackedCollection<?> input = t.pack();
