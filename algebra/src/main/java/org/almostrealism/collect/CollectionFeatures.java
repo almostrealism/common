@@ -27,6 +27,7 @@ import io.almostrealism.collect.TraversableKernelExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Conditional;
 import io.almostrealism.expression.DoubleConstant;
+import io.almostrealism.expression.Exp;
 import io.almostrealism.expression.Exponent;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Floor;
@@ -482,12 +483,16 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return new ExpressionComputation<>(expressions, base, exp);
 	}
 
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> exp(
+			Supplier<Evaluable<? extends PackedCollection<?>>> value) {
+		return new TraversableExpressionComputation<>(
+				shape(value), (args, index) -> new Exp(args[1].getValueAt(index)), (Supplier) value);
+	}
+
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> floor(
 			Supplier<Evaluable<? extends PackedCollection<?>>> value) {
-		return new TraversableExpressionComputation<>(shape(value),
-				(BiFunction<TraversableExpression[], Expression, Expression>) (args, index) ->
-						new Floor(args[1].getValueAt(index)),
-				(Supplier) value);
+		return new TraversableExpressionComputation<>(
+				shape(value), (args, index) -> new Floor(args[1].getValueAt(index)), (Supplier) value);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> _min(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {

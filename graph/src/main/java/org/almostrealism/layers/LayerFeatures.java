@@ -41,19 +41,6 @@ import java.util.function.Supplier;
 
 public interface LayerFeatures extends CollectionFeatures {
 	boolean enableAssignment = true;
-	boolean enableDenseKernel = false;
-
-	@Deprecated
-	default KernelLayer layer(TraversalPolicy inputShape, TraversalPolicy outputShape,
-							  KernelExpression kernel, Propagation backwards) {
-		return new KernelLayer(inputShape, TraversableKernelExpression.withShape(outputShape, kernel), backwards);
-	}
-
-	@Deprecated
-	default KernelLayer layer(TraversalPolicy inputShape, TraversalPolicy outputShape, KernelExpression kernel,
-							  Propagation backwards, List<PackedCollection<?>> weights, Supplier<Runnable> setup) {
-		return new KernelLayer(inputShape, TraversableKernelExpression.withShape(outputShape, kernel), backwards, weights, setup);
-	}
 
 	default CellularLayer layer(TraversalPolicy outputShape,
 								Cell<PackedCollection<?>> forward, Cell<PackedCollection<?>> backward) {
@@ -226,41 +213,27 @@ public interface LayerFeatures extends CollectionFeatures {
 
 		Supplier<Runnable> init = new KernelOperation<>(divide(randn(shape(size, nodes)).traverseEach(), c(size).traverse(0)), weights.traverseEach());
 
-		if (enableDenseKernel) {
-			KernelExpression kernel = (i, p) -> i.v(0).multiply(i.v(1)
-							.get(shape(size, 1), e(0), p.l(0)))
-					.sum().add(i.v(2).getRelative(p.l(0)));
-			return layer(shape(size), outputShape, kernel, backwards, List.of(weights, biases), init);
-		} else {
-			return layer(shape(size), outputShape,
-					Cell.of((input, next) -> {
-						PackedCollection<?> output = new PackedCollection<>(outputShape);
+		return layer(shape(size), outputShape,
+				Cell.of((input, next) -> {
+					PackedCollection<?> output = new PackedCollection<>(outputShape);
 
-						OperationList ops = new OperationList();
-//						TODO  Keeping this around because it was generated verbatim by codex
-//						TODO  so although it is wrong, it is a good example of what codex can do
-//						Producer<PackedCollection<?>> dense = c(input).enumerate(1, size)
-//										.traverse(2)
-//										.map(shape(nodes, 1), v -> v.multiply(p(weights)).sum())
-//										.traverse(1)
-//										.add(p(biases));
-						Producer<PackedCollection<?>> dense =
-								c(input).repeat(nodes).traverseEach()
-										.multiply(c(p(weights))
-										.enumerate(1, 1))
-										.traverse(1).sum()
-										.add(p(biases));
+					OperationList ops = new OperationList();
+					Producer<PackedCollection<?>> dense =
+							c(input).repeat(nodes).traverseEach()
+									.multiply(c(p(weights))
+											.enumerate(1, 1))
+									.traverse(1).sum()
+									.add(p(biases));
 
-						if (enableAssignment) {
-							ops.add(output.traverse(1).getShape().getSize(), dense, p(output.traverse(1)));
-						} else {
-							ops.add(dense, output.traverse(1));
-						}
+					if (enableAssignment) {
+						ops.add(output.traverse(1).getShape().getSize(), dense, p(output.traverse(1)));
+					} else {
+						ops.add(dense, output.traverse(1));
+					}
 
-						if (next != null) ops.add(next.push(p(output)));
-						return ops;
-					}), backwards, List.of(weights, biases), init);
-		}
+					if (next != null) ops.add(next.push(p(output)));
+					return ops;
+				}), backwards, List.of(weights, biases), init);
 	}
 
 	default Function<TraversalPolicy, CellularLayer> softmax() {
@@ -269,7 +242,7 @@ public interface LayerFeatures extends CollectionFeatures {
 
 	default CellularLayer softmax(int size) {
 		TraversalPolicy shape = shape(size);
-		KernelExpression forward = (i, p) -> exp(i.v(0).getRelative(p.l(0))).divide(i.v(0).exp().sum());
+
 		KernelExpression backward = (i, p) -> {
 			ExpressionList gradient = i.v(0).toList();
 			ExpressionList in = i.v(1).toList().exp();
@@ -294,6 +267,22 @@ public interface LayerFeatures extends CollectionFeatures {
 			return ops;
 		};
 
-		return layer(shape, shape, forward, propagation);
+		return layer(shape, shape, Cell.of((input, next) -> {
+			PackedCollection<?> output = new PackedCollection<>(shape);
+
+			OperationList ops = new OperationList();
+			Producer<PackedCollection<?>> softmax =
+					c(input).traverse(1).exp()
+							.divide(c(input).traverse(1).exp().traverse(0).sum());
+
+			if (enableAssignment) {
+				ops.add(output.traverse(1).getShape().getSize(), softmax, p(output.traverse(1)));
+			} else {
+				ops.add(softmax, output.traverse(1));
+			}
+
+			if (next != null) ops.add(next.push(p(output)));
+			return ops;
+		}), propagation);
 	}
 }

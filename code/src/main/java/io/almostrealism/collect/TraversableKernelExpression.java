@@ -37,16 +37,4 @@ public interface TraversableKernelExpression extends KernelExpression, Shape<Tra
 			public TraversalPolicy getShape() { return shape; }
 		};
 	}
-
-	static TraversableKernelExpression withShape(TraversalPolicy shape, KernelExpression kernel) {
-		return new TraversableKernelExpression() {
-			@Override
-			public Expression<Double> apply(KernelInput args, PositionExpression pos) {
-				return kernel.apply(args, pos);
-			}
-
-			@Override
-			public TraversalPolicy getShape() { return shape; }
-		};
-	}
 }

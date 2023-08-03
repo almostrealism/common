@@ -31,6 +31,10 @@ import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.hardware.KernelSupport;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.cl.HardwareOperator;
+import org.almostrealism.layers.CellularLayer;
+import org.almostrealism.layers.DefaultCellularLayer;
+import org.almostrealism.layers.KernelLayerCell;
+import org.almostrealism.model.Model;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
@@ -38,8 +42,10 @@ import org.junit.Test;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.IntStream;
 
 public class PackedCollectionSubsetTests implements TestFeatures {
 
@@ -376,6 +382,114 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 				}
 			}
 		});
+	}
+
+	@Test
+	public void repeatSum() {
+		int size = 30;
+		int nodes = 10;
+
+		Tensor<Double> t = tensor(shape(size));
+		PackedCollection<?> input = t.pack();
+
+		PackedCollection<?> weights = new PackedCollection<>(shape(size, nodes));
+		weights.fill(pos -> Math.random());
+
+		Supplier<Producer<PackedCollection<?>>> dense =
+				() -> c(p(input)).repeat(nodes).traverse(1).sum();
+
+		Consumer<PackedCollection<?>> valid = output -> {
+			for (int i = 0; i < nodes; i++) {
+				double expected = 0;
+
+				for (int x = 0; x < size; x++) {
+					expected += input.valueAt(x);
+				}
+
+				double actual = output.valueAt(i);
+
+				System.out.println("PackedCollectionSubsetTests: [" + i + "] " + expected + " vs " + actual);
+				Assert.assertEquals(expected, actual, 0.0001);
+			}
+		};
+
+		kernelTest(dense, valid);
+	}
+
+	@Test
+	public void repeatEnumerateMultiply() {
+		int size = 30;
+		int nodes = 10;
+
+		Tensor<Double> t = tensor(shape(size));
+		PackedCollection<?> input = t.pack();
+
+		PackedCollection<?> weights = new PackedCollection<>(shape(size, nodes));
+		weights.fill(pos -> Math.random());
+
+		Supplier<Producer<PackedCollection<?>>> dense =
+				() -> c(p(input)).repeat(nodes).traverseEach()
+						.multiply(c(p(weights))
+								.enumerate(1, 1))
+						.traverse(1).sum();
+
+		Consumer<PackedCollection<?>> valid = output -> {
+			for (int i = 0; i < nodes; i++) {
+				double expected = 0;
+
+				for (int x = 0; x < size; x++) {
+					expected += weights.valueAt(x, i) * input.valueAt(x);
+				}
+
+				double actual = output.valueAt(i);
+
+				System.out.println("PackedCollectionSubsetTests: [" + i + "] " + expected + " vs " + actual);
+				Assert.assertEquals(expected, actual, 0.0001);
+			}
+		};
+
+		kernelTest(dense, valid);
+	}
+
+	@Test
+	public void repeatEnumerateMultiplyAdd() {
+		int size = 30;
+		int nodes = 10;
+
+		Tensor<Double> t = tensor(shape(size));
+		PackedCollection<?> input = t.pack();
+
+		PackedCollection<?> weights = new PackedCollection<>(shape(size, nodes));
+		weights.fill(pos -> Math.random());
+
+		PackedCollection<?> biases = new PackedCollection<>(shape(nodes));
+		biases.fill(pos -> Math.random());
+
+		Supplier<Producer<PackedCollection<?>>> dense =
+				() -> c(p(input)).repeat(nodes).traverseEach()
+						.multiply(c(p(weights))
+								.enumerate(1, 1))
+						.traverse(1).sum()
+						.add(p(biases));
+
+		Consumer<PackedCollection<?>> valid = output -> {
+			for (int i = 0; i < nodes; i++) {
+				double expected = 0;
+
+				for (int x = 0; x < size; x++) {
+					expected += weights.valueAt(x, i) * input.valueAt(x);
+				}
+
+				double actual = output.valueAt(i);
+				Assert.assertNotEquals(expected, actual, 0.0001);
+
+				expected += biases.valueAt(i);
+				System.out.println("PackedCollectionSubsetTests: [" + i + "] " + expected + " vs " + actual);
+				Assert.assertEquals(expected, actual, 0.0001);
+			}
+		};
+
+		kernelTest(dense, valid);
 	}
 
 	@Test

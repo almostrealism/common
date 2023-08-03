@@ -55,16 +55,8 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		PackedCollection<?> biases = dense.getWeights().get(1);
 		IntStream.range(0, nodes).forEach(i -> biases.setMem(i, Math.random()));
 
-		boolean enableOptimization = Model.enableOptimization;
-
-		try {
-			Model.enableOptimization = false;
-
-			model.setup().get().run();
-			model.forward(input);
-		} finally {
-			Model.enableOptimization = enableOptimization;
-		}
+		model.setup().get().run();
+		model.forward(input);
 
 		PackedCollection<?> weights = dense.getWeights().get(0);
 		PackedCollection<?> output = dense instanceof DefaultCellularLayer ?
@@ -87,7 +79,9 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		}
 
 		input = output;
-		output = ((KernelLayerCell) softmax.getForward()).getOutput();
+		output = softmax instanceof DefaultCellularLayer ?
+				((DefaultCellularLayer) softmax).getOutput() :
+				((KernelLayerCell) softmax.getForward()).getOutput();
 
 		double expValues[] = new double[nodes];
 
@@ -121,16 +115,8 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		Tensor<Double> t = tensor(inputShape);
 		PackedCollection<?> input = t.pack();
 
-		boolean enableOptimization = Model.enableOptimization;
-
-		try {
-			Model.enableOptimization = true;
-
-			model.setup().get().run();
-			model.forward(input);
-		} finally {
-			Model.enableOptimization = enableOptimization;
-		}
+		model.setup().get().run();
+		model.forward(input);
 
 		PackedCollection<?> filter = conv.getWeights().get(0);
 		TraversalPolicy filterShape = filter.getShape();
@@ -175,9 +161,6 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		PackedCollection<?> input = t.pack();
 
 		model.setup().get().run();
-
-//		PackedCollection<?> in = input;
-//		HardwareOperator.verboseLog(() -> model.forward(in));
 		model.forward(input);
 
 		PackedCollection<?> output = pool instanceof DefaultCellularLayer ?
