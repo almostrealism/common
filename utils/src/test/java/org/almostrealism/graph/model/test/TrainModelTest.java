@@ -247,7 +247,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 
 	@Test
 	public void train() {
-		Tensor<Double> t = tensor(inputShape);
+		Tensor<Double> t = tensor(shape(100, 100));
 		PackedCollection<?> input = t.pack();
 
 		Model model = new Model(shape(100, 100));
