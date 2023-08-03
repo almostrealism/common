@@ -32,6 +32,7 @@ import org.almostrealism.layers.Learning;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -125,9 +126,11 @@ public class Model implements Setup, CodeFeatures {
 
 	public Cell<PackedCollection<?>> forward() { return blocks.get(0).forward(); }
 	public PackedCollection<?> forward(PackedCollection<?> input) {
+		if (!Objects.equals(input.getShape(), blocks.get(0).getInputShape())) {
+			throw new IllegalArgumentException();
+		}
+
 		PackedCollection<?> output = new PackedCollection<>(lastBlock().getOutputShape());
-//		lastBlock().forward().setReceptor(out ->
-//				copy("Model Output", () -> out.get().evaluate(), () -> output, output.getMemLength()));
 		lastBlock().forward().setReceptor(out ->
 				copy("Model Output", out, p(output), output.getMemLength()));
 		ParallelProcess<?, Runnable> p = (ParallelProcess<?, Runnable>) forward().push(p(input));
