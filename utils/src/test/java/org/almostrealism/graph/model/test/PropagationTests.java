@@ -92,7 +92,7 @@ public class PropagationTests implements TestFeatures {
 		}
 
 		PackedCollection<?> input = new PackedCollection<>(size);
-		IntStream.range(0, size).forEach(i -> input.setMem(i, i));
+		IntStream.range(0, size).forEach(i -> input.setMem(i, (double) i));
 
 
 		PackedCollection<?> output;

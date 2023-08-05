@@ -34,8 +34,8 @@ public class InterpolateTest implements TestFeatures {
 	@Test
 	public void interpolateTwoSeries() {
 		PackedCollection<?> series = new PackedCollection(2, 10);
-		series.setMem(0, 7, 5, 12, 13, 16, 14, 9, 12, 3, 12);
-		series.setMem(10, 12, 3, 12, 10, 14, 16, 13, 12, 5, 7);
+		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 16.0, 14.0, 9.0, 12.0, 3.0, 12.0);
+		series.setMem(10, 12.0, 3.0, 12.0, 10.0, 14.0, 16.0, 13.0, 12.0, 5.0, 7.0);
 		System.out.println(series.traverse(1).getCount() + " series");
 
 		PackedCollection<?> cursors = new PackedCollection(2, 1);
@@ -61,7 +61,7 @@ public class InterpolateTest implements TestFeatures {
 	@Test
 	public void interpolateKernel() {
 		PackedCollection<?> series = new PackedCollection(10);
-		series.setMem(0, 7, 5, 12, 13, 16, 14, 9, 12, 3, 12);
+		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 16.0, 14.0, 9.0, 12.0, 3.0, 12.0);
 		System.out.println(series.traverse(0).getCount() + " series");
 
 		PackedCollection<?> cursors = new PackedCollection(2, 1);
@@ -87,7 +87,7 @@ public class InterpolateTest implements TestFeatures {
 	@Test
 	public void interpolatePassThroughWithShape() {
 		PackedCollection series = new PackedCollection(10);
-		series.setMem(0, 7, 5, 12, 13, 16, 14, 9, 12, 3, 12);
+		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 16.0, 14.0, 9.0, 12.0, 3.0, 12.0);
 
 		PackedCollection cursor = new PackedCollection(1);
 		cursor.setMem(0, 5.5);
@@ -110,7 +110,7 @@ public class InterpolateTest implements TestFeatures {
 	@Test
 	public void interpolatePassThroughWithoutShape() {
 		PackedCollection series = new PackedCollection(10);
-		series.setMem(0, 7, 5, 12, 13, 16, 14, 9, 12, 3, 12);
+		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 16.0, 14.0, 9.0, 12.0, 3.0, 12.0);
 
 		PackedCollection cursor = new PackedCollection(4, 1);
 		cursor.setMem(0, 3.5);

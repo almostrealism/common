@@ -18,6 +18,8 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Process;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
@@ -97,6 +99,12 @@ public class ExpressionComputation<T extends PackedCollection<?>>
 
 	public Expression<Double> getValue(List<ArrayVariable<Double>> args, int index) {
 		return expression.get(index).apply(args);
+	}
+
+	@Override
+	public ExpressionComputation<T> generate(List<Process<?, ?>> children) {
+		return new ExpressionComputation<>(getShape(), expression,
+				children.stream().skip(1).toArray(Supplier[]::new));
 	}
 
 	private static Supplier[] validateArgs(Supplier<Evaluable<? extends PackedCollection<?>>>... args) {

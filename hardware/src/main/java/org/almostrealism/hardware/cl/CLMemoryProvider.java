@@ -139,6 +139,34 @@ public class CLMemoryProvider implements MemoryProvider<RAM> {
 	}
 
 	@Override
+	public void setMem(RAM ram, int offset, float[] source, int srcOffset, int length) {
+		if (!(ram instanceof CLMemory)) throw new IllegalArgumentException();
+		CLMemory mem = (CLMemory) ram;
+
+		try {
+			if (Hardware.getLocalHardware().isDoublePrecision()) {
+				double d[] = new double[length];
+				for (int i = 0; i < d.length; i++) d[i] = source[srcOffset + i];
+				Pointer src = Pointer.to(source).withByteOffset((long) srcOffset * getNumberSize());
+				cl_event event = new cl_event();
+				CL.clEnqueueWriteBuffer(queue, mem.getMem(), CL.CL_TRUE,
+						(long) offset * getNumberSize(), (long) length * getNumberSize(),
+						src, 0, null, event);
+				processEvent(event);
+			} else {
+				Pointer src = Pointer.to(source).withByteOffset(0);
+				cl_event event = new cl_event();
+				CL.clEnqueueWriteBuffer(queue, mem.getMem(), CL.CL_TRUE,
+						(long) offset * getNumberSize(), (long) length * getNumberSize(),
+						src, 0, null, event);
+				processEvent(event);
+			}
+		} catch (CLException e) {
+			throw CLExceptionProcessor.process(e, this, srcOffset, offset, length);
+		}
+	}
+
+	@Override
 	public void setMem(RAM ram, int offset, double[] source, int srcOffset, int length) {
 		if (!(ram instanceof CLMemory)) throw new IllegalArgumentException();
 		CLMemory mem = (CLMemory) ram;

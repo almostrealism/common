@@ -131,12 +131,26 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 		setMem(offset, values, 0, values.length);
 	}
 
+	default void setMem(float... source) {
+		setMem(0, source, 0, source.length);
+	}
+
 	default void setMem(double... source) {
 		setMem(0, source, 0, source.length);
 	}
 
 	default void setMem(double[] source, int srcOffset) {
-		setMem(0, source, srcOffset, source.length);
+		setMem(0, source, srcOffset, source.length - srcOffset);
+	}
+
+	default void setMem(int offset, float[] source, int srcOffset, int length) {
+		if (getDelegate() == null) {
+			setMem(getMem(), getOffset() + offset, source, srcOffset, length);
+		} else if (getDelegate() == this) {
+			throw new IllegalArgumentException("Circular delegate reference");
+		} else {
+			getDelegate().setMem(getDelegateOffset() + offset, source, srcOffset, length);
+		}
 	}
 
 	default void setMem(int offset, double[] source, int srcOffset, int length) {
@@ -163,6 +177,10 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 		} else {
 			getDelegate().getMem(getDelegateOffset() + sOffset, out, oOffset, length);
 		}
+	}
+
+	static void setMem(Memory mem, int offset, float[] source, int srcOffset, int length) {
+		mem.getProvider().setMem(mem, offset, source, srcOffset, length);
 	}
 
 	static void setMem(Memory mem, int offset, double[] source, int srcOffset, int length) {

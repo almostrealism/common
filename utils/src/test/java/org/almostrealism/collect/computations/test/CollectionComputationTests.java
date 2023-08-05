@@ -69,7 +69,7 @@ public class CollectionComputationTests implements TestFeatures {
 	public void multiply() {
 		HardwareOperator.verboseLog(() -> {
 			PackedCollection<?> testInput = new PackedCollection<>(1);
-			testInput.setMem(0, 9);
+			testInput.setMem(0, 9.0);
 			PackedCollection<?> result = c(3).multiply(p(testInput)).get().evaluate();
 			assertEquals(27, result.toDouble(0));
 		});
@@ -121,7 +121,7 @@ public class CollectionComputationTests implements TestFeatures {
 				new ExpressionComputation(List.of(expression),
 						(Producer) () -> args -> {
 							PackedCollection<?> c = new PackedCollection<>(1);
-							c.setMem(0, 2 * (Integer) args[1]);
+							c.setMem(0, 2.0 * (Integer) args[1]);
 							return c;
 						},
 						new PassThroughProducer(1, 0));
@@ -219,8 +219,8 @@ public class CollectionComputationTests implements TestFeatures {
 	@Test
 	public void collectionMaxTwoSeries() {
 		PackedCollection<?> series = new PackedCollection(2, 10);
-		series.setMem(0, 7, 5, 12, 13, 11, 14, 9, 12, 3, 12);
-		series.setMem(10, 12, 3, 12, 10, 14, 16, 13, 12, 5, 7);
+		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 11.0, 14.0, 9.0, 12.0, 3.0, 12.0);
+		series.setMem(10, 12.0, 3.0, 12.0, 10.0, 14.0, 16.0, 13.0, 12.0, 5.0, 7.0);
 		System.out.println(series.traverse(1).getCount() + " series");
 
 		PackedCollectionMax max = new PackedCollectionMax(new PassThroughProducer<>(10, 0, 0));
@@ -234,7 +234,7 @@ public class CollectionComputationTests implements TestFeatures {
 	@Test
 	public void collectionMax() {
 		PackedCollection<?> series = new PackedCollection(10);
-		series.setMem(0, 7, 5, 12, 13, 11, 14, 9, 12, 3, 12);
+		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 11.0, 14.0, 9.0, 12.0, 3.0, 12.0);
 		System.out.println(series.traverse(0).getCount() + " series");
 
 		PackedCollectionMax max = new PackedCollectionMax(new PassThroughProducer<>(shape(10), 0, -1));
@@ -251,7 +251,7 @@ public class CollectionComputationTests implements TestFeatures {
 	@Test
 	public void greaterThanMax() {
 		PackedCollection<?> series = new PackedCollection(10);
-		series.setMem(0, 7, 5, 12, 13, 11, 14, 9, 12, 3, 12);
+		series.setMem(0, 7.0, 5.0, 12.0, 13.0, 11.0, 14.0, 9.0, 12.0, 3.0, 12.0);
 		System.out.println(series.traverse(0).getCount() + " series");
 
 		PackedCollection<?> dest = new PackedCollection(1);
@@ -286,7 +286,7 @@ public class CollectionComputationTests implements TestFeatures {
 	@Test
 	public void clear() {
 		PackedCollection data = new PackedCollection(4);
-		data.setMem(0, 1, 2, 3, 4);
+		data.setMem(0, 1.0, 2.0, 3.0, 4.0);
 		data.clear();
 		assertEquals(0, data.toArray(0, 4)[1]);
 	}

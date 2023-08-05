@@ -17,6 +17,7 @@
 package io.almostrealism.code;
 
 import java.util.stream.Collectors;
+import java.util.stream.DoubleStream;
 import java.util.stream.IntStream;
 
 public interface MemoryProvider<T extends Memory> {
@@ -39,6 +40,10 @@ public interface MemoryProvider<T extends Memory> {
 	}
 
 	void setMem(T mem, int offset, T source, int srcOffset, int length);
+
+	default void setMem(T mem, int offset, float[] source, int srcOffset, int length) {
+		setMem(mem, offset, IntStream.range(0, source.length).mapToDouble(i -> source[i]).toArray(), srcOffset, length);
+	}
 
 	void setMem(T mem, int offset, double[] source, int srcOffset, int length);
 

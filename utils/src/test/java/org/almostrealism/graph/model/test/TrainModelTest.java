@@ -246,18 +246,49 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	}
 
 	@Test
-	public void train() {
+	public void trainSmall() {
+		Tensor<Double> t = tensor(shape(10, 10));
+		PackedCollection<?> input = t.pack();
+		train(input, model(10, 10, 3, 8, 10));
+	}
+
+	@Test
+	public void trainLarge() {
 		Tensor<Double> t = tensor(shape(100, 100));
 		PackedCollection<?> input = t.pack();
+		train(input, model(100, 100, 3, 8, 10));
+	}
 
-		Model model = new Model(shape(100, 100));
-		model.addLayer(convolution2d(3, 8));
-		model.addLayer(pool2d(2));
-		model.addBlock(flatten());
-		model.addLayer(dense(10));
-		model.addLayer(softmax());
+	@Test
+	public void trainProgressive() {
+		double size = 10;
 
+		while (size < 100) {
+			int s = (int) size;
+
+			Tensor<Double> t = tensor(shape(s, s));
+			PackedCollection<?> input = t.pack();
+			train(input, model(s, s, 3, 8, 10));
+
+			size = size * 1.2;
+		}
+	}
+
+	protected void train(PackedCollection<?> input, Model model) {
+		long start = System.currentTimeMillis();
 		model.setup().get().run();
 		model.forward(input);
+		System.out.println("TrainModelTest: Input Size = " + input.getShape() +
+				" | Time = " + (System.currentTimeMillis() - start) / 1000 + "s");
+	}
+
+	protected Model model(int r, int c, int convSize, int convFilters, int denseSize) {
+		Model model = new Model(shape(r, c));
+		model.addLayer(convolution2d(convSize, convFilters));
+		model.addLayer(pool2d(2));
+		model.addBlock(flatten());
+		model.addLayer(dense(denseSize));
+		model.addLayer(softmax());
+		return model;
 	}
 }

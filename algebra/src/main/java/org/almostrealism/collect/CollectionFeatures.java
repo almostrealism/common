@@ -57,7 +57,9 @@ import org.almostrealism.collect.computations.Random;
 import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.collect.computations.TraversableExpressionComputation;
 import org.almostrealism.hardware.KernelSupport;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryDataComputation;
+import org.almostrealism.hardware.computations.Assignment;
 
 import java.util.List;
 import java.util.function.BiFunction;
@@ -147,6 +149,10 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		} else {
 			return ExpressionComputation.fixed(value);
 		}
+	}
+
+	default <T extends MemoryData> Assignment<T> a(Producer<T> result, Producer<T> value) {
+		return new Assignment<>(shape(result).getSize(), result, value);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> concat(Producer<PackedCollection<?>>... producers) {

@@ -37,7 +37,6 @@
 		<module>ml</module>
 	</modules>
 
-	<!-- Output to jar format -->
 	<packaging>pom</packaging>
 
     <build>

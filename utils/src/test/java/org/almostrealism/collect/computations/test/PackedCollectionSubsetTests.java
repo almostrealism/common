@@ -493,6 +493,32 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 	}
 
 	@Test
+	public void subsetAssignment() {
+		PackedCollection<?> originalInput = new PackedCollection<>(shape(10, 20));
+		originalInput.fill(pos -> Math.random());
+
+		PackedCollection<?> input = new PackedCollection<>(shape(10, 20));
+		input.fill(pos -> originalInput.valueAt(pos));
+
+		PackedCollection<?> filter = new PackedCollection<>(shape(1, 20));
+		filter.fill(pos -> Math.random());
+
+		CollectionProducer<PackedCollection<?>> in = c(p(input));
+		CollectionProducer<PackedCollection<?>> subset = subset(shape(1, 20), in, 4, 0).traverseEach();
+
+		HardwareOperator.verboseLog(() -> {
+			a(subset, subset.add(c(p(filter))).traverseEach()).get().run();
+		});
+
+		for (int i = 0; i < 20; i++) {
+			Assert.assertEquals(
+					input.valueAt(4, i),
+					originalInput.valueAt(0, i) + filter.valueAt(0, i),
+					0.0001);
+		}
+	}
+
+	@Test
 	public void arrayVariableComputation() {
 		int filterCount = 4;
 		int size = 3;
