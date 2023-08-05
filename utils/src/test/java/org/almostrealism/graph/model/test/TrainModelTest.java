@@ -147,8 +147,6 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 
 	@Test
 	public void pool() {
-		if (skipLongTests) return;
-
 		CellularLayer conv = convolution2d(inputShape, convSize, 8);
 		TraversalPolicy inputShape = conv.getOutputShape();
 
@@ -172,8 +170,6 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 
 	@Test
 	public void convPool() {
-		if (skipLongTests) return;
-
 		Model model = new Model(inputShape);
 		CellularLayer conv = convolution2d(inputShape, convSize, 8);
 		CellularLayer pool = pool2d(conv.getOutputShape(), poolSize);
@@ -254,6 +250,8 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 
 	@Test
 	public void trainLarge() {
+		if (skipLongTests) return;
+
 		Tensor<Double> t = tensor(shape(100, 100));
 		PackedCollection<?> input = t.pack();
 		train(input, model(100, 100, 3, 8, 10));
@@ -261,6 +259,8 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 
 	@Test
 	public void trainProgressive() {
+		if (skipLongTests) return;
+
 		double size = 10;
 
 		while (size < 100) {

@@ -57,8 +57,6 @@ public class PoolTests implements TestFeatures, KernelAssertions {
 
 	@Test
 	public void pool2dSquareOptimize() {
-		if (skipLongTests) return;
-
 		int r = 8;
 		int c = 8;
 		int d = 8;
@@ -80,8 +78,6 @@ public class PoolTests implements TestFeatures, KernelAssertions {
 	}
 
 	public void pool(int r, int c, int d, int w, boolean steps) {
-		if (skipLongTests) return;
-
 		PackedCollection<?> input = tensor(shape(r, c, d)).pack();
 		input.fill(pos -> Math.random());
 
