@@ -147,7 +147,7 @@ public class CLMemoryProvider implements MemoryProvider<RAM> {
 			if (Hardware.getLocalHardware().isDoublePrecision()) {
 				double d[] = new double[length];
 				for (int i = 0; i < d.length; i++) d[i] = source[srcOffset + i];
-				Pointer src = Pointer.to(source).withByteOffset((long) srcOffset * getNumberSize());
+				Pointer src = Pointer.to(d).withByteOffset(0);
 				cl_event event = new cl_event();
 				CL.clEnqueueWriteBuffer(queue, mem.getMem(), CL.CL_TRUE,
 						(long) offset * getNumberSize(), (long) length * getNumberSize(),
