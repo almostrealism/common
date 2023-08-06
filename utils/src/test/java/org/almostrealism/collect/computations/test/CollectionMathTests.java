@@ -115,7 +115,7 @@ public class CollectionMathTests implements TestFeatures {
 					ss = 1.0f / (float) Math.sqrt(ss);
 					// normalize and scale
 					for (int j = 0; j < size; j++) {
-						Assert.assertEquals(weight.valueAt(j) * (ss * x.valueAt(j)), o.valueAt(j), 1e-5);
+						Assert.assertEquals(weight.valueAt(j) * (ss * x.valueAt(j)), output.valueAt(j), 1e-5);
 					}
 				}, false, false, true);
 	}
