@@ -8,8 +8,28 @@ import org.junit.Test;
 
 public class CollectionMathTests implements TestFeatures {
 	@Test
+	public void sum() {
+		int size = 768;
+
+		PackedCollection<?> x = new PackedCollection<>(shape(size));
+		x.fill(pos -> Math.random());
+
+
+		kernelTest(() -> c(p(x)).sum(),
+				output -> {
+					double expected = 0;
+
+					for (int j = 0; j < size; j++) {
+						expected += x.valueAt(j);
+					}
+
+					Assert.assertEquals(expected, output.valueAt(0), 1e-5);
+				}, false, false, true);
+	}
+
+	@Test
 	public void squares() {
-		int size = 700;
+		int size = 768;
 
 		PackedCollection<?> o = new PackedCollection<>(shape(size));
 		o.fill(pos -> Math.random());
@@ -34,7 +54,7 @@ public class CollectionMathTests implements TestFeatures {
 
 	@Test
 	public void sumOfSquares() {
-		int size = 700;
+		int size = 768;
 
 		PackedCollection<?> o = new PackedCollection<>(shape(size));
 		o.fill(pos -> Math.random());
@@ -62,12 +82,12 @@ public class CollectionMathTests implements TestFeatures {
 					ss = 1.0f / (float) Math.sqrt(ss);
 
 					Assert.assertEquals(ss, output.valueAt(0), 1e-5);
-				});
+				}, false, false, true);
 	}
 
-	// @Test
+	@Test
 	public void sumOfSquaresProduct() {
-		int size = 700;
+		int size = 768;
 
 		PackedCollection<?> o = new PackedCollection<>(shape(size));
 		o.fill(pos -> Math.random());

@@ -23,7 +23,6 @@ import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.collect.KernelExpression;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
-import io.almostrealism.collect.TraversableKernelExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Conditional;
 import io.almostrealism.expression.DoubleConstant;
@@ -66,11 +65,13 @@ import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
+import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public interface CollectionFeatures extends ExpressionFeatures {
 	boolean enableShapelessWarning = false;
+	boolean enableParallelSum = true;
 
 	default TraversalPolicy shape(int... dims) { return new TraversalPolicy(dims); }
 
@@ -566,8 +567,13 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		TraversalPolicy shape = shape(input);
 		int size = shape.getSize();
 
+		if (enableParallelSum) {
+			CollectionProducerComputationBase<T, T> sum = (CollectionProducerComputationBase<T, T>) subdivide(input, this::sum);
+			if (sum != null) return sum;
+		}
+
 		return new TraversableExpressionComputation<>(shape.replace(shape(1)),
-				(BiFunction<TraversableExpression[], Expression, Expression>) (args, index) ->
+				(args, index) ->
 						Sum.of(IntStream.range(0, size).mapToObj(i -> args[1].getValueRelative(e(i))).toArray(Expression[]::new)),
 				(Supplier) input);
 	}
@@ -613,6 +619,29 @@ public interface CollectionFeatures extends ExpressionFeatures {
 																  Producer<T> trueValue, Producer<T> falseValue,
 																  boolean includeEqual) {
 		return (CollectionProducer<T>) new LessThanCollection(a, b, trueValue, falseValue, includeEqual);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> subdivide(Producer<T> input, Function<Producer<T>, CollectionProducer<T>> operation) {
+		TraversalPolicy shape = shape(input);
+		int size = shape.getSize();
+
+		if (size > 16) {
+			if (size % 16 == 0) {
+				TraversalPolicy split = shape.replace(shape(16, size / 16)).traverse();
+				return operation.apply(operation.apply((Producer<T>) reshape(split, input)).consolidate());
+			} else if (size % 8 == 0) {
+				TraversalPolicy split = shape.replace(shape(8, size / 8)).traverse();
+				return operation.apply(operation.apply((Producer<T>) reshape(split, input)).consolidate());
+			} else if (size % 4 == 0) {
+				TraversalPolicy split = shape.replace(shape(4, size / 4)).traverse();
+				return operation.apply(operation.apply((Producer<T>) reshape(split, input)).consolidate());
+			} else if (size % 2 == 0) {
+				TraversalPolicy split = shape.replace(shape(2, size / 2)).traverse();
+				return operation.apply(operation.apply((Producer<T>) reshape(split, input)).consolidate());
+			}
+		}
+
+		return null;
 	}
 
 	static CollectionFeatures getInstance() {

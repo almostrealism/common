@@ -126,6 +126,10 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 		return index(pos);
 	}
 
+	public TraversalPolicy consolidate() { return traverse(getTraversalAxis() - 1); }
+
+	public TraversalPolicy traverse() { return traverse(getTraversalAxis() + 1); }
+
 	@Override
 	public TraversalPolicy traverse(int axis) {
 		TraversalPolicy p = new TraversalPolicy(dims);

@@ -30,5 +30,6 @@ public interface Shape<T> extends Traversable<T> {
 		return traverse(getShape().getDimensions());
 	}
 
+	default T consolidate() { return traverse(getShape().getTraversalAxis() - 1); }
 	default T traverse() { return traverse(getShape().getTraversalAxis() + 1); }
 }
