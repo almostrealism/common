@@ -49,7 +49,7 @@ public class CollectionMathTests implements TestFeatures {
 					for (int j = 0; j < size; j++) {
 						Assert.assertEquals(output.valueAt(j), x.valueAt(j) * x.valueAt(j), 1e-5);
 					}
-				}, true, true, false);
+				}, false, false, true);
 	}
 
 	@Test
@@ -67,7 +67,7 @@ public class CollectionMathTests implements TestFeatures {
 
 
 		kernelTest(() -> {
-					CollectionProducer<PackedCollection<?>> ss = pow(p(x), c(2.0)).traverse(0).sum();
+					CollectionProducer<PackedCollection<?>> ss = pow(traverseEach(p(x)), c(2.0)).traverse(0).sum();
 					ss = ss.divide(c(size)).add(c(1e-5));
 					ss = c(1.0).divide(ss.pow(c(0.5)));
 					return ss;
@@ -100,10 +100,10 @@ public class CollectionMathTests implements TestFeatures {
 
 
 		kernelTest(() -> {
-					CollectionProducer<PackedCollection<?>> ss = pow(p(x), c(2.0)).traverse(0).sum();
+					CollectionProducer<PackedCollection<?>> ss = pow(traverseEach(p(x)), c(2.0)).traverse(0).sum();
 					ss = ss.divide(c(size)).add(c(1e-5));
 					ss = c(1.0).divide(ss.pow(c(0.5)));
-					return multiply(p(weight), p(x)).multiply(ss);
+					return multiply(traverseEach(p(weight)), traverseEach(p(x))).multiply(ss);
 				},
 				output -> {
 					double ss = 0.0f;

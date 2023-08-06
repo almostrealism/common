@@ -473,7 +473,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		}
 
 		TraversalPolicy shape = shape(base);
-		if (shape.getSize() == 1) shape = shape(exp);
+		if (shape.getSize() == 1 && shape(exp).getSize() > 1) shape = shape(exp);
 
 		return new TraversableExpressionComputation<>(shape,
 				(BiFunction<TraversableExpression[], Expression, Expression>) (args, index) ->
