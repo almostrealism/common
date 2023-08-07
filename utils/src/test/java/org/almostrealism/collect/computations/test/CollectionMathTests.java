@@ -119,4 +119,25 @@ public class CollectionMathTests implements TestFeatures {
 					}
 				}, false, false, true);
 	}
+
+	@Test
+	public void addInPlace() {
+		int size = 10;
+
+		PackedCollection<?> aOrig = new PackedCollection<>(shape(size));
+		aOrig.fill(pos -> Math.random());
+
+		PackedCollection<?> a = new PackedCollection<>(shape(size));
+		a.fill(pos -> aOrig.valueAt(pos));
+
+		PackedCollection<?> b = new PackedCollection<>(shape(size));
+		b.fill(pos -> Math.random());
+
+		Runnable op = (Runnable) a(traverseEach(p(a)), add(traverseEach(p(a)), traverseEach(p(b)))).optimize().get();
+		op.run();
+
+		for (int i = 0; i < size; i++) {
+			Assert.assertEquals(aOrig.valueAt(i) + b.valueAt(i), a.valueAt(i), 1e-5);
+		}
+	}
 }
