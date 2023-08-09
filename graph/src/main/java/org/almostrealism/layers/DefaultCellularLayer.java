@@ -110,7 +110,7 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 			fw = Cell.of((in, next) -> {
 				OperationList op = new OperationList();
 				op.add(entry.push(in));
-				receptors.forEach(r -> op.add(r.push(p(input))));
+				receptors.forEach(r -> op.add(r.push(p(output))));
 				op.add(next.push(p(output)));
 				return op;
 			});
