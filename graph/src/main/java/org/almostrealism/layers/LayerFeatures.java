@@ -18,7 +18,10 @@ package org.almostrealism.layers;
 
 import io.almostrealism.code.ExpressionList;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionOperationList;
 import org.almostrealism.collect.CollectionProducer;
@@ -39,12 +42,18 @@ import java.util.List;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-public interface LayerFeatures extends CollectionFeatures {
+public interface LayerFeatures extends MatrixFeatures {
 	boolean enableAssignment = true;
 
 	default CellularLayer layer(TraversalPolicy outputShape,
 								Cell<PackedCollection<?>> forward, Cell<PackedCollection<?>> backward) {
 		return new DefaultCellularLayer(outputShape, forward, backward, Collections.emptyList(), new OperationList());
+	}
+
+	default CellularLayer layer(TraversalPolicy outputShape,
+								Cell<PackedCollection<?>> forward, Cell<PackedCollection<?>> backward,
+								List<PackedCollection<?>> weights) {
+		return new DefaultCellularLayer(outputShape, forward, backward, weights, new OperationList());
 	}
 
 	default CellularLayer layer(TraversalPolicy outputShape,
@@ -56,6 +65,12 @@ public interface LayerFeatures extends CollectionFeatures {
 	default CellularLayer layer(TraversalPolicy inputShape, TraversalPolicy outputShape,
 								Cell<PackedCollection<?>> forward, Propagation backward) {
 		return layer(inputShape, outputShape, forward, backward, Collections.emptyList(), new OperationList());
+	}
+
+	default CellularLayer layer(TraversalPolicy inputShape, TraversalPolicy outputShape,
+								Cell<PackedCollection<?>> forward, Propagation backward,
+								List<PackedCollection<?>> weights) {
+		return layer(inputShape, outputShape, forward, backward, weights, new OperationList());
 	}
 
 	default CellularLayer layer(TraversalPolicy inputShape, TraversalPolicy outputShape,
@@ -284,5 +299,48 @@ public interface LayerFeatures extends CollectionFeatures {
 			if (next != null) ops.add(next.push(p(output)));
 			return ops;
 		}), propagation);
+	}
+
+	default CellularLayer rmsnorm(int size) {
+		return rmsnorm(new PackedCollection<>(shape(size)));
+	}
+
+	default CellularLayer rmsnorm(PackedCollection<?> weights) {
+		TraversalPolicy shape = weights.getShape();
+		if (shape.getDimensions() != 1)
+			throw new IllegalArgumentException();
+
+		int size = shape.getTotalSize();
+
+		return layer(shape, shape, Cell.of((input, next) -> {
+			PackedCollection<?> output = new PackedCollection<>(shape);
+
+			OperationList ops = new OperationList();
+
+			CollectionProducer<PackedCollection<?>> ss = pow(traverseEach(input), c(2.0)).traverse(0).sum();
+			ss = ss.divide(c(size)).add(c(1e-5));
+			ss = c(1.0).divide(ss.pow(c(0.5)));
+			ops.add(a(traverseEach(p(output)), multiply(traverseEach(p(weights)), traverseEach(input)).multiply(ss)));
+
+			if (next != null) ops.add(next.push(p(output)));
+			return ops;
+		}), null, List.of(weights));
+	}
+
+	default CellularLayer matmul(PackedCollection<?> weights) {
+		if (weights.getShape().getDimensions() != 2)
+			throw new IllegalArgumentException();
+
+		TraversalPolicy inputShape = shape(weights.getShape().length(1));
+		TraversalPolicy outputShape = shape(weights.getShape().length(0));
+
+		return layer(inputShape, outputShape, Cell.of((input, next) -> {
+			PackedCollection<?> output = new PackedCollection<>(outputShape);
+
+			OperationList ops = new OperationList();
+			ops.add(a(traverseEach(p(output)), matmul(p(weights), input)));
+			if (next != null) ops.add(next.push(p(output)));
+			return ops;
+		}), null, List.of(weights));
 	}
 }

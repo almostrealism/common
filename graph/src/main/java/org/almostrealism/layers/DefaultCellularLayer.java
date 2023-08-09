@@ -18,13 +18,13 @@ package org.almostrealism.layers;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.graph.Cell;
+import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.hardware.mem.MemoryDataCopy;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.function.Supplier;
@@ -36,8 +36,11 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 	private Cell<PackedCollection<?>> backward;
 	private List<PackedCollection<?>> weights;
 
-	private Cell<PackedCollection<?>> copyInput;
-	private Cell<PackedCollection<?>> copyOutput;
+	private Cell<PackedCollection<?>> entry;
+	private Cell<PackedCollection<?>> exit;
+	private Cell<PackedCollection<?>> fw;
+
+	private List<Receptor<PackedCollection<?>>> receptors;
 
 	private PackedCollection<?> input;
 	private PackedCollection<?> output;
@@ -70,30 +73,29 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 		this.forward = forward;
 		this.backward = backward;
 		this.weights = weights;
+		this.receptors = new ArrayList<>();
 	}
 
 	public void init(TraversalPolicy inputShape) {
 		this.input = new PackedCollection<>(inputShape);
 		this.output = new PackedCollection<>(outputShape);
 
-		this.copyInput = Cell.of((in, next) -> {
+		this.entry = Cell.of((in, next) -> {
 			OperationList op = new OperationList();
-//			op.add(copy(in.get()::evaluate, () -> input, input.getMemLength()));
 			op.add(copy(in, p(input), input.getMemLength()));
 			op.add(next.push(p(input)));
 			return op;
 		});
 
-		this.copyInput.setReceptor(forward);
+		this.entry.setReceptor(forward);
 
-		this.copyOutput = Cell.of((in, next) -> {
+		this.exit = Cell.of((in, next) -> {
 			OperationList op = new OperationList();
-//			op.add(copy(in.get()::evaluate, () -> output, output.getMemLength()));
 			op.add(copy(in, p(output), output.getMemLength()));
 			return op;
 		});
 
-		this.forward.setReceptor(copyOutput);
+		this.forward.setReceptor(exit);
 	}
 
 	public PackedCollection<?> getInput() { return input; }
@@ -104,12 +106,17 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 
 	@Override
 	public Cell<PackedCollection<?>> getForward() {
-		return Cell.of((in, next) -> {
-			OperationList op = new OperationList();
-			op.add(copyInput.push(in));
-			op.add(next.push(p(output)));
-			return op;
-		});
+		if (fw == null) {
+			fw = Cell.of((in, next) -> {
+				OperationList op = new OperationList();
+				op.add(entry.push(in));
+				receptors.forEach(r -> op.add(r.push(p(input))));
+				op.add(next.push(p(output)));
+				return op;
+			});
+		}
+
+		return fw;
 	}
 
 	@Override
@@ -155,5 +162,11 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 	public void setLearningRate(Producer<PackedCollection<?>> learningRate) {
 		if (forward instanceof Learning) ((Learning) forward).setLearningRate(learningRate);
 		if (backward instanceof Learning) ((Learning) backward).setLearningRate(learningRate);
+	}
+
+	@Override
+	public <T extends Receptor<PackedCollection<?>>> T append(T r) {
+		receptors.add(r);
+		return r;
 	}
 }

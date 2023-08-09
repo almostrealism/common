@@ -47,6 +47,14 @@ public interface MemoryProvider<T extends Memory> {
 
 	void setMem(T mem, int offset, double[] source, int srcOffset, int length);
 
+	default void getMem(T mem, int sOffset, float out[], int oOffset, int length) {
+		double d[] = new double[length];
+		getMem(mem, sOffset, d, 0, length);
+		for (int i = 0; i < length; i++) {
+			out[i] = (float) d[i];
+		}
+	}
+
 	void getMem(T mem, int sOffset, double out[], int oOffset, int length);
 
 	void destroy();

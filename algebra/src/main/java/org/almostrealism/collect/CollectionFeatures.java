@@ -195,7 +195,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		if (producer instanceof CollectionProducer) {
 			return (CollectionProducer<T>) producer;
 		} else if (producer instanceof Shape) {
-			return new ReshapeProducer(((Shape) producer).getShape(), producer);
+			return new ReshapeProducer(((Shape) producer).getShape().getTraversalAxis(), producer);
 		} else {
 			throw new UnsupportedOperationException();
 		}

@@ -215,6 +215,49 @@ public class CLMemoryProvider implements MemoryProvider<RAM> {
 	}
 
 	@Override
+	public void getMem(RAM mem, int sOffset, float out[], int oOffset, int length) {
+		if (!(mem instanceof CLMemory)) throw new IllegalArgumentException();
+		getMem((CLMemory) mem, sOffset, out, oOffset, length, 1);
+	}
+
+	private void getMem(CLMemory mem, int sOffset, float out[], int oOffset, int length, int retries) {
+		try {
+			IntStream.range(0, retries).mapToObj(r -> getHeapData(mem)).forEach(heapObj -> {
+				if (heapObj instanceof float[]) {
+					float f[] = (float[]) heapObj;
+					// if (length >= 0) System.arraycopy(d, sOffset, out, oOffset, length);
+					for (int i = 0; i < length; i++) out[oOffset + i] = f[sOffset + i];
+				} else if (heapObj instanceof double[]) {
+					double d[] = (double[]) heapObj;
+					for (int i = 0; i < length; i++) out[oOffset + i] = (float) d[sOffset + i];
+				} else if (getNumberSize() == 8) {
+					double d[] = new double[length];
+					Pointer dst = Pointer.to(d).withByteOffset(0);
+					cl_event event = new cl_event();
+					CL.clEnqueueReadBuffer(queue, mem.getMem(),
+							CL.CL_TRUE, (long) sOffset * getNumberSize(),
+							(long) length * getNumberSize(), dst, 0,
+							null, event);
+					processEvent(event);
+					for (int i = 0; i < d.length; i++) out[oOffset + i] = (float) d[i];
+				} else if (getNumberSize() == 4) {
+					Pointer dst = Pointer.to(out).withByteOffset((long) oOffset * getNumberSize());
+					cl_event event = new cl_event();
+					CL.clEnqueueReadBuffer(queue, mem.getMem(),
+							CL.CL_TRUE, (long) sOffset * getNumberSize(),
+							(long) length * getNumberSize(), dst, 0,
+							null, event);
+					processEvent(event);
+				} else {
+					throw new IllegalArgumentException();
+				}
+			});
+		} catch (CLException e) {
+			throw CLExceptionProcessor.process(e, this, sOffset, oOffset, length);
+		}
+	}
+
+	@Override
 	public void getMem(RAM mem, int sOffset, double out[], int oOffset, int length) {
 		if (!(mem instanceof CLMemory)) throw new IllegalArgumentException();
 		getMem((CLMemory) mem, sOffset, out, oOffset, length, 1);

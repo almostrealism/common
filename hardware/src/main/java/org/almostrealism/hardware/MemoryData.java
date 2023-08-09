@@ -171,6 +171,14 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 		}
 	}
 
+	default void getMem(int sOffset, float out[], int oOffset, int length) {
+		if (getDelegate() == null) {
+			getMem(getMem(), getOffset() + sOffset, out, oOffset, length);
+		} else {
+			getDelegate().getMem(getDelegateOffset() + sOffset, out, oOffset, length);
+		}
+	}
+
 	default void getMem(int sOffset, double out[], int oOffset, int length) {
 		if (getDelegate() == null) {
 			getMem(getMem(), getOffset() + sOffset, out, oOffset, length);
@@ -193,6 +201,10 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 		}
 
 		mem.getProvider().setMem(mem, offset, src.getMem(), src.getOffset() + srcOffset, length);
+	}
+
+	static void getMem(Memory mem, int sOffset, float out[], int oOffset, int length) {
+		mem.getProvider().getMem(mem, sOffset, out, oOffset, length);
 	}
 
 	static void getMem(Memory mem, int sOffset, double out[], int oOffset, int length) {

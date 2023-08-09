@@ -52,7 +52,7 @@ public class PackedCollectionMax extends CollectionProducerComputationBase<Packe
 		String count = getArgument(1).length().getSimpleExpression();
 
 		scope.code().accept("for (int " + i + " = 0; " + i + " < " + count +"; " + i + "++) {\n");
-		scope.code().accept("    if (" + value + " > " + result + ") {\n");
+		scope.code().accept("    if (" + i + " == 0 || " + value + " > " + result + ") {\n");
 		scope.code().accept("        " + result + " = " + value + ";\n");
 		scope.code().accept("    }\n");
 		scope.code().accept("}\n");

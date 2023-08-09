@@ -194,8 +194,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	@Override
 	public Collection<Process<?, ?>> getChildren() {
 		return stream()
-				.map(o -> o instanceof Process ? (Process<?, ?>) o : null)
-				.filter(Objects::nonNull)
+				.map(o -> o instanceof Process ? (Process<?, ?>) o : Process.of(o))
 				.collect(Collectors.toList());
 	}
 

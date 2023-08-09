@@ -54,7 +54,6 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 
 	public int getMemLength() { return 1; }
 
-
 	// TODO  This custom destination creation should not be necessary
 	@Override
 	protected MemoryBank<?> createKernelDestination(int len) {

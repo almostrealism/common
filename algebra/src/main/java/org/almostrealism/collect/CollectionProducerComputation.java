@@ -78,7 +78,7 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 
 	@Override
 	default CollectionProducer<T> traverse(int axis) {
-		return reshape(getShape().traverse(axis));
+		return new ReshapeProducer<>(axis, (Producer) this);
 	}
 
 	@Override
