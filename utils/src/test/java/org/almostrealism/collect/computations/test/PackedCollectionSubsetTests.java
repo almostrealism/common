@@ -27,14 +27,9 @@ import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.ArrayVariableComputation;
-import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.hardware.KernelSupport;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.cl.HardwareOperator;
-import org.almostrealism.layers.CellularLayer;
-import org.almostrealism.layers.DefaultCellularLayer;
-import org.almostrealism.layers.KernelLayerCell;
-import org.almostrealism.model.Model;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
@@ -45,7 +40,6 @@ import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
-import java.util.stream.IntStream;
 
 public class PackedCollectionSubsetTests implements TestFeatures {
 

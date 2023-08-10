@@ -29,6 +29,9 @@ import java.util.Collections;
 import java.util.List;
 import java.util.function.Supplier;
 
+// TODO  If the layer does not have any weights,
+// TODO  there is no need to keep a copy of the
+// TODO  input and output for backpropagation
 public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learning {
 	private TraversalPolicy outputShape;
 	private Supplier<Runnable> setup;
@@ -111,7 +114,7 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 				OperationList op = new OperationList();
 				op.add(entry.push(in));
 				receptors.forEach(r -> op.add(r.push(p(output))));
-				op.add(next.push(p(output)));
+				if (next != null) op.add(next.push(p(output)));
 				return op;
 			});
 		}
@@ -151,6 +154,9 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 //			}
 //		};
 	}
+
+	@Override
+	public TraversalPolicy getInputShape() { return input.getShape(); }
 
 	@Override
 	public TraversalPolicy getOutputShape() { return outputShape; }

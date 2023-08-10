@@ -45,12 +45,12 @@ public class DefaultBlock implements Block {
 	}
 
 	@Override
-	public Cell<PackedCollection<?>> forward() {
+	public Cell<PackedCollection<?>> getForward() {
 		return forward;
 	}
 
 	@Override
-	public Cell<PackedCollection<?>> backward() {
+	public Cell<PackedCollection<?>> getBackward() {
 		return backward;
 	}
 }

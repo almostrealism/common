@@ -50,8 +50,8 @@ public class CellularBlock implements Block {
 	public TraversalPolicy getOutputShape() { return outputShape; }
 
 	@Override
-	public Cell<PackedCollection<?>> forward() { return forward; }
+	public Cell<PackedCollection<?>> getForward() { return forward; }
 
 	@Override
-	public Cell<PackedCollection<?>> backward() { return backward; }
+	public Cell<PackedCollection<?>> getBackward() { return backward; }
 }

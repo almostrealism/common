@@ -23,7 +23,6 @@ import org.almostrealism.collect.computations.test.KernelAssertions;
 import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.DefaultCellularLayer;
-import org.almostrealism.layers.KernelLayerCell;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
@@ -59,9 +58,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		model.forward(input);
 
 		PackedCollection<?> weights = dense.getWeights().get(0);
-		PackedCollection<?> output = dense instanceof DefaultCellularLayer ?
-				((DefaultCellularLayer) dense).getOutput() :
-				((KernelLayerCell) dense.getForward()).getOutput();
+		PackedCollection<?> output =  ((DefaultCellularLayer) dense).getOutput();
 
 		for (int i = 0; i < nodes; i++) {
 			double expected = 0;
@@ -79,9 +76,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		}
 
 		input = output;
-		output = softmax instanceof DefaultCellularLayer ?
-				((DefaultCellularLayer) softmax).getOutput() :
-				((KernelLayerCell) softmax.getForward()).getOutput();
+		output = ((DefaultCellularLayer) softmax).getOutput();
 
 		double expValues[] = new double[nodes];
 
@@ -121,9 +116,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		PackedCollection<?> filter = conv.getWeights().get(0);
 		TraversalPolicy filterShape = filter.getShape();
 
-		PackedCollection<?> output = conv instanceof DefaultCellularLayer ?
-				((DefaultCellularLayer) conv).getOutput() :
-				((KernelLayerCell) conv.getForward()).getOutput();
+		PackedCollection<?> output = ((DefaultCellularLayer) conv).getOutput();
 		TraversalPolicy outputShape = output.getShape();
 
 		for (int p = 0; p < outputShape.length(0); p++) {
@@ -161,9 +154,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		model.setup().get().run();
 		model.forward(input);
 
-		PackedCollection<?> output = pool instanceof DefaultCellularLayer ?
-				((DefaultCellularLayer) pool).getOutput() :
-				((KernelLayerCell) pool.getForward()).getOutput();
+		PackedCollection<?> output = ((DefaultCellularLayer) pool).getOutput();
 
 		pool2d(inputShape.length(0), inputShape.length(1), 8, 2, input, output);
 	}
@@ -188,9 +179,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		PackedCollection<?> filter = conv.getWeights().get(0);
 		TraversalPolicy filterShape = filter.getShape();
 
-		PackedCollection<?> output = conv instanceof DefaultCellularLayer ?
-						((DefaultCellularLayer) conv).getOutput() :
-						((KernelLayerCell) conv.getForward()).getOutput();
+		PackedCollection<?> output = ((DefaultCellularLayer) conv).getOutput();
 		TraversalPolicy outputShape = output.getShape();
 
 		for (int p = 0; p < outputShape.length(0); p++) {
@@ -214,9 +203,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		input = output;
 		inputShape = input.getShape();
 
-		output = pool instanceof DefaultCellularLayer ?
-				((DefaultCellularLayer) pool).getOutput() :
-				((KernelLayerCell) pool.getForward()).getOutput();
+		output = ((DefaultCellularLayer) pool).getOutput();
 		outputShape = output.getShape();
 
 		for (int p = 0; p < outputShape.length(0); p++) {

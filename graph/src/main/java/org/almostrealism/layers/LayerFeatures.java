@@ -92,6 +92,16 @@ public interface LayerFeatures extends MatrixFeatures {
 		};
 	}
 
+	default Block reshape(TraversalPolicy inputShape, TraversalPolicy outputShape) {
+		if (inputShape.getTotalSize() != outputShape.getTotalSize()) {
+			throw new IllegalArgumentException("Cannot reshape " + inputShape + " to " + outputShape);
+		}
+
+		return new DefaultBlock(inputShape, outputShape,
+				Cell.of((in, next) -> next.push(reshape(outputShape, in))),
+				Cell.of((in, next) -> next.push(reshape(inputShape, in))));
+	}
+
 	default Function<TraversalPolicy, CellularLayer> convolution2d(int size, int filterCount) {
 		return shape -> convolution2d(shape, size, filterCount);
 	}

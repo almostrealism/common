@@ -18,14 +18,11 @@ package org.almostrealism.model;
 
 import io.almostrealism.cycle.Setup;
 import io.almostrealism.relation.ParallelProcess;
-import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.graph.Cell;
-import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.hardware.mem.MemoryDataCopy;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.Learning;
 
@@ -85,8 +82,8 @@ public class Model implements Setup, CodeFeatures {
 		}
 
 		if (!blocks.isEmpty()) {
-			blocks.get(blocks.size() - 1).forward().setReceptor(b.forward());
-			b.backward().setReceptor(blocks.get(blocks.size() - 1).backward());
+			blocks.get(blocks.size() - 1).getForward().setReceptor(b.getForward());
+			b.getBackward().setReceptor(blocks.get(blocks.size() - 1).getBackward());
 		}
 
 		blocks.add(b);
@@ -124,14 +121,14 @@ public class Model implements Setup, CodeFeatures {
 		return blocks.stream().map(Block::setup).collect(OperationList.collector());
 	}
 
-	public Cell<PackedCollection<?>> forward() { return blocks.get(0).forward(); }
+	public Cell<PackedCollection<?>> forward() { return blocks.get(0).getForward(); }
 	public PackedCollection<?> forward(PackedCollection<?> input) {
 		if (!Objects.equals(input.getShape(), blocks.get(0).getInputShape())) {
 			throw new IllegalArgumentException();
 		}
 
 		PackedCollection<?> output = new PackedCollection<>(lastBlock().getOutputShape());
-		lastBlock().forward().setReceptor(out ->
+		lastBlock().getForward().setReceptor(out ->
 				copy("Model Output", out, p(output), output.getMemLength()));
 		ParallelProcess<?, Runnable> p = (ParallelProcess<?, Runnable>) forward().push(p(input));
 		if (enableOptimization) p = p.optimize();
@@ -139,6 +136,6 @@ public class Model implements Setup, CodeFeatures {
 		return output;
 	}
 
-	public Cell<PackedCollection<?>> backward() { return lastBlock().backward(); }
+	public Cell<PackedCollection<?>> backward() { return lastBlock().getBackward(); }
 	public void backward(PackedCollection<?> gradient) { backward().push(p(gradient)).get().run(); }
 }
