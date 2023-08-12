@@ -316,7 +316,7 @@ public interface LayerFeatures extends MatrixFeatures {
 		TraversalPolicy shape = shape(value);
 
 		return layer(shape, shape, Cell.of((input, next) -> {
-			return next.push(add(traverseEach(input), traverseEach(value)));
+			return next == null ? new OperationList() : next.push(add(traverseEach(input), traverseEach(value)));
 		}), null);
 	}
 
@@ -381,17 +381,10 @@ public interface LayerFeatures extends MatrixFeatures {
 		int size = shape.getTotalSize();
 
 		return layer(shape, shape, Cell.of((input, next) -> {
-			PackedCollection<?> output = new PackedCollection<>(shape);
-
-			OperationList ops = new OperationList();
-
 			CollectionProducer<PackedCollection<?>> ss = pow(traverseEach(input), c(2.0)).traverse(0).sum();
 			ss = ss.divide(c(size)).add(c(1e-5));
 			ss = c(1.0).divide(ss.pow(c(0.5)));
-			ops.add(a(traverseEach(p(output)), multiply(traverseEach(p(weights)), traverseEach(input)).multiply(ss)));
-
-			if (next != null) ops.add(next.push(p(output)));
-			return ops;
+			return next == null ? new OperationList() : next.push(multiply(traverseEach(p(weights)), traverseEach(input)).multiply(ss));
 		}), null, List.of(weights));
 	}
 
@@ -403,12 +396,7 @@ public interface LayerFeatures extends MatrixFeatures {
 		TraversalPolicy outputShape = shape(weights.getShape().length(0));
 
 		return layer(inputShape, outputShape, Cell.of((input, next) -> {
-			PackedCollection<?> output = new PackedCollection<>(outputShape);
-
-			OperationList ops = new OperationList();
-			ops.add(a(traverseEach(p(output)), matmul(p(weights), input)));
-			if (next != null) ops.add(next.push(p(output)));
-			return ops;
+			return next == null ? new OperationList() : next.push(matmul(p(weights), input));
 		}), null, List.of(weights));
 	}
 
