@@ -19,6 +19,7 @@ package org.almostrealism.model;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.graph.Cell;
+import org.almostrealism.graph.Receptor;
 
 import java.util.function.Supplier;
 
@@ -54,4 +55,9 @@ public class CellularBlock implements Block {
 
 	@Override
 	public Cell<PackedCollection<?>> getBackward() { return backward; }
+
+	@Override
+	public <T extends Receptor<PackedCollection<?>>> T append(T r) {
+		throw new UnsupportedOperationException();
+	}
 }

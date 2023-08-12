@@ -16,19 +16,8 @@
 
 package org.almostrealism.layers;
 
-import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.graph.Cell;
-import org.almostrealism.graph.Receptor;
 import org.almostrealism.model.Block;
 
 public interface CellularLayer extends Layer, Block {
-	Cell<PackedCollection<?>> getForward();
-	Cell<PackedCollection<?>> getBackward();
 
-	default <T extends CellularLayer> T append(T l) {
-		append(l.getForward());
-		return l;
-	}
-
-	<T extends Receptor<PackedCollection<?>>> T append(T r);
 }

@@ -31,6 +31,13 @@ public interface Block extends Component, Setup {
 
 	Cell<PackedCollection<?>> getBackward();
 
+	default <T extends Block> T append(T l) {
+		append(l.getForward());
+		return l;
+	}
+
+	<T extends Receptor<PackedCollection<?>>> T append(T r);
+
 	default <T extends Block> T andThen(T next) {
 		getForward().setReceptor(next.getForward());
 		return next;

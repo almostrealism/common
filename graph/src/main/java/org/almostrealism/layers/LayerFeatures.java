@@ -32,6 +32,7 @@ import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversableKernelExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.graph.Cell;
+import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.KernelOperation;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.model.Block;
@@ -311,6 +312,63 @@ public interface LayerFeatures extends MatrixFeatures {
 		}), propagation);
 	}
 
+	default CellularLayer accum(Producer<PackedCollection<?>> value) {
+		TraversalPolicy shape = shape(value);
+
+		return layer(shape, shape, Cell.of((input, next) -> {
+			return next.push(add(traverseEach(input), traverseEach(value)));
+		}), null);
+	}
+
+	default CellularLayer accum(TraversalPolicy shape, Cell<PackedCollection<?>> value) {
+		return layer(shape, shape, Cell.of((input, next) -> {
+			CaptureReceptor r = new CaptureReceptor();
+			value.setReceptor(r);
+
+			OperationList ops = new OperationList();
+			ops.add(value.push(input));
+			if (next != null) ops.add(next.push(add(traverseEach(input), traverseEach(r.getReceipt()))));
+			return ops;
+		}), null);
+	}
+
+	default CellularLayer product(Producer<PackedCollection<?>> value) {
+		TraversalPolicy shape = shape(value);
+
+		return layer(shape, shape, Cell.of((input, next) -> {
+			return next.push(multiply(traverseEach(input), traverseEach(value)));
+		}), null);
+	}
+
+	default CellularLayer product(TraversalPolicy shape, Cell<PackedCollection<?>> value) {
+		return layer(shape, shape, Cell.of((input, next) -> {
+			CaptureReceptor r = new CaptureReceptor();
+			value.setReceptor(r);
+
+			OperationList ops = new OperationList();
+			ops.add(value.push(input));
+			if (next != null) ops.add(next.push(multiply(traverseEach(input), traverseEach(r.getReceipt()))));
+			return ops;
+		}), null);
+	}
+
+	default CellularLayer product(TraversalPolicy inputShape, TraversalPolicy outputShape,
+								  Cell<PackedCollection<?>> a, Cell<PackedCollection<?>> b) {
+		return layer(inputShape, outputShape, Cell.of((input, next) -> {
+			CaptureReceptor ar = new CaptureReceptor();
+			a.setReceptor(ar);
+
+			CaptureReceptor br = new CaptureReceptor();
+			b.setReceptor(br);
+
+			OperationList ops = new OperationList();
+			ops.add(a.push(input));
+			ops.add(b.push(input));
+			if (next != null) ops.add(next.push(multiply(traverseEach(ar.getReceipt()), traverseEach(br.getReceipt()))));
+			return ops;
+		}), null);
+	}
+
 	default CellularLayer rmsnorm(int size) {
 		return rmsnorm(new PackedCollection<>(shape(size)));
 	}
@@ -352,5 +410,17 @@ public interface LayerFeatures extends MatrixFeatures {
 			if (next != null) ops.add(next.push(p(output)));
 			return ops;
 		}), null, List.of(weights));
+	}
+
+	class CaptureReceptor implements Receptor<PackedCollection<?>> {
+		private Producer<PackedCollection<?>> receipt;
+
+		public Producer<PackedCollection<?>> getReceipt() { return receipt; }
+
+		@Override
+		public Supplier<Runnable> push(Producer<PackedCollection<?>> in) {
+			receipt = in;
+			return new OperationList();
+		}
 	}
 }

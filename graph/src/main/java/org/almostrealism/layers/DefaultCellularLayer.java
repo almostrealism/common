@@ -22,7 +22,9 @@ import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.Receptor;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.model.Block;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -85,7 +87,7 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 
 		this.entry = Cell.of((in, next) -> {
 			OperationList op = new OperationList();
-			op.add(copy(in, p(input), input.getMemLength()));
+			op.add(into(in, p(input)));
 			op.add(next.push(p(input)));
 			return op;
 		});
@@ -94,11 +96,21 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 
 		this.exit = Cell.of((in, next) -> {
 			OperationList op = new OperationList();
-			op.add(copy(in, p(output), output.getMemLength()));
+			op.add(into(in, p(output)));
 			return op;
 		});
 
 		this.forward.setReceptor(exit);
+	}
+
+	private <T extends MemoryData> Supplier<Runnable> into(Producer<T> in, Producer<T> out) {
+		TraversalPolicy shape = shape(in);
+
+		if (shape.getCount() > 1) {
+			return a(reshape(shape, out), in);
+		} else {
+			return copy(in, out, shape.getTotalSize());
+		}
 	}
 
 	public PackedCollection<?> getInput() { return input; }

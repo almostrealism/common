@@ -84,6 +84,26 @@ public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
 			return op;
 		});
 	}
+	static <T> Cell<T> of(Producer<T> value) {
+		return new Cell<>() {
+			private Receptor<T> r;
+
+			@Override
+			public Supplier<Runnable> setup() {
+				return new OperationList();
+			}
+
+			@Override
+			public Supplier<Runnable> push(Producer<T> protein) {
+				return r == null ? new OperationList() : r.push(value);
+			}
+
+			@Override
+			public void setReceptor(Receptor<T> r) {
+				this.r = r;
+			}
+		};
+	}
 
 	static <T> Cell<T> of(BiFunction<Producer<T>, Receptor<T>, Supplier<Runnable>> func) {
 		return new Cell<>() {
