@@ -35,6 +35,7 @@ import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.KernelOperation;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.io.SystemUtils;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.DefaultBlock;
 
@@ -45,6 +46,7 @@ import java.util.function.Supplier;
 
 public interface LayerFeatures extends MatrixFeatures {
 	boolean enableAssignment = true;
+	boolean ioTracking = SystemUtils.isEnabled("AR_GRAPH_IO_TRACKING").orElse(true);
 
 	default CellularLayer layer(TraversalPolicy outputShape,
 								Cell<PackedCollection<?>> forward, Cell<PackedCollection<?>> backward) {
@@ -79,7 +81,7 @@ public interface LayerFeatures extends MatrixFeatures {
 								List<PackedCollection<?>> weights, Supplier<Runnable> setup) {
 		PropagationCell backwardCell = new PropagationCell(backward);
 		DefaultCellularLayer layer = new DefaultCellularLayer(outputShape, forward, backwardCell, weights, setup);
-		layer.init(inputShape);
+		layer.init(inputShape, ioTracking, true);
 		backwardCell.setForwardInput(layer.getInput());
 		return layer;
 	}

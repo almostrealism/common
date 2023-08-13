@@ -41,12 +41,14 @@ import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collector;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class OperationList extends ArrayList<Supplier<Runnable>>
 		implements OperationComputation<Void>, ParallelProcess<Process<?, ?>, Runnable>,
 					NamedFunction, HardwareFeatures {
 	public static boolean enableOptimization = false;
+	public static boolean enableSegmenting = false;
 
 	private static ThreadLocal<MemoryData> abortFlag;
 	private static boolean abortArgs, abortScope;
@@ -208,6 +210,43 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 
 		return stream().map(c -> c instanceof OperationList ? (OperationList) c : null).filter(Objects::nonNull)
 				.mapToInt(OperationList::getDepth).max().orElse(0) + 1;
+	}
+
+	public OperationList flatten() {
+		return stream()
+				.flatMap(o -> o instanceof OperationList ? ((OperationList) o).flatten().stream() : Stream.of(o))
+				.collect(OperationList.collector());
+	}
+
+	@Override
+	public ParallelProcess<Process<?, ?>, Runnable> optimize() {
+		if (!enableSegmenting || size() <= 1 || isUniform()) return ParallelProcess.super.optimize();
+
+		boolean match = IntStream.range(1, size()).anyMatch(i -> ParallelProcess.count(get(i - 1)) == ParallelProcess.count(get(i)));
+		if (!match) return ParallelProcess.super.optimize();
+
+		OperationList op = new OperationList();
+		OperationList current = new OperationList();
+		int currentCount = -1;
+
+		for (int i = 0; i < size(); i++) {
+			Supplier<Runnable> o = get(i);
+			int count = ParallelProcess.count(o);
+
+			if (currentCount == -1 || currentCount == count) {
+				current.add(o);
+			} else {
+				op.add(current.size() == 1 ? current.get(0) : current);
+				current = new OperationList();
+				current.add(o);
+			}
+
+			currentCount = count;
+		}
+
+		if (current.size() > 0) op.add(current.size() == 1 ? current.get(0) : current);
+
+		return op.optimize();
 	}
 
 	@Override

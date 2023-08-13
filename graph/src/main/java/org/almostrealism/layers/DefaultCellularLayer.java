@@ -35,6 +35,7 @@ import java.util.function.Supplier;
 // TODO  there is no need to keep a copy of the
 // TODO  input and output for backpropagation
 public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learning {
+	private TraversalPolicy inputShape;
 	private TraversalPolicy outputShape;
 	private Supplier<Runnable> setup;
 	private Cell<PackedCollection<?>> forward;
@@ -81,25 +82,30 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 		this.receptors = new ArrayList<>();
 	}
 
-	public void init(TraversalPolicy inputShape) {
-		this.input = new PackedCollection<>(inputShape);
-		this.output = new PackedCollection<>(outputShape);
+	public void init(TraversalPolicy inputShape, boolean inputTracking, boolean outputTracking) {
+		this.inputShape = inputShape;
+
+		if (!outputTracking) {
+			if (inputTracking) throw new UnsupportedOperationException();
+			return;
+		}
+
+		this.input = inputTracking ? new PackedCollection<>(inputShape) : null;
+		this.output = outputTracking ? new PackedCollection<>(outputShape) : null;
 
 		this.entry = Cell.of((in, next) -> {
-			OperationList op = new OperationList();
-			op.add(into(in, p(input)));
-			op.add(next.push(p(input)));
-			return op;
+			if (this.input == null) {
+				return next.push(in);
+			} else {
+				OperationList op = new OperationList();
+				op.add(into(in, p(input)));
+				op.add(next.push(p(input)));
+				return op;
+			}
 		});
-
 		this.entry.setReceptor(forward);
 
-		this.exit = Cell.of((in, next) -> {
-			OperationList op = new OperationList();
-			op.add(into(in, p(output)));
-			return op;
-		});
-
+		this.exit = Cell.of((in, next) -> into(in, p(output)));
 		this.forward.setReceptor(exit);
 	}
 
@@ -121,7 +127,9 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 
 	@Override
 	public Cell<PackedCollection<?>> getForward() {
-		if (fw == null) {
+		if (this.output == null) {
+			return this.forward;
+		} else if (fw == null) {
 			fw = Cell.of((in, next) -> {
 				OperationList op = new OperationList();
 				op.add(entry.push(in));
@@ -168,7 +176,7 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 	}
 
 	@Override
-	public TraversalPolicy getInputShape() { return input.getShape(); }
+	public TraversalPolicy getInputShape() { return inputShape; }
 
 	@Override
 	public TraversalPolicy getOutputShape() { return outputShape; }
@@ -184,6 +192,9 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 
 	@Override
 	public <T extends Receptor<PackedCollection<?>>> T append(T r) {
+		if (this.output == null)
+			throw new UnsupportedOperationException();
+
 		receptors.add(r);
 		return r;
 	}
