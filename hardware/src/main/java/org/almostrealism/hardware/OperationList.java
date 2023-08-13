@@ -19,7 +19,9 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.NamedFunction;
 import io.almostrealism.code.OperationAdapter;
+import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.code.OperationProfile;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
@@ -113,6 +115,10 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 
 	@Override
 	public Runnable get() {
+		return get(null);
+	}
+
+	public Runnable get(OperationProfile profiles) {
 		if (isFunctionallyEmpty()) return () -> { };
 
 		if (enableOptimization && !isUniform()) {
@@ -129,7 +135,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 					.filter(Objects::nonNull)
 					.filter(Predicate.not(OperationAdapter::isCompiled))
 					.forEach(OperationAdapter::compile);
-			return new Runner(getMetadata(), run);
+			return new Runner(getMetadata(), run, profiles);
 		}
 	}
 
@@ -278,23 +284,33 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 
 	protected static void setAbortableDepth(int depth) { abortableDepth = depth; }
 
-	public static class Runner implements Runnable {
+	public static class Runner implements Runnable, OperationInfo {
 		private OperationMetadata metadata;
 		private List<Runnable> run;
 
-		public Runner(OperationMetadata metadata, List<Runnable> run) {
+		private OperationProfile profiles;
+
+		public Runner(OperationMetadata metadata, List<Runnable> run, OperationProfile profiles) {
 			this.metadata = metadata;
 			this.run = run;
+			this.profiles = profiles;
 		}
 
+		@Override
 		public OperationMetadata getMetadata() { return metadata; }
 
 		public List<Runnable> getOperations() { return run; }
 
 		@Override
 		public void run() {
-			for (int i = 0; i < run.size(); i++) {
-				run.get(i).run();
+			if (profiles == null) {
+				for (int i = 0; i < run.size(); i++) {
+					run.get(i).run();
+				}
+			} else {
+				for (int i = 0; i < run.size(); i++) {
+					profiles.recordDuration(run.get(i));
+				}
 			}
 		}
 	}

@@ -21,6 +21,7 @@ import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.relation.Countable;
+import io.almostrealism.relation.Nameable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import io.almostrealism.scope.ArrayVariable;
@@ -109,6 +110,8 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 	public Assignment<T> generate(List<Process<?, ?>> children) {
 		if (children.size() != 2) return this;
 
-		return new Assignment<>(memLength, (Supplier) children.get(0), (Supplier) children.get(1));
+		Assignment generated = new Assignment<>(memLength, (Supplier) children.get(0), (Supplier) children.get(1));
+		generated.setMetadata(getMetadata());
+		return generated;
 	}
 }

@@ -122,7 +122,7 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I> imple
 
 	@Override
 	public Scope<O> getScope() {
-		Scope<O> scope = new Scope<>(getFunctionName(), new OperationMetadata(getFunctionName(), getClass().getSimpleName()));
+		Scope<O> scope = new Scope<>(getFunctionName(), getMetadata());
 		scope.getVariables().addAll(getVariables());
 		return scope;
 	}

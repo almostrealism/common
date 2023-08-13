@@ -16,6 +16,7 @@
 
 package org.almostrealism.layers;
 
+import io.almostrealism.relation.Nameable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
@@ -31,10 +32,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.function.Supplier;
 
-// TODO  If the layer does not have any weights,
-// TODO  there is no need to keep a copy of the
-// TODO  input and output for backpropagation
-public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learning {
+public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learning, Nameable {
 	private TraversalPolicy inputShape;
 	private TraversalPolicy outputShape;
 	private Supplier<Runnable> setup;
@@ -46,34 +44,41 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 	private Cell<PackedCollection<?>> exit;
 	private Cell<PackedCollection<?>> fw;
 
+	private String name;
+
 	private List<Receptor<PackedCollection<?>>> receptors;
 
 	private PackedCollection<?> input;
 	private PackedCollection<?> output;
 
-	public DefaultCellularLayer(Cell<PackedCollection<?>> forward,
+	public DefaultCellularLayer(String name,
+								Cell<PackedCollection<?>> forward,
 								Cell<PackedCollection<?>> backward) {
-		this(forward, backward, new OperationList());
+		this(name, forward, backward, new OperationList());
 	}
 
-	public DefaultCellularLayer(Cell<PackedCollection<?>> forward,
+	public DefaultCellularLayer(String name,
+								Cell<PackedCollection<?>> forward,
 								Cell<PackedCollection<?>> backward,
 								Supplier<Runnable> setup) {
-		this(forward, backward, Collections.emptyList(), setup);
+		this(name, forward, backward, Collections.emptyList(), setup);
 	}
 
-	public DefaultCellularLayer(Cell<PackedCollection<?>> forward,
-								Cell<PackedCollection<?>> backward,
-								List<PackedCollection<?>> weights,
-								Supplier<Runnable> setup) {
-		this(Component.shape(forward).orElseThrow(IllegalArgumentException::new), forward, backward, weights, setup);
-	}
-
-	public DefaultCellularLayer(TraversalPolicy outputShape,
+	public DefaultCellularLayer(String name,
 								Cell<PackedCollection<?>> forward,
 								Cell<PackedCollection<?>> backward,
 								List<PackedCollection<?>> weights,
 								Supplier<Runnable> setup) {
+		this(name, Component.shape(forward).orElseThrow(IllegalArgumentException::new), forward, backward, weights, setup);
+	}
+
+	public DefaultCellularLayer(String name,
+								TraversalPolicy outputShape,
+								Cell<PackedCollection<?>> forward,
+								Cell<PackedCollection<?>> backward,
+								List<PackedCollection<?>> weights,
+								Supplier<Runnable> setup) {
+		setName(name);
 		this.outputShape = outputShape;
 		this.setup = setup;
 		this.forward = forward;
@@ -81,6 +86,12 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 		this.weights = weights;
 		this.receptors = new ArrayList<>();
 	}
+
+	@Override
+	public void setName(String name) { this.name = name; }
+
+	@Override
+	public String getName() { return name; }
 
 	public void init(TraversalPolicy inputShape, boolean inputTracking, boolean outputTracking) {
 		this.inputShape = inputShape;
@@ -97,25 +108,25 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 			if (this.input == null) {
 				return next.push(in);
 			} else {
-				OperationList op = new OperationList();
-				op.add(into(in, p(input)));
+				OperationList op = new OperationList(getName() + " Layer (Entry)");
+				op.add(into("DefaultCellularLayer - " + getName() + " (Input Record)", in, p(input)));
 				op.add(next.push(p(input)));
 				return op;
 			}
 		});
 		this.entry.setReceptor(forward);
 
-		this.exit = Cell.of((in, next) -> into(in, p(output)));
+		this.exit = Cell.of((in, next) -> into(getName() + " Layer (Evaluate)", in, p(output)));
 		this.forward.setReceptor(exit);
 	}
 
-	private <T extends MemoryData> Supplier<Runnable> into(Producer<T> in, Producer<T> out) {
+	private <T extends MemoryData> Supplier<Runnable> into(String name, Producer<T> in, Producer<T> out) {
 		TraversalPolicy shape = shape(in);
 
 		if (shape.getCount() > 1) {
-			return a(reshape(shape, out), in);
+			return a(name, reshape(shape, out), in);
 		} else {
-			return copy(in, out, shape.getTotalSize());
+			return copy(name, in, out, shape.getTotalSize());
 		}
 	}
 
@@ -131,7 +142,7 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 			return this.forward;
 		} else if (fw == null) {
 			fw = Cell.of((in, next) -> {
-				OperationList op = new OperationList();
+				OperationList op = new OperationList(getName() + " Layer (Forward)");
 				op.add(entry.push(in));
 				receptors.forEach(r -> op.add(r.push(p(output))));
 				if (next != null) op.add(next.push(p(output)));

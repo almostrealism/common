@@ -19,6 +19,8 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.NameProvider;
+import io.almostrealism.code.OperationInfo;
+import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Countable;
@@ -56,6 +58,11 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	public Computation<T> getComputation() { return computation; }
+
+	@Override
+	public OperationMetadata getMetadata() {
+		return computation instanceof OperationInfo ? ((OperationInfo) computation).getMetadata() : super.getMetadata();
+	}
 
 	@Override
 	public int getCount() {

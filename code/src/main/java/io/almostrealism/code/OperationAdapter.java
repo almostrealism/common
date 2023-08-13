@@ -37,7 +37,7 @@ import java.util.Optional;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-public abstract class OperationAdapter<T> implements Compactable, NameProvider, NamedFunction, Named {
+public abstract class OperationAdapter<T> implements Compactable, NameProvider, OperationInfo, NamedFunction, Named {
 
 	public static boolean enableFunctionPrefix = false;
 	private static long functionId = 0;
@@ -81,6 +81,9 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 		}
 	}
 
+	protected void setMetadata(OperationMetadata metadata) { this.metadata = metadata; }
+
+	@Override
 	public OperationMetadata getMetadata() { return metadata; }
 
 	@Override

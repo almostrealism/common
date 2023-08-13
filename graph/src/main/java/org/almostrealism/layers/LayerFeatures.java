@@ -48,39 +48,39 @@ public interface LayerFeatures extends MatrixFeatures {
 	boolean enableAssignment = true;
 	boolean ioTracking = SystemUtils.isEnabled("AR_GRAPH_IO_TRACKING").orElse(true);
 
-	default CellularLayer layer(TraversalPolicy outputShape,
+	default CellularLayer layer(String name, TraversalPolicy outputShape,
 								Cell<PackedCollection<?>> forward, Cell<PackedCollection<?>> backward) {
-		return new DefaultCellularLayer(outputShape, forward, backward, Collections.emptyList(), new OperationList());
+		return new DefaultCellularLayer(name, outputShape, forward, backward, Collections.emptyList(), new OperationList());
 	}
 
-	default CellularLayer layer(TraversalPolicy outputShape,
+	default CellularLayer layer(String name, TraversalPolicy outputShape,
 								Cell<PackedCollection<?>> forward, Cell<PackedCollection<?>> backward,
 								List<PackedCollection<?>> weights) {
-		return new DefaultCellularLayer(outputShape, forward, backward, weights, new OperationList());
+		return new DefaultCellularLayer(name, outputShape, forward, backward, weights, new OperationList());
 	}
 
-	default CellularLayer layer(TraversalPolicy outputShape,
+	default CellularLayer layer(String name, TraversalPolicy outputShape,
 								Cell<PackedCollection<?>> forward, Cell<PackedCollection<?>> backward,
 								List<PackedCollection<?>> weights, Supplier<Runnable> setup) {
-		return new DefaultCellularLayer(outputShape, forward, backward, weights, setup);
+		return new DefaultCellularLayer(name, outputShape, forward, backward, weights, setup);
 	}
 
-	default CellularLayer layer(TraversalPolicy inputShape, TraversalPolicy outputShape,
+	default CellularLayer layer(String name, TraversalPolicy inputShape, TraversalPolicy outputShape,
 								Cell<PackedCollection<?>> forward, Propagation backward) {
-		return layer(inputShape, outputShape, forward, backward, Collections.emptyList(), new OperationList());
+		return layer(name, inputShape, outputShape, forward, backward, Collections.emptyList(), new OperationList());
 	}
 
-	default CellularLayer layer(TraversalPolicy inputShape, TraversalPolicy outputShape,
+	default CellularLayer layer(String name, TraversalPolicy inputShape, TraversalPolicy outputShape,
 								Cell<PackedCollection<?>> forward, Propagation backward,
 								List<PackedCollection<?>> weights) {
-		return layer(inputShape, outputShape, forward, backward, weights, new OperationList());
+		return layer(name, inputShape, outputShape, forward, backward, weights, new OperationList());
 	}
 
-	default CellularLayer layer(TraversalPolicy inputShape, TraversalPolicy outputShape,
+	default CellularLayer layer(String name, TraversalPolicy inputShape, TraversalPolicy outputShape,
 								Cell<PackedCollection<?>> forward, Propagation backward,
 								List<PackedCollection<?>> weights, Supplier<Runnable> setup) {
 		PropagationCell backwardCell = new PropagationCell(backward);
-		DefaultCellularLayer layer = new DefaultCellularLayer(outputShape, forward, backwardCell, weights, setup);
+		DefaultCellularLayer layer = new DefaultCellularLayer(name, outputShape, forward, backwardCell, weights, setup);
 		layer.init(inputShape, ioTracking, true);
 		backwardCell.setForwardInput(layer.getInput());
 		return layer;
@@ -118,7 +118,7 @@ public interface LayerFeatures extends MatrixFeatures {
 		Supplier<Runnable> init = new KernelOperation<>(
 				divide(randn(filterShape).traverseEach(), c(9).traverse(0)), filters.traverseEach());
 
-		return layer(inputShape, outputShape,
+		return layer("convolution2d", inputShape, outputShape,
 				Cell.of((input, next) -> {
 					PackedCollection<?> output = new PackedCollection<>(outputShape);
 
@@ -182,7 +182,7 @@ public interface LayerFeatures extends MatrixFeatures {
 			return ops;
 		};
 
-		return layer(inputShape, outputShape,
+		return layer("pool2d", inputShape, outputShape,
 				Cell.of((input, next) -> {
 					PackedCollection<?> output = new PackedCollection<>(outputShape);
 					int d = outputShape.length(2);
@@ -241,7 +241,7 @@ public interface LayerFeatures extends MatrixFeatures {
 
 		Supplier<Runnable> init = new KernelOperation<>(divide(randn(shape(size, nodes)).traverseEach(), c(size).traverse(0)), weights.traverseEach());
 
-		return layer(shape(size), outputShape,
+		return layer("dense", shape(size), outputShape,
 				Cell.of((input, next) -> {
 					PackedCollection<?> output = new PackedCollection<>(outputShape);
 
@@ -295,7 +295,7 @@ public interface LayerFeatures extends MatrixFeatures {
 			return ops;
 		};
 
-		return layer(shape, shape, Cell.of((input, next) -> {
+		return layer("softmax", shape, shape, Cell.of((input, next) -> {
 			PackedCollection<?> output = new PackedCollection<>(shape);
 
 			OperationList ops = new OperationList();
@@ -317,13 +317,13 @@ public interface LayerFeatures extends MatrixFeatures {
 	default CellularLayer accum(Producer<PackedCollection<?>> value) {
 		TraversalPolicy shape = shape(value);
 
-		return layer(shape, shape, Cell.of((input, next) -> {
+		return layer("accum", shape, shape, Cell.of((input, next) -> {
 			return next == null ? new OperationList() : next.push(add(traverseEach(input), traverseEach(value)));
 		}), null);
 	}
 
 	default CellularLayer accum(TraversalPolicy shape, Cell<PackedCollection<?>> value) {
-		return layer(shape, shape, Cell.of((input, next) -> {
+		return layer("accum", shape, shape, Cell.of((input, next) -> {
 			CaptureReceptor r = new CaptureReceptor();
 			value.setReceptor(r);
 
@@ -337,13 +337,13 @@ public interface LayerFeatures extends MatrixFeatures {
 	default CellularLayer product(Producer<PackedCollection<?>> value) {
 		TraversalPolicy shape = shape(value);
 
-		return layer(shape, shape, Cell.of((input, next) -> {
+		return layer("product", shape, shape, Cell.of((input, next) -> {
 			return next.push(multiply(traverseEach(input), traverseEach(value)));
 		}), null);
 	}
 
 	default CellularLayer product(TraversalPolicy shape, Cell<PackedCollection<?>> value) {
-		return layer(shape, shape, Cell.of((input, next) -> {
+		return layer("product", shape, shape, Cell.of((input, next) -> {
 			CaptureReceptor r = new CaptureReceptor();
 			value.setReceptor(r);
 
@@ -356,7 +356,7 @@ public interface LayerFeatures extends MatrixFeatures {
 
 	default CellularLayer product(TraversalPolicy inputShape, TraversalPolicy outputShape,
 								  Cell<PackedCollection<?>> a, Cell<PackedCollection<?>> b) {
-		return layer(inputShape, outputShape, Cell.of((input, next) -> {
+		return layer("product", inputShape, outputShape, Cell.of((input, next) -> {
 			CaptureReceptor ar = new CaptureReceptor();
 			a.setReceptor(ar);
 
@@ -382,7 +382,7 @@ public interface LayerFeatures extends MatrixFeatures {
 
 		int size = shape.getTotalSize();
 
-		return layer(shape, shape, Cell.of((input, next) -> {
+		return layer("rmsnorm", shape, shape, Cell.of((input, next) -> {
 			CollectionProducer<PackedCollection<?>> ss = pow(traverseEach(input), c(2.0)).traverse(0).sum();
 			ss = ss.divide(c(size)).add(c(1e-5));
 			ss = c(1.0).divide(ss.pow(c(0.5)));
@@ -397,7 +397,7 @@ public interface LayerFeatures extends MatrixFeatures {
 		TraversalPolicy inputShape = shape(weights.getShape().length(1));
 		TraversalPolicy outputShape = shape(weights.getShape().length(0));
 
-		return layer(inputShape, outputShape, Cell.of((input, next) -> {
+		return layer("matmul", inputShape, outputShape, Cell.of((input, next) -> {
 			return next == null ? new OperationList() : next.push(matmul(p(weights), input));
 		}), null, List.of(weights));
 	}

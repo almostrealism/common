@@ -152,6 +152,12 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		}
 	}
 
+	default <T extends MemoryData> Assignment<T> a(String shortDescription, Producer<T> result, Producer<T> value) {
+		Assignment<T> a = a(result, value);
+		a.getMetadata().setShortDescription(shortDescription);
+		return a;
+	}
+
 	default <T extends MemoryData> Assignment<T> a(Producer<T> result, Producer<T> value) {
 		return new Assignment<>(shape(result).getSize(), result, value);
 	}

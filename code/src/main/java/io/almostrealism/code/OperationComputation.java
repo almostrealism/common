@@ -17,6 +17,32 @@
 package io.almostrealism.code;
 
 import io.almostrealism.relation.Operation;
+import io.almostrealism.relation.Process;
+
+import java.util.Collection;
 
 public interface OperationComputation<T> extends Computation<T>, Operation {
+	@Override
+	default Process<Process<?, ?>, Runnable> isolate() {
+		return new IsolatedProcess(this);
+	}
+
+	class IsolatedProcess implements Process<Process<?, ?>, Runnable>, OperationInfo {
+		private Operation op;
+
+		private IsolatedProcess(Operation op) {
+			this.op = op;
+		}
+
+		@Override
+		public Collection<Process<?, ?>> getChildren() { return op.getChildren(); }
+
+		@Override
+		public Runnable get() { return op.get(); }
+
+		@Override
+		public OperationMetadata getMetadata() {
+			return op instanceof OperationInfo ? ((OperationInfo) op).getMetadata() : null;
+		}
+	}
 }
