@@ -631,20 +631,26 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		TraversalPolicy shape = shape(input);
 		int size = shape.getSize();
 
-		if (size > 16) {
-			if (size % 16 == 0) {
-				TraversalPolicy split = shape.replace(shape(16, size / 16)).traverse();
-				return operation.apply(operation.apply((Producer<T>) reshape(split, input)).consolidate());
-			} else if (size % 8 == 0) {
-				TraversalPolicy split = shape.replace(shape(8, size / 8)).traverse();
-				return operation.apply(operation.apply((Producer<T>) reshape(split, input)).consolidate());
-			} else if (size % 4 == 0) {
-				TraversalPolicy split = shape.replace(shape(4, size / 4)).traverse();
-				return operation.apply(operation.apply((Producer<T>) reshape(split, input)).consolidate());
-			} else if (size % 2 == 0) {
-				TraversalPolicy split = shape.replace(shape(2, size / 2)).traverse();
-				return operation.apply(operation.apply((Producer<T>) reshape(split, input)).consolidate());
+		int split = 128;
+
+		if (size > split) {
+			while (split > 1) {
+				CollectionProducer<T> slice = subdivide(input, operation, split);
+				if (slice != null) return slice;
+				split /= 2;
 			}
+		}
+
+		return null;
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> subdivide(Producer<T> input, Function<Producer<T>, CollectionProducer<T>> operation, int sliceSize) {
+		TraversalPolicy shape = shape(input);
+		int size = shape.getSize();
+
+		if (size % sliceSize == 0) {
+			TraversalPolicy split = shape.replace(shape(sliceSize, size / sliceSize)).traverse();
+			return operation.apply(operation.apply((Producer<T>) reshape(split, input)).consolidate());
 		}
 
 		return null;

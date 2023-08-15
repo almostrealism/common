@@ -108,15 +108,16 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 			if (this.input == null) {
 				return next.push(in);
 			} else {
-				OperationList op = new OperationList(getName() + " Layer (Entry)");
-				op.add(into("DefaultCellularLayer - " + getName() + " (Input Record)", in, p(input)));
+				OperationList op = new OperationList(getName() + " layer (Entry)");
+				op.add(into(getName() + " layer (Input Record)", in, p(input)));
 				op.add(next.push(p(input)));
 				return op;
 			}
 		});
 		this.entry.setReceptor(forward);
 
-		this.exit = Cell.of((in, next) -> into(getName() + " Layer (Evaluate)", in, p(output)));
+		this.exit = Cell.of((in, next) -> into(getName() + " layer " +
+				getInputShape() + "->" + getOutputShape(), in, p(output)));
 		this.forward.setReceptor(exit);
 	}
 

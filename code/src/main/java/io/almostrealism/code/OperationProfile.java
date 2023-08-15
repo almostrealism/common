@@ -22,9 +22,11 @@ import java.util.Map;
 
 public class OperationProfile {
 	private Map<String, Long> totalTime;
+	private Map<String, Integer> count;
 
 	public OperationProfile() {
 		totalTime = new HashMap<>();
+		count = new HashMap<>();
 	}
 
 	public void print() {
@@ -34,7 +36,8 @@ public class OperationProfile {
 		totalTime.entrySet().stream()
 				.sorted(Comparator.comparing((Map.Entry<String, Long> ent) -> ent.getValue()).reversed())
 				.forEachOrdered(entry -> {
-			System.out.println(entry.getKey() + ": " + entry.getValue() + "ms (" + (100 * entry.getValue() / all) + "%)");
+			System.out.println(entry.getKey() + ": " + count.get(entry.getKey()) + " - " +
+					entry.getValue() + "ms (" + (int) (100 * entry.getValue() / all) + "%)");
 		});
 	}
 
@@ -54,6 +57,10 @@ public class OperationProfile {
 	}
 
 	public void recordDuration(OperationMetadata metadata, long duration) {
-		totalTime.put(metadata.getShortDescription(), totalTime.getOrDefault(metadata.getShortDescription(), 0L) + duration);
+		String key = metadata.getShortDescription();
+		if (key == null) key = "<unknown>";
+
+		totalTime.put(key, totalTime.getOrDefault(metadata.getShortDescription(), 0L) + duration);
+		count.put(key, count.getOrDefault(metadata.getShortDescription(), 0) + 1);
 	}
 }

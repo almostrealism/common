@@ -195,6 +195,8 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	@Override
 	public OperationList generate(List<Process<?, ?>> children) {
 		OperationList list = new OperationList();
+		list.metadata = metadata;
+		list.enableCompilation = enableCompilation;
 		children.forEach(c -> list.add((Supplier) c));
 		return list;
 	}
