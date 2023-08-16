@@ -20,6 +20,7 @@ import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.cl.HardwareOperator;
+import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -50,7 +51,11 @@ public abstract class DynamicAcceleratedEvaluable<I extends MemoryData, O extend
 	}
 
 	@Override
-	public O evaluate(Object... args) { return (O) apply(null, args)[0]; }
+	public O evaluate(Object... args) {
+		AcceleratedProcessDetails process = apply(null, args);
+		waitFor(process.getSemaphore());
+		return (O) process.getOriginalArguments()[0];
+	}
 
 	@Deprecated
 	protected void writeVariables(Consumer<String> out) {

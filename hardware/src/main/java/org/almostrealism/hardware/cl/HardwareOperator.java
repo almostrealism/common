@@ -16,6 +16,8 @@
 
 package org.almostrealism.hardware.cl;
 
+import io.almostrealism.code.Execution;
+import io.almostrealism.code.Semaphore;
 import io.almostrealism.relation.Factory;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
@@ -34,7 +36,7 @@ import java.util.stream.IntStream;
  *
  * @param <T> Return type
  */
-public class HardwareOperator<T extends MemoryData> implements Consumer<Object[]>, Factory<cl_kernel> {
+public class HardwareOperator<T extends MemoryData> implements Execution, Factory<cl_kernel> {
 	public static boolean enableLog;
 	public static boolean enableVerboseLog;
 	public static boolean enableDimensionMasks = true;
@@ -45,6 +47,7 @@ public class HardwareOperator<T extends MemoryData> implements Consumer<Object[]
 	private final CLProgram prog;
 	private final String name;
 
+	private final Object argCache[];
 	private final int argCount;
 
 	private long globalWorkSize = 1;
@@ -59,6 +62,7 @@ public class HardwareOperator<T extends MemoryData> implements Consumer<Object[]
 							BiFunction<String, CLException, HardwareException> exceptionProcessor) {
 		this.prog = program;
 		this.name = name;
+		this.argCache = new Object[argCount];
 		this.argCount = argCount;
 		this.profile = profile;
 		this.exceptionProcessor = exceptionProcessor;
@@ -82,13 +86,8 @@ public class HardwareOperator<T extends MemoryData> implements Consumer<Object[]
 
 	public void setGlobalWorkOffset(long globalWorkOffset) { this.globalWorkOffset = globalWorkOffset; }
 
-	/**
-	 * Values returned from this method may not be valid if this method is called again
-	 * before the value is used. An easy way around this problem is to always use the
-	 * {@link HardwareOperator} with a {@link ThreadLocal}.
-	 */
 	@Override
-	public synchronized void accept(Object[] args) {
+	public synchronized Semaphore accept(Object[] args, Semaphore dependsOn) {
 		if (kernel == null) kernel = construct();
 
 		int index = 0;
@@ -104,29 +103,41 @@ public class HardwareOperator<T extends MemoryData> implements Consumer<Object[]
 			int dimMasks[] = computeDimensionMasks(args);
 
 			for (int i = 0; i < argCount; i++) {
-				CLMemory mem = (CLMemory) ((MemoryData) args[i]).getMem();
-				totalSize += mem.getSize();
-				CL.clSetKernelArg(kernel, index++, Sizeof.cl_mem, Pointer.to(((CLMemory) ((MemoryData) args[i]).getMem()).getMem()));
-			}
-
-			for (int i = 0; i < argCount; i++) {
-				CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
-						Pointer.to(new int[] { ((MemoryData) args[i]).getOffset() })); // Offset
-			}
-
-			for (int i = 0; i < argCount; i++) {
-				CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
-						Pointer.to(new int[] { ((MemoryData) args[i]).getAtomicMemLength()})); // Size
-			}
-
-			for (int i = 0; i < argCount; i++) {
-				if (enableDimensionMasks) {
-					CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
-							Pointer.to(new int[]{((MemoryData) args[i]).getAtomicMemLength() * dimMasks[i]})); // Dim0
-				} else {
-					CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
-							Pointer.to(new int[]{((MemoryData) args[i]).getAtomicMemLength()})); // Dim0
+				if (args[i] != argCache[i]) {
+					CLMemory mem = (CLMemory) ((MemoryData) args[i]).getMem();
+					totalSize += mem.getSize();
+					CL.clSetKernelArg(kernel, index++, Sizeof.cl_mem, Pointer.to(((CLMemory) ((MemoryData) args[i]).getMem()).getMem()));
 				}
+			}
+
+			for (int i = 0; i < argCount; i++) {
+				if (args[i] != argCache[i]) {
+					CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
+							Pointer.to(new int[]{((MemoryData) args[i]).getOffset()})); // Offset
+				}
+			}
+
+			for (int i = 0; i < argCount; i++) {
+				if (args[i] != argCache[i]) {
+					CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
+							Pointer.to(new int[]{((MemoryData) args[i]).getAtomicMemLength()})); // Size
+				}
+			}
+
+			for (int i = 0; i < argCount; i++) {
+				if (args[i] != argCache[i]) {
+					if (enableDimensionMasks) {
+						CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
+								Pointer.to(new int[]{((MemoryData) args[i]).getAtomicMemLength() * dimMasks[i]})); // Dim0
+					} else {
+						CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
+								Pointer.to(new int[]{((MemoryData) args[i]).getAtomicMemLength()})); // Dim0
+					}
+				}
+			}
+
+			for (int i = 0; i < argCount; i++) {
+				argCache[i] = args[i];
 			}
 		} catch (CLException e) {
 			// TODO  This should use the exception processor also, but theres no way to pass the message details
@@ -135,19 +146,34 @@ public class HardwareOperator<T extends MemoryData> implements Consumer<Object[]
 		}
 
 		try {
+			CLComputeContext context = Hardware.getLocalHardware().getClComputeContext();
 			if (enableVerboseLog) System.out.println(id + ": clEnqueueNDRangeKernel start");
+
 			cl_event event = new cl_event();
-			CL.clEnqueueNDRangeKernel(Hardware.getLocalHardware().getClComputeContext().getClQueue(globalWorkSize > 1), kernel, 1,
-					new long[] { globalWorkOffset }, new long[] { globalWorkSize },
-					null, 0, null, event);
-			Hardware.getLocalHardware().getClComputeContext().processEvent(event, profile);
+
+			if (dependsOn instanceof CLSemaphore) {
+				CL.clEnqueueNDRangeKernel(context.getClQueue(globalWorkSize > 1), kernel, 1,
+						new long[] { globalWorkOffset }, new long[] { globalWorkSize },
+						null, 1,
+						new cl_event[] { ((CLSemaphore) dependsOn).getEvent() }, event);
+
+			} else {
+				if (dependsOn != null) dependsOn.waitFor();
+
+				CL.clEnqueueNDRangeKernel(context.getClQueue(globalWorkSize > 1), kernel, 1,
+						new long[]{globalWorkOffset}, new long[]{globalWorkSize},
+						null, 0, null, event);
+			}
+
+			if (!Hardware.isAsync()) context.processEvent(event, profile);
+
 			if (enableVerboseLog) System.out.println(id + ": clEnqueueNDRangeKernel end");
+			return Hardware.isAsync() ? new CLSemaphore(context, event, profile) : null;
 		} catch (CLException e) {
 			// TODO  This should use the exception processor also, but theres no way to pass the message details
 			throw new HardwareException(e.getMessage() + " for function " + name +
 					" (total bytes = " + totalSize + ")", e);
 		}
-//		}
 	}
 
 	protected int[] computeDimensionMasks(Object args[]) {

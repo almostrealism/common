@@ -1,19 +1,20 @@
 package org.almostrealism.hardware.mem;
 
 import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.code.Semaphore;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.OperationList;
 
-import java.util.function.IntFunction;
-
-public class MemoryDataArgumentProcessor {
+public class AcceleratedProcessDetails {
 	private OperationList prepare;
 	private OperationList postprocess;
 	private Object[] originalArguments;
 	private Object[] arguments;
 	private int kernelSize;
 
-	public MemoryDataArgumentProcessor(Object[] args, MemoryProvider target, TempMemoryFactory tempFactory, int kernelSize) {
+	private Semaphore semaphore;
+
+	public AcceleratedProcessDetails(Object[] args, MemoryProvider target, TempMemoryFactory tempFactory, int kernelSize) {
 		this.prepare = new OperationList();
 		this.postprocess = new OperationList();
 		this.originalArguments = args;
@@ -31,6 +32,13 @@ public class MemoryDataArgumentProcessor {
 	public OperationList getPostprocess() {
 		return postprocess;
 	}
+
+	public boolean isEmpty() {
+		return prepare.isEmpty() && postprocess.isEmpty();
+	}
+
+	public Semaphore getSemaphore() { return semaphore; }
+	public void setSemaphore(Semaphore semaphore) { this.semaphore = semaphore; }
 
 	public Object[] getArguments() {
 		return arguments;

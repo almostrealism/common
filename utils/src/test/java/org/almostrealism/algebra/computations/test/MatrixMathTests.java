@@ -21,14 +21,23 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.util.TestFeatures;
+import org.junit.Assert;
 import org.junit.Test;
 
 public class MatrixMathTests implements TestFeatures {
 	@Test
 	public void matmul() {
-		int dim = 768;
-		int width = 2048;
+		matmul(768, 2048);
+	}
 
+	@Test
+	public void matmulPowers() {
+		for (int i = 1; i < 9; i++) {
+			matmul(1 << i, 1 << i);
+		}
+	}
+
+	protected void matmul(int dim, int width) {
 		PackedCollection<?> matrix = new PackedCollection<>(dim, width);
 		PackedCollection<?> vector = new PackedCollection<>(width);
 		PackedCollection<?> result = new PackedCollection<>(dim);
@@ -39,13 +48,51 @@ public class MatrixMathTests implements TestFeatures {
 		OperationProfile profiles = new OperationProfile();
 
 		OperationList op = new OperationList("Matrix Test", false);
-		op.add(a("matmul", traverseEach(p(result)), matmul(p(matrix), p(vector))));
+		op.add(a("matmul " + width, traverseEach(p(result)), matmul(p(matrix), p(vector))));
 		Runnable r = ((OperationList) op.optimize()).get(profiles);
 
-		for (int i = 0; i < 1000; i++) {
-//			HardwareOperator.verboseLog(() -> {
-				r.run();
-//			});
+		for (int i = 0; i < 100; i++) {
+			r.run();
+		}
+
+		profiles.print();
+	}
+
+	@Test
+	public void sumPowers() {
+		for (int i = 1; i < 9; i++) {
+			sum(1000, 1 << i);
+		}
+	}
+
+	protected void sum(int count, int dim) {
+		PackedCollection<?> vectors = new PackedCollection<>(count, dim);
+		PackedCollection<?> result = new PackedCollection<>(count);
+
+		vectors.fill(pos -> Math.random());
+
+		OperationProfile profiles = new OperationProfile();
+
+		OperationList op = new OperationList("Vector Test", false);
+		op.add(a("sum " + dim, traverseEach(p(result)), sum(traverse(1, p(vectors)))));
+		Runnable r = ((OperationList) op.optimize()).get(profiles);
+
+//		HardwareOperator.verboseLog(() -> {
+//			r.run();
+//		});
+
+		for (int i = 0; i < 50000; i++) {
+			r.run();
+		}
+
+		for (int i = 0; i < count; i++) {
+			double expected = 0.0;
+
+			for (int j = 0; j < dim; j++) {
+				expected += vectors.valueAt(i, j);
+			}
+
+			assertEquals(expected, result.valueAt(i));
 		}
 
 		profiles.print();

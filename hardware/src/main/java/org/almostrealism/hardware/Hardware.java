@@ -55,6 +55,8 @@ public final class Hardware {
 	protected static final long timeSeriesSize;
 	protected static final int timeSeriesCount;
 
+	private static final boolean enableAsync = SystemUtils.isEnabled("AR_HARDWARE_ASYNC").orElse(false);
+
 	private static final Hardware local;
 
 	static {
@@ -417,4 +419,6 @@ public final class Hardware {
 
 		return buf.toString();
 	}
+
+	public static boolean isAsync() { return enableAsync; }
 }

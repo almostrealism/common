@@ -16,18 +16,10 @@
 
 package io.almostrealism.code;
 
-public interface InstructionSet {
-	default Execution get() {
-		return get("function");
+public interface Execution {
+	default Semaphore accept(Object[] args) {
+		return accept(args, null);
 	}
 
-	default Execution get(String function) {
-		return get(function, 0);
-	}
-
-	Execution get(String function, int argCount);
-
-	boolean isDestroyed();
-
-	void destroy();
+	Semaphore accept(Object[] args, Semaphore dependsOn);
 }

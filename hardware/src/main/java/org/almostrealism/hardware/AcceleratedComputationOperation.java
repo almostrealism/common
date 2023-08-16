@@ -18,6 +18,7 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Computation;
+import io.almostrealism.code.Execution;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
@@ -163,7 +164,7 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	public boolean isCompiled() { return scope != null; }
 
 	@Override
-	public synchronized Consumer<Object[]> getOperator() {
+	public synchronized Execution getOperator() {
 		if (operators == null || operators.isDestroyed()) {
 			operators = Hardware.getLocalHardware().getComputeContext().deliver(scope);
 		}

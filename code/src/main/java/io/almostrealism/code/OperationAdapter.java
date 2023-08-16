@@ -89,7 +89,7 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 	@Override
 	public String getName() { return operationName(null, getClass(), getFunctionName()); }
 
-	public int getArgsCount() { return getArgumentVariables().size(); }
+	public int getArgsCount() { return getArguments().size(); }
 
 	@SafeVarargs
 	protected final void setInputs(Supplier<Evaluable<? extends T>>... input) { setInputs(Arrays.asList(input)); }
@@ -223,6 +223,11 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 	@Override
 	public synchronized void compact() {
 		getInputs().stream().filter(p -> p instanceof Compactable).forEach(p -> ((Compactable) p).compact());
+	}
+
+	protected void waitFor(Semaphore semaphore) {
+		if (semaphore == null) return;
+		semaphore.waitFor();
 	}
 
 	public void destroy() {

@@ -16,7 +16,9 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.Execution;
 import io.almostrealism.code.KernelIndex;
+import io.almostrealism.code.Semaphore;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.scope.Argument;
@@ -40,7 +42,7 @@ import io.almostrealism.collect.Shape;
 import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.hardware.mem.Bytes;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
-import org.almostrealism.hardware.mem.MemoryDataArgumentProcessor;
+import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 import org.almostrealism.hardware.mem.MemoryDataDestination;
 import org.almostrealism.io.SystemUtils;
 import org.jocl.CLException;
@@ -52,7 +54,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
-import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -65,6 +66,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	public static boolean enableKernelSizeWarnings = SystemUtils.isEnabled("AR_HARDWARE_KERNEL_SIZE_WARNINGS").orElse(true);
 
 	private static final Map<String, ThreadLocal<HardwareOperator>> operators = new HashMap<>();
+	private static final ThreadLocal<Semaphore> semaphores = new ThreadLocal<>();
 	private static final ThreadLocal<CreatedMemoryData> created = new ThreadLocal<>();
 
 	private final boolean kernel;
@@ -72,8 +74,8 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	private Class cls;
 
 	protected List<ArgumentMap> argumentMaps;
-	private Supplier<Runnable> preOp;
-	private Supplier<Runnable> postOp;
+	private OperationList preOp;
+	private OperationList postOp;
 
 	@SafeVarargs
 	protected AcceleratedOperation(boolean kernel, Supplier<Evaluable<? extends T>>... args) {
@@ -102,7 +104,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		return getClass();
 	}
 
-	public Consumer<Object[]> getOperator() {
+	public Execution getOperator() {
 		// TODO  This needs to be by class in addition to function, as function names may collide
 		synchronized (AcceleratedOperation.class) {
 			if (operators.get(getFunctionName()) == null) {
@@ -203,26 +205,45 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	public void postApply() { if (postOp != null) postOp.get().run(); }
 
 	@Override
-	public void run() { apply(null, new Object[0]); }
+	public void run() {
+		AcceleratedProcessDetails process = apply(null, new Object[0]);
+		if (!Hardware.isAsync()) waitFor(process.getSemaphore());
+	}
 
-	protected synchronized Object[] apply(MemoryBank output, Object[] args) {
-		if (getArgumentVariables() == null) {
+	protected synchronized AcceleratedProcessDetails apply(MemoryBank output, Object[] args) {
+		if (getArguments() == null) {
 			System.out.println("WARN: " + getName() + " was not compiled ahead of time");
 			compile();
 		}
 
-		Consumer<Object[]> operator = getOperator();
+		Execution operator = getOperator();
 
 		if (enableKernelLog) System.out.println("AcceleratedOperation: Preparing " + getName() + " kernel...");
-		MemoryDataArgumentProcessor processor = processKernelArgs(output, args);
-		MemoryData input[] = Stream.of(processor.getArguments()).toArray(MemoryData[]::new);
+		AcceleratedProcessDetails process = processKernelArgs(output, args);
+		MemoryData input[] = Stream.of(process.getArguments()).toArray(MemoryData[]::new);
 		((HardwareOperator) operator).setGlobalWorkOffset(0);
-		((HardwareOperator) operator).setGlobalWorkSize(processor.getKernelSize());
+		((HardwareOperator) operator).setGlobalWorkSize(process.getKernelSize());
 
 		if (enableKernelLog) System.out.println("AcceleratedOperation: Evaluating " + getName() + " kernel...");
 
-		runApply(operator, processor, input);
-		return processor.getOriginalArguments();
+		boolean processing = (!process.isEmpty() || !preOp.isEmpty() || !postOp.isEmpty());
+
+		if (processing) {
+			preApply();
+			process.getPrepare().get().run();
+		}
+
+		Semaphore semaphore = operator.accept(input, semaphores.get());
+		process.setSemaphore(semaphore);
+		semaphores.set(semaphore);
+
+		if (processing) {
+			if (semaphore != null) throw new UnsupportedOperationException();
+			process.getPostprocess().get().run();
+			postApply();
+		}
+
+		return process;
 	}
 
 	private static int getProducerArgumentReferenceIndex(Variable<?, ?> arg) {
@@ -263,14 +284,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		return -1;
 	}
 
-	protected void runApply(Consumer<Object[]> operator, MemoryDataArgumentProcessor processor, MemoryData input[]) {
-		preApply();
-		processor.getPrepare().get().run();
-		operator.accept(input);
-		processor.getPostprocess().get().run();
-		postApply();
-	}
-
 	@Override
 	public void kernelOperate(MemoryBank output, MemoryData[] args) {
 		try {
@@ -284,7 +297,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		}
 	}
 
-	protected MemoryDataArgumentProcessor processKernelArgs(MemoryBank output, Object args[]) {
+	protected AcceleratedProcessDetails processKernelArgs(MemoryBank output, Object args[]) {
 		int kernelSize;
 
 		if (!isKernel() || !enableKernel) {
@@ -441,7 +454,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			}
 		}
 
-		return new MemoryDataArgumentProcessor(kernelArgs,
+		return new AcceleratedProcessDetails(kernelArgs,
 				Hardware.getLocalHardware().getDataContext().getKernelMemoryProvider(),
 				this::createAggregatedInput, kernelSize);
 	}
@@ -452,6 +465,13 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	public void destroy() {
 		argumentMaps.forEach(ArgumentMap::destroy);
 		argumentMaps = new ArrayList<>();
+	}
+
+	public static Semaphore getSemaphore() { return semaphores.get(); }
+
+	public static void waitFor() {
+		getSemaphore().waitFor();
+		semaphores.set(null);
 	}
 
 	public static <T> T record(CreatedMemoryData data, Callable<T> exec) {
