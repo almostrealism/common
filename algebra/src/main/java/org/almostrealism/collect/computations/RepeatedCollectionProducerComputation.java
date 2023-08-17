@@ -2,6 +2,7 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.HybridScope;
 import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
@@ -9,12 +10,15 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Process;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 import org.almostrealism.c.OpenCLPrintWriter;
 import org.almostrealism.collect.PackedCollection;
 
+import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
@@ -77,5 +81,13 @@ public class RepeatedCollectionProducerComputation<T extends PackedCollection<?>
 		scope.code().accept("\t" + i + " = " + i + " + " + getMemLength() + ";\n");
 		scope.code().accept("}\n");
 		return scope;
+	}
+
+	@Override
+	public RepeatedCollectionProducerComputation<T> generate(List<Process<?, ?>> children) {
+		return new RepeatedCollectionProducerComputation<>(
+				getShape(), getMemLength(),
+				initial, condition, expression,
+				children.stream().skip(1).toArray(Supplier[]::new));
 	}
 }
