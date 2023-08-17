@@ -107,6 +107,8 @@ public class HardwareOperator<T extends MemoryData> implements Execution, Factor
 					CLMemory mem = (CLMemory) ((MemoryData) args[i]).getMem();
 					totalSize += mem.getSize();
 					CL.clSetKernelArg(kernel, index++, Sizeof.cl_mem, Pointer.to(((CLMemory) ((MemoryData) args[i]).getMem()).getMem()));
+				} else {
+					index++;
 				}
 			}
 
@@ -114,6 +116,8 @@ public class HardwareOperator<T extends MemoryData> implements Execution, Factor
 				if (args[i] != argCache[i]) {
 					CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
 							Pointer.to(new int[]{((MemoryData) args[i]).getOffset()})); // Offset
+				} else {
+					index++;
 				}
 			}
 
@@ -121,6 +125,8 @@ public class HardwareOperator<T extends MemoryData> implements Execution, Factor
 				if (args[i] != argCache[i]) {
 					CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
 							Pointer.to(new int[]{((MemoryData) args[i]).getAtomicMemLength()})); // Size
+				} else {
+					index++;
 				}
 			}
 
@@ -133,6 +139,8 @@ public class HardwareOperator<T extends MemoryData> implements Execution, Factor
 						CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
 								Pointer.to(new int[]{((MemoryData) args[i]).getAtomicMemLength()})); // Dim0
 					}
+				} else {
+					index++;
 				}
 			}
 

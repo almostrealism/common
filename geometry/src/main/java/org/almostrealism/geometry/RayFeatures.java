@@ -57,7 +57,7 @@ public interface RayFeatures extends VectorFeatures {
 	}
 
 	default ExpressionComputation<Vector> origin(Supplier<Evaluable<? extends Ray>> r) {
-		return new ExpressionComputation<Vector>(List.of(
+		return (ExpressionComputation<Vector>) new ExpressionComputation<Vector>(List.of(
 				args -> args.get(1).getValueRelative(0),
 				args -> args.get(1).getValueRelative(1),
 				args -> args.get(1).getValueRelative(2)),
@@ -65,7 +65,7 @@ public interface RayFeatures extends VectorFeatures {
 	}
 
 	default ExpressionComputation<Vector> direction(Supplier<Evaluable<? extends Ray>> r) {
-		return new ExpressionComputation<Vector>(List.of(
+		return (ExpressionComputation<Vector>) new ExpressionComputation<Vector>(List.of(
 				args -> args.get(1).getValueRelative(3),
 				args -> args.get(1).getValueRelative(4),
 				args -> args.get(1).getValueRelative(5)),

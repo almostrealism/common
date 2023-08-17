@@ -16,6 +16,7 @@
 
 package org.almostrealism.time.computations.test;
 
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
@@ -82,7 +83,7 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures, Hardwa
 	public void valueAt() {
 		AcceleratedTimeSeries series = series();
 		AcceleratedTimeSeriesValueAt valueAt = new AcceleratedTimeSeriesValueAt(p(series), p(cursors(3.25)));
-		AcceleratedComputationEvaluable<Scalar> compiled = (AcceleratedComputationEvaluable) valueAt.get();
+		Evaluable<Scalar> compiled = valueAt.get();
 		Assert.assertEquals(series.valueAt(3.25).getValue(), compiled.evaluate().getValue(), Math.pow(10, -10));
 	}
 

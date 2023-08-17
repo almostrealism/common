@@ -43,7 +43,7 @@ public interface PairFeatures extends HardwareFeatures {
 	static ExpressionComputation<Pair<?>> of(Pair<?> value) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
 		IntStream.range(0, 2).forEach(i -> comp.add(args -> ExpressionFeatures.getInstance().e(value.toDouble(i))));
-		return new ExpressionComputation<Pair<?>>(comp)
+		return (ExpressionComputation<Pair<?>>) new ExpressionComputation<Pair<?>>(comp)
 				.setPostprocessor(Pair.postprocessor());
 	}
 
@@ -52,14 +52,14 @@ public interface PairFeatures extends HardwareFeatures {
 	default ExpressionComputation<Pair<?>> pair(Supplier<Evaluable<? extends Scalar>> x, Supplier<Evaluable<? extends Scalar>> y) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
 		IntStream.range(0, 2).forEach(i -> comp.add(args -> args.get(1 + i).getValueRelative(0)));
-		return new ExpressionComputation<Pair<?>>(comp, (Supplier) x, (Supplier) y)
+		return (ExpressionComputation<Pair<?>>) new ExpressionComputation<Pair<?>>(comp, (Supplier) x, (Supplier) y)
 				.setPostprocessor(Pair.postprocessor());
 	}
 
 	default ExpressionComputation<Pair<?>> pair(Supplier<Evaluable<? extends PackedCollection<?>>> x) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
 		IntStream.range(0, 2).forEach(i -> comp.add(args -> args.get(1).getValueRelative(i)));
-		return new ExpressionComputation<Pair<?>>(comp, x)
+		return (ExpressionComputation<Pair<?>>) new ExpressionComputation<Pair<?>>(comp, x)
 				.setPostprocessor(Pair.postprocessor());
 	}
 
@@ -70,13 +70,13 @@ public interface PairFeatures extends HardwareFeatures {
 	}
 
 	default ExpressionComputation<Scalar> l(Supplier<Evaluable<? extends Pair<?>>> p) {
-		return new ExpressionComputation<>(List.of(
+		return (ExpressionComputation<Scalar>) new ExpressionComputation<>(List.of(
 				args -> args.get(1).getValueRelative(0),
 				args -> new DoubleConstant(1.0)), (Supplier) p).setPostprocessor(Scalar.postprocessor());
 	}
 
 	default ExpressionComputation<Scalar> r(Supplier<Evaluable<? extends Pair<?>>> p) {
-		return new ExpressionComputation<>(List.of(
+		return (ExpressionComputation<Scalar>) new ExpressionComputation<>(List.of(
 				args -> args.get(1).getValueRelative(1),
 				args -> new DoubleConstant(1.0)), (Supplier) p).setPostprocessor(Scalar.postprocessor());
 	}

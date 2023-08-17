@@ -38,8 +38,6 @@ public class ArrayVariableComputation<T extends PackedCollection<?>>
 		extends TraversableProducerComputationAdapter<T, T> {
 	private List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression;
 
-	private Evaluable<T> shortCircuit;
-
 	@SafeVarargs
 	public ArrayVariableComputation(TraversalPolicy shape,
 									List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression,
@@ -50,10 +48,6 @@ public class ArrayVariableComputation<T extends PackedCollection<?>>
 
 	@Override
 	public int getMemLength() { return expression.size(); }
-
-	public void setShortCircuit(Evaluable<T> shortCircuit) {
-		this.shortCircuit = shortCircuit;
-	}
 
 	@Override
 	public Expression<Double> getValue(Expression... pos) {
@@ -74,40 +68,5 @@ public class ArrayVariableComputation<T extends PackedCollection<?>>
 	private static Supplier[] validateArgs(Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
 		Stream.of(args).forEach(Objects::requireNonNull);
 		return args;
-	}
-
-	@Override
-	public KernelizedEvaluable<T> get() {
-		return new KernelizedEvaluable<T>() {
-			KernelizedEvaluable<T> kernel;
-
-			private KernelizedEvaluable<T> getKernel() {
-				if (kernel == null) {
-					kernel = ArrayVariableComputation.super.get();
-				}
-
-				return kernel;
-			}
-
-			@Override
-			public MemoryBank<T> createKernelDestination(int size) {
-				return getKernel().createKernelDestination(size);
-			}
-
-			@Override
-			public T evaluate(Object... args) {
-				return shortCircuit == null ? getKernel().evaluate(args) : shortCircuit.evaluate(args);
-			}
-
-			@Override
-			public Evaluable<T> withDestination(MemoryBank<T> destination) {
-				return new DestinationEvaluable<>(getKernel(), destination);
-			}
-
-			@Override
-			public int getArgsCount() {
-				return getKernel().getArgsCount();
-			}
-		};
 	}
 }

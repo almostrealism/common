@@ -64,14 +64,14 @@ public interface VectorFeatures extends CollectionFeatures, HardwareFeatures {
 											   Supplier<Evaluable<? extends Scalar>> z) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
 		IntStream.range(0, 3).forEach(i -> comp.add(args -> args.get(1 + i).getValueRelative(0)));
-		return new ExpressionComputation<Vector>(comp, (Supplier) x, (Supplier) y, (Supplier) z)
+		return (ExpressionComputation<Vector>) new ExpressionComputation<Vector>(comp, (Supplier) x, (Supplier) y, (Supplier) z)
 				.setPostprocessor(Vector.postprocessor());
 	}
 
 	default ExpressionComputation<Vector> vector(Supplier<Evaluable<? extends PackedCollection<?>>> bank, int index) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression = new ArrayList<>();
 		IntStream.range(0, 3).forEach(i -> expression.add(args -> args.get(1).getValueRelative(index * 3 + i)));
-		return new ExpressionComputation<Vector>(expression, bank).setPostprocessor(Vector.postprocessor());
+		return (ExpressionComputation<Vector>) new ExpressionComputation<Vector>(expression, bank).setPostprocessor(Vector.postprocessor());
 	}
 
 	default ExpressionComputation<Vector> vector(CollectionProducerComputation<?> value) {
@@ -81,7 +81,7 @@ public interface VectorFeatures extends CollectionFeatures, HardwareFeatures {
 
 			ExpressionComputation<Vector> c = (ExpressionComputation) value;
 
-			return new ExpressionComputation<Vector>(c.expression(),
+			return (ExpressionComputation<Vector>) new ExpressionComputation<Vector>(c.expression(),
 						c.getInputs().subList(1, c.getInputs().size()).toArray(Supplier[]::new))
 					.setPostprocessor(Vector.postprocessor());
 		} else if (value instanceof Shape) {
@@ -91,7 +91,7 @@ public interface VectorFeatures extends CollectionFeatures, HardwareFeatures {
 					IntStream.range(0, shape.getSize()).mapToObj(i -> (Function<List<ArrayVariable<Double>>, Expression<Double>>)
 									np -> np.get(1).getValueRelative(i))
 							.collect(Collectors.toList());
-			return new ExpressionComputation<>(expressions, (Supplier) value)
+			return (ExpressionComputation<Vector>) new ExpressionComputation<>(expressions, (Supplier) value)
 					.setPostprocessor(Vector.postprocessor());
 		} else {
 			throw new UnsupportedOperationException();
@@ -101,21 +101,21 @@ public interface VectorFeatures extends CollectionFeatures, HardwareFeatures {
 	default Producer<Vector> vector() { return Vector.blank(); }
 
 	default ExpressionComputation<Scalar> x(Supplier<Evaluable<? extends Vector>> v) {
-		return new ExpressionComputation<>(List.of(
+		return (ExpressionComputation<Scalar>) new ExpressionComputation<>(List.of(
 				args -> args.get(1).getValueRelative(0),
 				args -> expressionForDouble(1.0)),
 				(Supplier) v).setPostprocessor(Scalar.postprocessor());
 	}
 
 	default ExpressionComputation<Scalar> y(Supplier<Evaluable<? extends Vector>> v) {
-		return new ExpressionComputation<>(List.of(
+		return (ExpressionComputation<Scalar>) new ExpressionComputation<>(List.of(
 				args -> args.get(1).getValueRelative(1),
 				args -> expressionForDouble(1.0)),
 				(Supplier) v).setPostprocessor(Scalar.postprocessor());
 	}
 
 	default ExpressionComputation<Scalar> z(Supplier<Evaluable<? extends Vector>> v) {
-		return new ExpressionComputation<>(List.of(
+		return (ExpressionComputation<Scalar>) new ExpressionComputation<>(List.of(
 				args -> args.get(1).getValueRelative(2),
 				args -> expressionForDouble(1.0)),
 				(Supplier) v).setPostprocessor(Scalar.postprocessor());
@@ -129,7 +129,7 @@ public interface VectorFeatures extends CollectionFeatures, HardwareFeatures {
 				new Product(args.get(1).getValueRelative(2), args.get(2).getValueRelative(2))
 				));
 		comp.add(args -> expressionForDouble(1.0));
-		return new ExpressionComputation<>(comp, (Supplier) a, (Supplier) b).setPostprocessor(Scalar.postprocessor());
+		return (ExpressionComputation<Scalar>) new ExpressionComputation<>(comp, (Supplier) a, (Supplier) b).setPostprocessor(Scalar.postprocessor());
 	}
 
 	default ExpressionComputation<Vector> crossProduct(Supplier<Evaluable<? extends Vector>> a, Supplier<Evaluable<? extends Vector>> b) {

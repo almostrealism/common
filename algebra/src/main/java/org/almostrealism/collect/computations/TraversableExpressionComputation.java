@@ -48,9 +48,6 @@ public class TraversableExpressionComputation<T extends PackedCollection<?>>
 		extends KernelProducerComputationAdapter<T, T>
 		implements ComputerFeatures {
 	private Function<TraversableExpression[], CollectionExpression> expression;
-	private BiFunction<MemoryData, Integer, T> postprocessor;
-
-	private Evaluable<T> shortCircuit;
 
 	@SafeVarargs
 	public TraversableExpressionComputation(TraversalPolicy shape,
@@ -68,35 +65,15 @@ public class TraversableExpressionComputation<T extends PackedCollection<?>>
 		this.expression = expression;
 	}
 
-	public TraversableExpressionComputation<T> setShortCircuit(Evaluable<T> shortCircuit) {
-		this.shortCircuit = shortCircuit;
-		return this;
-	}
-
-	public BiFunction<MemoryData, Integer, T> getPostprocessor() {
-		return postprocessor;
-	}
-
-	public TraversableExpressionComputation<T> setPostprocessor(BiFunction<MemoryData, Integer, T> postprocessor) {
-		this.postprocessor = postprocessor;
-		return this;
-	}
-
 	protected CollectionExpression getExpression(Expression index) {
-		TraversableExpression vars[] = new TraversableExpression[getInputs().size()];
-		for (int i = 0; i < vars.length; i++) {
-			vars[i] = CollectionExpression.traverse(getArgumentForInput(getInputs().get(i)),
-					size -> index.toInt().divide(e(getMemLength())).multiply(size));
-		}
-
-		return expression.apply(vars);
+		return expression.apply(getTraversableArguments(index));
 	}
 
 	@Override
 	public TraversableExpressionComputation<T> generate(List<Process<?, ?>> children) {
-		return new TraversableExpressionComputation(getShape(), expression,
+		return (TraversableExpressionComputation<T>) new TraversableExpressionComputation(getShape(), expression,
 					children.stream().skip(1).toArray(Supplier[]::new))
-				.setPostprocessor(getPostprocessor()).setShortCircuit(shortCircuit);
+				.setPostprocessor(getPostprocessor()).setShortCircuit(getShortCircuit());
 	}
 
 	@Override
@@ -110,46 +87,6 @@ public class TraversableExpressionComputation<T extends PackedCollection<?>>
 	@Override
 	public Expression<Double> getValueRelative(Expression index) {
 		return getExpression(new IntegerConstant(0)).getValueRelative(index);
-	}
-
-	@Override
-	public KernelizedEvaluable<T> get() {
-		return new KernelizedEvaluable<T>() {
-			KernelizedEvaluable<T> kernel;
-
-			private KernelizedEvaluable<T> getKernel() {
-				if (kernel == null) {
-					kernel = TraversableExpressionComputation.super.get();
-				}
-
-				return kernel;
-			}
-
-			@Override
-			public MemoryBank<T> createKernelDestination(int size) {
-				return getKernel().createKernelDestination(size);
-			}
-
-			@Override
-			public T evaluate(Object... args) {
-				return shortCircuit == null ? getKernel().evaluate(args) : shortCircuit.evaluate(args);
-			}
-
-			@Override
-			public Evaluable<T> withDestination(MemoryBank<T> destination) {
-				return new DestinationEvaluable<>(getKernel(), destination);
-			}
-
-			@Override
-			public int getArgsCount() {
-				return getKernel().getArgsCount();
-			}
-		};
-	}
-
-	@Override
-	public T postProcessOutput(MemoryData output, int offset) {
-		return getPostprocessor() == null ? super.postProcessOutput(output, offset) : getPostprocessor().apply(output, offset);
 	}
 
 	private static Supplier[] validateArgs(Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
@@ -181,7 +118,7 @@ public class TraversableExpressionComputation<T extends PackedCollection<?>>
 			}
 		};
 
-		return new TraversableExpressionComputation<T>(value.getShape(), comp).setPostprocessor(postprocessor).setShortCircuit(args -> {
+		return (TraversableExpressionComputation<T>) new TraversableExpressionComputation<T>(value.getShape(), comp).setPostprocessor(postprocessor).setShortCircuit(args -> {
 			PackedCollection v = new PackedCollection(value.getShape());
 			v.setMem(value.toArray(0, value.getMemLength()));
 			return postprocessor == null ? (T) v : postprocessor.apply(v, 0);

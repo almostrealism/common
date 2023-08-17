@@ -21,6 +21,7 @@ import io.almostrealism.code.Semaphore;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
@@ -30,7 +31,7 @@ import java.util.List;
 public class OperationSemaphoreTests implements TestFeatures {
 	@Test
 	public void sum() {
-		sum(200, 2048, 64);
+		sum(10, 2048, 128);
 	}
 
 	@Test
@@ -61,6 +62,9 @@ public class OperationSemaphoreTests implements TestFeatures {
 
 		long waitTime = 0;
 
+//		r.run();
+//		profiles.clear();
+
 		for (int i = 0; i < 1000; i++) {
 			r.run();
 			long start = System.currentTimeMillis();
@@ -69,19 +73,18 @@ public class OperationSemaphoreTests implements TestFeatures {
 		}
 
 		System.out.println("Semaphore wait time: " + waitTime + "ms");
-
-//		for (int n = 0; n < ops; n++) {
-//			for (int i = 0; i < count; i++) {
-//				double expected = 0.0;
-//
-//				for (int j = 0; j < dim; j++) {
-//					expected += allVectors.get(n).valueAt(i, j);
-//				}
-//
-//				assertEquals(expected, allResults.get(n).valueAt(i));
-//			}
-//		}
-
 		profiles.print();
+
+		for (int n = 0; n < ops; n++) {
+			for (int i = 0; i < count; i++) {
+				double expected = 0.0;
+
+				for (int j = 0; j < dim; j++) {
+					expected += allVectors.get(n).valueAt(i, j);
+				}
+
+				assertEquals(expected, allResults.get(n).valueAt(i));
+			}
+		}
 	}
 }

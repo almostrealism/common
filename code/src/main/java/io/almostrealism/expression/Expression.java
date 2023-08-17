@@ -162,7 +162,7 @@ public class Expression<T> implements Tree<Expression<?>> {
 		return getSimplified().getExpression();
 	}
 
-	@Deprecated
+	// TODO  This should be abstract
 	public String getExpression() {
 		if (isNull()) return null;
 		return expression.get();
@@ -209,7 +209,8 @@ public class Expression<T> implements Tree<Expression<?>> {
 	public Mod mod(Expression<Double> operand) { return new Mod((Expression) this, operand); }
 	public Mod mod(Expression<?> operand, boolean fp) { return new Mod((Expression) this, (Expression) operand, fp); }
 
-	public Equals eq(Expression<?> operand) { return new Equals(this, operand); }
+	public Equals eq(Expression<?> operand) { return new Equals(this, operand); };
+	public Less lessThan(Expression<?> operand) { return new Less(this, operand); };
 
 	public Expression<?> toDouble() { return toDouble.apply(this); }
 

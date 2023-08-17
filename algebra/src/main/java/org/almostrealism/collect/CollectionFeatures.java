@@ -53,6 +53,7 @@ import org.almostrealism.collect.computations.PackedCollectionMap;
 import org.almostrealism.collect.computations.PackedCollectionRepeat;
 import org.almostrealism.collect.computations.PackedCollectionSubset;
 import org.almostrealism.collect.computations.Random;
+import org.almostrealism.collect.computations.RepeatedCollectionProducerComputation;
 import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.collect.computations.TraversableExpressionComputation;
 import org.almostrealism.hardware.KernelSupport;
@@ -71,6 +72,7 @@ import java.util.stream.IntStream;
 public interface CollectionFeatures extends ExpressionFeatures {
 	boolean enableShapelessWarning = false;
 	boolean enableParallelSum = true;
+	boolean enableLoopSum = false;
 
 	default TraversalPolicy shape(int... dims) { return new TraversalPolicy(dims); }
 
@@ -577,10 +579,21 @@ public interface CollectionFeatures extends ExpressionFeatures {
 			if (sum != null) return sum;
 		}
 
-		return new TraversableExpressionComputation<>(shape.replace(shape(1)),
-				(args, index) ->
-						Sum.of(IntStream.range(0, size).mapToObj(i -> args[1].getValueRelative(e(i))).toArray(Expression[]::new)),
-				(Supplier) input);
+		if (enableLoopSum) {
+			return new RepeatedCollectionProducerComputation<>(shape.replace(shape(1)),
+					(args, index) ->
+							e(0.0),
+					(args, index) ->
+							index.lessThan(e(size)),
+					(args, index) ->
+							args[0].getValueRelative(e(0)).add(args[1].getValueRelative(index)),
+					(Supplier) input);
+		} else {
+			return new TraversableExpressionComputation<>(shape.replace(shape(1)),
+					(args, index) ->
+							Sum.of(IntStream.range(0, size).mapToObj(i -> args[1].getValueRelative(e(i))).toArray(Expression[]::new)),
+					(Supplier) input);
+		}
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> _greaterThan(Producer<T> a, Producer<T> b,

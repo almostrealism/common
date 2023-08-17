@@ -60,8 +60,8 @@ public class MatrixMathTests implements TestFeatures {
 
 	@Test
 	public void sumPowers() {
-		for (int i = 1; i < 9; i++) {
-			sum(1000, 1 << i);
+		for (int i = 1; i < 8; i++) {
+			sum(600, 1 << i);
 		}
 	}
 

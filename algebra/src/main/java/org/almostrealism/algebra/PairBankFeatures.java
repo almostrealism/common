@@ -41,7 +41,7 @@ public interface PairBankFeatures extends ScalarFeatures {
 	default ExpressionComputation<PackedCollection<Pair<?>>> pairBank(Supplier<Evaluable<? extends Pair<?>>>... input) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
 		IntStream.range(0, 2 * input.length).forEach(i -> comp.add(args -> args.get(1 + i / 2).getValueRelative(i % 2)));
-		return new ExpressionComputation(shape(input.length, 2).traverse(0), comp, input)
+		return (ExpressionComputation) new ExpressionComputation(shape(input.length, 2).traverse(0), comp, input)
 				.setPostprocessor(Pair.bankPostprocessor());
 	}
 

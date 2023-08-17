@@ -19,7 +19,10 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.code.CollectionUtils;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
+import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.CollectionVariable;
+import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
 import io.almostrealism.scope.ArrayVariable;
@@ -28,12 +31,16 @@ import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.ComputerFeatures;
 import org.almostrealism.hardware.DestinationConsolidationArgumentMap;
+import org.almostrealism.hardware.DestinationEvaluable;
 import org.almostrealism.hardware.DestinationSupport;
+import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryDataComputation;
 import org.almostrealism.hardware.ProducerCache;
 import org.almostrealism.hardware.mem.MemoryDataDestination;
 
+import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
 public abstract class CollectionProducerComputationBase<I extends PackedCollection<?>, O extends PackedCollection<?>>
@@ -45,6 +52,8 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 
 	private TraversalPolicy shape;
 	private Supplier<? extends PackedCollection> destination;
+	private BiFunction<MemoryData, Integer, O> postprocessor;
+	private Evaluable<O> shortCircuit;
 
 	protected CollectionProducerComputationBase() { }
 
@@ -112,11 +121,36 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	@Override
 	public Supplier<O> getDestination() { return (Supplier) destination; }
 
+	public BiFunction<MemoryData, Integer, O> getPostprocessor() {
+		return postprocessor;
+	}
+
+	public CollectionProducerComputationBase<I, O> setPostprocessor(BiFunction<MemoryData, Integer, O> postprocessor) {
+		this.postprocessor = postprocessor;
+		return this;
+	}
+
+	public Evaluable<O> getShortCircuit() { return shortCircuit; }
+
+	public CollectionProducerComputationBase<I, O> setShortCircuit(Evaluable<O> shortCircuit) {
+		this.shortCircuit = shortCircuit;
+		return this;
+	}
+
 	/**
 	 * @return  PhysicalScope#GLOBAL
 	 */
 	@Override
 	public PhysicalScope getDefaultPhysicalScope() { return PhysicalScope.GLOBAL; }
+
+	protected TraversableExpression[] getTraversableArguments(Expression<?> index) {
+		TraversableExpression vars[] = new TraversableExpression[getInputs().size()];
+		for (int i = 0; i < vars.length; i++) {
+			vars[i] = CollectionExpression.traverse(getArgumentForInput(getInputs().get(i)),
+					size -> index.toInt().divide(e(getMemLength())).multiply(size));
+		}
+		return vars;
+	}
 
 	public CollectionVariable getCollectionArgumentVariable(int argIndex) {
 		ArrayVariable<?> arg = getArgumentForInput(getInputs().get(argIndex));
@@ -126,6 +160,48 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		} else {
 			return null;
 		}
+	}
+
+	@Override
+	public KernelizedEvaluable<O> get() {
+		Supplier<KernelizedEvaluable<O>> get = () -> CollectionProducerComputation.super.get();
+
+		return new KernelizedEvaluable<O>() {
+			KernelizedEvaluable<O> kernel;
+
+			private KernelizedEvaluable<O> getKernel() {
+				if (kernel == null) {
+					kernel = get.get();
+				}
+
+				return kernel;
+			}
+
+			@Override
+			public MemoryBank<O> createKernelDestination(int size) {
+				return getKernel().createKernelDestination(size);
+			}
+
+			@Override
+			public O evaluate(Object... args) {
+				return shortCircuit == null ? getKernel().evaluate(args) : shortCircuit.evaluate(args);
+			}
+
+			@Override
+			public Evaluable<O> withDestination(MemoryBank<O> destination) {
+				return new DestinationEvaluable<>(getKernel(), destination);
+			}
+
+			@Override
+			public int getArgsCount() {
+				return getKernel().getArgsCount();
+			}
+		};
+	}
+
+	@Override
+	public O postProcessOutput(MemoryData output, int offset) {
+		return getPostprocessor() == null ? CollectionProducerComputation.super.postProcessOutput(output, offset) : getPostprocessor().apply(output, offset);
 	}
 
 	@Override

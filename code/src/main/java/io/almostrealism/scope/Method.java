@@ -89,6 +89,11 @@ public class Method<T> extends Expression<T> implements Nameable {
 
 	public List<Expression<?>> getArguments() { return arguments; }
 
+	@Override
+	public Expression<T> generate(List<Expression<?>> children) {
+		return new Method<>(getType(), getMember(), getName(), children);
+	}
+
 	protected static String toString(List<Expression<?>> arguments) {
 		StringBuffer buf = new StringBuffer();
 

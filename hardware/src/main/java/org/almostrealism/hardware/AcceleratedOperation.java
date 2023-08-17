@@ -470,8 +470,12 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	public static Semaphore getSemaphore() { return semaphores.get(); }
 
 	public static void waitFor() {
-		getSemaphore().waitFor();
-		semaphores.set(null);
+		Semaphore s = getSemaphore();
+
+		if (s != null) {
+			s.waitFor();
+			semaphores.set(null);
+		}
 	}
 
 	public static <T> T record(CreatedMemoryData data, Callable<T> exec) {
