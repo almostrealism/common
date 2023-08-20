@@ -71,8 +71,8 @@ import java.util.stream.IntStream;
 
 public interface CollectionFeatures extends ExpressionFeatures {
 	boolean enableShapelessWarning = false;
-	boolean enableParallelSum = false;
-	boolean enableLoopSum = true;
+	boolean enableParallelSum = true;
+	boolean enableLoopSum = false;
 
 	default TraversalPolicy shape(int... dims) { return new TraversalPolicy(dims); }
 
