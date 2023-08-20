@@ -18,6 +18,7 @@ package org.almostrealism.hardware.metal;
 
 import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
+import org.almostrealism.hardware.HardwareException;
 
 public class MetalProgram implements OperationInfo {
 	private final OperationMetadata metadata;
@@ -41,6 +42,8 @@ public class MetalProgram implements OperationInfo {
 
 	public void compile() {
 		function = device.newFunction(func, src);
+		if (function.getNativePointer() == 0)
+			throw new HardwareException("Failed to compile " + func);
 	}
 
 	public MTLComputePipelineState newComputePipelineState() {

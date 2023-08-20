@@ -20,6 +20,7 @@ import io.almostrealism.code.Execution;
 import io.almostrealism.code.Semaphore;
 import io.almostrealism.relation.Factory;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.KernelWork;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.Bytes;
@@ -32,7 +33,7 @@ import java.util.stream.IntStream;
 /**
  * {@link MetalOperator}s are intended to be used with {@link ThreadLocal}.
  */
-public class MetalOperator implements Execution, Factory<MTLComputePipelineState> {
+public class MetalOperator implements Execution, KernelWork, Factory<MTLComputePipelineState> {
 	public static boolean enableLog;
 	public static boolean enableVerboseLog;
 	public static boolean enableDimensionMasks = true;
@@ -62,10 +63,14 @@ public class MetalOperator implements Execution, Factory<MTLComputePipelineState
 	@Override
 	public MTLComputePipelineState construct() { return prog.newComputePipelineState(); }
 
+	@Override
 	public long getGlobalWorkSize() { return globalWorkSize; }
+	@Override
 	public void setGlobalWorkSize(long globalWorkSize) { this.globalWorkSize = globalWorkSize; }
 
+	@Override
 	public long getGlobalWorkOffset() { return globalWorkOffset; }
+	@Override
 	public void setGlobalWorkOffset(long globalWorkOffset) { this.globalWorkOffset = globalWorkOffset; }
 
 	@Override

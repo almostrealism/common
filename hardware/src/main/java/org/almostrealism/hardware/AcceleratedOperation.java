@@ -221,8 +221,8 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		if (enableKernelLog) System.out.println("AcceleratedOperation: Preparing " + getName() + " kernel...");
 		AcceleratedProcessDetails process = processKernelArgs(output, args);
 		MemoryData input[] = Stream.of(process.getArguments()).toArray(MemoryData[]::new);
-		((HardwareOperator) operator).setGlobalWorkOffset(0);
-		((HardwareOperator) operator).setGlobalWorkSize(process.getKernelSize());
+		((KernelWork) operator).setGlobalWorkOffset(0);
+		((KernelWork) operator).setGlobalWorkSize(process.getKernelSize());
 
 		if (enableKernelLog) System.out.println("AcceleratedOperation: Evaluating " + getName() + " kernel...");
 

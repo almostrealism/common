@@ -21,6 +21,7 @@ import io.almostrealism.code.Semaphore;
 import io.almostrealism.relation.Factory;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
+import org.almostrealism.hardware.KernelWork;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.Bytes;
@@ -36,7 +37,7 @@ import java.util.stream.IntStream;
  *
  * @param <T> Return type
  */
-public class HardwareOperator<T extends MemoryData> implements Execution, Factory<cl_kernel> {
+public class HardwareOperator<T extends MemoryData> implements Execution, KernelWork, Factory<cl_kernel> {
 	public static boolean enableLog;
 	public static boolean enableVerboseLog;
 	public static boolean enableDimensionMasks = true;
@@ -78,12 +79,14 @@ public class HardwareOperator<T extends MemoryData> implements Execution, Factor
 		}
 	}
 
+	@Override
 	public long getGlobalWorkSize() { return globalWorkSize; }
-
+	@Override
 	public void setGlobalWorkSize(long globalWorkSize) { this.globalWorkSize = globalWorkSize; }
 
+	@Override
 	public long getGlobalWorkOffset() { return globalWorkOffset; }
-
+	@Override
 	public void setGlobalWorkOffset(long globalWorkOffset) { this.globalWorkOffset = globalWorkOffset; }
 
 	@Override
