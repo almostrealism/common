@@ -98,6 +98,8 @@ public class MetalOperator implements Execution, KernelWork, Factory<MTLComputeP
 				encoder.setBuffer(index++, ((MetalMemory) ((MemoryData) args[i]).getMem()).getMem()); // Buffer
 			}
 
+			// TODO  Set offset, size, and dim0 buffers
+
 			/*
 			for (int i = 0; i < argCount; i++) {
 				encoder.setBuffer(index++, ((MemoryData) args[i]).getOffset()); // Offset

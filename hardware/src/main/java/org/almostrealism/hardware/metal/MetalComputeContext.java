@@ -71,7 +71,7 @@ public class MetalComputeContext extends AbstractComputeContext {
 
 	@Override
 	public InstructionSet deliver(Scope scope) {
-		ScopeEncoder enc = new ScopeEncoder(MetalPrintWriter::new, Accessibility.EXTERNAL);
+		ScopeEncoder enc = new ScopeEncoder(pw -> new MetalPrintWriter(pw, scope.getName()), Accessibility.EXTERNAL);
 
 		MetalOperatorMap instSet = new MetalOperatorMap(this, scope.getMetadata(), scope.getName(), enc.apply(scope));
 		instructionSets.add(instSet);
@@ -80,6 +80,14 @@ public class MetalComputeContext extends AbstractComputeContext {
 
 	@Override
 	public boolean isKernelSupported() { return true; }
+
+	@Override
+	public String getKernelIndex(int dimension) {
+		if (dimension != 0)
+			throw new IllegalArgumentException();
+
+		return "global_id";
+	}
 
 	public MTLDevice getMtlDevice() { return mainDevice; }
 	public MTLCommandQueue getMtlQueue() { return queue; }

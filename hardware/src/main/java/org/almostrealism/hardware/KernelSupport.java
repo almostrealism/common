@@ -35,7 +35,7 @@ public interface KernelSupport {
 	}
 
 	static String getKernelIndex(int kernelIndex) {
-		return "get_global_id(" + kernelIndex + ")";
+		return Hardware.getLocalHardware().getComputeContext().getKernelIndex(kernelIndex);
 	}
 
 	default String getKernelIndex(String variableName, int kernelIndex) {

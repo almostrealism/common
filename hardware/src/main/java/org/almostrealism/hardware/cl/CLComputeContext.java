@@ -107,6 +107,11 @@ public class CLComputeContext extends AbstractComputeContext {
 	@Override
 	public boolean isKernelSupported() { return true; }
 
+	@Override
+	public String getKernelIndex(int dimension) {
+		return "get_global_id(" + dimension + ")";
+	}
+
 	protected cl_context getCLContext() {
 		return ctx;
 	}

@@ -32,9 +32,12 @@ public class CJNIPrintWriter extends CPrintWriter {
 	}
 
 	public CJNIPrintWriter(PrintWriter p, String topLevelMethodName, boolean verbose) {
-		super(p, topLevelMethodName, verbose);
+		super(p, topLevelMethodName, true, verbose);
 		setExternalScopePrefix("JNIEXPORT void JNICALL");
 		setEnableArrayVariables(true);
+		setEnableArgumentDetailReads(true);
+		setEnableArgumentValueReads(true);
+		setEnableArgumentValueWrites(true);
 	}
 
 	@Override

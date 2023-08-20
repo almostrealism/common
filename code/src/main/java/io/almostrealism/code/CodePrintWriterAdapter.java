@@ -66,6 +66,10 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 		this.enableArrayVariables = enableArrayVariables;
 	}
 
+	protected boolean isEnableArrayVariables() {
+		return enableArrayVariables;
+	}
+
 	protected String typePrefix(Class type) {
 		if (type == null) {
 			return "";
@@ -206,24 +210,41 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 		for (int i = 0; i < arguments.size(); i++) {
 			ArrayVariable<?> arg = arguments.get(i);
 
-			if (enableAnnotation && annotationForPhysicalScope(arg.getPhysicalScope()) != null) {
-				out.accept(annotationForPhysicalScope(arg.getPhysicalScope()));
-				out.accept(" ");
-			}
-
-			if (enableType) {
-				out.accept(nameForType(replaceType == null ? arguments.get(i).getType() : replaceType));
-				out.accept(" ");
-			}
+			out.accept(argumentPre(arg, enableType, enableAnnotation, replaceType));
 
 			out.accept(prefix);
 			out.accept(arguments.get(i).getName());
 			out.accept(suffix);
+			out.accept(argumentPost(i));
 
 			if (i < arguments.size() - 1) {
 				out.accept(", ");
 			}
 		}
+	}
+
+	protected String argumentPre(ArrayVariable arg, boolean enableType, boolean enableAnnotation) {
+		return argumentPre(arg, enableType, enableAnnotation, null);
+	}
+
+	protected String argumentPre(ArrayVariable arg, boolean enableType, boolean enableAnnotation, Class replaceType) {
+		StringBuilder buf = new StringBuilder();
+
+		if (enableAnnotation && annotationForPhysicalScope(arg.getPhysicalScope()) != null) {
+			buf.append(annotationForPhysicalScope(arg.getPhysicalScope()));
+			buf.append(" ");
+		}
+
+		if (enableType) {
+			buf.append(nameForType(replaceType == null ? arg.getType() : replaceType));
+			buf.append(" ");
+		}
+
+		return buf.toString();
+	}
+
+	protected String argumentPost(int index) {
+		return "";
 	}
 
 	@Override

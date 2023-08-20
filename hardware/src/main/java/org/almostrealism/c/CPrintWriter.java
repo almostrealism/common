@@ -18,6 +18,7 @@ package org.almostrealism.c;
 
 import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.CodePrintWriterAdapter;
 import io.almostrealism.expression.Expression;
@@ -42,29 +43,48 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 	private final String topLevelMethodName;
 	private final Stack<Accessibility> accessStack;
 	private final Stack<List<ArrayVariable<?>>> argumentStack;
+	private final boolean isNative;
+
+	private boolean enableArgumentValueReads;
+	private boolean enableArgumentDetailReads;
+	private boolean enableArgumentValueWrites;
+
 	private final boolean verbose;
 	private boolean log;
 	private int logCount;
 
-	public CPrintWriter(OutputStream out, String topLevelMethodName) {
-		this(new PrintStreamPrintWriter(new PrintStream(out)), topLevelMethodName, false);
+	public CPrintWriter(OutputStream out, String topLevelMethodName, boolean isNative) {
+		this(new PrintStreamPrintWriter(new PrintStream(out)), topLevelMethodName, isNative);
 	}
 
-	public CPrintWriter(PrintWriter p, String topLevelMethodName) {
-		this(p, topLevelMethodName, false);
+	public CPrintWriter(PrintWriter p, String topLevelMethodName, boolean isNative) {
+		this(p, topLevelMethodName, isNative, false);
 	}
 
-	public CPrintWriter(PrintWriter p, String topLevelMethodName, boolean verbose) {
+	public CPrintWriter(PrintWriter p, String topLevelMethodName, boolean isNative, boolean verbose) {
 		super(p);
 		this.topLevelMethodName = topLevelMethodName;
 		this.accessStack = new Stack<>();
 		this.argumentStack = new Stack<>();
+		this.isNative = isNative;
 		this.verbose = verbose;
 		setScopePrefix("void");
 		setEnableArrayVariables(true);
 	}
 
 	public String getTopLevelMethodName() { return topLevelMethodName; }
+
+	public void setEnableArgumentValueReads(boolean enableArgumentValueReads) {
+		this.enableArgumentValueReads = enableArgumentValueReads;
+	}
+
+	public void setEnableArgumentDetailReads(boolean enableArgumentDetailReads) {
+		this.enableArgumentDetailReads = enableArgumentDetailReads;
+	}
+
+	public void setEnableArgumentValueWrites(boolean enableArgumentValueWrites) {
+		this.enableArgumentValueWrites = enableArgumentValueWrites;
+	}
 
 	@Override
 	public void beginScope(String name, OperationMetadata metadata, List<ArrayVariable<?>> arguments, Accessibility access) {
@@ -111,28 +131,54 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 
 	@Override
 	protected void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out, Accessibility access) {
-		if (topLevelMethodName != null && access == Accessibility.EXTERNAL) {
-			out.accept("long* argArr, uint32_t* offsetArr, uint32_t* sizeArr, uint32_t count");
+		if (isNative && access == Accessibility.EXTERNAL) {
+			out.accept("long* argArr, uint32_t* offsetArr, uint32_t* sizeArr, uint32_t* dim0Arr, uint32_t count");
+		} else if (enableArgumentDetailReads && isEnableArrayVariables()) {
+			if (!arguments.isEmpty()) {
+				renderArguments(arguments, out, true, true, null, "*", "");
+				out.accept(", ");
+				out.accept(annotationForPhysicalScope(PhysicalScope.GLOBAL));
+				out.accept(" int *offsetArr");
+				out.accept(argumentPost(arguments.size()));
+				out.accept(", ");
+				out.accept(annotationForPhysicalScope(PhysicalScope.GLOBAL));
+				out.accept(" int *sizeArr");
+				out.accept(argumentPost(arguments.size() + 1));
+				out.accept(", ");
+				out.accept(annotationForPhysicalScope(PhysicalScope.GLOBAL));
+				out.accept(" int *dim0Arr");
+				out.accept(argumentPost(arguments.size() + 2));
+			}
 		} else {
 			super.renderArguments(arguments, out, access);
 		}
 	}
 
 	protected void renderArgumentReads(List<ArrayVariable<?>> arguments) {
-		IntStream.range(0, arguments.size())
-				.mapToObj(i -> new Variable<>(arguments.get(i).getName() + "Offset",
-						Integer.class, "(int) offsetArr[" + i + "]"))
-				.forEach(this::println);
-		IntStream.range(0, arguments.size())
-				.mapToObj(i -> new Variable<>(arguments.get(i).getName() + "Size",
-						Integer.class, "(int) sizeArr[" + i + "]"))
-				.forEach(this::println);
+		if (enableArgumentDetailReads) {
+			IntStream.range(0, arguments.size())
+					.mapToObj(i -> new Variable<>(arguments.get(i).getName() + "Offset",
+							Integer.class, "(int) offsetArr[" + i + "]"))
+					.forEach(this::println);
+			IntStream.range(0, arguments.size())
+					.mapToObj(i -> new Variable<>(arguments.get(i).getName() + "Size",
+							Integer.class, "(int) sizeArr[" + i + "]"))
+					.forEach(this::println);
+			IntStream.range(0, arguments.size())
+					.mapToObj(i -> new Variable<>(arguments.get(i).getName() + "Dim0",
+							Integer.class, "(int) dim0Arr[" + i + "]"))
+					.forEach(this::println);
+		}
 
-		IntStream.range(0, arguments.size()).forEach(i -> copyInline(i, arguments.get(i), false));
+		if (enableArgumentValueReads) {
+			IntStream.range(0, arguments.size()).forEach(i -> copyInline(i, arguments.get(i), false));
+		}
 	}
 
 	protected void renderArgumentWrites(List<ArrayVariable<?>> arguments) {
-		IntStream.range(0, arguments.size()).forEach(i -> copyInline(i, arguments.get(i), true));
+		if (enableArgumentValueWrites) {
+			IntStream.range(0, arguments.size()).forEach(i -> copyInline(i, arguments.get(i), true));
+		}
 	}
 
 	protected void copyInline(int index, ArrayVariable<?> variable, boolean write) {

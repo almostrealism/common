@@ -58,7 +58,7 @@ public class ExternalComputeContext extends AbstractComputeContext {
 	public InstructionSet deliver(Scope scope) {
 		StringBuffer buf = new StringBuffer();
 		NativeInstructionSet inst = getComputer().getNativeCompiler().reserveLibraryTarget();
-		buf.append(new ScopeEncoder(pw -> new CPrintWriter(pw, "apply"), Accessibility.EXTERNAL).apply(scope));
+		buf.append(new ScopeEncoder(pw -> new CPrintWriter(pw, "apply", true), Accessibility.EXTERNAL).apply(scope));
 		buf.append("\n");
 		buf.append(externalWrapper);
 		String executable = getComputer().getNativeCompiler().getLibraryDirectory() + "/" + getComputer().getNativeCompiler().compile(inst.getClass().getName(), buf.toString(), false);
