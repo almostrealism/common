@@ -21,11 +21,9 @@ import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.HybridScope;
 import io.almostrealism.code.ProducerComputation;
-import io.almostrealism.scope.Method;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeInputManager;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.c.OpenCLPrintWriter;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationComputationAdapter;
 

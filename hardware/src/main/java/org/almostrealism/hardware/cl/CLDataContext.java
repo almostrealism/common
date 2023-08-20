@@ -22,6 +22,7 @@ import io.almostrealism.code.DataContext;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.RAM;
 import org.almostrealism.hardware.jvm.JVMMemoryProvider;
 import org.jocl.CL;
@@ -99,11 +100,22 @@ public class CLDataContext implements DataContext {
 		/* Main Device Selection */
 
 		int numDevicesArray[] = new int[1];
-		CL.clGetDeviceIDs(platform, deviceType, 0, null, numDevicesArray);
-		int numDevices = numDevicesArray[0];
+		int numDevices = 0;
+
+		try {
+			CL.clGetDeviceIDs(platform, deviceType, 0, null, numDevicesArray);
+			numDevices = numDevicesArray[0];
+		} catch (Exception e) {
+			if (Hardware.enableVerbose)
+				e.printStackTrace();
+		}
 
 		if (Hardware.enableVerbose)
 			System.out.println("Hardware[" + name + "]: " + numDevices + " " + deviceName(deviceType) + "(s) available");
+
+		if (numDevices == 0) {
+			throw new HardwareException("No " + deviceName(deviceType) + "s available");
+		}
 
 		cl_device_id devices[] = new cl_device_id[numDevices];
 		CL.clGetDeviceIDs(platform, deviceType, numDevices, devices, null);

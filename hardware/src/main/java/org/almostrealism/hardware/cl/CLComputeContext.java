@@ -21,7 +21,6 @@ import io.almostrealism.code.InstructionSet;
 import io.almostrealism.code.Memory;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeEncoder;
-import org.almostrealism.c.OpenCLPrintWriter;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.profile.ProfileData;

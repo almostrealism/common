@@ -24,7 +24,7 @@ import io.almostrealism.relation.Countable;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.relation.Compactable;
-import org.almostrealism.c.OpenCLPrintWriter;
+import org.almostrealism.hardware.cl.OpenCLPrintWriter;
 import org.almostrealism.hardware.OperationComputationAdapter;
 
 // TODO  Should extend Repeated

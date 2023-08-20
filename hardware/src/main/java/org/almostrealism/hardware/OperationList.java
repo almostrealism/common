@@ -48,7 +48,7 @@ import java.util.stream.Stream;
 
 public class OperationList extends ArrayList<Supplier<Runnable>>
 		implements OperationComputation<Void>, ParallelProcess<Process<?, ?>, Runnable>,
-					NamedFunction, HardwareFeatures {
+					NamedFunction, OperationInfo, HardwareFeatures {
 	public static boolean enableOptimization = false;
 	public static boolean enableSegmenting = false;
 
@@ -85,6 +85,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	@Override
 	public String getFunctionName() { return this.functionName; }
 
+	@Override
 	public OperationMetadata getMetadata() { return metadata; }
 
 	public void addCompiled(Supplier<Runnable> op) {

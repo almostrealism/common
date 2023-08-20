@@ -14,10 +14,11 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.c;
+package org.almostrealism.hardware.cl;
 
 import io.almostrealism.scope.Method;
 import io.almostrealism.code.PhysicalScope;
+import org.almostrealism.c.CPrintWriter;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.io.PrintWriter;
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,8 +14,18 @@
  * limitations under the License.
  */
 
-package io.almostrealism.code;
+package org.almostrealism.hardware.metal;
 
-public enum ComputeRequirement {
-	CPU, GPU, FPGA, C, CL, MTL, JNI, EXTERNAL, PROFILING
+public class MTLCommandQueue extends MTLObject {
+	public MTLCommandQueue(long nativePointer) {
+		super(nativePointer);
+	}
+
+	public MTLCommandBuffer commandBuffer() {
+		return new MTLCommandBuffer(MTL.commandBuffer(getNativePointer()));
+	}
+
+	public void release() {
+		MTL.releaseCommandQueue(getNativePointer());
+	}
 }

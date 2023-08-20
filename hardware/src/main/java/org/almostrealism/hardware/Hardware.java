@@ -17,6 +17,7 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.ComputeContext;
+import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.code.DataContext;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.expression.Cast;
@@ -29,6 +30,7 @@ import org.almostrealism.hardware.cl.CLComputeContext;
 import org.almostrealism.hardware.cl.CLDataContext;
 import org.almostrealism.hardware.ctx.ContextListener;
 import org.almostrealism.hardware.jni.NativeDataContext;
+import org.almostrealism.hardware.metal.MetalDataContext;
 import org.almostrealism.io.SystemUtils;
 import org.jocl.Sizeof;
 import org.jocl.cl_device_id;
@@ -101,12 +103,35 @@ public final class Hardware {
 		if (tsCount == null) tsCount = System.getenv("AR_HARDWARE_TIMESERIES_COUNT");
 		if (tsCount == null) tsCount = "24";
 
+		String driver = System.getProperty("AR_HARDWARE_DRIVER");
+		if (driver == null) driver = System.getenv("AR_HARDWARE_DRIVER");
+		if (driver == null) driver = "cl";
+
+		ComputeRequirement requirement = ComputeRequirement.CL;
+		if ("mtl".equalsIgnoreCase(driver)) {
+			requirement = ComputeRequirement.MTL;
+		} else if ("native".equalsIgnoreCase(driver)) {
+			requirement = ComputeRequirement.JNI;
+		}
+
 		String memProvider = System.getProperty("AR_HARDWARE_MEMORY_PROVIDER");
 		if (memProvider == null) memProvider = System.getenv("AR_HARDWARE_MEMORY_PROVIDER");
-		if (memProvider == null) memProvider = "cl";
+		if (memProvider == null) {
+			if (requirement == ComputeRequirement.CL) {
+				memProvider = "cl";
+			} else if (requirement == ComputeRequirement.MTL) {
+				memProvider = "mtl";
+			} else if (requirement == ComputeRequirement.JNI) {
+				memProvider = "native";
+			} else {
+				throw new IllegalStateException("No memory provider for " + requirement);
+			}
+		}
 		if (memProvider.equalsIgnoreCase("native") || memProvider.equalsIgnoreCase("jvm")) {
 			gpu = false;
 			sp = false;
+		} else if (memProvider.equalsIgnoreCase("mtl")) {
+			sp = true;
 		}
 
 		timeSeriesSize = Optional.ofNullable(tsSize).map(size -> (int) (200000 * Double.parseDouble(size))).orElse(-1);
@@ -117,11 +142,11 @@ public final class Hardware {
 		if (exec == null) exec = System.getenv("AR_HARDWARE_NATIVE_EXECUTION");
 
 		if (sp) {
-			local = new Hardware(memProvider, "cl".equalsIgnoreCase(memProvider),
+			local = new Hardware(memProvider, requirement,
 						gpu, enableKernels, enableDestinationConsolidation, false,
 						"external".equalsIgnoreCase(exec), location);
 		} else {
-			local = new Hardware(memProvider, "cl".equalsIgnoreCase(memProvider),
+			local = new Hardware(memProvider, requirement,
 						gpu, enableKernels, enableDestinationConsolidation,
 						"external".equalsIgnoreCase(exec), location);
 		}
@@ -151,26 +176,26 @@ public final class Hardware {
 
 	private AcceleratedFunctions functions;
 	
-	private Hardware(String memProvider, boolean enableCl, boolean enableGpu,
+	private Hardware(String memProvider, ComputeRequirement type, boolean enableGpu,
 					 boolean enableKernels, boolean enableDestinationConsolidation, boolean externalNative,
 					 Location location) {
-		this(memProvider, enableCl, enableGpu, enableKernels, enableDestinationConsolidation, !enableGpu, externalNative, location);
+		this(memProvider, type, enableGpu, enableKernels, enableDestinationConsolidation, !enableGpu, externalNative, location);
 	}
 
-	private Hardware(String memProvider, boolean enableCl, boolean enableGpu,
+	private Hardware(String memProvider, ComputeRequirement type, boolean enableGpu,
 					 boolean enableKernels, boolean enableDestinationConsolidation,
 					 boolean enableDoublePrecision, boolean externalNative, Location location) {
-		this(enableDoublePrecision ? "local64" : "local32", memProvider, enableCl, enableGpu,
+		this(enableDoublePrecision ? "local64" : "local32", memProvider, type, enableGpu,
 				enableKernels, enableDestinationConsolidation, enableDoublePrecision, externalNative, location);
 	}
 
-	private Hardware(String name, String memProvider, boolean enableCl, boolean enableGpu,
+	private Hardware(String name, String memProvider, ComputeRequirement type, boolean enableGpu,
 					 boolean enableKernels, boolean enableDestinationConsolidation, boolean externalNative,
 					 Location location) {
-		this(name, memProvider, enableCl, enableGpu, enableKernels, enableDestinationConsolidation, !enableGpu, externalNative, location);
+		this(name, memProvider, type, enableGpu, enableKernels, enableDestinationConsolidation, !enableGpu, externalNative, location);
 	}
 
-	private Hardware(String name, String memProvider, boolean enableCl, boolean enableGpu,
+	private Hardware(String name, String memProvider, ComputeRequirement type, boolean enableGpu,
 					 boolean enableKernels, boolean enableDestinationConsolidation,
 					 boolean enableDoublePrecision, boolean externalNative, Location location) {
 		this.name = name;
@@ -189,7 +214,7 @@ public final class Hardware {
 		this.memVolatile = location == Location.HEAP;
 		this.contextListeners = new ArrayList<>();
 
-		if (enableCl) {
+		if (type == ComputeRequirement.CL) {
 			this.context = new CLDataContext(this, name, this.memoryMax, getOffHeapSize(), this.location);
 
 			if (enableVerbose) {
@@ -202,17 +227,33 @@ public final class Hardware {
 
 			System.out.println("Hardware[" + name + "]: Max RAM is " +
 					memoryMax / 1000000 + " Megabytes");
-			if (location == CLMemoryProvider.Location.HEAP) System.out.println("Hardware[" + name + "]: Heap RAM enabled");
-			if (location == CLMemoryProvider.Location.HOST) System.out.println("Hardware[" + name + "]: Host RAM enabled");
+			if (location == CLMemoryProvider.Location.HEAP)
+				System.out.println("Hardware[" + name + "]: Heap RAM enabled");
+			if (location == CLMemoryProvider.Location.HOST)
+				System.out.println("Hardware[" + name + "]: Host RAM enabled");
+			if (ENABLE_POOLING) System.out.println("Hardware[" + name + "]: Pooling enabled");
+
+			start(context);
+			contextListeners.forEach(l -> l.contextStarted(context));
+		} else if (type == ComputeRequirement.MTL) {
+			this.context = new MetalDataContext(this, name, this.memoryMax, getOffHeapSize());
+
+			if (enableVerbose) {
+				if (enableGpu) {
+					System.out.println("Initializing Hardware (GPU Enabled)...");
+				} else {
+					System.out.println("Initializing Hardware...");
+				}
+			}
+
+			System.out.println("Hardware[" + name + "]: Max RAM is " +
+					memoryMax / 1000000 + " Megabytes");
 			if (ENABLE_POOLING) System.out.println("Hardware[" + name + "]: Pooling enabled");
 
 			start(context);
 			contextListeners.forEach(l -> l.contextStarted(context));
 		} else {
 			System.out.println("Initializing Hardware...");
-		}
-
-		if (!enableCl) {
 			this.context = new NativeDataContext(this, name, enableDoublePrecision, isNativeMemory(), externalNative, this.memoryMax);
 			start(context);
 			if (enableVerbose) System.out.println("Hardware[" + name + "]: Created NativeMemoryProvider");
@@ -233,6 +274,8 @@ public final class Hardware {
 	protected void start(DataContext ctx) {
 		if (ctx instanceof CLDataContext) {
 			((CLDataContext) ctx).init(enableGpu, enableKernelQueue);
+		} else if (ctx instanceof MetalDataContext) {
+			((MetalDataContext) ctx).init(enableGpu, enableKernelQueue);
 		} else if (ctx instanceof NativeDataContext) {
 			((NativeDataContext) ctx).init();
 		}

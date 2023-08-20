@@ -22,7 +22,7 @@ import io.almostrealism.code.ComputationBase;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.Method;
-import org.almostrealism.c.OpenCLPrintWriter;
+import org.almostrealism.hardware.cl.OpenCLPrintWriter;
 
 import java.util.function.Supplier;
 
