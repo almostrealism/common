@@ -31,6 +31,12 @@ public class MTL {
 	public static native long commandBuffer(long commandQueue);
 	public static native long computeCommandEncoder(long commandBuffer);
 
+	public static long createIntBuffer32(long device, int[] data) {
+		return createIntBuffer32(device, data, data.length);
+	}
+
+	public static native long createIntBuffer32(long device, int[] data, long len);
+
 	public static long createBuffer32(long device, long len) {
 		return createBuffer32(device, null, len);
 	}

@@ -48,33 +48,38 @@ public class MetalJNI {
 		long pipeline = MTL.createComputePipelineState(device, function);
 		System.out.println("Created pipeline: " + pipeline);
 
+		long commandQueue = MTL.createCommandQueue(device);
+		long commandBuffer;
+		long commandEncoder;
+
 		// Create buffers for the input and output data
 		long vectorBuffer = MTL.createBuffer32(device, vector);
 		long matrixBuffer = MTL.createBuffer32(device, matrix);
 		long resultBuffer = MTL.createBuffer32(device, result.length);
 
-		long commandQueue = MTL.createCommandQueue(device);
-		long commandBuffer = MTL.commandBuffer(commandQueue);
-		long commandEncoder = MTL.computeCommandEncoder(commandBuffer);
+		for (int i = 0; i < 2; i++) {
+			long start = System.nanoTime();
+			commandBuffer = MTL.commandBuffer(commandQueue);
+			commandEncoder = MTL.computeCommandEncoder(commandBuffer);
 
-		long start = System.nanoTime();
-		MTL.setComputePipelineState(commandEncoder, pipeline);
-		MTL.setBuffer(commandEncoder, 0, vectorBuffer);
-		MTL.setBuffer(commandEncoder, 1, matrixBuffer);
-		MTL.setBuffer(commandEncoder, 2, resultBuffer);
+			MTL.setComputePipelineState(commandEncoder, pipeline);
+			MTL.setBuffer(commandEncoder, 0, vectorBuffer);
+			MTL.setBuffer(commandEncoder, 1, matrixBuffer);
+			MTL.setBuffer(commandEncoder, 2, resultBuffer);
 
-		MTL.dispatchThreadgroups(commandEncoder, 1, 1, 1, numElements, 1, 1);
-		MTL.endEncoding(commandEncoder);
+			MTL.dispatchThreadgroups(commandEncoder, 1, 1, 1, numElements, 1, 1);
+			MTL.endEncoding(commandEncoder);
 
-		MTL.commitCommandBuffer(commandBuffer);
-		MTL.waitUntilCompleted(commandBuffer);
-		System.out.println("Time: " + (System.nanoTime() - start));
+			MTL.commitCommandBuffer(commandBuffer);
+			MTL.waitUntilCompleted(commandBuffer);
+			System.out.println("Time: " + (System.nanoTime() - start));
 
-		ByteBuffer resultBufferByte = ByteBuffer.allocateDirect(result.length * 4).order(ByteOrder.nativeOrder());
-		FloatBuffer resultBufferFloat = resultBufferByte.asFloatBuffer();
-		MTL.getBufferContents32(resultBuffer, resultBufferFloat, 0, result.length);
+			ByteBuffer resultBufferByte = ByteBuffer.allocateDirect(result.length * 4).order(ByteOrder.nativeOrder());
+			FloatBuffer resultBufferFloat = resultBufferByte.asFloatBuffer();
+			MTL.getBufferContents32(resultBuffer, resultBufferFloat, 0, result.length);
 
-		resultBufferFloat.get(result);
+			resultBufferFloat.get(result);
+		}
 
 		MTL.releaseBuffer(vectorBuffer);
 		MTL.releaseBuffer(matrixBuffer);

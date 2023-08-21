@@ -66,7 +66,7 @@ public class MetalComputeContext extends AbstractComputeContext {
 				System.out.println("Hardware[" + getName() + "]: Metal kernel command queue initialized");
 		}
 
-		this.runner = new MetalCommandRunner(queue.commandBuffer());
+		this.runner = new MetalCommandRunner(queue);
 	}
 
 	@Override

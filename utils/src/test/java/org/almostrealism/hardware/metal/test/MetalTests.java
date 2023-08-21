@@ -14,24 +14,15 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.hardware.metal;
+package org.almostrealism.hardware.metal.test;
 
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.function.Consumer;
+import org.almostrealism.collect.PackedCollection;
+import org.junit.Test;
 
-public class MetalCommandRunner {
-	private ExecutorService executor;
-
-	private final MTLCommandQueue queue;
-
-	public MetalCommandRunner(MTLCommandQueue queue) {
-		this.executor = Executors.newSingleThreadExecutor();
-		this.queue = queue;
-	}
-
-	public Future<?> submit(Consumer<MTLCommandQueue> command) {
-		return executor.submit(() -> command.accept(queue));
+public class MetalTests {
+	@Test
+	public void fill() {
+		PackedCollection<?> matrix = new PackedCollection<>(100, 200);
+		matrix.fill(pos -> Math.random());
 	}
 }

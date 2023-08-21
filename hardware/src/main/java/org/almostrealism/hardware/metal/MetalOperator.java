@@ -33,7 +33,7 @@ import java.util.stream.IntStream;
 /**
  * {@link MetalOperator}s are intended to be used with {@link ThreadLocal}.
  */
-public class MetalOperator implements Execution, KernelWork, Factory<MTLComputePipelineState> {
+public class MetalOperator implements Execution, KernelWork {
 	public static boolean enableLog;
 	public static boolean enableVerboseLog;
 	public static boolean enableDimensionMasks = true;
@@ -59,10 +59,6 @@ public class MetalOperator implements Execution, KernelWork, Factory<MTLComputeP
 		this.argCount = argCount;
 	}
 
-	// TODO  How do these kernels get released when done?
-	@Override
-	public MTLComputePipelineState construct() { return prog.newComputePipelineState(); }
-
 	@Override
 	public long getGlobalWorkSize() { return globalWorkSize; }
 	@Override
@@ -75,7 +71,9 @@ public class MetalOperator implements Execution, KernelWork, Factory<MTLComputeP
 
 	@Override
 	public synchronized Semaphore accept(Object[] args, Semaphore dependsOn) {
-		if (kernel == null) kernel = construct();
+		if (kernel == null) {
+			kernel = prog.newComputePipelineState();
+		}
 
 		long id = totalInvocations++;
 
@@ -86,9 +84,12 @@ public class MetalOperator implements Execution, KernelWork, Factory<MTLComputeP
 		int dimMasks[] = computeDimensionMasks(args);
 		if (dependsOn != null) dependsOn.waitFor();
 
-		Future<?> run = runner.get().submit((cmdBuf, encoder) -> {
+		Future<?> run = runner.get().submit((queue) -> {
 			int index = 0;
 			long totalSize = 0;
+
+			MTLCommandBuffer cmdBuf = queue.commandBuffer();
+			MTLComputeCommandEncoder encoder = cmdBuf.encoder();
 
 			encoder.setComputePipelineState(kernel);
 
@@ -100,23 +101,35 @@ public class MetalOperator implements Execution, KernelWork, Factory<MTLComputeP
 
 			// TODO  Set offset, size, and dim0 buffers
 
-			/*
-			for (int i = 0; i < argCount; i++) {
-				encoder.setBuffer(index++, ((MemoryData) args[i]).getOffset()); // Offset
+			int offsetValues[] = IntStream.range(0, argCount).map(i -> ((MemoryData) args[i]).getOffset()).toArray();
+			MTLBuffer offset = prog.getDevice().newIntBuffer32(offsetValues);
+
+			int sizeValues[] = IntStream.range(0, argCount).map(i -> ((MemoryData) args[i]).getAtomicMemLength()).toArray();
+			MTLBuffer size = prog.getDevice().newIntBuffer32(sizeValues);
+
+			MTLBuffer dim0;
+
+			if (enableDimensionMasks) {
+				int dim0Values[] = IntStream.range(0, argCount).map(i -> ((MemoryData) args[i]).getAtomicMemLength() * dimMasks[i]).toArray();
+				dim0 = prog.getDevice().newIntBuffer32(dim0Values);
+			} else {
+				int dim0Values[] = IntStream.range(0, argCount).map(i -> ((MemoryData) args[i]).getAtomicMemLength()).toArray();
+				dim0 = prog.getDevice().newIntBuffer32(dim0Values);
 			}
 
-			for (int i = 0; i < argCount; i++) {
-				encoder.setBuffer(index++, ((MemoryData) args[i]).getAtomicMemLength()); // Size
+			encoder.setBuffer(index++, offset);
+			encoder.setBuffer(index++, size);
+			encoder.setBuffer(index++, dim0);
+
+			if (getGlobalWorkSize() > Integer.MAX_VALUE) {
+				throw new UnsupportedOperationException();
 			}
 
-			for (int i = 0; i < argCount; i++) {
-				if (enableDimensionMasks) {
-					encoder.setBuffer(index++, ((MemoryData) args[i]).getAtomicMemLength() * dimMasks[i]); // Dim0
-				} else {
-					encoder.setBuffer(index++, ((MemoryData) args[i]).getAtomicMemLength()); // Dim0
-				}
-			}
-			 */
+			encoder.dispatchThreadgroups(1, (int) getGlobalWorkSize());
+			encoder.endEncoding();
+
+			cmdBuf.commit();
+			cmdBuf.waitUntilCompleted();
 		});
 
 		if (Hardware.isAsync()) {

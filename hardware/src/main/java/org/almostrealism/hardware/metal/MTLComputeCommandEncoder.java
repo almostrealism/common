@@ -28,4 +28,24 @@ public class MTLComputeCommandEncoder extends MTLObject {
 	public void setBuffer(int index, MTLBuffer buffer) {
 		MTL.setBuffer(getNativePointer(), index, buffer.getNativePointer());
 	}
+
+	public void dispatchThreadgroups(int groupWidth, int gridWidth) {
+		dispatchThreadgroups(groupWidth, 1, 1, gridWidth, 1, 1);
+	}
+
+	public void dispatchThreadgroups(int groupWidth, int groupHeight,
+									 int gridWidth, int gridHeight) {
+		dispatchThreadgroups(groupWidth, groupHeight, 1, gridWidth, gridHeight, 1);
+	}
+
+	public void dispatchThreadgroups(int groupWidth, int groupHeight, int groupDepth,
+									int gridWidth, int gridHeight, int gridDepth) {
+		MTL.dispatchThreadgroups(getNativePointer(), groupWidth, groupHeight, groupDepth,
+								 gridWidth, gridHeight, gridDepth);
+
+	}
+
+	public void endEncoding() {
+		MTL.endEncoding(getNativePointer());
+	}
 }

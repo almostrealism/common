@@ -29,7 +29,7 @@ public class MTLCommandBuffer extends MTLObject {
 		MTL.commitCommandBuffer(getNativePointer());
 	}
 
-	public void waitFor() {
+	public void waitUntilCompleted() {
 		MTL.waitUntilCompleted(getNativePointer());
 	}
 }
