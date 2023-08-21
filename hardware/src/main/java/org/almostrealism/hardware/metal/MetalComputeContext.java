@@ -29,7 +29,13 @@ import java.util.List;
 public class MetalComputeContext extends AbstractComputeContext {
 	public static boolean enableFastQueue = false;
 
-	private boolean enableFp64;
+	private static String includes = "#include <metal_stdlib>\n" +
+									"using metal::min;\n" +
+									"using metal::max;\n" +
+									"using metal::floor;\n" +
+									"using metal::ceil;\n" +
+									"using metal::sin;\n";
+
 	private MTLDevice mainDevice, kernelDevice;
 	private MTLCommandQueue queue;
 	private MTLCommandQueue fastQueue;
@@ -41,7 +47,6 @@ public class MetalComputeContext extends AbstractComputeContext {
 
 	public MetalComputeContext(Hardware hardware) {
 		super(hardware, true, false);
-		this.enableFp64 = hardware.isDoublePrecision();
 		this.instructionSets = new ArrayList<>();
 	}
 
@@ -71,9 +76,13 @@ public class MetalComputeContext extends AbstractComputeContext {
 
 	@Override
 	public InstructionSet deliver(Scope scope) {
-		ScopeEncoder enc = new ScopeEncoder(pw -> new MetalPrintWriter(pw, scope.getName()), Accessibility.EXTERNAL);
+		StringBuilder buf = new StringBuilder();
+		buf.append(includes);
 
-		MetalOperatorMap instSet = new MetalOperatorMap(this, scope.getMetadata(), scope.getName(), enc.apply(scope));
+		ScopeEncoder enc = new ScopeEncoder(pw -> new MetalPrintWriter(pw, scope.getName()), Accessibility.EXTERNAL);
+		buf.append(enc.apply(scope));
+
+		MetalOperatorMap instSet = new MetalOperatorMap(this, scope.getMetadata(), scope.getName(), buf.toString());
 		instructionSets.add(instSet);
 		return instSet;
 	}
