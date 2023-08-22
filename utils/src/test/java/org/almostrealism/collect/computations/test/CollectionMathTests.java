@@ -23,7 +23,7 @@ public class CollectionMathTests implements TestFeatures {
 						expected += x.valueAt(j);
 					}
 
-					Assert.assertEquals(expected, output.valueAt(0), 1e-5);
+					assertEquals(expected, output.valueAt(0));
 				}, false, false, true);
 	}
 

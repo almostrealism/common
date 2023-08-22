@@ -43,18 +43,20 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 	private final String topLevelMethodName;
 	private final Stack<Accessibility> accessStack;
 	private final Stack<List<ArrayVariable<?>>> argumentStack;
-	private final boolean isNative;
 
 	private boolean enableArgumentValueReads;
-	private boolean enableArgumentDetailReads;
 	private boolean enableArgumentValueWrites;
 
 	private final boolean verbose;
 	private boolean log;
 	private int logCount;
 
-	public CPrintWriter(OutputStream out, String topLevelMethodName, boolean isNative) {
-		this(new PrintStreamPrintWriter(new PrintStream(out)), topLevelMethodName, isNative);
+	public CPrintWriter(OutputStream out, String topLevelMethodName) {
+		this(new PrintStreamPrintWriter(new PrintStream(out)), topLevelMethodName);
+	}
+
+	public CPrintWriter(PrintWriter p, String topLevelMethodName) {
+		this(p, topLevelMethodName, false);
 	}
 
 	public CPrintWriter(PrintWriter p, String topLevelMethodName, boolean isNative) {
@@ -62,24 +64,18 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 	}
 
 	public CPrintWriter(PrintWriter p, String topLevelMethodName, boolean isNative, boolean verbose) {
-		super(p);
+		super(p, new CLanguageOperations(isNative, false));
 		this.topLevelMethodName = topLevelMethodName;
 		this.accessStack = new Stack<>();
 		this.argumentStack = new Stack<>();
-		this.isNative = isNative;
 		this.verbose = verbose;
 		setScopePrefix("void");
-		setEnableArrayVariables(true);
 	}
 
 	public String getTopLevelMethodName() { return topLevelMethodName; }
 
 	public void setEnableArgumentValueReads(boolean enableArgumentValueReads) {
 		this.enableArgumentValueReads = enableArgumentValueReads;
-	}
-
-	public void setEnableArgumentDetailReads(boolean enableArgumentDetailReads) {
-		this.enableArgumentDetailReads = enableArgumentDetailReads;
 	}
 
 	public void setEnableArgumentValueWrites(boolean enableArgumentValueWrites) {
@@ -129,33 +125,8 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 		super.endScope();
 	}
 
-	@Override
-	protected void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out, Accessibility access) {
-		if (isNative && access == Accessibility.EXTERNAL) {
-			out.accept("long* argArr, uint32_t* offsetArr, uint32_t* sizeArr, uint32_t* dim0Arr, uint32_t count");
-		} else if (enableArgumentDetailReads && isEnableArrayVariables()) {
-			if (!arguments.isEmpty()) {
-				renderArguments(arguments, out, true, true, null, "*", "");
-				out.accept(", ");
-				out.accept(annotationForPhysicalScope(PhysicalScope.GLOBAL));
-				out.accept(" int *offsetArr");
-				out.accept(argumentPost(arguments.size()));
-				out.accept(", ");
-				out.accept(annotationForPhysicalScope(PhysicalScope.GLOBAL));
-				out.accept(" int *sizeArr");
-				out.accept(argumentPost(arguments.size() + 1));
-				out.accept(", ");
-				out.accept(annotationForPhysicalScope(PhysicalScope.GLOBAL));
-				out.accept(" int *dim0Arr");
-				out.accept(argumentPost(arguments.size() + 2));
-			}
-		} else {
-			super.renderArguments(arguments, out, access);
-		}
-	}
-
 	protected void renderArgumentReads(List<ArrayVariable<?>> arguments) {
-		if (enableArgumentDetailReads) {
+		if (((CLanguageOperations) language).isEnableArgumentDetailReads()) {
 			IntStream.range(0, arguments.size())
 					.mapToObj(i -> new Variable<>(arguments.get(i).getName() + "Offset",
 							Integer.class, "(int) offsetArr[" + i + "]"))
@@ -219,11 +190,6 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 	}
 
 	@Override
-	public void println(Method method) {
-		p.println(renderMethod(method));
-	}
-
-	@Override
 	public void println(Metric m) {
 		String ctr = m.getCounter().getExpression();
 		println(ctr + " = fmod(" + ctr + " + 1, " + m.getLogFrequency() + ");");
@@ -261,35 +227,12 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 		println("printf(\"" + format + (newLine ? "\\n\", " : "\", ") + arg + ");", false);
 	}
 
-	public static String renderAssignment(Variable<?, ?> var) {
-		return var.getName() + " = " + var.getExpression().getValue() + ";";
-	}
-
 	protected String annotationForVariable(Variable<?, ?> var) {
-		if (annotationForPhysicalScope(var.getPhysicalScope()) != null) {
-			return annotationForPhysicalScope(var.getPhysicalScope()) + " ";
+		if (language.annotationForPhysicalScope(var.getPhysicalScope()) != null) {
+			return language.annotationForPhysicalScope(var.getPhysicalScope()) + " ";
 		}
 
 		return "";
-	}
-
-	@Override
-	protected String nameForType(Class<?> type) { return typeString(type); }
-
-	private static String typeString(Class type) {
-		if (type == null) return "";
-
-		if (type == Double.class) {
-			return Hardware.getLocalHardware().getNumberTypeName();
-		} else if (type == Integer.class || type == int[].class) {
-			return "int";
-		} else if (type == Long.class || type == long[].class) {
-			return "long";
-		} else if (type == cl_event.class) {
-			return "cl_event";
-		} else {
-			throw new IllegalArgumentException("Unable to encode " + type);
-		}
 	}
 
 	protected static String encode(Object data) {

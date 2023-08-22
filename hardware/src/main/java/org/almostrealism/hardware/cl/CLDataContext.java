@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.RAM;
 import org.almostrealism.hardware.jvm.JVMMemoryProvider;
 import org.jocl.CL;
@@ -57,7 +58,7 @@ public class CLDataContext implements DataContext {
 	private MemoryProvider<RAM> mainRam;
 	private MemoryProvider<Memory> altRam;
 
-	private ThreadLocal<ComputeContext> computeContext;
+	private ThreadLocal<ComputeContext<MemoryData>> computeContext;
 	private ThreadLocal<IntFunction<MemoryProvider<?>>> memoryProvider;
 
 	private Runnable start;

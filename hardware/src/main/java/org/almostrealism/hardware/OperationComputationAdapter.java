@@ -22,6 +22,7 @@ import io.almostrealism.code.ComputationBase;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.Method;
+import org.almostrealism.hardware.cl.OpenCLLanguageOperations;
 import org.almostrealism.hardware.cl.OpenCLPrintWriter;
 
 import java.util.function.Supplier;
@@ -40,7 +41,7 @@ public abstract class OperationComputationAdapter<T> extends ComputationBase<T, 
 	public PhysicalScope getDefaultPhysicalScope() { return PhysicalScope.GLOBAL; }
 
 	protected String renderMethod(Method method) {
-		return new OpenCLPrintWriter(null).renderMethod(method);
+		return Hardware.getLocalHardware().getComputeContext().getLanguage().renderMethod(method);
 	}
 
 	@Override

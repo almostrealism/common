@@ -16,16 +16,8 @@
 
 package org.almostrealism.hardware.metal;
 
-import io.almostrealism.code.Accessibility;
-import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.scope.Method;
-import io.almostrealism.code.PhysicalScope;
 import org.almostrealism.c.CPrintWriter;
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.io.PrintWriter;
-
-import java.util.List;
-import java.util.function.Consumer;
 
 public class MetalPrintWriter extends CPrintWriter {
 
@@ -35,35 +27,8 @@ public class MetalPrintWriter extends CPrintWriter {
 
 	public MetalPrintWriter(PrintWriter p, String topLevelMethodName) {
 		super(p, topLevelMethodName, false);
-		setScopePrefix("[[kernel]] void");
-		setEnableArrayVariables(true);
-		setEnableArgumentDetailReads(true);
-	}
-
-	@Override
-	protected void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out, Accessibility access) {
-		super.renderArguments(arguments, out, access);
-
-		if (!arguments.isEmpty()) {
-			out.accept(", ");
-			out.accept("uint global_id [[thread_position_in_grid]], ");
-			out.accept("uint global_count [[threads_per_grid]]");
-		}
-	}
-
-	@Override
-	public void println(Method method) {
-		p.println(renderMethod(method));
-	}
-
-	@Override
-	protected String annotationForPhysicalScope(PhysicalScope scope) {
-		if (scope != null) return "device";
-		return null;
-	}
-
-	@Override
-	protected String argumentPost(int index) {
-		return " [[buffer(" + index + ")]]";
+		language = new MetalLanguageOperations();
+		setExternalScopePrefix("[[kernel]] void");
+		setInternalScopePrefix("void");
 	}
 }

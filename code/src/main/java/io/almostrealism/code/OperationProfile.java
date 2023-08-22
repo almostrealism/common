@@ -63,4 +63,9 @@ public class OperationProfile {
 		totalTime.put(key, totalTime.getOrDefault(metadata.getShortDescription(), 0L) + duration);
 		count.put(key, count.getOrDefault(metadata.getShortDescription(), 0) + 1);
 	}
+
+	public void clear() {
+		totalTime.clear();
+		count.clear();
+	}
 }

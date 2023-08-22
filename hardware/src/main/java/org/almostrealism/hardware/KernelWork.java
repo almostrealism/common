@@ -20,6 +20,14 @@ public interface KernelWork {
 	long getGlobalWorkSize();
 	void setGlobalWorkSize(long globalWorkSize);
 
+	default int getWorkgroupSize() {
+//		if (getGlobalWorkSize() % 2048 == 0) {
+//			return 2048;
+//		}
+
+		return 1;
+	}
+
 	long getGlobalWorkOffset();
 	void setGlobalWorkOffset(long globalWorkOffset);
 }

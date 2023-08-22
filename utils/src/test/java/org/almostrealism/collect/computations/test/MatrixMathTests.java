@@ -55,7 +55,7 @@ public class MatrixMathTests implements TestFeatures {
 							v += weight.valueAt(i, j) * x.valueAt(j);
 						}
 
-						Assert.assertEquals(output.valueAt(i, 0), v, 1e-5);
+						assertEquals(output.valueAt(i, 0), v);
 					}
 				}, false, false, true);
 	}

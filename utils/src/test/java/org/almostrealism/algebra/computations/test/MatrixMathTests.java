@@ -25,19 +25,21 @@ import org.junit.Assert;
 import org.junit.Test;
 
 public class MatrixMathTests implements TestFeatures {
+	private static boolean enableOptimization = true;
+
 	@Test
 	public void matmul() {
-		matmul(768, 2048);
+		matmul(2048, 1024, true);
 	}
 
 	@Test
 	public void matmulPowers() {
 		for (int i = 1; i < 9; i++) {
-			matmul(1 << i, 1 << i);
+			matmul(1 << i, 1 << i, false);
 		}
 	}
 
-	protected void matmul(int dim, int width) {
+	protected void matmul(int dim, int width, boolean validate) {
 		PackedCollection<?> matrix = new PackedCollection<>(dim, width);
 		PackedCollection<?> vector = new PackedCollection<>(width);
 		PackedCollection<?> result = new PackedCollection<>(dim);
@@ -49,13 +51,28 @@ public class MatrixMathTests implements TestFeatures {
 
 		OperationList op = new OperationList("Matrix Test", false);
 		op.add(a("matmul " + width, traverseEach(p(result)), matmul(p(matrix), p(vector))));
-		Runnable r = ((OperationList) op.optimize()).get(profiles);
+		Runnable r = enableOptimization ? ((OperationList) op.optimize()).get(profiles) : op.get(profiles);
 
-		for (int i = 0; i < 100; i++) {
+		r.run();
+		profiles.clear();
+
+		for (int i = 0; i < 5000; i++) {
 			r.run();
 		}
 
 		profiles.print();
+
+		if (validate) {
+			for (int i = 0; i < dim; i++) {
+				double v = 0.0;
+
+				for (int j = 0; j < width; j++) {
+					v += matrix.valueAt(i, j) * vector.valueAt(j);
+				}
+
+				assertEquals(result.valueAt(i), v);
+			}
+		}
 	}
 
 	@Test

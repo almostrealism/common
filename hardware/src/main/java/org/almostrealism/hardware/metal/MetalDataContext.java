@@ -22,6 +22,7 @@ import io.almostrealism.code.DataContext;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.RAM;
 import org.almostrealism.hardware.jvm.JVMMemoryProvider;
 
@@ -42,7 +43,7 @@ public class MetalDataContext implements DataContext {
 	private MemoryProvider<RAM> mainRam;
 	private MemoryProvider<Memory> altRam;
 
-	private ThreadLocal<ComputeContext> computeContext;
+	private ThreadLocal<ComputeContext<MemoryData>> computeContext;
 	private ThreadLocal<IntFunction<MemoryProvider<?>>> memoryProvider;
 
 	private Runnable start;

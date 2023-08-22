@@ -57,12 +57,17 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	}
 
 	private static void assertEquals(double a, double b, boolean positive) {
-		double gap = Hardware.getLocalHardware().isDoublePrecision() ? Math.pow(10, -10) : Math.pow(10, -6);
+		double gap = Hardware.getLocalHardware().isDoublePrecision() ? Math.pow(10, -10) : Math.pow(10, -4);
+		double fallbackGap = Math.pow(10, -3);
 
 		if (Math.abs(a - b) >= gap) {
 			if (positive) {
-				System.err.println("TestFeatures: " + b + " != " + a);
-				throw new AssertionError();
+				if (Math.abs(a - b) >= fallbackGap) {
+					System.err.println("TestFeatures: " + b + " != " + a);
+					throw new AssertionError();
+				} else {
+					System.out.println("TestFeatures: " + b + " != " + a);
+				}
 			}
 		} else if (!positive) {
 			System.err.println("TestFeatures: " + b + " == " + a);

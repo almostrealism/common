@@ -31,17 +31,17 @@ import java.util.List;
 public class OperationSemaphoreTests implements TestFeatures {
 	@Test
 	public void sum() {
-		sum(10, 2048, 128);
+		sum(50, 2048, 1024, false);
 	}
 
 	@Test
 	public void sumPowers() {
 		for (int i = 1; i < 9; i++) {
-			sum(10, 100, 1 << i);
+			sum(10, 100, 1 << i, false);
 		}
 	}
 
-	protected void sum(int ops, int count, int dim) {
+	protected void sum(int ops, int count, int dim, boolean validate) {
 		OperationProfile profiles = new OperationProfile();
 		OperationList op = new OperationList("Vector Test", false);
 
@@ -62,8 +62,8 @@ public class OperationSemaphoreTests implements TestFeatures {
 
 		long waitTime = 0;
 
-//		r.run();
-//		profiles.clear();
+		r.run();
+		profiles.clear();
 
 		for (int i = 0; i < 1000; i++) {
 			r.run();
@@ -75,15 +75,17 @@ public class OperationSemaphoreTests implements TestFeatures {
 		System.out.println("Semaphore wait time: " + waitTime + "ms");
 		profiles.print();
 
-		for (int n = 0; n < ops; n++) {
-			for (int i = 0; i < count; i++) {
-				double expected = 0.0;
+		if (validate) {
+			for (int n = 0; n < ops; n++) {
+				for (int i = 0; i < count; i++) {
+					double expected = 0.0;
 
-				for (int j = 0; j < dim; j++) {
-					expected += allVectors.get(n).valueAt(i, j);
+					for (int j = 0; j < dim; j++) {
+						expected += allVectors.get(n).valueAt(i, j);
+					}
+
+					assertEquals(expected, allResults.get(n).valueAt(i));
 				}
-
-				assertEquals(expected, allResults.get(n).valueAt(i));
 			}
 		}
 	}

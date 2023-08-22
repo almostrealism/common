@@ -16,8 +16,6 @@
 
 package io.almostrealism.code;
 
-import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Method;
 import io.almostrealism.scope.Metric;
@@ -25,27 +23,24 @@ import io.almostrealism.scope.Scope;
 import org.almostrealism.io.PrintWriter;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.Stack;
-import java.util.function.Consumer;
-import java.util.stream.Collectors;
 
 public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 	protected boolean enableWarnOnExplictParams = true;
 
 	protected PrintWriter p;
+	protected LanguageOperations language;
 
 	private String nameSuffix = "";
 	private String scopePrefixExt, scopePrefixInt;
 	private String scopeSuffix = "{";
 	private String scopeClose = "}";
 
-	private boolean enableArrayVariables;
-
 	private final Stack<String> scopeName;
 
-	public CodePrintWriterAdapter(PrintWriter p) {
+	public CodePrintWriterAdapter(PrintWriter p, LanguageOperations language) {
 		this.p = p;
+		this.language = language;
 		this.scopeName = new Stack<>();
 	}
 
@@ -62,30 +57,16 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 	protected void setScopeSuffix(String suffix) { this.scopeSuffix = suffix; }
 	protected void setScopeClose(String close) { this.scopeClose = close; }
 
-	protected void setEnableArrayVariables(boolean enableArrayVariables) {
-		this.enableArrayVariables = enableArrayVariables;
-	}
-
-	protected boolean isEnableArrayVariables() {
-		return enableArrayVariables;
-	}
-
 	protected String typePrefix(Class type) {
 		if (type == null) {
 			return "";
 		} else {
-			return nameForType(type) + " ";
+			return language.nameForType(type) + " ";
 		}
 	}
 
 	protected String getCurrentScopeName() {
 		return scopeName.peek();
-	}
-
-	protected abstract String nameForType(Class<?> type);
-
-	protected String annotationForPhysicalScope(PhysicalScope scope) {
-		return null;
 	}
 
 	@Override
@@ -103,7 +84,12 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 	public void println(String s) { p.println(s); }
 
 	@Override
-	public void println(Scope s) {
+	public void println(Method<?> method) {
+		p.println(language.renderMethod(method));
+	}
+
+	@Override
+	public void println(Scope<?> s) {
 		beginScope(s.getName(), null, s.getArgumentVariables(), Accessibility.EXTERNAL);
 		s.write(this);
 		endScope();
@@ -130,121 +116,13 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 			}
 
 			buf.append("(");
-			renderArguments(arguments, buf::append, access);
+			((DefaultLanguageOperations) language).renderArguments(arguments, buf::append, access);
 			buf.append(")");
 		}
 
 		if (scopeSuffix != null) { buf.append(" "); buf.append(scopeSuffix); }
 
 		p.println(buf.toString());
-	}
-
-	public String renderMethod(Method method) {
-		StringBuilder buf = new StringBuilder();
-		buf.append(method.getName());
-		buf.append("(");
-		renderParameters(method.getArguments(), buf::append);
-		buf.append(");");
-		return buf.toString();
-	}
-
-	protected void renderParametersExplicit(List<Expression> parameters, Consumer<String> out) {
-		for (int i = 0; i < parameters.size(); i++) {
-			Expression arg = parameters.get(i);
-
-			out.accept(arg.getExpression());
-
-			if (i < parameters.size() - 1) {
-				out.accept(", ");
-			}
-		}
-	}
-
-	protected void renderParameters(List<Expression> parameters, Consumer<String> out) {
-		Optional<Expression> explicit = parameters.stream().filter(exp -> !(exp instanceof InstanceReference)).findFirst();
-		if (explicit.isPresent()) {
-			if (enableWarnOnExplictParams) System.out.println("WARN: Explicit parameter (" + explicit.get().getExpression() + ") provided to method; falling back to explicit rendering");
-			renderParametersExplicit(parameters, out);
-			return;
-		}
-
-		List<ArrayVariable<?>> arguments = parameters.stream()
-				.map(exp -> (InstanceReference) exp)
-				.map(InstanceReference::getReferent)
-				.map(v -> (ArrayVariable<?>) v)
-				.collect(Collectors.toList());
-
-		if (enableArrayVariables) {
-			if (!arguments.isEmpty()) {
-				renderArguments(arguments, out, false, false, null, "", "");
-				out.accept(", ");
-				renderArguments(arguments, out, false, false, Integer.class, "", "Offset");
-				out.accept(", ");
-				renderArguments(arguments, out, false, false, Integer.class, "", "Size");
-				out.accept(", ");
-				renderArguments(arguments, out, false, false, Integer.class, "", "Dim0");
-			}
-		} else {
-			renderArguments(arguments, out, false, false, null, "", "");
-		}
-	}
-
-	protected void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out, Accessibility access) {
-		if (enableArrayVariables) {
-			if (!arguments.isEmpty()) {
-				renderArguments(arguments, out, true, true, null, "*", "");
-				out.accept(", ");
-				renderArguments(arguments, out, true, false, Integer.class, "", "Offset");
-				out.accept(", ");
-				renderArguments(arguments, out, true, false, Integer.class, "", "Size");
-				out.accept(", ");
-				renderArguments(arguments, out, true, false, Integer.class, "", "Dim0");
-			}
-		} else {
-			renderArguments(arguments, out, true, true, null, "", "");
-		}
-	}
-
-	protected void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out, boolean enableType,
-								   boolean enableAnnotation, Class replaceType, String prefix, String suffix) {
-		for (int i = 0; i < arguments.size(); i++) {
-			ArrayVariable<?> arg = arguments.get(i);
-
-			out.accept(argumentPre(arg, enableType, enableAnnotation, replaceType));
-
-			out.accept(prefix);
-			out.accept(arguments.get(i).getName());
-			out.accept(suffix);
-			out.accept(argumentPost(i));
-
-			if (i < arguments.size() - 1) {
-				out.accept(", ");
-			}
-		}
-	}
-
-	protected String argumentPre(ArrayVariable arg, boolean enableType, boolean enableAnnotation) {
-		return argumentPre(arg, enableType, enableAnnotation, null);
-	}
-
-	protected String argumentPre(ArrayVariable arg, boolean enableType, boolean enableAnnotation, Class replaceType) {
-		StringBuilder buf = new StringBuilder();
-
-		if (enableAnnotation && annotationForPhysicalScope(arg.getPhysicalScope()) != null) {
-			buf.append(annotationForPhysicalScope(arg.getPhysicalScope()));
-			buf.append(" ");
-		}
-
-		if (enableType) {
-			buf.append(nameForType(replaceType == null ? arg.getType() : replaceType));
-			buf.append(" ");
-		}
-
-		return buf.toString();
-	}
-
-	protected String argumentPost(int index) {
-		return "";
 	}
 
 	@Override

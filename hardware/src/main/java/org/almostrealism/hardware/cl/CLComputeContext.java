@@ -18,6 +18,7 @@ package org.almostrealism.hardware.cl;
 
 import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.InstructionSet;
+import io.almostrealism.code.LanguageOperations;
 import io.almostrealism.code.Memory;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeEncoder;
@@ -89,6 +90,11 @@ public class CLComputeContext extends AbstractComputeContext {
 			if (Hardware.enableVerbose)
 				System.out.println("Hardware[" + getName() + "]: OpenCL kernel command queue initialized");
 		}
+	}
+
+	@Override
+	public LanguageOperations getLanguage() {
+		return new OpenCLLanguageOperations();
 	}
 
 	@Override

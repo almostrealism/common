@@ -9,22 +9,23 @@ import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.hardware.PassThroughProducer;
 import org.almostrealism.hardware.cl.HardwareOperator;
+import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.Arrays;
 import java.util.List;
 
-public class PairBankTest implements CodeFeatures {
+public class PairBankTest implements TestFeatures {
 	@Test
 	public void test() {
 		PackedCollection<Pair<?>> bank = Pair.bank(2);
 		bank.set(0, new Pair(1, 2));
 		bank.set(1, new Pair(3, 4));
-		Assert.assertEquals(1.0, bank.get(0).getX(), Math.pow(10, -10));
-		Assert.assertEquals(2.0, bank.get(0).getY(), Math.pow(10, -10));
-		Assert.assertEquals(3.0, bank.get(1).getX(), Math.pow(10, -10));
-		Assert.assertEquals(4.0, bank.get(1).getY(), Math.pow(10, -10));
+		assertEquals(1.0, bank.get(0).getX());
+		assertEquals(2.0, bank.get(0).getY());
+		assertEquals(3.0, bank.get(1).getX());
+		assertEquals(4.0, bank.get(1).getY());
 	}
 
 	@Test
@@ -43,8 +44,8 @@ public class PairBankTest implements CodeFeatures {
 			System.out.println(Arrays.toString(destination.toArray(0, 8)));
 		});
 
-		Assert.assertEquals(3.0, destination.valueAt(2, 0), Math.pow(10, -10));
-		Assert.assertEquals(3.0, destination.valueAt(2, 1), Math.pow(10, -10));
+		assertEquals(3.0, destination.valueAt(2, 0));
+		assertEquals(3.0, destination.valueAt(2, 1));
 	}
 
 	@Test
@@ -64,8 +65,8 @@ public class PairBankTest implements CodeFeatures {
 			System.out.println(Arrays.toString(destination.toArray(0, 8)));
 		});
 
-		Assert.assertEquals(6.0, destination.valueAt(2, 0), Math.pow(10, -10));
-		Assert.assertEquals(7.0, destination.valueAt(2, 1), Math.pow(10, -10));
+		assertEquals(6.0, destination.valueAt(2, 0));
+		assertEquals(7.0, destination.valueAt(2, 1));
 	}
 
 	@Test
@@ -98,10 +99,10 @@ public class PairBankTest implements CodeFeatures {
 				.evaluate(bank, timeline.traverse(1));
 
 		System.out.println(Arrays.toString(destination.toArray(0, 8)));
-		Assert.assertEquals(11.0, destination.valueAt(1, 0), Math.pow(10, -10));
-		Assert.assertEquals(12.0, destination.valueAt(1, 1), Math.pow(10, -10));
-		Assert.assertEquals(19.0, destination.valueAt(3, 0), Math.pow(10, -10));
-		Assert.assertEquals(20.0, destination.valueAt(3, 1), Math.pow(10, -10));
+		assertEquals(11.0, destination.valueAt(1, 0));
+		assertEquals(12.0, destination.valueAt(1, 1));
+		assertEquals(19.0, destination.valueAt(3, 0));
+		assertEquals(20.0, destination.valueAt(3, 1));
 	}
 
 	@Test
@@ -130,8 +131,8 @@ public class PairBankTest implements CodeFeatures {
 			c.get().into(destination.traverse(1)).evaluate(bank.range(subset, 2).traverse(1));
 
 			System.out.println(Arrays.toString(destination.toArray(0, 4)));
-			Assert.assertEquals(6.0, destination.valueAt(1), Math.pow(10, -10));
-			Assert.assertEquals(8.0, destination.valueAt(2), Math.pow(10, -10));
+			assertEquals(6.0, destination.valueAt(1));
+			assertEquals(8.0, destination.valueAt(2));
 		});
 	}
 }

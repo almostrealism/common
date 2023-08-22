@@ -24,6 +24,8 @@ import io.almostrealism.relation.Countable;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.relation.Compactable;
+import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.cl.OpenCLLanguageOperations;
 import org.almostrealism.hardware.cl.OpenCLPrintWriter;
 import org.almostrealism.hardware.OperationComputationAdapter;
 
@@ -67,8 +69,7 @@ public class Loop extends OperationComputationAdapter<Void> {
 
 		String i = getVariablePrefix() + "_i";
 		scope.code().accept("for (int " + i + " = 0; " + i + " < " + iterations +"; " + i + "++) {\n");
-		// TODO  This is CL specific and should be general
-		scope.code().accept("    " + new OpenCLPrintWriter(null).renderMethod(atomScope.call()) + "\n");
+		scope.code().accept("    " + Hardware.getLocalHardware().getComputeContext().getLanguage().renderMethod(atomScope.call()) + "\n");
 		scope.code().accept("}\n");
 		return scope;
 	}

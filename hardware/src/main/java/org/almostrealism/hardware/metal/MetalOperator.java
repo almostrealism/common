@@ -125,11 +125,15 @@ public class MetalOperator implements Execution, KernelWork {
 				throw new UnsupportedOperationException();
 			}
 
-			encoder.dispatchThreadgroups(1, (int) getGlobalWorkSize());
+			encoder.dispatchThreadgroups(getWorkgroupSize(), ((int) getGlobalWorkSize()) / getWorkgroupSize());
 			encoder.endEncoding();
 
 			cmdBuf.commit();
 			cmdBuf.waitUntilCompleted();
+
+			offset.release();
+			size.release();
+			dim0.release();
 		});
 
 		if (Hardware.isAsync()) {

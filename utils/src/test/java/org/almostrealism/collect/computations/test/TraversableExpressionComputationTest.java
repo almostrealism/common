@@ -10,12 +10,13 @@ import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.TraversableExpressionComputation;
+import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.function.BiFunction;
 
-public class TraversableExpressionComputationTest implements CodeFeatures {
+public class TraversableExpressionComputationTest implements TestFeatures {
 	protected <T extends PackedCollection<?>> TraversableExpressionComputation<T> pairSum(Producer a) {
 		TraversalPolicy shape = shape(a);
 
@@ -40,7 +41,7 @@ public class TraversableExpressionComputationTest implements CodeFeatures {
 		for (int i = 0; i < r; i++) {
 			double expected = input.valueAt(i, 0) + input.valueAt(i, 1);
 			double actual = out.valueAt(i, 0);
-			Assert.assertEquals(expected, actual, Math.pow(10, -10));
+			assertEquals(expected, actual);
 		}
 	}
 
@@ -58,7 +59,7 @@ public class TraversableExpressionComputationTest implements CodeFeatures {
 		for (int i = 0; i < r; i++) {
 			double expected = input.valueAt(i, 0) + input.valueAt(i, 1);
 			double actual = out.valueAt(i, 0);
-			Assert.assertEquals(expected, actual, Math.pow(10, -10));
+			assertEquals(expected, actual);
 		}
 	}
 }

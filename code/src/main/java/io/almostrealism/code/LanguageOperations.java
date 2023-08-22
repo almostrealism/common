@@ -14,16 +14,15 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.hardware.cl;
+package io.almostrealism.code;
 
-import org.almostrealism.c.CPrintWriter;
-import org.almostrealism.io.PrintWriter;
+import io.almostrealism.scope.Method;
 
-public class OpenCLPrintWriter extends CPrintWriter {
+public interface LanguageOperations {
 
-	public OpenCLPrintWriter(PrintWriter p) {
-		super(p, null, false);
-		setScopePrefix("__kernel void");
-		language = new OpenCLLanguageOperations();
-	}
+	String annotationForPhysicalScope(PhysicalScope scope);
+
+	String nameForType(Class<?> type);
+
+	String renderMethod(Method<?> method);
 }

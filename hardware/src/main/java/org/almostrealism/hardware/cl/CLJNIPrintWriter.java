@@ -16,7 +16,6 @@
 
 package org.almostrealism.hardware.cl;
 
-import io.almostrealism.code.Accessibility;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Method;
@@ -24,7 +23,6 @@ import io.almostrealism.scope.Variable;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
 import org.almostrealism.c.CJNIPrintWriter;
-import org.almostrealism.c.CPrintWriter;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.io.PrintWriter;
 import org.jocl.cl_command_queue;
@@ -32,8 +30,6 @@ import org.jocl.cl_event;
 import org.jocl.cl_mem;
 
 import java.util.List;
-import java.util.Stack;
-import java.util.function.Consumer;
 import java.util.stream.IntStream;
 
 public class CLJNIPrintWriter extends CJNIPrintWriter {
@@ -43,25 +39,6 @@ public class CLJNIPrintWriter extends CJNIPrintWriter {
 	}
 
 	@Override
-	protected String nameForType(Class<?> type) {
-		if (type == Integer.class || type == int[].class) {
-			return "jint";
-		} else if (type == Long.class || type == long[].class) {
-			return "jlong";
-		} else {
-			return super.nameForType(type);
-		}
-	}
-
-	@Override
-	protected void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out, Accessibility access) {
-		if (access == Accessibility.EXTERNAL) {
-			out.accept("JNIEnv *env, jobject obj, jlong commandQueue, jlongArray arg, jintArray offset, jintArray size, jint count");
-		} else {
-			super.renderArguments(arguments, out, access);
-		}
-	}
-
 	protected void renderArgumentReads(List<ArrayVariable<?>> arguments) {
 		println(new Variable<>("*argArr", long[].class, "(*env)->GetLongArrayElements(env, arg, 0)"));
 		println(new Variable<>("*offsetArr", int[].class, "(*env)->GetIntArrayElements(env, offset, 0)"));
@@ -89,6 +66,7 @@ public class CLJNIPrintWriter extends CJNIPrintWriter {
 				.forEach(super::println);
 	}
 
+	@Override
 	protected void renderArgumentWrites(List<ArrayVariable<?>> arguments) {
 		IntStream.range(0, arguments.size())
 				.mapToObj(i -> clEnqueueBuffer(i, arguments.get(i), true))

@@ -18,6 +18,7 @@ package org.almostrealism.hardware.metal;
 
 import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.InstructionSet;
+import io.almostrealism.code.LanguageOperations;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeEncoder;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
@@ -32,8 +33,10 @@ public class MetalComputeContext extends AbstractComputeContext {
 	private static String includes = "#include <metal_stdlib>\n" +
 									"using metal::min;\n" +
 									"using metal::max;\n" +
+									"using metal::fmod;\n" +
 									"using metal::floor;\n" +
 									"using metal::ceil;\n" +
+									"using metal::pow;\n" +
 									"using metal::sin;\n";
 
 	private MTLDevice mainDevice, kernelDevice;
@@ -72,6 +75,11 @@ public class MetalComputeContext extends AbstractComputeContext {
 		}
 
 		this.runner = new MetalCommandRunner(queue);
+	}
+
+	@Override
+	public LanguageOperations getLanguage() {
+		return new MetalLanguageOperations();
 	}
 
 	@Override
