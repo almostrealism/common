@@ -191,8 +191,8 @@ public final class Hardware {
 					 Precision precision, boolean externalNative, Location location) {
 		this.name = name;
 
-		this.memoryMax = (long) Math.pow(2, getMemoryScale()) * 256L * 1000L * 1000L;
-		this.memoryMax = memoryMax * (precision.bytes() / 4);
+		this.memoryMax = (long) Math.pow(2, getMemoryScale()) * 64L * 1000L * 1000L;
+		this.memoryMax = memoryMax * precision.bytes();
 
 		this.precision = precision;
 		this.location = location;
