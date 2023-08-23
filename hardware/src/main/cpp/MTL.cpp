@@ -96,6 +96,14 @@ JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_dispatchThreadg
 }
 
 extern "C"
+JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_dispatchThreads(JNIEnv* env, jclass cls, jlong cmdEnc,
+                                                                                     jint groupWidth, jint groupHeight, jint groupDepth,
+                                                                                    jint gridWidth, jint gridHeight, jint gridDepth) {
+    MTL::ComputeCommandEncoder* enc = (MTL::ComputeCommandEncoder*) cmdEnc;
+    enc->dispatchThreads(MTL::Size(gridWidth, gridHeight, gridDepth), MTL::Size(groupWidth, groupHeight, groupDepth));
+}
+
+extern "C"
 JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_endEncoding(JNIEnv* env, jclass cls, jlong cmdEnc) {
     MTL::ComputeCommandEncoder* enc = (MTL::ComputeCommandEncoder*) cmdEnc;
     enc->endEncoding();

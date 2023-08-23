@@ -38,6 +38,7 @@ public class MetalOperator implements Execution, KernelWork {
 	public static boolean enableVerboseLog;
 	public static boolean enableDimensionMasks = true;
 	public static boolean enableAtomicDimensionMasks = true;
+	public static boolean enableDispatchThreadgroups = false;
 
 	private static long totalInvocations;
 
@@ -74,7 +75,7 @@ public class MetalOperator implements Execution, KernelWork {
 		if (kernel == null) return KernelWork.super.getWorkgroupSize();
 
 		int simdWidth = kernel.threadExecutionWidth();
-		if (getGlobalWorkSize() % simdWidth == 0) {
+		if (enableDispatchThreadgroups && getGlobalWorkSize() % simdWidth == 0) {
 			return simdWidth;
 		}
 
@@ -92,7 +93,12 @@ public class MetalOperator implements Execution, KernelWork {
 	}
 
 	public int[] getWorkgroupDimensions() {
-		return new int[] { getWorkgroupSize(), 1, 1 };
+		if (enableDispatchThreadgroups) {
+			return new int[] { getWorkgroupSize(), 1, 1 };
+		} else {
+			int simdWidth = kernel.threadExecutionWidth();
+			return new int[]{simdWidth, getWorkgroupSize() / simdWidth, 1};
+		}
 	}
 
 	@Override
@@ -152,10 +158,18 @@ public class MetalOperator implements Execution, KernelWork {
 			}
 
 			int groupDims[] = getWorkgroupDimensions();
-			int groupSize = groupDims[0] * groupDims[1] * groupDims[2];
-			int gridDims[] = new int[] { (int) (getGlobalWorkSize() / groupSize), 1, 1 };
-			encoder.dispatchThreadgroups(groupDims[0], groupDims[1], groupDims[2],
+
+			if (enableDispatchThreadgroups) {
+				int groupSize = groupDims[0] * groupDims[1] * groupDims[2];
+				int gridDims[] = new int[] { (int) (getGlobalWorkSize() / groupSize), 1, 1 };
+				encoder.dispatchThreadgroups(groupDims[0], groupDims[1], groupDims[2],
+						gridDims[0], gridDims[1], gridDims[2]);
+			} else {
+				int gridDims[] = new int[] { (int) (getGlobalWorkSize()), 1, 1 };
+				encoder.dispatchThreads(groupDims[0], groupDims[1], groupDims[2],
 										gridDims[0], gridDims[1], gridDims[2]);
+			}
+
 			encoder.endEncoding();
 
 			cmdBuf.commit();

@@ -42,7 +42,12 @@ public class MTLComputeCommandEncoder extends MTLObject {
 									int gridWidth, int gridHeight, int gridDepth) {
 		MTL.dispatchThreadgroups(getNativePointer(), groupWidth, groupHeight, groupDepth,
 								 gridWidth, gridHeight, gridDepth);
+	}
 
+	public void dispatchThreads(int groupWidth, int groupHeight, int groupDepth,
+									 int gridWidth, int gridHeight, int gridDepth) {
+		MTL.dispatchThreads(getNativePointer(), groupWidth, groupHeight, groupDepth,
+				gridWidth, gridHeight, gridDepth);
 	}
 
 	public void endEncoding() {

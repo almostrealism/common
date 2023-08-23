@@ -67,6 +67,10 @@ public class MTL {
 	public static native void setComputePipelineState(long commandEncoder, long pipeline);
 	public static native void setBuffer(long commandEncoder, int index, long buffer);
 
+	public static native void dispatchThreads(long commandEncoder,
+												   int groupWidth, int groupHeight, int groupDepth,
+												   int gridWidth, int gridHeight, int gridDepth);
+
 	public static native void dispatchThreadgroups(long commandEncoder,
 												   int groupWidth, int groupHeight, int groupDepth,
 												   int gridWidth, int gridHeight, int gridDepth);
