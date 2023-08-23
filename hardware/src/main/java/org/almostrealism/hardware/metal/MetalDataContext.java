@@ -23,6 +23,7 @@ import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.Precision;
 import org.almostrealism.hardware.RAM;
 import org.almostrealism.hardware.jvm.JVMMemoryProvider;
 
@@ -31,7 +32,7 @@ import java.util.concurrent.Callable;
 import java.util.function.IntFunction;
 import java.util.stream.Stream;
 
-public class MetalDataContext implements DataContext {
+public class MetalDataContext implements DataContext<MemoryData> {
 	private final Hardware hardware;
 	private final String name;
 	private final long memoryMax;
@@ -95,6 +96,8 @@ public class MetalDataContext implements DataContext {
 	}
 
 	public String getName() { return name; }
+
+	public Precision getPrecision() { return hardware.getPrecision(); }
 
 	public MTLDevice getDevice() {
 		if (start != null) start.run();

@@ -16,6 +16,9 @@
 
 package org.almostrealism.hardware.metal;
 
+import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.Precision;
+
 import java.nio.DoubleBuffer;
 import java.nio.FloatBuffer;
 
@@ -25,7 +28,11 @@ public class MTLBuffer extends MTLObject {
 	}
 
 	public void setContents(FloatBuffer buf, int offset, int length) {
-		MTL.setBufferContents32(getNativePointer(), buf, offset, length);
+		if (Hardware.getLocalHardware().getPrecision() == Precision.FP16) {
+			MTL.setBufferContents16(getNativePointer(), buf, offset, length);
+		} else {
+			MTL.setBufferContents32(getNativePointer(), buf, offset, length);
+		}
 	}
 
 	public void getContents(FloatBuffer buf, int offset, int length) {

@@ -22,6 +22,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.cl.HardwareOperator;
+import org.almostrealism.hardware.metal.MetalOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
@@ -62,7 +63,9 @@ public class OperationSemaphoreTests implements TestFeatures {
 
 		long waitTime = 0;
 
-		r.run();
+		MetalOperator.verboseLog(() -> {
+			r.run();
+		});
 		profiles.clear();
 
 		for (int i = 0; i < 1000; i++) {

@@ -70,7 +70,7 @@ public class MatrixMathTests implements TestFeatures {
 					v += matrix.valueAt(i, j) * vector.valueAt(j);
 				}
 
-				assertEquals(result.valueAt(i), v);
+				assertEquals(v, result.valueAt(i));
 			}
 		}
 	}

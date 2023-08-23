@@ -21,6 +21,18 @@ public class MTLDevice extends MTLObject {
 		super(nativePointer);
 	}
 
+	public int maxThreadgroupWidth() {
+		return MTL.maxThreadgroupWidth(getNativePointer());
+	}
+
+	public int maxThreadgroupHeight() {
+		return MTL.maxThreadgroupHeight(getNativePointer());
+	}
+
+	public int maxThreadgroupDepth() {
+		return MTL.maxThreadgroupDepth(getNativePointer());
+	}
+
 	public MTLCommandQueue newCommandQueue() {
 		return new MTLCommandQueue(MTL.createCommandQueue(getNativePointer()));
 	}
@@ -35,6 +47,14 @@ public class MTLDevice extends MTLObject {
 
 	public MTLBuffer newIntBuffer32(int values[]) {
 		return new MTLBuffer(MTL.createIntBuffer32(getNativePointer(), values));
+	}
+
+	public MTLBuffer newBuffer16(long len) {
+		return new MTLBuffer(MTL.createBuffer16(getNativePointer(), len));
+	}
+
+	public MTLBuffer newBuffer16(float[] data) {
+		return new MTLBuffer(MTL.createBuffer16(getNativePointer(), data));
 	}
 
 	public MTLBuffer newBuffer32(long len) {

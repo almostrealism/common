@@ -8,10 +8,43 @@
 #include <Metal/Metal.hpp>
 #include <QuartzCore/QuartzCore.hpp>
 
+// Convert single float to bfloat16
+uint16_t float32_to_bfloat16(float src) {
+    uint32_t src_int;
+    memcpy(&src_int, &src, sizeof(float));
+    return (uint16_t)(src_int >> 16);
+}
+
+// Convert single bfloat16 to float
+float bfloat16_to_float32(uint16_t src) {
+    uint32_t result = ((uint32_t)src) << 16;
+    float result_float;
+    memcpy(&result_float, &result, sizeof(float));
+    return result_float;
+}
+
 extern "C"
 JNIEXPORT jlong JNICALL Java_org_almostrealism_hardware_metal_MTL_createSystemDefaultDevice(JNIEnv* env, jclass cls) {
     MTL::Device* device = MTLCreateSystemDefaultDevice();
     return (jlong) device;
+}
+
+extern "C"
+JNIEXPORT jint JNICALL Java_org_almostrealism_hardware_metal_MTL_maxThreadgroupWidth(JNIEnv* env, jclass cls, jlong device) {
+    MTL::Device* dev = (MTL::Device*) device;
+    return (jint) dev->maxThreadsPerThreadgroup().width;
+}
+
+extern "C"
+JNIEXPORT jint JNICALL Java_org_almostrealism_hardware_metal_MTL_maxThreadgroupHeight(JNIEnv* env, jclass cls, jlong device) {
+    MTL::Device* dev = (MTL::Device*) device;
+    return (jint) dev->maxThreadsPerThreadgroup().height;
+}
+
+extern "C"
+JNIEXPORT jint JNICALL Java_org_almostrealism_hardware_metal_MTL_maxThreadgroupDepth(JNIEnv* env, jclass cls, jlong device) {
+    MTL::Device* dev = (MTL::Device*) device;
+    return (jint) dev->maxThreadsPerThreadgroup().depth;
 }
 
 extern "C"
@@ -110,6 +143,18 @@ JNIEXPORT jlong JNICALL Java_org_almostrealism_hardware_metal_MTL_createComputeP
 }
 
 extern "C"
+JNIEXPORT jint JNICALL Java_org_almostrealism_hardware_metal_MTL_maxTotalThreadsPerThreadgroup(JNIEnv* env, jclass cls, jlong pipeline) {
+    MTL::ComputePipelineState* state = (MTL::ComputePipelineState*) pipeline;
+    return (jint) state->maxTotalThreadsPerThreadgroup();
+}
+
+extern "C"
+JNIEXPORT jint JNICALL Java_org_almostrealism_hardware_metal_MTL_threadExecutionWidth(JNIEnv* env, jclass cls, jlong pipeline) {
+    MTL::ComputePipelineState* state = (MTL::ComputePipelineState*) pipeline;
+    return (jint) state->threadExecutionWidth();
+}
+
+extern "C"
 JNIEXPORT jlong JNICALL Java_org_almostrealism_hardware_metal_MTL_createIntBuffer32(JNIEnv* env, jclass, jlong device, jintArray data, jint len) {
     MTL::Device* dev = (MTL::Device*) device;
     MTL::Buffer* buffer = dev->newBuffer((NS::UInteger) (len * 4), MTL::StorageModeShared);
@@ -118,6 +163,27 @@ JNIEXPORT jlong JNICALL Java_org_almostrealism_hardware_metal_MTL_createIntBuffe
         jint* dataPtr = env->GetIntArrayElements(data, nullptr);
         memcpy(buffer->contents(), dataPtr, (size_t) (len * 4));
         env->ReleaseIntArrayElements(data, dataPtr, JNI_ABORT);
+    }
+
+    return (jlong) buffer;
+}
+
+extern "C"
+JNIEXPORT jlong JNICALL Java_org_almostrealism_hardware_metal_MTL_createBuffer16(JNIEnv* env, jclass, jlong device, jfloatArray data, jint len) {
+    MTL::Device* dev = (MTL::Device*) device;
+    MTL::Buffer* buffer = dev->newBuffer((NS::UInteger) (len * 2), MTL::StorageModeShared);
+
+    if (data != nullptr) {
+        jfloat* floatArr = env->GetFloatArrayElements(data, nullptr);
+
+        uint16_t* bfloat16Arr = new uint16_t[len];
+        for (int i = 0; i < len; ++i) {
+            bfloat16Arr[i] = float32_to_bfloat16(floatArr[i]);
+        }
+
+        memcpy(buffer->contents(), bfloat16Arr, (size_t) (len * 2));
+        delete[] bfloat16Arr;
+        env->ReleaseFloatArrayElements(data, floatArr, JNI_ABORT);
     }
 
     return (jlong) buffer;
@@ -138,11 +204,41 @@ JNIEXPORT jlong JNICALL Java_org_almostrealism_hardware_metal_MTL_createBuffer32
 }
 
 extern "C"
+JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_setBufferContents16(JNIEnv* env, jclass, jlong buffer, jobject data, jint offset, jint length) {
+    MTL::Buffer* buf = (MTL::Buffer*) buffer;
+    uint8_t* contents = (uint8_t*) buf->contents();
+
+    uint16_t* bfloat16Arr = new uint16_t[length];
+    float* floatArr = (float*) env->GetDirectBufferAddress(data);
+
+    for (int i = 0; i < length; ++i) {
+        bfloat16Arr[i] = float32_to_bfloat16(floatArr[i]);
+    }
+
+    memcpy(contents + (2 * offset), bfloat16Arr, (size_t) (2 * length));
+    buf->didModifyRange(NS::Range(2 * offset, 2 * length));
+}
+
+extern "C"
+JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_getBufferContents16(JNIEnv* env, jclass, jlong buffer, jobject data, jint offset, jint length) {
+    MTL::Buffer* buf = (MTL::Buffer*) buffer;
+    uint8_t* contents = (uint8_t*) buf->contents();
+
+    uint16_t* bfloat16Arr = new uint16_t[length];
+    memcpy(bfloat16Arr, contents + (2 * offset), (size_t) (2 * length));
+    float* floatArr = (float*) env->GetDirectBufferAddress(data);
+
+    for (int i = 0; i < length; ++i) {
+        floatArr[i] = bfloat16_to_float32(bfloat16Arr[i]);
+    }
+}
+
+extern "C"
 JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_setBufferContents32(JNIEnv* env, jclass, jlong buffer, jobject data, jint offset, jint length) {
     MTL::Buffer* buf = (MTL::Buffer*) buffer;
     uint8_t* contents = (uint8_t*) buf->contents();
     memcpy(contents + (4 * offset), env->GetDirectBufferAddress(data), (size_t) (4 * length));
-    buf->didModifyRange(NS::Range(offset, length));
+    buf->didModifyRange(NS::Range(4 * offset, 4 * length));
 }
 
 extern "C"

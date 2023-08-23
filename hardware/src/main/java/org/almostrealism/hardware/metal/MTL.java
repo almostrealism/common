@@ -25,8 +25,15 @@ public class MTL {
 	}
 
 	public static native long createSystemDefaultDevice();
+	public static native int maxThreadgroupWidth(long device);
+	public static native int maxThreadgroupHeight(long device);
+	public static native int maxThreadgroupDepth(long device);
+
 	public static native long createFunction(long device, String func, String source);
 	public static native long createComputePipelineState(long device, long function);
+	public static native int maxTotalThreadsPerThreadgroup(long pipelineState);
+	public static native int threadExecutionWidth(long pipelineState);
+
 	public static native long createCommandQueue(long device);
 	public static native long commandBuffer(long commandQueue);
 	public static native long computeCommandEncoder(long commandBuffer);
@@ -37,16 +44,23 @@ public class MTL {
 
 	public static native long createIntBuffer32(long device, int[] data, long len);
 
+	public static long createBuffer16(long device, long len) {
+		return createBuffer16(device, null, len);
+	}
+	public static long createBuffer16(long device, float[] data) {
+		return createBuffer16(device, data, data.length);
+	}
 	public static long createBuffer32(long device, long len) {
 		return createBuffer32(device, null, len);
 	}
 	public static long createBuffer32(long device, float[] data) {
 		return createBuffer32(device, data, data.length);
 	}
+	public static native long createBuffer16(long device, float[] data, long len);
 	public static native long createBuffer32(long device, float[] data, long len);
-//	public static native void setBufferContents32(long buffer, FloatBuffer in);
+	public static native void setBufferContents16(long buffer, FloatBuffer in, int offset, int length);
 	public static native void setBufferContents32(long buffer, FloatBuffer in, int offset, int length);
-//	public static native void getBufferContents32(long buffer, FloatBuffer out);
+	public static native void getBufferContents16(long buffer, FloatBuffer out, int offset, int length);
 	public static native void getBufferContents32(long buffer, FloatBuffer out, int offset, int length);
 	public static native long bufferLength(long buffer);
 

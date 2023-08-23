@@ -17,12 +17,26 @@
 package io.almostrealism.relation;
 
 import java.util.Collection;
+import java.util.Collections;
 import java.util.function.Supplier;
 
 public interface Operation extends Process<Process<?, ?>, Runnable>, Supplier<Runnable>, Compactable {
 	@Override
 	default Process<Process<?, ?>, Runnable> isolate() {
 		return new IsolatedProcess(this);
+	}
+
+	static Operation of(Supplier<Runnable> supplier) {
+		return new Operation() {
+			@Override
+			public void compact() { }
+
+			@Override
+			public Collection<Process<?, ?>> getChildren() { return Collections.emptyList(); }
+
+			@Override
+			public Runnable get() { return supplier.get(); }
+		};
 	}
 
 	class IsolatedProcess implements Process<Process<?, ?>, Runnable> {

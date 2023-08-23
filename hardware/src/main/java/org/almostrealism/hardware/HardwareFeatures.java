@@ -35,7 +35,7 @@ import java.util.stream.IntStream;
 public interface HardwareFeatures {
 	boolean enableAssignmentCopy = false;
 
-	default Runnable compileRunnable(Computation<?> c) {
+	default Runnable compileRunnable(Computation<Void> c) {
 		return Hardware.getLocalHardware().getComputeContext().getComputer().compileRunnable(c);
 	}
 

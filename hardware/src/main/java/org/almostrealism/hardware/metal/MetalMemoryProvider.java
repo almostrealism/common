@@ -18,6 +18,7 @@ package org.almostrealism.hardware.metal;
 
 import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.hardware.HardwareException;
+import org.almostrealism.hardware.Precision;
 import org.almostrealism.hardware.RAM;
 import org.almostrealism.io.SystemUtils;
 
@@ -96,7 +97,9 @@ public class MetalMemoryProvider implements MemoryProvider<RAM> {
 			throw new HardwareException("Memory Max Reached");
 		}
 
-		MTLBuffer mem = getContext().getDevice().newBuffer32(len);
+		MTLBuffer mem = getContext().getPrecision() == Precision.FP16 ?
+				getContext().getDevice().newBuffer16(len) :
+				getContext().getDevice().newBuffer32(len);
 		memoryUsed = memoryUsed + sizeOf;
 		return mem;
 	}

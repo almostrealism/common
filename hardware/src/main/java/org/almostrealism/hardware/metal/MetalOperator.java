@@ -70,6 +70,32 @@ public class MetalOperator implements Execution, KernelWork {
 	public void setGlobalWorkOffset(long globalWorkOffset) { this.globalWorkOffset = globalWorkOffset; }
 
 	@Override
+	public int getWorkgroupSize() {
+		if (kernel == null) return KernelWork.super.getWorkgroupSize();
+
+		int simdWidth = kernel.threadExecutionWidth();
+		if (getGlobalWorkSize() % simdWidth == 0) {
+			return simdWidth;
+		}
+
+		int max = kernel.maxTotalThreadsPerThreadgroup();
+
+		while (max > 1) {
+			if (getGlobalWorkSize() % max == 0) {
+				return max;
+			}
+
+			max = max / 2;
+		}
+
+		return 1;
+	}
+
+	public int[] getWorkgroupDimensions() {
+		return new int[] { getWorkgroupSize(), 1, 1 };
+	}
+
+	@Override
 	public synchronized Semaphore accept(Object[] args, Semaphore dependsOn) {
 		if (kernel == null) {
 			kernel = prog.newComputePipelineState();
@@ -125,7 +151,11 @@ public class MetalOperator implements Execution, KernelWork {
 				throw new UnsupportedOperationException();
 			}
 
-			encoder.dispatchThreadgroups(getWorkgroupSize(), ((int) getGlobalWorkSize()) / getWorkgroupSize());
+			int groupDims[] = getWorkgroupDimensions();
+			int groupSize = groupDims[0] * groupDims[1] * groupDims[2];
+			int gridDims[] = new int[] { (int) (getGlobalWorkSize() / groupSize), 1, 1 };
+			encoder.dispatchThreadgroups(groupDims[0], groupDims[1], groupDims[2],
+										gridDims[0], gridDims[1], gridDims[2]);
 			encoder.endEncoding();
 
 			cmdBuf.commit();

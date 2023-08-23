@@ -38,7 +38,7 @@ import java.util.concurrent.Callable;
 import java.util.function.IntFunction;
 import java.util.stream.Stream;
 
-public class CLDataContext implements DataContext {
+public class CLDataContext implements DataContext<MemoryData> {
 	private final Hardware hardware;
 	private final String name;
 	private final long memoryMax;

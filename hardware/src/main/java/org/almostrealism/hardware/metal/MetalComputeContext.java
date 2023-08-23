@@ -59,6 +59,13 @@ public class MetalComputeContext extends AbstractComputeContext {
 		this.mainDevice = mainDevice;
 		this.kernelDevice = kernelDevice;
 
+		if (Hardware.enableVerbose) {
+			System.out.println("Hardware[" + getName() + "]: Max Threadgroup Size (" +
+					mainDevice.maxThreadgroupWidth() + ", " +
+					mainDevice.maxThreadgroupHeight() + ", " +
+					mainDevice.maxThreadgroupDepth() + ")");
+		}
+
 		queue = mainDevice.newCommandQueue();
 		if (Hardware.enableVerbose) System.out.println("Hardware[" + getName() + "]: Metal command queue initialized");
 

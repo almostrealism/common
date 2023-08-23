@@ -16,14 +16,19 @@
 
 package org.almostrealism.hardware;
 
-public interface KernelWork {
-	long getGlobalWorkSize();
-	void setGlobalWorkSize(long globalWorkSize);
+public enum Precision {
+	FP16, FP32, FP64;
 
-	default int getWorkgroupSize() {
-		return 1;
+	int bytes() {
+		switch (this) {
+			case FP16:
+				return 2;
+			case FP32:
+				return 4;
+			case FP64:
+				return 8;
+			default:
+				throw new RuntimeException("Unknown precision");
+		}
 	}
-
-	long getGlobalWorkOffset();
-	void setGlobalWorkOffset(long globalWorkOffset);
 }
