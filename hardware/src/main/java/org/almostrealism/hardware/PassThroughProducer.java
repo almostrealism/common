@@ -114,6 +114,11 @@ public class PassThroughProducer<T extends MemoryData>
 	public Supplier<T> getDestination() { return destination; }
 
 	@Override
+	public PassThroughProducer<T> traverse(int axis) {
+		return reshape(getShape().traverse(axis));
+	}
+
+	@Override
 	public PassThroughProducer<T> reshape(TraversalPolicy shape) {
 		if (shape.getTotalSize() != getShape().getTotalSize()) {
 			throw new UnsupportedOperationException();
