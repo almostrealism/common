@@ -16,12 +16,32 @@
 
 package org.almostrealism.hardware.metal;
 
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
 import java.nio.DoubleBuffer;
 import java.nio.FloatBuffer;
+import java.nio.file.Files;
+import java.util.ResourceBundle;
 
 public class MTL {
 	static {
-		System.loadLibrary("MTL");
+		// System.loadLibrary("MTL");
+
+		System.getProperty("java.io.tmpdir");
+		InputStream is = MTL.class.getClassLoader().getResourceAsStream("libMTL.dylib");
+
+		File tempDir = new File(System.getProperty("java.io.tmpdir"));
+		tempDir.mkdir();
+
+		File tempLibFile = new File(tempDir, "libMTL.dylib");
+		try {
+			Files.copy(is, tempLibFile.toPath());
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		}
+
+		System.load(tempLibFile.getAbsolutePath());
 	}
 
 	public static native long createSystemDefaultDevice();

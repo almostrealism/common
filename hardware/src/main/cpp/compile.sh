@@ -11,7 +11,7 @@ g++ -c -fPIC \
 -I${METAL_HOME} \
 MTL.cpp -o MTL.o
 
-g++ -dynamiclib MTL.o -o libMTL.dylib -framework Metal -framework MetalKit -framework Cocoa -framework QuartzCore -framework IOKit -framework CoreVideo
+g++ -dynamiclib MTL.o -o ../resources/libMTL.dylib -framework Metal -framework MetalKit -framework Cocoa -framework QuartzCore -framework IOKit -framework CoreVideo
 
 #gcc \
 #-I${JAVA_HOME}/include \
