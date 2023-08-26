@@ -36,6 +36,7 @@ public class MTL {
 
 		File tempLibFile = new File(tempDir, "libMTL.dylib");
 		try {
+			if (tempLibFile.exists()) Files.delete(tempLibFile.toPath());
 			Files.copy(is, tempLibFile.toPath());
 		} catch (IOException e) {
 			throw new RuntimeException(e);

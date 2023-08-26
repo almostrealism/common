@@ -29,7 +29,6 @@ import org.almostrealism.collect.CollectionProducerComputation;
 import io.almostrealism.collect.Func;
 import io.almostrealism.collect.KernelExpression;
 import org.almostrealism.collect.PackedCollection;
-import io.almostrealism.collect.TraversableKernelExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.Receptor;

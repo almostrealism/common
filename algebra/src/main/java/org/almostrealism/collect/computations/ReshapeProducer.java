@@ -73,6 +73,11 @@ public class ReshapeProducer<T extends Shape<T>>
 		return producer instanceof Process ? List.of((Process) producer) : Collections.emptyList();
 	}
 
+//	@Override
+//	public ParallelProcess<Process<?, ?>, Evaluable<? extends T>> optimize() {
+//		return producer instanceof Process ? generate(List.of(((Process<?, ?>) producer).optimize())) : this;
+//	}
+
 	@Override
 	public ParallelProcess<Process<?, ?>, Evaluable<? extends T>> generate(List<Process<?, ?>> children) {
 		if (children.size() != 1) return this;
@@ -84,7 +89,11 @@ public class ReshapeProducer<T extends Shape<T>>
 
 	@Override
 	public Process<Process<?, ?>, Evaluable<? extends T>> isolate() {
-		return new CollectionProducerComputation.IsolatedProcess(this);
+		if (shape == null) {
+			return new CollectionProducerComputation.IsolatedProcess(this);
+		} else {
+			return this;
+		}
 	}
 
 	@Override
@@ -139,6 +148,14 @@ public class ReshapeProducer<T extends Shape<T>>
 	public boolean isItem() {
 		if (producer instanceof TraversableExpression) return ((TraversableExpression) producer).isItem();
 		return false;
+	}
+
+	public CollectionProducer<T> traverse(int axis) {
+		if (shape == null || shape(producer).traverse(0).equals(getShape().traverse(0))) {
+			return new ReshapeProducer<>(axis, producer);
+		} else {
+			return new ReshapeProducer<>(axis, this);
+		}
 	}
 
 	@Override

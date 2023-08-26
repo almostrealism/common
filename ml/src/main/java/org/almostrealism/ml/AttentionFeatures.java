@@ -27,7 +27,7 @@ import org.almostrealism.layers.LayerFeatures;
 
 public interface AttentionFeatures extends LayerFeatures {
 	default CellularLayer attentionValues(TraversalPolicy inputShape, Producer<PackedCollection<?>> values, Producer<PackedCollection<?>> position) {
-		TraversalPolicy valueShape = shape(values); // (seqLength, heads, head_size)
+		TraversalPolicy valueShape = shape(values); // (seqLength, heads, headSize)
 
 		if (inputShape.getDimensions() != 2 || valueShape.getDimensions() != 3)
 			throw new IllegalArgumentException();

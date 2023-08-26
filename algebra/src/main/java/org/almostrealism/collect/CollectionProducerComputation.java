@@ -147,6 +147,9 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 		}
 
 		@Override
+		public Producer<T> traverse(int axis) { throw new UnsupportedOperationException(); }
+
+		@Override
 		public Producer<T> reshape(TraversalPolicy shape) {
 			throw new UnsupportedOperationException();
 		}

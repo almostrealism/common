@@ -38,7 +38,12 @@ public class DynamicCollectionProducer<T extends PackedCollection<?>> extends Dy
 	}
 
 	@Override
+	public CollectionProducer<T> traverse(int axis) {
+		return new ReshapeProducer(axis, this);
+	}
+
+	@Override
 	public CollectionProducer<T> reshape(TraversalPolicy shape) {
-		return new ReshapeProducer<>(shape, (Producer) this);
+		return new ReshapeProducer(shape, this);
 	}
 }

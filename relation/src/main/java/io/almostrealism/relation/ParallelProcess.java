@@ -21,6 +21,8 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, T>, Countable {
+	boolean enableStrictIsolation = false;
+
 	@Override
 	default ParallelProcess<P, T> generate(List<P> children) {
 		return (ParallelProcess<P, T>) Process.super.generate(children);
@@ -34,7 +36,10 @@ public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, 
 		children = children.stream().map(Process::optimize).collect(Collectors.toList());
 
 		long p = children.stream().mapToInt(ParallelProcess::count).distinct().count();
-		if (p <= 1 && children.stream().mapToInt(ParallelProcess::count).distinct().sum() == getCount()) {
+		long tot = children.stream().mapToInt(ParallelProcess::count).distinct().sum();
+		if (p <= 1 && tot == getCount()) {
+			return generate(children.stream().map(c -> (P) c).collect(Collectors.toList()));
+		} else if (!enableStrictIsolation && getCount() > tot) {
 			return generate(children.stream().map(c -> (P) c).collect(Collectors.toList()));
 		}
 

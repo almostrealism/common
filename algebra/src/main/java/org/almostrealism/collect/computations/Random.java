@@ -74,7 +74,12 @@ public class Random implements Producer<PackedCollection<?>>, Shape<Producer<Pac
 	}
 
 	@Override
+	public Producer<PackedCollection<?>> traverse(int axis) {
+		return new ReshapeProducer(axis, this);
+	}
+
+	@Override
 	public Producer<PackedCollection<?>> reshape(TraversalPolicy shape) {
-		return new ReshapeProducer<>(shape, (Producer) this);
+		return new ReshapeProducer(shape, this);
 	}
 }

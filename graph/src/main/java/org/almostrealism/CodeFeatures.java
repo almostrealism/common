@@ -34,7 +34,6 @@ import org.almostrealism.collect.CollectionProducerComputation;
 import io.almostrealism.collect.KernelExpression;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.Shape;
-import io.almostrealism.collect.TraversableKernelExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.ReshapeProducer;

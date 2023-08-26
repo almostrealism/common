@@ -138,6 +138,11 @@ public interface CollectionFeatures extends ExpressionFeatures {
 			}
 
 			@Override
+			public Producer<Object> traverse(int axis) {
+				return (CollectionProducer) CollectionFeatures.this.traverse(axis, (Producer) this);
+			}
+
+			@Override
 			public Producer reshape(TraversalPolicy shape) {
 				return (CollectionProducer) CollectionFeatures.this.reshape(shape, this);
 			}

@@ -174,6 +174,11 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 	}
 
 	@Override
+	public PackedCollection<T> traverse(int axis) {
+		return reshape(getShape().traverse(axis));
+	}
+
+	@Override
 	public PackedCollection reshape(TraversalPolicy shape) {
 		if (shape.getTotalSize() != getMemLength()) {
 			throw new IllegalArgumentException("Shape size (" + shape.getSize() +
