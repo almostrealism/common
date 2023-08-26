@@ -24,6 +24,7 @@ import io.almostrealism.expression.Cast;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.KernelIndex;
+import io.almostrealism.kernel.KernelPreferences;
 import org.almostrealism.hardware.cl.CLMemoryProvider;
 import org.almostrealism.hardware.cl.CLMemoryProvider.Location;
 import org.almostrealism.hardware.cl.CLComputeContext;
@@ -141,6 +142,11 @@ public final class Hardware {
 			precision = Precision.FP64;
 		} else if (memProvider.equalsIgnoreCase("mtl") && precision == Precision.FP64) {
 			precision = Precision.FP32;
+		}
+
+		if (memProvider.equalsIgnoreCase("mtl")) {
+			KernelPreferences.setPreferLoops(true);
+			KernelPreferences.setEnableSubdivision(false);
 		}
 
 		timeSeriesSize = Optional.ofNullable(tsSize).map(size -> (int) (200000 * Double.parseDouble(size))).orElse(-1);

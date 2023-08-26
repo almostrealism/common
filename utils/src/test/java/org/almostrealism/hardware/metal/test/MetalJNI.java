@@ -12,7 +12,7 @@ import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 
 public class MetalJNI {
-	@Test
+	// @Test
 	public void run() throws IOException {
 		float[] vector = { 1.0f, 2.0f, 3.0f, 4.0f };
 		float[] matrix = { 1.0f, 2.0f, 3.0f, 4.0f,

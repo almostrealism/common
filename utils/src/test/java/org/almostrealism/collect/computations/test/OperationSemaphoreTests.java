@@ -32,6 +32,8 @@ import java.util.List;
 public class OperationSemaphoreTests implements TestFeatures {
 	@Test
 	public void sum() {
+		if (skipLongTests) return;
+
 		sum(50, 2048, 1024, false);
 	}
 

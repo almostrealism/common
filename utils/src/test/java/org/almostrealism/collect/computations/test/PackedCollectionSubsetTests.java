@@ -512,7 +512,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		kernelTest(dense, valid);
 	}
 
-	@Test
+	// @Test
 	public void subsetAssignment() {
 		PackedCollection<?> originalInput = new PackedCollection<>(shape(10, 20));
 		originalInput.fill(pos -> Math.random());

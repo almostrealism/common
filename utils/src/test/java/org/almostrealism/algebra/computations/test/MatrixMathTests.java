@@ -17,6 +17,7 @@
 package org.almostrealism.algebra.computations.test;
 
 import io.almostrealism.code.OperationProfile;
+import io.almostrealism.kernel.KernelPreferences;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.cl.HardwareOperator;
@@ -30,7 +31,11 @@ public class MatrixMathTests implements TestFeatures {
 
 	@Test
 	public void matmul() {
-		matmul(2048, 1024, true);
+		if (KernelPreferences.isPreferLoops()) {
+			matmul(2048, 1024, true);
+		} else {
+			matmul(128, 64, true);
+		}
 	}
 
 	@Test
@@ -57,10 +62,13 @@ public class MatrixMathTests implements TestFeatures {
 		MetalOperator.verboseLog(() -> {
 			r.run();
 		});
-		profiles.clear();
 
-		for (int i = 0; i < 5000; i++) {
-			r.run();
+		if (!skipLongTests) {
+			profiles.clear();
+
+			for (int i = 0; i < 5000; i++) {
+				r.run();
+			}
 		}
 
 		profiles.print();

@@ -17,11 +17,22 @@
 package io.almostrealism.kernel;
 
 public class KernelPreferences {
+	private static boolean preferLoops = false;
+	private static boolean enableSubdivision = true;
+
 	public static int getWorkSubdivisionMinimum() {
 		return 512;
 	}
 
-	public static boolean isPreferLoops() { return true; }
+	public static void setPreferLoops(boolean preferLoops) {
+		KernelPreferences.preferLoops = preferLoops;
+	}
 
-	public static boolean isEnableSubdivision() { return false; }
+	public static boolean isPreferLoops() { return preferLoops; }
+
+	public static void setEnableSubdivision(boolean enableSubdivision) {
+		KernelPreferences.enableSubdivision = enableSubdivision;
+	}
+
+	public static boolean isEnableSubdivision() { return enableSubdivision; }
 }
