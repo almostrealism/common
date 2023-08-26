@@ -37,6 +37,7 @@ import io.almostrealism.expression.Mod;
 import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Quotient;
 import io.almostrealism.expression.Sum;
+import io.almostrealism.kernel.KernelPreferences;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
@@ -71,8 +72,6 @@ import java.util.stream.IntStream;
 
 public interface CollectionFeatures extends ExpressionFeatures {
 	boolean enableShapelessWarning = false;
-	boolean enableParallelSum = false;
-	boolean enableLoopSum = true;
 
 	default TraversalPolicy shape(int... dims) { return new TraversalPolicy(dims); }
 
@@ -574,12 +573,12 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		TraversalPolicy shape = shape(input);
 		int size = shape.getSize();
 
-		if (enableParallelSum) {
+		if (KernelPreferences.isEnableSubdivision()) {
 			CollectionProducerComputationBase<T, T> sum = (CollectionProducerComputationBase<T, T>) subdivide(input, this::sum);
 			if (sum != null) return sum;
 		}
 
-		if (enableLoopSum) {
+		if (KernelPreferences.isPreferLoops()) {
 			return new RepeatedCollectionProducerComputation<>(shape.replace(shape(1)),
 					(args, index) ->
 							e(0.0),
@@ -643,7 +642,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		TraversalPolicy shape = shape(input);
 		int size = shape.getSize();
 
-		int split = 1024;
+		int split = KernelPreferences.getWorkSubdivisionMinimum();
 
 		if (size > split) {
 			while (split > 1) {

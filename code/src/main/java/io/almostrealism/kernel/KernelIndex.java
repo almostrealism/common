@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.code;
+package io.almostrealism.kernel;
 
 // Now that we can use TraversalPolicy to control the way kernels
 // are applied, the kernel index for any datastructure should just

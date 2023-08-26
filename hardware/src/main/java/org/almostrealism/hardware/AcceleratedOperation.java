@@ -17,7 +17,7 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.Execution;
-import io.almostrealism.code.KernelIndex;
+import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.code.Semaphore;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Countable;

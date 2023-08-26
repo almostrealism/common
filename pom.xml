@@ -75,10 +75,10 @@
     </dependencies>
 
 	<distributionManagement>
-		<repository>
-			<id>central</id>
-			<url>https://almostrealism.jfrog.io/artifactory/default-libs-release</url>
-		</repository>
+<!--		<repository>-->
+<!--			<id>central</id>-->
+<!--			<url>https://almostrealism.jfrog.io/artifactory/default-libs-release</url>-->
+<!--		</repository>-->
 <!--		<repository>-->
 <!--			<id>internal</id>-->
 <!--			<url>http://mvn.almostrealism.org:8080/repository/internal/</url>-->

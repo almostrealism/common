@@ -20,12 +20,13 @@ import io.almostrealism.code.OperationProfile;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.cl.HardwareOperator;
+import org.almostrealism.hardware.metal.MetalOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
 
 public class MatrixMathTests implements TestFeatures {
-	private static boolean enableOptimization = true;
+	private static boolean enableOptimization = false;
 
 	@Test
 	public void matmul() {
@@ -53,7 +54,9 @@ public class MatrixMathTests implements TestFeatures {
 		op.add(a("matmul " + width, traverseEach(p(result)), matmul(p(matrix), p(vector))));
 		Runnable r = enableOptimization ? ((OperationList) op.optimize()).get(profiles) : op.get(profiles);
 
-		r.run();
+		MetalOperator.verboseLog(() -> {
+			r.run();
+		});
 		profiles.clear();
 
 		for (int i = 0; i < 5000; i++) {

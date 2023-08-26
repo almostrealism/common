@@ -62,7 +62,7 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		// Identify the slice
 		Expression slice;
 
-		if (subsetShape.getTotalSize() == 1) {
+		if (sliceShape.getTotalSize() == 1) {
 			slice = index;
 		} else if (index.getType() == Integer.class ||
 				(index instanceof Cast && Objects.equals("int", ((Cast) index).getTypeName()))) {

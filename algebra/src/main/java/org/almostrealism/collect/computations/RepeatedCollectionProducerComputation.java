@@ -11,9 +11,13 @@ import io.almostrealism.expression.StaticReference;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
 import io.almostrealism.scope.Scope;
+import io.almostrealism.scope.Variable;
 import org.almostrealism.collect.PackedCollection;
 
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
@@ -61,20 +65,30 @@ public class RepeatedCollectionProducerComputation<T extends PackedCollection<?>
 		TraversableExpression output = CollectionExpression.traverse(getOutputVariable(),
 				size -> index.toInt().divide(e(getMemLength())).multiply(size));
 
+		Set<Variable<?, ?>> dependencies = new HashSet<>();
+
 		for (int j = 0; j < getMemLength(); j++) {
-			scope.code().accept("\t" + output.getValueRelative(e(0)).getSimpleExpression() + " = " +
-					initial.apply(getTraversableArguments(index), ref.add(j)).getSimpleExpression() + ";\n");
+			Expression<?> out = output.getValueRelative(e(j));
+			Expression<?> val = initial.apply(getTraversableArguments(index), ref.add(j));
+			scope.code().accept("\t" + out.getSimpleExpression() + " = " + val.getSimpleExpression() + ";\n");
+			dependencies.addAll(out.getDependencies());
+			dependencies.addAll(val.getDependencies());
 		}
 
 		scope.code().accept("for (int " + i + " = 0; " + cond + ";) {\n");
 
 		for (int j = 0; j < getMemLength(); j++) {
-			scope.code().accept("\t" + output.getValueRelative(e(0)).getSimpleExpression() + " = " +
-					expression.apply(getTraversableArguments(index), ref.add(j)).getSimpleExpression() + ";\n");
+			Expression<?> out = output.getValueRelative(e(j));
+			Expression<?> val = expression.apply(getTraversableArguments(index), ref.add(j));
+			scope.code().accept("\t" + out.getSimpleExpression() + " = " + val.getSimpleExpression() + ";\n");
+			dependencies.addAll(out.getDependencies());
+			dependencies.addAll(val.getDependencies());
 		}
 
 		scope.code().accept("\t" + i + " = " + i + " + " + getMemLength() + ";\n");
 		scope.code().accept("}\n");
+
+		scope.setDependencies(dependencies);
 		return scope;
 	}
 

@@ -30,6 +30,7 @@ import org.almostrealism.collect.computations.ArrayVariableComputation;
 import org.almostrealism.hardware.KernelSupport;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.cl.HardwareOperator;
+import org.almostrealism.hardware.metal.MetalOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
@@ -373,6 +374,31 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 					double actual = result.toDouble(subset.getShape().index(i, j));
 					System.out.println("PackedCollectionSubsetTests: [" + i + ", " + j + "] " + expected + " vs " + actual);
 					Assert.assertEquals(expected, actual, 0.0001);
+				}
+			}
+		});
+	}
+
+	@Test
+	public void repeat3d() {
+		int w = 1;
+		int h = 2;
+		int d = 4;
+
+		PackedCollection<?> v = new PackedCollection<>(shape(w, h));
+		v.fill(pos -> Math.random());
+
+		MetalOperator.verboseLog(() -> {
+			PackedCollection<?> out = c(p(v)).traverseEach().expand(d, x -> x.repeat(d)).get().evaluate();
+
+			for (int x = 0; x < w; x++) {
+				for (int y = 0; y < h; y++) {
+					for (int z = 0; z < d; z++) {
+						double expected = v.valueAt(x, y);
+						double actual = out.valueAt(x, y, z);
+						System.out.println("PackedCollectionMapTests: " + expected + " vs " + actual);
+						assertEquals(expected, actual);
+					}
 				}
 			}
 		});

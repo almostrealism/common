@@ -174,7 +174,7 @@ public final class Hardware {
 	private Precision precision;
 	private Location location;
 
-	private DataContext context;
+	private DataContext<MemoryData> context;
 	private List<ContextListener> contextListeners;
 
 	private AcceleratedFunctions functions;
@@ -420,7 +420,7 @@ public final class Hardware {
 		return functions;
 	}
 
-	public DataContext getDataContext() { return context; }
+	public DataContext<MemoryData> getDataContext() { return context; }
 
 	public ComputeContext<MemoryData> getComputeContext() { return context.getComputeContext(); }
 
