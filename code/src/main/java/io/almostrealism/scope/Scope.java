@@ -279,10 +279,11 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Tree<Scope<T>>, Ope
 					// If the argument variable is produced by a computation, or is
 					// produced by something that delegates to a computation, it
 					// should be converted to a required scope
-					// DynamicProducers are excluded, however, because its not
+					// DynamicProducers are excluded, however, because it is not
 					// generally possible to generate a Scope from a producer
 					// that is powered by a Function, as most are
-					if (var.getProducer() instanceof Computation && !(var.getProducer() instanceof DynamicProducer)) {
+					if (var.getProducer() instanceof Computation &&
+							!(var.getProducer() instanceof DynamicProducer)) {
 						computation = (Computation) var.getProducer();
 					} else if (var.getProducer() instanceof Delegated) {
 						Delegated delegated = (Delegated) var.getProducer();

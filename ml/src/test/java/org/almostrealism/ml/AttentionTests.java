@@ -18,6 +18,8 @@ package org.almostrealism.ml;
 
 import io.almostrealism.code.OperationProfile;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -28,9 +30,9 @@ import org.junit.Test;
 public class AttentionTests implements AttentionFeatures, TestFeatures {
 	@Test
 	public void attentionKeys() {
-		int seqLength = 4; // 1024;
-		int heads = 12; // 12;
-		int headSize = 64; // 64;
+		int seqLength = 128;
+		int heads = 12;
+		int headSize = 64;
 		int dim = heads * headSize;
 
 		TraversalPolicy inputShape = shape(heads, headSize);
@@ -39,7 +41,6 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 
 		PackedCollection<?> q = new PackedCollection<>(inputShape); // (heads, headSize)
 		PackedCollection<?> keyCache = new PackedCollection<>(keyShape); // (seqLength, heads, headSize)
-		PackedCollection<?> att = new PackedCollection<>(outputShape); // (heads, seqLength)
 
 		q.fill(pos -> Math.random());
 		keyCache.fill(pos -> Math.random());
@@ -47,9 +48,13 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 		Producer<PackedCollection<?>> o = c(p(keyCache)).traverse(1).map(v -> v.multiply(p(q)))
 											.traverse(2).sum()
 											.divide(c(Math.sqrt(headSize)))
-											.reshape(shape(seqLength, heads));
-		att = o.get().evaluate();
-		att = c(p(att)).enumerate(1, 1).reshape(outputShape).get().evaluate();
+											.reshape(shape(seqLength, heads))
+											.enumerate(1, 1)
+											.reshape(outputShape);
+
+//		PackedCollection<?> att = o.get().evaluate();
+		// TODO This should not require optimization to pass, but currently it does
+		PackedCollection<?> att = ((Evaluable<PackedCollection<?>>) ((ParallelProcess) o).optimize().get()).evaluate();
 
 //		int p = (int) (0.8 * seqLength);
 		int p = seqLength - 1;
@@ -68,19 +73,6 @@ public class AttentionTests implements AttentionFeatures, TestFeatures {
 				assertEquals(score, att.valueAt(h, t));
 			}
 		}
-
-//		for (int h = 0; h < heads; h++) {
-//			for (int t = 0; t <= p; t++) {
-//				double score = 0.0;
-//				for (int i = 0; i < headSize; i++) {
-//					score += q.valueAt(h, i) * keyCache.valueAt(t, h, i);
-//				}
-//				score /= Math.sqrt(headSize);
-//
-//				System.out.println("AttentionTests[" + t + "]: " + score + " vs " + att.valueAt(h, t));
-//				assertEquals(score, att.valueAt(h, t));
-//			}
-//		}
 	}
 
 

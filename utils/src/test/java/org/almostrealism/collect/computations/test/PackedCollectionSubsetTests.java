@@ -16,10 +16,12 @@
 
 package org.almostrealism.collect.computations.test;
 
+import io.almostrealism.code.Operator;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.kernel.KernelPreferences;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.algebra.Tensor;
@@ -185,21 +187,19 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 
 		in.fill(pos -> Math.random());
 
-		KernelPreferences.setPreferLoops(true);
-		KernelPreferences.setEnableSubdivision(false);
-
-		Producer<PackedCollection<?>> o =
+		CollectionProducer<PackedCollection<?>> o =
 				c(p(in))
 						.traverse(2).sum()
-						// .divide(c(Math.sqrt(d)))
-						// .reshape(shape(w, h))
-						.enumerate(1, 1);
-						// .reshape(outputShape);
+						.divide(c(Math.sqrt(d)))
+						.reshape(shape(w, h))
+						.enumerate(1, 1)
+						.reshape(outputShape);
 
 		HardwareOperator.verboseLog(() -> {
-			PackedCollection<?> out = o.get().evaluate();
+//			PackedCollection<?> out = o.get().evaluate();
+			// TODO This should not require optimization to pass, but currently it does
+			PackedCollection<?> out = ((Evaluable<PackedCollection<?>>) ((ParallelProcess) o).optimize().get()).evaluate();
 
-			/*
 			for (int n = 0; n < h; n++) {
 				for (int t = 0; t < w; t++) {
 					double total = 0.0;
@@ -211,12 +211,9 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 					total /= Math.sqrt(d);
 
 					System.out.println("PackedCollectionSubsetTests[" + n + ", " + t + "]: " + total + " vs " + out.valueAt(n, t));
-//					assertEquals(total, out.valueAt(n, t));
-//					System.out.println("PackedCollectionSubsetTests[" + n + ", " + t + "]: " + total + " vs " + out.valueAt(t, n));
-//					assertEquals(total, out.valueAt(t, n));
+					assertEquals(total, out.valueAt(n, t));
 				}
 			}
-			*/
 		});
 	}
 
