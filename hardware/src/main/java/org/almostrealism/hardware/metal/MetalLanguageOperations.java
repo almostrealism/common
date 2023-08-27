@@ -50,8 +50,14 @@ public class MetalLanguageOperations extends CLanguageOperations {
 
 		if (!arguments.isEmpty()) {
 			out.accept(", ");
-			out.accept("uint global_id [[thread_position_in_grid]], ");
-			out.accept("uint global_count [[threads_per_grid]]");
+
+			if (access == Accessibility.EXTERNAL) {
+				out.accept("uint global_id [[thread_position_in_grid]], ");
+				out.accept("uint global_count [[threads_per_grid]]");
+			} else {
+				out.accept("uint global_id, ");
+				out.accept("uint global_count");
+			}
 		}
 	}
 
