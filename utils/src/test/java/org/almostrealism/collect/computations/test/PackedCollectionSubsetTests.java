@@ -192,14 +192,14 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 				c(p(in))
 						.traverse(2).sum()
 						// .divide(c(Math.sqrt(d)))
-						.multiply(c(1.0))
-						.reshape(shape(w, h))
-						.enumerate(1, 1)
-						.reshape(outputShape);
+						// .reshape(shape(w, h))
+						.enumerate(1, 1);
+						// .reshape(outputShape);
 
 		HardwareOperator.verboseLog(() -> {
 			PackedCollection<?> out = o.get().evaluate();
 
+			/*
 			for (int n = 0; n < h; n++) {
 				for (int t = 0; t < w; t++) {
 					double total = 0.0;
@@ -208,14 +208,15 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 						total += in.valueAt(t, n, i);
 					}
 
-					// total /= Math.sqrt(d);
+					total /= Math.sqrt(d);
 
 					System.out.println("PackedCollectionSubsetTests[" + n + ", " + t + "]: " + total + " vs " + out.valueAt(n, t));
-					// assertEquals(total, out.valueAt(n, t));
-//					System.out.println("PackedCollectionSubsetTests[" + t + "]: " + total + " vs " + out.valueAt(t, n));
+//					assertEquals(total, out.valueAt(n, t));
+//					System.out.println("PackedCollectionSubsetTests[" + n + ", " + t + "]: " + total + " vs " + out.valueAt(t, n));
 //					assertEquals(total, out.valueAt(t, n));
 				}
 			}
+			*/
 		});
 	}
 
