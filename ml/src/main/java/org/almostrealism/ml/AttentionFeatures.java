@@ -16,7 +16,10 @@
 
 package org.almostrealism.ml;
 
+import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.code.OperationWithInfo;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -26,6 +29,33 @@ import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.LayerFeatures;
 
 public interface AttentionFeatures extends LayerFeatures {
+	default CellularLayer attentionKeys(TraversalPolicy inputShape, Producer<PackedCollection<?>> keys, Producer<PackedCollection<?>> position) {
+		TraversalPolicy keyShape = shape(keys); // (seqLength, heads, headSize)
+
+		if (inputShape.getDimensions() != 2 || keyShape.getDimensions() != 3)
+			throw new IllegalArgumentException();
+
+		int heads = inputShape.length(0);
+		int headSize = inputShape.length(1);
+		int dim = heads * headSize;
+
+		int seqLength = keyShape.length(0);
+		TraversalPolicy outputShape = shape(heads, seqLength);
+
+		if (keyShape.length(1) != heads || keyShape.length(2) != headSize)
+			throw new IllegalArgumentException();
+
+		return layer("attentionKeys", inputShape, outputShape, Cell.of((input, next) -> {
+			CollectionProducer<PackedCollection<?>> o = traverse(1, keys).map(v -> v.multiply(input))
+					.traverse(2).sum()
+					.divide(c(Math.sqrt(headSize)))
+					.reshape(shape(seqLength, heads))
+					.enumerate(1, 1);
+			if (next != null) return next.push(o.reshape(outputShape));
+			return new OperationList();
+		}), null);
+	}
+
 	default CellularLayer attentionValues(TraversalPolicy inputShape, Producer<PackedCollection<?>> values, Producer<PackedCollection<?>> position) {
 		TraversalPolicy valueShape = shape(values); // (seqLength, heads, headSize)
 
