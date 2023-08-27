@@ -17,11 +17,9 @@
 package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.code.OperationProfile;
-import io.almostrealism.code.Semaphore;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.hardware.metal.MetalOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;

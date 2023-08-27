@@ -57,19 +57,19 @@ public class CLanguageOperations extends DefaultLanguageOperations {
 				return;
 			} else if (isEnableArgumentDetailReads() && isEnableArrayVariables()) {
 				if (!arguments.isEmpty()) {
-					renderArguments(arguments, out, true, true, null, "*", "");
+					renderArguments(arguments, out, true, true, access, null, "*", "");
 					out.accept(", ");
 					out.accept(annotationForPhysicalScope(PhysicalScope.GLOBAL));
 					out.accept(" int *offsetArr");
-					out.accept(argumentPost(arguments.size(), true));
+					out.accept(argumentPost(arguments.size(), true, access));
 					out.accept(", ");
 					out.accept(annotationForPhysicalScope(PhysicalScope.GLOBAL));
 					out.accept(" int *sizeArr");
-					out.accept(argumentPost(arguments.size() + 1, true));
+					out.accept(argumentPost(arguments.size() + 1, true, access));
 					out.accept(", ");
 					out.accept(annotationForPhysicalScope(PhysicalScope.GLOBAL));
 					out.accept(" int *dim0Arr");
-					out.accept(argumentPost(arguments.size() + 2, true));
+					out.accept(argumentPost(arguments.size() + 2, true, access));
 				}
 
 				return;

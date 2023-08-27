@@ -22,14 +22,14 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBFeatures;
 import org.almostrealism.color.computations.GreaterThanRGB;
-import org.almostrealism.hardware.cl.HardwareOperator;
+import org.almostrealism.hardware.cl.CLOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
 public class ColorMathTest implements TestFeatures, RGBFeatures {
 	@Test
 	public void fixedSum() {
-		HardwareOperator.verboseLog(() -> {
+		CLOperator.verboseLog(() -> {
 			Producer<RGB> p1 = black();
 			Producer<RGB> p2 = white();
 			Producer<RGB> sum = add(p1, p2);
@@ -43,7 +43,7 @@ public class ColorMathTest implements TestFeatures, RGBFeatures {
 
 	@Test
 	public void greaterThan() {
-		HardwareOperator.verboseLog(() -> {
+		CLOperator.verboseLog(() -> {
 			Producer<Scalar> arg0 = v(Scalar.shape(), 0);
 			Producer<RGB> arg1 = v(RGB.shape(), 1);
 
@@ -57,7 +57,7 @@ public class ColorMathTest implements TestFeatures, RGBFeatures {
 
 	@Test
 	public void greaterThanKernel() {
-		HardwareOperator.verboseLog(() -> {
+		CLOperator.verboseLog(() -> {
 			Producer<Scalar> arg0 = v(Scalar.shape(), 0);
 
 			PackedCollection<RGB> result = RGB.bank(5);

@@ -22,9 +22,8 @@ import org.almostrealism.CodeFeatures;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Hardware;
-import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.hardware.cl.HardwareOperator;
+import org.almostrealism.hardware.cl.CLOperator;
 
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -84,7 +83,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		AtomicReference<PackedCollection<?>> outputRef = new AtomicReference<>();
 
 		if (kernel) {
-			HardwareOperator.verboseLog(() -> {
+			CLOperator.verboseLog(() -> {
 				System.out.println("TestFeatures: Running kernel evaluation...");
 				Producer<PackedCollection<?>> p = supply.get();
 				PackedCollection<?> output = p.get().evaluate();
@@ -101,7 +100,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		if (operation) {
 			outputRef.get().clear();
 
-			HardwareOperator.verboseLog(() -> {
+			CLOperator.verboseLog(() -> {
 				PackedCollection<?> output = outputRef.get();
 
 				System.out.println("TestFeatures: Running kernel operation...");
@@ -116,7 +115,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 		if (optimized) {
 			outputRef.get().clear();
 
-			HardwareOperator.verboseLog(() -> {
+			CLOperator.verboseLog(() -> {
 				PackedCollection<?> output = outputRef.get();
 				PackedCollection<?> dest = new PackedCollection<>(output.getShape());
 

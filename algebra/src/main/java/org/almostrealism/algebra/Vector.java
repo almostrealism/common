@@ -22,7 +22,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.cl.HardwareOperator;
+import org.almostrealism.hardware.cl.CLOperator;
 import org.almostrealism.hardware.MemoryBank;
 
 import java.util.function.BiFunction;
@@ -44,10 +44,10 @@ public class Vector extends PackedCollection<Vector> implements Triple, VectorFe
 	public static final Vector NEG_Y_AXIS = new Vector(0, -1, 0);
 	public static final Vector NEG_Z_AXIS = new Vector(0, 0, -1);
 
-	private static ThreadLocal<HardwareOperator<Vector>> addOperator = new ThreadLocal<>();
-	private static ThreadLocal<HardwareOperator<Vector>> subtractOperator = new ThreadLocal<>();
-	private static ThreadLocal<HardwareOperator<Vector>> multiplyOperator = new ThreadLocal<>();
-	private static ThreadLocal<HardwareOperator<Vector>> divideOperator = new ThreadLocal<>();
+	private static ThreadLocal<CLOperator<Vector>> addOperator = new ThreadLocal<>();
+	private static ThreadLocal<CLOperator<Vector>> subtractOperator = new ThreadLocal<>();
+	private static ThreadLocal<CLOperator<Vector>> multiplyOperator = new ThreadLocal<>();
+	private static ThreadLocal<CLOperator<Vector>> divideOperator = new ThreadLocal<>();
 
 	/** Constructs a {@link Vector} with coordinates at the origin. */
 	public Vector() {

@@ -3,9 +3,7 @@ package org.almostrealism.algebra.computations.test;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.ExpressionComputation;
-import org.almostrealism.hardware.cl.HardwareOperator;
-import org.almostrealism.hardware.computations.Assignment;
+import org.almostrealism.hardware.cl.CLOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
@@ -33,7 +31,7 @@ public class MinMaxTests implements TestFeatures {
 		Producer<PackedCollection<?>> in = value(timeline.getShape(), 0);
 		Producer<PackedCollection<?>> speedUpDuration = value(shape(1, 1).traverse(1), 1);
 
-		HardwareOperator.verboseLog(() -> {
+		CLOperator.verboseLog(() -> {
 			Evaluable<PackedCollection<?>> ev = divide(in, speedUpDuration).get();
 			PackedCollection<?> out = ev.evaluate(timeline, speedUp);
 			System.out.println(out.toDouble(10 * 4410));
@@ -41,7 +39,7 @@ public class MinMaxTests implements TestFeatures {
 			assertEquals(timeline.toDouble(10 * 4410) / speedUp.toDouble(0), out.toDouble(10 * 4410));
 		});
 
-		HardwareOperator.verboseLog(() -> {
+		CLOperator.verboseLog(() -> {
 			Evaluable<PackedCollection<?>> ev = floor(divide(in, speedUpDuration)).get();
 			PackedCollection<?> out = ev.evaluate(timeline, speedUp);
 			System.out.println(out.toDouble(10 * 4410));

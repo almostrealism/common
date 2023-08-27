@@ -5,7 +5,7 @@ import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.graph.TimeCell;
-import org.almostrealism.hardware.cl.HardwareOperator;
+import org.almostrealism.hardware.cl.CLOperator;
 import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
@@ -13,7 +13,7 @@ import org.junit.Test;
 public class TimeCellTest implements TestFeatures {
 	@Test
 	public void timeCell() {
-		HardwareOperator.enableVerboseLog = true;
+		CLOperator.enableVerboseLog = true;
 
 		TimeCell cell = new TimeCell(null, v(44100));
 		cell.setup().get().run();

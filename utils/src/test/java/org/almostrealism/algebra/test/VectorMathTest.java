@@ -24,7 +24,7 @@ import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.hardware.KernelizedEvaluable;
-import org.almostrealism.hardware.cl.HardwareOperator;
+import org.almostrealism.hardware.cl.CLOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
@@ -85,7 +85,7 @@ public class VectorMathTest implements TestFeatures {
 
 	@Test
 	public void productDifference() {
-		HardwareOperator.verboseLog(() -> {
+		CLOperator.verboseLog(() -> {
 			Producer<Vector> a = vector(1.0, 2.0, 3.0);
 			Producer<Vector> b = vector(4.0, 5.0, 6.0);
 			Producer<Scalar> s = scalar(y(a).multiply(z(b))

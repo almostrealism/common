@@ -18,6 +18,7 @@ package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Sum;
+import io.almostrealism.kernel.KernelPreferences;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
@@ -27,9 +28,10 @@ import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.ArrayVariableComputation;
+import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.KernelSupport;
 import org.almostrealism.hardware.KernelizedEvaluable;
-import org.almostrealism.hardware.cl.HardwareOperator;
+import org.almostrealism.hardware.cl.CLOperator;
 import org.almostrealism.hardware.metal.MetalOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
@@ -71,7 +73,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		System.out.println("Position " + outIndex + " maps to " + index + " " + Arrays.toString(inputShape.position(index)));
 		Assert.assertEquals(433, index);
 
-		HardwareOperator.verboseLog(() -> {
+		CLOperator.verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> producer = subset(shape(w, h, d), p(input), x0, y0, z0);
 			Evaluable<PackedCollection<?>> ev = producer.get();
 			PackedCollection<?> subset = ev.evaluate();
@@ -126,7 +128,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 
 		PackedCollection<?> input = tensor(shape(size, size, count)).pack();
 
-		HardwareOperator.verboseLog(() -> {
+		CLOperator.verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> enumerated = enumerate(shape(size, size, 1), p(input));
 			PackedCollection<?> output = enumerated.get().evaluate();
 			System.out.println(output.getShape());
@@ -168,6 +170,53 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 						enumerated.toDouble(enumerated.getShape().index(i, j)), 0.0001);
 			}
 		}
+	}
+
+	@Test
+	public void enumerateDivide() {
+		int w = 4; // 1024;
+		int h = 9;
+		int d = 145;
+
+		TraversalPolicy inShape = shape(w, h, d);
+		TraversalPolicy outputShape = shape(h, w);
+
+		PackedCollection<?> in = new PackedCollection<>(inShape);
+
+		in.fill(pos -> Math.random());
+
+		KernelPreferences.setPreferLoops(true);
+		KernelPreferences.setEnableSubdivision(false);
+
+		Producer<PackedCollection<?>> o =
+				c(p(in))
+						.traverse(2).sum()
+						// .divide(c(Math.sqrt(d)))
+						.multiply(c(1.0))
+						.reshape(shape(w, h))
+						.enumerate(1, 1)
+						.reshape(outputShape);
+
+		HardwareOperator.verboseLog(() -> {
+			PackedCollection<?> out = o.get().evaluate();
+
+			for (int n = 0; n < h; n++) {
+				for (int t = 0; t < w; t++) {
+					double total = 0.0;
+
+					for (int i = 0; i < d; i++) {
+						total += in.valueAt(t, n, i);
+					}
+
+					// total /= Math.sqrt(d);
+
+					System.out.println("PackedCollectionSubsetTests[" + n + ", " + t + "]: " + total + " vs " + out.valueAt(n, t));
+					// assertEquals(total, out.valueAt(n, t));
+//					System.out.println("PackedCollectionSubsetTests[" + t + "]: " + total + " vs " + out.valueAt(t, n));
+//					assertEquals(total, out.valueAt(t, n));
+				}
+			}
+		});
 	}
 
 	@Test
@@ -265,7 +314,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 
 		PackedCollection<?> input = tensor(shape(r, c)).pack();
 
-		HardwareOperator.verboseLog(() -> {
+		CLOperator.verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> conv = c(p(input))
 					.enumerate(1, w, s)
 					.enumerate(1, w, s);
@@ -292,7 +341,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 	public void enumerateTwice() {
 		PackedCollection<?> input = tensor(shape(10, 10)).pack();
 
-		HardwareOperator.verboseLog(() -> {
+		CLOperator.verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> convY = c(p(input))
 					.enumerate(1, 3, 1);
 			PackedCollection<?> output = convY.get().evaluate();
@@ -358,7 +407,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 
 		PackedCollection<?> input = t.pack();
 
-		HardwareOperator.verboseLog(() -> {
+		CLOperator.verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> subset = subset(shape(size, size), p(input), x0, y0);
 //			Producer<PackedCollection<?>> product = multiply(traverseEach(p(filter)), traverseEach(subset)).reshape(filterShape);
 			Producer<PackedCollection<?>> product = relativeMultiply(p(filter), subset, null);
@@ -526,7 +575,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		CollectionProducer<PackedCollection<?>> in = c(p(input));
 		CollectionProducer<PackedCollection<?>> subset = subset(shape(1, 20), in, 4, 0).traverseEach();
 
-		HardwareOperator.verboseLog(() -> {
+		CLOperator.verboseLog(() -> {
 			a(subset, subset.add(c(p(filter))).traverseEach()).get().run();
 		});
 

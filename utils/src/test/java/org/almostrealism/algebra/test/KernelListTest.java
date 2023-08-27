@@ -22,7 +22,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.KernelList;
 import org.almostrealism.algebra.ScalarTable;
 import org.almostrealism.hardware.PassThroughProducer;
-import org.almostrealism.hardware.cl.HardwareOperator;
+import org.almostrealism.hardware.cl.CLOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
@@ -46,7 +46,7 @@ public class KernelListTest implements TestFeatures {
 
 	@Test
 	public void multiplyList() {
-		HardwareOperator.verboseLog(() -> {
+		CLOperator.verboseLog(() -> {
 			PackedCollection<Scalar> input = Scalar.scalarBank(4);
 			input.set(0, 1);
 			input.set(1, 2);

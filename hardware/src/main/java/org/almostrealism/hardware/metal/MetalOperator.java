@@ -16,10 +16,9 @@
 
 package org.almostrealism.hardware.metal;
 
-import io.almostrealism.code.Execution;
 import io.almostrealism.code.Semaphore;
-import io.almostrealism.relation.Factory;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.KernelWork;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
@@ -33,11 +32,7 @@ import java.util.stream.IntStream;
 /**
  * {@link MetalOperator}s are intended to be used with {@link ThreadLocal}.
  */
-public class MetalOperator implements Execution, KernelWork {
-	public static boolean enableLog;
-	public static boolean enableVerboseLog;
-	public static boolean enableDimensionMasks = true;
-	public static boolean enableAtomicDimensionMasks = true;
+public class MetalOperator extends HardwareOperator {
 	public static boolean enableDispatchThreadgroups = false;
 
 	private static long totalInvocations;
@@ -72,7 +67,7 @@ public class MetalOperator implements Execution, KernelWork {
 
 	@Override
 	public int getWorkgroupSize() {
-		if (kernel == null) return KernelWork.super.getWorkgroupSize();
+		if (kernel == null) return super.getWorkgroupSize();
 
 		int simdWidth = kernel.threadExecutionWidth();
 		if (enableDispatchThreadgroups && getGlobalWorkSize() % simdWidth == 0) {
@@ -240,19 +235,5 @@ public class MetalOperator implements Execution, KernelWork {
 	public void destroy() {
 		if (kernel != null) kernel.release();
 		kernel = null;
-	}
-
-	public static void verboseLog(Runnable r) {
-		boolean log = enableVerboseLog;
-		enableVerboseLog = true;
-		r.run();
-		enableVerboseLog = log;
-	}
-
-	public static void disableDimensionMasks(Runnable r) {
-		boolean masks = enableDimensionMasks;
-		enableDimensionMasks = false;
-		r.run();
-		enableDimensionMasks = masks;
 	}
 }

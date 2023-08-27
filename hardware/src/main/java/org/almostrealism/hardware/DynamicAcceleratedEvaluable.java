@@ -19,7 +19,6 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 
 import java.util.ArrayList;

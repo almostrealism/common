@@ -20,7 +20,7 @@ import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.test.KernelAssertions;
-import org.almostrealism.hardware.cl.HardwareOperator;
+import org.almostrealism.hardware.cl.CLOperator;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.DefaultCellularLayer;
 import org.almostrealism.model.Model;
@@ -174,7 +174,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		model.setup().get().run();
 
 		PackedCollection<?> in = input;
-		HardwareOperator.verboseLog(() -> model.forward(in));
+		CLOperator.verboseLog(() -> model.forward(in));
 
 		PackedCollection<?> filter = conv.getWeights().get(0);
 		TraversalPolicy filterShape = filter.getShape();

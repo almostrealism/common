@@ -56,7 +56,7 @@ public class MetalLanguageOperations extends CLanguageOperations {
 	}
 
 	@Override
-	protected String argumentPost(int index, boolean enableAnnotation) {
-		return enableAnnotation ? " [[buffer(" + index + ")]]" : super.argumentPost(index, enableAnnotation);
+	protected String argumentPost(int index, boolean enableAnnotation, Accessibility access) {
+		return (enableAnnotation && access == Accessibility.EXTERNAL) ? " [[buffer(" + index + ")]]" : super.argumentPost(index, enableAnnotation, access);
 	}
 }

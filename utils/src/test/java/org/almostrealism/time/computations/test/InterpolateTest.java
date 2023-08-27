@@ -16,14 +16,10 @@
 
 package org.almostrealism.time.computations.test;
 
-import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Sum;
-import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.PassThroughProducer;
-import org.almostrealism.hardware.cl.HardwareOperator;
 import org.almostrealism.time.computations.Interpolate;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;

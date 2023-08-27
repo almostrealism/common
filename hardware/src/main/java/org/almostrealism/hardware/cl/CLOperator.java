@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,12 +16,11 @@
 
 package org.almostrealism.hardware.cl;
 
-import io.almostrealism.code.Execution;
 import io.almostrealism.code.Semaphore;
 import io.almostrealism.relation.Factory;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
-import org.almostrealism.hardware.KernelWork;
+import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.Bytes;
@@ -33,15 +32,11 @@ import java.util.function.Consumer;
 import java.util.stream.IntStream;
 
 /**
- * {@link HardwareOperator}s are intended to be used with {@link ThreadLocal}.
+ * {@link CLOperator}s are intended to be used with {@link ThreadLocal}.
  *
  * @param <T> Return type
  */
-public class HardwareOperator<T extends MemoryData> implements Execution, KernelWork, Factory<cl_kernel> {
-	public static boolean enableLog;
-	public static boolean enableVerboseLog;
-	public static boolean enableDimensionMasks = true;
-	public static boolean enableAtomicDimensionMasks = true;
+public class CLOperator<T extends MemoryData> extends HardwareOperator implements Factory<cl_kernel> {
 
 	private static long totalInvocations;
 
@@ -59,8 +54,8 @@ public class HardwareOperator<T extends MemoryData> implements Execution, Kernel
 	private BiFunction<String, CLException, HardwareException> exceptionProcessor;
 	private Consumer<RunData> profile;
 
-	public HardwareOperator(CLProgram program, String name, int argCount, Consumer<RunData> profile,
-							BiFunction<String, CLException, HardwareException> exceptionProcessor) {
+	public CLOperator(CLProgram program, String name, int argCount, Consumer<RunData> profile,
+					  BiFunction<String, CLException, HardwareException> exceptionProcessor) {
 		this.prog = program;
 		this.name = name;
 		this.argCache = new Object[argCount];
@@ -233,19 +228,5 @@ public class HardwareOperator<T extends MemoryData> implements Execution, Kernel
 	public void destroy() {
 		if (kernel != null) CL.clReleaseKernel(kernel);
 		kernel = null;
-	}
-
-	public static void verboseLog(Runnable r) {
-		boolean log = enableVerboseLog;
-		enableVerboseLog = true;
-		r.run();
-		enableVerboseLog = log;
-	}
-
-	public static void disableDimensionMasks(Runnable r) {
-		boolean masks = enableDimensionMasks;
-		enableDimensionMasks = false;
-		r.run();
-		enableDimensionMasks = masks;
 	}
 }

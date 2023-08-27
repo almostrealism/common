@@ -22,7 +22,7 @@ import org.almostrealism.collect.computations.test.KernelAssertions;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.hardware.cl.HardwareOperator;
+import org.almostrealism.hardware.cl.CLOperator;
 import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
@@ -44,7 +44,7 @@ public class KernelOperationTests implements TestFeatures, KernelAssertions {
 		try {
 			Assignment.enableRelative = false;
 
-			HardwareOperator.verboseLog(() -> {
+			CLOperator.verboseLog(() -> {
 				OperationList op = new OperationList();
 				op.add(a(1, traverse(1, p(x)), add(traverse(1, p(a)), traverse(1, p(b)))));
 				op.get().run();
@@ -70,7 +70,7 @@ public class KernelOperationTests implements TestFeatures, KernelAssertions {
 		try {
 			Assignment.enableRelative = false;
 
-			HardwareOperator.verboseLog(() -> {
+			CLOperator.verboseLog(() -> {
 				OperationList op = new OperationList();
 				op.add(a(1, traverse(1, p(x)), add(traverse(1, p(a)), traverse(1, p(b)))));
 				op.add(a(1, traverse(1, p(y)), multiply(traverse(1, p(a)), traverse(1, p(b)))));
@@ -100,7 +100,7 @@ public class KernelOperationTests implements TestFeatures, KernelAssertions {
 		try {
 			Assignment.enableRelative = false;
 
-			HardwareOperator.verboseLog(() -> {
+			CLOperator.verboseLog(() -> {
 				OperationList op = new OperationList();
 				op.add(a(1, traverse(1, p(x)), add(traverse(1, p(a)), traverse(1, p(a)))));
 				op.add(a(1, traverse(1, p(y)), multiply(traverse(1, p(b)), traverse(1, p(b)))));
@@ -132,7 +132,7 @@ public class KernelOperationTests implements TestFeatures, KernelAssertions {
 		try {
 			Assignment.enableRelative = false;
 
-			HardwareOperator.verboseLog(() -> {
+			CLOperator.verboseLog(() -> {
 				OperationList op = new OperationList();
 				op.add(a(1, traverse(1, p(x)), multiply(traverse(1, p(a)), traverse(1, p(b))).traverse(0).sum()));
 
@@ -189,7 +189,7 @@ public class KernelOperationTests implements TestFeatures, KernelAssertions {
 		try {
 			Assignment.enableRelative = false;
 
-			HardwareOperator.verboseLog(() -> {
+			CLOperator.verboseLog(() -> {
 				PackedCollection<?> output = new PackedCollection<>(shape(8, 8, 4, 1));
 
 				CollectionProducer<PackedCollection<?>> conv = c(p(input))

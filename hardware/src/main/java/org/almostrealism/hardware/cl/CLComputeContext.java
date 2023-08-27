@@ -61,7 +61,7 @@ public class CLComputeContext extends AbstractComputeContext {
 	private boolean profiling;
 	private Map<String, ProfileData> profiles;
 
-	private List<HardwareOperatorMap> instructionSets;
+	private List<CLOperatorMap> instructionSets;
 
 	public CLComputeContext(Hardware hardware, cl_context ctx) {
 		super(hardware, true, false);
@@ -105,7 +105,7 @@ public class CLComputeContext extends AbstractComputeContext {
 		ScopeEncoder enc = new ScopeEncoder(OpenCLPrintWriter::new, Accessibility.EXTERNAL);
 		buf.append(enc.apply(scope));
 
-		HardwareOperatorMap instSet = new HardwareOperatorMap(this, scope.getMetadata(), buf.toString(), profileFor(scope.getName()));
+		CLOperatorMap instSet = new CLOperatorMap(this, scope.getMetadata(), buf.toString(), profileFor(scope.getName()));
 		instructionSets.add(instSet);
 		return instSet;
 	}

@@ -16,16 +16,12 @@
 
 package org.almostrealism.collect.computations.test;
 
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.ExpressionComputation;
-import org.almostrealism.collect.computations.PackedCollectionMap;
-import org.almostrealism.collect.computations.PackedCollectionRepeat;
-import org.almostrealism.collect.computations.TraversableProducerComputationAdapter;
 import org.almostrealism.hardware.KernelizedEvaluable;
-import org.almostrealism.hardware.OperationList;
-import org.almostrealism.hardware.cl.HardwareOperator;
+import org.almostrealism.hardware.cl.CLOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
@@ -72,7 +68,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 		IntStream.range(0, 5).forEach(i -> scale.set(i, i + 2));
 		System.out.println(Arrays.toString(scale.toArray(0, 5)));
 
-		HardwareOperator.verboseLog(() -> {
+		CLOperator.verboseLog(() -> {
 			Producer<PackedCollection<?>> repeated = c(p(scale)).traverse(1).expand(10, v -> v.repeat(10));
 
 			Producer<PackedCollection<?>> repeatedTimeline = c(p(timeline)).traverse(0).expand(5, v -> v.repeat(5));
@@ -120,7 +116,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 	public void sumByReduce() {
 		PackedCollection<?> input = tensor(shape(8, 6)).pack();
 
-		HardwareOperator.verboseLog(() -> {
+		CLOperator.verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> product = traverse(1, p(input)).reduce(v -> v.sum());
 			PackedCollection<?> output = product.get().evaluate();
 			System.out.println(output.getShape());
@@ -148,7 +144,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 
 		PackedCollection<?> input = tensor(shape(size, size, count)).pack();
 
-		HardwareOperator.verboseLog(() -> {
+		CLOperator.verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> enumerated = enumerate(shape(size, size, 1), p(input));
 			CollectionProducer<PackedCollection<?>> sum = enumerated.traverse(1).reduce(slice -> sum(slice));
 			PackedCollection<?> output = sum.get().evaluate();
@@ -179,7 +175,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 
 		PackedCollection<?> input = tensor(shape(size, size, count)).pack();
 
-		HardwareOperator.verboseLog(() -> {
+		CLOperator.verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> enumerated = enumerate(shape(size, size, 1), p(input));
 			CollectionProducer<PackedCollection<?>> sum = enumerated.traverse(1).reduce(slice -> sum(slice));
 			PackedCollection<?> output = sum.get().evaluate();
@@ -210,7 +206,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 
 		PackedCollection<?> input = tensor(shape(size, size, count)).pack();
 
-		HardwareOperator.verboseLog(() -> {
+		CLOperator.verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> enumerated = enumerate(shape(size, size, 1), p(input));
 			CollectionProducer<PackedCollection<?>> max = enumerated.traverse(1).reduce(slice -> max(slice));
 			PackedCollection<?> output = max.get().evaluate();
@@ -296,6 +292,45 @@ public class PackedCollectionMapTests implements TestFeatures {
 	}
 
 	@Test
+	public void mapEnumerate() {
+		int w = 128;
+		int h = 12;
+		int d = 64;
+
+		TraversalPolicy xShape = shape(h, d);
+		TraversalPolicy inShape = shape(w, h, d);
+		TraversalPolicy outputShape = shape(h, w);
+
+		PackedCollection<?> x = new PackedCollection<>(xShape);
+		PackedCollection<?> in = new PackedCollection<>(inShape);
+
+		x.fill(pos -> Math.random());
+		in.fill(pos -> Math.random());
+
+		Producer<PackedCollection<?>> o =
+				c(p(in)).traverse(1)
+						.map(v -> v.multiply(p(x)))
+						.traverse(2).sum()
+						.reshape(shape(w, h))
+						.enumerate(1, 1)
+						.reshape(outputShape);
+		PackedCollection<?> out = o.get().evaluate();
+
+		for (int n = 0; n < h; n++) {
+			for (int t = 0; t < w; t++) {
+				double total = 0.0;
+
+				for (int i = 0; i < d; i++) {
+					total += x.valueAt(n, i) * in.valueAt(t, n, i);
+				}
+
+				System.out.println("PackedCollectionMapTests[" + t + "]: " + total + " vs " + out.valueAt(n, t));
+				assertEquals(total, out.valueAt(n, t));
+			}
+		}
+	}
+
+	@Test
 	public void enumerateMapSmall() {
 		int r = 3;
 		int c = 3;
@@ -309,7 +344,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 		input.fill(pos -> pos[0] + pos[1] * 0.1);
 		filter.fill(pos -> 1.0);
 
-		HardwareOperator.verboseLog(() -> {
+		CLOperator.verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> conv = c(p(input))
 					.enumerate(1, w, s)
 					.enumerate(1, w, s)
@@ -362,7 +397,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 		PackedCollection<?> input = tensor(shape(r, c)).pack();
 		PackedCollection<?> filter = tensor(shape(w, w)).pack();
 
-		HardwareOperator.verboseLog(() -> {
+		CLOperator.verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> conv = c(p(input))
 					.enumerate(1, w, s)
 					.enumerate(1, w, s)
@@ -403,7 +438,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 		PackedCollection<?> input = tensor(shape(r, c)).pack();
 		PackedCollection<?> filter = tensor(shape(w, w)).pack();
 
-		HardwareOperator.verboseLog(() -> {
+		CLOperator.verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> conv = c(p(input))
 					.enumerate(1, w, s)
 					.enumerate(1, w, s)
@@ -443,7 +478,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 		PackedCollection<?> input = tensor(shape(r, c)).pack();
 		PackedCollection<?> filter = tensor(shape(w, w)).pack();
 
-		HardwareOperator.verboseLog(() -> {
+		CLOperator.verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> conv = c(p(input))
 					.enumerate(1, w, s)
 					.enumerate(1, w, s)
@@ -489,7 +524,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 		input.fill(pos -> pos[0] + pos[1] * 0.1);
 
 		IntStream.range(0, 20).forEach(n -> {
-			HardwareOperator.verboseLog(() -> {
+			CLOperator.verboseLog(() -> {
 				CollectionProducer<PackedCollection<?>> conv = c(p(input))
 						.enumerate(1, w, s)
 						.enumerate(1, w, s)
@@ -552,7 +587,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 		PackedCollection<?> input = tensor(shape(r, c)).pack();
 		PackedCollection<?> filter = tensor(shape(n, w, w)).pack();
 
-		HardwareOperator.verboseLog(() -> {
+		CLOperator.verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> conv = c(p(input))
 					.enumerate(1, w, s)
 					.enumerate(1, w, s)
@@ -620,7 +655,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 		PackedCollection<?> input = tensor(shape(r, c, d)).pack();
 		input.fill(pos -> (3 + (pos[0] % 3) * 0.75) - (3 + (pos[1] % 5) * 1.25));
 
-		HardwareOperator.verboseLog(() -> {
+		CLOperator.verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> pool =
 					c(p(input)).enumerate(1, w)
 							.enumerate(1, w)
@@ -668,7 +703,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 		PackedCollection<?> input = tensor(shape(r, c, s)).pack();
 		PackedCollection<?> addOn = tensor(shape(s)).pack();
 
-		HardwareOperator.verboseLog(() -> {
+		CLOperator.verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> conv = traverse(2, p(input))
 					.map(v -> concat((Producer) v, p(addOn)));
 			System.out.println(conv.getShape());

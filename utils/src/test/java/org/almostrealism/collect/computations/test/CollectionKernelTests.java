@@ -23,7 +23,7 @@ import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.hardware.KernelizedEvaluable;
-import org.almostrealism.hardware.cl.HardwareOperator;
+import org.almostrealism.hardware.cl.CLOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
@@ -57,7 +57,7 @@ public class CollectionKernelTests implements TestFeatures {
 		CollectionProducer<PackedCollection<?>> b = func(shape(5), args ->
 				c(v2).get().evaluate(args));
 
-		HardwareOperator.verboseLog(() -> {
+		CLOperator.verboseLog(() -> {
 			CollectionProducerComputation<PackedCollection<?>> c = relativeMultiply(shape(2, 5).traverse(1), a.traverse(1), b.traverse(0), null);
 			KernelizedEvaluable<PackedCollection<?>> eval = c.get();
 			PackedCollection<?> out = eval.evaluate();
@@ -90,7 +90,7 @@ public class CollectionKernelTests implements TestFeatures {
 		CollectionProducer<PackedCollection<?>> b = func(shape(1), args ->
 				c(v2).get().evaluate(args));
 
-		HardwareOperator.verboseLog(() -> {
+		CLOperator.verboseLog(() -> {
 			Producer<PackedCollection<?>> c = divide(a.traverseEach(), b.traverse(0)).reshape(shape(2, 5));
 			Evaluable<PackedCollection<?>> eval = c.get();
 			PackedCollection<?> out = eval.evaluate();
@@ -115,7 +115,7 @@ public class CollectionKernelTests implements TestFeatures {
 		PackedCollection<?> a = tensor(shape(10)).pack().traverse();
 		PackedCollection<?> b = tensor(shape(10)).pack().traverse();
 
-		HardwareOperator.verboseLog(() -> {
+		CLOperator.verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> p = add(traverse(1, p(a)), traverse(1, p(b)));
 			PackedCollection<?> out = p.get().evaluate();
 

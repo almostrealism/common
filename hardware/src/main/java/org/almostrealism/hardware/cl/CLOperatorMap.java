@@ -18,7 +18,6 @@ package org.almostrealism.hardware.cl;
 
 import io.almostrealism.code.InstructionSet;
 import io.almostrealism.code.OperationMetadata;
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.profile.RunData;
@@ -33,18 +32,18 @@ import java.util.function.BiFunction;
 import java.util.function.Consumer;
 
 /**
- * Wrapper for a {@link cl_program} that contains the {@link HardwareOperator}s.
+ * Wrapper for a {@link cl_program} that contains the {@link CLOperator}s.
  *
  * @author  Michael Murray
  */
-public class HardwareOperatorMap<T extends MemoryData> implements InstructionSet, BiFunction<String, CLException, HardwareException> {
+public class CLOperatorMap<T extends MemoryData> implements InstructionSet, BiFunction<String, CLException, HardwareException> {
 	private CLProgram prog;
 
-	private ThreadLocal<Map<String, HardwareOperator<T>>> operators;
-	private List<HardwareOperator<T>> allOperators;
+	private ThreadLocal<Map<String, CLOperator<T>>> operators;
+	private List<CLOperator<T>> allOperators;
 	private Consumer<RunData> profile;
 
-	public HardwareOperatorMap(CLComputeContext h, OperationMetadata metadata, String src, Consumer<RunData> profile) {
+	public CLOperatorMap(CLComputeContext h, OperationMetadata metadata, String src, Consumer<RunData> profile) {
 		this.operators = new ThreadLocal<>();
 		this.allOperators = new ArrayList<>();
 		this.profile = profile;
@@ -52,11 +51,11 @@ public class HardwareOperatorMap<T extends MemoryData> implements InstructionSet
 	}
 
 	protected void init(CLComputeContext h, OperationMetadata metadata, String src) {
-		if (HardwareOperator.enableLog) {
+		if (CLOperator.enableLog) {
 			System.out.println("HardwareOperatorMap: init " + metadata.getDisplayName());
 		}
 
-		if (HardwareOperator.enableVerboseLog) {
+		if (CLOperator.enableVerboseLog) {
 			System.out.println("Source:");
 			System.out.println(src);
 		}
@@ -72,7 +71,7 @@ public class HardwareOperatorMap<T extends MemoryData> implements InstructionSet
 		}
 
 		if (ex != null) {
-			if (HardwareOperator.enableLog) {
+			if (CLOperator.enableLog) {
 				System.out.println("Error compiling:\n" + src);
 			}
 
@@ -80,12 +79,12 @@ public class HardwareOperatorMap<T extends MemoryData> implements InstructionSet
 		}
 	}
 
-	public HardwareOperator<T> get(String key) {
+	public CLOperator<T> get(String key) {
 		return get(key, 2);
 	}
 
-	public HardwareOperator<T> get(String key, int argCount) {
-		Map<String, HardwareOperator<T>> ops = operators.get();
+	public CLOperator<T> get(String key, int argCount) {
+		Map<String, CLOperator<T>> ops = operators.get();
 
 		if (ops == null) {
 			ops = new HashMap<>();
@@ -93,7 +92,7 @@ public class HardwareOperatorMap<T extends MemoryData> implements InstructionSet
 		}
 
 		if (!ops.containsKey(key)) {
-			HardwareOperator<T> op = new HardwareOperator<>(prog, key, argCount, profile, this);
+			CLOperator<T> op = new CLOperator<>(prog, key, argCount, profile, this);
 			ops.put(key, op);
 			allOperators.add(op);
 		}
@@ -117,11 +116,11 @@ public class HardwareOperatorMap<T extends MemoryData> implements InstructionSet
 
 	/**
 	 * Release the {@link cl_program} and the {@link ThreadLocal}
-	 * that stores the {@link HardwareOperator}s, destroying all
-	 * {@link HardwareOperator}s in the process.
+	 * that stores the {@link CLOperator}s, destroying all
+	 * {@link CLOperator}s in the process.
 	 *
 	 * @see  CLProgram#destroy()
-	 * @see  HardwareOperator#destroy()
+	 * @see  CLOperator#destroy()
 	 */
 	public void destroy() {
 		if (prog != null) prog.destroy();
@@ -132,7 +131,7 @@ public class HardwareOperatorMap<T extends MemoryData> implements InstructionSet
 		}
 
 		if (allOperators != null) {
-			allOperators.forEach(HardwareOperator::destroy);
+			allOperators.forEach(CLOperator::destroy);
 			allOperators = null;
 		}
 	}

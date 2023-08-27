@@ -30,7 +30,7 @@ import org.almostrealism.collect.computations.PackedCollectionMax;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.PassThroughProducer;
-import org.almostrealism.hardware.cl.HardwareOperator;
+import org.almostrealism.hardware.cl.CLOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
@@ -44,7 +44,7 @@ public class CollectionComputationTests implements TestFeatures {
 
 	@Test
 	public void integers() {
-		HardwareOperator.verboseLog(() -> {
+		CLOperator.verboseLog(() -> {
 			PackedCollection<?> result = integers(10, 100).get().evaluate();
 			assertEquals(14, result.toDouble(4));
 		});
@@ -56,7 +56,7 @@ public class CollectionComputationTests implements TestFeatures {
 		PackedCollection<?> in = tensor(shape(len, 1)).pack();
 		PackedCollection<?> result = new PackedCollection<>(shape(len, 1).traverse(1));
 
-		HardwareOperator.verboseLog(() -> {
+		CLOperator.verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> product = c(p(in), integers(0, len)).traverseEach().multiply(c(2.0));
 			product.get().into(result).evaluate();
 		});
@@ -67,7 +67,7 @@ public class CollectionComputationTests implements TestFeatures {
 
 	@Test
 	public void multiply() {
-		HardwareOperator.verboseLog(() -> {
+		CLOperator.verboseLog(() -> {
 			PackedCollection<?> testInput = new PackedCollection<>(1);
 			testInput.setMem(0, 9.0);
 			PackedCollection<?> result = c(3).multiply(p(testInput)).get().evaluate();
@@ -240,7 +240,7 @@ public class CollectionComputationTests implements TestFeatures {
 		PackedCollectionMax max = new PackedCollectionMax(new PassThroughProducer<>(shape(10), 0, -1));
 		PackedCollection<?> dest = new PackedCollection(2, 1);
 
-		HardwareOperator.verboseLog(() ->
+		CLOperator.verboseLog(() ->
 			max.get().into(dest.traverse(1)).evaluate(series.traverse(0)));
 
 		System.out.println(Arrays.toString(dest.toArray(0, 2)));
@@ -258,7 +258,7 @@ public class CollectionComputationTests implements TestFeatures {
 		CollectionProducer<PackedCollection<?>> max = new PackedCollectionMax(p(series.traverse(0)));
 		CollectionProducer<PackedCollection<?>> auto = max._greaterThan(c(0.0), c(0.8).divide(max), c(1.0));
 
-		HardwareOperator.verboseLog(() -> {
+		CLOperator.verboseLog(() -> {
 			OperationList op = new OperationList("greaterThanMax");
 			op.add(a(1, p(dest), auto));
 			op.get().run();

@@ -39,7 +39,7 @@ import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.collect.Shape;
-import org.almostrealism.hardware.cl.HardwareOperator;
+import org.almostrealism.hardware.cl.CLOperator;
 import org.almostrealism.hardware.mem.Bytes;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
@@ -65,7 +65,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	public static final boolean enableCompaction = true;
 	public static boolean enableKernelSizeWarnings = SystemUtils.isEnabled("AR_HARDWARE_KERNEL_SIZE_WARNINGS").orElse(true);
 
-	private static final Map<String, ThreadLocal<HardwareOperator>> operators = new HashMap<>();
+	private static final Map<String, ThreadLocal<CLOperator>> operators = new HashMap<>();
 	private static final ThreadLocal<Semaphore> semaphores = new ThreadLocal<>();
 	private static final ThreadLocal<CreatedMemoryData> created = new ThreadLocal<>();
 

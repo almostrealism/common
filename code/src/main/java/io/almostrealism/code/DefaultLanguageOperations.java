@@ -77,37 +77,37 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 
 		if (enableArrayVariables) {
 			if (!arguments.isEmpty()) {
-				renderArguments(arguments, out, false, false, null, "", "");
+				renderArguments(arguments, out, false, false, Accessibility.INTERNAL, null, "", "");
 				out.accept(", ");
-				renderArguments(arguments, out, false, false, Integer.class, "", "Offset");
+				renderArguments(arguments, out, false, false, Accessibility.INTERNAL, Integer.class, "", "Offset");
 				out.accept(", ");
-				renderArguments(arguments, out, false, false, Integer.class, "", "Size");
+				renderArguments(arguments, out, false, false, Accessibility.INTERNAL, Integer.class, "", "Size");
 				out.accept(", ");
-				renderArguments(arguments, out, false, false, Integer.class, "", "Dim0");
+				renderArguments(arguments, out, false, false, Accessibility.INTERNAL, Integer.class, "", "Dim0");
 			}
 		} else {
-			renderArguments(arguments, out, false, false, null, "", "");
+			renderArguments(arguments, out, false, false,  Accessibility.INTERNAL,null, "", "");
 		}
 	}
 
 	protected void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out, Accessibility access) {
 		if (enableArrayVariables) {
 			if (!arguments.isEmpty()) {
-				renderArguments(arguments, out, true, true, null, "*", "");
+				renderArguments(arguments, out, true, true, access, null, "*", "");
 				out.accept(", ");
-				renderArguments(arguments, out, true, false, Integer.class, "", "Offset");
+				renderArguments(arguments, out, true, false, access, Integer.class, "", "Offset");
 				out.accept(", ");
-				renderArguments(arguments, out, true, false, Integer.class, "", "Size");
+				renderArguments(arguments, out, true, false, access, Integer.class, "", "Size");
 				out.accept(", ");
-				renderArguments(arguments, out, true, false, Integer.class, "", "Dim0");
+				renderArguments(arguments, out, true, false, access, Integer.class, "", "Dim0");
 			}
 		} else {
-			renderArguments(arguments, out, true, true, null, "", "");
+			renderArguments(arguments, out, true, true, access, null, "", "");
 		}
 	}
 
 	protected void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out, boolean enableType,
-								   boolean enableAnnotation, Class replaceType, String prefix, String suffix) {
+								   boolean enableAnnotation, Accessibility access, Class replaceType, String prefix, String suffix) {
 		for (int i = 0; i < arguments.size(); i++) {
 			ArrayVariable<?> arg = arguments.get(i);
 
@@ -116,7 +116,7 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 			out.accept(prefix);
 			out.accept(arguments.get(i).getName());
 			out.accept(suffix);
-			out.accept(argumentPost(i, enableAnnotation));
+			out.accept(argumentPost(i, enableAnnotation, access));
 
 			if (i < arguments.size() - 1) {
 				out.accept(", ");
@@ -144,7 +144,7 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 		return buf.toString();
 	}
 
-	protected String argumentPost(int index, boolean enableAnnotation) {
+	protected String argumentPost(int index, boolean enableAnnotation, Accessibility access) {
 		return "";
 	}
 }

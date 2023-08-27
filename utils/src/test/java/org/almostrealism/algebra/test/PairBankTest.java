@@ -1,16 +1,13 @@
 package org.almostrealism.algebra.test;
 
 import io.almostrealism.relation.Producer;
-import org.almostrealism.CodeFeatures;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.ExpressionComputation;
-import org.almostrealism.hardware.PassThroughProducer;
-import org.almostrealism.hardware.cl.HardwareOperator;
+import org.almostrealism.hardware.cl.CLOperator;
 import org.almostrealism.util.TestFeatures;
-import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.Arrays;
@@ -39,7 +36,7 @@ public class PairBankTest implements TestFeatures {
 
 		PackedCollection<?> destination = new PackedCollection<>(shape(4, 2));
 
-		HardwareOperator.verboseLog(() -> {
+		CLOperator.verboseLog(() -> {
 			concat.get().into(destination.traverse(1)).evaluate(timeline.traverse(1));
 			System.out.println(Arrays.toString(destination.toArray(0, 8)));
 		});
@@ -60,7 +57,7 @@ public class PairBankTest implements TestFeatures {
 
 		PackedCollection<?> destination = new PackedCollection<>(shape(4, 2));
 
-		HardwareOperator.verboseLog(() -> {
+		CLOperator.verboseLog(() -> {
 			concat.get().into(destination.traverse(1)).evaluate(timeline.traverse(1));
 			System.out.println(Arrays.toString(destination.toArray(0, 8)));
 		});
@@ -121,7 +118,7 @@ public class PairBankTest implements TestFeatures {
 
 		int len = 100;
 
-		HardwareOperator.disableDimensionMasks(() -> {
+		CLOperator.disableDimensionMasks(() -> {
 			PackedCollection<?> destination = new PackedCollection<>(shape(4));
 
 			Producer<PackedCollection<?>> c = new ExpressionComputation<>(List.of(args -> args.get(1).getValueRelative(1)),

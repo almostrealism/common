@@ -75,18 +75,18 @@ public class RepeatedCollectionProducerComputation<T extends PackedCollection<?>
 			dependencies.addAll(val.getDependencies());
 		}
 
-		scope.code().accept("for (int " + i + " = 0; " + cond + ";) {\n");
+		scope.code().accept("\tfor (int " + i + " = 0; " + cond + ";) {\n");
 
 		for (int j = 0; j < getMemLength(); j++) {
 			Expression<?> out = output.getValueRelative(e(j));
 			Expression<?> val = expression.apply(getTraversableArguments(index), ref.add(j));
-			scope.code().accept("\t" + out.getSimpleExpression() + " = " + val.getSimpleExpression() + ";\n");
+			scope.code().accept("\t\t" + out.getSimpleExpression() + " = " + val.getSimpleExpression() + ";\n");
 			dependencies.addAll(out.getDependencies());
 			dependencies.addAll(val.getDependencies());
 		}
 
-		scope.code().accept("\t" + i + " = " + i + " + " + getMemLength() + ";\n");
-		scope.code().accept("}\n");
+		scope.code().accept("\t\t" + i + " = " + i + " + " + getMemLength() + ";\n");
+		scope.code().accept("\t}\n");
 
 		scope.setDependencies(dependencies);
 		return scope;
