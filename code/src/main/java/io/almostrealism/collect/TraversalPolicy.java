@@ -231,6 +231,10 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 		return Arrays.hashCode(dims);
 	}
 
+	public boolean equalsIgnoreAxis(TraversalPolicy p) {
+		return Arrays.equals(dims, p.dims);
+	}
+
 	@Override
 	public boolean equals(Object obj) {
 		if (obj instanceof TraversalPolicy) {

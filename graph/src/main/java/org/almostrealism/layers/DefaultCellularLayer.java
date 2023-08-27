@@ -125,7 +125,11 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 		TraversalPolicy shape = shape(in);
 
 		if (shape.getCount() > 1) {
-			return a(name, reshape(shape, out), in);
+			if (shape.equalsIgnoreAxis(shape(out))) {
+				return a(name, traverse(shape.getTraversalAxis(), (Producer) out), in);
+			} else {
+				return a(name, reshape(shape, out), in);
+			}
 		} else {
 			return copy(name, in, out, shape.getTotalSize());
 		}

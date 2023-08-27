@@ -29,6 +29,7 @@ import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.LayerFeatures;
 
 public interface AttentionFeatures extends LayerFeatures {
+
 	default CellularLayer attentionKeys(TraversalPolicy inputShape, Producer<PackedCollection<?>> keys, Producer<PackedCollection<?>> position) {
 		TraversalPolicy keyShape = shape(keys); // (seqLength, heads, headSize)
 
@@ -40,7 +41,7 @@ public interface AttentionFeatures extends LayerFeatures {
 		int dim = heads * headSize;
 
 		int seqLength = keyShape.length(0);
-		TraversalPolicy outputShape = shape(heads, seqLength);
+		TraversalPolicy outputShape = shape(heads, seqLength).traverseEach();
 
 		if (keyShape.length(1) != heads || keyShape.length(2) != headSize)
 			throw new IllegalArgumentException();
