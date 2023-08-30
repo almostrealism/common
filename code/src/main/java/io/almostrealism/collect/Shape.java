@@ -19,6 +19,10 @@ package io.almostrealism.collect;
 public interface Shape<T> extends Traversable<T> {
 	TraversalPolicy getShape();
 
+	default T reshape(int... dims) {
+		return reshape(new TraversalPolicy(dims));
+	}
+
 	T reshape(TraversalPolicy shape);
 
 	default T traverseEach() {

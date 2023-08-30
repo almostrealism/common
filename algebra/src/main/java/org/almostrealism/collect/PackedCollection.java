@@ -36,7 +36,7 @@ import java.util.function.IntFunction;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter implements MemoryBank<T>, Shape<PackedCollection<T>>, Cloneable {
+public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter implements MemoryBank<T>, Shape<PackedCollection<T>>, CollectionFeatures, Cloneable {
 	private static ContextSpecific<KernelizedOperation> clear;
 
 	static {
@@ -93,6 +93,10 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 	}
 
 	public void set(int index, double... values) {
+		if (index * getAtomicMemLength() + values.length > getMemLength()) {
+			throw new IllegalArgumentException("Range exceeds collection size");
+		}
+
 		setMem(index * getAtomicMemLength(), values, 0, values.length);
 	}
 
@@ -125,8 +129,19 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 		return IntStream.range(0, getCount()).mapToObj(this::get);
 	}
 
-	public void fill(Function<int[], Double> f) {
+	public PackedCollection<T> fill(Function<int[], Double> f) {
 		getShape().stream().forEach(pos -> setMem(getShape().index(pos), f.apply(pos)));
+		return this;
+	}
+
+	public PackedCollection<T> randFill() {
+		rand(getShape()).get().into(this).evaluate();
+		return this;
+	}
+
+	public PackedCollection<T> randnFill() {
+		randn(getShape()).get().into(this).evaluate();
+		return this;
 	}
 
 	public void forEach(Consumer<T> consumer) {

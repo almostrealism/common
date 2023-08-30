@@ -63,6 +63,8 @@ public final class Hardware {
 	private static final Hardware local;
 
 	static {
+		boolean aarch = SystemUtils.isAarch64();
+
 		boolean gpu = "gpu".equalsIgnoreCase(System.getenv("AR_HARDWARE_PLATFORM")) ||
 				"gpu".equalsIgnoreCase(System.getProperty("AR_HARDWARE_PLATFORM"));
 
@@ -115,7 +117,7 @@ public final class Hardware {
 
 		String driver = System.getProperty("AR_HARDWARE_DRIVER");
 		if (driver == null) driver = System.getenv("AR_HARDWARE_DRIVER");
-		if (driver == null) driver = "cl";
+		if (driver == null) driver = aarch ? "mtl" : "cl";
 
 		ComputeRequirement requirement = ComputeRequirement.CL;
 		if ("mtl".equalsIgnoreCase(driver)) {
@@ -233,7 +235,8 @@ public final class Hardware {
 			start(context);
 			contextListeners.forEach(l -> l.contextStarted(context));
 		} else if (type == ComputeRequirement.MTL) {
-			this.context = new MetalDataContext(this, name, this.memoryMax, getOffHeapSize());
+			int offHeapSize = 0; // TODO getOffHeapSize();
+			this.context = new MetalDataContext(this, name, this.memoryMax, offHeapSize);
 
 			if (enableVerbose) {
 				if (enableGpu) {

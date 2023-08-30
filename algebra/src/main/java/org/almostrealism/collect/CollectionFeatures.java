@@ -284,6 +284,10 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return new PackedCollectionSubset<>(shape, collection, position);
 	}
 
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> subset(TraversalPolicy shape, Producer<?> collection, Producer<?> position) {
+		return new PackedCollectionSubset<>(shape, collection, position);
+	}
+
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> repeat(int repeat, Producer<?> collection) {
 		return new PackedCollectionRepeat<>(repeat, collection);
 	}
@@ -319,8 +323,8 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return new PackedCollectionEnumerate<>(shape, stride, collection);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> map(Producer<?> collection, Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper) {
-		return new PackedCollectionMap<>(collection, mapper);
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> map(Producer<?> collection, Function<CollectionProducerComputation<PackedCollection<?>>, CollectionProducerComputation<?>> mapper) {
+		return new PackedCollectionMap<>(collection, (Function) mapper);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> map(TraversalPolicy itemShape, Producer<?> collection, Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper) {
@@ -490,15 +494,6 @@ public interface CollectionFeatures extends ExpressionFeatures {
 				(BiFunction<TraversableExpression[], Expression, Expression>) (args, index) ->
 						new Exponent(args[1].getValueAt(index), args[2].getValueAt(index)),
 				(Supplier) base, (Supplier) exp);
-	}
-
-	default <T extends PackedCollection<?>> ExpressionComputation<T> pow(int depth,
-																		 Supplier<Evaluable<? extends PackedCollection<?>>> base, Supplier<Evaluable<? extends PackedCollection<?>>> exp) {
-		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expressions =
-				IntStream.range(0, depth).mapToObj(i -> (Function<List<ArrayVariable<Double>>, Expression<Double>>)
-								np -> new Exponent(np.get(1).getValueRelative(i), np.get(2).getValueRelative(i)))
-						.collect(Collectors.toList());
-		return new ExpressionComputation<>(expressions, base, exp);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> exp(

@@ -21,6 +21,8 @@ import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.Shape;
@@ -29,6 +31,7 @@ import org.almostrealism.hardware.DestinationSupport;
 import org.almostrealism.hardware.KernelSupport;
 import org.almostrealism.hardware.MemoryBank;
 
+import java.util.List;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
@@ -52,6 +55,21 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 		init();
 	}
 
+	public PackedCollectionSubset(TraversalPolicy shape, Producer<?> collection, Producer<?> pos) {
+		super(shape, (Supplier) collection, (Supplier) pos);
+		if (!(collection instanceof Shape))
+			throw new IllegalArgumentException("Subset cannot be performed without a TraversalPolicy");
+
+		if (!shape(pos).equalsIgnoreAxis(shape(shape.getDimensions()))) {
+			throw new IllegalArgumentException();
+		}
+
+		setShape(shape);
+		setDestination(() -> { throw new UnsupportedOperationException(); });
+		setInputs(new Destination(), (Supplier) collection, (Supplier) pos);
+		init();
+	}
+
 	public int getMemLength() { return 1; }
 
 	// TODO  This custom destination creation should not be necessary
@@ -66,10 +84,31 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
 		TraversalPolicy inputShape = ((Shape) getInputs().get(1)).getShape();
-		Expression<?> p = inputShape.subset(getShape(), index, pos);
 
-		// return getArgument(1, inputShape.getTotalSize()).getRaw(p);
+		Expression<?> p;
+
+		if (pos == null) {
+			Expression pos[] = new Expression[inputShape.getDimensions()];
+			for (int i = 0; i < pos.length; i++)
+				pos[i] = getCollectionArgumentVariable(2).getValueAt(e(i)).toInt();
+
+			p = inputShape.subset(getShape(), index, pos);
+		} else {
+			p = inputShape.subset(getShape(), index, pos);
+		}
+
 		return getCollectionArgumentVariable(1).getValueAt(p);
+	}
+
+	@Override
+	public PackedCollectionSubset<T> generate(List<Process<?, ?>> children) {
+		if (getChildren().size() == 3) {
+			return new PackedCollectionSubset<>(getShape(), (Producer<?>) children.get(1), (Producer<?>) children.get(2));
+		} else if (getChildren().size() == 2) {
+			return new PackedCollectionSubset<>(getShape(), (Producer<?>) children.get(1), pos);
+		} else {
+			throw new UnsupportedOperationException();
+		}
 	}
 
 	private class Destination implements Producer<PackedCollection<?>>, Delegated<DestinationSupport<T>>, Countable, KernelSupport {

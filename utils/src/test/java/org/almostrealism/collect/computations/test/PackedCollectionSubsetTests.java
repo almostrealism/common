@@ -98,6 +98,126 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 	}
 
 	@Test
+	public void dynamicSubset1d() {
+		int w = 2;
+
+		int x0 = 4, x1 = x0 + w;
+
+		Tensor<Double> t = tensor(shape(10), (int[] c) -> {
+			int x = c[0];
+			return x >= x0 && x < x1;
+		});
+
+		PackedCollection<?> input = t.pack();
+		TraversalPolicy inputShape = input.getShape();
+		System.out.println("PackedCollectionSubsetTests: input shape = " + inputShape);
+
+		PackedCollection<?> pc = new PackedCollection<>(1).traverseEach();
+		pc.set(0, (double) x0);
+
+		HardwareOperator.verboseLog(() -> {
+			CollectionProducer<PackedCollection<?>> producer = subset(shape(w), p(input), p(pc));
+			Evaluable<PackedCollection<?>> ev = producer.get();
+			PackedCollection<?> subset = ev.evaluate();
+
+			Assert.assertEquals(w, subset.getShape().length(0));
+
+			for (int i = 0; i < w; i++) {
+				double expected = x0 + i;
+				double actual = subset.valueAt(i);
+				System.out.println("PackedCollectionSubsetTests: [" + i + "] " + expected + " vs " + actual);
+				assertEquals(expected, actual);
+			}
+		});
+	}
+
+	@Test
+	public void dynamicSubset2d() {
+		int w = 2;
+		int h = 4;
+
+		int x0 = 4, x1 = x0 + w;
+		int y0 = 3, y1 = y0 + h;
+
+		Tensor<Double> t = tensor(shape(10, 10), (int[] c) -> {
+			int x = c[0], y = c[1];
+			return x >= x0 && x < x1 && y >= y0 && y < y1;
+		});
+
+		PackedCollection<?> input = t.pack();
+		TraversalPolicy inputShape = input.getShape();
+		System.out.println("PackedCollectionSubsetTests: input shape = " + inputShape);
+
+		PackedCollection<?> pc = new PackedCollection<>(2).traverseEach();
+		pc.set(0, (double) x0);
+		pc.set(1, (double) y0);
+
+		HardwareOperator.verboseLog(() -> {
+			CollectionProducer<PackedCollection<?>> producer = subset(shape(w, h), p(input), p(pc));
+			Evaluable<PackedCollection<?>> ev = producer.get();
+			PackedCollection<?> subset = ev.evaluate();
+
+			Assert.assertEquals(w, subset.getShape().length(0));
+			Assert.assertEquals(h, subset.getShape().length(1));
+
+			for (int i = 0; i < w; i++) {
+				for (int j = 0; j < h; j++) {
+					double expected = (x0 + i + y0 + j);
+					double actual = subset.valueAt(i, j);
+					System.out.println("PackedCollectionSubsetTests: [" + i + ", " + j + "] " + expected + " vs " + actual);
+					assertEquals(expected, actual);
+				}
+			}
+		});
+	}
+
+	@Test
+	public void dynamicSubset3d() {
+		int n = 10;
+		int w = 2, h = 4, d = 3;
+		int x0 = 4, y0 = 3, z0 = 2;
+
+		int x1 = x0 + w;
+		int y1 = y0 + h;
+		int z1 = z0 + d;
+
+		Tensor<Double> t = tensor(shape(n, n, n), (int[] c) -> {
+			int x = c[0], y = c[1], z = c[2];
+			return x >= x0 && x < x1 && y >= y0 && y < y1 && z >= z0 && z < z1;
+		});
+
+		PackedCollection<?> input = t.pack();
+		TraversalPolicy inputShape = input.getShape();
+		System.out.println("PackedCollectionSubsetTests: input shape = " + inputShape);
+
+		PackedCollection<?> pc = new PackedCollection<>(3).traverseEach();
+		pc.set(0, (double) x0);
+		pc.set(1, (double) y0);
+		pc.set(2, (double) z0);
+
+		HardwareOperator.verboseLog(() -> {
+			CollectionProducer<PackedCollection<?>> producer = subset(shape(w, h, d), p(input), p(pc));
+			Evaluable<PackedCollection<?>> ev = producer.get();
+			PackedCollection<?> subset = ev.evaluate();
+
+			Assert.assertEquals(w, subset.getShape().length(0));
+			Assert.assertEquals(h, subset.getShape().length(1));
+			Assert.assertEquals(d, subset.getShape().length(2));
+
+			for (int i = 0; i < w; i++) {
+				for (int j = 0; j < h; j++) {
+					for (int k = 0; k < d; k++) {
+						double expected = input.valueAt(x0 + i, y0 + j, z0 + k);
+						double actual = subset.valueAt(i, j, k);
+						System.out.println("PackedCollectionSubsetTests: [" + i + ", " + j + ", " + k + "] " + expected + " vs " + actual);
+						assertEquals(expected, actual);
+					}
+				}
+			}
+		});
+	}
+
+	@Test
 	public void enumerate2d() {
 		Tensor<Double> t = tensor(shape(10, 10), (int[] c) -> c[1] < 2);
 		PackedCollection<?> input = t.pack();
