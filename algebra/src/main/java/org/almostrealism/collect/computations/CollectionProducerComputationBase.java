@@ -21,6 +21,7 @@ import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.CollectionVariable;
+import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Evaluable;
@@ -189,6 +190,12 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 
 			@Override
 			public Evaluable<O> withDestination(MemoryBank<O> destination) {
+				if (destination instanceof Shape) {
+					if (getShape().getSize() > 1 && ((Shape) destination).getShape().getSize() != getShape().getSize()) {
+						throw new IllegalArgumentException();
+					}
+				}
+
 				return new DestinationEvaluable<>(getKernel(), destination);
 			}
 

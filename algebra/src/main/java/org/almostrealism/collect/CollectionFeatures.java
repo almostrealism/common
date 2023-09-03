@@ -25,6 +25,7 @@ import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Conditional;
+import io.almostrealism.expression.Difference;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Exp;
 import io.almostrealism.expression.Exponent;
@@ -57,6 +58,7 @@ import org.almostrealism.collect.computations.Random;
 import org.almostrealism.collect.computations.RepeatedCollectionProducerComputation;
 import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.collect.computations.TraversableExpressionComputation;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.KernelSupport;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryDataComputation;
@@ -155,6 +157,10 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		} else {
 			return ExpressionComputation.fixed(value);
 		}
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> cp(T value) {
+		return c(p(value));
 	}
 
 	default <T extends MemoryData> Assignment<T> a(String shortDescription, Producer<T> result, Producer<T> value) {
@@ -403,6 +409,31 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return add(a, minus(b));
 	}
 
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> subtractIgnoreZero(Producer<T> a, Producer<T> b) {
+		TraversalPolicy shape = shape(a);
+		int size = shape(b).getSize();
+
+		if (shape.getSize() != size) {
+			if (shape.getSize() == 1) {
+				return subtractIgnoreZero(a, traverseEach((Producer) b));
+			} else if (size == 1) {
+				return subtractIgnoreZero(traverseEach((Producer) a), b);
+			}
+
+			throw new IllegalArgumentException("Cannot subtract a collection of size " + size +
+					" from a collection of size " + shape.getSize());
+		}
+
+		return new TraversableExpressionComputation<>(shape,
+				args -> CollectionExpression.create(shape, index -> {
+					Expression<Double> difference = conditional(args[1].getValueAt(index).eq(args[2].getValueAt(index)),
+							e(Hardware.getLocalHardware().getPrecision().epsilon()),
+							new Difference(args[1].getValueAt(index), args[2].getValueAt(index)));
+					return conditional(args[1].getValueAt(index).eq(e(0.0)), e(0.0), difference);
+				}),
+				(Supplier) a, (Supplier) b);
+	}
+
 	@Deprecated
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> relativeSubtract(Producer<T> a, Producer<T> b) {
 		return relativeAdd(a, minus(b));
@@ -465,8 +496,8 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		TraversalPolicy shape = shape(a);
 		int size = shape(b).getSize();
 		if (shape.getSize() != size) {
-			throw new IllegalArgumentException("Cannot multiply a collection of size " + shape.getSize() +
-					" with a collection of size " + size);
+			throw new IllegalArgumentException("Cannot divide a collection of size " + shape.getSize() +
+					" by a collection of size " + size);
 		}
 
 		return new TraversableExpressionComputation<>(shape,
@@ -500,6 +531,14 @@ public interface CollectionFeatures extends ExpressionFeatures {
 			Supplier<Evaluable<? extends PackedCollection<?>>> value) {
 		return new TraversableExpressionComputation<>(
 				shape(value), (args, index) -> new Exp(args[1].getValueAt(index)), (Supplier) value);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> expIgnoreZero(
+			Supplier<Evaluable<? extends PackedCollection<?>>> value) {
+		return new TraversableExpressionComputation<>(
+				shape(value), (args, index) ->
+					conditional(args[1].getValueAt(index).eq(e(0.0)), e(0.0), new Exp(args[1].getValueAt(index))),
+				(Supplier) value);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> floor(
@@ -563,10 +602,26 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		TraversalPolicy shape = shape(input);
 		int size = shape.getSize();
 
-		return new TraversableExpressionComputation<>(shape.replace(shape(1)),
-				(BiFunction<TraversableExpression[], Expression, Expression>) (args, index) ->
-						Max.of(IntStream.range(0, size).mapToObj(i -> args[1].getValueRelative(e(i))).toArray(Expression[]::new)),
-				(Supplier) input);
+		if (KernelPreferences.isEnableSubdivision()) {
+			CollectionProducerComputationBase<T, T> sum = (CollectionProducerComputationBase<T, T>) subdivide(input, this::max);
+			if (sum != null) return sum;
+		}
+
+		if (KernelPreferences.isPreferLoops()) {
+			return new RepeatedCollectionProducerComputation<>(shape.replace(shape(1)),
+					(args, index) ->
+							e(Hardware.getLocalHardware().getPrecision().minValue()),
+					(args, index) ->
+							index.lessThan(e(size)),
+					(args, index) ->
+							new Max(args[0].getValueRelative(e(0)), (args[1].getValueRelative(index))),
+					(Supplier) input);
+		} else {
+			return new TraversableExpressionComputation<>(shape.replace(shape(1)),
+					(BiFunction<TraversableExpression[], Expression, Expression>) (args, index) ->
+							Max.of(IntStream.range(0, size).mapToObj(i -> args[1].getValueRelative(e(i))).toArray(Expression[]::new)),
+					(Supplier) input);
+		}
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> sum(Producer<T> input) {

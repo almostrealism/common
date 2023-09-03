@@ -17,7 +17,10 @@
 package org.almostrealism.layers;
 
 import io.almostrealism.code.ExpressionList;
+import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.code.OperationWithInfo;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
@@ -311,6 +314,31 @@ public interface LayerFeatures extends MatrixFeatures {
 			if (next != null) ops.add(next.push(p(output)));
 			return ops;
 		}), propagation);
+	}
+
+	default CellularLayer softmax2d(TraversalPolicy shape, Producer<PackedCollection<?>> length, boolean subtractMax) {
+		if (shape.getDimensions() != 2)
+			throw new IllegalArgumentException();
+
+		int heads = shape.length(0);
+		int seqLen = shape.length(1);
+
+		return layer("softmax2d", shape, shape, Cell.of((input, next) -> {
+			PackedCollection<?> output = new PackedCollection<>(shape);
+
+			CollectionProducer<PackedCollection<?>> o = traverse(1, input);
+
+			if (subtractMax) {
+				o = o.max();
+				o = o.expand(seqLen, v -> v.repeat(seqLen));
+				o = traverse(2, input).subtractIgnoreZero(o);
+			}
+
+			o = o.expIgnoreZero().traverse(1);
+			o = o.divide(o.sum().expand(seqLen, v -> v.repeat(seqLen)));
+
+			return next == null ? new OperationList() : next.push(o);
+		}), null);
 	}
 
 	default CellularLayer accum(Producer<PackedCollection<?>> value) {
