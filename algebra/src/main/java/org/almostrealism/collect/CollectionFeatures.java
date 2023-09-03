@@ -260,7 +260,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		Expression pos[] = shape.position(index);
 
 		return new ArrayVariableComputation<>(
-				shape, List.of(args -> {
+				shape.traverseEach(), List.of(args -> {
 					CollectionVariable vars[] = new CollectionVariable[args.size()];
 					for (int i = 0; i < vars.length; i++) {
 						vars[i] = args.get(i) instanceof CollectionVariable ? (CollectionVariable) args.get(i) : null;

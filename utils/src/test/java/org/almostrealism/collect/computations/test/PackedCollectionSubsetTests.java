@@ -754,7 +754,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		};
 
 		CollectionProducerComputation<PackedCollection<?>> producer =
-				new ArrayVariableComputation<>(outputShape, List.of(expression), p(filter), p(input));
+				new ArrayVariableComputation<>(outputShape.traverseEach(), List.of(expression), p(filter), p(input));
 		KernelizedEvaluable<PackedCollection<?>> ev = producer.get();
 
 		PackedCollection<PackedCollection<?>> result = new PackedCollection(outputShape);
@@ -799,7 +799,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		TraversalPolicy inputShape = input.getShape();
 		System.out.println("PackedCollectionSubsetTests: input shape = " + inputShape);
 
-		TraversalPolicy subsetShape = shape(w, h, d);
+		TraversalPolicy subsetShape = shape(w, h, d).traverseEach();
 
 		CollectionProducerComputation<PackedCollection<?>> producer =
 				kernel(i -> KernelSupport.kernelIndex(i),
@@ -834,7 +834,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		int h = 10;
 
 		TraversalPolicy inputShape = shape(h, w);
-		TraversalPolicy outputShape = shape(h - 2, w - 2, 1);
+		TraversalPolicy outputShape = shape(h - 2, w - 2, 1).traverseEach();
 
 		Tensor<Double> t = tensor(inputShape);
 		PackedCollection<?> input = t.pack();
@@ -880,7 +880,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 
 		TraversalPolicy filterShape = shape(filterCount, size, size);
 		TraversalPolicy inputShape = shape(h, w);
-		TraversalPolicy outputShape = shape(h - 2, w - 2, filterCount);
+		TraversalPolicy outputShape = shape(h - 2, w - 2, filterCount).traverseEach();
 
 		Tensor<Double> f = tensor(filterShape);
 		Tensor<Double> t = tensor(inputShape);
