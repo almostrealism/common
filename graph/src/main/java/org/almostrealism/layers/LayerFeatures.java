@@ -316,7 +316,7 @@ public interface LayerFeatures extends MatrixFeatures {
 		}), propagation);
 	}
 
-	default CellularLayer softmax2d(TraversalPolicy shape, Producer<PackedCollection<?>> length, boolean subtractMax) {
+	default CellularLayer softmax2d(TraversalPolicy shape, boolean subtractMax) {
 		if (shape.getDimensions() != 2)
 			throw new IllegalArgumentException();
 
