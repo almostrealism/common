@@ -398,6 +398,15 @@ public interface LayerFeatures extends MatrixFeatures {
 		}), null);
 	}
 
+	default CellularLayer silu(TraversalPolicy shape) {
+		if (shape.getDimensions() != 1)
+			throw new IllegalArgumentException();
+
+		return layer("silu", shape, shape, Cell.of((input, next) -> {
+			return next == null ? new OperationList() : next.push(multiply(traverseEach(input), sigmoid(traverseEach(input))));
+		}), null);
+	}
+
 	default CellularLayer rmsnorm(int size) {
 		return rmsnorm(new PackedCollection<>(shape(size)));
 	}

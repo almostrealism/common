@@ -500,9 +500,10 @@ public interface CollectionFeatures extends ExpressionFeatures {
 					" by a collection of size " + size);
 		}
 
+		if (shape(b).getCount() > shape(a).getCount()) shape = shape(b);
+
 		return new TraversableExpressionComputation<>(shape,
-				args -> CollectionExpression.create(shape, index ->
-						new Quotient(args[1].getValueAt(index), args[2].getValueAt(index))),
+				(args, index) -> new Quotient(args[1].getValueAt(index), args[2].getValueAt(index)),
 				(Supplier) a, (Supplier) b);
 	}
 
@@ -648,6 +649,10 @@ public interface CollectionFeatures extends ExpressionFeatures {
 							Sum.of(IntStream.range(0, size).mapToObj(i -> args[1].getValueRelative(e(i))).toArray(Expression[]::new)),
 					(Supplier) input);
 		}
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> sigmoid(Producer<T> input) {
+		return divide(c(1.0), minus(input).exp().add(c(1.0)));
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> _greaterThan(Producer<T> a, Producer<T> b,

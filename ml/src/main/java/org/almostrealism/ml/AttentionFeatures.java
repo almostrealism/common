@@ -79,7 +79,7 @@ public interface AttentionFeatures extends LayerFeatures {
 
 			CollectionProducer<PackedCollection<?>> a = traverse(1, input).expand(headSize, x -> x.repeat(headSize));
 			CollectionProducer<PackedCollection<?>> o = multiply(traverseEach(a), traverseEach(v)).traverse(2).sum();
-			if (next != null) return next.push(o.reshape(shape(dim)));
+			if (next != null) return next.push(o.reshape(shape(dim).traverseEach()));
 			return new OperationList();
 		}), null);
 	}

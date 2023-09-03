@@ -16,6 +16,7 @@
 
 package org.almostrealism.graph.model.test;
 
+import io.almostrealism.kernel.KernelPreferences;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -28,8 +29,8 @@ public class LayerTests implements TestFeatures {
 	@Test
 	public void softmaxComputation() {
 		int heads = 12;
-		int len = 1024;
-		int l = 64;
+		int len = KernelPreferences.isPreferLoops() ? 1024 : 8;
+		int l = KernelPreferences.isPreferLoops() ? 64 : 4;
 
 		PackedCollection<?> in = new PackedCollection<>(heads, len).randFill().traverseEach();
 //		PackedCollection<?> subtractMax = new PackedCollection<>(heads, len);

@@ -16,10 +16,13 @@
 
 package org.almostrealism.algebra.test;
 
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Pair;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareOperator;
+import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
@@ -44,5 +47,22 @@ public class StandardMathTests implements TestFeatures {
 				}
 			}
 		});
+	}
+
+	@Test
+	public void silu() {
+		int dim = 256;
+		PackedCollection<?> in = new PackedCollection(dim).randnFill();
+		CollectionProducer<PackedCollection<?>> inp = cp(in);
+		Producer<PackedCollection<?>> o = inp.traverseEach().sigmoid().multiply(inp.traverseEach());
+
+		PackedCollection<?> out = o.get().evaluate();
+
+		for (int i = 0; i < dim; i++) {
+			double expected = in.valueAt(i) / (1.0f + Math.exp(-in.valueAt(i)));
+			double actual = out.valueAt(i);
+			System.out.println("StandardMathTests[" + i + "] " + expected + " vs " + actual);
+			assertEquals(expected, actual);
+		}
 	}
 }

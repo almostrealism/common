@@ -130,6 +130,10 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 		return sum((Producer) this);
 	}
 
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> sigmoid() {
+		return sigmoid((Producer) this);
+	}
+
 	default AcceleratedConditionalStatementCollection _greaterThan(Supplier<Evaluable<? extends PackedCollection<?>>> operand) {
 		return _greaterThan(operand, false);
 	}
