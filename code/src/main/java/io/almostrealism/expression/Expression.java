@@ -209,6 +209,10 @@ public class Expression<T> implements Tree<Expression<?>> {
 	public Mod mod(Expression<Double> operand) { return new Mod((Expression) this, operand); }
 	public Mod mod(Expression<?> operand, boolean fp) { return new Mod((Expression) this, (Expression) operand, fp); }
 
+	public Sine sin() { return new Sine((Expression) this); }
+	public Cosine cos() { return new Cosine((Expression) this); }
+	public Tangent tan() { return new Tangent((Expression) this); }
+
 	public Equals eq(Expression<?> operand) { return new Equals(this, operand); };
 	public Less lessThan(Expression<?> operand) { return new Less(this, operand); };
 
