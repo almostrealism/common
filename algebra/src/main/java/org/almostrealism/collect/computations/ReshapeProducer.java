@@ -144,12 +144,6 @@ public class ReshapeProducer<T extends Shape<T>>
 		return true;
 	}
 
-	@Override
-	public boolean isItem() {
-		if (producer instanceof TraversableExpression) return ((TraversableExpression) producer).isItem();
-		return false;
-	}
-
 	public CollectionProducer<T> traverse(int axis) {
 		if (shape == null || shape(producer).traverse(0).equals(getShape().traverse(0))) {
 			return new ReshapeProducer<>(axis, producer);

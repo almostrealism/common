@@ -93,7 +93,7 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 	public Expression<Double> getValueRelative(int index) {
 		TraversableExpression exp = TraversableExpression.traverse(getProducer());
 
-		if (exp != null && !exp.isItem()) {
+		if (exp != null) {
 			Expression<Double> value = exp.getValueRelative(new IntegerConstant(index));
 			if (value != null) return value;
 		}

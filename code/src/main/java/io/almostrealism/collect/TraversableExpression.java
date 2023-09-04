@@ -49,9 +49,6 @@ public interface TraversableExpression<T> extends ExpressionFeatures {
 
 	default boolean isRelative() { return false; }
 
-	@Deprecated
-	default boolean isItem() { return false; }
-
 	static TraversableExpression traverse(Object o) {
 		if (o instanceof TraversableExpression) {
 			if (!((TraversableExpression) o).isTraversable()) return null;
