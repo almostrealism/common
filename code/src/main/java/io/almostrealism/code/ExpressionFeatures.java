@@ -45,11 +45,6 @@ public interface ExpressionFeatures {
 		return new Expression<>(Double.class, expression, dependencies);
 	}
 
-	@Deprecated
-	default Expression<Double> expression(String expression, Variable<?, ?>... dependencies) {
-		return new Expression<>(Double.class, expression, Collections.emptyList(), dependencies);
-	}
-
 	default Exp exp(Expression expression) {
 		return new Exp(expression);
 	}
