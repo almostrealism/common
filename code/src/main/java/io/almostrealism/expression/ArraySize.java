@@ -25,5 +25,8 @@ public class ArraySize<T> extends Expression<T> {
 	}
 
 	@Override
+	public String getExpression() { return null; }
+
+	@Override
 	public int getArraySize() { return size; }
 }

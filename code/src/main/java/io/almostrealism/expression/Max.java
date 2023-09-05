@@ -24,6 +24,11 @@ public class Max extends Expression<Double> {
 	}
 
 	@Override
+	public String getExpression() {
+		return "max(" + getChildren().get(0).getExpression() + ", " + getChildren().get(1).getExpression() + ")";
+	}
+
+	@Override
 	public Expression<Double> generate(List<Expression<?>> children) {
 		if (children.size() != 2) {
 			throw new UnsupportedOperationException();

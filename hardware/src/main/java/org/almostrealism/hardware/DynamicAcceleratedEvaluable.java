@@ -85,7 +85,7 @@ public abstract class DynamicAcceleratedEvaluable<I extends MemoryData, O extend
 					throw new RuntimeException("Not implemented");
 				} else {
 					out.accept(" = ");
-					out.accept(String.valueOf(var.getExpression().getValue()));
+					out.accept(var.getExpression().getSimpleExpression());
 				}
 			}
 

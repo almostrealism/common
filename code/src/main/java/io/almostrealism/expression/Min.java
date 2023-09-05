@@ -24,6 +24,11 @@ public class Min extends Expression<Double> {
 	}
 
 	@Override
+	public String getExpression() {
+		return "min(" + getChildren().get(0).getExpression() + ", " + getChildren().get(1).getExpression() + ")";
+	}
+
+	@Override
 	public Expression<Double> generate(List<Expression<?>> children) {
 		if (children.size() != 2) {
 			throw new UnsupportedOperationException();

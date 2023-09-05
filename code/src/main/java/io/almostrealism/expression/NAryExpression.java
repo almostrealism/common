@@ -36,6 +36,12 @@ public class NAryExpression<T> extends Expression<T> {
 		this.operator = operator;
 	}
 
+
+	@Override
+	public String getExpression() {
+		return concat(operator, getChildren().stream().map(Expression::getExpression).map(s -> "(" + s + ")"));
+	}
+
 	@Override
 	public Expression<T> generate(List<Expression<?>> children) {
 		if (children.isEmpty()) {

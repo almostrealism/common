@@ -23,6 +23,10 @@ public class Cosine extends Expression<Double> {
 		super(Double.class, "cos(" + input.getExpression() + ")", input);
 	}
 
+	public String getExpression() {
+		return "cos(" + getChildren().get(0).getExpression() + ")";
+	}
+
 	@Override
 	public Expression<Double> generate(List<Expression<?>> children) {
 		if (children.size() != 1) {

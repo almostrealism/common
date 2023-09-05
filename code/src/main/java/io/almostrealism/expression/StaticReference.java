@@ -22,13 +22,19 @@ import java.util.Collections;
 import java.util.List;
 
 public class StaticReference<T> extends Expression<T> {
+	private String expression;
+
 	public StaticReference(Class<T> type, String expression) {
-		super(type, expression, new Expression[0]);
+		super(type, expression);
+		this.expression = expression;
 	}
 
 	public StaticReference(Class<T> type, String expression, Variable referent) {
 		super(type, expression, referent, null);
+		this.expression = expression;
 	}
+
+	public String getExpression() { return expression; }
 
 	@Override
 	public Expression<T> generate(List<Expression<?>> children) {

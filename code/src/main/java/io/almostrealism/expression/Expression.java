@@ -41,7 +41,6 @@ public abstract class Expression<T> implements Tree<Expression<?>> {
 	public static Function<Expression<?>, Expression<?>> toDouble = e -> new Cast("double", e);
 
 	private Class<T> type;
-	private Supplier<String> expression;
 	private List<Variable<?, ?>> dependencies = new ArrayList<>();
 	private List<Expression<?>> children = new ArrayList<>();
 
@@ -55,7 +54,6 @@ public abstract class Expression<T> implements Tree<Expression<?>> {
 		}
 
 		setType(type);
-		this.expression = () -> expression;
 		this.children = List.of(children);
 		this.dependencies = new ArrayList<>();
 		this.dependencies.addAll(dependencies(children));
@@ -67,7 +65,6 @@ public abstract class Expression<T> implements Tree<Expression<?>> {
 		}
 
 		setType(type);
-		this.expression = () -> expression;
 		this.children = argument == null ? Collections.emptyList() : List.of(argument);
 		this.dependencies = new ArrayList<>();
 		this.dependencies.add(referent);
@@ -78,7 +75,7 @@ public abstract class Expression<T> implements Tree<Expression<?>> {
 	public Class<T> getType() { return this.type; }
 
 	public boolean isNull() {
-		return expression == null || expression.get() == null;
+		return getExpression() == null;
 	}
 
 	public OptionalInt intValue() { return OptionalInt.empty(); }
@@ -131,29 +128,20 @@ public abstract class Expression<T> implements Tree<Expression<?>> {
 		return getSimplified().getExpression();
 	}
 
-	// TODO  This should be abstract
-	public String getExpression() {
-		if (isNull()) return null;
-		return expression.get();
-	}
-
-	public void setExpression(String expression) { this.expression = () -> expression; }
-	public void setExpression(Supplier<String> expression) { this.expression = expression; }
+	public abstract String getExpression();
 
 	public List<Variable<?, ?>> getDependencies() { return dependencies; }
 
 	public int getArraySize() { return -1; }
 
 	public T getValue() {
-		OptionalDouble v = doubleValue();
+		OptionalInt i = intValue();
+		if (i.isPresent()) return (T) (Integer) i.getAsInt();
 
-		if (v.isPresent()) {
-			return (T) Double.valueOf(v.getAsDouble());
-		} else if (expression != null) {
-			return (T) expression.get();
-		} else {
-			throw new UnsupportedOperationException();
-		}
+		OptionalDouble v = doubleValue();
+		if (v.isPresent()) return (T) (Double) v.getAsDouble();
+
+		return null;
 	}
 
 	public Minus minus() { return new Minus((Expression) this); }
@@ -212,14 +200,14 @@ public abstract class Expression<T> implements Tree<Expression<?>> {
 
 		Expression v = (Expression) obj;
 		if (type != v.getType()) return false;
-		if (!Objects.equals(expression, v.expression)) return false;
+		if (!Objects.equals(getExpression(), v.getExpression())) return false;
 		if (!Objects.equals(dependencies, v.getDependencies())) return false;
 
 		return true;
 	}
 
 	@Override
-	public int hashCode() { return getValue().hashCode(); }
+	public int hashCode() { return getExpression() == null ? 0 : getExpression().hashCode(); }
 
 	private static Set<Variable<?, ?>> dependencies(Expression expressions[]) {
 		Set<Variable<?, ?>> dependencies = new HashSet<>();

@@ -23,6 +23,10 @@ public class Equals extends Expression<Boolean> {
 		super(Boolean.class, "(" + left.getExpression() + ") == (" + right.getExpression() + ")", left, right);
 	}
 
+	public String getExpression() {
+		return "(" + getChildren().get(0).getExpression() + ") == (" + getChildren().get(1).getExpression() + ")";
+	}
+
 	@Override
 	public Expression<Boolean> generate(List<Expression<?>> children) {
 		if (children.size() != 2) throw new UnsupportedOperationException();

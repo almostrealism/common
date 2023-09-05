@@ -23,6 +23,12 @@ public class Sine extends Expression<Double> {
 		super(Double.class, "sin(" + input.getExpression() + ")", input);
 	}
 
+
+	@Override
+	public String getExpression() {
+		return "sin(" + getChildren().get(0).getExpression() + ")";
+	}
+
 	@Override
 	public Expression<Double> generate(List<Expression<?>> children) {
 		if (children.size() != 1) {

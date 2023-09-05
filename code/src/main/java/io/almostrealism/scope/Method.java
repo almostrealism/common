@@ -50,7 +50,6 @@ public class Method<T> extends Expression<T> implements Nameable {
 		this.member = member;
 		this.name = name;
 		this.arguments = arguments;
-		setExpression(text());
 	}
 
 	public Method(String name, Expression<?>... v) {
@@ -69,14 +68,13 @@ public class Method<T> extends Expression<T> implements Nameable {
 		this(type, member, name, Arrays.asList(v));
 	}
 
-	protected Supplier<String> text() {
-		return () -> {
-			if (getMember() == null) {
-				return getName() + "(" + toString(getArguments()) + ")";
-			} else {
-				return getMember() + "." + getName() + "(" + toString(getArguments()) + ")";
-			}
-		};
+	@Override
+	public String getExpression() {
+		if (getMember() == null) {
+			return getName() + "(" + toString(getArguments()) + ")";
+		} else {
+			return getMember() + "." + getName() + "(" + toString(getArguments()) + ")";
+		}
 	}
 
 	@Override

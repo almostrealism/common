@@ -24,6 +24,12 @@ public class Exponent extends Expression<Double> {
 	}
 
 	@Override
+	public String getExpression() {
+		// TODO  The extra inner parenthesis are probably not needed
+		return "pow((" + getChildren().get(0).getExpression() + "), (" + getChildren().get(1).getExpression() + "))";
+	}
+
+	@Override
 	public Expression<Double> generate(List<Expression<?>> children) {
 		if (children.size() != 2) {
 			throw new UnsupportedOperationException();

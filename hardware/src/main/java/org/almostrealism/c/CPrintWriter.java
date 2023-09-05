@@ -174,7 +174,7 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 					}
 				} else {
 					println(annotationForVariable(variable) + typePrefix(variable.getType()) + variable.getName() +
-									" = " + variable.getExpression().getValue() + ";");
+									" = " + variable.getExpression().getSimpleExpression() + ";");
 				}
 			} else {
 				println(annotationForVariable(variable) + typePrefix(variable.getType()) + variable.getName() +

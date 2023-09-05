@@ -26,6 +26,12 @@ public class Conditional extends Expression<Double> {
 	}
 
 	@Override
+	public String getExpression() {
+		return "(" + getChildren().get(0).getExpression() + ") ? (" + getChildren().get(1).getExpression() +
+				") : (" + getChildren().get(2).getExpression() + ")";
+	}
+
+	@Override
 	public Expression<Double> generate(List<Expression<?>> children) {
 		if (children.size() != 3) throw new UnsupportedOperationException();
 		return new Conditional((Expression<Boolean>) children.get(0),

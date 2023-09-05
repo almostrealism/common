@@ -45,6 +45,11 @@ public class InstanceReference<T> extends Expression<T> {
 
 	public Variable<T, ?> getReferent() { return var; }
 
+	@Override
+	public String getExpression() {
+		return var.getName();
+	}
+
 	public Variable assign(Expression exp) {
 		if (enablePassDelegate) {
 			return new Variable(getSimpleExpression(), false, exp, getReferent().getDelegate());

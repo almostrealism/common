@@ -24,6 +24,11 @@ public class Less extends Expression<Boolean> {
 	}
 
 	@Override
+	public String getExpression() {
+		return "(" + getChildren().get(0).getExpression() + ") < (" + getChildren().get(1).getExpression() + ")";
+	}
+
+	@Override
 	public Expression<Boolean> generate(List<Expression<?>> children) {
 		if (children.size() != 2) throw new UnsupportedOperationException();
 		return new Less(children.get(0), children.get(1));
