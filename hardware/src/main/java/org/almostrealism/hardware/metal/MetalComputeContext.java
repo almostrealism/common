@@ -38,7 +38,9 @@ public class MetalComputeContext extends AbstractComputeContext {
 									"using metal::ceil;\n" +
 									"using metal::pow;\n" +
 									"using metal::exp;\n" +
-									"using metal::sin;\n";
+									"using metal::sin;\n" +
+									"using metal::cos;\n" +
+									"using metal::tan;\n";
 
 	private MTLDevice mainDevice, kernelDevice;
 	private MTLCommandQueue queue;
