@@ -43,10 +43,6 @@ public class InstanceReference<T> extends Expression<T> {
 		this.var = referent;
 	}
 
-	public InstanceReference(Class<T> type, String varName) {
-		super(type, varName);
-	}
-
 	public Variable<T, ?> getReferent() { return var; }
 
 	public Variable assign(Expression exp) {

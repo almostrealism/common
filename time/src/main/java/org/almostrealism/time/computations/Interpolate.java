@@ -72,16 +72,16 @@ public class Interpolate extends CollectionProducerComputationBase<PackedCollect
 		String t1 = getVariableName(8);
 		String t2 = getVariableName(9);
 
-		scope.getVariables().add(new Variable<>(idx.getSimpleExpression(), new Expression<>(Integer.class, "-1")));
-		scope.getVariables().add(new Variable<>(left.getSimpleExpression(), new Expression<>(Integer.class, "-1")));
-		scope.getVariables().add(new Variable<>(right.getSimpleExpression(), new Expression<>(Integer.class, "-1")));
-		scope.getVariables().add(new Variable<>(leftO.getSimpleExpression(), new Expression<>(Integer.class, "-1")));
-		scope.getVariables().add(new Variable<>(rightO.getSimpleExpression(), new Expression<>(Integer.class, "-1")));
-		scope.getVariables().add(new Variable<>(bi.getSimpleExpression(), new Expression<>(Double.class, "-1.0")));
-		scope.getVariables().add(new Variable<>(v1, new Expression<>(Double.class, "0.0")));
-		scope.getVariables().add(new Variable<>(v2, new Expression<>(Double.class, "0.0")));
-		scope.getVariables().add(new Variable<>(t1, new Expression<>(Double.class, "0.0")));
-		scope.getVariables().add(new Variable<>(t2, new Expression<>(Double.class, "0.0")));
+		scope.getVariables().add(new Variable<>(idx.getSimpleExpression(), e(-1)));
+		scope.getVariables().add(new Variable<>(left.getSimpleExpression(), e(-1)));
+		scope.getVariables().add(new Variable<>(right.getSimpleExpression(), e(-1)));
+		scope.getVariables().add(new Variable<>(leftO.getSimpleExpression(), e(-1)));
+		scope.getVariables().add(new Variable<>(rightO.getSimpleExpression(), e(-1)));
+		scope.getVariables().add(new Variable<>(bi.getSimpleExpression(), e(-1.0)));
+		scope.getVariables().add(new Variable<>(v1, e(0.0)));
+		scope.getVariables().add(new Variable<>(v2, e(0.0)));
+		scope.getVariables().add(new Variable<>(t1, e(0.0)));
+		scope.getVariables().add(new Variable<>(t2, e(0.0)));
 
 		String res = getArgument(0).valueAt(0).getSimpleExpression();
 		String start = "0";

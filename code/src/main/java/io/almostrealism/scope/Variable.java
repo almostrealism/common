@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package io.almostrealism.scope;
 
+import io.almostrealism.expression.Constant;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.expression.Expression;
@@ -98,20 +99,12 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 	}
 
 	public Variable(String name, Class<T> type, Supplier<Evaluable<? extends T>> producer) {
-		this(name, true, new Expression(type), producer);
+		this(name, true, new Constant<>(type), producer);
 	}
 
 	public Variable(String name, PhysicalScope scope, Class<T> type, Supplier<Evaluable<? extends T>> producer) {
 		this(name, type, producer);
 		setPhysicalScope(scope);
-	}
-
-	public Variable(String name, String expression) {
-		this(name, null, expression);
-	}
-
-	public Variable(String name, Class<T> type, String expression) {
-		this(name, new Expression(type, expression));
 	}
 
 	public Variable(String name, Supplier<Evaluable<? extends T>> producer, int arraySize, PhysicalScope scope) {

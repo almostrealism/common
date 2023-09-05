@@ -16,6 +16,7 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.Conditional;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Equals;
@@ -28,6 +29,10 @@ import io.almostrealism.scope.Variable;
 import java.util.Collections;
 
 public interface ExpressionFeatures {
+
+	default Expression e(boolean value) {
+		return new BooleanConstant(value);
+	}
 
 	default Expression e(int value) {
 		return new IntegerConstant(value);

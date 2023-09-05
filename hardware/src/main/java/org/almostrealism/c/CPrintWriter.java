@@ -19,6 +19,7 @@ package org.almostrealism.c;
 import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.PhysicalScope;
+import io.almostrealism.expression.StaticReference;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.CodePrintWriterAdapter;
 import io.almostrealism.expression.Expression;
@@ -129,15 +130,15 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 		if (((CLanguageOperations) language).isEnableArgumentDetailReads()) {
 			IntStream.range(0, arguments.size())
 					.mapToObj(i -> new Variable<>(arguments.get(i).getName() + "Offset",
-							Integer.class, "(int) offsetArr[" + i + "]"))
+							new StaticReference<>(Integer.class, "(int) offsetArr[" + i + "]")))
 					.forEach(this::println);
 			IntStream.range(0, arguments.size())
 					.mapToObj(i -> new Variable<>(arguments.get(i).getName() + "Size",
-							Integer.class, "(int) sizeArr[" + i + "]"))
+							new StaticReference<>(Integer.class, "(int) sizeArr[" + i + "]")))
 					.forEach(this::println);
 			IntStream.range(0, arguments.size())
 					.mapToObj(i -> new Variable<>(arguments.get(i).getName() + "Dim0",
-							Integer.class, "(int) dim0Arr[" + i + "]"))
+							new StaticReference<>(Integer.class, "(int) dim0Arr[" + i + "]")))
 					.forEach(this::println);
 		}
 

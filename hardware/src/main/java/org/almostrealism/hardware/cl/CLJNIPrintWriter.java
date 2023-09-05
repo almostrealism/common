@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -40,9 +40,9 @@ public class CLJNIPrintWriter extends CJNIPrintWriter {
 
 	@Override
 	protected void renderArgumentReads(List<ArrayVariable<?>> arguments) {
-		println(new Variable<>("*argArr", long[].class, "(*env)->GetLongArrayElements(env, arg, 0)"));
-		println(new Variable<>("*offsetArr", int[].class, "(*env)->GetIntArrayElements(env, offset, 0)"));
-		println(new Variable<>("*sizeArr", int[].class, "(*env)->GetIntArrayElements(env, size, 0)"));
+		println(new Variable<>("*argArr", new StaticReference<>(long[].class, "(*env)->GetLongArrayElements(env, arg, 0)")));
+		println(new Variable<>("*offsetArr", new StaticReference<>(int[].class, "(*env)->GetIntArrayElements(env, offset, 0)")));
+		println(new Variable<>("*sizeArr", new StaticReference<>(int[].class, "(*env)->GetIntArrayElements(env, size, 0)")));
 
 		String numberType = Hardware.getLocalHardware().getNumberTypeName();
 		int numberSize = Hardware.getLocalHardware().getNumberSize();
@@ -53,14 +53,14 @@ public class CLJNIPrintWriter extends CJNIPrintWriter {
 											+ numberSize + " * sizeArr[" + i + "])")))
 				.forEach(this::println);
 		arguments.stream().map(argument -> new Variable<>(argument.getName() + "Offset",
-				Integer.class, "0"))
+				new StaticReference<>(Integer.class, "0")))
 				.forEach(this::println);
 		IntStream.range(0, arguments.size())
 				.mapToObj(i -> new Variable<>(arguments.get(i).getName() + "Size",
-						Integer.class, "sizeArr[" + i + "]"))
+						new StaticReference<>(Integer.class, "sizeArr[" + i + "]")))
 				.forEach(this::println);
-		println(new Variable("*nativeEventWaitList", cl_event.class, "NULL"));
-		println(new Variable("*nativeEventPointer", cl_event.class, "NULL"));
+		println(new Variable("*nativeEventWaitList", new StaticReference<>(cl_event.class, "NULL")));
+		println(new Variable("*nativeEventPointer", new StaticReference<>(cl_event.class, "NULL")));
 		IntStream.range(0, arguments.size())
 				.mapToObj(i -> clEnqueueBuffer(i, arguments.get(i), false))
 				.forEach(super::println);
@@ -83,19 +83,19 @@ public class CLJNIPrintWriter extends CJNIPrintWriter {
 		int size = Hardware.getLocalHardware().getNumberSize();
 
 		Expression<cl_command_queue> nativeCommandQueue =
-				new Expression<>(cl_command_queue.class, "(cl_command_queue) commandQueue");
+				new StaticReference<>(cl_command_queue.class, "(cl_command_queue) commandQueue");
 		Expression<cl_mem> nativeBuffer =
-				new Expression<>(cl_mem.class, "(cl_mem) argArr[" + index + "]");
+				new StaticReference<>(cl_mem.class, "(cl_mem) argArr[" + index + "]");
 		Expression<Boolean> nativeBlocking =
-				new Expression<>(Boolean.class, "(cl_bool) CL_TRUE");
+				new StaticReference<>(Boolean.class, "(cl_bool) CL_TRUE");
 		Expression<Integer> nativeOffset =
-				new Expression<>(Integer.class, size + " * (size_t) offsetArr[" + index + "]");
+				new StaticReference<>(Integer.class, size + " * (size_t) offsetArr[" + index + "]");
 		Expression<Integer> nativeCb =
-				new Expression<>(Integer.class, size + " * (size_t) sizeArr[" + index + "]");
+				new StaticReference<>(Integer.class, size + " * (size_t) sizeArr[" + index + "]");
 		Expression<Integer> nativeNumEvents =
-				new Expression<>(Integer.class, "(cl_uint) 0");
-		Expression<cl_event> nativeEventWaitList = new Expression<>(cl_event.class, "nativeEventWaitList");
-		Expression<cl_event> nativeEventPointer = new Expression<>(cl_event.class, "nativeEventPointer");
+				new StaticReference<>(Integer.class, "(cl_uint) 0");
+		Expression<cl_event> nativeEventWaitList = new StaticReference<>(cl_event.class, "nativeEventWaitList");
+		Expression<cl_event> nativeEventPointer = new StaticReference<>(cl_event.class, "nativeEventPointer");
 
 		String method = write ? "clEnqueueWriteBuffer" : "clEnqueueReadBuffer";
 		return new Method<>(Void.class, method, nativeCommandQueue,

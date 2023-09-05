@@ -16,18 +16,16 @@
 
 package io.almostrealism.expression;
 
-import java.util.List;
+public class BooleanConstant extends Constant<Integer> {
+	private boolean value;
 
-public class Constant<T> extends Expression<T> {
-	public Constant(Class<T> type) {
-		super(type);
+	public BooleanConstant(Boolean value) {
+		super(Integer.class);
+		this.value = value;
 	}
 
-	public Constant<T> generate(List<Expression<?>> children) {
-		if (children.size() > 0) {
-			throw new UnsupportedOperationException();
-		}
-
-		return this;
+	@Override
+	public String getExpression() {
+		return String.valueOf(value);
 	}
 }

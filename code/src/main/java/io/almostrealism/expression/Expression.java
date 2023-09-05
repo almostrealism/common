@@ -51,17 +51,6 @@ public class Expression<T> implements Tree<Expression<?>> {
 		setType(type);
 	}
 
-	public Expression(Class<T> type, String expression) {
-		if (type == null) {
-			throw new IllegalArgumentException("Type is required");
-		}
-
-		setType(type);
-		this.expression = () -> expression;
-		this.children = Collections.emptyList();
-		this.dependencies = Collections.emptyList();
-	}
-
 	public Expression(Class<T> type, String expression, Expression<?>... children) {
 		if (type == null) {
 			throw new IllegalArgumentException("Type is required");
