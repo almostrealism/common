@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -34,8 +34,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-// TODO  Make abstract
-public class Expression<T> implements Tree<Expression<?>> {
+public abstract class Expression<T> implements Tree<Expression<?>> {
 	public static boolean enableSimplification = true;
 	public static boolean enableWarnings = SystemUtils.isEnabled("AR_CODE_EXPRESSION_WARNINGS").orElse(true);
 
@@ -45,7 +44,6 @@ public class Expression<T> implements Tree<Expression<?>> {
 	private Supplier<String> expression;
 	private List<Variable<?, ?>> dependencies = new ArrayList<>();
 	private List<Expression<?>> children = new ArrayList<>();
-	private int arraySize = -1;
 
 	public Expression(Class<T> type) {
 		setType(type);
@@ -74,12 +72,6 @@ public class Expression<T> implements Tree<Expression<?>> {
 		this.dependencies = new ArrayList<>();
 		this.dependencies.add(referent);
 		if (argument != null) this.dependencies.addAll(argument.getDependencies());
-	}
-
-	public Expression(int arraySize) {
-		setType(null);
-		setExpression((Supplier<String>) null);
-		setArraySize(arraySize);
 	}
 
 	public void setType(Class<T> t) { this.type = t; }
@@ -150,8 +142,7 @@ public class Expression<T> implements Tree<Expression<?>> {
 
 	public List<Variable<?, ?>> getDependencies() { return dependencies; }
 
-	public int getArraySize() { return arraySize; }
-	public void setArraySize(int arraySize) { this.arraySize = arraySize; }
+	public int getArraySize() { return -1; }
 
 	public T getValue() {
 		OptionalDouble v = doubleValue();

@@ -46,10 +46,6 @@ public interface ExpressionFeatures {
 		return expressionForDouble(value);
 	}
 
-	default Expression<Double> e(String expression, Expression<?>... dependencies) {
-		return new Expression<>(Double.class, expression, dependencies);
-	}
-
 	default Exp exp(Expression expression) {
 		return new Exp(expression);
 	}

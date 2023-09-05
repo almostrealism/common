@@ -16,6 +16,7 @@
 
 package io.almostrealism.scope;
 
+import io.almostrealism.expression.ArraySize;
 import io.almostrealism.expression.Constant;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.code.PhysicalScope;
@@ -108,7 +109,7 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 	}
 
 	public Variable(String name, Supplier<Evaluable<? extends T>> producer, int arraySize, PhysicalScope scope) {
-		this(name, true, new Expression(arraySize), producer);
+		this(name, true, new ArraySize<>(arraySize), producer);
 		setPhysicalScope(scope);
 	}
 
