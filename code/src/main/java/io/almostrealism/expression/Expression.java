@@ -51,10 +51,15 @@ public class Expression<T> implements Tree<Expression<?>> {
 		setType(type);
 	}
 
-	@Deprecated
 	public Expression(Class<T> type, String expression) {
-		this(type, expression, Collections.emptyList(), new Variable[0]);
-		// System.out.println("WARN: Deprecated Expression construction");
+		if (type == null) {
+			throw new IllegalArgumentException("Type is required");
+		}
+
+		setType(type);
+		this.expression = () -> expression;
+		this.children = Collections.emptyList();
+		this.dependencies = Collections.emptyList();
 	}
 
 	public Expression(Class<T> type, String expression, Expression<?>... children) {
@@ -80,23 +85,6 @@ public class Expression<T> implements Tree<Expression<?>> {
 		this.dependencies = new ArrayList<>();
 		this.dependencies.add(referent);
 		if (argument != null) this.dependencies.addAll(argument.getDependencies());
-	}
-
-	@Deprecated
-	public Expression(Class<T> type, String expression, List<Expression<?>> children, Variable<?, ?>... dependencies) {
-		if (type == null) {
-			throw new IllegalArgumentException("Type is required");
-		}
-
-		setType(type);
-		this.expression = () -> expression;
-		this.children = children;
-		this.dependencies = new ArrayList<>();
-		this.dependencies.addAll(Arrays.asList(dependencies));
-
-		if (enableWarnings && dependencies.length > 0) {
-			System.out.println("WARN: Deprecated Expression construction");
-		}
 	}
 
 	public Expression(int arraySize) {
@@ -199,6 +187,8 @@ public class Expression<T> implements Tree<Expression<?>> {
 
 	public Quotient divide(int operand) { return new Quotient((Expression) this, (Expression) new IntegerConstant(operand)); }
 	public Quotient divide(Expression<Double> operand) { return new Quotient((Expression) this, operand); }
+
+	public Quotient reciprocal() { return new Quotient(new DoubleConstant(1.0), (Expression) this); }
 
 	public Exponent pow(Expression<Double> operand) { return new Exponent((Expression) this, operand); }
 	public Exp exp() { return new Exp((Expression) this); }

@@ -44,7 +44,7 @@ public class InstanceReference<T> extends Expression<T> {
 	}
 
 	public InstanceReference(Class<T> type, String varName) {
-		super(type, varName, Collections.emptyList());
+		super(type, varName);
 	}
 
 	public Variable<T, ?> getReferent() { return var; }
