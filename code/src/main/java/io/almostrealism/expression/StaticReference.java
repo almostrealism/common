@@ -18,19 +18,18 @@ package io.almostrealism.expression;
 
 import io.almostrealism.scope.Variable;
 
-import java.util.Collections;
 import java.util.List;
 
 public class StaticReference<T> extends Expression<T> {
 	private String expression;
 
 	public StaticReference(Class<T> type, String expression) {
-		super(type, expression);
+		super(type);
 		this.expression = expression;
 	}
 
 	public StaticReference(Class<T> type, String expression, Variable referent) {
-		super(type, expression, referent, null);
+		super(type, referent, null);
 		this.expression = expression;
 	}
 

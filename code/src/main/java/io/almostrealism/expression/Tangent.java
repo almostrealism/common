@@ -20,7 +20,7 @@ import java.util.List;
 
 public class Tangent extends Expression<Double> {
 	public Tangent(Expression<Double> input) {
-		super(Double.class, "tan(" + input.getExpression() + ")", input);
+		super(Double.class, input);
 	}
 
 	@Override

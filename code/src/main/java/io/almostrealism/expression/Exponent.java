@@ -20,7 +20,7 @@ import java.util.List;
 
 public class Exponent extends Expression<Double> {
 	public Exponent(Expression<Double> base, Expression<Double> exponent) {
-		super(Double.class, "pow((" + base.getExpression() + "), (" + exponent.getExpression() + "))", base, exponent);
+		super(Double.class, base, exponent);
 	}
 
 	@Override

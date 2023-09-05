@@ -20,9 +20,7 @@ import java.util.List;
 
 public class Conditional extends Expression<Double> {
 	public Conditional(Expression<Boolean> condition, Expression<Double> positive, Expression<Double> negative) {
-		super(Double.class,
-				"(" + condition.getExpression() + ") ? (" + positive.getExpression() +
-				") : (" + negative.getExpression() + ")", condition, positive, negative);
+		super(Double.class, condition, positive, negative);
 	}
 
 	@Override

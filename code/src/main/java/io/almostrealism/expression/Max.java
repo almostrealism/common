@@ -20,7 +20,7 @@ import java.util.List;
 
 public class Max extends Expression<Double> {
 	public Max(Expression<Double> a, Expression<Double> b) {
-		super(Double.class, "max(" + a.getExpression() + ", " + b.getExpression() + ")", a, b);
+		super(Double.class, a, b);
 	}
 
 	@Override

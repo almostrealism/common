@@ -20,7 +20,7 @@ import java.util.List;
 
 public class Cosine extends Expression<Double> {
 	public Cosine(Expression<Double> input) {
-		super(Double.class, "cos(" + input.getExpression() + ")", input);
+		super(Double.class, input);
 	}
 
 	public String getExpression() {

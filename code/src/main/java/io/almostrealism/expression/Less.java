@@ -20,7 +20,7 @@ import java.util.List;
 
 public class Less extends Expression<Boolean> {
 	public Less(Expression<?> left, Expression<?> right) {
-		super(Boolean.class, "(" + left.getExpression() + ") < (" + right.getExpression() + ")", left, right);
+		super(Boolean.class, left, right);
 	}
 
 	@Override

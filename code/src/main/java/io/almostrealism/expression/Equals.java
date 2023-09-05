@@ -20,7 +20,7 @@ import java.util.List;
 
 public class Equals extends Expression<Boolean> {
 	public Equals(Expression<?> left, Expression<?> right) {
-		super(Boolean.class, "(" + left.getExpression() + ") == (" + right.getExpression() + ")", left, right);
+		super(Boolean.class, left, right);
 	}
 
 	public String getExpression() {

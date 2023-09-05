@@ -21,7 +21,6 @@ import io.almostrealism.relation.Nameable;
 
 import java.util.Arrays;
 import java.util.List;
-import java.util.function.Supplier;
 
 /**
  * A {@link Method} is included in a {@link Scope} to indicate that a function should
@@ -46,7 +45,7 @@ public class Method<T> extends Expression<T> implements Nameable {
 	}
 
 	public Method(Class<T> type, String member, String name, List<Expression<?>> arguments) {
-		super(type, null, arguments.toArray(new Expression[0]));
+		super(type, arguments.toArray(new Expression[0]));
 		this.member = member;
 		this.name = name;
 		this.arguments = arguments;

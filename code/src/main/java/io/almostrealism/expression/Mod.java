@@ -32,8 +32,6 @@ public class Mod extends Expression<Double> {
 
 	public Mod(Expression<Double> a, Expression<Double> b, boolean fp) {
 		super(Double.class,
-				fp ? "fmod(" + a.getExpression() + ", " + b.getExpression() + ")" :
-						"(" + a.getExpression() + ") % (" + b.getExpression() + ")",
 				a, b);
 		this.fp = fp;
 

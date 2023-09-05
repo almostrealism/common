@@ -20,7 +20,7 @@ import java.util.List;
 
 public class Min extends Expression<Double> {
 	public Min(Expression<Double> a, Expression<Double> b) {
-		super(Double.class, "min(" + a.getExpression() + ", " + b.getExpression() + ")", a, b);
+		super(Double.class, a, b);
 	}
 
 	@Override

@@ -17,10 +17,8 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.code.CodePrintWriter;
-import io.almostrealism.code.CollectionUtils;
 import io.almostrealism.scope.Variable;
 
-import java.util.Collections;
 import java.util.List;
 
 /**
@@ -39,7 +37,7 @@ public class InstanceReference<T> extends Expression<T> {
 	}
 
 	public InstanceReference(Variable<T, ?> referent, Expression<?> argument) {
-		super(referent.getType(), referent.getName(), referent, argument);
+		super(referent.getType(), referent, argument);
 		this.var = referent;
 	}
 
