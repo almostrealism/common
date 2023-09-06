@@ -197,7 +197,8 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 					}
 
 					// Find the index in that slice
-					Expression offset = new Mod(new Cast("int", index), e(sliceShape.getTotalSize()), false);
+//					Expression offset = new Mod(new Cast("int", index), e(sliceShape.getTotalSize()), false);
+					Expression offset = index.toInt().mod(e(sliceShape.getTotalSize()), false);
 					offset = slice.multiply(e(sliceShape.getTotalSize())).add(offset);
 					return input.getValueAt(offset);
 				});

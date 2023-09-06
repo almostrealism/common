@@ -19,21 +19,24 @@ package io.almostrealism.expression;
 import java.util.List;
 import java.util.OptionalInt;
 
-public class Mod extends Expression<Double> {
+public class Mod<T extends Number> extends Expression<T> {
 	public static boolean enableSimplification = true;
 	public static boolean enableIntegerSimplification = true;
 	public static boolean enableFpSimplification = true;
 
 	private boolean fp;
 
-	public Mod(Expression<Double> a, Expression<Double> b) {
+	public Mod(Expression<T> a, Expression<T> b) {
 		this(a, b, true);
 	}
 
-	public Mod(Expression<Double> a, Expression<Double> b, boolean fp) {
-		super(Double.class,
+	public Mod(Expression<T> a, Expression<T> b, boolean fp) {
+		super((Class<T>) (fp ? Double.class : Integer.class),
 				a, b);
 		this.fp = fp;
+
+		if (!fp && (a.getType() != Integer.class || b.getType() != Integer.class))
+			throw new UnsupportedOperationException();
 
 		if (b.intValue().isPresent() && b.intValue().getAsInt() == 0) {
 			System.out.println("WARN: Module zero encountered while creating expression - " + getExpression());
@@ -47,7 +50,7 @@ public class Mod extends Expression<Double> {
 	}
 
 	@Override
-	public Expression<Double> generate(List<Expression<?>> children) {
+	public Expression<T> generate(List<Expression<?>> children) {
 		if (children.size() != 2) {
 			throw new UnsupportedOperationException();
 		}
@@ -68,7 +71,7 @@ public class Mod extends Expression<Double> {
 	}
 
 	@Override
-	public Expression<Double> simplify() {
+	public Expression simplify() {
 		Expression<?> flat = super.simplify();
 		if (!enableSimplification) return (Expression<Double>) flat;
 		if (!(flat instanceof Mod)) return (Expression<Double>) flat;

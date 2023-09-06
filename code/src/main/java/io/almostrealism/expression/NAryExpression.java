@@ -31,7 +31,7 @@ public class NAryExpression<T> extends Expression<T> {
 	}
 
 	public NAryExpression(Class<T> type, String operator, Expression<?>... values) {
-		super(type, values);
+		super(type, validateExpressions(values));
 		this.operator = operator;
 	}
 
@@ -62,6 +62,18 @@ public class NAryExpression<T> extends Expression<T> {
 		}
 
 		return values;
+	}
+
+	protected static Class<? extends Number> type(Expression... values) {
+		for (Expression e : values) {
+			if (!Number.class.isAssignableFrom(e.getType())) {
+				throw new UnsupportedOperationException();
+			} else if (!Objects.equals(e.getType(), Integer.class)) {
+				return Double.class;
+			}
+		}
+
+		return Integer.class;
 	}
 
 	private static String concat(String separator, Stream<String> values) {

@@ -72,7 +72,8 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		}
 
 		// Find the index in that slice
-		Expression offset = new Mod(new Cast("int", index), e(subsetShape.getTotalSize()), false);
+//		Expression offset = new Mod(new Cast("int", index), e(subsetShape.getTotalSize()), false);
+		Expression offset = index.toInt().mod(e(subsetShape.getTotalSize()), false);
 
 		// Position the offset relative to the slice
 		offset = slice.multiply(e(subsetShape.getTotalSize())).add(offset);

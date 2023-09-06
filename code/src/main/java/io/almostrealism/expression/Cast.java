@@ -20,11 +20,11 @@ import java.util.List;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 
-public class Cast extends UnaryExpression<Double> {
+public class Cast<T> extends UnaryExpression<T> {
 	private String typeName;
 
-	public Cast(String typeName, Expression<?> operand) {
-		super(Double.class, "(" + typeName + ")", operand);
+	public Cast(Class<T> type, String typeName, Expression<?> operand) {
+		super(type, "(" + typeName + ")", operand);
 		this.typeName = typeName;
 	}
 
@@ -33,8 +33,8 @@ public class Cast extends UnaryExpression<Double> {
 	}
 
 	@Override
-	public Expression<Double> simplify() {
-		Expression<Double> flat = super.simplify();
+	public Expression<T> simplify() {
+		Expression<T> flat = super.simplify();
 		if (!(flat instanceof Cast)) return flat;
 
 		OptionalDouble d = flat.getChildren().get(0).doubleValue();
@@ -42,23 +42,23 @@ public class Cast extends UnaryExpression<Double> {
 			return (Expression) new IntegerConstant((int) d.getAsDouble());
 
 		if (flat.getChildren().get(0) instanceof Cast) {
-			return new Cast(typeName, flat.getChildren().get(0).getChildren().get(0));
+			return new Cast(getType(), typeName, flat.getChildren().get(0).getChildren().get(0));
 		}
 
 		return flat;
 	}
 
 	@Override
-	public Expression generate(List children) {
+	public Expression<T> generate(List children) {
 		if (children.size() != 1) throw new UnsupportedOperationException();
-		return new Cast(typeName, (Expression) children.get(0));
+		return new Cast<>(getType(), typeName, (Expression) children.get(0));
 	}
 
-	@Override
-	public Cast toInt() {
-		if (typeName.equals("int")) return this;
-		return super.toInt();
-	}
+//	@Override
+//	public Cast<Integer> toInt() {
+//		if (typeName.equals("int")) return this;
+//		return super.toInt();
+//	}
 
 	@Override
 	public OptionalInt intValue() {

@@ -165,7 +165,7 @@ public final class Hardware {
 		// TODO  This is not a very desirable way of ensuring the doubles are properly encoded
 		// TODO  but until we further improve the interaction between org.almostrealism.hardware
 		// TODO  and io.almostrealism.code it will have to do
-		Expression.toDouble = e -> new Cast(Hardware.getLocalHardware().getNumberTypeName(), e);
+		Expression.toDouble = e -> new Cast(Double.class, Hardware.getLocalHardware().getNumberTypeName(), e);
 		DoubleConstant.stringForDouble = Hardware.getLocalHardware()::stringForDouble;
 
 		// TODO  This is not a very desirable way to configure kernel support either

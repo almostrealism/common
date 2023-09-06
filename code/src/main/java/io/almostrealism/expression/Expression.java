@@ -36,7 +36,7 @@ public abstract class Expression<T> implements Tree<Expression<?>> {
 	public static boolean enableSimplification = true;
 	public static boolean enableWarnings = SystemUtils.isEnabled("AR_CODE_EXPRESSION_WARNINGS").orElse(true);
 
-	public static Function<Expression<?>, Expression<?>> toDouble = e -> new Cast("double", e);
+	public static Function<Expression<?>, Expression<Double>> toDouble = e -> new Cast<>(Double.class, "double", e);
 
 	private Class<T> type;
 	private List<Variable<?, ?>> dependencies = new ArrayList<>();
@@ -159,8 +159,15 @@ public abstract class Expression<T> implements Tree<Expression<?>> {
 	public Exponent pow(Expression<Double> operand) { return new Exponent((Expression) this, operand); }
 	public Exp exp() { return new Exp((Expression) this); }
 
-	public Floor floor() { return new Floor((Expression) this); }
-	public Ceiling ceil() { return new Ceiling((Expression) this); }
+	public Expression floor() {
+		if (getType() == Integer.class) return this;
+		return new Floor((Expression) this);
+	}
+
+	public Expression ceil() {
+		if (getType() == Integer.class) return this;
+		return new Ceiling((Expression) this);
+	}
 
 	public Mod mod(Expression<Double> operand) { return new Mod((Expression) this, operand); }
 	public Mod mod(Expression<?> operand, boolean fp) { return new Mod((Expression) this, (Expression) operand, fp); }
@@ -172,9 +179,15 @@ public abstract class Expression<T> implements Tree<Expression<?>> {
 	public Equals eq(Expression<?> operand) { return new Equals(this, operand); };
 	public Less lessThan(Expression<?> operand) { return new Less(this, operand); };
 
-	public Expression<?> toDouble() { return toDouble.apply(this); }
+	public Expression<Double> toDouble() {
+		if (getType() == Double.class) return (Expression<Double>) this;
+		return toDouble.apply(this);
+	}
 
-	public Cast toInt() { return new Cast("int", this); }
+	public Expression<Integer> toInt() {
+		if (getType() == Integer.class) return (Expression<Integer>) this;
+		return new Cast(Integer.class, "int", this);
+	}
 
 	@Override
 	public List<Expression<?>> getChildren() {

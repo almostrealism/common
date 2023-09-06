@@ -400,7 +400,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expressions =
 				IntStream.range(0, shape.getSize()).mapToObj(i -> (Function<List<ArrayVariable<Double>>, Expression<Double>>)
-								np -> new Sum(np.get(1).getValueRelative(i), np.get(2).getValueRelative(i)))
+								np -> new Sum<>(np.get(1).getValueRelative(i), np.get(2).getValueRelative(i)))
 						.collect(Collectors.toList());
 		return new ExpressionComputation<>(expressions, (Supplier) a, (Supplier) b);
 	}
@@ -485,7 +485,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 																					  Evaluable<T> shortCircuit) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expressions =
 				IntStream.range(0, shape.getSize()).mapToObj(i -> (Function<List<ArrayVariable<Double>>, Expression<Double>>)
-								np -> new Product(np.get(1).getValueRelative(i), np.get(2).getValueRelative(i)))
+								np -> new Product<>(np.get(1).getValueRelative(i), np.get(2).getValueRelative(i)))
 						.collect(Collectors.toList());
 		ExpressionComputation<T> exp = new ExpressionComputation<>(shape, expressions, a, b);
 		exp.setShortCircuit(shortCircuit);

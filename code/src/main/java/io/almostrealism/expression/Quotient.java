@@ -20,22 +20,22 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
-public class Quotient extends NAryExpression<Double> {
+public class Quotient<T extends Number> extends NAryExpression<T> {
 	public static boolean enableIntegerSimplification = true;
 	public static boolean enableFpSimplification = true;
 
 	public Quotient(Expression<Double>... values) {
-		super(Double.class, "/", values);
+		super((Class<T>) type(values), "/", values);
 	}
 
 	@Override
-	public Expression<Double> generate(List<Expression<?>> children) {
+	public Expression<T> generate(List<Expression<?>> children) {
 		return new Quotient(children.toArray(new Expression[0]));
 	}
 
 	@Override
-	public Expression<Double> simplify() {
-		Expression<Double> flat = super.simplify();
+	public Expression simplify() {
+		Expression<?> flat = super.simplify();
 		if (!enableSimplification) return flat;
 		if (!(flat instanceof Quotient)) return flat;
 

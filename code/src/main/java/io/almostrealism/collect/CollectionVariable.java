@@ -109,7 +109,8 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 		if (getShape().getTotalSize() == 1) {
 			return (Expression) getRaw(e(0));
 		} else {
-			index = new Mod(new Cast("int", index), e(getShape().getTotalSize()), false);
+//			index = new Mod(new Cast("int", index), e(getShape().getTotalSize()), false);
+			index = index.toInt().mod(e(getShape().getTotalSize()), false);
 			return (Expression) getRaw(index);
 		}
 	}
