@@ -83,21 +83,21 @@ public class Interpolate extends CollectionProducerComputationBase<PackedCollect
 		scope.getVariables().add(new Variable<>(t1, e(0.0)));
 		scope.getVariables().add(new Variable<>(t2, e(0.0)));
 
-		String res = getArgument(0).valueAt(0).getSimpleExpression();
+		String res = getArgument(0).ref(0).getSimpleExpression();
 		String start = "0";
 		String end = getArgument(1).length().getSimpleExpression();
 		Expression<Double> rate = getArgument(3).valueAt(0);
 
-		String bankl_time = new Product(new Exponent(rate, expressionForDouble(-1.0)), timeForIndex.apply(left)).getSimpleExpression();
-		String bankl_value = getArgument(1).getRelative(left).getSimpleExpression();
-		String bankr_time = new Product(new Exponent(rate, expressionForDouble(-1.0)), timeForIndex.apply(right)).getSimpleExpression();
-		String bankr_value = getArgument(1).getRelative(right).getSimpleExpression();
-		String cursor = getArgument(2).valueAt(0).getSimpleExpression();
+		String bankl_time = new Product(new Exponent(rate, e(-1.0)), timeForIndex.apply(left)).getSimpleExpression();
+		String bankl_value = getArgument(1).referenceRelative(left).getSimpleExpression();
+		String bankr_time = new Product(new Exponent(rate, e(-1.0)), timeForIndex.apply(right)).getSimpleExpression();
+		String bankr_value = getArgument(1).referenceRelative(right).getSimpleExpression();
+		String cursor = getArgument(2).referenceRelative(e(0)).getSimpleExpression();
 
 		Consumer<String> code = scope.code();
 
 		if (enableFunctionalPosition) {
-			Expression<Double> time = getArgument(2).valueAt(0).multiply(rate);
+			Expression<Double> time = getArgument(2).ref(0).multiply(rate);
 			Expression index = indexForTime.apply(time);
 
 //			code.accept(left + " = " + idx + " > " + start + " ? " + idx + " - 1 : (" + banki + " == " + cursor + " ? " + idx + " : -1);\n");
@@ -114,7 +114,7 @@ public class Interpolate extends CollectionProducerComputationBase<PackedCollect
 
 		if (enableScanning) {
 			Expression i = new StaticReference(Integer.class, "i");
-			String banki = new Product(new Exponent(rate, expressionForDouble(-1.0)), timeForIndex.apply(i)).getSimpleExpression();
+			String banki = new Product(new Exponent(rate, e(-1.0)), timeForIndex.apply(i)).getSimpleExpression();
 
 			code.accept("for (int i = " + start + "; i < " + end + "; i++) {\n");
 			code.accept("	if (" + banki + " >= " + cursor + ") {\n");

@@ -46,6 +46,6 @@ public class RelativeArrayVariable extends ArrayVariable<Double> {
 			return exp.getValueAt(offset.add(new IntegerConstant(index)));
 		}
 
-		return ref.getRaw(offset.add(new IntegerConstant(index)));
+		return ref.reference(offset.add(new IntegerConstant(index)));
 	}
 }

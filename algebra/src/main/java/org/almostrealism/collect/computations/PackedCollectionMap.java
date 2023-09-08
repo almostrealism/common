@@ -22,9 +22,7 @@ import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.expression.Cast;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.KernelIndex;
-import io.almostrealism.expression.Mod;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
@@ -100,14 +98,15 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 				OperationAdapter<?> op = (OperationAdapter) mapped;
 				Supplier in = op.getInputs().get(0);
 				ArrayVariable v = op.getArgumentForInput(in);
-				value = v.getRelative(e(i));
+				value = v.referenceRelative(e(i));
 			}
 
 			if (value == null) throw new UnsupportedOperationException();
 
-			Variable v = new Variable(output.valueAt(i).getSimpleExpression(),
-					false, value.getSimplified(), output.getRootDelegate());
-			scope.getVariables().add(v);
+//			Variable v = new Variable(output.valueAt(i).getSimpleExpression(),
+//					false, value.getSimplified(), output.getRootDelegate());
+//			scope.getVariables().add(v);
+			scope.getVariables().add(output.ref(i).assign(value.getSimplified()));
 		}
 
 		return scope;

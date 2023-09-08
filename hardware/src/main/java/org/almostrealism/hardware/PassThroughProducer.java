@@ -151,9 +151,9 @@ public class PassThroughProducer<T extends MemoryData>
 	@Override
 	public Scope<T> getScope() {
 		Scope<T> scope = super.getScope();
-		IntStream.range(0, getMemLength())
-				.mapToObj(getAssignmentFunction(getOutputVariable()))
-				.forEach(v -> scope.getVariables().add((Variable) v));
+		for (int i = 0; i < getMemLength(); i++) {
+			scope.getVariables().add(((ArrayVariable) getOutputVariable()).ref(i).assign(getValueRelative(e(i)).getSimplified()));
+		}
 		return scope;
 	}
 
@@ -215,15 +215,15 @@ public class PassThroughProducer<T extends MemoryData>
 		ArrayVariable var = getArgument(0);
 
 		if (enableDimSupport) {
-			return var.getAbsolute(index.toInt().divide(var.length()).multiply(var.getDimValue()).add(index.toInt().mod(var.length(), false)));
+			return var.referenceAbsolute(index.toInt().divide(var.length()).multiply(var.getDimValue()).add(index.toInt().mod(var.length(), false)));
 		} else {
-			return var.getAbsolute(index);
+			return var.referenceAbsolute(index);
 		}
 	}
 
 	@Override
 	public Expression<Double> getValueRelative(Expression index) {
-		return getArgument(0).getRelative(index);
+		return getArgument(0).referenceRelative(index);
 	}
 
 	@Override

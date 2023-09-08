@@ -45,7 +45,7 @@ public class AcceleratedTimeSeriesPurge extends OperationComputationAdapter<Pack
 		Expression i = new StaticReference(Integer.class, "i");
 		String left = getArgument(0).valueAt(0).getSimpleExpression();
 		String right = getArgument(0).valueAt(1).getSimpleExpression();
-		String banki = getArgument(0).getRelative(i.multiply(2)).getSimpleExpression();
+		String banki = getArgument(0).referenceRelative(i.multiply(2)).getSimpleExpression();
 		String cursor0 = getArgument(1).valueAt(0).getSimpleExpression();
 		String count = getArgument(2).valueAt(0).getSimpleExpression();
 

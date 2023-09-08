@@ -22,6 +22,7 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBFeatures;
 import org.almostrealism.color.computations.GreaterThanRGB;
+import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.cl.CLOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
@@ -57,7 +58,7 @@ public class ColorMathTest implements TestFeatures, RGBFeatures {
 
 	@Test
 	public void greaterThanKernel() {
-		CLOperator.verboseLog(() -> {
+		HardwareOperator.verboseLog(() -> {
 			Producer<Scalar> arg0 = v(Scalar.shape(), 0);
 
 			PackedCollection<RGB> result = RGB.bank(5);

@@ -18,11 +18,9 @@ package io.almostrealism.collect;
 
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.PhysicalScope;
-import io.almostrealism.expression.Cast;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.expression.Mod;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -31,6 +29,8 @@ import io.almostrealism.scope.ArrayVariable;
 import java.util.function.Supplier;
 
 public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implements CollectionExpression {
+	public static boolean enableAbsoluteValueAt = false;
+
 	private TraversalPolicy shape;
 
 	private CollectionVariable<T> parent;
@@ -61,13 +61,21 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 	}
 
 	@Override
-	public InstanceReference<T> getRelative(Expression<?> idx) {
+	public InstanceReference<T> referenceRelative(Expression<?> idx) {
 		if (parent != null) {
 			Expression<?> p = parent.getShape().subset(getShape(), idx, pos);
-			return parent.getRaw(p);
+			return parent.reference(p);
 		}
 
-		return super.getRelative(idx);
+		return super.referenceRelative(idx);
+	}
+
+	@Override
+	public Expression<T> valueAt(Expression<?> exp) {
+		if (enableAbsoluteValueAt)
+			return (Expression) getValueAt(exp);
+
+		return super.valueAt(exp);
 	}
 
 	@Override
@@ -107,11 +115,11 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 		if (result != null) return result;
 
 		if (getShape().getTotalSize() == 1) {
-			return (Expression) getRaw(e(0));
+			return (Expression) reference(e(0));
 		} else {
 //			index = new Mod(new Cast("int", index), e(getShape().getTotalSize()), false);
 			index = index.toInt().mod(e(getShape().getTotalSize()), false);
-			return (Expression) getRaw(index);
+			return (Expression) reference(index);
 		}
 	}
 

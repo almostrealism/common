@@ -16,12 +16,19 @@
 
 package io.almostrealism.expression;
 
-public class BooleanConstant extends Constant<Integer> {
+import java.util.Optional;
+
+public class BooleanConstant extends Constant<Boolean> {
 	private boolean value;
 
 	public BooleanConstant(Boolean value) {
-		super(Integer.class);
+		super(Boolean.class);
 		this.value = value;
+	}
+
+	@Override
+	public Optional<Boolean> booleanValue() {
+		return Optional.of(value);
 	}
 
 	@Override

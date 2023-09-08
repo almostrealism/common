@@ -17,19 +17,12 @@
 package org.almostrealism.layers;
 
 import io.almostrealism.code.ExpressionList;
-import io.almostrealism.code.OperationMetadata;
-import io.almostrealism.code.OperationWithInfo;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.ParallelProcess;
-import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.MatrixFeatures;
-import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionOperationList;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
-import io.almostrealism.collect.Func;
 import io.almostrealism.collect.KernelExpression;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
@@ -220,9 +213,9 @@ public interface LayerFeatures extends MatrixFeatures {
 		PackedCollection<?> biases = new PackedCollection<>(shape(nodes));
 
 		KernelExpression outputGradient = (i, p) -> i.v(0).get(shape(1, nodes), p.l(0)).multiply(i.v(1)).sum();
-		KernelExpression weightGradient = (i, p) -> i.v(0).getRelative(p.l(0)).multiply(i.v(1).getRelative(p.l(1)));
+		KernelExpression weightGradient = (i, p) -> i.v(0).referenceRelative(p.l(0)).multiply(i.v(1).referenceRelative(p.l(1)));
 		KernelExpression adjustWeights = (i, p) -> i.v(0).get(p.l(0), p.l(1)).subtract(i.v(1).get(p.l(0), p.l(1)).multiply(i.v(2).valueAt(0)));
-		KernelExpression adjustBiases = (i, p) -> i.v(0).getRelative(p.l(0)).subtract(i.v(1).getRelative(p.l(0)).multiply(i.v(2).valueAt(0)));
+		KernelExpression adjustBiases = (i, p) -> i.v(0).referenceRelative(p.l(0)).subtract(i.v(1).referenceRelative(p.l(0)).multiply(i.v(2).valueAt(0)));
 
 		Propagation backwards = (lr, gradient, input, next) -> {
 			OperationList ops = new OperationList();
@@ -277,9 +270,9 @@ public interface LayerFeatures extends MatrixFeatures {
 			ExpressionList gradient = i.v(0).toList();
 			ExpressionList in = i.v(1).toList().exp();
 
-			Expression t = i.v(1).getRelative(p.l(0)).exp();
+			Expression t = i.v(1).referenceRelative(p.l(0)).exp();
 			Expression s = in.sum();
-			Expression gr = i.v(0).getRelative(p.l(0));
+			Expression gr = i.v(0).referenceRelative(p.l(0));
 
 			return gradient.sum().multiply(
 					in.minus().multiply(gradient).sum().multiply(t)

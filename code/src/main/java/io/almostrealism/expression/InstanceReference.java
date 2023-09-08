@@ -28,8 +28,6 @@ import java.util.List;
  * {@link Variable} the text does not appear in quotes.
  */
 public class InstanceReference<T> extends Expression<T> {
-	public static boolean enablePassDelegate = true; // TODO  Remove - this should be the standard behavior
-
 	private Variable<T, ?> var;
 
 	public InstanceReference(Variable<T, ?> v) {
@@ -48,12 +46,9 @@ public class InstanceReference<T> extends Expression<T> {
 		return var.getName();
 	}
 
+	@Override
 	public Variable assign(Expression exp) {
-		if (enablePassDelegate) {
-			return new Variable(getSimpleExpression(), false, exp, getReferent().getDelegate());
-		} else {
-			return new Variable(getSimpleExpression(), false, exp);
-		}
+		return new Variable(getSimpleExpression(), false, exp, getReferent().getDelegate());
 	}
 
 	public InstanceReference<T> generate(List<Expression<?>> children) {

@@ -73,20 +73,16 @@ public abstract class TraversableProducerComputationBase<I extends PackedCollect
 
 		ArrayVariable<Double> output = (ArrayVariable<Double>) getOutputVariable();
 
-//		if (ArrayVariable.enableRelative) {
-			IntStream.range(0, getMemLength())
-						.mapToObj(getAssignmentFunction(getOutputVariable()))
-						.forEach(v -> scope.getVariables().add((Variable) v));
-//		} else {
-//			for (int i = 0; i < getMemLength(); i++) {
-//				Expression index = new KernelIndex(0);
-//				if (getMemLength() > 1) index = index.multiply(getMemLength()).add(i);
+		for (int i = 0; i < getMemLength(); i++) {
+			scope.getVariables().add(output.ref(i).assign(getValueRelative(e(i)).getSimplified()));
+
+//			Expression index = new KernelIndex(0);
+//			if (getMemLength() > 1) index = index.multiply(getMemLength()).add(i);
 //
-//				Variable v = new Variable(output.valueAt(i).getSimpleExpression(),
+//			Variable v = new Variable(output.valueAt(i).getSimpleExpression(),
 //						false, getValueAt(index).getSimplified(), output.getRootDelegate());
-//				scope.getVariables().add(v);
-//			}
-//		}
+//			scope.getVariables().add(v);
+		}
 
 		return scope;
 	}

@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,21 +14,17 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.code;
+package io.almostrealism.expression;
 
-import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.InstanceReference;
-import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.relation.Delegated;
-import io.almostrealism.uml.Plural;
+import java.util.List;
 
-public interface Array<T, V extends Array<T, ?>> extends Plural<Expression<T>>, Delegated<V> {
-	@Override
-	default Expression<T> valueAt(int pos) {
-		return valueAt(new IntegerConstant(pos));
+public class Conjunction extends NAryExpression<Boolean> {
+	public Conjunction(Expression<Boolean>... values) {
+		super(Boolean.class, "&", values);
 	}
-	
-	Expression<T> valueAt(Expression<?> exp);
 
-	Expression<Integer> length();
+	@Override
+	public Expression<Boolean> generate(List<Expression<?>> children) {
+		return new Conjunction(children.toArray(new Expression[0]));
+	}
 }

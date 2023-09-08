@@ -107,26 +107,35 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 			return v;
 		}
 
-		return (Expression) getRaw(names.getArrayPosition(this, new IntegerConstant(index), getKernelIndex()));
+		return (Expression) reference(names.getArrayPosition(this, new IntegerConstant(index), getKernelIndex()));
 	}
 
-	public InstanceReference<T> getRelative(Expression<?> pos) {
+	@Override
+	public Expression<T> valueAt(Expression<?> exp) {
+		return referenceRelative(exp);
+	}
+
+	public InstanceReference<T> ref(int pos) {
+		return referenceRelative(new IntegerConstant(pos));
+	}
+
+	public InstanceReference<T> referenceRelative(Expression<?> pos) {
 		if (getDelegate() != null) {
-			InstanceReference<T> v = getDelegate().getRelative(pos.add(getDelegateOffset()));
+			InstanceReference<T> v = getDelegate().referenceRelative(pos.add(getDelegateOffset()));
 			((InstanceReference) v).getReferent().setOriginalProducer(getOriginalProducer());
 			return v;
 		} else if (getKernelIndex() < 0) {
-			return getRaw(pos);
+			return reference(pos);
 		} else {
-			return getRaw(names.getArrayPosition(this, pos, getKernelIndex()));
+			return reference(names.getArrayPosition(this, pos, getKernelIndex()));
 		}
 	}
 
-	public InstanceReference<T> getAbsolute(Expression<?> pos) {
-		return getRaw(pos);
+	public InstanceReference<T> referenceAbsolute(Expression<?> pos) {
+		return reference(pos);
 	}
 
-	protected InstanceReference<T> getRaw(Expression<?> pos) {
+	protected InstanceReference<T> reference(Expression<?> pos) {
 		if (getDelegate() == null) {
 			pos = pos.add(getOffsetValue());
 			return new InstanceReference(new Variable<>(dereference.apply(getName(), pos.toInt().getSimpleExpression()),
@@ -134,7 +143,7 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 		} else if (getDelegate() == this) {
 			throw new IllegalArgumentException("Circular delegate reference");
 		} else {
-			InstanceReference ref = getDelegate().getRaw(pos.add(getDelegateOffset()));
+			InstanceReference ref = getDelegate().reference(pos.add(getDelegateOffset()));
 			ref.getReferent().setOriginalProducer(getOriginalProducer());
 			return ref;
 		}

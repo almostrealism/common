@@ -27,6 +27,7 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.PackedCollectionMax;
+import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.PassThroughProducer;
@@ -240,7 +241,7 @@ public class CollectionComputationTests implements TestFeatures {
 		PackedCollectionMax max = new PackedCollectionMax(new PassThroughProducer<>(shape(10), 0, -1));
 		PackedCollection<?> dest = new PackedCollection(2, 1);
 
-		CLOperator.verboseLog(() ->
+		HardwareOperator.verboseLog(() ->
 			max.get().into(dest.traverse(1)).evaluate(series.traverse(0)));
 
 		System.out.println(Arrays.toString(dest.toArray(0, 2)));

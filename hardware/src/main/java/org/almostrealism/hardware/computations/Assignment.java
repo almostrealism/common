@@ -59,9 +59,9 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 		purgeVariables();
 
 		if (enableRelative) {
-			IntStream.range(0, memLength).mapToObj(i ->
-					new Variable(getArgument(0, memLength).valueAt(i).getSimpleExpression(), false,
-							getArgument(1).getValueRelative(i), getArgument(0, memLength))).forEach(this::addVariable);
+			for (int i = 0; i < memLength; i++) {
+				addVariable(getArgument(0, memLength).ref(i).assign(getArgument(1).getValueRelative(i)));
+			}
 		}
 	}
 
@@ -92,8 +92,7 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 				TraversableExpression out = TraversableExpression.traverse(output);
 
 				if (out == null) {
-					v = new Variable(output.valueAt(i).getSimpleExpression(),
-						false, value.getSimplified(), output.getRootDelegate());
+					v = output.ref(i).assign(value.getSimplified());
 				} else {
 					v = new Variable(out.getValueAt(index).getSimpleExpression(),
 							false, value.getSimplified(), output.getRootDelegate());

@@ -54,7 +54,7 @@ public class TimeCellReset extends OperationComputationAdapter<PackedCollection<
 
 		for (int i = 0; i < len; i++) {
 			if (i > 0) exp.accept(" else ");
-			exp.accept("if (" + getTime().valueAt(1).getSimpleExpression() + " == " + getResets().valueAt(i).getSimpleExpression() + ") {\n");
+			exp.accept("if (" + getTime().ref(1).getSimpleExpression() + " == " + getResets().valueAt(i).getSimpleExpression() + ") {\n");
 			exp.accept("\t");
 			exp.accept(getTime().valueAt(0).getSimpleExpression());
 			exp.accept(" = ");

@@ -22,6 +22,7 @@ import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
+import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.cl.CLOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
@@ -315,7 +316,7 @@ public class EmbeddedCollectionMapTests implements TestFeatures, KernelAssertion
 		PackedCollection<?> input = tensor(shape(c, d)).pack();
 		input.fill(pos -> Math.random());
 
-		CLOperator.verboseLog(() -> {
+		HardwareOperator.verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> pool =
 					c(p(input)).traverse(1)
 							.expand(1, v ->

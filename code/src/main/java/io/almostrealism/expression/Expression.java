@@ -25,6 +25,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.Set;
@@ -75,6 +76,8 @@ public abstract class Expression<T> implements Tree<Expression<?>> {
 	public boolean isNull() {
 		return getExpression() == null;
 	}
+
+	public Optional<Boolean> booleanValue() { return Optional.empty(); }
 
 	public OptionalInt intValue() { return OptionalInt.empty(); }
 	public OptionalDouble doubleValue() {
@@ -141,6 +144,10 @@ public abstract class Expression<T> implements Tree<Expression<?>> {
 
 		return null;
 	}
+	public Variable assign(Expression exp) {
+		// return new Variable(getSimpleExpression(), false, exp);
+		throw new UnsupportedOperationException();
+	}
 
 	public Minus minus() { return new Minus((Expression) this); }
 
@@ -177,7 +184,11 @@ public abstract class Expression<T> implements Tree<Expression<?>> {
 	public Tangent tan() { return new Tangent((Expression) this); }
 
 	public Equals eq(Expression<?> operand) { return new Equals(this, operand); };
+	public Conjunction and(Expression<Boolean> operand) { return new Conjunction((Expression) this, operand); };
+	public Greater greaterThan(Expression<?> operand) { return new Greater(this, operand); };
+	public Greater greaterThanOrEqual(Expression<?> operand) { return new Greater(this, operand, true); };
 	public Less lessThan(Expression<?> operand) { return new Less(this, operand); };
+	public Less lessThanOrEqual(Expression<?> operand) { return new Less(this, operand, true); };
 
 	public Expression<Double> toDouble() {
 		if (getType() == Double.class) return (Expression<Double>) this;

@@ -21,6 +21,7 @@ import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.hardware.HardwareFeatures;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.space.Plane;
 import org.almostrealism.geometry.ShadableIntersection;
 import org.almostrealism.CodeFeatures;
@@ -65,13 +66,15 @@ public class PlaneTest implements HardwareFeatures, CodeFeatures {
 
 	@Test
 	public void intersectionTest2() {
-		Producer<Ray> r = ray(0.0, 1.0, 1.0, 0.0, 0.0, -1.0);
+		Producer<Ray> r = ray(0.0, 1.0, 1.0, 0.0, 0.1, 1.0);
 
 		Plane p = new Plane(Plane.XZ);
 		p.setLocation(new Vector(0.0, 0, 0.0));
 
 		ShadableIntersection intersection = (ShadableIntersection) p.intersectAt(r);
-		Assert.assertTrue(((Evaluable<Scalar>) intersection.getDistance().get()).evaluate().getValue() < 0);
+		HardwareOperator.verboseLog(() -> {
+			Assert.assertTrue(((Evaluable<Scalar>) intersection.getDistance().get()).evaluate().getValue() < 0);
+		});
 	}
 
 	// TODO @Test

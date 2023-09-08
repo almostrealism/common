@@ -95,11 +95,6 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 		return value(shape, argIndex);
 	}
 
-	@Deprecated
-	default <T> Producer<T> v(TraversalPolicy shape, int argIndex, int kernelDimension) {
-		return value(shape, argIndex, kernelDimension);
-	}
-
 	default <T> Producer<T> v(Function<Object[], T> function) {
 		return new DynamicProducer<>(function);
 	}
@@ -146,11 +141,6 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 
 	default <T> Producer<T> value(TraversalPolicy shape, int argIndex) {
 		return Input.value(shape, argIndex);
-	}
-
-	@Deprecated
-	default <T> Producer<T> value(TraversalPolicy shape, int argIndex, int kernelDimension) {
-		return Input.value(shape, argIndex, kernelDimension);
 	}
 
 	default <T> Producer<T> value(int memLength, int argIndex) {

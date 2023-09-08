@@ -18,14 +18,14 @@ package io.almostrealism.expression;
 
 import java.util.List;
 
-public class Less extends Expression<Boolean> {
+public class Greater extends Expression<Boolean> {
 	private boolean orEqual;
 
-	public Less(Expression<?> left, Expression<?> right) {
+	public Greater(Expression<?> left, Expression<?> right) {
 		this(left, right, false);
 	}
 
-	public Less(Expression<?> left, Expression<?> right, boolean orEqual) {
+	public Greater(Expression<?> left, Expression<?> right, boolean orEqual) {
 		super(Boolean.class, left, right);
 		this.orEqual = orEqual;
 	}
@@ -33,15 +33,15 @@ public class Less extends Expression<Boolean> {
 	@Override
 	public String getExpression() {
 		if (orEqual) {
-			return "(" + getChildren().get(0).getExpression() + ") <= (" + getChildren().get(1).getExpression() + ")";
-		} else{
-			return "(" + getChildren().get(0).getExpression() + ") < (" + getChildren().get(1).getExpression() + ")";
+			return "(" + getChildren().get(0).getExpression() + ") >= (" + getChildren().get(1).getExpression() + ")";
+		} else {
+			return "(" + getChildren().get(0).getExpression() + ") > (" + getChildren().get(1).getExpression() + ")";
 		}
 	}
 
 	@Override
 	public Expression<Boolean> generate(List<Expression<?>> children) {
 		if (children.size() != 2) throw new UnsupportedOperationException();
-		return new Less(children.get(0), children.get(1), orEqual);
+		return new Greater(children.get(0), children.get(1), orEqual);
 	}
 }
