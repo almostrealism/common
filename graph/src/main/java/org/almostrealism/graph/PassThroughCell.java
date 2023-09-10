@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,20 +14,22 @@
  * limitations under the License.
  */
 
-package org.almostrealism.optimize;
+package org.almostrealism.graph;
 
-import org.almostrealism.heredity.Genome;
-import org.almostrealism.time.Temporal;
+import io.almostrealism.relation.Producer;
+import org.almostrealism.hardware.OperationList;
 
-import java.util.List;
+import java.util.function.Supplier;
 
-public interface Population<G, T, O extends Temporal> {
+public class PassThroughCell<T> implements Cell<T> {
+	private Receptor<T> r;
 
-	List<Genome<G>> getGenomes();
-	
-	int size();
+	@Override
+	public Supplier<Runnable> setup() { return new OperationList("PassThroughCell Setup"); }
 
-	O enableGenome(int index);
+	@Override
+	public Supplier<Runnable> push(Producer<T> protein) { return r.push(protein); }
 
-	void disableGenome();
+	@Override
+	public void setReceptor(Receptor<T> r) { this.r = r; }
 }
