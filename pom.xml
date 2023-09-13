@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>org.almostrealism</groupId>
-    <artifactId>Common</artifactId>
+    <artifactId>common</artifactId>
     <version>0.58</version>
 
 	<properties>
@@ -75,17 +75,10 @@
     </dependencies>
 
 	<distributionManagement>
-<!--		<repository>-->
-<!--			<id>central</id>-->
-<!--			<url>https://almostrealism.jfrog.io/artifactory/default-libs-release</url>-->
-<!--		</repository>-->
-<!--		<repository>-->
-<!--			<id>internal</id>-->
-<!--			<url>http://mvn.almostrealism.org:8080/repository/internal/</url>-->
-<!--		</repository>-->
-<!--		<snapshotRepository>-->
-<!--			<id>internal</id>-->
-<!--			<url>http://mvn.almostrealism.org:8080/repository/internal/</url>-->
-<!--		</snapshotRepository>-->
+		<repository>
+			<id>github</id>
+			<name>GitHub Almost Realism Apache Maven Packages</name>
+			<url>https://maven.pkg.github.com/almostrealism/common</url>
+		</repository>
 	</distributionManagement>
 </project>
