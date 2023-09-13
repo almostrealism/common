@@ -36,4 +36,9 @@ public class DoubleConstant extends Constant<Double> {
 
 	@Override
 	public String getExpression() { return stringForDouble.apply(value); }
+
+	@Override
+	public Number kernelValue(int kernelIndex) {
+		return value;
+	}
 }

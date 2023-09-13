@@ -18,7 +18,6 @@ package io.almostrealism.expression;
 
 import java.util.List;
 import java.util.Objects;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class NAryExpression<T> extends Expression<T> {
@@ -32,8 +31,14 @@ public class NAryExpression<T> extends Expression<T> {
 	}
 
 	public NAryExpression(Class<T> type, String operator, Expression<?>... values) {
-		super(type, concat(operator, Stream.of(validateExpressions(values)).map(Expression::getExpression).map(s -> "(" + s + ")")), values);
+		super(type, validateExpressions(values));
 		this.operator = operator;
+	}
+
+
+	@Override
+	public String getExpression() {
+		return concat(operator, getChildren().stream().map(Expression::getExpression).map(s -> "(" + s + ")"));
 	}
 
 	@Override
@@ -57,6 +62,18 @@ public class NAryExpression<T> extends Expression<T> {
 		}
 
 		return values;
+	}
+
+	protected static Class<? extends Number> type(Expression... values) {
+		for (Expression e : values) {
+			if (!Number.class.isAssignableFrom(e.getType())) {
+				throw new UnsupportedOperationException();
+			} else if (!Objects.equals(e.getType(), Integer.class)) {
+				return Double.class;
+			}
+		}
+
+		return Integer.class;
 	}
 
 	private static String concat(String separator, Stream<String> values) {

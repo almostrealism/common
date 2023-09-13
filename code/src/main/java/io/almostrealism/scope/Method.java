@@ -21,7 +21,6 @@ import io.almostrealism.relation.Nameable;
 
 import java.util.Arrays;
 import java.util.List;
-import java.util.function.Supplier;
 
 /**
  * A {@link Method} is included in a {@link Scope} to indicate that a function should
@@ -46,11 +45,10 @@ public class Method<T> extends Expression<T> implements Nameable {
 	}
 
 	public Method(Class<T> type, String member, String name, List<Expression<?>> arguments) {
-		super(type, null, arguments.toArray(new Expression[0]));
+		super(type, arguments.toArray(new Expression[0]));
 		this.member = member;
 		this.name = name;
 		this.arguments = arguments;
-		setExpression(text());
 	}
 
 	public Method(String name, Expression<?>... v) {
@@ -69,14 +67,13 @@ public class Method<T> extends Expression<T> implements Nameable {
 		this(type, member, name, Arrays.asList(v));
 	}
 
-	protected Supplier<String> text() {
-		return () -> {
-			if (getMember() == null) {
-				return getName() + "(" + toString(getArguments()) + ")";
-			} else {
-				return getMember() + "." + getName() + "(" + toString(getArguments()) + ")";
-			}
-		};
+	@Override
+	public String getExpression() {
+		if (getMember() == null) {
+			return getName() + "(" + toString(getArguments()) + ")";
+		} else {
+			return getMember() + "." + getName() + "(" + toString(getArguments()) + ")";
+		}
 	}
 
 	@Override
@@ -88,6 +85,11 @@ public class Method<T> extends Expression<T> implements Nameable {
 	public String getMember() { return this.member; }
 
 	public List<Expression<?>> getArguments() { return arguments; }
+
+	@Override
+	public Expression<T> generate(List<Expression<?>> children) {
+		return new Method<>(getType(), getMember(), getName(), children);
+	}
 
 	protected static String toString(List<Expression<?>> arguments) {
 		StringBuffer buf = new StringBuffer();

@@ -20,30 +20,54 @@ import java.util.List;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 
-public class Cast extends UnaryExpression<Double> {
+public class Cast<T> extends UnaryExpression<T> {
 	private String typeName;
 
-	public Cast(String typeName, Expression<?> operand) {
-		super(Double.class, "(" + typeName + ")", operand);
+	public Cast(Class<T> type, String typeName, Expression<?> operand) {
+		super(type, "(" + typeName + ")", operand);
 		this.typeName = typeName;
 	}
 
-	@Override
-	public Expression generate(List children) {
-		if (children.size() != 1) throw new UnsupportedOperationException();
-		return new Cast(typeName, (Expression) children.get(0));
+	public String getTypeName() {
+		return typeName;
 	}
 
 	@Override
-	public Cast toInt() {
-		if (typeName.equals("int")) return this;
-		return super.toInt();
+	public Expression<T> simplify() {
+		Expression<T> flat = super.simplify();
+		if (!(flat instanceof Cast)) return flat;
+
+		OptionalDouble d = flat.getChildren().get(0).doubleValue();
+		if (d.isPresent() && typeName.equals("int"))
+			return (Expression) new IntegerConstant((int) d.getAsDouble());
+
+		if (flat.getChildren().get(0) instanceof Cast) {
+			return new Cast(getType(), typeName, flat.getChildren().get(0).getChildren().get(0));
+		}
+
+		return flat;
 	}
+
+	@Override
+	public Expression<T> generate(List children) {
+		if (children.size() != 1) throw new UnsupportedOperationException();
+		return new Cast<>(getType(), typeName, (Expression) children.get(0));
+	}
+
+//	@Override
+//	public Cast<Integer> toInt() {
+//		if (typeName.equals("int")) return this;
+//		return super.toInt();
+//	}
 
 	@Override
 	public OptionalInt intValue() {
 		OptionalInt i = getChildren().get(0).intValue();
 		if (i.isPresent()) return i;
+		if (typeName.equals("int")) {
+			OptionalDouble d = getChildren().get(0).doubleValue();
+			if (d.isPresent()) return OptionalInt.of((int) d.getAsDouble());
+		}
 		return super.intValue();
 	}
 
@@ -52,6 +76,17 @@ public class Cast extends UnaryExpression<Double> {
 		OptionalDouble d = getChildren().get(0).doubleValue();
 		if (d.isPresent()) return d;
 		return super.doubleValue();
+	}
+
+	@Override
+	public Number kernelValue(int kernelIndex) {
+		double v = getChildren().get(0).kernelValue(kernelIndex).doubleValue();
+
+		if (typeName.equals("int")) {
+			return Integer.valueOf((int) v);
+		} else {
+			return Double.valueOf(v);
+		}
 	}
 
 	@Override

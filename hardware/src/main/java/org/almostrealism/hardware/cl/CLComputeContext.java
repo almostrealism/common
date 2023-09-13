@@ -18,10 +18,10 @@ package org.almostrealism.hardware.cl;
 
 import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.InstructionSet;
+import io.almostrealism.code.LanguageOperations;
 import io.almostrealism.code.Memory;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeEncoder;
-import org.almostrealism.c.OpenCLPrintWriter;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.profile.ProfileData;
@@ -61,7 +61,7 @@ public class CLComputeContext extends AbstractComputeContext {
 	private boolean profiling;
 	private Map<String, ProfileData> profiles;
 
-	private List<HardwareOperatorMap> instructionSets;
+	private List<CLOperatorMap> instructionSets;
 
 	public CLComputeContext(Hardware hardware, cl_context ctx) {
 		super(hardware, true, false);
@@ -93,6 +93,11 @@ public class CLComputeContext extends AbstractComputeContext {
 	}
 
 	@Override
+	public LanguageOperations getLanguage() {
+		return new OpenCLLanguageOperations();
+	}
+
+	@Override
 	public InstructionSet deliver(Scope scope) {
 		StringBuffer buf = new StringBuffer();
 		if (enableFp64) buf.append(fp64);
@@ -100,13 +105,18 @@ public class CLComputeContext extends AbstractComputeContext {
 		ScopeEncoder enc = new ScopeEncoder(OpenCLPrintWriter::new, Accessibility.EXTERNAL);
 		buf.append(enc.apply(scope));
 
-		HardwareOperatorMap instSet = new HardwareOperatorMap(this, scope.getMetadata(), buf.toString(), profileFor(scope.getName()));
+		CLOperatorMap instSet = new CLOperatorMap(this, scope.getMetadata(), buf.toString(), profileFor(scope.getName()));
 		instructionSets.add(instSet);
 		return instSet;
 	}
 
 	@Override
 	public boolean isKernelSupported() { return true; }
+
+	@Override
+	public String getKernelIndex(int dimension) {
+		return "get_global_id(" + dimension + ")";
+	}
 
 	protected cl_context getCLContext() {
 		return ctx;

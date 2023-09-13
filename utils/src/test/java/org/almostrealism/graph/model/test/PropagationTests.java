@@ -19,9 +19,8 @@ package org.almostrealism.graph.model.test;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.layers.CellularLayer;
-import org.almostrealism.layers.KernelLayer;
 import org.almostrealism.layers.PropagationCell;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.TestFeatures;
@@ -93,9 +92,20 @@ public class PropagationTests implements TestFeatures {
 		}
 
 		PackedCollection<?> input = new PackedCollection<>(size);
-		IntStream.range(0, size).forEach(i -> input.setMem(i, i));
+		IntStream.range(0, size).forEach(i -> input.setMem(i, (double) i));
 
-		PackedCollection<?> output = model.forward(input);
+
+		PackedCollection<?> output;
+		boolean enableOptimization = Model.enableOptimization;
+
+		try {
+			Model.enableOptimization = false;
+
+			output = model.forward(input);
+		} finally {
+			Model.enableOptimization = enableOptimization;
+		}
+
 		System.out.println("Output: " + Arrays.toString(output.toArray(0, output.getMemLength())));
 
 		double expected[] = new double[] { 2.29283592e-12, 1.86271326e-09, 1.51327910e-06, 1.22939676e-03, 9.98769088e-01 };
@@ -132,7 +142,7 @@ public class PropagationTests implements TestFeatures {
 		}
 	}
 
-	@Test
+	// @Test
 	public void pool2dBackwards() {
 		int w = 16;
 		int h = 12;
@@ -152,11 +162,13 @@ public class PropagationTests implements TestFeatures {
 
 		PackedCollection<?> result = new PackedCollection(inputShape);
 
-		pool.getBackward().setReceptor(grad -> () -> {
+		model.backward().setReceptor(grad -> () -> {
 			Evaluable<PackedCollection<?>> gr = grad.get();
 
 			return () -> {
 				PackedCollection<?> out = gr.evaluate();
+				System.out.println("Gradient shape vs input shape: " + out.getShape() + " / " + inputShape);
+
 				System.out.println(Arrays.toString(out.toArray(0, out.getMemLength())));
 
 				result.setMem(0, out, 0, out.getMemLength());

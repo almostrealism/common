@@ -17,17 +17,29 @@
 package org.almostrealism.hardware.computations;
 
 import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.KernelIndex;
+import io.almostrealism.relation.Countable;
+import io.almostrealism.relation.Nameable;
+import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Process;
+import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
-import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.code.ScopeInputManager;
-import org.almostrealism.hardware.DynamicOperationComputationAdapter;
+import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.OperationComputationAdapter;
 import org.almostrealism.hardware.MemoryData;
 
+import java.util.List;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
-public class Assignment<T extends MemoryData> extends DynamicOperationComputationAdapter<T> {
+public class Assignment<T extends MemoryData> extends OperationComputationAdapter<T> {
+	public static boolean enableRelative = !Hardware.enableKernelOps;
+
 	private final int memLength;
 
 	public Assignment(int memLength, Supplier<Evaluable<? extends T>> result, Supplier<Evaluable<? extends T>> value) {
@@ -46,21 +58,59 @@ public class Assignment<T extends MemoryData> extends DynamicOperationComputatio
 
 		purgeVariables();
 
-		if (getInputs().get(1) instanceof Compactable && ((Compactable) getInputs().get(1)).isStatic()) {
-			IntStream.range(0, memLength).mapToObj(i ->
-					new Variable(getArgument(0, memLength).valueAt(i).getSimpleExpression(), false,
-							getInputValue(1, i), getArgument(0, memLength))).forEach(this::addVariable);
-		} else {
-			IntStream.range(0, memLength)
-					.mapToObj(i ->
-							new Variable(getArgument(0).valueAt(i).getSimpleExpression(), false,
-									getArgument(1).valueAt(i), getArgument(0)))
-					.forEach(this::addVariable);
-//			IntStream.range(0, memLength)
-//					.mapToObj(i ->
-//							new Variable(getArgument(0).valueAt(i).getExpression(), false,
-//									getInputValue(1, i), getArgument(0)))
-//					.forEach(this::addVariable);
+		if (enableRelative) {
+			for (int i = 0; i < memLength; i++) {
+				addVariable(getArgument(0, memLength).ref(i).assign(getArgument(1).getValueRelative(i)));
+			}
 		}
+	}
+
+	@Override
+	public int getCount() {
+		return getInputs().get(0) instanceof Countable ? ((Countable) getInputs().get(0)).getCount() : 1;
+	}
+
+	@Override
+	public Scope<Void> getScope() {
+		Scope<Void> scope = super.getScope();
+
+		if (!enableRelative) {
+			ArrayVariable<Double> output = (ArrayVariable<Double>) getArgument(0, memLength);
+
+			for (int i = 0; i < memLength; i++) {
+				Expression index = new KernelIndex(0);
+				if (memLength > 1) index = index.multiply(memLength).add(i);
+
+				TraversableExpression exp = TraversableExpression.traverse(getArgument(1));
+				Expression<Double> value = exp == null ? null : exp.getValueAt(index);
+				if (value == null) {
+//					value = getArgument(1).valueAt(i);
+					throw new UnsupportedOperationException();
+				}
+
+				Variable v;
+				TraversableExpression out = TraversableExpression.traverse(output);
+
+				if (out == null) {
+					v = output.ref(i).assign(value.getSimplified());
+				} else {
+					v = new Variable(out.getValueAt(index).getSimpleExpression(),
+							false, value.getSimplified(), output.getRootDelegate());
+				}
+
+				scope.getVariables().add(v);
+			}
+		}
+
+		return scope;
+	}
+
+	@Override
+	public Assignment<T> generate(List<Process<?, ?>> children) {
+		if (children.size() != 2) return this;
+
+		Assignment generated = new Assignment<>(memLength, (Supplier) children.get(0), (Supplier) children.get(1));
+		generated.setMetadata(getMetadata());
+		return generated;
 	}
 }

@@ -16,7 +16,9 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.Conditional;
+import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Equals;
 import io.almostrealism.expression.Exp;
 import io.almostrealism.expression.Expression;
@@ -28,18 +30,20 @@ import java.util.Collections;
 
 public interface ExpressionFeatures {
 
+	default Expression e(boolean value) {
+		return new BooleanConstant(value);
+	}
+
 	default Expression e(int value) {
 		return new IntegerConstant(value);
 	}
 
-
-	default Expression<Double> e(String expression, Expression<?>... dependencies) {
-		return new Expression<>(Double.class, expression, dependencies);
+	default Expression<Double> expressionForDouble(double value) {
+		return new DoubleConstant(value);
 	}
 
-	@Deprecated
-	default Expression<Double> expression(String expression, Variable<?, ?>... dependencies) {
-		return new Expression<>(Double.class, expression, Collections.emptyList(), dependencies);
+	default Expression<Double> e(double value) {
+		return expressionForDouble(value);
 	}
 
 	default Exp exp(Expression expression) {
@@ -56,5 +60,9 @@ public interface ExpressionFeatures {
 
 	default Conditional conditional(Expression<Boolean> condition, Expression<Double> positive, Expression<Double> negative) {
 		return new Conditional(condition, positive, negative);
+	}
+
+	static ExpressionFeatures getInstance() {
+		return new ExpressionFeatures() { };
 	}
 }

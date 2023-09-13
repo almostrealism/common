@@ -20,8 +20,6 @@
 
 package org.almostrealism.graph;
 
-import io.almostrealism.code.Tree;
-
 import java.util.*;
 
 /**

@@ -24,6 +24,7 @@ import org.almostrealism.algebra.PairFeatures;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.graph.computations.TimeCellReset;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.computations.Assignment;
@@ -87,22 +88,21 @@ public class TimeCell implements Cell<Scalar>, Temporal, CodeFeatures {
 		OperationList tick = new OperationList("TimeCell Tick");
 
 		if (loopDuration == null) {
-			tick.add(new Assignment<>(2, () -> new Provider<>(time),
-					pairAdd(() -> new Provider<>(time),
-							PairFeatures.of(1.0, 1.0))));
+			tick.add(new Assignment<>(2, p(time),
+					add(p(time), PairFeatures.of(1.0, 1.0))));
 		} else {
-			Producer<Scalar> left = l(() -> new Provider<>(time));
+			Producer<Scalar> left = l(p(time));
 			left = greaterThan(loopDuration, v(0.0),
 					mod(scalarAdd(left, ScalarFeatures.of(new Scalar(1.0))), loopDuration),
 					scalarAdd(left, ScalarFeatures.of(new Scalar(1.0))), false);
 
-			Producer<Scalar> right = r(() -> new Provider<>(time));
+			Producer<Scalar> right = r(p(time));
 			right = scalarAdd(right, ScalarFeatures.of(1.0));
 
-			tick.add(new Assignment<>(2, () -> new Provider<>(time), pair(left, right)));
+			tick.add(new Assignment<>(2, p(time), pair(left, right)));
 		}
 
-		tick.add(new TimeCellReset(() -> new Provider<>(time), resets));
+		tick.add(new TimeCellReset(p(time), resets));
 		return tick;
 	}
 

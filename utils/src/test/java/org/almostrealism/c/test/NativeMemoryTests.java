@@ -1,11 +1,27 @@
+/*
+ * Copyright 2023 Michael Murray
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
 package org.almostrealism.c.test;
 
-import org.almostrealism.algebra.ScalarBank;
+import org.almostrealism.algebra.Scalar;
 import org.almostrealism.c.NativeMemoryProvider;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.RAM;
 import org.junit.Assert;
-import org.junit.Test;
 
 public class NativeMemoryTests {
 	// TODO  @Test
@@ -30,7 +46,7 @@ public class NativeMemoryTests {
 	public void scalarBank() {
 		assert Hardware.getLocalHardware().getMemoryProvider(0) instanceof NativeMemoryProvider;
 
-		ScalarBank bank = new ScalarBank(20);
+		PackedCollection<Scalar> bank = Scalar.scalarBank(20);
 		bank.set(4, 25);
 		bank.set(5, 30);
 		bank.set(19, 75);

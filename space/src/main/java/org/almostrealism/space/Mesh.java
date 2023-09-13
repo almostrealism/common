@@ -32,8 +32,6 @@ import org.almostrealism.geometry.Positioned;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.ContinuousField;
 import org.almostrealism.graph.KdTree;
-import org.almostrealism.hardware.KernelizedProducer;
-import org.almostrealism.hardware.MemoryBank;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.geometry.DimensionAwareKernel;
 import org.almostrealism.geometry.TransformMatrix;
@@ -581,8 +579,8 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 		if (this.isTreeLoaded()) return super.intersectAt(ray);
 
 		TransformMatrix t = getTransform(true);
-		KernelizedProducer<Ray> tray = (KernelizedProducer<Ray>) ray;
-		if (t != null) tray = (KernelizedProducer<Ray>) t.getInverse().transform(tray);
+		Producer<Ray> tray = (Producer<Ray>) ray;
+		if (t != null) tray = t.getInverse().transform(tray);
 
 		CachedMeshIntersectionKernel kernel = new CachedMeshIntersectionKernel(getMeshData(), tray);
 		return new ShadableIntersection(ray, () -> kernel.getClosestNormal(), new DimensionAwareKernel<>(kernel));

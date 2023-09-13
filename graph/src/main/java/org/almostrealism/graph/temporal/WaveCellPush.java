@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,16 +16,17 @@
 
 package org.almostrealism.graph.temporal;
 
+import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.code.HybridScope;
 import io.almostrealism.code.ScopeInputManager;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.function.Consumer;
 
-public class WaveCellPush extends WaveCellComputation {
+public class WaveCellPush extends WaveCellComputation implements ExpressionFeatures {
 	public WaveCellPush(WaveCellData data, PackedCollection<?> wave, Producer<Scalar> frame, Scalar output) {
 		super(data, wave, frame, output);
 	}
@@ -37,23 +38,31 @@ public class WaveCellPush extends WaveCellComputation {
 		scope = new HybridScope(this);
 
 		Consumer<String> exp = scope.code();
-		exp.accept("if ((");
-		exp.accept(getWavePosition().valueAt(0).getSimpleExpression());
-		exp.accept(" >= 0) & (");
-		exp.accept(getWavePosition().valueAt(0).getSimpleExpression());
-		exp.accept(" < ");
-		exp.accept(getWaveCount().valueAt(0).getSimpleExpression());
-		exp.accept(")) {\n");
-		exp.accept(getOutput().valueAt(0).getSimpleExpression());
+
+		Expression<?> condition = getWavePosition().valueAt(0).greaterThanOrEqual(e(0)).and(
+				getWavePosition().valueAt(0).lessThan(getWaveCount().valueAt(0)));
+
+		exp.accept("if (");
+		exp.accept(condition.getSimpleExpression());
+		exp.accept(") {\n");
+
+//		exp.accept("if ((");
+//		exp.accept(getWavePosition().valueAt(0).getSimpleExpression());
+//		exp.accept(" >= 0) & ((");
+//		exp.accept(getWavePosition().valueAt(0).getSimpleExpression());
+//		exp.accept(") < (");
+//		exp.accept(getWaveCount().valueAt(0).getSimpleExpression());
+//		exp.accept("))) {\n");
+		exp.accept(getOutput().ref(0).getSimpleExpression());
 		exp.accept(" = ");
 		exp.accept(getAmplitude().valueAt(0).getSimpleExpression());
-		exp.accept(" * ");
+		exp.accept(" * (");
 //		exp.accept(getWave().get("(" + getWaveIndex().valueAt(0).getExpression() +
 //				" + floor(" + getWavePosition().valueAt(0).getExpression() + "))").getExpression());
-		exp.accept(getWave().get(getWaveIndex().valueAt(0).add(getWavePosition().valueAt(0).floor())).getSimpleExpression());
-		exp.accept(";\n");
+		exp.accept(getWave().referenceRelative(getWaveIndex().valueAt(0).add(getWavePosition().valueAt(0).floor())).getSimpleExpression());
+		exp.accept(");\n");
 		exp.accept("} else {\n");
-		exp.accept(getOutput().valueAt(0).getSimpleExpression());
+		exp.accept(getOutput().ref(0).getSimpleExpression());
 		exp.accept(" = 0.0;\n");
 		exp.accept("}\n");
 	}

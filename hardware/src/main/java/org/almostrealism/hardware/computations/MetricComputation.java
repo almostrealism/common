@@ -16,16 +16,17 @@
 
 package org.almostrealism.hardware.computations;
 
+import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.Metric;
 import io.almostrealism.scope.Scope;
-import org.almostrealism.hardware.DynamicOperationComputationAdapter;
+import org.almostrealism.hardware.OperationComputationAdapter;
 import org.almostrealism.hardware.mem.Bytes;
 
 import java.util.function.Supplier;
 
-public class MetricComputation<T> extends DynamicOperationComputationAdapter<T> {
+public class MetricComputation<T> extends OperationComputationAdapter<T> {
 	private String message;
 	private int logFrequency;
 	private int pos, memLength;
@@ -41,8 +42,8 @@ public class MetricComputation<T> extends DynamicOperationComputationAdapter<T> 
 	@Override
 	public Scope<Void> getScope() {
 		Scope<Void> scope = super.getScope();
-		Metric metric = new Metric(getArgument(0, 1).valueAt(0), logFrequency);
-		metric.addMonitoredVariable(message, getArgument(1, memLength).valueAt(pos));
+		Metric metric = new Metric(getArgument(0, 1).ref(0), logFrequency);
+		metric.addMonitoredVariable(message, getArgument(1, memLength).ref(pos));
 		scope.getMetrics().add(metric);
 		return scope;
 	}

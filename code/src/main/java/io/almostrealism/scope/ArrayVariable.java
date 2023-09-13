@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,18 +17,25 @@
 package io.almostrealism.scope;
 
 import io.almostrealism.code.Array;
-import io.almostrealism.code.KernelIndex;
+import io.almostrealism.expression.Constant;
+import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.PhysicalScope;
+import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
+import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.expression.StaticReference;
 import io.almostrealism.relation.Evaluable;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
 public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements Array<T, ArrayVariable<T>> {
+	public static BiFunction<String, String, String> dereference = (name, pos) -> name + "[" + pos + "]";
+
 	private final NameProvider names;
 
 	private int delegateOffset;
@@ -84,29 +91,74 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 		}
 	}
 
-	public InstanceReference<T> get(Expression<?> pos, int kernelIndex) {
-		return get(pos.getSimpleExpression(), kernelIndex, pos.getDependencies().toArray(Variable[]::new));
+	public Expression<Double> getValueRelative(int index) {
+		TraversableExpression exp = TraversableExpression.traverse(getProducer());
+
+		if (exp != null) {
+			Expression<Double> value = exp.getValueRelative(new IntegerConstant(index));
+			if (value != null) return value;
+		}
+
+		if (getDelegate() != null) {
+			Expression<Double> v = getDelegate().getValueRelative(index + getDelegateOffset());
+			if (v instanceof InstanceReference) {
+				((InstanceReference) v).getReferent().setOriginalProducer(getOriginalProducer());
+			}
+			return v;
+		}
+
+		return (Expression) reference(names.getArrayPosition(this, new IntegerConstant(index), getKernelIndex()));
 	}
 
-	private InstanceReference<T> get(String pos, int kernelIndex, Variable... dependencies) {
+	@Override
+	public Expression<T> valueAt(Expression<?> exp) {
+		return referenceRelative(exp);
+	}
+
+	public InstanceReference<T> ref(int pos) {
+		return referenceRelative(new IntegerConstant(pos));
+	}
+
+	public InstanceReference<T> referenceRelative(Expression<?> pos) {
+		if (getDelegate() != null) {
+			InstanceReference<T> v = getDelegate().referenceRelative(pos.add(getDelegateOffset()));
+			((InstanceReference) v).getReferent().setOriginalProducer(getOriginalProducer());
+			return v;
+		} else if (getKernelIndex() < 0) {
+			return reference(pos);
+		} else {
+			return reference(names.getArrayPosition(this, pos, getKernelIndex()));
+		}
+	}
+
+	public InstanceReference<T> referenceAbsolute(Expression<?> pos) {
+		return reference(pos);
+	}
+
+	protected InstanceReference<T> reference(Expression<?> pos) {
 		if (getDelegate() == null) {
-			return new InstanceReference(new Variable<>(names.getVariableValueName(this, pos, kernelIndex),
-					false, new Expression(getType()), this), dependencies);
+			pos = pos.add(getOffsetValue());
+			return new InstanceReference(new Variable<>(dereference.apply(getName(), pos.toInt().getSimpleExpression()),
+					false, new Constant<>(getType()), this), pos);
 		} else if (getDelegate() == this) {
 			throw new IllegalArgumentException("Circular delegate reference");
 		} else {
-			InstanceReference ref = getDelegate().get(pos + " + " + getDelegateOffset(), kernelIndex, dependencies);
+			InstanceReference ref = getDelegate().reference(pos.add(getDelegateOffset()));
 			ref.getReferent().setOriginalProducer(getOriginalProducer());
 			return ref;
 		}
 	}
 
-	public InstanceReference<T> get(Expression<?> pos) {
-		return get(pos, getKernelIndex());
+	public Expression getOffsetValue() {
+		return new StaticReference<>(Integer.class, getName() + "Offset");
+	}
+
+	public Expression getDimValue() {
+		return new StaticReference<>(Integer.class, names.getVariableDimName(this, 0), this);
 	}
 
 	public Expression<Integer> length() {
-		return new Expression<>(Integer.class, names.getVariableSizeName(this), Collections.emptyList(), this);
+		return new StaticReference<>(Integer.class, names.getVariableSizeName(this), this);
 	}
 
 	@Override

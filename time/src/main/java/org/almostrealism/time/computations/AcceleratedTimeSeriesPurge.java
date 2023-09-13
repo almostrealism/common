@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -22,14 +22,15 @@ import io.almostrealism.expression.StaticReference;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.hardware.DynamicOperationComputationAdapter;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.OperationComputationAdapter;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.time.CursorPair;
 
 import java.util.function.Consumer;
 
-public class AcceleratedTimeSeriesPurge extends DynamicOperationComputationAdapter {
+public class AcceleratedTimeSeriesPurge extends OperationComputationAdapter<PackedCollection<?>> {
 	private double wavelength;
 
 	public AcceleratedTimeSeriesPurge(Producer<AcceleratedTimeSeries> series, Producer<CursorPair> cursors, double frequency) {
@@ -44,7 +45,7 @@ public class AcceleratedTimeSeriesPurge extends DynamicOperationComputationAdapt
 		Expression i = new StaticReference(Integer.class, "i");
 		String left = getArgument(0).valueAt(0).getSimpleExpression();
 		String right = getArgument(0).valueAt(1).getSimpleExpression();
-		String banki = getArgument(0).get(i.multiply(2)).getSimpleExpression();
+		String banki = getArgument(0).referenceRelative(i.multiply(2)).getSimpleExpression();
 		String cursor0 = getArgument(1).valueAt(0).getSimpleExpression();
 		String count = getArgument(2).valueAt(0).getSimpleExpression();
 

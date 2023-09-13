@@ -16,10 +16,10 @@
 
 package org.almostrealism.hardware.mem;
 
-import io.almostrealism.code.KernelIndex;
+import io.almostrealism.kernel.KernelIndex;
+import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.DestinationSupport;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.KernelizedEvaluable;
@@ -50,6 +50,15 @@ public class MemoryDataDestination<T extends MemoryData> extends DynamicProducer
 
 	@Override
 	public DestinationSupport<T> getDelegate() { return destination; }
+
+	@Override
+	public int getCount() {
+		if (destination instanceof Countable) {
+			return ((Countable) destination).getCount();
+		}
+
+		return super.getCount();
+	}
 
 	@Override
 	public int getKernelIndex() {

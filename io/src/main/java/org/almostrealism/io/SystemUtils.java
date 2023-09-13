@@ -21,6 +21,10 @@ import java.util.Optional;
 public class SystemUtils {
 	private SystemUtils() { }
 
+	public static boolean isAarch64() {
+		return "aarch64".equals(System.getProperty("os.arch"));
+	}
+
 	public static String getProperty(String key) {
 		String value = System.getProperty(key);
 		if (value == null) {

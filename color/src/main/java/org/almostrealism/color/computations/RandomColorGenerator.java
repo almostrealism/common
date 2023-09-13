@@ -19,17 +19,16 @@ package org.almostrealism.color.computations;
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
-import org.almostrealism.color.DynamicRGBProducer;
+import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.color.RGB;
 import org.almostrealism.color.RGBFeatures;
 import org.almostrealism.hardware.KernelizedEvaluable;
-import org.almostrealism.hardware.KernelizedProducer;
 
 /**
  * 
  * @author Michael Murray
  */
-public class RandomColorGenerator implements ProducerComputation<RGB>, KernelizedProducer<RGB> {
+public class RandomColorGenerator implements ProducerComputation<RGB> {
  	private Producer<RGB> baseRGB, offsetRGB;
  
 	public RandomColorGenerator() {
@@ -49,7 +48,7 @@ public class RandomColorGenerator implements ProducerComputation<RGB>, Kernelize
 
 	@Override
 	public KernelizedEvaluable<RGB> get() {
-		return new DynamicRGBProducer(args -> {
+		return new DynamicCollectionProducer<>(RGB.shape(), args -> {
 			RGB base = this.baseRGB.get().evaluate(args);
 			RGB off = this.offsetRGB.get().evaluate(args);
 

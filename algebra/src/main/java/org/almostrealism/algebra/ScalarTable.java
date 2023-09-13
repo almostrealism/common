@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,21 +17,21 @@
 package org.almostrealism.algebra;
 
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.hardware.mem.MemoryBankAdapter;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 
 /**
- * A collection of {@link ScalarBank}s of a fixed length, that is contiguous in
- * RAM and usable for kernel methods.
+ * A collection of {@link PackedCollection}s of {@link Scalar}s
+ * of a fixed length, that is contiguous in RAM and usable for
+ * kernel operations.
  *
  * @author  Michael Murray
  */
 @Deprecated
-public class ScalarTable extends PackedCollection<ScalarBank> { // implements MemoryTable<Scalar> {
+public class ScalarTable extends PackedCollection<PackedCollection<Scalar>> { // implements MemoryTable<Scalar> {
 	public ScalarTable(int width, int count) {
 		super(new TraversalPolicy(count, width, 2), 1, delegateSpec ->
-				new ScalarBank(width, delegateSpec.getDelegate(), delegateSpec.getOffset()));
+				Scalar.scalarBank(width, delegateSpec.getDelegate(), delegateSpec.getOffset()));
 	}
 
 	// TODO  These should come from MemoryTable, but it is not easy to get generics to work
@@ -60,7 +60,7 @@ public class ScalarTable extends PackedCollection<ScalarBank> { // implements Me
 
 	// TODO  ... see above ...
 
-	public static ScalarTable fromProducer(Evaluable<ScalarBank> producer, int width, int count) {
+	public static ScalarTable fromProducer(Evaluable<PackedCollection<Scalar>> producer, int width, int count) {
 		ScalarTable table = new ScalarTable(width, count);
 		for (int i = 0; i < table.getCount(); i++) {
 			table.set(i, producer.evaluate());

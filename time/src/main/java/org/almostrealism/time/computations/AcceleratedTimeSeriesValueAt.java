@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -20,33 +20,35 @@ import io.almostrealism.code.HybridScope;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.StaticReference;
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.expression.Expression;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarProducerBase;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.computations.DynamicCollectionProducerComputationAdapter;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.time.CursorPair;
 
 import java.util.function.Consumer;
-import java.util.function.IntFunction;
 
 @Deprecated
-public class AcceleratedTimeSeriesValueAt extends DynamicCollectionProducerComputationAdapter<PackedCollection<?>, Scalar> implements ScalarProducerBase {
+public class AcceleratedTimeSeriesValueAt extends CollectionProducerComputationBase<PackedCollection<?>, Scalar> {
 	public AcceleratedTimeSeriesValueAt(Producer<AcceleratedTimeSeries> series, Producer<CursorPair> cursors) {
 		super(new TraversalPolicy(2).traverse(0), new Producer[] { series, cursors });
 	}
 
 	@Override
 	public Scope<Scalar> getScope() {
-		Scope<Scalar> parentScope = super.getScope();
 		HybridScope<Scalar> scope = new HybridScope<>(this);
-		scope.getVariables().add(parentScope.getVariables().get(1));
+
+		ArrayVariable<?> outputVariable = (ArrayVariable) getOutputVariable();
+
+		scope.getVariables().add(new Variable(outputVariable.valueAt(1).getSimpleExpression(),
+				false, new DoubleConstant(1.0), outputVariable.getRootDelegate()));
 
 		Expression i = new StaticReference(Integer.class, "i");
 		Expression left = new StaticReference(Integer.class, getVariableName(0));
@@ -66,11 +68,11 @@ public class AcceleratedTimeSeriesValueAt extends DynamicCollectionProducerCompu
 		String res = getArgument(0).valueAt(0).getSimpleExpression();
 		String bank0 = getArgument(1).valueAt(0).getSimpleExpression();
 		String bank1 = getArgument(1).valueAt(1).getSimpleExpression();
-		String banki = getArgument(1).get(i.multiply(2)).getSimpleExpression();
-		String bankl0 = getArgument(1).get(left.multiply(2)).getSimpleExpression();
-		String bankl1 = getArgument(1).get(left.multiply(2).add(1)).getSimpleExpression();
-		String bankr0 = getArgument(1).get(right.multiply(2)).getSimpleExpression();
-		String bankr1 = getArgument(1).get(right.multiply(2).add(1)).getSimpleExpression();
+		String banki = getArgument(1).referenceRelative(i.multiply(2)).getSimpleExpression();
+		String bankl0 = getArgument(1).referenceRelative(left.multiply(2)).getSimpleExpression();
+		String bankl1 = getArgument(1).referenceRelative(left.multiply(2).add(1)).getSimpleExpression();
+		String bankr0 = getArgument(1).referenceRelative(right.multiply(2)).getSimpleExpression();
+		String bankr1 = getArgument(1).referenceRelative(right.multiply(2).add(1)).getSimpleExpression();
 		String cursor0 = getArgument(2).valueAt(0).getSimpleExpression();
 
 		Consumer<String> code = scope.code();
@@ -98,16 +100,11 @@ public class AcceleratedTimeSeriesValueAt extends DynamicCollectionProducerCompu
 		code.accept("	}\n");
 		code.accept("}\n");
 
-		// code.accept("if (1.0 - " + res + " < 0.01) {\n");
-		// code.accept("    printf(\"left = %i, right = %i\\n\", " + left + ", " + right + ");\n");
-		// code.accept("}\n");
+//		code.accept("if (fabs(" + res + ") > 0.99) {\n");
+//		code.accept("    printf(\"left = %i, right = %i -- value = %f\\n\", " + left + ", " + right + ", " + res + ");\n");
+//		code.accept("}\n");
 
 		return scope;
-	}
-
-	@Override
-	public IntFunction<Expression<Double>> getValueFunction() {
-		return i -> new DoubleConstant(1.0);
 	}
 
 	@Override

@@ -17,7 +17,7 @@
 package org.almostrealism.collect.computations;
 
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
@@ -45,8 +45,25 @@ public class DefaultCollectionEvaluable<T extends PackedCollection> extends Acce
 	}
 
 	@Override
-	public MemoryBank<T> createKernelDestination(int size) {
-		return (MemoryBank) new PackedCollection(shape.prependDimension(size));
+	public MemoryBank<T> createKernelDestination(int len) {
+//		return (MemoryBank) new PackedCollection(shape.prependDimension(size));
+
+		int count = len / this.shape.getCount();
+
+		TraversalPolicy shape;
+
+		// When kernel length is less than, or identical to the output count, an
+		// assumption is made that the intended shape is the original shape.
+		// This is a bit of a hack, but it's by far the simplest solution
+		// available
+		if (count == 0 || len == this.shape.getCount()) {
+			// It is not necessary to prepend a (usually) unnecessary dimension
+			shape = this.shape;
+		} else {
+			shape = this.shape.prependDimension(count);
+		}
+
+		return new PackedCollection<>(shape);
 	}
 
 	@Override

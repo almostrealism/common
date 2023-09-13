@@ -23,13 +23,14 @@ import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.c.NativeMemoryProvider;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.RAM;
 import org.almostrealism.hardware.external.ExternalComputeContext;
 import org.almostrealism.hardware.jvm.JVMMemoryProvider;
 
 import java.util.concurrent.Callable;
 
-public class NativeDataContext implements DataContext {
+public class NativeDataContext implements DataContext<MemoryData> {
 	private final String name;
 	private final boolean isDoublePrecision, isNativeMem;
 	private final long memoryMax;

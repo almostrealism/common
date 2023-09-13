@@ -27,6 +27,7 @@ import io.almostrealism.relation.Evaluable;
  *
  * @author  Michael Murray
  */
+@Deprecated
 public interface KernelizedEvaluable<T extends MemoryData> extends Evaluable<T> {
 
 	default T replaceNull(Object args[]) {

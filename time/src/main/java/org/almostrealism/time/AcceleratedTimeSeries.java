@@ -17,7 +17,7 @@
 package org.almostrealism.time;
 
 import io.almostrealism.uml.Lifecycle;
-import org.almostrealism.algebra.ScalarProducerBase;
+import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareFeatures;
 import io.almostrealism.relation.Producer;
@@ -29,7 +29,7 @@ import org.almostrealism.time.computations.AcceleratedTimeSeriesValueAt;
 import java.util.function.Supplier;
 
 public class AcceleratedTimeSeries extends TemporalScalarBank implements Lifecycle, HardwareFeatures {
-	public static final int defaultSize = 20000000;
+	public static final int defaultSize = 16 * 1024 * 1024;
 
 	public static CacheLevel defaultCacheLevel = CacheLevel.NONE;
 
@@ -88,7 +88,7 @@ public class AcceleratedTimeSeries extends TemporalScalarBank implements Lifecyc
 		return new AcceleratedTimeSeriesPurge(() -> new Provider<>(this), time, frequency);
 	}
 
-	public ScalarProducerBase valueAt(Producer<CursorPair> cursor) {
+	public Producer<Scalar> valueAt(Producer<CursorPair> cursor) {
 		return new AcceleratedTimeSeriesValueAt(() -> new Provider<>(this), cursor);
 	}
 

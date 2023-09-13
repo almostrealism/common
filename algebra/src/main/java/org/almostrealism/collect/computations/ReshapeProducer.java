@@ -21,17 +21,24 @@ import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.collect.CollectionExpression;
 import org.almostrealism.collect.CollectionProducer;
-import org.almostrealism.collect.Shape;
-import org.almostrealism.collect.TraversableExpression;
-import org.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.Shape;
+import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.hardware.KernelSupport;
 
-import java.util.stream.Stream;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
 
-public class ReshapeProducer<T extends Shape<T>> implements CollectionProducer<T>, ScopeLifecycle, TraversableExpression<Double>, KernelSupport {
+public class ReshapeProducer<T extends Shape<T>>
+		implements CollectionProducer<T>, TraversableExpression<Double>,
+					ParallelProcess<Process<?, ?>, Evaluable<? extends T>>,
+					ScopeLifecycle, KernelSupport {
 	private TraversalPolicy shape;
 	private int traversalAxis;
 	private Producer<T> producer;
@@ -53,6 +60,37 @@ public class ReshapeProducer<T extends Shape<T>> implements CollectionProducer<T
 			return inputShape.traverse(traversalAxis);
 		} else {
 			return shape;
+		}
+	}
+
+	@Override
+	public int getCount() { return getShape().getCount(); }
+
+	@Override
+	public Collection<Process<?, ?>> getChildren() {
+		return producer instanceof Process ? List.of((Process) producer) : Collections.emptyList();
+	}
+
+//	@Override
+//	public ParallelProcess<Process<?, ?>, Evaluable<? extends T>> optimize() {
+//		return producer instanceof Process ? generate(List.of(((Process<?, ?>) producer).optimize())) : this;
+//	}
+
+	@Override
+	public ParallelProcess<Process<?, ?>, Evaluable<? extends T>> generate(List<Process<?, ?>> children) {
+		if (children.size() != 1) return this;
+
+		return shape == null ?
+				new ReshapeProducer<>(traversalAxis, (Producer<T>) children.get(0)) :
+				new ReshapeProducer<>(shape, (Producer<T>) children.get(0));
+	}
+
+	@Override
+	public Process<Process<?, ?>, Evaluable<? extends T>> isolate() {
+		if (shape == null) {
+			return new CollectionProducerComputation.IsolatedProcess(this);
+		} else {
+			return this;
 		}
 	}
 
@@ -85,6 +123,31 @@ public class ReshapeProducer<T extends Shape<T>> implements CollectionProducer<T
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
 		return producer instanceof TraversableExpression ? ((TraversableExpression) producer).getValueAt(index) : null;
+	}
+
+	@Override
+	public Expression<Double> getValueRelative(Expression index) {
+		return producer instanceof TraversableExpression ? ((TraversableExpression) producer).getValueRelative(index) : null;
+	}
+
+	@Override
+	public boolean isTraversable() {
+		if (producer instanceof TraversableExpression) return ((TraversableExpression) producer).isTraversable();
+		return false;
+	}
+
+	@Override
+	public boolean isRelative() {
+		if (producer instanceof TraversableExpression) return ((TraversableExpression) producer).isRelative();
+		return true;
+	}
+
+	public CollectionProducer<T> traverse(int axis) {
+		if (shape == null || shape(producer).traverse(0).equals(getShape().traverse(0))) {
+			return new ReshapeProducer<>(axis, producer);
+		} else {
+			return new ReshapeProducer<>(axis, this);
+		}
 	}
 
 	@Override

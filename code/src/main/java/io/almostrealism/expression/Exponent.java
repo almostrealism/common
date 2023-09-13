@@ -20,7 +20,13 @@ import java.util.List;
 
 public class Exponent extends Expression<Double> {
 	public Exponent(Expression<Double> base, Expression<Double> exponent) {
-		super(Double.class, "pow((" + base.getExpression() + "), (" + exponent.getExpression() + "))", base, exponent);
+		super(Double.class, base, exponent);
+	}
+
+	@Override
+	public String getExpression() {
+		// TODO  The extra inner parenthesis are probably not needed
+		return "pow((" + getChildren().get(0).getExpression() + "), (" + getChildren().get(1).getExpression() + "))";
 	}
 
 	@Override

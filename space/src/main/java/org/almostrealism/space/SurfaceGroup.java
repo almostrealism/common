@@ -23,6 +23,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
+import java.util.stream.Stream;
 
 import io.almostrealism.relation.NodeGroup;
 import org.almostrealism.algebra.*;
@@ -118,6 +119,9 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 		surfaces.forEach(consumer);
 	}
 
+	@Override
+	public Stream<T> all() { return surfaces.stream(); }
+
 	public Iterator<T> iterator() { return surfaces.iterator(); }
 	
 	/** {@link ShadableSurface#shade(ShaderContext)} */
@@ -196,6 +200,7 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 		return null;
 	}
 
+	@Override
 	public Operator<Scalar> expect() {
 		// TODO  This isn't right
 		return new Constant<>(new Scalar(0));

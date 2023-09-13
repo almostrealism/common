@@ -22,8 +22,10 @@ import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.hardware.computations.Loop;
+import org.almostrealism.hardware.mem.MemoryDataCopy;
 
 import java.util.Optional;
 import java.util.function.IntFunction;
@@ -31,7 +33,9 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public interface HardwareFeatures {
-	default Runnable compileRunnable(Computation<?> c) {
+	boolean enableAssignmentCopy = false;
+
+	default Runnable compileRunnable(Computation<Void> c) {
 		return Hardware.getLocalHardware().getComputeContext().getComputer().compileRunnable(c);
 	}
 
@@ -55,14 +59,6 @@ public interface HardwareFeatures {
 		return Hardware.getLocalHardware().stringForDouble(value);
 	}
 
-	default Expression<Double> expressionForDouble(double value) {
-		return new DoubleConstant(value);
-	}
-
-	default Expression<Double> e(double value) {
-		return expressionForDouble(value);
-	}
-
 	@JsonIgnore
 	default String getNumberTypeName() {
 		return Hardware.getLocalHardware().getNumberTypeName();
@@ -71,6 +67,38 @@ public interface HardwareFeatures {
 	@JsonIgnore
 	default boolean isCastEnabled() {
 		return Hardware.getLocalHardware().isGPU() && Hardware.getLocalHardware().isDoublePrecision();
+	}
+
+	default <T extends MemoryData> Assignment<T> a(int memLength, Supplier<Evaluable<? extends T>> result, Supplier<Evaluable<? extends T>> value) {
+		return new Assignment<>(memLength, result, value);
+	}
+
+	default Supplier<Runnable> copy(Supplier<MemoryData> source, Supplier<MemoryData> target, int length) {
+		return copy(null, source, target, length);
+	}
+
+	default Supplier<Runnable> copy(String name, Supplier<MemoryData> source, Supplier<MemoryData> target, int length) {
+		if (enableAssignmentCopy) {
+			return new Assignment(length,
+					() -> (Evaluable<MemoryData>) args -> target.get(),
+					() -> (Evaluable<MemoryData>) args -> source.get());
+		} else {
+			return new MemoryDataCopy(name, source, target, length);
+		}
+	}
+
+	default Supplier<Runnable> copy(Producer<? extends MemoryData> source,
+									Producer<? extends MemoryData> target, int length) {
+		return copy(null, source, target, length);
+	}
+
+	default Supplier<Runnable> copy(String name, Producer<? extends MemoryData> source,
+									Producer<? extends MemoryData> target, int length) {
+		if (enableAssignmentCopy) {
+			return new Assignment(length, target, source);
+		} else {
+			return new MemoryDataCopy(name, source.get()::evaluate, target.get()::evaluate, length);
+		}
 	}
 
 	default Supplier<Runnable> loop(Computation<Void> c, int iterations) {

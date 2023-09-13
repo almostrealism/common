@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,14 +18,15 @@ package org.almostrealism.time.computations;
 
 import io.almostrealism.expression.Sum;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.hardware.DynamicOperationComputationAdapter;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.OperationComputationAdapter;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.code.ScopeInputManager;
 import org.almostrealism.time.CursorPair;
 
 import java.util.function.Supplier;
 
-public class CursorPairIncrement extends DynamicOperationComputationAdapter {
+public class CursorPairIncrement extends OperationComputationAdapter<PackedCollection<?>> {
 	private boolean prepared = false;
 
 	public CursorPairIncrement(Supplier<Evaluable<? extends CursorPair>> cursors,
@@ -38,13 +39,18 @@ public class CursorPairIncrement extends DynamicOperationComputationAdapter {
 		super.prepareScope(manager);
 		if (prepared) return;
 
-		if (getArgument(1).isStatic()) {
-			addVariable(getArgument(0).valueAt(0).assign(new Sum(getArgument(0).valueAt(0), getInputValue(1, 0))));
-			addVariable(getArgument(0).valueAt(1).assign(new Sum(getArgument(0).valueAt(1), getInputValue(1, 0))));
-		} else {
-			addVariable(getArgument(0).valueAt(0).assign(new Sum(getArgument(0).valueAt(0), getArgument(1).valueAt(0))));
-			addVariable(getArgument(0).valueAt(1).assign(new Sum(getArgument(0).valueAt(1), getArgument(1).valueAt(0))));
-		}
+		addVariable(getArgument(0).valueAt(0)
+				.assign(new Sum(getArgument(0).valueAt(0), getArgument(1).getValueRelative(0))));
+		addVariable(getArgument(0).valueAt(1)
+				.assign(new Sum(getArgument(0).valueAt(1), getArgument(1).getValueRelative(0))));
+
+//		if (getArgument(1).isStatic()) {
+//			addVariable(getArgument(0).valueAt(0).assign(new Sum(getArgument(0).valueAt(0), getInputValue(1, 0))));
+//			addVariable(getArgument(0).valueAt(1).assign(new Sum(getArgument(0).valueAt(1), getInputValue(1, 0))));
+//		} else {
+//			addVariable(getArgument(0).valueAt(0).assign(new Sum(getArgument(0).valueAt(0), getArgument(1).valueAt(0))));
+//			addVariable(getArgument(0).valueAt(1).assign(new Sum(getArgument(0).valueAt(1), getArgument(1).valueAt(0))));
+//		}
 
 		prepared = true;
 	}

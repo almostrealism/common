@@ -18,8 +18,10 @@ package org.almostrealism.hardware.cl;
 
 import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.InstructionSet;
+import io.almostrealism.code.LanguageOperations;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeEncoder;
+import org.almostrealism.c.CLanguageOperations;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.jni.NativeInstructionSet;
@@ -30,6 +32,11 @@ public class CLNativeComputeContext extends AbstractComputeContext {
 
 	public CLNativeComputeContext(Hardware hardware) {
 		super(hardware, true, true);
+	}
+
+	@Override
+	public LanguageOperations getLanguage() {
+		return new CLJNILanguageOperations();
 	}
 
 	@Override

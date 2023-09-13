@@ -17,7 +17,6 @@
 package org.almostrealism.time;
 
 import io.almostrealism.code.ProducerComputation;
-import org.almostrealism.hardware.KernelizedProducer;
 
-public interface TemporalScalarProducerBase extends ProducerComputation<TemporalScalar>, KernelizedProducer<TemporalScalar>, TemporalScalarFeatures {
+public interface TemporalScalarProducerBase extends ProducerComputation<TemporalScalar>, TemporalScalarFeatures {
 }

@@ -17,8 +17,8 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.Memory;
+import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.DoubleConstant;
-import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Node;
@@ -28,7 +28,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 
-public interface MemoryData extends MultiExpression<Double>, Delegated<MemoryData>, Node {
+public interface MemoryData extends TraversableExpression<Double>, Delegated<MemoryData>, Node {
 	int sizeOf = Hardware.getLocalHardware().getNumberSize();
 
 	Memory getMem();
@@ -110,9 +110,20 @@ public interface MemoryData extends MultiExpression<Double>, Delegated<MemoryDat
 	}
 
 	@Override
-	default Expression<Double> getValue(int pos) {
+	default Expression<Double> getValue(Expression... pos) {
+		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	default Expression<Double> getValueAt(Expression pos) {
+		int i = pos.intValue().orElseThrow(UnsupportedOperationException::new);
+
+		if (i > getMemLength()) {
+			throw new IllegalArgumentException(i + " is out of bounds for MemoryData of length " + getMemLength());
+		}
+
 		double out[] = new double[1];
-		getMem(pos, out, 0, 1);
+		getMem(i, out, 0, 1);
 		return new DoubleConstant(out[0]);
 	}
 
@@ -120,12 +131,26 @@ public interface MemoryData extends MultiExpression<Double>, Delegated<MemoryDat
 		setMem(offset, values, 0, values.length);
 	}
 
+	default void setMem(float... source) {
+		setMem(0, source, 0, source.length);
+	}
+
 	default void setMem(double... source) {
 		setMem(0, source, 0, source.length);
 	}
 
 	default void setMem(double[] source, int srcOffset) {
-		setMem(0, source, srcOffset, source.length);
+		setMem(0, source, srcOffset, source.length - srcOffset);
+	}
+
+	default void setMem(int offset, float[] source, int srcOffset, int length) {
+		if (getDelegate() == null) {
+			setMem(getMem(), getOffset() + offset, source, srcOffset, length);
+		} else if (getDelegate() == this) {
+			throw new IllegalArgumentException("Circular delegate reference");
+		} else {
+			getDelegate().setMem(getDelegateOffset() + offset, source, srcOffset, length);
+		}
 	}
 
 	default void setMem(int offset, double[] source, int srcOffset, int length) {
@@ -146,12 +171,24 @@ public interface MemoryData extends MultiExpression<Double>, Delegated<MemoryDat
 		}
 	}
 
+	default void getMem(int sOffset, float out[], int oOffset, int length) {
+		if (getDelegate() == null) {
+			getMem(getMem(), getOffset() + sOffset, out, oOffset, length);
+		} else {
+			getDelegate().getMem(getDelegateOffset() + sOffset, out, oOffset, length);
+		}
+	}
+
 	default void getMem(int sOffset, double out[], int oOffset, int length) {
 		if (getDelegate() == null) {
 			getMem(getMem(), getOffset() + sOffset, out, oOffset, length);
 		} else {
 			getDelegate().getMem(getDelegateOffset() + sOffset, out, oOffset, length);
 		}
+	}
+
+	static void setMem(Memory mem, int offset, float[] source, int srcOffset, int length) {
+		mem.getProvider().setMem(mem, offset, source, srcOffset, length);
 	}
 
 	static void setMem(Memory mem, int offset, double[] source, int srcOffset, int length) {
@@ -164,6 +201,10 @@ public interface MemoryData extends MultiExpression<Double>, Delegated<MemoryDat
 		}
 
 		mem.getProvider().setMem(mem, offset, src.getMem(), src.getOffset() + srcOffset, length);
+	}
+
+	static void getMem(Memory mem, int sOffset, float out[], int oOffset, int length) {
+		mem.getProvider().getMem(mem, sOffset, out, oOffset, length);
 	}
 
 	static void getMem(Memory mem, int sOffset, double out[], int oOffset, int length) {

@@ -23,13 +23,13 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.expression.Expression;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Producer;
 
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-public class PackedCollectionMax extends CollectionProducerComputationAdapter<PackedCollection<?>, PackedCollection<?>> {
+public class PackedCollectionMax extends CollectionProducerComputationBase<PackedCollection<?>, PackedCollection<?>> {
 	private Function<Expression, Expression> expression;
 
 	public PackedCollectionMax(Producer<PackedCollection<?>> values) {
@@ -47,12 +47,12 @@ public class PackedCollectionMax extends CollectionProducerComputationAdapter<Pa
 		scope.setMetadata(new OperationMetadata(getFunctionName(), "PackedCollectionMax"));
 
 		Expression i = new StaticReference<>(Integer.class, getVariablePrefix() + "_i");
-		String result = getArgument(0, 2).valueAt(0).getSimpleExpression();
-		String value = expression.apply(getArgument(1).get(i)).getSimpleExpression();
+		String result = getArgument(0, 2).ref(0).getSimpleExpression();
+		String value = expression.apply(getArgument(1).referenceRelative(i)).getSimpleExpression();
 		String count = getArgument(1).length().getSimpleExpression();
 
 		scope.code().accept("for (int " + i + " = 0; " + i + " < " + count +"; " + i + "++) {\n");
-		scope.code().accept("    if (" + value + " > " + result + ") {\n");
+		scope.code().accept("    if (" + i + " == 0 || " + value + " > " + result + ") {\n");
 		scope.code().accept("        " + result + " = " + value + ";\n");
 		scope.code().accept("    }\n");
 		scope.code().accept("}\n");

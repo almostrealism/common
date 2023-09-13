@@ -19,19 +19,13 @@ package org.almostrealism.hardware;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.CollectionUtils;
 import io.almostrealism.code.ScopeInputManager;
-import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.Variable;
-import org.almostrealism.hardware.cl.HardwareOperator;
+import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 
-import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
-import java.util.stream.Stream;
 
 @Deprecated
 public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> extends AcceleratedOperation implements KernelizedEvaluable<O> {
@@ -68,7 +62,11 @@ public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> ex
 	}
 
 	@Override
-	public O evaluate(Object... args) { return postProcessOutput((MemoryData) apply(null, args)[0], 0); }
+	public O evaluate(Object... args) {
+		AcceleratedProcessDetails process = apply(null, args);
+		waitFor(process.getSemaphore());
+		return postProcessOutput((MemoryData) process.getOriginalArguments()[0], 0);
+	}
 
 	/**
 	 * As the result of an {@link AcceleratedEvaluable} is not guaranteed to be

@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.Execution;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.InstructionSet;
@@ -41,7 +42,7 @@ public abstract class DynamicAcceleratedOperation<T extends MemoryData> extends 
 	}
 
 	@Override
-	public synchronized Consumer<Object[]> getOperator() {
+	public synchronized Execution getOperator() {
 		if (operators == null || operators.isDestroyed()) {
 			// operators = Hardware.getLocalHardware().getClComputeContext().deliver(Scope.verbatim(getFunctionDefinition()));
 			throw new UnsupportedOperationException();

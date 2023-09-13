@@ -17,10 +17,9 @@
 package org.almostrealism.time.computations;
 
 import io.almostrealism.code.HybridScope;
-import io.almostrealism.expression.Cast;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.Scope;
-import org.almostrealism.hardware.DynamicOperationComputationAdapter;
+import org.almostrealism.hardware.OperationComputationAdapter;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.time.TemporalScalar;
@@ -28,7 +27,7 @@ import org.almostrealism.time.TemporalScalar;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-public class AcceleratedTimeSeriesAdd extends DynamicOperationComputationAdapter<AcceleratedTimeSeries> {
+public class AcceleratedTimeSeriesAdd extends OperationComputationAdapter<AcceleratedTimeSeries> {
 	public AcceleratedTimeSeriesAdd(Producer<AcceleratedTimeSeries> series, Producer<TemporalScalar> addition) {
 		super(new Supplier[] { series, addition } );
 	}
@@ -38,8 +37,8 @@ public class AcceleratedTimeSeriesAdd extends DynamicOperationComputationAdapter
 		HybridScope<Void> scope = new HybridScope<>(this);
 
 		Expression<?> bank1 = getArgument(0).valueAt(1);
-		String banklast0 = getArgument(0).get(bank1.toInt().multiply(2)).getSimpleExpression();
-		String banklast1 = getArgument(0).get(bank1.toInt().multiply(2).add(1)).getSimpleExpression();
+		String banklast0 = getArgument(0).referenceRelative(bank1.toInt().multiply(2)).getSimpleExpression();
+		String banklast1 = getArgument(0).referenceRelative(bank1.toInt().multiply(2).add(1)).getSimpleExpression();
 		String input0 = getArgument(1).valueAt(0).getSimpleExpression();
 		String input1 = getArgument(1).valueAt(1).getSimpleExpression();
 

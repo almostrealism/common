@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -23,14 +23,12 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.geometry.Intersection;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarBank;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.geometry.computations.AcceleratedRankedChoiceEvaluable;
 import org.almostrealism.geometry.computations.RankedChoiceEvaluable;
 import org.almostrealism.geometry.computations.RankedChoiceEvaluableForVector;
 import org.almostrealism.hardware.DynamicAcceleratedEvaluable;
 import org.almostrealism.hardware.Hardware;
-import org.almostrealism.hardware.MemoryBank;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -55,7 +53,7 @@ public class RankedChoiceEvaluableTest implements CodeFeatures {
 
 	@Test
 	public void highestRankKernel() {
-		ScalarBank in = new ScalarBank(4);
+		PackedCollection<Scalar> in = Scalar.scalarBank(4);
 		in.set(0, new Scalar(0.0));
 		in.set(1, new Scalar(2.0));
 		in.set(2, new Scalar(1.0));
@@ -146,7 +144,7 @@ public class RankedChoiceEvaluableTest implements CodeFeatures {
 										v(Scalar.shape(), 5)));
 
 		AcceleratedRankedChoiceEvaluable<Scalar> acc =
-				new AcceleratedRankedChoiceEvaluable<>(2, Scalar::new, ScalarBank::new,
+				new AcceleratedRankedChoiceEvaluable<>(2, Scalar::new, Scalar::scalarBank,
 													values, Scalar.blank(), Intersection.e, Scalar.blank().get()::evaluate);
 
 		Scalar result = acc.evaluate(new Scalar(1), new Scalar(0), new Scalar(2),
@@ -157,8 +155,10 @@ public class RankedChoiceEvaluableTest implements CodeFeatures {
 
 		System.out.println("RankedChoiceProducerTest: Preparing random input...");
 
-		ScalarBank input[] = new ScalarBank[] { new ScalarBank(count), new ScalarBank(count), new ScalarBank(count),
-				new ScalarBank(count), new ScalarBank(count), new ScalarBank(count) };
+		PackedCollection<Scalar> input[] = new PackedCollection[] {
+				new PackedCollection<Scalar>(count), new PackedCollection<Scalar>(count),
+				new PackedCollection<Scalar>(count), new PackedCollection<Scalar>(count),
+				new PackedCollection<Scalar>(count), new PackedCollection<Scalar>(count) };
 		input[0].set(0, 0.13229523881923733, 1.0);
 		input[1].set(0, -0.9907866131625955, 1.0);
 		input[2].set(0, -0.9494781072737721, 1.0);
@@ -166,7 +166,7 @@ public class RankedChoiceEvaluableTest implements CodeFeatures {
 		input[4].set(0, -0.4483061040652183, 1.0);
 		input[5].set(0, -0.4508810286585523, 1.0);
 
-		ScalarBank output = new ScalarBank(count);
+		PackedCollection<Scalar> output = Scalar.scalarBank(count);
 		acc.into(output).evaluate(input);
 
 		Assert.assertEquals(0.0, output.get(0).getValue(), Math.pow(10, -10));
@@ -175,8 +175,9 @@ public class RankedChoiceEvaluableTest implements CodeFeatures {
 
 		System.out.println("RankedChoiceProducerTest: Preparing random input...");
 
-		input = new ScalarBank[] { new ScalarBank(count), new ScalarBank(count), new ScalarBank(count),
-								new ScalarBank(count), new ScalarBank(count), new ScalarBank(count) };
+		input = new PackedCollection[] { new PackedCollection<Scalar>(count), new PackedCollection<Scalar>(count),
+									new PackedCollection<Scalar>(count), new PackedCollection<Scalar>(count),
+									new PackedCollection<Scalar>(count), new PackedCollection<Scalar>(count) };
 
 		for (int i = 0; i < input.length; i++) {
 			for (int j = 0; j < input[i].getCount(); j++) {
@@ -185,15 +186,15 @@ public class RankedChoiceEvaluableTest implements CodeFeatures {
 		}
 
 		System.out.println("RankedChoiceProducerTest: Evaluating kernel...");
-		output = new ScalarBank(count);
+		output = Scalar.scalarBank(count);
 		acc.into(output).evaluate(input);
 
 		boolean failed = false;
 
 		System.out.println("RankedChoiceProducerTest: Comparing...");
 		for (int i = 0; i < output.getCount(); i++) {
-			Scalar value = acc.evaluate(new Object[] { input[0].get(i), input[1].get(i), input[2].get(i),
-													input[3].get(i), input[4].get(i), input[5].get(i) });
+			Scalar value = acc.evaluate(input[0].get(i), input[1].get(i), input[2].get(i),
+										input[3].get(i), input[4].get(i), input[5].get(i));
 			if (Math.abs(value.getValue() - output.get(i).getValue()) > gap) {
 				System.out.println(i + ": [" + input[0].get(i).getValue() + ", " + input[1].get(i).getValue() + "]" +
 									"[" + input[2].get(i).getValue() + ", " + input[3].get(i).getValue() + "]" +

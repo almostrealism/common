@@ -16,9 +16,10 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.Variable;
 
-public abstract class ProducerComputationBase<I, O> extends OperationComputationBase<I, O> implements ProducerComputation<O> {
+public abstract class ProducerComputationBase<I, O> extends ComputationBase<I, O, Evaluable<? extends O>> implements Operator<O> {
 	private Variable outputVariable;
 
 	@Override

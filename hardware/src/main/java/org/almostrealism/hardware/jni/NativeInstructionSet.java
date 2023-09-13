@@ -16,7 +16,9 @@
 
 package org.almostrealism.hardware.jni;
 
+import io.almostrealism.code.Execution;
 import io.almostrealism.code.InstructionSet;
+import io.almostrealism.code.Semaphore;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.KernelSupport;
 import org.almostrealism.hardware.MemoryData;
@@ -40,8 +42,11 @@ public interface NativeInstructionSet extends InstructionSet, KernelSupport {
 	default boolean isKernelEnabled() { return false; }
 
 	@Override
-	default Consumer<Object[]> get(String function, int argCount) {
-		return args -> apply(Stream.of(args).map(arg -> (MemoryData) arg).toArray(MemoryData[]::new));
+	default Execution get(String function, int argCount) {
+		return (args, dependsOn) -> {
+			if (dependsOn != null) dependsOn.waitFor();
+			return apply(Stream.of(args).map(arg -> (MemoryData) arg).toArray(MemoryData[]::new));
+		};
 	}
 
 	@Override
@@ -53,28 +58,29 @@ public interface NativeInstructionSet extends InstructionSet, KernelSupport {
 	default void destroy() { }
 
 
-	default void apply(MemoryData... args) {
+	default Semaphore apply(MemoryData... args) {
 		long id = NativeComputeContext.totalInvocations++;
 
 		if (NativeComputeContext.enableVerbose && (id + 1) % 100000 == 0) {
 			System.out.println("NativeInstructionSet: " + id);
 		}
 
-		apply(Stream.of(args).map(MemoryData::getMem).toArray(RAM[]::new),
+		return apply(Stream.of(args).map(MemoryData::getMem).toArray(RAM[]::new),
 					Stream.of(args).mapToInt(MemoryData::getOffset).toArray(),
 					Stream.of(args).mapToInt(MemoryData::getMemLength).toArray());
 	}
 
-	default void apply(RAM args[], int offsets[], int sizes[]) {
-		apply(Optional.ofNullable(Hardware.getLocalHardware().getClComputeContext())
+	default Semaphore apply(RAM args[], int offsets[], int sizes[]) {
+		return apply(Optional.ofNullable(Hardware.getLocalHardware().getClComputeContext())
 				.map(CLComputeContext::getClQueue)
 				.map(cl_command_queue::getNativePointer).orElse(-1L), args, offsets, sizes);
 	}
 
-	default void apply(long commandQueue, RAM args[], int offsets[], int sizes[]) {
+	default Semaphore apply(long commandQueue, RAM args[], int offsets[], int sizes[]) {
 		apply(commandQueue,
 				Stream.of(args).mapToLong(RAM::getNativePointer).toArray(),
 				offsets, sizes, args.length);
+		return null;
 	}
 
 	void apply(long commandQueue, long arg[], int offset[], int size[], int count);

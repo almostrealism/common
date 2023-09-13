@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,17 +17,21 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.ComputeContext;
+import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.code.DataContext;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.expression.Cast;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.KernelIndex;
+import io.almostrealism.kernel.KernelPreferences;
 import org.almostrealism.hardware.cl.CLMemoryProvider;
 import org.almostrealism.hardware.cl.CLMemoryProvider.Location;
 import org.almostrealism.hardware.cl.CLComputeContext;
 import org.almostrealism.hardware.cl.CLDataContext;
 import org.almostrealism.hardware.ctx.ContextListener;
 import org.almostrealism.hardware.jni.NativeDataContext;
+import org.almostrealism.hardware.metal.MetalDataContext;
 import org.almostrealism.io.SystemUtils;
 import org.jocl.Sizeof;
 import org.jocl.cl_device_id;
@@ -46,7 +50,7 @@ public final class Hardware {
 	public static boolean enableVerbose = false;
 	public static boolean enableCast = false;
 	public static final boolean enableMultiThreading = true;
-	public static boolean enableKernelOps = true;
+	public static boolean enableKernelOps;
 
 	protected static final int MEMORY_SCALE;
 	protected static final boolean ENABLE_POOLING;
@@ -54,9 +58,13 @@ public final class Hardware {
 	protected static final long timeSeriesSize;
 	protected static final int timeSeriesCount;
 
+	private static final boolean enableAsync = SystemUtils.isEnabled("AR_HARDWARE_ASYNC").orElse(false);
+
 	private static final Hardware local;
 
 	static {
+		boolean aarch = SystemUtils.isAarch64();
+
 		boolean gpu = "gpu".equalsIgnoreCase(System.getenv("AR_HARDWARE_PLATFORM")) ||
 				"gpu".equalsIgnoreCase(System.getProperty("AR_HARDWARE_PLATFORM"));
 
@@ -66,8 +74,17 @@ public final class Hardware {
 		boolean enableDestinationConsolidation =
 				SystemUtils.isEnabled("AR_HARDWARE_DESTINATION_CONSOLIDATION").orElse(false);
 
-		boolean sp = "32".equalsIgnoreCase(System.getenv("AR_HARDWARE_PRECISION")) ||
-				"32".equalsIgnoreCase(System.getProperty("AR_HARDWARE_PRECISION"));
+		Precision precision = Precision.FP64;
+
+		if ("16".equalsIgnoreCase(System.getenv("AR_HARDWARE_PRECISION")) ||
+				"16".equalsIgnoreCase(System.getProperty("AR_HARDWARE_PRECISION"))) {
+			precision = Precision.FP16;
+		} else if ("32".equalsIgnoreCase(System.getenv("AR_HARDWARE_PRECISION")) ||
+				"32".equalsIgnoreCase(System.getProperty("AR_HARDWARE_PRECISION"))) {
+			precision = Precision.FP32;
+		} else if (precision == Precision.FP64 && gpu) {
+			precision = Precision.FP32;
+		}
 
 		String memScale = System.getProperty("AR_HARDWARE_MEMORY_SCALE");
 		if (memScale == null) memScale = System.getenv("AR_HARDWARE_MEMORY_SCALE");
@@ -98,12 +115,40 @@ public final class Hardware {
 		if (tsCount == null) tsCount = System.getenv("AR_HARDWARE_TIMESERIES_COUNT");
 		if (tsCount == null) tsCount = "24";
 
+		String driver = System.getProperty("AR_HARDWARE_DRIVER");
+		if (driver == null) driver = System.getenv("AR_HARDWARE_DRIVER");
+		if (driver == null) driver = aarch ? "mtl" : "cl";
+
+		ComputeRequirement requirement = ComputeRequirement.CL;
+		if ("mtl".equalsIgnoreCase(driver)) {
+			requirement = ComputeRequirement.MTL;
+		} else if ("native".equalsIgnoreCase(driver)) {
+			requirement = ComputeRequirement.JNI;
+		}
+
 		String memProvider = System.getProperty("AR_HARDWARE_MEMORY_PROVIDER");
 		if (memProvider == null) memProvider = System.getenv("AR_HARDWARE_MEMORY_PROVIDER");
-		if (memProvider == null) memProvider = "cl";
+		if (memProvider == null) {
+			if (requirement == ComputeRequirement.CL) {
+				memProvider = "cl";
+			} else if (requirement == ComputeRequirement.MTL) {
+				memProvider = "mtl";
+			} else if (requirement == ComputeRequirement.JNI) {
+				memProvider = "native";
+			} else {
+				throw new IllegalStateException("No memory provider for " + requirement);
+			}
+		}
 		if (memProvider.equalsIgnoreCase("native") || memProvider.equalsIgnoreCase("jvm")) {
 			gpu = false;
-			sp = false;
+			precision = Precision.FP64;
+		} else if (memProvider.equalsIgnoreCase("mtl") && precision == Precision.FP64) {
+			precision = Precision.FP32;
+		}
+
+		if (memProvider.equalsIgnoreCase("mtl")) {
+			KernelPreferences.setPreferLoops(true);
+			KernelPreferences.setEnableSubdivision(false);
 		}
 
 		timeSeriesSize = Optional.ofNullable(tsSize).map(size -> (int) (200000 * Double.parseDouble(size))).orElse(-1);
@@ -113,69 +158,54 @@ public final class Hardware {
 		String exec = System.getProperty("AR_HARDWARE_NATIVE_EXECUTION");
 		if (exec == null) exec = System.getenv("AR_HARDWARE_NATIVE_EXECUTION");
 
-		if (sp) {
-			local = new Hardware(memProvider, "cl".equalsIgnoreCase(memProvider),
-						gpu, enableKernels, enableDestinationConsolidation, false,
+		local = new Hardware(memProvider, requirement,
+						gpu, enableKernels, enableDestinationConsolidation, precision,
 						"external".equalsIgnoreCase(exec), location);
-		} else {
-			local = new Hardware(memProvider, "cl".equalsIgnoreCase(memProvider),
-						gpu, enableKernels, enableDestinationConsolidation,
-						"external".equalsIgnoreCase(exec), location);
-		}
 
-		// TODO  This is not a very desriable way of ensuring the doubles are properly encoded
+		// TODO  This is not a very desirable way of ensuring the doubles are properly encoded
 		// TODO  but until we further improve the interaction between org.almostrealism.hardware
 		// TODO  and io.almostrealism.code it will have to do
-		Expression.toDouble = e -> new Cast(Hardware.getLocalHardware().getNumberTypeName(), e);
+		Expression.toDouble = e -> new Cast(Double.class, Hardware.getLocalHardware().getNumberTypeName(), e);
 		DoubleConstant.stringForDouble = Hardware.getLocalHardware()::stringForDouble;
+
+		// TODO  This is not a very desirable way to configure kernel support either
+		KernelIndex.kernelIndex = KernelSupport::getKernelIndex;
 	}
 
 	private final String name;
 
 	private final boolean enableGpu, enableKernelQueue = false;
-	private final boolean enableDoublePrecision;
 	private final boolean enableKernel, enableDestinationConsolidation;
 	private final boolean externalNative, nativeMemory;
 	private final boolean memVolatile;
 	private long memoryMax;
+	private Precision precision;
 	private Location location;
 
-	private DataContext context;
+	private DataContext<MemoryData> context;
 	private List<ContextListener> contextListeners;
 
 	private AcceleratedFunctions functions;
-	
-	private Hardware(String memProvider, boolean enableCl, boolean enableGpu,
-					 boolean enableKernels, boolean enableDestinationConsolidation, boolean externalNative,
-					 Location location) {
-		this(memProvider, enableCl, enableGpu, enableKernels, enableDestinationConsolidation, !enableGpu, externalNative, location);
-	}
 
-	private Hardware(String memProvider, boolean enableCl, boolean enableGpu,
+	private Hardware(String memProvider, ComputeRequirement type, boolean enableGpu,
 					 boolean enableKernels, boolean enableDestinationConsolidation,
-					 boolean enableDoublePrecision, boolean externalNative, Location location) {
-		this(enableDoublePrecision ? "local64" : "local32", memProvider, enableCl, enableGpu,
-				enableKernels, enableDestinationConsolidation, enableDoublePrecision, externalNative, location);
+					 Precision precision, boolean externalNative, Location location) {
+		this(precision == Precision.FP64 ? "local64" : "local32", memProvider, type, enableGpu,
+				enableKernels, enableDestinationConsolidation, precision, externalNative, location);
 	}
 
-	private Hardware(String name, String memProvider, boolean enableCl, boolean enableGpu,
-					 boolean enableKernels, boolean enableDestinationConsolidation, boolean externalNative,
-					 Location location) {
-		this(name, memProvider, enableCl, enableGpu, enableKernels, enableDestinationConsolidation, !enableGpu, externalNative, location);
-	}
-
-	private Hardware(String name, String memProvider, boolean enableCl, boolean enableGpu,
+	private Hardware(String name, String memProvider, ComputeRequirement type, boolean enableGpu,
 					 boolean enableKernels, boolean enableDestinationConsolidation,
-					 boolean enableDoublePrecision, boolean externalNative, Location location) {
+					 Precision precision, boolean externalNative, Location location) {
 		this.name = name;
 
-		this.memoryMax = (long) Math.pow(2, getMemoryScale()) * 256L * 1000L * 1000L;
-		if (enableDoublePrecision) this.memoryMax = memoryMax * 2;
+		this.memoryMax = (long) Math.pow(2, getMemoryScale()) * 64L * 1000L * 1000L;
+		this.memoryMax = memoryMax * precision.bytes();
 
+		this.precision = precision;
 		this.location = location;
 
 		this.enableGpu = enableGpu;
-		this.enableDoublePrecision = enableDoublePrecision;
 		this.enableKernel = enableKernels;
 		this.enableDestinationConsolidation = enableDestinationConsolidation;
 		this.externalNative = externalNative;
@@ -183,7 +213,7 @@ public final class Hardware {
 		this.memVolatile = location == Location.HEAP;
 		this.contextListeners = new ArrayList<>();
 
-		if (enableCl) {
+		if (type == ComputeRequirement.CL) {
 			this.context = new CLDataContext(this, name, this.memoryMax, getOffHeapSize(), this.location);
 
 			if (enableVerbose) {
@@ -196,18 +226,35 @@ public final class Hardware {
 
 			System.out.println("Hardware[" + name + "]: Max RAM is " +
 					memoryMax / 1000000 + " Megabytes");
-			if (location == CLMemoryProvider.Location.HEAP) System.out.println("Hardware[" + name + "]: Heap RAM enabled");
-			if (location == CLMemoryProvider.Location.HOST) System.out.println("Hardware[" + name + "]: Host RAM enabled");
+			if (location == CLMemoryProvider.Location.HEAP)
+				System.out.println("Hardware[" + name + "]: Heap RAM enabled");
+			if (location == CLMemoryProvider.Location.HOST)
+				System.out.println("Hardware[" + name + "]: Host RAM enabled");
+			if (ENABLE_POOLING) System.out.println("Hardware[" + name + "]: Pooling enabled");
+
+			start(context);
+			contextListeners.forEach(l -> l.contextStarted(context));
+		} else if (type == ComputeRequirement.MTL) {
+			int offHeapSize = 0; // TODO getOffHeapSize();
+			this.context = new MetalDataContext(this, name, this.memoryMax, offHeapSize);
+
+			if (enableVerbose) {
+				if (enableGpu) {
+					System.out.println("Initializing Hardware (GPU Enabled)...");
+				} else {
+					System.out.println("Initializing Hardware...");
+				}
+			}
+
+			System.out.println("Hardware[" + name + "]: Max RAM is " +
+					memoryMax / 1000000 + " Megabytes");
 			if (ENABLE_POOLING) System.out.println("Hardware[" + name + "]: Pooling enabled");
 
 			start(context);
 			contextListeners.forEach(l -> l.contextStarted(context));
 		} else {
 			System.out.println("Initializing Hardware...");
-		}
-
-		if (!enableCl) {
-			this.context = new NativeDataContext(this, name, enableDoublePrecision, isNativeMemory(), externalNative, this.memoryMax);
+			this.context = new NativeDataContext(this, name, precision == Precision.FP64, isNativeMemory(), externalNative, this.memoryMax);
 			start(context);
 			if (enableVerbose) System.out.println("Hardware[" + name + "]: Created NativeMemoryProvider");
 		}
@@ -227,6 +274,8 @@ public final class Hardware {
 	protected void start(DataContext ctx) {
 		if (ctx instanceof CLDataContext) {
 			((CLDataContext) ctx).init(enableGpu, enableKernelQueue);
+		} else if (ctx instanceof MetalDataContext) {
+			((MetalDataContext) ctx).init(enableGpu, enableKernelQueue);
 		} else if (ctx instanceof NativeDataContext) {
 			((NativeDataContext) ctx).init();
 		}
@@ -275,7 +324,10 @@ public final class Hardware {
 
 	public boolean isGPU() { return enableGpu; }
 
-	public boolean isDoublePrecision() { return enableDoublePrecision; }
+	@Deprecated
+	public boolean isDoublePrecision() { return precision == Precision.FP64; }
+
+	public Precision getPrecision() { return precision; }
 
 	public boolean isDestinationConsolidation() { return enableDestinationConsolidation; }
 
@@ -287,9 +339,20 @@ public final class Hardware {
 
 	public boolean isMemoryVolatile() { return memVolatile; }
 
-	public String getNumberTypeName() { return isDoublePrecision() ? "double" : "float"; }
+	public String getNumberTypeName() {
+		switch (precision) {
+			case FP16:
+				return "bfloat";
+			case FP32:
+				return "float";
+			case FP64:
+				return "double";
+			default:
+				return "float";
+		}
+	}
 
-	public int getNumberSize() { return isDoublePrecision() ? Sizeof.cl_double : Sizeof.cl_float; }
+	public int getNumberSize() { return precision.bytes(); }
 
 	public int getMemoryScale() { return MEMORY_SCALE; }
 
@@ -339,11 +402,15 @@ public final class Hardware {
 
 	protected double doubleForString(String s) {
 		s = s.trim();
-		while (s.startsWith("(double)") || s.startsWith("(float)")) {
+		while (s.startsWith("(double)") || s.startsWith("(float)") || s.startsWith("(bfloat)") || s.startsWith("(half)")) {
 			if (s.startsWith("(double)")) {
 				s = s.substring(8).trim();
 			} else if (s.startsWith("(float)")) {
 				s = s.substring(7).trim();
+			} else if (s.startsWith("(bfloat)")) {
+				s = s.substring(8).trim();
+			} else if (s.startsWith("(half)")) {
+				s = s.substring(6).trim();
 			}
 		}
 
@@ -362,9 +429,9 @@ public final class Hardware {
 		return functions;
 	}
 
-	public DataContext getDataContext() { return context; }
+	public DataContext<MemoryData> getDataContext() { return context; }
 
-	public ComputeContext getComputeContext() { return context.getComputeContext(); }
+	public ComputeContext<MemoryData> getComputeContext() { return context.getComputeContext(); }
 
 	public CLDataContext getClDataContext() { return context instanceof CLDataContext ? (CLDataContext) context : null; }
 
@@ -377,7 +444,7 @@ public final class Hardware {
 	public MemoryProvider getMemoryProvider(int size) { return context.getMemoryProvider(size); }
 
 	protected String loadSource() {
-		return loadSource(enableDoublePrecision ? "local64" : "local32");
+		return loadSource(precision == Precision.FP64 ? "local64" : "local32");
 	}
 
 	protected String loadSource(String name) {
@@ -413,4 +480,6 @@ public final class Hardware {
 
 		return buf.toString();
 	}
+
+	public static boolean isAsync() { return enableAsync; }
 }

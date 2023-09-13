@@ -18,9 +18,10 @@ package io.almostrealism.relation;
 
 import java.util.List;
 import java.util.function.Consumer;
+import java.util.stream.Stream;
 
 public interface NodeList<T extends Node> extends NodeGroup<T>, List<T> {
-	default void forEach(Consumer<? super T> consumer) {
-		List.super.forEach(consumer);
+	default Stream<T> all() {
+		return List.super.stream();
 	}
 }

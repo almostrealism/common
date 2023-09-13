@@ -19,25 +19,38 @@ package io.almostrealism.expression;
 import java.util.List;
 import java.util.OptionalInt;
 
-public class Mod extends Expression<Double> {
-	public static boolean enableSimplification = false;
+public class Mod<T extends Number> extends Expression<T> {
+	public static boolean enableSimplification = true;
+	public static boolean enableIntegerSimplification = true;
+	public static boolean enableFpSimplification = true;
 
 	private boolean fp;
 
-	public Mod(Expression<Double> a, Expression<Double> b) {
+	public Mod(Expression<T> a, Expression<T> b) {
 		this(a, b, true);
 	}
 
-	public Mod(Expression<Double> a, Expression<Double> b, boolean fp) {
-		super(Double.class,
-				fp ? "fmod(" + a.getExpression() + ", " + b.getExpression() + ")" :
-						"(" + a.getExpression() + ") % (" + b.getExpression() + ")",
+	public Mod(Expression<T> a, Expression<T> b, boolean fp) {
+		super((Class<T>) (fp ? Double.class : Integer.class),
 				a, b);
 		this.fp = fp;
+
+		if (!fp && (a.getType() != Integer.class || b.getType() != Integer.class))
+			throw new UnsupportedOperationException();
+
+		if (b.intValue().isPresent() && b.intValue().getAsInt() == 0) {
+			System.out.println("WARN: Module zero encountered while creating expression - " + getExpression());
+		}
 	}
 
 	@Override
-	public Expression<Double> generate(List<Expression<?>> children) {
+	public String getExpression() {
+		return fp ? "fmod(" + getChildren().get(0).getExpression() + ", " + getChildren().get(1).getExpression() + ")" :
+				"(" + getChildren().get(0).getExpression() + ") % (" + getChildren().get(1).getExpression() + ")";
+	}
+
+	@Override
+	public Expression<T> generate(List<Expression<?>> children) {
 		if (children.size() != 2) {
 			throw new UnsupportedOperationException();
 		}
@@ -58,7 +71,7 @@ public class Mod extends Expression<Double> {
 	}
 
 	@Override
-	public Expression<Double> simplify() {
+	public Expression simplify() {
 		Expression<?> flat = super.simplify();
 		if (!enableSimplification) return (Expression<Double>) flat;
 		if (!(flat instanceof Mod)) return (Expression<Double>) flat;
@@ -66,20 +79,43 @@ public class Mod extends Expression<Double> {
 		Expression input = flat.getChildren().get(0);
 		Expression mod = flat.getChildren().get(1);
 
-		if (input.doubleValue().isPresent()) {
+		if (enableIntegerSimplification && input.intValue().isPresent()) {
+			if (input.intValue().getAsInt() == 0) {
+				return (Expression) new IntegerConstant(0);
+			} else if (mod.intValue().isPresent() && !fp) {
+				if (mod.intValue().getAsInt() == 1) {
+					return input;
+				} else if (mod.intValue().getAsInt() != 0) {
+					return (Expression) new IntegerConstant(input.intValue().getAsInt() % mod.intValue().getAsInt());
+				} else {
+					System.out.println("WARN: Module zero encountered while simplifying expression - " + getExpression());
+				}
+			}
+		} else if (enableIntegerSimplification && mod.intValue().isPresent()) {
+			if (mod.intValue().getAsInt() == 1) {
+				return (Expression) new IntegerConstant(0);
+			}
+		} else if (enableFpSimplification && input.doubleValue().isPresent()) {
 			if (input.doubleValue().getAsDouble() == 0.0) {
 				return new DoubleConstant(0.0);
 			} else if (mod.doubleValue().isPresent() && !fp) {
 				return new DoubleConstant(input.doubleValue().getAsDouble() % mod.doubleValue().getAsDouble());
 			}
-		} else if (mod.doubleValue().isPresent()) {
+		} else if (enableFpSimplification && mod.doubleValue().isPresent()) {
 			if (mod.doubleValue().getAsDouble() == 1.0) {
 				return input;
-			} else if (input.doubleValue().orElse(-1.0) == 0.0) {
-				// TODO  return new DoubleConstant(1.0); ?
 			}
 		}
 
 		return (Expression<Double>) flat;
+	}
+
+	@Override
+	public Number kernelValue(int kernelIndex) {
+		if (fp) {
+			return getChildren().get(0).kernelValue(kernelIndex).doubleValue() % getChildren().get(1).kernelValue(kernelIndex).doubleValue();
+		} else {
+			return getChildren().get(0).kernelValue(kernelIndex).intValue() % getChildren().get(1).kernelValue(kernelIndex).intValue();
+		}
 	}
 }

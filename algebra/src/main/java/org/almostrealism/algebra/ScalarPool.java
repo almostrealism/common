@@ -23,6 +23,7 @@ import org.almostrealism.hardware.mem.MemoryPool;
 
 import java.util.Optional;
 
+@Deprecated
 public class ScalarPool extends MemoryPool<Scalar> {
 	private static ContextSpecific<ScalarPool> local;
 

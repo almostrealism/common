@@ -18,8 +18,7 @@ package org.almostrealism.algebra.test;
 
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.computations.ScalarExpressionComputation;
-import org.almostrealism.hardware.AcceleratedComputationEvaluable;
+import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.hardware.Input;
@@ -27,7 +26,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 public class PassThroughProducerCompactionTest implements HardwareFeatures, CodeFeatures {
-	protected ScalarExpressionComputation sum() {
+	protected ExpressionComputation<Scalar> sum() {
 		return scalarAdd(
 				Input.value(Scalar.shape(), 0),
 				Input.value(Scalar.shape(), 1));

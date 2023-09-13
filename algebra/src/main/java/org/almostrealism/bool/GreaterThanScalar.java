@@ -17,18 +17,15 @@
 package org.almostrealism.bool;
 
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarBank;
-import org.almostrealism.hardware.MemoryBank;
-import org.almostrealism.hardware.MemoryData;
 
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
-public class GreaterThanScalar extends GreaterThan<Scalar> implements AcceleratedConditionalStatementScalar {
+public class GreaterThanScalar extends GreaterThan<Scalar> {
 	public GreaterThanScalar(
 			Supplier leftOperand,
 			Supplier rightOperand) {
-		super(2, Scalar::new, ScalarBank::new, leftOperand, rightOperand, null, null, false);
+		super(2, Scalar::new, Scalar::scalarBank, leftOperand, rightOperand, null, null, false);
 		setPostprocessor((BiFunction) Scalar.postprocessor());
 	}
 
@@ -46,7 +43,7 @@ public class GreaterThanScalar extends GreaterThan<Scalar> implements Accelerate
 			Supplier trueValue,
 			Supplier falseValue,
 			boolean includeEqual) {
-		super(2, Scalar::new, ScalarBank::new,
+		super(2, Scalar::new, Scalar::scalarBank,
 				leftOperand, rightOperand,
 				trueValue, falseValue, includeEqual);
 		setPostprocessor((BiFunction) Scalar.postprocessor());

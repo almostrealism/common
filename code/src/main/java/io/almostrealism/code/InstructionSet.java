@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,18 +16,16 @@
 
 package io.almostrealism.code;
 
-import java.util.function.Consumer;
-
 public interface InstructionSet {
-	default Consumer<Object[]> get() {
+	default Execution get() {
 		return get("function");
 	}
 
-	default Consumer<Object[]> get(String function) {
+	default Execution get(String function) {
 		return get(function, 0);
 	}
 
-	Consumer<Object[]> get(String function, int argCount);
+	Execution get(String function, int argCount);
 
 	boolean isDestroyed();
 

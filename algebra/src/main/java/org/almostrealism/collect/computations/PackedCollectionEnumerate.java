@@ -18,30 +18,28 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.expression.Cast;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.Mod;
 import io.almostrealism.expression.StaticReference;
-import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.scope.Variable;
-import org.almostrealism.collect.CollectionProducerComputation;
-import org.almostrealism.collect.CollectionVariable;
+import io.almostrealism.collect.CollectionVariable;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.Shape;
-import org.almostrealism.collect.TraversableExpression;
-import org.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.hardware.DestinationSupport;
+import io.almostrealism.collect.Shape;
+import io.almostrealism.collect.TraversableExpression;
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.KernelSupport;
-import org.almostrealism.hardware.MemoryBank;
 
-import java.util.function.Function;
+import java.util.List;
+import java.util.Objects;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public class PackedCollectionEnumerate<T extends PackedCollection<?>>
-		extends DynamicCollectionProducerComputationAdapter<PackedCollection<?>, T>
-		implements TraversableExpression<Double> {
+		extends KernelProducerComputationAdapter<PackedCollection<?>, T> {
 
 	private TraversalPolicy strideShape;
 	private TraversalPolicy subsetShape;
@@ -59,33 +57,42 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 	@Override
 	public int getMemLength() { return 1; }
 
-	@Override
-	public IntFunction<Expression<Double>> getValueFunction() {
-		return i -> {
-			if (i != 0) throw new IllegalArgumentException("Invalid position");
-
-			Expression index = new StaticReference(Double.class, KernelSupport.getKernelIndex(0));
-			return getValueAt(index);
-		};
-	}
-
-	@Override
-	public Expression<Double> getValue(Expression... pos) {
-		// Find the index in the output shape
-		Expression index = getShape().index(pos);
-		return getValueAt(index);
-	}
-
 	public Expression<Double> getValueAt(Expression index) {
 		CollectionVariable var = getCollectionArgumentVariable(1);
 		if (var == null) return null;
 
+		TraversalPolicy blockShape = getShape();
+
+		Expression block;
+
+		// Determine the current block
+		if (blockShape.getTotalSize() == 1) {
+			block = index;
+		} else if (index.getType() == Integer.class ||
+				(index instanceof Cast && Objects.equals("int", ((Cast) index).getTypeName()))) {
+			block = index.divide(e(blockShape.getTotalSize()));
+		} else {
+			block = index.divide(e((double) blockShape.getTotalSize())).floor();
+		}
+
+		index = index.toInt().mod(e(blockShape.getTotalSize()), false);
+
 		// Determine which slice to extract
-		Expression slice = index.divide(e((double) subsetShape.getTotalSize())).floor();
+		// Starting over from the beginning for each new block
+		Expression slice;
+
+		if (subsetShape.getTotalSize() == 1) {
+			slice = index;
+		} else if (index.getType() == Integer.class ||
+				(index instanceof Cast && Objects.equals("int", ((Cast) index).getTypeName()))) {
+			slice = index.divide(e(subsetShape.getTotalSize()));
+		} else {
+			slice = index.divide(e((double) subsetShape.getTotalSize())).floor();
+		}
 
 		// Find the index in that slice
-		// Expression offset = e("((int) " + index.getExpression() + ") % " + subsetShape.getTotalSize(), index);
-		Expression offset = new Mod(new Cast("int", index), e(subsetShape.getTotalSize()), false);
+		// Expression offset = new Mod(new Cast("int", index), e(subsetShape.getTotalSize()), false);
+		Expression offset = index.toInt().mod(e(subsetShape.getTotalSize()), false);
 
 		// Determine the location of the slice
 		Expression<?> p[] = new Expression[subsetShape.getDimensions()];
@@ -98,7 +105,14 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 			}
 		}
 
-		return var.get(subsetShape, p).getValueAt(offset);
+		Expression blockOffset = var.getShape().subset(subsetShape, offset, p);
+
+		return var.getValueAt(block.multiply(e(blockShape.getTotalSize())).add(blockOffset));
+	}
+
+	@Override
+	public PackedCollectionEnumerate<T> generate(List<Process<?, ?>> children) {
+		return new PackedCollectionEnumerate<>(subsetShape, strideShape, (Producer) children.get(1));
 	}
 
 	private static TraversalPolicy shape(Producer<?> collection) {
@@ -137,7 +151,7 @@ public class PackedCollectionEnumerate<T extends PackedCollection<?>>
 		int axis = -1;
 
 		for (int i = 0; i < dims.length; i++) {
-			if (dims[i] > 1) {
+			if (dims[i] > 1 || (axis < 0 && (i + 1) >= dims.length)) {
 				if (axis >= 0) {
 					throw new UnsupportedOperationException("Enumeration across more than one axis is not currently supported");
 				} else {

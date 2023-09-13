@@ -20,12 +20,11 @@ import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
 import io.almostrealism.code.HybridScope;
-import io.almostrealism.expression.MultiExpression;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.ComputerFeatures;
 import org.almostrealism.hardware.DestinationSupport;
 import org.almostrealism.hardware.MemoryData;
@@ -37,10 +36,10 @@ import org.almostrealism.hardware.mem.MemoryDataDestination;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BiFunction;
-import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
+// TODO  This should extend CollectionProducerComputationBase
 public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCollection<?>>
 											extends ProducerComputationBase<MemoryData, T>
 											implements CollectionProducerComputation<T>,
@@ -82,9 +81,10 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCol
 	public int getMemLength() { return memLength; }
 
 	@Override
-	public TraversalPolicy getShape() {
-		return new TraversalPolicy(memLength);
-	}
+	public TraversalPolicy getShape() { return new TraversalPolicy(memLength); }
+
+	@Override
+	public int getCount() { return getShape().getCount(); }
 
 	/**
 	 * @return  GLOBAL
@@ -126,7 +126,8 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCol
 		scope.code().accept(") {\n");
 
 		for (int i = 0; i < getMemLength(); i++) {
-			Variable<?, ?> var = new Variable(outputVariable.valueAt(i).getSimpleExpression(), getTrueValueExpression().apply(i), outputVariable);
+			// Variable<?, ?> var = new Variable(outputVariable.valueAt(i).getSimpleExpression(), getTrueValueExpression().apply(i), outputVariable);
+			Variable<?, ?> var = outputVariable.ref(i).assign(getTrueValueExpression().apply(i));
 			vars.add(var);
 
 			scope.code().accept("\t");
@@ -139,7 +140,8 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCol
 		scope.code().accept("} else {\n");
 
 		for (int i = 0; i < getMemLength(); i++) {
-			Variable<?, ?> var = new Variable(outputVariable.valueAt(i).getSimpleExpression(), getFalseValueExpression().apply(i), outputVariable);
+			// Variable<?, ?> var = new Variable(outputVariable.valueAt(i).getSimpleExpression(), getFalseValueExpression().apply(i), outputVariable);
+			Variable<?, ?> var = outputVariable.ref(i).assign(getFalseValueExpression().apply(i));
 			vars.add(var);
 
 			scope.code().accept("\t");

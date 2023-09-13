@@ -5,8 +5,8 @@
 	<modelVersion>4.0.0</modelVersion>
 	<parent>
 		<groupId>org.almostrealism</groupId>
-		<artifactId>Common</artifactId>
-		<version>0.57</version>
+		<artifactId>common</artifactId>
+		<version>0.58</version>
 	</parent>
 
 	<artifactId>ar-ml</artifactId>
@@ -18,8 +18,13 @@
 	<dependencies>
 		<dependency>
 			<groupId>org.almostrealism</groupId>
+			<artifactId>ar-graph</artifactId>
+			<version>0.58</version>
+		</dependency>
+		<dependency>
+			<groupId>org.almostrealism</groupId>
 			<artifactId>ar-utils</artifactId>
-			<version>0.57</version>
+			<version>0.58</version>
 		</dependency>
 		<dependency>
 			<groupId>org.jetbrains.kotlin</groupId>

@@ -20,7 +20,13 @@ import java.util.List;
 
 public class Sine extends Expression<Double> {
 	public Sine(Expression<Double> input) {
-		super(Double.class, "sin(" + input.getExpression() + ")", input);
+		super(Double.class, input);
+	}
+
+
+	@Override
+	public String getExpression() {
+		return "sin(" + getChildren().get(0).getExpression() + ")";
 	}
 
 	@Override

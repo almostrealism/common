@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,18 +16,18 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.relation.DynamicProducer;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Named;
-import org.jocl.CLException;
+import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Process;
 
+import java.util.Collection;
+import java.util.Collections;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
-import java.util.stream.Stream;
 
-public class DynamicProducerForMemoryData<T extends MemoryData> extends DynamicProducer<T> implements KernelizedProducer<T> {
+public class DynamicProducerForMemoryData<T extends MemoryData> extends DynamicProducer<T> implements ParallelProcess<Process<?, ?>, Evaluable<? extends T>> {
 
 	private final IntFunction<MemoryBank<T>> kernelDestination;
 
@@ -46,6 +46,19 @@ public class DynamicProducerForMemoryData<T extends MemoryData> extends DynamicP
 	public DynamicProducerForMemoryData(Function<Object[], T> function, IntFunction<MemoryBank<T>> kernelDestination) {
 		super(function);
 		this.kernelDestination = kernelDestination;
+	}
+
+	@Override
+	public int getCount() { return 1; }
+
+	@Override
+	public Collection<Process<?, ?>> getChildren() {
+		return Collections.emptyList();
+	}
+
+	@Override
+	public Process<Process<?, ?>, Evaluable<? extends T>> isolate() {
+		return this;
 	}
 
 	@Override

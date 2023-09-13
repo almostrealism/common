@@ -17,10 +17,8 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.code.CodePrintWriter;
-import io.almostrealism.code.CollectionUtils;
 import io.almostrealism.scope.Variable;
 
-import java.util.Collections;
 import java.util.List;
 
 /**
@@ -30,36 +28,31 @@ import java.util.List;
  * {@link Variable} the text does not appear in quotes.
  */
 public class InstanceReference<T> extends Expression<T> {
-	public static boolean enablePassDelegate = true; // TODO  Remove - this should be the standard behavior
-
 	private Variable<T, ?> var;
 
 	public InstanceReference(Variable<T, ?> v) {
-		this(v.getType(), v.getName(), v);
-		this.var = v;
+		this(v, null);
 	}
 
-	public InstanceReference(Variable<T, ?> v, Variable... dependencies) {
-		this(v.getType(), v.getName(), CollectionUtils.include(new Variable[0], v, dependencies));
-		this.var = v;
-	}
-
-	public InstanceReference(Class<T> type, String varName, Variable... dependencies) {
-		super(type, varName, Collections.emptyList(), dependencies);
+	public InstanceReference(Variable<T, ?> referent, Expression<?> argument) {
+		super(referent.getType(), referent, argument);
+		this.var = referent;
 	}
 
 	public Variable<T, ?> getReferent() { return var; }
 
+	@Override
+	public String getExpression() {
+		return var.getName();
+	}
+
+	@Override
 	public Variable assign(Expression exp) {
-		if (enablePassDelegate) {
-			return new Variable(getSimpleExpression(), false, exp, getReferent().getDelegate());
-		} else {
-			return new Variable(getSimpleExpression(), false, exp);
-		}
+		return new Variable(getSimpleExpression(), false, exp, getReferent().getDelegate());
 	}
 
 	public InstanceReference<T> generate(List<Expression<?>> children) {
-		if (children.size() > 0) {
+		if (children.size() > 1) {
 			throw new UnsupportedOperationException();
 		}
 

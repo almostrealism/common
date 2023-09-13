@@ -23,10 +23,11 @@ import java.io.ObjectOutput;
 import java.util.function.BiFunction;
 
 import io.almostrealism.code.Memory;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Triple;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.hardware.KernelizedProducer;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.algebra.Defaults;
 import org.almostrealism.hardware.NoOpMemoryData;
@@ -578,8 +579,8 @@ public class RGB extends PackedCollection<RGB> implements Triple, Externalizable
 	@Override
 	public void destroy() { data.destroy(); }
 
-	public static KernelizedProducer<RGB> blank() {
-		return new DynamicRGBProducer(args -> new RGB(defaultDepth, 0, 0, 0, false));
+	public static Producer<RGB> blank() {
+		return new DynamicCollectionProducer<>(RGB.shape(), args -> new RGB(defaultDepth, 0, 0, 0, false));
 	}
 
 	public static PackedCollection<RGB> bank(int count) {

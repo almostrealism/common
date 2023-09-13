@@ -17,7 +17,15 @@
 package io.almostrealism.expression;
 
 public class UnaryExpression<T> extends Expression<T> {
+	private String operator;
+
 	public UnaryExpression(Class<T> type, String operator, Expression<?> value) {
-		super(type, operator + "(" + value.getExpression() + ")", value);
+		super(type, value);
+		this.operator = operator;
+	}
+
+	@Override
+	public String getExpression() {
+		return operator + " (" + getChildren().get(0).getExpression() + ")";
 	}
 }

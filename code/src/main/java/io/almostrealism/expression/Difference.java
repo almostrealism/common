@@ -18,13 +18,13 @@ package io.almostrealism.expression;
 
 import java.util.List;
 
-public class Difference extends NAryExpression<Double> {
+public class Difference<T extends Number> extends NAryExpression<T> {
 	public Difference(Expression<Double>... values) {
-		super(Double.class, "-", values);
+		super((Class<T>) type(values), "-", values);
 	}
 
 	@Override
-	public Expression<Double> generate(List<Expression<?>> children) {
+	public Expression<T> generate(List<Expression<?>> children) {
 		return new Difference(children.toArray(new Expression[0]));
 	}
 }

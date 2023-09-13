@@ -18,8 +18,10 @@ package org.almostrealism.hardware.external;
 
 import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.InstructionSet;
+import io.almostrealism.code.LanguageOperations;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeEncoder;
+import org.almostrealism.c.CLanguageOperations;
 import org.almostrealism.c.CPrintWriter;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.hardware.Hardware;
@@ -55,10 +57,15 @@ public class ExternalComputeContext extends AbstractComputeContext {
 	}
 
 	@Override
+	public LanguageOperations getLanguage() {
+		return new CLanguageOperations(true, false);
+	}
+
+	@Override
 	public InstructionSet deliver(Scope scope) {
 		StringBuffer buf = new StringBuffer();
 		NativeInstructionSet inst = getComputer().getNativeCompiler().reserveLibraryTarget();
-		buf.append(new ScopeEncoder(pw -> new CPrintWriter(pw, "apply"), Accessibility.EXTERNAL).apply(scope));
+		buf.append(new ScopeEncoder(pw -> new CPrintWriter(pw, "apply", true), Accessibility.EXTERNAL).apply(scope));
 		buf.append("\n");
 		buf.append(externalWrapper);
 		String executable = getComputer().getNativeCompiler().getLibraryDirectory() + "/" + getComputer().getNativeCompiler().compile(inst.getClass().getName(), buf.toString(), false);

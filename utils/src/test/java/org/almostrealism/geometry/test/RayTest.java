@@ -16,26 +16,38 @@
 
 package org.almostrealism.geometry.test;
 
+import io.almostrealism.code.AdaptEvaluable;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.relation.Provider;
+import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorProducerBase;
+import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.function.Supplier;
+
 public class RayTest implements TestFeatures {
 	@Test
 	public void pointAtTest1() {
-		VectorProducerBase p = pointAt(ray(0.0, 0.0, 0.0, 0.0, 1.0, 0.5), scalar(10));
+		ExpressionComputation<Vector> p = pointAt(ray(0.0, 0.0, 0.0, 0.0, 1.0, 0.5), scalar(10));
 		Assert.assertEquals(p.get().evaluate(), new Vector(0.0, 10.0, 5.0));
 		Assert.assertEquals(p.get().evaluate(), new Vector(0.0, 10.0, 5.0));
 	}
 
 	@Test
 	public void pointAtTest2() {
-		VectorProducerBase at = pointAt(ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0), scalar(-20));
+		ExpressionComputation<Vector> at = pointAt(ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0), scalar(-20));
+		Assert.assertEquals(at.get().evaluate(), new Vector(0.0, -10.0, 21.0));
+	}
+
+	@Test
+	public void dynamicPointAt() {
+		Supplier<Evaluable<? extends Scalar>> d = () -> new AdaptEvaluable<>(scalar(-20).get());
+		ExpressionComputation<Vector> at = pointAt(ray(0.0, 0.0, 1.0, 0.0, 0.5, -1.0), d);
 		Assert.assertEquals(at.get().evaluate(), new Vector(0.0, -10.0, 21.0));
 	}
 

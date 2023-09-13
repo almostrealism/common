@@ -24,12 +24,12 @@ import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.DynamicOperationComputationAdapter;
+import org.almostrealism.hardware.OperationComputationAdapter;
 
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-public class TimeCellReset extends DynamicOperationComputationAdapter {
+public class TimeCellReset extends OperationComputationAdapter<PackedCollection<?>> {
 	protected HybridScope scope;
 	private int len;
 
@@ -54,7 +54,7 @@ public class TimeCellReset extends DynamicOperationComputationAdapter {
 
 		for (int i = 0; i < len; i++) {
 			if (i > 0) exp.accept(" else ");
-			exp.accept("if (" + getTime().valueAt(1).getSimpleExpression() + " == " + getResets().valueAt(i).getSimpleExpression() + ") {\n");
+			exp.accept("if (" + getTime().ref(1).getSimpleExpression() + " == " + getResets().valueAt(i).getSimpleExpression() + ") {\n");
 			exp.accept("\t");
 			exp.accept(getTime().valueAt(0).getSimpleExpression());
 			exp.accept(" = ");

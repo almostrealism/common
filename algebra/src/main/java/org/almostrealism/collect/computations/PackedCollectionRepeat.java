@@ -19,69 +19,94 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.expression.Cast;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Mod;
-import io.almostrealism.expression.StaticReference;
-import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.scope.Variable;
-import org.almostrealism.collect.CollectionProducerComputation;
-import org.almostrealism.collect.CollectionVariable;
+import io.almostrealism.collect.CollectionVariable;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.Shape;
-import org.almostrealism.collect.TraversableExpression;
-import org.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.hardware.DestinationSupport;
-import org.almostrealism.hardware.KernelSupport;
-import org.almostrealism.hardware.MemoryBank;
+import io.almostrealism.collect.Shape;
+import io.almostrealism.collect.TraversalPolicy;
 
-import java.util.function.Function;
-import java.util.function.IntFunction;
+import java.util.List;
+import java.util.Objects;
+import java.util.OptionalDouble;
 import java.util.function.Supplier;
-import java.util.stream.IntStream;
 
 public class PackedCollectionRepeat<T extends PackedCollection<?>>
-		extends DynamicCollectionProducerComputationAdapter<PackedCollection<?>, T>
-		implements TraversableExpression<Double> {
+		extends KernelProducerComputationAdapter<PackedCollection<?>, T> {
 	private TraversalPolicy subsetShape;
+	private TraversalPolicy sliceShape;
 
 	public PackedCollectionRepeat(int repeat, Producer<?> collection) {
 		this(shape(collection).item(), repeat, collection);
 	}
 
 	public PackedCollectionRepeat(TraversalPolicy shape, int repeat, Producer<?> collection) {
-		super(shape(collection).replace(shape.prependDimension(repeat)), (Supplier) collection);
-		this.subsetShape = shape;
+		super(shape(collection).replace(shape.prependDimension(repeat)).traverseEach(), (Supplier) collection);
+		this.subsetShape = shape.getDimensions() == 0 ? shape(1) : shape;
+		this.sliceShape = subsetShape.prependDimension(repeat);
+	}
+
+	private PackedCollectionRepeat(TraversalPolicy shape, TraversalPolicy subsetShape, TraversalPolicy sliceShape,
+								   Producer<?> collection) {
+		super(shape, (Supplier) collection);
+		this.subsetShape = subsetShape;
+		this.sliceShape = sliceShape;
 	}
 
 	@Override
 	public int getMemLength() { return 1; }
 
-	@Override
-	public IntFunction<Expression<Double>> getValueFunction() {
-		return i -> {
-			if (i != 0)
-				throw new IllegalArgumentException("Invalid position");
+	protected Expression offsetForIndex(Expression index) {
+		// Identify the slice
+		Expression slice;
 
-			Expression index = new StaticReference(Double.class, KernelSupport.getKernelIndex(0));
-			return getValueAt(index);
-		};
+		if (sliceShape.getTotalSize() == 1) {
+			slice = index;
+		} else if (index.getType() == Integer.class ||
+				(index instanceof Cast && Objects.equals("int", ((Cast) index).getTypeName()))) {
+			slice = index.divide(e(sliceShape.getTotalSize()));
+		} else {
+			slice = index.divide(e((double) sliceShape.getTotalSize())).floor();
+		}
+
+		// Find the index in that slice
+//		Expression offset = new Mod(new Cast("int", index), e(subsetShape.getTotalSize()), false);
+		Expression offset = index.toInt().mod(e(subsetShape.getTotalSize()), false);
+
+		// Position the offset relative to the slice
+		offset = slice.multiply(e(subsetShape.getTotalSize())).add(offset);
+
+		return offset;
 	}
 
 	@Override
-	public Expression<Double> getValue(Expression... pos) {
-		// Find the index in the output shape
-		Expression index = getShape().index(pos);
-		return getValueAt(index);
-	}
-
 	public Expression<Double> getValueAt(Expression index) {
+		Expression offset = offsetForIndex(index);
+
+		// Otherwise the value will only be available if the
+		// argument is a Shape implementation represented by
+		// a CollectionVariable which supports TraversableExpression
+		// operations like getValueAt
 		CollectionVariable var = getCollectionArgumentVariable(1);
 		if (var == null) return null;
 
-		// Find the index in that slice
-		Expression offset = new Mod(new Cast("int", index), e(subsetShape.getTotalSize()), false);
-
 		return var.getValueAt(offset);
+	}
+
+	@Override
+	public Expression<Double> getValueRelative(Expression index) {
+		Expression offset = offsetForIndex(index);
+		OptionalDouble offsetValue = offset.getSimplified().doubleValue();
+		if (offsetValue.isEmpty()) throw new UnsupportedOperationException();
+
+		return getArgument(1).getValueRelative((int) offsetValue.getAsDouble());
+	}
+
+	@Override
+	public PackedCollectionRepeat<T> generate(List<Process<?, ?>> children) {
+		return new PackedCollectionRepeat<>(getShape(), subsetShape, sliceShape, (Producer<?>) children.get(1));
 	}
 
 	private static TraversalPolicy shape(Producer<?> collection) {

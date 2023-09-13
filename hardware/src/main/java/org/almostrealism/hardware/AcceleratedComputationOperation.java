@@ -18,9 +18,13 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Computation;
+import io.almostrealism.code.Execution;
 import io.almostrealism.code.NameProvider;
+import io.almostrealism.code.OperationInfo;
+import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.relation.Compactable;
+import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Named;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.OperationAdapter;
@@ -31,7 +35,7 @@ import org.almostrealism.hardware.mem.Bytes;
 import java.util.List;
 import java.util.function.Consumer;
 
-public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperation<MemoryData> implements NameProvider {
+public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperation<MemoryData> implements NameProvider, Countable {
 	public static boolean enableRequiredScopes = true;
 	public static boolean enableOperationInputAggregation = true;
 
@@ -55,6 +59,16 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	public Computation<T> getComputation() { return computation; }
+
+	@Override
+	public OperationMetadata getMetadata() {
+		return computation instanceof OperationInfo ? ((OperationInfo) computation).getMetadata() : super.getMetadata();
+	}
+
+	@Override
+	public int getCount() {
+		return getComputation() instanceof Countable ? ((Countable) getComputation()).getCount() : 1;
+	}
 
 	@Override
 	public String getName() {
@@ -150,7 +164,7 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	public boolean isCompiled() { return scope != null; }
 
 	@Override
-	public synchronized Consumer<Object[]> getOperator() {
+	public synchronized Execution getOperator() {
 		if (operators == null || operators.isDestroyed()) {
 			operators = Hardware.getLocalHardware().getComputeContext().deliver(scope);
 		}

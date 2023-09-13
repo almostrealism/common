@@ -16,13 +16,14 @@
 
 package org.almostrealism.collect;
 
+import io.almostrealism.collect.CollectionProducerBase;
+import io.almostrealism.collect.Shape;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.bool.AcceleratedConditionalStatementCollection;
 import org.almostrealism.bool.GreaterThanCollection;
-import org.almostrealism.bool.LessThanCollection;
-import org.almostrealism.collect.computations.DynamicCollectionProducerComputationAdapter;
-import org.almostrealism.collect.computations.DynamicExpressionComputation;
+import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.ExpressionComputation;
 
 import java.util.function.Function;
@@ -32,6 +33,10 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> repeat(int repeat) {
 		return repeat(repeat, this);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> enumerate(int len) {
+		return enumerate(0, len, len, 1);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> enumerate(int axis, int len) {
@@ -46,7 +51,7 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 		return enumerate(axis, len, stride, repeat, this);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputation<T> map(Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper) {
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> map(Function<CollectionProducerComputation<PackedCollection<?>>, CollectionProducerComputation<?>> mapper) {
 		return map(this, mapper);
 	}
 
@@ -62,32 +67,71 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 		return expand(repeat, this, mapper);
 	}
 
-	default <T extends PackedCollection<?>> ExpressionComputation<T> add(Producer<T> value) {
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> add(Producer<T> value) {
 		return add((Producer) this, value);
 	}
 
-	default <T extends PackedCollection<?>> ExpressionComputation<T> subtract(Producer<T> value) {
+	@Deprecated
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> relativeAdd(Producer<T> value) {
+		return relativeAdd((Producer) this, value);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> subtract(Producer<T> value) {
 		return subtract((Producer) this, value);
 	}
 
-	default <T extends PackedCollection<?>> DynamicCollectionProducerComputationAdapter<T, T> multiply(Producer<T> value) {
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> subtractIgnoreZero(Producer<T> value) {
+		return subtractIgnoreZero((Producer) this, value);
+	}
+
+	@Deprecated
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> relativeSubtract(Producer<T> value) {
+		return relativeSubtract((Producer) this, value);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> multiply(Producer<T> value) {
 		return multiply((Producer) this, value);
 	}
 
-	default <T extends PackedCollection<?>> DynamicCollectionProducerComputationAdapter<T, T> divide(Producer<T> value) {
+	@Deprecated
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> relativeMultiply(Producer<T> value) {
+		return relativeMultiply((Supplier) this, (Supplier) value, null);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> divide(Producer<T> value) {
 		return divide((Producer) this, value);
 	}
 
-	default <T extends PackedCollection<?>> ExpressionComputation<T> pow(Producer<T> value) {
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> pow(double value) {
+		return pow((Producer) this, c(value));
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> pow(Producer<T> value) {
 		return pow((Producer) this, value);
 	}
 
-	default <T extends PackedCollection<?>> DynamicCollectionProducerComputationAdapter<T, T> minus() {
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> minus() {
 		return minus((Producer) this);
 	}
 
-	default <T extends PackedCollection<?>> ExpressionComputation<T> sum() {
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> exp() {
+		return exp((Producer) this);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> expIgnoreZero() {
+		return expIgnoreZero((Producer) this);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> max() {
+		return max((Producer) this);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> sum() {
 		return sum((Producer) this);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> sigmoid() {
+		return sigmoid((Producer) this);
 	}
 
 	default AcceleratedConditionalStatementCollection _greaterThan(Supplier<Evaluable<? extends PackedCollection<?>>> operand) {

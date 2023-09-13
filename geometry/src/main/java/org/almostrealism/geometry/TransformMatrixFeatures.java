@@ -16,6 +16,7 @@
 
 package org.almostrealism.geometry;
 
+import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Sum;
@@ -23,9 +24,9 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.CollectionFeatures;
-import org.almostrealism.collect.CollectionVariable;
-import org.almostrealism.collect.computations.DynamicExpressionComputation;
+import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.computations.ExpressionComputation;
+import org.almostrealism.collect.computations.TraversableExpressionComputation;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -40,26 +41,26 @@ public interface TransformMatrixFeatures extends CollectionFeatures {
 		return ExpressionComputation.fixed(v, TransformMatrix.postprocessor());
 	}
 
-	default DynamicExpressionComputation<Vector> transformAsLocation(TransformMatrix matrix, Supplier<Evaluable<? extends Vector>> vector) {
+	default CollectionProducerComputation<Vector> transformAsLocation(TransformMatrix matrix, Supplier<Evaluable<? extends Vector>> vector) {
 		return transformAsLocation(v(matrix), vector);
 	}
 
-	default DynamicExpressionComputation<Vector> transformAsLocation(Producer<TransformMatrix> matrix, Supplier<Evaluable<? extends Vector>> vector) {
+	default CollectionProducerComputation<Vector> transformAsLocation(Producer<TransformMatrix> matrix, Supplier<Evaluable<? extends Vector>> vector) {
 		return transform(matrix, vector, true);
 	}
 
-	default DynamicExpressionComputation<Vector> transformAsOffset(TransformMatrix matrix, Supplier<Evaluable<? extends Vector>> vector) {
+	default CollectionProducerComputation<Vector> transformAsOffset(TransformMatrix matrix, Supplier<Evaluable<? extends Vector>> vector) {
 		return transformAsOffset(v(matrix), vector);
 	}
 
-	default DynamicExpressionComputation<Vector> transformAsOffset(Producer<TransformMatrix> matrix, Supplier<Evaluable<? extends Vector>> vector) {
+	default CollectionProducerComputation<Vector> transformAsOffset(Producer<TransformMatrix> matrix, Supplier<Evaluable<? extends Vector>> vector) {
 		return transform(matrix, vector, false);
 	}
 
-	default DynamicExpressionComputation<Vector> transform(Producer<TransformMatrix> matrix, Supplier<Evaluable<? extends Vector>> vector, boolean includeTranslation) {
-		DynamicExpressionComputation c = new DynamicExpressionComputation<>(shape(3), (BiFunction<CollectionVariable[], Expression, Expression>) (args, index) -> {
-			Function<Integer, Expression<Double>> t = (i) ->  args[2].getValueAt(index.multiply(4).add(e(i)));
-			Function<Integer, Expression<Double>> v = (i) ->  args[1].getValueAt(e(i));
+	default CollectionProducerComputation<Vector> transform(Producer<TransformMatrix> matrix, Supplier<Evaluable<? extends Vector>> vector, boolean includeTranslation) {
+		TraversableExpressionComputation c = new TraversableExpressionComputation<>(shape(3), (BiFunction<TraversableExpression[], Expression, Expression>) (args, index) -> {
+			Function<Integer, Expression<Double>> t = (i) -> args[2].getValueAt(index.multiply(4).add(e(i)));
+			Function<Integer, Expression<Double>> v = (i) -> args[1].getValueAt(e(i));
 			Function<Integer, Expression<Double>> p = (i) -> new Product(t.apply(i), v.apply(i));
 
 			List<Expression<Double>> sum = new ArrayList<>();

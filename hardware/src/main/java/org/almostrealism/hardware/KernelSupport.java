@@ -17,8 +17,7 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.StaticReference;
-import org.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.expression.KernelIndex;
 
 import java.util.stream.IntStream;
 
@@ -32,11 +31,11 @@ public interface KernelSupport {
 	}
 
 	static Expression<?> kernelIndex(int kernelIndex) {
-		return new StaticReference<>(Integer.class, getKernelIndex(kernelIndex));
+		return new KernelIndex(kernelIndex);
 	}
 
 	static String getKernelIndex(int kernelIndex) {
-		return "get_global_id(" + kernelIndex + ")";
+		return Hardware.getLocalHardware().getComputeContext().getKernelIndex(kernelIndex);
 	}
 
 	default String getKernelIndex(String variableName, int kernelIndex) {
@@ -46,6 +45,10 @@ public interface KernelSupport {
 
 		return kernelIndex < 0 ? "" :
 				getKernelIndex(kernelIndex) + " * " + getValueDimName(variableName, kernelIndex) + " + ";
+	}
+
+	static String getValueOffsetName(String variableName) {
+		return variableName + "Offset";
 	}
 
 	static String getValueDimName(String variableName, int dim) {

@@ -16,6 +16,7 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Variable;
 
@@ -47,5 +48,10 @@ public class DefaultNameProvider implements NameProvider {
 	@Override
 	public String getVariableSizeName(ArrayVariable v) {
 		return "1";
+	}
+
+	@Override
+	public Expression<?> getArrayPosition(ArrayVariable v, Expression<?> pos, int kernelIndex) {
+		throw new UnsupportedOperationException();
 	}
 }

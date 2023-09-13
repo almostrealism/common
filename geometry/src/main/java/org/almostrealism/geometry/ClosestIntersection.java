@@ -23,6 +23,7 @@ import io.almostrealism.relation.Evaluable;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Stream;
 
 public class ClosestIntersection extends ArrayList<Producer<Ray>> implements ContinuousField {
 	private Producer<Ray> r;

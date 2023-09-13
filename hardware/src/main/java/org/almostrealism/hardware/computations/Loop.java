@@ -20,14 +20,17 @@ import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.HybridScope;
 import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.relation.Countable;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.relation.Compactable;
-import org.almostrealism.c.OpenCLPrintWriter;
-import org.almostrealism.hardware.DynamicOperationComputationAdapter;
+import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.cl.OpenCLLanguageOperations;
+import org.almostrealism.hardware.cl.OpenCLPrintWriter;
+import org.almostrealism.hardware.OperationComputationAdapter;
 
 // TODO  Should extend Repeated
-public class Loop extends DynamicOperationComputationAdapter<Void> {
+public class Loop extends OperationComputationAdapter<Void> {
 	public static final boolean enableCompaction = true;
 
 	private final Computation atom;
@@ -51,6 +54,11 @@ public class Loop extends DynamicOperationComputationAdapter<Void> {
 	}
 
 	@Override
+	public int getCount() {
+		return atom instanceof Countable ? ((Countable) atom).getCount() : 1;
+	}
+
+	@Override
 	public Scope<Void> getScope() {
 		Scope<Void> atomScope = atom.getScope();
 		atomScope.convertArgumentsToRequiredScopes();
@@ -61,8 +69,7 @@ public class Loop extends DynamicOperationComputationAdapter<Void> {
 
 		String i = getVariablePrefix() + "_i";
 		scope.code().accept("for (int " + i + " = 0; " + i + " < " + iterations +"; " + i + "++) {\n");
-		// TODO  This is CL specific and should be general
-		scope.code().accept("    " + new OpenCLPrintWriter(null).renderMethod(atomScope.call()) + "\n");
+		scope.code().accept("    " + Hardware.getLocalHardware().getComputeContext().getLanguage().renderMethod(atomScope.call()) + "\n");
 		scope.code().accept("}\n");
 		return scope;
 	}

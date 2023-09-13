@@ -23,7 +23,7 @@ import org.almostrealism.io.PrintWriter;
 
 public class VerbatimCodePrintWriter extends CodePrintWriterAdapter {
 	public VerbatimCodePrintWriter(PrintWriter pw) {
-		super(pw);
+		super(pw, null);
 	}
 
 	@Override
@@ -33,11 +33,6 @@ public class VerbatimCodePrintWriter extends CodePrintWriterAdapter {
 
 	@Override
 	public void println(Method<?> m) {
-		throw new UnsupportedOperationException();
-	}
-
-	@Override
-	protected String nameForType(Class<?> type) {
 		throw new UnsupportedOperationException();
 	}
 }

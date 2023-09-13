@@ -16,14 +16,18 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
+
 import java.util.function.Supplier;
 
+@Deprecated
 public class KernelOperation<T extends MemoryData> implements Supplier<Runnable> {
-	private KernelizedProducer<T> producer;
+	private Producer<T> producer;
 	private MemoryBank destination;
 	private MemoryData arguments[];
 
-	public KernelOperation(KernelizedProducer<T> producer, MemoryBank destination, MemoryData... arguments) {
+	public KernelOperation(Producer<T> producer, MemoryBank destination, MemoryData... arguments) {
 		this.producer = producer;
 		this.destination = destination;
 		this.arguments = arguments;
@@ -31,7 +35,7 @@ public class KernelOperation<T extends MemoryData> implements Supplier<Runnable>
 
 	@Override
 	public Runnable get() {
-		KernelizedEvaluable<T> ev = producer.get();
+		Evaluable<T> ev = producer.get();
 		return () -> ev.into(destination).evaluate(arguments);
 	}
 }

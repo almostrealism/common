@@ -17,10 +17,12 @@
 package io.almostrealism.code;
 
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Variable;
 
 public interface NameProvider {
+
 	String getFunctionName();
 
 	default String getVariablePrefix() { return getFunctionName(); }
@@ -40,7 +42,7 @@ public interface NameProvider {
 	}
 
 	default ArrayVariable getArgument(int index, int size) {
-		return getArgument(index, new Expression<>(Integer.class, String.valueOf(size)));
+		return getArgument(index, new IntegerConstant(size));
 	}
 
 	default ArrayVariable getArgument(int index, Expression<Integer> size) {
@@ -93,4 +95,6 @@ public interface NameProvider {
 	String getVariableDimName(ArrayVariable v, int dim);
 
 	String getVariableSizeName(ArrayVariable v);
+
+	Expression<?> getArrayPosition(ArrayVariable v, Expression<?> pos, int kernelIndex);
 }

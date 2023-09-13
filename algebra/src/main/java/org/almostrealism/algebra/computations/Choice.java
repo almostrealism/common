@@ -17,8 +17,6 @@
 package org.almostrealism.algebra.computations;
 
 import io.almostrealism.code.HybridScope;
-import io.almostrealism.code.PhysicalScope;
-import io.almostrealism.code.ProducerComputationBase;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Evaluable;
@@ -26,21 +24,15 @@ import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.computations.CollectionProducerComputationAdapter;
-import org.almostrealism.hardware.ComputerFeatures;
-import org.almostrealism.hardware.DestinationSupport;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.hardware.MemoryBank;
-import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.mem.MemoryDataDestination;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.function.Consumer;
-import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public abstract class Choice<T extends PackedCollection<?>> extends CollectionProducerComputationAdapter<T, T> {
+// TODO  Why can't this be a child of TraversableComputationBase?
+public abstract class Choice<T extends PackedCollection<?>> extends CollectionProducerComputationBase<T, T> {
 	private int choiceCount;
 
 	public Choice(int memLength, int choiceCount, Supplier<Evaluable<? extends Scalar>> decision,
@@ -58,11 +50,10 @@ public abstract class Choice<T extends PackedCollection<?>> extends CollectionPr
 		ArrayVariable<?> input = getArgument(2, getMemLength() * choiceCount);
 		Expression decision = getArgument(1, 2).valueAt(0);
 		Expression choices = new DoubleConstant((double) choiceCount);
-//		String decisionChoice = "floor(" + decision + " * " + choices + ") * " + getMemLength();
 		Expression decisionChoice = decision.multiply(choices).floor().multiply(getMemLength());
 
 		for (int i = 0; i < getMemLength(); i++) {
-			code.accept(output.valueAt(i).getSimpleExpression() + " = " + input.get(decisionChoice.add(i)).getSimpleExpression() + ";\n");
+			code.accept(output.ref(i).getSimpleExpression() + " = " + input.referenceRelative(decisionChoice.add(i)).getSimpleExpression() + ";\n");
 		}
 
 		return scope;

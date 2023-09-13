@@ -17,10 +17,34 @@
 package io.almostrealism.expression;
 
 import java.util.List;
+import java.util.OptionalDouble;
+import java.util.OptionalInt;
 
 public class Equals extends Expression<Boolean> {
 	public Equals(Expression<?> left, Expression<?> right) {
-		super(Boolean.class, "(" + left.getExpression() + ") == (" + right.getExpression() + ")", left, right);
+		super(Boolean.class, left, right);
+	}
+
+	public String getExpression() {
+		return "(" + getChildren().get(0).getExpression() + ") == (" + getChildren().get(1).getExpression() + ")";
+	}
+
+	@Override
+	public Expression<Boolean> simplify() {
+		Expression<?> left = getChildren().get(0).simplify();
+		Expression<?> right = getChildren().get(1).simplify();
+
+		OptionalInt li = left.intValue();
+		OptionalInt ri = right.intValue();
+		if (li.isPresent() && ri.isPresent())
+			return new BooleanConstant(li.getAsInt() == ri.getAsInt());
+
+		OptionalDouble ld = left.doubleValue();
+		OptionalDouble rd = right.doubleValue();
+		if (ld.isPresent() && rd.isPresent())
+			return new BooleanConstant(ld.getAsDouble() == rd.getAsDouble());
+
+		return new Equals(left, right);
 	}
 
 	@Override

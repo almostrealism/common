@@ -1,9 +1,24 @@
+/*
+ * Copyright 2023 Michael Murray
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
+
 package org.almostrealism.math.bool.test;
 
 import io.almostrealism.code.OperationAdapter;
-import org.almostrealism.algebra.ScalarProducerBase;
+import org.almostrealism.bool.AcceleratedConditionalStatement;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.Random;
 import org.almostrealism.hardware.Input;
 import org.almostrealism.util.TestSettings;
 import io.almostrealism.relation.Evaluable;
@@ -11,8 +26,6 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.bool.LessThanScalar;
 import org.almostrealism.geometry.Ray;
-import org.almostrealism.hardware.AcceleratedComputationEvaluable;
-import org.almostrealism.bool.AcceleratedConditionalStatementScalar;
 import org.almostrealism.bool.LessThan;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.util.TestFeatures;
@@ -25,8 +38,8 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 	@Test
 	public void randomLessThan() {
 		IntStream.range(1, 6).forEach(i -> {
-			ScalarProducerBase a = scalar(i * Math.random());
-			ScalarProducerBase b = scalar(i * Math.random());
+			Producer<Scalar> a = scalar(i * Math.random());
+			Producer<Scalar> b = scalar(i * Math.random());
 
 			Evaluable<Scalar> lt = lessThan(a, b).get();
 
@@ -102,8 +115,9 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 	@Test
 	public void compactWithCrossProduct() {
 		LessThan<Scalar> lt1 = lessThan(oDotd(ray(i -> Math.random())), oDotd(v(Ray.shape(), 0)));
-		AcceleratedConditionalStatementScalar lt2 = crossProduct(vector(i -> Math.random()), v(Vector.shape(), 1))
-														.length().lessThan(lt1, v(1), v(2));
+		AcceleratedConditionalStatement<Scalar> lt2 =
+				lessThan(length(crossProduct(vector(i -> Math.random()), v(Vector.shape(), 1))),
+														lt1, v(1), v(2), false);
 
 		double v = lt2.get().evaluate(ray(i -> Math.random()).get().evaluate(), vector(i -> Math.random()).get().evaluate()).getValue();
 		System.out.println(v);
@@ -130,10 +144,10 @@ public class AcceleratedConditionalStatementTests implements TestFeatures {
 			double c = i * Math.random();
 			double d = i * Math.random();
 
-			ScalarProducerBase pa = scalar(a);
-			ScalarProducerBase pb = scalar(b);
-			ScalarProducerBase pc = scalar(c);
-			ScalarProducerBase pd = scalar(d);
+			Producer<Scalar> pa = scalar(a);
+			Producer<Scalar> pb = scalar(b);
+			Producer<Scalar> pc = scalar(c);
+			Producer<Scalar> pd = scalar(d);
 
 			LessThan lt1 = new LessThanScalar(pa, pb, pa, pb, false);
 			LessThan lt2 = new LessThanScalar(pb, pc, lt1, scalar(-a), false);

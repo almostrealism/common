@@ -19,7 +19,12 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.NamedFunction;
 import io.almostrealism.code.OperationAdapter;
+import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.code.OperationProfile;
+import io.almostrealism.relation.Countable;
+import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.Computation;
@@ -27,21 +32,26 @@ import io.almostrealism.code.OperationComputation;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.relation.Compactable;
-import org.almostrealism.collect.Func;
-import org.almostrealism.collect.KernelExpression;
-import org.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.computations.Abort;
+import org.almostrealism.hardware.computations.Assignment;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collector;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-public class OperationList extends ArrayList<Supplier<Runnable>> implements OperationComputation<Void>, NamedFunction, HardwareFeatures {
+public class OperationList extends ArrayList<Supplier<Runnable>>
+		implements OperationComputation<Void>, ParallelProcess<Process<?, ?>, Runnable>,
+					NamedFunction, OperationInfo, HardwareFeatures {
+	public static boolean enableOptimization = false;
+	public static boolean enableSegmenting = false;
+
 	private static ThreadLocal<MemoryData> abortFlag;
 	private static boolean abortArgs, abortScope;
 	private static Abort abort;
@@ -75,23 +85,46 @@ public class OperationList extends ArrayList<Supplier<Runnable>> implements Oper
 	@Override
 	public String getFunctionName() { return this.functionName; }
 
+	@Override
 	public OperationMetadata getMetadata() { return metadata; }
 
 	public void addCompiled(Supplier<Runnable> op) {
 		add(() -> op.get());
 	}
 
-	public <T extends MemoryData> KernelOperation<T> add(KernelizedProducer<T> producer, MemoryBank destination, MemoryData... arguments) {
+	public <T extends MemoryData> void add(int memLength, Producer<T> producer, Producer<T> destination) {
+		add(new Assignment<>(memLength, destination, producer));
+	}
+
+	@Deprecated
+	public <T extends MemoryData> KernelOperation<T> add(Producer<T> producer, MemoryBank destination, MemoryData... arguments) {
 		KernelOperation<T> operation = new KernelOperation<>(producer, destination, arguments);
 		add(operation);
 		return operation;
 	}
 
 	@Override
+	public int getCount() {
+		if (isEmpty()) return 0;
+
+		if (isUniform() && get(0) instanceof Countable) {
+			return ((Countable) get(0)).getCount();
+		}
+
+		return 1;
+	}
+
+	@Override
 	public Runnable get() {
+		return get(null);
+	}
+
+	public Runnable get(OperationProfile profiles) {
 		if (isFunctionallyEmpty()) return () -> { };
 
-		if (isComputation()) {
+		if (enableOptimization && !isUniform()) {
+			return optimize().get();
+		} else if (isComputation()) {
 			OperationAdapter op = (OperationAdapter) compileRunnable(this);
 			op.setFunctionName(functionName);
 			op.compile();
@@ -103,7 +136,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>> implements Oper
 					.filter(Objects::nonNull)
 					.filter(Predicate.not(OperationAdapter::isCompiled))
 					.forEach(OperationAdapter::compile);
-			return new Runner(getMetadata(), run);
+			return new Runner(getMetadata(), run, profiles);
 		}
 	}
 
@@ -160,6 +193,22 @@ public class OperationList extends ArrayList<Supplier<Runnable>> implements Oper
 		return scope;
 	}
 
+	@Override
+	public OperationList generate(List<Process<?, ?>> children) {
+		OperationList list = new OperationList();
+		list.metadata = metadata;
+		list.enableCompilation = enableCompilation;
+		children.forEach(c -> list.add((Supplier) c));
+		return list;
+	}
+
+	@Override
+	public Collection<Process<?, ?>> getChildren() {
+		return stream()
+				.map(o -> o instanceof Process ? (Process<?, ?>) o : Process.of(o))
+				.collect(Collectors.toList());
+	}
+
 	public boolean isFunctionallyEmpty() {
 		if (isEmpty()) return true;
 		return stream().noneMatch(o -> !(o instanceof OperationList) || !((OperationList) o).isFunctionallyEmpty());
@@ -170,6 +219,43 @@ public class OperationList extends ArrayList<Supplier<Runnable>> implements Oper
 
 		return stream().map(c -> c instanceof OperationList ? (OperationList) c : null).filter(Objects::nonNull)
 				.mapToInt(OperationList::getDepth).max().orElse(0) + 1;
+	}
+
+	public OperationList flatten() {
+		return stream()
+				.flatMap(o -> o instanceof OperationList ? ((OperationList) o).flatten().stream() : Stream.of(o))
+				.collect(OperationList.collector());
+	}
+
+	@Override
+	public ParallelProcess<Process<?, ?>, Runnable> optimize() {
+		if (!enableSegmenting || size() <= 1 || isUniform()) return ParallelProcess.super.optimize();
+
+		boolean match = IntStream.range(1, size()).anyMatch(i -> ParallelProcess.count(get(i - 1)) == ParallelProcess.count(get(i)));
+		if (!match) return ParallelProcess.super.optimize();
+
+		OperationList op = new OperationList();
+		OperationList current = new OperationList();
+		int currentCount = -1;
+
+		for (int i = 0; i < size(); i++) {
+			Supplier<Runnable> o = get(i);
+			int count = ParallelProcess.count(o);
+
+			if (currentCount == -1 || currentCount == count) {
+				current.add(o);
+			} else {
+				op.add(current.size() == 1 ? current.get(0) : current);
+				current = new OperationList();
+				current.add(o);
+			}
+
+			currentCount = count;
+		}
+
+		if (current.size() > 0) op.add(current.size() == 1 ? current.get(0) : current);
+
+		return op.optimize();
 	}
 
 	@Override
@@ -201,21 +287,33 @@ public class OperationList extends ArrayList<Supplier<Runnable>> implements Oper
 
 	protected static void setAbortableDepth(int depth) { abortableDepth = depth; }
 
-	public static class Runner implements Runnable {
+	public static class Runner implements Runnable, OperationInfo {
 		private OperationMetadata metadata;
 		private List<Runnable> run;
 
-		public Runner(OperationMetadata metadata, List<Runnable> run) {
+		private OperationProfile profiles;
+
+		public Runner(OperationMetadata metadata, List<Runnable> run, OperationProfile profiles) {
 			this.metadata = metadata;
 			this.run = run;
+			this.profiles = profiles;
 		}
+
+		@Override
+		public OperationMetadata getMetadata() { return metadata; }
 
 		public List<Runnable> getOperations() { return run; }
 
 		@Override
 		public void run() {
-			for (int i = 0; i < run.size(); i++) {
-				run.get(i).run();
+			if (profiles == null) {
+				for (int i = 0; i < run.size(); i++) {
+					run.get(i).run();
+				}
+			} else {
+				for (int i = 0; i < run.size(); i++) {
+					profiles.recordDuration(run.get(i));
+				}
 			}
 		}
 	}

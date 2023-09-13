@@ -16,17 +16,16 @@
 
 package org.almostrealism.primitives;
 
+import io.almostrealism.relation.Process;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
-import org.almostrealism.Ops;
 import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.PairProducerBase;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarProducerBase;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.bool.AcceleratedConjunctionScalar;
 import org.almostrealism.bool.GreaterThanScalar;
 import org.almostrealism.bool.LessThanScalar;
+import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.color.RGB;
 import org.almostrealism.geometry.Intersection;
 import org.almostrealism.geometry.Ray;
@@ -42,15 +41,14 @@ import org.almostrealism.geometry.ShadableIntersection;
 import org.almostrealism.CodeFeatures;
 import io.almostrealism.relation.Evaluable;
 
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
-import java.util.function.Supplier;
+import java.util.Collection;
+import java.util.Collections;
 
 // TODO Add ParticleGroup implementation.
 
 /** A {@link Sphere} represents a primitive sphere in 3d space. */
 public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFeatures {
+	public static boolean enableTransform = true;
 	private static boolean enableHardwareAcceleration = true;
 
 	/** Constructs a {@link Sphere} representing a unit sphere centered at the origin that is black. */
@@ -137,7 +135,7 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 		TransformMatrix m = getTransform(true);
 
 		Producer<Ray> tr = r;
-		// if (m != null) tr = m.getInverse().transform(tr);
+		if (m != null && enableTransform) tr = m.getInverse().transform(tr);
 
 		final Producer<Ray> fr = tr;
 
@@ -214,6 +212,11 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 				s.getVariables().add(new Variable("scalar", get().evaluate(new Object[0])));
 				return s;
 			}
+
+			@Override
+			public Collection<Process<?, ?>> getChildren() {
+				return Collections.emptyList();
+			}
 		};
 	}
 
@@ -233,12 +236,12 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 	// TODO  Make private
 	public Producer<Scalar> discriminant(Producer<Ray> ray) {
 		// return oDotd(ray).pow(2.0).add(dDotd(ray).multiply(oDoto(ray).add(-1.0)).multiply(-1));
-		return oDotd(ray).pow(2.0).subtract(dDotd(ray).multiply(oDoto(ray).add(-1.0)));
+		return oDotd(ray).pow(2.0).subtract(dDotd(ray).multiply(oDoto(ray).add(v(-1.0))));
 	}
 
 	// TODO  Make private
 	public Producer<Scalar> discriminantSqrt(Producer<Ray> ray) {
-		return pow(discriminant(ray), scalar(0.5));
+		return scalarPow(discriminant(ray), scalar(0.5));
 	}
 
 	// TODO  Make private
@@ -251,9 +254,9 @@ public class Sphere extends AbstractSurface implements DistanceEstimator, CodeFe
 				new GreaterThanScalar(r(t), scalar(0)));
 	}
 
-	private PairProducerBase t(Producer<Ray> ray) {
+	private ExpressionComputation<Pair<?>> t(Producer<Ray> ray) {
 		Producer<Scalar> dS = discriminantSqrt(ray);
-		Producer<Scalar> minusODotD = oDotd(ray).multiply(-1.0);
+		Producer<Scalar> minusODotD = oDotd(ray).multiply(v(-1.0));
 		Producer<Scalar> dDotDInv = dDotd(ray).pow(-1.0);
 		return pair(add(minusODotD, dS).multiply(dDotDInv),
 					add(minusODotD, minus(dS)).multiply(dDotDInv));

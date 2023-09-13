@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,7 +16,9 @@
 
 package io.almostrealism.scope;
 
-import io.almostrealism.code.KernelIndex;
+import io.almostrealism.expression.ArraySize;
+import io.almostrealism.expression.Constant;
+import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
@@ -54,7 +56,6 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 	private Supplier<Evaluable<? extends T>> producer;
 
 	private V delegate;
-	private Variable<?, ?> dependsOn;
 
 	public Variable(String name) {
 		this(name, (Expression<T>) null);
@@ -62,10 +63,6 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 
 	public Variable(String name, Expression<T> expression) {
 		this(name, true, expression, (Supplier<Evaluable<? extends T>>) null);
-	}
-
-	public Variable(String name, Expression<T> expression, V delegate) {
-		this(name, true, expression, delegate);
 	}
 
 	public Variable(String name, boolean declaration, Expression<T> expression) {
@@ -78,27 +75,12 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 		this.delegate = delegate;
 	}
 
-	public Variable(String name, boolean declaration, Expression<T> expression, Supplier<Evaluable<? extends T>> producer) {
-		setName(name);
-		setExpression(expression);
-		setOriginalProducer(producer);
-		this.declaration = declaration;
-	}
-
 	public Variable(String name, T value) {
 		this(name, true, (Expression) null, () -> new Provider<>(value));
 	}
 
-	public Variable(String name, boolean declaration, V delegate) {
-		this(name, declaration, (Expression) null, delegate);
-	}
-
-	public Variable(String name, Class<T> type, T value) {
-		this(name, type, () -> new Provider<>(value));
-	}
-
 	public Variable(String name, Class<T> type, Supplier<Evaluable<? extends T>> producer) {
-		this(name, true, new Expression(type), producer);
+		this(name, true, new Constant<>(type), producer);
 	}
 
 	public Variable(String name, PhysicalScope scope, Class<T> type, Supplier<Evaluable<? extends T>> producer) {
@@ -106,17 +88,16 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 		setPhysicalScope(scope);
 	}
 
-	public Variable(String name, String expression) {
-		this(name, null, expression);
-	}
-
-	public Variable(String name, Class<T> type, String expression) {
-		this(name, new Expression(type, expression));
-	}
-
 	public Variable(String name, Supplier<Evaluable<? extends T>> producer, int arraySize, PhysicalScope scope) {
-		this(name, true, new Expression(arraySize), producer);
+		this(name, true, new ArraySize<>(arraySize), producer);
 		setPhysicalScope(scope);
+	}
+
+	public Variable(String name, boolean declaration, Expression<T> expression, Supplier<Evaluable<? extends T>> producer) {
+		setName(name);
+		setExpression(expression);
+		setOriginalProducer(producer);
+		this.declaration = declaration;
 	}
 
 	@Override
@@ -132,7 +113,6 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 	public V getDelegate() { return delegate; }
 	public void setDelegate(V delegate) { this.delegate = delegate; }
 
-	public void setDeclaration(boolean declaration) { this.declaration = declaration; }
 	public boolean isDeclaration() { return declaration; }
 
 	public void setExpression(Expression<T> value) { this.expression = value; }
@@ -145,7 +125,9 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 	@Override
 	public int getSortHint() { return sortHint; }
 
-	public int getKernelIndex() { return 0; }
+	public int getKernelIndex() {
+		return 0;
+	}
 
 	protected void setProducer(Supplier<Evaluable<? extends T>> producer) {
 		this.producer = producer;
@@ -191,7 +173,6 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 	public List<Variable<?, ?>> getDependencies() {
 		List<Variable<?, ?>> deps = new ArrayList<>();
 		if (delegate != null) deps.add(delegate);
-		if (dependsOn != null) deps.add(dependsOn);
 		deps.addAll(getExpressionDependencies());
 		return deps;
 	}
@@ -215,7 +196,6 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 		if (!Objects.equals(physicalScope, v.getPhysicalScope())) return false;
 		if (!Objects.equals(expression, v.expression)) return false;
 		if (!Objects.equals(producer, v.getProducer())) return false;
-		if (!Objects.equals(dependsOn, v.dependsOn)) return false;
 		if (!Objects.equals(delegate, v.getDelegate())) return false;
 
 		return true;

@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -25,12 +25,12 @@ import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeInputManager;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.hardware.DynamicOperationComputationAdapter;
+import org.almostrealism.hardware.OperationComputationAdapter;
 
 import java.util.List;
 import java.util.stream.IntStream;
 
-public class Switch extends DynamicOperationComputationAdapter {
+public class Switch extends OperationComputationAdapter<PackedCollection<?>> {
 	private final List<Computation> choices;
 
 	public Switch(ProducerComputation<PackedCollection<?>> decision, List<Computation> choices) {

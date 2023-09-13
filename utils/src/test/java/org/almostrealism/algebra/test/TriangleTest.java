@@ -16,29 +16,67 @@
 
 package org.almostrealism.algebra.test;
 
+import io.almostrealism.code.AdaptEvaluable;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.ProducerWithRank;
+import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.algebra.VectorProducerBase;
-import org.almostrealism.algebra.computations.VectorExpressionComputation;
 import org.almostrealism.bool.AcceleratedConjunctionScalar;
 import org.almostrealism.bool.GreaterThanScalar;
+import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.CollectionProducerComputationBase;
+import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.computations.RayExpressionComputation;
 import org.almostrealism.graph.mesh.TriangleIntersectAt;
 import org.almostrealism.hardware.Input;
 import org.almostrealism.space.Triangle;
 import org.almostrealism.CodeFeatures;
+import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.function.Supplier;
 
-public class TriangleTest implements CodeFeatures {
+public class TriangleTest implements TestFeatures {
+	@Test
+	public void data() {
+		PackedCollection<?> data = new Triangle(new Vector(1.0, 1.0, -1.0),
+				new Vector(-1.0, 1.0, -1.0),
+				new Vector(0.0, -1.0, -1.0)).getData();
+
+		assertEquals(-2.0, data.valueAt(1, 1));
+	}
+
+	@Test
+	public void distance() {
+		Triangle t = new Triangle(new Vector(1.0, 1.0, -1.0),
+				new Vector(-1.0, 1.0, -1.0),
+				new Vector(0.0, -1.0, -1.0));
+
+		Evaluable<Ray> r = ray(0.0, 0.0, 0.0, 0.0, 0.0, -1.0).get();
+		Supplier<Evaluable<? extends Scalar>> distance = () -> new AdaptEvaluable<>(Triangle.intersectAt, r, new Provider<>(t.getData()));
+		Scalar s = distance.get().evaluate();
+		System.out.println(s);
+
+		assertEquals(1.0, s);
+	}
+
+	@Test
+	public void intersectAtDistance() {
+		Ray in = ray(0.0, 0.0, 0.0, 0.0, 0.0, -1.0).get().evaluate();
+		PackedCollection<?> td = triangle();
+
+		Scalar distance = Triangle.intersectAt.evaluate(in, td);
+		System.out.println("distance = " + distance);
+		Assert.assertEquals(1.0, distance.getValue(), Math.pow(10, -10));
+	}
+
 	protected Producer<Ray> intersectAt() {
 		Triangle t = new Triangle(new Vector(1.0, 1.0, -1.0),
 				new Vector(-1.0, 1.0, -1.0),
@@ -46,32 +84,35 @@ public class TriangleTest implements CodeFeatures {
 		return t.intersectAt(ray(0.0, 0.0, 0.0, 0.0, 0.0, -1.0)).get(0);
 	}
 
-
-	protected VectorProducerBase originProducer() {
+	protected CollectionProducerComputationBase<Vector, Vector> originProducer() {
 		Producer<Ray> noRank = ((ProducerWithRank) intersectAt()).getProducer();
-		return (VectorProducerBase) (Supplier) ((RayExpressionComputation) noRank).getInputs().get(1);
+		ExpressionComputation originVector = (ExpressionComputation<Vector>) (Supplier) ((RayExpressionComputation) noRank).getInputs().get(1);
+
+		return (CollectionProducerComputationBase<Vector, Vector>) originVector.getInputs().get(1);
 	}
 
-	protected VectorExpressionComputation originPointProducer() {
-		VectorProducerBase origin = originProducer();
-		return (VectorExpressionComputation) ((OperationAdapter) origin).getInputs().get(1);
+	protected Producer<Vector> originPointProducer() {
+		CollectionProducerComputationBase<Vector, Vector> origin = originProducer();
+//		return (Producer<Vector>) ((OperationAdapter) origin).getInputs().get(1);
+		return vector((CollectionProducerComputationBase<?, ?>) ((OperationAdapter) origin).getInputs().get(1));
 	}
 
-	protected VectorExpressionComputation originDirectionProducer() {
-		VectorProducerBase origin = originProducer();
-		return (VectorExpressionComputation) ((OperationAdapter) origin).getInputs().get(2);
+	protected Producer<Vector> originDirectionProducer() {
+		CollectionProducerComputationBase<Vector, Vector> origin = originProducer();
+//		return (ExpressionComputation<Vector>) ((OperationAdapter) origin).getInputs().get(2);
+		return vector((CollectionProducerComputationBase<?, ?>) ((OperationAdapter) origin).getInputs().get(2));
 	}
 
 	@Test
 	public void originComposition() {
-		VectorExpressionComputation o = originPointProducer();
+		Producer<Vector> o = originPointProducer();
 		Evaluable<Vector> evo = o.get();
 
 		Vector vo = evo.evaluate();
 		System.out.println(vo);
 		Assert.assertEquals(new Vector(0.0, 0.0, 0.0), vo);
 
-		VectorExpressionComputation d = originDirectionProducer();
+		Producer<Vector> d = originDirectionProducer();
 		Evaluable<Vector> evd = d.get();
 
 		Vector vd = evd.evaluate();
@@ -81,7 +122,7 @@ public class TriangleTest implements CodeFeatures {
 
 	@Test
 	public void origin() {
-		VectorProducerBase at = originProducer();
+		ExpressionComputation<Vector> at = vector(originProducer());
 		Evaluable<Vector> ev = at.get();
 
 		Vector p = ev.evaluate();
@@ -138,16 +179,6 @@ public class TriangleTest implements CodeFeatures {
 		Assert.assertEquals(1.0, distance.getValue(), Math.pow(10, -10));
 
 		distance = intersectAt.get().evaluate(in, td);
-		System.out.println("distance = " + distance);
-		Assert.assertEquals(1.0, distance.getValue(), Math.pow(10, -10));
-	}
-
-	@Test
-	public void distanceTest() {
-		Ray in = ray(0.0, 0.0, 0.0, 0.0, 0.0, -1.0).get().evaluate();
-		PackedCollection<?> td = triangle();
-
-		Scalar distance = Triangle.intersectAt.evaluate(in, td);
 		System.out.println("distance = " + distance);
 		Assert.assertEquals(1.0, distance.getValue(), Math.pow(10, -10));
 	}

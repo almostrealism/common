@@ -16,14 +16,12 @@
 
 package org.almostrealism.optimize;
 
-import org.almostrealism.graph.Receptor;
 import org.almostrealism.heredity.Genome;
 import org.almostrealism.time.Temporal;
 
 import java.util.List;
 
 public interface Population<G, T, O extends Temporal> {
-	void init(Genome<G> templateGenome, List<? extends Receptor<T>> measures, Receptor<T> output);
 
 	List<Genome<G>> getGenomes();
 	

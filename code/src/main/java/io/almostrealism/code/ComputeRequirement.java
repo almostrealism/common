@@ -17,5 +17,5 @@
 package io.almostrealism.code;
 
 public enum ComputeRequirement {
-	CPU, GPU, FPGA, C, CL, JNI, EXTERNAL, PROFILING
+	CPU, GPU, FPGA, C, CL, MTL, JNI, EXTERNAL, PROFILING
 }

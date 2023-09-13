@@ -169,12 +169,12 @@ public abstract class AcceleratedConjunctionAdapter<T extends PackedCollection<?
 
 	@Override
 	public IntFunction<Expression<Double>> getTrueValueExpression() {
-		return i -> (Expression) trueVar.valueAt(i);
+		return i -> (Expression) trueVar.getValueRelative(i);
 	}
 
 	@Override
 	public IntFunction<Expression<Double>> getFalseValueExpression() {
-		return i -> (Expression) falseVar.valueAt(i);
+		return i -> (Expression) falseVar.getValueRelative(i);
 	}
 
 	@Override

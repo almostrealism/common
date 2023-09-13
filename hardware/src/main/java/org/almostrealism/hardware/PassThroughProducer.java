@@ -18,9 +18,7 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
-import io.almostrealism.expression.InstanceReference;
-import io.almostrealism.expression.MultiExpression;
-import io.almostrealism.relation.Evaluable;
+import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.code.ArgumentMap;
@@ -28,29 +26,29 @@ import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.code.KernelIndex;
+import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
-import org.almostrealism.collect.Shape;
-import org.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.Shape;
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.mem.MemoryDataDestination;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
-import java.util.Optional;
-import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public class PassThroughProducer<T extends MemoryData>
 		extends ProducerComputationBase<T, T>
 		implements ProducerArgumentReference,
-		MemoryDataComputation<T>, KernelizedProducer<T>,
-		DestinationSupport<T>, MultiExpression<Double>,
+		MemoryDataComputation<T>,
+		DestinationSupport<T>,
+		TraversableExpression<Double>,
 		Shape<PassThroughProducer<T>>, KernelIndex,
 		ComputerFeatures  {
+	public static boolean enableDimSupport = true;
+
 	private TraversalPolicy shape;
 	private int argIndex;
 	private int kernelIndex;
@@ -94,10 +92,6 @@ public class PassThroughProducer<T extends MemoryData>
 		init();
 	}
 
-	protected IntFunction<Variable<Double, ?>> variableForIndex(IntFunction<Expression<Double>> valueFunction) {
-		return i -> new Variable(getVariableName(i), true, valueFunction.apply(i), this);
-	}
-
 	/**
 	 * @return  GLOBAL
 	 */
@@ -108,13 +102,21 @@ public class PassThroughProducer<T extends MemoryData>
 	public TraversalPolicy getShape() { return shape; }
 
 	@Override
-	public int getMemLength() { return shape.getSize(); }
+	public int getMemLength() { return getShape().getSize(); }
+
+	@Override
+	public int getCount() { return getShape().getCount(); }
 
 	@Override
 	public void setDestination(Supplier<T> destination) { this.destination = destination; }
 
 	@Override
 	public Supplier<T> getDestination() { return destination; }
+
+	@Override
+	public PassThroughProducer<T> traverse(int axis) {
+		return reshape(getShape().traverse(axis));
+	}
 
 	@Override
 	public PassThroughProducer<T> reshape(TraversalPolicy shape) {
@@ -149,9 +151,9 @@ public class PassThroughProducer<T extends MemoryData>
 	@Override
 	public Scope<T> getScope() {
 		Scope<T> scope = super.getScope();
-		IntStream.range(0, getMemLength())
-				.mapToObj(getAssignmentFunction(getOutputVariable()))
-				.forEach(v -> scope.getVariables().add((Variable) v));
+		for (int i = 0; i < getMemLength(); i++) {
+			scope.getVariables().add(((ArrayVariable) getOutputVariable()).ref(i).assign(getValueRelative(e(i)).getSimplified()));
+		}
 		return scope;
 	}
 
@@ -203,13 +205,25 @@ public class PassThroughProducer<T extends MemoryData>
 		return getArgumentVariables().get(index);
 	}
 
+	@Override
+	public Expression<Double> getValue(Expression... pos) {
+		return getValueAt(shape.index(pos));
+	}
 
 	@Override
-	public Expression<Double> getValue(int pos) { return getValueFunction().apply(pos); }
+	public Expression<Double> getValueAt(Expression index) {
+		ArrayVariable var = getArgument(0);
 
-	public IntFunction<Expression<Double>> getValueFunction() {
-		// return pos -> new Expression<>(Double.class, getArgumentValueName(0, pos, kernelIndex), Collections.emptyList(), getArgument(0));
-		return pos -> getArgument(0).valueAt(pos);
+		if (enableDimSupport) {
+			return var.referenceAbsolute(index.toInt().divide(var.length()).multiply(var.getDimValue()).add(index.toInt().mod(var.length(), false)));
+		} else {
+			return var.referenceAbsolute(index);
+		}
+	}
+
+	@Override
+	public Expression<Double> getValueRelative(Expression index) {
+		return getArgument(0).referenceRelative(index);
 	}
 
 	@Override

@@ -17,7 +17,7 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.OperationMetadata;
-import org.almostrealism.hardware.cl.HardwareOperatorMap;
+import org.almostrealism.hardware.cl.CLOperatorMap;
 
 import java.io.InputStream;
 import java.util.HashMap;
@@ -29,25 +29,25 @@ import java.util.Map;
 @Deprecated
 public class AcceleratedFunctions {
 	private Hardware hardware;
-	private HardwareOperatorMap base;
-	private Map<Class, HardwareOperatorMap> extensions;
+	private CLOperatorMap base;
+	private Map<Class, CLOperatorMap> extensions;
 
 	protected synchronized void init(Hardware h, String src) {
 		hardware = h;
-		base = new HardwareOperatorMap(h.getClComputeContext(),
+		base = new CLOperatorMap(h.getClComputeContext(),
 				new OperationMetadata("AcceleratedFunctions", "Built in functions"), src, null);
 		extensions = new HashMap<>();
 	}
 
-	public synchronized HardwareOperatorMap getOperators() { return base; }
+	public synchronized CLOperatorMap getOperators() { return base; }
 
-	public synchronized HardwareOperatorMap getOperators(Class c) {
+	public synchronized CLOperatorMap getOperators(Class c) {
 		if (!extensions.containsKey(c)) {
 			InputStream in = c.getResourceAsStream(c.getSimpleName() + ".cl");
 			if (in == null) {
 				extensions.put(c, base);
 			} else {
-				extensions.put(c, new HardwareOperatorMap(hardware.getClComputeContext(),
+				extensions.put(c, new CLOperatorMap(hardware.getClComputeContext(),
 						new OperationMetadata(c.getSimpleName(), "Custom CL Code"),
 						hardware.loadSource(in), null));
 			}

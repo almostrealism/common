@@ -20,6 +20,7 @@ import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.OperationComputation;
+import io.almostrealism.relation.Process;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
@@ -28,8 +29,10 @@ import io.almostrealism.relation.Compactable;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.OperationList;
 
+import java.util.Collection;
 import java.util.Objects;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class TemporalRunner implements Setup, Temporal, OperationComputation<Void>, HardwareFeatures {
@@ -92,6 +95,14 @@ public class TemporalRunner implements Setup, Temporal, OperationComputation<Voi
 	@Override
 	public Scope<Void> getScope() {
 		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	public Collection<Process<?, ?>> getChildren() {
+		return Stream.of(s, r)
+				.map(o -> o instanceof Process ? (Process<?, ?>) o : null)
+				.filter(Objects::nonNull)
+				.collect(Collectors.toList());
 	}
 
 	@Override

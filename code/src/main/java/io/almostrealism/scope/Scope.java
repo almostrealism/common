@@ -20,9 +20,10 @@ import io.almostrealism.code.Array;
 import io.almostrealism.code.CodePrintWriter;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.NameProvider;
+import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.ProducerArgumentReference;
-import io.almostrealism.code.Tree;
+import io.almostrealism.relation.Tree;
 import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
@@ -51,7 +52,7 @@ import java.util.stream.IntStream;
  *
  * @param <T>  The type of the value returned by this {@link Scope}.
  */
-public class Scope<T> extends ArrayList<Scope<T>> implements Tree<Scope<T>>, Nameable {
+public class Scope<T> extends ArrayList<Scope<T>> implements Tree<Scope<T>>, OperationInfo, Nameable {
 	public static final boolean enableInlining = true;
 
 	private String name;
@@ -76,12 +77,18 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Tree<Scope<T>>, Nam
 
 	/**
 	 * Creates an empty {@link Scope} with the specified name.
+	 * This method, without providing {@link OperationMetadata},
+	 * should be avoided in favor of including metadata.
 	 */
 	public Scope(String name) {
 		this();
 		setName(name);
 	}
 
+	/**
+	 * Creates an empty {@link Scope} with the specified name.
+	 * and {@link OperationMetadata}.
+	 */
 	public Scope(String name, OperationMetadata metadata) {
 		this();
 		setName(name);
@@ -94,6 +101,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Tree<Scope<T>>, Nam
 	@Override
 	public void setName(String name) { this.name = name; }
 
+	@Override
 	public OperationMetadata getMetadata() {
 		if (metadata == null) {
 			metadata = new OperationMetadata("Unknown", null);
@@ -271,10 +279,11 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Tree<Scope<T>>, Nam
 					// If the argument variable is produced by a computation, or is
 					// produced by something that delegates to a computation, it
 					// should be converted to a required scope
-					// DynamicProducers are excluded, however, because its not
+					// DynamicProducers are excluded, however, because it is not
 					// generally possible to generate a Scope from a producer
 					// that is powered by a Function, as most are
-					if (var.getProducer() instanceof Computation && !(var.getProducer() instanceof DynamicProducer)) {
+					if (var.getProducer() instanceof Computation &&
+							!(var.getProducer() instanceof DynamicProducer)) {
 						computation = (Computation) var.getProducer();
 					} else if (var.getProducer() instanceof Delegated) {
 						Delegated delegated = (Delegated) var.getProducer();

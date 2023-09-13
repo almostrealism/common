@@ -37,8 +37,9 @@ import java.util.Optional;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-public abstract class OperationAdapter<T> implements Compactable, NameProvider, NamedFunction, Named {
+public abstract class OperationAdapter<T> implements Compactable, NameProvider, OperationInfo, NamedFunction, Named {
 
+	public static boolean enableFunctionPrefix = false;
 	private static long functionId = 0;
 
 	private String function;
@@ -69,12 +70,26 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 	@Override
 	public String getFunctionName() { return function; }
 
+	@Override
+	public String getVariablePrefix() {
+		if (enableFunctionPrefix) {
+			return getFunctionName();
+		} else {
+			String f = getFunctionName();
+			if (f.contains("_")) f = f.substring(f.lastIndexOf("_"));
+			return f;
+		}
+	}
+
+	protected void setMetadata(OperationMetadata metadata) { this.metadata = metadata; }
+
+	@Override
 	public OperationMetadata getMetadata() { return metadata; }
 
 	@Override
 	public String getName() { return operationName(null, getClass(), getFunctionName()); }
 
-	public int getArgsCount() { return getArgumentVariables().size(); }
+	public int getArgsCount() { return getArguments().size(); }
 
 	@SafeVarargs
 	protected final void setInputs(Supplier<Evaluable<? extends T>>... input) { setInputs(Arrays.asList(input)); }
@@ -208,6 +223,11 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 	@Override
 	public synchronized void compact() {
 		getInputs().stream().filter(p -> p instanceof Compactable).forEach(p -> ((Compactable) p).compact());
+	}
+
+	protected void waitFor(Semaphore semaphore) {
+		if (semaphore == null) return;
+		semaphore.waitFor();
 	}
 
 	public void destroy() {

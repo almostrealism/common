@@ -17,7 +17,7 @@
 package org.almostrealism.layers;
 
 import org.almostrealism.collect.CollectionFeatures;
-import org.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.TraversalPolicy;
 
 import java.util.Optional;
 import java.util.function.Supplier;

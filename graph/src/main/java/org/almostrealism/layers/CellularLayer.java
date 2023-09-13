@@ -16,10 +16,8 @@
 
 package org.almostrealism.layers;
 
-import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.graph.Cell;
+import org.almostrealism.model.Block;
 
-public interface CellularLayer extends Layer {
-	Cell<PackedCollection<?>> getForward();
-	Cell<PackedCollection<?>> getBackward();
+public interface CellularLayer extends Layer, Block {
+
 }

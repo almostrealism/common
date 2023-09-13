@@ -18,11 +18,11 @@ package org.almostrealism.graph.model.test;
 
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.computations.test.KernelAssertions;
+import org.almostrealism.hardware.cl.CLOperator;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.DefaultCellularLayer;
-import org.almostrealism.layers.KernelLayer;
-import org.almostrealism.layers.KernelLayerCell;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
@@ -30,7 +30,7 @@ import org.junit.Test;
 
 import java.util.stream.IntStream;
 
-public class TrainModelTest implements TestFeatures {
+public class TrainModelTest implements TestFeatures, KernelAssertions {
 	private int convSize = 3;
 	private int poolSize = 2;
 	private int w = 10;
@@ -58,7 +58,7 @@ public class TrainModelTest implements TestFeatures {
 		model.forward(input);
 
 		PackedCollection<?> weights = dense.getWeights().get(0);
-		PackedCollection<?> output = ((KernelLayerCell) dense.getForward()).getOutput();
+		PackedCollection<?> output =  ((DefaultCellularLayer) dense).getOutput();
 
 		for (int i = 0; i < nodes; i++) {
 			double expected = 0;
@@ -76,7 +76,7 @@ public class TrainModelTest implements TestFeatures {
 		}
 
 		input = output;
-		output = ((KernelLayerCell) softmax.getForward()).getOutput();
+		output = ((DefaultCellularLayer) softmax).getOutput();
 
 		double expValues[] = new double[nodes];
 
@@ -99,8 +99,68 @@ public class TrainModelTest implements TestFeatures {
 		}
 	}
 
+
 	@Test
 	public void conv() {
+		Model model = new Model(inputShape);
+		CellularLayer conv = convolution2d(inputShape, convSize, 8);
+
+		model.addLayer(conv);
+
+		Tensor<Double> t = tensor(inputShape);
+		PackedCollection<?> input = t.pack();
+
+		model.setup().get().run();
+		model.forward(input);
+
+		PackedCollection<?> filter = conv.getWeights().get(0);
+		TraversalPolicy filterShape = filter.getShape();
+
+		PackedCollection<?> output = ((DefaultCellularLayer) conv).getOutput();
+		TraversalPolicy outputShape = output.getShape();
+
+		for (int p = 0; p < outputShape.length(0); p++) {
+			for (int q = 0; q < outputShape.length(1); q++) {
+				for (int r = 0; r < outputShape.length(2); r++) {
+					double expected = 0;
+
+					for (int x = 0; x < convSize; x++) {
+						for (int y = 0; y < convSize; y++) {
+							expected += filter.toDouble(filterShape.index(r, x, y)) * input.toDouble(inputShape.index(p + x, q + y));
+						}
+					}
+
+					double actual = output.toDouble(outputShape.index(p, q, r));
+					System.out.println("TrainModelTest: [" + p + ", " + q + ", " + r + "] " + expected + " vs " + actual);
+					Assert.assertEquals(expected, actual, 0.0001);
+				}
+			}
+		}
+	}
+
+	@Test
+	public void pool() {
+		CellularLayer conv = convolution2d(inputShape, convSize, 8);
+		TraversalPolicy inputShape = conv.getOutputShape();
+
+		Model model = new Model(inputShape);
+		CellularLayer pool = pool2d(inputShape, poolSize);
+
+		model.addLayer(pool);
+
+		Tensor<Double> t = tensor(inputShape);
+		PackedCollection<?> input = t.pack();
+
+		model.setup().get().run();
+		model.forward(input);
+
+		PackedCollection<?> output = ((DefaultCellularLayer) pool).getOutput();
+
+		pool2d(inputShape.length(0), inputShape.length(1), 8, 2, input, output);
+	}
+
+	@Test
+	public void convPool() {
 		Model model = new Model(inputShape);
 		CellularLayer conv = convolution2d(inputShape, convSize, 8);
 		CellularLayer pool = pool2d(conv.getOutputShape(), poolSize);
@@ -112,14 +172,14 @@ public class TrainModelTest implements TestFeatures {
 		PackedCollection<?> input = t.pack();
 
 		model.setup().get().run();
-		model.forward(input);
+
+		PackedCollection<?> in = input;
+		CLOperator.verboseLog(() -> model.forward(in));
 
 		PackedCollection<?> filter = conv.getWeights().get(0);
 		TraversalPolicy filterShape = filter.getShape();
 
-		PackedCollection<?> output = conv instanceof DefaultCellularLayer ?
-						((DefaultCellularLayer) conv).getOutput() :
-						((KernelLayerCell) conv.getForward()).getOutput();
+		PackedCollection<?> output = ((DefaultCellularLayer) conv).getOutput();
 		TraversalPolicy outputShape = output.getShape();
 
 		for (int p = 0; p < outputShape.length(0); p++) {
@@ -143,9 +203,7 @@ public class TrainModelTest implements TestFeatures {
 		input = output;
 		inputShape = input.getShape();
 
-		output = pool instanceof DefaultCellularLayer ?
-				((DefaultCellularLayer) pool).getOutput() :
-				((KernelLayerCell) pool.getForward()).getOutput();
+		output = ((DefaultCellularLayer) pool).getOutput();
 		outputShape = output.getShape();
 
 		for (int p = 0; p < outputShape.length(0); p++) {
@@ -170,19 +228,54 @@ public class TrainModelTest implements TestFeatures {
 		}
 	}
 
-	// @Test
-	public void train() {
-		Tensor<Double> t = tensor(inputShape);
+	@Test
+	public void trainSmall() {
+		Tensor<Double> t = tensor(shape(10, 10));
 		PackedCollection<?> input = t.pack();
+		train(input, model(10, 10, 3, 8, 10));
+	}
 
-		Model model = new Model(shape(100, 100));
-		model.addLayer(convolution2d(3, 8));
-		model.addLayer(pool2d(2));
-		model.addBlock(flatten());
-		model.addLayer(dense(10));
-		model.addLayer(softmax());
+	@Test
+	public void trainLarge() {
+		if (skipLongTests) return;
 
+		Tensor<Double> t = tensor(shape(100, 100));
+		PackedCollection<?> input = t.pack();
+		train(input, model(100, 100, 3, 8, 10));
+	}
+
+	@Test
+	public void trainProgressive() {
+		if (skipLongTests) return;
+
+		double size = 10;
+
+		while (size < 100) {
+			int s = (int) size;
+
+			Tensor<Double> t = tensor(shape(s, s));
+			PackedCollection<?> input = t.pack();
+			train(input, model(s, s, 3, 8, 10));
+
+			size = size * 1.2;
+		}
+	}
+
+	protected void train(PackedCollection<?> input, Model model) {
+		long start = System.currentTimeMillis();
 		model.setup().get().run();
 		model.forward(input);
+		System.out.println("TrainModelTest: Input Size = " + input.getShape() +
+				" | Time = " + (System.currentTimeMillis() - start) / 1000 + "s");
+	}
+
+	protected Model model(int r, int c, int convSize, int convFilters, int denseSize) {
+		Model model = new Model(shape(r, c));
+		model.addLayer(convolution2d(convSize, convFilters));
+		model.addLayer(pool2d(2));
+		model.addBlock(flatten());
+		model.addLayer(dense(denseSize));
+		model.addLayer(softmax());
+		return model;
 	}
 }

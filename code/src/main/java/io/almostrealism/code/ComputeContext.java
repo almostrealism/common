@@ -21,6 +21,8 @@ import io.almostrealism.scope.Scope;
 public interface ComputeContext<MEM> {
 	Computer<MEM> getComputer();
 
+	LanguageOperations getLanguage();
+
 	/**
 	 * Deliver the specified {@link Scope} to the compute engine represented by this
 	 * {@link ComputeContext}. The resulting {@link InstructionSet} can be used to
@@ -30,6 +32,8 @@ public interface ComputeContext<MEM> {
 	InstructionSet deliver(Scope scope);
 
 	boolean isKernelSupported();
+
+	String getKernelIndex(int dimension);
 
 	void destroy();
 }

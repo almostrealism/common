@@ -18,8 +18,8 @@ package io.almostrealism.code;
 
 import java.util.concurrent.Callable;
 
-public interface DataContext {
-	ComputeContext getComputeContext();
+public interface DataContext<MEM> {
+	ComputeContext<MEM> getComputeContext();
 
 	MemoryProvider<? extends Memory> getMemoryProvider(int size);
 

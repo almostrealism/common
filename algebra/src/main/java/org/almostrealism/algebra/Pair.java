@@ -20,11 +20,10 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.mem.MemoryDataAdapter;
 import org.almostrealism.hardware.PooledMem;
 
 import java.util.function.BiFunction;
@@ -168,6 +167,13 @@ public class Pair<T extends PackedCollection> extends PackedCollection<T> {
 
 	public static BiFunction<MemoryData, Integer, Pair<?>> postprocessor() {
 		return (delegate, offset) -> new Pair<>(delegate, offset);
+	}
+
+	public static BiFunction<MemoryData, Integer, PackedCollection<Pair<?>>> bankPostprocessor() {
+		return (output, offset) -> {
+			TraversalPolicy shape = ((PackedCollection) output).getShape();
+			return Pair.bank(shape.getTotalSize() / 2, output, offset);
+		};
 	}
 
 	public static ExpressionComputation<Pair<?>> postprocess(ExpressionComputation c) {

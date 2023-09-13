@@ -17,12 +17,47 @@
 package io.almostrealism.expression;
 
 import java.util.List;
+import java.util.Optional;
+import java.util.OptionalDouble;
+import java.util.OptionalInt;
 
 public class Conditional extends Expression<Double> {
 	public Conditional(Expression<Boolean> condition, Expression<Double> positive, Expression<Double> negative) {
-		super(Double.class,
-				"(" + condition.getExpression() + ") ? (" + positive.getExpression() +
-				") : (" + negative.getExpression() + ")", condition, positive, negative);
+		super(Double.class, condition, positive, negative);
+	}
+
+	@Override
+	public String getExpression() {
+		return "(" + getChildren().get(0).getExpression() + ") ? (" + getChildren().get(1).getExpression() +
+				") : (" + getChildren().get(2).getExpression() + ")";
+	}
+
+	@Override
+	public Expression simplify() {
+		Expression<Boolean> condition = (Expression<Boolean>) getChildren().get(0).simplify();
+		Expression<Double> positive = (Expression<Double>) getChildren().get(1).simplify();
+		Expression<Double> negative = (Expression<Double>) getChildren().get(2).simplify();
+
+		Optional<Boolean> cond = condition.booleanValue();
+		if (cond.isPresent()) {
+			if (cond.get()) {
+				return positive;
+			} else {
+				return negative;
+			}
+		}
+
+		OptionalInt li = positive.intValue();
+		OptionalInt ri = negative.intValue();
+		if (li.isPresent() && ri.isPresent() && li.getAsInt() == ri.getAsInt())
+			return new IntegerConstant(li.getAsInt());
+
+		OptionalDouble ld = positive.doubleValue();
+		OptionalDouble rd = negative.doubleValue();
+		if (ld.isPresent() && rd.isPresent() && ld.getAsDouble() == rd.getAsDouble())
+			return new DoubleConstant(ld.getAsDouble());
+
+		return new Conditional(condition, positive, negative);
 	}
 
 	@Override

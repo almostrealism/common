@@ -17,7 +17,7 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.relation.Producer;
-import org.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.collect.TraversalPolicy;
 
 import java.util.stream.IntStream;
 

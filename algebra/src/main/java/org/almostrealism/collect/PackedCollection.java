@@ -16,6 +16,8 @@
 
 package org.almostrealism.collect;
 
+import io.almostrealism.collect.Shape;
+import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.hardware.KernelizedOperation;
 import org.almostrealism.hardware.MemoryBank;
@@ -34,7 +36,7 @@ import java.util.function.IntFunction;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
-public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter implements MemoryBank<T>, Shape<PackedCollection<T>>, Cloneable {
+public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter implements MemoryBank<T>, Shape<PackedCollection<T>>, CollectionFeatures, Cloneable {
 	private static ContextSpecific<KernelizedOperation> clear;
 
 	static {
@@ -91,7 +93,19 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 	}
 
 	public void set(int index, double... values) {
+		if (index * getAtomicMemLength() + values.length > getMemLength()) {
+			throw new IllegalArgumentException("Range exceeds collection size");
+		}
+
 		setMem(index * getAtomicMemLength(), values, 0, values.length);
+	}
+
+	public void copyFrom(PackedCollection<T> source) {
+		if (source.getShape().getTotalSize() != getShape().getTotalSize()) {
+			throw new UnsupportedOperationException();
+		}
+
+		setMem(0, source, 0, source.getMemLength());
 	}
 
 	@Override
@@ -115,8 +129,19 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 		return IntStream.range(0, getCount()).mapToObj(this::get);
 	}
 
-	public void fill(Function<int[], Double> f) {
+	public PackedCollection<T> fill(Function<int[], Double> f) {
 		getShape().stream().forEach(pos -> setMem(getShape().index(pos), f.apply(pos)));
+		return this;
+	}
+
+	public PackedCollection<T> randFill() {
+		rand(getShape()).get().into(this).evaluate();
+		return this;
+	}
+
+	public PackedCollection<T> randnFill() {
+		randn(getShape()).get().into(this).evaluate();
+		return this;
 	}
 
 	public void forEach(Consumer<T> consumer) {
@@ -161,6 +186,11 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 	@Deprecated
 	public double length() {
 		return Math.sqrt(lengthSq());
+	}
+
+	@Override
+	public PackedCollection<T> traverse(int axis) {
+		return reshape(getShape().traverse(axis));
 	}
 
 	@Override
@@ -213,6 +243,14 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 		PackedCollection<T> clone = new PackedCollection<>(getShape(), getShape().getTraversalAxis());
 		clone.setMem(0, toArray(0, getMemLength()), 0, getMemLength());
 		return clone;
+	}
+
+	public static PackedCollection<?> range(MemoryData data, TraversalPolicy shape, int start) {
+		if (start + shape.getTotalSize() > data.getMemLength()) {
+			throw new IllegalArgumentException("Range exceeds collection size");
+		}
+
+		return new PackedCollection(shape, shape.getTraversalAxis(), data, start);
 	}
 
 	public static DynamicCollectionProducer blank(int... dims) {

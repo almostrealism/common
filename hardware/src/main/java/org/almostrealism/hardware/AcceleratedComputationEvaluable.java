@@ -19,6 +19,7 @@ package org.almostrealism.hardware;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ProducerComputation;
+import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 
 public class AcceleratedComputationEvaluable<T extends MemoryData> extends AcceleratedComputationOperation implements KernelizedEvaluable<T> {
 	public AcceleratedComputationEvaluable(Computation<T> c) {
@@ -52,7 +53,9 @@ public class AcceleratedComputationEvaluable<T extends MemoryData> extends Accel
 			throw new IllegalArgumentException("An output variable does not appear to be one of the arguments to the Evaluable");
 		}
 
-		return postProcessOutput((MemoryData) apply(null, args)[outputArgIndex], offset);
+		AcceleratedProcessDetails process = apply(null, args);
+		waitFor(process.getSemaphore());
+		return postProcessOutput((MemoryData) process.getOriginalArguments()[outputArgIndex], offset);
 	}
 
 	/**

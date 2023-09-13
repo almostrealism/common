@@ -35,6 +35,7 @@ import java.util.Optional;
 import java.util.stream.IntStream;
 
 public class CLMemoryProvider implements MemoryProvider<RAM> {
+	public static boolean enableLargeAllocationLogging = false;
 	public static boolean enableWarnings = SystemUtils.isEnabled("AR_HARDWARE_MEMORY_WARNINGS").orElse(true);
 
 	public enum Location {
@@ -72,6 +73,10 @@ public class CLMemoryProvider implements MemoryProvider<RAM> {
 
 	@Override
 	public CLMemory allocate(int size) {
+		if (enableLargeAllocationLogging && size > (10 * 1024 * 1024)) {
+			System.out.println("CLMemoryProvider: Allocating " + (numberSize * (long) size) / 1024 / 1024 + "mb");
+		}
+
 		try {
 			CLMemory mem = new CLMemory(this, buffer(size), numberSize * (long) size);
 			allocated.add(mem);
@@ -134,6 +139,34 @@ public class CLMemoryProvider implements MemoryProvider<RAM> {
 	}
 
 	@Override
+	public void setMem(RAM ram, int offset, float[] source, int srcOffset, int length) {
+		if (!(ram instanceof CLMemory)) throw new IllegalArgumentException();
+		CLMemory mem = (CLMemory) ram;
+
+		try {
+			if (Hardware.getLocalHardware().isDoublePrecision()) {
+				double d[] = new double[length];
+				for (int i = 0; i < d.length; i++) d[i] = source[srcOffset + i];
+				Pointer src = Pointer.to(d).withByteOffset(0);
+				cl_event event = new cl_event();
+				CL.clEnqueueWriteBuffer(queue, mem.getMem(), CL.CL_TRUE,
+						(long) offset * getNumberSize(), (long) length * getNumberSize(),
+						src, 0, null, event);
+				processEvent(event);
+			} else {
+				Pointer src = Pointer.to(source).withByteOffset(0);
+				cl_event event = new cl_event();
+				CL.clEnqueueWriteBuffer(queue, mem.getMem(), CL.CL_TRUE,
+						(long) offset * getNumberSize(), (long) length * getNumberSize(),
+						src, 0, null, event);
+				processEvent(event);
+			}
+		} catch (CLException e) {
+			throw CLExceptionProcessor.process(e, this, srcOffset, offset, length);
+		}
+	}
+
+	@Override
 	public void setMem(RAM ram, int offset, double[] source, int srcOffset, int length) {
 		if (!(ram instanceof CLMemory)) throw new IllegalArgumentException();
 		CLMemory mem = (CLMemory) ram;
@@ -178,6 +211,49 @@ public class CLMemoryProvider implements MemoryProvider<RAM> {
 			processEvent(event);
 		} catch (CLException e) {
 			throw CLExceptionProcessor.process(e, this, srcOffset, offset, length);
+		}
+	}
+
+	@Override
+	public void getMem(RAM mem, int sOffset, float out[], int oOffset, int length) {
+		if (!(mem instanceof CLMemory)) throw new IllegalArgumentException();
+		getMem((CLMemory) mem, sOffset, out, oOffset, length, 1);
+	}
+
+	private void getMem(CLMemory mem, int sOffset, float out[], int oOffset, int length, int retries) {
+		try {
+			IntStream.range(0, retries).mapToObj(r -> getHeapData(mem)).forEach(heapObj -> {
+				if (heapObj instanceof float[]) {
+					float f[] = (float[]) heapObj;
+					// if (length >= 0) System.arraycopy(d, sOffset, out, oOffset, length);
+					for (int i = 0; i < length; i++) out[oOffset + i] = f[sOffset + i];
+				} else if (heapObj instanceof double[]) {
+					double d[] = (double[]) heapObj;
+					for (int i = 0; i < length; i++) out[oOffset + i] = (float) d[sOffset + i];
+				} else if (getNumberSize() == 8) {
+					double d[] = new double[length];
+					Pointer dst = Pointer.to(d).withByteOffset(0);
+					cl_event event = new cl_event();
+					CL.clEnqueueReadBuffer(queue, mem.getMem(),
+							CL.CL_TRUE, (long) sOffset * getNumberSize(),
+							(long) length * getNumberSize(), dst, 0,
+							null, event);
+					processEvent(event);
+					for (int i = 0; i < d.length; i++) out[oOffset + i] = (float) d[i];
+				} else if (getNumberSize() == 4) {
+					Pointer dst = Pointer.to(out).withByteOffset((long) oOffset * getNumberSize());
+					cl_event event = new cl_event();
+					CL.clEnqueueReadBuffer(queue, mem.getMem(),
+							CL.CL_TRUE, (long) sOffset * getNumberSize(),
+							(long) length * getNumberSize(), dst, 0,
+							null, event);
+					processEvent(event);
+				} else {
+					throw new IllegalArgumentException();
+				}
+			});
+		} catch (CLException e) {
+			throw CLExceptionProcessor.process(e, this, sOffset, oOffset, length);
 		}
 	}
 

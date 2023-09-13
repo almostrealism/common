@@ -11,8 +11,8 @@
 
   <p align="center">
     Tools for high-performance scientific computing, generative art, and machine learning in Java
-    with pluggable native acceleration (currently implemented with OpenCL, though other backend
-    acceleration libraries to follow in 2024).
+    with pluggable native acceleration (currently implemented with OpenCL and Metal, though other
+    backend acceleration libraries to follow in 2024).
     <br />
     <a href="https://github.com/almostrealism/common/issues">Report Bug</a>
     ·
@@ -39,10 +39,11 @@ Using this library correctly allows you to take complex operations, written in J
 up with binaries for CPU, GPU, or FPGA that are as fast or faster than hand-written native code.
 
 #### Support Accelerators
-    1. Normal JNI Operations via runtime generated .so/.dylib
-    2. External Native Operations via a generated executable
-    3. OpenCL (JNI with JOCL) on CPU
-    4. OpenCL (JNI with JOCL) on GPU
+    1. Standard JNI Operations via runtime generated .so/.dylib (x86/Aarch64)
+    2. External Native Operations via a generated executable (x86/Aarch64)
+    3. OpenCL (JNI with JOCL) on CPU (x86/Aarch64)
+    4. OpenCL (JNI with JOCL) on GPU (x86/Aarch64)
+    5. Metal (JNI with dylib) on GPU (Aarch64)
 
 *For more information about Java bindings for OpenCL, visit jocl.org*
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
@@ -76,9 +77,9 @@ Add Maven Repository:
 
         <repositories>
                 <repository>
-                        <id>internal</id>
+                        <id>almostrealism</id>
                         <name>Almost Realism/name>
-                        <url>https://almostrealism.jfrog.io/artifactory/default-libs-release</url>
+                        <url>https://maven.pkg.github.com/almostrealism/common</url>
                         <releases><enabled>true</enabled></releases>
                         <snapshots><enabled>true</enabled></snapshots>
                 </repository>
@@ -89,7 +90,7 @@ Add utils:
         <dependency>
             <groupId>org.almostrealism</groupId>
             <artifactId>ar-utils</artifactId>
-            <version>0.56</version>
+            <version>0.58</version>
         </dependency>
 
 ### Enabling Your Application
@@ -116,8 +117,7 @@ public class MyNativeEnableApplication implements CodeFeatures {
 
 	public void performMath() {
 		// Compose the expression
-		Supplier<Evaluable<
-		>> constantOperation = v(1.0).multiply(v(2.0));
+		Supplier<Evaluable<Scalar>> constantOperation = v(1.0).multiply(v(2.0));
 		
 		// Compile the expression
 		Evaluable<Scalar> compiledOperation = constantOperation.get();
@@ -262,8 +262,8 @@ public class MyNativeEnableApplication implements CodeFeatures {
 		dc(() -> {
 			Scalar result = new Scalar();
 
-			ScalarProducer sum = scalarAdd(v(1.0), v(2.0));
-			ScalarProducer product = scalarsMultiply(v(3.0), v(2.0));
+			Producer<Scalar> sum = scalarAdd(v(1.0), v(2.0));
+			Producer<Scalar> product = scalarsMultiply(v(3.0), v(2.0));
 
 			cc(() -> a(2, p(result), sum).get().run(), ComputeRequirement.CL);
 			System.out.println("Result = " + result.getValue());

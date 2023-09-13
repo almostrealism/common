@@ -35,4 +35,9 @@ public class IntegerConstant extends Constant<Integer> {
 	public String getExpression() {
 		return String.valueOf(value);
 	}
+
+	@Override
+	public Number kernelValue(int kernelIndex) {
+		return value;
+	}
 }

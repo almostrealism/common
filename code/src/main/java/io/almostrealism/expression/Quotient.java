@@ -16,22 +16,26 @@
 
 package io.almostrealism.expression;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
-public class Quotient extends NAryExpression<Double> {
+public class Quotient<T extends Number> extends NAryExpression<T> {
+	public static boolean enableIntegerSimplification = true;
+	public static boolean enableFpSimplification = true;
+
 	public Quotient(Expression<Double>... values) {
-		super(Double.class, "/", values);
+		super((Class<T>) type(values), "/", values);
 	}
 
 	@Override
-	public Expression<Double> generate(List<Expression<?>> children) {
+	public Expression<T> generate(List<Expression<?>> children) {
 		return new Quotient(children.toArray(new Expression[0]));
 	}
 
 	@Override
-	public Expression<Double> simplify() {
-		Expression<Double> flat = super.simplify();
+	public Expression simplify() {
+		Expression<?> flat = super.simplify();
 		if (!enableSimplification) return flat;
 		if (!(flat instanceof Quotient)) return flat;
 
@@ -40,8 +44,62 @@ public class Quotient extends NAryExpression<Double> {
 				.collect(Collectors.toList());
 		children.add(0, flat.getChildren().get(0));
 
-		if (children.size() == 1) return (Expression<Double>) children.get(0);
 		if (children.isEmpty()) return (Expression) getChildren().iterator().next();
+		if (children.size() == 1) return (Expression<Double>) children.get(0);
+
+		if (enableIntegerSimplification && children.get(0).intValue().isPresent()) {
+			int numerator = children.get(0).intValue().getAsInt();
+			if (numerator == 0) return new IntegerConstant(0).toInt();
+
+			int i;
+			i: for (i = 1; i < children.size(); i++) {
+				if (children.get(i).intValue().isPresent()) {
+					numerator = numerator / children.get(i).intValue().getAsInt();
+				} else {
+					break i;
+				}
+			}
+
+			if (i == children.size()) return new IntegerConstant(numerator).toInt();
+			List<Expression<?>> newChildren = new ArrayList<>();
+			newChildren.add(new IntegerConstant(numerator).toInt());
+			newChildren.addAll(children.subList(i, children.size()));
+			children = newChildren;
+		} else if (enableFpSimplification && children.get(0).doubleValue().isPresent()) {
+			double numerator = children.get(0).doubleValue().getAsDouble();
+			if (numerator == 0) return new DoubleConstant(0.0);
+
+			int i;
+			i: for (i = 1; i < children.size(); i++) {
+				if (children.get(i).doubleValue().isPresent()) {
+					numerator = numerator / children.get(i).doubleValue().getAsDouble();
+				} else {
+					break i;
+				}
+			}
+
+			if (i == children.size()) return new DoubleConstant(numerator);
+			List<Expression<?>> newChildren = new ArrayList<>();
+			newChildren.add(new DoubleConstant(numerator));
+			newChildren.addAll(children.subList(i, children.size()));
+			children = newChildren;
+		}
+
 		return generate(children);
+	}
+
+	@Override
+	public Number kernelValue(int kernelIndex) {
+		if (getChildren().size() > 2)
+			throw new UnsupportedOperationException();
+
+		Number numerator = getChildren().get(0).kernelValue(kernelIndex);
+		Number denominator = getChildren().get(1).kernelValue(kernelIndex);
+
+		if (numerator instanceof Integer && denominator instanceof Integer) {
+			return ((Integer) numerator) / ((Integer) denominator);
+		} else {
+			return numerator.doubleValue() / denominator.doubleValue();
+		}
 	}
 }
