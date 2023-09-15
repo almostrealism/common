@@ -21,13 +21,20 @@ import org.almostrealism.collect.PackedCollection;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.IntFunction;
 import java.util.stream.Collectors;
 
 public class ConfigurableGenome implements Genome<PackedCollection<?>>, CollectionFeatures {
 	private List<ConfigurableChromosome> chromosomes;
+	private IntFunction<PackedCollection<?>> supply;
 
 	public ConfigurableGenome() {
+		this(PackedCollection::new);
+	}
+
+	public ConfigurableGenome(IntFunction<PackedCollection<?>> supply) {
 		this.chromosomes = new ArrayList<>();
+		this.supply = supply;
 	}
 
 	public ParameterGenome getParameters() {
@@ -55,7 +62,7 @@ public class ConfigurableGenome implements Genome<PackedCollection<?>>, Collecti
 	}
 
 	public SimpleChromosome addSimpleChromosome(int geneLength) {
-		SimpleChromosome chromosome = new SimpleChromosome(geneLength);
+		SimpleChromosome chromosome = new SimpleChromosome(geneLength, supply);
 		chromosomes.add(chromosome);
 		return chromosome;
 	}

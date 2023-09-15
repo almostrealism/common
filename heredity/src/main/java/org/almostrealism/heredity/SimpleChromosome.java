@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,18 +19,21 @@ package org.almostrealism.heredity;
 import org.almostrealism.collect.PackedCollection;
 
 import java.util.List;
+import java.util.function.IntFunction;
 
 public class SimpleChromosome extends ConfigurableChromosome {
 	private int geneLength;
 	private ArrayListChromosome<PackedCollection<?>> chromosome;
+	private IntFunction<PackedCollection<?>> supply;
 
-	public SimpleChromosome(int geneLength) {
+	public SimpleChromosome(int geneLength, IntFunction<PackedCollection<?>> supply) {
 		this.geneLength = geneLength;
 		this.chromosome = new ArrayListChromosome<>();
+		this.supply = supply;
 	}
 
 	public SimpleGene addGene() {
-		SimpleGene gene = new SimpleGene(geneLength);
+		SimpleGene gene = new SimpleGene(geneLength, supply);
 		chromosome.add(gene);
 		return gene;
 	}

@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ import org.almostrealism.collect.PackedCollection;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.IntFunction;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -28,7 +29,11 @@ public class CombinedGenome implements Genome<PackedCollection<?>>, CollectionFe
 	private List<ConfigurableGenome> genomes;
 
 	public CombinedGenome(int genomeCount) {
-		this(IntStream.range(0, genomeCount).mapToObj(i -> new ConfigurableGenome()).toArray(ConfigurableGenome[]::new));
+		this(genomeCount, PackedCollection::new);
+	}
+
+	public CombinedGenome(int genomeCount, IntFunction<PackedCollection<?>> supply) {
+		this(IntStream.range(0, genomeCount).mapToObj(i -> new ConfigurableGenome(supply)).toArray(ConfigurableGenome[]::new));
 	}
 
 	public CombinedGenome(ConfigurableGenome... genomes) {
