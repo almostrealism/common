@@ -26,6 +26,8 @@ public class Constant<T> extends Expression<T> {
 	@Override
 	public String getExpression() { return null; }
 
+	public String getWrappedExpression() { return getExpression(); }
+
 	public Constant<T> generate(List<Expression<?>> children) {
 		if (children.size() > 0) {
 			throw new UnsupportedOperationException();

@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -26,6 +26,6 @@ public class UnaryExpression<T> extends Expression<T> {
 
 	@Override
 	public String getExpression() {
-		return operator + " (" + getChildren().get(0).getExpression() + ")";
+		return operator + " " + getChildren().get(0).getWrappedExpression();
 	}
 }
