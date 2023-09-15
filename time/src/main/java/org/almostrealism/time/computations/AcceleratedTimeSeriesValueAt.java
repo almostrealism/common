@@ -16,7 +16,7 @@
 
 package org.almostrealism.time.computations;
 
-import io.almostrealism.code.HybridScope;
+import io.almostrealism.scope.HybridScope;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.StaticReference;

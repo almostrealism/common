@@ -17,7 +17,7 @@
 package org.almostrealism.graph.temporal;
 
 import io.almostrealism.code.ExpressionFeatures;
-import io.almostrealism.code.HybridScope;
+import io.almostrealism.scope.HybridScope;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;

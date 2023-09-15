@@ -14,11 +14,10 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.code;
+package io.almostrealism.scope;
 
-import io.almostrealism.scope.Argument;
-import io.almostrealism.scope.Scope;
-import io.almostrealism.scope.Variable;
+import io.almostrealism.code.CodePrintWriter;
+import io.almostrealism.code.OperationAdapter;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -27,7 +26,6 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-// TODO  Move to scope package
 public class HybridScope<T> extends Scope<T> {
 	private final ExplicitScope<T> explicit;
 
