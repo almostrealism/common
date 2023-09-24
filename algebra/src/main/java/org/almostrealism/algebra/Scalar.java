@@ -19,11 +19,14 @@ package org.almostrealism.algebra;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.PackedCollectionHeap;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.PooledMem;
 
 import java.util.function.BiFunction;
+import java.util.function.DoubleFunction;
+import java.util.function.IntFunction;
 
 public class Scalar extends Pair<Scalar> implements Comparable<Scalar> {
 	public static final double EPSILON = 1.19209290e-07;
@@ -62,9 +65,6 @@ public class Scalar extends Pair<Scalar> implements Comparable<Scalar> {
 		return new Scalar(getValue(), getCertainty());
 	}
 
-	@Override
-	public PooledMem getDefaultDelegate() { return ScalarPool.getLocal(); }
-
 	public static TraversalPolicy shape() {
 		return new TraversalPolicy(2);
 	}
@@ -82,6 +82,14 @@ public class Scalar extends Pair<Scalar> implements Comparable<Scalar> {
 
 	public static Producer<Scalar> blank() {
 		return new DynamicProducerForMemoryData<>(() -> new Scalar(false), Scalar::scalarBank);
+	}
+
+	public static DoubleFunction<Scalar> supply(IntFunction<PackedCollection<?>> supply) {
+		return v -> {
+			Scalar s = new Scalar(supply.apply(2), 0);
+			s.setValue(v);
+			return s;
+		};
 	}
 
 	public static BiFunction<MemoryData, Integer, Pair<?>> postprocessor() {

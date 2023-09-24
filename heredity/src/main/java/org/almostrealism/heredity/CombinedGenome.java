@@ -29,14 +29,10 @@ public class CombinedGenome implements Genome<PackedCollection<?>>, CollectionFe
 	private List<ConfigurableGenome> genomes;
 
 	public CombinedGenome(int genomeCount) {
-		this(genomeCount, PackedCollection::new);
+		this(IntStream.range(0, genomeCount).mapToObj(i -> new ConfigurableGenome()).toArray(ConfigurableGenome[]::new));
 	}
 
-	public CombinedGenome(int genomeCount, IntFunction<PackedCollection<?>> supply) {
-		this(IntStream.range(0, genomeCount).mapToObj(i -> new ConfigurableGenome(supply)).toArray(ConfigurableGenome[]::new));
-	}
-
-	public CombinedGenome(ConfigurableGenome... genomes) {
+	protected CombinedGenome(ConfigurableGenome... genomes) {
 		this.genomes = List.of(genomes);
 	}
 

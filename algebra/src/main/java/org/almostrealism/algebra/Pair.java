@@ -21,10 +21,12 @@ import io.almostrealism.relation.Producer;
 
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
+import org.almostrealism.collect.PackedCollectionHeap;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.PooledMem;
+import org.almostrealism.hardware.mem.Heap;
 
 import java.util.function.BiFunction;
 
@@ -114,7 +116,7 @@ public class Pair<T extends PackedCollection> extends PackedCollection<T> {
 	}
 
 	@Override
-	public PooledMem getDefaultDelegate() { return PairPool.getLocal(); }
+	public Heap getDefaultDelegate() { return Heap.getDefault(); }
 
 	/** @return A String representation of this Vector object. */
 	@Override

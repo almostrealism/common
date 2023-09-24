@@ -34,6 +34,7 @@ import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.PooledMem;
+import org.almostrealism.hardware.mem.Heap;
 
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
@@ -188,7 +189,7 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 	}
 
 	@Override
-	public PooledMem getDefaultDelegate() { return TransformMatrixPool.getLocal(); }
+	public Heap getDefaultDelegate() { return Heap.getDefault(); }
 
 	@Deprecated
 	public Evaluable<Vector> transform(Evaluable<Vector> vector, int type) {

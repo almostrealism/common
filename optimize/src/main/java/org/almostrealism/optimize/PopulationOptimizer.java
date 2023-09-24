@@ -33,6 +33,8 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 import io.almostrealism.relation.Generated;
+import org.almostrealism.collect.PackedCollectionHeap;
+import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.heredity.Genome;
 import org.almostrealism.heredity.GenomeBreeder;
 import org.almostrealism.io.Console;
@@ -227,7 +229,7 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 			for (int i = 0; i < count; i++) {
 				int fi = i;
 
-				executor.submit(new HealthCallable<O, S>(() -> pop.enableGenome(targetGenome.orElse(fi)), health, scoring, h -> {
+				HealthCallable<O, S> call = new HealthCallable<>(() -> pop.enableGenome(targetGenome.orElse(fi)), health, scoring, h -> {
 					healthTable.put(pop.getGenomes().get(targetGenome.orElse(fi)), h.getScore());
 
 					if (healthListener != null)
@@ -239,7 +241,10 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 					} else {
 						console.print(".");
 					}
-				}, pop::disableGenome));
+				}, pop::disableGenome);
+				call.setHeap(Heap.getDefault());
+
+				executor.submit(call);
 			}
 
 			for (int i = 0; i < count; i++) {

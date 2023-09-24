@@ -24,16 +24,14 @@ import java.util.function.IntFunction;
 public class SimpleChromosome extends ConfigurableChromosome {
 	private int geneLength;
 	private ArrayListChromosome<PackedCollection<?>> chromosome;
-	private IntFunction<PackedCollection<?>> supply;
 
-	public SimpleChromosome(int geneLength, IntFunction<PackedCollection<?>> supply) {
+	public SimpleChromosome(int geneLength) {
 		this.geneLength = geneLength;
 		this.chromosome = new ArrayListChromosome<>();
-		this.supply = supply;
 	}
 
 	public SimpleGene addGene() {
-		SimpleGene gene = new SimpleGene(geneLength, supply);
+		SimpleGene gene = new SimpleGene(geneLength);
 		chromosome.add(gene);
 		return gene;
 	}

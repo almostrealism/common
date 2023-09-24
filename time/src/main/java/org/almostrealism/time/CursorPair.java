@@ -17,11 +17,9 @@
 package org.almostrealism.time;
 
 import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.PairPool;
 import org.almostrealism.algebra.Scalar;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
-import org.almostrealism.hardware.PooledMem;
 import org.almostrealism.time.computations.CursorPairIncrement;
 
 import java.util.function.Supplier;

@@ -21,12 +21,14 @@ import org.almostrealism.collect.PackedCollection;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.function.IntFunction;
 
 public class ParameterGenome implements Genome<PackedCollection<?>> {
 	private List<ConfigurableChromosome> chromosomes;
 	private AssignableGenome genome;
 
-	public ParameterGenome() { }
+	public ParameterGenome() {
+	}
 
 	protected ParameterGenome(List<ConfigurableChromosome> chromosomes) {
 		this.chromosomes = chromosomes;

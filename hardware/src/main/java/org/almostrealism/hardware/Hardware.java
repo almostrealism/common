@@ -53,7 +53,6 @@ public final class Hardware {
 	public static boolean enableKernelOps;
 
 	protected static final int MEMORY_SCALE;
-	protected static final boolean ENABLE_POOLING;
 
 	protected static final long timeSeriesSize;
 	protected static final int timeSeriesCount;
@@ -89,10 +88,6 @@ public final class Hardware {
 		String memScale = System.getProperty("AR_HARDWARE_MEMORY_SCALE");
 		if (memScale == null) memScale = System.getenv("AR_HARDWARE_MEMORY_SCALE");
 		MEMORY_SCALE = Optional.ofNullable(memScale).map(Integer::parseInt).orElse(4);
-
-		String pooling = System.getProperty("AR_HARDWARE_MEMORY_MODE");
-		if (pooling == null) pooling = System.getenv("AR_HARDWARE_MEMORY_MODE");
-		ENABLE_POOLING = "pool".equalsIgnoreCase(pooling);
 
 		String memLocation = System.getProperty("AR_HARDWARE_MEMORY_LOCATION");
 		if (memLocation == null) memLocation = System.getenv("AR_HARDWARE_MEMORY_LOCATION");
@@ -230,7 +225,6 @@ public final class Hardware {
 				System.out.println("Hardware[" + name + "]: Heap RAM enabled");
 			if (location == CLMemoryProvider.Location.HOST)
 				System.out.println("Hardware[" + name + "]: Host RAM enabled");
-			if (ENABLE_POOLING) System.out.println("Hardware[" + name + "]: Pooling enabled");
 
 			start(context);
 			contextListeners.forEach(l -> l.contextStarted(context));
@@ -248,7 +242,6 @@ public final class Hardware {
 
 			System.out.println("Hardware[" + name + "]: Max RAM is " +
 					memoryMax / 1000000 + " Megabytes");
-			if (ENABLE_POOLING) System.out.println("Hardware[" + name + "]: Pooling enabled");
 
 			start(context);
 			contextListeners.forEach(l -> l.contextStarted(context));
@@ -363,8 +356,6 @@ public final class Hardware {
 			return 1024;
 		}
 	}
-
-	public int getDefaultPoolSize() { return ENABLE_POOLING ? 6250 * (int) Math.pow(2, MEMORY_SCALE) : -1; }
 
 	public int getTimeSeriesSize() { return (int) timeSeriesSize; }
 
