@@ -21,6 +21,7 @@ import org.almostrealism.algebra.Scalar;
 import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
+@Deprecated
 public class GreaterThanScalar extends GreaterThan<Scalar> {
 	public GreaterThanScalar(
 			Supplier leftOperand,

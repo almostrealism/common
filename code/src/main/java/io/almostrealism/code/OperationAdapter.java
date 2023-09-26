@@ -54,13 +54,11 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 
 	@SafeVarargs
 	public OperationAdapter(Supplier<Evaluable<? extends T>>... input) {
-		metadata = new OperationMetadata();
 		setInputs(input);
 	}
 
 	@SafeVarargs
 	public OperationAdapter(Argument<? extends T>... args) {
-		metadata = new OperationMetadata();
 		if (args.length > 0) setArguments(Arrays.asList(args));
 	}
 
@@ -127,6 +125,8 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 
 	public void init() {
 		if (function == null) setFunctionName(functionName(getClass()));
+		metadata = new OperationMetadata(getFunctionName(), getName());
+
 		purgeVariables();
 	}
 

@@ -14,21 +14,7 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.bool;
+package io.almostrealism.code;
 
-import org.almostrealism.algebra.Vector;
-import io.almostrealism.relation.Evaluable;
-
-import java.util.function.Supplier;
-
-@Deprecated
-public class GreaterThanVector extends GreaterThan<Vector> implements AcceleratedConditionalStatementVector {
-	public GreaterThanVector(
-			Supplier leftOperand,
-			Supplier rightOperand,
-			Supplier<Evaluable<? extends Vector>> trueValue,
-			Supplier<Evaluable<? extends Vector>> falseValue) {
-		super(3, Vector::new, Vector::bank, leftOperand, rightOperand, trueValue, falseValue, false);
-		setPostprocessor(Vector.postprocessor());
-	}
+public interface Statement {
 }

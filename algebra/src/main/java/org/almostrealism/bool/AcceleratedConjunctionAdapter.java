@@ -162,12 +162,6 @@ public abstract class AcceleratedConjunctionAdapter<T extends PackedCollection<?
 	}
 
 	@Override
-	public ArrayVariable getTrueValue() { return trueVar; }
-
-	@Override
-	public ArrayVariable getFalseValue() { return falseVar; }
-
-	@Override
 	public IntFunction<Expression<Double>> getTrueValueExpression() {
 		return i -> (Expression) trueVar.getValueRelative(i);
 	}

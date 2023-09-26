@@ -30,7 +30,7 @@ public class HybridScope<T> extends Scope<T> {
 	private final ExplicitScope<T> explicit;
 
 	public HybridScope(OperationAdapter operation) {
-		super(operation.getFunctionName());
+		super(operation.getFunctionName(), operation.getMetadata());
 		this.explicit = new ExplicitScope<T>(operation);
 	}
 

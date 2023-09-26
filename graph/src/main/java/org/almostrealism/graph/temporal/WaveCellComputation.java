@@ -54,5 +54,5 @@ public abstract class WaveCellComputation extends OperationComputationAdapter<Pa
 	public ArrayVariable getDuration() { return getArgument(7, 2); }
 
 	@Override
-	public Scope getScope() { return scope; }
+	public Scope getScope() { return scope == null ? super.getScope() : scope; }
 }

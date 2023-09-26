@@ -44,6 +44,16 @@ public interface CodePrintWriter {
 	 */
 	void println(Metric m);
 
+	default void println(Statement s) {
+		if (s instanceof Method) {
+			println((Method<?>) s);
+		} else if (s instanceof Variable) {
+			println((Variable<?, ?>) s);
+		} else {
+			throw new IllegalArgumentException();
+		}
+	}
+
 	/**
 	 * Write the specified {@link Variable} (name of the variable and the data).
 	 * This method should assume that the variable is to be created.
@@ -90,6 +100,10 @@ public interface CodePrintWriter {
 		if (metadata != null && enableMetadata) {
 			StringBuffer indentStr = new StringBuffer();
 			IntStream.range(0, 2 * indent).forEach(i -> indentStr.append(" "));
+
+			if (metadata.getDisplayName() == null || "null".equals(metadata.getDisplayName())) {
+				throw new IllegalArgumentException();
+			}
 
 			comment(indentStr + " - " + metadata.getDisplayName() + ": " + metadata.getShortDescription());
 

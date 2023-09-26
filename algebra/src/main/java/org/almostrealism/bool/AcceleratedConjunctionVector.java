@@ -23,10 +23,6 @@ import java.util.function.Supplier;
 
 public class AcceleratedConjunctionVector extends AcceleratedConjunctionAdapter<Vector>
 										implements AcceleratedConditionalStatementVector {
-	public AcceleratedConjunctionVector() {
-		this(null, null);
-	}
-
 	public AcceleratedConjunctionVector(Supplier<Evaluable<?>> trueValue,
 										Supplier<Evaluable<?>> falseValue,
 										AcceleratedConditionalStatement<Vector>... conjuncts) {

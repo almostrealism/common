@@ -40,11 +40,6 @@ public interface AcceleratedConditionalStatement<T extends MemoryData> extends P
 
 	List<ArrayVariable<Scalar>> getOperands();
 
-	@Deprecated
-	ArrayVariable<T> getTrueValue();
-	@Deprecated
-	ArrayVariable<T> getFalseValue();
-
 	IntFunction<Expression<Double>> getTrueValueExpression();
 	IntFunction<Expression<Double>> getFalseValueExpression();
 }

@@ -34,6 +34,8 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public class TimeCell implements Cell<Scalar>, Temporal, CodeFeatures {
+	public static boolean enableConditional = true;
+
 	private Receptor r;
 	private Pair<?> time;
 	private Producer<Scalar> initial, loopDuration;
@@ -90,6 +92,16 @@ public class TimeCell implements Cell<Scalar>, Temporal, CodeFeatures {
 		if (loopDuration == null) {
 			tick.add(new Assignment<>(2, p(time),
 					add(p(time), PairFeatures.of(1.0, 1.0))));
+		} else if (enableConditional) {
+			Producer<PackedCollection<?>> ld = c(loopDuration, 0);
+			Producer<PackedCollection<?>> left = c(p(time), 0);
+			left = add(left, c(1.0));
+			left = greaterThanConditional(ld, c(0.0), _mod(left, ld), left, false);
+
+			Producer<PackedCollection<?>> right = c(p(time), 1);
+			right = add(right, c(1.0));
+
+			tick.add(a(2, p(time), concat(left, right)));
 		} else {
 			Producer<Scalar> left = l(p(time));
 			left = greaterThan(loopDuration, v(0.0),

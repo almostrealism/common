@@ -62,14 +62,6 @@ public abstract class AcceleratedBinaryConditionAdapter<T extends PackedCollecti
 		return Arrays.asList(getArgument(1), getArgument(2));
 	}
 
-	@Deprecated
-	@Override
-	public ArrayVariable getTrueValue() { return getArgument(3); }
-
-	@Deprecated
-	@Override
-	public ArrayVariable getFalseValue() { return getArgument(4); }
-
 	@Override
 	public IntFunction<Expression<Double>> getTrueValueExpression() {
 		return i -> getArgument(3).getValueRelative(i);
