@@ -39,12 +39,6 @@ public interface ScalarBankFeatures extends ScalarFeatures {
 	}
 
 	@Deprecated
-	default void setZero(PackedCollection<Scalar> bank) {
-		int size = bank.getCount();
-		for (int i = 0; i < size; i++) bank.set(i, 0.0, 1.0);
-	}
-
-	@Deprecated
 	default void addMatVec(PackedCollection<Scalar> bank, ScalarTable matrix, PackedCollection<Scalar> vector) {
 		int m = matrix.getCount();
 		int n = matrix.getWidth();

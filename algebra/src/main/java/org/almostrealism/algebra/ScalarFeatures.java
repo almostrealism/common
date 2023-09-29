@@ -188,14 +188,14 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 		return scalarPow(base, new Scalar(value));
 	}
 
-	default ExpressionComputation<Scalar> min(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
+	default ExpressionComputation<Scalar> scalarMin(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
 		return (ExpressionComputation<Scalar>) new ExpressionComputation<>(List.of(
 				args -> new Min(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0)),
 				args -> new Min(args.get(1).getValueRelative(1), args.get(2).getValueRelative(1))),
 				(Supplier) a, (Supplier) b).setPostprocessor(Scalar.postprocessor());
 	}
 
-	default ExpressionComputation<Scalar> mod(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
+	default ExpressionComputation<Scalar> scalarMod(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
 		return (ExpressionComputation<Scalar>) new ExpressionComputation<>(List.of(
 				args -> new Mod(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0)),
 				args -> args.get(1).getValueRelative(1)),

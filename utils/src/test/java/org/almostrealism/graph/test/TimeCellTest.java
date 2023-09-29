@@ -33,7 +33,7 @@ public class TimeCellTest implements TestFeatures {
 
 		Producer<Scalar> left = l(() -> new Provider<>(time));
 		left = greaterThan(loopDuration, v(0.0),
-				mod(scalarAdd(left, ScalarFeatures.of(new Scalar(1.0))), loopDuration),
+				scalarMod(scalarAdd(left, ScalarFeatures.of(new Scalar(1.0))), loopDuration),
 				scalarAdd(left, ScalarFeatures.of(new Scalar(1.0))), false);
 
 		Producer<Scalar> right = r(() -> new Provider<>(time));

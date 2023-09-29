@@ -24,7 +24,6 @@ import org.almostrealism.algebra.PairFeatures;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.collect.PackedCollection;
-import org.almostrealism.collect.computations.DynamicCollectionProducer;
 import org.almostrealism.graph.computations.TimeCellReset;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.computations.Assignment;
@@ -96,7 +95,7 @@ public class TimeCell implements Cell<Scalar>, Temporal, CodeFeatures {
 			Producer<PackedCollection<?>> ld = c(loopDuration, 0);
 			Producer<PackedCollection<?>> left = c(p(time), 0);
 			left = add(left, c(1.0));
-			left = greaterThanConditional(ld, c(0.0), _mod(left, ld), left, false);
+			left = greaterThanConditional(ld, c(0.0), mod(left, ld), left, false);
 
 			Producer<PackedCollection<?>> right = c(p(time), 1);
 			right = add(right, c(1.0));
@@ -105,7 +104,7 @@ public class TimeCell implements Cell<Scalar>, Temporal, CodeFeatures {
 		} else {
 			Producer<Scalar> left = l(p(time));
 			left = greaterThan(loopDuration, v(0.0),
-					mod(scalarAdd(left, ScalarFeatures.of(new Scalar(1.0))), loopDuration),
+					scalarMod(scalarAdd(left, ScalarFeatures.of(new Scalar(1.0))), loopDuration),
 					scalarAdd(left, ScalarFeatures.of(new Scalar(1.0))), false);
 
 			Producer<Scalar> right = r(p(time));
