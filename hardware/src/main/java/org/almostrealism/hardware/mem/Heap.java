@@ -65,7 +65,7 @@ public class Heap {
 		};
 	}
 
-	public void use(Runnable r) {
+	public Heap use(Runnable r) {
 		Heap old = defaultHeap.get();
 		defaultHeap.set(this);
 
@@ -74,6 +74,8 @@ public class Heap {
 		} finally {
 			defaultHeap.set(old);
 		}
+
+		return this;
 	}
 
 	public <T> T use(Supplier<T> r) {
