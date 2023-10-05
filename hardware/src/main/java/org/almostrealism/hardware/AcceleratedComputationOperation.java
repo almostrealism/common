@@ -36,7 +36,6 @@ import java.util.List;
 import java.util.function.Consumer;
 
 public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperation<MemoryData> implements NameProvider, Countable {
-	public static boolean enableRequiredScopes = true;
 	public static boolean enableOperationInputAggregation = true;
 
 	private Computation<T> computation;
@@ -147,7 +146,7 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 		Computation<T> c = getComputation();
 		if (outputVariable != null) c.setOutputVariable(outputVariable);
 		scope = c.getScope();
-		if (enableRequiredScopes) scope.convertArgumentsToRequiredScopes();
+		scope.convertArgumentsToRequiredScopes();
 		postCompile();
 		return scope;
 	}
@@ -195,6 +194,9 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	@Override
 	public void destroy() {
 		super.destroy();
+		scope = null;
+		setInputs((List) null);
+		outputVariable = null;
 		if (getComputation() instanceof OperationAdapter) {
 			((OperationAdapter) getComputation()).destroy();
 		}

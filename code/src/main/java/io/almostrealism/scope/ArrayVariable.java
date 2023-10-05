@@ -40,6 +40,7 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 
 	private int delegateOffset;
 	private Expression<Integer> arraySize;
+	private boolean destroyed;
 
 	public ArrayVariable(NameProvider np, String name, Expression<Integer> arraySize) {
 		super(name, true, (Expression) null);
@@ -62,12 +63,14 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 
 	@Override
 	public Expression<Integer> getArraySize() {
+		if (destroyed) throw new UnsupportedOperationException();
 		if (arraySize != null) return arraySize;
 		return super.getArraySize();
 	}
 
 	@Override
 	public int getKernelIndex() {
+		if (destroyed) throw new UnsupportedOperationException();
 		if (getOriginalProducer() instanceof KernelIndex) {
 			return ((KernelIndex) getOriginalProducer()).getKernelIndex();
 		}
@@ -84,6 +87,8 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 	public void setDelegateOffset(int delegateOffset) { this.delegateOffset = delegateOffset; }
 
 	public int getOffset() {
+		if (destroyed) throw new UnsupportedOperationException();
+
 		if (getDelegate() == null) {
 			return 0;
 		} else {
@@ -92,6 +97,8 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 	}
 
 	public Expression<Double> getValueRelative(int index) {
+		if (destroyed) throw new UnsupportedOperationException();
+
 		TraversableExpression exp = TraversableExpression.traverse(getProducer());
 
 		if (exp != null) {
@@ -112,14 +119,19 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 
 	@Override
 	public Expression<T> valueAt(Expression<?> exp) {
+		if (destroyed) throw new UnsupportedOperationException();
 		return referenceRelative(exp);
 	}
 
 	public InstanceReference<T> ref(int pos) {
+		if (destroyed) throw new UnsupportedOperationException();
 		return referenceRelative(new IntegerConstant(pos));
 	}
 
 	public InstanceReference<T> referenceRelative(Expression<?> pos) {
+		if (destroyed)
+			throw new UnsupportedOperationException();
+
 		if (getDelegate() != null) {
 			InstanceReference<T> v = getDelegate().referenceRelative(pos.add(getDelegateOffset()));
 			((InstanceReference) v).getReferent().setOriginalProducer(getOriginalProducer());
@@ -132,10 +144,14 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 	}
 
 	public InstanceReference<T> referenceAbsolute(Expression<?> pos) {
+		if (destroyed) throw new UnsupportedOperationException();
+
 		return reference(pos);
 	}
 
 	protected InstanceReference<T> reference(Expression<?> pos) {
+		if (destroyed) throw new UnsupportedOperationException();
+
 		if (getDelegate() == null) {
 			pos = pos.add(getOffsetValue());
 			return new InstanceReference(new Variable<>(dereference.apply(getName(), pos.toInt().getSimpleExpression()),
@@ -150,14 +166,20 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 	}
 
 	public Expression getOffsetValue() {
+		if (destroyed) throw new UnsupportedOperationException();
+
 		return new StaticReference<>(Integer.class, getName() + "Offset");
 	}
 
 	public Expression getDimValue() {
+		if (destroyed) throw new UnsupportedOperationException();
+
 		return new StaticReference<>(Integer.class, names.getVariableDimName(this, 0), this);
 	}
 
 	public Expression<Integer> length() {
+		if (destroyed) throw new UnsupportedOperationException();
+
 		return new StaticReference<>(Integer.class, names.getVariableSizeName(this), this);
 	}
 
@@ -170,13 +192,20 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 
 	@Override
 	public Expression<T> getExpression() {
+		if (destroyed) throw new UnsupportedOperationException();
+
 		if (getDelegate() == null) return super.getExpression();
 		throw new RuntimeException("The expression should not be referenced directly, as this variable delegates to another variable");
 	}
 
 	@Override
 	protected List<Variable<?, ?>> getExpressionDependencies() {
+		if (destroyed) throw new UnsupportedOperationException();
 		if (getDelegate() == null) return super.getExpressionDependencies();
 		return Collections.emptyList();
+	}
+
+	public void destroy() {
+		this.destroyed = true;
 	}
 }

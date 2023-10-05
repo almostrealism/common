@@ -18,7 +18,6 @@ package org.almostrealism.algebra;
 
 import io.almostrealism.relation.Producer;
 import io.almostrealism.uml.Function;
-import org.almostrealism.algebra.TripleFunction;
 
 /**
  * A {@link Gradient} represents any continuously evaluable {@link TripleFunction}

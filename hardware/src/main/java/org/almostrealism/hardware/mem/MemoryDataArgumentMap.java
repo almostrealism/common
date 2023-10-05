@@ -32,14 +32,15 @@ import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.ProviderAwareArgumentMap;
 import org.almostrealism.hardware.ctx.DefaultContextSpecific;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
 public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> {
-	public static final boolean enableCollectionVariables = true;
 	public static final boolean enableDestinationDetection = true;
 	public static final boolean enableGlobalArgumentMap = false;
 
@@ -50,6 +51,7 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 
 	private final Map<Memory, ArrayVariable<A>> mems;
 	private final Map<MemoryDataRef, Integer> aggregatePositions;
+	private final List<RootDelegateProviderSupplier> rootDelegateSuppliers;
 	private final boolean kernel;
 
 	private OperationList prepareData;
@@ -69,6 +71,7 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 	public MemoryDataArgumentMap(IntFunction<MemoryData> aggregateGenerator, boolean kernel) {
 		this.mems = new HashMap<>();
 		this.aggregatePositions = new HashMap<>();
+		this.rootDelegateSuppliers = new ArrayList<>();
 		this.kernel = kernel;
 
 		this.aggregateGenerator = aggregateGenerator;
@@ -121,6 +124,9 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 		}
 
 		if (md == null) return null;
+		if (md.getMem() == null) {
+			throw new IllegalArgumentException();
+		}
 
 		if (mems.containsKey(md.getMem())) {
 			// If the root delegate already had an argument produced for it,
@@ -146,6 +152,18 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 		}
 	}
 
+	@Override
+	public void destroy() {
+		super.destroy();
+		rootDelegateSuppliers.forEach(RootDelegateProviderSupplier::destroy);
+		mems.forEach((k, v) -> v.destroy());
+		mems.clear();
+		aggregatePositions.clear();
+		prepareData.destroy();
+		postprocessData.destroy();
+		if (aggregateData != null) aggregateData.destroy();
+	}
+
 	protected MemoryData rootDelegate(MemoryData mw) {
 		if (mw.getDelegate() == null) {
 			return mw;
@@ -155,10 +173,11 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 	}
 
 	protected class RootDelegateProviderSupplier implements Supplier<Evaluable<? extends MemoryData>>, Delegated<Provider>, KernelSupport {
-		private final Provider provider;
+		private Provider provider;
 
 		public RootDelegateProviderSupplier(MemoryData mem) {
 			this.provider = new Provider<>(rootDelegate(mem));
+			rootDelegateSuppliers.add(this);
 		}
 
 		@Override
@@ -174,6 +193,8 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 
 		@Override
 		public Provider getDelegate() { return provider; }
+
+		public void destroy() { this.provider = null; }
 	}
 
 	protected MemoryData getAggregateData() {
@@ -254,7 +275,7 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 	public static MemoryDataArgumentMap create(IntFunction<MemoryData> aggregateGenerator, boolean kernel) {
 		if (!enableGlobalArgumentMap) {
 			MemoryDataArgumentMap map = new MemoryDataArgumentMap(aggregateGenerator, kernel);
-			if (enableCollectionVariables) map.setDelegateProvider(CollectionScopeInputManager.getInstance());
+			map.setDelegateProvider(CollectionScopeInputManager.getInstance());
 			return map;
 		}
 

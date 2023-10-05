@@ -231,9 +231,13 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 	}
 
 	public void destroy() {
-		getInputs().stream().map(in -> in instanceof Producer ? (Producer) in : null)
-				.filter(Objects::nonNull)
-				.forEach(Producer::destroy);
+		if (getInputs() != null) {
+			getInputs().stream().map(in -> in instanceof Producer ? (Producer) in : null)
+					.filter(Objects::nonNull)
+					.forEach(Producer::destroy);
+		}
+
+		resetArguments();
 	}
 
 	public static ArrayVariable getArgumentForInput(List<ArrayVariable> vars, Supplier<Evaluable> input) {

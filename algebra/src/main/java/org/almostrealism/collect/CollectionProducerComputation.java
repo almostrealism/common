@@ -40,10 +40,12 @@ import java.util.function.Function;
 
 public interface CollectionProducerComputation<T extends PackedCollection<?>> extends
 		CollectionProducer<T>, ProducerComputation<T>, ParallelProcess<Process<?, ?>, Evaluable<? extends T>> {
+	/**
+	 * When enabled, the TraversalPolicy of results from {@link #postProcessOutput(MemoryData, int)}
+	 * will avoid prepending dimensions to the TraversalPolicy from {@link #getShape()}.
+	 */
+	// TODO  This doesn't seem to be implemented properly
 	boolean enableShapeTrim = false;
-
-	// This should be 0, but Scalar is actually a Pair so a set of scalars is 2D not 1D
-	int SCALAR_AXIS = 1;
 
 	default T postProcessOutput(MemoryData output, int offset) {
 		TraversalPolicy shape = getShape();

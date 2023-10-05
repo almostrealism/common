@@ -16,6 +16,9 @@
 
 package org.almostrealism.hardware.mem;
 
+import io.almostrealism.code.OperationAdapter;
+import org.almostrealism.hardware.ProducerCache;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Callable;
@@ -32,14 +35,19 @@ public class Heap {
 	private Bytes data;
 	private int end;
 
+	private List<Supplier> dependentOperations;
+	private List<OperationAdapter> compiledDependencies;
+
 	public Heap(int totalSize) {
 		entries = new ArrayList<>();
 		data = new Bytes(totalSize);
+		dependentOperations = new ArrayList<>();
+		compiledDependencies = new ArrayList<>();
 	}
 
 	public synchronized Bytes allocate(int count) {
 		if (end + count > data.getMemLength()) {
-			throw new IllegalArgumentException("No room remaining in PackedCollectionHeap");
+			throw new IllegalArgumentException("No room remaining in Heap");
 		}
 
 		Bytes allocated = new Bytes(count, data, end);
@@ -49,6 +57,8 @@ public class Heap {
 	}
 
 	public Bytes get(int index) { return entries.get(index); }
+
+	public Bytes getBytes() { return data; }
 
 	public Stream<Bytes> stream() { return entries.stream(); }
 
@@ -93,10 +103,44 @@ public class Heap {
 		entries.clear();
 		end = 0;
 		data.destroy();
+
+		if (dependentOperations != null) {
+			dependentOperations.forEach(ProducerCache::purgeEvaluableCache);
+			dependentOperations = null;
+		}
+
+		if (compiledDependencies != null) {
+			compiledDependencies.forEach(OperationAdapter::destroy);
+			compiledDependencies = null;
+		}
+	}
+
+	private List<Supplier> getDependentOperations() {
+		return dependentOperations;
+	}
+
+	private List<OperationAdapter> getCompiledDependencies() {
+		return compiledDependencies;
 	}
 
 	public static Heap getDefault() {
 		return defaultHeap.get();
+	}
+
+	public static <T> Supplier<T> addOperation(Supplier<T> operation) {
+		if (getDefault() != null) {
+			getDefault().getDependentOperations().add(operation);
+		}
+
+		return operation;
+	}
+
+	public static <T extends OperationAdapter> T addCompiled(T operation) {
+		if (getDefault() != null) {
+			getDefault().getCompiledDependencies().add(operation);
+		}
+
+		return operation;
 	}
 }
 
