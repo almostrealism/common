@@ -32,13 +32,13 @@ public class OperationSemaphoreTests implements TestFeatures {
 	public void sum() {
 		if (skipLongTests) return;
 
-		sum(50, 2048, 1024, false);
+		sum(16, 2048, 1024, false);
 	}
 
 	@Test
 	public void sumPowers() {
 		for (int i = 1; i < 9; i++) {
-			sum(10, 100, 1 << i, false);
+			sum(12, 100, 1 << i, false);
 		}
 	}
 
