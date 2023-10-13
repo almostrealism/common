@@ -20,7 +20,9 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.PackedCollectionHeap;
 
+import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 
@@ -34,8 +36,8 @@ public class SimpleGene implements Gene<PackedCollection<?>>, GeneParameters, Co
 	private UnaryOperator<Producer<PackedCollection<?>>> transforms[];
 
 	public SimpleGene(int length) {
-		this.values = new PackedCollection<>(length);
-		this.ranges = new PackedCollection<>(shape(length, 2), 1);
+		this.values = PackedCollection.factory().apply(length);
+		this.ranges = PackedCollection.factory().apply(length * 2).range(shape(length, 2)).traverse(1);
 		this.transforms = new UnaryOperator[length];
 		initRanges();
 	}

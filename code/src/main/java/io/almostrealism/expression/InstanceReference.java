@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -45,6 +45,9 @@ public class InstanceReference<T> extends Expression<T> {
 	public String getExpression() {
 		return var.getName();
 	}
+
+	@Override
+	public String getWrappedExpression() { return getExpression(); }
 
 	@Override
 	public Variable assign(Expression exp) {

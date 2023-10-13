@@ -38,7 +38,7 @@ public class NAryExpression<T> extends Expression<T> {
 
 	@Override
 	public String getExpression() {
-		return concat(operator, getChildren().stream().map(Expression::getExpression).map(s -> "(" + s + ")"));
+		return concat(operator, getChildren().stream().map(Expression::getWrappedExpression));
 	}
 
 	@Override

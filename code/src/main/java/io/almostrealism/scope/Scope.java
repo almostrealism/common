@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.ProducerArgumentReference;
+import io.almostrealism.code.Statement;
 import io.almostrealism.relation.Tree;
 import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.expression.Expression;
@@ -57,6 +58,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Tree<Scope<T>>, Ope
 
 	private String name;
 	private OperationMetadata metadata;
+	private final List<Statement> statements;
 	private final List<Variable<?, ?>> variables;
 	private final List<Method> methods;
 	private final List<Metric> metrics;
@@ -69,6 +71,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Tree<Scope<T>>, Ope
 	 * Creates an empty {@link Scope}.
 	 */
 	public Scope() {
+		this.statements = new ArrayList<>();
 		this.variables = new ArrayList<>();
 		this.methods = new ArrayList<>();
 		this.metrics = new ArrayList<>();
@@ -93,6 +96,9 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Tree<Scope<T>>, Ope
 		this();
 		setName(name);
 		setMetadata(new OperationMetadata(metadata));
+
+		if (metadata == null)
+			throw new IllegalArgumentException();
 	}
 
 	@Override
@@ -113,19 +119,15 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Tree<Scope<T>>, Ope
 
 	public void setMetadata(OperationMetadata metadata) { this.metadata = metadata; }
 
-	/**
-	 * @return  The {@link Variable}s in this {@link Scope}.
-	 */
+	public List<Statement> getStatements() { return statements; }
+
+	/** @return  The {@link Variable}s in this {@link Scope}. */
 	public List<Variable<?, ?>> getVariables() { return variables; }
 
-	/**
-	 * @return  The {@link Method}s in this {@link Scope}.
-	 */
+	/** @return  The {@link Method}s in this {@link Scope}. */
 	public List<Method> getMethods() { return methods; }
 
-	/**
-	 * @return  The inner {@link Scope}s contained by this {@link Scope}.
-	 */
+	/** @return  The inner {@link Scope}s contained by this {@link Scope}. */
 	@Override
 	public List<Scope<T>> getChildren() { return this; }
 
@@ -398,6 +400,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Tree<Scope<T>>, Ope
 	public void write(CodePrintWriter w) {
 		w.renderMetadata(getMetadata());
 		for (Method m : getMethods()) { w.println(m); }
+		for (Statement s : getStatements()) { w.println(s); }
 		for (Variable v : getVariables()) { w.println(v); }
 		for (Scope s : getChildren()) { s.write(w); }
 		for (Metric m : getMetrics()) { w.println(m); }

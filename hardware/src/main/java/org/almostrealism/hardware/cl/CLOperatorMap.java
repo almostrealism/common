@@ -55,6 +55,10 @@ public class CLOperatorMap<T extends MemoryData> implements InstructionSet, BiFu
 			System.out.println("HardwareOperatorMap: init " + metadata.getDisplayName());
 		}
 
+		if (src.length() > 100000) {
+			System.out.println("WARN: CLOperatorMap source length is " + src.length() + " characters");
+		}
+
 		if (CLOperator.enableVerboseLog) {
 			System.out.println("Source:");
 			System.out.println(src);

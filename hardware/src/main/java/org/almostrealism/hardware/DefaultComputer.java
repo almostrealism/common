@@ -20,6 +20,7 @@ import io.almostrealism.code.Computation;
 import io.almostrealism.code.Computer;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.jni.NativeCompiler;
+import org.almostrealism.hardware.mem.Heap;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -54,7 +55,7 @@ public class DefaultComputer implements Computer<MemoryData> {
 
 	@Override
 	public Runnable compileRunnable(Computation<Void> c) {
-		return new AcceleratedComputationOperation<>(c, Hardware.enableKernelOps);
+		return Heap.addCompiled(new AcceleratedComputationOperation<>(c, Hardware.enableKernelOps));
 	}
 
 	@Override

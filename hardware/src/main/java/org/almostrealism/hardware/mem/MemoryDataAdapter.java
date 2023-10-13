@@ -31,12 +31,13 @@ public abstract class MemoryDataAdapter implements MemoryData {
 
 	protected void init() {
 		if (getDelegate() == null) {
-			PooledMem pool = getDefaultDelegate();
+			Heap heap = getDefaultDelegate();
 
-			if (pool == null) {
+			if (heap == null) {
 				mem = Hardware.getLocalHardware().getMemoryProvider(getMemLength()).allocate(getMemLength());
 			} else {
-				setDelegate(pool, pool.reserveOffset(this));
+				Bytes data = heap.allocate(getMemLength());
+				setDelegate(data.getDelegate(), data.getDelegateOffset());
 				setMem(new double[getMemLength()]);
 			}
 		}
@@ -81,7 +82,7 @@ public abstract class MemoryDataAdapter implements MemoryData {
 		this.delegateMemOffset = offset;
 	}
 
-	public PooledMem getDefaultDelegate() { return null; }
+	public Heap getDefaultDelegate() { return null; }
 
 	@Override
 	public void finalize() {

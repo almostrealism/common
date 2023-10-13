@@ -16,6 +16,7 @@
 
 package io.almostrealism.scope;
 
+import io.almostrealism.code.Statement;
 import io.almostrealism.expression.ArraySize;
 import io.almostrealism.expression.Constant;
 import io.almostrealism.kernel.KernelIndex;
@@ -44,7 +45,7 @@ import java.util.function.Supplier;
  *
  * @param <T>  Type of the underlying data.
  */
-public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable, KernelIndex, Delegated<V> {
+public class Variable<T, V extends Variable<T, ?>> implements Statement, Nameable, Sortable, KernelIndex, Delegated<V> {
 	private String name;
 	private PhysicalScope physicalScope;
 	private boolean declaration;

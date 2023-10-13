@@ -42,13 +42,4 @@ public class TemporalScalarBank extends MemoryBankAdapter<TemporalScalar> {
 				new TemporalScalar(delegateSpec.getDelegate(), delegateSpec.getOffset()),
 				pool, cacheLevel);
 	}
-
-	public static TemporalScalarBank fromProducer(Evaluable<TemporalScalar> producer, int count) {
-		TemporalScalarBank bank = new TemporalScalarBank(count);
-		for (int i = 0; i < bank.getCount(); i++) {
-			bank.set(i, producer.evaluate());
-		}
-
-		return bank;
-	}
 }

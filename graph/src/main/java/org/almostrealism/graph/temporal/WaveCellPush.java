@@ -17,7 +17,7 @@
 package org.almostrealism.graph.temporal;
 
 import io.almostrealism.code.ExpressionFeatures;
-import io.almostrealism.code.HybridScope;
+import io.almostrealism.scope.HybridScope;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
@@ -27,6 +27,8 @@ import org.almostrealism.collect.PackedCollection;
 import java.util.function.Consumer;
 
 public class WaveCellPush extends WaveCellComputation implements ExpressionFeatures {
+	public static boolean enableConditional = true;
+
 	public WaveCellPush(WaveCellData data, PackedCollection<?> wave, Producer<Scalar> frame, Scalar output) {
 		super(data, wave, frame, output);
 	}
@@ -35,35 +37,32 @@ public class WaveCellPush extends WaveCellComputation implements ExpressionFeatu
 	public void prepareScope(ScopeInputManager manager) {
 		super.prepareScope(manager);
 
-		scope = new HybridScope(this);
-
-		Consumer<String> exp = scope.code();
-
-		Expression<?> condition = getWavePosition().valueAt(0).greaterThanOrEqual(e(0)).and(
+		Expression<Boolean> condition = getWavePosition().valueAt(0).greaterThanOrEqual(e(0)).and(
 				getWavePosition().valueAt(0).lessThan(getWaveCount().valueAt(0)));
 
-		exp.accept("if (");
-		exp.accept(condition.getSimpleExpression());
-		exp.accept(") {\n");
+		if (enableConditional) {
+			Expression<Double> value = getAmplitude().valueAt(0).multiply(
+					getWave().referenceRelative(getWaveIndex().valueAt(0).add(getWavePosition().valueAt(0).floor())));
+			Expression<?> conditional = conditional(condition, value, e(0.0));
+			addVariable(getOutput().ref(0).assign(conditional));
+		} else {
+			scope = new HybridScope(this);
 
-//		exp.accept("if ((");
-//		exp.accept(getWavePosition().valueAt(0).getSimpleExpression());
-//		exp.accept(" >= 0) & ((");
-//		exp.accept(getWavePosition().valueAt(0).getSimpleExpression());
-//		exp.accept(") < (");
-//		exp.accept(getWaveCount().valueAt(0).getSimpleExpression());
-//		exp.accept("))) {\n");
-		exp.accept(getOutput().ref(0).getSimpleExpression());
-		exp.accept(" = ");
-		exp.accept(getAmplitude().valueAt(0).getSimpleExpression());
-		exp.accept(" * (");
-//		exp.accept(getWave().get("(" + getWaveIndex().valueAt(0).getExpression() +
-//				" + floor(" + getWavePosition().valueAt(0).getExpression() + "))").getExpression());
-		exp.accept(getWave().referenceRelative(getWaveIndex().valueAt(0).add(getWavePosition().valueAt(0).floor())).getSimpleExpression());
-		exp.accept(");\n");
-		exp.accept("} else {\n");
-		exp.accept(getOutput().ref(0).getSimpleExpression());
-		exp.accept(" = 0.0;\n");
-		exp.accept("}\n");
+			Consumer<String> exp = scope.code();
+
+			exp.accept("if (");
+			exp.accept(condition.getSimpleExpression());
+			exp.accept(") {\n");
+			exp.accept(getOutput().ref(0).getSimpleExpression());
+			exp.accept(" = ");
+			exp.accept(getAmplitude().valueAt(0).getSimpleExpression());
+			exp.accept(" * (");
+			exp.accept(getWave().referenceRelative(getWaveIndex().valueAt(0).add(getWavePosition().valueAt(0).floor())).getSimpleExpression());
+			exp.accept(");\n");
+			exp.accept("} else {\n");
+			exp.accept(getOutput().ref(0).getSimpleExpression());
+			exp.accept(" = 0.0;\n");
+			exp.accept("}\n");
+		}
 	}
 }

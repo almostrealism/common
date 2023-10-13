@@ -18,12 +18,9 @@ package org.almostrealism.color;
 
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.color.Light;
-import io.almostrealism.relation.Evaluable;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Supplier;
 
 /**
  * @author  Michael Murray

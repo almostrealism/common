@@ -18,7 +18,7 @@ package org.almostrealism.graph.temporal;
 
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.code.HybridScope;
+import io.almostrealism.scope.HybridScope;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Scalar;
@@ -54,5 +54,5 @@ public abstract class WaveCellComputation extends OperationComputationAdapter<Pa
 	public ArrayVariable getDuration() { return getArgument(7, 2); }
 
 	@Override
-	public Scope getScope() { return scope; }
+	public Scope getScope() { return scope == null ? super.getScope() : scope; }
 }

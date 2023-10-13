@@ -16,7 +16,7 @@
 
 package org.almostrealism.algebra.computations;
 
-import io.almostrealism.code.HybridScope;
+import io.almostrealism.scope.HybridScope;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.StaticReference;

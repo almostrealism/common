@@ -33,9 +33,9 @@ public class Greater extends Expression<Boolean> {
 	@Override
 	public String getExpression() {
 		if (orEqual) {
-			return "(" + getChildren().get(0).getExpression() + ") >= (" + getChildren().get(1).getExpression() + ")";
+			return getChildren().get(0).getWrappedExpression() + " >= " + getChildren().get(1).getWrappedExpression();
 		} else {
-			return "(" + getChildren().get(0).getExpression() + ") > (" + getChildren().get(1).getExpression() + ")";
+			return getChildren().get(0).getWrappedExpression() + " > " + getChildren().get(1).getWrappedExpression();
 		}
 	}
 

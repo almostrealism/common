@@ -21,6 +21,7 @@ import io.almostrealism.scope.Method;
 import io.almostrealism.scope.Metric;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
+import org.almostrealism.io.SystemUtils;
 
 import java.util.List;
 import java.util.stream.IntStream;
@@ -30,6 +31,8 @@ import java.util.stream.IntStream;
  * exported to.
  */
 public interface CodePrintWriter {
+	boolean enableMetadata = SystemUtils.isEnabled("AR_HARDWARE_METADATA").orElse(false);
+
 	/**
 	 * This is used to write explicit scopes, but should be discouraged.
 	 */
@@ -40,6 +43,16 @@ public interface CodePrintWriter {
 	 * Write the specified {@link Metric}.
 	 */
 	void println(Metric m);
+
+	default void println(Statement s) {
+		if (s instanceof Method) {
+			println((Method<?>) s);
+		} else if (s instanceof Variable) {
+			println((Variable<?, ?>) s);
+		} else {
+			throw new IllegalArgumentException();
+		}
+	}
 
 	/**
 	 * Write the specified {@link Variable} (name of the variable and the data).
@@ -84,9 +97,13 @@ public interface CodePrintWriter {
 	}
 
 	default void renderMetadata(OperationMetadata metadata, int indent) {
-		if (metadata != null) {
+		if (metadata != null && enableMetadata) {
 			StringBuffer indentStr = new StringBuffer();
 			IntStream.range(0, 2 * indent).forEach(i -> indentStr.append(" "));
+
+			if (metadata.getDisplayName() == null || "null".equals(metadata.getDisplayName())) {
+				throw new IllegalArgumentException();
+			}
 
 			comment(indentStr + " - " + metadata.getDisplayName() + ": " + metadata.getShortDescription());
 

@@ -53,6 +53,8 @@ public class AcceleratedProcessDetails {
 		}
 
 		MemoryData data = (MemoryData) arg;
+		if (data.getMem() == null)
+			throw new IllegalArgumentException();
 		if (data.getMem().getProvider() == target) return arg;
 
 		MemoryData tmp = tempFactory.apply(data.getMemLength(), data.getAtomicMemLength());

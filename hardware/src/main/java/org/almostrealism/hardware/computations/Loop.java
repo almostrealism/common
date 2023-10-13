@@ -18,15 +18,13 @@ package org.almostrealism.hardware.computations;
 
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Computation;
-import io.almostrealism.code.HybridScope;
+import io.almostrealism.scope.HybridScope;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.relation.Compactable;
 import org.almostrealism.hardware.Hardware;
-import org.almostrealism.hardware.cl.OpenCLLanguageOperations;
-import org.almostrealism.hardware.cl.OpenCLPrintWriter;
 import org.almostrealism.hardware.OperationComputationAdapter;
 
 // TODO  Should extend Repeated

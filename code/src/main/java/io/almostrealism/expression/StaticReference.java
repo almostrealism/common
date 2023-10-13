@@ -35,6 +35,8 @@ public class StaticReference<T> extends Expression<T> {
 
 	public String getExpression() { return expression; }
 
+	public String getWrappedExpression() { return expression; }
+
 	@Override
 	public Expression<T> generate(List<Expression<?>> children) {
 		if (children.size() > 0) throw new UnsupportedOperationException();

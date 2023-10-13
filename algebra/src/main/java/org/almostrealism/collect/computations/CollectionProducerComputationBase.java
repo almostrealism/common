@@ -64,7 +64,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		}
 
 		this.shape = outputShape;
-		this.destination = () -> new PackedCollection(shape);
+		this.destination = () -> PackedCollection.factory().apply(shape.getTotalSize()).reshape(shape);
 		this.setInputs(CollectionUtils.include(new Supplier[0], new MemoryDataDestination(this, this::createKernelDestination), arguments));
 		init();
 	}

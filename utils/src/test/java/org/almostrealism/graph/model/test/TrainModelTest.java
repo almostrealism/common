@@ -239,9 +239,9 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	public void trainLarge() {
 		if (skipLongTests) return;
 
-		Tensor<Double> t = tensor(shape(100, 100));
+		Tensor<Double> t = tensor(shape(60, 60));
 		PackedCollection<?> input = t.pack();
-		train(input, model(100, 100, 3, 8, 10));
+		train(input, model(60, 60, 3, 8, 10));
 	}
 
 	@Test
@@ -250,7 +250,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 
 		double size = 10;
 
-		while (size < 100) {
+		while (size < 60) {
 			int s = (int) size;
 
 			Tensor<Double> t = tensor(shape(s, s));

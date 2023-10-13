@@ -26,6 +26,8 @@ import org.almostrealism.hardware.PassThroughProducer;
 import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.hardware.ctx.ContextSpecific;
 import org.almostrealism.hardware.ctx.DefaultContextSpecific;
+import org.almostrealism.hardware.mem.Bytes;
+import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.hardware.mem.MemoryDataAdapter;
 
 import java.util.concurrent.atomic.AtomicInteger;
@@ -243,6 +245,18 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 		PackedCollection<T> clone = new PackedCollection<>(getShape(), getShape().getTraversalAxis());
 		clone.setMem(0, toArray(0, getMemLength()), 0, getMemLength());
 		return clone;
+	}
+
+	public static IntFunction<PackedCollection<?>> factory() {
+		Heap heap = Heap.getDefault();
+		return heap == null ? PackedCollection::new : factory(heap::allocate);
+	}
+
+	public static IntFunction<PackedCollection<?>> factory(IntFunction<Bytes> allocator) {
+		return len -> {
+			Bytes data = allocator.apply(len);
+			return new PackedCollection<>(new TraversalPolicy(len), 0, data.getDelegate(), data.getDelegateOffset());
+		};
 	}
 
 	public static PackedCollection<?> range(MemoryData data, TraversalPolicy shape, int start) {

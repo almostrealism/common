@@ -17,15 +17,16 @@
 package org.almostrealism.time;
 
 import org.almostrealism.algebra.Pair;
-import org.almostrealism.algebra.PairPool;
 import org.almostrealism.algebra.Scalar;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
-import org.almostrealism.hardware.PooledMem;
+import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.OperationList;
 import org.almostrealism.time.computations.CursorPairIncrement;
 
 import java.util.function.Supplier;
 
+@Deprecated
 public class CursorPair extends Pair {
 	public CursorPair() { super(0, 0); }
 
@@ -46,6 +47,8 @@ public class CursorPair extends Pair {
 	public double getDelayCursor() { return getB(); }
 
 	public Supplier<Runnable> increment(Producer<Scalar> value) {
-		return new CursorPairIncrement(() -> new Provider<>(this), value);
+		// return new CursorPairIncrement(() -> new Provider<>(this), value);
+		Producer<PackedCollection<?>> v = concat(c(value, 0), c(value, 0));
+		return a("CursorPair Increment", p(this), add(p(this), v));
 	}
 }

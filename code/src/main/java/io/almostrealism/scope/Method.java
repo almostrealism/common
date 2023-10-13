@@ -16,6 +16,7 @@
 
 package io.almostrealism.scope;
 
+import io.almostrealism.code.Statement;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Nameable;
 
@@ -28,7 +29,7 @@ import java.util.List;
  * 
  * T is the type of the return value of the method.
  */
-public class Method<T> extends Expression<T> implements Nameable {
+public class Method<T> extends Expression<T> implements Statement, Nameable {
 	private String member, name;
 	private List<Expression<?>> arguments;
 

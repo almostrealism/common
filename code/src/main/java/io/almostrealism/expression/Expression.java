@@ -131,6 +131,10 @@ public abstract class Expression<T> implements Tree<Expression<?>> {
 
 	public abstract String getExpression();
 
+	public String getWrappedExpression() {
+		return "(" + getExpression() + ")";
+	}
+
 	public List<Variable<?, ?>> getDependencies() { return dependencies; }
 
 	public int getArraySize() { return -1; }

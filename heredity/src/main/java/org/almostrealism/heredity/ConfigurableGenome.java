@@ -21,6 +21,7 @@ import org.almostrealism.collect.PackedCollection;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.IntFunction;
 import java.util.stream.Collectors;
 
 public class ConfigurableGenome implements Genome<PackedCollection<?>>, CollectionFeatures {

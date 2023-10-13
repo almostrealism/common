@@ -23,7 +23,7 @@ public class OperationMetadata {
 	private String displayName, shortDescription, longDescription;
 	private List<OperationMetadata> children;
 
-	protected OperationMetadata() { children = new ArrayList<>(); }
+	private OperationMetadata() { children = new ArrayList<>(); }
 
 	public OperationMetadata(OperationMetadata from) {
 		this();
@@ -39,6 +39,10 @@ public class OperationMetadata {
 		this();
 		setDisplayName(displayName);
 		setShortDescription(shortDescription);
+
+		if (displayName == null) {
+			throw new IllegalArgumentException();
+		}
 	}
 
 	public String getDisplayName() {

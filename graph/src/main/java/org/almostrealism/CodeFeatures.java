@@ -168,10 +168,6 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 		return new Switch(decision, Arrays.asList(choices));
 	}
 
-	default <T extends MemoryData> Supplier<Runnable> run(Producer<T> kernel, MemoryBank destination, MemoryData... arguments) {
-		return new KernelOperation<>(kernel, destination, arguments);
-	}
-
 	default CollectionProducerComputation<PackedCollection<?>> kernel(TraversalPolicy shape,
 																	  KernelExpression kernel,
 																	  Producer... arguments) {

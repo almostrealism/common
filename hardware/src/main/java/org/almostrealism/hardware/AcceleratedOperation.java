@@ -376,6 +376,9 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			if (kernelArgs[i] != null) continue i;
 
 			Evaluable<T> c = (Evaluable<T>) ProducerCache.getEvaluableForSupplier(arguments.get(i).getProducer());
+			if (c == null) {
+				throw new UnsupportedOperationException();
+			}
 
 			if (!(c instanceof KernelizedEvaluable)) {
 				Object o = c.evaluate((Object[]) args);
@@ -446,7 +449,8 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			} else if (c instanceof KernelizedEvaluable && Stream.of(args).filter(a -> !(a instanceof MemoryData)).findAny().isEmpty()) {
 				KernelizedEvaluable kp = (KernelizedEvaluable) c;
 				kernelArgs[i] = kp.createKernelDestination(kernelSize);
-				if (created.get() != null) created.get().add(kernelArgs[i]);
+				if (created.get() != null)
+					created.get().add(kernelArgs[i]);
 
 				kp.into(kernelArgs[i]).evaluate(Stream.of(args).map(MemoryData.class::cast).toArray(MemoryData[]::new));
 			} else {
@@ -463,8 +467,15 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 	@Override
 	public void destroy() {
+		super.destroy();
+
 		argumentMaps.forEach(ArgumentMap::destroy);
 		argumentMaps = new ArrayList<>();
+
+		preOp.destroy();
+		postOp.destroy();
+		preOp = null;
+		postOp = null;
 	}
 
 	public static Semaphore getSemaphore() { return semaphores.get(); }

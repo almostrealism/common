@@ -14,18 +14,7 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.expression;
+package io.almostrealism.code;
 
-public class UnaryExpression<T> extends Expression<T> {
-	private String operator;
-
-	public UnaryExpression(Class<T> type, String operator, Expression<?> value) {
-		super(type, value);
-		this.operator = operator;
-	}
-
-	@Override
-	public String getExpression() {
-		return operator + " " + getChildren().get(0).getWrappedExpression();
-	}
+public interface Statement {
 }

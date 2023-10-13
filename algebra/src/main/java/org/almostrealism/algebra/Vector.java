@@ -24,6 +24,7 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.cl.CLOperator;
 import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.hardware.mem.Heap;
 
 import java.util.function.BiFunction;
 import java.util.function.IntFunction;
@@ -374,7 +375,7 @@ public class Vector extends PackedCollection<Vector> implements Triple, VectorFe
 	public int getMemLength() { return 3; }
 
 	@Override
-	public VectorPool getDefaultDelegate() { return VectorPool.getLocal(); }
+	public Heap getDefaultDelegate() { return Heap.getDefault(); }
 
 	/**
 	 * @see java.lang.Object#clone()

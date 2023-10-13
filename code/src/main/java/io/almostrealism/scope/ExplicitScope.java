@@ -14,10 +14,11 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.code;
+package io.almostrealism.scope;
 
-import io.almostrealism.scope.Argument;
-import io.almostrealism.scope.Scope;
+import io.almostrealism.code.CodePrintWriter;
+import io.almostrealism.code.OperationAdapter;
+import io.almostrealism.code.OperationMetadata;
 
 import java.util.List;
 import java.util.function.Consumer;
@@ -29,16 +30,16 @@ public class ExplicitScope<T> extends Scope<T> {
 	private List<Argument<?>> arguments;
 
 	public ExplicitScope(OperationAdapter op) {
-		this(op.getFunctionName());
+		this(op.getFunctionName(), op.getMetadata());
 		setArguments(op.getArguments());
 	}
 
-	public ExplicitScope(String name) {
-		this(name, null);
+	public ExplicitScope(String name, OperationMetadata metadata) {
+		this(name, metadata, null);
 	}
 
-	public ExplicitScope(String name, String code) {
-		super(name);
+	public ExplicitScope(String name, OperationMetadata metadata, String code) {
+		super(name, metadata);
 		this.code = new StringBuffer();
 		if (code != null) this.code.append(code);
 	}

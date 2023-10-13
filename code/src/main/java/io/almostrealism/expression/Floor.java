@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -29,6 +29,9 @@ public class Floor extends Expression<Double> {
 		OptionalDouble v = getChildren().get(0).doubleValue();
 		return v.isPresent() ? "floor(" + v.getAsDouble()+ ")" : "floor(" + getChildren().get(0).getExpression() + ")";
 	}
+
+	@Override
+	public String getWrappedExpression() { return getExpression(); }
 
 	@Override
 	public OptionalDouble doubleValue() {

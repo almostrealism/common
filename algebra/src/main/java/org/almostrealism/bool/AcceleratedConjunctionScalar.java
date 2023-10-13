@@ -22,10 +22,6 @@ import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
 public class AcceleratedConjunctionScalar extends AcceleratedConjunctionAdapter<Scalar> {
-	public AcceleratedConjunctionScalar() {
-		this(null, null);
-	}
-
 	@SafeVarargs
 	public AcceleratedConjunctionScalar(Supplier trueValue, Supplier falseValue,
 										AcceleratedConditionalStatement<Scalar>... conjuncts) {

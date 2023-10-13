@@ -26,8 +26,6 @@ import java.util.ResourceBundle;
 
 public class MTL {
 	static {
-		// System.loadLibrary("MTL");
-
 		System.getProperty("java.io.tmpdir");
 		InputStream is = MTL.class.getClassLoader().getResourceAsStream("libMTL.dylib");
 

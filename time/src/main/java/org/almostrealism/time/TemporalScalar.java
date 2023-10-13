@@ -42,11 +42,6 @@ public class TemporalScalar extends Pair<TemporalScalar> {
 
 	public void setValue(double value) { setB(value); }
 
-	@Override
-	public PooledMem getDefaultDelegate() {
-		return TemporalScalarPool.getLocal();
-	}
-
 	public static Producer<TemporalScalar> blank() {
 		return new DynamicProducerForMemoryData<>(TemporalScalar::new, TemporalScalarBank::new);
 	}

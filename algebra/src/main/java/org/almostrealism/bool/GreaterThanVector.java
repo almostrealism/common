@@ -21,6 +21,7 @@ import io.almostrealism.relation.Evaluable;
 
 import java.util.function.Supplier;
 
+@Deprecated
 public class GreaterThanVector extends GreaterThan<Vector> implements AcceleratedConditionalStatementVector {
 	public GreaterThanVector(
 			Supplier leftOperand,

@@ -97,7 +97,11 @@ public class WaveCell extends CollectionTemporalCellAdapter implements CodeFeatu
 	}
 
 	public WaveCell(PackedCollection<?> wav, int sampleRate, double amplitude, Producer<Scalar> frame) {
-		this(new DefaultWaveCellData(), wav, sampleRate, amplitude, frame, Ops.ops().v(0.0), Ops.ops().v(wav.getCount()));
+		this(new DefaultWaveCellData(), wav, sampleRate, amplitude, frame);
+	}
+
+	public WaveCell(WaveCellData data, PackedCollection<?> wav, int sampleRate, double amplitude, Producer<Scalar> frame) {
+		this(data, wav, sampleRate, amplitude, frame, Ops.ops().v(0.0), Ops.ops().v(wav.getCount()));
 	}
 
 	public WaveCell(WaveCellData data, PackedCollection<?> wav, int sampleRate, double amplitude,
@@ -130,10 +134,9 @@ public class WaveCell extends CollectionTemporalCellAdapter implements CodeFeatu
 
 	@Override
 	public Supplier<Runnable> push(Producer<PackedCollection<?>> protein) {
-		Scalar value = new Scalar();
 		OperationList push = new OperationList("WavCell Push");
-		push.add(new WaveCellPush(data, wave, frame, value));
-		push.add(super.push(p(value)));
+		push.add(new WaveCellPush(data, wave, frame, data.value()));
+		push.add(super.push(p(data.value())));
 		return push;
 	}
 

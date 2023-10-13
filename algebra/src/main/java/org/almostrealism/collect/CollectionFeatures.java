@@ -548,7 +548,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 				shape(value), (args, index) -> new Floor(args[1].getValueAt(index)), (Supplier) value);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> _min(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> min(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
 		TraversalPolicy shape = shape(1);
 		if (shape(a).getSize() == shape(b).getSize()) {
 			shape = shape(a);
@@ -566,7 +566,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return new ExpressionComputation<>(List.of(expression), a, b);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> _max(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> max(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
 		TraversalPolicy shape = shape(1);
 		if (shape(a).getSize() == shape(b).getSize()) {
 			shape = shape(a);
@@ -584,14 +584,14 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return new ExpressionComputation<>(List.of(expression), a, b);
 	}
 
-	default <T extends PackedCollection<?>> ExpressionComputation<T> _mod(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
+	default <T extends PackedCollection<?>> ExpressionComputation<T> mod(Supplier<Evaluable<? extends PackedCollection<?>>> a, Supplier<Evaluable<? extends PackedCollection<?>>> b) {
 		Function<List<ArrayVariable<Double>>, Expression<Double>> expression = args ->
 				new Mod(args.get(1).getValueRelative(0), args.get(2).getValueRelative(0));
 		return new ExpressionComputation<>(List.of(expression), a, b);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> _bound(Supplier<Evaluable<? extends PackedCollection<?>>> a, double min, double max) {
-		return _min(_max(a, c(min)), c(max));
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> bound(Supplier<Evaluable<? extends PackedCollection<?>>> a, double min, double max) {
+		return min(max(a, c(min)), c(max));
 	}
 
 	@Deprecated
