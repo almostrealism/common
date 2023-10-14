@@ -69,14 +69,7 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 	}
 
 	@Override
-	public int getKernelIndex() {
-		if (destroyed) throw new UnsupportedOperationException();
-		if (getOriginalProducer() instanceof KernelIndex) {
-			return ((KernelIndex) getOriginalProducer()).getKernelIndex();
-		}
-
-		return 0;
-	}
+	public int getKernelIndex() { return 0; }
 
 	@Override
 	public void setDelegate(ArrayVariable<T> delegate) {

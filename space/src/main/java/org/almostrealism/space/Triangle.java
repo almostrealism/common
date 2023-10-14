@@ -71,7 +71,7 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 //		intersectAt = TriangleIntersectAt.construct(Input.value(Vector.shape(), 1),
 //				Input.value(Ray.shape(), 0, -1)).get();
 		intersectAt = TriangleIntersectAt.construct(Input.value(new TraversalPolicy(4, 3), 1),
-				Input.value(Ray.shape(), 0, -1)).get();
+				Input.value(Ray.shape(), 0)).get();
 	}
 
 	/**

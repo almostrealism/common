@@ -44,6 +44,11 @@ public abstract class CodePrintWriterAdapter implements CodePrintWriter {
 		this.scopeName = new Stack<>();
 	}
 
+	@Override
+	public LanguageOperations getLanguage() {
+		return language;
+	}
+
 	protected void setNameSuffix(String suffix) { this.nameSuffix = suffix; }
 
 	protected void setScopePrefix(String prefix) {

@@ -51,7 +51,6 @@ public class PassThroughProducer<T extends MemoryData>
 
 	private TraversalPolicy shape;
 	private int argIndex;
-	private int kernelIndex;
 
 	private Supplier<T> destination;
 
@@ -65,25 +64,6 @@ public class PassThroughProducer<T extends MemoryData>
 		this();
 		this.shape = new TraversalPolicy(size).traverse(0);
 		this.argIndex = argIndex;
-		this.kernelIndex = 0;
-	}
-
-	@Deprecated
-	public PassThroughProducer(TraversalPolicy shape, int argIndex, int kernelIndex) {
-		this();
-		this.shape = shape;
-		this.argIndex = argIndex;
-		this.kernelIndex = kernelIndex;
-		System.out.println("WARN: Specifying kernel index before compilation is deprecated");
-	}
-
-	@Deprecated
-	public PassThroughProducer(int memLength, int argIndex, int kernelIndex) {
-		this();
-		this.shape = new TraversalPolicy(memLength).traverse(0);
-		this.argIndex = argIndex;
-		this.kernelIndex = kernelIndex;
-		System.out.println("WARN: Specifying kernel index before compilation is deprecated");
 	}
 
 	private PassThroughProducer() {
@@ -230,7 +210,7 @@ public class PassThroughProducer<T extends MemoryData>
 	public int getReferencedArgumentIndex() { return argIndex; }
 
 	@Override
-	public int getKernelIndex() { return kernelIndex; }
+	public int getKernelIndex() { return 0; }
 
 	@Override
 	public void destroy() {

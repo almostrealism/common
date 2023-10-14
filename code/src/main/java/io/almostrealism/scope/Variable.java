@@ -126,9 +126,8 @@ public class Variable<T, V extends Variable<T, ?>> implements Statement, Nameabl
 	@Override
 	public int getSortHint() { return sortHint; }
 
-	public int getKernelIndex() {
-		return 0;
-	}
+	@Override
+	public int getKernelIndex() { return 0; }
 
 	protected void setProducer(Supplier<Evaluable<? extends T>> producer) {
 		this.producer = producer;

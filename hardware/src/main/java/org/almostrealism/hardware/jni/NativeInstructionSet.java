@@ -71,7 +71,9 @@ public interface NativeInstructionSet extends InstructionSet, KernelSupport {
 	}
 
 	default Semaphore apply(RAM args[], int offsets[], int sizes[]) {
-		return apply(Optional.ofNullable(Hardware.getLocalHardware().getClComputeContext())
+		return apply(Optional.ofNullable(Hardware.getLocalHardware().getComputeContext())
+				.filter(CLComputeContext.class::isInstance)
+				.map(CLComputeContext.class::cast)
 				.map(CLComputeContext::getClQueue)
 				.map(cl_command_queue::getNativePointer).orElse(-1L), args, offsets, sizes);
 	}

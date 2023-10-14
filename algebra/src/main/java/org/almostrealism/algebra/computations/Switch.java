@@ -64,19 +64,24 @@ public class Switch extends OperationComputationAdapter<PackedCollection<?>> {
 			scope.getRequiredScopes().add(atomScope);
 		});
 
-		IntStream.range(0, scope.getRequiredScopes().size()).forEach(i -> {
-			if (i > 0) {
-				scope.code().accept(" else ");
-			}
+		scope.getExplicit().setSource(lang -> {
+			StringBuffer code = new StringBuffer();
 
-			double val = (i + 1) * interval;
+			IntStream.range(0, scope.getRequiredScopes().size()).forEach(i -> {
+				if (i > 0) {
+					code.append(" else ");
+				}
 
-			scope.code().accept("if (" + decisionValue.valueAt(0).getSimpleExpression() + " <= " + val + ") {\n");
-			scope.code().accept("\t" + renderMethod(scope.getRequiredScopes().get(i).call()) + "\n");
-			scope.code().accept("}");
+				double val = (i + 1) * interval;
+
+				code.append("if (" + decisionValue.valueAt(0).getSimpleExpression() + " <= " + val + ") {\n");
+				code.append("\t" + lang.renderMethod(scope.getRequiredScopes().get(i).call()) + "\n");
+				code.append("}");
+			});
+
+			code.append("\n");
+			return code.toString();
 		});
-
-		scope.code().accept("\n");
 
 		return scope;
 	}

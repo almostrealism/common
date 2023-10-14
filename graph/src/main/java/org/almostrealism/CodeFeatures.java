@@ -86,11 +86,6 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 		return value(memLength, argIndex);
 	}
 
-	@Deprecated
-	default <T> Producer<T> v(int memLength, int argIndex, int kernelDimension) {
-		return value(memLength, argIndex, kernelDimension);
-	}
-
 	default <T> Producer<T> v(TraversalPolicy shape, int argIndex) {
 		return value(shape, argIndex);
 	}
@@ -147,11 +142,6 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 		return Input.value(memLength, argIndex);
 	}
 
-	@Deprecated
-	default <T> Producer<T> value(int memLength, int argIndex, int kernelDimension) {
-		return Input.value(memLength, argIndex, kernelDimension);
-	}
-
 	@Override
 	default Supplier<Runnable> copy(String name, Producer<? extends MemoryData> source,
 									Producer<? extends MemoryData> target, int length) {
@@ -166,12 +156,6 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 
 	default <T> Switch choice(ProducerComputation<PackedCollection<?>> decision, Computation<T>... choices) {
 		return new Switch(decision, Arrays.asList(choices));
-	}
-
-	default CollectionProducerComputation<PackedCollection<?>> kernel(TraversalPolicy shape,
-																	  KernelExpression kernel,
-																	  Producer... arguments) {
-		return kernel(kernelIndex(), shape, kernel, arguments);
 	}
 
 	default DataContext dc() {

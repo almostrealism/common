@@ -42,9 +42,9 @@ public class InterpolateTest implements TestFeatures {
 		rate.setMem(0, 1.0, 1.0);
 
 		Interpolate interpolate = new Interpolate(
-				new PassThroughProducer<>(10, 0, 0),
-				new PassThroughProducer<>(1, 1, 0),
-				new PassThroughProducer<>(1, 2, 0),
+				new PassThroughProducer<>(10, 0),
+				new PassThroughProducer<>(1, 1),
+				new PassThroughProducer<>(1, 2),
 				v -> new Sum(v, e(1.0)),
 				v -> new Sum(v, e(-1.0)));
 		PackedCollection dest = interpolate.get().evaluate(series.traverse(1), cursors.traverse(1), rate.traverse(1));
@@ -68,7 +68,7 @@ public class InterpolateTest implements TestFeatures {
 		rate.setMem(0, 1.0, 1.0);
 
 		Interpolate interpolate = new Interpolate(
-				new PassThroughProducer<>(10, 0, -1),
+				new PassThroughProducer<>(10, 0),
 				new PassThroughProducer<>(1, 1),
 				new PassThroughProducer<>(1, 2));
 		PackedCollection<?> dest = new PackedCollection(2, 1);
@@ -92,9 +92,9 @@ public class InterpolateTest implements TestFeatures {
 		rate.setMem(0, 1.0);
 
 		Interpolate interpolate = new Interpolate(
-				new PassThroughProducer<>(10, 0, 0),
-				new PassThroughProducer<>(1, 1, 0),
-				new PassThroughProducer<>(1, 2, 0),
+				new PassThroughProducer<>(10, 0),
+				new PassThroughProducer<>(1, 1),
+				new PassThroughProducer<>(1, 2),
 				v -> new Sum(v, e(1.0)),
 				v -> new Sum(v, e(-1.0)));
 		PackedCollection dest = interpolate.get().evaluate(series, cursor, rate);

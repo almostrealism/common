@@ -62,36 +62,6 @@ public interface NameProvider {
 		return getVariablePrefix() + "_l" + index;
 	}
 
-	default String getArgumentValueName(int index, int pos, boolean assignment) {
-		return getArgumentValueName(index, pos, assignment, 0);
-	}
-
-	default String getArgumentValueName(int index, int pos, boolean assignment, int kernelIndex) {
-		return getVariableValueName(getArgument(index), pos, assignment, kernelIndex);
-	}
-
-	default String getVariableValueName(Variable v, int pos) {
-		return getVariableValueName(v, pos, 0);
-	}
-
-	default String getVariableValueName(Variable v, int pos, boolean assignment) {
-		return getVariableValueName(v, pos, assignment, 0);
-	}
-
-	default String getVariableValueName(Variable v, int pos, int kernelIndex) {
-		return getVariableValueName(v, pos, false, kernelIndex);
-	}
-
-	default String getVariableValueName(Variable v, String pos, int kernelIndex) {
-		return getVariableValueName(v, pos, false, kernelIndex);
-	}
-
-	default String getVariableValueName(Variable v, int pos, boolean assignment, int kernelIndex) {
-		return getVariableValueName(v, String.valueOf(pos), assignment, kernelIndex);
-	}
-
-	String getVariableValueName(Variable v, String pos, boolean assignment, int kernelIndex);
-
 	String getVariableDimName(ArrayVariable v, int dim);
 
 	String getVariableSizeName(ArrayVariable v);

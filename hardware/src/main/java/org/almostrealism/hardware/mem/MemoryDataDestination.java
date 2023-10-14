@@ -61,13 +61,7 @@ public class MemoryDataDestination<T extends MemoryData> extends DynamicProducer
 	}
 
 	@Override
-	public int getKernelIndex() {
-		if (destination instanceof KernelIndex) {
-			return ((KernelIndex) destination).getKernelIndex();
-		}
-
-		return 0;
-	}
+	public int getKernelIndex() { return 0; }
 
 	@Override
 	public KernelizedEvaluable<T> get() {

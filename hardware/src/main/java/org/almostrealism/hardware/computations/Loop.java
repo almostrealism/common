@@ -66,9 +66,15 @@ public class Loop extends OperationComputationAdapter<Void> {
 		scope.getRequiredScopes().add(atomScope);
 
 		String i = getVariablePrefix() + "_i";
-		scope.code().accept("for (int " + i + " = 0; " + i + " < " + iterations +"; " + i + "++) {\n");
-		scope.code().accept("    " + Hardware.getLocalHardware().getComputeContext().getLanguage().renderMethod(atomScope.call()) + "\n");
-		scope.code().accept("}\n");
+
+		scope.getExplicit().setSource(lang -> {
+			StringBuilder code = new StringBuilder();
+			code.append("for (int " + i + " = 0; " + i + " < " + iterations + "; " + i + "++) {\n");
+			code.append("    " + lang.renderMethod(atomScope.call()) + "\n");
+			code.append("}\n");
+			return code.toString();
+		});
+
 		return scope;
 	}
 

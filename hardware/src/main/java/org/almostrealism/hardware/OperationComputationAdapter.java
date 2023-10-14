@@ -40,10 +40,6 @@ public abstract class OperationComputationAdapter<T> extends ComputationBase<T, 
 	@Override
 	public PhysicalScope getDefaultPhysicalScope() { return PhysicalScope.GLOBAL; }
 
-	protected String renderMethod(Method method) {
-		return Hardware.getLocalHardware().getComputeContext().getLanguage().renderMethod(method);
-	}
-
 	@Override
 	public Runnable get() {
 		Runnable r = compileRunnable(this);

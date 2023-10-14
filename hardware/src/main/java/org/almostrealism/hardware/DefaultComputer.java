@@ -36,6 +36,10 @@ public class DefaultComputer implements Computer<MemoryData> {
 		this.contextFactory = contextFactory;
 	}
 
+	public ComputeContext<MemoryData> getContext(Computation<?> c) {
+		return contextFactory.apply(c);
+	}
+
 	@Override
 	public Runnable compileRunnable(Computation<Void> c) {
 		return Heap.addCompiled(new AcceleratedComputationOperation<>(contextFactory.apply(c), c, Hardware.enableKernelOps));

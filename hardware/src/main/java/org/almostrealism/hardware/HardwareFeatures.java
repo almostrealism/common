@@ -20,6 +20,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.almostrealism.code.Computation;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -52,7 +53,7 @@ public interface HardwareFeatures {
 	}
 
 	default IntFunction<Expression> kernelIndex() {
-		return i -> new StaticReference(Integer.class, KernelSupport.getKernelIndex(i));
+		return i -> new KernelIndex(i);
 	}
 
 	default String stringForDouble(double value) {

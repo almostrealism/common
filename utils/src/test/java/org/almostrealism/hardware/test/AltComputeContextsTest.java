@@ -47,7 +47,7 @@ public class AltComputeContextsTest implements TestFeatures {
 
 	@Test
 	public void matmul() {
-		boolean enableOptimization = false;
+		boolean enableOptimization = true;
 		boolean validate = true;
 		int dim = 128;
 		int width = 64;

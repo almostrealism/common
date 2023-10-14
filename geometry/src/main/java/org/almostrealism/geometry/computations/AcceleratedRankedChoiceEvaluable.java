@@ -16,6 +16,7 @@
 
 package org.almostrealism.geometry.computations;
 
+import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.scope.Variable;
@@ -23,6 +24,8 @@ import org.almostrealism.algebra.Scalar;
 import org.almostrealism.geometry.DimensionAware;
 import org.almostrealism.hardware.AcceleratedEvaluable;
 import org.almostrealism.hardware.DynamicAcceleratedEvaluable;
+import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.KernelSupport;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryBank;
 import io.almostrealism.relation.Evaluable;
@@ -275,6 +278,78 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData> extends Dyna
 
 	@Override
 	public MemoryBank<T> createKernelDestination(int size) { return forKernel.apply(size); }
+
+	private String getKernelIndex(int kernelIndex) {
+		return getComputeContext().getKernelIndex(kernelIndex);
+	}
+
+	private String getKernelIndex(ArrayVariable v, int kernelIndex) {
+		if (kernelIndex > 0) {
+			throw new UnsupportedOperationException("Only one kernel dimension is currently supported");
+		}
+
+		return kernelIndex < 0 ? "" :
+				getKernelIndex(kernelIndex) + " * " + getVariableDimName(v, kernelIndex) + " + ";
+	}
+
+	private String getValueName(Variable v, String pos, boolean assignment, int kernelIndex) {
+		String name;
+
+		if (v instanceof ArrayVariable) {
+			if (getComputeContext().isKernelSupported() && v.getProducer() instanceof ParallelProcess
+					&& ((ParallelProcess) v.getProducer()).getCount() > 1) {
+				String kernelOffset = getKernelIndex((ArrayVariable) v, kernelIndex);
+
+				if (pos.equals("0") || pos.equals("(0)")) {
+					name = v.getName() + "[" + kernelOffset + v.getName() + "Offset]";
+				} else {
+					name = v.getName() + "[" + kernelOffset + v.getName() + "Offset + (int) (" + pos + ")]";
+				}
+			} else {
+				if (pos.equals("0")) {
+					name = v.getName() + "[" + v.getName() + "Offset]";
+				} else {
+					name = v.getName() + "[" + v.getName() + "Offset + (int) (" + pos + ")]";
+				}
+			}
+		} else {
+			name = v.getName() + "[(int) (" + pos + ")]";
+		}
+
+		if (isCastEnabled() && !assignment) {
+			return "(float)" + name;
+		} else {
+			return name;
+		}
+	}
+
+	public String getVariableValueName(Variable v, String pos, boolean assignment, int kernelIndex) {
+		return getValueName(v, pos, assignment, enableKernel && isKernel() ? kernelIndex : -1);
+	}
+
+	private String getVariableValueName(Variable v, int pos) {
+		return getVariableValueName(v, pos, 0);
+	}
+
+	private String getVariableValueName(Variable v, int pos, int kernelIndex) {
+		return getVariableValueName(v, pos, false, kernelIndex);
+	}
+
+	private String getVariableValueName(Variable v, int pos, boolean assignment) {
+		return getVariableValueName(v, pos, assignment, 0);
+	}
+
+	private String getArgumentValueName(int index, int pos, boolean assignment, int kernelIndex) {
+		return getVariableValueName(getArgument(index), pos, assignment, kernelIndex);
+	}
+
+	private String getVariableValueName(Variable v, int pos, boolean assignment, int kernelIndex) {
+		return getVariableValueName(v, String.valueOf(pos), assignment, kernelIndex);
+	}
+
+	private String getArgumentValueName(int index, int pos, boolean assignment) {
+		return getArgumentValueName(index, pos, assignment, 0);
+	}
 
 	private static <T> Supplier[] generateArgs(List<ProducerWithRank<T, Scalar>> values, Supplier<Evaluable<? extends T>> defaultValue) {
 		List<Supplier> args = new ArrayList<>();

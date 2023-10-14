@@ -134,7 +134,7 @@ public interface ScalarBankFeatures extends ScalarFeatures {
 
 			Evaluable<? extends Scalar> coeff = coefficient.get();
 			Evaluable<? extends PackedCollection<Scalar>> in = input.get();
-			ExpressionComputation<Scalar> offset = ops.scalarsMultiply(Input.value(2, 1), Input.value(2, 2, -1));
+			ExpressionComputation<Scalar> offset = ops.scalarsMultiply(Input.value(2, 1), Input.value(2, 2));
 			KernelizedEvaluable<Scalar> ev = ops.scalarSubtract(Input.value(2, 0), offset).get();
 
 			return args -> {

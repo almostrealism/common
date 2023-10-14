@@ -33,45 +33,6 @@ public interface ComputerFeatures extends HardwareFeatures, NameProvider {
 		return Hardware.getLocalHardware().getComputeContext().isKernelSupported();
 	}
 
-//	@Override
-//	default Variable getOutputVariable() { return getArgument(0); }
-
-	@Override
-	default String getVariableValueName(Variable v, String pos, boolean assignment, int kernelIndex) {
-		return getValueName(v, pos, assignment, enableKernel ? kernelIndex : -1);
-	}
-
-	default String getValueName(Variable v, String pos, boolean assignment, int kernelIndex) {
-		String name;
-
-		if (v instanceof ArrayVariable) {
-			if (isContextKernelEnabled() && v.getProducer() instanceof ParallelProcess
-					&& ((ParallelProcess) v.getProducer()).getCount() > 1) {
-				String kernelOffset = ((KernelSupport) v.getProducer()).getKernelIndex(v.getName(), kernelIndex);
-
-				if (pos.equals("0") || pos.equals("(0)")) {
-					name = v.getName() + "[" + kernelOffset + v.getName() + "Offset]";
-				} else {
-					name = v.getName() + "[" + kernelOffset + v.getName() + "Offset + (int) (" + pos + ")]";
-				}
-			} else {
-				if (pos.equals("0")) {
-					name = v.getName() + "[" + v.getName() + "Offset]";
-				} else {
-					name = v.getName() + "[" + v.getName() + "Offset + (int) (" + pos + ")]";
-				}
-			}
-		} else {
-			name = v.getName() + "[(int) (" + pos + ")]";
-		}
-
-		if (isCastEnabled() && !assignment) {
-			return "(float)" + name;
-		} else {
-			return name;
-		}
-	}
-
 	@Override
 	default String getVariableDimName(ArrayVariable v, int dim) {
 		return KernelSupport.getValueDimName(v.getName(), dim);

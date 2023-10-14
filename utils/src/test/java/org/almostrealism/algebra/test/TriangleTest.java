@@ -166,7 +166,7 @@ public class TriangleTest implements TestFeatures {
 		PackedCollection<?> td = triangle();
 
 		TriangleIntersectAt intersectAt = TriangleIntersectAt.construct(Input.value(shape(4, 3), 1),
-				Input.value(Ray.shape(), 0, -1));
+				Input.value(Ray.shape(), 0));
 
 		GreaterThanScalar gts = (GreaterThanScalar) (Supplier) intersectAt.getInputs().get(4);
 		AcceleratedConjunctionScalar acs = (AcceleratedConjunctionScalar) (Supplier) gts.getInputs().get(3);

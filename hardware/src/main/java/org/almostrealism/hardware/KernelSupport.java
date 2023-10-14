@@ -34,19 +34,6 @@ public interface KernelSupport {
 		return new KernelIndex(kernelIndex);
 	}
 
-	static String getKernelIndex(int kernelIndex) {
-		return Hardware.getLocalHardware().getComputeContext().getKernelIndex(kernelIndex);
-	}
-
-	default String getKernelIndex(String variableName, int kernelIndex) {
-		if (kernelIndex > 0) {
-			throw new UnsupportedOperationException("Only one kernel dimension is currently supported");
-		}
-
-		return kernelIndex < 0 ? "" :
-				getKernelIndex(kernelIndex) + " * " + getValueDimName(variableName, kernelIndex) + " + ";
-	}
-
 	static String getValueOffsetName(String variableName) {
 		return variableName + "Offset";
 	}

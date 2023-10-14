@@ -42,6 +42,10 @@ public class HybridScope<T> extends Scope<T> {
 
 	public void setDependencies(Collection<Variable<?, ?>> dependencies) { explicit.setArguments(Scope.extractArgumentDependencies(dependencies)); }
 
+	public ExplicitScope<T> getExplicit() {
+		return explicit;
+	}
+
 	@Override
 	public void write(CodePrintWriter w) {
 		super.write(w);

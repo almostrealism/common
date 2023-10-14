@@ -99,11 +99,6 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	@Override
-	public String getVariableValueName(Variable v, String pos, boolean assignment, int kernelIndex) {
-		return getValueName(v, pos, assignment, enableKernel && isKernel() ? kernelIndex : -1);
-	}
-
-	@Override
 	public void prepareArguments(ArgumentMap map) {
 		super.prepareArguments(map);
 		getComputation().prepareArguments(map);
@@ -166,7 +161,7 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	@Override
 	public synchronized Execution getOperator() {
 		if (operators == null || operators.isDestroyed()) {
-			operators = Hardware.getLocalHardware().getComputeContext().deliver(scope);
+			operators = getComputeContext().deliver(scope);
 		}
 
 		return operators.get(getFunctionName(), getArgsCount());

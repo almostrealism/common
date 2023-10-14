@@ -163,7 +163,7 @@ public final class Hardware {
 		DoubleConstant.stringForDouble = Hardware.getLocalHardware()::stringForDouble;
 
 		// TODO  This is not a very desirable way to configure kernel support either
-		KernelIndex.kernelIndex = KernelSupport::getKernelIndex;
+		KernelIndex.kernelIndex = Hardware.getLocalHardware().getComputeContext()::getKernelIndex;
 	}
 
 	private final String name;
@@ -261,7 +261,9 @@ public final class Hardware {
 
 	public static Computer<MemoryData> getComputer() {
 		// TODO  Need a smarter choice for which context to use, depending on the computation
-		return new DefaultComputer(computation -> getLocalHardware().getComputeContext());
+		return new DefaultComputer(computation -> {
+			return getLocalHardware().getComputeContext();
+		});
 	}
 
 	public void setMaximumOperationDepth(int depth) { OperationList.setMaxDepth(depth); }
@@ -393,36 +395,12 @@ public final class Hardware {
 		}
 	}
 
-	protected double doubleForString(String s) {
-		s = s.trim();
-		while (s.startsWith("(double)") || s.startsWith("(float)") || s.startsWith("(bfloat)") || s.startsWith("(half)")) {
-			if (s.startsWith("(double)")) {
-				s = s.substring(8).trim();
-			} else if (s.startsWith("(float)")) {
-				s = s.substring(7).trim();
-			} else if (s.startsWith("(bfloat)")) {
-				s = s.substring(8).trim();
-			} else if (s.startsWith("(half)")) {
-				s = s.substring(6).trim();
-			}
-		}
-
-		return Double.parseDouble(s);
-	}
-
 	public DataContext<MemoryData> getDataContext() { return context; }
 
 	public ComputeContext<MemoryData> getComputeContext() { return context.getComputeContext(); }
 
 	@Deprecated
 	public CLDataContext getClDataContext() { return context instanceof CLDataContext ? (CLDataContext) context : null; }
-
-	@Deprecated
-	public CLComputeContext getClComputeContext() {
-		if (getDataContext().getComputeContext() instanceof CLComputeContext)
-			return (CLComputeContext) getDataContext().getComputeContext();
-		return null;
-	}
 
 	public MemoryProvider getMemoryProvider(int size) { return context.getMemoryProvider(size); }
 
