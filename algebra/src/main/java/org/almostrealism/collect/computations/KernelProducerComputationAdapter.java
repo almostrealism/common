@@ -35,19 +35,7 @@ public abstract class KernelProducerComputationAdapter<I extends PackedCollectio
 		extends CollectionProducerComputationBase<I, O>
 		implements TraversableExpression<Double> {
 
-	/**
-	 * If set to true, then {@link #convertToVariableRef()} can be used
-	 * to take the {@link Expression} from {@link #getValueAt(Expression)} to
-	 * a local variable in the rendered code. This can prevent
-	 * {@link Expression}s from growing too large during compaction, when
-	 * values are repeatedly embedded to form bigger and bigger
-	 * {@link Expression}s.
-	 */
-	public static final boolean enableVariableRefConversion = false;
-
 	private boolean ignoreTraversalAxis;
-
-	private IntFunction<InstanceReference> variableRef;
 
 	protected KernelProducerComputationAdapter() { }
 
@@ -85,7 +73,7 @@ public abstract class KernelProducerComputationAdapter<I extends PackedCollectio
 		ArrayVariable<Double> output = (ArrayVariable<Double>) getOutputVariable();
 
 		for (int i = 0; i < getMemLength(); i++) {
-			Expression index = new KernelIndex(0);
+			Expression index = kernelIndex();
 			if (getMemLength() > 1) index = index.multiply(getMemLength()).add(i);
 
 //			Variable v = new Variable(output.ref(i).getSimpleExpression(),
@@ -100,15 +88,5 @@ public abstract class KernelProducerComputationAdapter<I extends PackedCollectio
 	@Override
 	public Expression<Double> getValue(Expression... pos) {
 		return getValueAt(getShape().index(pos));
-	}
-
-	public boolean isVariableRef() { return variableRef != null;}
-
-	public void convertToVariableRef() {
-		if (enableVariableRefConversion && variableRef == null) {
-			// TODO  This does not work for shapes with sizes greater than 1
-			addVariable(new Variable(getVariableName(0), true, getValueAt(new KernelIndex(0)), this));
-			variableRef = i -> new InstanceReference(getVariable(0));
-		}
 	}
 }

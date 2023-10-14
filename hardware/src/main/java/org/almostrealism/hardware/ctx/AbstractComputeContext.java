@@ -38,9 +38,4 @@ public abstract class AbstractComputeContext implements ComputeContext<MemoryDat
 	public Hardware getHardware() { return hardware; }
 
 	public DataContext<MemoryData> getDataContext() { return dc; }
-
-	@Override
-	public String getKernelIndex(int dimension) {
-		throw new UnsupportedOperationException();
-	}
 }

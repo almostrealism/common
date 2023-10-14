@@ -35,7 +35,5 @@ public interface ComputeContext<MEM> {
 
 	boolean isKernelSupported();
 
-	String getKernelIndex(int dimension);
-
 	void destroy();
 }

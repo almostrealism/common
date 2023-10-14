@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.ComputeContext;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.relation.Delegated;
@@ -35,8 +36,8 @@ public class DestinationConsolidationArgumentMap<S, A> extends MemoryDataArgumen
 	private final List<DestinationThreadLocal> destinations;
 	private boolean confirmed;
 
-	public DestinationConsolidationArgumentMap(boolean kernel) {
-		super(null, kernel);
+	public DestinationConsolidationArgumentMap(ComputeContext<MemoryData> context, boolean kernel) {
+		super(context, null, kernel);
 		keys = new ArrayList<>();
 		destinations = new ArrayList<>();
 	}

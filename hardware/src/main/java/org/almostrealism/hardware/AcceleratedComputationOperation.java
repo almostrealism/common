@@ -132,7 +132,8 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 
 		if (getComputation() instanceof OperationAdapter
 				&& ((OperationAdapter) getComputation()).getArgsCount() > 0) {
-			return compile(((OperationAdapter) getComputation()).getArgument(0));
+			OperationAdapter<T> c = (OperationAdapter<T>) getComputation();
+			return compile(c.getArgumentForInput(c.getInputs().get(0)));
 		} else {
 			return compile(null);
 		}

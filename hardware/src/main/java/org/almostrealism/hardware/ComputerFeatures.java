@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.LanguageOperations;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.KernelIndex;
@@ -44,13 +45,13 @@ public interface ComputerFeatures extends HardwareFeatures, NameProvider {
 	}
 
 	@Override
-	default Expression<?> getArrayPosition(ArrayVariable v, Expression pos, int kernelIndex) {
+	default Expression<?> getArrayPosition(LanguageOperations lang, ArrayVariable v, Expression pos, int kernelIndex) {
 		Expression offset = new IntegerConstant(0);
 
 		if (isContextKernelEnabled() &&
 				(v.getProducer() instanceof Countable ||
 				(v.getProducer() instanceof KernelSupport && ((KernelSupport) v.getProducer()).isKernelEnabled()))) {
-			KernelIndex idx = new KernelIndex(kernelIndex);
+			KernelIndex idx = new KernelIndex(lang, kernelIndex);
 			Expression dim = new StaticReference(Integer.class, KernelSupport.getValueDimName(v.getName(), kernelIndex));
 
 			Expression kernelOffset = idx.multiply(dim);

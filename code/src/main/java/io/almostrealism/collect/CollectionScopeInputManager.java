@@ -17,17 +17,15 @@
 package io.almostrealism.collect;
 
 import io.almostrealism.code.DefaultScopeInputManager;
+import io.almostrealism.code.LanguageOperations;
 
 public class CollectionScopeInputManager extends DefaultScopeInputManager {
-	private static CollectionScopeInputManager instance = new CollectionScopeInputManager();
-
-	private int counter;
-
-	public CollectionScopeInputManager() {
-		setVariableFactory((p, input) -> CollectionVariable.create(p, p.getArgumentName(counter++), input));
+	public CollectionScopeInputManager(LanguageOperations lang) {
+		super(lang);
+		setVariableFactory((p, input) -> CollectionVariable.create(lang, p, p.getArgumentName(counter++), input));
 	}
 
-	public static CollectionScopeInputManager getInstance() {
-		return instance;
+	public static CollectionScopeInputManager getInstance(LanguageOperations lang) {
+		return new CollectionScopeInputManager(lang);
 	}
 }

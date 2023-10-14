@@ -27,12 +27,12 @@ import org.almostrealism.hardware.OperationList;
 
 public class CollectionOperationList extends OperationList implements CollectionFeatures {
 
-	public KernelOperation kernel(KernelExpression kernel, PackedCollection destination, Producer<? extends MemoryData>... arguments){
+	public KernelOperation kernel(KernelExpression kernel, PackedCollection destination, Producer<? extends MemoryData>... arguments) {
 		return kernel(kernel, destination.getShape(), destination, arguments);
 	}
 
 	public KernelOperation kernel(KernelExpression kernel, TraversalPolicy shape, MemoryBank destination, Producer<? extends MemoryData>... arguments) {
-		return add(kernel(kernelIndex(), shape, kernel, arguments), destination);
+		return add(kernel(shape, kernel, arguments), destination);
 	}
 
 	public KernelOperation kernel(Func.v2e3 f, PackedCollection<?> destination, Producer<? extends MemoryData>... arguments) {

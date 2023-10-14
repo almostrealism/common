@@ -84,7 +84,7 @@ public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> ex
 	public void setKernelDestination(IntFunction<MemoryBank<O>> kernelDestination) { this.kernelDestination = kernelDestination; }
 
 	@Override
-	public Variable getOutputVariable() { return getArgument(0); }
+	public Variable getOutputVariable() { return getArgument(getComputeContext().getLanguage(), 0); }
 
 	@Override
 	public void prepareScope(ScopeInputManager manager) {

@@ -16,23 +16,12 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.KernelIndex;
-
 import java.util.stream.IntStream;
 
 public interface KernelSupport {
 	boolean enableKernelDivisabilityFallback = true;
 
 	default boolean isKernelEnabled() { return true; }
-
-	static Expression index() {
-		return kernelIndex(0);
-	}
-
-	static Expression<?> kernelIndex(int kernelIndex) {
-		return new KernelIndex(kernelIndex);
-	}
 
 	static String getValueOffsetName(String variableName) {
 		return variableName + "Offset";

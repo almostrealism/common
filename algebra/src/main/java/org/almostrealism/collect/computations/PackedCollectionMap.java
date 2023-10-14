@@ -89,7 +89,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 		ArrayVariable<Double> output = (ArrayVariable<Double>) getOutputVariable();
 
 		for (int i = 0; i < getMemLength(); i++) {
-			Expression index = new KernelIndex(0);
+			Expression index = kernelIndex();
 			if (getMemLength() > 1) index = index.multiply(getMemLength()).add(i);
 
 			Expression<Double> value = enableAbsoluteValueAt ? getValueAt(index) : null;

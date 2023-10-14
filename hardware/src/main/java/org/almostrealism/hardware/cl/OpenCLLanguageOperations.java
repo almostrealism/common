@@ -28,6 +28,11 @@ public class OpenCLLanguageOperations extends CLanguageOperations {
 	}
 
 	@Override
+	public String kernelIndex(int index) {
+		return "get_global_id(" + index + ")";
+	}
+
+	@Override
 	public String nameForType(Class<?> type) {
 		if (type == cl_event.class) {
 			return "cl_event";

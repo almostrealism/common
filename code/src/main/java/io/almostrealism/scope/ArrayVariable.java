@@ -17,6 +17,7 @@
 package io.almostrealism.scope;
 
 import io.almostrealism.code.Array;
+import io.almostrealism.code.LanguageOperations;
 import io.almostrealism.expression.Constant;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.code.NameProvider;
@@ -36,28 +37,31 @@ import java.util.function.Supplier;
 public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements Array<T, ArrayVariable<T>> {
 	public static BiFunction<String, String, String> dereference = (name, pos) -> name + "[" + pos + "]";
 
+	private final LanguageOperations lang;
 	private final NameProvider names;
 
 	private int delegateOffset;
 	private Expression<Integer> arraySize;
 	private boolean destroyed;
 
-	public ArrayVariable(NameProvider np, String name, Expression<Integer> arraySize) {
+	public ArrayVariable(LanguageOperations lang, NameProvider np, String name, Expression<Integer> arraySize) {
 		super(name, true, (Expression) null);
+		this.lang = lang;
 		this.names = np;
 		setArraySize(arraySize);
 	}
 
-	public ArrayVariable(NameProvider np, String name, Supplier<Evaluable<? extends T>> producer) {
-		this(np, name, np.getDefaultPhysicalScope(), (Class<T>) Double.class, producer);
+	public ArrayVariable(LanguageOperations lang, NameProvider np, String name, Supplier<Evaluable<? extends T>> producer) {
+		this(lang, np, name, np.getDefaultPhysicalScope(), (Class<T>) Double.class, producer);
 	}
 
-	public ArrayVariable(NameProvider np, String name, PhysicalScope scope, Class<T> type, Supplier<Evaluable<? extends T>> p) {
+	public ArrayVariable(LanguageOperations lang, NameProvider np, String name, PhysicalScope scope, Class<T> type, Supplier<Evaluable<? extends T>> p) {
 		super(name, scope, type, p);
+		this.lang = lang;
 		this.names = np;
 	}
 
-	public NameProvider getNameProvider() { return names; }
+	public LanguageOperations getLanguage() { return lang; }
 
 	public void setArraySize(Expression<Integer> arraySize) { this.arraySize = arraySize; }
 
@@ -107,7 +111,7 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 			return v;
 		}
 
-		return (Expression) reference(names.getArrayPosition(this, new IntegerConstant(index), getKernelIndex()));
+		return (Expression) reference(names.getArrayPosition(lang, this, new IntegerConstant(index), getKernelIndex()));
 	}
 
 	@Override
@@ -132,7 +136,7 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 		} else if (getKernelIndex() < 0) {
 			return reference(pos);
 		} else {
-			return reference(names.getArrayPosition(this, pos, getKernelIndex()));
+			return reference(names.getArrayPosition(lang, this, pos, getKernelIndex()));
 		}
 	}
 

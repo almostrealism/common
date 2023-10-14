@@ -21,9 +21,11 @@ import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Variable;
 
 public class DefaultNameProvider implements NameProvider {
+	private LanguageOperations lang;
 	private String function;
 
-	public DefaultNameProvider(String function) {
+	public DefaultNameProvider(LanguageOperations lang, String function) {
+		this.lang = lang;
 		this.function = function;
 	}
 
@@ -33,7 +35,7 @@ public class DefaultNameProvider implements NameProvider {
 	}
 
 	@Override
-	public Variable getOutputVariable() { return getArgument(0); }
+	public Variable getOutputVariable() { return getArgument(lang, 0); }
 
 	@Override
 	public String getVariableDimName(ArrayVariable v, int dim) {
@@ -46,7 +48,7 @@ public class DefaultNameProvider implements NameProvider {
 	}
 
 	@Override
-	public Expression<?> getArrayPosition(ArrayVariable v, Expression<?> pos, int kernelIndex) {
+	public Expression<?> getArrayPosition(LanguageOperations lang, ArrayVariable v, Expression<?> pos, int kernelIndex) {
 		throw new UnsupportedOperationException();
 	}
 }

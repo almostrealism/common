@@ -20,6 +20,8 @@ import io.almostrealism.scope.Method;
 
 public interface LanguageOperations {
 
+	String kernelIndex(int index);
+
 	String annotationForPhysicalScope(PhysicalScope scope);
 
 	String nameForType(Class<?> type);

@@ -97,7 +97,7 @@ public abstract class DynamicAcceleratedEvaluable<I extends MemoryData, O extend
 	}
 
 	@Override
-	public Variable getOutputVariable() { return getArgument(0); }
+	public Variable getOutputVariable() { return getArgument(null, 0); }
 
 	@Override
 	public void setDestination(Supplier<O> destination) { this.destination = destination; }

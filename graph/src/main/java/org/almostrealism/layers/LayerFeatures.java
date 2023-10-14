@@ -172,7 +172,7 @@ public interface LayerFeatures extends MatrixFeatures {
 			PackedCollection<?> out = new PackedCollection<>(inputShape);
 
 			OperationList ops = new OperationList();
-			ops.add(kernel(ops.kernelIndex(), inputShape, backward, input, gradient), out.traverseEach());
+			ops.add(kernel(inputShape, backward, input, gradient), out.traverseEach());
 			if (next != null) ops.add(next.push(p(out)));
 			return ops;
 		};
@@ -221,10 +221,10 @@ public interface LayerFeatures extends MatrixFeatures {
 			OperationList ops = new OperationList();
 			PackedCollection<?> out = new PackedCollection<>(shape(size));
 			PackedCollection<?> wGrad = new PackedCollection<>(shape(size, nodes));
-			CollectionProducerComputation<PackedCollection<?>> output = kernel(ops.kernelIndex(), shape(size), outputGradient, p(weights), gradient);
-			CollectionProducerComputation<PackedCollection<?>> wgr = kernel(ops.kernelIndex(), shape(size, nodes), weightGradient, input, gradient);
-			CollectionProducerComputation<PackedCollection<?>> dw = kernel(ops.kernelIndex(), shape(size, nodes), adjustWeights, p(weights), p(wGrad), lr);
-			CollectionProducerComputation<PackedCollection<?>> bw = kernel(ops.kernelIndex(), shape(nodes), adjustBiases, p(biases), gradient, lr);
+			CollectionProducerComputation<PackedCollection<?>> output = kernel(shape(size), outputGradient, p(weights), gradient);
+			CollectionProducerComputation<PackedCollection<?>> wgr = kernel(shape(size, nodes), weightGradient, input, gradient);
+			CollectionProducerComputation<PackedCollection<?>> dw = kernel(shape(size, nodes), adjustWeights, p(weights), p(wGrad), lr);
+			CollectionProducerComputation<PackedCollection<?>> bw = kernel(shape(nodes), adjustBiases, p(biases), gradient, lr);
 
 			ops.add(output, out.traverseEach());
 			ops.add(wgr, wGrad.traverseEach());
@@ -283,7 +283,7 @@ public interface LayerFeatures extends MatrixFeatures {
 		Propagation propagation = (lr, gradient, input, next) -> {
 			OperationList ops = new OperationList();
 			PackedCollection<?> output = new PackedCollection<>(shape);
-			CollectionProducerComputation<PackedCollection<?>> gr = kernel(ops.kernelIndex(), shape, backward, gradient, input);
+			CollectionProducerComputation<PackedCollection<?>> gr = kernel(shape, backward, gradient, input);
 
 			ops.add(new KernelOperation(gr, output.traverseEach()));
 			if (next != null) ops.add(next.push(p(output)));

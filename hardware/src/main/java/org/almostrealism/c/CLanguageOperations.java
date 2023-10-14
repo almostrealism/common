@@ -40,6 +40,9 @@ public class CLanguageOperations extends DefaultLanguageOperations {
 	public boolean isEnableArgumentDetailReads() { return enableArgumentDetailReads; }
 
 	@Override
+	public String kernelIndex(int index) { return "0"; }
+
+	@Override
 	public String annotationForPhysicalScope(PhysicalScope scope) {
 		return null;
 	}

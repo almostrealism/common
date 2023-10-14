@@ -30,23 +30,23 @@ public interface NameProvider {
 	default PhysicalScope getDefaultPhysicalScope() { return null; }
 
 	/**
-	 * Specifying the size is preferred, see {@link #getArgument(int, int)}.
+	 * Specifying the size is preferred, see {@link #getArgument(LanguageOperations, int, int)}.
 	 */
 	@Deprecated
-	default ArrayVariable getArgument(int index) {
-		return getArgument(index, null);
+	default ArrayVariable getArgument(LanguageOperations lang, int index) {
+		return getArgument(lang, index, null);
 	}
 
 	default Variable getVariable(int index) {
 		return new Variable<>(getVariableName(index), getDefaultPhysicalScope(), Double.class, null);
 	}
 
-	default ArrayVariable getArgument(int index, int size) {
-		return getArgument(index, new IntegerConstant(size));
+	default ArrayVariable getArgument(LanguageOperations lang, int index, int size) {
+		return getArgument(lang, index, new IntegerConstant(size));
 	}
 
-	default ArrayVariable getArgument(int index, Expression<Integer> size) {
-		ArrayVariable v = new ArrayVariable(this, getArgumentName(index), getDefaultPhysicalScope(), Double.class, null);
+	default ArrayVariable getArgument(LanguageOperations lang, int index, Expression<Integer> size) {
+		ArrayVariable v = new ArrayVariable(lang, this, getArgumentName(index), getDefaultPhysicalScope(), Double.class, null);
 		v.setArraySize(size);
 		return v;
 	}
@@ -66,5 +66,5 @@ public interface NameProvider {
 
 	String getVariableSizeName(ArrayVariable v);
 
-	Expression<?> getArrayPosition(ArrayVariable v, Expression<?> pos, int kernelIndex);
+	Expression<?> getArrayPosition(LanguageOperations lang, ArrayVariable v, Expression<?> pos, int kernelIndex);
 }

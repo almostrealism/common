@@ -16,6 +16,7 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import io.almostrealism.scope.Argument;
@@ -94,8 +95,16 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I> imple
 				.collect(Collectors.toList()));
 	}
 
+	public ArrayVariable getArgument(int index) {
+		return getArgument(null, index, null);
+	}
+
+	public ArrayVariable getArgument(int index, int size) {
+		return getArgument(null, index, new IntegerConstant(size));
+	}
+
 	@Override
-	public ArrayVariable getArgument(int index, Expression<Integer> size) {
+	public ArrayVariable getArgument(LanguageOperations lang, int index, Expression<Integer> size) {
 		if (index >= getInputs().size()) {
 			throw new IllegalArgumentException("Invalid input (" + index + ")");
 		}

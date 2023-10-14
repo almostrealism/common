@@ -112,14 +112,6 @@ public class MetalComputeContext extends AbstractComputeContext {
 	@Override
 	public boolean isKernelSupported() { return true; }
 
-	@Override
-	public String getKernelIndex(int dimension) {
-		if (dimension != 0)
-			throw new IllegalArgumentException();
-
-		return "global_id";
-	}
-
 	public MTLDevice getMtlDevice() { return mainDevice; }
 	public MTLCommandQueue getMtlQueue() { return queue; }
 	public MTLCommandQueue getMtlQueue(boolean kernel) { return kernel ? getKernelMtlQueue() : getMtlQueue(); }

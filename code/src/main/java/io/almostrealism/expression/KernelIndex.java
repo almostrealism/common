@@ -16,14 +16,28 @@
 
 package io.almostrealism.expression;
 
-import java.util.function.IntFunction;
+import io.almostrealism.code.LanguageOperations;
 
 public class KernelIndex extends StaticReference<Integer> {
-	public static IntFunction<String> kernelIndex = i -> "0";
+	private LanguageOperations lang;
+	private int index;
 
-	public KernelIndex(int index) {
-		super(Integer.class, kernelIndex.apply(index));
+	public KernelIndex(LanguageOperations lang) {
+		this(lang, 0);
 	}
+
+	public KernelIndex(LanguageOperations lang, int index) {
+		super(Integer.class, null);
+		this.lang = lang;
+		this.index = index;
+	}
+
+	@Override
+	public String getExpression() {
+		return lang.kernelIndex(index);
+	}
+
+	public int getKernelIndex() { return index; }
 
 	@Override
 	public Number kernelValue(int kernelIndex) {

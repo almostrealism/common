@@ -26,5 +26,5 @@ public abstract class ProducerComputationBase<I, O> extends ComputationBase<I, O
 	public void setOutputVariable(Variable out) { this.outputVariable = out; }
 
 	@Override
-	public Variable getOutputVariable() { return outputVariable == null ? getArgument(0) : outputVariable; }
+	public Variable getOutputVariable() { return outputVariable == null ? getArgument(null, 0) : outputVariable; }
 }

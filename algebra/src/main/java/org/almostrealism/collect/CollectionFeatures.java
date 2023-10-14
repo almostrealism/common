@@ -31,6 +31,7 @@ import io.almostrealism.expression.Exp;
 import io.almostrealism.expression.Exponent;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Floor;
+import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.expression.Max;
 import io.almostrealism.expression.Min;
 import io.almostrealism.expression.Minus;
@@ -254,17 +255,18 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return new DynamicCollectionProducer(shape, function);
 	}
 
-	default CollectionProducerComputation<PackedCollection<?>> kernel(IntFunction<Expression> kernelIndex, TraversalPolicy shape,
-																	  KernelExpression kernel, Producer... arguments) {
-		Expression index = kernelIndex.apply(0);
-		Expression pos[] = shape.position(index);
-
+	default CollectionProducerComputation<PackedCollection<?>> kernel(TraversalPolicy shape,
+																	  KernelExpression kernel,
+																	  Producer... arguments) {
 		return new ArrayVariableComputation<>(
 				shape.traverseEach(), List.of(args -> {
 					CollectionVariable vars[] = new CollectionVariable[args.size()];
 					for (int i = 0; i < vars.length; i++) {
 						vars[i] = args.get(i) instanceof CollectionVariable ? (CollectionVariable) args.get(i) : null;
 					}
+
+					Expression index = new KernelIndex(args.get(0).getLanguage());
+					Expression pos[] = shape.position(index);
 
 					return kernel.apply(vars, pos);
 				}), arguments);
@@ -354,7 +356,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	default CollectionProducerComputation<PackedCollection<?>> integers(int from, int to) {
 		int len = to - from;
 		return new ExpressionComputation<>(shape(len).traverseEach(),
-				List.of(np -> new Sum(new DoubleConstant((double) from), KernelSupport.index())));
+				List.of(args -> new Sum(new DoubleConstant((double) from), new KernelIndex(args.get(0).getLanguage()))));
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> add(Producer<T> a, Producer<T> b) {

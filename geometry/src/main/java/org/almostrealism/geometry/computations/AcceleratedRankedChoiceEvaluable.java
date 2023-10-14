@@ -16,6 +16,8 @@
 
 package org.almostrealism.geometry.computations;
 
+import io.almostrealism.code.LanguageOperations;
+import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.PhysicalScope;
@@ -60,6 +62,8 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData> extends Dyna
 	private List<ArrayVariable<T>> choices;
 	private ArrayVariable defaultValue;
 
+	private LanguageOperations lang;
+
 	public AcceleratedRankedChoiceEvaluable(int memLength, Supplier<T> blank, IntFunction<MemoryBank<T>> forKernel,
 											List<ProducerWithRank<T, Scalar>> values, Supplier<Evaluable<? extends T>> defaultValue, double e) {
 		this(memLength, blank, forKernel, values, defaultValue, e, null);
@@ -77,9 +81,10 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData> extends Dyna
 	}
 
 	@Override
-	protected void prepareScope() {
-		super.prepareScope();
+	public void prepareScope(ScopeInputManager manager) {
+		super.prepareScope(manager);
 
+		this.lang = manager.getLanguage();
 		this.ranks = getRanks();
 		this.choices = getChoices();
 		this.defaultValue = getDefaultValue();
@@ -281,7 +286,7 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData> extends Dyna
 	public MemoryBank<T> createKernelDestination(int size) { return forKernel.apply(size); }
 
 	private String getKernelIndex(int kernelIndex) {
-		return getComputeContext().getKernelIndex(kernelIndex);
+		return getComputeContext().getLanguage().kernelIndex(kernelIndex);
 	}
 
 	private String getKernelIndex(ArrayVariable v, int kernelIndex) {
@@ -345,7 +350,7 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData> extends Dyna
 	}
 
 	private String getArgumentValueName(int index, int pos, boolean assignment, int kernelIndex) {
-		return getVariableValueName(getArgument(index), pos, assignment, kernelIndex);
+		return getVariableValueName(getArgument(lang, index), pos, assignment, kernelIndex);
 	}
 
 	private String getVariableValueName(Variable v, int pos, boolean assignment, int kernelIndex) {

@@ -41,6 +41,7 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 	public static boolean enableRelative = !Hardware.enableKernelOps;
 
 	private final int memLength;
+	private KernelIndex kernelIndex;
 
 	public Assignment(int memLength, Supplier<Evaluable<? extends T>> result, Supplier<Evaluable<? extends T>> value) {
 		super(result, value);
@@ -63,6 +64,8 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 				addVariable(getArgument(0, memLength).ref(i).assign(getArgument(1).getValueRelative(i)));
 			}
 		}
+
+		kernelIndex = new KernelIndex(manager.getLanguage(), 0);
 	}
 
 	@Override
@@ -78,7 +81,7 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 			ArrayVariable<Double> output = (ArrayVariable<Double>) getArgument(0, memLength);
 
 			for (int i = 0; i < memLength; i++) {
-				Expression index = new KernelIndex(0);
+				Expression index = kernelIndex;
 				if (memLength > 1) index = index.multiply(memLength).add(i);
 
 				TraversableExpression exp = TraversableExpression.traverse(getArgument(1));

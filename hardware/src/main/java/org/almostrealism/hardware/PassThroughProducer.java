@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.LanguageOperations;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
 import io.almostrealism.collect.TraversableExpression;
@@ -173,15 +174,15 @@ public class PassThroughProducer<T extends MemoryData>
 	}
 
 	/**
-	 * Since the normal {@link #getArgument(int)} method returns
-	 * the {@link ArrayVariable} for the specified input index,
-	 * and this {@link io.almostrealism.relation.Producer} does
+	 * Since the normal {@link #getArgument(LanguageOperations, int)}
+	 * method returns the {@link ArrayVariable} for the specified input
+	 * index, and this {@link io.almostrealism.relation.Producer} does
 	 * not use inputs in the conventional way, this method returns
 	 * the indexed {@link ArrayVariable} directly from the list
 	 * of arguments.
 	 */
 	@Override
-	public ArrayVariable getArgument(int index) {
+	public ArrayVariable getArgument(LanguageOperations lang, int index) {
 		return getArgumentVariables().get(index);
 	}
 
@@ -192,7 +193,7 @@ public class PassThroughProducer<T extends MemoryData>
 
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
-		ArrayVariable var = getArgument(0);
+		ArrayVariable var = getArgumentVariables().get(0);
 
 		if (enableDimSupport) {
 			return var.referenceAbsolute(index.toInt().divide(var.length()).multiply(var.getDimValue()).add(index.toInt().mod(var.length(), false)));
@@ -203,7 +204,7 @@ public class PassThroughProducer<T extends MemoryData>
 
 	@Override
 	public Expression<Double> getValueRelative(Expression index) {
-		return getArgument(0).referenceRelative(index);
+		return (Expression) getArgumentVariables().get(0).referenceRelative(index);
 	}
 
 	@Override

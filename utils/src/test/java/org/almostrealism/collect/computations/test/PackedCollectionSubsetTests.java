@@ -18,6 +18,7 @@ package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.code.Operator;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.kernel.KernelPreferences;
 import io.almostrealism.relation.Evaluable;
@@ -724,15 +725,15 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 
 		// output[i, j] = np.sum(im_region * self.filters, axis=(1, 2))
 
-		Expression index = KernelSupport.index();
-		Expression i = outputShape.position(index)[0];
-		Expression j = outputShape.position(index)[1];
-		Expression k = outputShape.position(index)[2];
-
 		// TODO  The ideal way to describe this computation looks like this
 		// kernel(outputShape, (args, i, j, k) -> args[1].get(k).multiply(args[2].get(shape(size, size), i, j)).sum());
 
 		Function<List<ArrayVariable<Double>>, Expression<Double>> expression = (List<ArrayVariable<Double>> args) -> {
+			Expression index = new KernelIndex(args.get(0).getLanguage());
+			Expression i = outputShape.position(index)[0];
+			Expression j = outputShape.position(index)[1];
+			Expression k = outputShape.position(index)[2];
+
 			List<Expression> sum = new ArrayList<>();
 
 			// args.get(1).get(k).multiply(args.get(2).get(shape(size, size), i, j)).sum()
@@ -802,8 +803,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		TraversalPolicy subsetShape = shape(w, h, d).traverseEach();
 
 		CollectionProducerComputation<PackedCollection<?>> producer =
-				kernel(i -> KernelSupport.kernelIndex(i),
-						subsetShape, (i, p) -> i.v(0).get(shape(w, h, d), x0, y0, z0).valueAt(subsetShape.index(p)), p(input));
+				kernel(subsetShape, (i, p) -> i.v(0).get(shape(w, h, d), x0, y0, z0).valueAt(subsetShape.index(p)), p(input));
 
 //		TODO  Why does this version not work? Should be equivalent to the above
 //		CollectionProducerComputation<PackedCollection<?>> producer =
@@ -840,8 +840,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		PackedCollection<?> input = t.pack();
 
 		CollectionProducerComputation<PackedCollection<?>> producer =
-				kernel(i -> KernelSupport.kernelIndex(i),
-						outputShape, (i, p) -> {
+				kernel(outputShape, (i, p) -> {
 							System.out.println("i.v(0).shape = " + i.v(0).getShape());
 							Expression exp = i.v(0).get(shape(size, size), p.l(0), p.l(1)).toList().sum();
 							return exp;

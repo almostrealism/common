@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware.mem;
 
+import io.almostrealism.code.ComputeContext;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.Memory;
@@ -31,6 +32,7 @@ import org.almostrealism.hardware.ctx.ContextSpecific;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.ProviderAwareArgumentMap;
 import org.almostrealism.hardware.ctx.DefaultContextSpecific;
+import org.almostrealism.hardware.jvm.JVMMemoryProvider;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -49,6 +51,7 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 	private static ContextSpecific<MemoryDataArgumentMap> globalMaps;
 	private static ContextSpecific<MemoryDataArgumentMap> globalMapsKernel;
 
+	private final ComputeContext<MemoryData> context;
 	private final Map<Memory, ArrayVariable<A>> mems;
 	private final Map<MemoryDataRef, Integer> aggregatePositions;
 	private final List<RootDelegateProviderSupplier> rootDelegateSuppliers;
@@ -64,11 +67,13 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 	private Producer<MemoryData> aggregateSupplier;
 	private ArrayVariable<A> aggregateArgument;
 
-	public MemoryDataArgumentMap() { this(null); }
+	public MemoryDataArgumentMap(ComputeContext<MemoryData> context) { this(context, null); }
 
-	public MemoryDataArgumentMap(IntFunction<MemoryData> aggregateGenerator) { this(aggregateGenerator, true); }
+	public MemoryDataArgumentMap(ComputeContext<MemoryData> context, IntFunction<MemoryData> aggregateGenerator) {
+		this(context, aggregateGenerator, true); }
 
-	public MemoryDataArgumentMap(IntFunction<MemoryData> aggregateGenerator, boolean kernel) {
+	public MemoryDataArgumentMap(ComputeContext<MemoryData> context, IntFunction<MemoryData> aggregateGenerator, boolean kernel) {
+		this.context = context;
 		this.mems = new HashMap<>();
 		this.aggregatePositions = new HashMap<>();
 		this.rootDelegateSuppliers = new ArrayList<>();
@@ -270,12 +275,12 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 //		}
 	}
 
-	public static MemoryDataArgumentMap create(boolean kernel) { return create(null, kernel); }
+	public static MemoryDataArgumentMap create(ComputeContext<MemoryData> context, boolean kernel) { return create(context, null, kernel); }
 
-	public static MemoryDataArgumentMap create(IntFunction<MemoryData> aggregateGenerator, boolean kernel) {
+	public static MemoryDataArgumentMap create(ComputeContext<MemoryData> context, IntFunction<MemoryData> aggregateGenerator, boolean kernel) {
 		if (!enableGlobalArgumentMap) {
-			MemoryDataArgumentMap map = new MemoryDataArgumentMap(aggregateGenerator, kernel);
-			map.setDelegateProvider(CollectionScopeInputManager.getInstance());
+			MemoryDataArgumentMap map = new MemoryDataArgumentMap(context, aggregateGenerator, kernel);
+			map.setDelegateProvider(CollectionScopeInputManager.getInstance(context.getLanguage()));
 			return map;
 		}
 
@@ -284,7 +289,9 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 
 	protected synchronized static ContextSpecific<MemoryDataArgumentMap> getGlobalMaps() {
 		if (globalMaps == null) {
-			globalMaps = new DefaultContextSpecific<>(() -> new MemoryDataArgumentMap(null, false), MemoryDataArgumentMap::destroy);
+			globalMaps = new DefaultContextSpecific<>(() ->
+					new MemoryDataArgumentMap<>(Hardware.getLocalHardware().getDataContext().getComputeContext(), null, false),
+					MemoryDataArgumentMap::destroy);
 			globalMaps.init();
 		}
 
@@ -293,7 +300,9 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 
 	protected synchronized static ContextSpecific<MemoryDataArgumentMap> getGlobalMapsKernel() {
 		if (globalMapsKernel == null) {
-			globalMapsKernel = new DefaultContextSpecific<>(MemoryDataArgumentMap::new, MemoryDataArgumentMap::destroy);
+			globalMapsKernel = new DefaultContextSpecific<>(() ->
+						new MemoryDataArgumentMap<>(Hardware.getLocalHardware().getDataContext().getComputeContext()),
+					MemoryDataArgumentMap::destroy);
 			globalMapsKernel.init();
 		}
 

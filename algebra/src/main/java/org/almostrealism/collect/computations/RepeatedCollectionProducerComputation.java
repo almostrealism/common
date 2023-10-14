@@ -76,7 +76,7 @@ public class RepeatedCollectionProducerComputation<T extends PackedCollection<?>
 		StaticReference<Integer> ref = new StaticReference<>(Integer.class, i);
 		String cond = condition.apply(getTraversableArguments(ref), ref).getSimpleExpression();
 
-		Expression index = new KernelIndex(0).divide(e(getShape().getSize())).multiply(e(getShape().getSize()));
+		Expression index = kernelIndex().divide(e(getShape().getSize())).multiply(e(getShape().getSize()));
 		TraversableExpression output = CollectionExpression.traverse(getOutputVariable(),
 				size -> index.toInt().divide(e(getMemLength())).multiply(size));
 

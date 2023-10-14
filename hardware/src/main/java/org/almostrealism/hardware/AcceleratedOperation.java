@@ -18,6 +18,7 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.Execution;
+import io.almostrealism.code.LanguageOperations;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.code.Semaphore;
 import io.almostrealism.expression.Expression;
@@ -116,7 +117,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	}
 
 	@Override
-	public ArrayVariable getArgument(int index, Expression<Integer> size) {
+	public ArrayVariable getArgument(LanguageOperations lang, int index, Expression<Integer> size) {
 		return getInputs() == null ? getArgumentVariables().get(index) : getArgumentForInput(getInputs().get(index));
 	}
 
@@ -139,13 +140,13 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 		if (argumentMapping) {
 			if (Hardware.getLocalHardware().isDestinationConsolidation()) {
-				argumentMap = new DestinationConsolidationArgumentMap<>(isKernel());
+				argumentMap = new DestinationConsolidationArgumentMap<>(getComputeContext(), isKernel());
 			} else if (enableArgumentMapping) {
 				if (preOp != null || postOp != null) {
 					throw new UnsupportedOperationException("Redundant call to prepareScope");
 				}
 
-				argumentMap = MemoryDataArgumentMap.create(isAggregatedInput() ? i -> createAggregatedInput(i, i) : null, isKernel());
+				argumentMap = MemoryDataArgumentMap.create(getComputeContext(), isAggregatedInput() ? i -> createAggregatedInput(i, i) : null, isKernel());
 				preOp = ((MemoryDataArgumentMap) argumentMap).getPrepareData();
 				postOp = ((MemoryDataArgumentMap) argumentMap).getPostprocessData();
 			}
@@ -158,7 +159,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		}
 
 		prepareScope(argumentMap == null ?
-				DefaultScopeInputManager.getInstance() : argumentMap.getScopeInputManager());
+				DefaultScopeInputManager.getInstance(getComputeContext().getLanguage()) : argumentMap.getScopeInputManager());
 	}
 
 	@Override
@@ -450,7 +451,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		}
 
 		return new AcceleratedProcessDetails(kernelArgs,
-				Hardware.getLocalHardware().getDataContext().getKernelMemoryProvider(),
+				getComputeContext().getDataContext().getKernelMemoryProvider(),
 				this::createAggregatedInput, kernelSize);
 	}
 

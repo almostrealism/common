@@ -18,6 +18,7 @@ package org.almostrealism.hardware;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.almostrealism.code.Computation;
+import io.almostrealism.code.LanguageOperations;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.KernelIndex;
@@ -52,8 +53,8 @@ public interface HardwareFeatures {
 		return Hardware.getComputer().decompile(r);
 	}
 
-	default IntFunction<Expression> kernelIndex() {
-		return i -> new KernelIndex(i);
+	default IntFunction<Expression> kernelIndex(LanguageOperations lang) {
+		return i -> new KernelIndex(lang, i);
 	}
 
 	default String stringForDouble(double value) {

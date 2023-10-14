@@ -35,7 +35,7 @@ public class StaticReference<T> extends Expression<T> {
 
 	public String getExpression() { return expression; }
 
-	public String getWrappedExpression() { return expression; }
+	public String getWrappedExpression() { return getExpression(); }
 
 	@Override
 	public Expression<T> generate(List<Expression<?>> children) {

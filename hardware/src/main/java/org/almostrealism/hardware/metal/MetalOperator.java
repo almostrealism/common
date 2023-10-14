@@ -206,7 +206,7 @@ public class MetalOperator extends HardwareOperator {
 			if (((MemoryData) args[i]).getMem() instanceof MetalMemory == false) {
 				throw new IllegalArgumentException("argument " + i + " (" +
 						args[i].getClass().getSimpleName() + ") to function " +
-						name + " is not associated with CLMemory");
+						name + " is not associated with MetalMemory");
 			}
 
 			if (args[i] instanceof MemoryBank) {

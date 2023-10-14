@@ -33,6 +33,14 @@ public class MetalLanguageOperations extends CLanguageOperations {
 	}
 
 	@Override
+	public String kernelIndex(int index) {
+		if (index != 0)
+			throw new IllegalArgumentException();
+
+		return "global_id";
+	}
+
+	@Override
 	public String annotationForPhysicalScope(PhysicalScope scope) {
 		if (scope != null) return "device";
 		return null;

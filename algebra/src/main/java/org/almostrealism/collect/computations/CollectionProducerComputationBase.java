@@ -19,11 +19,13 @@ package org.almostrealism.collect.computations;
 import io.almostrealism.code.CollectionUtils;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
+import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
 import io.almostrealism.scope.ArrayVariable;
@@ -56,6 +58,8 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	private BiFunction<MemoryData, Integer, O> postprocessor;
 	private Evaluable<O> shortCircuit;
 
+	private KernelIndex kernelIndex;
+
 	protected CollectionProducerComputationBase() { }
 
 	public CollectionProducerComputationBase(TraversalPolicy outputShape, Supplier<Evaluable<? extends I>>... arguments) {
@@ -67,6 +71,12 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		this.destination = () -> PackedCollection.factory().apply(shape.getTotalSize()).reshape(shape);
 		this.setInputs(CollectionUtils.include(new Supplier[0], new MemoryDataDestination(this, this::createKernelDestination), arguments));
 		init();
+	}
+
+	@Override
+	public void prepareScope(ScopeInputManager manager) {
+		super.prepareScope(manager);
+		kernelIndex = new KernelIndex(manager.getLanguage());
 	}
 
 	protected void setShape(TraversalPolicy shape) {
@@ -96,6 +106,8 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 
 		return new PackedCollection<>(shape);
 	}
+
+	protected KernelIndex kernelIndex() { return kernelIndex; }
 
 	@Override
 	public TraversalPolicy getShape() {

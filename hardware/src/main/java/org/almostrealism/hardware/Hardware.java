@@ -20,12 +20,14 @@ import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.code.Computer;
 import io.almostrealism.code.DataContext;
+import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.expression.Cast;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.kernel.KernelPreferences;
+import io.almostrealism.relation.ParallelProcess;
 import org.almostrealism.hardware.cl.CLMemoryProvider;
 import org.almostrealism.hardware.cl.CLMemoryProvider.Location;
 import org.almostrealism.hardware.cl.CLDataContext;
@@ -96,49 +98,47 @@ public final class Hardware {
 		if (driver == null) driver = System.getenv("AR_HARDWARE_DRIVER");
 		if (driver == null) driver = aarch ? "mtl" : "cl";
 
-		ComputeRequirement requirement = ComputeRequirement.CL;
-		if ("mtl".equalsIgnoreCase(driver)) {
-			requirement = ComputeRequirement.MTL;
+		boolean nativeMemory = SystemUtils.isEnabled("AR_HARDWARE_NATIVE_MEMORY").orElse(false);
+
+		List<ComputeRequirement> requirements = new ArrayList<>();
+
+		if ("cl".equalsIgnoreCase(driver)) {
+			requirements.add(ComputeRequirement.CL);
+		} else if ("mtl".equalsIgnoreCase(driver)) {
+			requirements.add(ComputeRequirement.MTL);
 		} else if ("native".equalsIgnoreCase(driver)) {
-			requirement = ComputeRequirement.JNI;
+			requirements.add(ComputeRequirement.JNI);
+		} else if ("all".equalsIgnoreCase(driver)) {
+			requirements.add(ComputeRequirement.CL);
+			if (aarch) requirements.add(ComputeRequirement.MTL);
+			if (nativeMemory) requirements.add(ComputeRequirement.JNI);
+		} else {
+			throw new IllegalStateException("Unknown driver " + driver);
 		}
 
-		String memProvider = System.getProperty("AR_HARDWARE_MEMORY_PROVIDER");
-		if (memProvider == null) memProvider = System.getenv("AR_HARDWARE_MEMORY_PROVIDER");
-		if (memProvider == null) {
-			if (requirement == ComputeRequirement.CL) {
-				memProvider = "cl";
-			} else if (requirement == ComputeRequirement.MTL) {
-				memProvider = "mtl";
-			} else if (requirement == ComputeRequirement.JNI) {
-				memProvider = "native";
-			} else {
-				throw new IllegalStateException("No memory provider for " + requirement);
-			}
-		}
-
-		if (memProvider.equalsIgnoreCase("native") || memProvider.equalsIgnoreCase("jvm")) {
+		if (nativeMemory) {
 			gpu = false;
 			precision = Precision.FP64;
-		} else if (memProvider.equalsIgnoreCase("mtl") && precision == Precision.FP64) {
+		} else if (requirements.contains(ComputeRequirement.MTL) && precision == Precision.FP64) {
 			precision = Precision.FP32;
 		}
 
-		if (memProvider.equalsIgnoreCase("mtl")) {
+		boolean favorLoops = requirements.size() == 1;
+
+		if (favorLoops && requirements.contains(ComputeRequirement.MTL)) {
 			KernelPreferences.setPreferLoops(true);
 			KernelPreferences.setEnableSubdivision(false);
 		}
 
-		local = new Hardware(memProvider, List.of(requirement),
-						gpu, enableKernels, enableDestinationConsolidation, precision,
-						location);
+		local = new Hardware(requirements, nativeMemory, gpu,
+							enableKernels, enableDestinationConsolidation,
+							precision, location);
 
 		// TODO  This is not a very desirable way of ensuring that Expressions are properly encoded
 		// TODO  but until we further improve the interaction between org.almostrealism.hardware
 		// TODO  and io.almostrealism.code it will have to do
 		Expression.toDouble = e -> new Cast(Double.class, Hardware.getLocalHardware().getNumberTypeName(), e);
 		DoubleConstant.stringForDouble = Hardware.getLocalHardware()::stringForDouble;
-		KernelIndex.kernelIndex = Hardware.getLocalHardware().getComputeContext()::getKernelIndex;
 	}
 
 	private final String name;
@@ -155,14 +155,14 @@ public final class Hardware {
 	private ThreadLocal<DataContext<MemoryData>> explicitContext = new ThreadLocal<>();
 	private List<ContextListener> contextListeners;
 
-	private Hardware(String memProvider, List<ComputeRequirement> type, boolean enableGpu,
+	private Hardware(List<ComputeRequirement> type, boolean nativeMemory, boolean enableGpu,
 					 boolean enableKernels, boolean enableDestinationConsolidation,
 					 Precision precision, Location location) {
-		this(precision == Precision.FP64 ? "local64" : "local32", memProvider, type, enableGpu,
-				enableKernels, enableDestinationConsolidation, precision, location);
+		this(precision == Precision.FP64 ? "local64" : "local32", type, nativeMemory,
+				enableGpu, enableKernels, enableDestinationConsolidation, precision, location);
 	}
 
-	private Hardware(String name, String memProvider, List<ComputeRequirement> type, boolean enableGpu,
+	private Hardware(String name, List<ComputeRequirement> type, boolean nativeMemory, boolean enableGpu,
 					 boolean enableKernels, boolean enableDestinationConsolidation,
 					 Precision precision, Location location) {
 		this.name = name;
@@ -176,7 +176,7 @@ public final class Hardware {
 		this.enableGpu = enableGpu;
 		this.enableKernel = enableKernels;
 		this.enableDestinationConsolidation = enableDestinationConsolidation;
-		this.nativeMemory = "native".equalsIgnoreCase(memProvider);
+		this.nativeMemory = nativeMemory;
 		this.memVolatile = location == Location.HEAP;
 		this.contextListeners = new ArrayList<>();
 		this.contexts = new ArrayList<>();
@@ -189,7 +189,9 @@ public final class Hardware {
 			System.out.println("Hardware[" + getName() + "]: Processing Hardware Requirements...");
 		}
 
-		for (ComputeRequirement type : requirements) {
+		List<ComputeRequirement> done = new ArrayList<>();
+
+		r: for (ComputeRequirement type : requirements) {
 			if (type == ComputeRequirement.CPU) {
 				// TODO  Choose the ideal CPU implementation for this system
 				type = ComputeRequirement.CL;
@@ -198,16 +200,22 @@ public final class Hardware {
 				type = SystemUtils.isAarch64() ? ComputeRequirement.MTL : ComputeRequirement.CL;
 			}
 
+			if (done.contains(type)) continue r;
+
 			boolean locationUsed = false;
 			DataContext ctx;
+			String cname;
 
 			if (type == ComputeRequirement.CL) {
 				ctx = new CLDataContext(this, getName(), this.memoryMax, getOffHeapSize(type), this.location);
 				locationUsed = true;
+				cname = "CL";
 			} else if (type == ComputeRequirement.MTL) {
 				ctx = new MetalDataContext(this, getName(), this.memoryMax, getOffHeapSize(type));
+				cname = "MTL";
 			} else {
 				ctx = new NativeDataContext(this, getName(), isNativeMemory(), this.memoryMax);
+				cname = "JNI";
 				if (enableVerbose) System.out.println("Hardware[" + getName() + "]: Created NativeDataContext");
 			}
 
@@ -218,9 +226,10 @@ public final class Hardware {
 					System.out.println("Hardware[" + getName() + "]: Host RAM enabled");
 			}
 
-			System.out.println("Hardware[" + getName() + "]: Max RAM is " +
+			System.out.println("Hardware[" + getName() + "]: Max RAM for " + cname + " is " +
 					memoryMax / 1000000 + " Megabytes");
 
+			done.add(type);
 			start(ctx);
 			contexts.add(ctx);
 			contextListeners.forEach(l -> l.contextStarted(ctx));
@@ -232,9 +241,10 @@ public final class Hardware {
 	public static Hardware getLocalHardware() { return local; }
 
 	public static Computer<MemoryData> getComputer() {
-		// TODO  Need a smarter choice for which context to use, depending on the computation
 		return new DefaultComputer(computation -> {
-			return getLocalHardware().getComputeContext();
+			// TODO  Need a smarter choice for which context to use
+			int count = ParallelProcess.count(computation);
+			return getLocalHardware().getComputeContext(count > 1024);
 		});
 	}
 
@@ -361,15 +371,39 @@ public final class Hardware {
 	}
 
 	public DataContext<MemoryData> getDataContext() {
+		return getDataContext(false);
+	}
+
+	public DataContext<MemoryData> getDataContext(boolean accelerator) {
 		DataContext<MemoryData> ctx = explicitContext.get();
 		if (ctx != null) return ctx;
+
 		if (contexts.isEmpty()) return null;
+
+		if (accelerator) {
+			for (DataContext<MemoryData> c : contexts) {
+				if (c instanceof MetalDataContext) {
+					return c;
+				}
+			}
+		}
+
 		return contexts.get(0);
 	}
 
-	public ComputeContext<MemoryData> getComputeContext() { return getDataContext().getComputeContext(); }
+	public ComputeContext<MemoryData> getComputeContext() {
+		return getComputeContext(false);
+	}
 
-	public MemoryProvider getMemoryProvider(int size) { return getDataContext().getMemoryProvider(size); }
+	public ComputeContext<MemoryData> getComputeContext(boolean accelerator) {
+		return Optional.ofNullable(getDataContext(accelerator)).map(dc -> dc.getComputeContext())
+				.orElseThrow(() -> new RuntimeException("No available data context"));
+	}
+
+	public MemoryProvider<? extends Memory> getMemoryProvider(int size) {
+		return Optional.ofNullable(getDataContext()).map(dc -> dc.getMemoryProvider(size))
+				.orElseThrow(() -> new RuntimeException("No available data context"));
+	}
 
 	public static boolean isAsync() { return enableAsync; }
 }

@@ -25,7 +25,7 @@ public class RelativeArrayVariable extends ArrayVariable<Double> {
 	private Expression offset;
 
 	public RelativeArrayVariable(ArrayVariable<Double> ref, Expression offset) {
-		super(null, null, (Expression<Integer>) null);
+		super(ref.getLanguage(), null, null, (Expression<Integer>) null);
 		this.ref = ref;
 		this.offset = offset;
 	}
