@@ -48,6 +48,7 @@ public class CLDataContext implements DataContext<MemoryData> {
 
 	private cl_platform_id platform;
 
+	private long deviceType;
 	private cl_device_id mainDevice;
 	private DeviceInfo mainDeviceInfo;
 
@@ -84,7 +85,7 @@ public class CLDataContext implements DataContext<MemoryData> {
 
 		final int platformIndex = 0;
 		final int deviceIndex = 0;
-		final long deviceType = gpu ? CL.CL_DEVICE_TYPE_GPU : CL.CL_DEVICE_TYPE_CPU;
+		deviceType = gpu ? CL.CL_DEVICE_TYPE_GPU : CL.CL_DEVICE_TYPE_CPU;
 
 		int numPlatformsArray[] = new int[1];
 		CL.clGetPlatformIDs(0, null, numPlatformsArray);
@@ -182,10 +183,10 @@ public class CLDataContext implements DataContext<MemoryData> {
 		ComputeContext cc;
 
 		if (cReq.isPresent()) {
-			cc = new CLNativeComputeContext(hardware, NativeCompiler.factory(hardware, true).construct());
+			cc = new CLNativeComputeContext(hardware, this, NativeCompiler.factory(hardware, true).construct());
 		} else {
 			if (start != null) start.run();
-			cc = new CLComputeContext(hardware, ctx);
+			cc = new CLComputeContext(hardware, this, ctx);
 			((CLComputeContext) cc).init(mainDevice, kernelDevice, pReq.isPresent());
 		}
 
@@ -198,6 +199,8 @@ public class CLDataContext implements DataContext<MemoryData> {
 		if (start != null) start.run();
 		return ctx;
 	}
+
+	protected boolean isCPU() { return deviceType == CL.CL_DEVICE_TYPE_CPU; }
 
 	public DeviceInfo getMainDeviceInfo() { return mainDeviceInfo; }
 	public DeviceInfo getKernelDeviceInfo() { return kernelDeviceInfo; }
@@ -222,17 +225,13 @@ public class CLDataContext implements DataContext<MemoryData> {
 		}
 	}
 
-	public ComputeContext getComputeContext() {
+	public ComputeContext<MemoryData> getComputeContext() {
 		if (computeContext.get() == null) {
 			if (Hardware.enableVerbose) System.out.println("INFO: No explicit ComputeContext for " + Thread.currentThread().getName());
 			computeContext.set(createContext());
 		}
 
 		return computeContext.get();
-	}
-
-	public CLComputeContext getClComputeContext() {
-		return (CLComputeContext) getComputeContext();
 	}
 
 	public <T> T computeContext(Callable<T> exec, ComputeRequirement... expectations) {
@@ -260,6 +259,7 @@ public class CLDataContext implements DataContext<MemoryData> {
 		}
 	}
 
+	@Override
 	public <T> T deviceMemory(Callable<T> exec) {
 		IntFunction<MemoryProvider<?>> current = memoryProvider.get();
 		IntFunction<MemoryProvider<?>> next = s -> mainRam;

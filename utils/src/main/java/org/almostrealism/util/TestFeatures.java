@@ -56,8 +56,10 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 	}
 
 	private static void assertEquals(double a, double b, boolean positive) {
-		double gap = Hardware.getLocalHardware().isDoublePrecision() ? Math.pow(10, -10) : Math.pow(10, -4);
-		double fallbackGap = Math.pow(10, -3);
+//		double gap = Hardware.getLocalHardware().isDoublePrecision() ? Math.pow(10, -10) : Math.pow(10, -4);
+//		double fallbackGap = Math.pow(10, -3);
+		double gap = Math.pow(10, 3) * Hardware.getLocalHardware().getPrecision().epsilon();
+		double fallbackGap = 10 * gap;
 
 		if (Math.abs(a - b) >= gap) {
 			if (positive) {

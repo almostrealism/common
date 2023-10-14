@@ -30,6 +30,7 @@ import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryBank;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ProducerWithRank;
+import org.almostrealism.hardware.Precision;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -321,6 +322,10 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData> extends Dyna
 		} else {
 			return name;
 		}
+	}
+
+	private boolean isCastEnabled() {
+		return !getComputeContext().isCPU() && Hardware.getLocalHardware().getPrecision() == Precision.FP64;
 	}
 
 	public String getVariableValueName(Variable v, String pos, boolean assignment, int kernelIndex) {

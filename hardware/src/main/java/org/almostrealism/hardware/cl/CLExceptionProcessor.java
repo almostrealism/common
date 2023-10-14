@@ -23,10 +23,12 @@ import org.jocl.CLException;
 public class CLExceptionProcessor {
 	public static HardwareException process(CLException e, CLMemoryProvider provider, int srcIndex, int destIndex, int length) {
 		if ("CL_INVALID_CONTEXT".equals(e.getMessage())) {
-			if (provider.getContext() == Hardware.getLocalHardware().getClDataContext()) {
+			if (provider.getContext() == Hardware.getLocalHardware().getDataContext()) {
 				return new InvalidContextException(provider.getContext().toString(), e);
+			} else if (Hardware.getLocalHardware().getDataContext() instanceof CLDataContext) {
+				return new MismatchedContextException(provider.getContext(), (CLDataContext) Hardware.getLocalHardware().getDataContext(), e);
 			} else {
-				return new MismatchedContextException(provider.getContext(), Hardware.getLocalHardware().getClDataContext(), e);
+				return new MismatchedContextException(provider.getContext(), null, e);
 			}
 		} else if ("CL_INVALID_VALUE".equals(e.getMessage())) {
 			return new InvalidValueException(e, srcIndex, destIndex, length);

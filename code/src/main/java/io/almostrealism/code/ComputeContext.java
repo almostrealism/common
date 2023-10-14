@@ -19,6 +19,8 @@ package io.almostrealism.code;
 import io.almostrealism.scope.Scope;
 
 public interface ComputeContext<MEM> {
+	DataContext<MEM> getDataContext();
+
 	LanguageOperations getLanguage();
 
 	/**
@@ -28,6 +30,8 @@ public interface ComputeContext<MEM> {
 	 * represented as a unique {@link java.util.function.Consumer}.
 	 */
 	InstructionSet deliver(Scope scope);
+
+	boolean isCPU();
 
 	boolean isKernelSupported();
 

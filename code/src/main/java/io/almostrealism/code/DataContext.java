@@ -25,6 +25,8 @@ public interface DataContext<MEM> {
 
 	MemoryProvider<? extends Memory> getKernelMemoryProvider();
 
+	<T> T deviceMemory(Callable<T> exec);
+
 	<T> T computeContext(Callable<T> exec, ComputeRequirement... expectations);
 
 	void destroy();

@@ -18,6 +18,7 @@ package org.almostrealism.hardware.ctx;
 
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.Computer;
+import io.almostrealism.code.DataContext;
 import org.almostrealism.hardware.DefaultComputer;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
@@ -25,14 +26,18 @@ import org.almostrealism.hardware.jni.NativeCompiler;
 
 public abstract class AbstractComputeContext implements ComputeContext<MemoryData> {
 	private final Hardware hardware;
+	private final DataContext<MemoryData> dc;
 
-	protected AbstractComputeContext(Hardware hardware) {
+	protected AbstractComputeContext(Hardware hardware, DataContext<MemoryData> dc) {
 		this.hardware = hardware;
+		this.dc = dc;
 	}
 
 	public String getName() { return hardware.getName(); }
 
 	public Hardware getHardware() { return hardware; }
+
+	public DataContext<MemoryData> getDataContext() { return dc; }
 
 	@Override
 	public String getKernelIndex(int dimension) {

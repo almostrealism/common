@@ -28,17 +28,12 @@ import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.kernel.KernelPreferences;
 import org.almostrealism.hardware.cl.CLMemoryProvider;
 import org.almostrealism.hardware.cl.CLMemoryProvider.Location;
-import org.almostrealism.hardware.cl.CLComputeContext;
 import org.almostrealism.hardware.cl.CLDataContext;
 import org.almostrealism.hardware.ctx.ContextListener;
 import org.almostrealism.hardware.jni.NativeDataContext;
 import org.almostrealism.hardware.metal.MetalDataContext;
 import org.almostrealism.io.SystemUtils;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -134,21 +129,15 @@ public final class Hardware {
 			KernelPreferences.setEnableSubdivision(false);
 		}
 
-		// TODO  This should not have to be here; only the NativeCompiler needs to know this
-		String exec = System.getProperty("AR_HARDWARE_NATIVE_EXECUTION");
-		if (exec == null) exec = System.getenv("AR_HARDWARE_NATIVE_EXECUTION");
-
-		local = new Hardware(memProvider, requirement,
+		local = new Hardware(memProvider, List.of(requirement),
 						gpu, enableKernels, enableDestinationConsolidation, precision,
-						"external".equalsIgnoreCase(exec), location);
+						location);
 
-		// TODO  This is not a very desirable way of ensuring the doubles are properly encoded
+		// TODO  This is not a very desirable way of ensuring that Expressions are properly encoded
 		// TODO  but until we further improve the interaction between org.almostrealism.hardware
 		// TODO  and io.almostrealism.code it will have to do
 		Expression.toDouble = e -> new Cast(Double.class, Hardware.getLocalHardware().getNumberTypeName(), e);
 		DoubleConstant.stringForDouble = Hardware.getLocalHardware()::stringForDouble;
-
-		// TODO  This is not a very desirable way to configure kernel support either
 		KernelIndex.kernelIndex = Hardware.getLocalHardware().getComputeContext()::getKernelIndex;
 	}
 
@@ -156,25 +145,26 @@ public final class Hardware {
 
 	private final boolean enableGpu, enableKernelQueue = false;
 	private final boolean enableKernel, enableDestinationConsolidation;
-	private final boolean externalNative, nativeMemory;
+	private final boolean nativeMemory;
 	private final boolean memVolatile;
 	private long memoryMax;
 	private Precision precision;
 	private Location location;
 
-	private DataContext<MemoryData> context;
+	private List<DataContext<MemoryData>> contexts;
+	private ThreadLocal<DataContext<MemoryData>> explicitContext = new ThreadLocal<>();
 	private List<ContextListener> contextListeners;
 
-	private Hardware(String memProvider, ComputeRequirement type, boolean enableGpu,
+	private Hardware(String memProvider, List<ComputeRequirement> type, boolean enableGpu,
 					 boolean enableKernels, boolean enableDestinationConsolidation,
-					 Precision precision, boolean externalNative, Location location) {
+					 Precision precision, Location location) {
 		this(precision == Precision.FP64 ? "local64" : "local32", memProvider, type, enableGpu,
-				enableKernels, enableDestinationConsolidation, precision, externalNative, location);
+				enableKernels, enableDestinationConsolidation, precision, location);
 	}
 
-	private Hardware(String name, String memProvider, ComputeRequirement type, boolean enableGpu,
+	private Hardware(String name, String memProvider, List<ComputeRequirement> type, boolean enableGpu,
 					 boolean enableKernels, boolean enableDestinationConsolidation,
-					 Precision precision, boolean externalNative, Location location) {
+					 Precision precision, Location location) {
 		this.name = name;
 
 		this.memoryMax = (long) Math.pow(2, getMemoryScale()) * 64L * 1000L * 1000L;
@@ -186,53 +176,54 @@ public final class Hardware {
 		this.enableGpu = enableGpu;
 		this.enableKernel = enableKernels;
 		this.enableDestinationConsolidation = enableDestinationConsolidation;
-		this.externalNative = externalNative;
 		this.nativeMemory = "native".equalsIgnoreCase(memProvider);
 		this.memVolatile = location == Location.HEAP;
 		this.contextListeners = new ArrayList<>();
+		this.contexts = new ArrayList<>();
 
-		if (type == ComputeRequirement.CL) {
-			this.context = new CLDataContext(this, name, this.memoryMax, getOffHeapSize(), this.location);
+		processRequirements(type);
+	}
 
-			if (enableVerbose) {
-				if (enableGpu) {
-					System.out.println("Initializing Hardware (GPU Enabled)...");
-				} else {
-					System.out.println("Initializing Hardware...");
-				}
+	private void processRequirements(List<ComputeRequirement> requirements) {
+		if (enableVerbose) {
+			System.out.println("Hardware[" + getName() + "]: Processing Hardware Requirements...");
+		}
+
+		for (ComputeRequirement type : requirements) {
+			if (type == ComputeRequirement.CPU) {
+				// TODO  Choose the ideal CPU implementation for this system
+				type = ComputeRequirement.CL;
+			} else if (type == ComputeRequirement.GPU) {
+				// TODO  Choose the ideal GPU implementation for this system
+				type = SystemUtils.isAarch64() ? ComputeRequirement.MTL : ComputeRequirement.CL;
 			}
 
-			System.out.println("Hardware[" + name + "]: Max RAM is " +
-					memoryMax / 1000000 + " Megabytes");
-			if (location == CLMemoryProvider.Location.HEAP)
-				System.out.println("Hardware[" + name + "]: Heap RAM enabled");
-			if (location == CLMemoryProvider.Location.HOST)
-				System.out.println("Hardware[" + name + "]: Host RAM enabled");
+			boolean locationUsed = false;
+			DataContext ctx;
 
-			start(context);
-			contextListeners.forEach(l -> l.contextStarted(context));
-		} else if (type == ComputeRequirement.MTL) {
-			int offHeapSize = 0; // TODO getOffHeapSize();
-			this.context = new MetalDataContext(this, name, this.memoryMax, offHeapSize);
-
-			if (enableVerbose) {
-				if (enableGpu) {
-					System.out.println("Initializing Hardware (GPU Enabled)...");
-				} else {
-					System.out.println("Initializing Hardware...");
-				}
+			if (type == ComputeRequirement.CL) {
+				ctx = new CLDataContext(this, getName(), this.memoryMax, getOffHeapSize(type), this.location);
+				locationUsed = true;
+			} else if (type == ComputeRequirement.MTL) {
+				ctx = new MetalDataContext(this, getName(), this.memoryMax, getOffHeapSize(type));
+			} else {
+				ctx = new NativeDataContext(this, getName(), isNativeMemory(), this.memoryMax);
+				if (enableVerbose) System.out.println("Hardware[" + getName() + "]: Created NativeDataContext");
 			}
 
-			System.out.println("Hardware[" + name + "]: Max RAM is " +
+			if (locationUsed) {
+				if (location == CLMemoryProvider.Location.HEAP)
+					System.out.println("Hardware[" + getName() + "]: Heap RAM enabled");
+				if (location == CLMemoryProvider.Location.HOST)
+					System.out.println("Hardware[" + getName() + "]: Host RAM enabled");
+			}
+
+			System.out.println("Hardware[" + getName() + "]: Max RAM is " +
 					memoryMax / 1000000 + " Megabytes");
 
-			start(context);
-			contextListeners.forEach(l -> l.contextStarted(context));
-		} else {
-			System.out.println("Initializing Hardware...");
-			this.context = new NativeDataContext(this, name, isNativeMemory(), externalNative, this.memoryMax);
-			start(context);
-			if (enableVerbose) System.out.println("Hardware[" + name + "]: Created NativeMemoryProvider");
+			start(ctx);
+			contexts.add(ctx);
+			contextListeners.forEach(l -> l.contextStarted(ctx));
 		}
 	}
 
@@ -260,18 +251,17 @@ public final class Hardware {
 	}
 
 	public void addContextListener(ContextListener l) { contextListeners.add(l); }
-
 	public void removeContextListener(ContextListener l) { contextListeners.remove(l); }
 
 	public <T> T dataContext(Callable<T> exec) {
-		DataContext current, next;
+		DataContext<MemoryData> next, current = explicitContext.get();
 
-		if (context instanceof CLDataContext) {
-			current = context;
-			next = new CLDataContext(this, getName(), memoryMax, getOffHeapSize(), location);
-		} else if (context instanceof NativeDataContext) {
-			current = context;
-			next = new NativeDataContext(this, getName(), isNativeMemory(), isExternalNative(), memoryMax);
+		if (getDataContext() instanceof CLDataContext) {
+			next = new CLDataContext(this, getName(), memoryMax, getOffHeapSize(ComputeRequirement.CL), location);
+		} else if (getDataContext() instanceof MetalDataContext) {
+			next = new MetalDataContext(this, getName(), memoryMax, getOffHeapSize(ComputeRequirement.MTL));
+		} else if (getDataContext() instanceof NativeDataContext) {
+			next = new NativeDataContext(this, getName(), isNativeMemory(), memoryMax);
 		} else {
 			return null;
 		}
@@ -284,8 +274,8 @@ public final class Hardware {
 		try {
 			if (Hardware.enableVerbose) System.out.println("Hardware[" + getName() + "]: Start " + dcName);
 			start(next);
-			context = next;
-			contextListeners.forEach(l -> l.contextStarted(context));
+			explicitContext.set(next);
+			contextListeners.forEach(l -> l.contextStarted(getDataContext()));
 			return exec.call();
 		} catch (RuntimeException e) {
 			throw e;
@@ -293,25 +283,18 @@ public final class Hardware {
 			throw new RuntimeException(e);
 		} finally {
 			contextListeners.forEach(l -> l.contextDestroyed(next));
-			context = current;
+			explicitContext.set(current);
 			if (Hardware.enableVerbose) System.out.println("Hardware[" + getName() + "]: End " + dcName);
 			next.destroy();
 			if (Hardware.enableVerbose) System.out.println("Hardware[" + getName() + "]: Destroyed " + dcName);
 		}
 	}
 
-	public boolean isGPU() { return enableGpu; }
-
-	@Deprecated
-	public boolean isDoublePrecision() { return precision == Precision.FP64; }
-
 	public Precision getPrecision() { return precision; }
 
 	public boolean isDestinationConsolidation() { return enableDestinationConsolidation; }
 
 	public boolean isKernelSupported() { return enableKernel; }
-
-	public boolean isExternalNative() { return externalNative; }
 
 	public boolean isNativeMemory() { return nativeMemory; }
 
@@ -334,8 +317,13 @@ public final class Hardware {
 
 	public int getMemoryScale() { return MEMORY_SCALE; }
 
-	public int getOffHeapSize() {
+	public int getOffHeapSize(ComputeRequirement type) {
 		try {
+			if (type == ComputeRequirement.MTL) {
+				// TODO  This workaround should not be required
+				return 0;
+			}
+
 			return Integer.parseInt(SystemUtils.getProperty("AR_HARDWARE_OFF_HEAP_SIZE"));
 		} catch (NullPointerException | NumberFormatException e) {
 			return 1024;
@@ -351,7 +339,7 @@ public final class Hardware {
 	}
 
 	private String rawStringForDouble(double d) {
-		if (isGPU()) {
+		if (getPrecision() != Precision.FP64) {
 			Float f = (float) d;
 			if (f.isInfinite()) {
 				return String.valueOf(f > 0 ? Float.MAX_VALUE : Float.MIN_VALUE);
@@ -372,14 +360,16 @@ public final class Hardware {
 		}
 	}
 
-	public DataContext<MemoryData> getDataContext() { return context; }
+	public DataContext<MemoryData> getDataContext() {
+		DataContext<MemoryData> ctx = explicitContext.get();
+		if (ctx != null) return ctx;
+		if (contexts.isEmpty()) return null;
+		return contexts.get(0);
+	}
 
-	public ComputeContext<MemoryData> getComputeContext() { return context.getComputeContext(); }
+	public ComputeContext<MemoryData> getComputeContext() { return getDataContext().getComputeContext(); }
 
-	@Deprecated
-	public CLDataContext getClDataContext() { return context instanceof CLDataContext ? (CLDataContext) context : null; }
-
-	public MemoryProvider getMemoryProvider(int size) { return context.getMemoryProvider(size); }
+	public MemoryProvider getMemoryProvider(int size) { return getDataContext().getMemoryProvider(size); }
 
 	public static boolean isAsync() { return enableAsync; }
 }

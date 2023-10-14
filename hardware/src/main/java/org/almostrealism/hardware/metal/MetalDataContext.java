@@ -88,7 +88,7 @@ public class MetalDataContext implements DataContext<MemoryData> {
 			throw new UnsupportedOperationException();
 		} else {
 			if (start != null) start.run();
-			cc = new MetalComputeContext(hardware);
+			cc = new MetalComputeContext(hardware, this);
 			((MetalComputeContext) cc).init(mainDevice, kernelDevice);
 		}
 
@@ -167,6 +167,7 @@ public class MetalDataContext implements DataContext<MemoryData> {
 		}
 	}
 
+	@Override
 	public <T> T deviceMemory(Callable<T> exec) {
 		IntFunction<MemoryProvider<?>> current = memoryProvider.get();
 		IntFunction<MemoryProvider<?>> next = s -> mainRam;

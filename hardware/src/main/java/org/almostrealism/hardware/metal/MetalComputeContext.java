@@ -51,8 +51,8 @@ public class MetalComputeContext extends AbstractComputeContext {
 
 	private List<MetalOperatorMap> instructionSets;
 
-	public MetalComputeContext(Hardware hardware) {
-		super(hardware);
+	public MetalComputeContext(Hardware hardware, MetalDataContext dc) {
+		super(hardware, dc);
 		this.instructionSets = new ArrayList<>();
 	}
 
@@ -105,6 +105,9 @@ public class MetalComputeContext extends AbstractComputeContext {
 		instructionSets.add(instSet);
 		return instSet;
 	}
+
+	@Override
+	public boolean isCPU() { return false; }
 
 	@Override
 	public boolean isKernelSupported() { return true; }

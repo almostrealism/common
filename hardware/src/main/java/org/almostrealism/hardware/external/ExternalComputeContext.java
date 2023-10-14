@@ -26,6 +26,7 @@ import org.almostrealism.c.CPrintWriter;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.jni.NativeCompiler;
+import org.almostrealism.hardware.jni.NativeDataContext;
 import org.almostrealism.hardware.jni.NativeInstructionSet;
 
 import java.io.BufferedReader;
@@ -55,8 +56,8 @@ public class ExternalComputeContext extends AbstractComputeContext {
 
 	private NativeCompiler compiler;
 
-	public ExternalComputeContext(Hardware hardware, NativeCompiler compiler) {
-		super(hardware);
+	public ExternalComputeContext(Hardware hardware, NativeDataContext dc, NativeCompiler compiler) {
+		super(hardware, dc);
 		this.compiler = compiler;
 	}
 
@@ -77,6 +78,9 @@ public class ExternalComputeContext extends AbstractComputeContext {
 		String executable = getNativeCompiler().getLibraryDirectory() + "/" + getNativeCompiler().compile(inst.getClass().getName(), buf.toString(), false);
 		return new ExternalInstructionSet(executable, getNativeCompiler()::reserveDataDirectory);
 	}
+
+	@Override
+	public boolean isCPU() { return true; }
 
 	@Override
 	public boolean isKernelSupported() { return false; }

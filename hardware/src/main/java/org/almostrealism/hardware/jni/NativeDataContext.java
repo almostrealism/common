@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,10 +27,13 @@ import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.RAM;
 import org.almostrealism.hardware.external.ExternalComputeContext;
 import org.almostrealism.hardware.jvm.JVMMemoryProvider;
+import org.almostrealism.io.SystemUtils;
 
 import java.util.concurrent.Callable;
 
 public class NativeDataContext implements DataContext<MemoryData> {
+	private static boolean external = SystemUtils.getProperty("AR_HARDWARE_NATIVE_EXECUTION", "").equalsIgnoreCase("external");
+
 	private final String name;
 	private final boolean isExternal, isNativeMem;
 	private final long memoryMax;
@@ -39,9 +42,9 @@ public class NativeDataContext implements DataContext<MemoryData> {
 	private MemoryProvider<? extends Memory> ram;
 
 	private Hardware hardware;
-	private ComputeContext context;
+	private ComputeContext<MemoryData> context;
 
-	public NativeDataContext(Hardware hardware, String name, boolean isNativeMem, boolean external, long memoryMax) {
+	public NativeDataContext(Hardware hardware, String name, boolean isNativeMem, long memoryMax) {
 		this.hardware = hardware;
 		this.name = name;
 		this.isNativeMem = isNativeMem;
@@ -53,7 +56,7 @@ public class NativeDataContext implements DataContext<MemoryData> {
 		if (ram != null) return;
 		compiler = NativeCompiler.factory(hardware, !isNativeMem).construct();
 		ram = isNativeMem ? new NativeMemoryProvider(compiler, memoryMax) : new JVMMemoryProvider();
-		context = isExternal ? new ExternalComputeContext(hardware, compiler) : new NativeComputeContext(hardware, compiler);
+		context = isExternal ? new ExternalComputeContext(hardware, this, compiler) : new NativeComputeContext(hardware, this, compiler);
 	}
 
 	public String getName() { return name; }
@@ -68,13 +71,24 @@ public class NativeDataContext implements DataContext<MemoryData> {
 	@Override
 	public MemoryProvider<? extends Memory> getKernelMemoryProvider() { return getMemoryProvider(); }
 
-	public ComputeContext getComputeContext() {
+	public ComputeContext<MemoryData> getComputeContext() {
 		if (context == null) {
 			if (Hardware.enableVerbose) System.out.println("INFO: No explicit ComputeContext for " + Thread.currentThread().getName());
-			context = new NativeComputeContext(hardware, getNativeCompiler());
+			context = new NativeComputeContext(hardware, this, getNativeCompiler());
 		}
 
 		return context;
+	}
+
+	@Override
+	public <T> T deviceMemory(Callable<T> exec) {
+		try {
+			return exec.call();
+		} catch (RuntimeException e) {
+			throw e;
+		} catch (Exception e) {
+			throw new RuntimeException(e);
+		}
 	}
 
 	public <T> T computeContext(Callable<T> exec, ComputeRequirement... expectations) {

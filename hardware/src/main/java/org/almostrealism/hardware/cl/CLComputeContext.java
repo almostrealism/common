@@ -22,6 +22,7 @@ import io.almostrealism.code.LanguageOperations;
 import io.almostrealism.code.Memory;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeEncoder;
+import org.almostrealism.hardware.Precision;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.profile.ProfileData;
@@ -64,9 +65,9 @@ public class CLComputeContext extends AbstractComputeContext {
 	private CLOperatorSources functions;
 	private List<CLOperatorMap> instructionSets;
 
-	public CLComputeContext(Hardware hardware, cl_context ctx) {
-		super(hardware);
-		this.enableFp64 = hardware.isDoublePrecision();
+	public CLComputeContext(Hardware hardware, CLDataContext dc, cl_context ctx) {
+		super(hardware, dc);
+		this.enableFp64 = hardware.getPrecision() == Precision.FP64;
 		this.ctx = ctx;
 		this.instructionSets = new ArrayList<>();
 		this.profiles = new HashMap<>();
@@ -121,6 +122,9 @@ public class CLComputeContext extends AbstractComputeContext {
 		instructionSets.add(instSet);
 		return instSet;
 	}
+
+	@Override
+	public boolean isCPU() { return ((CLDataContext) getDataContext()).isCPU(); }
 
 	@Override
 	public boolean isKernelSupported() { return true; }

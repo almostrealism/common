@@ -33,8 +33,8 @@ public class CLNativeComputeContext extends AbstractComputeContext {
 
 	private NativeCompiler compiler;
 
-	public CLNativeComputeContext(Hardware hardware, NativeCompiler compiler) {
-		super(hardware);
+	public CLNativeComputeContext(Hardware hardware, CLDataContext dc, NativeCompiler compiler) {
+		super(hardware, dc);
 		this.compiler = compiler;
 	}
 
@@ -55,6 +55,9 @@ public class CLNativeComputeContext extends AbstractComputeContext {
 		getNativeCompiler().compile(target, buf.toString());
 		return target;
 	}
+
+	@Override
+	public boolean isCPU() { return true; }
 
 	@Override
 	public boolean isKernelSupported() { return false; }

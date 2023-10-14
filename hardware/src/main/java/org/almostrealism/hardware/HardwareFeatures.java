@@ -65,11 +65,6 @@ public interface HardwareFeatures {
 		return Hardware.getLocalHardware().getNumberTypeName();
 	}
 
-	@JsonIgnore
-	default boolean isCastEnabled() {
-		return Hardware.getLocalHardware().isGPU() && Hardware.getLocalHardware().isDoublePrecision();
-	}
-
 	default <T extends MemoryData> Assignment<T> a(int memLength, Supplier<Evaluable<? extends T>> result, Supplier<Evaluable<? extends T>> value) {
 		return new Assignment<>(memLength, result, value);
 	}
