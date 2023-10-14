@@ -18,6 +18,7 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Computation;
+import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.Execution;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.OperationInfo;
@@ -42,8 +43,8 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	private Scope<T> scope;
 	private Variable outputVariable;
 
-	public AcceleratedComputationOperation(Computation<T> c, boolean kernel) {
-		super(kernel, new ArrayVariable[0]);
+	public AcceleratedComputationOperation(ComputeContext<MemoryData> context, Computation<T> c, boolean kernel) {
+		super(context, kernel, new ArrayVariable[0]);
 		this.computation = c;
 		init();
 	}

@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.code.ComputeContext;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
@@ -29,8 +30,8 @@ public class DefaultCollectionEvaluable<T extends PackedCollection> extends Acce
 	private TraversalPolicy shape;
 	private BiFunction<MemoryData, Integer, T> postprocessor;
 
-	public DefaultCollectionEvaluable(TraversalPolicy shape, Computation<T> c, BiFunction<MemoryData, Integer, T> postprocessor) {
-		super(c);
+	public DefaultCollectionEvaluable(ComputeContext<MemoryData> context, TraversalPolicy shape, Computation<T> c, BiFunction<MemoryData, Integer, T> postprocessor) {
+		super(context, c);
 		this.shape = shape;
 		this.postprocessor = postprocessor;
 	}

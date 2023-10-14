@@ -18,6 +18,7 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.ComputeRequirement;
+import io.almostrealism.code.Computer;
 import io.almostrealism.code.DataContext;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.expression.Cast;
@@ -33,9 +34,6 @@ import org.almostrealism.hardware.ctx.ContextListener;
 import org.almostrealism.hardware.jni.NativeDataContext;
 import org.almostrealism.hardware.metal.MetalDataContext;
 import org.almostrealism.io.SystemUtils;
-import org.jocl.Sizeof;
-import org.jocl.cl_device_id;
-import org.jocl.cl_platform_id;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -104,7 +102,6 @@ public final class Hardware {
 
 		String tsSize = System.getProperty("AR_HARDWARE_TIMESERIES_SIZE");
 		if (tsSize == null) tsSize = System.getenv("AR_HARDWARE_TIMESERIES_SIZE");
-		// if (tsSize == null) tsSize = "100";
 
 		String tsCount = System.getProperty("AR_HARDWARE_TIMESERIES_COUNT");
 		if (tsCount == null) tsCount = System.getenv("AR_HARDWARE_TIMESERIES_COUNT");
@@ -134,6 +131,7 @@ public final class Hardware {
 				throw new IllegalStateException("No memory provider for " + requirement);
 			}
 		}
+
 		if (memProvider.equalsIgnoreCase("native") || memProvider.equalsIgnoreCase("jvm")) {
 			gpu = false;
 			precision = Precision.FP64;
@@ -146,6 +144,7 @@ public final class Hardware {
 			KernelPreferences.setEnableSubdivision(false);
 		}
 
+		// TODO  Move these into the pool where they are used
 		timeSeriesSize = Optional.ofNullable(tsSize).map(size -> (int) (200000 * Double.parseDouble(size))).orElse(-1);
 		timeSeriesCount = Optional.ofNullable(tsCount).map(Integer::parseInt).orElse(30);
 
@@ -179,8 +178,6 @@ public final class Hardware {
 
 	private DataContext<MemoryData> context;
 	private List<ContextListener> contextListeners;
-
-	private AcceleratedFunctions functions;
 
 	private Hardware(String memProvider, ComputeRequirement type, boolean enableGpu,
 					 boolean enableKernels, boolean enableDestinationConsolidation,
@@ -247,7 +244,7 @@ public final class Hardware {
 			contextListeners.forEach(l -> l.contextStarted(context));
 		} else {
 			System.out.println("Initializing Hardware...");
-			this.context = new NativeDataContext(this, name, precision == Precision.FP64, isNativeMemory(), externalNative, this.memoryMax);
+			this.context = new NativeDataContext(this, name, isNativeMemory(), externalNative, this.memoryMax);
 			start(context);
 			if (enableVerbose) System.out.println("Hardware[" + name + "]: Created NativeMemoryProvider");
 		}
@@ -261,6 +258,11 @@ public final class Hardware {
 	public String getName() { return name; }
 
 	public static Hardware getLocalHardware() { return local; }
+
+	public static Computer<MemoryData> getComputer() {
+		// TODO  Need a smarter choice for which context to use, depending on the computation
+		return new DefaultComputer(computation -> getLocalHardware().getComputeContext());
+	}
 
 	public void setMaximumOperationDepth(int depth) { OperationList.setMaxDepth(depth); }
 
@@ -286,7 +288,7 @@ public final class Hardware {
 			next = new CLDataContext(this, getName(), memoryMax, getOffHeapSize(), location);
 		} else if (context instanceof NativeDataContext) {
 			current = context;
-			next = new NativeDataContext(this, getName(), isDoublePrecision(), isNativeMemory(), isExternalNative(), memoryMax);
+			next = new NativeDataContext(this, getName(), isNativeMemory(), isExternalNative(), memoryMax);
 		} else {
 			return null;
 		}
@@ -408,24 +410,14 @@ public final class Hardware {
 		return Double.parseDouble(s);
 	}
 
-	@Deprecated
-	public synchronized AcceleratedFunctions getFunctions() {
-		if (functions == null) {
-			if (enableVerbose) System.out.println("Hardware[" + getName() + "]: Loading accelerated functions");
-			functions = new AcceleratedFunctions();
-			functions.init(this, loadSource(getName()));
-			System.out.println("Hardware[" + getName() + "]: Accelerated functions loaded for " + getName());
-		}
-
-		return functions;
-	}
-
 	public DataContext<MemoryData> getDataContext() { return context; }
 
 	public ComputeContext<MemoryData> getComputeContext() { return context.getComputeContext(); }
 
+	@Deprecated
 	public CLDataContext getClDataContext() { return context instanceof CLDataContext ? (CLDataContext) context : null; }
 
+	@Deprecated
 	public CLComputeContext getClComputeContext() {
 		if (getDataContext().getComputeContext() instanceof CLComputeContext)
 			return (CLComputeContext) getDataContext().getComputeContext();
@@ -433,44 +425,6 @@ public final class Hardware {
 	}
 
 	public MemoryProvider getMemoryProvider(int size) { return context.getMemoryProvider(size); }
-
-	protected String loadSource() {
-		return loadSource(precision == Precision.FP64 ? "local64" : "local32");
-	}
-
-	protected String loadSource(String name) {
-		return loadSource(Hardware.class.getClassLoader().getResourceAsStream(name + ".cl"), false);
-	}
-
-	protected String loadSource(InputStream is) {
-		return loadSource(is, true);
-	}
-
-	protected String loadSource(InputStream is, boolean includeLocal) {
-		if (is == null) {
-			throw new IllegalArgumentException("InputStream is null");
-		}
-
-		StringBuilder buf = new StringBuilder();
-
-		if (includeLocal) {
-			buf.append(loadSource());
-			buf.append("\n");
-		}
-
-		try (BufferedReader in =
-					 new BufferedReader(new InputStreamReader(is))) {
-			String line;
-
-			while ((line = in.readLine()) != null) {
-				buf.append(line); buf.append("\n");
-			}
-		} catch (IOException e) {
-			Issues.warn(null, "Unable to load kernel program source", e);
-		}
-
-		return buf.toString();
-	}
 
 	public static boolean isAsync() { return enableAsync; }
 }

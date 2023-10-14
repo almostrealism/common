@@ -16,18 +16,19 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.ComputeContext;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ProducerComputation;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 
 public class AcceleratedComputationEvaluable<T extends MemoryData> extends AcceleratedComputationOperation implements KernelizedEvaluable<T> {
-	public AcceleratedComputationEvaluable(Computation<T> c) {
-		this(c, true);
+	public AcceleratedComputationEvaluable(ComputeContext<MemoryData> context, Computation<T> c) {
+		this(context, c, true);
 	}
 
-	public AcceleratedComputationEvaluable(Computation<T> c, boolean kernel) {
-		super(c, kernel);
+	public AcceleratedComputationEvaluable(ComputeContext<MemoryData> context, Computation<T> c, boolean kernel) {
+		super(context, c, kernel);
 	}
 
 	@Override

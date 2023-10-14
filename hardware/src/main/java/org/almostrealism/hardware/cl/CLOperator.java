@@ -40,6 +40,7 @@ public class CLOperator<T extends MemoryData> extends HardwareOperator implement
 
 	private static long totalInvocations;
 
+	private final CLComputeContext context;
 	private final CLProgram prog;
 	private final String name;
 
@@ -54,8 +55,9 @@ public class CLOperator<T extends MemoryData> extends HardwareOperator implement
 	private BiFunction<String, CLException, HardwareException> exceptionProcessor;
 	private Consumer<RunData> profile;
 
-	public CLOperator(CLProgram program, String name, int argCount, Consumer<RunData> profile,
+	public CLOperator(CLComputeContext context, CLProgram program, String name, int argCount, Consumer<RunData> profile,
 					  BiFunction<String, CLException, HardwareException> exceptionProcessor) {
+		this.context = context;
 		this.prog = program;
 		this.name = name;
 		this.argCache = new Object[argCount];
@@ -152,7 +154,6 @@ public class CLOperator<T extends MemoryData> extends HardwareOperator implement
 		}
 
 		try {
-			CLComputeContext context = Hardware.getLocalHardware().getClComputeContext();
 			if (enableVerboseLog) System.out.println(id + ": clEnqueueNDRangeKernel start");
 
 			cl_event event = new cl_event();

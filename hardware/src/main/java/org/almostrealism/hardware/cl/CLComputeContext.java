@@ -61,10 +61,11 @@ public class CLComputeContext extends AbstractComputeContext {
 	private boolean profiling;
 	private Map<String, ProfileData> profiles;
 
+	private CLOperatorSources functions;
 	private List<CLOperatorMap> instructionSets;
 
 	public CLComputeContext(Hardware hardware, cl_context ctx) {
-		super(hardware, true, false);
+		super(hardware);
 		this.enableFp64 = hardware.isDoublePrecision();
 		this.ctx = ctx;
 		this.instructionSets = new ArrayList<>();
@@ -96,6 +97,17 @@ public class CLComputeContext extends AbstractComputeContext {
 	public LanguageOperations getLanguage() {
 		return new OpenCLLanguageOperations();
 	}
+
+	@Deprecated
+	public synchronized CLOperatorSources getFunctions() {
+		if (functions == null) {
+			functions = new CLOperatorSources();
+			functions.init(this, getName());
+		}
+
+		return functions;
+	}
+
 
 	@Override
 	public InstructionSet deliver(Scope scope) {

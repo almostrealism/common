@@ -17,9 +17,11 @@
 package org.almostrealism.c;
 
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.jni.NativeCompiler;
 
 public class NativeRead extends BaseNative {
-	public NativeRead() {
+	public NativeRead(NativeCompiler compiler) {
+		super(compiler);
 		initNative();
 	}
 

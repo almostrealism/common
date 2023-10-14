@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.Execution;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.code.Semaphore;
@@ -65,12 +66,12 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	public static final boolean enableCompaction = true;
 	public static boolean enableKernelSizeWarnings = SystemUtils.isEnabled("AR_HARDWARE_KERNEL_SIZE_WARNINGS").orElse(true);
 
-	private static final Map<String, ThreadLocal<CLOperator>> operators = new HashMap<>();
 	private static final ThreadLocal<Semaphore> semaphores = new ThreadLocal<>();
 	private static final ThreadLocal<CreatedMemoryData> created = new ThreadLocal<>();
 
 	private final boolean kernel;
 	private boolean argumentMapping;
+	private ComputeContext<MemoryData> context;
 	private Class cls;
 
 	protected List<ArgumentMap> argumentMaps;
@@ -78,23 +79,25 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	private OperationList postOp;
 
 	@SafeVarargs
-	protected AcceleratedOperation(boolean kernel, Supplier<Evaluable<? extends T>>... args) {
+	protected AcceleratedOperation(ComputeContext<MemoryData> context, boolean kernel, Supplier<Evaluable<? extends T>>... args) {
 		super(args);
 		setArgumentMapping(true);
+		this.context = context;
 		this.kernel = kernel;
 		this.argumentMaps = new ArrayList<>();
 	}
 
 	@SafeVarargs
-	public AcceleratedOperation(String function, boolean kernel, Supplier<Evaluable<? extends T>>... args) {
-		this(kernel, args);
+	public AcceleratedOperation(ComputeContext<MemoryData> context, String function, boolean kernel, Supplier<Evaluable<? extends T>>... args) {
+		this(context, kernel, args);
 		setFunctionName(function);
 	}
 
 	@SafeVarargs
-	protected AcceleratedOperation(boolean kernel, ArrayVariable<T>... args) {
+	protected AcceleratedOperation(ComputeContext<MemoryData> context, boolean kernel, ArrayVariable<T>... args) {
 		super(Arrays.stream(args).map(var -> new Argument(var, Expectation.EVALUATE_AHEAD)).toArray(Argument[]::new));
 		setArgumentMapping(true);
+		this.context = context;
 		this.kernel = kernel;
 		this.argumentMaps = new ArrayList<>();
 	}
@@ -104,21 +107,9 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		return getClass();
 	}
 
-	public Execution getOperator() {
-		// TODO  This needs to be by class in addition to function, as function names may collide
-		synchronized (AcceleratedOperation.class) {
-			if (operators.get(getFunctionName()) == null) {
-				operators.put(getFunctionName(), new ThreadLocal<>());
-			}
+	public ComputeContext<MemoryData> getComputeContext() { return context; }
 
-			if (operators.get(getFunctionName()).get() == null) {
-				operators.get(getFunctionName()).set(Hardware.getLocalHardware()
-						.getFunctions().getOperators(getSourceClass()).get(getFunctionName(), getArgsCount()));
-			}
-		}
-
-		return operators.get(getFunctionName()).get();
-	}
+	public abstract Execution getOperator();
 
 	protected void setArgumentMapping(boolean enabled) {
 		this.argumentMapping = enabled;

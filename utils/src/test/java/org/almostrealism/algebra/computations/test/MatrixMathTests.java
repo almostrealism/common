@@ -19,6 +19,7 @@ package org.almostrealism.algebra.computations.test;
 import io.almostrealism.code.OperationProfile;
 import io.almostrealism.kernel.KernelPreferences;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.metal.MetalOperator;
 import org.almostrealism.util.TestFeatures;
@@ -57,9 +58,7 @@ public class MatrixMathTests implements TestFeatures {
 		op.add(a("matmul " + width, traverseEach(p(result)), matmul(p(matrix), p(vector))));
 		Runnable r = enableOptimization ? ((OperationList) op.optimize()).get(profiles) : op.get(profiles);
 
-		MetalOperator.verboseLog(() -> {
-			r.run();
-		});
+		HardwareOperator.verboseLog(() -> r.run());
 
 		if (!skipLongTests) {
 			profiles.clear();

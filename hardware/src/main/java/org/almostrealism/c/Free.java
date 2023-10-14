@@ -16,9 +16,12 @@
 
 package org.almostrealism.c;
 
+import org.almostrealism.hardware.jni.NativeCompiler;
+
 public class Free extends BaseNative {
 
-	public Free() {
+	public Free(NativeCompiler compiler) {
+		super(compiler);
 		initNative();
 	}
 

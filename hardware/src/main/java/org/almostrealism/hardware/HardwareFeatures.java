@@ -36,19 +36,19 @@ public interface HardwareFeatures {
 	boolean enableAssignmentCopy = false;
 
 	default Runnable compileRunnable(Computation<Void> c) {
-		return Hardware.getLocalHardware().getComputeContext().getComputer().compileRunnable(c);
+		return Hardware.getComputer().compileRunnable(c);
 	}
 
 	default <T extends MemoryData> KernelizedEvaluable<T> compileProducer(Computation<T> c) {
-		return (KernelizedEvaluable) Hardware.getLocalHardware().getComputeContext().getComputer().compileProducer(c);
+		return (KernelizedEvaluable) Hardware.getComputer().compileProducer(c);
 	}
 
 	default <T extends MemoryData> Optional<Computation<T>> decompile(Runnable r) {
-		return Hardware.getLocalHardware().getComputeContext().getComputer().decompile(r);
+		return Hardware.getComputer().decompile(r);
 	}
 
 	default <T extends MemoryData> Optional<Computation<T>> decompile(Evaluable<T> r) {
-		return Hardware.getLocalHardware().getComputeContext().getComputer().decompile(r);
+		return Hardware.getComputer().decompile(r);
 	}
 
 	default IntFunction<Expression> kernelIndex() {

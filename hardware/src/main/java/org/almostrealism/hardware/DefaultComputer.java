@@ -17,6 +17,7 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.Computation;
+import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.Computer;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.jni.NativeCompiler;
@@ -26,41 +27,23 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Function;
 
 public class DefaultComputer implements Computer<MemoryData> {
-	private static final List<Class> libs = new ArrayList<>();
+	private Function<Computation<?>, ComputeContext<MemoryData>> contextFactory;
 
-	private NativeCompiler compiler;
-
-	public DefaultComputer() { this(null); }
-
-	public DefaultComputer(NativeCompiler compiler) {
-		this.compiler = compiler;
-	}
-
-	public boolean isNative() { return compiler != null; }
-
-	public NativeCompiler getNativeCompiler() { return compiler; }
-
-	/**
-	 * @deprecated  Use {@link NativeCompiler} directly.
-	 */
-	@Deprecated
-	public synchronized void loadNative(Class cls, String code) throws IOException, InterruptedException {
-		if (libs.contains(cls)) return;
-
-		compiler.compileAndLoad(cls, code);
-		libs.add(cls);
+	public DefaultComputer(Function<Computation<?>, ComputeContext<MemoryData>> contextFactory) {
+		this.contextFactory = contextFactory;
 	}
 
 	@Override
 	public Runnable compileRunnable(Computation<Void> c) {
-		return Heap.addCompiled(new AcceleratedComputationOperation<>(c, Hardware.enableKernelOps));
+		return Heap.addCompiled(new AcceleratedComputationOperation<>(contextFactory.apply(c), c, Hardware.enableKernelOps));
 	}
 
 	@Override
 	public Runnable compileRunnable(Computation<Void> c, boolean kernel) {
-		return new AcceleratedComputationOperation<>(c, kernel);
+		return new AcceleratedComputationOperation<>(contextFactory.apply(c), c, kernel);
 	}
 
 	// TODO  The Computation may have a postProcessOutput method that will not be called
@@ -69,7 +52,7 @@ public class DefaultComputer implements Computer<MemoryData> {
 	// TODO  the correct type is returned.
 	@Override
 	public <T extends MemoryData> Evaluable<T> compileProducer(Computation<T> c) {
-		return new AcceleratedComputationEvaluable<>(c);
+		return new AcceleratedComputationEvaluable<>(contextFactory.apply(c), c);
 	}
 
 	@Override

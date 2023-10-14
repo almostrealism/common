@@ -17,9 +17,11 @@
 package org.almostrealism.c;
 
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.jni.NativeCompiler;
 
 public class NativeWrite extends BaseNative {
-	public NativeWrite() {
+	public NativeWrite(NativeCompiler compiler) {
+		super(compiler);
 		initNative();
 	}
 

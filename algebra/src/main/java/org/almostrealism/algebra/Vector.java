@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,9 +20,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.cl.CLOperator;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.mem.Heap;
 
@@ -44,11 +42,6 @@ public class Vector extends PackedCollection<Vector> implements Triple, VectorFe
 	public static final Vector NEG_X_AXIS = new Vector(-1, 0, 0);
 	public static final Vector NEG_Y_AXIS = new Vector(0, -1, 0);
 	public static final Vector NEG_Z_AXIS = new Vector(0, 0, -1);
-
-	private static ThreadLocal<CLOperator<Vector>> addOperator = new ThreadLocal<>();
-	private static ThreadLocal<CLOperator<Vector>> subtractOperator = new ThreadLocal<>();
-	private static ThreadLocal<CLOperator<Vector>> multiplyOperator = new ThreadLocal<>();
-	private static ThreadLocal<CLOperator<Vector>> divideOperator = new ThreadLocal<>();
 
 	/** Constructs a {@link Vector} with coordinates at the origin. */
 	public Vector() {
@@ -224,15 +217,14 @@ public class Vector extends PackedCollection<Vector> implements Triple, VectorFe
 	/**
 	 * Returns the opposite of the vector represented by this {@link Vector}.
 	 */
-	@Deprecated
 	public Vector minus() {
-		return new Vector(-getX(), -getY(), -getZ());
+		double a[] = toArray();
+		return new Vector(-a[0], -a[1], -a[2]);
 	}
 
 	/** Returns the sum of this {@link Vector} and the specified {@link Vector}. */
 	public synchronized Vector add(Vector vector) {
-		// TODO  Use VectorAdd
-		Vector v = (Vector) clone();
+		Vector v = clone();
 		v.addTo(vector);
 		return v;
 	}
@@ -243,11 +235,9 @@ public class Vector extends PackedCollection<Vector> implements Triple, VectorFe
 	 * @param vector The Vector object to add.
 	 */
 	public void addTo(Vector vector) {
-		if (addOperator.get() == null) {
-			addOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("addTo", 2));
-		}
-
-		addOperator.get().accept(new Object[] { this, vector });
+		double a[] = toArray();
+		double b[] = vector.toArray();
+		setMem(a[0] + b[0], a[1] + b[1], a[2] + b[2]);
 	}
 
 	/**
@@ -255,8 +245,7 @@ public class Vector extends PackedCollection<Vector> implements Triple, VectorFe
 	 * The specified vector is subtracted from this one.
 	 */
 	public Vector subtract(Vector vector) {
-		// TODO  Use VectorSubtract
-		Vector v = (Vector) clone();
+		Vector v = clone();
 		v.subtractFrom(vector);
 		return v;
 	}
@@ -267,19 +256,16 @@ public class Vector extends PackedCollection<Vector> implements Triple, VectorFe
 	 * @param vector The Vector object to be subtracted.
 	 */
 	public synchronized void subtractFrom(Vector vector) {
-		if (subtractOperator.get() == null) {
-			subtractOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("subtractFrom", 2));
-		}
-
-		subtractOperator.get().accept(new Object[] { this, vector });
+		double a[] = toArray();
+		double b[] = vector.toArray();
+		setMem(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
 	}
 
 	/**
 	 * Returns the product of the vector represented by this Vector object and the specified value.
 	 */
 	public Vector multiply(double value) {
-		// TODO  Use VectorMultiply
-		Vector v = (Vector) clone();
+		Vector v = clone();
 		v.multiplyBy(value);
 		return v;
 	}
@@ -289,9 +275,9 @@ public class Vector extends PackedCollection<Vector> implements Triple, VectorFe
 	 *
 	 * @param value The factor to multiply by.
 	 */
-	@Deprecated
 	public synchronized void multiplyBy(double value) {
-		setTo(vector(v(this).multiply(vector(value, value, value))).get().evaluate());
+		double a[] = toArray();
+		setMem(a[0] * value, a[1] * value, a[2] * value);
 	}
 
 	/** Returns the quotient of the division of this {@link Vector} by the specified value. */
@@ -308,11 +294,8 @@ public class Vector extends PackedCollection<Vector> implements Triple, VectorFe
 	 * @param value The value to divide by.
 	 */
 	public synchronized void divideBy(double value) {
-		if (divideOperator.get() == null) {
-			divideOperator.set(Hardware.getLocalHardware().getFunctions().getOperators().get("divideBy", 2));
-		}
-
-		divideOperator.get().accept(new Object[] { this, new Vector(value, value, value) });
+		double a[] = toArray();
+		setMem(a[0] / value, a[1] / value, a[2] / value);
 	}
 
 	/**

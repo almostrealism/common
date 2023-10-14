@@ -24,14 +24,18 @@ import io.almostrealism.code.ScopeEncoder;
 import org.almostrealism.c.CLanguageOperations;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.jni.NativeInstructionSet;
 
 public class CLNativeComputeContext extends AbstractComputeContext {
 	public static boolean enableVerbose = false;
 	protected static long totalInvocations = 0;
 
-	public CLNativeComputeContext(Hardware hardware) {
-		super(hardware, true, true);
+	private NativeCompiler compiler;
+
+	public CLNativeComputeContext(Hardware hardware, NativeCompiler compiler) {
+		super(hardware);
+		this.compiler = compiler;
 	}
 
 	@Override
@@ -39,12 +43,16 @@ public class CLNativeComputeContext extends AbstractComputeContext {
 		return new CLJNILanguageOperations();
 	}
 
+	public NativeCompiler getNativeCompiler() {
+		return compiler;
+	}
+
 	@Override
 	public InstructionSet deliver(Scope scope) {
 		StringBuffer buf = new StringBuffer();
-		NativeInstructionSet target = getComputer().getNativeCompiler().reserveLibraryTarget();
+		NativeInstructionSet target = getNativeCompiler().reserveLibraryTarget();
 		buf.append(new ScopeEncoder(pw -> new CLJNIPrintWriter(pw, target.getFunctionName()), Accessibility.EXTERNAL).apply(scope));
-		getComputer().getNativeCompiler().compile(target, buf.toString());
+		getNativeCompiler().compile(target, buf.toString());
 		return target;
 	}
 

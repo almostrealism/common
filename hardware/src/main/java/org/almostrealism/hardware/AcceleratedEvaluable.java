@@ -16,31 +16,65 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.Execution;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.CollectionUtils;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.Variable;
+import org.almostrealism.hardware.cl.CLComputeContext;
+import org.almostrealism.hardware.cl.CLOperator;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.function.BiFunction;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
 @Deprecated
 public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> extends AcceleratedOperation implements KernelizedEvaluable<O> {
+	private static final Map<String, ThreadLocal<CLOperator>> operators = new HashMap<>();
+
 	private BiFunction<MemoryData, Integer, O> postprocessor;
 	private IntFunction<MemoryBank<O>> kernelDestination;
 
 	@SafeVarargs
 	public AcceleratedEvaluable(String function, Supplier<Evaluable<? extends O>> result, Supplier<Evaluable<? extends I>>... inputArgs) {
-		this(function, false, result, inputArgs);
+		this((CLComputeContext) Hardware.getLocalHardware().getComputeContext(), function, result, inputArgs);
+	}
+
+	@SafeVarargs
+	public AcceleratedEvaluable(CLComputeContext context, String function, Supplier<Evaluable<? extends O>> result, Supplier<Evaluable<? extends I>>... inputArgs) {
+		this(context, function, false, result, inputArgs);
 	}
 
 	@SafeVarargs
 	public AcceleratedEvaluable(String function, boolean kernel, Supplier<Evaluable<? extends O>> result, Supplier<Evaluable<? extends I>>... inputArgs) {
-		super(function, kernel, includeResult(result, inputArgs));
+		this((CLComputeContext) Hardware.getLocalHardware().getComputeContext(), function, kernel, result, inputArgs);
+	}
+
+	@SafeVarargs
+	public AcceleratedEvaluable(CLComputeContext context, String function, boolean kernel, Supplier<Evaluable<? extends O>> result, Supplier<Evaluable<? extends I>>... inputArgs) {
+		super(context, function, kernel, includeResult(result, inputArgs));
 		setArgumentMapping(false);
+	}
+
+	@Override
+	public Execution getOperator() {
+		// TODO  This needs to be by class in addition to function, as function names may collide
+		synchronized (AcceleratedOperation.class) {
+			if (operators.get(getFunctionName()) == null) {
+				operators.put(getFunctionName(), new ThreadLocal<>());
+			}
+
+			if (operators.get(getFunctionName()).get() == null) {
+				operators.get(getFunctionName()).set(((CLComputeContext) getComputeContext())
+						.getFunctions().getOperators(getSourceClass()).get(getFunctionName(), getArgsCount()));
+			}
+		}
+
+		return operators.get(getFunctionName()).get();
 	}
 
 	public BiFunction<MemoryData, Integer, O> getPostprocessor() { return postprocessor; }

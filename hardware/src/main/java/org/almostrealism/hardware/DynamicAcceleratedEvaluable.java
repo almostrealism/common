@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.relation.Evaluable;
@@ -33,17 +34,19 @@ public abstract class DynamicAcceleratedEvaluable<I extends MemoryData, O extend
 		implements KernelizedEvaluable<O>, DestinationSupport<O> {
 	private Supplier<O> destination;
 
-	public DynamicAcceleratedEvaluable(Supplier<O> destination,
+	public DynamicAcceleratedEvaluable(ComputeContext<MemoryData> context,
+									   Supplier<O> destination,
 									   IntFunction<MemoryBank<O>> kernelDestination,
 									   Supplier... inputArgs) {
-		this(true, destination, kernelDestination, inputArgs);
+		this(context, true, destination, kernelDestination, inputArgs);
 	}
 
 	@SafeVarargs
-	public DynamicAcceleratedEvaluable(boolean kernel, Supplier<O> destination,
+	public DynamicAcceleratedEvaluable(ComputeContext<MemoryData> context, boolean kernel,
+									   Supplier<O> destination,
 									   IntFunction<MemoryBank<O>> kernelDestination,
 									   Supplier<Evaluable<? extends I>>... inputArgs) {
-		super(kernel, new Supplier[0]);
+		super(context, kernel, new Supplier[0]);
 		setInputs(AcceleratedEvaluable.includeResult(new DynamicProducerForMemoryData(args ->
 				(getDestination() == null ? destination : getDestination()).get(), kernelDestination), inputArgs));
 		init();

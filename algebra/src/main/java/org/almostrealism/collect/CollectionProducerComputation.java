@@ -17,6 +17,7 @@
 package org.almostrealism.collect;
 
 import io.almostrealism.code.Computation;
+import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.collect.CollectionProducerBase;
 import io.almostrealism.collect.Shape;
@@ -29,6 +30,7 @@ import org.almostrealism.collect.computations.DefaultCollectionEvaluable;
 import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.DestinationEvaluable;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
@@ -73,7 +75,10 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 
 	@Override
 	default KernelizedEvaluable<T> get() {
-		AcceleratedComputationEvaluable<T> ev = new DefaultCollectionEvaluable<T>(getShape(), this, this::postProcessOutput);
+		// TODO  This is not the right way to determine which compute context to use
+		ComputeContext<MemoryData> c = Hardware.getLocalHardware().getComputeContext();
+
+		AcceleratedComputationEvaluable<T> ev = new DefaultCollectionEvaluable<>(c, getShape(), this, this::postProcessOutput);
 		ev.compile();
 		return ev;
 	}
@@ -93,37 +98,6 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 		T data = factory.apply(c.getShape());
 		data.setDelegate(c, 0);
 		return data;
-	}
-
-	default KernelizedEvaluable<PackedCollection<?>> shortCircuit(Evaluable<PackedCollection<?>> ev) {
-		return new KernelizedEvaluable<PackedCollection<?>>() {
-			private KernelizedEvaluable<PackedCollection<?>> kernel;
-
-			@Override
-			public MemoryBank<PackedCollection<?>> createKernelDestination(int size) {
-				return getKernel().createKernelDestination(size);
-			}
-
-			@Override
-			public PackedCollection<?> evaluate(Object... args) {
-				return ev.evaluate(args);
-			}
-
-			@Override
-			public Evaluable<PackedCollection<?>> withDestination(MemoryBank<PackedCollection<?>> destination) {
-				return new DestinationEvaluable<>((AcceleratedComputationEvaluable) getKernel(), destination);
-			}
-
-			public KernelizedEvaluable<PackedCollection<?>> getKernel() {
-				if (kernel == null) {
-					AcceleratedComputationEvaluable<PackedCollection<?>> ev = new DefaultCollectionEvaluable<PackedCollection<?>>(getShape(), (Computation) CollectionProducerComputation.this, CollectionProducerComputation.this::postProcessOutput);
-					ev.compile();
-					kernel = ev;
-				}
-
-				return kernel;
-			}
-		};
 	}
 
 	class IsolatedProcess<T extends PackedCollection<?>> implements Process<Process<?, ?>, Evaluable<? extends T>>, CollectionProducerBase<T, Producer<T>> {

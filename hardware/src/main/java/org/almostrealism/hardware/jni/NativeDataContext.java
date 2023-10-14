@@ -32,29 +32,33 @@ import java.util.concurrent.Callable;
 
 public class NativeDataContext implements DataContext<MemoryData> {
 	private final String name;
-	private final boolean isDoublePrecision, isNativeMem;
+	private final boolean isExternal, isNativeMem;
 	private final long memoryMax;
 
+	private NativeCompiler compiler;
 	private MemoryProvider<? extends Memory> ram;
 
 	private Hardware hardware;
 	private ComputeContext context;
 
-	public NativeDataContext(Hardware hardware, String name, boolean isDoublePrecision, boolean isNativeMem, boolean external, long memoryMax) {
+	public NativeDataContext(Hardware hardware, String name, boolean isNativeMem, boolean external, long memoryMax) {
 		this.hardware = hardware;
 		this.name = name;
-		this.isDoublePrecision = isDoublePrecision;
 		this.isNativeMem = isNativeMem;
+		this.isExternal = external;
 		this.memoryMax = memoryMax;
-		this.context = external ? new ExternalComputeContext(hardware) : new NativeComputeContext(hardware);
 	}
 
 	public void init() {
 		if (ram != null) return;
-		ram = isNativeMem ? new NativeMemoryProvider(memoryMax) : new JVMMemoryProvider();
+		compiler = NativeCompiler.factory(hardware, !isNativeMem).construct();
+		ram = isNativeMem ? new NativeMemoryProvider(compiler, memoryMax) : new JVMMemoryProvider();
+		context = isExternal ? new ExternalComputeContext(hardware, compiler) : new NativeComputeContext(hardware, compiler);
 	}
 
 	public String getName() { return name; }
+
+	public NativeCompiler getNativeCompiler() { return compiler; }
 
 	public MemoryProvider<? extends Memory> getMemoryProvider() { return ram; }
 
@@ -67,7 +71,7 @@ public class NativeDataContext implements DataContext<MemoryData> {
 	public ComputeContext getComputeContext() {
 		if (context == null) {
 			if (Hardware.enableVerbose) System.out.println("INFO: No explicit ComputeContext for " + Thread.currentThread().getName());
-			context = new NativeComputeContext(hardware);
+			context = new NativeComputeContext(hardware, getNativeCompiler());
 		}
 
 		return context;

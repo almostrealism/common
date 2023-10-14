@@ -25,6 +25,7 @@ import org.almostrealism.c.CLanguageOperations;
 import org.almostrealism.c.CPrintWriter;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.jni.NativeInstructionSet;
 
 import java.io.BufferedReader;
@@ -52,8 +53,11 @@ public class ExternalComputeContext extends AbstractComputeContext {
 		externalWrapper = buf.toString();
 	}
 
-	public ExternalComputeContext(Hardware hardware) {
-		super(hardware, false, true);
+	private NativeCompiler compiler;
+
+	public ExternalComputeContext(Hardware hardware, NativeCompiler compiler) {
+		super(hardware);
+		this.compiler = compiler;
 	}
 
 	@Override
@@ -61,15 +65,17 @@ public class ExternalComputeContext extends AbstractComputeContext {
 		return new CLanguageOperations(true, false);
 	}
 
+	public NativeCompiler getNativeCompiler() { return compiler; }
+
 	@Override
 	public InstructionSet deliver(Scope scope) {
 		StringBuffer buf = new StringBuffer();
-		NativeInstructionSet inst = getComputer().getNativeCompiler().reserveLibraryTarget();
+		NativeInstructionSet inst = getNativeCompiler().reserveLibraryTarget();
 		buf.append(new ScopeEncoder(pw -> new CPrintWriter(pw, "apply", true), Accessibility.EXTERNAL).apply(scope));
 		buf.append("\n");
 		buf.append(externalWrapper);
-		String executable = getComputer().getNativeCompiler().getLibraryDirectory() + "/" + getComputer().getNativeCompiler().compile(inst.getClass().getName(), buf.toString(), false);
-		return new ExternalInstructionSet(executable, getComputer().getNativeCompiler()::reserveDataDirectory);
+		String executable = getNativeCompiler().getLibraryDirectory() + "/" + getNativeCompiler().compile(inst.getClass().getName(), buf.toString(), false);
+		return new ExternalInstructionSet(executable, getNativeCompiler()::reserveDataDirectory);
 	}
 
 	@Override

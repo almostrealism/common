@@ -21,12 +21,14 @@ import org.almostrealism.c.NativeMemoryProvider;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.RAM;
+import org.almostrealism.hardware.jni.NativeCompiler;
 import org.junit.Assert;
 
 public class NativeMemoryTests {
 	// TODO  @Test
 	public void readAndWrite() {
-		NativeMemoryProvider provider = new NativeMemoryProvider(1024);
+		Hardware hardware = Hardware.getLocalHardware();
+		NativeMemoryProvider provider = new NativeMemoryProvider(NativeCompiler.factory(hardware, false).construct(), 1024);
 		RAM ram = provider.allocate(1);
 
 		System.out.println("memory location = " + ram.getNativePointer());

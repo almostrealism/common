@@ -34,8 +34,9 @@ public class NativeComputeContext extends AbstractComputeContext {
 
 	private NativeCompiler compiler;
 
-	public NativeComputeContext(Hardware hardware) {
-		super(hardware, false, true);
+	public NativeComputeContext(Hardware hardware, NativeCompiler compiler) {
+		super(hardware);
+		this.compiler = compiler;
 	}
 
 	@Override
@@ -43,12 +44,14 @@ public class NativeComputeContext extends AbstractComputeContext {
 		return new CLanguageOperations(true, true);
 	}
 
+	public NativeCompiler getNativeCompiler() { return compiler; }
+
 	@Override
 	public InstructionSet deliver(Scope scope) {
 		StringBuffer buf = new StringBuffer();
-		NativeInstructionSet target = compiler.reserveLibraryTarget();
+		NativeInstructionSet target = getNativeCompiler().reserveLibraryTarget();
 		buf.append(new ScopeEncoder(pw -> new CJNIPrintWriter(pw, target.getFunctionName()), Accessibility.EXTERNAL).apply(scope));
-		compiler.compile(target, buf.toString());
+		getNativeCompiler().compile(target, buf.toString());
 		return target;
 	}
 

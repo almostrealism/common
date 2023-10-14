@@ -37,20 +37,22 @@ import java.util.function.Consumer;
  * @author  Michael Murray
  */
 public class CLOperatorMap<T extends MemoryData> implements InstructionSet, BiFunction<String, CLException, HardwareException> {
+	private CLComputeContext context;
 	private CLProgram prog;
 
 	private ThreadLocal<Map<String, CLOperator<T>>> operators;
 	private List<CLOperator<T>> allOperators;
 	private Consumer<RunData> profile;
 
-	public CLOperatorMap(CLComputeContext h, OperationMetadata metadata, String src, Consumer<RunData> profile) {
+	public CLOperatorMap(CLComputeContext ctx, OperationMetadata metadata, String src, Consumer<RunData> profile) {
+		this.context = ctx;
 		this.operators = new ThreadLocal<>();
 		this.allOperators = new ArrayList<>();
 		this.profile = profile;
-		init(h, metadata, src);
+		init(metadata, src);
 	}
 
-	protected void init(CLComputeContext h, OperationMetadata metadata, String src) {
+	protected void init(OperationMetadata metadata, String src) {
 		if (CLOperator.enableLog) {
 			System.out.println("HardwareOperatorMap: init " + metadata.getDisplayName());
 		}
@@ -64,7 +66,7 @@ public class CLOperatorMap<T extends MemoryData> implements InstructionSet, BiFu
 			System.out.println(src);
 		}
 
-		prog = CLProgram.create(h, metadata, src);
+		prog = CLProgram.create(context, metadata, src);
 
 		RuntimeException ex = null;
 
@@ -96,7 +98,7 @@ public class CLOperatorMap<T extends MemoryData> implements InstructionSet, BiFu
 		}
 
 		if (!ops.containsKey(key)) {
-			CLOperator<T> op = new CLOperator<>(prog, key, argCount, profile, this);
+			CLOperator<T> op = new CLOperator<>(context, prog, key, argCount, profile, this);
 			ops.put(key, op);
 			allOperators.add(op);
 		}

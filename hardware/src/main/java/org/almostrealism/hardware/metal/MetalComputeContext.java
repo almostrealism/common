@@ -52,7 +52,7 @@ public class MetalComputeContext extends AbstractComputeContext {
 	private List<MetalOperatorMap> instructionSets;
 
 	public MetalComputeContext(Hardware hardware) {
-		super(hardware, true, false);
+		super(hardware);
 		this.instructionSets = new ArrayList<>();
 	}
 
@@ -96,6 +96,7 @@ public class MetalComputeContext extends AbstractComputeContext {
 	public InstructionSet deliver(Scope scope) {
 		StringBuilder buf = new StringBuilder();
 		buf.append(includes);
+		buf.append("\n");
 
 		ScopeEncoder enc = new ScopeEncoder(pw -> new MetalPrintWriter(pw, scope.getName()), Accessibility.EXTERNAL);
 		buf.append(enc.apply(scope));

@@ -21,13 +21,14 @@ import org.almostrealism.geometry.TransformMatrix;
 import org.almostrealism.hardware.AcceleratedEvaluable;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.cl.CLComputeContext;
 
 import java.util.function.Supplier;
 
 public class TestKernel extends AcceleratedEvaluable<Ray, Ray> {
 	@SafeVarargs
-	public TestKernel(Supplier<Evaluable<? extends Ray>> blank, Supplier<Evaluable<? extends Ray>>... inputArgs) {
-		super("testKernel", true, blank, inputArgs);
+	public TestKernel(CLComputeContext context, Supplier<Evaluable<? extends Ray>> blank, Supplier<Evaluable<? extends Ray>>... inputArgs) {
+		super(context, "testKernel", true, blank, inputArgs);
 		setKernelDestination(Ray::bank);
 		setPostprocessor(Ray.postprocessor());
 	}

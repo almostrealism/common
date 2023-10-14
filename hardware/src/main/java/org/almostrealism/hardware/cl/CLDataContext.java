@@ -25,6 +25,7 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.RAM;
+import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.jvm.JVMMemoryProvider;
 import org.jocl.CL;
 import org.jocl.cl_command_queue;
@@ -181,7 +182,7 @@ public class CLDataContext implements DataContext<MemoryData> {
 		ComputeContext cc;
 
 		if (cReq.isPresent()) {
-			cc = new CLNativeComputeContext(hardware);
+			cc = new CLNativeComputeContext(hardware, NativeCompiler.factory(hardware, true).construct());
 		} else {
 			if (start != null) start.run();
 			cc = new CLComputeContext(hardware, ctx);

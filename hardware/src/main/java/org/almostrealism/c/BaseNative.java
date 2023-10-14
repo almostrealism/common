@@ -16,18 +16,22 @@
 
 package org.almostrealism.c;
 
-import org.almostrealism.hardware.ctx.AbstractComputeContext;
-import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.jni.NativeCompiler;
 
-import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
 public abstract class BaseNative {
 	public static final boolean enableVerbose = false;
+	private static final List<Class> libs = new ArrayList<>();
 
 	private String head;
 	private String functionName;
+	private NativeCompiler compiler;
 
-	public BaseNative() { }
+	public BaseNative(NativeCompiler compiler) {
+		this.compiler = compiler;
+	}
 
 	protected void initNativeFunctionName() {
 		functionName = "Java_" +
@@ -39,13 +43,19 @@ public abstract class BaseNative {
 		initNativeFunctionName();
 
 		try {
-			// TODO  Need to use NativeCompiler directly, and track whether this library has already been loaded here
-			// TODO  instead of in the Computer: the Computer should not be tracking native resources like libs
-			((AbstractComputeContext) Hardware.getLocalHardware().getComputeContext()).getComputer().loadNative(getClass(), getCode());
-		} catch (UnsatisfiedLinkError | IOException | InterruptedException e) {
+			loadNative(getClass(), getCode());
+		} catch (UnsatisfiedLinkError e) {
 			throw new RuntimeException(e);
 		}
 	}
+
+	protected synchronized void loadNative(Class cls, String code) {
+		if (libs.contains(cls)) return;
+
+		compiler.compileAndLoad(cls, code);
+		libs.add(cls);
+	}
+
 
 	public String getHead() { return head; }
 

@@ -19,6 +19,7 @@ package org.almostrealism.c;
 import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.RAM;
+import org.almostrealism.hardware.jni.NativeCompiler;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -26,6 +27,8 @@ import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class NativeMemoryProvider implements MemoryProvider<RAM> {
+	private NativeCompiler compiler;
+
 	private Malloc malloc;
 	private Free free;
 	private NativeRead read;
@@ -37,15 +40,18 @@ public class NativeMemoryProvider implements MemoryProvider<RAM> {
 
 	private List<NativeMemory> allocated;
 
-	public NativeMemoryProvider(long memoryMax) {
+	public NativeMemoryProvider(NativeCompiler compiler, long memoryMax) {
+		this.compiler = compiler;
 		this.numberSize = 8;
 		this.memoryMax = memoryMax;
 		this.allocated = new ArrayList<>();
 	}
 
+	public NativeCompiler getNativeCompiler() { return compiler; }
+
 	@Override
 	public synchronized NativeMemory allocate(int size) {
-		if (malloc == null) malloc = new Malloc();
+		if (malloc == null) malloc = new Malloc(getNativeCompiler());
 
 		if (memoryUsed + (long) numberSize * size > memoryMax) {
 			throw new HardwareException("Memory max reached");
@@ -61,7 +67,7 @@ public class NativeMemoryProvider implements MemoryProvider<RAM> {
 	public synchronized void deallocate(int size, RAM mem) {
 		if (!allocated.contains(mem)) return;
 
-		if (free == null) free = new Free();
+		if (free == null) free = new Free(getNativeCompiler());
 
 		free.apply(mem.getNativePointer());
 		memoryUsed -= (long) size * numberSize;
@@ -81,7 +87,7 @@ public class NativeMemoryProvider implements MemoryProvider<RAM> {
 	public synchronized void setMem(RAM mem, int offset, double[] source, int srcOffset, int length) {
 		if (!allocated.contains(mem))
 			throw new HardwareException(mem + " not available");
-		if (write == null) write = new NativeWrite();
+		if (write == null) write = new NativeWrite(getNativeCompiler());
 		write.apply((NativeMemory) mem, offset, source, srcOffset, length);
 	}
 
@@ -89,13 +95,13 @@ public class NativeMemoryProvider implements MemoryProvider<RAM> {
 	public synchronized void getMem(RAM mem, int sOffset, double[] out, int oOffset, int length) {
 		if (!allocated.contains(mem))
 			throw new HardwareException(mem + " not available");
-		if (read == null) read = new NativeRead();
+		if (read == null) read = new NativeRead(getNativeCompiler());
 		read.apply((NativeMemory) mem, sOffset, out, oOffset, length);
 	}
 
 	@Override
 	public synchronized void destroy() {
-		if (free == null) free = new Free();
+		if (free == null) free = new Free(getNativeCompiler());
 		allocated.stream().mapToLong(NativeMemory::getNativePointer).forEach(free::apply);
 		allocated.clear();
 		memoryUsed = 0;

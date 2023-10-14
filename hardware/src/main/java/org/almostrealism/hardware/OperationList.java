@@ -49,7 +49,7 @@ import java.util.stream.Stream;
 public class OperationList extends ArrayList<Supplier<Runnable>>
 		implements OperationComputation<Void>, ParallelProcess<Process<?, ?>, Runnable>,
 					NamedFunction, OperationInfo, HardwareFeatures {
-	public static boolean enableOptimization = false;
+	public static boolean enableAutomaticOptimization = false;
 	public static boolean enableSegmenting = false;
 
 	private static ThreadLocal<MemoryData> abortFlag;
@@ -122,7 +122,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	public Runnable get(OperationProfile profiles) {
 		if (isFunctionallyEmpty()) return () -> { };
 
-		if (enableOptimization && !isUniform()) {
+		if (enableAutomaticOptimization && !isUniform()) {
 			return optimize().get();
 		} else if (isComputation()) {
 			OperationAdapter op = (OperationAdapter) compileRunnable(this);

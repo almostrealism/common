@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.Execution;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.ArrayVariable;
@@ -32,13 +33,13 @@ public abstract class DynamicAcceleratedOperation<T extends MemoryData> extends 
 	protected InstructionSet operators;
 
 	@SafeVarargs
-	public DynamicAcceleratedOperation(boolean kernel, Supplier<Evaluable<? extends T>>... args) {
-		super(kernel, args);
+	public DynamicAcceleratedOperation(ComputeContext<MemoryData> context, boolean kernel, Supplier<Evaluable<? extends T>>... args) {
+		super(context, kernel, args);
 	}
 
 	@SafeVarargs
-	public DynamicAcceleratedOperation(boolean kernel, ArrayVariable<T>... args) {
-		super(kernel, args);
+	public DynamicAcceleratedOperation(ComputeContext<MemoryData> context, boolean kernel, ArrayVariable<T>... args) {
+		super(context, kernel, args);
 	}
 
 	@Override
