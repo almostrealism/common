@@ -39,12 +39,6 @@ public class AcceleratedTimeSeries extends TemporalScalarBank implements Lifecyc
 		}
 	}
 
-	public AcceleratedTimeSeries() {
-		super(Hardware.getLocalHardware().getTimeSeriesSize() <= 0 ? defaultSize : Hardware.getLocalHardware().getTimeSeriesSize(), AcceleratedTimeSeriesPool.getLocal(), defaultCacheLevel);
-		setBeginCursorIndex(1);
-		setEndCursorIndex(1);
-	}
-
 	public AcceleratedTimeSeries(int maxEntries) {
 		super(maxEntries + 1, defaultCacheLevel);
 		setBeginCursorIndex(1);
@@ -129,6 +123,6 @@ public class AcceleratedTimeSeries extends TemporalScalarBank implements Lifecyc
 	}
 
 	public static AcceleratedTimeSeries defaultSeries() {
-		return Hardware.getLocalHardware().getTimeSeriesSize() > 0 ? new AcceleratedTimeSeries() : new AcceleratedTimeSeries(defaultSize);
+		return new AcceleratedTimeSeries(defaultSize);
 	}
 }

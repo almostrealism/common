@@ -52,9 +52,6 @@ public final class Hardware {
 
 	protected static final int MEMORY_SCALE;
 
-	protected static final long timeSeriesSize;
-	protected static final int timeSeriesCount;
-
 	private static final boolean enableAsync = SystemUtils.isEnabled("AR_HARDWARE_ASYNC").orElse(false);
 
 	private static final Hardware local;
@@ -100,13 +97,6 @@ public final class Hardware {
 		if (opDepth == null) opDepth = System.getenv("AR_HARDWARE_MAX_DEPTH");
 		if (opDepth != null) OperationList.setMaxDepth(Integer.parseInt(opDepth));
 
-		String tsSize = System.getProperty("AR_HARDWARE_TIMESERIES_SIZE");
-		if (tsSize == null) tsSize = System.getenv("AR_HARDWARE_TIMESERIES_SIZE");
-
-		String tsCount = System.getProperty("AR_HARDWARE_TIMESERIES_COUNT");
-		if (tsCount == null) tsCount = System.getenv("AR_HARDWARE_TIMESERIES_COUNT");
-		if (tsCount == null) tsCount = "24";
-
 		String driver = System.getProperty("AR_HARDWARE_DRIVER");
 		if (driver == null) driver = System.getenv("AR_HARDWARE_DRIVER");
 		if (driver == null) driver = aarch ? "mtl" : "cl";
@@ -143,10 +133,6 @@ public final class Hardware {
 			KernelPreferences.setPreferLoops(true);
 			KernelPreferences.setEnableSubdivision(false);
 		}
-
-		// TODO  Move these into the pool where they are used
-		timeSeriesSize = Optional.ofNullable(tsSize).map(size -> (int) (200000 * Double.parseDouble(size))).orElse(-1);
-		timeSeriesCount = Optional.ofNullable(tsCount).map(Integer::parseInt).orElse(30);
 
 		// TODO  This should not have to be here; only the NativeCompiler needs to know this
 		String exec = System.getProperty("AR_HARDWARE_NATIVE_EXECUTION");
@@ -247,11 +233,6 @@ public final class Hardware {
 			this.context = new NativeDataContext(this, name, isNativeMemory(), externalNative, this.memoryMax);
 			start(context);
 			if (enableVerbose) System.out.println("Hardware[" + name + "]: Created NativeMemoryProvider");
-		}
-
-		if (timeSeriesSize > 0) {
-			System.out.println("Hardware[" + name + "]: " + timeSeriesCount + " x " +
-					2 * timeSeriesSize * getNumberSize() / 1024 + "kb timeseries(s) requested");
 		}
 	}
 
@@ -360,10 +341,6 @@ public final class Hardware {
 			return 1024;
 		}
 	}
-
-	public int getTimeSeriesSize() { return (int) timeSeriesSize; }
-
-	public int getTimeSeriesCount() { return timeSeriesCount; }
 
 	public String stringForDouble(double d) {
 		if (enableCast) {
