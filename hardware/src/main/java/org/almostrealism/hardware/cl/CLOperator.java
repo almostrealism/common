@@ -16,6 +16,8 @@
 
 package org.almostrealism.hardware.cl;
 
+import io.almostrealism.code.Memory;
+import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.Semaphore;
 import io.almostrealism.relation.Factory;
 import org.almostrealism.hardware.Hardware;
@@ -27,6 +29,7 @@ import org.almostrealism.hardware.mem.Bytes;
 import org.almostrealism.hardware.profile.RunData;
 import org.jocl.*;
 
+import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.stream.IntStream;
@@ -66,6 +69,12 @@ public class CLOperator<T extends MemoryData> extends HardwareOperator implement
 		this.exceptionProcessor = exceptionProcessor;
 	}
 
+	@Override
+	public String getName() { return name; }
+
+	@Override
+	protected String getHardwareName() { return "CL"; }
+
 	// TODO  How do these kernels get released when done?
 	@Override
 	public cl_kernel construct() {
@@ -85,6 +94,11 @@ public class CLOperator<T extends MemoryData> extends HardwareOperator implement
 	public long getGlobalWorkOffset() { return globalWorkOffset; }
 	@Override
 	public void setGlobalWorkOffset(long globalWorkOffset) { this.globalWorkOffset = globalWorkOffset; }
+
+	@Override
+	public List<MemoryProvider<? extends Memory>> getSupportedMemory() {
+		return context.getDataContext().getMemoryProviders();
+	}
 
 	@Override
 	public synchronized Semaphore accept(Object[] args, Semaphore dependsOn) {

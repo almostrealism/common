@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware.cl;
 
+import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
@@ -66,6 +67,7 @@ public class CLMemoryProvider implements MemoryProvider<RAM> {
 		this.deallocating = new ArrayList<>();
 	}
 
+	@Override
 	public int getNumberSize() { return numberSize; }
 
 	public long getAllocatedMemory() { return memoryUsed; }
@@ -196,9 +198,13 @@ public class CLMemoryProvider implements MemoryProvider<RAM> {
 	}
 
 	@Override
-	public void setMem(RAM ram, int offset, RAM srcRam, int srcOffset, int length) {
+	public void setMem(RAM ram, int offset, Memory srcRam, int srcOffset, int length) {
 		if (!(ram instanceof CLMemory)) throw new IllegalArgumentException();
-		if (!(srcRam instanceof CLMemory)) throw new IllegalArgumentException();
+		if (!(srcRam instanceof CLMemory)) {
+			// TODO  Native code can be used here, for some types of srcRam
+			setMem(ram, offset, srcRam.toArray(srcOffset, length), 0, length);
+			return;
+		}
 
 		CLMemory mem = (CLMemory) ram;
 		CLMemory src = (CLMemory) srcRam;

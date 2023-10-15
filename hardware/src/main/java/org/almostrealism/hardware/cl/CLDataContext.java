@@ -34,6 +34,7 @@ import org.jocl.cl_context_properties;
 import org.jocl.cl_device_id;
 import org.jocl.cl_platform_id;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.function.IntFunction;
@@ -204,6 +205,11 @@ public class CLDataContext implements DataContext<MemoryData> {
 
 	public DeviceInfo getMainDeviceInfo() { return mainDeviceInfo; }
 	public DeviceInfo getKernelDeviceInfo() { return kernelDeviceInfo; }
+
+	@Override
+	public List<MemoryProvider<? extends Memory>> getMemoryProviders() {
+		return List.of(mainRam);
+	}
 
 	public MemoryProvider<RAM> getMemoryProvider() {
 		if (start != null) start.run();

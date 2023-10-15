@@ -21,9 +21,17 @@ import java.util.stream.DoubleStream;
 import java.util.stream.IntStream;
 
 public interface MemoryProvider<T extends Memory> {
+	int getNumberSize();
+
 	T allocate(int size);
 
 	void deallocate(int size, T mem);
+
+	default T reallocate(Memory mem, int offset, int length) {
+		T newMem = allocate(length);
+		setMem(newMem, 0, mem, offset, length);
+		return newMem;
+	}
 
 	default double[] toArray(T mem, int length) {
 		return toArray(mem, 0, length);
@@ -39,7 +47,7 @@ public interface MemoryProvider<T extends Memory> {
 		}).collect(Collectors.toList()).get(attempt - 1);
 	}
 
-	void setMem(T mem, int offset, T source, int srcOffset, int length);
+	void setMem(T mem, int offset, Memory source, int srcOffset, int length);
 
 	default void setMem(T mem, int offset, float[] source, int srcOffset, int length) {
 		setMem(mem, offset, IntStream.range(0, source.length).mapToDouble(i -> source[i]).toArray(), srcOffset, length);

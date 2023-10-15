@@ -16,6 +16,8 @@
 
 package org.almostrealism.hardware.metal;
 
+import io.almostrealism.code.Memory;
+import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.Semaphore;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;
@@ -24,6 +26,7 @@ import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.Bytes;
 
+import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.function.Supplier;
@@ -37,7 +40,7 @@ public class MetalOperator extends HardwareOperator {
 
 	private static long totalInvocations;
 
-	private final Supplier<MetalCommandRunner> runner;
+	private final MetalComputeContext context;
 	private final MetalProgram prog;
 	private final String name;
 
@@ -48,12 +51,18 @@ public class MetalOperator extends HardwareOperator {
 
 	private MTLComputePipelineState kernel;
 
-	public MetalOperator(Supplier<MetalCommandRunner> runner, MetalProgram program, String name, int argCount) {
-		this.runner = runner;
+	public MetalOperator(MetalComputeContext context, MetalProgram program, String name, int argCount) {
+		this.context = context;
 		this.prog = program;
 		this.name = name;
 		this.argCount = argCount;
 	}
+
+	@Override
+	public String getName() { return name; }
+
+	@Override
+	protected String getHardwareName() { return "MTL"; }
 
 	@Override
 	public long getGlobalWorkSize() { return globalWorkSize; }
@@ -97,6 +106,11 @@ public class MetalOperator extends HardwareOperator {
 	}
 
 	@Override
+	public List<MemoryProvider<? extends Memory>> getSupportedMemory() {
+		return context.getDataContext().getMemoryProviders();
+	}
+
+	@Override
 	public synchronized Semaphore accept(Object[] args, Semaphore dependsOn) {
 		if (kernel == null) {
 			kernel = prog.newComputePipelineState();
@@ -108,10 +122,11 @@ public class MetalOperator extends HardwareOperator {
 			System.out.println("MTL: " + prog.getMetadata().getDisplayName() + " (" + id + ")");
 		}
 
-		int dimMasks[] = computeDimensionMasks(args);
+		MemoryData data[] = prepareArguments(argCount, args);
+		int dimMasks[] = computeDimensionMasks(data);
 		if (dependsOn != null) dependsOn.waitFor();
 
-		Future<?> run = runner.get().submit((queue) -> {
+		Future<?> run = context.getCommandRunner().submit((queue) -> {
 			int index = 0;
 			long totalSize = 0;
 
@@ -121,26 +136,26 @@ public class MetalOperator extends HardwareOperator {
 			encoder.setComputePipelineState(kernel);
 
 			for (int i = 0; i < argCount; i++) {
-				MetalMemory mem = (MetalMemory) ((MemoryData) args[i]).getMem();
+				MetalMemory mem = (MetalMemory) ((MemoryData) data[i]).getMem();
 				totalSize += mem.getSize();
-				encoder.setBuffer(index++, ((MetalMemory) ((MemoryData) args[i]).getMem()).getMem()); // Buffer
+				encoder.setBuffer(index++, ((MetalMemory) ((MemoryData) data[i]).getMem()).getMem()); // Buffer
 			}
 
 			// TODO  Set offset, size, and dim0 buffers
 
-			int offsetValues[] = IntStream.range(0, argCount).map(i -> ((MemoryData) args[i]).getOffset()).toArray();
+			int offsetValues[] = IntStream.range(0, argCount).map(i -> ((MemoryData) data[i]).getOffset()).toArray();
 			MTLBuffer offset = prog.getDevice().newIntBuffer32(offsetValues);
 
-			int sizeValues[] = IntStream.range(0, argCount).map(i -> ((MemoryData) args[i]).getAtomicMemLength()).toArray();
+			int sizeValues[] = IntStream.range(0, argCount).map(i -> ((MemoryData) data[i]).getAtomicMemLength()).toArray();
 			MTLBuffer size = prog.getDevice().newIntBuffer32(sizeValues);
 
 			MTLBuffer dim0;
 
 			if (enableDimensionMasks) {
-				int dim0Values[] = IntStream.range(0, argCount).map(i -> ((MemoryData) args[i]).getAtomicMemLength() * dimMasks[i]).toArray();
+				int dim0Values[] = IntStream.range(0, argCount).map(i -> ((MemoryData) data[i]).getAtomicMemLength() * dimMasks[i]).toArray();
 				dim0 = prog.getDevice().newIntBuffer32(dim0Values);
 			} else {
-				int dim0Values[] = IntStream.range(0, argCount).map(i -> ((MemoryData) args[i]).getAtomicMemLength()).toArray();
+				int dim0Values[] = IntStream.range(0, argCount).map(i -> ((MemoryData) data[i]).getAtomicMemLength()).toArray();
 				dim0 = prog.getDevice().newIntBuffer32(dim0Values);
 			}
 

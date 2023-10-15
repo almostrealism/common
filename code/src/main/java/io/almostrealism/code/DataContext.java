@@ -16,10 +16,13 @@
 
 package io.almostrealism.code;
 
+import java.util.List;
 import java.util.concurrent.Callable;
 
 public interface DataContext<MEM> {
 	ComputeContext<MEM> getComputeContext();
+
+	List<MemoryProvider<? extends Memory>> getMemoryProviders();
 
 	MemoryProvider<? extends Memory> getMemoryProvider(int size);
 

@@ -23,6 +23,9 @@ public class JVMMemoryProvider implements MemoryProvider<Memory> {
 	public JVMMemoryProvider() { }
 
 	@Override
+	public int getNumberSize() { return 8; }
+
+	@Override
 	public Memory allocate(int size) {
 		if (size <= 0)
 			throw new IllegalArgumentException();

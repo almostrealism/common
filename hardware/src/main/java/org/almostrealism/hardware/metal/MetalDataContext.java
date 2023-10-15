@@ -27,6 +27,7 @@ import org.almostrealism.hardware.Precision;
 import org.almostrealism.hardware.RAM;
 import org.almostrealism.hardware.jvm.JVMMemoryProvider;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Callable;
 import java.util.function.IntFunction;
@@ -106,6 +107,11 @@ public class MetalDataContext implements DataContext<MemoryData> {
 
 	public MetalDeviceInfo getMainDeviceInfo() { return mainDeviceInfo; }
 	public MetalDeviceInfo getKernelDeviceInfo() { return kernelDeviceInfo; }
+
+	@Override
+	public List<MemoryProvider<? extends Memory>> getMemoryProviders() {
+		return List.of(mainRam);
+	}
 
 	public MemoryProvider<RAM> getMemoryProvider() {
 		if (start != null) start.run();

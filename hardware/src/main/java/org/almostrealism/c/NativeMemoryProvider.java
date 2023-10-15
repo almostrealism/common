@@ -16,6 +16,7 @@
 
 package org.almostrealism.c;
 
+import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.RAM;
@@ -47,6 +48,9 @@ public class NativeMemoryProvider implements MemoryProvider<RAM> {
 		this.allocated = new ArrayList<>();
 	}
 
+	@Override
+	public int getNumberSize() { return numberSize; }
+
 	public NativeCompiler getNativeCompiler() { return compiler; }
 
 	@Override
@@ -75,11 +79,11 @@ public class NativeMemoryProvider implements MemoryProvider<RAM> {
 	}
 
 	@Override
-	public synchronized void setMem(RAM mem, int offset, RAM source, int srcOffset, int length) {
+	public synchronized void setMem(RAM mem, int offset, Memory source, int srcOffset, int length) {
 		if (!allocated.contains(mem))
 			throw new HardwareException(mem + " not available");
 		double value[] = new double[length];
-		getMem(source, srcOffset, value, 0, length);
+		source.getProvider().getMem(source, srcOffset, value, 0, length);
 		setMem(mem, offset, value, 0, length);
 	}
 

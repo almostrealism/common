@@ -29,6 +29,7 @@ import org.almostrealism.hardware.external.ExternalComputeContext;
 import org.almostrealism.hardware.jvm.JVMMemoryProvider;
 import org.almostrealism.io.SystemUtils;
 
+import java.util.List;
 import java.util.concurrent.Callable;
 
 public class NativeDataContext implements DataContext<MemoryData> {
@@ -62,6 +63,11 @@ public class NativeDataContext implements DataContext<MemoryData> {
 	public String getName() { return name; }
 
 	public NativeCompiler getNativeCompiler() { return compiler; }
+
+	@Override
+	public List<MemoryProvider<? extends Memory>> getMemoryProviders() {
+		return List.of(ram);
+	}
 
 	public MemoryProvider<? extends Memory> getMemoryProvider() { return ram; }
 
