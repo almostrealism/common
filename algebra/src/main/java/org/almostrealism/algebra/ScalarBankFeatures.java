@@ -21,7 +21,6 @@ import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
-import org.almostrealism.algebra.computations.ScalarBankExpressionComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.hardware.Input;
@@ -83,13 +82,14 @@ public interface ScalarBankFeatures extends ScalarFeatures {
 	}
 
 	@Deprecated
-	default ScalarBankProducerBase scalarBankAdd(int count, Producer<PackedCollection<Scalar>> input,
+	default ExpressionComputation<PackedCollection<Scalar>> scalarBankAdd(int count, Producer<PackedCollection<Scalar>> input,
 						  						Supplier<Evaluable<? extends Scalar>> value) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression = new ArrayList<>();
 		IntStream.range(0, 2 * count).forEach(i ->
 				expression.add(args -> i % 2 == 0 ?
 						new Sum(args.get(1).getValueRelative(i), args.get(2).getValueRelative(0)) : args.get(1).getValueRelative(i)));
-		return new ScalarBankExpressionComputation(expression, (Supplier) input, (Supplier) value);
+		return (ExpressionComputation) new ExpressionComputation<>(expression, (Supplier) input, (Supplier) value)
+				.setPostprocessor(Scalar.scalarBankPostprocessor());
 	}
 
 	@Deprecated
@@ -113,17 +113,17 @@ public interface ScalarBankFeatures extends ScalarFeatures {
 		};
 	}
 
-	default ScalarBankProducerBase dither(int count,
+	default ExpressionComputation<PackedCollection<Scalar>> dither(int count,
 										  Producer<PackedCollection<Scalar>> input,
 				   						  Supplier<Evaluable<? extends Scalar>> ditherValue) {
 		ditherValue = scalarsMultiply(ditherValue, scalar(shape(1), randn(shape(1)), 0));
 		return scalarBankAdd(count, input, ditherValue);
 	}
 
-	default ScalarBankProducerBase ditherAndRemoveDcOffset(int count,
+	default ExpressionComputation<PackedCollection<Scalar>> ditherAndRemoveDcOffset(int count,
 														   Producer<PackedCollection<Scalar>> input,
 														   Supplier<Evaluable<? extends Scalar>> ditherValue) {
-		ScalarBankProducerBase dither = dither(count, input, ditherValue);
+		ExpressionComputation<PackedCollection<Scalar>> dither = dither(count, input, ditherValue);
 		return scalarBankAdd(count, dither, scalar(subset(shape(count, 1), dither, 0).sum().divide(c(count)).multiply(c(-1))));
 	}
 
@@ -153,10 +153,11 @@ public interface ScalarBankFeatures extends ScalarFeatures {
 		};
 	}
 
-	default ScalarBankProducerBase scalars(Supplier<Evaluable<? extends Scalar>>... values) {
+	default ExpressionComputation<PackedCollection<Scalar>> scalars(Supplier<Evaluable<? extends Scalar>>... values) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression = new ArrayList<>();
 		IntStream.range(0, 2 * values.length).forEach(i -> expression.add(args -> args.get(i / 2 + 1).getValueRelative(i % 2)));
-		return new ScalarBankExpressionComputation(expression, (Supplier[]) values);
+		return (ExpressionComputation) new ExpressionComputation<>(expression, (Supplier[]) values)
+				.setPostprocessor(Scalar.scalarBankPostprocessor());
 	}
 
 	static ScalarBankFeatures getInstance() {

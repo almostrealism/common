@@ -19,6 +19,7 @@ package org.almostrealism.algebra.computations.jni.test;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarBankProducerBase;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
@@ -29,7 +30,7 @@ public class NativeDitherTest implements TestFeatures {
 	public void random() {
 		PackedCollection<Scalar> random = Scalar.scalarBank(160);
 		IntStream.range(0, 160).forEach(i ->  random.set(i, 100 * Math.random()));
-		ScalarBankProducerBase dither = dither(160, v(Scalar.shape(), 0), v(Scalar.shape(), 1));
+		ExpressionComputation<PackedCollection<Scalar>> dither = dither(160, v(Scalar.shape(), 0), v(Scalar.shape(), 1));
 		PackedCollection<Scalar> out = dither.get().evaluate(random, new Scalar(1.0));
 		assertNotEquals(0.0, out.get(20));
 	}
