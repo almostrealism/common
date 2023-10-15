@@ -113,45 +113,47 @@ public class CLOperator<T extends MemoryData> extends HardwareOperator implement
 
 		long totalSize = 0;
 
+		MemoryData data[] = prepareArguments(argCount, args);
+
 		try {
-			int dimMasks[] = computeDimensionMasks(args);
+			int dimMasks[] = computeDimensionMasks(data);
 
 			for (int i = 0; i < argCount; i++) {
-				if (args[i] != argCache[i]) {
-					CLMemory mem = (CLMemory) ((MemoryData) args[i]).getMem();
+				if (data[i] != argCache[i]) {
+					CLMemory mem = (CLMemory) ((MemoryData) data[i]).getMem();
 					totalSize += mem.getSize();
-					CL.clSetKernelArg(kernel, index++, Sizeof.cl_mem, Pointer.to(((CLMemory) ((MemoryData) args[i]).getMem()).getMem()));
+					CL.clSetKernelArg(kernel, index++, Sizeof.cl_mem, Pointer.to(((CLMemory) ((MemoryData) data[i]).getMem()).getMem()));
 				} else {
 					index++;
 				}
 			}
 
 			for (int i = 0; i < argCount; i++) {
-				if (args[i] != argCache[i]) {
+				if (data[i] != argCache[i]) {
 					CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
-							Pointer.to(new int[]{((MemoryData) args[i]).getOffset()})); // Offset
+							Pointer.to(new int[]{((MemoryData) data[i]).getOffset()})); // Offset
 				} else {
 					index++;
 				}
 			}
 
 			for (int i = 0; i < argCount; i++) {
-				if (args[i] != argCache[i]) {
+				if (data[i] != argCache[i]) {
 					CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
-							Pointer.to(new int[]{((MemoryData) args[i]).getAtomicMemLength()})); // Size
+							Pointer.to(new int[]{((MemoryData) data[i]).getAtomicMemLength()})); // Size
 				} else {
 					index++;
 				}
 			}
 
 			for (int i = 0; i < argCount; i++) {
-				if (args[i] != argCache[i]) {
+				if (data[i] != argCache[i]) {
 					if (enableDimensionMasks) {
 						CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
-								Pointer.to(new int[]{((MemoryData) args[i]).getAtomicMemLength() * dimMasks[i]})); // Dim0
+								Pointer.to(new int[]{((MemoryData) data[i]).getAtomicMemLength() * dimMasks[i]})); // Dim0
 					} else {
 						CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
-								Pointer.to(new int[]{((MemoryData) args[i]).getAtomicMemLength()})); // Dim0
+								Pointer.to(new int[]{((MemoryData) data[i]).getAtomicMemLength()})); // Dim0
 					}
 				} else {
 					index++;
@@ -159,7 +161,7 @@ public class CLOperator<T extends MemoryData> extends HardwareOperator implement
 			}
 
 			for (int i = 0; i < argCount; i++) {
-				argCache[i] = args[i];
+				argCache[i] = data[i];
 			}
 		} catch (CLException e) {
 			// TODO  This should use the exception processor also, but theres no way to pass the message details
