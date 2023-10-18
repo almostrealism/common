@@ -20,7 +20,6 @@ import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.scope.Method;
 import org.almostrealism.c.CLanguageOperations;
 
 import java.util.List;
@@ -30,14 +29,6 @@ public class MetalLanguageOperations extends CLanguageOperations {
 
 	public MetalLanguageOperations() {
 		super(false, true);
-	}
-
-	@Override
-	public String kernelIndex(int index) {
-		if (index != 0)
-			throw new IllegalArgumentException();
-
-		return "global_id";
 	}
 
 	@Override

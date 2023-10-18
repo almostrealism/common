@@ -50,6 +50,7 @@ public class NativeComputeContext extends AbstractComputeContext {
 	public InstructionSet deliver(Scope scope) {
 		StringBuffer buf = new StringBuffer();
 		NativeInstructionSet target = getNativeCompiler().reserveLibraryTarget();
+		target.setComputeContext(this);
 		buf.append(new ScopeEncoder(pw -> new CJNIPrintWriter(pw, target.getFunctionName()), Accessibility.EXTERNAL).apply(scope));
 		getNativeCompiler().compile(target, buf.toString());
 		return target;

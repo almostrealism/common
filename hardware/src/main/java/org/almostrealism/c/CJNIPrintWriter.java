@@ -41,6 +41,7 @@ public class CJNIPrintWriter extends CPrintWriter {
 		println(new Variable<>("*argArr", new StaticReference<>(long[].class, "(*env)->GetLongArrayElements(env, arg, 0)")));
 		println(new Variable<>("*offsetArr", new StaticReference<>(int[].class, "(*env)->GetIntArrayElements(env, offset, 0)")));
 		println(new Variable<>("*sizeArr", new StaticReference<>(int[].class, "(*env)->GetIntArrayElements(env, size, 0)")));
+		println(new Variable<>("*dim0Arr", new StaticReference<>(int[].class, "(*env)->GetIntArrayElements(env, dim0, 0)")));
 
 		super.renderArgumentReads(arguments);
 	}
@@ -51,5 +52,6 @@ public class CJNIPrintWriter extends CPrintWriter {
 		println("free(argArr);");
 		println("free(offsetArr);");
 		println("free(sizeArr);");
+		println("free(dim0Arr);");
 	}
 }

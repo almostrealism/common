@@ -21,15 +21,11 @@ import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.Semaphore;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;
-import org.almostrealism.hardware.KernelWork;
-import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.mem.Bytes;
 
 import java.util.List;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
-import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 /**
@@ -45,9 +41,6 @@ public class MetalOperator extends HardwareOperator {
 	private final String name;
 
 	private final int argCount;
-
-	private long globalWorkSize = 1;
-	private long globalWorkOffset;
 
 	private MTLComputePipelineState kernel;
 
@@ -65,14 +58,7 @@ public class MetalOperator extends HardwareOperator {
 	protected String getHardwareName() { return "MTL"; }
 
 	@Override
-	public long getGlobalWorkSize() { return globalWorkSize; }
-	@Override
-	public void setGlobalWorkSize(long globalWorkSize) { this.globalWorkSize = globalWorkSize; }
-
-	@Override
-	public long getGlobalWorkOffset() { return globalWorkOffset; }
-	@Override
-	public void setGlobalWorkOffset(long globalWorkOffset) { this.globalWorkOffset = globalWorkOffset; }
+	protected int getArgCount() { return argCount; }
 
 	@Override
 	public int getWorkgroupSize() {
@@ -122,9 +108,10 @@ public class MetalOperator extends HardwareOperator {
 			System.out.println("MTL: " + prog.getMetadata().getDisplayName() + " (" + id + ")");
 		}
 
+		if (dependsOn != null) dependsOn.waitFor();
+
 		MemoryData data[] = prepareArguments(argCount, args);
 		int dimMasks[] = computeDimensionMasks(data);
-		if (dependsOn != null) dependsOn.waitFor();
 
 		Future<?> run = context.getCommandRunner().submit((queue) -> {
 			int index = 0;
@@ -136,26 +123,26 @@ public class MetalOperator extends HardwareOperator {
 			encoder.setComputePipelineState(kernel);
 
 			for (int i = 0; i < argCount; i++) {
-				MetalMemory mem = (MetalMemory) ((MemoryData) data[i]).getMem();
+				MetalMemory mem = (MetalMemory) data[i].getMem();
 				totalSize += mem.getSize();
-				encoder.setBuffer(index++, ((MetalMemory) ((MemoryData) data[i]).getMem()).getMem()); // Buffer
+				encoder.setBuffer(index++, ((MetalMemory) data[i].getMem()).getMem()); // Buffer
 			}
 
 			// TODO  Set offset, size, and dim0 buffers
 
-			int offsetValues[] = IntStream.range(0, argCount).map(i -> ((MemoryData) data[i]).getOffset()).toArray();
+			int offsetValues[] = IntStream.range(0, argCount).map(i -> data[i].getOffset()).toArray();
 			MTLBuffer offset = prog.getDevice().newIntBuffer32(offsetValues);
 
-			int sizeValues[] = IntStream.range(0, argCount).map(i -> ((MemoryData) data[i]).getAtomicMemLength()).toArray();
+			int sizeValues[] = IntStream.range(0, argCount).map(i -> data[i].getAtomicMemLength()).toArray();
 			MTLBuffer size = prog.getDevice().newIntBuffer32(sizeValues);
 
 			MTLBuffer dim0;
 
 			if (enableDimensionMasks) {
-				int dim0Values[] = IntStream.range(0, argCount).map(i -> ((MemoryData) data[i]).getAtomicMemLength() * dimMasks[i]).toArray();
+				int dim0Values[] = IntStream.range(0, argCount).map(i -> data[i].getAtomicMemLength() * dimMasks[i]).toArray();
 				dim0 = prog.getDevice().newIntBuffer32(dim0Values);
 			} else {
-				int dim0Values[] = IntStream.range(0, argCount).map(i -> ((MemoryData) data[i]).getAtomicMemLength()).toArray();
+				int dim0Values[] = IntStream.range(0, argCount).map(i -> data[i].getAtomicMemLength()).toArray();
 				dim0 = prog.getDevice().newIntBuffer32(dim0Values);
 			}
 
@@ -202,49 +189,6 @@ public class MetalOperator extends HardwareOperator {
 		}
 
 		return null;
-	}
-
-	protected int[] computeDimensionMasks(Object args[]) {
-		int sizes[] = new int[args.length];
-
-		for (int i = 0; i < argCount; i++) {
-			if (args[i] == null) {
-				throw new NullPointerException("argument " + i + " to function " + name);
-			}
-
-			if (!(args[i] instanceof MemoryData)) {
-				throw new IllegalArgumentException("argument " + i + " (" +
-						args[i].getClass().getSimpleName() + ") to function " +
-						name + " is not a MemoryData");
-			}
-
-			if (((MemoryData) args[i]).getMem() instanceof MetalMemory == false) {
-				throw new IllegalArgumentException("argument " + i + " (" +
-						args[i].getClass().getSimpleName() + ") to function " +
-						name + " is not associated with MetalMemory");
-			}
-
-			if (args[i] instanceof MemoryBank) {
-				sizes[i] = ((MemoryBank) args[i]).getCount();
-			} else if (args[i] instanceof Bytes) {
-				sizes[i] = ((Bytes) args[i]).getCount();
-			} else {
-				sizes[i] = ((MemoryData) args[i]).getMemLength();
-			}
-		}
-
-		if (enableAtomicDimensionMasks && globalWorkSize == 1) {
-			return IntStream.range(0, argCount).map(i -> 0).toArray();
-		} else {
-			if (globalWorkSize > Integer.MAX_VALUE) {
-				// Is it though?
-				throw new IllegalArgumentException("globalWorkSize is too large");
-			}
-
-			return IntStream.range(0, sizes.length)
-					.map(i -> (sizes[i] >= globalWorkSize && sizes[i] % globalWorkSize == 0) ? 1 : 0)
-					.toArray();
-		}
 	}
 
 	public void destroy() {

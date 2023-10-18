@@ -20,8 +20,10 @@ import io.almostrealism.code.Execution;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.relation.Named;
+import org.almostrealism.hardware.mem.Bytes;
 
 import java.util.List;
+import java.util.stream.IntStream;
 
 public abstract class HardwareOperator implements Execution, KernelWork, Named {
 	public static boolean enableLog;
@@ -29,9 +31,25 @@ public abstract class HardwareOperator implements Execution, KernelWork, Named {
 	public static boolean enableDimensionMasks = true;
 	public static boolean enableAtomicDimensionMasks = true;
 
+	private long globalWorkSize = 1;
+	private long globalWorkOffset;
+
+	@Override
+	public long getGlobalWorkSize() { return globalWorkSize; }
+	@Override
+	public void setGlobalWorkSize(long globalWorkSize) { this.globalWorkSize = globalWorkSize; }
+
+	@Override
+	public long getGlobalWorkOffset() { return globalWorkOffset; }
+	@Override
+	public void setGlobalWorkOffset(long globalWorkOffset) { this.globalWorkOffset = globalWorkOffset; }
+
+
 	public abstract List<MemoryProvider<? extends Memory>> getSupportedMemory();
 
 	protected abstract String getHardwareName();
+
+	protected abstract int getArgCount();
 
 	protected MemoryData[] prepareArguments(int argCount, Object[] args) {
 		MemoryData data[] = new MemoryData[argCount];
@@ -59,7 +77,7 @@ public abstract class HardwareOperator implements Execution, KernelWork, Named {
 		if (supported.isEmpty())
 			throw new RuntimeException("No memory providers are supported by " + getName());
 
-		MemoryProvider<? extends Memory> provider = data.getMem().getProvider();
+		MemoryProvider<Memory> provider = data.getMem().getProvider();
 
 		if (supported.contains(provider)) {
 			// Memory is supported by the operation,
@@ -71,6 +89,7 @@ public abstract class HardwareOperator implements Execution, KernelWork, Named {
 		// and the entire reservation that it is part
 		// of will have to be reallocated
 		MemoryData root = data.getRootDelegate();
+		Memory originalMem = root.getMem();
 		int size = root.getMemLength() * provider.getNumberSize();
 
 		if (enableVerboseLog)
@@ -78,6 +97,44 @@ public abstract class HardwareOperator implements Execution, KernelWork, Named {
 
 		Memory mem = supported.get(0).reallocate(root.getMem(), root.getOffset(), root.getMemLength());
 		root.reassign(mem);
+		provider.deallocate(root.getMemLength(), originalMem);
+	}
+
+	protected int[] computeDimensionMasks(Object args[]) {
+		int sizes[] = new int[args.length];
+
+		for (int i = 0; i < getArgCount(); i++) {
+			if (args[i] == null) {
+				throw new NullPointerException("argument " + i + " to function " + getName());
+			}
+
+			if (!(args[i] instanceof MemoryData)) {
+				throw new IllegalArgumentException("argument " + i + " (" +
+						args[i].getClass().getSimpleName() + ") to function " +
+						getName() + " is not a MemoryData");
+			}
+
+			if (args[i] instanceof MemoryBank) {
+				sizes[i] = ((MemoryBank) args[i]).getCount();
+			} else if (args[i] instanceof Bytes) {
+				sizes[i] = ((Bytes) args[i]).getCount();
+			} else {
+				sizes[i] = ((MemoryData) args[i]).getMemLength();
+			}
+		}
+
+		if (enableAtomicDimensionMasks && getGlobalWorkSize() == 1) {
+			return IntStream.range(0, getArgCount()).map(i -> 0).toArray();
+		} else {
+			if (getGlobalWorkSize() > Integer.MAX_VALUE) {
+				// Is it though?
+				throw new IllegalArgumentException("globalWorkSize is too large");
+			}
+
+			return IntStream.range(0, sizes.length)
+					.map(i -> (sizes[i] >= getGlobalWorkSize() && sizes[i] % getGlobalWorkSize() == 0) ? 1 : 0)
+					.toArray();
+		}
 	}
 
 	public static void verboseLog(Runnable r) {

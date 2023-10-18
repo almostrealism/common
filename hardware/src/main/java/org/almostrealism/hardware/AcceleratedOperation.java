@@ -210,6 +210,10 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 		Execution operator = getOperator();
 
+		if (operator instanceof KernelWork == false) {
+			throw new UnsupportedOperationException();
+		}
+
 		if (enableKernelLog) System.out.println("AcceleratedOperation: Preparing " + getName() + " kernel...");
 		AcceleratedProcessDetails process = processKernelArgs(output, args);
 		MemoryData input[] = Stream.of(process.getArguments()).toArray(MemoryData[]::new);

@@ -18,28 +18,21 @@ package org.almostrealism.c;
 
 import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.OperationMetadata;
-import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.expression.StaticReference;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.CodePrintWriterAdapter;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.scope.Method;
 import io.almostrealism.scope.Metric;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.expression.InstanceReference;
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.io.PrintStreamPrintWriter;
 import org.almostrealism.io.PrintWriter;
-import org.jocl.cl_event;
 
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.util.List;
 import java.util.Map;
 import java.util.Stack;
-import java.util.function.Consumer;
-import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 

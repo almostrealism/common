@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -17,13 +17,18 @@
 package org.almostrealism.generated;
 
 import io.almostrealism.code.Computation;
+import io.almostrealism.code.ComputeContext;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.jni.NativeInstructionSet;
 
 public abstract class BaseGeneratedOperation<T extends MemoryData> implements NativeInstructionSet {
-	private Computation<T> computation; // TODO  Remove
+	private ComputeContext<MemoryData> context;
 
-	public BaseGeneratedOperation(Computation<T> computation) {
-		this.computation = computation;
-	}
+	public BaseGeneratedOperation(Computation<T> computation) { }
+
+	@Override
+	public ComputeContext<MemoryData> getComputeContext() { return context; }
+
+	@Override
+	public void setComputeContext(ComputeContext<MemoryData> context) { this.context = context; }
 }

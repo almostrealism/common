@@ -16,6 +16,8 @@
 
 package org.almostrealism.graph.computations;
 
+import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.HybridScope;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.relation.Producer;
@@ -29,7 +31,7 @@ import org.almostrealism.hardware.OperationComputationAdapter;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-public class TimeCellReset extends OperationComputationAdapter<PackedCollection<?>> {
+public class TimeCellReset extends OperationComputationAdapter<PackedCollection<?>> implements ExpressionFeatures {
 	protected HybridScope scope;
 	private int len;
 
@@ -54,7 +56,12 @@ public class TimeCellReset extends OperationComputationAdapter<PackedCollection<
 
 		for (int i = 0; i < len; i++) {
 			if (i > 0) exp.accept(" else ");
-			exp.accept("if (" + getTime().ref(1).getSimpleExpression() + " == " + getResets().valueAt(i).getSimpleExpression() + ") {\n");
+
+			Expression<Boolean> condition = getResets().valueAt(1).greaterThan(e(0.0));
+			condition = condition.and(getTime().ref(1).eq(getResets().valueAt(i)));
+
+//			exp.accept("if (" + getTime().ref(1).getSimpleExpression() + " == " + getResets().valueAt(i).getSimpleExpression() + ") {\n");
+			exp.accept("if (" + condition.getSimpleExpression()+ ") {\n");
 			exp.accept("\t");
 			exp.accept(getTime().valueAt(0).getSimpleExpression());
 			exp.accept(" = ");

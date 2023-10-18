@@ -25,7 +25,6 @@ import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.expression.Cast;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.kernel.KernelPreferences;
 import io.almostrealism.relation.ParallelProcess;
 import org.almostrealism.hardware.cl.CLMemoryProvider;
@@ -59,7 +58,6 @@ public final class Hardware {
 		boolean gpu = "gpu".equalsIgnoreCase(System.getenv("AR_HARDWARE_PLATFORM")) ||
 				"gpu".equalsIgnoreCase(System.getProperty("AR_HARDWARE_PLATFORM"));
 
-		boolean enableKernels = SystemUtils.isEnabled("AR_ENABLE_KERNELS").orElse(true);
 		enableKernelOps = SystemUtils.isEnabled("AR_HARDWARE_KERNEL_OPS").orElse(true);
 
 		boolean enableDestinationConsolidation =
@@ -98,7 +96,7 @@ public final class Hardware {
 		if (driver == null) driver = System.getenv("AR_HARDWARE_DRIVER");
 		if (driver == null) driver = aarch ? "mtl" : "cl";
 
-		boolean nativeMemory = SystemUtils.isEnabled("AR_HARDWARE_NATIVE_MEMORY").orElse(false);
+		boolean nativeMemory = SystemUtils.isEnabled("AR_HARDWARE_NATIVE_MEMORY").orElse(true);
 
 		List<ComputeRequirement> requirements = new ArrayList<>();
 
@@ -109,17 +107,24 @@ public final class Hardware {
 		} else if ("native".equalsIgnoreCase(driver)) {
 			requirements.add(ComputeRequirement.JNI);
 		} else if ("all".equalsIgnoreCase(driver)) {
-			requirements.add(ComputeRequirement.CL);
-			if (aarch) requirements.add(ComputeRequirement.MTL);
-			if (nativeMemory) requirements.add(ComputeRequirement.JNI);
+			if (aarch) {
+				requirements.add(ComputeRequirement.JNI);
+				requirements.add(ComputeRequirement.MTL);
+				requirements.add(ComputeRequirement.CL);
+			} else {
+				requirements.add(ComputeRequirement.CL);
+				if (gpu) requirements.add(ComputeRequirement.JNI);
+			}
 		} else {
 			throw new IllegalStateException("Unknown driver " + driver);
 		}
 
-		if (nativeMemory) {
-			gpu = false;
-			precision = Precision.FP64;
-		} else if (requirements.contains(ComputeRequirement.MTL) && precision == Precision.FP64) {
+//		if (nativeMemory) {
+//			gpu = false;
+//			precision = Precision.FP64;
+//		}
+
+		if (requirements.contains(ComputeRequirement.MTL) && precision == Precision.FP64) {
 			precision = Precision.FP32;
 		}
 
@@ -131,7 +136,7 @@ public final class Hardware {
 		}
 
 		local = new Hardware(requirements, nativeMemory, gpu,
-							enableKernels, enableDestinationConsolidation,
+							enableDestinationConsolidation,
 							precision, location);
 
 		// TODO  This is not a very desirable way of ensuring that Expressions are properly encoded
@@ -144,7 +149,7 @@ public final class Hardware {
 	private final String name;
 
 	private final boolean enableGpu, enableKernelQueue = false;
-	private final boolean enableKernel, enableDestinationConsolidation;
+	private final boolean enableDestinationConsolidation;
 	private final boolean nativeMemory;
 	private final boolean memVolatile;
 	private long memoryMax;
@@ -156,14 +161,14 @@ public final class Hardware {
 	private List<ContextListener> contextListeners;
 
 	private Hardware(List<ComputeRequirement> type, boolean nativeMemory, boolean enableGpu,
-					 boolean enableKernels, boolean enableDestinationConsolidation,
+					 boolean enableDestinationConsolidation,
 					 Precision precision, Location location) {
 		this(precision == Precision.FP64 ? "local64" : "local32", type, nativeMemory,
-				enableGpu, enableKernels, enableDestinationConsolidation, precision, location);
+				enableGpu, enableDestinationConsolidation, precision, location);
 	}
 
 	private Hardware(String name, List<ComputeRequirement> type, boolean nativeMemory, boolean enableGpu,
-					 boolean enableKernels, boolean enableDestinationConsolidation,
+					 boolean enableDestinationConsolidation,
 					 Precision precision, Location location) {
 		this.name = name;
 
@@ -174,7 +179,6 @@ public final class Hardware {
 		this.location = location;
 
 		this.enableGpu = enableGpu;
-		this.enableKernel = enableKernels;
 		this.enableDestinationConsolidation = enableDestinationConsolidation;
 		this.nativeMemory = nativeMemory;
 		this.memVolatile = location == Location.HEAP;
@@ -244,7 +248,7 @@ public final class Hardware {
 		return new DefaultComputer(computation -> {
 			// TODO  Need a smarter choice for which context to use
 			int count = ParallelProcess.count(computation);
-			return getLocalHardware().getComputeContext(count > 1024);
+			return getLocalHardware().getComputeContext(count == 1, count > 128);
 		});
 	}
 
@@ -304,7 +308,7 @@ public final class Hardware {
 
 	public boolean isDestinationConsolidation() { return enableDestinationConsolidation; }
 
-	public boolean isKernelSupported() { return enableKernel; }
+	public boolean isKernelSupported() { return true; }
 
 	public boolean isNativeMemory() { return nativeMemory; }
 
@@ -371,18 +375,35 @@ public final class Hardware {
 	}
 
 	public DataContext<MemoryData> getDataContext() {
-		return getDataContext(false);
+		return getDataContext(false, false);
 	}
 
-	public DataContext<MemoryData> getDataContext(boolean accelerator) {
+	public DataContext<MemoryData> getDataContext(boolean sequential, boolean accelerator) {
 		DataContext<MemoryData> ctx = explicitContext.get();
 		if (ctx != null) return ctx;
 
 		if (contexts.isEmpty()) return null;
 
 		if (accelerator) {
+			// Favor metal
 			for (DataContext<MemoryData> c : contexts) {
 				if (c instanceof MetalDataContext) {
+					return c;
+				}
+			}
+
+			// Fallback to CL
+			for (DataContext<MemoryData> c : contexts) {
+				if (c instanceof CLDataContext) {
+					return c;
+				}
+			}
+		}
+
+		if (sequential) {
+			// Favor JNI
+			for (DataContext<MemoryData> c : contexts) {
+				if (c instanceof NativeDataContext) {
 					return c;
 				}
 			}
@@ -392,11 +413,11 @@ public final class Hardware {
 	}
 
 	public ComputeContext<MemoryData> getComputeContext() {
-		return getComputeContext(false);
+		return getComputeContext(false, false);
 	}
 
-	public ComputeContext<MemoryData> getComputeContext(boolean accelerator) {
-		return Optional.ofNullable(getDataContext(accelerator)).map(dc -> dc.getComputeContext())
+	public ComputeContext<MemoryData> getComputeContext(boolean sequential, boolean accelerator) {
+		return Optional.ofNullable(getDataContext(sequential, accelerator)).map(dc -> dc.getComputeContext())
 				.orElseThrow(() -> new RuntimeException("No available data context"));
 	}
 

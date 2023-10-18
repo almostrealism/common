@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -29,7 +29,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * A wrapper for kernel programs in JOCL.
+ * A wrapper for manually authored OpenCL kernel programs.
  */
 @Deprecated
 public class CLOperatorSources {
@@ -37,16 +37,14 @@ public class CLOperatorSources {
 	private CLOperatorMap base;
 	private Map<Class, CLOperatorMap> extensions;
 
-	protected synchronized void init(CLComputeContext ctx, String name) {
+	protected synchronized void init(CLComputeContext ctx) {
 		context = ctx;
 
-		String src = loadSource(name);
+		String src = loadSource();
 		base = new CLOperatorMap(context,
 				new OperationMetadata("AcceleratedFunctions", "Built in functions"), src, null);
 		extensions = new HashMap<>();
 	}
-
-	public synchronized CLOperatorMap getOperators() { return base; }
 
 	public synchronized CLOperatorMap getOperators(Class c) {
 		if (!extensions.containsKey(c)) {
@@ -54,29 +52,22 @@ public class CLOperatorSources {
 			if (in == null) {
 				extensions.put(c, base);
 			} else {
+				boolean replaceDouble = context.getHardware().getPrecision() != Precision.FP64;
 				extensions.put(c, new CLOperatorMap(context,
 						new OperationMetadata(c.getSimpleName(), "Custom CL Code"),
-						loadSource(in), null));
+						loadSource(in, true, replaceDouble), null));
 			}
 		}
 
 		return extensions.get(c);
 	}
 
-
-	protected String loadSource() {
-		return loadSource(context.getHardware().getPrecision() == Precision.FP64 ? "local64" : "local32");
+	private String loadSource() {
+		String name = context.getHardware().getPrecision() == Precision.FP64 ? "local64" : "local32";
+		return loadSource(Hardware.class.getClassLoader().getResourceAsStream(name + ".cl"), false, false);
 	}
 
-	protected String loadSource(String name) {
-		return loadSource(Hardware.class.getClassLoader().getResourceAsStream(name + ".cl"), false);
-	}
-
-	protected String loadSource(InputStream is) {
-		return loadSource(is, true);
-	}
-
-	protected String loadSource(InputStream is, boolean includeLocal) {
+	protected String loadSource(InputStream is, boolean includeLocal, boolean replaceDouble) {
 		if (is == null) {
 			throw new IllegalArgumentException("InputStream is null");
 		}
@@ -93,6 +84,10 @@ public class CLOperatorSources {
 			String line;
 
 			while ((line = in.readLine()) != null) {
+				if (replaceDouble) {
+					line = line.replaceAll("double", "float");
+				}
+
 				buf.append(line); buf.append("\n");
 			}
 		} catch (IOException e) {

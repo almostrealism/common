@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,37 +16,31 @@
 
 package org.almostrealism.hardware.jni;
 
+import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.Execution;
 import io.almostrealism.code.InstructionSet;
-import io.almostrealism.code.Semaphore;
-import org.almostrealism.hardware.Hardware;
-import org.almostrealism.hardware.KernelSupport;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.RAM;
 import org.almostrealism.hardware.cl.CLComputeContext;
-import org.almostrealism.hardware.cl.CLDataContext;
 import org.jocl.cl_command_queue;
 
 import java.util.Optional;
-import java.util.function.Consumer;
 import java.util.stream.Stream;
 
-public interface NativeInstructionSet extends InstructionSet, KernelSupport {
+public interface NativeInstructionSet extends InstructionSet {
 	default String getFunctionName() {
 		return "Java_" +
 				getClass().getName().replaceAll("\\.", "_") +
 				"_apply";
 	}
 
-	@Override
-	default boolean isKernelEnabled() { return false; }
+	ComputeContext<MemoryData> getComputeContext();
+
+	void setComputeContext(ComputeContext<MemoryData> context);
 
 	@Override
 	default Execution get(String function, int argCount) {
-		return (args, dependsOn) -> {
-			if (dependsOn != null) dependsOn.waitFor();
-			return apply(Stream.of(args).map(arg -> (MemoryData) arg).toArray(MemoryData[]::new));
-		};
+		return new NativeExecution(this, argCount);
 	}
 
 	@Override
@@ -57,33 +51,39 @@ public interface NativeInstructionSet extends InstructionSet, KernelSupport {
 	@Override
 	default void destroy() { }
 
-
-	default Semaphore apply(MemoryData... args) {
+	default void apply(long idx, int dim0[], MemoryData... args) {
 		long id = NativeComputeContext.totalInvocations++;
 
 		if (NativeComputeContext.enableVerbose && (id + 1) % 100000 == 0) {
 			System.out.println("NativeInstructionSet: " + id);
 		}
 
-		return apply(Stream.of(args).map(MemoryData::getMem).toArray(RAM[]::new),
+		if (idx > Integer.MAX_VALUE) {
+			throw new UnsupportedOperationException();
+		}
+
+		int i = (int) idx;
+
+		apply(Stream.of(args).map(MemoryData::getMem).toArray(RAM[]::new),
 					Stream.of(args).mapToInt(MemoryData::getOffset).toArray(),
-					Stream.of(args).mapToInt(MemoryData::getMemLength).toArray());
+					Stream.of(args).mapToInt(MemoryData::getAtomicMemLength).toArray(),
+					dim0, i);
 	}
 
-	default Semaphore apply(RAM args[], int offsets[], int sizes[]) {
-		return apply(Optional.ofNullable(Hardware.getLocalHardware().getComputeContext())
-				.filter(CLComputeContext.class::isInstance)
-				.map(CLComputeContext.class::cast)
-				.map(CLComputeContext::getClQueue)
-				.map(cl_command_queue::getNativePointer).orElse(-1L), args, offsets, sizes);
+	default void apply(RAM args[], int offsets[], int sizes[], int dim0[], int globalId) {
+		apply(Optional.ofNullable(getComputeContext())
+					.filter(CLComputeContext.class::isInstance)
+					.map(CLComputeContext.class::cast)
+					.map(CLComputeContext::getClQueue)
+					.map(cl_command_queue::getNativePointer).orElse(-1L),
+				args, offsets, sizes, dim0, globalId);
 	}
 
-	default Semaphore apply(long commandQueue, RAM args[], int offsets[], int sizes[]) {
+	default void apply(long commandQueue, RAM args[], int offsets[], int sizes[], int dim0[], int globalId) {
 		apply(commandQueue,
 				Stream.of(args).mapToLong(RAM::getNativePointer).toArray(),
-				offsets, sizes, args.length);
-		return null;
+				offsets, sizes, dim0, args.length, globalId);
 	}
 
-	void apply(long commandQueue, long arg[], int offset[], int size[], int count);
+	void apply(long commandQueue, long[] arg, int[] offset, int[] size, int[] dim0, int count, int globalId);
 }

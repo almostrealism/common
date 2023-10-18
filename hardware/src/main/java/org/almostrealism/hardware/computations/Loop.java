@@ -75,6 +75,13 @@ public class Loop extends OperationComputationAdapter<Void> {
 			return code.toString();
 		});
 
+		scope.getExplicit().setWriter(w -> {
+			StringBuilder code = new StringBuilder();
+			w.println("for (int " + i + " = 0; " + i + " < " + iterations + "; " + i + "++) {\n");
+			atomScope.write(w);
+			w.println("}\n");
+		});
+
 		return scope;
 	}
 

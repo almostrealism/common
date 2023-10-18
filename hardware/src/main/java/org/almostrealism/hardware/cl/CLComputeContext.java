@@ -103,7 +103,7 @@ public class CLComputeContext extends AbstractComputeContext {
 	public synchronized CLOperatorSources getFunctions() {
 		if (functions == null) {
 			functions = new CLOperatorSources();
-			functions.init(this, getName());
+			functions.init(this);
 		}
 
 		return functions;

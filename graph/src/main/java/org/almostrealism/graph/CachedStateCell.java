@@ -80,7 +80,7 @@ public abstract class CachedStateCell<T> extends FilteredCell<T> implements Fact
 	public Supplier<Runnable> tick() {
 		String name = getClass().getSimpleName();
 		if (name == null || name.length() <= 0) name = "anonymous";
-		OperationList tick = new OperationList(name + " Tick");
+		OperationList tick = new OperationList("CachedStateCell (" + name + ") Tick");
 		tick.add(assign(p(outValue), p(cachedValue)));
 		tick.add(reset(p(cachedValue)));
 		tick.add(super.push(null));

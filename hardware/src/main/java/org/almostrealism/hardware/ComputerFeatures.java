@@ -31,7 +31,8 @@ public interface ComputerFeatures extends HardwareFeatures, NameProvider {
 	boolean enableKernel = Hardware.getLocalHardware().isKernelSupported();
 
 	default boolean isContextKernelEnabled() {
-		return Hardware.getLocalHardware().getComputeContext().isKernelSupported();
+		// return Hardware.getLocalHardware().getComputeContext().isKernelSupported();
+		return true;
 	}
 
 	@Override

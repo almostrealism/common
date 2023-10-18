@@ -35,6 +35,7 @@
 		<module>optimize</module>
 		<module>collect</module>
 		<module>ml</module>
+		<module>llvm</module>
 	</modules>
 
 	<packaging>pom</packaging>

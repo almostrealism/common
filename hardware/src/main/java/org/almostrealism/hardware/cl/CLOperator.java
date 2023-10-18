@@ -36,10 +36,8 @@ import java.util.stream.IntStream;
 
 /**
  * {@link CLOperator}s are intended to be used with {@link ThreadLocal}.
- *
- * @param <T> Return type
  */
-public class CLOperator<T extends MemoryData> extends HardwareOperator implements Factory<cl_kernel> {
+public class CLOperator extends HardwareOperator implements Factory<cl_kernel> {
 
 	private static long totalInvocations;
 
@@ -49,9 +47,6 @@ public class CLOperator<T extends MemoryData> extends HardwareOperator implement
 
 	private final Object argCache[];
 	private final int argCount;
-
-	private long globalWorkSize = 1;
-	private long globalWorkOffset;
 
 	private cl_kernel kernel;
 
@@ -86,14 +81,7 @@ public class CLOperator<T extends MemoryData> extends HardwareOperator implement
 	}
 
 	@Override
-	public long getGlobalWorkSize() { return globalWorkSize; }
-	@Override
-	public void setGlobalWorkSize(long globalWorkSize) { this.globalWorkSize = globalWorkSize; }
-
-	@Override
-	public long getGlobalWorkOffset() { return globalWorkOffset; }
-	@Override
-	public void setGlobalWorkOffset(long globalWorkOffset) { this.globalWorkOffset = globalWorkOffset; }
+	protected int getArgCount() { return argCount; }
 
 	@Override
 	public List<MemoryProvider<? extends Memory>> getSupportedMemory() {
@@ -113,6 +101,7 @@ public class CLOperator<T extends MemoryData> extends HardwareOperator implement
 
 		long totalSize = 0;
 
+		if (dependsOn != null) dependsOn.waitFor();
 		MemoryData data[] = prepareArguments(argCount, args);
 
 		try {
@@ -120,7 +109,7 @@ public class CLOperator<T extends MemoryData> extends HardwareOperator implement
 
 			for (int i = 0; i < argCount; i++) {
 				if (data[i] != argCache[i]) {
-					CLMemory mem = (CLMemory) ((MemoryData) data[i]).getMem();
+					CLMemory mem = (CLMemory) data[i].getMem();
 					totalSize += mem.getSize();
 					CL.clSetKernelArg(kernel, index++, Sizeof.cl_mem, Pointer.to(((CLMemory) ((MemoryData) data[i]).getMem()).getMem()));
 				} else {
@@ -131,7 +120,7 @@ public class CLOperator<T extends MemoryData> extends HardwareOperator implement
 			for (int i = 0; i < argCount; i++) {
 				if (data[i] != argCache[i]) {
 					CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
-							Pointer.to(new int[]{((MemoryData) data[i]).getOffset()})); // Offset
+							Pointer.to(new int[]{data[i].getOffset()})); // Offset
 				} else {
 					index++;
 				}
@@ -140,7 +129,7 @@ public class CLOperator<T extends MemoryData> extends HardwareOperator implement
 			for (int i = 0; i < argCount; i++) {
 				if (data[i] != argCache[i]) {
 					CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
-							Pointer.to(new int[]{((MemoryData) data[i]).getAtomicMemLength()})); // Size
+							Pointer.to(new int[]{data[i].getAtomicMemLength()})); // Size
 				} else {
 					index++;
 				}
@@ -150,10 +139,10 @@ public class CLOperator<T extends MemoryData> extends HardwareOperator implement
 				if (data[i] != argCache[i]) {
 					if (enableDimensionMasks) {
 						CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
-								Pointer.to(new int[]{((MemoryData) data[i]).getAtomicMemLength() * dimMasks[i]})); // Dim0
+								Pointer.to(new int[]{data[i].getAtomicMemLength() * dimMasks[i]})); // Dim0
 					} else {
 						CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
-								Pointer.to(new int[]{((MemoryData) data[i]).getAtomicMemLength()})); // Dim0
+								Pointer.to(new int[]{data[i].getAtomicMemLength()})); // Dim0
 					}
 				} else {
 					index++;
@@ -175,16 +164,16 @@ public class CLOperator<T extends MemoryData> extends HardwareOperator implement
 			cl_event event = new cl_event();
 
 			if (dependsOn instanceof CLSemaphore) {
-				CL.clEnqueueNDRangeKernel(context.getClQueue(globalWorkSize > 1), kernel, 1,
-						new long[] { globalWorkOffset }, new long[] { globalWorkSize },
+				CL.clEnqueueNDRangeKernel(context.getClQueue(getGlobalWorkSize() > 1), kernel, 1,
+						new long[] { getGlobalWorkOffset() }, new long[] { getGlobalWorkSize() },
 						null, 1,
 						new cl_event[] { ((CLSemaphore) dependsOn).getEvent() }, event);
 
 			} else {
-				if (dependsOn != null) dependsOn.waitFor();
+				// if (dependsOn != null) dependsOn.waitFor();
 
-				CL.clEnqueueNDRangeKernel(context.getClQueue(globalWorkSize > 1), kernel, 1,
-						new long[]{globalWorkOffset}, new long[]{globalWorkSize},
+				CL.clEnqueueNDRangeKernel(context.getClQueue(getGlobalWorkSize() > 1), kernel, 1,
+						new long[]{getGlobalWorkOffset()}, new long[]{getGlobalWorkSize()},
 						null, 0, null, event);
 			}
 
@@ -196,49 +185,6 @@ public class CLOperator<T extends MemoryData> extends HardwareOperator implement
 			// TODO  This should use the exception processor also, but theres no way to pass the message details
 			throw new HardwareException(e.getMessage() + " for function " + name +
 					" (total bytes = " + totalSize + ")", e);
-		}
-	}
-
-	protected int[] computeDimensionMasks(Object args[]) {
-		int sizes[] = new int[args.length];
-
-		for (int i = 0; i < argCount; i++) {
-			if (args[i] == null) {
-				throw new NullPointerException("argument " + i + " to function " + name);
-			}
-
-			if (!(args[i] instanceof MemoryData)) {
-				throw new IllegalArgumentException("argument " + i + " (" +
-						args[i].getClass().getSimpleName() + ") to function " +
-						name + " is not a MemoryData");
-			}
-
-			if (((MemoryData) args[i]).getMem() instanceof CLMemory == false) {
-				throw new IllegalArgumentException("argument " + i + " (" +
-						args[i].getClass().getSimpleName() + ") to function " +
-						name + " is not associated with CLMemory");
-			}
-
-			if (args[i] instanceof MemoryBank) {
-				sizes[i] = ((MemoryBank) args[i]).getCount();
-			} else if (args[i] instanceof Bytes) {
-				sizes[i] = ((Bytes) args[i]).getCount();
-			} else {
-				sizes[i] = ((MemoryData) args[i]).getMemLength();
-			}
-		}
-
-		if (enableAtomicDimensionMasks && globalWorkSize == 1) {
-			return IntStream.range(0, argCount).map(i -> 0).toArray();
-		} else {
-			if (globalWorkSize > Integer.MAX_VALUE) {
-				// Is it though?
-				throw new IllegalArgumentException("globalWorkSize is too large");
-			}
-
-			return IntStream.range(0, sizes.length)
-					.map(i -> (sizes[i] >= globalWorkSize && sizes[i] % globalWorkSize == 0) ? 1 : 0)
-					.toArray();
 		}
 	}
 

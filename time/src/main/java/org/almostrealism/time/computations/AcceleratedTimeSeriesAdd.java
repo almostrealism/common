@@ -45,7 +45,7 @@ public class AcceleratedTimeSeriesAdd extends OperationComputationAdapter<Accele
 		Consumer<String> code = scope.code();
 		code.accept(banklast0 + " = " + input0 + ";\n");
 		code.accept(banklast1 + " = " + input1 + ";\n");
-		code.accept(bank1.getSimpleExpression() + " = " + bank1.getSimpleExpression() + " + 1;\n");
+		code.accept(bank1.getSimpleExpression() + " = " + bank1.getSimpleExpression() + " + 1.0;\n");
 		return scope;
 	}
 }

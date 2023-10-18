@@ -21,6 +21,7 @@ import io.almostrealism.relation.Factory;
 import org.almostrealism.generated.BaseGeneratedOperation;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
+import org.almostrealism.io.SystemUtils;
 
 import java.io.BufferedWriter;
 import java.io.File;
@@ -193,10 +194,11 @@ public class NativeCompiler {
 		return () -> {
 			String libFormat = System.getProperty("AR_HARDWARE_LIB_FORMAT");
 			if (libFormat == null) libFormat = System.getenv("AR_HARDWARE_LIB_FORMAT");
-			if (libFormat == null) libFormat = "lib%NAME%.so";
+			if (libFormat == null) libFormat = SystemUtils.isAarch64() ? "lib%NAME%.dylib" : "lib%NAME%.so";
 
 			String libCompiler = System.getProperty("AR_HARDWARE_NATIVE_COMPILER");
 			if (libCompiler == null) libCompiler = System.getenv("AR_HARDWARE_NATIVE_COMPILER");
+			if (libCompiler == null) libCompiler = "gcc.sh";
 
 			String exeCompiler = System.getProperty("AR_HARDWARE_EXTERNAL_COMPILER");
 			if (exeCompiler == null) exeCompiler = System.getenv("AR_HARDWARE_EXTERNAL_COMPILER");

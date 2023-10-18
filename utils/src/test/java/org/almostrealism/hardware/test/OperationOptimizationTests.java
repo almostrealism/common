@@ -21,12 +21,15 @@ import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.io.SystemUtils;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
 
 public class OperationOptimizationTests implements TestFeatures {
 	@Test
 	public void reshapeEnumerate() {
+		if (SystemUtils.isAarch64() && skipLongTests) return;
+
 		int seqLength = 1024;
 		int heads = 12;
 		int headSize = 64;

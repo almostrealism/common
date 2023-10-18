@@ -19,6 +19,7 @@ package org.almostrealism.c;
 import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.DefaultLanguageOperations;
 import io.almostrealism.code.PhysicalScope;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.hardware.Hardware;
 
@@ -40,7 +41,12 @@ public class CLanguageOperations extends DefaultLanguageOperations {
 	public boolean isEnableArgumentDetailReads() { return enableArgumentDetailReads; }
 
 	@Override
-	public String kernelIndex(int index) { return "0"; }
+	public String kernelIndex(int index) {
+		if (index != 0)
+			throw new IllegalArgumentException();
+
+		return "global_id";
+	}
 
 	@Override
 	public String annotationForPhysicalScope(PhysicalScope scope) {

@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,7 +19,6 @@ package org.almostrealism.hardware.cl;
 import io.almostrealism.code.InstructionSet;
 import io.almostrealism.code.OperationMetadata;
 import org.almostrealism.hardware.HardwareException;
-import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.profile.RunData;
 import org.jocl.CLException;
 import org.jocl.cl_program;
@@ -36,12 +35,12 @@ import java.util.function.Consumer;
  *
  * @author  Michael Murray
  */
-public class CLOperatorMap<T extends MemoryData> implements InstructionSet, BiFunction<String, CLException, HardwareException> {
+public class CLOperatorMap implements InstructionSet, BiFunction<String, CLException, HardwareException> {
 	private CLComputeContext context;
 	private CLProgram prog;
 
-	private ThreadLocal<Map<String, CLOperator<T>>> operators;
-	private List<CLOperator<T>> allOperators;
+	private ThreadLocal<Map<String, CLOperator>> operators;
+	private List<CLOperator> allOperators;
 	private Consumer<RunData> profile;
 
 	public CLOperatorMap(CLComputeContext ctx, OperationMetadata metadata, String src, Consumer<RunData> profile) {
@@ -85,12 +84,12 @@ public class CLOperatorMap<T extends MemoryData> implements InstructionSet, BiFu
 		}
 	}
 
-	public CLOperator<T> get(String key) {
+	public CLOperator get(String key) {
 		return get(key, 2);
 	}
 
-	public CLOperator<T> get(String key, int argCount) {
-		Map<String, CLOperator<T>> ops = operators.get();
+	public CLOperator get(String key, int argCount) {
+		Map<String, CLOperator> ops = operators.get();
 
 		if (ops == null) {
 			ops = new HashMap<>();
@@ -98,7 +97,7 @@ public class CLOperatorMap<T extends MemoryData> implements InstructionSet, BiFu
 		}
 
 		if (!ops.containsKey(key)) {
-			CLOperator<T> op = new CLOperator<>(context, prog, key, argCount, profile, this);
+			CLOperator op = new CLOperator(context, prog, key, argCount, profile, this);
 			ops.put(key, op);
 			allOperators.add(op);
 		}

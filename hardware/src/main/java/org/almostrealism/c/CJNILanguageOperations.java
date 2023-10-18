@@ -17,6 +17,7 @@
 package org.almostrealism.c;
 
 import io.almostrealism.code.Accessibility;
+import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.ArrayVariable;
 
 import java.util.List;
@@ -41,9 +42,21 @@ public class CJNILanguageOperations extends CLanguageOperations {
 	@Override
 	protected void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out, Accessibility access) {
 		if (access == Accessibility.EXTERNAL) {
-			out.accept("JNIEnv *env, jobject obj, jlong commandQueue, jlongArray arg, jintArray offset, jintArray size, jint count");
-		} else {
-			super.renderArguments(arguments, out, access);
+			out.accept("JNIEnv *env, jobject obj, jlong commandQueue, jlongArray arg, jintArray offset, jintArray size, jintArray dim0, jint count, jint global_id");
+			return;
 		}
+
+		super.renderArguments(arguments, out, access);
+
+		if (!arguments.isEmpty()) {
+			out.accept(", ");
+			out.accept("uint global_id");
+		}
+	}
+
+	@Override
+	protected void renderParameters(List<Expression> parameters, Consumer<String> out) {
+		super.renderParameters(parameters, out);
+		out.accept(", global_id");
 	}
 }
