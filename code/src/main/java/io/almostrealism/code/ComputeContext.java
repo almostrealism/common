@@ -16,6 +16,7 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.Scope;
 
 public interface ComputeContext<MEM> {
@@ -32,6 +33,10 @@ public interface ComputeContext<MEM> {
 	InstructionSet deliver(Scope scope);
 
 	boolean isCPU();
+
+	default boolean isProfiling() {
+		return false;
+	}
 
 	boolean isKernelSupported();
 

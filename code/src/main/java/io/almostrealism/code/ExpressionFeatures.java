@@ -19,15 +19,13 @@ package io.almostrealism.code;
 import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.Conditional;
 import io.almostrealism.expression.DoubleConstant;
+import io.almostrealism.expression.Epsilon;
 import io.almostrealism.expression.Equals;
 import io.almostrealism.expression.Exp;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Greater;
 import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.expression.NAryExpression;
-import io.almostrealism.scope.Variable;
-
-import java.util.Collections;
+import io.almostrealism.expression.MinimumValue;
 
 public interface ExpressionFeatures {
 
@@ -50,6 +48,10 @@ public interface ExpressionFeatures {
 	default Exp exp(Expression expression) {
 		return new Exp(expression);
 	}
+
+	default Epsilon epsilon() { return new Epsilon(); }
+
+	default MinimumValue minValue() { return new MinimumValue(); }
 
 	default Greater greater(Expression<?> left, Expression<?> right, boolean includeEqual) {
 		return new Greater(left, right, includeEqual);

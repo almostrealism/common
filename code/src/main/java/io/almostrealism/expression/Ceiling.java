@@ -16,6 +16,8 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.lang.LanguageOperations;
+
 import java.util.List;
 import java.util.OptionalDouble;
 
@@ -25,13 +27,13 @@ public class Ceiling extends Expression<Double> {
 	}
 
 	@Override
-	public String getExpression() {
+	public String getExpression(LanguageOperations lang) {
 		OptionalDouble v = getChildren().get(0).doubleValue();
-		return v.isPresent() ? "ceil(" + v.getAsDouble() + ")" : "ceil(" + getChildren().get(0).getExpression() + ")";
+		return v.isPresent() ? "ceil(" + v.getAsDouble() + ")" : "ceil(" + getChildren().get(0).getExpression(lang) + ")";
 	}
 
 	@Override
-	public String getWrappedExpression() { return getExpression(); }
+	public String getWrappedExpression(LanguageOperations lang) { return getExpression(lang); }
 
 	@Override
 	public OptionalDouble doubleValue() {

@@ -16,24 +16,22 @@
 
 package io.almostrealism.expression;
 
-import io.almostrealism.code.LanguageOperations;
+import io.almostrealism.lang.LanguageOperations;
 
 public class KernelIndex extends StaticReference<Integer> {
-	private LanguageOperations lang;
 	private int index;
 
-	public KernelIndex(LanguageOperations lang) {
-		this(lang, 0);
+	public KernelIndex() {
+		this(0);
 	}
 
-	public KernelIndex(LanguageOperations lang, int index) {
+	public KernelIndex(int index) {
 		super(Integer.class, null);
-		this.lang = lang;
 		this.index = index;
 	}
 
 	@Override
-	public String getExpression() {
+	public String getExpression(LanguageOperations lang) {
 		return lang.kernelIndex(index);
 	}
 

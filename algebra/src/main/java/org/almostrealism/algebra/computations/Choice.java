@@ -53,7 +53,8 @@ public abstract class Choice<T extends PackedCollection<?>> extends CollectionPr
 		Expression decisionChoice = decision.multiply(choices).floor().multiply(getMemLength());
 
 		for (int i = 0; i < getMemLength(); i++) {
-			code.accept(output.ref(i).getSimpleExpression() + " = " + input.referenceRelative(decisionChoice.add(i)).getSimpleExpression() + ";\n");
+			code.accept(output.ref(i).getSimpleExpression(getLanguage()) + " = " +
+					input.referenceRelative(decisionChoice.add(i)).getSimpleExpression(getLanguage()) + ";\n");
 		}
 
 		return scope;

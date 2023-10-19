@@ -16,6 +16,8 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.lang.LanguageOperations;
+
 public interface ScopeInputManager extends ArgumentProvider {
 	LanguageOperations getLanguage();
 }

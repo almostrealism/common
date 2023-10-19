@@ -175,11 +175,11 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 	}
 
 	default void cc(Runnable r, ComputeRequirement... expectations) {
-		cc(() -> { r.run(); return null; }, expectations);
+		cc(() -> { r.run(); return new Void[0]; }, expectations);
 	}
 
 	default <T> T cc(Callable<T> exec, ComputeRequirement... expectations) {
-		return Hardware.getLocalHardware().getDataContext().computeContext(exec, expectations);
+		return Hardware.getLocalHardware().computeContext(exec, expectations);
 	}
 
 	default Ops o() { return Ops.ops(); }

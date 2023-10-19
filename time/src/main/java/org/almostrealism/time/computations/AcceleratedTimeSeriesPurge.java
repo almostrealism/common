@@ -16,6 +16,7 @@
 
 package org.almostrealism.time.computations;
 
+import io.almostrealism.code.Precision;
 import io.almostrealism.scope.HybridScope;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.StaticReference;
@@ -43,16 +44,18 @@ public class AcceleratedTimeSeriesPurge extends OperationComputationAdapter<Pack
 		HybridScope<Void> scope = new HybridScope<>(this);
 
 		Expression i = new StaticReference(Integer.class, "i");
-		String left = getArgument(0).valueAt(0).getSimpleExpression();
-		String right = getArgument(0).valueAt(1).getSimpleExpression();
-		String banki = getArgument(0).referenceRelative(i.multiply(2)).getSimpleExpression();
-		String cursor0 = getArgument(1).valueAt(0).getSimpleExpression();
-		String count = getArgument(2).valueAt(0).getSimpleExpression();
+		String left = getArgument(0).valueAt(0).getSimpleExpression(getLanguage());
+		String right = getArgument(0).valueAt(1).getSimpleExpression(getLanguage());
+		String banki = getArgument(0).referenceRelative(i.multiply(2)).getSimpleExpression(getLanguage());
+		String cursor0 = getArgument(1).valueAt(0).getSimpleExpression(getLanguage());
+		String count = getArgument(2).valueAt(0).getSimpleExpression(getLanguage());
+
+		Precision p = getLanguage().getPrecision();
 
 		Consumer<String> code = scope.code();
 		if (wavelength != 1.0) {
-			code.accept(count + " = fmod(" + count + " + " + stringForDouble(1.0) + ", " + stringForDouble(wavelength) + ");");
-			code.accept("if (" + count + " = " + stringForDouble(0.0) + ") {\n");
+			code.accept(count + " = fmod(" + count + " + " + p.stringForDouble(1.0) + ", " + p.stringForDouble(wavelength) + ");");
+			code.accept("if (" + count + " = " + p.stringForDouble(0.0) + ") {\n");
 		}
 
 		code.accept("if (" + right + " - " + left + " > 0) {\n");

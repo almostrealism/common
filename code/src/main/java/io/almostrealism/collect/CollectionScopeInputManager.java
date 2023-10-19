@@ -17,7 +17,7 @@
 package io.almostrealism.collect;
 
 import io.almostrealism.code.DefaultScopeInputManager;
-import io.almostrealism.code.LanguageOperations;
+import io.almostrealism.lang.LanguageOperations;
 
 public class CollectionScopeInputManager extends DefaultScopeInputManager {
 	public CollectionScopeInputManager(LanguageOperations lang) {

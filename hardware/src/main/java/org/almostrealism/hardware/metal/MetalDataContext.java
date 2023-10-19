@@ -23,9 +23,10 @@ import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.Precision;
+import io.almostrealism.code.Precision;
 import org.almostrealism.hardware.RAM;
 import org.almostrealism.hardware.jvm.JVMMemoryProvider;
+import org.almostrealism.io.SystemUtils;
 
 import java.util.List;
 import java.util.Optional;
@@ -34,9 +35,11 @@ import java.util.function.IntFunction;
 import java.util.stream.Stream;
 
 public class MetalDataContext implements DataContext<MemoryData> {
+	public static final boolean fp16 = SystemUtils.getProperty("AR_HARDWARE_PRECISION", "32").equals("16");
+
 	private final Hardware hardware;
 	private final String name;
-	private final long memoryMax;
+	private final long maxReservation;
 	private final int offHeapSize;
 
 	private MTLDevice mainDevice, kernelDevice;
@@ -50,32 +53,33 @@ public class MetalDataContext implements DataContext<MemoryData> {
 
 	private Runnable start;
 
-	public MetalDataContext(Hardware hardware, String name, long memoryMax, int offHeapSize) {
+	public MetalDataContext(Hardware hardware, String name, long maxReservation, int offHeapSize) {
 		this.hardware = hardware;
 		this.name = name;
-		this.memoryMax = memoryMax;
+		this.maxReservation = maxReservation;
 		this.offHeapSize = offHeapSize;
 		this.computeContext = new ThreadLocal<>();
 		this.memoryProvider = new ThreadLocal<>();
 	}
 
-	public void init(boolean gpu, boolean kernelQueue) {
+	@Override
+	public void init() {
 		altRam = new JVMMemoryProvider();
-		start = () -> start(gpu, kernelQueue);
+		start = this::start;
 	}
 
-	protected void identifyDevices(boolean gpu, boolean kernelQueue) {
+	protected void identifyDevices(){
 		if (mainDevice != null) return;
 
 		mainDevice = MTLDevice.createSystemDefaultDevice();
 		mainDeviceInfo = mainDevice == null ? null : deviceInfo(mainDevice);
 	}
 
-	private void start(boolean gpu, boolean kernelQueue) {
+	private void start() {
 		if (mainDeviceInfo != null) return;
 
-		identifyDevices(gpu, kernelQueue);
-		mainRam = new MetalMemoryProvider(this, hardware.getNumberSize(), memoryMax);
+		identifyDevices();
+		mainRam = new MetalMemoryProvider(this, getPrecision().bytes(), maxReservation * getPrecision().bytes());
 		start = null;
 	}
 
@@ -96,9 +100,11 @@ public class MetalDataContext implements DataContext<MemoryData> {
 		return cc;
 	}
 
+	@Override
 	public String getName() { return name; }
 
-	public Precision getPrecision() { return hardware.getPrecision(); }
+	@Override
+	public Precision getPrecision() { return fp16 ? Precision.FP16 : Precision.FP32; }
 
 	public MTLDevice getDevice() {
 		if (start != null) start.run();
@@ -135,17 +141,13 @@ public class MetalDataContext implements DataContext<MemoryData> {
 		}
 	}
 
-	public ComputeContext getComputeContext() {
+	public ComputeContext<MemoryData> getComputeContext() {
 		if (computeContext.get() == null) {
 			if (Hardware.enableVerbose) System.out.println("INFO: No explicit ComputeContext for " + Thread.currentThread().getName());
 			computeContext.set(createContext());
 		}
 
 		return computeContext.get();
-	}
-
-	public MetalComputeContext getMetalComputeContext() {
-		return (MetalComputeContext) getComputeContext();
 	}
 
 	public <T> T computeContext(Callable<T> exec, ComputeRequirement... expectations) {

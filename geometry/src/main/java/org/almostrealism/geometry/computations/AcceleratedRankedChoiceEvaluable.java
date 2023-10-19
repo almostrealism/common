@@ -16,7 +16,7 @@
 
 package org.almostrealism.geometry.computations;
 
-import io.almostrealism.code.LanguageOperations;
+import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.scope.ArrayVariable;
@@ -24,15 +24,13 @@ import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.scope.Variable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.geometry.DimensionAware;
-import org.almostrealism.hardware.AcceleratedEvaluable;
 import org.almostrealism.hardware.DynamicAcceleratedEvaluable;
 import org.almostrealism.hardware.Hardware;
-import org.almostrealism.hardware.KernelSupport;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryBank;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ProducerWithRank;
-import org.almostrealism.hardware.Precision;
+import io.almostrealism.code.Precision;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -104,16 +102,16 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData> extends Dyna
 		}
 	}
 
-	public String getBody(Variable<MemoryData, ?> outputVariable) {
+	public String getBody(Variable<MemoryData, ?> outputVariable, LanguageOperations lang) {
 		StringBuilder buf = new StringBuilder();
 
 		// if (enableOpenClKernelWorkaround) buf.append("printf(\"Starting method...\\n\");\n");
 
 		List<Variable<?, ?>> variables = new ArrayList<>();
-		writeVariables(buf::append, variables);
+		writeVariables(buf::append, variables, null);
 		variables.addAll(getVariables());
 
-		writeInputAssignments(buf::append, variables);
+		writeInputAssignments(buf::append, variables, lang);
 		buf.append("highestRankLocal(");
 		buf.append(getHighestRankResultVariable().getName());
 		buf.append(", ");
@@ -133,7 +131,7 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData> extends Dyna
 		return buf.toString();
 	}
 
-	protected void writeInputAssignments(Consumer<String> output, List<Variable<?, ?>> existingVariables) {
+	protected void writeInputAssignments(Consumer<String> output, List<Variable<?, ?>> existingVariables, LanguageOperations lang) {
 		List<ArrayVariable<Scalar>> ranks = getRanks();
 
 		IntStream.range(0, ranks.size()).forEach(i -> {
@@ -151,12 +149,12 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData> extends Dyna
 
 		output.accept(getHighestRankConfVariable().getName());
 		output.accept("[0] = ");
-		output.accept(stringForDouble(ranks.size()));
+		output.accept(lang.getPrecision().stringForDouble(ranks.size()));
 		output.accept(";\n");
 
 		output.accept(getHighestRankConfVariable().getName());
 		output.accept("[1] = ");
-		output.accept(stringForDouble(e));
+		output.accept(lang.getPrecision().stringForDouble(e));
 		output.accept(";\n");
 	}
 
@@ -164,7 +162,7 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData> extends Dyna
 		List<ArrayVariable<T>> choices = getChoices();
 		IntStream.range(0, choices.size()).forEach(i -> {
 			output.accept("if (");
-			output.accept(stringForDouble(i));
+			output.accept(lang.getPrecision().stringForDouble(i));
 			output.accept(" == ");
 			output.accept(getHighestRankResultVariable().getName());
 			output.accept("[1]) {\n");
@@ -330,7 +328,7 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData> extends Dyna
 	}
 
 	private boolean isCastEnabled() {
-		return !getComputeContext().isCPU() && Hardware.getLocalHardware().getPrecision() == Precision.FP64;
+		return !getComputeContext().isCPU() && getComputeContext().getDataContext().getPrecision() == Precision.FP64;
 	}
 
 	public String getVariableValueName(Variable v, String pos, boolean assignment, int kernelIndex) {

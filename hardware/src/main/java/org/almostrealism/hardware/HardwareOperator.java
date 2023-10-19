@@ -20,6 +20,7 @@ import io.almostrealism.code.Execution;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.relation.Named;
+import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.mem.Bytes;
 
 import java.util.List;
@@ -139,15 +140,26 @@ public abstract class HardwareOperator implements Execution, KernelWork, Named {
 
 	public static void verboseLog(Runnable r) {
 		boolean log = enableVerboseLog;
-		enableVerboseLog = true;
-		r.run();
-		enableVerboseLog = log;
+		boolean compilerLog = NativeCompiler.enableVerbose;
+
+		try {
+			enableVerboseLog = true;
+			NativeCompiler.enableVerbose = true;
+			r.run();
+		} finally {
+			enableVerboseLog = log;
+			NativeCompiler.enableVerbose = compilerLog;
+		}
 	}
 
 	public static void disableDimensionMasks(Runnable r) {
 		boolean masks = enableDimensionMasks;
-		enableDimensionMasks = false;
-		r.run();
-		enableDimensionMasks = masks;
+
+		try {
+			enableDimensionMasks = false;
+			r.run();
+		} finally {
+			enableDimensionMasks = masks;
+		}
 	}
 }

@@ -17,9 +17,8 @@
 package io.almostrealism.scope;
 
 import io.almostrealism.code.Array;
-import io.almostrealism.code.LanguageOperations;
+import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.expression.Constant;
-import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.collect.TraversableExpression;
@@ -151,7 +150,7 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 
 		if (getDelegate() == null) {
 			pos = pos.add(getOffsetValue());
-			return new InstanceReference(new Variable<>(dereference.apply(getName(), pos.toInt().getSimpleExpression()),
+			return new InstanceReference(new Variable<>(dereference.apply(getName(), pos.toInt().getSimpleExpression(getLanguage())),
 					false, new Constant<>(getType()), this), pos);
 		} else if (getDelegate() == this) {
 			throw new IllegalArgumentException("Circular delegate reference");

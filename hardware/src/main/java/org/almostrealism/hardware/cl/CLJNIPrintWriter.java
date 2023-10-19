@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware.cl;
 
+import io.almostrealism.code.Precision;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Method;
@@ -23,7 +24,6 @@ import io.almostrealism.scope.Variable;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
 import org.almostrealism.c.CJNIPrintWriter;
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.io.PrintWriter;
 import org.jocl.cl_command_queue;
 import org.jocl.cl_event;
@@ -33,8 +33,8 @@ import java.util.List;
 import java.util.stream.IntStream;
 
 public class CLJNIPrintWriter extends CJNIPrintWriter {
-	public CLJNIPrintWriter(PrintWriter p, String topLevelMethodName) {
-		super(p, topLevelMethodName);
+	public CLJNIPrintWriter(PrintWriter p, String topLevelMethodName, Precision precision) {
+		super(p, topLevelMethodName, precision);
 		enableWarnOnExplictParams = false;
 	}
 
@@ -44,8 +44,8 @@ public class CLJNIPrintWriter extends CJNIPrintWriter {
 		println(new Variable<>("*offsetArr", new StaticReference<>(int[].class, "(*env)->GetIntArrayElements(env, offset, 0)")));
 		println(new Variable<>("*sizeArr", new StaticReference<>(int[].class, "(*env)->GetIntArrayElements(env, size, 0)")));
 
-		String numberType = Hardware.getLocalHardware().getNumberTypeName();
-		int numberSize = Hardware.getLocalHardware().getNumberSize();
+		String numberType = getLanguage().getPrecision().typeName();
+		int numberSize = getLanguage().getPrecision().bytes();
 
 		IntStream.range(0, arguments.size())
 				.mapToObj(i -> new Variable("*" + arguments.get(i).getName(),
@@ -80,7 +80,7 @@ public class CLJNIPrintWriter extends CJNIPrintWriter {
 	}
 
 	protected Method<Void> clEnqueueBuffer(int index, ArrayVariable<?> variable, boolean write) {
-		int size = Hardware.getLocalHardware().getNumberSize();
+		int size = getLanguage().getPrecision().bytes();
 
 		Expression<cl_command_queue> nativeCommandQueue =
 				new StaticReference<>(cl_command_queue.class, "(cl_command_queue) commandQueue");

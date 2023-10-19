@@ -19,7 +19,7 @@ package org.almostrealism.hardware.cl;
 import io.almostrealism.code.OperationMetadata;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.Issues;
-import org.almostrealism.hardware.Precision;
+import io.almostrealism.code.Precision;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -52,7 +52,7 @@ public class CLOperatorSources {
 			if (in == null) {
 				extensions.put(c, base);
 			} else {
-				boolean replaceDouble = context.getHardware().getPrecision() != Precision.FP64;
+				boolean replaceDouble = context.getDataContext().getPrecision() != Precision.FP64;
 				extensions.put(c, new CLOperatorMap(context,
 						new OperationMetadata(c.getSimpleName(), "Custom CL Code"),
 						loadSource(in, true, replaceDouble), null));
@@ -63,7 +63,7 @@ public class CLOperatorSources {
 	}
 
 	private String loadSource() {
-		String name = context.getHardware().getPrecision() == Precision.FP64 ? "local64" : "local32";
+		String name = context.getDataContext().getPrecision() == Precision.FP64 ? "local64" : "local32";
 		return loadSource(Hardware.class.getClassLoader().getResourceAsStream(name + ".cl"), false, false);
 	}
 

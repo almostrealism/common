@@ -16,6 +16,8 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.lang.LanguageOperations;
+
 public class ArraySize<T> extends Expression<T> {
 	private int size;
 
@@ -25,7 +27,7 @@ public class ArraySize<T> extends Expression<T> {
 	}
 
 	@Override
-	public String getExpression() { return null; }
+	public String getExpression(LanguageOperations lang) { return null; }
 
 	@Override
 	public int getArraySize() { return size; }

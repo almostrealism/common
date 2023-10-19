@@ -16,6 +16,8 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.lang.LanguageOperations;
+
 import java.util.List;
 import java.util.Optional;
 import java.util.OptionalDouble;
@@ -27,9 +29,9 @@ public class Conditional extends Expression<Double> {
 	}
 
 	@Override
-	public String getExpression() {
-		return "(" + getChildren().get(0).getExpression() + ") ? (" + getChildren().get(1).getExpression() +
-				") : (" + getChildren().get(2).getExpression() + ")";
+	public String getExpression(LanguageOperations lang) {
+		return "(" + getChildren().get(0).getExpression(lang) + ") ? (" + getChildren().get(1).getExpression(lang) +
+				") : (" + getChildren().get(2).getExpression(lang) + ")";
 	}
 
 	@Override

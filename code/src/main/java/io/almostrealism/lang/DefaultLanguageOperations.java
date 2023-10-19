@@ -14,8 +14,10 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.code;
+package io.almostrealism.lang;
 
+import io.almostrealism.code.Accessibility;
+import io.almostrealism.code.Precision;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.scope.ArrayVariable;
@@ -29,14 +31,29 @@ import java.util.stream.Collectors;
 public abstract class DefaultLanguageOperations implements LanguageOperations {
 	protected boolean enableWarnOnExplictParams = true;
 
+	private Precision precision;
 	private boolean enableArrayVariables;
 
-	public DefaultLanguageOperations(boolean enableArrayVariables) {
+	public DefaultLanguageOperations(Precision precision, boolean enableArrayVariables) {
+		this.precision = precision;
 		this.enableArrayVariables = enableArrayVariables;
 	}
 
 	public boolean isEnableArrayVariables() {
 		return enableArrayVariables;
+	}
+
+	@Override
+	public Precision getPrecision() { return precision; }
+
+	@Override
+	public String min(String a, String b) {
+		return "min(" + a + ", " + b + ")";
+	}
+
+	@Override
+	public String max(String a, String b) {
+		return "max(" + a + ", " + b + ")";
 	}
 
 	@Override
@@ -53,7 +70,7 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 		for (int i = 0; i < parameters.size(); i++) {
 			Expression arg = parameters.get(i);
 
-			out.accept(arg.getExpression());
+			out.accept(arg.getExpression(this));
 
 			if (i < parameters.size() - 1) {
 				out.accept(", ");
@@ -64,7 +81,10 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 	protected void renderParameters(List<Expression> parameters, Consumer<String> out) {
 		Optional<Expression> explicit = parameters.stream().filter(exp -> !(exp instanceof InstanceReference)).findFirst();
 		if (explicit.isPresent()) {
-			if (enableWarnOnExplictParams) System.out.println("WARN: Explicit parameter (" + explicit.get().getExpression() + ") provided to method; falling back to explicit rendering");
+			if (enableWarnOnExplictParams) {
+				System.out.println("WARN: Explicit parameter (" + explicit.get().getExpression(this) +
+									") provided to method; falling back to explicit rendering");
+			}
 			renderParametersExplicit(parameters, out);
 			return;
 		}
@@ -90,7 +110,7 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 		}
 	}
 
-	protected void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out, Accessibility access) {
+	public void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out, Accessibility access) {
 		if (enableArrayVariables) {
 			if (!arguments.isEmpty()) {
 				renderArguments(arguments, out, true, true, access, null, "*", "");

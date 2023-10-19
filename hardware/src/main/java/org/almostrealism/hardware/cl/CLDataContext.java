@@ -21,6 +21,7 @@ import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.code.DataContext;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.code.Precision;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.MemoryData;
@@ -43,9 +44,11 @@ import java.util.stream.Stream;
 public class CLDataContext implements DataContext<MemoryData> {
 	private final Hardware hardware;
 	private final String name;
-	private final long memoryMax;
+	private final long maxReservation;
 	private final int offHeapSize;
 	private final CLMemoryProvider.Location location;
+
+	private Precision precision;
 
 	private cl_platform_id platform;
 
@@ -66,19 +69,20 @@ public class CLDataContext implements DataContext<MemoryData> {
 
 	private Runnable start;
 
-	public CLDataContext(Hardware hardware, String name, long memoryMax, int offHeapSize, CLMemoryProvider.Location location) {
+	public CLDataContext(Hardware hardware, String name, long maxReservation, int offHeapSize, CLMemoryProvider.Location location) {
 		this.hardware = hardware;
 		this.name = name;
-		this.memoryMax = memoryMax;
+		this.maxReservation = maxReservation;
 		this.offHeapSize = offHeapSize;
 		this.location = location;
 		this.computeContext = new ThreadLocal<>();
 		this.memoryProvider = new ThreadLocal<>();
 	}
 
-	public void init(boolean gpu, boolean kernelQueue) {
+	@Override
+	public void init() {
 		altRam = new JVMMemoryProvider();
-		start = () -> start(gpu, kernelQueue);
+		start = () -> start(false, true);
 	}
 
 	protected void identifyDevices(boolean gpu, boolean kernelQueue) {
@@ -109,29 +113,25 @@ public class CLDataContext implements DataContext<MemoryData> {
 		try {
 			CL.clGetDeviceIDs(platform, deviceType, 0, null, numDevicesArray);
 			numDevices = numDevicesArray[0];
-		} catch (Exception e) {
-			if (Hardware.enableVerbose)
-				e.printStackTrace();
-		}
+		} catch (Exception e) { }
 
 		if (Hardware.enableVerbose)
 			System.out.println("Hardware[" + name + "]: " + numDevices + " " + deviceName(deviceType) + "(s) available");
 
-		if (numDevices == 0) {
-			throw new HardwareException("No " + deviceName(deviceType) + "s available");
+		if (numDevices > 0) {
+			cl_device_id devices[] = new cl_device_id[numDevices];
+			CL.clGetDeviceIDs(platform, deviceType, numDevices, devices, null);
+			mainDevice = devices[deviceIndex];
+
+			System.out.println("Hardware[" + name + "]: Using " + deviceName(deviceType) + " " + deviceIndex);
 		}
-
-		cl_device_id devices[] = new cl_device_id[numDevices];
-		CL.clGetDeviceIDs(platform, deviceType, numDevices, devices, null);
-		mainDevice = devices[deviceIndex];
-
-		System.out.println("Hardware[" + name + "]: Using " + deviceName(deviceType) + " " + deviceIndex);
 
 		/* Kernel Device Selection */
 
 		if (kernelQueue) {
 			CL.clGetDeviceIDs(platform, CL.CL_DEVICE_TYPE_GPU, 0, null, numDevicesArray);
 			numDevices = numDevicesArray[0];
+			cl_device_id devices[] = new cl_device_id[numDevices];
 
 			if (Hardware.enableVerbose)
 				System.out.println("Hardware[" + name + "]: " + numDevices + " " + deviceName(CL.CL_DEVICE_TYPE_GPU) + "(s) available for kernels");
@@ -143,6 +143,8 @@ public class CLDataContext implements DataContext<MemoryData> {
 				System.out.println("Hardware[" + name + "]: Using " + deviceName(CL.CL_DEVICE_TYPE_GPU) + " " + deviceIndex + " for kernels");
 			}
 		}
+
+		precision = kernelDevice == null ? Precision.FP64 : Precision.FP32;
 	}
 
 	private void start(boolean gpu, boolean kernelQueue) {
@@ -161,6 +163,10 @@ public class CLDataContext implements DataContext<MemoryData> {
 		if (kernelDevice == null) {
 			ctx = CL.clCreateContext(contextProperties, 1, new cl_device_id[]{mainDevice},
 					null, null, null);
+		} else if (mainDevice == null) {
+			ctx = CL.clCreateContext(contextProperties, 1, new cl_device_id[]{kernelDevice},
+					null, null, null);
+			mainDevice = kernelDevice;
 		} else {
 			ctx = CL.clCreateContext(contextProperties, 2, new cl_device_id[]{mainDevice, kernelDevice},
 					null, null, null);
@@ -172,7 +178,8 @@ public class CLDataContext implements DataContext<MemoryData> {
 		if (Hardware.enableVerbose)
 			System.out.println("Hardware[" + getName() + "]: OpenCL read/write command queue initialized");
 
-		mainRam = new CLMemoryProvider(this, queue, hardware.getNumberSize(), memoryMax, location);
+		mainRam = new CLMemoryProvider(this, queue, getPrecision().bytes(),
+						maxReservation * getPrecision().bytes(), location);
 
 		start = null;
 	}
@@ -184,7 +191,7 @@ public class CLDataContext implements DataContext<MemoryData> {
 		ComputeContext cc;
 
 		if (cReq.isPresent()) {
-			cc = new CLNativeComputeContext(hardware, this, NativeCompiler.factory(hardware, true).construct());
+			cc = new CLNativeComputeContext(hardware, this, NativeCompiler.factory(getPrecision(), true).construct());
 		} else {
 			if (start != null) start.run();
 			cc = new CLComputeContext(hardware, this, ctx);
@@ -195,6 +202,12 @@ public class CLDataContext implements DataContext<MemoryData> {
 	}
 
 	public String getName() { return name; }
+
+	@Override
+	public Precision getPrecision() {
+		if (start != null) start.run();
+		return precision;
+	}
 
 	public cl_context getClContext() {
 		if (start != null) start.run();

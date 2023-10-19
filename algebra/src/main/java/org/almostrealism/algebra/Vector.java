@@ -36,13 +36,6 @@ public class Vector extends PackedCollection<Vector> implements Triple, VectorFe
 	public static final int CARTESIAN_COORDINATES = 0;
 	public static final int SPHERICAL_COORDINATES = 1;
 
-	public static final Vector X_AXIS = new Vector(1, 0, 0);
-	public static final Vector Y_AXIS = new Vector(0, 1, 0);
-	public static final Vector Z_AXIS = new Vector(0, 0, 1);
-	public static final Vector NEG_X_AXIS = new Vector(-1, 0, 0);
-	public static final Vector NEG_Y_AXIS = new Vector(0, -1, 0);
-	public static final Vector NEG_Z_AXIS = new Vector(0, 0, -1);
-
 	/** Constructs a {@link Vector} with coordinates at the origin. */
 	public Vector() {
 		super(3);
@@ -568,4 +561,11 @@ public class Vector extends PackedCollection<Vector> implements Triple, VectorFe
 		dest.setX(x);
 		dest.setY(y);
 	}
+
+	public static Vector xAxis() { return new Vector(1, 0, 0); }
+	public static Vector yAxis() { return new Vector(0, 1, 0); }
+	public static Vector zAxis() { return new Vector(0, 0, 1); }
+	public static Vector negXAxis() { return new Vector(-1, 0, 0); }
+	public static Vector negYAxis() { return new Vector(0, -1, 0); }
+	public static Vector negZAxis() { return new Vector(0, 0, -1); }
 }

@@ -16,6 +16,8 @@
 
 package org.almostrealism.hardware.metal;
 
+import io.almostrealism.code.Precision;
+
 public class MTLDevice extends MTLObject {
 	public MTLDevice(long nativePointer) {
 		super(nativePointer);
@@ -46,23 +48,23 @@ public class MTLDevice extends MTLObject {
 	}
 
 	public MTLBuffer newIntBuffer32(int values[]) {
-		return new MTLBuffer(MTL.createIntBuffer32(getNativePointer(), values));
+		return new MTLBuffer(Precision.FP32, MTL.createIntBuffer32(getNativePointer(), values));
 	}
 
 	public MTLBuffer newBuffer16(long len) {
-		return new MTLBuffer(MTL.createBuffer16(getNativePointer(), len));
+		return new MTLBuffer(Precision.FP16, MTL.createBuffer16(getNativePointer(), len));
 	}
 
 	public MTLBuffer newBuffer16(float[] data) {
-		return new MTLBuffer(MTL.createBuffer16(getNativePointer(), data));
+		return new MTLBuffer(Precision.FP16, MTL.createBuffer16(getNativePointer(), data));
 	}
 
 	public MTLBuffer newBuffer32(long len) {
-		return new MTLBuffer(MTL.createBuffer32(getNativePointer(), len));
+		return new MTLBuffer(Precision.FP32, MTL.createBuffer32(getNativePointer(), len));
 	}
 
 	public MTLBuffer newBuffer32(float[] data) {
-		return new MTLBuffer(MTL.createBuffer32(getNativePointer(), data));
+		return new MTLBuffer(Precision.FP32, MTL.createBuffer32(getNativePointer(), data));
 	}
 
 	public void release() {

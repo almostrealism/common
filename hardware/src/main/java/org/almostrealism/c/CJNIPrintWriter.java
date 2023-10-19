@@ -16,6 +16,7 @@
 
 package org.almostrealism.c;
 
+import io.almostrealism.code.Precision;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Variable;
@@ -25,13 +26,13 @@ import java.util.List;
 
 public class CJNIPrintWriter extends CPrintWriter {
 
-	public CJNIPrintWriter(PrintWriter p, String topLevelMethodName) {
-		this(p, topLevelMethodName, false);
+	public CJNIPrintWriter(PrintWriter p, String topLevelMethodName, Precision precision) {
+		this(p, topLevelMethodName, precision, false);
 	}
 
-	public CJNIPrintWriter(PrintWriter p, String topLevelMethodName, boolean verbose) {
-		super(p, topLevelMethodName, verbose);
-		language = new CJNILanguageOperations();
+	public CJNIPrintWriter(PrintWriter p, String topLevelMethodName, Precision precision, boolean verbose) {
+		super(p, topLevelMethodName, precision, verbose);
+		language = new CJNILanguageOperations(precision);
 		setExternalScopePrefix("JNIEXPORT void JNICALL");
 		setEnableArgumentValueReads(true);
 		setEnableArgumentValueWrites(true);

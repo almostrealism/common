@@ -16,14 +16,15 @@
 
 package org.almostrealism.hardware.cl;
 
+import io.almostrealism.code.Precision;
 import org.almostrealism.c.CPrintWriter;
 import org.almostrealism.io.PrintWriter;
 
 public class OpenCLPrintWriter extends CPrintWriter {
 
-	public OpenCLPrintWriter(PrintWriter p) {
-		super(p, null, false);
+	public OpenCLPrintWriter(PrintWriter p, Precision precision) {
+		super(p, null, precision, false);
 		setScopePrefix("__kernel void");
-		language = new OpenCLLanguageOperations();
+		language = new OpenCLLanguageOperations(precision);
 	}
 }

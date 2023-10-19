@@ -61,11 +61,11 @@ public class TimeCellReset extends OperationComputationAdapter<PackedCollection<
 			condition = condition.and(getTime().ref(1).eq(getResets().valueAt(i)));
 
 //			exp.accept("if (" + getTime().ref(1).getSimpleExpression() + " == " + getResets().valueAt(i).getSimpleExpression() + ") {\n");
-			exp.accept("if (" + condition.getSimpleExpression()+ ") {\n");
+			exp.accept("if (" + condition.getSimpleExpression(getLanguage()) + ") {\n");
 			exp.accept("\t");
-			exp.accept(getTime().valueAt(0).getSimpleExpression());
+			exp.accept(getTime().valueAt(0).getSimpleExpression(getLanguage()));
 			exp.accept(" = ");
-			exp.accept(stringForDouble(0.0));
+			exp.accept(getLanguage().getPrecision().stringForDouble(0.0));
 			exp.accept(";\n");
 			exp.accept("}");
 		}

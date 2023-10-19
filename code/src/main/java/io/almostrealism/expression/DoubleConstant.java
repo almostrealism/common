@@ -16,6 +16,8 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.lang.LanguageOperations;
+
 import java.util.OptionalDouble;
 import java.util.function.DoubleFunction;
 
@@ -35,7 +37,7 @@ public class DoubleConstant extends Constant<Double> {
 	}
 
 	@Override
-	public String getExpression() { return stringForDouble.apply(value); }
+	public String getExpression(LanguageOperations lang) { return stringForDouble.apply(value); }
 
 	@Override
 	public Number kernelValue(int kernelIndex) {

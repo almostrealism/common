@@ -16,6 +16,8 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.lang.LanguageOperations;
+
 import java.util.List;
 
 public class Constant<T> extends Expression<T> {
@@ -24,9 +26,9 @@ public class Constant<T> extends Expression<T> {
 	}
 
 	@Override
-	public String getExpression() { return null; }
+	public String getExpression(LanguageOperations lang) { return null; }
 
-	public String getWrappedExpression() { return getExpression(); }
+	public String getWrappedExpression(LanguageOperations lang) { return getExpression(lang); }
 
 	public Constant<T> generate(List<Expression<?>> children) {
 		if (children.size() > 0) {

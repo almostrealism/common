@@ -17,6 +17,7 @@
 package org.almostrealism.hardware.jni;
 
 import io.almostrealism.code.Computation;
+import io.almostrealism.code.Precision;
 import io.almostrealism.relation.Factory;
 import org.almostrealism.generated.BaseGeneratedOperation;
 import org.almostrealism.hardware.Hardware;
@@ -57,7 +58,7 @@ public class NativeCompiler {
 
 	private final String header;
 
-	public NativeCompiler(Hardware hardware, String libCompiler, String exeCompiler, String libDir, String libFormat, String dataDir, boolean cl) {
+	public NativeCompiler(Precision precision, String libCompiler, String exeCompiler, String libDir, String libFormat, String dataDir, boolean cl) {
 		if (libCompiler != null) {
 			this.libExecutable = libCompiler.contains(".") ? libCompiler.substring(libCompiler.lastIndexOf(".") + 1) : null;
 		}
@@ -77,7 +78,7 @@ public class NativeCompiler {
 			if (!data.exists()) data.mkdir();
 		}
 
-		String pi = hardware.getNumberTypeName() + " M_PI_F = M_PI;";
+		String pi = precision.typeName() + " M_PI_F = M_PI;";
 		this.header = STDIO + STDLIB + STR + MATH + JNI +
 				(cl ? OPENCL : "") +
 				pi + "\n";
@@ -158,7 +159,11 @@ public class NativeCompiler {
 	}
 
 	public String compile(String name, String code, boolean lib) {
-		if (enableVerbose) System.out.println("NativeCompiler: Compiling native code for " + name);
+		if (enableVerbose) {
+			System.out.println("NativeCompiler: Compiling native code for " + name);
+			System.out.println("Source: ");
+			System.out.println(code);
+		}
 
 		try (FileOutputStream out = new FileOutputStream(getInputFile(name));
 				BufferedWriter buf = new BufferedWriter(new OutputStreamWriter(out))) {
@@ -190,7 +195,7 @@ public class NativeCompiler {
 		if (enableVerbose) System.out.println("NativeCompiler: Loaded native library " + name);
 	}
 
-	public static Factory<NativeCompiler> factory(Hardware hardware, boolean cl) {
+	public static Factory<NativeCompiler> factory(Precision precision, boolean cl) {
 		return () -> {
 			String libFormat = System.getProperty("AR_HARDWARE_LIB_FORMAT");
 			if (libFormat == null) libFormat = System.getenv("AR_HARDWARE_LIB_FORMAT");
@@ -212,7 +217,7 @@ public class NativeCompiler {
 			String data = System.getProperty("AR_HARDWARE_DATA");
 			if (data == null) data = System.getenv("AR_HARDWARE_DATA");
 
-			return new NativeCompiler(hardware, libCompiler, exeCompiler, libDir, libFormat, data, cl);
+			return new NativeCompiler(precision, libCompiler, exeCompiler, libDir, libFormat, data, cl);
 		};
 	}
 }

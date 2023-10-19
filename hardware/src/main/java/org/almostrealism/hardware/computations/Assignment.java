@@ -21,8 +21,6 @@ import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.relation.Countable;
-import io.almostrealism.relation.Nameable;
-import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
@@ -35,13 +33,11 @@ import org.almostrealism.hardware.MemoryData;
 
 import java.util.List;
 import java.util.function.Supplier;
-import java.util.stream.IntStream;
 
 public class Assignment<T extends MemoryData> extends OperationComputationAdapter<T> {
 	public static boolean enableRelative = !Hardware.enableKernelOps;
 
 	private final int memLength;
-	private KernelIndex kernelIndex;
 
 	public Assignment(int memLength, Supplier<Evaluable<? extends T>> result, Supplier<Evaluable<? extends T>> value) {
 		super(result, value);
@@ -64,8 +60,6 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 				addVariable(getArgument(0, memLength).ref(i).assign(getArgument(1).getValueRelative(i)));
 			}
 		}
-
-		kernelIndex = new KernelIndex(manager.getLanguage(), 0);
 	}
 
 	@Override
@@ -81,7 +75,7 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 			ArrayVariable<Double> output = (ArrayVariable<Double>) getArgument(0, memLength);
 
 			for (int i = 0; i < memLength; i++) {
-				Expression index = kernelIndex;
+				Expression index = new KernelIndex();
 				if (memLength > 1) index = index.multiply(memLength).add(i);
 
 				TraversableExpression exp = TraversableExpression.traverse(getArgument(1));
@@ -97,7 +91,7 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 				if (out == null) {
 					v = output.ref(i).assign(value.getSimplified());
 				} else {
-					v = new Variable(out.getValueAt(index).getSimpleExpression(),
+					v = new Variable(out.getValueAt(index).getSimpleExpression(getLanguage()),
 							false, value.getSimplified(), output.getRootDelegate());
 				}
 

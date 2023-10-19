@@ -37,15 +37,15 @@ public class AcceleratedTimeSeriesAdd extends OperationComputationAdapter<Accele
 		HybridScope<Void> scope = new HybridScope<>(this);
 
 		Expression<?> bank1 = getArgument(0).valueAt(1);
-		String banklast0 = getArgument(0).referenceRelative(bank1.toInt().multiply(2)).getSimpleExpression();
-		String banklast1 = getArgument(0).referenceRelative(bank1.toInt().multiply(2).add(1)).getSimpleExpression();
-		String input0 = getArgument(1).valueAt(0).getSimpleExpression();
-		String input1 = getArgument(1).valueAt(1).getSimpleExpression();
+		String banklast0 = getArgument(0).referenceRelative(bank1.toInt().multiply(2)).getSimpleExpression(getLanguage());
+		String banklast1 = getArgument(0).referenceRelative(bank1.toInt().multiply(2).add(1)).getSimpleExpression(getLanguage());
+		String input0 = getArgument(1).valueAt(0).getSimpleExpression(getLanguage());
+		String input1 = getArgument(1).valueAt(1).getSimpleExpression(getLanguage());
 
 		Consumer<String> code = scope.code();
 		code.accept(banklast0 + " = " + input0 + ";\n");
 		code.accept(banklast1 + " = " + input1 + ";\n");
-		code.accept(bank1.getSimpleExpression() + " = " + bank1.getSimpleExpression() + " + 1.0;\n");
+		code.accept(bank1.getSimpleExpression(getLanguage()) + " = " + bank1.getSimpleExpression(getLanguage()) + " + 1.0;\n");
 		return scope;
 	}
 }

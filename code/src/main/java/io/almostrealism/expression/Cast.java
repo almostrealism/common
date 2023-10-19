@@ -88,9 +88,4 @@ public class Cast<T> extends UnaryExpression<T> {
 			return Double.valueOf(v);
 		}
 	}
-
-	@Override
-	public String toString() {
-		return getExpression();
-	}
 }

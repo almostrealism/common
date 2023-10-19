@@ -21,10 +21,10 @@ import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.code.DataContext;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.code.Precision;
 import org.almostrealism.c.NativeMemoryProvider;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.RAM;
 import org.almostrealism.hardware.external.ExternalComputeContext;
 import org.almostrealism.hardware.jvm.JVMMemoryProvider;
 import org.almostrealism.io.SystemUtils;
@@ -37,7 +37,7 @@ public class NativeDataContext implements DataContext<MemoryData> {
 
 	private final String name;
 	private final boolean isExternal, isNativeMem;
-	private final long memoryMax;
+	private final long maxReservation;
 
 	private NativeCompiler compiler;
 	private MemoryProvider<? extends Memory> ram;
@@ -45,22 +45,26 @@ public class NativeDataContext implements DataContext<MemoryData> {
 	private Hardware hardware;
 	private ComputeContext<MemoryData> context;
 
-	public NativeDataContext(Hardware hardware, String name, boolean isNativeMem, long memoryMax) {
+	public NativeDataContext(Hardware hardware, String name, boolean isNativeMem, long maxReservation) {
 		this.hardware = hardware;
 		this.name = name;
 		this.isNativeMem = isNativeMem;
 		this.isExternal = external;
-		this.memoryMax = memoryMax;
+		this.maxReservation = maxReservation;
 	}
 
+	@Override
 	public void init() {
 		if (ram != null) return;
-		compiler = NativeCompiler.factory(hardware, !isNativeMem).construct();
-		ram = isNativeMem ? new NativeMemoryProvider(compiler, memoryMax) : new JVMMemoryProvider();
+		compiler = NativeCompiler.factory(getPrecision(), !isNativeMem).construct();
+		ram = isNativeMem ? new NativeMemoryProvider(compiler, maxReservation * getPrecision().bytes()) : new JVMMemoryProvider();
 		context = isExternal ? new ExternalComputeContext(hardware, this, compiler) : new NativeComputeContext(hardware, this, compiler);
 	}
 
 	public String getName() { return name; }
+
+	@Override
+	public Precision getPrecision() { return Precision.FP64; }
 
 	public NativeCompiler getNativeCompiler() { return compiler; }
 

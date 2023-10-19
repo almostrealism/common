@@ -20,15 +20,12 @@ import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.ScopeInputManager;
-import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.Scope;
-import io.almostrealism.scope.Variable;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 
-import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
 public abstract class KernelProducerComputationAdapter<I extends PackedCollection<?>, O extends PackedCollection<?>>
@@ -73,7 +70,7 @@ public abstract class KernelProducerComputationAdapter<I extends PackedCollectio
 		ArrayVariable<Double> output = (ArrayVariable<Double>) getOutputVariable();
 
 		for (int i = 0; i < getMemLength(); i++) {
-			Expression index = kernelIndex();
+			Expression index = new KernelIndex();
 			if (getMemLength() > 1) index = index.multiply(getMemLength()).add(i);
 
 //			Variable v = new Variable(output.ref(i).getSimpleExpression(),

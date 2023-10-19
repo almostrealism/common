@@ -16,17 +16,11 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.code.LanguageOperations;
 import io.almostrealism.code.OperationComputation;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.ComputationBase;
 import io.almostrealism.code.PhysicalScope;
-import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.scope.Method;
-import org.almostrealism.hardware.cl.OpenCLLanguageOperations;
-import org.almostrealism.hardware.cl.OpenCLPrintWriter;
 
 import java.util.function.Supplier;
 

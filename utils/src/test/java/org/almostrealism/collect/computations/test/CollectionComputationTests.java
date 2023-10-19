@@ -144,16 +144,18 @@ public class CollectionComputationTests implements TestFeatures {
 		a.setMem(3.0);
 		b.setMem(5.0);
 
-		ExpressionComputation<?> computation =
-				new ExpressionComputation(List.of(expression),
-						() -> new Provider<>(a),
-						() -> new Provider<>(b));
+		HardwareOperator.verboseLog(() -> {
+			ExpressionComputation<PackedCollection<?>> computation =
+					new ExpressionComputation<>(List.of(expression),
+							() -> new Provider<>(a),
+							() -> new Provider<>(b));
 
-		KernelizedEvaluable<?> ev = computation.get();
-		Assert.assertEquals(2, ev.getArgsCount());
+			KernelizedEvaluable<PackedCollection<?>> ev = computation.get();
+			Assert.assertEquals(3, ev.getArgsCount());
 
-  		PackedCollection out = (PackedCollection) ev.evaluate();
-		assertEquals(8.0, out.toArray(0, 1)[0]);
+			PackedCollection out = ev.evaluate();
+			assertEquals(8.0, out.toArray(0, 1)[0]);
+		});
 	}
 
 	@Test

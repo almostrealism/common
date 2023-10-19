@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.code.Execution;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.CollectionUtils;
@@ -41,7 +42,7 @@ public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> ex
 
 	@SafeVarargs
 	public AcceleratedEvaluable(String function, Supplier<Evaluable<? extends O>> result, Supplier<Evaluable<? extends I>>... inputArgs) {
-		this((CLComputeContext) Hardware.getLocalHardware().getComputeContext(), function, result, inputArgs);
+		this((CLComputeContext) Hardware.getLocalHardware().getComputeContext(ComputeRequirement.CL), function, result, inputArgs);
 	}
 
 	@SafeVarargs
@@ -51,7 +52,7 @@ public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> ex
 
 	@SafeVarargs
 	public AcceleratedEvaluable(String function, boolean kernel, Supplier<Evaluable<? extends O>> result, Supplier<Evaluable<? extends I>>... inputArgs) {
-		this((CLComputeContext) Hardware.getLocalHardware().getComputeContext(), function, kernel, result, inputArgs);
+		this((CLComputeContext) Hardware.getLocalHardware().getComputeContext(ComputeRequirement.CL), function, kernel, result, inputArgs);
 	}
 
 	@SafeVarargs

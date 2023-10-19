@@ -16,6 +16,8 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.lang.LanguageOperations;
+
 import java.util.List;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
@@ -33,11 +35,11 @@ public class Greater extends Expression<Boolean> {
 	}
 
 	@Override
-	public String getExpression() {
+	public String getExpression(LanguageOperations lang) {
 		if (orEqual) {
-			return getChildren().get(0).getWrappedExpression() + " >= " + getChildren().get(1).getWrappedExpression();
+			return getChildren().get(0).getWrappedExpression(lang) + " >= " + getChildren().get(1).getWrappedExpression(lang);
 		} else {
-			return getChildren().get(0).getWrappedExpression() + " > " + getChildren().get(1).getWrappedExpression();
+			return getChildren().get(0).getWrappedExpression(lang) + " > " + getChildren().get(1).getWrappedExpression(lang);
 		}
 	}
 

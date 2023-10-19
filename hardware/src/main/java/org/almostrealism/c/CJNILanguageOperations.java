@@ -17,6 +17,7 @@
 package org.almostrealism.c;
 
 import io.almostrealism.code.Accessibility;
+import io.almostrealism.code.Precision;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.ArrayVariable;
 
@@ -24,8 +25,18 @@ import java.util.List;
 import java.util.function.Consumer;
 
 public class CJNILanguageOperations extends CLanguageOperations {
-	public CJNILanguageOperations() {
-		super(true, true);
+	public CJNILanguageOperations(Precision precision) {
+		super(precision, true, true);
+	}
+
+	@Override
+	public String min(String a, String b) {
+		return "f" + super.min(a, b);
+	}
+
+	@Override
+	public String max(String a, String b) {
+		return "f" + super.max(a, b);
 	}
 
 	@Override
@@ -40,7 +51,7 @@ public class CJNILanguageOperations extends CLanguageOperations {
 	}
 
 	@Override
-	protected void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out, Accessibility access) {
+	public void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out, Accessibility access) {
 		if (access == Accessibility.EXTERNAL) {
 			out.accept("JNIEnv *env, jobject obj, jlong commandQueue, jlongArray arg, jintArray offset, jintArray size, jintArray dim0, jint count, jint global_id");
 			return;
@@ -50,7 +61,7 @@ public class CJNILanguageOperations extends CLanguageOperations {
 
 		if (!arguments.isEmpty()) {
 			out.accept(", ");
-			out.accept("uint global_id");
+			out.accept("jint global_id");
 		}
 	}
 

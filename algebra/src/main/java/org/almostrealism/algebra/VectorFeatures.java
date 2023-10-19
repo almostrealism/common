@@ -42,9 +42,6 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public interface VectorFeatures extends CollectionFeatures, HardwareFeatures {
-	Producer half = CollectionFeatures.getInstance().c(0.5);
-	Producer two = CollectionFeatures.getInstance().c(2.0);
-
 	default ExpressionComputation<Vector> v(Vector value) { return value(value); }
 
 	default ExpressionComputation<Vector> value(Vector value) {
@@ -152,11 +149,11 @@ public interface VectorFeatures extends CollectionFeatures, HardwareFeatures {
 	}
 
 	default CollectionProducer<Scalar> length(Supplier<Evaluable<? extends Vector>> v) {
-		return x(v).pow(two).add(y(v).pow(two)).add(z(v).pow(two)).pow(half);
+		return x(v).pow(c(2.0)).add(y(v).pow(c(2.0))).add(z(v).pow(c(2.0))).pow(c(0.5));
 	}
 
 	default CollectionProducer<Scalar> lengthSq(Supplier<Evaluable<? extends Vector>> v) {
-		return x(v).pow(two).add(y(v).pow(two)).add(z(v).pow(two));
+		return x(v).pow(c(2.0)).add(y(v).pow(c(2.0))).add(z(v).pow(c(2.0)));
 	}
 
 	default ExpressionComputation<Vector> normalize(Supplier<Evaluable<? extends Vector>> p) {

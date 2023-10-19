@@ -81,6 +81,8 @@ public class NativeExecution extends HardwareOperator {
 
 		CountDownLatch latch = new CountDownLatch(size);
 
+		long start = System.currentTimeMillis();
+
 		IntStream.range(0, size).parallel()
 				.mapToObj(id ->
 					executor.submit(() -> {
@@ -92,8 +94,11 @@ public class NativeExecution extends HardwareOperator {
 					}))
 				.collect(Collectors.toList());
 
+		long total;
+
 		try {
 			latch.await();
+			total = System.currentTimeMillis() - start;
 		} catch (InterruptedException e) {
 			throw new RuntimeException(e);
 		}

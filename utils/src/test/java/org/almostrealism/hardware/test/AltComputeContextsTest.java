@@ -51,6 +51,7 @@ public class AltComputeContextsTest implements TestFeatures {
 		boolean validate = true;
 		int dim = 128;
 		int width = 64;
+//		int width = 2048;
 
 		PackedCollection<?> matrix = new PackedCollection<>(dim, width);
 		PackedCollection<?> vector = new PackedCollection<>(width);

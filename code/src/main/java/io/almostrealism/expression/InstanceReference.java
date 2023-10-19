@@ -17,6 +17,7 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.code.CodePrintWriter;
+import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.Variable;
 
 import java.util.List;
@@ -42,16 +43,16 @@ public class InstanceReference<T> extends Expression<T> {
 	public Variable<T, ?> getReferent() { return var; }
 
 	@Override
-	public String getExpression() {
+	public String getExpression(LanguageOperations lang) {
 		return var.getName();
 	}
 
 	@Override
-	public String getWrappedExpression() { return getExpression(); }
+	public String getWrappedExpression(LanguageOperations lang) { return getExpression(lang); }
 
 	@Override
 	public Variable assign(Expression exp) {
-		return new Variable(getSimpleExpression(), false, exp, getReferent().getDelegate());
+		return new Variable(getSimpleExpression(null), false, exp, getReferent().getDelegate());
 	}
 
 	public InstanceReference<T> generate(List<Expression<?>> children) {

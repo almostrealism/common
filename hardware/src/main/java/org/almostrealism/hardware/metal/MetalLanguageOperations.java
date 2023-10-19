@@ -18,6 +18,7 @@ package org.almostrealism.hardware.metal;
 
 import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.PhysicalScope;
+import io.almostrealism.code.Precision;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.c.CLanguageOperations;
@@ -27,8 +28,8 @@ import java.util.function.Consumer;
 
 public class MetalLanguageOperations extends CLanguageOperations {
 
-	public MetalLanguageOperations() {
-		super(false, true);
+	public MetalLanguageOperations(Precision precision) {
+		super(precision, false, true);
 	}
 
 	@Override
@@ -44,7 +45,7 @@ public class MetalLanguageOperations extends CLanguageOperations {
 	}
 
 	@Override
-	protected void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out, Accessibility access) {
+	public void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out, Accessibility access) {
 		super.renderArguments(arguments, out, access);
 
 		if (!arguments.isEmpty()) {

@@ -17,6 +17,7 @@
 package org.almostrealism.hardware.cl;
 
 import io.almostrealism.code.Accessibility;
+import io.almostrealism.code.Precision;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.c.CJNILanguageOperations;
 
@@ -24,6 +25,10 @@ import java.util.List;
 import java.util.function.Consumer;
 
 public class CLJNILanguageOperations extends CJNILanguageOperations {
+	public CLJNILanguageOperations(Precision precision) {
+		super(precision);
+	}
+
 	@Override
 	public String nameForType(Class<?> type) {
 		if (type == Integer.class || type == int[].class) {
@@ -36,7 +41,7 @@ public class CLJNILanguageOperations extends CJNILanguageOperations {
 	}
 
 	@Override
-	protected void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out, Accessibility access) {
+	public void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out, Accessibility access) {
 		if (access == Accessibility.EXTERNAL) {
 			out.accept("JNIEnv *env, jobject obj, jlong commandQueue, jlongArray arg, jintArray offset, jintArray size, jint count");
 		} else {

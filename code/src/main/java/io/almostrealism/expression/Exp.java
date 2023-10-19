@@ -16,6 +16,8 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.lang.LanguageOperations;
+
 import java.util.List;
 
 public class Exp extends Expression<Double> {
@@ -24,12 +26,12 @@ public class Exp extends Expression<Double> {
 	}
 
 	@Override
-	public String getExpression() {
-		return "exp(" + getChildren().get(0).getExpression() + ")";
+	public String getExpression(LanguageOperations lang) {
+		return "exp(" + getChildren().get(0).getExpression(lang) + ")";
 	}
 
 	@Override
-	public String getWrappedExpression() { return getExpression(); }
+	public String getWrappedExpression(LanguageOperations lang) { return getExpression(lang); }
 
 	@Override
 	public Expression<Double> generate(List<Expression<?>> children) {

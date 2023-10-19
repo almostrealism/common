@@ -18,6 +18,7 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.PhysicalScope;
+import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
@@ -60,12 +61,7 @@ public abstract class DynamicAcceleratedEvaluable<I extends MemoryData, O extend
 	}
 
 	@Deprecated
-	protected void writeVariables(Consumer<String> out) {
-		writeVariables(out, new ArrayList<>());
-	}
-
-	@Deprecated
-	protected void writeVariables(Consumer<String> out, List<Variable<?, ?>> existingVariables) {
+	protected void writeVariables(Consumer<String> out, List<Variable<?, ?>> existingVariables, LanguageOperations lang) {
 		getVariables().stream()
 				.filter(v -> !existingVariables.contains(v)).forEach(var -> {
 			if (var.getPhysicalScope() != null) {
@@ -73,14 +69,14 @@ public abstract class DynamicAcceleratedEvaluable<I extends MemoryData, O extend
 				out.accept(" ");
 			}
 
-			out.accept(getNumberTypeName());
+			out.accept(lang.getPrecision().typeName());
 			out.accept(" ");
 			out.accept(var.getName());
 
 			if (var.getExpression().isNull()) {
 				if (var.getArraySize() != null) {
 					out.accept("[");
-					out.accept(var.getArraySize().getSimpleExpression());
+					out.accept(var.getArraySize().getSimpleExpression(lang));
 					out.accept("]");
 				}
 			} else {
@@ -88,7 +84,7 @@ public abstract class DynamicAcceleratedEvaluable<I extends MemoryData, O extend
 					throw new RuntimeException("Not implemented");
 				} else {
 					out.accept(" = ");
-					out.accept(var.getExpression().getSimpleExpression());
+					out.accept(var.getExpression().getSimpleExpression(lang));
 				}
 			}
 

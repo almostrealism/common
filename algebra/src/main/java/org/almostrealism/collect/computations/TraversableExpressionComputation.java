@@ -17,31 +17,23 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.expression.Conditional;
-import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
-import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.ComputerFeatures;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.hardware.DestinationEvaluable;
-import org.almostrealism.hardware.KernelizedEvaluable;
-import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.OptionalInt;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
-import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class TraversableExpressionComputation<T extends PackedCollection<?>>
@@ -101,7 +93,6 @@ public class TraversableExpressionComputation<T extends PackedCollection<?>>
 	public static <T extends PackedCollection<?>> TraversableExpressionComputation<T> fixed(T value, BiFunction<MemoryData, Integer, T> postprocessor) {
 		BiFunction<TraversableExpression[], Expression, Expression> comp = (args, index) -> {
 			index = index.toInt().mod(new IntegerConstant(value.getShape().getTotalSize()), false);
-			index = index.getSimplified();
 
 			OptionalInt i = index.intValue();
 

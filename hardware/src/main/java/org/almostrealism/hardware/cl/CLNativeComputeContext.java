@@ -18,10 +18,9 @@ package org.almostrealism.hardware.cl;
 
 import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.InstructionSet;
-import io.almostrealism.code.LanguageOperations;
+import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeEncoder;
-import org.almostrealism.c.CLanguageOperations;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.jni.NativeCompiler;
@@ -40,7 +39,7 @@ public class CLNativeComputeContext extends AbstractComputeContext {
 
 	@Override
 	public LanguageOperations getLanguage() {
-		return new CLJNILanguageOperations();
+		return new CLJNILanguageOperations(getDataContext().getPrecision());
 	}
 
 	public NativeCompiler getNativeCompiler() {
@@ -52,7 +51,7 @@ public class CLNativeComputeContext extends AbstractComputeContext {
 		StringBuffer buf = new StringBuffer();
 		NativeInstructionSet target = getNativeCompiler().reserveLibraryTarget();
 		target.setComputeContext(this);
-		buf.append(new ScopeEncoder(pw -> new CLJNIPrintWriter(pw, target.getFunctionName()), Accessibility.EXTERNAL).apply(scope));
+		buf.append(new ScopeEncoder(pw -> new CLJNIPrintWriter(pw, target.getFunctionName(), getDataContext().getPrecision()), Accessibility.EXTERNAL).apply(scope));
 		getNativeCompiler().compile(target, buf.toString());
 		return target;
 	}

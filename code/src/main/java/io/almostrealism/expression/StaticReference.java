@@ -16,6 +16,7 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.Variable;
 
 import java.util.List;
@@ -33,9 +34,9 @@ public class StaticReference<T> extends Expression<T> {
 		this.expression = expression;
 	}
 
-	public String getExpression() { return expression; }
+	public String getExpression(LanguageOperations lang) { return expression; }
 
-	public String getWrappedExpression() { return getExpression(); }
+	public String getWrappedExpression(LanguageOperations lang) { return getExpression(lang); }
 
 	@Override
 	public Expression<T> generate(List<Expression<?>> children) {
@@ -45,6 +46,6 @@ public class StaticReference<T> extends Expression<T> {
 
 	@Override
 	public String toString() {
-		return getExpression();
+		return expression;
 	}
 }

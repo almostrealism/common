@@ -33,8 +33,6 @@ public abstract class AbstractComputeContext implements ComputeContext<MemoryDat
 		this.dc = dc;
 	}
 
-	public String getName() { return hardware.getName(); }
-
 	public Hardware getHardware() { return hardware; }
 
 	public DataContext<MemoryData> getDataContext() { return dc; }

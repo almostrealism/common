@@ -51,16 +51,16 @@ public class WaveCellPush extends WaveCellComputation implements ExpressionFeatu
 			Consumer<String> exp = scope.code();
 
 			exp.accept("if (");
-			exp.accept(condition.getSimpleExpression());
+			exp.accept(condition.getSimpleExpression(getLanguage()));
 			exp.accept(") {\n");
-			exp.accept(getOutput().ref(0).getSimpleExpression());
+			exp.accept(getOutput().ref(0).getSimpleExpression(getLanguage()));
 			exp.accept(" = ");
-			exp.accept(getAmplitude().valueAt(0).getSimpleExpression());
+			exp.accept(getAmplitude().valueAt(0).getSimpleExpression(getLanguage()));
 			exp.accept(" * (");
-			exp.accept(getWave().referenceRelative(getWaveIndex().valueAt(0).add(getWavePosition().valueAt(0).floor())).getSimpleExpression());
+			exp.accept(getWave().referenceRelative(getWaveIndex().valueAt(0).add(getWavePosition().valueAt(0).floor())).getSimpleExpression(getLanguage()));
 			exp.accept(");\n");
 			exp.accept("} else {\n");
-			exp.accept(getOutput().ref(0).getSimpleExpression());
+			exp.accept(getOutput().ref(0).getSimpleExpression(getLanguage()));
 			exp.accept(" = 0.0;\n");
 			exp.accept("}\n");
 		}

@@ -16,10 +16,16 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.relation.Named;
+
 import java.util.List;
 import java.util.concurrent.Callable;
 
-public interface DataContext<MEM> {
+public interface DataContext<MEM> extends Named {
+	Precision getPrecision();
+
+	void init();
+
 	ComputeContext<MEM> getComputeContext();
 
 	List<MemoryProvider<? extends Memory>> getMemoryProviders();

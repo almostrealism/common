@@ -47,7 +47,7 @@ public class AcceleratedTimeSeriesValueAt extends CollectionProducerComputationB
 
 		ArrayVariable<?> outputVariable = (ArrayVariable) getOutputVariable();
 
-		scope.getVariables().add(new Variable(outputVariable.valueAt(1).getSimpleExpression(),
+		scope.getVariables().add(new Variable(outputVariable.valueAt(1).getSimpleExpression(getLanguage()),
 				false, new DoubleConstant(1.0), outputVariable.getRootDelegate()));
 
 		Expression i = new StaticReference(Integer.class, "i");
@@ -58,22 +58,22 @@ public class AcceleratedTimeSeriesValueAt extends CollectionProducerComputationB
 		String t1 = getVariableName(4);
 		String t2 = getVariableName(5);
 
-		scope.getVariables().add(new Variable<>(left.getSimpleExpression(), new IntegerConstant(-1)));
-		scope.getVariables().add(new Variable<>(right.getSimpleExpression(), new IntegerConstant(-1)));
+		scope.getVariables().add(new Variable<>(left.getSimpleExpression(getLanguage()), new IntegerConstant(-1)));
+		scope.getVariables().add(new Variable<>(right.getSimpleExpression(getLanguage()), new IntegerConstant(-1)));
 		scope.getVariables().add(new Variable<>(v1, new DoubleConstant(0.0)));
 		scope.getVariables().add(new Variable<>(v2, new DoubleConstant(0.0)));
 		scope.getVariables().add(new Variable<>(t1, new DoubleConstant(0.0)));
 		scope.getVariables().add(new Variable<>(t2, new DoubleConstant(0.0)));
 
-		String res = getArgument(0).valueAt(0).getSimpleExpression();
-		String bank0 = getArgument(1).valueAt(0).getSimpleExpression();
-		String bank1 = getArgument(1).valueAt(1).getSimpleExpression();
-		String banki = getArgument(1).referenceRelative(i.multiply(2)).getSimpleExpression();
-		String bankl0 = getArgument(1).referenceRelative(left.multiply(2)).getSimpleExpression();
-		String bankl1 = getArgument(1).referenceRelative(left.multiply(2).add(1)).getSimpleExpression();
-		String bankr0 = getArgument(1).referenceRelative(right.multiply(2)).getSimpleExpression();
-		String bankr1 = getArgument(1).referenceRelative(right.multiply(2).add(1)).getSimpleExpression();
-		String cursor0 = getArgument(2).valueAt(0).getSimpleExpression();
+		String res = getArgument(0).valueAt(0).getSimpleExpression(getLanguage());
+		String bank0 = getArgument(1).valueAt(0).getSimpleExpression(getLanguage());
+		String bank1 = getArgument(1).valueAt(1).getSimpleExpression(getLanguage());
+		String banki = getArgument(1).referenceRelative(i.multiply(2)).getSimpleExpression(getLanguage());
+		String bankl0 = getArgument(1).referenceRelative(left.multiply(2)).getSimpleExpression(getLanguage());
+		String bankl1 = getArgument(1).referenceRelative(left.multiply(2).add(1)).getSimpleExpression(getLanguage());
+		String bankr0 = getArgument(1).referenceRelative(right.multiply(2)).getSimpleExpression(getLanguage());
+		String bankr1 = getArgument(1).referenceRelative(right.multiply(2).add(1)).getSimpleExpression(getLanguage());
+		String cursor0 = getArgument(2).valueAt(0).getSimpleExpression(getLanguage());
 
 		Consumer<String> code = scope.code();
 		code.accept("for (int i = " + bank0 + "; i < " + bank1 + "; i++) {\n");

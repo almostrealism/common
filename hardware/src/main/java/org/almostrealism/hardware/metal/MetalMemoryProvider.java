@@ -19,7 +19,7 @@ package org.almostrealism.hardware.metal;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.hardware.HardwareException;
-import org.almostrealism.hardware.Precision;
+import io.almostrealism.code.Precision;
 import org.almostrealism.hardware.RAM;
 import org.almostrealism.io.SystemUtils;
 

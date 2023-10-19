@@ -729,7 +729,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		// kernel(outputShape, (args, i, j, k) -> args[1].get(k).multiply(args[2].get(shape(size, size), i, j)).sum());
 
 		Function<List<ArrayVariable<Double>>, Expression<Double>> expression = (List<ArrayVariable<Double>> args) -> {
-			Expression index = new KernelIndex(args.get(0).getLanguage());
+			Expression index = new KernelIndex();
 			Expression i = outputShape.position(index)[0];
 			Expression j = outputShape.position(index)[1];
 			Expression k = outputShape.position(index)[2];

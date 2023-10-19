@@ -17,7 +17,9 @@
 package org.almostrealism.algebra.test;
 
 import io.almostrealism.code.AdaptEvaluable;
+import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.code.OperationAdapter;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.ProducerWithRank;
@@ -30,6 +32,7 @@ import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
+import org.almostrealism.collect.computations.CollectionProviderProducer;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.geometry.computations.RayExpressionComputation;
@@ -134,12 +137,18 @@ public class TriangleTest implements TestFeatures {
 		Ray in = ray(0.0, 0.0, 0.0, 0.0, 0.0, -1.0).get().evaluate();
 		System.out.println(in);
 
-		PackedCollection<Vector> tp = Vector.bank(3);
+		PackedCollection<?> data = new PackedCollection<>(9);
+		PackedCollection<Vector> tp = new PackedCollection<>(new TraversalPolicy(3, 3), 1,
+				delegateSpec ->
+					new Vector(delegateSpec.getDelegate(), delegateSpec.getOffset()),
+				data, 0);
 		tp.set(0, new Vector(1.0, 1.0, -1.0));
 		tp.set(1, new Vector(-1.0, 1.0, -1.0));
 		tp.set(2, new Vector(0.0, -1.0, -1.0));
 
-		PackedCollection<?> td = triangle(p(tp)).get().evaluate();
+		Producer<PackedCollection<?>> ptp = new CollectionProviderProducer<>(tp.traverse(0));
+
+		PackedCollection<?> td = triangle(ptp).get().evaluate();
 		td = td.traverse(1);
 		Assert.assertEquals(-2.0, td.get(0).toDouble(0), 0.0001);
 		Assert.assertEquals(0.0, td.get(0).toDouble(1), 0.0001);

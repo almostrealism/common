@@ -16,16 +16,14 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.code.LanguageOperations;
+import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.relation.Countable;
-import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.NameProvider;
-import io.almostrealism.scope.Variable;
 
 public interface ComputerFeatures extends HardwareFeatures, NameProvider {
 	boolean enableKernel = Hardware.getLocalHardware().isKernelSupported();
@@ -52,7 +50,7 @@ public interface ComputerFeatures extends HardwareFeatures, NameProvider {
 		if (isContextKernelEnabled() &&
 				(v.getProducer() instanceof Countable ||
 				(v.getProducer() instanceof KernelSupport && ((KernelSupport) v.getProducer()).isKernelEnabled()))) {
-			KernelIndex idx = new KernelIndex(lang, kernelIndex);
+			KernelIndex idx = new KernelIndex(kernelIndex);
 			Expression dim = new StaticReference(Integer.class, KernelSupport.getValueDimName(v.getName(), kernelIndex));
 
 			Expression kernelOffset = idx.multiply(dim);

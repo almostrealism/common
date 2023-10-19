@@ -122,7 +122,7 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCol
 		vars.add(condition);
 
 		scope.code().accept("if (");
-		scope.code().accept(condition.getExpression().getSimpleExpression());
+		scope.code().accept(condition.getExpression().getSimpleExpression(getLanguage()));
 		scope.code().accept(") {\n");
 
 		for (int i = 0; i < getMemLength(); i++) {
@@ -133,7 +133,7 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCol
 			scope.code().accept("\t");
 			scope.code().accept(var.getName());
 			scope.code().accept(" = ");
-			scope.code().accept(var.getExpression().getSimpleExpression());
+			scope.code().accept(var.getExpression().getSimpleExpression(getLanguage()));
 			scope.code().accept(";\n");
 		}
 
@@ -147,7 +147,7 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCol
 			scope.code().accept("\t");
 			scope.code().accept(var.getName());
 			scope.code().accept(" = ");
-			scope.code().accept(var.getExpression().getSimpleExpression());
+			scope.code().accept(var.getExpression().getSimpleExpression(getLanguage()));
 			scope.code().accept(";\n");
 		}
 

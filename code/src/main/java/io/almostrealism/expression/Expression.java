@@ -16,6 +16,8 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.lang.LanguageOperationsStub;
 import io.almostrealism.relation.Tree;
 import io.almostrealism.scope.Variable;
 import org.almostrealism.io.SystemUtils;
@@ -73,9 +75,7 @@ public abstract class Expression<T> implements Tree<Expression<?>> {
 	public void setType(Class<T> t) { this.type = t; }
 	public Class<T> getType() { return this.type; }
 
-	public boolean isNull() {
-		return getExpression() == null;
-	}
+	public boolean isNull() { return false; }
 
 	public Optional<Boolean> booleanValue() { return Optional.empty(); }
 
@@ -107,12 +107,14 @@ public abstract class Expression<T> implements Tree<Expression<?>> {
 			return this;
 		}
 
+		LanguageOperations lang = new LanguageOperationsStub();
+
 		Expression<?> simplified = simplify();
-		String exp = simplified.getExpression();
+		String exp = simplified.getExpression(lang);
 
 		w: while (true) {
 			Expression<?> next = simplified.simplify();
-			String nextExp = next.getExpression();
+			String nextExp = next.getExpression(lang);
 
 			if (nextExp.equals(exp)) {
 				break w;
@@ -125,14 +127,14 @@ public abstract class Expression<T> implements Tree<Expression<?>> {
 		return simplified;
 	}
 
-	public String getSimpleExpression() {
-		return getSimplified().getExpression();
+	public String getSimpleExpression(LanguageOperations lang) {
+		return getSimplified().getExpression(lang);
 	}
 
-	public abstract String getExpression();
+	public abstract String getExpression(LanguageOperations lang);
 
-	public String getWrappedExpression() {
-		return "(" + getExpression() + ")";
+	public String getWrappedExpression(LanguageOperations lang) {
+		return "(" + getExpression(lang) + ")";
 	}
 
 	public List<Variable<?, ?>> getDependencies() { return dependencies; }
@@ -226,14 +228,16 @@ public abstract class Expression<T> implements Tree<Expression<?>> {
 
 		Expression v = (Expression) obj;
 		if (type != v.getType()) return false;
-		if (!Objects.equals(getExpression(), v.getExpression())) return false;
+
+		LanguageOperationsStub lang = new LanguageOperationsStub();
+		if (!Objects.equals(getExpression(lang), v.getExpression(lang))) return false;
 		if (!Objects.equals(dependencies, v.getDependencies())) return false;
 
 		return true;
 	}
 
 	@Override
-	public int hashCode() { return getExpression() == null ? 0 : getExpression().hashCode(); }
+	public int hashCode() { return isNull() ? 0 : getExpression(new LanguageOperationsStub()).hashCode(); }
 
 	private static Set<Variable<?, ?>> dependencies(Expression expressions[]) {
 		Set<Variable<?, ?>> dependencies = new HashSet<>();

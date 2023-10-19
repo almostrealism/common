@@ -16,6 +16,8 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.lang.LanguageOperations;
+
 public class UnaryExpression<T> extends Expression<T> {
 	private String operator;
 
@@ -25,7 +27,7 @@ public class UnaryExpression<T> extends Expression<T> {
 	}
 
 	@Override
-	public String getExpression() {
-		return operator + " " + getChildren().get(0).getWrappedExpression();
+	public String getExpression(LanguageOperations lang) {
+		return operator + " " + getChildren().get(0).getWrappedExpression(lang);
 	}
 }

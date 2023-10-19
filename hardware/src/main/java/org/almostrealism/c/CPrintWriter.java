@@ -18,6 +18,7 @@ package org.almostrealism.c;
 
 import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.code.Precision;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.CodePrintWriterAdapter;
@@ -48,20 +49,20 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 	private boolean log;
 	private int logCount;
 
-	public CPrintWriter(OutputStream out, String topLevelMethodName) {
-		this(new PrintStreamPrintWriter(new PrintStream(out)), topLevelMethodName);
+	public CPrintWriter(OutputStream out, String topLevelMethodName, Precision precision) {
+		this(new PrintStreamPrintWriter(new PrintStream(out)), topLevelMethodName, precision);
 	}
 
-	public CPrintWriter(PrintWriter p, String topLevelMethodName) {
-		this(p, topLevelMethodName, false);
+	public CPrintWriter(PrintWriter p, String topLevelMethodName, Precision precision) {
+		this(p, topLevelMethodName, precision, false);
 	}
 
-	public CPrintWriter(PrintWriter p, String topLevelMethodName, boolean isNative) {
-		this(p, topLevelMethodName, isNative, false);
+	public CPrintWriter(PrintWriter p, String topLevelMethodName, Precision precision, boolean isNative) {
+		this(p, topLevelMethodName, precision, isNative, false);
 	}
 
-	public CPrintWriter(PrintWriter p, String topLevelMethodName, boolean isNative, boolean verbose) {
-		super(p, new CLanguageOperations(isNative, false));
+	public CPrintWriter(PrintWriter p, String topLevelMethodName, Precision precision, boolean isNative, boolean verbose) {
+		super(p, new CLanguageOperations(precision, isNative, false));
 		this.topLevelMethodName = topLevelMethodName;
 		this.accessStack = new Stack<>();
 		this.argumentStack = new Stack<>();
@@ -154,7 +155,7 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 
 	protected void copyInline(int index, ArrayVariable<?> variable, boolean write) {
 		String o = "((double *) argArr[" + index + "])";
-		String v = new InstanceReference<>(variable).getSimpleExpression();
+		String v = new InstanceReference<>(variable).getSimpleExpression(getLanguage());
 
 		if (!write) println("double *" + v + " = " + o + ";");
 	}
@@ -169,11 +170,11 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 										variable.getName() + ";");
 					} else {
 						println(annotationForVariable(variable) + typePrefix(variable.getType()) +
-								variable.getName() + "[" + variable.getArraySize().getSimpleExpression() + "];");
+								variable.getName() + "[" + variable.getArraySize().getSimpleExpression(getLanguage()) + "];");
 					}
 				} else {
 					println(annotationForVariable(variable) + typePrefix(variable.getType()) + variable.getName() +
-									" = " + variable.getExpression().getSimpleExpression() + ";");
+									" = " + variable.getExpression().getSimpleExpression(getLanguage()) + ";");
 				}
 			} else {
 				println(annotationForVariable(variable) + typePrefix(variable.getType()) + variable.getName() +
@@ -191,10 +192,10 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 
 	@Override
 	public void println(Metric m) {
-		String ctr = m.getCounter().getExpression();
+		String ctr = m.getCounter().getExpression(getLanguage());
 		println(ctr + " = fmod(" + ctr + " + 1, " + m.getLogFrequency() + ");");
 		println("if (" + ctr + " == 0) {");
-		m.getVariables().forEach((msg, var) -> printf(msg + ": %f", var.getExpression()));
+		m.getVariables().forEach((msg, var) -> printf(msg + ": %f", var.getExpression(getLanguage())));
 		println("}");
 	}
 
@@ -235,9 +236,9 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 		return "";
 	}
 
-	protected static String encode(Object data) {
+	protected String encode(Object data) {
 		if (data instanceof Expression) {
-			return ((Expression) data).getSimpleExpression();
+			return ((Expression) data).getSimpleExpression(language);
 		} else {
 			throw new IllegalArgumentException("Unable to encode " + data);
 		}

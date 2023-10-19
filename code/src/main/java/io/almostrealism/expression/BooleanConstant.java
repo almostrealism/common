@@ -16,6 +16,8 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.lang.LanguageOperations;
+
 import java.util.Optional;
 
 public class BooleanConstant extends Constant<Boolean> {
@@ -32,7 +34,7 @@ public class BooleanConstant extends Constant<Boolean> {
 	}
 
 	@Override
-	public String getExpression() {
+	public String getExpression(LanguageOperations lang) {
 		return String.valueOf(value);
 	}
 }

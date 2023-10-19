@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,11 +18,11 @@ package org.almostrealism.hardware.cl;
 
 import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.InstructionSet;
-import io.almostrealism.code.LanguageOperations;
+import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.code.Memory;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeEncoder;
-import org.almostrealism.hardware.Precision;
+import io.almostrealism.code.Precision;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.profile.ProfileData;
@@ -67,7 +67,7 @@ public class CLComputeContext extends AbstractComputeContext {
 
 	public CLComputeContext(Hardware hardware, CLDataContext dc, cl_context ctx) {
 		super(hardware, dc);
-		this.enableFp64 = hardware.getPrecision() == Precision.FP64;
+		this.enableFp64 = dc.getPrecision() == Precision.FP64;
 		this.ctx = ctx;
 		this.instructionSets = new ArrayList<>();
 		this.profiles = new HashMap<>();
@@ -79,24 +79,24 @@ public class CLComputeContext extends AbstractComputeContext {
 		this.profiling = profiling;
 
 		queue = CL.clCreateCommandQueue(ctx, mainDevice, profiling ? CL.CL_QUEUE_PROFILING_ENABLE : 0, null);
-		if (Hardware.enableVerbose) System.out.println("Hardware[" + getName() + "]: OpenCL command queue initialized");
+		if (Hardware.enableVerbose) System.out.println("Hardware[CL]: OpenCL command queue initialized");
 
 		if (enableFastQueue) {
 			fastQueue = CL.clCreateCommandQueue(ctx, mainDevice, profiling ? CL.CL_QUEUE_PROFILING_ENABLE : 0, null);
 			if (Hardware.enableVerbose)
-				System.out.println("Hardware[" + getName() + "]: OpenCL fast command queue initialized");
+				System.out.println("Hardware[CL]: OpenCL fast command queue initialized");
 		}
 
 		if (kernelDevice != null) {
 			kernelQueue = CL.clCreateCommandQueue(ctx, kernelDevice, profiling ? CL.CL_QUEUE_PROFILING_ENABLE : 0, null);
 			if (Hardware.enableVerbose)
-				System.out.println("Hardware[" + getName() + "]: OpenCL kernel command queue initialized");
+				System.out.println("Hardware[CL]: OpenCL kernel command queue initialized");
 		}
 	}
 
 	@Override
 	public LanguageOperations getLanguage() {
-		return new OpenCLLanguageOperations();
+		return new OpenCLLanguageOperations(getDataContext().getPrecision());
 	}
 
 	@Deprecated
@@ -115,7 +115,9 @@ public class CLComputeContext extends AbstractComputeContext {
 		StringBuffer buf = new StringBuffer();
 		if (enableFp64) buf.append(fp64);
 
-		ScopeEncoder enc = new ScopeEncoder(OpenCLPrintWriter::new, Accessibility.EXTERNAL);
+		ScopeEncoder enc = new ScopeEncoder(
+				p -> new OpenCLPrintWriter(p, getDataContext().getPrecision()),
+				Accessibility.EXTERNAL);
 		buf.append(enc.apply(scope));
 
 		CLOperatorMap instSet = new CLOperatorMap(this, scope.getMetadata(), buf.toString(), profileFor(scope.getName()));
@@ -128,6 +130,9 @@ public class CLComputeContext extends AbstractComputeContext {
 
 	@Override
 	public boolean isKernelSupported() { return true; }
+
+	@Override
+	public boolean isProfiling() { return profiling; }
 
 	protected cl_context getCLContext() {
 		return ctx;

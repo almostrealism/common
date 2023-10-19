@@ -18,7 +18,7 @@ package org.almostrealism.hardware.metal;
 
 import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.InstructionSet;
-import io.almostrealism.code.LanguageOperations;
+import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeEncoder;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
@@ -63,25 +63,25 @@ public class MetalComputeContext extends AbstractComputeContext {
 		this.kernelDevice = kernelDevice;
 
 		if (Hardware.enableVerbose) {
-			System.out.println("Hardware[" + getName() + "]: Max Threadgroup Size (" +
+			System.out.println("Hardware[" + getDataContext().getName() + "]: Max Threadgroup Size (" +
 					mainDevice.maxThreadgroupWidth() + ", " +
 					mainDevice.maxThreadgroupHeight() + ", " +
 					mainDevice.maxThreadgroupDepth() + ")");
 		}
 
 		queue = mainDevice.newCommandQueue();
-		if (Hardware.enableVerbose) System.out.println("Hardware[" + getName() + "]: Metal command queue initialized");
+		if (Hardware.enableVerbose) System.out.println("Hardware[" + getDataContext().getName() + "]: Metal command queue initialized");
 
 		if (enableFastQueue) {
 			fastQueue = mainDevice.newCommandQueue();
 			if (Hardware.enableVerbose)
-				System.out.println("Hardware[" + getName() + "]: Metal fast command queue initialized");
+				System.out.println("Hardware[" + getDataContext().getName() + "]: Metal fast command queue initialized");
 		}
 
 		if (kernelDevice != null) {
 			kernelQueue = kernelDevice.newCommandQueue();
 			if (Hardware.enableVerbose)
-				System.out.println("Hardware[" + getName() + "]: Metal kernel command queue initialized");
+				System.out.println("Hardware[" + getDataContext().getName() + "]: Metal kernel command queue initialized");
 		}
 
 		this.runner = new MetalCommandRunner(queue);
@@ -89,7 +89,7 @@ public class MetalComputeContext extends AbstractComputeContext {
 
 	@Override
 	public LanguageOperations getLanguage() {
-		return new MetalLanguageOperations();
+		return new MetalLanguageOperations(getDataContext().getPrecision());
 	}
 
 	@Override
@@ -98,7 +98,7 @@ public class MetalComputeContext extends AbstractComputeContext {
 		buf.append(includes);
 		buf.append("\n");
 
-		ScopeEncoder enc = new ScopeEncoder(pw -> new MetalPrintWriter(pw, scope.getName()), Accessibility.EXTERNAL);
+		ScopeEncoder enc = new ScopeEncoder(pw -> new MetalPrintWriter(pw, scope.getName(), getLanguage().getPrecision()), Accessibility.EXTERNAL);
 		buf.append(enc.apply(scope));
 
 		MetalOperatorMap instSet = new MetalOperatorMap(this, scope.getMetadata(), scope.getName(), buf.toString());

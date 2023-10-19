@@ -20,7 +20,7 @@ import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
-import org.almostrealism.hardware.Precision;
+import io.almostrealism.code.Precision;
 import org.almostrealism.hardware.RAM;
 import org.almostrealism.io.SystemUtils;
 import org.jocl.CL;
@@ -147,7 +147,7 @@ public class CLMemoryProvider implements MemoryProvider<RAM> {
 		CLMemory mem = (CLMemory) ram;
 
 		try {
-			if (Hardware.getLocalHardware().getPrecision() == Precision.FP64) {
+			if (context.getPrecision() == Precision.FP64) {
 				double d[] = new double[length];
 				for (int i = 0; i < d.length; i++) d[i] = source[srcOffset + i];
 				Pointer src = Pointer.to(d).withByteOffset(0);
@@ -175,7 +175,7 @@ public class CLMemoryProvider implements MemoryProvider<RAM> {
 		CLMemory mem = (CLMemory) ram;
 
 		try {
-			if (Hardware.getLocalHardware().getPrecision() == Precision.FP64) {
+			if (context.getPrecision() == Precision.FP64) {
 				Pointer src = Pointer.to(source).withByteOffset((long) srcOffset * getNumberSize());
 				cl_event event = new cl_event();
 				CL.clEnqueueWriteBuffer(queue, mem.getMem(), CL.CL_TRUE,

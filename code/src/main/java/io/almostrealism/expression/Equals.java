@@ -16,6 +16,8 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.lang.LanguageOperations;
+
 import java.util.List;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
@@ -25,8 +27,8 @@ public class Equals extends Expression<Boolean> {
 		super(Boolean.class, left, right);
 	}
 
-	public String getExpression() {
-		return "(" + getChildren().get(0).getExpression() + ") == (" + getChildren().get(1).getExpression() + ")";
+	public String getExpression(LanguageOperations lang) {
+		return "(" + getChildren().get(0).getExpression(lang) + ") == (" + getChildren().get(1).getExpression(lang) + ")";
 	}
 
 	@Override

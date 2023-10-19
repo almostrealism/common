@@ -18,11 +18,9 @@ package org.almostrealism.hardware;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.almostrealism.code.Computation;
-import io.almostrealism.code.LanguageOperations;
-import io.almostrealism.expression.DoubleConstant;
+import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.KernelIndex;
-import io.almostrealism.expression.StaticReference;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.hardware.computations.Assignment;
@@ -51,19 +49,6 @@ public interface HardwareFeatures {
 
 	default <T extends MemoryData> Optional<Computation<T>> decompile(Evaluable<T> r) {
 		return Hardware.getComputer().decompile(r);
-	}
-
-	default IntFunction<Expression> kernelIndex(LanguageOperations lang) {
-		return i -> new KernelIndex(lang, i);
-	}
-
-	default String stringForDouble(double value) {
-		return Hardware.getLocalHardware().stringForDouble(value);
-	}
-
-	@JsonIgnore
-	default String getNumberTypeName() {
-		return Hardware.getLocalHardware().getNumberTypeName();
 	}
 
 	default <T extends MemoryData> Assignment<T> a(int memLength, Supplier<Evaluable<? extends T>> result, Supplier<Evaluable<? extends T>> value) {

@@ -16,6 +16,8 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.lang.LanguageOperations;
+
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Stream;
@@ -37,8 +39,8 @@ public class NAryExpression<T> extends Expression<T> {
 
 
 	@Override
-	public String getExpression() {
-		return concat(operator, getChildren().stream().map(Expression::getWrappedExpression));
+	public String getExpression(LanguageOperations lang) {
+		return concat(operator, getChildren().stream().map(expression -> expression.getWrappedExpression(lang)));
 	}
 
 	@Override

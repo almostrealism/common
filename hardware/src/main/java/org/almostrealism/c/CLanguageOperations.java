@@ -17,9 +17,9 @@
 package org.almostrealism.c;
 
 import io.almostrealism.code.Accessibility;
-import io.almostrealism.code.DefaultLanguageOperations;
+import io.almostrealism.code.Precision;
+import io.almostrealism.lang.DefaultLanguageOperations;
 import io.almostrealism.code.PhysicalScope;
-import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.hardware.Hardware;
 
@@ -30,8 +30,8 @@ public class CLanguageOperations extends DefaultLanguageOperations {
 	private boolean isNative;
 	private boolean enableArgumentDetailReads;
 
-	public CLanguageOperations(boolean isNative, boolean enableArgumentDetailReads) {
-		super(true);
+	public CLanguageOperations(Precision precision, boolean isNative, boolean enableArgumentDetailReads) {
+		super(precision, true);
 		this.isNative = isNative;
 		this.enableArgumentDetailReads = enableArgumentDetailReads;
 	}
@@ -59,7 +59,7 @@ public class CLanguageOperations extends DefaultLanguageOperations {
 	}
 
 	@Override
-	protected void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out, Accessibility access) {
+	public void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out, Accessibility access) {
 		if (access == Accessibility.EXTERNAL) {
 			if (isNative()) {
 				out.accept("long* argArr, uint32_t* offsetArr, uint32_t* sizeArr, uint32_t* dim0Arr, uint32_t count");
@@ -88,11 +88,11 @@ public class CLanguageOperations extends DefaultLanguageOperations {
 		super.renderArguments(arguments, out, access);
 	}
 
-	private static String typeString(Class type) {
+	private String typeString(Class type) {
 		if (type == null) return "";
 
 		if (type == Double.class) {
-			return Hardware.getLocalHardware().getNumberTypeName();
+			return getPrecision().typeName();
 		} else if (type == Integer.class || type == int[].class) {
 			return "int";
 		} else if (type == Long.class || type == long[].class) {

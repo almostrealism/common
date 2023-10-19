@@ -14,17 +14,18 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.code;
+package io.almostrealism.expression;
 
-import io.almostrealism.scope.Method;
+import io.almostrealism.lang.LanguageOperations;
 
-public interface LanguageOperations {
+public class Epsilon extends StaticReference<Double> {
 
-	String kernelIndex(int index);
+	public Epsilon() {
+		super(Double.class, null);
+	}
 
-	String annotationForPhysicalScope(PhysicalScope scope);
-
-	String nameForType(Class<?> type);
-
-	String renderMethod(Method<?> method);
+	@Override
+	public String getExpression(LanguageOperations lang) {
+		return lang.getPrecision().stringForDouble(lang.getPrecision().epsilon());
+	}
 }

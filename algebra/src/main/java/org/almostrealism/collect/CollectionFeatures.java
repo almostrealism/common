@@ -59,8 +59,6 @@ import org.almostrealism.collect.computations.Random;
 import org.almostrealism.collect.computations.RepeatedCollectionProducerComputation;
 import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.collect.computations.TraversableExpressionComputation;
-import org.almostrealism.hardware.Hardware;
-import org.almostrealism.hardware.KernelSupport;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryDataComputation;
 import org.almostrealism.hardware.computations.Assignment;
@@ -68,7 +66,6 @@ import org.almostrealism.hardware.computations.Assignment;
 import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.Function;
-import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -265,7 +262,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 						vars[i] = args.get(i) instanceof CollectionVariable ? (CollectionVariable) args.get(i) : null;
 					}
 
-					Expression index = new KernelIndex(args.get(0).getLanguage());
+					Expression index = new KernelIndex();
 					Expression pos[] = shape.position(index);
 
 					return kernel.apply(vars, pos);
@@ -356,7 +353,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	default CollectionProducerComputation<PackedCollection<?>> integers(int from, int to) {
 		int len = to - from;
 		return new ExpressionComputation<>(shape(len).traverseEach(),
-				List.of(args -> new Sum(new DoubleConstant((double) from), new KernelIndex(args.get(0).getLanguage()))));
+				List.of(args -> new Sum(new DoubleConstant((double) from), new KernelIndex())));
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> add(Producer<T> a, Producer<T> b) {
@@ -429,7 +426,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return new TraversableExpressionComputation<>(shape,
 				args -> CollectionExpression.create(shape, index -> {
 					Expression<Double> difference = conditional(args[1].getValueAt(index).eq(args[2].getValueAt(index)),
-							e(Hardware.getLocalHardware().getPrecision().epsilon()),
+							epsilon(),
 							new Difference(args[1].getValueAt(index), args[2].getValueAt(index)));
 					return conditional(args[1].getValueAt(index).eq(e(0.0)), e(0.0), difference);
 				}),
@@ -613,7 +610,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		if (KernelPreferences.isPreferLoops()) {
 			return new RepeatedCollectionProducerComputation<>(shape.replace(shape(1)),
 					(args, index) ->
-							e(Hardware.getLocalHardware().getPrecision().minValue()),
+							minValue(),
 					(args, index) ->
 							index.lessThan(e(size)),
 					(args, index) ->

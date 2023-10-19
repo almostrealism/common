@@ -16,13 +16,13 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.scope.HybridScope;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
@@ -74,9 +74,9 @@ public class RepeatedCollectionProducerComputation<T extends PackedCollection<?>
 
 		String i = getVariablePrefix() + "_i";
 		StaticReference<Integer> ref = new StaticReference<>(Integer.class, i);
-		String cond = condition.apply(getTraversableArguments(ref), ref).getSimpleExpression();
+		String cond = condition.apply(getTraversableArguments(ref), ref).getSimpleExpression(getLanguage());
 
-		Expression index = kernelIndex().divide(e(getShape().getSize())).multiply(e(getShape().getSize()));
+		Expression index = new KernelIndex().divide(e(getShape().getSize())).multiply(e(getShape().getSize()));
 		TraversableExpression output = CollectionExpression.traverse(getOutputVariable(),
 				size -> index.toInt().divide(e(getMemLength())).multiply(size));
 
@@ -85,7 +85,7 @@ public class RepeatedCollectionProducerComputation<T extends PackedCollection<?>
 		for (int j = 0; j < getMemLength(); j++) {
 			Expression<?> out = output.getValueRelative(e(j));
 			Expression<?> val = initial.apply(getTraversableArguments(index), ref.add(j));
-			scope.code().accept("\t" + out.getSimpleExpression() + " = " + val.getSimpleExpression() + ";\n");
+			scope.code().accept("\t" + out.getSimpleExpression(getLanguage()) + " = " + val.getSimpleExpression(getLanguage()) + ";\n");
 			dependencies.addAll(out.getDependencies());
 			dependencies.addAll(val.getDependencies());
 		}
@@ -95,7 +95,7 @@ public class RepeatedCollectionProducerComputation<T extends PackedCollection<?>
 		for (int j = 0; j < getMemLength(); j++) {
 			Expression<?> out = output.getValueRelative(e(j));
 			Expression<?> val = expression.apply(getTraversableArguments(index), ref.add(j));
-			scope.code().accept("\t\t" + out.getSimpleExpression() + " = " + val.getSimpleExpression() + ";\n");
+			scope.code().accept("\t\t" + out.getSimpleExpression(getLanguage()) + " = " + val.getSimpleExpression(getLanguage()) + ";\n");
 			dependencies.addAll(out.getDependencies());
 			dependencies.addAll(val.getDependencies());
 		}

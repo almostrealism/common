@@ -33,7 +33,8 @@ import org.almostrealism.hardware.MemoryData;
 
 import java.util.function.Supplier;
 
-public class ScalarBankPad extends CollectionProducerComputationBase<PackedCollection<Scalar>, PackedCollection<Scalar>> implements ScalarBankProducerBase, DestinationSupport<PackedCollection<Scalar>>, ComputerFeatures {
+public class ScalarBankPad extends CollectionProducerComputationBase<PackedCollection<Scalar>, PackedCollection<Scalar>>
+		implements ScalarBankProducerBase, DestinationSupport<PackedCollection<Scalar>>, ComputerFeatures {
 	private final int count;
 	private final int total;
 
@@ -57,18 +58,18 @@ public class ScalarBankPad extends CollectionProducerComputationBase<PackedColle
 		scope.setMetadata(new OperationMetadata(getFunctionName(), "ScalarBankPad"));
 
 		Expression i = new StaticReference(Integer.class, getVariablePrefix() + "_i");
-		String resultX = getArgument(0, 2 * count).referenceRelative(i.multiply(2)).getSimpleExpression();
-		String resultY = getArgument(0, 2 * count).referenceRelative(i.multiply(2).add(1)).getSimpleExpression();
-		String valueX = getArgument(1, 2 * count).referenceRelative(i.multiply(2)).getSimpleExpression();
-		String valueY = getArgument(1, 2 * count).referenceRelative(i.multiply(2).add(1)).getSimpleExpression();
+		String resultX = getArgument(0, 2 * count).referenceRelative(i.multiply(2)).getSimpleExpression(getLanguage());
+		String resultY = getArgument(0, 2 * count).referenceRelative(i.multiply(2).add(1)).getSimpleExpression(getLanguage());
+		String valueX = getArgument(1, 2 * count).referenceRelative(i.multiply(2)).getSimpleExpression(getLanguage());
+		String valueY = getArgument(1, 2 * count).referenceRelative(i.multiply(2).add(1)).getSimpleExpression(getLanguage());
 
 		scope.code().accept("for (int " + i + " = 0; " + i + " < " + count +"; " + i + "++) {\n");
 		scope.code().accept("    if (" + i + " < " + total + ") {\n");
 		scope.code().accept("        " + resultX + " = " + valueX + ";\n");
 		scope.code().accept("        " + resultY + " = " + valueY + ";\n");
 		scope.code().accept("    } else {\n");
-		scope.code().accept("        " + resultX + " = " + stringForDouble(0.0) + ";\n");
-		scope.code().accept("        " + resultY + " = " + stringForDouble(1.0) + ";\n");
+		scope.code().accept("        " + resultX + " = " + getLanguage().getPrecision().stringForDouble(0.0) + ";\n");
+		scope.code().accept("        " + resultY + " = " + getLanguage().getPrecision().stringForDouble(1.0) + ";\n");
 		scope.code().accept("    }\n");
 		scope.code().accept("}\n");
 		return scope;

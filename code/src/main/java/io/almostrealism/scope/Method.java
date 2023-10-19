@@ -16,6 +16,7 @@
 
 package io.almostrealism.scope;
 
+import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.code.Statement;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Nameable;
@@ -69,11 +70,11 @@ public class Method<T> extends Expression<T> implements Statement, Nameable {
 	}
 
 	@Override
-	public String getExpression() {
+	public String getExpression(LanguageOperations lang) {
 		if (getMember() == null) {
-			return getName() + "(" + toString(getArguments()) + ")";
+			return getName() + "(" + toString(lang, getArguments()) + ")";
 		} else {
-			return getMember() + "." + getName() + "(" + toString(getArguments()) + ")";
+			return getMember() + "." + getName() + "(" + toString(lang, getArguments()) + ")";
 		}
 	}
 
@@ -92,12 +93,12 @@ public class Method<T> extends Expression<T> implements Statement, Nameable {
 		return new Method<>(getType(), getMember(), getName(), children);
 	}
 
-	protected static String toString(List<Expression<?>> arguments) {
+	protected static String toString(LanguageOperations lang, List<Expression<?>> arguments) {
 		StringBuffer buf = new StringBuffer();
 
 		for (int i = 0; i < arguments.size(); i++) {
 			Expression<?> v = arguments.get(i);
-			buf.append(v.getExpression());
+			buf.append(v.getExpression(lang));
 
 			if (i < (arguments.size() - 1)) {
 				buf.append(", ");

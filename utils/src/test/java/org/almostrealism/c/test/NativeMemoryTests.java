@@ -16,6 +16,7 @@
 
 package org.almostrealism.c.test;
 
+import io.almostrealism.code.Precision;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.c.NativeMemoryProvider;
 import org.almostrealism.collect.PackedCollection;
@@ -27,8 +28,7 @@ import org.junit.Assert;
 public class NativeMemoryTests {
 	// TODO  @Test
 	public void readAndWrite() {
-		Hardware hardware = Hardware.getLocalHardware();
-		NativeMemoryProvider provider = new NativeMemoryProvider(NativeCompiler.factory(hardware, false).construct(), 1024);
+		NativeMemoryProvider provider = new NativeMemoryProvider(NativeCompiler.factory(Precision.FP64, false).construct(), 1024);
 		RAM ram = provider.allocate(1);
 
 		System.out.println("memory location = " + ram.getNativePointer());
@@ -46,8 +46,6 @@ public class NativeMemoryTests {
 
 	// TODO  @Test
 	public void scalarBank() {
-		assert Hardware.getLocalHardware().getMemoryProvider(0) instanceof NativeMemoryProvider;
-
 		PackedCollection<Scalar> bank = Scalar.scalarBank(20);
 		bank.set(4, 25);
 		bank.set(5, 30);

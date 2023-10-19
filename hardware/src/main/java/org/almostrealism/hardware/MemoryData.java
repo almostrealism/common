@@ -29,7 +29,6 @@ import java.io.OutputStream;
 import java.nio.ByteBuffer;
 
 public interface MemoryData extends TraversableExpression<Double>, Delegated<MemoryData>, Node {
-	int sizeOf = Hardware.getLocalHardware().getNumberSize();
 
 	Memory getMem();
 

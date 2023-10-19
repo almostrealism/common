@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ package org.almostrealism.hardware.external;
 
 import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.InstructionSet;
-import io.almostrealism.code.LanguageOperations;
+import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeEncoder;
 import org.almostrealism.c.CLanguageOperations;
@@ -63,7 +63,7 @@ public class ExternalComputeContext extends AbstractComputeContext {
 
 	@Override
 	public LanguageOperations getLanguage() {
-		return new CLanguageOperations(true, false);
+		return new CLanguageOperations(getDataContext().getPrecision(), true, false);
 	}
 
 	public NativeCompiler getNativeCompiler() { return compiler; }
@@ -73,7 +73,7 @@ public class ExternalComputeContext extends AbstractComputeContext {
 		StringBuffer buf = new StringBuffer();
 		NativeInstructionSet inst = getNativeCompiler().reserveLibraryTarget();
 		inst.setComputeContext(this);
-		buf.append(new ScopeEncoder(pw -> new CPrintWriter(pw, "apply", true), Accessibility.EXTERNAL).apply(scope));
+		buf.append(new ScopeEncoder(pw -> new CPrintWriter(pw, "apply", getLanguage().getPrecision(), true), Accessibility.EXTERNAL).apply(scope));
 		buf.append("\n");
 		buf.append(externalWrapper);
 		String executable = getNativeCompiler().getLibraryDirectory() + "/" + getNativeCompiler().compile(inst.getClass().getName(), buf.toString(), false);

@@ -16,6 +16,8 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.lang.LanguageOperations;
+
 import java.util.List;
 
 public class Min extends Expression<Double> {
@@ -24,8 +26,10 @@ public class Min extends Expression<Double> {
 	}
 
 	@Override
-	public String getExpression() {
-		return "min(" + getChildren().get(0).getExpression() + ", " + getChildren().get(1).getExpression() + ")";
+	public String getExpression(LanguageOperations lang) {
+		return lang.min(
+				getChildren().get(0).getExpression(lang),
+				getChildren().get(1).getExpression(lang));
 	}
 
 	@Override

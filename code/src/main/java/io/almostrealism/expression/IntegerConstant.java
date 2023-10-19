@@ -16,6 +16,8 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.lang.LanguageOperations;
+
 import java.util.OptionalInt;
 
 public class IntegerConstant extends Constant<Integer> {
@@ -32,7 +34,7 @@ public class IntegerConstant extends Constant<Integer> {
 	}
 
 	@Override
-	public String getExpression() {
+	public String getExpression(LanguageOperations lang) {
 		return String.valueOf(value);
 	}
 

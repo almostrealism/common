@@ -74,7 +74,7 @@ public class Switch extends OperationComputationAdapter<PackedCollection<?>> {
 
 				double val = (i + 1) * interval;
 
-				code.append("if (" + decisionValue.valueAt(0).getSimpleExpression() + " <= " + val + ") {\n");
+				code.append("if (" + decisionValue.valueAt(0).getSimpleExpression(getLanguage()) + " <= " + val + ") {\n");
 				code.append("\t" + lang.renderMethod(scope.getRequiredScopes().get(i).call()) + "\n");
 				code.append("}");
 			});

@@ -16,6 +16,8 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.lang.LanguageOperations;
+
 import java.util.List;
 
 public class Tangent extends Expression<Double> {
@@ -24,8 +26,8 @@ public class Tangent extends Expression<Double> {
 	}
 
 	@Override
-	public String getExpression() {
-		return "tan(" + getChildren().get(0).getExpression() + ")";
+	public String getExpression(LanguageOperations lang) {
+		return "tan(" + getChildren().get(0).getExpression(lang) + ")";
 	}
 
 	@Override

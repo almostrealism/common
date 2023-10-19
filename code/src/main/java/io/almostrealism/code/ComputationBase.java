@@ -17,6 +17,7 @@
 package io.almostrealism.code;
 
 import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import io.almostrealism.scope.Argument;
@@ -33,6 +34,7 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 public abstract class ComputationBase<I, O, T> extends OperationAdapter<I> implements Computation<O>, ParallelProcess<Process<?, ?>, T>, Compactable {
+	private LanguageOperations lang;
 
 	public ComputationBase() {
 		super(new Supplier[0]);
@@ -59,6 +61,8 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I> imple
 	@Override
 	public boolean isCompiled() { return false; }
 
+	protected LanguageOperations getLanguage() { return lang; }
+
 	@Override
 	public void prepareArguments(ArgumentMap map) {
 		if (getArgumentVariables() != null) return;
@@ -69,6 +73,7 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I> imple
 	@Override
 	public void prepareScope(ScopeInputManager manager) {
 		if (getArgumentVariables() != null) return;
+		this.lang = manager.getLanguage();
 		ScopeLifecycle.prepareScope(getInputs().stream(), manager);
 		assignArguments(manager);
 	}
@@ -77,6 +82,7 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I> imple
 	public void resetArguments() {
 		super.resetArguments();
 		ScopeLifecycle.resetArguments(getInputs().stream());
+		this.lang = null;
 	}
 
 	/**

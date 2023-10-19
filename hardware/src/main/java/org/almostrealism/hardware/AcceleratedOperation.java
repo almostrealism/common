@@ -18,7 +18,7 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.Execution;
-import io.almostrealism.code.LanguageOperations;
+import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.code.Semaphore;
 import io.almostrealism.expression.Expression;
@@ -41,7 +41,6 @@ import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.collect.Shape;
-import org.almostrealism.hardware.cl.CLOperator;
 import org.almostrealism.hardware.mem.Bytes;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
@@ -52,7 +51,6 @@ import org.jocl.CLException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
@@ -377,7 +375,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			}
 
 			if (!(c instanceof KernelizedEvaluable)) {
-				Object o = c.evaluate((Object[]) args);
+				Object o = c.evaluate(args);
 				if (!(o instanceof MemoryData))
 					throw new IllegalArgumentException();
 

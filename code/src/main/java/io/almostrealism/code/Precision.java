@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.hardware;
+package io.almostrealism.code;
 
 public enum Precision {
 	FP16, FP32, FP64;
@@ -55,6 +55,41 @@ public enum Precision {
 				return 2.220446049250313e-16;
 			default:
 				throw new RuntimeException("Unknown precision");
+		}
+	}
+
+	public String typeName() {
+		switch (this) {
+			case FP16:
+				return "bfloat";
+			case FP32:
+				return "float";
+			case FP64:
+				return "double";
+			default:
+				return "float";
+		}
+	}
+
+	public String stringForDouble(double d) {
+		if (this != Precision.FP64) {
+			Float f = (float) d;
+			if (f.isInfinite()) {
+				return String.valueOf(f > 0 ? Float.MAX_VALUE : Float.MIN_VALUE);
+			} else if (f.isNaN()) {
+				return "0.0";
+			}
+
+			return String.valueOf((float) d);
+		} else {
+			Double v = d;
+			if (v.isInfinite()) {
+				return String.valueOf(v > 0 ? Double.MAX_VALUE : Double.MIN_VALUE);
+			} else if (v.isNaN()) {
+				return "0.0";
+			}
+
+			return String.valueOf(d);
 		}
 	}
 }

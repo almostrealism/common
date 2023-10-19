@@ -16,6 +16,8 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.lang.LanguageOperations;
+
 import java.util.List;
 import java.util.OptionalInt;
 
@@ -39,14 +41,14 @@ public class Mod<T extends Number> extends Expression<T> {
 			throw new UnsupportedOperationException();
 
 		if (b.intValue().isPresent() && b.intValue().getAsInt() == 0) {
-			System.out.println("WARN: Module zero encountered while creating expression - " + getExpression());
+			System.out.println("WARN: Module zero encountered while creating expression");
 		}
 	}
 
 	@Override
-	public String getExpression() {
-		return fp ? "fmod(" + getChildren().get(0).getExpression() + ", " + getChildren().get(1).getExpression() + ")" :
-				"(" + getChildren().get(0).getExpression() + ") % (" + getChildren().get(1).getExpression() + ")";
+	public String getExpression(LanguageOperations lang) {
+		return fp ? "fmod(" + getChildren().get(0).getExpression(lang) + ", " + getChildren().get(1).getExpression(lang) + ")" :
+				"(" + getChildren().get(0).getExpression(lang) + ") % (" + getChildren().get(1).getExpression(lang) + ")";
 	}
 
 	@Override
@@ -88,7 +90,7 @@ public class Mod<T extends Number> extends Expression<T> {
 				} else if (mod.intValue().getAsInt() != 0) {
 					return (Expression) new IntegerConstant(input.intValue().getAsInt() % mod.intValue().getAsInt());
 				} else {
-					System.out.println("WARN: Module zero encountered while simplifying expression - " + getExpression());
+					System.out.println("WARN: Module zero encountered while simplifying expression");
 				}
 			}
 		} else if (enableIntegerSimplification && mod.intValue().isPresent()) {

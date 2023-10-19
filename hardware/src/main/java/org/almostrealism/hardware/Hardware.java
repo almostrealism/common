@@ -22,15 +22,14 @@ import io.almostrealism.code.Computer;
 import io.almostrealism.code.DataContext;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
-import io.almostrealism.expression.Cast;
-import io.almostrealism.expression.DoubleConstant;
-import io.almostrealism.expression.Expression;
+import io.almostrealism.code.Precision;
 import io.almostrealism.kernel.KernelPreferences;
 import io.almostrealism.relation.ParallelProcess;
 import org.almostrealism.hardware.cl.CLMemoryProvider;
 import org.almostrealism.hardware.cl.CLMemoryProvider.Location;
 import org.almostrealism.hardware.cl.CLDataContext;
 import org.almostrealism.hardware.ctx.ContextListener;
+import org.almostrealism.hardware.external.ExternalComputeContext;
 import org.almostrealism.hardware.jni.NativeDataContext;
 import org.almostrealism.hardware.metal.MetalDataContext;
 import org.almostrealism.io.SystemUtils;
@@ -42,7 +41,6 @@ import java.util.concurrent.Callable;
 
 public final class Hardware {
 	public static boolean enableVerbose = false;
-	public static boolean enableCast = false;
 	public static final boolean enableMultiThreading = true;
 	public static boolean enableKernelOps;
 
@@ -55,25 +53,10 @@ public final class Hardware {
 	static {
 		boolean aarch = SystemUtils.isAarch64();
 
-		boolean gpu = "gpu".equalsIgnoreCase(System.getenv("AR_HARDWARE_PLATFORM")) ||
-				"gpu".equalsIgnoreCase(System.getProperty("AR_HARDWARE_PLATFORM"));
-
 		enableKernelOps = SystemUtils.isEnabled("AR_HARDWARE_KERNEL_OPS").orElse(true);
 
 		boolean enableDestinationConsolidation =
 				SystemUtils.isEnabled("AR_HARDWARE_DESTINATION_CONSOLIDATION").orElse(false);
-
-		Precision precision = Precision.FP64;
-
-		if ("16".equalsIgnoreCase(System.getenv("AR_HARDWARE_PRECISION")) ||
-				"16".equalsIgnoreCase(System.getProperty("AR_HARDWARE_PRECISION"))) {
-			precision = Precision.FP16;
-		} else if ("32".equalsIgnoreCase(System.getenv("AR_HARDWARE_PRECISION")) ||
-				"32".equalsIgnoreCase(System.getProperty("AR_HARDWARE_PRECISION"))) {
-			precision = Precision.FP32;
-		} else if (precision == Precision.FP64 && gpu) {
-			precision = Precision.FP32;
-		}
 
 		String memScale = System.getProperty("AR_HARDWARE_MEMORY_SCALE");
 		if (memScale == null) memScale = System.getenv("AR_HARDWARE_MEMORY_SCALE");
@@ -113,19 +96,10 @@ public final class Hardware {
 				requirements.add(ComputeRequirement.CL);
 			} else {
 				requirements.add(ComputeRequirement.CL);
-				if (gpu) requirements.add(ComputeRequirement.JNI);
+				requirements.add(ComputeRequirement.JNI);
 			}
 		} else {
 			throw new IllegalStateException("Unknown driver " + driver);
-		}
-
-//		if (nativeMemory) {
-//			gpu = false;
-//			precision = Precision.FP64;
-//		}
-
-		if (requirements.contains(ComputeRequirement.MTL) && precision == Precision.FP64) {
-			precision = Precision.FP32;
 		}
 
 		boolean favorLoops = requirements.size() == 1;
@@ -135,50 +109,38 @@ public final class Hardware {
 			KernelPreferences.setEnableSubdivision(false);
 		}
 
-		local = new Hardware(requirements, nativeMemory, gpu,
+		local = new Hardware(requirements, nativeMemory,
 							enableDestinationConsolidation,
-							precision, location);
-
-		// TODO  This is not a very desirable way of ensuring that Expressions are properly encoded
-		// TODO  but until we further improve the interaction between org.almostrealism.hardware
-		// TODO  and io.almostrealism.code it will have to do
-		Expression.toDouble = e -> new Cast(Double.class, Hardware.getLocalHardware().getNumberTypeName(), e);
-		DoubleConstant.stringForDouble = Hardware.getLocalHardware()::stringForDouble;
+							location);
 	}
 
 	private final String name;
 
-	private final boolean enableGpu, enableKernelQueue = false;
 	private final boolean enableDestinationConsolidation;
 	private final boolean nativeMemory;
 	private final boolean memVolatile;
-	private long memoryMax;
-	private Precision precision;
+	private long maxReservation;
 	private Location location;
 
 	private List<DataContext<MemoryData>> contexts;
-	private ThreadLocal<DataContext<MemoryData>> explicitContext = new ThreadLocal<>();
+	private ThreadLocal<DataContext<MemoryData>> explicitDataCtx = new ThreadLocal<>();
+	private ThreadLocal<ComputeContext<MemoryData>> explicitComputeCtx = new ThreadLocal<>();
 	private List<ContextListener> contextListeners;
 
-	private Hardware(List<ComputeRequirement> type, boolean nativeMemory, boolean enableGpu,
+	private Hardware(List<ComputeRequirement> type, boolean nativeMemory,
 					 boolean enableDestinationConsolidation,
-					 Precision precision, Location location) {
-		this(precision == Precision.FP64 ? "local64" : "local32", type, nativeMemory,
-				enableGpu, enableDestinationConsolidation, precision, location);
+					 Location location) {
+		this("local", type, nativeMemory,
+				enableDestinationConsolidation, location);
 	}
 
-	private Hardware(String name, List<ComputeRequirement> type, boolean nativeMemory, boolean enableGpu,
+	private Hardware(String name, List<ComputeRequirement> type, boolean nativeMemory,
 					 boolean enableDestinationConsolidation,
-					 Precision precision, Location location) {
+					 Location location) {
 		this.name = name;
-
-		this.memoryMax = (long) Math.pow(2, getMemoryScale()) * 64L * 1000L * 1000L;
-		this.memoryMax = memoryMax * precision.bytes();
-
-		this.precision = precision;
+		this.maxReservation = (long) Math.pow(2, getMemoryScale()) * 64L * 1000L * 1000L;
 		this.location = location;
 
-		this.enableGpu = enableGpu;
 		this.enableDestinationConsolidation = enableDestinationConsolidation;
 		this.nativeMemory = nativeMemory;
 		this.memVolatile = location == Location.HEAP;
@@ -211,14 +173,14 @@ public final class Hardware {
 			String cname;
 
 			if (type == ComputeRequirement.CL) {
-				ctx = new CLDataContext(this, getName(), this.memoryMax, getOffHeapSize(type), this.location);
+				ctx = new CLDataContext(this, getName(), this.maxReservation, getOffHeapSize(type), this.location);
 				locationUsed = true;
 				cname = "CL";
 			} else if (type == ComputeRequirement.MTL) {
-				ctx = new MetalDataContext(this, getName(), this.memoryMax, getOffHeapSize(type));
+				ctx = new MetalDataContext(this, getName(), this.maxReservation, getOffHeapSize(type));
 				cname = "MTL";
 			} else {
-				ctx = new NativeDataContext(this, getName(), isNativeMemory(), this.memoryMax);
+				ctx = new NativeDataContext(this, getName(), isNativeMemory(), this.maxReservation);
 				cname = "JNI";
 				if (enableVerbose) System.out.println("Hardware[" + getName() + "]: Created NativeDataContext");
 			}
@@ -231,16 +193,28 @@ public final class Hardware {
 			}
 
 			System.out.println("Hardware[" + getName() + "]: Max RAM for " + cname + " is " +
-					memoryMax / 1000000 + " Megabytes");
+					maxReservation / 1000000 + " Megabytes");
 
 			done.add(type);
-			start(ctx);
+			ctx.init();
 			contexts.add(ctx);
 			contextListeners.forEach(l -> l.contextStarted(ctx));
 		}
 	}
 
 	public String getName() { return name; }
+
+	public Precision getPrecision() {
+		Precision precision = Precision.FP64;
+
+		for (DataContext c : contexts) {
+			if (c.getPrecision().epsilon() > precision.epsilon()) {
+				precision = c.getPrecision();
+			}
+		}
+
+		return precision;
+	}
 
 	public static Hardware getLocalHardware() { return local; }
 
@@ -254,28 +228,18 @@ public final class Hardware {
 
 	public void setMaximumOperationDepth(int depth) { OperationList.setMaxDepth(depth); }
 
-	protected void start(DataContext ctx) {
-		if (ctx instanceof CLDataContext) {
-			((CLDataContext) ctx).init(enableGpu, enableKernelQueue);
-		} else if (ctx instanceof MetalDataContext) {
-			((MetalDataContext) ctx).init(enableGpu, enableKernelQueue);
-		} else if (ctx instanceof NativeDataContext) {
-			((NativeDataContext) ctx).init();
-		}
-	}
-
 	public void addContextListener(ContextListener l) { contextListeners.add(l); }
 	public void removeContextListener(ContextListener l) { contextListeners.remove(l); }
 
 	public <T> T dataContext(Callable<T> exec) {
-		DataContext<MemoryData> next, current = explicitContext.get();
+		DataContext<MemoryData> next, current = explicitDataCtx.get();
 
 		if (getDataContext() instanceof CLDataContext) {
-			next = new CLDataContext(this, getName(), memoryMax, getOffHeapSize(ComputeRequirement.CL), location);
+			next = new CLDataContext(this, "CL", maxReservation, getOffHeapSize(ComputeRequirement.CL), location);
 		} else if (getDataContext() instanceof MetalDataContext) {
-			next = new MetalDataContext(this, getName(), memoryMax, getOffHeapSize(ComputeRequirement.MTL));
+			next = new MetalDataContext(this,"MTL", maxReservation, getOffHeapSize(ComputeRequirement.MTL));
 		} else if (getDataContext() instanceof NativeDataContext) {
-			next = new NativeDataContext(this, getName(), isNativeMemory(), memoryMax);
+			next = new NativeDataContext(this, "JNI", isNativeMemory(), maxReservation);
 		} else {
 			return null;
 		}
@@ -287,8 +251,8 @@ public final class Hardware {
 
 		try {
 			if (Hardware.enableVerbose) System.out.println("Hardware[" + getName() + "]: Start " + dcName);
-			start(next);
-			explicitContext.set(next);
+			next.init();
+			explicitDataCtx.set(next);
 			contextListeners.forEach(l -> l.contextStarted(getDataContext()));
 			return exec.call();
 		} catch (RuntimeException e) {
@@ -297,14 +261,27 @@ public final class Hardware {
 			throw new RuntimeException(e);
 		} finally {
 			contextListeners.forEach(l -> l.contextDestroyed(next));
-			explicitContext.set(current);
+			explicitDataCtx.set(current);
 			if (Hardware.enableVerbose) System.out.println("Hardware[" + getName() + "]: End " + dcName);
 			next.destroy();
 			if (Hardware.enableVerbose) System.out.println("Hardware[" + getName() + "]: Destroyed " + dcName);
 		}
 	}
 
-	public Precision getPrecision() { return precision; }
+	public <T> T computeContext(Callable<T> exec, ComputeRequirement... expectations) {
+		return Optional.ofNullable(getDataContext(false, false, expectations))
+				.map(dc -> {
+					ComputeContext<MemoryData> last = explicitComputeCtx.get();
+
+					try {
+						explicitComputeCtx.set(dc.getComputeContext());
+						return dc.computeContext(exec, expectations);
+					} finally {
+						explicitComputeCtx.set(last);
+					}
+				})
+				.orElseThrow(() -> new RuntimeException("No DataContext meets the provided ComputeRequirements"));
+	}
 
 	public boolean isDestinationConsolidation() { return enableDestinationConsolidation; }
 
@@ -313,21 +290,6 @@ public final class Hardware {
 	public boolean isNativeMemory() { return nativeMemory; }
 
 	public boolean isMemoryVolatile() { return memVolatile; }
-
-	public String getNumberTypeName() {
-		switch (precision) {
-			case FP16:
-				return "bfloat";
-			case FP32:
-				return "float";
-			case FP64:
-				return "double";
-			default:
-				return "float";
-		}
-	}
-
-	public int getNumberSize() { return precision.bytes(); }
 
 	public int getMemoryScale() { return MEMORY_SCALE; }
 
@@ -344,56 +306,32 @@ public final class Hardware {
 		}
 	}
 
-	public String stringForDouble(double d) {
-		if (enableCast) {
-			return "(" + getNumberTypeName() + ") " + rawStringForDouble(d);
-		} else {
-			return rawStringForDouble(d);
-		}
-	}
-
-	private String rawStringForDouble(double d) {
-		if (getPrecision() != Precision.FP64) {
-			Float f = (float) d;
-			if (f.isInfinite()) {
-				return String.valueOf(f > 0 ? Float.MAX_VALUE : Float.MIN_VALUE);
-			} else if (f.isNaN()) {
-				return "0.0";
-			}
-
-			return String.valueOf((float) d);
-		} else {
-			Double v = d;
-			if (v.isInfinite()) {
-				return String.valueOf(v > 0 ? Double.MAX_VALUE : Double.MIN_VALUE);
-			} else if (v.isNaN()) {
-				return "0.0";
-			}
-
-			return String.valueOf(d);
-		}
-	}
-
 	public DataContext<MemoryData> getDataContext() {
 		return getDataContext(false, false);
 	}
 
-	public DataContext<MemoryData> getDataContext(boolean sequential, boolean accelerator) {
-		DataContext<MemoryData> ctx = explicitContext.get();
-		if (ctx != null) return ctx;
+	public DataContext<MemoryData> getDataContext(boolean sequential, boolean accelerator, ComputeRequirement... requirements) {
+		ComputeContext<MemoryData> cc = explicitComputeCtx.get();
+		DataContext<MemoryData> ctx = cc == null ? explicitDataCtx.get() : cc.getDataContext();
 
-		if (contexts.isEmpty()) return null;
+		if (ctx != null) {
+			return filterContexts(List.of(ctx), requirements).stream().findAny().orElseThrow(UnsupportedOperationException::new);
+		}
+
+		List<DataContext<MemoryData>> filtered = filterContexts(contexts, requirements);
+
+		if (filtered.isEmpty()) return null;
 
 		if (accelerator) {
 			// Favor metal
-			for (DataContext<MemoryData> c : contexts) {
+			for (DataContext<MemoryData> c : filtered) {
 				if (c instanceof MetalDataContext) {
 					return c;
 				}
 			}
 
 			// Fallback to CL
-			for (DataContext<MemoryData> c : contexts) {
+			for (DataContext<MemoryData> c : filtered) {
 				if (c instanceof CLDataContext) {
 					return c;
 				}
@@ -402,28 +340,73 @@ public final class Hardware {
 
 		if (sequential) {
 			// Favor JNI
-			for (DataContext<MemoryData> c : contexts) {
+			for (DataContext<MemoryData> c : filtered) {
 				if (c instanceof NativeDataContext) {
 					return c;
 				}
 			}
 		}
 
-		return contexts.get(0);
+		return filtered.get(0);
 	}
 
 	public ComputeContext<MemoryData> getComputeContext() {
 		return getComputeContext(false, false);
 	}
 
-	public ComputeContext<MemoryData> getComputeContext(boolean sequential, boolean accelerator) {
-		return Optional.ofNullable(getDataContext(sequential, accelerator)).map(dc -> dc.getComputeContext())
+	public ComputeContext<MemoryData> getComputeContext(ComputeRequirement... requirements) {
+		return getComputeContext(false, false, requirements);
+	}
+
+	public ComputeContext<MemoryData> getComputeContext(boolean sequential, boolean accelerator, ComputeRequirement... requirements) {
+		return Optional.ofNullable(getDataContext(sequential, accelerator, requirements)).map(dc -> dc.getComputeContext())
 				.orElseThrow(() -> new RuntimeException("No available data context"));
 	}
 
 	public MemoryProvider<? extends Memory> getMemoryProvider(int size) {
 		return Optional.ofNullable(getDataContext()).map(dc -> dc.getMemoryProvider(size))
 				.orElseThrow(() -> new RuntimeException("No available data context"));
+	}
+
+	private static List<DataContext<MemoryData>> filterContexts(List<DataContext<MemoryData>> contexts, ComputeRequirement... requirements) {
+		List<DataContext<MemoryData>> filtered = new ArrayList<>();
+
+		d: for (DataContext<MemoryData> c : contexts) {
+			for (ComputeRequirement r : requirements) {
+				if (!supported(c, r)) {
+					continue d;
+				}
+			}
+
+			filtered.add(c);
+		}
+
+		return filtered;
+	}
+
+	private static boolean supported(DataContext<MemoryData> context, ComputeRequirement requirement) {
+		switch (requirement) {
+			case CPU:
+				return context.getComputeContext().isCPU();
+			case GPU:
+				return !context.getComputeContext().isCPU();
+			case FPGA:
+				return false;
+			case C:
+				return context instanceof NativeDataContext;
+			case CL:
+				return context instanceof CLDataContext;
+			case MTL:
+				return context instanceof MetalDataContext;
+			case JNI:
+				return context instanceof NativeDataContext;
+			case EXTERNAL:
+				return context.getComputeContext() instanceof ExternalComputeContext;
+			case PROFILING:
+				return context.getComputeContext().isProfiling();
+			default:
+				return false;
+		}
 	}
 
 	public static boolean isAsync() { return enableAsync; }
