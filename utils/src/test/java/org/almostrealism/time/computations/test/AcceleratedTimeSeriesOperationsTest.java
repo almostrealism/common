@@ -16,6 +16,7 @@
 
 package org.almostrealism.time.computations.test;
 
+import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.AcceleratedComputationOperation;
@@ -60,7 +61,7 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures, Hardwa
 	public void purgeTest() {
 		Hardware.enableVerbose = true;
 
-		dc(() -> {
+//		dc(() -> {
 			for (int i = 0; i < 2; i++) {
 				cc(() -> {
 					CursorPair cursors = cursors(3.2);
@@ -74,9 +75,9 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures, Hardwa
 
 					Assert.assertEquals(3, series.getLength());
 					valueAtAssertions(series);
-				});
+				}, ComputeRequirement.CL);
 			}
-		});
+//		});
 	}
 
 	@Test
