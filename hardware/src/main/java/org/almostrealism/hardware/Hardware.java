@@ -77,7 +77,7 @@ public final class Hardware {
 
 		String driver = System.getProperty("AR_HARDWARE_DRIVER");
 		if (driver == null) driver = System.getenv("AR_HARDWARE_DRIVER");
-		if (driver == null) driver = aarch ? "mtl" : "cl";
+		if (driver == null) driver = "*";
 
 		boolean nativeMemory = SystemUtils.isEnabled("AR_HARDWARE_NATIVE_MEMORY").orElse(true);
 
@@ -89,14 +89,15 @@ public final class Hardware {
 			requirements.add(ComputeRequirement.MTL);
 		} else if ("native".equalsIgnoreCase(driver)) {
 			requirements.add(ComputeRequirement.JNI);
-		} else if ("all".equalsIgnoreCase(driver)) {
+		} else if ("*".equalsIgnoreCase(driver)) {
 			if (aarch) {
 				requirements.add(ComputeRequirement.JNI);
 				requirements.add(ComputeRequirement.MTL);
 				requirements.add(ComputeRequirement.CL);
 			} else {
 				requirements.add(ComputeRequirement.CL);
-				requirements.add(ComputeRequirement.JNI);
+				if (!SystemUtils.isMacOS())
+					requirements.add(ComputeRequirement.JNI);
 			}
 		} else {
 			throw new IllegalStateException("Unknown driver " + driver);
@@ -193,7 +194,7 @@ public final class Hardware {
 			}
 
 			System.out.println("Hardware[" + getName() + "]: Max RAM for " + cname + " is " +
-					maxReservation / 1000000 + " Megabytes");
+					ctx.getPrecision().bytes() * maxReservation / 1000000 + " Megabytes");
 
 			done.add(type);
 			ctx.init();

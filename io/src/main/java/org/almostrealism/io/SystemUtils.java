@@ -25,6 +25,10 @@ public class SystemUtils {
 		return "aarch64".equals(System.getProperty("os.arch"));
 	}
 
+	public static boolean isMacOS() {
+		return System.getProperty("os.name", "").contains("Mac OS X");
+	}
+
 	public static String getProperty(String key) {
 		String value = System.getProperty(key);
 		if (value == null) {
