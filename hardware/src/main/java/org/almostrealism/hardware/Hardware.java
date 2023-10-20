@@ -24,6 +24,7 @@ import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.Precision;
 import io.almostrealism.kernel.KernelPreferences;
+import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.ParallelProcess;
 import org.almostrealism.hardware.cl.CLMemoryProvider;
 import org.almostrealism.hardware.cl.CLMemoryProvider.Location;
@@ -89,6 +90,10 @@ public final class Hardware {
 			requirements.add(ComputeRequirement.MTL);
 		} else if ("native".equalsIgnoreCase(driver)) {
 			requirements.add(ComputeRequirement.JNI);
+		} else if ("cpu".equalsIgnoreCase(driver)) {
+			requirements.add(ComputeRequirement.CPU);
+		} else if ("gpu".equalsIgnoreCase(driver)) {
+			requirements.add(ComputeRequirement.GPU);
 		} else if ("*".equalsIgnoreCase(driver)) {
 			if (aarch) {
 				requirements.add(ComputeRequirement.JNI);
@@ -161,7 +166,7 @@ public final class Hardware {
 		r: for (ComputeRequirement type : requirements) {
 			if (type == ComputeRequirement.CPU) {
 				// TODO  Choose the ideal CPU implementation for this system
-				type = ComputeRequirement.CL;
+				type = SystemUtils.isAarch64() ? ComputeRequirement.JNI : ComputeRequirement.CL;
 			} else if (type == ComputeRequirement.GPU) {
 				// TODO  Choose the ideal GPU implementation for this system
 				type = SystemUtils.isAarch64() ? ComputeRequirement.MTL : ComputeRequirement.CL;
@@ -183,7 +188,6 @@ public final class Hardware {
 			} else {
 				ctx = new NativeDataContext(this, getName(), isNativeMemory(), this.maxReservation);
 				cname = "JNI";
-				if (enableVerbose) System.out.println("Hardware[" + getName() + "]: Created NativeDataContext");
 			}
 
 			if (locationUsed) {
@@ -193,11 +197,12 @@ public final class Hardware {
 					System.out.println("Hardware[" + getName() + "]: Host RAM enabled");
 			}
 
+			done.add(type);
+			ctx.init();
+
 			System.out.println("Hardware[" + getName() + "]: Max RAM for " + cname + " is " +
 					ctx.getPrecision().bytes() * maxReservation / 1000000 + " Megabytes");
 
-			done.add(type);
-			ctx.init();
 			contexts.add(ctx);
 			contextListeners.forEach(l -> l.contextStarted(ctx));
 		}
@@ -221,9 +226,9 @@ public final class Hardware {
 
 	public static Computer<MemoryData> getComputer() {
 		return new DefaultComputer(computation -> {
-			// TODO  Need a smarter choice for which context to use
 			int count = ParallelProcess.count(computation);
-			return getLocalHardware().getComputeContext(count == 1, count > 128);
+			boolean fixed = ParallelProcess.isFixedCount(computation);
+			return getLocalHardware().getComputeContext(fixed && count == 1, !fixed || count > 128);
 		});
 	}
 
@@ -285,8 +290,6 @@ public final class Hardware {
 	}
 
 	public boolean isDestinationConsolidation() { return enableDestinationConsolidation; }
-
-	public boolean isKernelSupported() { return true; }
 
 	public boolean isNativeMemory() { return nativeMemory; }
 

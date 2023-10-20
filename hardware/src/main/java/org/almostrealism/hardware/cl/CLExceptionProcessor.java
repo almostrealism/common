@@ -21,6 +21,23 @@ import org.almostrealism.hardware.HardwareException;
 import org.jocl.CLException;
 
 public class CLExceptionProcessor {
+	public static HardwareException process(CLException e, CLComputeContext ctx, String msg, String src) {
+		HardwareException ex;
+
+		if ("CL_INVALID_CONTEXT".equals(e.getMessage())) {
+			ex = new InvalidContextException(ctx.toString(), e);
+			if (msg != null) ex = new HardwareException(msg, ex);
+		} else if ("CL_INVALID_VALUE".equals(e.getMessage())) {
+			ex = new InvalidValueException(e);
+			if (msg != null) ex = new HardwareException(msg, ex);
+		} else {
+			ex = new HardwareException(msg, e);
+		}
+
+		ex.setProgram(src);
+		return ex;
+	}
+
 	public static HardwareException process(CLException e, CLMemoryProvider provider, int srcIndex, int destIndex, int length) {
 		if ("CL_INVALID_CONTEXT".equals(e.getMessage())) {
 			if (provider.getContext() == Hardware.getLocalHardware().getDataContext()) {

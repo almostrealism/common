@@ -27,6 +27,7 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.collect.computations.PackedCollectionMax;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.OperationList;
@@ -151,10 +152,15 @@ public class CollectionComputationTests implements TestFeatures {
 							() -> new Provider<>(b));
 
 			KernelizedEvaluable<PackedCollection<?>> ev = computation.get();
-			Assert.assertEquals(3, ev.getArgsCount());
 
 			PackedCollection out = ev.evaluate();
 			assertEquals(8.0, out.toArray(0, 1)[0]);
+
+			if (a.getMem().getProvider() == Hardware.getLocalHardware().getDataContext().getKernelMemoryProvider()) {
+				Assert.assertEquals(3, ev.getArgsCount());
+			} else {
+				Assert.assertEquals(2, ev.getArgsCount());
+			}
 		});
 	}
 

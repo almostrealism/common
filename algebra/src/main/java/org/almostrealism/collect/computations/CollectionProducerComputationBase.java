@@ -24,7 +24,6 @@ import io.almostrealism.collect.CollectionVariable;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
 import io.almostrealism.scope.ArrayVariable;

@@ -38,7 +38,5 @@ public interface ComputeContext<MEM> {
 		return false;
 	}
 
-	boolean isKernelSupported();
-
 	void destroy();
 }

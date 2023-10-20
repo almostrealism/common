@@ -259,6 +259,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		return -1;
 	}
 
+	@Deprecated
 	private static int getProducerArgumentKernelIndex(Variable<?, ?> arg) {
 		if (arg.getProducer() instanceof KernelIndex) {
 			return ((KernelIndex) arg.getProducer()).getKernelIndex();
@@ -281,7 +282,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	@Override
 	public void kernelOperate(MemoryBank output, MemoryData[] args) {
 		try {
-			if (isKernel() && enableKernel) {
+			if (isKernel()) {
 				apply(output, args);
 			} else {
 				throw new HardwareException("Kernel not supported");
@@ -294,7 +295,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	protected AcceleratedProcessDetails processKernelArgs(MemoryBank output, Object args[]) {
 		int kernelSize;
 
-		if (!isKernel() || !enableKernel) {
+		if (!isKernel()) {
 			kernelSize = 1;
 		} else if (output != null) {
 			kernelSize = output.getCount();

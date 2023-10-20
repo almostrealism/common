@@ -26,12 +26,6 @@ import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.NameProvider;
 
 public interface ComputerFeatures extends HardwareFeatures, NameProvider {
-	boolean enableKernel = Hardware.getLocalHardware().isKernelSupported();
-
-	default boolean isContextKernelEnabled() {
-		// return Hardware.getLocalHardware().getComputeContext().isKernelSupported();
-		return true;
-	}
 
 	@Override
 	default String getVariableDimName(ArrayVariable v, int dim) {
@@ -47,9 +41,8 @@ public interface ComputerFeatures extends HardwareFeatures, NameProvider {
 	default Expression<?> getArrayPosition(LanguageOperations lang, ArrayVariable v, Expression pos, int kernelIndex) {
 		Expression offset = new IntegerConstant(0);
 
-		if (isContextKernelEnabled() &&
-				(v.getProducer() instanceof Countable ||
-				(v.getProducer() instanceof KernelSupport && ((KernelSupport) v.getProducer()).isKernelEnabled()))) {
+		if (v.getProducer() instanceof Countable ||
+				(v.getProducer() instanceof KernelSupport && ((KernelSupport) v.getProducer()).isKernelEnabled())) {
 			KernelIndex idx = new KernelIndex(kernelIndex);
 			Expression dim = new StaticReference(Integer.class, KernelSupport.getValueDimName(v.getName(), kernelIndex));
 

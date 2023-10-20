@@ -181,7 +181,6 @@ public class TriangleTest implements TestFeatures {
 		AcceleratedConjunctionScalar acs = (AcceleratedConjunctionScalar) (Supplier) gts.getInputs().get(3);
 
 		Evaluable<Scalar> ev = gts.get();
-		((OperationAdapter) ev).compile();
 
 		Scalar distance = ev.evaluate(in, td);
 		System.out.println(distance);

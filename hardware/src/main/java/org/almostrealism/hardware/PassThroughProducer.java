@@ -87,6 +87,11 @@ public class PassThroughProducer<T extends MemoryData>
 	public int getCount() { return getShape().getCount(); }
 
 	@Override
+	public boolean isFixedCount() {
+		return getShape().getTotalSize() != 1;
+	}
+
+	@Override
 	public void setDestination(Supplier<T> destination) { this.destination = destination; }
 
 	@Override

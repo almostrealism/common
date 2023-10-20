@@ -37,7 +37,7 @@ import java.util.stream.IntStream;
 /**
  * {@link CLOperator}s are intended to be used with {@link ThreadLocal}.
  */
-public class CLOperator extends HardwareOperator implements Factory<cl_kernel> {
+public class CLOperator extends HardwareOperator {
 
 	private static long totalInvocations;
 
@@ -70,16 +70,6 @@ public class CLOperator extends HardwareOperator implements Factory<cl_kernel> {
 	@Override
 	protected String getHardwareName() { return "CL"; }
 
-	// TODO  How do these kernels get released when done?
-	@Override
-	public cl_kernel construct() {
-		try {
-			return CL.clCreateKernel(prog.getProgram(), name, null);
-		} catch (CLException e) {
-			throw exceptionProcessor == null ? e : exceptionProcessor.apply(name, e);
-		}
-	}
-
 	@Override
 	protected int getArgCount() { return argCount; }
 
@@ -90,7 +80,13 @@ public class CLOperator extends HardwareOperator implements Factory<cl_kernel> {
 
 	@Override
 	public synchronized Semaphore accept(Object[] args, Semaphore dependsOn) {
-		if (kernel == null) kernel = construct();
+		if (kernel == null) {
+			try {
+				kernel = CL.clCreateKernel(prog.getProgram(), name, null);
+			} catch (CLException e) {
+				throw exceptionProcessor == null ? e : exceptionProcessor.apply(name, e);
+			}
+		}
 
 		int index = 0;
 		long id = totalInvocations++;
@@ -168,7 +164,6 @@ public class CLOperator extends HardwareOperator implements Factory<cl_kernel> {
 						new long[] { getGlobalWorkOffset() }, new long[] { getGlobalWorkSize() },
 						null, 1,
 						new cl_event[] { ((CLSemaphore) dependsOn).getEvent() }, event);
-
 			} else {
 				// if (dependsOn != null) dependsOn.waitFor();
 

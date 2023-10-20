@@ -58,4 +58,12 @@ public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, 
 
 		return 1;
 	}
+
+	static <T> boolean isFixedCount(T c) {
+		if (c instanceof Countable) {
+			return ((Countable) c).isFixedCount();
+		}
+
+		return true;
+	}
 }

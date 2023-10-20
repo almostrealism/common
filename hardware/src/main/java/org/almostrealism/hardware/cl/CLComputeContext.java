@@ -129,9 +129,6 @@ public class CLComputeContext extends AbstractComputeContext {
 	public boolean isCPU() { return ((CLDataContext) getDataContext()).isCPU(); }
 
 	@Override
-	public boolean isKernelSupported() { return true; }
-
-	@Override
 	public boolean isProfiling() { return profiling; }
 
 	protected cl_context getCLContext() {

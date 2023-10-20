@@ -18,6 +18,7 @@ package io.almostrealism.code;
 
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import io.almostrealism.scope.Argument;
@@ -49,6 +50,11 @@ public abstract class ComputationBase<I, O, T> extends OperationAdapter<I> imple
 		}
 
 		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	public boolean isFixedCount() {
+		return getInputs().stream().noneMatch(v -> v instanceof Countable && !((Countable) v).isFixedCount());
 	}
 
 	@Override

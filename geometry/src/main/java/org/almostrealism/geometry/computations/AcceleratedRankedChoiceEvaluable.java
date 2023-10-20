@@ -300,7 +300,7 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData> extends Dyna
 		String name;
 
 		if (v instanceof ArrayVariable) {
-			if (getComputeContext().isKernelSupported() && v.getProducer() instanceof ParallelProcess
+			if (v.getProducer() instanceof ParallelProcess
 					&& ((ParallelProcess) v.getProducer()).getCount() > 1) {
 				String kernelOffset = getKernelIndex((ArrayVariable) v, kernelIndex);
 
@@ -332,7 +332,7 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData> extends Dyna
 	}
 
 	public String getVariableValueName(Variable v, String pos, boolean assignment, int kernelIndex) {
-		return getValueName(v, pos, assignment, enableKernel && isKernel() ? kernelIndex : -1);
+		return getValueName(v, pos, assignment, isKernel() ? kernelIndex : -1);
 	}
 
 	private String getVariableValueName(Variable v, int pos) {

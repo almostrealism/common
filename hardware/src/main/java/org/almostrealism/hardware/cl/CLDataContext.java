@@ -28,6 +28,7 @@ import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.RAM;
 import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.jvm.JVMMemoryProvider;
+import org.almostrealism.io.SystemUtils;
 import org.jocl.CL;
 import org.jocl.cl_command_queue;
 import org.jocl.cl_context;
@@ -82,15 +83,15 @@ public class CLDataContext implements DataContext<MemoryData> {
 	@Override
 	public void init() {
 		altRam = new JVMMemoryProvider();
-		start = () -> start(false, true);
+		start = () -> start(!SystemUtils.isMacOS() || SystemUtils.isAarch64());
 	}
 
-	protected void identifyDevices(boolean gpu, boolean kernelQueue) {
+	protected void identifyDevices(boolean kernelQueue) {
 		if (platform != null && mainDevice != null) return;
 
 		final int platformIndex = 0;
 		final int deviceIndex = 0;
-		deviceType = gpu ? CL.CL_DEVICE_TYPE_GPU : CL.CL_DEVICE_TYPE_CPU;
+		deviceType = CL.CL_DEVICE_TYPE_CPU;
 
 		int numPlatformsArray[] = new int[1];
 		CL.clGetPlatformIDs(0, null, numPlatformsArray);
@@ -147,12 +148,12 @@ public class CLDataContext implements DataContext<MemoryData> {
 		precision = kernelDevice == null ? Precision.FP64 : Precision.FP32;
 	}
 
-	private void start(boolean gpu, boolean kernelQueue) {
+	private void start(boolean kernelQueue) {
 		if (ctx != null) return;
 
 		CL.setExceptionsEnabled(true);
 
-		identifyDevices(gpu, kernelQueue);
+		identifyDevices(kernelQueue);
 
 		this.mainDeviceInfo = mainDevice == null ? null : deviceInfo(mainDevice);
 		this.kernelDeviceInfo = kernelDevice == null ? null : deviceInfo(kernelDevice);

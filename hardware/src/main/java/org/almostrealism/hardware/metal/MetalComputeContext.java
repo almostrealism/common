@@ -109,9 +109,6 @@ public class MetalComputeContext extends AbstractComputeContext {
 	@Override
 	public boolean isCPU() { return false; }
 
-	@Override
-	public boolean isKernelSupported() { return true; }
-
 	public MTLDevice getMtlDevice() { return mainDevice; }
 	public MTLCommandQueue getMtlQueue() { return queue; }
 	public MTLCommandQueue getMtlQueue(boolean kernel) { return kernel ? getKernelMtlQueue() : getMtlQueue(); }

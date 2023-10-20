@@ -83,9 +83,6 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 	@Override
 	public void beginScope(String name, OperationMetadata metadata, List<ArrayVariable<?>> arguments, Accessibility access) {
 		if (arguments.size() > 150) {
-			System.out.println("NOTE: Identifying " + arguments.size() + " argument Producers...");
-			List producers = arguments.stream().map(Variable::getProducer).collect(Collectors.toList());
-
 			System.out.println("WARN: " + arguments.size() + " arguments to generated function");
 		}
 

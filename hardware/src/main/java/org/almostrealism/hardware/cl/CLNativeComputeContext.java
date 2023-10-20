@@ -60,8 +60,5 @@ public class CLNativeComputeContext extends AbstractComputeContext {
 	public boolean isCPU() { return true; }
 
 	@Override
-	public boolean isKernelSupported() { return false; }
-
-	@Override
 	public void destroy() { }
 }

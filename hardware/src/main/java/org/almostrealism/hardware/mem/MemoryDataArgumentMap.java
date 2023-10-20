@@ -125,7 +125,7 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 
 			// If the provider points to a MemoryData that is stored outside of device memory,
 			// it is a candidate for argument aggregation below
-			generateArg = md.getMem().getProvider() != Hardware.getLocalHardware().getDataContext().getKernelMemoryProvider();
+			generateArg = md.getMem().getProvider() != context.getDataContext().getKernelMemoryProvider();
 		}
 
 		if (md == null) return null;
@@ -228,7 +228,7 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 
 	private ArrayVariable<A> generateArgument(NameProvider p, Supplier key, MemoryData md) {
 		if (!enableArgumentAggregation || aggregateGenerator == null) return null;
-		if (md.getMem().getProvider() == Hardware.getLocalHardware().getDataContext().getKernelMemoryProvider()) return null;
+		if (md.getMem().getProvider() == context.getDataContext().getKernelMemoryProvider()) return null;
 
 		if (aggregatePositions.containsKey(new MemoryDataRef(md))) {
 			// If aggregation has already occurred for this MemoryData,
