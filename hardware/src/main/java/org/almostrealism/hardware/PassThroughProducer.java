@@ -88,7 +88,7 @@ public class PassThroughProducer<T extends MemoryData>
 
 	@Override
 	public boolean isFixedCount() {
-		return getShape().getTotalSize() != 1;
+		return getShape().getSize() != 1;
 	}
 
 	@Override

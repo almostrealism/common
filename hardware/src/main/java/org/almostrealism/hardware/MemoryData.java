@@ -195,10 +195,6 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	}
 
 	static void setMem(Memory mem, int offset, MemoryData src, int srcOffset, int length) {
-		if (mem.getProvider() != src.getMem().getProvider()) {
-			throw new IllegalArgumentException("Memory cannot be moved across different MemoryProviders");
-		}
-
 		mem.getProvider().setMem(mem, offset, src.getMem(), src.getOffset() + srcOffset, length);
 	}
 

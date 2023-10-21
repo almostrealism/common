@@ -18,6 +18,7 @@ package org.almostrealism.hardware.cl;
 
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.Semaphore;
 import io.almostrealism.relation.Factory;
 import org.almostrealism.hardware.Hardware;
@@ -71,6 +72,9 @@ public class CLOperator extends HardwareOperator {
 	protected String getHardwareName() { return "CL"; }
 
 	@Override
+	public OperationMetadata getMetadata() { return prog.getMetadata(); }
+
+	@Override
 	protected int getArgCount() { return argCount; }
 
 	@Override
@@ -88,99 +92,107 @@ public class CLOperator extends HardwareOperator {
 			}
 		}
 
-		int index = 0;
 		long id = totalInvocations++;
 
 		if (enableVerboseLog) {
 			System.out.println("CL: " + prog.getMetadata().getDisplayName() + " (" + id + ")");
 		}
 
-		long totalSize = 0;
-
 		if (dependsOn != null) dependsOn.waitFor();
 		MemoryData data[] = prepareArguments(argCount, args);
 
-		try {
-			int dimMasks[] = computeDimensionMasks(data);
+		recordDuration(() -> {
+			int index = 0;
+			long totalSize = 0;
 
-			for (int i = 0; i < argCount; i++) {
-				if (data[i] != argCache[i]) {
-					CLMemory mem = (CLMemory) data[i].getMem();
-					totalSize += mem.getSize();
-					CL.clSetKernelArg(kernel, index++, Sizeof.cl_mem, Pointer.to(((CLMemory) ((MemoryData) data[i]).getMem()).getMem()));
-				} else {
-					index++;
-				}
-			}
+			try {
+				int dimMasks[] = computeDimensionMasks(data);
 
-			for (int i = 0; i < argCount; i++) {
-				if (data[i] != argCache[i]) {
-					CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
-							Pointer.to(new int[]{data[i].getOffset()})); // Offset
-				} else {
-					index++;
-				}
-			}
-
-			for (int i = 0; i < argCount; i++) {
-				if (data[i] != argCache[i]) {
-					CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
-							Pointer.to(new int[]{data[i].getAtomicMemLength()})); // Size
-				} else {
-					index++;
-				}
-			}
-
-			for (int i = 0; i < argCount; i++) {
-				if (data[i] != argCache[i]) {
-					if (enableDimensionMasks) {
-						CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
-								Pointer.to(new int[]{data[i].getAtomicMemLength() * dimMasks[i]})); // Dim0
+				for (int i = 0; i < argCount; i++) {
+					if (data[i] != argCache[i]) {
+						CLMemory mem = (CLMemory) data[i].getMem();
+						totalSize += mem.getSize();
+						CL.clSetKernelArg(kernel, index++, Sizeof.cl_mem, Pointer.to(((CLMemory) data[i].getMem()).getMem()));
 					} else {
-						CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
-								Pointer.to(new int[]{data[i].getAtomicMemLength()})); // Dim0
+						index++;
 					}
-				} else {
-					index++;
 				}
+
+				for (int i = 0; i < argCount; i++) {
+					if (data[i] != argCache[i]) {
+						CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
+								Pointer.to(new int[]{data[i].getOffset()})); // Offset
+					} else {
+						index++;
+					}
+				}
+
+				for (int i = 0; i < argCount; i++) {
+					if (data[i] != argCache[i]) {
+						CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
+								Pointer.to(new int[]{data[i].getAtomicMemLength()})); // Size
+					} else {
+						index++;
+					}
+				}
+
+				for (int i = 0; i < argCount; i++) {
+					if (data[i] != argCache[i]) {
+						if (enableDimensionMasks) {
+							CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
+									Pointer.to(new int[]{data[i].getAtomicMemLength() * dimMasks[i]})); // Dim0
+						} else {
+							CL.clSetKernelArg(kernel, index++, Sizeof.cl_int,
+									Pointer.to(new int[]{data[i].getAtomicMemLength()})); // Dim0
+						}
+					} else {
+						index++;
+					}
+				}
+
+				for (int i = 0; i < argCount; i++) {
+					argCache[i] = data[i];
+				}
+			} catch (CLException e) {
+				// TODO  This should use the exception processor also, but theres no way to pass the message details
+				throw new HardwareException(e.getMessage() + " for function " + name +
+						" (index = " + index + " argCount = " + argCount + ")", e);
 			}
 
-			for (int i = 0; i < argCount; i++) {
-				argCache[i] = data[i];
+			try {
+				if (enableVerboseLog) System.out.println(id + ": clEnqueueNDRangeKernel start");
+
+				cl_event event = new cl_event();
+
+				if (dependsOn instanceof CLSemaphore) {
+					CL.clEnqueueNDRangeKernel(context.getClQueue(getGlobalWorkSize() > 1), kernel, 1,
+							new long[]{getGlobalWorkOffset()}, new long[]{getGlobalWorkSize()},
+							null, 1,
+							new cl_event[]{((CLSemaphore) dependsOn).getEvent()}, event);
+				} else {
+					// if (dependsOn != null) dependsOn.waitFor();
+
+					CL.clEnqueueNDRangeKernel(context.getClQueue(getGlobalWorkSize() > 1), kernel, 1,
+							new long[]{getGlobalWorkOffset()}, new long[]{getGlobalWorkSize()},
+							null, 0, null, event);
+				}
+
+				if (!Hardware.isAsync()) context.processEvent(event, profile);
+
+				if (enableVerboseLog) System.out.println(id + ": clEnqueueNDRangeKernel end");
+				// return Hardware.isAsync() ? new CLSemaphore(context, event, profile) : null;
+			} catch (CLException e) {
+				// TODO  This should use the exception processor also, but theres no way to pass the message details
+				throw new HardwareException(e.getMessage() + " for function " + name +
+						" (total bytes = " + totalSize + ")", e);
 			}
-		} catch (CLException e) {
-			// TODO  This should use the exception processor also, but theres no way to pass the message details
-			throw new HardwareException(e.getMessage() + " for function " + name +
-							" (index = " + index + " argCount = " + argCount + ")", e);
+		});
+
+		if (Hardware.isAsync()) {
+			throw new UnsupportedOperationException("Temporarily unavailable due to profile implementation");
 		}
 
-		try {
-			if (enableVerboseLog) System.out.println(id + ": clEnqueueNDRangeKernel start");
-
-			cl_event event = new cl_event();
-
-			if (dependsOn instanceof CLSemaphore) {
-				CL.clEnqueueNDRangeKernel(context.getClQueue(getGlobalWorkSize() > 1), kernel, 1,
-						new long[] { getGlobalWorkOffset() }, new long[] { getGlobalWorkSize() },
-						null, 1,
-						new cl_event[] { ((CLSemaphore) dependsOn).getEvent() }, event);
-			} else {
-				// if (dependsOn != null) dependsOn.waitFor();
-
-				CL.clEnqueueNDRangeKernel(context.getClQueue(getGlobalWorkSize() > 1), kernel, 1,
-						new long[]{getGlobalWorkOffset()}, new long[]{getGlobalWorkSize()},
-						null, 0, null, event);
-			}
-
-			if (!Hardware.isAsync()) context.processEvent(event, profile);
-
-			if (enableVerboseLog) System.out.println(id + ": clEnqueueNDRangeKernel end");
-			return Hardware.isAsync() ? new CLSemaphore(context, event, profile) : null;
-		} catch (CLException e) {
-			// TODO  This should use the exception processor also, but theres no way to pass the message details
-			throw new HardwareException(e.getMessage() + " for function " + name +
-					" (total bytes = " + totalSize + ")", e);
-		}
+		return null;
 	}
 
 	public void destroy() {

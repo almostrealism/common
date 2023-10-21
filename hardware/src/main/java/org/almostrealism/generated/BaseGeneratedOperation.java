@@ -18,11 +18,13 @@ package org.almostrealism.generated;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
+import io.almostrealism.code.OperationMetadata;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.jni.NativeInstructionSet;
 
 public abstract class BaseGeneratedOperation<T extends MemoryData> implements NativeInstructionSet {
 	private ComputeContext<MemoryData> context;
+	private OperationMetadata metadata;
 
 	public BaseGeneratedOperation(Computation<T> computation) { }
 
@@ -31,4 +33,14 @@ public abstract class BaseGeneratedOperation<T extends MemoryData> implements Na
 
 	@Override
 	public void setComputeContext(ComputeContext<MemoryData> context) { this.context = context; }
+
+	@Override
+	public OperationMetadata getMetadata() {
+		return metadata;
+	}
+
+	@Override
+	public void setMetadata(OperationMetadata metadata) {
+		this.metadata = metadata;
+	}
 }

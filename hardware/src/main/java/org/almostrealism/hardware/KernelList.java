@@ -17,6 +17,7 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.ProducerComputation;
+import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.uml.Plural;
@@ -57,7 +58,6 @@ public class KernelList<T extends MemoryData> implements Supplier<Runnable>, Plu
 		if (size <= 0) throw new IllegalArgumentException();
 		this.tableProvider = tableProvider;
 		this.parameters = parameters > 0 ? bankProvider.apply(parameters) : null;
-//		this.computation = computation.apply(() -> new Provider(this.parameters), new PassThroughProducer<>(0, 0));
 		this.computationProvider = computation;
 		this.parameterValues = new HashMap<>();
 		this.size = size;

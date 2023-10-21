@@ -18,6 +18,7 @@ package org.almostrealism.hardware.jni;
 
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.Semaphore;
 import org.almostrealism.c.NativeMemoryProvider;
 import org.almostrealism.hardware.HardwareOperator;
@@ -44,20 +45,23 @@ public class NativeExecution extends HardwareOperator {
 	}
 
 	@Override
-	public List<MemoryProvider<? extends Memory>> getSupportedMemory() {
-		return inst.getComputeContext().getDataContext().getMemoryProviders()
-				.stream().filter(NativeMemoryProvider.class::isInstance)
-				.collect(Collectors.toList());
-	}
-
-	@Override
 	protected String getHardwareName() { return "JNI"; }
 
 	@Override
 	public String getName() { return getClass().getSimpleName(); }
 
 	@Override
+	public OperationMetadata getMetadata() { return inst.getMetadata(); }
+
+	@Override
 	protected int getArgCount() { return argCount; }
+
+	@Override
+	public List<MemoryProvider<? extends Memory>> getSupportedMemory() {
+		return inst.getComputeContext().getDataContext().getMemoryProviders()
+				.stream().filter(NativeMemoryProvider.class::isInstance)
+				.collect(Collectors.toList());
+	}
 
 	@Override
 	public Semaphore accept(Object[] args, Semaphore dependsOn) {
@@ -83,25 +87,24 @@ public class NativeExecution extends HardwareOperator {
 
 		long start = System.currentTimeMillis();
 
-		IntStream.range(0, size).parallel()
-				.mapToObj(id ->
-					executor.submit(() -> {
-						try {
-							inst.apply(getGlobalWorkOffset() + id, dim0, data);
-						} finally {
-							latch.countDown();
-						}
-					}))
-				.collect(Collectors.toList());
+		recordDuration(() -> {
+					IntStream.range(0, size).parallel()
+							.mapToObj(id ->
+									executor.submit(() -> {
+										try {
+											inst.apply(getGlobalWorkOffset() + id, dim0, data);
+										} finally {
+											latch.countDown();
+										}
+									}))
+							.collect(Collectors.toList());
 
-		long total;
-
-		try {
-			latch.await();
-			total = System.currentTimeMillis() - start;
-		} catch (InterruptedException e) {
-			throw new RuntimeException(e);
-		}
+					try {
+						latch.await();
+					} catch (InterruptedException e) {
+						throw new RuntimeException(e);
+					}
+				});
 
 		// TODO  The latch should be turned into a Semaphore and returned
 		return null;

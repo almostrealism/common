@@ -21,6 +21,7 @@ import org.almostrealism.bool.GreaterThan;
 
 import java.util.function.Supplier;
 
+@Deprecated
 public class GreaterThanRGB extends GreaterThan<RGB> {
 	public GreaterThanRGB(
 			Supplier leftOperand,

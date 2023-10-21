@@ -19,6 +19,10 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.Execution;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.code.OperationInfo;
+import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.code.OperationProfile;
+import io.almostrealism.code.OperationWithInfo;
 import io.almostrealism.relation.Named;
 import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.mem.Bytes;
@@ -26,11 +30,13 @@ import org.almostrealism.hardware.mem.Bytes;
 import java.util.List;
 import java.util.stream.IntStream;
 
-public abstract class HardwareOperator implements Execution, KernelWork, Named {
+public abstract class HardwareOperator implements Execution, KernelWork, OperationInfo, Named {
 	public static boolean enableLog;
 	public static boolean enableVerboseLog;
 	public static boolean enableDimensionMasks = true;
 	public static boolean enableAtomicDimensionMasks = true;
+
+	public static OperationProfile profile;
 
 	private long globalWorkSize = 1;
 	private long globalWorkOffset;
@@ -86,19 +92,23 @@ public abstract class HardwareOperator implements Execution, KernelWork, Named {
 			return;
 		}
 
-		// Memory is not supported by the operation,
-		// and the entire reservation that it is part
-		// of will have to be reallocated
-		MemoryData root = data.getRootDelegate();
-		Memory originalMem = root.getMem();
-		int size = root.getMemLength() * provider.getNumberSize();
+		recordDuration(new OperationWithInfo.RunnableWithInfo(new OperationMetadata("reassignMemory", "Reassign Memory"),
+				() -> {
+					// Memory is not supported by the operation,
+					// and the entire reservation that it is part
+					// of will have to be reallocated
+					MemoryData root = data.getRootDelegate();
+					Memory originalMem = root.getMem();
+					int size = root.getMemLength() * provider.getNumberSize();
 
-		if (enableVerboseLog)
-			System.out.println("Hardware[" + getHardwareName() + "]: Reallocating " + size + " bytes");
+					if (enableVerboseLog)
+						System.out.println("Hardware[" + getHardwareName() + "]: Reallocating " + size + " bytes");
 
-		Memory mem = supported.get(0).reallocate(root.getMem(), root.getOffset(), root.getMemLength());
-		root.reassign(mem);
-		provider.deallocate(root.getMemLength(), originalMem);
+					Memory mem = supported.get(0).reallocate(root.getMem(), root.getOffset(), root.getMemLength());
+					root.reassign(mem);
+					provider.deallocate(root.getMemLength(), originalMem);
+				}));
+
 	}
 
 	protected int[] computeDimensionMasks(Object args[]) {
@@ -135,6 +145,16 @@ public abstract class HardwareOperator implements Execution, KernelWork, Named {
 			return IntStream.range(0, sizes.length)
 					.map(i -> (sizes[i] >= getGlobalWorkSize() && sizes[i] % getGlobalWorkSize() == 0) ? 1 : 0)
 					.toArray();
+		}
+	}
+
+	protected void recordDuration(Runnable r) {
+		if (profile == null) {
+			r.run();
+		} else if (r instanceof OperationInfo) {
+			profile.recordDuration(r);
+		} else {
+			profile.recordDuration(OperationWithInfo.RunnableWithInfo.of(getMetadata(), r));
 		}
 	}
 

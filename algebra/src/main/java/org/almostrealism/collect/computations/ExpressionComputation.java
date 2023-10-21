@@ -18,18 +18,13 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.hardware.DestinationEvaluable;
-import org.almostrealism.hardware.KernelizedEvaluable;
-import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.io.SystemUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -47,14 +42,14 @@ public class ExpressionComputation<T extends PackedCollection<?>>
 		extends TraversableProducerComputationAdapter<T, T> {
 
 	public static boolean enableTraversableFixed = false;
+	public static boolean enableInferShape= false;
 
 	private List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression;
 
 	@SafeVarargs
 	public ExpressionComputation(List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression,
 								 Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		// this(shape(expression.size(), args), expression, args);
-		this(new TraversalPolicy(expression.size()), expression, args);
+		this(shape(expression.size(), args), expression, args);
 	}
 
 	@SafeVarargs
@@ -114,6 +109,8 @@ public class ExpressionComputation<T extends PackedCollection<?>>
 
 	private static TraversalPolicy shape(int size, Supplier... args) {
 		TraversalPolicy shape = new TraversalPolicy(size);
+		if (!enableInferShape) return shape;
+
 		Set<Integer> count = Stream.of(args)
 				.map(CollectionFeatures.getInstance()::shape)
 				.map(TraversalPolicy::getCount)

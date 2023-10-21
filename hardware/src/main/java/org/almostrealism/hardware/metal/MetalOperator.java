@@ -18,6 +18,7 @@ package org.almostrealism.hardware.metal;
 
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
+import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.Semaphore;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;
@@ -56,6 +57,9 @@ public class MetalOperator extends HardwareOperator {
 
 	@Override
 	protected String getHardwareName() { return "MTL"; }
+
+	@Override
+	public OperationMetadata getMetadata() { return prog.getMetadata(); }
 
 	@Override
 	protected int getArgCount() { return argCount; }
@@ -114,67 +118,69 @@ public class MetalOperator extends HardwareOperator {
 		int dimMasks[] = computeDimensionMasks(data);
 
 		Future<?> run = context.getCommandRunner().submit((queue) -> {
-			int index = 0;
-			long totalSize = 0;
+			recordDuration(() -> {
+				int index = 0;
+				long totalSize = 0;
 
-			MTLCommandBuffer cmdBuf = queue.commandBuffer();
-			MTLComputeCommandEncoder encoder = cmdBuf.encoder();
+				MTLCommandBuffer cmdBuf = queue.commandBuffer();
+				MTLComputeCommandEncoder encoder = cmdBuf.encoder();
 
-			encoder.setComputePipelineState(kernel);
+				encoder.setComputePipelineState(kernel);
 
-			for (int i = 0; i < argCount; i++) {
-				MetalMemory mem = (MetalMemory) data[i].getMem();
-				totalSize += mem.getSize();
-				encoder.setBuffer(index++, ((MetalMemory) data[i].getMem()).getMem()); // Buffer
-			}
+				for (int i = 0; i < argCount; i++) {
+					MetalMemory mem = (MetalMemory) data[i].getMem();
+					totalSize += mem.getSize();
+					encoder.setBuffer(index++, ((MetalMemory) data[i].getMem()).getMem()); // Buffer
+				}
 
-			// TODO  Set offset, size, and dim0 buffers
+				// TODO  Set offset, size, and dim0 buffers
 
-			int offsetValues[] = IntStream.range(0, argCount).map(i -> data[i].getOffset()).toArray();
-			MTLBuffer offset = prog.getDevice().newIntBuffer32(offsetValues);
+				int offsetValues[] = IntStream.range(0, argCount).map(i -> data[i].getOffset()).toArray();
+				MTLBuffer offset = prog.getDevice().newIntBuffer32(offsetValues);
 
-			int sizeValues[] = IntStream.range(0, argCount).map(i -> data[i].getAtomicMemLength()).toArray();
-			MTLBuffer size = prog.getDevice().newIntBuffer32(sizeValues);
+				int sizeValues[] = IntStream.range(0, argCount).map(i -> data[i].getAtomicMemLength()).toArray();
+				MTLBuffer size = prog.getDevice().newIntBuffer32(sizeValues);
 
-			MTLBuffer dim0;
+				MTLBuffer dim0;
 
-			if (enableDimensionMasks) {
-				int dim0Values[] = IntStream.range(0, argCount).map(i -> data[i].getAtomicMemLength() * dimMasks[i]).toArray();
-				dim0 = prog.getDevice().newIntBuffer32(dim0Values);
-			} else {
-				int dim0Values[] = IntStream.range(0, argCount).map(i -> data[i].getAtomicMemLength()).toArray();
-				dim0 = prog.getDevice().newIntBuffer32(dim0Values);
-			}
+				if (enableDimensionMasks) {
+					int dim0Values[] = IntStream.range(0, argCount).map(i -> data[i].getAtomicMemLength() * dimMasks[i]).toArray();
+					dim0 = prog.getDevice().newIntBuffer32(dim0Values);
+				} else {
+					int dim0Values[] = IntStream.range(0, argCount).map(i -> data[i].getAtomicMemLength()).toArray();
+					dim0 = prog.getDevice().newIntBuffer32(dim0Values);
+				}
 
-			encoder.setBuffer(index++, offset);
-			encoder.setBuffer(index++, size);
-			encoder.setBuffer(index++, dim0);
+				encoder.setBuffer(index++, offset);
+				encoder.setBuffer(index++, size);
+				encoder.setBuffer(index++, dim0);
 
-			if (getGlobalWorkSize() > Integer.MAX_VALUE) {
-				throw new UnsupportedOperationException();
-			}
+				if (getGlobalWorkSize() > Integer.MAX_VALUE) {
+					throw new UnsupportedOperationException();
+				}
 
-			int groupDims[] = getWorkgroupDimensions();
+				int groupDims[] = getWorkgroupDimensions();
 
-			if (enableDispatchThreadgroups) {
-				int groupSize = groupDims[0] * groupDims[1] * groupDims[2];
-				int gridDims[] = new int[] { (int) (getGlobalWorkSize() / groupSize), 1, 1 };
-				encoder.dispatchThreadgroups(groupDims[0], groupDims[1], groupDims[2],
-						gridDims[0], gridDims[1], gridDims[2]);
-			} else {
-				int gridDims[] = new int[] { (int) (getGlobalWorkSize()), 1, 1 };
-				encoder.dispatchThreads(groupDims[0], groupDims[1], groupDims[2],
-										gridDims[0], gridDims[1], gridDims[2]);
-			}
+				if (enableDispatchThreadgroups) {
+					int groupSize = groupDims[0] * groupDims[1] * groupDims[2];
+					int gridDims[] = new int[]{(int) (getGlobalWorkSize() / groupSize), 1, 1};
+					encoder.dispatchThreadgroups(groupDims[0], groupDims[1], groupDims[2],
+							gridDims[0], gridDims[1], gridDims[2]);
+				} else {
+					int gridDims[] = new int[]{(int) (getGlobalWorkSize()), 1, 1};
+					encoder.dispatchThreads(groupDims[0], groupDims[1], groupDims[2],
+							gridDims[0], gridDims[1], gridDims[2]);
+				}
 
-			encoder.endEncoding();
+				encoder.endEncoding();
 
-			cmdBuf.commit();
-			cmdBuf.waitUntilCompleted();
+				cmdBuf.commit();
+				cmdBuf.waitUntilCompleted();
 
-			offset.release();
-			size.release();
-			dim0.release();
+				offset.release();
+				size.release();
+				dim0.release();
+			});
 		});
 
 		if (Hardware.isAsync()) {

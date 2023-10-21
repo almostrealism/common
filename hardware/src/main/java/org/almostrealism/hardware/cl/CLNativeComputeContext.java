@@ -48,9 +48,11 @@ public class CLNativeComputeContext extends AbstractComputeContext {
 
 	@Override
 	public InstructionSet deliver(Scope scope) {
-		StringBuffer buf = new StringBuffer();
 		NativeInstructionSet target = getNativeCompiler().reserveLibraryTarget();
 		target.setComputeContext(this);
+		target.setMetadata(scope.getMetadata());
+
+		StringBuffer buf = new StringBuffer();
 		buf.append(new ScopeEncoder(pw -> new CLJNIPrintWriter(pw, target.getFunctionName(), getDataContext().getPrecision()), Accessibility.EXTERNAL).apply(scope));
 		getNativeCompiler().compile(target, buf.toString());
 		return target;

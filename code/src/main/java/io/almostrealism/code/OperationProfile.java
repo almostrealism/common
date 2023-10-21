@@ -46,10 +46,16 @@ public class OperationProfile {
 		r.run();
 		long end = System.currentTimeMillis(); // System.nanoTime();
 
-		OperationMetadata metadata;
+		OperationMetadata metadata = null;
 		if (r instanceof OperationInfo) {
 			metadata = ((OperationInfo) r).getMetadata();
-		} else {
+
+			if (metadata == null) {
+				System.out.println("Warning: " + r.getClass().getSimpleName() + " has no metadata");
+			}
+		}
+
+		if (metadata == null) {
 			metadata = new OperationMetadata(r.getClass().getSimpleName(), r.getClass().getSimpleName());
 		}
 

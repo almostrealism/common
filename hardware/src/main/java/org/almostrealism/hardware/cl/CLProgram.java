@@ -16,13 +16,14 @@
 
 package org.almostrealism.hardware.cl;
 
+import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
 import org.almostrealism.hardware.HardwareException;
 import org.jocl.CL;
 import org.jocl.CLException;
 import org.jocl.cl_program;
 
-public class CLProgram {
+public class CLProgram implements OperationInfo {
 	private CLComputeContext ctx;
 	private cl_program prog;
 	private final OperationMetadata metadata;
@@ -39,6 +40,7 @@ public class CLProgram {
 		return prog;
 	}
 
+	@Override
 	public OperationMetadata getMetadata() { return metadata; }
 
 	public String getSource() {

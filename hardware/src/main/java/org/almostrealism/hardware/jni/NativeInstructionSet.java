@@ -19,6 +19,7 @@ package org.almostrealism.hardware.jni;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.Execution;
 import io.almostrealism.code.InstructionSet;
+import io.almostrealism.code.OperationMetadata;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.RAM;
 import org.almostrealism.hardware.cl.CLComputeContext;
@@ -37,6 +38,10 @@ public interface NativeInstructionSet extends InstructionSet {
 	ComputeContext<MemoryData> getComputeContext();
 
 	void setComputeContext(ComputeContext<MemoryData> context);
+
+	OperationMetadata getMetadata();
+
+	void setMetadata(OperationMetadata metadata);
 
 	@Override
 	default Execution get(String function, int argCount) {
