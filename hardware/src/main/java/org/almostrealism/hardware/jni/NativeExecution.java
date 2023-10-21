@@ -23,6 +23,7 @@ import io.almostrealism.code.Semaphore;
 import org.almostrealism.c.NativeMemoryProvider;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.MemoryData;
+import org.almostrealism.hardware.jvm.JVMMemoryProvider;
 
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -30,6 +31,7 @@ import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -59,7 +61,7 @@ public class NativeExecution extends HardwareOperator {
 	@Override
 	public List<MemoryProvider<? extends Memory>> getSupportedMemory() {
 		return inst.getComputeContext().getDataContext().getMemoryProviders()
-				.stream().filter(NativeMemoryProvider.class::isInstance)
+				.stream().filter(Predicate.not(JVMMemoryProvider.class::isInstance))
 				.collect(Collectors.toList());
 	}
 

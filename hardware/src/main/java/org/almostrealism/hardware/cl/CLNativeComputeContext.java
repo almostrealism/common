@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -27,13 +27,10 @@ import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.jni.NativeInstructionSet;
 
 public class CLNativeComputeContext extends AbstractComputeContext {
-	public static boolean enableVerbose = false;
-	protected static long totalInvocations = 0;
-
 	private NativeCompiler compiler;
 
-	public CLNativeComputeContext(Hardware hardware, CLDataContext dc, NativeCompiler compiler) {
-		super(hardware, dc);
+	public CLNativeComputeContext(CLDataContext dc, NativeCompiler compiler) {
+		super(dc);
 		this.compiler = compiler;
 	}
 
@@ -53,7 +50,7 @@ public class CLNativeComputeContext extends AbstractComputeContext {
 		target.setMetadata(scope.getMetadata());
 
 		StringBuffer buf = new StringBuffer();
-		buf.append(new ScopeEncoder(pw -> new CLJNIPrintWriter(pw, target.getFunctionName(), getDataContext().getPrecision()), Accessibility.EXTERNAL).apply(scope));
+		buf.append(new ScopeEncoder(pw -> new CLJNIPrintWriter(pw, target.getFunctionName(), getLanguage()), Accessibility.EXTERNAL).apply(scope));
 		getNativeCompiler().compile(target, buf.toString());
 		return target;
 	}

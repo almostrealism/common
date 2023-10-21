@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,25 +14,28 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.c;
+package org.almostrealism.hardware.jni;
 
-import io.almostrealism.code.Precision;
 import io.almostrealism.expression.StaticReference;
+import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Variable;
+import org.almostrealism.c.CPrintWriter;
 import org.almostrealism.io.PrintWriter;
 
 import java.util.List;
 
 public class CJNIPrintWriter extends CPrintWriter {
+	private JNIMemoryAccessor accessor;
 
-	public CJNIPrintWriter(PrintWriter p, String topLevelMethodName, Precision precision) {
-		this(p, topLevelMethodName, precision, false);
+	public CJNIPrintWriter(PrintWriter p, String topLevelMethodName, LanguageOperations lang, JNIMemoryAccessor memAccess) {
+		this(p, topLevelMethodName, lang, memAccess, false);
 	}
 
-	public CJNIPrintWriter(PrintWriter p, String topLevelMethodName, Precision precision, boolean verbose) {
-		super(p, topLevelMethodName, precision, verbose);
-		language = new CJNILanguageOperations(precision);
+	public CJNIPrintWriter(PrintWriter p, String topLevelMethodName, LanguageOperations lang, JNIMemoryAccessor memAccess, boolean verbose) {
+		super(p, topLevelMethodName, lang.getPrecision(), verbose);
+		language = lang;
+		accessor = memAccess;
 		setExternalScopePrefix("JNIEXPORT void JNICALL");
 		setEnableArgumentValueReads(true);
 		setEnableArgumentValueWrites(true);
@@ -45,6 +48,12 @@ public class CJNIPrintWriter extends CPrintWriter {
 		println(new Variable<>("*dim0Arr", new StaticReference<>(int[].class, "(*env)->GetIntArrayElements(env, dim0, 0)")));
 
 		super.renderArgumentReads(arguments);
+	}
+
+	@Override
+	protected void copyInline(int index, ArrayVariable<?> variable, boolean write) {
+		String access = accessor.copyInline(getLanguage(), index, variable, write);
+		if (access != null) println(access);
 	}
 
 	protected void renderArgumentWrites(List<ArrayVariable<?>> arguments) {

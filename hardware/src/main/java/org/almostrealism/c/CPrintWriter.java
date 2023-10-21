@@ -151,10 +151,10 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 	}
 
 	protected void copyInline(int index, ArrayVariable<?> variable, boolean write) {
-		String o = "((double *) argArr[" + index + "])";
+		String o = "((" + getLanguage().getPrecision().typeName() + " *) argArr[" + index + "])";
 		String v = new InstanceReference<>(variable).getSimpleExpression(getLanguage());
 
-		if (!write) println("double *" + v + " = " + o + ";");
+		if (!write) println(getLanguage().getPrecision().typeName() + " *" + v + " = " + o + ";");
 	}
 
 	@Override

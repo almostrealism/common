@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -24,8 +24,6 @@ import org.almostrealism.hardware.jni.NativeCompiler;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
-import java.util.concurrent.atomic.AtomicInteger;
 
 public class NativeMemoryProvider implements MemoryProvider<RAM> {
 	private NativeCompiler compiler;
@@ -35,7 +33,6 @@ public class NativeMemoryProvider implements MemoryProvider<RAM> {
 	private NativeRead read;
 	private NativeWrite write;
 
-	private final int numberSize;
 	private final long memoryMax;
 	private long memoryUsed;
 
@@ -43,13 +40,12 @@ public class NativeMemoryProvider implements MemoryProvider<RAM> {
 
 	public NativeMemoryProvider(NativeCompiler compiler, long memoryMax) {
 		this.compiler = compiler;
-		this.numberSize = 8;
 		this.memoryMax = memoryMax;
 		this.allocated = new ArrayList<>();
 	}
 
 	@Override
-	public int getNumberSize() { return numberSize; }
+	public int getNumberSize() { return compiler.getPrecision().bytes(); }
 
 	public NativeCompiler getNativeCompiler() { return compiler; }
 
@@ -57,11 +53,11 @@ public class NativeMemoryProvider implements MemoryProvider<RAM> {
 	public synchronized NativeMemory allocate(int size) {
 		if (malloc == null) malloc = new Malloc(getNativeCompiler());
 
-		if (memoryUsed + (long) numberSize * size > memoryMax) {
+		if (memoryUsed + (long) getNumberSize() * size > memoryMax) {
 			throw new HardwareException("Memory max reached");
 		} else {
-			memoryUsed += (long) numberSize * size;
-			NativeMemory mem = new NativeMemory(this, malloc.apply(numberSize * size), numberSize * (long) size);
+			memoryUsed += (long) getNumberSize() * size;
+			NativeMemory mem = new NativeMemory(this, malloc.apply(getNumberSize() * size), getNumberSize() * (long) size);
 			allocated.add(mem);
 			return mem;
 		}
@@ -73,8 +69,8 @@ public class NativeMemoryProvider implements MemoryProvider<RAM> {
 
 		if (free == null) free = new Free(getNativeCompiler());
 
-		free.apply(mem.getNativePointer());
-		memoryUsed -= (long) size * numberSize;
+		free.apply(mem.getContentPointer());
+		memoryUsed -= (long) size * getNumberSize();
 		allocated.remove(mem);
 	}
 
@@ -106,7 +102,7 @@ public class NativeMemoryProvider implements MemoryProvider<RAM> {
 	@Override
 	public synchronized void destroy() {
 		if (free == null) free = new Free(getNativeCompiler());
-		allocated.stream().mapToLong(NativeMemory::getNativePointer).forEach(free::apply);
+		allocated.stream().mapToLong(NativeMemory::getContentPointer).forEach(free::apply);
 		allocated.clear();
 		memoryUsed = 0;
 	}

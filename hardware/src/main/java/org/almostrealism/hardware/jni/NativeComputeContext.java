@@ -21,25 +21,25 @@ import io.almostrealism.code.InstructionSet;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeEncoder;
-import org.almostrealism.c.CJNIPrintWriter;
-import org.almostrealism.c.CLanguageOperations;
+import org.almostrealism.c.CJNILanguageOperations;
 import org.almostrealism.hardware.ctx.AbstractComputeContext;
-import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.metal.MetalJNIMemoryAccessor;
+import org.almostrealism.hardware.metal.MetalMemoryProvider;
 
-public class NativeComputeContext extends AbstractComputeContext {
+public class NativeComputeContext extends AbstractComputeContext<NativeDataContext> {
 	public static boolean enableVerbose = false;
 	protected static long totalInvocations = 0;
 
 	private NativeCompiler compiler;
 
-	public NativeComputeContext(Hardware hardware, NativeDataContext dc, NativeCompiler compiler) {
-		super(hardware, dc);
+	public NativeComputeContext(NativeDataContext dc, NativeCompiler compiler) {
+		super(dc);
 		this.compiler = compiler;
 	}
 
 	@Override
 	public LanguageOperations getLanguage() {
-		return new CLanguageOperations(getDataContext().getPrecision(), true, true);
+		return new CJNILanguageOperations(getDataContext().getPrecision());
 	}
 
 	public NativeCompiler getNativeCompiler() { return compiler; }
@@ -50,8 +50,16 @@ public class NativeComputeContext extends AbstractComputeContext {
 		target.setComputeContext(this);
 		target.setMetadata(scope.getMetadata());
 
+		JNIMemoryAccessor accessor;
+
+		if (getDataContext().getMemoryProvider() instanceof MetalMemoryProvider) {
+			accessor = new MetalJNIMemoryAccessor();
+		} else {
+			accessor = new DefaultJNIMemoryAccessor();
+		}
+
 		StringBuffer buf = new StringBuffer();
-		buf.append(new ScopeEncoder(pw -> new CJNIPrintWriter(pw, target.getFunctionName(), getLanguage().getPrecision()), Accessibility.EXTERNAL).apply(scope));
+		buf.append(new ScopeEncoder(pw -> new CJNIPrintWriter(pw, target.getFunctionName(), getLanguage(), accessor), Accessibility.EXTERNAL).apply(scope));
 		getNativeCompiler().compile(target, buf.toString());
 		return target;
 	}

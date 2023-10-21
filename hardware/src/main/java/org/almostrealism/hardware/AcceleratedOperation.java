@@ -220,7 +220,9 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 		if (enableKernelLog) System.out.println("AcceleratedOperation: Evaluating " + getName() + " kernel...");
 
-		boolean processing = (!process.isEmpty() || !preOp.isEmpty() || !postOp.isEmpty());
+		boolean processing = !process.isEmpty();
+		if (preOp != null && !preOp.isEmpty()) processing = true;
+		if (postOp != null && !postOp.isEmpty()) processing = true;
 
 		if (processing) {
 			preApply();

@@ -56,8 +56,8 @@ public class ExternalComputeContext extends AbstractComputeContext {
 
 	private NativeCompiler compiler;
 
-	public ExternalComputeContext(Hardware hardware, NativeDataContext dc, NativeCompiler compiler) {
-		super(hardware, dc);
+	public ExternalComputeContext(NativeDataContext dc, NativeCompiler compiler) {
+		super(dc);
 		this.compiler = compiler;
 	}
 

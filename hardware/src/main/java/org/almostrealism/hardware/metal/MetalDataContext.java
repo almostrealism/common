@@ -37,7 +37,6 @@ import java.util.stream.Stream;
 public class MetalDataContext implements DataContext<MemoryData> {
 	public static final boolean fp16 = SystemUtils.getProperty("AR_HARDWARE_PRECISION", "32").equals("16");
 
-	private final Hardware hardware;
 	private final String name;
 	private final long maxReservation;
 	private final int offHeapSize;
@@ -53,8 +52,7 @@ public class MetalDataContext implements DataContext<MemoryData> {
 
 	private Runnable start;
 
-	public MetalDataContext(Hardware hardware, String name, long maxReservation, int offHeapSize) {
-		this.hardware = hardware;
+	public MetalDataContext(String name, long maxReservation, int offHeapSize) {
 		this.name = name;
 		this.maxReservation = maxReservation;
 		this.offHeapSize = offHeapSize;
@@ -68,7 +66,7 @@ public class MetalDataContext implements DataContext<MemoryData> {
 		start = this::start;
 	}
 
-	protected void identifyDevices(){
+	protected void identifyDevices() {
 		if (mainDevice != null) return;
 
 		mainDevice = MTLDevice.createSystemDefaultDevice();
@@ -93,7 +91,7 @@ public class MetalDataContext implements DataContext<MemoryData> {
 			throw new UnsupportedOperationException();
 		} else {
 			if (start != null) start.run();
-			cc = new MetalComputeContext(hardware, this);
+			cc = new MetalComputeContext(this);
 			((MetalComputeContext) cc).init(mainDevice, kernelDevice);
 		}
 

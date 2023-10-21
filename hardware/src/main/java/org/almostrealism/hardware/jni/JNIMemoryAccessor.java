@@ -14,18 +14,21 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.hardware;
+package org.almostrealism.hardware.jni;
 
-import io.almostrealism.code.Memory;
+import io.almostrealism.expression.InstanceReference;
+import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.scope.ArrayVariable;
 
-public abstract class RAM implements Memory {
-	public long getContainerPointer() {
-		return getContentPointer();
+public interface JNIMemoryAccessor {
+	default String copyInline(LanguageOperations lang, int index, ArrayVariable<?> variable, boolean write) {
+		String o = "((" + lang.getPrecision().typeName() + " *) argArr[" + index + "])";
+		String v = new InstanceReference<>(variable).getSimpleExpression(lang);
+
+		if (write) {
+			return null;
+		} else {
+			return lang.getPrecision().typeName() + " *" + v + " = " + o + ";";
+		}
 	}
-
-	public long getContentPointer() {
-		throw new UnsupportedOperationException();
-	}
-
-	public long getSize() { throw new UnsupportedOperationException(); }
 }

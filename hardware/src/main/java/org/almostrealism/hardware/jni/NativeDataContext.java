@@ -35,19 +35,20 @@ import java.util.concurrent.Callable;
 public class NativeDataContext implements DataContext<MemoryData> {
 	private static boolean external = SystemUtils.getProperty("AR_HARDWARE_NATIVE_EXECUTION", "").equalsIgnoreCase("external");
 
-	private final String name;
 	private final boolean isExternal, isNativeMem;
 	private final long maxReservation;
 
 	private NativeCompiler compiler;
 	private MemoryProvider<? extends Memory> ram;
+	private boolean providedRam = false;
 
-	private Hardware hardware;
+	private String name;
+	private Precision precision;
 	private ComputeContext<MemoryData> context;
 
-	public NativeDataContext(Hardware hardware, String name, boolean isNativeMem, long maxReservation) {
-		this.hardware = hardware;
+	public NativeDataContext(String name, Precision precision, boolean isNativeMem, long maxReservation) {
 		this.name = name;
+		this.precision = precision;
 		this.isNativeMem = isNativeMem;
 		this.isExternal = external;
 		this.maxReservation = maxReservation;
@@ -55,18 +56,32 @@ public class NativeDataContext implements DataContext<MemoryData> {
 
 	@Override
 	public void init() {
-		if (ram != null) return;
+		if (context != null) return;
 		compiler = NativeCompiler.factory(getPrecision(), !isNativeMem).construct();
-		ram = isNativeMem ? new NativeMemoryProvider(compiler, maxReservation * getPrecision().bytes()) : new JVMMemoryProvider();
-		context = isExternal ? new ExternalComputeContext(hardware, this, compiler) : new NativeComputeContext(hardware, this, compiler);
+
+		if (ram == null) {
+			ram = isNativeMem ? new NativeMemoryProvider(compiler, maxReservation * getPrecision().bytes()) : new JVMMemoryProvider();
+		}
+
+		context = isExternal ? new ExternalComputeContext(this, compiler) : new NativeComputeContext(this, compiler);
 	}
 
+	@Override
 	public String getName() { return name; }
 
 	@Override
-	public Precision getPrecision() { return Precision.FP64; }
+	public Precision getPrecision() { return precision; }
 
 	public NativeCompiler getNativeCompiler() { return compiler; }
+
+	public void setMemoryProvider(MemoryProvider<? extends Memory> ram) {
+		if (getPrecision().bytes() != ram.getNumberSize()) {
+			throw new UnsupportedOperationException();
+		}
+
+		this.ram = ram;
+		providedRam = true;
+	}
 
 	@Override
 	public List<MemoryProvider<? extends Memory>> getMemoryProviders() {
@@ -84,7 +99,7 @@ public class NativeDataContext implements DataContext<MemoryData> {
 	public ComputeContext<MemoryData> getComputeContext() {
 		if (context == null) {
 			if (Hardware.enableVerbose) System.out.println("INFO: No explicit ComputeContext for " + Thread.currentThread().getName());
-			context = new NativeComputeContext(hardware, this, getNativeCompiler());
+			context = new NativeComputeContext(this, getNativeCompiler());
 		}
 
 		return context;
@@ -114,6 +129,6 @@ public class NativeDataContext implements DataContext<MemoryData> {
 	@Override
 	public void destroy() {
 		// TODO  Destroy all compute contexts
-		ram.destroy();
+		if (!providedRam) ram.destroy();
 	}
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package org.almostrealism.c;
 
+import io.almostrealism.code.Precision;
 import org.almostrealism.hardware.jni.NativeCompiler;
 
 public class Free extends BaseNative {
@@ -27,10 +28,17 @@ public class Free extends BaseNative {
 
 	@Override
 	public String getFunctionDefinition() {
-		return "JNIEXPORT void JNICALL " + getFunctionName() + " (JNIEnv* env, jobject thisObject, jlong val) {\n" +
-				(enableVerbose ? "\tprintf(\"free(%lu)\\n\", val);\n" : "") +
-				"\tfree((double *) val);\n" +
-				"}\n";
+		if (getNativeCompiler().getPrecision() == Precision.FP64) {
+			return "JNIEXPORT void JNICALL " + getFunctionName() + " (JNIEnv* env, jobject thisObject, jlong val) {\n" +
+					(enableVerbose ? "\tprintf(\"free(%lu)\\n\", val);\n" : "") +
+					"\tfree((double *) val);\n" +
+					"}\n";
+		} else {
+			return "JNIEXPORT void JNICALL " + getFunctionName() + " (JNIEnv* env, jobject thisObject, jlong val) {\n" +
+					(enableVerbose ? "\tprintf(\"free(%lu)\\n\", val);\n" : "") +
+					"\tfree((float *) val);\n" +
+					"}\n";
+		}
 	}
 
 	public native void apply(long val);

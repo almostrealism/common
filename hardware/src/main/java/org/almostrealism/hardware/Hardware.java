@@ -41,6 +41,7 @@ import java.util.Optional;
 import java.util.concurrent.Callable;
 
 public final class Hardware {
+	public static boolean enableSharedMemory = false;
 	public static boolean enableVerbose = false;
 	public static final boolean enableMultiThreading = true;
 	public static boolean enableKernelOps;
@@ -140,7 +141,7 @@ public final class Hardware {
 				enableDestinationConsolidation, location);
 	}
 
-	private Hardware(String name, List<ComputeRequirement> type, boolean nativeMemory,
+	private Hardware(String name, List<ComputeRequirement> reqs, boolean nativeMemory,
 					 boolean enableDestinationConsolidation,
 					 Location location) {
 		this.name = name;
@@ -153,15 +154,29 @@ public final class Hardware {
 		this.contextListeners = new ArrayList<>();
 		this.contexts = new ArrayList<>();
 
-		processRequirements(type);
+		processRequirements(reqs);
 	}
 
 	private void processRequirements(List<ComputeRequirement> requirements) {
+		Precision precision = Precision.FP64;
+
+		for (ComputeRequirement r : requirements) {
+			if (r.getMaximumPrecision().bytes() < precision.bytes()) {
+				precision = r.getMaximumPrecision();
+			}
+		}
+
+		processRequirements(requirements, precision);
+	}
+
+	private void processRequirements(List<ComputeRequirement> requirements, Precision precision) {
 		if (enableVerbose) {
 			System.out.println("Hardware[" + getName() + "]: Processing Hardware Requirements...");
 		}
 
 		List<ComputeRequirement> done = new ArrayList<>();
+
+		MemoryProvider<? extends Memory> provider = null;
 
 		r: for (ComputeRequirement type : requirements) {
 			if (type == ComputeRequirement.CPU) {
@@ -179,15 +194,12 @@ public final class Hardware {
 			String cname;
 
 			if (type == ComputeRequirement.CL) {
-				ctx = new CLDataContext(this, getName(), this.maxReservation, getOffHeapSize(type), this.location);
+				ctx = new CLDataContext("CL", this.maxReservation, getOffHeapSize(type), this.location);
 				locationUsed = true;
-				cname = "CL";
 			} else if (type == ComputeRequirement.MTL) {
-				ctx = new MetalDataContext(this, getName(), this.maxReservation, getOffHeapSize(type));
-				cname = "MTL";
+				ctx = new MetalDataContext("MTL", this.maxReservation, getOffHeapSize(type));
 			} else {
-				ctx = new NativeDataContext(this, getName(), isNativeMemory(), this.maxReservation);
-				cname = "JNI";
+				ctx = new NativeDataContext("JNI", precision, isNativeMemory(), this.maxReservation);
 			}
 
 			if (locationUsed) {
@@ -200,11 +212,24 @@ public final class Hardware {
 			done.add(type);
 			ctx.init();
 
-			System.out.println("Hardware[" + getName() + "]: Max RAM for " + cname + " is " +
+			System.out.println("Hardware[" + getName() + "]: Max RAM for " + ctx.getName() + " is " +
 					ctx.getPrecision().bytes() * maxReservation / 1000000 + " Megabytes");
+
+			if (enableSharedMemory && provider == null && ctx instanceof MetalDataContext) {
+				provider = ((MetalDataContext) ctx).getMemoryProvider();
+			}
 
 			contexts.add(ctx);
 			contextListeners.forEach(l -> l.contextStarted(ctx));
+		}
+
+		if (provider != null) {
+			for (DataContext<MemoryData> c : contexts) {
+				if (c instanceof NativeDataContext) {
+					System.out.println("Hardware[" + c.getName() + "]: Enabling shared memory via " + provider);
+					((NativeDataContext) c).setMemoryProvider(provider);
+				}
+			}
 		}
 	}
 
@@ -241,11 +266,11 @@ public final class Hardware {
 		DataContext<MemoryData> next, current = explicitDataCtx.get();
 
 		if (getDataContext() instanceof CLDataContext) {
-			next = new CLDataContext(this, "CL", maxReservation, getOffHeapSize(ComputeRequirement.CL), location);
+			next = new CLDataContext("CL", maxReservation, getOffHeapSize(ComputeRequirement.CL), location);
 		} else if (getDataContext() instanceof MetalDataContext) {
-			next = new MetalDataContext(this,"MTL", maxReservation, getOffHeapSize(ComputeRequirement.MTL));
+			next = new MetalDataContext("MTL", maxReservation, getOffHeapSize(ComputeRequirement.MTL));
 		} else if (getDataContext() instanceof NativeDataContext) {
-			next = new NativeDataContext(this, "JNI", isNativeMemory(), maxReservation);
+			next = new NativeDataContext("JNI", getDataContext().getPrecision(), isNativeMemory(), maxReservation);
 		} else {
 			return null;
 		}

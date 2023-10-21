@@ -23,7 +23,6 @@ import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.Precision;
 import org.almostrealism.hardware.Hardware;
-import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.RAM;
 import org.almostrealism.hardware.jni.NativeCompiler;
@@ -43,7 +42,6 @@ import java.util.function.IntFunction;
 import java.util.stream.Stream;
 
 public class CLDataContext implements DataContext<MemoryData> {
-	private final Hardware hardware;
 	private final String name;
 	private final long maxReservation;
 	private final int offHeapSize;
@@ -70,8 +68,7 @@ public class CLDataContext implements DataContext<MemoryData> {
 
 	private Runnable start;
 
-	public CLDataContext(Hardware hardware, String name, long maxReservation, int offHeapSize, CLMemoryProvider.Location location) {
-		this.hardware = hardware;
+	public CLDataContext(String name, long maxReservation, int offHeapSize, CLMemoryProvider.Location location) {
 		this.name = name;
 		this.maxReservation = maxReservation;
 		this.offHeapSize = offHeapSize;
@@ -192,10 +189,10 @@ public class CLDataContext implements DataContext<MemoryData> {
 		ComputeContext cc;
 
 		if (cReq.isPresent()) {
-			cc = new CLNativeComputeContext(hardware, this, NativeCompiler.factory(getPrecision(), true).construct());
+			cc = new CLNativeComputeContext(this, NativeCompiler.factory(getPrecision(), true).construct());
 		} else {
 			if (start != null) start.run();
-			cc = new CLComputeContext(hardware, this, ctx);
+			cc = new CLComputeContext(this, ctx);
 			((CLComputeContext) cc).init(mainDevice, kernelDevice, pReq.isPresent());
 		}
 

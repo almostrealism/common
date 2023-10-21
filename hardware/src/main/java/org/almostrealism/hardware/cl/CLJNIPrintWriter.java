@@ -18,12 +18,13 @@ package org.almostrealism.hardware.cl;
 
 import io.almostrealism.code.Precision;
 import io.almostrealism.expression.StaticReference;
+import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Method;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
-import org.almostrealism.c.CJNIPrintWriter;
+import org.almostrealism.hardware.jni.CJNIPrintWriter;
 import org.almostrealism.io.PrintWriter;
 import org.jocl.cl_command_queue;
 import org.jocl.cl_event;
@@ -33,8 +34,8 @@ import java.util.List;
 import java.util.stream.IntStream;
 
 public class CLJNIPrintWriter extends CJNIPrintWriter {
-	public CLJNIPrintWriter(PrintWriter p, String topLevelMethodName, Precision precision) {
-		super(p, topLevelMethodName, precision);
+	public CLJNIPrintWriter(PrintWriter p, String topLevelMethodName, LanguageOperations lang) {
+		super(p, topLevelMethodName, lang, null);
 		enableWarnOnExplictParams = false;
 	}
 

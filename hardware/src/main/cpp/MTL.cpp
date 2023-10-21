@@ -212,6 +212,18 @@ JNIEXPORT jlong JNICALL Java_org_almostrealism_hardware_metal_MTL_createBuffer32
 }
 
 extern "C"
+JNIEXPORT jlong JNICALL Java_org_almostrealism_hardware_metal_MTL_getContentPointer(JNIEnv* env, jclass, jlong buffer) {
+    MTL::Buffer* buf = (MTL::Buffer*) buffer;
+    uint8_t* contents = (uint8_t*) buf->contents();
+
+    if (contents != nullptr) {
+        return (jlong) contents;
+    }
+
+    return -1;
+}
+
+extern "C"
 JNIEXPORT void JNICALL Java_org_almostrealism_hardware_metal_MTL_setBufferContents16(JNIEnv* env, jclass, jlong buffer, jobject data, jint offset, jint length) {
     MTL::Buffer* buf = (MTL::Buffer*) buffer;
     uint8_t* contents = (uint8_t*) buf->contents();

@@ -24,16 +24,12 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.jni.NativeCompiler;
 
-public abstract class AbstractComputeContext implements ComputeContext<MemoryData> {
-	private final Hardware hardware;
-	private final DataContext<MemoryData> dc;
+public abstract class AbstractComputeContext<T extends DataContext<MemoryData>> implements ComputeContext<MemoryData> {
+	private final T dc;
 
-	protected AbstractComputeContext(Hardware hardware, DataContext<MemoryData> dc) {
-		this.hardware = hardware;
+	protected AbstractComputeContext(T dc) {
 		this.dc = dc;
 	}
 
-	public Hardware getHardware() { return hardware; }
-
-	public DataContext<MemoryData> getDataContext() { return dc; }
+	public T getDataContext() { return dc; }
 }

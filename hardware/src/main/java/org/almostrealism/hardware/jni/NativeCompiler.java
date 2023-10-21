@@ -50,6 +50,8 @@ public class NativeCompiler {
 	private static int runnableCount;
 	private static int dataCount;
 
+	private Precision precision;
+
 	private String libExecutable, exeExecutable;
 	private final String libCompiler, exeCompiler;
 	private final String libDir;
@@ -67,6 +69,7 @@ public class NativeCompiler {
 			this.exeExecutable = exeCompiler.contains(".") ? exeCompiler.substring(exeCompiler.lastIndexOf(".") + 1) : null;
 		}
 
+		this.precision = precision;
 		this.libCompiler = libCompiler;
 		this.exeCompiler = exeCompiler;
 		this.libDir = libDir;
@@ -83,6 +86,8 @@ public class NativeCompiler {
 				(cl ? OPENCL : "") +
 				pi + "\n";
 	}
+
+	public Precision getPrecision() { return precision; }
 
 	public String getLibraryDirectory() { return libDir; }
 

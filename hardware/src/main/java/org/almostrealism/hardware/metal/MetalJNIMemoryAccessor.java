@@ -14,18 +14,9 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.hardware;
+package org.almostrealism.hardware.metal;
 
-import io.almostrealism.code.Memory;
+import org.almostrealism.hardware.jni.JNIMemoryAccessor;
 
-public abstract class RAM implements Memory {
-	public long getContainerPointer() {
-		return getContentPointer();
-	}
-
-	public long getContentPointer() {
-		throw new UnsupportedOperationException();
-	}
-
-	public long getSize() { throw new UnsupportedOperationException(); }
+public class MetalJNIMemoryAccessor implements JNIMemoryAccessor {
 }

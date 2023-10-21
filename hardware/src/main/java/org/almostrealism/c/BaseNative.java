@@ -33,6 +33,8 @@ public abstract class BaseNative {
 		this.compiler = compiler;
 	}
 
+	protected NativeCompiler getNativeCompiler() { return compiler; }
+
 	protected void initNativeFunctionName() {
 		functionName = "Java_" +
 				getClass().getName().replaceAll("\\.", "_") +

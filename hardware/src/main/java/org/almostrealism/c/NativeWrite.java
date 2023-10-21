@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@
 
 package org.almostrealism.c;
 
+import io.almostrealism.code.Precision;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.jni.NativeCompiler;
 
@@ -27,16 +28,29 @@ public class NativeWrite extends BaseNative {
 
 	@Override
 	public String getFunctionDefinition() {
-		return "JNIEXPORT void JNICALL " + getFunctionName() +
-				" (JNIEnv* env, jobject thisObject, jlong arg, jint offset, jdoubleArray target, jint toffset, jint len) {\n" +
-				(enableVerbose ? "\tprintf(\"nativeWrite(%lu) - %i values\\n\", arg, len);\n" : "") +
-				"\tdouble* input = (*env)->GetDoubleArrayElements(env, target, 0);\n" +
-				"\tdouble* output = (double *) arg;\n" +
-				"\tfor (int i = 0; i < len; i++) {\n" +
-				"\t\toutput[offset + i] = input[toffset + i];\n" +
-				"\t}" +
-				"\tfree(input);\n" +
-				"}\n";
+		if (getNativeCompiler().getPrecision() == Precision.FP64) {
+			return "JNIEXPORT void JNICALL " + getFunctionName() +
+					" (JNIEnv* env, jobject thisObject, jlong arg, jint offset, jdoubleArray target, jint toffset, jint len) {\n" +
+					(enableVerbose ? "\tprintf(\"nativeWrite(%lu) - %i values\\n\", arg, len);\n" : "") +
+					"\tdouble* input = (*env)->GetDoubleArrayElements(env, target, 0);\n" +
+					"\tdouble* output = (double *) arg;\n" +
+					"\tfor (int i = 0; i < len; i++) {\n" +
+					"\t\toutput[offset + i] = input[toffset + i];\n" +
+					"\t}" +
+					"\tfree(input);\n" +
+					"}\n";
+		} else {
+			return "JNIEXPORT void JNICALL " + getFunctionName() +
+					" (JNIEnv* env, jobject thisObject, jlong arg, jint offset, jdoubleArray target, jint toffset, jint len) {\n" +
+					(enableVerbose ? "\tprintf(\"nativeWrite(%lu) - %i values\\n\", arg, len);\n" : "") +
+					"\tdouble* input = (*env)->GetDoubleArrayElements(env, target, 0);\n" +
+					"\tfloat* output = (float *) arg;\n" +
+					"\tfor (int i = 0; i < len; i++) {\n" +
+					"\t\toutput[offset + i] = (float) input[toffset + i];\n" +
+					"\t}" +
+					"\tfree(input);\n" +
+					"}\n";
+		}
 	}
 
 	public double[] apply(MemoryData mem) {
@@ -52,7 +66,7 @@ public class NativeWrite extends BaseNative {
 	}
 
 	public void apply(NativeMemory mem, int offset, double target[], int toffset, int length) {
-		apply(mem.getNativePointer(), offset, target, toffset, length);
+		apply(mem.getContentPointer(), offset, target, toffset, length);
 	}
 
 	public native void apply(long arg, int offset, double[] target, int toffset, int length);

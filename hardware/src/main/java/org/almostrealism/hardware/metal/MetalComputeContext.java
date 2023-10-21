@@ -51,8 +51,8 @@ public class MetalComputeContext extends AbstractComputeContext {
 
 	private List<MetalOperatorMap> instructionSets;
 
-	public MetalComputeContext(Hardware hardware, MetalDataContext dc) {
-		super(hardware, dc);
+	public MetalComputeContext(MetalDataContext dc) {
+		super(dc);
 		this.instructionSets = new ArrayList<>();
 	}
 

@@ -86,7 +86,7 @@ public interface NativeInstructionSet extends InstructionSet {
 
 	default void apply(long commandQueue, RAM args[], int offsets[], int sizes[], int dim0[], int globalId) {
 		apply(commandQueue,
-				Stream.of(args).mapToLong(RAM::getNativePointer).toArray(),
+				Stream.of(args).mapToLong(RAM::getContentPointer).toArray(),
 				offsets, sizes, dim0, args.length, globalId);
 	}
 

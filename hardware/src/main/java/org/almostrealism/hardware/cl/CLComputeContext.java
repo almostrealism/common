@@ -65,8 +65,8 @@ public class CLComputeContext extends AbstractComputeContext {
 	private CLOperatorSources functions;
 	private List<CLOperatorMap> instructionSets;
 
-	public CLComputeContext(Hardware hardware, CLDataContext dc, cl_context ctx) {
-		super(hardware, dc);
+	public CLComputeContext(CLDataContext dc, cl_context ctx) {
+		super(dc);
 		this.enableFp64 = dc.getPrecision() == Precision.FP64;
 		this.ctx = ctx;
 		this.instructionSets = new ArrayList<>();
