@@ -41,7 +41,6 @@ import java.util.Optional;
 import java.util.concurrent.Callable;
 
 public final class Hardware {
-	public static boolean enableSharedMemory = false;
 	public static boolean enableVerbose = false;
 	public static final boolean enableMultiThreading = true;
 	public static boolean enableKernelOps;
@@ -215,7 +214,7 @@ public final class Hardware {
 			System.out.println("Hardware[" + getName() + "]: Max RAM for " + ctx.getName() + " is " +
 					ctx.getPrecision().bytes() * maxReservation / 1000000 + " Megabytes");
 
-			if (enableSharedMemory && provider == null && ctx instanceof MetalDataContext) {
+			if (KernelPreferences.enableSharedMemory && provider == null && ctx instanceof MetalDataContext) {
 				provider = ((MetalDataContext) ctx).getMemoryProvider();
 			}
 

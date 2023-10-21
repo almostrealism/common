@@ -17,6 +17,8 @@
 package io.almostrealism.kernel;
 
 public class KernelPreferences {
+	public static boolean enableSharedMemory = false;
+
 	private static boolean preferLoops = false;
 	private static boolean enableSubdivision = true;
 
