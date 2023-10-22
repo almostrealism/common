@@ -18,36 +18,58 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
+import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.code.Computer;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.ParallelProcess;
 import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.mem.Heap;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.Stack;
 import java.util.function.Function;
 
 public class DefaultComputer implements Computer<MemoryData> {
-	private Function<Computation<?>, ComputeContext<MemoryData>> contextFactory;
+	private Hardware hardware;
 
-	public DefaultComputer(Function<Computation<?>, ComputeContext<MemoryData>> contextFactory) {
-		this.contextFactory = contextFactory;
+	private ThreadLocal<Stack<List<ComputeRequirement>>> requirements;
+
+	public DefaultComputer(Hardware hardware) {
+		this.hardware = hardware;
+		this.requirements = ThreadLocal.withInitial(Stack::new);
 	}
 
 	public ComputeContext<MemoryData> getContext(Computation<?> c) {
-		return contextFactory.apply(c);
+		int count = ParallelProcess.count(c);
+		boolean fixed = ParallelProcess.isFixedCount(c);
+		return hardware.getComputeContext(fixed && count == 1, !fixed || count > 128,
+				getActiveRequirements().toArray(ComputeRequirement[]::new));
+	}
+
+	public List<ComputeRequirement> getActiveRequirements() {
+		return requirements.get().isEmpty() ? Collections.emptyList() : requirements.get().peek();
+	}
+
+	public void pushRequirements(List<ComputeRequirement> requirements) {
+		this.requirements.get().push(requirements);
+	}
+
+	public void popRequirements() {
+		this.requirements.get().pop();
 	}
 
 	@Override
 	public Runnable compileRunnable(Computation<Void> c) {
-		return Heap.addCompiled(new AcceleratedComputationOperation<>(contextFactory.apply(c), c, Hardware.enableKernelOps));
+		return Heap.addCompiled(new AcceleratedComputationOperation<>(getContext(c), c, Hardware.enableKernelOps));
 	}
 
 	@Override
 	public Runnable compileRunnable(Computation<Void> c, boolean kernel) {
-		return new AcceleratedComputationOperation<>(contextFactory.apply(c), c, kernel);
+		return new AcceleratedComputationOperation<>(getContext(c), c, kernel);
 	}
 
 	// TODO  The Computation may have a postProcessOutput method that will not be called
@@ -56,7 +78,7 @@ public class DefaultComputer implements Computer<MemoryData> {
 	// TODO  the correct type is returned.
 	@Override
 	public <T extends MemoryData> Evaluable<T> compileProducer(Computation<T> c) {
-		return new AcceleratedComputationEvaluable<>(contextFactory.apply(c), c);
+		return new AcceleratedComputationEvaluable<>(getContext(c), c);
 	}
 
 	@Override

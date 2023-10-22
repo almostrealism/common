@@ -48,7 +48,7 @@ public abstract class OperationComputationAdapter<T> extends ComputationBase<T, 
 
 	@Deprecated
 	public Runnable getKernel() {
-		Runnable r = Hardware.getComputer().compileRunnable(this, true);
+		Runnable r = Hardware.getLocalHardware().getComputer().compileRunnable(this, true);
 		if (r instanceof OperationAdapter) {
 			((OperationAdapter) r).compile();
 		}

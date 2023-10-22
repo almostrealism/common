@@ -75,7 +75,7 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 
 	@Override
 	default KernelizedEvaluable<T> get() {
-		ComputeContext<MemoryData> ctx = Hardware.getComputer().getContext(this);
+		ComputeContext<MemoryData> ctx = Hardware.getLocalHardware().getComputer().getContext(this);
 		AcceleratedComputationEvaluable<T> ev = new DefaultCollectionEvaluable<>(ctx, getShape(), this, this::postProcessOutput);
 		ev.compile();
 		return ev;

@@ -128,6 +128,7 @@ public final class Hardware {
 	private long maxReservation;
 	private Location location;
 
+	private DefaultComputer computer;
 	private List<DataContext<MemoryData>> contexts;
 	private ThreadLocal<DataContext<MemoryData>> explicitDataCtx = new ThreadLocal<>();
 	private ThreadLocal<ComputeContext<MemoryData>> explicitComputeCtx = new ThreadLocal<>();
@@ -153,10 +154,13 @@ public final class Hardware {
 		this.contextListeners = new ArrayList<>();
 		this.contexts = new ArrayList<>();
 
-		processRequirements(reqs);
+		int count = processRequirements(reqs);
+		if (count > 0) {
+			this.computer = new DefaultComputer(this);
+		}
 	}
 
-	private void processRequirements(List<ComputeRequirement> requirements) {
+	private int processRequirements(List<ComputeRequirement> requirements) {
 		Precision precision = Precision.FP64;
 
 		if (KernelPreferences.enableSharedMemory) {
@@ -167,10 +171,10 @@ public final class Hardware {
 			}
 		}
 
-		processRequirements(requirements, precision);
+		return processRequirements(requirements, precision);
 	}
 
-	private void processRequirements(List<ComputeRequirement> requirements, Precision precision) {
+	private int processRequirements(List<ComputeRequirement> requirements, Precision precision) {
 		if (enableVerbose) {
 			System.out.println("Hardware[" + getName() + "]: Processing Hardware Requirements...");
 		}
@@ -230,6 +234,8 @@ public final class Hardware {
 				}
 			}
 		}
+
+		return done.size();
 	}
 
 	public String getName() { return name; }
@@ -248,13 +254,7 @@ public final class Hardware {
 
 	public static Hardware getLocalHardware() { return local; }
 
-	public static Computer<MemoryData> getComputer() {
-		return new DefaultComputer(computation -> {
-			int count = ParallelProcess.count(computation);
-			boolean fixed = ParallelProcess.isFixedCount(computation);
-			return getLocalHardware().getComputeContext(fixed && count == 1, !fixed || count > 128);
-		});
-	}
+	public DefaultComputer getComputer() { return computer; }
 
 	public void setMaximumOperationDepth(int depth) { OperationList.setMaxDepth(depth); }
 

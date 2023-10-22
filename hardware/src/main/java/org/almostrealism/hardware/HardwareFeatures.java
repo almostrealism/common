@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,11 +16,7 @@
 
 package org.almostrealism.hardware;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.almostrealism.code.Computation;
-import io.almostrealism.lang.LanguageOperations;
-import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.hardware.computations.Assignment;
@@ -28,7 +24,6 @@ import org.almostrealism.hardware.computations.Loop;
 import org.almostrealism.hardware.mem.MemoryDataCopy;
 
 import java.util.Optional;
-import java.util.function.IntFunction;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
@@ -36,19 +31,19 @@ public interface HardwareFeatures {
 	boolean enableAssignmentCopy = false;
 
 	default Runnable compileRunnable(Computation<Void> c) {
-		return Hardware.getComputer().compileRunnable(c);
+		return Hardware.getLocalHardware().getComputer().compileRunnable(c);
 	}
 
 	default <T extends MemoryData> KernelizedEvaluable<T> compileProducer(Computation<T> c) {
-		return (KernelizedEvaluable) Hardware.getComputer().compileProducer(c);
+		return (KernelizedEvaluable) Hardware.getLocalHardware().getComputer().compileProducer(c);
 	}
 
 	default <T extends MemoryData> Optional<Computation<T>> decompile(Runnable r) {
-		return Hardware.getComputer().decompile(r);
+		return Hardware.getLocalHardware().getComputer().decompile(r);
 	}
 
 	default <T extends MemoryData> Optional<Computation<T>> decompile(Evaluable<T> r) {
-		return Hardware.getComputer().decompile(r);
+		return Hardware.getLocalHardware().getComputer().decompile(r);
 	}
 
 	default <T extends MemoryData> Assignment<T> a(int memLength, Supplier<Evaluable<? extends T>> result, Supplier<Evaluable<? extends T>> value) {

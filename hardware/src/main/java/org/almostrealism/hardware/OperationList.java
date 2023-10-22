@@ -17,6 +17,7 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.code.NamedFunction;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.OperationInfo;
@@ -68,6 +69,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	private String functionName;
 
 	private OperationMetadata metadata;
+	private List<ComputeRequirement> requirements;
 
 	public OperationList() { this(null); }
 
@@ -87,6 +89,14 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 
 	@Override
 	public OperationMetadata getMetadata() { return metadata; }
+
+	public void setComputeRequirements(List<ComputeRequirement> requirements) {
+		this.requirements = requirements;
+	}
+
+	public List<ComputeRequirement> getComputeRequirements() {
+		return requirements;
+	}
 
 	public void addCompiled(Supplier<Runnable> op) {
 		add(() -> op.get());
@@ -122,21 +132,31 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	public Runnable get(OperationProfile profiles) {
 		if (isFunctionallyEmpty()) return () -> { };
 
-		if (enableAutomaticOptimization && !isUniform()) {
-			return optimize().get();
-		} else if (isComputation()) {
-			OperationAdapter op = (OperationAdapter) compileRunnable(this);
-			op.setFunctionName(functionName);
-			op.compile();
-			return (Runnable) op;
-		} else {
-			List<Runnable> run = stream().map(Supplier::get).collect(Collectors.toList());
-			run.stream()
-					.map(r -> r instanceof OperationAdapter ? (OperationAdapter) r : null)
-					.filter(Objects::nonNull)
-					.filter(Predicate.not(OperationAdapter::isCompiled))
-					.forEach(OperationAdapter::compile);
-			return new Runner(getMetadata(), run, profiles);
+		try {
+			if (getComputeRequirements() != null) {
+				Hardware.getLocalHardware().getComputer().pushRequirements(getComputeRequirements());
+			}
+
+			if (enableAutomaticOptimization && !isUniform()) {
+				return optimize().get();
+			} else if (isComputation()) {
+				OperationAdapter op = (OperationAdapter) compileRunnable(this);
+				op.setFunctionName(functionName);
+				op.compile();
+				return (Runnable) op;
+			} else {
+				List<Runnable> run = stream().map(Supplier::get).collect(Collectors.toList());
+				run.stream()
+						.map(r -> r instanceof OperationAdapter ? (OperationAdapter) r : null)
+						.filter(Objects::nonNull)
+						.filter(Predicate.not(OperationAdapter::isCompiled))
+						.forEach(OperationAdapter::compile);
+				return new Runner(getMetadata(), run, profiles);
+			}
+		} finally {
+			if (getComputeRequirements() != null) {
+				Hardware.getLocalHardware().getComputer().popRequirements();
+			}
 		}
 	}
 
