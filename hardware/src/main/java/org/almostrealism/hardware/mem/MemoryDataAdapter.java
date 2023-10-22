@@ -43,6 +43,10 @@ public abstract class MemoryDataAdapter implements MemoryData {
 		}
 	}
 
+	protected void init(Memory mem) {
+		this.mem = mem;
+	}
+
 	@Override
 	public Memory getMem() { return getDelegate() == null ? mem : getDelegate().getMem(); }
 

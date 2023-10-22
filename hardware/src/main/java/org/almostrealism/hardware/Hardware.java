@@ -159,9 +159,11 @@ public final class Hardware {
 	private void processRequirements(List<ComputeRequirement> requirements) {
 		Precision precision = Precision.FP64;
 
-		for (ComputeRequirement r : requirements) {
-			if (r.getMaximumPrecision().bytes() < precision.bytes()) {
-				precision = r.getMaximumPrecision();
+		if (KernelPreferences.enableSharedMemory) {
+			for (ComputeRequirement r : requirements) {
+				if (r.getMaximumPrecision().bytes() < precision.bytes()) {
+					precision = r.getMaximumPrecision();
+				}
 			}
 		}
 
@@ -179,10 +181,8 @@ public final class Hardware {
 
 		r: for (ComputeRequirement type : requirements) {
 			if (type == ComputeRequirement.CPU) {
-				// TODO  Choose the ideal CPU implementation for this system
 				type = SystemUtils.isAarch64() ? ComputeRequirement.JNI : ComputeRequirement.CL;
 			} else if (type == ComputeRequirement.GPU) {
-				// TODO  Choose the ideal GPU implementation for this system
 				type = SystemUtils.isAarch64() ? ComputeRequirement.MTL : ComputeRequirement.CL;
 			}
 
@@ -211,7 +211,7 @@ public final class Hardware {
 			done.add(type);
 			ctx.init();
 
-			System.out.println("Hardware[" + getName() + "]: Max RAM for " + ctx.getName() + " is " +
+			System.out.println("Hardware[" + ctx.getName() + "]: Max RAM is " +
 					ctx.getPrecision().bytes() * maxReservation / 1000000 + " Megabytes");
 
 			if (KernelPreferences.enableSharedMemory && provider == null && ctx instanceof MetalDataContext) {
@@ -264,11 +264,13 @@ public final class Hardware {
 	public <T> T dataContext(Callable<T> exec) {
 		DataContext<MemoryData> next, current = explicitDataCtx.get();
 
-		if (getDataContext() instanceof CLDataContext) {
+		DataContext<MemoryData> dc = getDataContext();
+
+		if (dc instanceof CLDataContext) {
 			next = new CLDataContext("CL", maxReservation, getOffHeapSize(ComputeRequirement.CL), location);
-		} else if (getDataContext() instanceof MetalDataContext) {
+		} else if (dc instanceof MetalDataContext) {
 			next = new MetalDataContext("MTL", maxReservation, getOffHeapSize(ComputeRequirement.MTL));
-		} else if (getDataContext() instanceof NativeDataContext) {
+		} else if (dc instanceof NativeDataContext) {
 			next = new NativeDataContext("JNI", getDataContext().getPrecision(), isNativeMemory(), maxReservation);
 		} else {
 			return null;
@@ -280,7 +282,7 @@ public final class Hardware {
 		}
 
 		try {
-			if (Hardware.enableVerbose) System.out.println("Hardware[" + getName() + "]: Start " + dcName);
+			if (Hardware.enableVerbose) System.out.println("Hardware[" + next.getName() + "]: Start " + dcName);
 			next.init();
 			explicitDataCtx.set(next);
 			contextListeners.forEach(l -> l.contextStarted(getDataContext()));
@@ -292,9 +294,9 @@ public final class Hardware {
 		} finally {
 			contextListeners.forEach(l -> l.contextDestroyed(next));
 			explicitDataCtx.set(current);
-			if (Hardware.enableVerbose) System.out.println("Hardware[" + getName() + "]: End " + dcName);
+			if (Hardware.enableVerbose) System.out.println("Hardware[" + next.getName() + "]: End " + dcName);
 			next.destroy();
-			if (Hardware.enableVerbose) System.out.println("Hardware[" + getName() + "]: Destroyed " + dcName);
+			if (Hardware.enableVerbose) System.out.println("Hardware[" + next.getName() + "]: Destroyed " + dcName);
 		}
 	}
 
