@@ -30,6 +30,15 @@ public class CJNILanguageOperations extends CLanguageOperations {
 	}
 
 	@Override
+	public String pow(String a, String b) {
+		if (getPrecision() != Precision.FP64) {
+			return "powf(" + a + ", " + b + ")";
+		}
+
+		return super.pow(a, b);
+	}
+
+	@Override
 	public String min(String a, String b) {
 		return "f" + super.min(a, b);
 	}

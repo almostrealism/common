@@ -16,10 +16,8 @@
 
 package org.almostrealism.ml;
 
-import io.almostrealism.code.OperationMetadata;
-import io.almostrealism.code.OperationWithInfo;
+import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.PairFeatures;
 import org.almostrealism.collect.CollectionProducer;
@@ -32,7 +30,7 @@ import org.almostrealism.layers.LayerFeatures;
 import java.util.List;
 
 public interface RotationFeatures extends PairFeatures, LayerFeatures {
-	default CellularLayer ropeRotation(TraversalPolicy shape, PackedCollection<?> weights, Producer<PackedCollection<?>> position) {
+	default CellularLayer ropeRotation(TraversalPolicy shape, PackedCollection<?> weights, Producer<PackedCollection<?>> position, ComputeRequirement... requirements) {
 		if (shape.getDimensions() != 3 || shape.length(2) != 2)
 			throw new IllegalArgumentException();
 
@@ -51,7 +49,7 @@ public interface RotationFeatures extends PairFeatures, LayerFeatures {
 			CollectionProducer<PackedCollection<?>> o = multiplyComplex(traverse(1, input), r.traverse(1));
 			if (next != null) return next.push(o);
 			return new OperationList();
-		}), null, List.of(weights));
+		}), null, List.of(weights), requirements);
 	}
 
 	static RotationFeatures getInstance() {

@@ -16,6 +16,7 @@
 
 package org.almostrealism.layers;
 
+import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.relation.Nameable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
@@ -43,8 +44,10 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 	private Cell<PackedCollection<?>> entry;
 	private Cell<PackedCollection<?>> exit;
 	private Cell<PackedCollection<?>> fw;
+	private Receptor<PackedCollection<?>> monitor;
 
 	private String name;
+	private List<ComputeRequirement> requirements;
 
 	private List<Receptor<PackedCollection<?>>> receptors;
 
@@ -93,6 +96,10 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 	@Override
 	public String getName() { return name; }
 
+	public List<ComputeRequirement> getComputeRequirements() { return requirements; }
+
+	public void setComputeRequirements(List<ComputeRequirement> requirements) { this.requirements = requirements; }
+
 	public void init(TraversalPolicy inputShape, boolean inputTracking, boolean outputTracking) {
 		this.inputShape = inputShape;
 
@@ -116,23 +123,42 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 		});
 		this.entry.setReceptor(forward);
 
-		this.exit = Cell.of((in, next) -> into(getName() + " layer " +
-				getInputShape() + "->" + getOutputShape(), in, p(output)));
+//		this.exit = Cell.of((in, next) -> into(getName() + " layer " +
+//				getInputShape() + "->" + getOutputShape(), in, p(output)));
+		this.exit = Cell.of((in, next) -> output(in, p(output)));
 		this.forward.setReceptor(exit);
+	}
+
+	private Supplier<Runnable> output(Producer<PackedCollection<?>> in, Producer<PackedCollection<?>> out) {
+		Supplier<Runnable> o = into(getName() + " layer " +
+				getInputShape() + "->" + getOutputShape(), in, out);
+		if (getMonitor() == null) {
+			return o;
+		}
+
+		OperationList op = new OperationList(getName() + " layer (Output and Monitor)");
+		op.add(o);
+		op.add(getMonitor().push(out));
+		return op;
 	}
 
 	private <T extends MemoryData> Supplier<Runnable> into(String name, Producer<T> in, Producer<T> out) {
 		TraversalPolicy shape = shape(in);
 
+		OperationList op = new OperationList(name);
+		op.setComputeRequirements(getComputeRequirements());
+
 		if (shape.getCount() > 1) {
 			if (shape.equalsIgnoreAxis(shape(out))) {
-				return a(name, traverse(shape.getTraversalAxis(), (Producer) out), in);
+				op.add(a(name, traverse(shape.getTraversalAxis(), (Producer) out), in));
 			} else {
-				return a(name, reshape(shape, out), in);
+				op.add(a(name, reshape(shape, out), in));
 			}
 		} else {
-			return copy(name, in, out, shape.getTotalSize());
+			op.add(copy(name, in, out, shape.getTotalSize()));
 		}
+
+		return op;
 	}
 
 	public PackedCollection<?> getInput() { return input; }
@@ -140,6 +166,14 @@ public class DefaultCellularLayer implements CellularLayer, CodeFeatures, Learni
 
 	@Override
 	public Supplier<Runnable> setup() { return setup; }
+
+	public Receptor<PackedCollection<?>> getMonitor() {
+		return monitor;
+	}
+
+	public void setMonitor(Receptor<PackedCollection<?>> monitor) {
+		this.monitor = monitor;
+	}
 
 	@Override
 	public Cell<PackedCollection<?>> getForward() {

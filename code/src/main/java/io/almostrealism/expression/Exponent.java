@@ -27,7 +27,9 @@ public class Exponent extends Expression<Double> {
 
 	@Override
 	public String getExpression(LanguageOperations lang) {
-		return "pow(" + getChildren().get(0).getExpression(lang) + ", " + getChildren().get(1).getExpression(lang) + ")";
+		return lang.pow(
+				getChildren().get(0).getExpression(lang),
+				getChildren().get(1).getExpression(lang));
 	}
 
 	@Override

@@ -1,5 +1,6 @@
 package org.almostrealism.model;
 
+import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
@@ -66,10 +67,10 @@ public class SequentialBlock implements Block, LayerFeatures {
 		return branch;
 	}
 
-	public CellularLayer accum(Block value) {
+	public CellularLayer accum(Block value, ComputeRequirement... requirements) {
 		if (value.getInputShape().getTotalSize() != getOutputShape().getTotalSize())
 			throw new IllegalArgumentException();
-		return add(accum(getOutputShape(), value.getForward()));
+		return add(accum(getOutputShape(), value.getForward(), requirements));
 	}
 
 	public CellularLayer product(Block value) {
@@ -78,12 +79,12 @@ public class SequentialBlock implements Block, LayerFeatures {
 		return add(product(value.getOutputShape(), value.getForward()));
 	}
 
-	public CellularLayer product(Block a, Block b) {
+	public CellularLayer product(Block a, Block b, ComputeRequirement... requirements) {
 		if (a.getInputShape().getTotalSize() != getOutputShape().getTotalSize())
 			throw new IllegalArgumentException();
 		if (b.getInputShape().getTotalSize() != getOutputShape().getTotalSize())
 			throw new IllegalArgumentException();
-		return add(product(a.getInputShape(), a.getOutputShape(), a.getForward(), b.getForward()));
+		return add(product(a.getInputShape(), a.getOutputShape(), a.getForward(), b.getForward(), requirements));
 	}
 
 	@Override

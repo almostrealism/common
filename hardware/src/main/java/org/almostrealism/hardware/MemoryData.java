@@ -121,9 +121,15 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 			throw new IllegalArgumentException(i + " is out of bounds for MemoryData of length " + getMemLength());
 		}
 
-		double out[] = new double[1];
-		getMem(i, out, 0, 1);
-		return new DoubleConstant(out[0]);
+		if (getMem().getProvider().getNumberSize() == 8) {
+			double out[] = new double[1];
+			getMem(i, out, 0, 1);
+			return new DoubleConstant(out[0]);
+		} else {
+			float out[] = new float[1];
+			getMem(i, out, 0, 1);
+			return new DoubleConstant((double) out[0]);
+		}
 	}
 
 	default void setMem(int offset, double... values) {

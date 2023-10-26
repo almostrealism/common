@@ -212,7 +212,7 @@ public class CLDataContext implements DataContext<MemoryData> {
 		return ctx;
 	}
 
-	protected boolean isCPU() { return deviceType == CL.CL_DEVICE_TYPE_CPU; }
+	protected boolean isCPU() { return kernelDevice == null; }
 
 	public DeviceInfo getMainDeviceInfo() { return mainDeviceInfo; }
 	public DeviceInfo getKernelDeviceInfo() { return kernelDeviceInfo; }

@@ -30,7 +30,9 @@ public class CLanguageOperations extends DefaultLanguageOperations {
 	private boolean isNative;
 	private boolean enableArgumentDetailReads;
 
-	public CLanguageOperations(Precision precision, boolean isNative, boolean enableArgumentDetailReads) {
+	public CLanguageOperations(Precision precision,
+							   boolean isNative,
+							   boolean enableArgumentDetailReads) {
 		super(precision, true);
 		this.isNative = isNative;
 		this.enableArgumentDetailReads = enableArgumentDetailReads;

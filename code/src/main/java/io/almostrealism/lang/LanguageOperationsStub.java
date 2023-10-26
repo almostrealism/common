@@ -25,6 +25,11 @@ public class LanguageOperationsStub implements LanguageOperations {
 	public Precision getPrecision() { return Precision.FP64; }
 
 	@Override
+	public String pow(String a, String b) {
+		return "pow(" + a + ", " + b + ")";
+	}
+
+	@Override
 	public String min(String a, String b) {
 		return "min(" + a + ", " + b + ")";
 	}

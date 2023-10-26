@@ -23,9 +23,7 @@ import io.almostrealism.scope.Method;
 public interface LanguageOperations {
 	Precision getPrecision();
 
-	default String forDouble(double d) {
-		return getPrecision().stringForDouble(d);
-	}
+	String pow(String a, String b);
 
 	String min(String a, String b);
 	String max(String a, String b);

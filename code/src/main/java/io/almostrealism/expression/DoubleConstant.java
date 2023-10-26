@@ -22,8 +22,6 @@ import java.util.OptionalDouble;
 import java.util.function.DoubleFunction;
 
 public class DoubleConstant extends Constant<Double> {
-	public static DoubleFunction<String> stringForDouble = d -> String.valueOf(d);
-
 	private double value;
 
 	public DoubleConstant(Double value) {
@@ -37,7 +35,7 @@ public class DoubleConstant extends Constant<Double> {
 	}
 
 	@Override
-	public String getExpression(LanguageOperations lang) { return stringForDouble.apply(value); }
+	public String getExpression(LanguageOperations lang) { return lang.getPrecision().stringForDouble(value); }
 
 	@Override
 	public Number kernelValue(int kernelIndex) {

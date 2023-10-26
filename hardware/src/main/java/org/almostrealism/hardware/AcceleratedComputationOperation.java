@@ -19,6 +19,7 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
+import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.code.Execution;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.OperationInfo;
@@ -77,6 +78,16 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 		} else {
 			return super.getName();
 		}
+	}
+
+	@Override
+	public List<ComputeRequirement> getComputeRequirements() {
+		if (scope != null) return scope.getComputeRequirements();
+		if (getComputation() instanceof OperationInfo) {
+			return ((OperationInfo) getComputation()).getComputeRequirements();
+		}
+
+		return super.getComputeRequirements();
 	}
 
 	@Override

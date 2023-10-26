@@ -16,6 +16,12 @@
 
 package io.almostrealism.code;
 
+import java.util.List;
+
 public interface OperationInfo {
 	OperationMetadata getMetadata();
+
+	default List<ComputeRequirement> getComputeRequirements() {
+		return null;
+	}
 }

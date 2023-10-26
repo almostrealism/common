@@ -19,6 +19,7 @@ package io.almostrealism.scope;
 import io.almostrealism.code.Array;
 import io.almostrealism.code.CodePrintWriter;
 import io.almostrealism.code.Computation;
+import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
@@ -58,6 +59,8 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Tree<Scope<T>>, Ope
 
 	private String name;
 	private OperationMetadata metadata;
+	private List<ComputeRequirement> requirements;
+
 	private final List<Statement> statements;
 	private final List<Variable<?, ?>> variables;
 	private final List<Method> methods;
@@ -118,6 +121,9 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Tree<Scope<T>>, Ope
 	}
 
 	public void setMetadata(OperationMetadata metadata) { this.metadata = metadata; }
+
+	public List<ComputeRequirement> getComputeRequirements() { return requirements; }
+	public void setComputeRequirements(List<ComputeRequirement> requirements) { this.requirements = requirements; }
 
 	public List<Statement> getStatements() { return statements; }
 

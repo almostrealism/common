@@ -196,8 +196,18 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 	@Override
 	public void run() {
-		AcceleratedProcessDetails process = apply(null, new Object[0]);
-		if (!Hardware.isAsync()) waitFor(process.getSemaphore());
+		try {
+			if (getComputeRequirements() != null) {
+				Hardware.getLocalHardware().getComputer().pushRequirements(getComputeRequirements());
+			}
+
+			AcceleratedProcessDetails process = apply(null, new Object[0]);
+			if (!Hardware.isAsync()) waitFor(process.getSemaphore());
+		} finally {
+			if (getComputeRequirements() != null) {
+				Hardware.getLocalHardware().getComputer().popRequirements();
+			}
+		}
 	}
 
 	protected synchronized AcceleratedProcessDetails apply(MemoryBank output, Object[] args) {

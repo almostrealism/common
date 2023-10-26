@@ -16,6 +16,7 @@
 
 package org.almostrealism.layers;
 
+import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.code.ExpressionList;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
@@ -61,21 +62,26 @@ public interface LayerFeatures extends MatrixFeatures {
 	}
 
 	default CellularLayer layer(String name, TraversalPolicy inputShape, TraversalPolicy outputShape,
-								Cell<PackedCollection<?>> forward, Propagation backward) {
-		return layer(name, inputShape, outputShape, forward, backward, Collections.emptyList(), new OperationList());
+								Cell<PackedCollection<?>> forward, Propagation backward,
+								ComputeRequirement... requirements) {
+		return layer(name, inputShape, outputShape, forward, backward,
+				Collections.emptyList(), new OperationList(), requirements);
 	}
 
 	default CellularLayer layer(String name, TraversalPolicy inputShape, TraversalPolicy outputShape,
 								Cell<PackedCollection<?>> forward, Propagation backward,
-								List<PackedCollection<?>> weights) {
-		return layer(name, inputShape, outputShape, forward, backward, weights, new OperationList());
+								List<PackedCollection<?>> weights, ComputeRequirement... requirements) {
+		return layer(name, inputShape, outputShape, forward, backward, weights, new OperationList(), requirements);
 	}
 
 	default CellularLayer layer(String name, TraversalPolicy inputShape, TraversalPolicy outputShape,
 								Cell<PackedCollection<?>> forward, Propagation backward,
-								List<PackedCollection<?>> weights, Supplier<Runnable> setup) {
+								List<PackedCollection<?>> weights, Supplier<Runnable> setup,
+								ComputeRequirement... requirements) {
 		PropagationCell backwardCell = new PropagationCell(backward);
 		DefaultCellularLayer layer = new DefaultCellularLayer(name, outputShape, forward, backwardCell, weights, setup);
+		if (requirements.length > 0) layer.setComputeRequirements(List.of(requirements));
+
 		layer.init(inputShape, ioTracking, true);
 		backwardCell.setForwardInput(layer.getInput());
 		return layer;
@@ -309,7 +315,7 @@ public interface LayerFeatures extends MatrixFeatures {
 		}), propagation);
 	}
 
-	default CellularLayer softmax2d(TraversalPolicy shape, boolean subtractMax) {
+	default CellularLayer softmax2d(TraversalPolicy shape, boolean subtractMax, ComputeRequirement... requirements) {
 		if (shape.getDimensions() != 2)
 			throw new IllegalArgumentException();
 
@@ -331,7 +337,7 @@ public interface LayerFeatures extends MatrixFeatures {
 			o = o.divide(o.sum().expand(seqLen, v -> v.repeat(seqLen)));
 
 			return next == null ? new OperationList() : next.push(o);
-		}), null);
+		}), null, requirements);
 	}
 
 	default CellularLayer accum(Producer<PackedCollection<?>> value) {
@@ -342,7 +348,7 @@ public interface LayerFeatures extends MatrixFeatures {
 		}), null);
 	}
 
-	default CellularLayer accum(TraversalPolicy shape, Cell<PackedCollection<?>> value) {
+	default CellularLayer accum(TraversalPolicy shape, Cell<PackedCollection<?>> value, ComputeRequirement... requirements) {
 		return layer("accum", shape, shape, Cell.of((input, next) -> {
 			CaptureReceptor r = new CaptureReceptor();
 			value.setReceptor(r);
@@ -351,18 +357,18 @@ public interface LayerFeatures extends MatrixFeatures {
 			ops.add(value.push(input));
 			if (next != null) ops.add(next.push(add(traverseEach(input), traverseEach(r.getReceipt()))));
 			return ops;
-		}), null);
+		}), null, requirements);
 	}
 
-	default CellularLayer product(Producer<PackedCollection<?>> value) {
+	default CellularLayer product(Producer<PackedCollection<?>> value, ComputeRequirement... requirements) {
 		TraversalPolicy shape = shape(value);
 
 		return layer("product", shape, shape, Cell.of((input, next) -> {
 			return next.push(multiply(traverseEach(input), traverseEach(value)));
-		}), null);
+		}), null, requirements);
 	}
 
-	default CellularLayer product(TraversalPolicy shape, Cell<PackedCollection<?>> value) {
+	default CellularLayer product(TraversalPolicy shape, Cell<PackedCollection<?>> value, ComputeRequirement... requirements) {
 		return layer("product", shape, shape, Cell.of((input, next) -> {
 			CaptureReceptor r = new CaptureReceptor();
 			value.setReceptor(r);
@@ -371,11 +377,12 @@ public interface LayerFeatures extends MatrixFeatures {
 			ops.add(value.push(input));
 			if (next != null) ops.add(next.push(multiply(traverseEach(input), traverseEach(r.getReceipt()))));
 			return ops;
-		}), null);
+		}), null, requirements);
 	}
 
 	default CellularLayer product(TraversalPolicy inputShape, TraversalPolicy outputShape,
-								  Cell<PackedCollection<?>> a, Cell<PackedCollection<?>> b) {
+								  Cell<PackedCollection<?>> a, Cell<PackedCollection<?>> b,
+								  ComputeRequirement... requirements) {
 		return layer("product", inputShape, outputShape, Cell.of((input, next) -> {
 			CaptureReceptor ar = new CaptureReceptor();
 			a.setReceptor(ar);
@@ -388,23 +395,23 @@ public interface LayerFeatures extends MatrixFeatures {
 			ops.add(b.push(input));
 			if (next != null) ops.add(next.push(multiply(traverseEach(ar.getReceipt()), traverseEach(br.getReceipt()))));
 			return ops;
-		}), null);
+		}), null, requirements);
 	}
 
-	default CellularLayer silu(TraversalPolicy shape) {
+	default CellularLayer silu(TraversalPolicy shape, ComputeRequirement... requirements) {
 		if (shape.getDimensions() != 1)
 			throw new IllegalArgumentException();
 
 		return layer("silu", shape, shape, Cell.of((input, next) -> {
 			return next == null ? new OperationList() : next.push(multiply(traverseEach(input), sigmoid(traverseEach(input))));
-		}), null);
+		}), null, requirements);
 	}
 
 	default CellularLayer rmsnorm(int size) {
 		return rmsnorm(new PackedCollection<>(shape(size)));
 	}
 
-	default CellularLayer rmsnorm(PackedCollection<?> weights) {
+	default CellularLayer rmsnorm(PackedCollection<?> weights, ComputeRequirement... requirements) {
 		TraversalPolicy shape = weights.getShape();
 		if (shape.getDimensions() != 1)
 			throw new IllegalArgumentException();
@@ -416,10 +423,10 @@ public interface LayerFeatures extends MatrixFeatures {
 			ss = ss.divide(c(size)).add(c(1e-5));
 			ss = c(1.0).divide(ss.pow(c(0.5)));
 			return next == null ? new OperationList() : next.push(multiply(traverseEach(p(weights)), traverseEach(input)).multiply(ss));
-		}), null, List.of(weights));
+		}), null, List.of(weights), requirements);
 	}
 
-	default CellularLayer matmul(PackedCollection<?> weights) {
+	default CellularLayer matmul(PackedCollection<?> weights, ComputeRequirement... requirements) {
 		if (weights.getShape().getDimensions() != 2)
 			throw new IllegalArgumentException();
 
@@ -428,7 +435,7 @@ public interface LayerFeatures extends MatrixFeatures {
 
 		return layer("matmul", inputShape, outputShape, Cell.of((input, next) -> {
 			return next == null ? new OperationList() : next.push(matmul(p(weights), input));
-		}), null, List.of(weights));
+		}), null, List.of(weights), requirements);
 	}
 
 	class CaptureReceptor implements Receptor<PackedCollection<?>> {
