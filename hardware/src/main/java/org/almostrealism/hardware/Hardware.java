@@ -194,7 +194,6 @@ public final class Hardware {
 
 			boolean locationUsed = false;
 			DataContext ctx;
-			String cname;
 
 			if (type == ComputeRequirement.CL) {
 				ctx = new CLDataContext("CL", this.maxReservation, getOffHeapSize(type), this.location);
@@ -346,6 +345,19 @@ public final class Hardware {
 
 		if (ctx != null) {
 			return filterContexts(List.of(ctx), requirements).stream().findAny().orElseThrow(UnsupportedOperationException::new);
+		}
+
+		if (contexts.size() == 1) {
+			boolean supported = true;
+			for (ComputeRequirement r : requirements) {
+				if (!supported(contexts.get(0), r)) supported = false;
+			}
+
+			if (!supported) {
+				System.out.println("WARN: Ignoring ComputeRequirement as only one DataContext is available");
+			}
+
+			return contexts.get(0);
 		}
 
 		List<DataContext<MemoryData>> filtered = filterContexts(contexts, requirements);

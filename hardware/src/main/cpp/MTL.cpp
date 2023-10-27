@@ -119,9 +119,10 @@ JNIEXPORT jlong JNICALL Java_org_almostrealism_hardware_metal_MTL_createFunction
 
     MTL::Device* dev = (MTL::Device*) device;
     MTL::CompileOptions* compileOptions = MTL::CompileOptions::alloc();
+    compileOptions->setFastMathEnabled(true);
 
     NS::Error* error;
-    MTL::Library* library = dev->newLibrary(funcSourceStr, nullptr, &error);
+    MTL::Library* library = dev->newLibrary(funcSourceStr, compileOptions, &error);
 
     if (error != nullptr) {
         printf("Error: %s\n", error->localizedDescription()->utf8String());

@@ -72,6 +72,18 @@ public enum Precision {
 	}
 
 	public String stringForDouble(double d) {
+		boolean enableCast = false;
+
+		String raw = rawStringForDouble(d);
+
+		if (enableCast && this == Precision.FP32) {
+			return "((float) " + raw + ")";
+		} else {
+			return raw;
+		}
+	}
+
+	public String rawStringForDouble(double d) {
 		if (this != Precision.FP64) {
 			Float f = (float) d;
 			if (f.isInfinite()) {

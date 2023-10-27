@@ -213,6 +213,11 @@ public interface LayerFeatures extends MatrixFeatures {
 	}
 
 	default CellularLayer dense(int size, int nodes) {
+		return dense(size, nodes, true);
+	}
+
+	// TODO  support bias flag
+	default CellularLayer dense(int size, int nodes, boolean bias) {
 		TraversalPolicy outputShape = shape(nodes);
 
 		PackedCollection<?> weights = new PackedCollection<>(shape(size, nodes));

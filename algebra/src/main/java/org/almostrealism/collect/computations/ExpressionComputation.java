@@ -18,6 +18,7 @@ package org.almostrealism.collect.computations;
 
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.relation.Process;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.CollectionFeatures;
@@ -97,8 +98,10 @@ public class ExpressionComputation<T extends PackedCollection<?>>
 
 	public static <T extends PackedCollection<?>> ExpressionComputation<T> fixed(T value, BiFunction<MemoryData, Integer, T> postprocessor) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
+//		IntStream.range(0, value.getShape().getTotalSize()).forEach(i ->
+//				comp.add(args -> new DoubleConstant(value.getMem().toArray(value.getOffset() + i, 1)[0])));
 		IntStream.range(0, value.getShape().getTotalSize()).forEach(i ->
-				comp.add(args -> new DoubleConstant(value.getMem().toArray(value.getOffset() + i, 1)[0])));
+				comp.add(args -> value.getValueAt(new IntegerConstant(i))));
 
 		return (ExpressionComputation<T>) new ExpressionComputation(comp).setPostprocessor(postprocessor).setShortCircuit(args -> {
 			PackedCollection v = new PackedCollection(value.getShape());
