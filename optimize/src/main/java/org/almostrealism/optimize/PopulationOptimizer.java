@@ -33,7 +33,6 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 import io.almostrealism.relation.Generated;
-import org.almostrealism.collect.PackedCollectionHeap;
 import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.heredity.Genome;
 import org.almostrealism.heredity.GenomeBreeder;
@@ -265,7 +264,7 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 
 			if (!enableVerbose) console.println();
 
-			console.println("Average health for this round is " +
+			console.println("[" + Instant.now().toString() + "] Average health for this round is " +
 					percent(scoring.getAverageScore()) + ", max " + percent(scoring.getMaxScore()));
 			TreeSet<Genome<G>> sorted = new TreeSet<>((g1, g2) -> {
 				double h1 = healthTable.get(g1);
