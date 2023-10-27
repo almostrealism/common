@@ -1,6 +1,7 @@
 package io.almostrealism.expression.test;
 
 import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.code.Precision;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.Mod;
@@ -9,7 +10,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 public class ExpressionSimplificationTests implements ExpressionFeatures {
-	private OpenCLLanguageOperations lang;
+	private OpenCLLanguageOperations lang = new OpenCLLanguageOperations(Precision.FP64);
 
 	@Test
 	public void productToInt() {
