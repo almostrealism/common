@@ -18,14 +18,11 @@ package org.almostrealism.hardware;
 
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.ComputeRequirement;
-import io.almostrealism.code.Computer;
 import io.almostrealism.code.DataContext;
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.Precision;
 import io.almostrealism.kernel.KernelPreferences;
-import io.almostrealism.relation.Countable;
-import io.almostrealism.relation.ParallelProcess;
 import org.almostrealism.hardware.cl.CLMemoryProvider;
 import org.almostrealism.hardware.cl.CLMemoryProvider.Location;
 import org.almostrealism.hardware.cl.CLDataContext;
@@ -108,11 +105,8 @@ public final class Hardware {
 			throw new IllegalStateException("Unknown driver " + driver);
 		}
 
-		boolean favorLoops = requirements.size() == 1;
-
-		if (favorLoops && requirements.contains(ComputeRequirement.MTL)) {
-			KernelPreferences.setPreferLoops(true);
-			KernelPreferences.setEnableSubdivision(false);
+		if (requirements.size() == 1 && requirements.contains(ComputeRequirement.MTL)) {
+			KernelPreferences.optimizeForMetal();
 		}
 
 		local = new Hardware(requirements, nativeMemory,

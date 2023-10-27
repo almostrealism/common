@@ -37,4 +37,10 @@ public class KernelPreferences {
 	}
 
 	public static boolean isEnableSubdivision() { return enableSubdivision; }
+
+	public static void optimizeForMetal() {
+		KernelPreferences.enableSharedMemory = true;
+		KernelPreferences.setPreferLoops(true);
+		KernelPreferences.setEnableSubdivision(false);
+	}
 }
