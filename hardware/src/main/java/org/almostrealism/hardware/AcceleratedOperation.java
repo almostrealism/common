@@ -124,6 +124,9 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	@Override
 	public PhysicalScope getDefaultPhysicalScope() { return PhysicalScope.GLOBAL; }
 
+	@Override
+	public int getCount() { return -1; }
+
 	public MemoryData createAggregatedInput(int memLength, int atomicLength) {
 		return getComputeContext().getDataContext().deviceMemory(() -> new Bytes(memLength, atomicLength));
 	}
@@ -292,6 +295,8 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			kernelSize = output.getCount();
 		} else if (args.length > 0 && Stream.of(args).filter(a -> !(a instanceof MemoryData)).findAny().isEmpty()) {
 			kernelSize = ((MemoryBank) args[0]).getCount();
+		} else if (isFixedCount()) {
+			kernelSize = getCount();
 		} else {
 			kernelSize = -1;
 		}
@@ -331,8 +336,8 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 		List<Integer> sizes = new ArrayList<>();
 
-		if (this instanceof Countable)
-			sizes.add(((Countable) this).getCount());
+//		if (this instanceof Countable)
+//			sizes.add(((Countable) this).getCount());
 
 		/*
 		 * In the second pass, kernel size is inferred from Producer arguments

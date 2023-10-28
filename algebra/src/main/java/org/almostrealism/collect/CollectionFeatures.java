@@ -446,8 +446,10 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> multiply(
 			Producer<T> a, Producer<T> b,
 			Evaluable<T> shortCircuit) {
-		TraversalPolicy shape = shape(a);
-		int size = shape(b).getSize();
+		TraversalPolicy shapeA = shape(a);
+		TraversalPolicy shapeB = shape(b);
+		TraversalPolicy shape = shapeA.getTotalSize() > shapeB.getTotalSize() ? shapeA : shapeB;
+		int size = shapeA.getTotalSize() > shapeB.getTotalSize() ? shapeB.getSize() : shapeA.getSize();
 
 		if (shape.getSize() != size) {
 			if (shape.getSize() != 1 && size != 1) {

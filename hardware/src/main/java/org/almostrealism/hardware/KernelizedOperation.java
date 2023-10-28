@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,7 +16,9 @@
 
 package org.almostrealism.hardware;
 
-public interface KernelizedOperation {
+import io.almostrealism.relation.Countable;
+
+public interface KernelizedOperation extends Countable {
 	boolean enableKernelLog = false;
 
 	// TODO  It makes no sense for operation inputs to be divided

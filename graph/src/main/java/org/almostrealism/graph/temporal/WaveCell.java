@@ -122,7 +122,7 @@ public class WaveCell extends CollectionTemporalCellAdapter implements CodeFeatu
 
 	@Override
 	public Supplier<Runnable> setup() {
-		OperationList setup = new OperationList("WavCell Setup");
+		OperationList setup = new OperationList("WaveCell Setup");
 		if (clock != null) setup.add(clock.setup());
 		setup.add(a(1, data.getWaveLength(), v(waveLength)));
 		setup.add(a(1, data.getWaveIndex(), frameIndex));

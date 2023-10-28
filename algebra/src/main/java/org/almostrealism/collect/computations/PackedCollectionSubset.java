@@ -49,7 +49,7 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 			throw new IllegalArgumentException("Subset cannot be performed without a TraversalPolicy");
 
 		this.pos = pos;
-		setShape(shape);
+		setShape(shape.traverseEach());
 		setDestination(() -> { throw new UnsupportedOperationException(); });
 		setInputs(new Destination(), (Supplier) collection);
 		init();
@@ -64,7 +64,7 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 			throw new IllegalArgumentException();
 		}
 
-		setShape(shape);
+		setShape(shape.traverseEach());
 		setDestination(() -> { throw new UnsupportedOperationException(); });
 		setInputs(new Destination(), (Supplier) collection, (Supplier) pos);
 		init();

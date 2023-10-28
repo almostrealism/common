@@ -192,6 +192,8 @@ public class CollectionComputationTests implements TestFeatures {
 		PackedCollection<?> timeline = new PackedCollection<>(shape(10), 1);
 		IntStream.range(0, 10).forEach(i -> timeline.set(i, i + 1));
 
+		Assert.assertEquals(10, multiply(c(2), c(p(timeline))).getCount());
+
 		PackedCollection<?> destination = new PackedCollection<>(shape(10), 1);
 
 		KernelizedEvaluable<PackedCollection<?>> ev = multiply(c(2), c(p(timeline))).get();
