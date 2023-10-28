@@ -38,50 +38,6 @@ public interface ScalarBankFeatures extends ScalarFeatures {
 	}
 
 	@Deprecated
-	default void addMatVec(PackedCollection<Scalar> bank, ScalarTable matrix, PackedCollection<Scalar> vector) {
-		int m = matrix.getCount();
-		int n = matrix.getWidth();
-		assert n == vector.getCount();
-
-		for (int i = 0; i < m; i++) {
-			double v = 0;
-
-			for (int j = 0; j < n; j++) {
-				v += matrix.get(i, j).getValue() * vector.get(j).getValue();
-			}
-
-			bank.set(i, v, 1.0);
-		}
-	}
-
-	@Deprecated
-	default void mulElements(PackedCollection<Scalar> bank, PackedCollection<Scalar> vals) {
-		int size = bank.getCount();
-		assert size == vals.getCount();
-
-		IntStream.range(0, size)
-				.forEach(i ->
-						bank.set(i,
-								bank.get(i).getValue() * vals.get(i).getValue(),
-								bank.get(i).getCertainty() * vals.get(i).getCertainty()));
-	}
-
-	@Deprecated
-	default void applyFloor(PackedCollection<Scalar> bank, double floor) {
-		for (int i = 0; i < bank.getCount(); i++) {
-			double v = bank.get(i).getValue();
-			if (v < floor) bank.set(i, floor);
-		}
-	}
-
-	@Deprecated
-	default void applyLog(PackedCollection<Scalar> bank) {
-		for (int i = 0; i < bank.getCount(); i++) {
-			bank.set(i, Math.log(bank.get(i).getValue()));
-		}
-	}
-
-	@Deprecated
 	default ExpressionComputation<PackedCollection<Scalar>> scalarBankAdd(int count, Producer<PackedCollection<Scalar>> input,
 						  						Supplier<Evaluable<? extends Scalar>> value) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression = new ArrayList<>();

@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,8 +20,6 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
-import org.almostrealism.algebra.Triple;
-import org.almostrealism.algebra.TripleFunction;
 import org.almostrealism.algebra.Vector;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
@@ -33,7 +31,6 @@ import org.almostrealism.geometry.computations.MatrixTranspose;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.PooledMem;
 import org.almostrealism.hardware.mem.Heap;
 
 import java.util.function.BiFunction;
@@ -45,7 +42,7 @@ import java.util.function.Supplier;
  * methods for transforming various types of vectors. The TransformMatrix class also provides
  * some static methods that generate certain useful matrices.
  */
-public class TransformMatrix extends PackedCollection<PackedCollection<?>> implements TripleFunction<Triple, Vector>, TransformMatrixFeatures, RayFeatures, HardwareFeatures {
+public class TransformMatrix extends PackedCollection<PackedCollection<?>> implements TransformMatrixFeatures, RayFeatures, HardwareFeatures {
 	public static final int TRANSFORM_AS_LOCATION = 1;
 	public static final int TRANSFORM_AS_OFFSET = 2;
 	public static final int TRANSFORM_AS_NORMAL = 4;
@@ -178,14 +175,6 @@ public class TransformMatrix extends PackedCollection<PackedCollection<?>> imple
 	 */
 	public TransformMatrix multiply(TransformMatrix matrix) {
 		return new MatrixProduct(v(this), v(matrix)).evaluate();
-	}
-
-	/**
-	 * Delegates to {@link #transformAsOffset(Vector)}.
-	 */
-	@Override
-	public Vector operate(Triple in) {
-		return transformAsOffset(new Vector(in.getA(), in.getB(), in.getC()));
 	}
 
 	@Override

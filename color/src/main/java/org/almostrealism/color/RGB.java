@@ -24,7 +24,6 @@ import java.util.function.BiFunction;
 
 import io.almostrealism.code.Memory;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.Triple;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
@@ -37,7 +36,7 @@ import org.almostrealism.hardware.NoOpMemoryData;
  * An RGB object stores these channels as double values between 0.0 (no color) and
  * 1.0 (strongest color).
  */
-public class RGB extends PackedCollection<RGB> implements Triple, Externalizable, Cloneable {
+public class RGB extends PackedCollection<RGB> implements Externalizable, Cloneable {
 	protected interface Data extends MemoryData {
 		void add(int i, double r);
 		void scale(int i, double r);
@@ -260,24 +259,6 @@ public class RGB extends PackedCollection<RGB> implements Triple, Externalizable
 	  Returns the value of the blue channel of this RGB object as a double value.
 	*/
 	public double getBlue() { return this.data.toDouble(2); }
-
-	@Override
-	public double getA() { return getRed(); }
-
-	@Override
-	public double getB() { return getGreen(); }
-
-	@Override
-	public double getC() { return getBlue(); }
-
-	@Override
-	public void setA(double a) { setRed(a); }
-
-	@Override
-	public void setB(double b) { setGreen(b); }	
-
-	@Override
-	public void setC(double c) { setBlue(c); }
 	
 	/**
 	 * Returns the sum of the RGB value represented by this RGB object and that of the

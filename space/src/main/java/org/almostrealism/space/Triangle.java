@@ -273,9 +273,9 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 					Vector jkl = data.get(2);
 
 					if (intcolor) {
-						double g = triple.getA();
-						double h = triple.getB();
-						double i = triple.getC();
+						double g = triple.getX();
+						double h = triple.getY();
+						double i = triple.getZ();
 
 						double m = abc.getX() * (def.getY() * i - h * def.getZ()) +
 								abc.getY() * (g * def.getZ() - def.getX() * i) +

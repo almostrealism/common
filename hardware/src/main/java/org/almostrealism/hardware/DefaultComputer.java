@@ -43,6 +43,7 @@ public class DefaultComputer implements Computer<MemoryData> {
 		this.requirements = ThreadLocal.withInitial(Stack::new);
 	}
 
+	@Override
 	public ComputeContext<MemoryData> getContext(Computation<?> c) {
 		int count = ParallelProcess.count(c);
 		boolean fixed = ParallelProcess.isFixedCount(c);

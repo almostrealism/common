@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,12 +14,8 @@
  * limitations under the License.
  */
 
-package org.almostrealism.color;
+package org.almostrealism.algebra;
 
-import io.almostrealism.relation.Evaluable;
-import org.almostrealism.algebra.Triple;
-import org.almostrealism.algebra.TripleFunction;
-
-@Deprecated
-public interface ColorEvaluable extends Evaluable<RGB>, TripleFunction<Triple, RGB> {
+public interface Function<IN, OUT> {
+	// TODO
 }

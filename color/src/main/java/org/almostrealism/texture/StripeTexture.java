@@ -16,13 +16,10 @@
 
 package org.almostrealism.texture;
 
-import org.almostrealism.algebra.Triple;
 import org.almostrealism.algebra.Vector;
-import org.almostrealism.color.ColorEvaluable;
 import org.almostrealism.color.computations.GeneratedColorProducer;
 import org.almostrealism.color.RGB;
 import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.TripleFunction;
 import io.almostrealism.relation.Editable;
 import io.almostrealism.relation.Evaluable;
 
@@ -71,7 +68,7 @@ public class StripeTexture implements Texture, Editable {
 	 * @return  The color of the texture represented by this {@link StripeTexture}
 	 *          object at the specified point as an RGB object.
 	 */
-	public RGB operate(Triple t) {
+	public RGB operate(Vector t) {
 		return this.props == null ? null : this.getColorAt(this.props).evaluate(t);
 	}
 
@@ -80,66 +77,46 @@ public class StripeTexture implements Texture, Editable {
 	 * @return  The color of the texture represented by this StripeTexture object at the specified point as an RGB object.
 	 */
 	public Evaluable<RGB> getColorAt(Object props[]) {
-		return GeneratedColorProducer.fromFunction(this, new TripleFunction<Triple, RGB>() {
-					@Override
-					public RGB operate(Triple l) {
-						Vector point = new Vector(l.getA(), l.getB(), l.getC());
+		return GeneratedColorProducer.fromProducer(this, () -> args -> {
+			Vector l = args.length > 0 ? (Vector) args[0] : new Vector(1.0, 1.0, 1.0);
+			Vector point = new Vector(l.getX(), l.getY(), l.getZ());
 
-						for (int i = 0; i < StripeTexture.propTypes.length; i++) {
-							if (StripeTexture.propTypes[i].isInstance(props[i]) == false)
-								throw new IllegalArgumentException("Illegal argument: " + props[i].toString());
-						}
+			for (int i = 0; i < StripeTexture.propTypes.length; i++) {
+				if (StripeTexture.propTypes[i].isInstance(props[i]) == false)
+					throw new IllegalArgumentException("Illegal argument: " + props[i].toString());
+			}
 
-						double width = ((Double) props[0]).doubleValue();
-						boolean smooth = ((Boolean) props[1]).booleanValue();
-						int axis = ((Editable.Selection) props[2]).getSelected();
+			double width = ((Double) props[0]).doubleValue();
+			boolean smooth = ((Boolean) props[1]).booleanValue();
+			int axis = ((Selection) props[2]).getSelected();
 
-						double offset = ((Double) props[5]).doubleValue();
+			double offset = ((Double) props[5]).doubleValue();
 
-						double value;
+			double value;
 
-						if (axis == 0)
-							value = point.getX();
-						else if (axis == 1)
-							value = point.getY();
-						else if (axis == 2)
-							value = point.getZ();
-						else
-							return null;
+			if (axis == 0)
+				value = point.getX();
+			else if (axis == 1)
+				value = point.getY();
+			else if (axis == 2)
+				value = point.getZ();
+			else
+				return null;
 
-						RGB c1 = (RGB) props[3];
-						RGB c2 = (RGB) props[4];
+			RGB c1 = (RGB) props[3];
+			RGB c2 = (RGB) props[4];
 
-						if (smooth == true) {
-							double t = (1 + Math.sin(Math.PI * ((value / width) + offset))) / 2.0;
+			if (smooth == true) {
+				double t = (1 + Math.sin(Math.PI * ((value / width) + offset))) / 2.0;
 
-							return (c1.multiply(1.0 - t)).add(c2.multiply(t));
-						} else {
-							if (Math.sin(Math.PI * ((value / width) + offset)) > 0)
-								return c1;
-							else
-								return c2;
-						}
-					}
-				}).get();
-	}
-	
-	/**
-	 * @param args {point, arg0, arg1, ...}
-	 * @throws IllegalArgumentException  If args does not contain the correct object types.
-	 * 
-	 * @see ColorEvaluable#evaluate(java.lang.Object[])
-	 */
-	@Override
-	public RGB evaluate(Object args[]) {
-		System.out.println("StripeTexture.evaluate");
-	    if (!(args[0] instanceof Vector)) throw new IllegalArgumentException("Illegal argument: " + args[0]);
-	    
-	    Object o[] = new Object[args.length - 1];
-	    
-	    for (int i = 0; i < o.length; i++) o[i] = args[i + 1];
-	    
-	    return this.getColorAt(o).evaluate(args);
+				return (c1.multiply(1.0 - t)).add(c2.multiply(t));
+			} else {
+				if (Math.sin(Math.PI * ((value / width) + offset)) > 0)
+					return c1;
+				else
+					return c2;
+			}
+		}).get();
 	}
 	
 	/**

@@ -19,7 +19,6 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.Execution;
 import io.almostrealism.lang.LanguageOperations;
-import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.code.Semaphore;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Countable;
@@ -271,26 +270,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		return -1;
 	}
 
-	@Deprecated
-	private static int getProducerArgumentKernelIndex(Variable<?, ?> arg) {
-		if (arg.getProducer() instanceof KernelIndex) {
-			return ((KernelIndex) arg.getProducer()).getKernelIndex();
-		}
-
-		if (arg.getProducer() instanceof Delegated && ((Delegated) arg.getProducer()).getDelegate() instanceof KernelIndex) {
-			return ((KernelIndex) ((Delegated) arg.getProducer()).getDelegate()).getKernelIndex();
-		}
-
-		if (!(arg.getProducer() instanceof AcceleratedComputationOperation)) return -1;
-
-		Computation c = ((AcceleratedComputationOperation) arg.getProducer()).getComputation();
-		if (c instanceof KernelIndex) {
-			return ((KernelIndex) c).getKernelIndex();
-		}
-
-		return -1;
-	}
-
 	@Override
 	public void kernelOperate(MemoryBank output, MemoryData[] args) {
 		try {
@@ -345,8 +324,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 			// If the kernel size can be inferred from this operation argument
 			// capture it from the argument to the evaluation
-			int kernelIdx = getProducerArgumentKernelIndex(arguments.get(i));
-			if (kernelIdx >= 0 && kernelArgs[i] instanceof MemoryBank) {
+			if (kernelArgs[i] instanceof MemoryBank) {
 				kernelSize = ((MemoryBank<?>) kernelArgs[i]).getCount();
 			}
 		}

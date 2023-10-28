@@ -16,7 +16,6 @@
 
 package org.almostrealism.hardware.mem;
 
-import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
@@ -29,7 +28,7 @@ import org.almostrealism.hardware.ctx.ThreadLocalContextSpecific;
 
 import java.util.function.IntFunction;
 
-public class MemoryDataDestination<T extends MemoryData> extends DynamicProducerForMemoryData<T> implements Delegated<DestinationSupport<T>>, KernelIndex {
+public class MemoryDataDestination<T extends MemoryData> extends DynamicProducerForMemoryData<T> implements Delegated<DestinationSupport<T>> {
 	public static boolean enableThreadLocalProvider = true;
 
 	private final DestinationSupport<T> destination;
@@ -59,9 +58,6 @@ public class MemoryDataDestination<T extends MemoryData> extends DynamicProducer
 
 		return super.getCount();
 	}
-
-	@Override
-	public int getKernelIndex() { return 0; }
 
 	@Override
 	public KernelizedEvaluable<T> get() {

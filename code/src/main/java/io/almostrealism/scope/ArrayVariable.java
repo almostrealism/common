@@ -72,9 +72,6 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 	}
 
 	@Override
-	public int getKernelIndex() { return 0; }
-
-	@Override
 	public void setDelegate(ArrayVariable<T> delegate) {
 		super.setDelegate(delegate);
 	}
@@ -110,7 +107,7 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 			return v;
 		}
 
-		return (Expression) reference(names.getArrayPosition(lang, this, new IntegerConstant(index), getKernelIndex()));
+		return (Expression) reference(names.getArrayPosition(lang, this, new IntegerConstant(index), 0));
 	}
 
 	@Override
@@ -132,10 +129,10 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 			InstanceReference<T> v = getDelegate().referenceRelative(pos.add(getDelegateOffset()));
 			((InstanceReference) v).getReferent().setOriginalProducer(getOriginalProducer());
 			return v;
-		} else if (getKernelIndex() < 0) {
-			return reference(pos);
+//		} else if (getKernelIndex() < 0) {
+//			return reference(pos);
 		} else {
-			return reference(names.getArrayPosition(lang, this, pos, getKernelIndex()));
+			return reference(names.getArrayPosition(lang, this, pos, 0));
 		}
 	}
 

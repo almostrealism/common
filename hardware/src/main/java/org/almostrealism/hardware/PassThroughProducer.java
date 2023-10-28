@@ -27,7 +27,6 @@ import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.kernel.KernelIndex;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
@@ -44,7 +43,7 @@ public class PassThroughProducer<T extends MemoryData>
 		MemoryDataComputation<T>,
 		DestinationSupport<T>,
 		TraversableExpression<Double>,
-		Shape<PassThroughProducer<T>>, KernelIndex,
+		Shape<PassThroughProducer<T>>,
 		ComputerFeatures  {
 	public static boolean enableDimSupport = true;
 
@@ -212,9 +211,6 @@ public class PassThroughProducer<T extends MemoryData>
 
 	@Override
 	public int getReferencedArgumentIndex() { return argIndex; }
-
-	@Override
-	public int getKernelIndex() { return 0; }
 
 	@Override
 	public void destroy() {

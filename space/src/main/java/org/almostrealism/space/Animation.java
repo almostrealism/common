@@ -53,7 +53,7 @@ public class Animation<T extends ShadableSurface> extends Scene<T> implements Ru
 	 *
 	 * @param f  The Force object to add.
 	 */
-	public void addForce(Gradient f) { addForce(rb -> f); }
+	public void addForce(Gradient f) { addForce((Function<RigidBody, Gradient<?>>) rb -> f); }
 
 	/**
 	 * Adds a {@link Function} that produces a gradient force to the set of forces that

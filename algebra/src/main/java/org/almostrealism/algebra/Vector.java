@@ -32,7 +32,7 @@ import java.util.function.Supplier;
  * A {@link Vector} represents a 3d vector. It stores three coordinates, x, y, z
  * in a buffer that is contiguous in memory.
  */
-public class Vector extends PackedCollection<Vector> implements Triple, VectorFeatures, Cloneable {
+public class Vector extends PackedCollection<Vector> implements VectorFeatures, Cloneable {
 	public static final int CARTESIAN_COORDINATES = 0;
 	public static final int SPHERICAL_COORDINATES = 1;
 
@@ -132,42 +132,6 @@ public class Vector extends PackedCollection<Vector> implements Triple, VectorFe
 	/** Returns the Z coordinate of this {@link Vector}. */
 	public double getZ() {
 		return toArray()[2];
-	}
-
-	@Override
-	@Deprecated
-	public double getA() {
-		return getX();
-	}
-
-	@Override
-	@Deprecated
-	public double getB() {
-		return getY();
-	}
-
-	@Override
-	@Deprecated
-	public double getC() {
-		return getZ();
-	}
-
-	@Override
-	@Deprecated
-	public void setA(double a) {
-		setX(a);
-	}
-
-	@Override
-	@Deprecated
-	public void setB(double b) {
-		setY(b);
-	}
-
-	@Override
-	@Deprecated
-	public void setC(double c) {
-		setZ(c);
 	}
 
 	/** Sets the ith component, 0 <= i < 3 */
