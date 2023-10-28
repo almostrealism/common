@@ -17,7 +17,13 @@
 package org.almostrealism.algebra;
 
 import io.almostrealism.code.ExpressionFeatures;
-import io.almostrealism.expression.*;
+import io.almostrealism.expression.DoubleConstant;
+import io.almostrealism.expression.Exponent;
+import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.Min;
+import io.almostrealism.expression.Mod;
+import io.almostrealism.expression.Product;
+import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.algebra.computations.ScalarChoice;
@@ -163,10 +169,6 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 		return (ExpressionComputation<Scalar>) new ExpressionComputation<>(comp, (Supplier[]) values).setPostprocessor(Scalar.postprocessor());
 	}
 
-	default ExpressionComputation<Scalar> scalarsDivide(Producer<Scalar> a, Producer<Scalar> b) {
-		return scalarsMultiply(a, scalarPow(b, v(-1.0)));
-	}
-
 	default ExpressionComputation<Scalar> scalarMinus(Supplier<Evaluable<? extends Scalar>> v) {
 		return scalarsMultiply(ScalarFeatures.minusOne(), v);
 	}
@@ -182,10 +184,6 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 
 	default ExpressionComputation<Scalar> scalarPow(Producer<Scalar> base, Scalar exp) {
 		return scalarPow(base, of(exp));
-	}
-
-	default ExpressionComputation<Scalar> scalarPow(Producer<Scalar>  base, double value) {
-		return scalarPow(base, new Scalar(value));
 	}
 
 	default ExpressionComputation<Scalar> scalarMin(Supplier<Evaluable<? extends Scalar>> a, Supplier<Evaluable<? extends Scalar>> b) {
@@ -237,13 +235,6 @@ public interface ScalarFeatures extends CollectionFeatures, HardwareFeatures {
 	default AcceleratedConditionalStatementVector lessThanv(Producer<Scalar> left,
 															Producer<Scalar>  right) {
 		return new LessThanVector(left, right, null, null);
-	}
-
-	default AcceleratedConditionalStatementVector lessThanv(Producer<Scalar>  left,
-															Producer<Scalar> right,
-															Producer<Vector> trueValue,
-															Producer<Vector> falseValue) {
-		return new LessThanVector(left, right, (Supplier) trueValue, (Supplier) falseValue);
 	}
 
 	static ScalarFeatures getInstance() { return new ScalarFeatures() { }; }

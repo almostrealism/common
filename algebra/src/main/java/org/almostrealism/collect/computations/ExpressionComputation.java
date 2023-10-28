@@ -16,7 +16,6 @@
 
 package org.almostrealism.collect.computations;
 
-import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.relation.Process;
