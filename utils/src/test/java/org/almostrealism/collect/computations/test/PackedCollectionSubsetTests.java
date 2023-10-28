@@ -526,7 +526,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 
 		PackedCollection<?> input = t.pack();
 
-		CLOperator.verboseLog(() -> {
+		HardwareOperator.verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> subset = subset(shape(size, size), p(input), x0, y0);
 //			Producer<PackedCollection<?>> product = multiply(traverseEach(p(filter)), traverseEach(subset)).reshape(filterShape);
 			Producer<PackedCollection<?>> product = relativeMultiply(p(filter), subset, null);

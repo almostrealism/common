@@ -49,7 +49,7 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 			throw new IllegalArgumentException("Subset cannot be performed without a TraversalPolicy");
 
 		this.pos = pos;
-		setShape(shape.traverseEach());
+		setShape(shape);
 		setDestination(() -> { throw new UnsupportedOperationException(); });
 		setInputs(new Destination(), (Supplier) collection);
 		init();
@@ -64,13 +64,18 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 			throw new IllegalArgumentException();
 		}
 
-		setShape(shape.traverseEach());
+		setShape(shape);
 		setDestination(() -> { throw new UnsupportedOperationException(); });
 		setInputs(new Destination(), (Supplier) collection, (Supplier) pos);
 		init();
 	}
 
 	public int getMemLength() { return 1; }
+
+	@Override
+	public int getCount() {
+		return getShape().traverseEach().getCount();
+	}
 
 	// TODO  This custom destination creation should not be necessary
 	@Override
