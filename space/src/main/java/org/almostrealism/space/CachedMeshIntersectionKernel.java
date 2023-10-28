@@ -53,7 +53,7 @@ public class CachedMeshIntersectionKernel implements KernelizedEvaluable<Scalar>
 	}
 
 	@Override
-	public MemoryBank<Scalar> createKernelDestination(int size) { return Scalar.scalarBank(size); }
+	public MemoryBank<Scalar> createDestination(int size) { return Scalar.scalarBank(size); }
 
 	@Override
 	public Evaluable withDestination(MemoryBank<Scalar> destination) {
@@ -101,7 +101,7 @@ public class CachedMeshIntersectionKernel implements KernelizedEvaluable<Scalar>
 			}
 
 			@Override
-			public MemoryBank<Vector> createKernelDestination(int size) {return Vector.bank(size); }
+			public MemoryBank<Vector> createDestination(int size) {return Vector.bank(size); }
 		};
 	}
 }

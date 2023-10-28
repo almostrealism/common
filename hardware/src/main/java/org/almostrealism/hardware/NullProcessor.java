@@ -16,16 +16,8 @@
 
 package org.almostrealism.hardware;
 
-import io.almostrealism.relation.Countable;
-import io.almostrealism.uml.Multiple;
-
-/**
- * A {@link MemoryBank} tracks a section of RAM that is used to
- * store a collection of {@link MemoryData}s in a single
- * {@link io.almostrealism.code.Memory} instance.
- *
- * @author  Michael Murray
- */
-public interface MemoryBank<T extends MemoryData> extends MemoryData, Multiple<T>, Countable {
-	void set(int index, T value);
+public interface NullProcessor<T> {
+	default T replaceNull(Object args[]) {
+		throw new NullPointerException();
+	}
 }

@@ -100,9 +100,4 @@ public abstract class DynamicAcceleratedEvaluable<I extends MemoryData, O extend
 
 	@Override
 	public Supplier<O> getDestination() { return this.destination; }
-
-	@Override
-	public MemoryBank<O> createKernelDestination(int size) {
-		throw new RuntimeException("Not implemented");
-	}
 }

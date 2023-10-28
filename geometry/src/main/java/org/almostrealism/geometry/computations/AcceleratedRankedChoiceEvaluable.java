@@ -281,7 +281,7 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData> extends Dyna
 	}
 
 	@Override
-	public MemoryBank<T> createKernelDestination(int size) { return forKernel.apply(size); }
+	public MemoryBank<T> createDestination(int size) { return forKernel.apply(size); }
 
 	private String getKernelIndex(int kernelIndex) {
 		return getComputeContext().getLanguage().kernelIndex(kernelIndex);

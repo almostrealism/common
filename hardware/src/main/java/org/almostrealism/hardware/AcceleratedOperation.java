@@ -21,7 +21,6 @@ import io.almostrealism.code.Execution;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.code.Semaphore;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.relation.Countable;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.code.ArgumentMap;
@@ -436,7 +435,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 //				kernelArgs[i] = (MemoryData) args[argIndex];
 			} else if (c instanceof KernelizedEvaluable && Stream.of(args).filter(a -> !(a instanceof MemoryData)).findAny().isEmpty()) {
 				KernelizedEvaluable kp = (KernelizedEvaluable) c;
-				kernelArgs[i] = kp.createKernelDestination(kernelSize);
+				kernelArgs[i] = (MemoryData) kp.createDestination(kernelSize);
 				if (created.get() != null)
 					created.get().add(kernelArgs[i]);
 

@@ -23,6 +23,7 @@ import io.almostrealism.code.CollectionUtils;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.Variable;
+import io.almostrealism.uml.Multiple;
 import org.almostrealism.hardware.cl.CLComputeContext;
 import org.almostrealism.hardware.cl.CLOperator;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
@@ -114,7 +115,7 @@ public class AcceleratedEvaluable<I extends MemoryData, O extends MemoryData> ex
 	}
 
 	@Override
-	public MemoryBank<O> createKernelDestination(int size) {
+	public Multiple<O> createDestination(int size) {
 		if (kernelDestination != null) {
 			return kernelDestination.apply(size);
 		} else {

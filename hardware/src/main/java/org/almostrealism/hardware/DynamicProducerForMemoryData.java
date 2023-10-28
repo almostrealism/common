@@ -20,6 +20,7 @@ import io.almostrealism.relation.DynamicProducer;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
+import io.almostrealism.uml.Multiple;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -67,7 +68,7 @@ public class DynamicProducerForMemoryData<T extends MemoryData> extends DynamicP
 
 		return new KernelizedEvaluable<T>() {
 			@Override
-			public MemoryBank<T> createKernelDestination(int size) {
+			public Multiple<T> createDestination(int size) {
 				if (kernelDestination == null) {
 					throw new UnsupportedOperationException();
 				} else {

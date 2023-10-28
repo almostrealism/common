@@ -33,5 +33,5 @@ public class RankedChoiceEvaluableForVector extends RankedChoiceEvaluableForMemo
 	}
 
 	@Override
-	public MemoryBank<Vector> createKernelDestination(int size) { return Vector.bank(size); }
+	public MemoryBank<Vector> createDestination(int size) { return Vector.bank(size); }
 }

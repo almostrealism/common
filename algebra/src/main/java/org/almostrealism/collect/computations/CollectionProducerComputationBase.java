@@ -27,6 +27,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
 import io.almostrealism.scope.ArrayVariable;
+import io.almostrealism.uml.Multiple;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
@@ -178,8 +179,8 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 			}
 
 			@Override
-			public MemoryBank<O> createKernelDestination(int size) {
-				return getKernel().createKernelDestination(size);
+			public Multiple<O> createDestination(int size) {
+				return getKernel().createDestination(size);
 			}
 
 			@Override

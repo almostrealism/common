@@ -73,9 +73,4 @@ public class AcceleratedComputationEvaluable<T extends MemoryData> extends Accel
 	public ProducerComputation<T> getComputation() {
 		return (ProducerComputation<T>) super.getComputation();
 	}
-
-	@Override
-	public MemoryBank<T> createKernelDestination(int size) {
-		throw new RuntimeException("Not implemented");
-	}
 }

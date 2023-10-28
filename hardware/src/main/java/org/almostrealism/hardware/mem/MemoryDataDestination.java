@@ -19,6 +19,7 @@ package org.almostrealism.hardware.mem;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.uml.Multiple;
 import org.almostrealism.hardware.DestinationSupport;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.KernelizedEvaluable;
@@ -65,11 +66,11 @@ public class MemoryDataDestination<T extends MemoryData> extends DynamicProducer
 
 		return new KernelizedEvaluable<T>() {
 			@Override
-			public MemoryBank<T> createKernelDestination(int size) {
+			public Multiple<T> createDestination(int size) {
 				if (enableThreadLocalProvider) {
 					return provider.getValue().apply(size);
 				} else {
-					return e.createKernelDestination(size);
+					return e.createDestination(size);
 				}
 			}
 

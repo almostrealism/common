@@ -17,6 +17,7 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.uml.Multiple;
 
 /**
  * A {@link KernelizedEvaluable} is a {@link Evaluable} that can be evaluated
@@ -29,12 +30,6 @@ import io.almostrealism.relation.Evaluable;
  */
 @Deprecated
 public interface KernelizedEvaluable<T extends MemoryData> extends Evaluable<T> {
-
-	default T replaceNull(Object args[]) {
-		throw new NullPointerException();
-	}
-
-	MemoryBank<T> createKernelDestination(int size);
 
 	@Override
 	default Evaluable<T> into(Object destination) {

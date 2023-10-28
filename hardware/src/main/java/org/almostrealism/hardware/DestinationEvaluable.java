@@ -68,8 +68,8 @@ public class DestinationEvaluable<T extends MemoryBank> implements Evaluable<T> 
 	}
 
 	public T replaceNull(Object[] o) {
-		if (operation instanceof KernelizedEvaluable) {
-			return (T) ((KernelizedEvaluable) operation).replaceNull(o);
+		if (operation instanceof NullProcessor) {
+			return (T) ((NullProcessor) operation).replaceNull(o);
 		} else {
 			throw new NullPointerException();
 		}

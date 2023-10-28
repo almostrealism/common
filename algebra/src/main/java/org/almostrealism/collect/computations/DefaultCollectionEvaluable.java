@@ -46,7 +46,7 @@ public class DefaultCollectionEvaluable<T extends PackedCollection> extends Acce
 	}
 
 	@Override
-	public MemoryBank<T> createKernelDestination(int len) {
+	public T createDestination(int len) {
 //		return (MemoryBank) new PackedCollection(shape.prependDimension(size));
 
 		int count = len / this.shape.getCount();
@@ -64,7 +64,7 @@ public class DefaultCollectionEvaluable<T extends PackedCollection> extends Acce
 			shape = this.shape.prependDimension(count);
 		}
 
-		return new PackedCollection<>(shape);
+		return (T) new PackedCollection<>(shape);
 	}
 
 	@Override
