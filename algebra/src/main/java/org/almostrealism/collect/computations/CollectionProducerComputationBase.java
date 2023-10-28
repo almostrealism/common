@@ -31,7 +31,6 @@ import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.ComputerFeatures;
-import org.almostrealism.hardware.DestinationConsolidationArgumentMap;
 import org.almostrealism.hardware.DestinationEvaluable;
 import org.almostrealism.hardware.DestinationSupport;
 import org.almostrealism.hardware.KernelizedEvaluable;
@@ -215,9 +214,6 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	public void destroy() {
 		super.destroy();
 		ProducerCache.purgeEvaluableCache(this);
-		if (destination instanceof DestinationConsolidationArgumentMap.DestinationThreadLocal) {
-			((DestinationConsolidationArgumentMap.DestinationThreadLocal) destination).destroy();
-		}
 	}
 
 	public static void destinationLog(Runnable r) {

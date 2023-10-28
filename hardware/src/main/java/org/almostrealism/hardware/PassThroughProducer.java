@@ -216,8 +216,5 @@ public class PassThroughProducer<T extends MemoryData>
 	public void destroy() {
 		super.destroy();
 		ProducerCache.purgeEvaluableCache(this);
-		if (destination instanceof DestinationConsolidationArgumentMap.DestinationThreadLocal) {
-			((DestinationConsolidationArgumentMap.DestinationThreadLocal) destination).destroy();
-		}
 	}
 }

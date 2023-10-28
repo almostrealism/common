@@ -57,4 +57,9 @@ public class Console {
 	}
 	
 	public String lastLine() { return lastLine.toString(); }
+
+	public static void warn(String message, Throwable ex) {
+		System.out.println("WARN: " + message);
+		if (ex != null) ex.printStackTrace();
+	}
 }

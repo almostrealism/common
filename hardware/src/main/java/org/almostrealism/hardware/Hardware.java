@@ -53,9 +53,6 @@ public final class Hardware {
 
 		enableKernelOps = SystemUtils.isEnabled("AR_HARDWARE_KERNEL_OPS").orElse(true);
 
-		boolean enableDestinationConsolidation =
-				SystemUtils.isEnabled("AR_HARDWARE_DESTINATION_CONSOLIDATION").orElse(false);
-
 		String memScale = System.getProperty("AR_HARDWARE_MEMORY_SCALE");
 		if (memScale == null) memScale = System.getenv("AR_HARDWARE_MEMORY_SCALE");
 		MEMORY_SCALE = Optional.ofNullable(memScale).map(Integer::parseInt).orElse(4);
@@ -109,14 +106,11 @@ public final class Hardware {
 			KernelPreferences.optimizeForMetal();
 		}
 
-		local = new Hardware(requirements, nativeMemory,
-							enableDestinationConsolidation,
-							location);
+		local = new Hardware(requirements, nativeMemory, location);
 	}
 
 	private final String name;
 
-	private final boolean enableDestinationConsolidation;
 	private final boolean nativeMemory;
 	private final boolean memVolatile;
 	private long maxReservation;
@@ -129,20 +123,15 @@ public final class Hardware {
 	private List<ContextListener> contextListeners;
 
 	private Hardware(List<ComputeRequirement> type, boolean nativeMemory,
-					 boolean enableDestinationConsolidation,
 					 Location location) {
-		this("local", type, nativeMemory,
-				enableDestinationConsolidation, location);
+		this("local", type, nativeMemory, location);
 	}
 
 	private Hardware(String name, List<ComputeRequirement> reqs, boolean nativeMemory,
-					 boolean enableDestinationConsolidation,
 					 Location location) {
 		this.name = name;
 		this.maxReservation = (long) Math.pow(2, getMemoryScale()) * 64L * 1000L * 1000L;
 		this.location = location;
-
-		this.enableDestinationConsolidation = enableDestinationConsolidation;
 		this.nativeMemory = nativeMemory;
 		this.memVolatile = location == Location.HEAP;
 		this.contextListeners = new ArrayList<>();
@@ -307,8 +296,6 @@ public final class Hardware {
 				})
 				.orElseThrow(() -> new RuntimeException("No DataContext meets the provided ComputeRequirements"));
 	}
-
-	public boolean isDestinationConsolidation() { return enableDestinationConsolidation; }
 
 	public boolean isNativeMemory() { return nativeMemory; }
 

@@ -139,9 +139,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		SupplierArgumentMap argumentMap = null;
 
 		if (argumentMapping) {
-			if (Hardware.getLocalHardware().isDestinationConsolidation()) {
-				argumentMap = new DestinationConsolidationArgumentMap<>(getComputeContext(), isKernel());
-			} else if (enableArgumentMapping) {
+			if (enableArgumentMapping) {
 				if (preOp != null || postOp != null) {
 					throw new UnsupportedOperationException("Redundant call to prepareScope");
 				}
@@ -386,31 +384,31 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		/*
 		 * If there is only one size, it can be used as the kernel size.
 		 */
-		if (kernelSize < 0 && sizes.size() == 1) {
-			kernelSize = sizes.get(0);
-		}
+//		if (kernelSize < 0 && sizes.size() == 1) {
+//			kernelSize = sizes.get(0);
+//		}
 
 		/*
 		 * If there are multiple sizes, but they are all the same,
 		 * that can be used as the kernel size.
 		 */
-		k: if (kernelSize < 0 && sizes.size() > 1) {
-			int sharedSize = sizes.get(0);
-			for (int i = 1; i < sizes.size(); i++) {
-				if (sharedSize != sizes.get(i)) {
-					break k;
-				}
-			}
-
-			kernelSize = sharedSize;
-		}
+//		k: if (kernelSize < 0 && sizes.size() > 1) {
+//			int sharedSize = sizes.get(0);
+//			for (int i = 1; i < sizes.size(); i++) {
+//				if (sharedSize != sizes.get(i)) {
+//					break k;
+//				}
+//			}
+//
+//			kernelSize = sharedSize;
+//		}
 
 		/*
 		 * Otherwise, a kernel size compatible with all sizes may be inferred.
 		 */
-		if (kernelSize < 0 && sizes.size() > 0) {
-			kernelSize = KernelSupport.inferKernelSize(sizes.stream().mapToInt(i -> i).toArray());
-		}
+//		if (kernelSize < 0 && sizes.size() > 0) {
+//			kernelSize = KernelSupport.inferKernelSize(sizes.stream().mapToInt(i -> i).toArray());
+//		}
 
 		/*
 		 * If the kernel size is still not known, the kernel size will be 1.
@@ -432,10 +430,10 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			Evaluable<T> c = (Evaluable<T>) ProducerCache.getEvaluableForSupplier(arguments.get(i).getProducer());
 
 			if (c instanceof ProducerArgumentReference) {
-				// TODO  This should not be necessary
-				System.out.println("WARN: ProducerArgumentReference not detected by first pass");
-				int argIndex = ((ProducerArgumentReference) c).getReferencedArgumentIndex();
-				kernelArgs[i] = (MemoryData) args[argIndex];
+				throw new UnsupportedOperationException("ProducerArgumentReference not detected by first pass");
+//				System.out.println("WARN: ProducerArgumentReference not detected by first pass");
+//				int argIndex = ((ProducerArgumentReference) c).getReferencedArgumentIndex();
+//				kernelArgs[i] = (MemoryData) args[argIndex];
 			} else if (c instanceof KernelizedEvaluable && Stream.of(args).filter(a -> !(a instanceof MemoryData)).findAny().isEmpty()) {
 				KernelizedEvaluable kp = (KernelizedEvaluable) c;
 				kernelArgs[i] = kp.createKernelDestination(kernelSize);

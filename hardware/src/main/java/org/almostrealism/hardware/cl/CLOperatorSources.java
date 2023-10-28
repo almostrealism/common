@@ -18,8 +18,8 @@ package org.almostrealism.hardware.cl;
 
 import io.almostrealism.code.OperationMetadata;
 import org.almostrealism.hardware.Hardware;
-import org.almostrealism.hardware.Issues;
 import io.almostrealism.code.Precision;
+import org.almostrealism.io.Console;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -91,7 +91,7 @@ public class CLOperatorSources {
 				buf.append(line); buf.append("\n");
 			}
 		} catch (IOException e) {
-			Issues.warn(null, "Unable to load kernel program source", e);
+			Console.warn("Unable to load kernel program source", e);
 		}
 
 		return buf.toString();
