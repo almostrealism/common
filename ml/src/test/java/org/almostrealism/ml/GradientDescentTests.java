@@ -22,6 +22,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Cell;
+import org.almostrealism.graph.io.CSVReceptor;
 import org.almostrealism.hardware.OperationList;
 import io.almostrealism.relation.Factor;
 import org.almostrealism.layers.CellularLayer;
@@ -31,6 +32,8 @@ import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
 import org.junit.Test;
 
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.util.List;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -39,8 +42,12 @@ import java.util.function.UnaryOperator;
 public class GradientDescentTests implements CodeFeatures {
 	private boolean enableCellular = false;
 
+	private static double coeff[] = { 0.24, -0.1, 0.36 };
+
+//	private UnaryOperator<PackedCollection<?>> func =
+//			in -> PackedCollection.of(in.valueAt(0) * 2 + in.valueAt(1) * in.valueAt(1) + 3);
 	private UnaryOperator<PackedCollection<?>> func =
-			in -> PackedCollection.of(in.valueAt(0) * 2 + in.valueAt(1) * in.valueAt(1) + 3);
+			in -> PackedCollection.of(coeff[0] * in.valueAt(0) + coeff[1] * in.valueAt(1) + coeff[2] * in.valueAt(2));
 
 	@Override
 	public CellularLayer dense(int size, int nodes, boolean bias) {
@@ -56,7 +63,7 @@ public class GradientDescentTests implements CodeFeatures {
 //								.enumerate(1, 1))
 //						.traverse(1).sum()
 //						.add(p(biases));
-		Factor<PackedCollection<?>> operator = input -> c(input).multiply(c(p(weights)));
+		Factor<PackedCollection<?>> operator = input -> c(input).multiply(c(p(weights))).sum();
 
 		Propagation backwards = new GradientPropagation(operator, p(weights), p(biases));
 
@@ -64,7 +71,7 @@ public class GradientDescentTests implements CodeFeatures {
 
 		if (!enableCellular) {
 			return layer("dense", shape(size), outputShape,
-					Cell.of((Function) operator), backwards, List.of(weights, biases), init);
+					Cell.of(operator), backwards, List.of(weights, biases), init);
 		}
 
 		return layer("dense", shape(size), outputShape,
@@ -87,8 +94,8 @@ public class GradientDescentTests implements CodeFeatures {
 	}
 
 	@Test
-	public void embeddings() {
-		int inChannels = 2;
+	public void embeddings() throws FileNotFoundException {
+		int inChannels = 3;
 		int timeLen = 1;
 		int outLen = 1;
 
@@ -102,17 +109,24 @@ public class GradientDescentTests implements CodeFeatures {
 		Model model = new Model(shape(inChannels));
 		model.addBlock(block);
 
-		Evaluable<PackedCollection<?>> loss = c(2).multiply(cv(shape(1), 0).subtract(cv(shape(1), 1))).get();
+		Evaluable<PackedCollection<?>> dloss = c(2).multiply(cv(shape(1), 0).subtract(cv(shape(1), 1))).get();
+		Evaluable<PackedCollection<?>> loss = cv(shape(1), 0).subtract(cv(shape(1), 1)).pow(2.0).get();
 
 		model.setup().get().run();
 
-		for (int i = 0; i < 1; i++) {
-			PackedCollection<?> input = new PackedCollection<>(inChannels);
-			input.fill(pos -> Math.random());
+		try (CSVReceptor<PackedCollection<?>> receptor = new CSVReceptor<>(new FileOutputStream("results/training_loss.csv"))) {
+			for (int i = 0; i < 1000; i++) {
+				PackedCollection<?> input = new PackedCollection<>(inChannels);
+				input.fill(pos -> Math.random());
 
-			PackedCollection<?> out = model.forward(input);
-			PackedCollection<?> grad = loss.evaluate(out, func.apply(out));
-			model.backward(grad);
+				PackedCollection<?> out = model.forward(input);
+				PackedCollection<?> grad = dloss.evaluate(out, func.apply(out));
+				PackedCollection<?> l = loss.evaluate(out, func.apply(out));
+				System.out.println("Loss = " + l.toDouble(0));
+
+				receptor.push(p(l)).get().run();
+				model.backward(grad);
+			}
 		}
 	}
 }

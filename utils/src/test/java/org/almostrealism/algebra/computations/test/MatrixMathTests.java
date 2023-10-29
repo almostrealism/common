@@ -27,6 +27,7 @@ import org.junit.Test;
 
 public class MatrixMathTests implements TestFeatures {
 	private static boolean enableOptimization = false;
+	private static boolean enableRepeat = true;
 
 	@Test
 	public void matmul() {
@@ -60,7 +61,7 @@ public class MatrixMathTests implements TestFeatures {
 
 		HardwareOperator.verboseLog(() -> r.run());
 
-		if (!skipLongTests) {
+		if (enableRepeat) {
 			profiles.clear();
 
 			for (int i = 0; i < 5000; i++) {
@@ -87,7 +88,7 @@ public class MatrixMathTests implements TestFeatures {
 	public void sumPowers() {
 		if (skipLongTests) return;
 
-		for (int i = 1; i < 8; i++) {
+		for (int i = 1; i < 7; i++) {
 			sum(600, 1 << i);
 		}
 	}

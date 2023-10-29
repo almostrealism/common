@@ -47,19 +47,17 @@ public class GradientPropagation implements Propagation, CodeFeatures {
 
 		Producer<PackedCollection<?>> deltaOutDeltaIn = function.delta(input);
 		Producer<PackedCollection<?>> deltaOutDeltaWeight = function.delta(weights[0]);
-		Producer<PackedCollection<?>> weightUpdate = multiply(learningRate, gradient).multiply(deltaOutDeltaWeight).minus();
+		Producer<PackedCollection<?>> weightUpdate = c(weights[0]).subtract(multiply(learningRate, gradient).multiply(deltaOutDeltaWeight));
 
 		OperationList op = new OperationList("Gradient Propagation");
 
 		op.add(() -> {
 			Evaluable<PackedCollection<?>> grad = deltaOutDeltaIn.get();
-			Evaluable<PackedCollection<?>> dOut = deltaOutDeltaWeight.get();
 			Evaluable<PackedCollection<?>> wUp = weightUpdate.get();
 
 			return () -> {
-				PackedCollection<?> g = grad.evaluate();
-				PackedCollection<?> o = dOut.evaluate();
-				PackedCollection<?> w = wUp.evaluate();
+				grad.into(gradOut).evaluate();
+				wUp.into(weights[0].get().evaluate()).evaluate();
 			};
 		});
 		if (next != null) op.add(next.push(p(gradOut)));

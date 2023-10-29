@@ -33,7 +33,6 @@ import io.almostrealism.relation.Evaluable;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
-import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
@@ -57,8 +56,8 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 	}
 
 	@Override
-	public TraversableExpressionComputation<T> generate(List<Process<?, ?>> children) {
-		return (TraversableExpressionComputation<T>) new TraversableDeltaComputation(getShape(), expression,
+	public TraversableDeltaComputation<T> generate(List<Process<?, ?>> children) {
+		return (TraversableDeltaComputation<T>) new TraversableDeltaComputation(getShape(), expression,
 				children.stream().skip(1).toArray(Supplier[]::new))
 				.setPostprocessor(getPostprocessor()).setShortCircuit(getShortCircuit());
 	}

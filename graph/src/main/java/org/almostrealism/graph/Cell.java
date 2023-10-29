@@ -16,6 +16,7 @@
 
 package org.almostrealism.graph;
 
+import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.Ops;
@@ -97,6 +98,27 @@ public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
 			@Override
 			public Supplier<Runnable> push(Producer<T> protein) {
 				return r == null ? new OperationList() : r.push(value);
+			}
+
+			@Override
+			public void setReceptor(Receptor<T> r) {
+				this.r = r;
+			}
+		};
+	}
+
+	static <T> Cell<T> of(Factor<T> func) {
+		return new Cell<>() {
+			private Receptor<T> r;
+
+			@Override
+			public Supplier<Runnable> setup() {
+				return new OperationList();
+			}
+
+			@Override
+			public Supplier<Runnable> push(Producer<T> protein) {
+				return r == null ? new OperationList() : r.push(func.getResultant(protein));
 			}
 
 			@Override

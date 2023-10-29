@@ -208,11 +208,7 @@ public abstract class Expression<T> implements Tree<Expression<?>> {
 	}
 
 	public Expression delta(Predicate<Expression> target) {
-		if (target.test(this)) {
-			return new IntegerConstant(1);
-		}
-
-		return new IntegerConstant(0);
+		throw new UnsupportedOperationException();
 	}
 
 	@Override

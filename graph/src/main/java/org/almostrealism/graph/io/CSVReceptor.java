@@ -16,19 +16,37 @@
 
 package org.almostrealism.graph.io;
 
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.ReceptorConsumer;
 
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 
-public class CSVReceptor<T> extends ReceptorConsumer<T> {
+public class CSVReceptor<T> extends ReceptorConsumer<T> implements AutoCloseable {
 	private PrintWriter ps;
 	private long index;
 
 	public CSVReceptor(OutputStream out) {
 		super(null);
 		ps = new PrintWriter(new OutputStreamWriter(out));
-		setConsumer(p -> { ps.println(index++ + "," + p); ps.flush(); });
+		setConsumer(p -> { ps.println(index++ + "," + process(p)); ps.flush(); });
+	}
+
+	public void flush() {
+		ps.flush();
+	}
+
+	@Override
+	public void close() {
+		ps.close();
+	}
+
+	private static String process(Object o) {
+		if (o instanceof PackedCollection) {
+			return String.valueOf(((PackedCollection<?>) o).toDouble(0));
+		}
+
+		return String.valueOf(o);
 	}
 }

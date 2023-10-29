@@ -18,6 +18,7 @@ package io.almostrealism.expression;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 public class Sum<T extends Number> extends NAryExpression<T> {
@@ -32,6 +33,13 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 	@Override
 	public Expression<T> generate(List<Expression<?>> children) {
 		return new Sum<>(children.toArray(new Expression[0]));
+	}
+
+	@Override
+	public Expression delta(Predicate<Expression> target) {
+		return generate((List) getChildren().stream()
+				.map(e -> e.delta(target))
+				.collect(Collectors.toList()));
 	}
 
 	@Override

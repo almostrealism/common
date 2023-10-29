@@ -28,8 +28,6 @@ import org.junit.Test;
 public class OperationOptimizationTests implements TestFeatures {
 	@Test
 	public void reshapeEnumerate() {
-		if (SystemUtils.isAarch64() && skipLongTests) return;
-
 		int seqLength = 1024;
 		int heads = 12;
 		int headSize = 64;

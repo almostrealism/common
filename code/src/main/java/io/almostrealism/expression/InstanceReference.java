@@ -56,6 +56,15 @@ public class InstanceReference<T> extends Expression<T> {
 		return new Variable(getSimpleExpression(null), false, exp, getReferent().getDelegate());
 	}
 
+	@Override
+	public Expression delta(Predicate<Expression> target) {
+		if (target.test(this)) {
+			return new IntegerConstant(1);
+		}
+
+		return new IntegerConstant(0);
+	}
+
 	public InstanceReference<T> generate(List<Expression<?>> children) {
 		if (children.size() > 1) {
 			throw new UnsupportedOperationException();
