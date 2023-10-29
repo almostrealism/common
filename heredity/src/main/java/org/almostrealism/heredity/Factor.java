@@ -17,10 +17,11 @@
 package org.almostrealism.heredity;
 
 import io.almostrealism.relation.Producer;
+import org.almostrealism.algebra.Function;
 
 // TODO  This should potentially move to io.almostrealism.relation
 @FunctionalInterface
-public interface Factor<T> {
+public interface Factor<T> extends Function<T, T> {
 	Producer<T> getResultant(Producer<T> value);
 
 	default String signature() { throw new UnsupportedOperationException(); }

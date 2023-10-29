@@ -23,15 +23,16 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.heredity.Factor;
 
 import java.util.function.Function;
 import java.util.function.Supplier;
 
 public class GradientPropagation implements Propagation, CodeFeatures {
-	private final Function<Producer<PackedCollection<?>>, CollectionProducer<PackedCollection<?>>> operator;
+	private final Factor<PackedCollection<?>> operator;
 	private final Producer<PackedCollection<?>>[] weights;
 
-	public GradientPropagation(Function<Producer<PackedCollection<?>>, CollectionProducer<PackedCollection<?>>> operator,
+	public GradientPropagation(Factor<PackedCollection<?>> operator,
 							   Producer<PackedCollection<?>>... weights) {
 		this.operator = operator;
 		this.weights = weights;
@@ -42,7 +43,7 @@ public class GradientPropagation implements Propagation, CodeFeatures {
 										Producer<PackedCollection<?>> gradient,
 										Producer<PackedCollection<?>> input,
 										Receptor<PackedCollection<?>> next) {
-		CollectionProducer<PackedCollection<?>> function = operator.apply(input);
+		CollectionProducer<PackedCollection<?>> function = (CollectionProducer<PackedCollection<?>>) operator.getResultant(input);
 		PackedCollection<?> gradOut = new PackedCollection<>(function.getShape());
 
 		Producer<PackedCollection<?>> deltaOutDeltaIn = function.delta(input);

@@ -20,11 +20,10 @@ import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
-import org.almostrealism.algebra.Tensor;
-import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.heredity.Factor;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.GradientPropagation;
 import org.almostrealism.layers.Propagation;
@@ -57,8 +56,7 @@ public class GradientDescentTests implements CodeFeatures {
 //								.enumerate(1, 1))
 //						.traverse(1).sum()
 //						.add(p(biases));
-		Function<Producer<PackedCollection<?>>, CollectionProducer<PackedCollection<?>>> operator =
-				input -> c(input).multiply(c(p(weights)));
+		Factor<PackedCollection<?>> operator = input -> c(input).multiply(c(p(weights)));
 
 		Propagation backwards = new GradientPropagation(operator, p(weights), p(biases));
 
