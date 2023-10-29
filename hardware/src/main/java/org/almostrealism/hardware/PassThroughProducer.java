@@ -156,15 +156,6 @@ public class PassThroughProducer<T extends MemoryData>
 	}
 
 	/**
-	 * To avoid infinite regress (since pass through has itself as
-	 * an argument), this method does nothing.
-	 */
-	@Override
-	public void compact() {
-		// Avoid recursion, do not compact children
-	}
-
-	/**
 	 * Since the normal {@link #getArgument(LanguageOperations, int)}
 	 * method returns the {@link ArrayVariable} for the specified input
 	 * index, and this {@link io.almostrealism.relation.Producer} does

@@ -30,10 +30,4 @@ public class DynamicProducer<T> implements Producer<T> {
 	 */
 	@Override
 	public Evaluable<T> get() { return function::apply; }
-
-	/**
-	 * Does nothing.
-	 */
-	@Override
-	public void compact() { }
 }

@@ -25,13 +25,12 @@ import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.MemoryData;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.relation.Compactable;
 
 import java.util.List;
 import java.util.function.IntFunction;
 import java.util.function.Supplier;
 
-public interface AcceleratedConditionalStatement<T extends MemoryData> extends Producer<T>, OutputSupport, Compactable {
+public interface AcceleratedConditionalStatement<T extends MemoryData> extends Producer<T>, OutputSupport {
 	Expression getCondition();
 
 	List<Supplier<Evaluable<? extends MemoryData>>> getInputs();

@@ -22,7 +22,6 @@ import io.almostrealism.expression.Constant;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Generated;
@@ -156,10 +155,6 @@ public class Variable<T, V extends Variable<T, ?>> implements Statement, Nameabl
 	public Supplier<Evaluable<? extends T>> getProducer() { return producer; }
 
 	public Supplier<Evaluable<? extends T>> getOriginalProducer() { return originalProducer; }
-
-	public boolean isStatic() {
-		return getProducer() instanceof Compactable && ((Compactable) getProducer()).isStatic();
-	}
 
 	public Class<T> getType() {
 		if (getDelegate() != null && getDelegate().getType() != null) return getDelegate().getType();

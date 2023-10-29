@@ -64,14 +64,4 @@ public class RandomColorGenerator implements ProducerComputation<RGB> {
 	public Scope<RGB> getScope() {
 		throw new RuntimeException("Not implemented");
 	}
-
-	/**
-	 * Delegates to {@link RGBProducer#compact()}
-	 * on the base color and offset color.
-	 */
-	@Override
-	public void compact() {
-		baseRGB.compact();
-		offsetRGB.compact();
-	}
 }

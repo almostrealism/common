@@ -23,14 +23,10 @@ import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeInputManager;
-import io.almostrealism.relation.Compactable;
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.OperationComputationAdapter;
 
 // TODO  Should extend Repeated
 public class Loop extends OperationComputationAdapter<Void> {
-	public static final boolean enableCompaction = true;
-
 	private final Computation atom;
 	private final int iterations;
 
@@ -83,13 +79,5 @@ public class Loop extends OperationComputationAdapter<Void> {
 		});
 
 		return scope;
-	}
-
-	@Override
-	public synchronized void compact() {
-		super.compact();
-		if (enableCompaction && atom instanceof Compactable) {
-			((Compactable) atom).compact();
-		}
 	}
 }

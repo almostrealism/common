@@ -257,10 +257,7 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData> extends Dyna
 
 	private IntUnaryOperator indexOfChoice() { return i -> i + valueCount + 1; }
 
-	@Override
 	public void compact() {
-		super.compact();
-
 		if (enableCompaction && (compactedRanks == null || compactedChoices == null)) {
 			List<ArrayVariable> newArgs = new ArrayList<>();
 			newArgs.add(getArgumentVariables().get(0));

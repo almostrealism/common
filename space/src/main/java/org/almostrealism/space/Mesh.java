@@ -150,7 +150,7 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 	 * @param p2  Index of second point.
 	 * @param p3  Index of third point.
 	 * @param clearcache Whether to clear the cache after triangle addition.
-	 * @throws IllegalArgumentException if any of the indicies specified are not valid.
+	 * @throws IllegalArgumentException if any of the indices specified are not valid.
 	 * @return  The unique index of the triangle added or -1 if it is not added (if any point indicies are the same).
 	 */
   	public int addTriangle(int p1, int p2, int p3, boolean clearcache) {
@@ -163,7 +163,6 @@ public class Mesh extends SpacePartition<Triangle> implements Graph<Vector> {
 		Triangle t = new Triangle(v1, v2, v3);
 
 		Producer<Vector> tnp = t.getNormalAt(Vector.blank());
-		tnp.compact();
 		Vector tn = tnp.get().evaluate();
 
 		if (this.triangles.add(new int[] {p1, p2, p3})) {

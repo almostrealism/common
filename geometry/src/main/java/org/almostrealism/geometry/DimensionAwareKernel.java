@@ -19,7 +19,6 @@ package org.almostrealism.geometry;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryData;
-import io.almostrealism.relation.Compactable;
 
 public class DimensionAwareKernel<T extends MemoryData> implements Producer<T>, DimensionAware {
 	private KernelizedEvaluable<T> k;
@@ -41,12 +40,5 @@ public class DimensionAwareKernel<T extends MemoryData> implements Producer<T>, 
 	@Override
 	public void setDimensions(int width, int height, int ssw, int ssh) {
 		((DimensionAware) k).setDimensions(width, height, ssw, ssh);
-	}
-
-	@Override
-	public void compact() {
-		if (k instanceof Compactable) {
-			((Compactable) k).compact();
-		}
 	}
 }

@@ -73,10 +73,4 @@ public class AverageColor implements ProducerComputation<RGB> {
 	public Scope<RGB> getScope() {
 		throw new RuntimeException("Not implemented");
 	}
-
-	@Override
-	public void compact() {
-		// TODO  AverageColor should be modified to accept ColorProducers instead
-		//       of RGB values and this method should delegate to them
-	}
 }

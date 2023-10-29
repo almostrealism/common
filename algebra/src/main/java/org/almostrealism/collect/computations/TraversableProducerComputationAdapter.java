@@ -87,7 +87,11 @@ public abstract class TraversableProducerComputationAdapter<I extends PackedColl
 	@Override
 	public boolean isRelative() { return true; }
 
+	@Deprecated
 	public abstract IntFunction<Expression<Double>> getValueFunction();
+
+	// TODO
+//	public abstract Expression<Double> getValue(List<ArrayVariable<Double>> args, int index);
 
 	public Expression<Double> getValue(List<ArrayVariable<Double>> args, int index) {
 		System.out.println("WARN: Using default getValue implementation");

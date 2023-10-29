@@ -338,19 +338,9 @@ public class Polynomial extends AbstractSurface {
 	 */
 	@Override
 	public Producer<Vector> getNormalAt(Producer<Vector> p) {
-		return new Producer<Vector>() {
-			@Override
-			public Evaluable<Vector> get() {
-				return args -> {
-					Vector point = p.get().evaluate(args);
-					return evaluateGradient(point.getX(), point.getY(), point.getZ());
-				};
-			}
-
-			@Override
-			public void compact() {
-				p.compact();
-			}
+		return () -> args -> {
+			Vector point = p.get().evaluate(args);
+			return evaluateGradient(point.getX(), point.getY(), point.getZ());
 		};
 	}
 
@@ -361,121 +351,111 @@ public class Polynomial extends AbstractSurface {
 	 */
 	@Override
 	public ShadableIntersection intersectAt(Producer<Ray> r) {
-		Producer<Scalar> s = new Producer<Scalar>() {
-			@Override
-			public Evaluable<Scalar> get() {
-				return args -> {
-					Ray ray = r.get().evaluate(args);
-					ray = ray.transform(getTransform(true).getInverse());
+		Producer<Scalar> s = () -> args -> {
+			Ray ray = r.get().evaluate(args);
+			ray = ray.transform(getTransform(true).getInverse());
 
-					Vector o = ray.getOrigin();
+			Vector o = ray.getOrigin();
 
-					PolynomialTerm pxTerms[] = {new PolynomialTerm(ray.getDirection().getX(), 1, 0, 0),
-							new PolynomialTerm(o.getX(), 0, 0, 0)};
-					PolynomialTerm pyTerms[] = {new PolynomialTerm(ray.getDirection().getY(), 0, 1, 0),
-							new PolynomialTerm(o.getY(), 0, 0, 0)};
-					PolynomialTerm pzTerms[] = {new PolynomialTerm(ray.getDirection().getZ(), 0, 0, 1),
-							new PolynomialTerm(o.getZ(), 0, 0, 0)};
+			PolynomialTerm pxTerms[] = {new PolynomialTerm(ray.getDirection().getX(), 1, 0, 0),
+					new PolynomialTerm(o.getX(), 0, 0, 0)};
+			PolynomialTerm pyTerms[] = {new PolynomialTerm(ray.getDirection().getY(), 0, 1, 0),
+					new PolynomialTerm(o.getY(), 0, 0, 0)};
+			PolynomialTerm pzTerms[] = {new PolynomialTerm(ray.getDirection().getZ(), 0, 0, 1),
+					new PolynomialTerm(o.getZ(), 0, 0, 0)};
 
-					Polynomial px = new Polynomial(pxTerms);
-					Polynomial py = new Polynomial(pyTerms);
-					Polynomial pz = new Polynomial(pzTerms);
+			Polynomial px = new Polynomial(pxTerms);
+			Polynomial py = new Polynomial(pyTerms);
+			Polynomial pz = new Polynomial(pzTerms);
 
-					px.simplify();
-					py.simplify();
-					pz.simplify();
+			px.simplify();
+			py.simplify();
+			pz.simplify();
 
-					java.util.Vector pTopVector = new java.util.Vector();
-					java.util.Vector pBottomVector = new java.util.Vector();
+			java.util.Vector pTopVector = new java.util.Vector();
+			java.util.Vector pBottomVector = new java.util.Vector();
 
-					i:
-					for (int i = 0; i < getTerms().length; i++) {
-						PolynomialTerm term = getTerms()[i];
+			i:
+			for (int i = 0; i < getTerms().length; i++) {
+				PolynomialTerm term = getTerms()[i];
 
-						if (term.getCoefficient() == 0)
-							continue i;
+				if (term.getCoefficient() == 0)
+					continue i;
 
-						Polynomial top = new Polynomial();
-						top.addTerm(new PolynomialTerm(term.getCoefficient(), 0, 0, 0));
+				Polynomial top = new Polynomial();
+				top.addTerm(new PolynomialTerm(term.getCoefficient(), 0, 0, 0));
 
-						Polynomial bottom = new Polynomial();
-						bottom.addTerm(new PolynomialTerm(1.0, 0, 0, 0));
+				Polynomial bottom = new Polynomial();
+				bottom.addTerm(new PolynomialTerm(1.0, 0, 0, 0));
 
-						if (term.getExpOfX() > 0) {
-							Polynomial newP = px.expand(term.getExpOfX());
-							newP.simplify();
+				if (term.getExpOfX() > 0) {
+					Polynomial newP = px.expand(term.getExpOfX());
+					newP.simplify();
 
-							top = top.multiply(newP);
-						} else if (term.getExpOfX() < 0) {
-							Polynomial newP = px.expand(-term.getExpOfX());
-							newP.simplify();
+					top = top.multiply(newP);
+				} else if (term.getExpOfX() < 0) {
+					Polynomial newP = px.expand(-term.getExpOfX());
+					newP.simplify();
 
-							bottom = bottom.multiply(newP);
-						}
+					bottom = bottom.multiply(newP);
+				}
 
-						if (term.getExpOfY() > 0) {
-							Polynomial newP = py.expand(term.getExpOfY());
-							newP.simplify();
+				if (term.getExpOfY() > 0) {
+					Polynomial newP = py.expand(term.getExpOfY());
+					newP.simplify();
 
-							top = top.multiply(newP);
-						} else if (term.getExpOfY() < 0) {
-							Polynomial newP = py.expand(-term.getExpOfY());
-							newP.simplify();
+					top = top.multiply(newP);
+				} else if (term.getExpOfY() < 0) {
+					Polynomial newP = py.expand(-term.getExpOfY());
+					newP.simplify();
 
-							bottom = bottom.multiply(newP);
-						}
+					bottom = bottom.multiply(newP);
+				}
 
-						if (term.getExpOfZ() > 0) {
-							Polynomial newP = pz.expand(term.getExpOfZ());
-							newP.simplify();
+				if (term.getExpOfZ() > 0) {
+					Polynomial newP = pz.expand(term.getExpOfZ());
+					newP.simplify();
 
-							top = top.multiply(newP);
-						} else if (term.getExpOfZ() < 0) {
-							Polynomial newP = pz.expand(-term.getExpOfZ());
-							newP.simplify();
+					top = top.multiply(newP);
+				} else if (term.getExpOfZ() < 0) {
+					Polynomial newP = pz.expand(-term.getExpOfZ());
+					newP.simplify();
 
-							bottom = bottom.multiply(newP);
-						}
+					bottom = bottom.multiply(newP);
+				}
 
-						pTopVector.addElement(top);
-						pBottomVector.addElement(bottom);
-					}
-
-					Polynomial p = new Polynomial();
-
-					for (int i = 0; i < pTopVector.size(); i++) {
-						Polynomial newP = (Polynomial) pTopVector.elementAt(i);
-
-						for (int j = 0; j < pBottomVector.size(); j++) {
-							if (j != i)
-								newP = newP.multiply((Polynomial) pBottomVector.elementAt(j));
-						}
-
-						p = p.add(newP);
-					}
-
-					p.simplify();
-
-					double zeros[] = p.calculateZeros(0, Polynomial.maxIntersectionDistance, Polynomial.defaultZerosInterval, 0.0, 0.0, Polynomial.defaultZerosRecursions);
-
-					if (zeros.length <= 0) return null;
-
-					double closest = Double.MAX_VALUE;
-
-					for (int i = 0; i < zeros.length; i++) {
-						if (zeros[i] > 0.0 && zeros[i] < closest) {
-							closest = zeros[i];
-						}
-					}
-
-					return new Scalar(closest);
-				};
+				pTopVector.addElement(top);
+				pBottomVector.addElement(bottom);
 			}
 
-			@Override
-			public void compact() {
-				r.compact();
+			Polynomial p = new Polynomial();
+
+			for (int i = 0; i < pTopVector.size(); i++) {
+				Polynomial newP = (Polynomial) pTopVector.elementAt(i);
+
+				for (int j = 0; j < pBottomVector.size(); j++) {
+					if (j != i)
+						newP = newP.multiply((Polynomial) pBottomVector.elementAt(j));
+				}
+
+				p = p.add(newP);
 			}
+
+			p.simplify();
+
+			double zeros[] = p.calculateZeros(0, Polynomial.maxIntersectionDistance, Polynomial.defaultZerosInterval, 0.0, 0.0, Polynomial.defaultZerosRecursions);
+
+			if (zeros.length <= 0) return null;
+
+			double closest = Double.MAX_VALUE;
+
+			for (int i = 0; i < zeros.length; i++) {
+				if (zeros[i] > 0.0 && zeros[i] < closest) {
+					closest = zeros[i];
+				}
+			}
+
+			return new Scalar(closest);
 		};
 
 		return new ShadableIntersection(Polynomial.this, r, s);

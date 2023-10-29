@@ -90,9 +90,6 @@ public class GeneratedColorProducer<T> implements Generated<T, Producer<RGB>>, C
 	public Scope<RGB> getScope() { return ((Computation) p).getScope(); }
 
 	@Override
-	public void compact() { p.compact(); }
-
-	@Override
 	public KernelizedEvaluable<RGB> get() { return (KernelizedEvaluable<RGB>) p.get(); }
 
 	public static <T> GeneratedColorProducer<T> fromProducer(T generator, Producer<? extends RGB> p) {

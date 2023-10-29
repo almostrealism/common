@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,7 +16,6 @@
 
 package io.almostrealism.code;
 
-import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Named;
@@ -37,7 +36,7 @@ import java.util.Optional;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-public abstract class OperationAdapter<T> implements Compactable, NameProvider, OperationInfo, NamedFunction, Named {
+public abstract class OperationAdapter<T> implements NameProvider, OperationInfo, NamedFunction, Named {
 
 	public static boolean enableFunctionPrefix = false;
 	private static long functionId = 0;
@@ -218,12 +217,8 @@ public abstract class OperationAdapter<T> implements Compactable, NameProvider, 
 		this.variableNames = new ArrayList<>();
 	}
 
+	@Deprecated
 	protected synchronized void removeDuplicateArguments() { setArguments(Scope.removeDuplicateArguments(getArguments())); }
-
-	@Override
-	public synchronized void compact() {
-		getInputs().stream().filter(p -> p instanceof Compactable).forEach(p -> ((Compactable) p).compact());
-	}
 
 	protected void waitFor(Semaphore semaphore) {
 		if (semaphore == null) return;

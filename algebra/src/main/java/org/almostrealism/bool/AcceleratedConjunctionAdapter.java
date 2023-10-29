@@ -26,7 +26,6 @@ import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.NAryExpression;
-import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.collect.PackedCollection;
@@ -169,14 +168,5 @@ public abstract class AcceleratedConjunctionAdapter<T extends PackedCollection<?
 	@Override
 	public IntFunction<Expression<Double>> getFalseValueExpression() {
 		return i -> (Expression) falseVar.getValueRelative(i);
-	}
-
-	@Override
-	public void compact() {
-		conjuncts.stream()
-				.map(c -> c instanceof Compactable ? (Compactable) c : null)
-				.filter(Objects::nonNull)
-				.forEach(Compactable::compact);
-		super.compact();
 	}
 }

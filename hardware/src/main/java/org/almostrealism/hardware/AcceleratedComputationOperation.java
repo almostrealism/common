@@ -25,17 +25,14 @@ import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.ScopeInputManager;
-import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Named;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
-import org.almostrealism.hardware.mem.Bytes;
 
 import java.util.List;
-import java.util.function.Consumer;
 
 public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperation<MemoryData> implements NameProvider, Countable {
 	public static boolean enableOperationInputAggregation = true;
@@ -127,11 +124,6 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 		getComputation().resetArguments();
 	}
 
-	protected synchronized void preCompile() {
-		prepareScope();
-		if (enableCompaction) compact();
-	}
-
 	@Override
 	public synchronized Scope<T> compile() {
 		if (scope != null) {
@@ -139,7 +131,7 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 			return scope;
 		}
 
-		preCompile();
+		prepareScope();
 
 		if (getComputation() instanceof OperationAdapter
 				&& ((OperationAdapter) getComputation()).getArgsCount() > 0) {
@@ -181,18 +173,6 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 
 	@Override
 	public Variable getOutputVariable() { return outputVariable == null ? computation.getOutputVariable() : outputVariable; }
-
-	@Override
-	public void compact() {
-		if (getComputation() instanceof Compactable) {
-			((Compactable) getComputation()).compact();
-		}
-	}
-
-	@Override
-	public boolean isStatic() {
-		return getComputation() instanceof Compactable && ((Compactable) getComputation()).isStatic();
-	}
 
 	@Override
 	public boolean isAggregatedInput() {

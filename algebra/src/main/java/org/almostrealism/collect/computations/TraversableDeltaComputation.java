@@ -93,8 +93,8 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 		return new TraversableDeltaComputation<>(shape, exp -> expression.apply(exp).delta(matcher(target)), args);
 	}
 
-	private static Predicate<Expression> matcher(Producer<?> p) {
-		return exp -> {
+	private static Function<Expression, Predicate<Expression>> matcher(Producer<?> p) {
+		return index -> exp -> {
 			if (!(exp instanceof InstanceReference)) return false;
 
 			Variable v = ((InstanceReference) exp).getReferent();

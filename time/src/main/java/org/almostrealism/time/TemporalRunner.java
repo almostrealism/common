@@ -25,7 +25,6 @@ import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.cycle.Setup;
-import io.almostrealism.relation.Compactable;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.OperationList;
 
@@ -103,14 +102,6 @@ public class TemporalRunner implements Setup, Temporal, OperationComputation<Voi
 				.map(o -> o instanceof Process ? (Process<?, ?>) o : null)
 				.filter(Objects::nonNull)
 				.collect(Collectors.toList());
-	}
-
-	@Override
-	public void compact() {
-		Stream.of(setup).map(o -> o instanceof Compactable ? (Compactable) o : null)
-				.filter(Objects::nonNull).forEach(Compactable::compact);
-		Stream.of(run).map(o -> o instanceof Compactable ? (Compactable) o : null)
-				.filter(Objects::nonNull).forEach(Compactable::compact);
 	}
 
 	public void destroy() {

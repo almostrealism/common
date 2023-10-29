@@ -35,7 +35,6 @@ import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.code.SupplierArgumentMap;
 import io.almostrealism.scope.Variable;
-import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.collect.Shape;
@@ -58,9 +57,8 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public abstract class AcceleratedOperation<T extends MemoryData> extends OperationAdapter<T> implements Runnable,
-														KernelizedOperation, Compactable, ScopeLifecycle, ComputerFeatures {
+														KernelizedOperation, ScopeLifecycle, ComputerFeatures {
 	public static final boolean enableArgumentMapping = true;
-	public static final boolean enableCompaction = true;
 	public static boolean enableKernelSizeWarnings = SystemUtils.isEnabled("AR_HARDWARE_KERNEL_SIZE_WARNINGS").orElse(true);
 
 	private static final ThreadLocal<Semaphore> semaphores = new ThreadLocal<>();
@@ -162,7 +160,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	@Override
 	public Scope<?> compile() {
 		prepareScope();
-		if (enableCompaction) compact();
 		return null;
 	}
 

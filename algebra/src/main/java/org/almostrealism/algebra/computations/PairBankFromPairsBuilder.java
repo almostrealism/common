@@ -22,7 +22,6 @@ import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.relation.Compactable;
 import io.almostrealism.relation.Factory;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Pair;
@@ -32,7 +31,6 @@ import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.TraversableProducerComputationAdapter;
 import org.almostrealism.hardware.KernelizedEvaluable;
 
-import java.util.Objects;
 import java.util.function.IntFunction;
 import java.util.stream.Stream;
 
@@ -65,11 +63,6 @@ public class PairBankFromPairsBuilder extends TraversableProducerComputationAdap
 	public void prepareScope(ScopeInputManager manager) {
 		super.prepareScope(manager);
 		ScopeLifecycle.prepareScope(Stream.of(producers), manager);
-	}
-
-	@Override
-	public synchronized void compact() {
-		Stream.of(producers).filter(Objects::nonNull).forEach(p -> ((Compactable) p).compact());
 	}
 
 	@Override

@@ -20,7 +20,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.function.Supplier;
 
-public interface Operation extends Process<Process<?, ?>, Runnable>, Supplier<Runnable>, Compactable {
+public interface Operation extends Process<Process<?, ?>, Runnable>, Supplier<Runnable> {
 	@Override
 	default Process<Process<?, ?>, Runnable> isolate() {
 		return new IsolatedProcess(this);
@@ -28,8 +28,6 @@ public interface Operation extends Process<Process<?, ?>, Runnable>, Supplier<Ru
 
 	static Operation of(Supplier<Runnable> supplier) {
 		return new Operation() {
-			@Override
-			public void compact() { }
 
 			@Override
 			public Collection<Process<?, ?>> getChildren() { return Collections.emptyList(); }

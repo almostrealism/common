@@ -50,7 +50,7 @@ public interface CollectionExpression extends TraversableExpression<Double> {
 		return a.multiply(b);
 	}
 
-	default CollectionExpression delta(Predicate<Expression> target) {
+	default CollectionExpression delta(Function<Expression, Predicate<Expression>> target) {
 		throw new UnsupportedOperationException();
 	}
 
@@ -78,13 +78,13 @@ public interface CollectionExpression extends TraversableExpression<Double> {
 			}
 
 			@Override
-			public CollectionExpression delta(Predicate<Expression> target) {
+			public CollectionExpression delta(Function<Expression, Predicate<Expression>> target) {
 				return createDelta(this, target);
 			}
 		};
 	}
 
-	static CollectionExpression createDelta(CollectionExpression exp, Predicate<Expression> target) {
+	static CollectionExpression createDelta(CollectionExpression exp, Function<Expression, Predicate<Expression>> target) {
 		return new CollectionExpression() {
 			@Override
 			public TraversalPolicy getShape() {
@@ -98,7 +98,7 @@ public interface CollectionExpression extends TraversableExpression<Double> {
 
 			@Override
 			public Expression<Double> getValueAt(Expression index) {
-				return exp.getValueAt(index).delta(target);
+				return exp.getValueAt(index).delta(target.apply(index));
 			}
 
 			@Override
@@ -107,7 +107,7 @@ public interface CollectionExpression extends TraversableExpression<Double> {
 			}
 
 			@Override
-			public CollectionExpression delta(Predicate<Expression> target) {
+			public CollectionExpression delta(Function<Expression, Predicate<Expression>> target) {
 				return createDelta(this, target);
 			}
 		};

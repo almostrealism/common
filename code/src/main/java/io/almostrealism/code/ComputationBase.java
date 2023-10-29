@@ -24,7 +24,6 @@ import io.almostrealism.relation.Process;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.relation.Compactable;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
@@ -34,7 +33,7 @@ import java.util.Optional;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-public abstract class ComputationBase<I, O, T> extends OperationAdapter<I> implements Computation<O>, ParallelProcess<Process<?, ?>, T>, Compactable {
+public abstract class ComputationBase<I, O, T> extends OperationAdapter<I> implements Computation<O>, ParallelProcess<Process<?, ?>, T> {
 	private LanguageOperations lang;
 
 	public ComputationBase() {

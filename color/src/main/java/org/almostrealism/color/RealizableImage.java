@@ -77,9 +77,6 @@ public class RealizableImage implements Producer<RGB[][]> {
 		};
 	}
 
-	@Override
-	public void compact() { source.compact(); }
-
 	public static PackedCollection<Pair<?>> generateKernelInput(int x, int y, int width, int height) {
 		int size = width * height;
 		PackedCollection<Pair<?>> input = Pair.bank(size);

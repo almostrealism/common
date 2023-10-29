@@ -32,7 +32,6 @@ import io.almostrealism.code.Computation;
 import io.almostrealism.code.OperationComputation;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
-import io.almostrealism.relation.Compactable;
 import org.almostrealism.hardware.computations.Abort;
 import org.almostrealism.hardware.computations.Assignment;
 
@@ -289,12 +288,6 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		if (current.size() > 0) op.add(current.size() == 1 ? current.get(0) : current);
 
 		return op.optimize();
-	}
-
-	@Override
-	public void compact() {
-		stream().map(o -> o instanceof Compactable ? (Compactable) o : null)
-				.filter(Objects::nonNull).forEach(Compactable::compact);
 	}
 
 	public void destroy() {
