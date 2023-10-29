@@ -18,11 +18,9 @@ package org.almostrealism.optimize;
 
 import io.almostrealism.code.ComputeRequirement;
 import org.almostrealism.CodeFeatures;
-import org.almostrealism.collect.PackedCollectionHeap;
 import org.almostrealism.hardware.mem.Heap;
 import org.almostrealism.time.Temporal;
 
-import java.util.Arrays;
 import java.util.concurrent.Callable;
 import java.util.function.Consumer;
 import java.util.function.Supplier;

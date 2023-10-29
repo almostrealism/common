@@ -28,6 +28,7 @@ import org.almostrealism.time.Temporal;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.function.UnaryOperator;
 
 public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
 	default CellularTemporalFactor<T> toFactor(Supplier<T> value, Function<Producer<T>, Receptor<T>> assignment) {
@@ -96,6 +97,27 @@ public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
 			@Override
 			public Supplier<Runnable> push(Producer<T> protein) {
 				return r == null ? new OperationList() : r.push(value);
+			}
+
+			@Override
+			public void setReceptor(Receptor<T> r) {
+				this.r = r;
+			}
+		};
+	}
+
+	static <T> Cell<T> of(Function<Producer<T>, Producer<T>> func) {
+		return new Cell<>() {
+			private Receptor<T> r;
+
+			@Override
+			public Supplier<Runnable> setup() {
+				return new OperationList();
+			}
+
+			@Override
+			public Supplier<Runnable> push(Producer<T> protein) {
+				return r == null ? new OperationList() : r.push(func.apply(protein));
 			}
 
 			@Override

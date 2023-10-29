@@ -9,12 +9,13 @@ import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.LayerFeatures;
+import org.almostrealism.layers.Learning;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
 
-public class SequentialBlock implements Block, LayerFeatures {
+public class SequentialBlock implements Block, Learning, LayerFeatures {
 	private TraversalPolicy inputShape;
 
 	private List<Block> blocks;
@@ -36,6 +37,14 @@ public class SequentialBlock implements Block, LayerFeatures {
 			if (downstream != null) op.add(downstream.push(in));
 			return op;
 		};
+	}
+
+	@Override
+	public void setLearningRate(Producer<PackedCollection<?>> learningRate) {
+		blocks.forEach(b -> {
+			if (b instanceof Learning)
+				((Learning) b).setLearningRate(learningRate);
+		});
 	}
 
 	public <T extends Block> T add(T block) {
@@ -132,7 +141,7 @@ public class SequentialBlock implements Block, LayerFeatures {
 
 	@Override
 	public Cell<PackedCollection<?>> getBackward() {
-		throw new UnsupportedOperationException();
+		return lastBlock().getBackward();
 	}
 
 	@Override

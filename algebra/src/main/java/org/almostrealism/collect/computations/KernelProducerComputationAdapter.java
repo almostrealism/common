@@ -32,25 +32,8 @@ public abstract class KernelProducerComputationAdapter<I extends PackedCollectio
 		extends CollectionProducerComputationBase<I, O>
 		implements TraversableExpression<Double> {
 
-	private boolean ignoreTraversalAxis;
-
-	protected KernelProducerComputationAdapter() { }
-
 	public KernelProducerComputationAdapter(TraversalPolicy outputShape, Supplier<Evaluable<? extends I>>... arguments) {
 		super(outputShape, arguments);
-	}
-
-	public boolean isIgnoreTraversalAxis() {
-		return ignoreTraversalAxis;
-	}
-
-	public void setIgnoreTraversalAxis(boolean ignoreTraversalAxis) {
-		this.ignoreTraversalAxis = ignoreTraversalAxis;
-	}
-
-	@Override
-	public int getMemLength() {
-		return isIgnoreTraversalAxis() ? getShape().getTotalSize() : super.getMemLength();
 	}
 
 	@Override
@@ -73,9 +56,6 @@ public abstract class KernelProducerComputationAdapter<I extends PackedCollectio
 			Expression index = new KernelIndex();
 			if (getMemLength() > 1) index = index.multiply(getMemLength()).add(i);
 
-//			Variable v = new Variable(output.ref(i).getSimpleExpression(),
-//					false, getValueAt(index).getSimplified(), output.getRootDelegate());
-//			scope.getVariables().add(v);
 			scope.getVariables().add(output.ref(i).assign(getValueAt(index).getSimplified()));
 		}
 

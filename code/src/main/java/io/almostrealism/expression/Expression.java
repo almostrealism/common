@@ -32,6 +32,7 @@ import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -204,6 +205,10 @@ public abstract class Expression<T> implements Tree<Expression<?>> {
 	public Expression<Integer> toInt() {
 		if (getType() == Integer.class) return (Expression<Integer>) this;
 		return new Cast(Integer.class, "int", this);
+	}
+
+	public Expression delta(Predicate<Expression> target) {
+		throw new UnsupportedOperationException();
 	}
 
 	@Override

@@ -41,7 +41,6 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 public interface LayerFeatures extends MatrixFeatures {
-	boolean enableAssignment = true;
 	boolean ioTracking = SystemUtils.isEnabled("AR_GRAPH_IO_TRACKING").orElse(true);
 
 	default CellularLayer layer(String name, TraversalPolicy outputShape,
@@ -132,11 +131,7 @@ public interface LayerFeatures extends MatrixFeatures {
 									.traverse()
 									.reduce(v -> v.sum());
 
-					if (enableAssignment) {
-						ops.add(1, conv, p(output.traverseEach()));
-					} else {
-						ops.add(conv, output.traverseEach());
-					}
+					ops.add(1, conv, p(output.traverseEach()));
 
 					if (next != null) ops.add(next.push(p(output)));
 					return ops;
@@ -196,12 +191,8 @@ public interface LayerFeatures extends MatrixFeatures {
 											enumerate(shape(1, 1, size, size, 1), v)
 													.traverse(1).reduce(slice -> max(slice)));
 
-					if (enableAssignment) {
-						ops.add(output.traverse(2).getShape().getSize(),
+					ops.add(output.traverse(2).getShape().getSize(),
 								pool, p(output.traverse(2)));
-					} else {
-						ops.add(pool, output.traverse(2));
-					}
 
 					if (next != null) ops.add(next.push(p(output)));
 					return ops;
@@ -259,11 +250,7 @@ public interface LayerFeatures extends MatrixFeatures {
 									.traverse(1).sum()
 									.add(p(biases));
 
-					if (enableAssignment) {
-						ops.add(output.traverse(1).getShape().getSize(), dense, p(output.traverse(1)));
-					} else {
-						ops.add(dense, output.traverse(1));
-					}
+					ops.add(output.traverse(1).getShape().getSize(), dense, p(output.traverse(1)));
 
 					if (next != null) ops.add(next.push(p(output)));
 					return ops;
@@ -309,11 +296,7 @@ public interface LayerFeatures extends MatrixFeatures {
 					c(input).traverse(1).exp()
 							.divide(c(input).traverse(1).exp().traverse(0).sum());
 
-			if (enableAssignment) {
-				ops.add(output.traverse(1).getShape().getSize(), softmax, p(output.traverse(1)));
-			} else {
-				ops.add(softmax, output.traverse(1));
-			}
+			ops.add(output.traverse(1).getShape().getSize(), softmax, p(output.traverse(1)));
 
 			if (next != null) ops.add(next.push(p(output)));
 			return ops;

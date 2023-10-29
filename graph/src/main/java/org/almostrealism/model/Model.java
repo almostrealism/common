@@ -86,6 +86,10 @@ public class Model implements Setup, CodeFeatures {
 			b.getBackward().setReceptor(blocks.get(blocks.size() - 1).getBackward());
 		}
 
+		if (b instanceof Learning) {
+			((Learning) b).setLearningRate(p(learningRate));
+		}
+
 		blocks.add(b);
 		shape = b.getOutputShape();
 	}

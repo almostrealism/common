@@ -21,6 +21,7 @@ import io.almostrealism.expression.Expression;
 
 import java.util.function.Function;
 import java.util.function.IntFunction;
+import java.util.function.Predicate;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
@@ -49,6 +50,10 @@ public interface CollectionExpression extends TraversableExpression<Double> {
 		return a.multiply(b);
 	}
 
+	default CollectionExpression delta(Predicate<Expression> target) {
+		throw new UnsupportedOperationException();
+	}
+
 	static CollectionExpression create(TraversalPolicy shape, Function<Expression<?>, Expression<Double>> valueAt) {
 		return new CollectionExpression() {
 			@Override
@@ -70,6 +75,40 @@ public interface CollectionExpression extends TraversableExpression<Double> {
 			@Override
 			public Expression<Double> getValueRelative(Expression index) {
 				return CollectionExpression.super.getValueRelative(index);
+			}
+
+			@Override
+			public CollectionExpression delta(Predicate<Expression> target) {
+				return createDelta(this, target);
+			}
+		};
+	}
+
+	static CollectionExpression createDelta(CollectionExpression exp, Predicate<Expression> target) {
+		return new CollectionExpression() {
+			@Override
+			public TraversalPolicy getShape() {
+				return exp.getShape();
+			}
+
+			@Override
+			public Expression<Double> getValue(Expression... pos) {
+				return getValueAt(getShape().index(pos));
+			}
+
+			@Override
+			public Expression<Double> getValueAt(Expression index) {
+				return exp.getValueAt(index).delta(target);
+			}
+
+			@Override
+			public Expression<Double> getValueRelative(Expression index) {
+				return CollectionExpression.super.getValueRelative(index);
+			}
+
+			@Override
+			public CollectionExpression delta(Predicate<Expression> target) {
+				return createDelta(this, target);
 			}
 		};
 	}

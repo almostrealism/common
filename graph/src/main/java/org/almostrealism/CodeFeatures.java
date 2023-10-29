@@ -30,6 +30,7 @@ import org.almostrealism.algebra.ScalarBankFeatures;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.algebra.computations.Switch;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import io.almostrealism.collect.KernelExpression;
 import org.almostrealism.collect.PackedCollection;
@@ -88,6 +89,10 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 
 	default <T> Producer<T> v(TraversalPolicy shape, int argIndex) {
 		return value(shape, argIndex);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducer<T> cv(TraversalPolicy shape, int argIndex) {
+		return c(value(shape, argIndex));
 	}
 
 	default <T> Producer<T> v(Function<Object[], T> function) {

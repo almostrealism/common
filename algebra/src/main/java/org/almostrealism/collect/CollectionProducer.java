@@ -134,6 +134,10 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 		return sigmoid((Producer) this);
 	}
 
+	default CollectionProducer<T> delta(Producer<?> target) {
+		throw new UnsupportedOperationException();
+	}
+
 	default AcceleratedConditionalStatementCollection _greaterThan(Supplier<Evaluable<? extends PackedCollection<?>>> operand) {
 		return _greaterThan(operand, false);
 	}

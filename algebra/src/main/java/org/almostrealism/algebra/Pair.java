@@ -16,16 +16,13 @@
 
 package org.almostrealism.algebra;
 
-import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
-import org.almostrealism.collect.PackedCollectionHeap;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.PooledMem;
 import org.almostrealism.hardware.mem.Heap;
 
 import java.util.function.BiFunction;
