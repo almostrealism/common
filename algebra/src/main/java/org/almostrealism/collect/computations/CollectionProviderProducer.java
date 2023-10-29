@@ -27,6 +27,7 @@ import org.almostrealism.collect.CollectionFeatures;
 
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Objects;
 
 public class CollectionProviderProducer<T extends Shape>
 		implements CollectionProducerBase<T, Producer<T>>,
@@ -65,4 +66,17 @@ public class CollectionProviderProducer<T extends Shape>
 
 	@Override
 	public Collection<Process<?, ?>> getChildren() { return Collections.emptyList(); }
+
+	@Override
+	public boolean equals(Object obj) {
+		if (super.equals(obj)) return true;
+		if (!(obj instanceof  CollectionProviderProducer)) return false;
+		return Objects.equals(((CollectionProviderProducer) obj).value, value);
+	}
+
+	@Override
+	public int hashCode() {
+		return value == null ? super.hashCode() : value.hashCode();
+	}
+
 }

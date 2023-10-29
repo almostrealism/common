@@ -21,6 +21,7 @@ import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.Variable;
 
 import java.util.List;
+import java.util.function.Predicate;
 
 /**
  * {@link InstanceReference} is used to reference a previously declared

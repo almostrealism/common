@@ -20,7 +20,7 @@ import java.util.List;
 
 public class Difference<T extends Number> extends NAryExpression<T> {
 	public Difference(Expression<Double>... values) {
-		super((Class<T>) type(values), "-", values);
+		super((Class<T>) type(List.of(values)), "-", values);
 	}
 
 	@Override

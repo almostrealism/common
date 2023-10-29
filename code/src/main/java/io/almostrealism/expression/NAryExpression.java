@@ -66,8 +66,17 @@ public class NAryExpression<T> extends Expression<T> {
 		return values;
 	}
 
-	protected static Class<? extends Number> type(Expression... values) {
-		for (Expression e : values) {
+	protected static Class<? extends Number> type(Object... values) {
+		return type(List.of(values));
+	}
+
+	protected static Class<? extends Number> type(Iterable values) {
+		for (Object o : values) {
+			if (!(o instanceof Expression)) {
+				throw new UnsupportedOperationException();
+			}
+
+			Expression<?> e = (Expression<?>) o;
 			if (!Number.class.isAssignableFrom(e.getType())) {
 				throw new UnsupportedOperationException();
 			} else if (!Objects.equals(e.getType(), Integer.class)) {

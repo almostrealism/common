@@ -21,8 +21,12 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 public class Sum<T extends Number> extends NAryExpression<T> {
+	public Sum(List<Expression<? extends Number>> values) {
+		super((Class<T>) type(values), "+", (List) values);
+	}
+
 	public Sum(Expression<? extends Number>... values) {
-		super((Class<T>) type(values), "+", values);
+		super((Class<T>) type(List.of(values)), "+", values);
 	}
 
 	@Override

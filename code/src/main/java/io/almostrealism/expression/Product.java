@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,16 +18,47 @@ package io.almostrealism.expression;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 public class Product<T extends Number> extends NAryExpression<T> {
+	public Product(List<Expression<Double>> values) {
+		super((Class<T>) type(values), "*", (List) values);
+	}
+
 	public Product(Expression<Double>... values) {
-		super((Class<T>) type(values), "*", values);
+		super((Class<T>) type(List.of(values)), "*", values);
 	}
 
 	@Override
 	public Expression<T> generate(List<Expression<?>> children) {
 		return new Product<>(children.toArray(new Expression[0]));
+	}
+
+	@Override
+	public Expression delta(Predicate<Expression> target) {
+		List<Expression<?>> operands = getChildren();
+		List<Expression<?>> sum = new ArrayList<>();
+
+		i: for (int i = 0; i < operands.size(); i++) {
+			List<Expression<?>> product = new ArrayList<>();
+
+			for (int j = 0; j < operands.size(); j++) {
+				Expression<?> op = i == j ? operands.get(j).delta(target) : operands.get(j);
+				if (op.intValue().isPresent() && op.intValue().getAsInt() == 0) continue i;
+				product.add(op);
+			}
+
+			sum.add(new Product(product));
+		}
+
+		if (sum.isEmpty()) {
+			return new IntegerConstant(0);
+		} else if (sum.size() == 1) {
+			return sum.get(0);
+		} else {
+			return new Sum(sum);
+		}
 	}
 
 	@Override

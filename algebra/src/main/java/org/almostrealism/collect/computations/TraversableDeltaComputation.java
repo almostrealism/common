@@ -22,6 +22,7 @@ import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.scope.Variable;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversableExpression;
@@ -29,6 +30,7 @@ import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.ComputerFeatures;
 import io.almostrealism.relation.Evaluable;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.BiFunction;
@@ -94,11 +96,23 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 
 	private static Predicate<Expression> matcher(Producer<?> p) {
 		return exp -> {
-			if (exp instanceof InstanceReference) {
-				return ((InstanceReference) exp).getReferent().getProducer() == p;
-			} else {
-				return false;
+			if (!(exp instanceof InstanceReference)) return false;
+
+			Variable v = ((InstanceReference) exp).getReferent();
+
+			while (v != null) {
+				if (Objects.equals(v.getProducer(), p)) {
+					return true;
+				} else if (v.getProducer() instanceof ReshapeProducer) {
+					Collection<Process<?, ?>> children = ((ReshapeProducer<?>) v.getProducer()).getChildren();
+					Process pc = children.stream().filter(c -> Objects.equals(c, p)).findFirst().orElse(null);
+					if (pc != null) return true;
+				}
+
+				v = v.getDelegate();
 			}
+
+			return false;
 		};
 	}
 }
