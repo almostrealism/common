@@ -25,7 +25,6 @@ import io.almostrealism.uml.Function;
  * 
  * @author  Michael Murray
  */
-@Function
 public interface Gradient<T> extends Differentiable<T> {
 	/**
 	 * Returns a {@link Vector} that represents the normal to the surface at the point

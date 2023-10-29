@@ -16,7 +16,11 @@
 
 package org.almostrealism.heredity;
 
+import io.almostrealism.relation.Factor;
 import org.almostrealism.time.Temporal;
 
 public interface TemporalFactor<T> extends Factor<T>, Temporal {
+	default Factor<T> andThen(Factor<T> next) {
+		return new CombinedFactor<>(this, next);
+	}
 }

@@ -26,6 +26,7 @@ import io.almostrealism.uml.Multiple;
  * @author  Michael Murray
  */
 @Function
+@FunctionalInterface
 public interface Evaluable<T> {
 	default Multiple<T> createDestination(int size) {
 		throw new UnsupportedOperationException();

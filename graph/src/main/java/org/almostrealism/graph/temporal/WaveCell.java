@@ -25,7 +25,7 @@ import org.almostrealism.graph.TimeCell;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.computations.Assignment;
-import org.almostrealism.heredity.Factor;
+import io.almostrealism.relation.Factor;
 
 import java.util.Objects;
 import java.util.function.Supplier;

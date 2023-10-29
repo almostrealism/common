@@ -17,6 +17,7 @@
 package org.almostrealism.heredity;
 
 import io.almostrealism.cycle.Setup;
+import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.time.Temporal;

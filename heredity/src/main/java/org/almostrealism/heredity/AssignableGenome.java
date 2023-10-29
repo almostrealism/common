@@ -17,8 +17,8 @@
 package org.almostrealism.heredity;
 
 import io.almostrealism.relation.Delegated;
+import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.relation.Provider;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.algebra.Tensor;

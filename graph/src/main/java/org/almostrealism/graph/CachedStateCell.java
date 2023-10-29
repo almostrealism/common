@@ -17,7 +17,7 @@
 package org.almostrealism.graph;
 
 import org.almostrealism.CodeFeatures;
-import org.almostrealism.heredity.Factor;
+import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.time.Temporal;
 import io.almostrealism.relation.Evaluable;

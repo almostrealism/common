@@ -23,7 +23,7 @@ import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.heredity.Factor;
+import io.almostrealism.relation.Factor;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.GradientPropagation;
 import org.almostrealism.layers.Propagation;

@@ -21,7 +21,7 @@ import java.util.List;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-import org.almostrealism.heredity.Factor;
+import io.almostrealism.relation.Factor;
 import org.almostrealism.heredity.Gene;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.hardware.OperationList;

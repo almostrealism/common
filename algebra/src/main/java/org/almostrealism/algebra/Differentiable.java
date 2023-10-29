@@ -16,6 +16,8 @@
 
 package org.almostrealism.algebra;
 
+import io.almostrealism.relation.Function;
+
 public interface Differentiable<T> extends Function<Vector, T> {
 
 }

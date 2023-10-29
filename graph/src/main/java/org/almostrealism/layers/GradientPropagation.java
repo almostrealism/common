@@ -23,9 +23,8 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Receptor;
 import org.almostrealism.hardware.OperationList;
-import org.almostrealism.heredity.Factor;
+import io.almostrealism.relation.Factor;
 
-import java.util.function.Function;
 import java.util.function.Supplier;
 
 public class GradientPropagation implements Propagation, CodeFeatures {

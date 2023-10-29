@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,19 +14,9 @@
  * limitations under the License.
  */
 
-package org.almostrealism.heredity;
+package io.almostrealism.relation;
 
-import io.almostrealism.relation.Producer;
-import org.almostrealism.algebra.Function;
-
-// TODO  This should potentially move to io.almostrealism.relation
-@FunctionalInterface
-public interface Factor<T> extends Function<T, T> {
-	Producer<T> getResultant(Producer<T> value);
-
-	default String signature() { throw new UnsupportedOperationException(); }
-
-	default CellularTemporalFactor<T> andThen(Factor<T> next) {
-		return new CombinedFactor<>(this, next);
-	}
+@io.almostrealism.uml.Function
+public interface Function<IN, OUT> {
+	// TODO
 }
