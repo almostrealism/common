@@ -85,9 +85,8 @@ public class TraversableExpressionComputation<T extends PackedCollection<?>>
 
 	@Override
 	public CollectionProducer<T> delta(Producer<?> target) {
-		return (TraversableDeltaComputation<T>) TraversableDeltaComputation.create(getShape(), expression, target,
-				getInputs().stream().skip(1).toArray(Supplier[]::new))
-				.setPostprocessor(getPostprocessor());
+		return TraversableDeltaComputation.create(getShape(), expression, target,
+				getInputs().stream().skip(1).toArray(Supplier[]::new));
 	}
 
 	private static Supplier[] validateArgs(Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
