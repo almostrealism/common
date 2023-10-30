@@ -18,9 +18,11 @@ package io.almostrealism.expression;
 
 import io.almostrealism.code.CodePrintWriter;
 import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Variable;
 
 import java.util.List;
+import java.util.function.BiFunction;
 import java.util.function.Predicate;
 
 /**
@@ -30,18 +32,26 @@ import java.util.function.Predicate;
  * {@link Variable} the text does not appear in quotes.
  */
 public class InstanceReference<T> extends Expression<T> {
+	public static BiFunction<String, String, String> dereference = (name, pos) -> name + "[" + pos + "]";
+
 	private Variable<T, ?> var;
+	private Expression<?> index;
+	private Expression<?> offset;
 
 	public InstanceReference(Variable<T, ?> v) {
-		this(v, null);
+		this(v, null, null);
 	}
 
-	public InstanceReference(Variable<T, ?> referent, Expression<?> argument) {
-		super(referent.getType(), referent, argument);
+	public InstanceReference(Variable<T, ?> referent, Expression<?> index, Expression offset) {
+		super(referent.getType(), referent, index == null ? offset : index.add(offset));
 		this.var = referent;
+		this.index = index;
+		this.offset = offset;
 	}
 
 	public Variable<T, ?> getReferent() { return var; }
+	public Expression<?> getIndex() { return index; }
+	public Expression<?> getOffset() { return offset; }
 
 	@Override
 	public String getExpression(LanguageOperations lang) {
@@ -71,5 +81,12 @@ public class InstanceReference<T> extends Expression<T> {
 		}
 
 		return this;
+	}
+
+	public static <T> InstanceReference<T> create(ArrayVariable<T> var, Expression<?> pos) {
+		String name = dereference.apply(var.getName(), pos.add(var.getOffsetValue()).toInt().getSimpleExpression(var.getLanguage()));
+		return new InstanceReference<>(
+				new Variable<>(name, false, new Constant<>(var.getType()), var),
+				pos, var.getOffsetValue());
 	}
 }

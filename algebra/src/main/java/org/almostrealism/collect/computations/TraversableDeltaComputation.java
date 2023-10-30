@@ -97,18 +97,25 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 		return index -> exp -> {
 			if (!(exp instanceof InstanceReference)) return false;
 
-			Variable v = ((InstanceReference) exp).getReferent();
+			InstanceReference ref = (InstanceReference) exp;
+			Variable v = ref.getReferent();
 
-			while (v != null) {
+			w: while (true) {
 				if (Objects.equals(v.getProducer(), p)) {
-					return true;
+					break w;
 				} else if (v.getProducer() instanceof ReshapeProducer) {
 					Collection<Process<?, ?>> children = ((ReshapeProducer<?>) v.getProducer()).getChildren();
 					Process pc = children.stream().filter(c -> Objects.equals(c, p)).findFirst().orElse(null);
-					if (pc != null) return true;
+					if (pc != null) break w;
 				}
 
 				v = v.getDelegate();
+				if (v == null) return false;
+			}
+
+			if (index.kernelValue(0).intValue() ==
+					ref.getIndex().kernelValue(0).intValue()) {
+				return true;
 			}
 
 			return false;

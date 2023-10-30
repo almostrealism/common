@@ -34,8 +34,6 @@ import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
 public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements Array<T, ArrayVariable<T>> {
-	public static BiFunction<String, String, String> dereference = (name, pos) -> name + "[" + pos + "]";
-
 	private final LanguageOperations lang;
 	private final NameProvider names;
 
@@ -146,9 +144,7 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 		if (destroyed) throw new UnsupportedOperationException();
 
 		if (getDelegate() == null) {
-			pos = pos.add(getOffsetValue());
-			return new InstanceReference(new Variable<>(dereference.apply(getName(), pos.toInt().getSimpleExpression(getLanguage())),
-					false, new Constant<>(getType()), this), pos);
+			return InstanceReference.create(this, pos);
 		} else if (getDelegate() == this) {
 			throw new IllegalArgumentException("Circular delegate reference");
 		} else {

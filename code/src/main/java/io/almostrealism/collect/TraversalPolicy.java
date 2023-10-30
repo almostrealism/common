@@ -151,6 +151,16 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 		return p;
 	}
 
+	public TraversalPolicy append(TraversalPolicy shape) {
+		int newDims[] = new int[getDimensions() + shape.getDimensions()];
+		for (int i = 0; i < getDimensions(); i++) newDims[i] = length(i);
+		for (int i = 0; i < shape.getDimensions(); i++) newDims[i + getDimensions()] = shape.length(i);
+
+		TraversalPolicy p = new TraversalPolicy(newDims);
+		p.traversalAxis = traversalAxis;
+		return p;
+	}
+
 	public TraversalPolicy appendDimension(int size) {
 		int newDims[] = new int[getDimensions() + 1];
 		for (int i = 0; i < getDimensions(); i++) newDims[i] = length(i);

@@ -129,7 +129,7 @@ public abstract class Expression<T> implements Tree<Expression<?>> {
 	}
 
 	public String getSimpleExpression(LanguageOperations lang) {
-		return getSimplified().getExpression(lang);
+		return Optional.ofNullable(getSimplified()).map(e ->e.getExpression(lang)).orElse(null);
 	}
 
 	public abstract String getExpression(LanguageOperations lang);

@@ -43,10 +43,10 @@ public class GradientPropagation implements Propagation, CodeFeatures {
 										Producer<PackedCollection<?>> input,
 										Receptor<PackedCollection<?>> next) {
 		CollectionProducer<PackedCollection<?>> function = (CollectionProducer<PackedCollection<?>>) operator.getResultant(input);
-		PackedCollection<?> gradOut = new PackedCollection<>(function.getShape());
+		PackedCollection<?> gradOut = new PackedCollection<>(shape(input));
 
 		Producer<PackedCollection<?>> deltaOutDeltaIn = function.delta(input);
-		Producer<PackedCollection<?>> deltaOutDeltaWeight = function.delta(weights[0]);
+		Producer<PackedCollection<?>> deltaOutDeltaWeight = function.delta(weights[0]).traverse(2);
 		Producer<PackedCollection<?>> weightUpdate = c(weights[0]).subtract(multiply(learningRate, gradient).multiply(deltaOutDeltaWeight));
 
 		OperationList op = new OperationList("Gradient Propagation");
