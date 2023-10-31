@@ -18,18 +18,15 @@ package org.almostrealism.graph;
 
 import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
-import io.almostrealism.relation.Provider;
 import org.almostrealism.Ops;
 import org.almostrealism.graph.temporal.TemporalFactorFromCell;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.heredity.Cellular;
 import org.almostrealism.heredity.CellularTemporalFactor;
-import org.almostrealism.time.Temporal;
 
 import java.util.function.BiFunction;
 import java.util.function.Function;
 import java.util.function.Supplier;
-import java.util.function.UnaryOperator;
 
 public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
 	default CellularTemporalFactor<T> toFactor(Supplier<T> value, Function<Producer<T>, Receptor<T>> assignment) {
@@ -74,7 +71,7 @@ public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
 												  Function<Producer<T>, Receptor<T>> assignment,
 												  BiFunction<Producer<T>, Producer<T>, Producer<T>> combine) {
 		T v = value.get();
-		Producer<T> destination = Ops.ops().p(v);
+		Producer<T> destination = Ops.o().p(v);
 
 		return new TemporalFactorFromCell<>(c, destination, assignment, combine);
 	}

@@ -17,10 +17,15 @@
 package org.almostrealism.heredity;
 
 import io.almostrealism.relation.Factor;
+import org.almostrealism.hardware.OperationList;
 import org.almostrealism.time.Temporal;
+
+import java.util.function.Supplier;
 
 public interface TemporalFactor<T> extends Factor<T>, Temporal {
 	default Factor<T> andThen(Factor<T> next) {
 		return new CombinedFactor<>(this, next);
 	}
+
+	default Supplier<Runnable> tick() { return new OperationList(); }
 }

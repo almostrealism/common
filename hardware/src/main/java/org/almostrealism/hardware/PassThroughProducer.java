@@ -79,6 +79,8 @@ public class PassThroughProducer<T extends MemoryData>
 	@Override
 	public TraversalPolicy getShape() { return shape; }
 
+	public int getIndex() { return argIndex; }
+
 	@Override
 	public int getMemLength() { return getShape().getSize(); }
 
@@ -175,13 +177,15 @@ public class PassThroughProducer<T extends MemoryData>
 
 	@Override
 	public Expression<Double> getValueAt(Expression index) {
-		ArrayVariable var = getArgumentVariables().get(0);
+//		ArrayVariable var = getArgumentVariables().get(0);
+//
+//		if (enableDimSupport) {
+//			return var.referenceAbsolute(index.toInt().divide(var.length()).multiply(var.getDimValue()).add(index.toInt().mod(var.length(), false)));
+//		} else {
+//			return var.referenceAbsolute(index);
+//		}
 
-		if (enableDimSupport) {
-			return var.referenceAbsolute(index.toInt().divide(var.length()).multiply(var.getDimValue()).add(index.toInt().mod(var.length(), false)));
-		} else {
-			return var.referenceAbsolute(index);
-		}
+		return (Expression) getArgumentVariables().get(0).referenceDynamic(index);
 	}
 
 	@Override

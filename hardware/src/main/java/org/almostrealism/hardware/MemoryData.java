@@ -105,6 +105,10 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 	}
 
 	default double[] toArray(int offset, int length) {
+		if (offset + length > getMemLength()) {
+			throw new IllegalArgumentException("Array extends beyond the length of this MemoryData");
+		}
+
 		return getMem().toArray(getOffset() + offset, length);
 	}
 

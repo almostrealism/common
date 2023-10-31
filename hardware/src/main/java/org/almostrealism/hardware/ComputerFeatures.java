@@ -29,12 +29,12 @@ public interface ComputerFeatures extends HardwareFeatures, NameProvider {
 
 	@Override
 	default String getVariableDimName(ArrayVariable v, int dim) {
-		return KernelSupport.getValueDimName(v.getName(), dim);
+		return v.getName() + "Dim" + dim;
 	}
 
 	@Override
 	default String getVariableSizeName(ArrayVariable v) {
-		return KernelSupport.getValueSizeName(v.getName());
+		return v.getName() + "Size";
 	}
 
 	@Override
@@ -44,7 +44,7 @@ public interface ComputerFeatures extends HardwareFeatures, NameProvider {
 		if (v.getProducer() instanceof Countable ||
 				(v.getProducer() instanceof KernelSupport && ((KernelSupport) v.getProducer()).isKernelEnabled())) {
 			KernelIndex idx = new KernelIndex(kernelIndex);
-			Expression dim = new StaticReference(Integer.class, KernelSupport.getValueDimName(v.getName(), kernelIndex));
+			Expression dim = new StaticReference(Integer.class, getVariableDimName(v, kernelIndex));
 
 			Expression kernelOffset = idx.multiply(dim);
 

@@ -51,7 +51,7 @@ public class WaveCell extends CollectionTemporalCellAdapter implements CodeFeatu
 
 	public WaveCell(PackedCollection<?> wav, int sampleRate, double amplitude,
 					Producer<Scalar> offset, Producer<Scalar> repeat) {
-		this(wav, sampleRate, amplitude, offset, repeat, Ops.ops().v(0.0), Ops.ops().v(wav.getCount()));
+		this(wav, sampleRate, amplitude, offset, repeat, Ops.o().v(0.0), Ops.o().v(wav.getCount()));
 	}
 
 	public WaveCell(PackedCollection<?> wav, int sampleRate, double amplitude,
@@ -101,7 +101,7 @@ public class WaveCell extends CollectionTemporalCellAdapter implements CodeFeatu
 	}
 
 	public WaveCell(WaveCellData data, PackedCollection<?> wav, int sampleRate, double amplitude, Producer<Scalar> frame) {
-		this(data, wav, sampleRate, amplitude, frame, Ops.ops().v(0.0), Ops.ops().v(wav.getCount()));
+		this(data, wav, sampleRate, amplitude, frame, Ops.o().v(0.0), Ops.o().v(wav.getCount()));
 	}
 
 	public WaveCell(WaveCellData data, PackedCollection<?> wav, int sampleRate, double amplitude,

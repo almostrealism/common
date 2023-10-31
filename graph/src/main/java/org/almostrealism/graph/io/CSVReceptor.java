@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -26,11 +26,24 @@ import java.io.PrintWriter;
 public class CSVReceptor<T> extends ReceptorConsumer<T> implements AutoCloseable {
 	private PrintWriter ps;
 	private long index;
+	private int rate;
 
 	public CSVReceptor(OutputStream out) {
+		this(out, 1);
+	}
+
+	public CSVReceptor(OutputStream out, int rate) {
 		super(null);
+		this.rate = rate;
 		ps = new PrintWriter(new OutputStreamWriter(out));
-		setConsumer(p -> { ps.println(index++ + "," + process(p)); ps.flush(); });
+		setConsumer(p -> {
+			if (index % this.rate == 0) {
+				ps.println(index + "," + process(p));
+				ps.flush();
+			}
+
+			index++;
+		});
 	}
 
 	public void flush() {

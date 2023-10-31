@@ -71,6 +71,10 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 		return add((Producer) this, value);
 	}
 
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> add(double value) {
+		return add((Producer) this, c(value));
+	}
+
 	@Deprecated
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> relativeAdd(Producer<T> value) {
 		return relativeAdd((Producer) this, value);
@@ -91,6 +95,18 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> multiply(Producer<T> value) {
 		return multiply((Producer) this, value);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> mul(Producer<T> value) {
+		return multiply((Producer) this, value);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> multiply(double value) {
+		return multiply((Producer) this, c(value));
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> mul(double value) {
+		return multiply((Producer) this, c(value));
 	}
 
 	@Deprecated
@@ -120,6 +136,10 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> expIgnoreZero() {
 		return expIgnoreZero((Producer) this);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> sq() {
+		return sq((Producer) this);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> max() {

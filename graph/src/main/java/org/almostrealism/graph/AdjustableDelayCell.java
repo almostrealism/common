@@ -41,11 +41,11 @@ public class AdjustableDelayCell extends SummationCell implements CodeFeatures {
 	}
 
 	public AdjustableDelayCell(int sampleRate, Scalar delay) {
-		this(sampleRate, Ops.ops().v(delay), Ops.ops().v(1.0));
+		this(sampleRate, Ops.o().v(delay), Ops.o().v(1.0));
 	}
 
 	public AdjustableDelayCell(int sampleRate, Producer<Scalar> delay) {
-		this(sampleRate, delay, Ops.ops().v(1.0));
+		this(sampleRate, delay, Ops.o().v(1.0));
 	}
 
 	public AdjustableDelayCell(int sampleRate, Producer<Scalar> delay, Producer<Scalar> scale) {

@@ -20,6 +20,7 @@ import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.test.KernelAssertions;
+import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.cl.CLOperator;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.DefaultCellularLayer;
@@ -54,8 +55,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		PackedCollection<?> biases = dense.getWeights().get(1);
 		IntStream.range(0, nodes).forEach(i -> biases.setMem(i, Math.random()));
 
-		model.setup().get().run();
-		model.forward(input);
+		model.compile().forward(input);
 
 		PackedCollection<?> weights = dense.getWeights().get(0);
 		PackedCollection<?> output =  ((DefaultCellularLayer) dense).getOutput();
@@ -110,8 +110,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		Tensor<Double> t = tensor(inputShape);
 		PackedCollection<?> input = t.pack();
 
-		model.setup().get().run();
-		model.forward(input);
+		model.compile().forward(input);
 
 		PackedCollection<?> filter = conv.getWeights().get(0);
 		TraversalPolicy filterShape = filter.getShape();
@@ -151,8 +150,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		Tensor<Double> t = tensor(inputShape);
 		PackedCollection<?> input = t.pack();
 
-		model.setup().get().run();
-		model.forward(input);
+		model.compile().forward(input);
 
 		PackedCollection<?> output = ((DefaultCellularLayer) pool).getOutput();
 
@@ -171,10 +169,8 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		Tensor<Double> t = tensor(inputShape);
 		PackedCollection<?> input = t.pack();
 
-		model.setup().get().run();
-
 		PackedCollection<?> in = input;
-		CLOperator.verboseLog(() -> model.forward(in));
+		HardwareOperator.verboseLog(() -> model.compile().forward(in));
 
 		PackedCollection<?> filter = conv.getWeights().get(0);
 		TraversalPolicy filterShape = filter.getShape();
@@ -263,8 +259,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 
 	protected void train(PackedCollection<?> input, Model model) {
 		long start = System.currentTimeMillis();
-		model.setup().get().run();
-		model.forward(input);
+		model.compile().forward(input);
 		System.out.println("TrainModelTest: Input Size = " + input.getShape() +
 				" | Time = " + (System.currentTimeMillis() - start) / 1000 + "s");
 	}

@@ -31,8 +31,6 @@ import org.almostrealism.algebra.ScalarFeatures;
 import org.almostrealism.algebra.VectorFeatures;
 import org.almostrealism.algebra.computations.Switch;
 import org.almostrealism.collect.CollectionProducer;
-import org.almostrealism.collect.CollectionProducerComputation;
-import io.almostrealism.collect.KernelExpression;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversalPolicy;
@@ -51,13 +49,10 @@ import io.almostrealism.code.ProducerComputation;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareFeatures;
 import org.almostrealism.hardware.Input;
-import org.almostrealism.hardware.KernelOperation;
-import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.hardware.mem.MemoryDataCopy;
 import org.almostrealism.layers.LayerFeatures;
-import org.almostrealism.time.CursorPair;
 import org.almostrealism.time.TemporalFeatures;
 import org.almostrealism.time.TemporalScalarProducerBase;
 import org.almostrealism.time.computations.TemporalScalarExpressionComputation;
@@ -75,10 +70,6 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 								TemporalFeatures, HardwareFeatures {
 	boolean enableFixedCollections = true;
 
-	default Producer<CursorPair> v(CursorPair p) {
-		throw new UnsupportedOperationException();
-	}
-
 	default <T> Producer<T> v(T v) {
 		return value(v);
 	}
@@ -89,6 +80,18 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 
 	default <T> Producer<T> v(TraversalPolicy shape, int argIndex) {
 		return value(shape, argIndex);
+	}
+
+	default CollectionProducer<PackedCollection<?>> x(int... dims) {
+		return c(value(dims.length == 0 ? shape(1) : shape(dims), 0));
+	}
+
+	default CollectionProducer<PackedCollection<?>> y(int... dims) {
+		return c(value(dims.length == 0 ? shape(1) : shape(dims), 1));
+	}
+
+	default CollectionProducer<PackedCollection<?>> z(int... dims) {
+		return c(value(dims.length == 0 ? shape(1) : shape(dims), 2));
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> cv(TraversalPolicy shape, int argIndex) {
@@ -187,5 +190,5 @@ public interface CodeFeatures extends LayerFeatures, ScalarBankFeatures,
 		return Hardware.getLocalHardware().computeContext(exec, expectations);
 	}
 
-	default Ops o() { return Ops.ops(); }
+	default Ops ops() { return Ops.o(); }
 }

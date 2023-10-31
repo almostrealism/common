@@ -166,7 +166,7 @@ public abstract class Expression<T> implements Tree<Expression<?>> {
 	public Product multiply(Expression<Double> operand) { return new Product((Expression) this, operand); }
 
 	public Quotient divide(int operand) { return new Quotient((Expression) this, (Expression) new IntegerConstant(operand)); }
-	public Quotient divide(Expression<Double> operand) { return new Quotient((Expression) this, operand); }
+	public Quotient divide(Expression<?> operand) { return new Quotient((Expression) this, (Expression) operand); }
 
 	public Quotient reciprocal() { return new Quotient(new DoubleConstant(1.0), (Expression) this); }
 

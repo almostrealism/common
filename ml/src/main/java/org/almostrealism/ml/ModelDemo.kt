@@ -25,8 +25,7 @@ class ModelDemo : CodeFeatures {
         val model = model(shape)
         val t = loadImage(shape)
         val input = t.pack()
-        model.setup().get().run()
-        model.forward(input)
+        model.compile().forward(input)
     }
 
     fun loadImage(shape: TraversalPolicy): Tensor<Double> {

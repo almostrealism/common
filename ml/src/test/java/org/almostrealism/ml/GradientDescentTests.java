@@ -28,6 +28,7 @@ import io.almostrealism.relation.Factor;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.GradientPropagation;
 import org.almostrealism.layers.Propagation;
+import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;
 import org.junit.Test;
@@ -112,20 +113,26 @@ public class GradientDescentTests implements CodeFeatures {
 		Evaluable<PackedCollection<?>> dloss = c(2).multiply(cv(shape(1), 0).subtract(cv(shape(1), 1))).get();
 		Evaluable<PackedCollection<?>> loss = cv(shape(1), 0).subtract(cv(shape(1), 1)).pow(2.0).get();
 
-		model.setup().get().run();
+		CompiledModel runner = model.compile();
 
-		try (CSVReceptor<PackedCollection<?>> receptor = new CSVReceptor<>(new FileOutputStream("results/training_loss.csv"))) {
-			for (int i = 0; i < 1000; i++) {
-				PackedCollection<?> input = new PackedCollection<>(inChannels);
+		int epochs = 1000;
+		int steps = 100;
+
+		try (CSVReceptor<PackedCollection<?>> receptor = new CSVReceptor<>(new FileOutputStream("results/training_loss.csv"), 100)) {
+			for (int i = 0; i < epochs * steps; i++) {
+				PackedCollection<?> input = new PackedCollection<>(shape(inChannels));
 				input.fill(pos -> Math.random());
 
-				PackedCollection<?> out = model.forward(input);
+				PackedCollection<?> out = runner.forward(input);
 				PackedCollection<?> grad = dloss.evaluate(out, func.apply(out));
 				PackedCollection<?> l = loss.evaluate(out, func.apply(out));
-				System.out.println("Loss = " + l.toDouble(0));
+
+				if (i % steps == 0) {
+					System.out.println("Loss = " + l.toDouble(0));
+				}
 
 				receptor.push(p(l)).get().run();
-				model.backward(grad);
+				runner.backward(grad);
 			}
 		}
 	}

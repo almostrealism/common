@@ -89,7 +89,7 @@ public interface HardwareFeatures {
 
 	default Supplier<Runnable> lp(Computation<Void> c, int iterations) { return loop(c, iterations); }
 
-	static HardwareFeatures ops() {
+	static HardwareFeatures getInstance() {
 		return new HardwareFeatures() { };
 	}
 }

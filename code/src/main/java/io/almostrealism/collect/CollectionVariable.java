@@ -65,7 +65,7 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 	public InstanceReference<T> referenceRelative(Expression<?> idx) {
 		if (parent != null) {
 			Expression<?> p = parent.getShape().subset(getShape(), idx, pos);
-			return parent.reference(p);
+			return parent.reference(p, false);
 		}
 
 		return super.referenceRelative(idx);
@@ -116,16 +116,14 @@ public class CollectionVariable<T extends Shape> extends ArrayVariable<T> implem
 		if (result != null) return result;
 
 		if (getShape().getTotalSize() == 1) {
-			return (Expression) reference(e(0));
+			return (Expression) reference(e(0), false);
 		} else {
-//			index = new Mod(new Cast("int", index), e(getShape().getTotalSize()), false);
 			index = index.toInt().mod(e(getShape().getTotalSize()), false);
-			return (Expression) reference(index);
+			return (Expression) reference(index, false);
 		}
 	}
 
 	public Expression<Double> get(Expression<?>... pos) {
-		// return get(getShape().index(pos), -1);
 		return getValue(pos);
 	}
 

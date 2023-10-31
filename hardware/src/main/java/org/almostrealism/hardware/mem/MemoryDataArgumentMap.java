@@ -190,7 +190,8 @@ public class MemoryDataArgumentMap<S, A> extends ProviderAwareArgumentMap<S, A> 
 			// TODO  This is not ideal, but until we cleanup kernel functionality further
 			// TODO  allowing this to be treated as KernelSupport is not compatible with
 			// TODO  the scenarios where we need to disable kernel operations
-			return Hardware.enableKernelOps;
+			// return Hardware.enableKernelOps;
+			return true;
 		}
 
 		@Override

@@ -19,6 +19,7 @@ package io.almostrealism.expression;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
+import java.util.function.Predicate;
 
 public class Constant<T> extends Expression<T> {
 	public Constant(Class<T> type) {
@@ -36,5 +37,10 @@ public class Constant<T> extends Expression<T> {
 		}
 
 		return this;
+	}
+
+	@Override
+	public Expression delta(Predicate<Expression> target) {
+		return new IntegerConstant(0);
 	}
 }

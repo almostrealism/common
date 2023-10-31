@@ -101,6 +101,10 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return s.getShape().getSize();
 	}
 
+	default PackedCollection<?> pack(double... values) {
+		return PackedCollection.of(values);
+	}
+
 	default <T> Producer<T> p(T value) {
 		if (value instanceof Producer) {
 			throw new IllegalArgumentException();
@@ -541,6 +545,11 @@ public interface CollectionFeatures extends ExpressionFeatures {
 				shape(value), (args, index) ->
 					conditional(args[1].getValueAt(index).eq(e(0.0)), e(0.0), new Exp(args[1].getValueAt(index))),
 				(Supplier) value);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> sq(
+			Producer<PackedCollection<?>> value) {
+		return (CollectionProducerComputationBase<T, T>) multiply(value, value);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> floor(

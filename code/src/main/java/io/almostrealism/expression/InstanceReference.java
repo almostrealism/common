@@ -83,10 +83,16 @@ public class InstanceReference<T> extends Expression<T> {
 		return this;
 	}
 
-	public static <T> InstanceReference<T> create(ArrayVariable<T> var, Expression<?> pos) {
+	public static <T> InstanceReference<T> create(ArrayVariable<T> var, Expression<?> index, boolean dynamic) {
+		Expression<?> pos = index.toInt();
+		if (dynamic) {
+			pos = pos.divide(var.length()).multiply(var.getDimValue()).add(pos.mod(var.length(), false));
+		}
+
 		String name = dereference.apply(var.getName(), pos.add(var.getOffsetValue()).toInt().getSimpleExpression(var.getLanguage()));
+
 		return new InstanceReference<>(
 				new Variable<>(name, false, new Constant<>(var.getType()), var),
-				pos, var.getOffsetValue());
+				index, var.getOffsetValue());
 	}
 }

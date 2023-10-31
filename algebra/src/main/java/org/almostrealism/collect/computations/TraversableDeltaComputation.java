@@ -29,6 +29,8 @@ import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.ComputerFeatures;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.hardware.PassThroughProducer;
+import org.almostrealism.hardware.mem.MemoryDataDestination;
 
 import java.util.Collection;
 import java.util.List;
@@ -93,7 +95,7 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 		return new TraversableDeltaComputation<>(shape, exp -> expression.apply(exp).delta(matcher(target)), args);
 	}
 
-	private static Function<Expression, Predicate<Expression>> matcher(Producer<?> p) {
+	private static Function<Expression, Predicate<Expression>> matcher(Producer<?> target) {
 		return index -> exp -> {
 			if (!(exp instanceof InstanceReference)) return false;
 
@@ -101,12 +103,8 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 			Variable v = ref.getReferent();
 
 			w: while (true) {
-				if (Objects.equals(v.getProducer(), p)) {
+				if (match(v.getProducer(), target)) {
 					break w;
-				} else if (v.getProducer() instanceof ReshapeProducer) {
-					Collection<Process<?, ?>> children = ((ReshapeProducer<?>) v.getProducer()).getChildren();
-					Process pc = children.stream().filter(c -> Objects.equals(c, p)).findFirst().orElse(null);
-					if (pc != null) break w;
 				}
 
 				v = v.getDelegate();
@@ -120,5 +118,31 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 
 			return false;
 		};
+	}
+
+	private static boolean match(Supplier<?> p, Supplier<?> q) {
+		while (p instanceof ReshapeProducer || p instanceof MemoryDataDestination) {
+			if (p instanceof ReshapeProducer) {
+				p = ((ReshapeProducer<?>) p).getChildren().iterator().next();
+			} else {
+				p = (Producer<?>) ((MemoryDataDestination) p).getDelegate();
+			}
+		}
+
+		while (q instanceof ReshapeProducer || q instanceof MemoryDataDestination) {
+			if (q instanceof ReshapeProducer) {
+				q = ((ReshapeProducer<?>) q).getChildren().iterator().next();
+			} else {
+				q = (Producer<?>) ((MemoryDataDestination) q).getDelegate();
+			}
+		}
+
+		if (Objects.equals(p, q)) {
+			return true;
+		} else if (p instanceof PassThroughProducer && 	q instanceof PassThroughProducer) {
+			return ((PassThroughProducer) p).getIndex() == ((PassThroughProducer) q).getIndex();
+		}
+
+		return false;
 	}
 }

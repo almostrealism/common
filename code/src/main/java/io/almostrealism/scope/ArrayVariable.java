@@ -105,7 +105,7 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 			return v;
 		}
 
-		return (Expression) reference(names.getArrayPosition(lang, this, new IntegerConstant(index), 0));
+		return (Expression) reference(names.getArrayPosition(lang, this, new IntegerConstant(index), 0), false);
 	}
 
 	@Override
@@ -120,35 +120,32 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 	}
 
 	public InstanceReference<T> referenceRelative(Expression<?> pos) {
-		if (destroyed)
-			throw new UnsupportedOperationException();
-
 		if (getDelegate() != null) {
 			InstanceReference<T> v = getDelegate().referenceRelative(pos.add(getDelegateOffset()));
 			((InstanceReference) v).getReferent().setOriginalProducer(getOriginalProducer());
 			return v;
-//		} else if (getKernelIndex() < 0) {
-//			return reference(pos);
 		} else {
-			return reference(names.getArrayPosition(lang, this, pos, 0));
+			return reference(names.getArrayPosition(lang, this, pos, 0), false);
 		}
 	}
 
 	public InstanceReference<T> referenceAbsolute(Expression<?> pos) {
-		if (destroyed) throw new UnsupportedOperationException();
-
-		return reference(pos);
+		return reference(pos, false);
 	}
 
-	protected InstanceReference<T> reference(Expression<?> pos) {
+	public InstanceReference<T> referenceDynamic(Expression<?> pos) {
+		return reference(pos, true);
+	}
+
+	protected InstanceReference<T> reference(Expression<?> pos, boolean dynamic) {
 		if (destroyed) throw new UnsupportedOperationException();
 
 		if (getDelegate() == null) {
-			return InstanceReference.create(this, pos);
+			return InstanceReference.create(this, pos, dynamic);
 		} else if (getDelegate() == this) {
 			throw new IllegalArgumentException("Circular delegate reference");
 		} else {
-			InstanceReference ref = getDelegate().reference(pos.add(getDelegateOffset()));
+			InstanceReference ref = getDelegate().reference(pos.add(getDelegateOffset()), false);
 			ref.getReferent().setOriginalProducer(getOriginalProducer());
 			return ref;
 		}
