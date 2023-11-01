@@ -29,14 +29,14 @@ import io.almostrealism.uml.Multiple;
  * @author  Michael Murray
  */
 @Deprecated
-public interface KernelizedEvaluable<T extends MemoryData> extends Evaluable<T> {
+public interface KernelizedEvaluable<T> extends Evaluable<T> {
 
 	@Override
 	default Evaluable<T> into(Object destination) {
-		return withDestination((MemoryBank<T>) destination);
+		return withDestination((MemoryBank) destination);
 	}
 
-	default Evaluable<T> withDestination(MemoryBank<T> destination) {
+	default Evaluable<T> withDestination(MemoryBank destination) {
 		return new DestinationEvaluable<>((Evaluable) this, destination);
 	}
 

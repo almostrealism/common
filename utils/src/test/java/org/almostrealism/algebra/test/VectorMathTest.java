@@ -117,7 +117,7 @@ public class VectorMathTest implements TestFeatures {
 	public void crossProductCompact() {
 		ExpressionComputation<Vector> cp = crossProduct(vector(100.0, -200.0, 0.0));
 
-		KernelizedEvaluable<Vector> cpo = cp.get();
+		KernelizedEvaluable<Vector> cpo = (KernelizedEvaluable<Vector>) cp.get();
 		Assert.assertEquals(1, cpo.getArgsCount());
 
 		Vector v = cp.get().evaluate();

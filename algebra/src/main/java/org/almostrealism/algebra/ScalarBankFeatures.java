@@ -24,7 +24,6 @@ import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.hardware.Input;
-import org.almostrealism.hardware.KernelizedEvaluable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -57,7 +56,7 @@ public interface ScalarBankFeatures extends ScalarFeatures {
 
 			Evaluable<? extends PackedCollection<Scalar>> x = a.get();
 			Evaluable<? extends PackedCollection<Scalar>> y = b.get();
-			KernelizedEvaluable<Scalar> ev = ops.scalarsMultiply(Input.value(2, 0), Input.value(2, 1)).get();
+			Evaluable<Scalar> ev = ops.scalarsMultiply(Input.value(2, 0), Input.value(2, 1)).get();
 
 			return args -> {
 				PackedCollection<Scalar> d1 = x.evaluate(args);
@@ -91,7 +90,7 @@ public interface ScalarBankFeatures extends ScalarFeatures {
 			Evaluable<? extends Scalar> coeff = coefficient.get();
 			Evaluable<? extends PackedCollection<Scalar>> in = input.get();
 			ExpressionComputation<Scalar> offset = ops.scalarsMultiply(Input.value(2, 1), Input.value(2, 2));
-			KernelizedEvaluable<Scalar> ev = ops.scalarSubtract(Input.value(2, 0), offset).get();
+			Evaluable<Scalar> ev = ops.scalarSubtract(Input.value(2, 0), offset).get();
 
 			return args -> {
 				Scalar c = coeff.evaluate(args);

@@ -59,9 +59,9 @@ public class Triangle extends AbstractSurface implements ParticleGroup, Triangle
 	private boolean smooth, intcolor, useT = true;
 	private PackedCollection<Vector> data;
 
-	protected static final KernelizedEvaluable<PackedCollection<Vector>> dataProducer;
+	protected static final Evaluable<PackedCollection<Vector>> dataProducer;
 
-	public static final KernelizedEvaluable<Scalar> intersectAt;
+	public static final Evaluable<Scalar> intersectAt;
 	
 	static {
 //		ExpressionComputation<PackedCollection<Vector>> triangle = triangleFeat.triangle(Input.value(Vector.shape(), 0));

@@ -38,6 +38,7 @@ import io.almostrealism.scope.Variable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.collect.Shape;
+import org.almostrealism.hardware.computations.HardwareEvaluable;
 import org.almostrealism.hardware.mem.Bytes;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
@@ -364,7 +365,8 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				throw new UnsupportedOperationException();
 			}
 
-			if (!(c instanceof KernelizedEvaluable)) {
+			if (!(c instanceof KernelizedEvaluable) ||
+					(c instanceof HardwareEvaluable && !((HardwareEvaluable) c).isKernel())) {
 				Object o = c.evaluate(args);
 				if (!(o instanceof MemoryData))
 					throw new IllegalArgumentException();

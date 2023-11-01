@@ -23,7 +23,6 @@ import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.hardware.Input;
-import org.almostrealism.hardware.KernelizedEvaluable;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -53,7 +52,7 @@ public interface PairBankFeatures extends ScalarFeatures {
 			ScalarFeatures ops = ScalarFeatures.getInstance();
 
 			Evaluable<? extends PackedCollection<Pair<?>>> in = input.get();
-			KernelizedEvaluable<Scalar> ev = ops.scalarAdd(
+			Evaluable<Scalar> ev = ops.scalarAdd(
 					ops.scalarsMultiply(Input.value(2, 0), Input.value(2, 0)),
 					ops.scalarsMultiply(Input.value(2, 1), Input.value(2, 1))).get();
 

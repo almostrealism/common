@@ -40,7 +40,7 @@ public class KernelListTest implements TestFeatures {
 
 		PackedCollection<Scalar> output = Scalar.scalarBank(4);
 		multiply(scalar(() -> new Provider<>(paramsA), 0), new PassThroughProducer<>(shape(4, 2).traverse(1), 0)).get()
-				.withDestination(output).evaluate(input);
+				.into(output).evaluate(input);
 		assertEquals(4.0, output.get(1));
 	}
 

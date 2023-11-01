@@ -18,12 +18,10 @@ package org.almostrealism.ml;
 
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.io.CSVReceptor;
-import org.almostrealism.hardware.OperationList;
 import io.almostrealism.relation.Factor;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.GradientPropagation;
@@ -36,7 +34,6 @@ import org.junit.Test;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.util.List;
-import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 
@@ -45,9 +42,11 @@ public class GradientDescentTests implements CodeFeatures {
 
 	private static double coeff[] = { 0.24, -0.1, 0.36 };
 
-//	private UnaryOperator<PackedCollection<?>> func =
-//			in -> PackedCollection.of(in.valueAt(0) * 2 + in.valueAt(1) * in.valueAt(1) + 3);
-	private UnaryOperator<PackedCollection<?>> func =
+	private UnaryOperator<PackedCollection<?>> func1 =
+			in -> PackedCollection.of(1.5 * in.valueAt(0));
+	private UnaryOperator<PackedCollection<?>> func2 =
+			in -> PackedCollection.of(in.valueAt(0) * 2 + in.valueAt(1) * in.valueAt(1) + 3);
+	private UnaryOperator<PackedCollection<?>> func3 =
 			in -> PackedCollection.of(coeff[0] * in.valueAt(0) + coeff[1] * in.valueAt(1) + coeff[2] * in.valueAt(2));
 
 	@Override
@@ -68,35 +67,54 @@ public class GradientDescentTests implements CodeFeatures {
 
 		Propagation backwards = new GradientPropagation(operator, p(weights), p(biases));
 
-		Supplier<Runnable> init = a(p(weights.traverseEach()), divide(randn(shape(size, nodes)).traverseEach(), c(size).traverse(0)));
-
-		if (!enableCellular) {
-			return layer("dense", shape(size), outputShape,
-					Cell.of(operator), backwards, List.of(weights, biases), init);
-		}
+		Supplier<Runnable> init = a(p(weights.each()), divide(randn(shape(size, nodes)).each(), c(size).all()));
 
 		return layer("dense", shape(size), outputShape,
-				Cell.of((input, next) -> {
-					PackedCollection<?> output = new PackedCollection<>(outputShape);
+					Cell.of(operator), backwards, List.of(weights, biases), init);
+	}
 
-					OperationList ops = new OperationList();
-					Producer<PackedCollection<?>> dense =
-							c(input).repeat(nodes).traverseEach()
-									.multiply(c(p(weights))
-											.enumerate(1, 1))
-									.traverse(1).sum()
-									.add(p(biases));
+	@Test
+	public void linear1() throws FileNotFoundException {
+		CellularLayer dense = dense(1, 1);
 
-					ops.add(output.traverse(1).getShape().getSize(), dense, p(output.traverse(1)));
+		SequentialBlock block = new SequentialBlock(shape(1));
+		block.add(dense);
 
-					if (next != null) ops.add(next.push(p(output)));
-					return ops;
-				}), backwards, List.of(weights, biases), init);
+		Model model = new Model(shape(1), 0.1);
+		model.addBlock(block);
+
+		Evaluable<PackedCollection<?>> dloss = c(2).multiply(x().subtract(y())).get();
+		Evaluable<PackedCollection<?>> loss = x().subtract(y()).pow(2.0).get();
+
+		CompiledModel runner = model.compile();
+
+		int epochs = 1000;
+		int steps = 100;
+
+		try (CSVReceptor<PackedCollection<?>> receptor = new CSVReceptor<>(new FileOutputStream("results/linear1.csv"), steps)) {
+			for (int i = 0; i < epochs * steps; i++) {
+				PackedCollection<?> input = new PackedCollection<>(shape(1));
+				// input.fill(pos -> Math.random());
+				input.fill(pos -> 2.0);
+
+				PackedCollection<?> valid = func1.apply(input);
+				PackedCollection<?> out = runner.forward(input);
+				PackedCollection<?> grad = dloss.evaluate(out, valid);
+				PackedCollection<?> l = loss.evaluate(out, valid);
+
+				if (i % steps == 0) {
+					System.out.println("Loss = " + l.toDouble(0));
+				}
+
+				receptor.push(p(l)).get().run();
+				runner.backward(grad);
+			}
+		}
 	}
 
 	@Test
 	public void embeddings() throws FileNotFoundException {
-		int inChannels = 3;
+		int inChannels = 10;
 		int timeLen = 1;
 		int outLen = 1;
 
@@ -107,25 +125,26 @@ public class GradientDescentTests implements CodeFeatures {
 //		block.add(silu(shape(timeLen)));
 //		block.add(dense(timeLen, outLen));
 
-		Model model = new Model(shape(inChannels));
+		Model model = new Model(shape(inChannels), 0.01);
 		model.addBlock(block);
 
-		Evaluable<PackedCollection<?>> dloss = c(2).multiply(cv(shape(1), 0).subtract(cv(shape(1), 1))).get();
-		Evaluable<PackedCollection<?>> loss = cv(shape(1), 0).subtract(cv(shape(1), 1)).pow(2.0).get();
+		Evaluable<PackedCollection<?>> dloss = c(2).multiply(x().subtract(y())).get();
+		Evaluable<PackedCollection<?>> loss = x().subtract(y()).pow(2.0).get();
 
 		CompiledModel runner = model.compile();
 
-		int epochs = 1000;
-		int steps = 100;
+		int epochs = 100;
+		int steps = 1000;
 
-		try (CSVReceptor<PackedCollection<?>> receptor = new CSVReceptor<>(new FileOutputStream("results/training_loss.csv"), 100)) {
+		try (CSVReceptor<PackedCollection<?>> receptor = new CSVReceptor<>(new FileOutputStream("results/training_loss.csv"), steps)) {
 			for (int i = 0; i < epochs * steps; i++) {
 				PackedCollection<?> input = new PackedCollection<>(shape(inChannels));
 				input.fill(pos -> Math.random());
 
+				PackedCollection<?> valid = func3.apply(input);
 				PackedCollection<?> out = runner.forward(input);
-				PackedCollection<?> grad = dloss.evaluate(out, func.apply(out));
-				PackedCollection<?> l = loss.evaluate(out, func.apply(out));
+				PackedCollection<?> grad = dloss.evaluate(out, valid);
+				PackedCollection<?> l = loss.evaluate(out, valid);
 
 				if (i % steps == 0) {
 					System.out.println("Loss = " + l.toDouble(0));

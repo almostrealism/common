@@ -23,7 +23,6 @@ import org.almostrealism.geometry.Intersection;
 import org.almostrealism.algebra.Pair;
 import org.almostrealism.geometry.Ray;
 import org.almostrealism.hardware.KernelizedOperation;
-import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryData;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.geometry.computations.RankedChoiceEvaluable;
@@ -56,11 +55,11 @@ public class MeshData extends PackedCollection<PackedCollection<?>> {
 		return out.get(0);
 	}
 
-	public void evaluateIntersectionKernelScalar(KernelizedEvaluable<Ray> ray, PackedCollection<Scalar> destination, MemoryData args[]) {
+	public void evaluateIntersectionKernelScalar(Evaluable<Ray> ray, PackedCollection<Scalar> destination, MemoryData args[]) {
 		PackedCollection<Pair<?>> result = Pair.bank(destination.getCount());
 		evaluateIntersectionKernel(ray, result, args);
 		for (int i = 0; i < result.getCount(); i++) {
-			destination.get(i).setMem(new double[] { result.get(i).getA(), 1.0 });
+			destination.get(i).setMem(result.get(i).getA(), 1.0);
 		}
 	}
 

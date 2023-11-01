@@ -17,6 +17,7 @@
 package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -73,7 +74,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 
 			Producer<PackedCollection<?>> repeatedTimeline = c(p(timeline)).traverse(0).expand(5, v -> v.repeat(5));
 
-			KernelizedEvaluable<PackedCollection<?>> ev = multiply(traverseEach(repeated), traverseEach(repeatedTimeline)).get();
+			Evaluable<PackedCollection<?>> ev = multiply(traverseEach(repeated), traverseEach(repeatedTimeline)).get();
 			PackedCollection<?> destination = ev.evaluate();
 			System.out.println(destination.getShape());
 			System.out.println(Arrays.toString(destination.toArray(0, 10)));
@@ -269,7 +270,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 
 		Supplier<CollectionProducer<PackedCollection<?>>> product =
 				() -> traverse(1, p(input))
-						.expand(w, v -> v.repeat(w).multiply(p(filter)))
+						.expand(w, v -> v.repeat(w).each().multiply(p(filter)))
 						.traverse()
 						.reduce(v -> v.sum());
 
@@ -530,7 +531,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 						.enumerate(1, w, s)
 						.traverse(2)
 						.expand(2, v ->
-								v.repeat(2).multiply(p(filter)));
+								v.repeat(2).each().multiply(p(filter)));
 				System.out.println(conv.getShape());
 
 				PackedCollection<?> output = conv.get().evaluate();
@@ -592,7 +593,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 					.enumerate(1, w, s)
 					.enumerate(1, w, s)
 					.traverse(2)
-					.expand(n, v -> v.repeat(n).multiply(p(filter)))
+					.expand(n, v -> v.repeat(n).each().multiply(p(filter)))
 					.traverse()
 					.reduce(v -> v.sum());
 			System.out.println(conv.getShape());

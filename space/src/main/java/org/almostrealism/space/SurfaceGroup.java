@@ -120,7 +120,7 @@ public class SurfaceGroup<T extends ShadableSurface> extends AbstractSurface imp
 	}
 
 	@Override
-	public Stream<T> all() { return surfaces.stream(); }
+	public Stream<T> children() { return surfaces.stream(); }
 
 	public Iterator<T> iterator() { return surfaces.iterator(); }
 	

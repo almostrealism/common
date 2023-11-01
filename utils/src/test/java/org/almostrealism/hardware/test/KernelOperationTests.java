@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware.test;
 
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.test.KernelAssertions;
@@ -166,7 +167,7 @@ public class KernelOperationTests implements TestFeatures, KernelAssertions {
 
 		PackedCollection<?> destination = new PackedCollection<>(shape(5, 10));
 
-		KernelizedEvaluable<PackedCollection<?>> ev = c(p(params)).traverseEach().map(v -> v.multiply(traverseEach(p(timeline)))).get();
+		Evaluable<PackedCollection<?>> ev = c(p(params)).traverseEach().map(v -> v.multiply(traverseEach(p(timeline)))).get();
 		ev.into(destination.traverseEach()).evaluate();
 		System.out.println(Arrays.toString(destination.toArray(20, 10)));
 	}
@@ -196,7 +197,7 @@ public class KernelOperationTests implements TestFeatures, KernelAssertions {
 						.enumerate(1, w, s)
 						.enumerate(1, w, s)
 						.traverse(2)
-						.expand(n, v -> v.repeat(n).multiply(p(filter)))
+						.expand(n, v -> v.repeat(n).each().multiply(p(filter)))
 						.traverse()
 						.reduce(v -> v.sum());
 				System.out.println(conv.getShape());

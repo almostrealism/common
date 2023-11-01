@@ -43,6 +43,7 @@ public class GradientPropagation implements Propagation, CodeFeatures {
 										Producer<PackedCollection<?>> input,
 										Receptor<PackedCollection<?>> next) {
 		CollectionProducer<PackedCollection<?>> function = (CollectionProducer<PackedCollection<?>>) operator.getResultant(input);
+		PackedCollection<?> deltaOut = new PackedCollection<>(shape(input));
 		PackedCollection<?> gradOut = new PackedCollection<>(shape(input));
 
 		Producer<PackedCollection<?>> deltaOutDeltaIn = function.delta(input);
@@ -53,10 +54,14 @@ public class GradientPropagation implements Propagation, CodeFeatures {
 
 		op.add(() -> {
 			Evaluable<PackedCollection<?>> grad = deltaOutDeltaIn.get();
+			Evaluable<PackedCollection<?>> dOut = deltaOutDeltaWeight.get();
 			Evaluable<PackedCollection<?>> wUp = weightUpdate.get();
+			Evaluable<PackedCollection<?>> inputGrad = gradient.get();
 
 			return () -> {
+				inputGrad.evaluate();
 				grad.into(gradOut).evaluate();
+				dOut.into(deltaOut).evaluate();
 				wUp.into(weights[0].get().evaluate()).evaluate();
 			};
 		});

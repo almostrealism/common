@@ -75,7 +75,7 @@ public class MemoryDataDestination<T extends MemoryData> extends DynamicProducer
 			}
 
 			@Override
-			public Evaluable<T> withDestination(MemoryBank<T> destination) {
+			public Evaluable<T> withDestination(MemoryBank destination) {
 				return args -> (T) destination;
 			}
 

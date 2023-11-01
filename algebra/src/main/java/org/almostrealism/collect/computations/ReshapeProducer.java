@@ -30,6 +30,7 @@ import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.hardware.KernelSupport;
+import org.almostrealism.hardware.computations.HardwareEvaluable;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -39,6 +40,8 @@ public class ReshapeProducer<T extends Shape<T>>
 		implements CollectionProducer<T>, TraversableExpression<Double>,
 					ParallelProcess<Process<?, ?>, Evaluable<? extends T>>,
 					ScopeLifecycle, KernelSupport {
+	public static boolean enableHardwareEvaluable = true;
+
 	private TraversalPolicy shape;
 	private int traversalAxis;
 	private Producer<T> producer;
@@ -157,23 +160,37 @@ public class ReshapeProducer<T extends Shape<T>>
 
 	@Override
 	public Evaluable<T> get() {
-		return new Evaluable<T>() {
-			private Evaluable<T> eval;
-
-			@Override
-			public T evaluate(Object... args) {
-				if (eval == null) {
-					eval = producer.get();
-				}
-
-				Shape out = eval.evaluate(args);
+		if (enableHardwareEvaluable) {
+			HardwareEvaluable<T> ev = new HardwareEvaluable<T>(producer::get, null, null, false);
+			ev.setShortCircuit(args -> {
+				Shape out = ev.getKernel().evaluate(args);
 
 				if (shape == null) {
-					return eval.evaluate(args).reshape(out.getShape().traverse(traversalAxis));
+					return ev.getKernel().evaluate(args).reshape(out.getShape().traverse(traversalAxis));
 				} else {
-					return eval.evaluate(args).reshape(shape);
+					return ev.getKernel().evaluate(args).reshape(shape);
 				}
-			}
-		};
+			});
+			return ev;
+		} else {
+			return new Evaluable<T>() {
+				private Evaluable<T> eval;
+
+				@Override
+				public T evaluate(Object... args) {
+					if (eval == null) {
+						eval = producer.get();
+					}
+
+					Shape out = eval.evaluate(args);
+
+					if (shape == null) {
+						return eval.evaluate(args).reshape(out.getShape().traverse(traversalAxis));
+					} else {
+						return eval.evaluate(args).reshape(shape);
+					}
+				}
+			};
+		}
 	}
 }

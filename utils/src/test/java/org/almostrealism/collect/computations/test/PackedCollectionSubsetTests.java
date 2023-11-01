@@ -31,6 +31,7 @@ import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.ArrayVariableComputation;
+import org.almostrealism.collect.computations.PackedCollectionRepeat;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.KernelSupport;
 import org.almostrealism.hardware.KernelizedEvaluable;
@@ -583,25 +584,33 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 		PackedCollection<?> weights = new PackedCollection<>(shape(size, nodes));
 		weights.fill(pos -> Math.random());
 
-		Supplier<Producer<PackedCollection<?>>> dense =
-				() -> c(p(input)).repeat(nodes).traverse(1).sum();
+		boolean traverseEach = PackedCollectionRepeat.enableTraverseEach;
 
-		Consumer<PackedCollection<?>> valid = output -> {
-			for (int i = 0; i < nodes; i++) {
-				double expected = 0;
+		try {
+			PackedCollectionRepeat.enableTraverseEach = true;
 
-				for (int x = 0; x < size; x++) {
-					expected += input.valueAt(x);
+			Supplier<Producer<PackedCollection<?>>> dense =
+					() -> cp(input).repeat(nodes).each().traverse(1).sum();
+
+			Consumer<PackedCollection<?>> valid = output -> {
+				for (int i = 0; i < nodes; i++) {
+					double expected = 0;
+
+					for (int x = 0; x < size; x++) {
+						expected += input.valueAt(x);
+					}
+
+					double actual = output.valueAt(i);
+
+					System.out.println("PackedCollectionSubsetTests: [" + i + "] " + expected + " vs " + actual);
+					Assert.assertEquals(expected, actual, 0.0001);
 				}
+			};
 
-				double actual = output.valueAt(i);
-
-				System.out.println("PackedCollectionSubsetTests: [" + i + "] " + expected + " vs " + actual);
-				Assert.assertEquals(expected, actual, 0.0001);
-			}
-		};
-
-		kernelTest(dense, valid);
+			kernelTest(dense, valid);
+		} finally {
+			PackedCollectionRepeat.enableTraverseEach = traverseEach;
+		}
 	}
 
 	@Test
@@ -756,7 +765,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 
 		CollectionProducerComputation<PackedCollection<?>> producer =
 				new ArrayVariableComputation<>(outputShape.traverseEach(), List.of(expression), p(filter), p(input));
-		KernelizedEvaluable<PackedCollection<?>> ev = producer.get();
+		Evaluable<PackedCollection<?>> ev = producer.get();
 
 		PackedCollection<PackedCollection<?>> result = new PackedCollection(outputShape);
 		ev.into(result.traverseEach()).evaluate(filter, input);
@@ -809,7 +818,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 //		CollectionProducerComputation<PackedCollection<?>> producer =
 //				kernel(i -> KernelSupport.kernelIndex(i),
 //						subsetShape, (i, p) -> i.v(0).get(shape(w, h, d), x0, y0, z0).getValue(p), p(input));
-		KernelizedEvaluable<PackedCollection<?>> ev = producer.get();
+		Evaluable<PackedCollection<?>> ev = producer.get();
 
 		PackedCollection<?> result = new PackedCollection(subsetShape);
 		ev.into(result.traverseEach()).evaluate();
@@ -845,7 +854,7 @@ public class PackedCollectionSubsetTests implements TestFeatures {
 							Expression exp = i.v(0).get(shape(size, size), p.l(0), p.l(1)).toList().sum();
 							return exp;
 						}, p(input));
-		KernelizedEvaluable<PackedCollection<?>> ev = producer.get();
+		Evaluable<PackedCollection<?>> ev = producer.get();
 
 		PackedCollection<?> result = new PackedCollection(outputShape);
 		ev.into(result.traverseEach()).evaluate();

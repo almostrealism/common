@@ -18,6 +18,7 @@ package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Sum;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.ArrayVariable;
@@ -151,15 +152,15 @@ public class CollectionComputationTests implements TestFeatures {
 							() -> new Provider<>(a),
 							() -> new Provider<>(b));
 
-			KernelizedEvaluable<PackedCollection<?>> ev = computation.get();
+			Evaluable<PackedCollection<?>> ev = computation.get();
 
 			PackedCollection out = ev.evaluate();
 			assertEquals(8.0, out.toArray(0, 1)[0]);
 
 			if (a.getMem().getProvider() == Hardware.getLocalHardware().getDataContext().getKernelMemoryProvider()) {
-				Assert.assertEquals(3, ev.getArgsCount());
+				Assert.assertEquals(3, ((KernelizedEvaluable) ev).getArgsCount());
 			} else {
-				Assert.assertEquals(2, ev.getArgsCount());
+				Assert.assertEquals(2, ((KernelizedEvaluable) ev).getArgsCount());
 			}
 		});
 	}
@@ -196,7 +197,7 @@ public class CollectionComputationTests implements TestFeatures {
 
 		PackedCollection<?> destination = new PackedCollection<>(shape(10), 1);
 
-		KernelizedEvaluable<PackedCollection<?>> ev = multiply(c(2), c(p(timeline))).get();
+		Evaluable<PackedCollection<?>> ev = multiply(c(2), c(p(timeline))).get();
 		ev.into(destination.traverseEach()).evaluate();
 		System.out.println(Arrays.toString(destination.toArray(0, 10)));
 		assertEquals(6.0, destination.toDouble(2));
@@ -215,7 +216,7 @@ public class CollectionComputationTests implements TestFeatures {
 
 		PackedCollection<?> destination = new PackedCollection<>(shape(10), 1);
 
-		KernelizedEvaluable<PackedCollection<?>> ev = multiply(c(2), c(timeline.getShape(), args -> timeline)).get();
+		Evaluable<PackedCollection<?>> ev = multiply(c(2), c(timeline.getShape(), args -> timeline)).get();
 		ev.into(destination.traverseEach()).evaluate();
 		System.out.println(Arrays.toString(destination.toArray(0, 10)));
 		assertEquals(6.0, destination.toDouble(2));

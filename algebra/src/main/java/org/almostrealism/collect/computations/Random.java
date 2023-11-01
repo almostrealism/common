@@ -58,7 +58,7 @@ public class Random implements Producer<PackedCollection<?>>, Shape<Producer<Pac
 			}
 
 			@Override
-			public Evaluable<PackedCollection<?>> withDestination(MemoryBank<PackedCollection<?>> destination) {
+			public Evaluable<PackedCollection<?>> withDestination(MemoryBank destination) {
 				return args -> {
 					destination.setMem(IntStream.range(0, getShape().getTotalSize())
 							.mapToDouble(i -> normal ? random.nextGaussian() : random.nextDouble())

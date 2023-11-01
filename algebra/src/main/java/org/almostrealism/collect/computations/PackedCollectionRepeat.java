@@ -32,6 +32,8 @@ import java.util.function.Supplier;
 
 public class PackedCollectionRepeat<T extends PackedCollection<?>>
 		extends KernelProducerComputationAdapter<PackedCollection<?>, T> {
+	public static boolean enableTraverseEach = false;
+
 	private TraversalPolicy subsetShape;
 	private TraversalPolicy sliceShape;
 
@@ -40,7 +42,10 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 	}
 
 	public PackedCollectionRepeat(TraversalPolicy shape, int repeat, Producer<?> collection) {
-		super(shape(collection).replace(shape.prependDimension(repeat)).traverseEach(), (Supplier) collection);
+		super(enableTraverseEach ?
+					shape(collection).replace(shape.prependDimension(repeat)).traverseEach() :
+					shape(collection).replace(shape.prependDimension(repeat)).traverse(),
+				(Supplier) collection);
 		this.subsetShape = shape.getDimensions() == 0 ? shape(1) : shape;
 		this.sliceShape = subsetShape.prependDimension(repeat);
 	}
@@ -54,6 +59,11 @@ public class PackedCollectionRepeat<T extends PackedCollection<?>>
 
 	@Override
 	public int getMemLength() { return 1; }
+
+	@Override
+	public int getCount() {
+		return getShape().traverseEach().getCount();
+	}
 
 	protected Expression offsetForIndex(Expression index) {
 		// Identify the slice

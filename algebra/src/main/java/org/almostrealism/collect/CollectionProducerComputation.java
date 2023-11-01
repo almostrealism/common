@@ -16,7 +16,6 @@
 
 package org.almostrealism.collect;
 
-import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.collect.CollectionProducerBase;
@@ -29,10 +28,7 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.computations.DefaultCollectionEvaluable;
 import org.almostrealism.collect.computations.ReshapeProducer;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
-import org.almostrealism.hardware.DestinationEvaluable;
 import org.almostrealism.hardware.Hardware;
-import org.almostrealism.hardware.KernelizedEvaluable;
-import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.mem.MemoryDataAdapter;
 
@@ -74,7 +70,7 @@ public interface CollectionProducerComputation<T extends PackedCollection<?>> ex
 	}
 
 	@Override
-	default KernelizedEvaluable<T> get() {
+	default Evaluable<T> get() {
 		ComputeContext<MemoryData> ctx = Hardware.getLocalHardware().getComputer().getContext(this);
 		AcceleratedComputationEvaluable<T> ev = new DefaultCollectionEvaluable<>(ctx, getShape(), this, this::postProcessOutput);
 		ev.compile();

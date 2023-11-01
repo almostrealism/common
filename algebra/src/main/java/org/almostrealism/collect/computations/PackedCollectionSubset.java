@@ -79,7 +79,7 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 
 	// TODO  This custom destination creation should not be necessary
 	@Override
-	protected MemoryBank<?> createKernelDestination(int len) {
+	protected MemoryBank<?> createDestination(int len) {
 		if (len != getShape().getTotalSize())
 			throw new IllegalArgumentException("Subset kernel size must match subset shape (" + getShape().getTotalSize() + ")");
 

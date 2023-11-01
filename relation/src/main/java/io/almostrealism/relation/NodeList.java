@@ -21,7 +21,7 @@ import java.util.function.Consumer;
 import java.util.stream.Stream;
 
 public interface NodeList<T extends Node> extends NodeGroup<T>, List<T> {
-	default Stream<T> all() {
+	default Stream<T> children() {
 		return List.super.stream();
 	}
 }

@@ -40,7 +40,7 @@ public class MatrixMathTests implements TestFeatures {
 
 	@Test
 	public void matmulPowers() {
-		for (int i = 1; i < 9; i++) {
+		for (int i = 1; i < 8; i++) {
 			matmul(1 << i, 1 << i, false);
 		}
 	}

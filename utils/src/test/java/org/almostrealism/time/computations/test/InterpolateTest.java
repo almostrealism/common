@@ -17,6 +17,7 @@
 package org.almostrealism.time.computations.test;
 
 import io.almostrealism.expression.Sum;
+import io.almostrealism.relation.Evaluable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.PassThroughProducer;
@@ -125,7 +126,7 @@ public class InterpolateTest implements TestFeatures {
 				v -> new Sum(v, e(-1.0)));
 		PackedCollection<?> dest = new PackedCollection(shape(4, 1));
 
-		KernelizedEvaluable<?> eval = interpolate.get();
+		Evaluable<?> eval = interpolate.get();
 		eval.into(dest.traverse(1)).evaluate(series.traverse(0), cursor.traverse(1), rate.traverse(0));
 
 		System.out.println(Arrays.toString(dest.toArray(0, 4)));

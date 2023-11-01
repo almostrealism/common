@@ -27,18 +27,16 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
 import io.almostrealism.scope.ArrayVariable;
-import io.almostrealism.uml.Multiple;
 import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.ComputerFeatures;
-import org.almostrealism.hardware.DestinationEvaluable;
 import org.almostrealism.hardware.DestinationSupport;
-import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryDataComputation;
 import org.almostrealism.hardware.ProducerCache;
+import org.almostrealism.hardware.computations.HardwareEvaluable;
 import org.almostrealism.hardware.mem.MemoryDataDestination;
 
 import java.util.function.BiFunction;
@@ -65,7 +63,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 
 		this.shape = outputShape;
 		this.destination = () -> PackedCollection.factory().apply(shape.getTotalSize()).reshape(shape);
-		this.setInputs(CollectionUtils.include(new Supplier[0], new MemoryDataDestination(this, this::createKernelDestination), arguments));
+		this.setInputs(CollectionUtils.include(new Supplier[0], new MemoryDataDestination(this, this::createDestination), arguments));
 		init();
 	}
 
@@ -73,7 +71,7 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		this.shape = shape;
 	}
 
-	protected MemoryBank<?> createKernelDestination(int len) {
+	protected MemoryBank<?> createDestination(int len) {
 		int count = len / getShape().getCount();
 
 		TraversalPolicy shape;
@@ -164,46 +162,16 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	}
 
 	@Override
-	public KernelizedEvaluable<O> get() {
-		Supplier<KernelizedEvaluable<O>> get = () -> CollectionProducerComputation.super.get();
-
-		return new KernelizedEvaluable<O>() {
-			KernelizedEvaluable<O> kernel;
-
-			private KernelizedEvaluable<O> getKernel() {
-				if (kernel == null) {
-					kernel = get.get();
+	public Evaluable<O> get() {
+		HardwareEvaluable ev = new HardwareEvaluable<>(() -> CollectionProducerComputation.super.get(), null, shortCircuit, true);
+		ev.setDestinationValidation(destination -> {
+			if (destination instanceof Shape) {
+				if (getShape().getSize() > 1 && ((Shape) destination).getShape().getSize() != getShape().getSize()) {
+					throw new IllegalArgumentException();
 				}
-
-				return kernel;
 			}
-
-			@Override
-			public Multiple<O> createDestination(int size) {
-				return getKernel().createDestination(size);
-			}
-
-			@Override
-			public O evaluate(Object... args) {
-				return shortCircuit == null ? getKernel().evaluate(args) : shortCircuit.evaluate(args);
-			}
-
-			@Override
-			public Evaluable<O> withDestination(MemoryBank<O> destination) {
-				if (destination instanceof Shape) {
-					if (getShape().getSize() > 1 && ((Shape) destination).getShape().getSize() != getShape().getSize()) {
-						throw new IllegalArgumentException();
-					}
-				}
-
-				return new DestinationEvaluable<>(getKernel(), destination);
-			}
-
-			@Override
-			public int getArgsCount() {
-				return getKernel().getArgsCount();
-			}
-		};
+		});
+		return ev;
 	}
 
 	@Override

@@ -127,10 +127,10 @@ public class MeshIntersectionTest implements TestFeatures {
 							TriangleIntersectAt.q(abc(data1), s));
 		System.out.println("v = " + v.get().evaluate().getValue());
 
-		KernelizedEvaluable<Vector> ho = h.get();
+		KernelizedEvaluable<Vector> ho = (KernelizedEvaluable) h.get();
 		if (enableArgumentCountAssertions) Assert.assertEquals(1, ho.getArgsCount());
 
-		KernelizedEvaluable<Scalar> fo = f.get();
+		KernelizedEvaluable<Scalar> fo = (KernelizedEvaluable) f.get();
 		if (enableArgumentCountAssertions) Assert.assertEquals(1, fo.getArgsCount());
 
 		KernelizedEvaluable<Scalar> uo = (KernelizedEvaluable<Scalar>) u.get();
@@ -145,7 +145,7 @@ public class MeshIntersectionTest implements TestFeatures {
 				lessThan(u, v(1.0), true),
 				greaterThan(v, v(0.0), true),
 				lessThan(add(u, v), v(1.0), true));
-		KernelizedEvaluable<Scalar> evs = acs.get();
+		KernelizedEvaluable<Scalar> evs = (KernelizedEvaluable) acs.get();
 		if (enableArgumentCountAssertions) Assert.assertEquals(1, evs.getArgsCount());
 	}
 

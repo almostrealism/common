@@ -59,7 +59,7 @@ public class CollectionKernelTests implements TestFeatures {
 
 		CLOperator.verboseLog(() -> {
 			CollectionProducerComputation<PackedCollection<?>> c = relativeMultiply(shape(2, 5).traverse(1), a.traverse(1), b.traverse(0), null);
-			KernelizedEvaluable<PackedCollection<?>> eval = c.get();
+			Evaluable<PackedCollection<?>> eval = c.get();
 			PackedCollection<?> out = eval.evaluate();
 
 			System.out.println("CollectionKernelTests.divide: Out shape = " + out.getShape());
