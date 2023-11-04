@@ -16,6 +16,7 @@
 
 package org.almostrealism.layers;
 
+import io.almostrealism.relation.Nameable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
@@ -25,17 +26,25 @@ import org.almostrealism.hardware.OperationList;
 
 import java.util.function.Supplier;
 
-public class PropagationCell implements Cell<PackedCollection<?>>, Learning, CodeFeatures {
+public class PropagationCell implements Cell<PackedCollection<?>>, Learning, Nameable, CodeFeatures {
+	private String name;
+
 	private final Propagation propagation;
 	private PackedCollection<?> input;
 
 	private Producer<PackedCollection<?>> learningRate;
-
 	private Receptor<PackedCollection<?>> next;
 
-	public PropagationCell(Propagation propagation) {
+	public PropagationCell(String name, Propagation propagation) {
+		setName(name);
 		this.propagation = propagation;
 	}
+
+	@Override
+	public String getName() { return name; }
+
+	@Override
+	public void setName(String name) { this.name = name; }
 
 	@Override
 	public Supplier<Runnable> setup() { return new OperationList(); }

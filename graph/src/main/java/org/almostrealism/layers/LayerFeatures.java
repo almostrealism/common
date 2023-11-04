@@ -77,7 +77,7 @@ public interface LayerFeatures extends MatrixFeatures {
 								Cell<PackedCollection<?>> forward, Propagation backward,
 								List<PackedCollection<?>> weights, Supplier<Runnable> setup,
 								ComputeRequirement... requirements) {
-		PropagationCell backwardCell = new PropagationCell(backward);
+		PropagationCell backwardCell = new PropagationCell(name, backward);
 		DefaultCellularLayer layer = new DefaultCellularLayer(name, outputShape, forward, backwardCell, weights, setup);
 		if (requirements.length > 0) layer.setComputeRequirements(List.of(requirements));
 
