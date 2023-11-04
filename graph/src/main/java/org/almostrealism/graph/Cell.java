@@ -29,6 +29,10 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 
 public interface Cell<T> extends Transmitter<T>, Receptor<T>, Cellular {
+	default Supplier<Runnable> setup() {
+		return new OperationList();
+	}
+
 	default CellularTemporalFactor<T> toFactor(Supplier<T> value, Function<Producer<T>, Receptor<T>> assignment) {
 		return toFactor(this, value, assignment);
 	}
