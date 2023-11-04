@@ -146,6 +146,10 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 		return max((Producer) this);
 	}
 
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> sum(int axis) {
+		return sum(traverse(axis, (Producer) this));
+	}
+
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> sum() {
 		return sum((Producer) this);
 	}
