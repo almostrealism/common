@@ -21,7 +21,6 @@ import io.almostrealism.uml.Multiple;
 import org.almostrealism.hardware.DestinationEvaluable;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
-import org.almostrealism.hardware.MemoryData;
 
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
