@@ -1,22 +1,27 @@
 <a name="readme-top"></a>
 
-[![Contributors][contributors-shield]][contributors-url]
 [![Stargazers][stars-shield]][stars-url]
 [![Issues][issues-shield]][issues-url]
 [![Apache License][license-shield]][license-url]
-[![LinkedIn][linkedin-shield]][linkedin-url]
-
 
 <h3 align="center">Almost Realism Scientific Computing and Machine Learning Libraries</h3>
+<h5 align="center">Tools for high-performance scientific computing, generative art, and machine learning in Java
+with pluggable native acceleration.</h5>
 
   <p align="center">
-    Tools for high-performance scientific computing, generative art, and machine learning in Java
-    with pluggable native acceleration (currently implemented with OpenCL and Metal, though other
-    backend acceleration libraries to follow in 2024).
+    Currently supporting OpenCL (X86/ARM) and Metal (Aarch64), CUDA support in progress.
     <br />
     <a href="https://github.com/almostrealism/common/issues">Report Bug</a>
     ·
     <a href="https://github.com/almostrealism/common/issues">Request Feature</a>
+  </p>
+
+  <p align="right">
+    <i>If you are interested in a part-time, paid position, developing common ML model architectures as part of
+    our ongoing project to increase the stability and performance of this framework - please email
+    <a href="https://twitter.com/ashesfall">michael</a> @ almostrealism.com</i>
+    <br>
+    <img src="https://img.shields.io/github/contributors/almostrealism/common.svg?style=for-the-badge"/>
   </p>
 
 ### What does this do?
@@ -373,13 +378,13 @@ limitations under the License.
 
 Michael Murray - [@ashesfall](https://twitter.com/ashesfall) - michael@almostrealism.com
 
-Project Link: [https://github.com/almostrealism/common](https://github.com/almostrealism/common)
+[![LinkedIn][linkedin-shield]][linkedin-url]
+
+Original Project Link: [https://github.com/almostrealism/common](https://github.com/almostrealism/common)
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 
-<!-- MARKDOWN LINKS & IMAGES -->
-<!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
 [contributors-shield]: https://img.shields.io/github/contributors/almostrealism/common.svg?style=for-the-badge
 [contributors-url]: https://github.com/almostrealism/common/graphs/contributors
 [forks-shield]: https://img.shields.io/github/forks/almostrealism/common.svg?style=for-the-badge
