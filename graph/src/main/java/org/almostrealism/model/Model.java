@@ -44,7 +44,7 @@ public class Model implements Setup, CodeFeatures {
 	}
 
 	public Model(TraversalPolicy shape) {
-		this(shape, 1e-4);
+		this(shape, 1e-5);
 	}
 
 	public Model(TraversalPolicy shape, double learningRate) {
