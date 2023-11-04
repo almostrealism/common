@@ -24,6 +24,10 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 	private Receptor<PackedCollection<?>> push;
 	private Receptor<PackedCollection<?>> downstream;
 
+	private Cell<PackedCollection<?>> propagate;
+	private Receptor<PackedCollection<?>> back;
+	private Receptor<PackedCollection<?>> upstream;
+
 	private List<Receptor<PackedCollection<?>>> receptors;
 
 	public SequentialBlock(TraversalPolicy inputShape) {
@@ -35,6 +39,12 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 			OperationList op = new OperationList();
 			receptors.forEach(r -> op.add(r.push(in)));
 			if (downstream != null) op.add(downstream.push(in));
+			return op;
+		};
+
+		this.back = in -> {
+			OperationList op = new OperationList();
+			if (upstream != null) op.add(upstream.push(in));
 			return op;
 		};
 	}
@@ -52,7 +62,12 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 			throw new IllegalArgumentException();
 
 		Block last = lastBlock();
-		if (last != null) last.getForward().setReceptor(block.getForward());
+		if (last != null) {
+			last.getForward().setReceptor(block.getForward());
+			block.getBackward().setReceptor(last.getBackward());
+		} else {
+			block.getBackward().setReceptor(back);
+		}
 
 		blocks.add(block);
 		lastBlock().getForward().setReceptor(push);
@@ -111,6 +126,10 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 		return blocks.isEmpty() ? getInputShape() : lastBlock().getOutputShape();
 	}
 
+	public Block firstBlock() {
+		return blocks.isEmpty() ? null : blocks.get(0);
+	}
+
 	public Block lastBlock() {
 		return blocks.isEmpty() ? null : blocks.get(blocks.size() - 1);
 	}
@@ -120,13 +139,8 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 		if (entry == null) {
 			entry = new Cell<>() {
 				@Override
-				public Supplier<Runnable> setup() {
-					return new OperationList();
-				}
-
-				@Override
 				public Supplier<Runnable> push(Producer<PackedCollection<?>> in) {
-					return blocks.get(0).getForward().push(in);
+					return firstBlock().getForward().push(in);
 				}
 
 				@Override
@@ -141,7 +155,21 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 
 	@Override
 	public Cell<PackedCollection<?>> getBackward() {
-		return lastBlock().getBackward();
+		if (propagate == null) {
+			propagate = new Cell<>() {
+				@Override
+				public Supplier<Runnable> push(Producer<PackedCollection<?>> in) {
+					return lastBlock().getBackward().push(in);
+				}
+
+				@Override
+				public void setReceptor(Receptor<PackedCollection<?>> r) {
+					SequentialBlock.this.upstream = r;
+				}
+			};
+		}
+
+		return propagate;
 	}
 
 	@Override
