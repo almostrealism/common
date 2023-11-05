@@ -16,6 +16,7 @@
 
 package org.almostrealism.layers;
 
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
@@ -42,13 +43,19 @@ public class GradientPropagation implements Propagation, CodeFeatures {
 										Producer<PackedCollection<?>> gradient,
 										Producer<PackedCollection<?>> input,
 										Receptor<PackedCollection<?>> next) {
+		TraversalPolicy shape = shape(input);
+
 		CollectionProducer<PackedCollection<?>> function = (CollectionProducer<PackedCollection<?>>) operator.getResultant(input);
-		PackedCollection<?> deltaOut = new PackedCollection<>(shape(input));
-		PackedCollection<?> gradOut = new PackedCollection<>(shape(input));
+		PackedCollection<?> gradIn = new PackedCollection<>(shape(gradient));
+		PackedCollection<?> deltaOut = new PackedCollection<>(shape);
+		PackedCollection<?> gradOut = new PackedCollection<>(shape);
+		PackedCollection<?> wOut = new PackedCollection<>(shape);
 
 		Producer<PackedCollection<?>> deltaOutDeltaIn = function.delta(input);
 		Producer<PackedCollection<?>> deltaOutDeltaWeight = function.delta(weights[0]).traverse(2);
 		Producer<PackedCollection<?>> weightUpdate = c(weights[0]).subtract(multiply(learningRate, gradient).multiply(deltaOutDeltaWeight));
+		Supplier<Runnable> weightUpdateAssignment = a(traverseEach(weights[0]),
+				c(weights[0]).each().subtract(multiply(learningRate, gradient).multiply(deltaOutDeltaWeight)));
 
 		OperationList op = new OperationList("Gradient Propagation");
 
@@ -57,12 +64,28 @@ public class GradientPropagation implements Propagation, CodeFeatures {
 			Evaluable<PackedCollection<?>> dOut = deltaOutDeltaWeight.get();
 			Evaluable<PackedCollection<?>> wUp = weightUpdate.get();
 			Evaluable<PackedCollection<?>> inputGrad = gradient.get();
+			Evaluable<PackedCollection<?>> w = weights[0].get();
+			Runnable wua = weightUpdateAssignment.get();
 
 			return () -> {
-				inputGrad.evaluate();
+				inputGrad.into(gradIn).evaluate();
 				grad.into(gradOut).evaluate();
 				dOut.into(deltaOut).evaluate();
-				wUp.into(weights[0].get().evaluate()).evaluate();
+				w.into(wOut).evaluate();
+
+//				System.out.println("GradientPropagation: Input Gradient = " + gradIn.toDouble(0));
+
+//				for (int i = 0; i < shape.getTotalSize(); i++) {
+//					System.out.println("\tw" + i + " -> dO/dW = " +
+//							deltaOut.toDouble(i) + ", original w" + i + " = " + wOut.toDouble(i));
+//				}
+
+				wua.run();
+				w.into(wOut).evaluate();
+
+//				for (int i = 0; i < shape.getTotalSize(); i++) {
+//					System.out.println("\tw" + i + " = " + wOut.toDouble(i));
+//				}
 			};
 		});
 		if (next != null) op.add(next.push(p(gradOut)));
