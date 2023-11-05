@@ -33,8 +33,8 @@ import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.DynamicProducer;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Named;
-import io.almostrealism.relation.Nameable;
+import io.almostrealism.uml.Named;
+import io.almostrealism.uml.Nameable;
 import io.almostrealism.relation.Sortable;
 
 import java.util.ArrayList;

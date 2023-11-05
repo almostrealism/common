@@ -26,7 +26,7 @@ import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.relation.Countable;
-import io.almostrealism.relation.Named;
+import io.almostrealism.uml.Named;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.scope.Scope;

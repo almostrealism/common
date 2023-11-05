@@ -25,7 +25,7 @@ import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Generated;
-import io.almostrealism.relation.Nameable;
+import io.almostrealism.uml.Nameable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.ProducerWithRank;
 import io.almostrealism.relation.Provider;

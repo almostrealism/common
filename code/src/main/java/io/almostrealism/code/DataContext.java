@@ -16,7 +16,7 @@
 
 package io.almostrealism.code;
 
-import io.almostrealism.relation.Named;
+import io.almostrealism.uml.Named;
 
 import java.util.List;
 import java.util.concurrent.Callable;

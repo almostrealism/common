@@ -18,7 +18,7 @@ package io.almostrealism.code;
 
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Named;
+import io.almostrealism.uml.Named;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.Argument;

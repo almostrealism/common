@@ -16,7 +16,7 @@
 
 package org.almostrealism.layers;
 
-import io.almostrealism.relation.Nameable;
+import io.almostrealism.uml.Nameable;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
