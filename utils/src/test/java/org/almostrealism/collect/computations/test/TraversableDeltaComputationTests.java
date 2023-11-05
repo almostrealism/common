@@ -17,11 +17,12 @@
 package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.relation.Evaluable;
-import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.util.TestFeatures;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.Arrays;
@@ -65,12 +66,21 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 
 		// dy = f'(x)
 		//    = w
-		Evaluable<PackedCollection<?>> dy = c.delta(x()).get();
+		Evaluable<PackedCollection<?>> dy = c.delta(x).get();
 		PackedCollection<?> dout = dy.evaluate(v);
-		double d[] = dout.toArray(0, count * dim);
+		double d[] = dout.toArray(0, count * dim * dim);
 		System.out.println(Arrays.toString(d));
-		for (int i = 0; i < count * dim; i++) {
-			assertEquals(d[i], w.toDouble(i % dim));
+
+		for (int i = 0; i < count; i++) {
+			for (int j = 0 ; j < dim; j++) {
+				for (int k = 0; k < dim; k++) {
+					if (j == k) {
+						assertEquals(w.toDouble(j), d[i * dim * dim + j * dim + k]);
+					} else {
+						assertEquals(0.0, d[i * dim * dim + j * dim + k]);
+					}
+				}
+			}
 		}
 	}
 
@@ -98,12 +108,21 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 
 		// dy = f'(x)
 		//    = w
-		Evaluable<PackedCollection<?>> dy = c.delta(x()).get();
+		Evaluable<PackedCollection<?>> dy = c.delta(x).get();
 		PackedCollection<?> dout = dy.evaluate(v);
-		double d[] = dout.toArray(0, count * dim);
+		double d[] = dout.toArray(0, count * dim * dim);
 		System.out.println(Arrays.toString(d));
-		for (int i = 0; i < count * dim; i++) {
-			assertEquals(d[i], w.toDouble(i % dim));
+
+		for (int i = 0; i < count; i++) {
+			for (int j = 0 ; j < dim; j++) {
+				for (int k = 0; k < dim; k++) {
+					if (j == k) {
+						assertEquals(w.toDouble(j), d[i * dim * dim + j * dim + k]);
+					} else {
+						assertEquals(0.0, d[i * dim * dim + j * dim + k]);
+					}
+				}
+			}
 		}
 	}
 
@@ -129,9 +148,82 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 		HardwareOperator.verboseLog(() -> {
 			// dy = f'(x)
 			//    = 2x + w
-			Evaluable<PackedCollection<?>> dy = c.delta(x()).get();
+			Evaluable<PackedCollection<?>> dy = c.delta(x).get();
 			PackedCollection<?> dout = dy.evaluate(v);
 			System.out.println(Arrays.toString(dout.toArray(0, 4 * dim)));
 		});
+	}
+
+	@Test
+	public void matmul1() {
+		int dim = 2;
+
+		PackedCollection<?> v = pack(IntStream.range(2, 2 + dim).boxed()
+										.mapToDouble(Double::valueOf).toArray())
+										.reshape(dim);
+		PackedCollection<?> w = pack(4.0, -3.0, 2.0, 1.5)
+										.reshape(shape(dim, dim));
+
+		// x0 * w0 + x1 * w1,  x0 * w2 + x1 * w3
+		// x0 * 4 + x1 * -3,  x0 * 2 + x1 * 1.5
+		// 2 * 4 + 3 * -3, 2 * 2 + 3 * 1.5
+		CollectionProducer<PackedCollection<?>> c = matmul(p(w), p(v));
+
+		// y = f(x)
+		Evaluable<PackedCollection<?>> y = c.get();
+		PackedCollection<?> out = y.evaluate();
+		System.out.println(Arrays.toString(out.toArray(0, dim)));
+		assertEquals(8.5, out.toDouble(1));
+
+		HardwareOperator.verboseLog(() -> {
+			// dy0/dw = x0, x1, 0,  0
+			// dy1/dw = 0,  0,  x0, x1
+			Evaluable<PackedCollection<?>> dy = c.delta(p(w)).get();
+			PackedCollection<?> dout = dy.evaluate();
+			System.out.println(Arrays.toString(dout.toArray(0, dout.getMemLength())));
+			Assert.assertEquals(dout.getMemLength(), out.getMemLength() * w.getMemLength());
+			assertEquals(0.0, dout.toDouble(5));
+			assertEquals(3.0, dout.toDouble(7));
+		});
+	}
+
+	@Test
+	public void matmul2() {
+		boolean enableArgumentKernelSize = AcceleratedOperation.enableArgumentKernelSize;
+
+		try {
+			AcceleratedOperation.enableArgumentKernelSize = false;
+
+			int count = 1;
+			int dim = 2;
+
+			PackedCollection<?> v = pack(IntStream.range(2, 2 + count * dim).boxed()
+					.mapToDouble(Double::valueOf).toArray())
+					.reshape(count, dim);
+			PackedCollection<?> w = pack(4.0, -3.0, 2.0, 1.5)
+					.reshape(shape(dim, dim));
+
+			// x0 * w0 + x1 * w1,  x0 * w2 + x1 * w3
+			// x0 * 4 + x1 * -3,  x0 * 2 + x1 * 1.5
+			CollectionProducer<PackedCollection<?>> c = matmul(p(w), x(dim));
+
+			// y = f(x)
+			Evaluable<PackedCollection<?>> y = c.get();
+			PackedCollection<?> out = y.evaluate(v);
+			System.out.println(Arrays.toString(out.toArray(0, count * dim)));
+			assertEquals(8.5, out.toDouble(1));
+
+			HardwareOperator.verboseLog(() -> {
+				// dy/dw = x0, x1, 0, 0, 0, 0, x0, x1
+				Evaluable<PackedCollection<?>> dy = c.delta(p(w)).get();
+				PackedCollection<?> dout = dy.evaluate(v);
+				System.out.println(Arrays.toString(dout.toArray(0, dout.getMemLength())));
+				Assert.assertEquals(dout.getMemLength(), out.getMemLength() * w.getMemLength());
+				assertEquals(0.0, dout.toDouble(5));
+				assertEquals(3.0, dout.toDouble(7));
+			});
+		} finally {
+			AcceleratedOperation.enableArgumentKernelSize = enableArgumentKernelSize;
+		}
 	}
 }

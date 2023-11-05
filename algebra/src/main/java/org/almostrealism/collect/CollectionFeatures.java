@@ -87,6 +87,18 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		}
 	}
 
+	default TraversalPolicy shape(TraversableExpression t) {
+		if (t instanceof Shape) {
+			return ((Shape) t).getShape();
+		} else {
+			if (enableShapelessWarning) {
+				System.out.println("WARN: " + t.getClass() + " does not have a Shape");
+			}
+
+			return shape(1);
+		}
+	}
+
 	default int size(Supplier s) {
 		if (s == null) {
 			return -1;
@@ -614,8 +626,8 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		int size = shape.getSize();
 
 		if (KernelPreferences.isEnableSubdivision()) {
-			CollectionProducerComputationBase<T, T> sum = (CollectionProducerComputationBase<T, T>) subdivide(input, this::max);
-			if (sum != null) return sum;
+			CollectionProducerComputationBase<T, T> max = (CollectionProducerComputationBase<T, T>) subdivide(input, this::max);
+			if (max != null) return max;
 		}
 
 		if (KernelPreferences.isPreferLoops()) {
@@ -655,8 +667,10 @@ public interface CollectionFeatures extends ExpressionFeatures {
 					(Supplier) input);
 		} else {
 			return new TraversableExpressionComputation<>(shape.replace(shape(1)),
-					(args, index) ->
-							Sum.of(IntStream.range(0, size).mapToObj(i -> args[1].getValueRelative(e(i))).toArray(Expression[]::new)),
+					(args, index) -> {
+						TraversalPolicy argShape = shape(args[1]);
+						return Sum.of(IntStream.range(0, argShape.getSize()).mapToObj(i -> args[1].getValueRelative(e(i))).toArray(Expression[]::new));
+					},
 					(Supplier) input);
 		}
 	}

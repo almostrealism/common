@@ -32,7 +32,6 @@ import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.PassThroughProducer;
 import org.almostrealism.hardware.mem.MemoryDataDestination;
 
-import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Function;
@@ -88,14 +87,15 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 	}
 
 	public static <T extends PackedCollection<?>> TraversableDeltaComputation<T> create(
-																TraversalPolicy shape,
+																TraversalPolicy deltaShape, TraversalPolicy targetShape,
 														  	 	Function<TraversableExpression[], CollectionExpression> expression,
 															  	Producer<?> target,
 														  		Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		return new TraversableDeltaComputation<>(shape, exp -> expression.apply(exp).delta(matcher(target)), args);
+		return new TraversableDeltaComputation<>(deltaShape.append(targetShape),
+				exp -> expression.apply(exp).delta(targetShape, matcher(target, deltaShape.getCount())), args);
 	}
 
-	private static Function<Expression, Predicate<Expression>> matcher(Producer<?> target) {
+	private static Function<Expression, Predicate<Expression>> matcher(Producer<?> target, int count) {
 		return index -> exp -> {
 			if (!(exp instanceof InstanceReference)) return false;
 
@@ -111,13 +111,21 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 				if (v == null) return false;
 			}
 
-			if (index.kernelValue(0).intValue() ==
-					ref.getIndex().kernelValue(0).intValue()) {
-				return true;
-			}
-
-			return false;
+			// return match(index, ref.getIndex(), count);
+			return true;
 		};
+	}
+
+	private static boolean match(Expression idxA, Expression idxB, int count) {
+		int a[] = idxA.kernelSeq(count);
+		int b[] = idxB.kernelSeq(count);
+
+		for (int i = 0; i < count; i++) {
+			if (a[i] != b[i])
+				return false;
+		}
+
+		return true;
 	}
 
 	private static boolean match(Supplier<?> p, Supplier<?> q) {

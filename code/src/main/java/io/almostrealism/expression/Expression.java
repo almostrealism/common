@@ -16,6 +16,8 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
 import io.almostrealism.relation.Tree;
@@ -32,6 +34,7 @@ import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.Set;
 import java.util.function.Function;
+import java.util.function.IntFunction;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -185,6 +188,8 @@ public abstract class Expression<T> implements Tree<Expression<?>> {
 
 	public Mod mod(Expression<Double> operand) { return new Mod((Expression) this, operand); }
 	public Mod mod(Expression<?> operand, boolean fp) { return new Mod((Expression) this, (Expression) operand, fp); }
+	public Mod<Integer> imod(Expression<Integer> operand) { return mod(operand, false); }
+	public Mod<Integer> imod(int operand) { return imod(new IntegerConstant(operand)); }
 
 	public Sine sin() { return new Sine((Expression) this); }
 	public Cosine cos() { return new Cosine((Expression) this); }
@@ -207,7 +212,7 @@ public abstract class Expression<T> implements Tree<Expression<?>> {
 		return new Cast(Integer.class, "int", this);
 	}
 
-	public Expression delta(Predicate<Expression> target) {
+	public CollectionExpression delta(TraversalPolicy shape, Function<Expression, Predicate<Expression>> target) {
 		throw new UnsupportedOperationException();
 	}
 

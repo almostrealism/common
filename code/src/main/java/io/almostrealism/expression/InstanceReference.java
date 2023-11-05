@@ -17,12 +17,16 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.code.CodePrintWriter;
+import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Variable;
 
 import java.util.List;
 import java.util.function.BiFunction;
+import java.util.function.Function;
 import java.util.function.Predicate;
 
 /**
@@ -31,7 +35,7 @@ import java.util.function.Predicate;
  * encode the data as a {@link String}, but unlike a normal {@link String}
  * {@link Variable} the text does not appear in quotes.
  */
-public class InstanceReference<T> extends Expression<T> {
+public class InstanceReference<T> extends Expression<T> implements ExpressionFeatures {
 	public static BiFunction<String, String, String> dereference = (name, pos) -> name + "[" + pos + "]";
 
 	private Variable<T, ?> var;
@@ -67,12 +71,14 @@ public class InstanceReference<T> extends Expression<T> {
 	}
 
 	@Override
-	public Expression delta(Predicate<Expression> target) {
-		if (target.test(this)) {
-			return new IntegerConstant(1);
-		}
+	public CollectionExpression delta(TraversalPolicy shape, Function<Expression, Predicate<Expression>> target) {
+		return CollectionExpression.create(shape, idx -> {
+			if (!target.apply(idx).test(this)) {
+				return e(0);
+			}
 
-		return new IntegerConstant(0);
+			return conditional(idx.eq(getIndex()), e(1), e(0));
+		});
 	}
 
 	public InstanceReference<T> generate(List<Expression<?>> children) {
@@ -86,7 +92,8 @@ public class InstanceReference<T> extends Expression<T> {
 	public static <T> InstanceReference<T> create(ArrayVariable<T> var, Expression<?> index, boolean dynamic) {
 		Expression<?> pos = index.toInt();
 		if (dynamic) {
-			pos = pos.divide(var.length()).multiply(var.getDimValue()).add(pos.mod(var.length(), false));
+			index = pos.imod(var.length());
+			pos = pos.divide(var.length()).multiply(var.getDimValue()).add(index);
 		}
 
 		String name = dereference.apply(var.getName(), pos.add(var.getOffsetValue()).toInt().getSimpleExpression(var.getLanguage()));

@@ -60,6 +60,7 @@ import java.util.stream.Stream;
 public abstract class AcceleratedOperation<T extends MemoryData> extends OperationAdapter<T> implements Runnable,
 														KernelizedOperation, ScopeLifecycle, ComputerFeatures {
 	public static final boolean enableArgumentMapping = true;
+	public static boolean enableArgumentKernelSize = true;
 	public static boolean enableKernelSizeWarnings = SystemUtils.isEnabled("AR_HARDWARE_KERNEL_SIZE_WARNINGS").orElse(true);
 
 	private static final ThreadLocal<Semaphore> semaphores = new ThreadLocal<>();
@@ -286,6 +287,8 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 		if (!isKernel()) {
 			kernelSize = 1;
+		} else if (!enableArgumentKernelSize && isFixedCount()) {
+			kernelSize = getCount();
 		} else if (output != null) {
 			kernelSize = output.getCount();
 		} else if (args.length > 0 && Stream.of(args).filter(a -> !(a instanceof MemoryData)).findAny().isEmpty()) {

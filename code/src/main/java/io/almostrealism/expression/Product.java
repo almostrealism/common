@@ -16,12 +16,22 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.TraversalPolicy;
+
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 public class Product<T extends Number> extends NAryExpression<T> {
+	public Product(Stream<Expression<? extends Number>> values) {
+		super("*", (Stream) values);
+	}
+
 	public Product(List<Expression<Double>> values) {
 		super((Class<T>) type(values), "*", (List) values);
 	}
@@ -36,28 +46,29 @@ public class Product<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public Expression delta(Predicate<Expression> target) {
+	public CollectionExpression delta(TraversalPolicy shape, Function<Expression, Predicate<Expression>> target) {
 		List<Expression<?>> operands = getChildren();
-		List<Expression<?>> sum = new ArrayList<>();
+		List<CollectionExpression> sum = new ArrayList<>();
 
-		i: for (int i = 0; i < operands.size(); i++) {
-			List<Expression<?>> product = new ArrayList<>();
+
+		for (int i = 0; i < operands.size(); i++) {
+			List<CollectionExpression> product = new ArrayList<>();
 
 			for (int j = 0; j < operands.size(); j++) {
-				Expression<?> op = i == j ? operands.get(j).delta(target) : operands.get(j);
-				if (op.intValue().isPresent() && op.intValue().getAsInt() == 0) continue i;
+				CollectionExpression op = i == j ? operands.get(j).delta(shape, target) : CollectionExpression.create(shape, operands.get(j));
 				product.add(op);
 			}
 
-			sum.add(new Product(product));
+			sum.add(CollectionExpression.product(shape, product.stream()));
 		}
 
+
 		if (sum.isEmpty()) {
-			return new IntegerConstant(0);
+			return CollectionExpression.zeros(shape);
 		} else if (sum.size() == 1) {
 			return sum.get(0);
 		} else {
-			return new Sum(sum);
+			return CollectionExpression.sum(shape, sum.stream());
 		}
 	}
 

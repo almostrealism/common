@@ -28,8 +28,20 @@ public class NAryExpression<T> extends Expression<T> {
 
 	private String operator;
 
+	public NAryExpression(String operator, Stream<Expression<?>> values) {
+		this(operator, values.toArray(Expression[]::new));
+	}
+
+	public NAryExpression(String operator, List<Expression<?>> values) {
+		this((Class) type(values), operator, values.toArray(new Expression[0]));
+	}
+
 	public NAryExpression(Class<T> type, String operator, List<Expression<?>> values) {
 		this(type, operator, values.toArray(new Expression[0]));
+	}
+
+	public NAryExpression(String operator, Expression<?>... values) {
+		this((Class) type(values), operator, validateExpressions(values));
 	}
 
 	public NAryExpression(Class<T> type, String operator, Expression<?>... values) {

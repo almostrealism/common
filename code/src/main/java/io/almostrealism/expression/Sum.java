@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -16,12 +16,21 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.TraversalPolicy;
+
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class Sum<T extends Number> extends NAryExpression<T> {
+	public Sum(Stream<Expression<? extends Number>> values) {
+		super("+", (Stream) values);
+	}
+
 	public Sum(List<Expression<? extends Number>> values) {
 		super((Class<T>) type(values), "+", (List) values);
 	}
@@ -36,10 +45,8 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public Expression delta(Predicate<Expression> target) {
-		return generate((List) getChildren().stream()
-				.map(e -> e.delta(target))
-				.collect(Collectors.toList()));
+	public CollectionExpression delta(TraversalPolicy shape, Function<Expression, Predicate<Expression>> target) {
+		return CollectionExpression.sum(shape, getChildren().stream().map(e -> e.delta(shape, target)));
 	}
 
 	@Override
