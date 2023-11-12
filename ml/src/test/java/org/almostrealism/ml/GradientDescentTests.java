@@ -51,29 +51,14 @@ public class GradientDescentTests implements CodeFeatures {
 
 	@Override
 	public CellularLayer dense(int size, int nodes, boolean bias) {
-//		PackedCollection<?> weights = new PackedCollection<>(shape(size, nodes));
 		PackedCollection<?> weights = new PackedCollection<>(shape(nodes, size));
 		PackedCollection<?> biases = new PackedCollection<>(shape(nodes));
 
+		Factor<PackedCollection<?>> operator = input -> matmul(p(weights), input);
 
-//		Function<Producer<PackedCollection<?>>, CollectionProducer<PackedCollection<?>>> operator =
-//				input -> c(input).repeat(nodes).traverseEach()
-//						.multiply(c(p(weights))
-//								.enumerate(1, 1))
-//						.traverse(1).sum()
-//						.add(p(biases));
-//		Factor<PackedCollection<?>> operator = input ->
-//				c(input).repeat(nodes).each().multiply(cp(weights).each()).sum(1);
-		Factor<PackedCollection<?>> operator = input ->
-				matmul(p(weights), input);
-
-		Propagation backwards = new GradientPropagation(operator, cp(weights), cp(biases));
-
-//		Supplier<Runnable> init = a(p(weights.each()), divide(randn(shape(size, nodes)).each(), c(size).all()));
 		Supplier<Runnable> init = a(p(weights.each()), c(1.0));
-
 		return layer("dense " + size, shape(size), shape(nodes),
-					Cell.of(operator), backwards, List.of(weights, biases), init);
+				operator, List.of(weights, biases), init);
 	}
 
 	@Test

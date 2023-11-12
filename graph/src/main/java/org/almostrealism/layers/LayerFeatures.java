@@ -19,6 +19,7 @@ package org.almostrealism.layers;
 import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.code.ExpressionList;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.MatrixFeatures;
 import org.almostrealism.collect.CollectionOperationList;
@@ -42,6 +43,7 @@ import java.util.function.Supplier;
 
 public interface LayerFeatures extends MatrixFeatures {
 	boolean ioTracking = SystemUtils.isEnabled("AR_GRAPH_IO_TRACKING").orElse(true);
+	boolean enableLegacyDenseLayer = true;
 
 	default CellularLayer layer(String name, TraversalPolicy outputShape,
 								Cell<PackedCollection<?>> forward, Cell<PackedCollection<?>> backward) {
@@ -71,6 +73,15 @@ public interface LayerFeatures extends MatrixFeatures {
 								Cell<PackedCollection<?>> forward, Propagation backward,
 								List<PackedCollection<?>> weights, ComputeRequirement... requirements) {
 		return layer(name, inputShape, outputShape, forward, backward, weights, new OperationList(), requirements);
+	}
+
+	default CellularLayer layer(String name, TraversalPolicy inputShape, TraversalPolicy outputShape,
+								Factor<PackedCollection<?>> operator,
+								List<PackedCollection<?>> weights, Supplier<Runnable> setup,
+								ComputeRequirement... requirements) {
+		return layer(name, inputShape, outputShape, Cell.of(operator),
+				new GradientPropagation(operator, weights.stream().map(this::cp).toArray(Producer[]::new)),
+				weights, setup, requirements);
 	}
 
 	default CellularLayer layer(String name, TraversalPolicy inputShape, TraversalPolicy outputShape,
@@ -207,54 +218,65 @@ public interface LayerFeatures extends MatrixFeatures {
 		return dense(size, nodes, true);
 	}
 
-	// TODO  support bias flag
 	default CellularLayer dense(int size, int nodes, boolean bias) {
-		TraversalPolicy outputShape = shape(nodes);
+		if (enableLegacyDenseLayer) {
+			TraversalPolicy outputShape = shape(nodes);
 
-		PackedCollection<?> weights = new PackedCollection<>(shape(size, nodes));
-		PackedCollection<?> biases = new PackedCollection<>(shape(nodes));
+			PackedCollection<?> weights = new PackedCollection<>(shape(size, nodes));
+			PackedCollection<?> biases = new PackedCollection<>(shape(nodes));
 
-		KernelExpression outputGradient = (i, p) -> i.v(0).get(shape(1, nodes), p.l(0)).multiply(i.v(1)).sum();
-		KernelExpression weightGradient = (i, p) -> i.v(0).referenceRelative(p.l(0)).multiply(i.v(1).referenceRelative(p.l(1)));
-		KernelExpression adjustWeights = (i, p) -> i.v(0).get(p.l(0), p.l(1)).subtract(i.v(1).get(p.l(0), p.l(1)).multiply(i.v(2).valueAt(0)));
-		KernelExpression adjustBiases = (i, p) -> i.v(0).referenceRelative(p.l(0)).subtract(i.v(1).referenceRelative(p.l(0)).multiply(i.v(2).valueAt(0)));
+			KernelExpression outputGradient = (i, p) -> i.v(0).get(shape(1, nodes), p.l(0)).multiply(i.v(1)).sum();
+			KernelExpression weightGradient = (i, p) -> i.v(0).referenceRelative(p.l(0)).multiply(i.v(1).referenceRelative(p.l(1)));
+			KernelExpression adjustWeights = (i, p) -> i.v(0).get(p.l(0), p.l(1)).subtract(i.v(1).get(p.l(0), p.l(1)).multiply(i.v(2).valueAt(0)));
+			KernelExpression adjustBiases = (i, p) -> i.v(0).referenceRelative(p.l(0)).subtract(i.v(1).referenceRelative(p.l(0)).multiply(i.v(2).valueAt(0)));
 
-		Propagation backwards = (lr, gradient, input, next) -> {
-			OperationList ops = new OperationList();
-			PackedCollection<?> out = new PackedCollection<>(shape(size));
-			PackedCollection<?> wGrad = new PackedCollection<>(shape(size, nodes));
-			CollectionProducerComputation<PackedCollection<?>> output = kernel(shape(size), outputGradient, p(weights), gradient);
-			CollectionProducerComputation<PackedCollection<?>> wgr = kernel(shape(size, nodes), weightGradient, input, gradient);
-			CollectionProducerComputation<PackedCollection<?>> dw = kernel(shape(size, nodes), adjustWeights, p(weights), p(wGrad), lr);
-			CollectionProducerComputation<PackedCollection<?>> bw = kernel(shape(nodes), adjustBiases, p(biases), gradient, lr);
+			Propagation backwards = (lr, gradient, input, next) -> {
+				OperationList ops = new OperationList();
+				PackedCollection<?> out = new PackedCollection<>(shape(size));
+				PackedCollection<?> wGrad = new PackedCollection<>(shape(size, nodes));
+				CollectionProducerComputation<PackedCollection<?>> output = kernel(shape(size), outputGradient, p(weights), gradient);
+				CollectionProducerComputation<PackedCollection<?>> wgr = kernel(shape(size, nodes), weightGradient, input, gradient);
+				CollectionProducerComputation<PackedCollection<?>> dw = kernel(shape(size, nodes), adjustWeights, p(weights), p(wGrad), lr);
+				CollectionProducerComputation<PackedCollection<?>> bw = kernel(shape(nodes), adjustBiases, p(biases), gradient, lr);
 
-			ops.add(output, out.traverseEach());
-			ops.add(wgr, wGrad.traverseEach());
-			ops.add(dw, weights.traverseEach());
-			ops.add(bw, biases.traverseEach());
-			if (next != null) ops.add(next.push(p(out)));
-			return ops;
-		};
+				ops.add(output, out.traverseEach());
+				ops.add(wgr, wGrad.traverseEach());
+				ops.add(dw, weights.traverseEach());
+				ops.add(bw, biases.traverseEach());
+				if (next != null) ops.add(next.push(p(out)));
+				return ops;
+			};
 
-		Supplier<Runnable> init = new KernelOperation<>(divide(randn(shape(size, nodes)).traverseEach(), c(size).traverse(0)), weights.traverseEach());
+			Supplier<Runnable> init = new KernelOperation<>(divide(randn(shape(size, nodes)).traverseEach(), c(size).traverse(0)), weights.traverseEach());
 
-		return layer("dense", shape(size), outputShape,
-				Cell.of((input, next) -> {
-					PackedCollection<?> output = new PackedCollection<>(outputShape);
+			return layer("dense", shape(size), outputShape,
+					Cell.of((input, next) -> {
+						PackedCollection<?> output = new PackedCollection<>(outputShape);
 
-					OperationList ops = new OperationList();
-					Producer<PackedCollection<?>> dense =
-							c(input).repeat(nodes).traverseEach()
-									.multiply(c(p(weights))
-											.enumerate(1, 1))
-									.traverse(1).sum()
-									.add(p(biases));
+						OperationList ops = new OperationList();
+						Producer<PackedCollection<?>> dense =
+								c(input).repeat(nodes).traverseEach()
+										.multiply(c(p(weights))
+												.enumerate(1, 1))
+										.traverse(1).sum()
+										.add(p(biases));
 
-					ops.add(output.traverse(1).getShape().getSize(), dense, p(output.traverse(1)));
+						ops.add(output.traverse(1).getShape().getSize(), dense, p(output.traverse(1)));
 
-					if (next != null) ops.add(next.push(p(output)));
-					return ops;
-				}), backwards, List.of(weights, biases), init);
+						if (next != null) ops.add(next.push(p(output)));
+						return ops;
+					}), backwards, List.of(weights, biases), init);
+		} else {
+			PackedCollection<?> weights = new PackedCollection<>(shape(nodes, size));
+			PackedCollection<?> biases = bias ? new PackedCollection<>(shape(nodes)) : null;
+
+			Factor<PackedCollection<?>> operator = input ->
+					bias ? matmul(p(weights), input).add(p(biases)) : matmul(p(weights), input);
+
+			Supplier<Runnable> init = a(p(weights.each()), divide(randn(shape(size, nodes)).each(), c(size).all()));
+			return layer("dense " + size, shape(size), shape(nodes),
+					operator, bias ? List.of(weights, biases) : List.of(weights), init);
+		}
 	}
 
 	default Function<TraversalPolicy, CellularLayer> softmax() {
