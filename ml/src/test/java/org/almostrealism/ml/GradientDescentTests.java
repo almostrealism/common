@@ -17,13 +17,11 @@
 package org.almostrealism.ml;
 
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.io.CSVReceptor;
 import io.almostrealism.relation.Factor;
-import org.almostrealism.hardware.mem.MemoryDataCopy;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.GradientPropagation;
 import org.almostrealism.layers.Propagation;

@@ -21,7 +21,6 @@ import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.graph.Cell;
 import org.almostrealism.graph.Receptor;
-import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.Component;
 
 public interface Block extends Component, Setup {
