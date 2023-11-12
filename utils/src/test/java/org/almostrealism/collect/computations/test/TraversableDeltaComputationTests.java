@@ -17,6 +17,7 @@
 package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.AcceleratedOperation;
@@ -26,6 +27,7 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.Arrays;
+import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public class TraversableDeltaComputationTests implements TestFeatures {
@@ -168,6 +170,8 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 		// x0 * 4 + x1 * -3,  x0 * 2 + x1 * 1.5
 		// 2 * 4 + 3 * -3, 2 * 2 + 3 * 1.5
 		CollectionProducer<PackedCollection<?>> c = matmul(p(w), p(v));
+		System.out.println("c: " + shape(c).toStringDetail());
+		System.out.println("v: " + shape(v).toStringDetail());
 
 		// y = f(x)
 		Evaluable<PackedCollection<?>> y = c.get();
@@ -199,7 +203,7 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 
 			PackedCollection<?> v = pack(IntStream.range(2, 2 + count * dim).boxed()
 					.mapToDouble(Double::valueOf).toArray())
-					.reshape(count, dim);
+					.reshape(count, dim).traverse();
 			PackedCollection<?> w = pack(4.0, -3.0, 2.0, 1.5)
 					.reshape(shape(dim, dim));
 
@@ -225,5 +229,133 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 		} finally {
 			AcceleratedOperation.enableArgumentKernelSize = enableArgumentKernelSize;
 		}
+	}
+
+	@Test
+	public void enumerate() {
+		int count = 2;
+		int dim = 3;
+
+		PackedCollection<?> v = pack(2.0, 3.0, 4.0,
+											2.0, 3.0, 4.0,
+											2.0, 3.0, 4.0,
+											5.0, 6.0, 7.0,
+											5.0, 6.0, 7.0,
+											5.0, 6.0, 7.0)
+				.reshape(count, 1, dim, dim).traverse();
+
+		CollectionProducer cdy = cp(v)
+				.reshape(count, dim * dim)
+											.enumerate(1, 1)
+											.sum(1)
+											.reshape(3, 3);
+		Evaluable<PackedCollection<?>> dy = cdy.get();
+		PackedCollection<?> dout = dy.evaluate();
+		System.out.println(Arrays.toString(dout.toArray(0, dout.getMemLength())));
+		assertEquals(7.0, dout.toDouble(0));
+		assertEquals(9.0, dout.toDouble(1));
+		assertEquals(11.0, dout.toDouble(2));
+		assertEquals(7.0, dout.toDouble(3));
+		assertEquals(9.0, dout.toDouble(4));
+		assertEquals(11.0, dout.toDouble(5));
+	}
+
+	@Test
+	public void matmulEnumerate() {
+		int count = 2;
+		int dim = 3;
+
+		PackedCollection<?> v = pack(IntStream.range(2, 2 + count * dim).boxed()
+				.mapToDouble(Double::valueOf).toArray())
+				.reshape(count, dim).traverse();
+		PackedCollection<?> w = pack(4.0, -3.0, 2.5, 2.0, 1.5, 1.0, 7.0, 4.0, -2.0)
+				.reshape(shape(dim, dim));
+
+		// x0 * w0 + x1 * w1,  x0 * w2 + x1 * w3
+		// x0 * 4 + x1 * -3,  x0 * 2 + x1 * 1.5
+		CollectionProducer<PackedCollection<?>> c = matmul(p(w), p(v));
+
+		Producer<PackedCollection<?>> cdy = c.delta(p(w))
+											.reshape(count, dim * dim)
+											.enumerate(1, 1)
+											.sum(1)
+											.reshape(3, 3);
+		Evaluable<PackedCollection<?>> dy = cdy.get();
+		PackedCollection<?> dout = dy.evaluate();
+		System.out.println(Arrays.toString(dout.toArray(0, dout.getMemLength())));
+		assertEquals(7.0, dout.toDouble(0));
+		assertEquals(9.0, dout.toDouble(1));
+		assertEquals(11.0, dout.toDouble(2));
+		assertEquals(7.0, dout.toDouble(3));
+		assertEquals(9.0, dout.toDouble(4));
+		assertEquals(11.0, dout.toDouble(5));
+	}
+
+	@Test
+	public void matmulEnumerateProduct() {
+		int count = 1;
+		int dim = 3;
+
+		PackedCollection<?> v = integers(2, 2 + count * dim)
+									.get().evaluate();
+		PackedCollection<?> g = pack(
+							0.05,
+									0.005,
+									0.0005);
+//		PackedCollection<?> g = pack(
+//				0.1,
+//				0.01,
+//				0.001);
+		PackedCollection<?> w = pack(
+							1000.0, 1000.0, 1000.0,
+									1000.0, 1000.0, 1000.0,
+									1000.0, 1000.0, 1000.0)
+				.reshape(shape(dim, dim));
+		CollectionProducer<PackedCollection<?>> c = matmul((Producer) cp(w), cp(v).all());
+
+		int outSize = dim;
+		int weightSize = dim * dim;
+		Producer<PackedCollection<?>> weightFlat = reshape(shape(weightSize), p(w));
+
+		Producer<PackedCollection<?>> cdy = c.delta(p(w))
+				.reshape(outSize, weightSize)
+				.traverse(1)
+				.multiply(c(g).reshape(outSize).traverse(1).expand(weightSize))
+				.enumerate(1, 1)
+				.sum(1)
+				.reshape(shape(weightSize))
+				.each();
+
+		PackedCollection<?> sparse = new PackedCollection<>(shape(outSize, weightSize));
+		System.out.println("c: " + shape(c).toStringDetail());
+		System.out.println("v: " + shape(v).toStringDetail());
+
+		c.delta(p(w)).get().into(sparse.traverse()).evaluate();
+		print(outSize, weightSize, sparse);
+
+		c.delta(p(w))
+				.reshape(outSize, weightSize)
+				.traverse(1)
+				.multiply(c(g).reshape(outSize).traverse(1).expand(weightSize))
+				.enumerate(1, 1)
+				.get().into(sparse.each()).evaluate();
+		print(outSize, weightSize, sparse);
+
+		Supplier<Runnable> cda = a(each(weightFlat), subtract(each(weightFlat), multiply(c(2.0), cdy)));
+		cda.get().run();
+		System.out.println(Arrays.toString(w.toArray()));
+		assertEquals(999.8, w.toDouble(0));
+		assertEquals(999.7, w.toDouble(1));
+		assertEquals(999.6, w.toDouble(2));
+		assertEquals(999.998, w.toDouble(6));
+		assertEquals(999.997, w.toDouble(7));
+		assertEquals(999.996, w.toDouble(8));
+	}
+
+	private void print(int rows, int colWidth, PackedCollection<?> value) {
+		for (int i = 0; i < rows; i++) {
+			System.out.println(value.toArrayString(i * colWidth, colWidth));
+		}
+		System.out.println("--");
 	}
 }

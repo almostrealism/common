@@ -17,6 +17,7 @@
 package org.almostrealism.ml;
 
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Producer;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.Cell;
@@ -47,6 +48,8 @@ public class GradientDescentTests implements CodeFeatures {
 			in -> PackedCollection.of(in.valueAt(0) * 2 + in.valueAt(1));
 	private UnaryOperator<PackedCollection<?>> func3 =
 			in -> PackedCollection.of(coeff[0] * in.valueAt(0) + coeff[1] * in.valueAt(1) + coeff[2] * in.valueAt(2));
+	private UnaryOperator<PackedCollection<?>> func3x3 =
+			in -> PackedCollection.of(coeff[0] * in.valueAt(0), coeff[1] * in.valueAt(1), coeff[2] * in.valueAt(2));
 
 	@Override
 	public CellularLayer dense(int size, int nodes, boolean bias) {
@@ -61,12 +64,15 @@ public class GradientDescentTests implements CodeFeatures {
 //								.enumerate(1, 1))
 //						.traverse(1).sum()
 //						.add(p(biases));
+//		Factor<PackedCollection<?>> operator = input ->
+//				c(input).repeat(nodes).each().multiply(cp(weights).each()).sum(1);
 		Factor<PackedCollection<?>> operator = input ->
-				c(input).repeat(nodes).each().multiply(c(p(weights))).sum(1);
+				matmul(p(weights), input);
 
 		Propagation backwards = new GradientPropagation(operator, cp(weights), cp(biases));
 
-		Supplier<Runnable> init = a(p(weights.each()), divide(randn(shape(size, nodes)).each(), c(size).all()));
+//		Supplier<Runnable> init = a(p(weights.each()), divide(randn(shape(size, nodes)).each(), c(size).all()));
+		Supplier<Runnable> init = a(p(weights.each()), c(1.0));
 
 		return layer("dense " + size, shape(size), shape(nodes),
 					Cell.of(operator), backwards, List.of(weights, biases), init);
@@ -87,8 +93,8 @@ public class GradientDescentTests implements CodeFeatures {
 
 		CompiledModel runner = model.compile();
 
-		int epochs = 1000;
-		int steps = 100;
+		int epochs = 100;
+		int steps = 10;
 
 		try (CSVReceptor<PackedCollection<?>> receptor = new CSVReceptor<>(new FileOutputStream("results/linear1.csv"), steps)) {
 			for (int i = 0; i < epochs * steps; i++) {
@@ -162,11 +168,118 @@ public class GradientDescentTests implements CodeFeatures {
 	}
 
 	@Test
-	public void embeddings() throws FileNotFoundException {
-		MemoryDataCopy.enableVerbose = true;
+	public void linear3() throws FileNotFoundException {
+		CellularLayer dense = dense(3, 3);
 
-		int inChannels = 10;
-		int timeLen = 5;
+		SequentialBlock block = new SequentialBlock(shape(3));
+		block.add(dense);
+		// block.add(dense(3, 3));
+
+		Model model = new Model(shape(3));
+		model.addBlock(block);
+
+		Evaluable<PackedCollection<?>> dloss = c(2).repeat(3).all().multiply(x(3).subtract(y(3))).get();
+		Evaluable<PackedCollection<?>> loss = x(3).subtract(y(3)).pow(2.0).get();
+
+		CompiledModel runner = model.compile();
+
+		int epochs = 600;
+		int steps = 30;
+
+		double originalLoss = -1.0;
+		double updatedLoss = -1.0;
+
+		try (CSVReceptor<PackedCollection<?>> receptor = new CSVReceptor<>(new FileOutputStream("results/linear3.csv"), steps)) {
+			for (int i = 0; i < epochs * steps; i++) {
+				PackedCollection<?> input = new PackedCollection<>(shape(3));
+				input.fill(pos -> (1.0 + 2 * Math.random()));
+
+				PackedCollection<?> valid = func3x3.apply(input);
+				PackedCollection<?> out = runner.forward(input);
+				PackedCollection<?> grad = dloss.evaluate(out, valid);
+				PackedCollection<?> l = loss.evaluate(out, valid);
+
+				if (i % steps == 0) {
+					originalLoss = l.toDouble(0);
+					System.out.println("Loss = " + originalLoss);
+				}
+
+				receptor.push(p(l)).get().run();
+				runner.backward(grad);
+
+				if (i % steps == 0) {
+					out = runner.forward(input);
+					l = loss.evaluate(out, valid);
+
+					updatedLoss = l.toDouble(0);
+					System.out.println("\tUpdated Loss = " + updatedLoss);
+					System.out.println("\tChange = " + (originalLoss - updatedLoss));
+					Assert.assertTrue((originalLoss - updatedLoss) > -0.01);
+				}
+			}
+		}
+
+		Assert.assertTrue(updatedLoss > -0.01);
+		Assert.assertTrue(updatedLoss < 1.5);
+	}
+
+	@Test
+	public void linear4() throws FileNotFoundException {
+		SequentialBlock block = new SequentialBlock(shape(3));
+		block.add(dense(3, 1));
+		block.add(dense(1, 1));
+
+		Model model = new Model(shape(3), 1e-4);
+		model.addBlock(block);
+
+		Evaluable<PackedCollection<?>> dloss = c(2).multiply(x().subtract(y())).get();
+		Evaluable<PackedCollection<?>> loss = x().subtract(y()).pow(2.0).get();
+
+		CompiledModel runner = model.compile();
+
+		int epochs = 600;
+		int steps = 200;
+
+		double originalLoss = -1.0;
+		double updatedLoss = -1.0;
+
+		try (CSVReceptor<PackedCollection<?>> receptor = new CSVReceptor<>(new FileOutputStream("results/linear4.csv"), steps)) {
+			for (int i = 0; i < epochs * steps; i++) {
+				PackedCollection<?> input = new PackedCollection<>(shape(3));
+				input.fill(pos -> 0.5 + 2 * Math.random());
+
+				PackedCollection<?> valid = func3.apply(input);
+				PackedCollection<?> out = runner.forward(input);
+				PackedCollection<?> grad = dloss.evaluate(out, valid);
+				PackedCollection<?> l = loss.evaluate(out, valid);
+
+				if (i % steps == 0) {
+					originalLoss = l.toDouble(0);
+					System.out.println("Loss = " + originalLoss);
+				}
+
+				receptor.push(p(l)).get().run();
+				runner.backward(grad);
+
+				if (i % steps == 0) {
+					out = runner.forward(input);
+					l = loss.evaluate(out, valid);
+					updatedLoss = l.toDouble(0);
+					System.out.println("\tUpdated Loss = " + updatedLoss);
+					System.out.println("\tChange = " + (originalLoss - updatedLoss));
+					Assert.assertTrue((originalLoss - updatedLoss) > -0.01);
+				}
+			}
+		}
+
+		Assert.assertTrue(updatedLoss > -0.01);
+		Assert.assertTrue(updatedLoss < 0.1);
+	}
+
+	@Test
+	public void embeddings() throws FileNotFoundException {
+		int inChannels = 3;
+		int timeLen = 10;
 		int outLen = 1;
 
 		CellularLayer dense = dense(inChannels, timeLen);
@@ -177,7 +290,7 @@ public class GradientDescentTests implements CodeFeatures {
 //		block.add(silu(shape(timeLen)));
 //		block.add(dense(timeLen, outLen));
 
-		Model model = new Model(shape(inChannels));
+		Model model = new Model(shape(inChannels), 1e-3);
 		model.addBlock(block);
 
 		Evaluable<PackedCollection<?>> dloss = c(2).multiply(x().subtract(y())).get();
@@ -186,12 +299,15 @@ public class GradientDescentTests implements CodeFeatures {
 		CompiledModel runner = model.compile();
 
 		int epochs = 600;
-		int steps = 30;
+		int steps = 10;
+
+		double originalLoss = -1.0;
+		double updatedLoss = -1.0;
 
 		try (CSVReceptor<PackedCollection<?>> receptor = new CSVReceptor<>(new FileOutputStream("results/embeddings.csv"), steps)) {
 			for (int i = 0; i < epochs * steps; i++) {
 				PackedCollection<?> input = new PackedCollection<>(shape(inChannels));
-				input.fill(pos -> 1.0 + 2 * Math.random());
+				input.fill(pos -> 0.5 + 2 * Math.random());
 
 				PackedCollection<?> valid = func3.apply(input);
 				PackedCollection<?> out = runner.forward(input);
@@ -199,12 +315,25 @@ public class GradientDescentTests implements CodeFeatures {
 				PackedCollection<?> l = loss.evaluate(out, valid);
 
 				if (i % steps == 0) {
-					System.out.println("Loss = " + l.toDouble(0));
+					originalLoss = l.toDouble(0);
+					System.out.println("Loss = " + originalLoss);
 				}
 
 				receptor.push(p(l)).get().run();
 				runner.backward(grad);
+
+				if (i % steps == 0) {
+					out = runner.forward(input);
+					l = loss.evaluate(out, valid);
+					updatedLoss = l.toDouble(0);
+					System.out.println("\tUpdated Loss = " + updatedLoss);
+					System.out.println("\tChange = " + (originalLoss - updatedLoss));
+					Assert.assertTrue((originalLoss - updatedLoss) > -0.01);
+				}
 			}
 		}
+
+		Assert.assertTrue(updatedLoss > -0.01);
+		Assert.assertTrue(updatedLoss < 0.01);
 	}
 }

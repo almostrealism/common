@@ -24,6 +24,7 @@ import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import org.almostrealism.collect.CollectionFeatures;
+import org.almostrealism.collect.PackedCollection;
 
 import java.util.Collection;
 import java.util.Collections;
@@ -41,7 +42,8 @@ public class CollectionProviderProducer<T extends Shape>
 
 	@Override
 	public Evaluable get() {
-		return new Provider(value);
+		return value instanceof PackedCollection ?
+				new CollectionProvider((PackedCollection<?>) value) : new Provider(value);
 	}
 
 	@Override

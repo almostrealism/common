@@ -63,6 +63,10 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 		return reduce(this, mapper);
 	}
 
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> expand(int repeat) {
+		return expand(repeat, this);
+	}
+
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> expand(int repeat, Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper) {
 		return expand(repeat, this, mapper);
 	}

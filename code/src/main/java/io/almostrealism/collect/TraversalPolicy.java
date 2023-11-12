@@ -255,6 +255,10 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 		return false;
 	}
 
+	public String toStringDetail() {
+		return this + "[axis=" + getTraversalAxis() + "]";
+	}
+
 	@Override
 	public String toString() {
 		StringBuilder sb = new StringBuilder();

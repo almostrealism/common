@@ -289,6 +289,10 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return new ReshapeProducer(axis, producer);
 	}
 
+	default <T extends PackedCollection<?>> Producer each(Producer<T> producer) {
+		return traverseEach(producer);
+	}
+
 	default <T extends PackedCollection<?>> Producer traverseEach(Producer<T> producer) {
 		return new ReshapeProducer(((Shape) producer).getShape().traverseEach(), producer);
 	}
@@ -354,6 +358,10 @@ public interface CollectionFeatures extends ExpressionFeatures {
 
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> reduce(Producer<?> collection, Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper) {
 		return map(shape(1), collection, mapper);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputation<T> expand(int repeat, Producer<?> collection) {
+		return expand(repeat, collection, v -> v.repeat(repeat));
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputation<T> expand(int repeat, Producer<?> collection, Function<CollectionProducerComputation<?>, CollectionProducerComputation<?>> mapper) {

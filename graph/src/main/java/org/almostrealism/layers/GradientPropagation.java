@@ -47,45 +47,49 @@ public class GradientPropagation implements Propagation, CodeFeatures {
 
 		CollectionProducer<PackedCollection<?>> function = (CollectionProducer<PackedCollection<?>>) operator.getResultant(input);
 		PackedCollection<?> gradIn = new PackedCollection<>(shape(gradient));
-		PackedCollection<?> deltaOut = new PackedCollection<>(shape);
 		PackedCollection<?> gradOut = new PackedCollection<>(shape);
-		PackedCollection<?> wOut = new PackedCollection<>(shape);
 
-		Producer<PackedCollection<?>> deltaOutDeltaIn = function.delta(input);
-		Producer<PackedCollection<?>> deltaOutDeltaWeight = function.delta(weights[0]).traverse(2);
-		Producer<PackedCollection<?>> weightUpdate = c(weights[0]).subtract(multiply(learningRate, gradient).multiply(deltaOutDeltaWeight));
-		Supplier<Runnable> weightUpdateAssignment = a(traverseEach(weights[0]),
-				c(weights[0]).each().subtract(multiply(learningRate, gradient).multiply(deltaOutDeltaWeight)));
+		int inSize = shape.getTotalSize();
+		int outSize = shape(gradient).getTotalSize();
+		int weightSize = shape(weights[0]).getTotalSize();
+		Producer<PackedCollection<?>> weightFlat = reshape(shape(weightSize), weights[0]);
+
+		Producer<PackedCollection<?>> deltaOutDeltaIn;
+		Producer<PackedCollection<?>> deltaOutDeltaWeight;
+		Supplier<Runnable> weightUpdateAssignment;
+
+		deltaOutDeltaIn = function.delta(input)
+				.reshape(outSize, inSize)
+				.traverse(1)
+				.multiply(c(gradient).reshape(outSize).traverse(1).expand(inSize))
+				.enumerate(1, 1)
+				.sum(1)
+				.reshape(shape(inSize))
+				.each();
+		deltaOutDeltaWeight = function.delta(weights[0])
+				.reshape(outSize, weightSize)
+				.traverse(1)
+				.multiply(c(gradient).reshape(outSize).traverse(1).expand(weightSize))
+				.enumerate(1, 1)
+				.sum(1)
+				.reshape(shape(weightSize))
+				.each();
+
+		weightUpdateAssignment =
+				a(each(weightFlat),
+						subtract(each(weightFlat), multiply(learningRate, deltaOutDeltaWeight)));
 
 		OperationList op = new OperationList("Gradient Propagation");
 
 		op.add(() -> {
 			Evaluable<PackedCollection<?>> grad = deltaOutDeltaIn.get();
-			Evaluable<PackedCollection<?>> dOut = deltaOutDeltaWeight.get();
-			Evaluable<PackedCollection<?>> wUp = weightUpdate.get();
 			Evaluable<PackedCollection<?>> inputGrad = gradient.get();
-			Evaluable<PackedCollection<?>> w = weights[0].get();
 			Runnable wua = weightUpdateAssignment.get();
 
 			return () -> {
 				inputGrad.into(gradIn).evaluate();
 				grad.into(gradOut).evaluate();
-				dOut.into(deltaOut).evaluate();
-				w.into(wOut).evaluate();
-
-//				System.out.println("GradientPropagation: Input Gradient = " + gradIn.toDouble(0));
-
-//				for (int i = 0; i < shape.getTotalSize(); i++) {
-//					System.out.println("\tw" + i + " -> dO/dW = " +
-//							deltaOut.toDouble(i) + ", original w" + i + " = " + wOut.toDouble(i));
-//				}
-
 				wua.run();
-				w.into(wOut).evaluate();
-
-//				for (int i = 0; i < shape.getTotalSize(); i++) {
-//					System.out.println("\tw" + i + " = " + wOut.toDouble(i));
-//				}
 			};
 		});
 		if (next != null) op.add(next.push(p(gradOut)));

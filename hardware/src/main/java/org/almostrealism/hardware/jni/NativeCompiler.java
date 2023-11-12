@@ -217,6 +217,8 @@ public class NativeCompiler {
 			if (libDir == null) libDir = System.getenv("AR_HARDWARE_NATIVE_LIBS");
 			if (libDir == null && SystemUtils.isMacOS()) {
 				libDir = System.getProperty("user.home") + "/Library/Java/Extensions";
+				File ld = new File(libDir);
+				if (!ld.exists()) ld.mkdir();
 			}
 
 			String exec = System.getProperty("AR_HARDWARE_NATIVE_EXECUTION");

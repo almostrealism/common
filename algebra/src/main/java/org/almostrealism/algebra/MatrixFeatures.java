@@ -25,8 +25,13 @@ import org.almostrealism.collect.PackedCollection;
 public interface MatrixFeatures extends CollectionFeatures {
 	default <T extends PackedCollection<?>> CollectionProducer<T> matmul(Producer<T> matrix, Producer<T> vector) {
 		TraversalPolicy shape = shape(matrix);
+		TraversalPolicy vshape = shape(vector);
 		if (shape.getDimensions() != 2)
 			throw new IllegalArgumentException();
+
+		if (vshape.getTraversalAxis() < (vshape.getDimensions() - 1)) {
+			System.out.println("WARN: Matrix multiplication with vector on axis " + vshape.getTraversalAxis());
+		}
 
 		int d = shape.length(0);
 		return multiply(traverseEach(matrix), traverseEach(repeat(d, vector))).traverse(1).sum();

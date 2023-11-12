@@ -27,6 +27,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 
 public interface MemoryData extends TraversableExpression<Double>, Delegated<MemoryData>, Node {
 
@@ -110,6 +111,18 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 		}
 
 		return getMem().toArray(getOffset() + offset, length);
+	}
+
+	default double[] toArray() {
+		return toArray(0, getMemLength());
+	}
+
+	default String toArrayString(int offset, int length) {
+		return Arrays.toString(toArray(offset, length));
+	}
+
+	default String toArrayString() {
+		return Arrays.toString(toArray());
 	}
 
 	@Override

@@ -20,6 +20,7 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
+import org.almostrealism.hardware.KernelizedEvaluable;
 
 import java.util.function.Function;
 
@@ -44,5 +45,10 @@ public class DynamicCollectionProducer<T extends PackedCollection<?>> extends Dy
 	@Override
 	public CollectionProducer<T> reshape(TraversalPolicy shape) {
 		return new ReshapeProducer(shape, this);
+	}
+
+	@Override
+	public KernelizedEvaluable<T> get() {
+		return super.get();
 	}
 }
