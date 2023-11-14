@@ -16,6 +16,9 @@
 
 package org.almostrealism.collect.computations;
 
+import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.code.ScopeInputManager;
+import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.expression.InstanceReference;
@@ -32,6 +35,7 @@ import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.PassThroughProducer;
 import org.almostrealism.hardware.mem.MemoryDataDestination;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Function;
@@ -42,7 +46,10 @@ import java.util.stream.Stream;
 public class TraversableDeltaComputation<T extends PackedCollection<?>>
 		extends KernelProducerComputationAdapter<T, T>
 		implements ComputerFeatures {
+	public static boolean enableTraverseEach = false;
+
 	private Function<TraversableExpression[], CollectionExpression> expression;
+	private List<ScopeLifecycle> dependentLifecycles;
 
 	@SafeVarargs
 	public TraversableDeltaComputation(TraversalPolicy shape,
@@ -50,10 +57,33 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 											Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
 		super(shape, validateArgs(args));
 		this.expression = expression;
+		this.dependentLifecycles = new ArrayList<>();
+	}
+
+	public void addDependentLifecycle(ScopeLifecycle lifecycle) {
+		dependentLifecycles.add(lifecycle);
 	}
 
 	protected CollectionExpression getExpression(Expression index) {
 		return expression.apply(getTraversableArguments(index));
+	}
+
+	@Override
+	public void prepareScope(ScopeInputManager manager) {
+		super.prepareScope(manager);
+		ScopeLifecycle.prepareScope(dependentLifecycles.stream(), manager);
+	}
+
+	@Override
+	public void prepareArguments(ArgumentMap map) {
+		super.prepareArguments(map);
+		ScopeLifecycle.prepareArguments(dependentLifecycles.stream(), map);
+	}
+
+	@Override
+	public void resetArguments() {
+		super.resetArguments();
+		ScopeLifecycle.resetArguments(dependentLifecycles.stream());
 	}
 
 	@Override
@@ -91,11 +121,12 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 														  	 	Function<TraversableExpression[], CollectionExpression> expression,
 															  	Producer<?> target,
 														  		Supplier<Evaluable<? extends PackedCollection<?>>>... args) {
-		return new TraversableDeltaComputation<>(deltaShape.append(targetShape),
-				exp -> expression.apply(exp).delta(targetShape, matcher(target, deltaShape.getCount())), args);
+		TraversalPolicy ds = enableTraverseEach ? deltaShape.traverseEach() : deltaShape;
+		return new TraversableDeltaComputation<>(ds.append(targetShape),
+				exp -> expression.apply(exp).delta(targetShape, matcher(target)), args);
 	}
 
-	private static Function<Expression, Predicate<Expression>> matcher(Producer<?> target, int count) {
+	private static Function<Expression, Predicate<Expression>> matcher(Producer<?> target) {
 		return index -> exp -> {
 			if (!(exp instanceof InstanceReference)) return false;
 
@@ -111,21 +142,8 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 				if (v == null) return false;
 			}
 
-			// return match(index, ref.getIndex(), count);
 			return true;
 		};
-	}
-
-	private static boolean match(Expression idxA, Expression idxB, int count) {
-		int a[] = idxA.kernelSeq(count);
-		int b[] = idxB.kernelSeq(count);
-
-		for (int i = 0; i < count; i++) {
-			if (a[i] != b[i])
-				return false;
-		}
-
-		return true;
 	}
 
 	private static boolean match(Supplier<?> p, Supplier<?> q) {

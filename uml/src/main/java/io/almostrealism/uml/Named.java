@@ -27,6 +27,18 @@ import java.util.stream.Collectors;
 public interface Named {
 	String getName();
 
+	static <T> String nameOf(T named) {
+		if (named == null) return "null";
+
+		if (named instanceof Named && ((Named) named).getName() != null) {
+			return ((Named) named).getName();
+		}
+
+		String name = named.getClass().getSimpleName();
+		if (name == null || name.trim().length() <= 0) name = "anonymous";
+		return name;
+	}
+
 	static <T extends Named> List<T> removeDuplicates(List<T> list) {
 		return removeDuplicates(list, (a, b) -> a);
 	}

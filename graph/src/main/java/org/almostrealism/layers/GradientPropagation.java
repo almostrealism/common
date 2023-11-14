@@ -27,10 +27,18 @@ import org.almostrealism.hardware.OperationList;
 import io.almostrealism.relation.Factor;
 
 import java.util.function.Supplier;
+import java.util.stream.Stream;
 
 public class GradientPropagation implements Propagation, CodeFeatures {
 	private final Factor<PackedCollection<?>> operator;
 	private final Producer<PackedCollection<?>>[] weights;
+
+
+	public GradientPropagation(Factor<PackedCollection<?>> operator,
+							   Stream<Producer<PackedCollection<?>>> weights) {
+		this.operator = operator;
+		this.weights = weights.toArray(Producer[]::new);
+	}
 
 	public GradientPropagation(Factor<PackedCollection<?>> operator,
 							   Producer<PackedCollection<?>>... weights) {

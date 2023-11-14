@@ -302,10 +302,6 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 							0.05,
 									0.005,
 									0.0005);
-//		PackedCollection<?> g = pack(
-//				0.1,
-//				0.01,
-//				0.001);
 		PackedCollection<?> w = pack(
 							1000.0, 1000.0, 1000.0,
 									1000.0, 1000.0, 1000.0,
@@ -352,10 +348,24 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 		assertEquals(999.996, w.toDouble(8));
 	}
 
-	private void print(int rows, int colWidth, PackedCollection<?> value) {
-		for (int i = 0; i < rows; i++) {
-			System.out.println(value.toArrayString(i * colWidth, colWidth));
+	@Test
+	public void map() {
+		PackedCollection<?> g = pack(3, 5);
+		PackedCollection<?> w = pack(10, 100, 1000);
+		CollectionProducer<PackedCollection<?>> c = cp(g).each()
+				.map(shape(3), v -> v.repeat(3).mul(cp(w)));
+
+		print(2 * 3, 1, c.get().evaluate());
+
+		PackedCollection<?> result = new PackedCollection<>(shape(2, 3, 3));
+		c.delta(p(w)).get().into(result.traverse(1)).evaluate();
+		print(2 * 3, 3, result);
+
+		for (int i = 0; i < 3; i++) {
+			for (int j = 0; j < 3; j++) {
+				assertEquals(i == j ? 3 : 0, result.valueAt(0, i, j));
+				assertEquals(i == j ? 5 : 0, result.valueAt(1, i, j));
+			}
 		}
-		System.out.println("--");
 	}
 }

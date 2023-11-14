@@ -97,25 +97,33 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 		return relativeSubtract((Producer) this, value);
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> multiply(Producer<T> value) {
-		return multiply((Producer) this, value);
-	}
-
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> mul(Producer<T> value) {
-		return multiply((Producer) this, value);
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> mul(double value) {
+		return multiply(value);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> multiply(double value) {
 		return multiply((Producer) this, c(value));
 	}
 
-	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> mul(double value) {
-		return multiply((Producer) this, c(value));
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> mul(Producer<T> value) {
+		return multiply(value);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> multiply(Producer<T> value) {
+		return multiply((Producer) this, value);
 	}
 
 	@Deprecated
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> relativeMultiply(Producer<T> value) {
 		return relativeMultiply((Supplier) this, (Supplier) value, null);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> div(double value) {
+		return divide(value);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> divide(double value) {
+		return divide((Producer) this, c(value));
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> divide(Producer<T> value) {

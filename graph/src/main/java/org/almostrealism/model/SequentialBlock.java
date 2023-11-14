@@ -2,6 +2,7 @@ package org.almostrealism.model;
 
 import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.uml.Named;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.graph.Cell;
@@ -62,11 +63,18 @@ public class SequentialBlock implements Block, Learning, LayerFeatures {
 			throw new IllegalArgumentException();
 
 		Block last = lastBlock();
+		Receptor<PackedCollection<?>> prev;
 		if (last != null) {
 			last.getForward().setReceptor(block.getForward());
-			block.getBackward().setReceptor(last.getBackward());
+			prev = last.getBackward();
 		} else {
-			block.getBackward().setReceptor(back);
+			prev = back;
+		}
+
+		if (block.getBackward() == null) {
+			System.out.println("WARN: No backward Cell for " + Named.nameOf(block));
+		} else {
+			block.getBackward().setReceptor(prev);
 		}
 
 		blocks.add(block);

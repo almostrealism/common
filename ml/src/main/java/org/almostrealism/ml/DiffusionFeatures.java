@@ -16,19 +16,44 @@
 
 package org.almostrealism.ml;
 
+import io.almostrealism.relation.Factor;
+import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.layers.LayerFeatures;
 import org.almostrealism.model.Block;
 import org.almostrealism.model.SequentialBlock;
 
 public interface DiffusionFeatures extends LayerFeatures {
 
-	default Block timestampEmbeddings(int inputCount, int timeLen) {
-		return timestampEmbeddings(inputCount, timeLen, timeLen);
+	default Factor<PackedCollection<?>> timesteps(int inputCount, boolean flip, double downscaleFreqShift) {
+		return timesteps(inputCount, flip, downscaleFreqShift, 1.0);
 	}
 
-	default Block timestampEmbeddings(int inChannels, int timeLen, int outLen) {
-		SequentialBlock block = new SequentialBlock(shape(inChannels, timeLen));
-		block.add(dense(inChannels, timeLen));
+	default Factor<PackedCollection<?>> timesteps(int inputCount, boolean flip, double downscaleFreqShift, double scale) {
+		return timesteps(inputCount, flip, downscaleFreqShift, scale, 10000);
+	}
+
+	default Factor<PackedCollection<?>> timesteps(int inputCount, boolean flip, double downscaleFreqShift, double scale, int maxPeriod) {
+		int hDim = inputCount / 2;
+
+		PackedCollection<?> exp = integers(0, hDim)
+				.multiply(-Math.log(maxPeriod) / (hDim - downscaleFreqShift)).exp()
+				.get().evaluate();
+
+		return input -> {
+			CollectionProducer in = multiply(input, p(exp));
+			// TODO
+			return in;
+		};
+	}
+
+	default Block timestepEmbeddings(int inputCount, int timeLen) {
+		return timestepEmbeddings(inputCount, timeLen, timeLen);
+	}
+
+	default Block timestepEmbeddings(int inputCount, int timeLen, int outLen) {
+		SequentialBlock block = new SequentialBlock(shape(inputCount, timeLen));
+		block.add(dense(inputCount, timeLen));
 		block.add(silu(shape(timeLen)));
 		block.add(dense(timeLen, outLen));
 		return block;

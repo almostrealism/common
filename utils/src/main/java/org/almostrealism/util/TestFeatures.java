@@ -31,6 +31,13 @@ import java.util.function.Supplier;
 
 public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSettings {
 
+	default void print(int rows, int colWidth, PackedCollection<?> value) {
+		for (int i = 0; i < rows; i++) {
+			System.out.println(value.toArrayString(i * colWidth, colWidth));
+		}
+		System.out.println("--");
+	}
+
 	default void assertEquals(Scalar a, Scalar b) {
 		assertEquals(a.getValue(), b.getValue());
 	}

@@ -14,7 +14,7 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.ml;
+package org.almostrealism.graph.model.test;
 
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.CodeFeatures;
@@ -267,7 +267,7 @@ public class GradientDescentTests implements CodeFeatures {
 		CompiledModel runner = model.compile();
 
 		int epochs = 250;
-		int steps = 20;
+		int steps = 40;
 
 		double originalLoss = -1.0;
 		double updatedLoss = -1.0;

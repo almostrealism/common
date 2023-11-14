@@ -28,6 +28,7 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.scope.Scope;
+import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.CollectionProducerComputation;
 import io.almostrealism.collect.CollectionVariable;
 import org.almostrealism.collect.PackedCollection;
@@ -102,9 +103,6 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 
 			if (value == null) throw new UnsupportedOperationException();
 
-//			Variable v = new Variable(output.valueAt(i).getSimpleExpression(),
-//					false, value.getSimplified(), output.getRootDelegate());
-//			scope.getVariables().add(v);
 			scope.getVariables().add(output.ref(i).assign(value.getSimplified()));
 		}
 
@@ -172,6 +170,15 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 		} else {
 			throw new UnsupportedOperationException();
 		}
+	}
+
+	@Override
+	public CollectionProducer<T> delta(Producer<?> target) {
+		TraversableDeltaComputation<T> delta = TraversableDeltaComputation.create(getShape(), shape(target),
+				args -> CollectionExpression.create(getShape(), this::getValueAt), target,
+				getInputs().stream().skip(1).toArray(Supplier[]::new));
+		delta.addDependentLifecycle(this);
+		return delta;
 	}
 
 	@Override
