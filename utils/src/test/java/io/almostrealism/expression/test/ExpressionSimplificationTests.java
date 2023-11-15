@@ -4,10 +4,13 @@ import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.code.Precision;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.expression.Mod;
 import org.almostrealism.hardware.cl.OpenCLLanguageOperations;
 import org.junit.Assert;
 import org.junit.Test;
+
+import java.util.Arrays;
 
 public class ExpressionSimplificationTests implements ExpressionFeatures {
 	private OpenCLLanguageOperations lang = new OpenCLLanguageOperations(Precision.FP64);
@@ -68,5 +71,26 @@ public class ExpressionSimplificationTests implements ExpressionFeatures {
 						.mod(e(4), false)).toInt();
 		System.out.println(exp.getExpression(lang));
 		Assert.assertEquals("0", exp.getSimpleExpression(lang));
+	}
+
+	@Test
+	public void kernelModProduct() {
+		boolean temp = false;
+
+		if (temp) {
+			// TODO  Remove - this is just for reference
+			int kernel0 = 1;
+			int result = (((kernel0 * 4) % (8)) % (4));
+			result = (((((kernel0 * 4) % (8)) % (4)) + (-(((kernel0 * 4) % (8)) % (4))) + (((kernel0 * 4) % (8)) / 4) + ((((kernel0 * 4) % (8)) % (4)) * 2) + (((kernel0 * 4) / 8) * 8)) / 2) % (4);
+		}
+
+		Expression kernel0 = new KernelIndex();
+		Expression result = kernel0.multiply(e(4)).imod(e(8)).imod(e(4));
+		System.out.println(Arrays.toString(result.kernelSeq(4)));
+		Assert.assertTrue(result.isKernelValue());
+
+		String simple = result.getSimpleExpression(lang);
+		System.out.println(simple);
+		Assert.assertEquals("0", simple);
 	}
 }

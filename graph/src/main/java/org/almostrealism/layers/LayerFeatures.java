@@ -43,7 +43,7 @@ import java.util.function.Supplier;
 
 public interface LayerFeatures extends MatrixFeatures {
 	boolean ioTracking = SystemUtils.isEnabled("AR_GRAPH_IO_TRACKING").orElse(true);
-	boolean enableLegacyConvLayer = true;
+	boolean enableLegacyConvLayer = false;
 
 	default CellularLayer layer(String name, TraversalPolicy inputShape, TraversalPolicy outputShape,
 								Cell<PackedCollection<?>> forward, Propagation backward,

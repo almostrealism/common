@@ -177,6 +177,10 @@ public interface MemoryData extends TraversableExpression<Double>, Delegated<Mem
 
 	default void setMem(int offset, double[] source, int srcOffset, int length) {
 		if (getDelegate() == null) {
+			if (offset + length > getMemLength()) {
+				throw new IllegalArgumentException("Array extends beyond the length of this MemoryData");
+			}
+
 			setMem(getMem(), getOffset() + offset, source, srcOffset, length);
 		} else if (getDelegate() == this) {
 			throw new IllegalArgumentException("Circular delegate reference");

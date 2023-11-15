@@ -38,6 +38,9 @@ public class KernelIndex extends StaticReference<Integer> {
 	public int getKernelIndex() { return index; }
 
 	@Override
+	public boolean isKernelValue() { return true; }
+
+	@Override
 	public Number kernelValue(int kernelIndex) {
 		return Integer.valueOf(kernelIndex);
 	}

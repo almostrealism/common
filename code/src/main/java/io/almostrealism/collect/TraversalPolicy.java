@@ -256,7 +256,7 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 	}
 
 	public String toStringDetail() {
-		return this + "[axis=" + getTraversalAxis() + "]";
+		return this + "[axis=" + getTraversalAxis() + "|" + getCount() + "x" + getSize() + "]";
 	}
 
 	@Override

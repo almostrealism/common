@@ -22,5 +22,13 @@ public interface Producer<T> extends Supplier<Evaluable<? extends T>>, Node {
 	@Override
 	Evaluable<T> get();
 
+	default Evaluable<T> into(Object destination) {
+		return get().into(destination);
+	}
+
+	default T evaluate(Object... args) {
+		return get().evaluate(args);
+	}
+
 	default void destroy() { }
 }

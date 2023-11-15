@@ -79,6 +79,11 @@ public class Cast<T> extends UnaryExpression<T> {
 	}
 
 	@Override
+	public boolean isKernelValue() {
+		return getChildren().get(0).isKernelValue();
+	}
+
+	@Override
 	public Number kernelValue(int kernelIndex) {
 		double v = getChildren().get(0).kernelValue(kernelIndex).doubleValue();
 

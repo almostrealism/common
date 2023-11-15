@@ -89,6 +89,8 @@ public abstract class Expression<T> implements Tree<Expression<?>> {
 		return intValue.isPresent() ? OptionalDouble.of(intValue.getAsInt()) : OptionalDouble.empty();
 	}
 
+	public boolean isKernelValue() { return false; }
+
 	public Number kernelValue(int kernelIndex) {
 		throw new UnsupportedOperationException();
 	}

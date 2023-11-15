@@ -38,6 +38,9 @@ public class DoubleConstant extends Constant<Double> {
 	public String getExpression(LanguageOperations lang) { return lang.getPrecision().stringForDouble(value); }
 
 	@Override
+	public boolean isKernelValue() { return true; }
+
+	@Override
 	public Number kernelValue(int kernelIndex) {
 		return value;
 	}

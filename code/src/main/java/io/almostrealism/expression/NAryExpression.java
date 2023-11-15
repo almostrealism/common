@@ -49,6 +49,10 @@ public class NAryExpression<T> extends Expression<T> {
 		this.operator = operator;
 	}
 
+	@Override
+	public boolean isKernelValue() {
+		return getChildren().stream().allMatch(Expression::isKernelValue);
+	}
 
 	@Override
 	public String getExpression(LanguageOperations lang) {

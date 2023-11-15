@@ -18,13 +18,12 @@ package io.almostrealism.expression;
 
 import io.almostrealism.lang.LanguageOperations;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.OptionalInt;
 
 public class Mod<T extends Number> extends Expression<T> {
-	public static boolean enableSimplification = true;
-	public static boolean enableIntegerSimplification = true;
-	public static boolean enableFpSimplification = true;
+	public static boolean enableKernelSimplification = true;
 
 	private boolean fp;
 
@@ -81,7 +80,7 @@ public class Mod<T extends Number> extends Expression<T> {
 		Expression input = flat.getChildren().get(0);
 		Expression mod = flat.getChildren().get(1);
 
-		if (enableIntegerSimplification && input.intValue().isPresent()) {
+		if (input.intValue().isPresent()) {
 			if (input.intValue().getAsInt() == 0) {
 				return (Expression) new IntegerConstant(0);
 			} else if (mod.intValue().isPresent() && !fp) {
@@ -93,23 +92,35 @@ public class Mod<T extends Number> extends Expression<T> {
 					System.out.println("WARN: Module zero encountered while simplifying expression");
 				}
 			}
-		} else if (enableIntegerSimplification && mod.intValue().isPresent()) {
-			if (mod.intValue().getAsInt() == 1) {
+		} else if (mod.intValue().isPresent()) {
+			int m = mod.intValue().getAsInt();
+
+			if (m == 1) {
 				return (Expression) new IntegerConstant(0);
+			} else if (enableKernelSimplification && input.isKernelValue()) {
+				int values[] = input.kernelSeq(m);
+				if (Arrays.stream(values).map(i -> i % m).distinct().count() == 1) {
+					return new IntegerConstant(values[0] % m);
+				}
 			}
-		} else if (enableFpSimplification && input.doubleValue().isPresent()) {
+		} else if (input.doubleValue().isPresent()) {
 			if (input.doubleValue().getAsDouble() == 0.0) {
 				return new DoubleConstant(0.0);
 			} else if (mod.doubleValue().isPresent() && !fp) {
 				return new DoubleConstant(input.doubleValue().getAsDouble() % mod.doubleValue().getAsDouble());
 			}
-		} else if (enableFpSimplification && mod.doubleValue().isPresent()) {
+		} else if (mod.doubleValue().isPresent()) {
 			if (mod.doubleValue().getAsDouble() == 1.0) {
 				return input;
 			}
 		}
 
 		return (Expression<Double>) flat;
+	}
+
+	@Override
+	public boolean isKernelValue() {
+		return getChildren().get(0).isKernelValue() && getChildren().get(1).isKernelValue();
 	}
 
 	@Override

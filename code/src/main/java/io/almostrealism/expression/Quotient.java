@@ -21,8 +21,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 public class Quotient<T extends Number> extends NAryExpression<T> {
-	public static boolean enableIntegerSimplification = true;
-	public static boolean enableFpSimplification = true;
+	public static boolean enableKernelSimplification = true;
 
 	public Quotient(Expression<Double>... values) {
 		super((Class<T>) type(values), "/", values);
@@ -47,7 +46,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		if (children.isEmpty()) return (Expression) getChildren().iterator().next();
 		if (children.size() == 1) return (Expression<Double>) children.get(0);
 
-		if (enableIntegerSimplification && children.get(0).intValue().isPresent()) {
+		if (children.get(0).intValue().isPresent()) {
 			int numerator = children.get(0).intValue().getAsInt();
 			if (numerator == 0) return new IntegerConstant(0).toInt();
 
@@ -65,7 +64,7 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 			newChildren.add(new IntegerConstant(numerator).toInt());
 			newChildren.addAll(children.subList(i, children.size()));
 			children = newChildren;
-		} else if (enableFpSimplification && children.get(0).doubleValue().isPresent()) {
+		} else if (children.get(0).doubleValue().isPresent()) {
 			double numerator = children.get(0).doubleValue().getAsDouble();
 			if (numerator == 0) return new DoubleConstant(0.0);
 

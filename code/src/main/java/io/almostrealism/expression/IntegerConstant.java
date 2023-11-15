@@ -39,6 +39,9 @@ public class IntegerConstant extends Constant<Integer> {
 	}
 
 	@Override
+	public boolean isKernelValue() { return true; }
+
+	@Override
 	public Number kernelValue(int kernelIndex) {
 		return value;
 	}

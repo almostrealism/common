@@ -46,6 +46,11 @@ public class Minus<T extends Number> extends UnaryExpression<T> {
 	}
 
 	@Override
+	public boolean isKernelValue() {
+		return getChildren().get(0).isKernelValue();
+	}
+
+	@Override
 	public Number kernelValue(int kernelIndex) {
 		Number v = getChildren().get(0).kernelValue(kernelIndex);
 		if (v instanceof Integer) return -1 * (Integer) v;

@@ -17,6 +17,7 @@
 package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Factor;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -339,7 +340,7 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 
 		Supplier<Runnable> cda = a(each(weightFlat), subtract(each(weightFlat), multiply(c(2.0), cdy)));
 		cda.get().run();
-		System.out.println(Arrays.toString(w.toArray()));
+		System.out.println(w.toArrayString());
 		assertEquals(999.8, w.toDouble(0));
 		assertEquals(999.7, w.toDouble(1));
 		assertEquals(999.6, w.toDouble(2));
@@ -358,7 +359,7 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 		print(2 * 3, 1, c.get().evaluate());
 
 		PackedCollection<?> result = new PackedCollection<>(shape(2, 3, 3));
-		c.delta(p(w)).get().into(result.traverse(1)).evaluate();
+		c.delta(p(w)).into(result.traverse(1)).evaluate();
 		print(2 * 3, 3, result);
 
 		for (int i = 0; i < 3; i++) {
@@ -367,5 +368,76 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 				assertEquals(i == j ? 5 : 0, result.valueAt(1, i, j));
 			}
 		}
+	}
+
+	@Test
+	public void conv2d() {
+		int size = 3;
+		int filterCount = 8;
+
+		PackedCollection<?> input = integers(1, 101).evaluate().reshape(10, 10);
+		PackedCollection<?> filters = pack(1, 2, 3, 4, 5, 6, 7, 8);
+
+		CollectionProducer<PackedCollection<?>> c = cp(input)
+						.enumerate(1, size, 1)
+						.enumerate(1, size, 1)
+						.traverse(2)
+						.expand(filterCount, v -> v.repeat(filterCount).each().multiply(p(filters)))
+						.traverse()
+						.reduce(v -> v.sum());
+
+		PackedCollection<?> result = c.delta(p(filters)).evaluate();
+		print(50, 8, result);
+		// TODO  assertions
+	}
+
+	@Test
+	public void conv2dEnumerateProduct() {
+		int h = 3; // 10;
+		int w = 4; // 10;
+		int size = 3;
+		int filterCount = 2; // 8;
+
+		PackedCollection<?> input = integers(1, (h * w) + 1).evaluate().reshape(h, w);
+		PackedCollection<?> filters = integers(1, filterCount + 1).evaluate();
+
+		CollectionProducer<PackedCollection<?>> c = cp(input)
+				.enumerate(1, size, 1)
+				.enumerate(1, size, 1)
+				.traverse(2)
+				.expand(filterCount, v -> v.repeat(filterCount).each().multiply(p(filters)))
+				.traverse()
+				.reduce(v -> v.sum());
+
+		int outSize = shape(c).getTotalSize();
+		PackedCollection<?> g = integers(1, outSize + 1).evaluate().reshape(shape(c));
+		Producer<PackedCollection<?>> weightFlat = reshape(shape(filterCount), p(filters));
+
+		Producer<PackedCollection<?>> cdy = c.delta(p(filters))
+				.reshape(outSize, filterCount)
+				.traverse(1)
+				.multiply(c(g).reshape(outSize).traverse(1).expand(filterCount))
+				.enumerate(1, 1)
+				.sum(1)
+				.reshape(shape(filterCount))
+				.each();
+
+		PackedCollection<?> sparse = new PackedCollection<>(shape(outSize, filterCount));
+
+		c.delta(p(filters)).into(sparse.traverse()).evaluate();
+		print(h, filterCount, sparse);
+
+		c.delta(p(filters))
+				.reshape(outSize, filterCount)
+				.traverse(1)
+				.multiply(c(g).reshape(outSize).traverse(1).expand(filterCount))
+				.enumerate(1, 1)
+				.into(sparse.each()).evaluate();
+		print(h, filterCount, sparse);
+
+		// HardwareOperator.verboseLog(() -> {
+			Supplier<Runnable> cda = a(each(weightFlat), subtract(each(weightFlat), multiply(c(2.0), cdy)));
+			cda.get().run();
+		// });
 	}
 }

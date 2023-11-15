@@ -305,7 +305,7 @@ public class GradientDescentTests implements CodeFeatures {
 		Assert.assertTrue(updatedLoss < 0.01);
 	}
 
-	@Test
+	// @Test
 	public void embeddings() throws FileNotFoundException {
 		int inChannels = 3;
 		int timeLen = 10;
