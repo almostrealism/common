@@ -18,6 +18,7 @@ package io.almostrealism.expression;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.OptionalInt;
 import java.util.stream.Collectors;
 
 public class Quotient<T extends Number> extends NAryExpression<T> {
@@ -25,6 +26,20 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 
 	public Quotient(Expression<Double>... values) {
 		super((Class<T>) type(values), "/", values);
+	}
+
+	@Override
+	public OptionalInt upperBound() {
+		if (getChildren().size() > 2)
+			throw new UnsupportedOperationException();
+
+		OptionalInt l = getChildren().get(0).upperBound();
+		OptionalInt r = getChildren().get(1).upperBound();
+		if (l.isPresent() && r.isPresent()) {
+			return OptionalInt.of((int) Math.ceil(l.getAsInt() / (double) r.getAsInt()));
+		}
+
+		return OptionalInt.empty();
 	}
 
 	@Override

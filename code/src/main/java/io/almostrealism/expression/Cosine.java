@@ -19,6 +19,7 @@ package io.almostrealism.expression;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
+import java.util.OptionalInt;
 
 public class Cosine extends Expression<Double> {
 	public Cosine(Expression<Double> input) {
@@ -27,6 +28,11 @@ public class Cosine extends Expression<Double> {
 
 	public String getExpression(LanguageOperations lang) {
 		return "cos(" + getChildren().get(0).getExpression(lang) + ")";
+	}
+
+	@Override
+	public OptionalInt upperBound() {
+		return OptionalInt.of(1);
 	}
 
 	@Override

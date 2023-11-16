@@ -20,6 +20,7 @@ import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
 import java.util.OptionalDouble;
+import java.util.OptionalInt;
 
 public class Floor extends Expression<Double> {
 	public Floor(Expression<Double> input) {
@@ -49,6 +50,13 @@ public class Floor extends Expression<Double> {
 		}
 
 		return new Floor((Expression<Double>) children.get(0));
+	}
+
+	@Override
+	public OptionalInt upperBound() {
+		OptionalInt v = getChildren().get(0).upperBound();
+		if (v.isPresent()) return v;
+		return OptionalInt.empty();
 	}
 
 	@Override

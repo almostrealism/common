@@ -20,6 +20,7 @@ import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
 import java.util.OptionalDouble;
+import java.util.OptionalInt;
 
 public class Ceiling extends Expression<Double> {
 	public Ceiling(Expression<Double> input) {
@@ -40,6 +41,17 @@ public class Ceiling extends Expression<Double> {
 		OptionalDouble v = getChildren().get(0).doubleValue();
 		if (v.isPresent()) return OptionalDouble.of(Math.ceil(v.getAsDouble()));
 		return OptionalDouble.empty();
+	}
+
+	@Override
+	public OptionalInt upperBound() {
+		OptionalDouble v = doubleValue();
+		if (v.isPresent()) return OptionalInt.of((int) Math.ceil(v.getAsDouble()));
+
+		OptionalInt u = getChildren().get(0).upperBound();
+		if (u.isPresent()) return OptionalInt.of((int) Math.ceil(u.getAsInt()));
+
+		return OptionalInt.empty();
 	}
 
 	@Override

@@ -51,15 +51,6 @@ public class Mod<T extends Number> extends Expression<T> {
 	}
 
 	@Override
-	public Expression<T> generate(List<Expression<?>> children) {
-		if (children.size() != 2) {
-			throw new UnsupportedOperationException();
-		}
-
-		return new Mod((Expression<Double>) children.get(0), (Expression<Double>) children.get(1), fp);
-	}
-
-	@Override
 	public OptionalInt intValue() {
 		Expression input = getChildren().get(0);
 		Expression mod = getChildren().get(1);
@@ -69,6 +60,20 @@ public class Mod<T extends Number> extends Expression<T> {
 		}
 
 		return super.intValue();
+	}
+
+	@Override
+	public OptionalInt upperBound() {
+		return getChildren().get(1).upperBound();
+	}
+
+	@Override
+	public Expression<T> generate(List<Expression<?>> children) {
+		if (children.size() != 2) {
+			throw new UnsupportedOperationException();
+		}
+
+		return new Mod((Expression<Double>) children.get(0), (Expression<Double>) children.get(1), fp);
 	}
 
 	@Override
@@ -98,9 +103,15 @@ public class Mod<T extends Number> extends Expression<T> {
 			if (m == 1) {
 				return (Expression) new IntegerConstant(0);
 			} else if (enableKernelSimplification && input.isKernelValue()) {
-				int values[] = input.kernelSeq(m);
-				if (Arrays.stream(values).map(i -> i % m).distinct().count() == 1) {
-					return new IntegerConstant(values[0] % m);
+				OptionalInt limit = input.kernelMax();
+
+				if (limit.isPresent()) {
+					Number values[] = input.kernelSeq(limit.getAsInt());
+
+					if (Arrays.stream(values).allMatch(i -> i instanceof Integer) &&
+							Arrays.stream(values).mapToInt(i -> i.intValue() % m).distinct().count() == 1) {
+						return new IntegerConstant(values[0].intValue() % m);
+					}
 				}
 			}
 		} else if (input.doubleValue().isPresent()) {

@@ -19,6 +19,7 @@ package io.almostrealism.expression;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
+import java.util.OptionalInt;
 
 public class Sine extends Expression<Double> {
 	public Sine(Expression<Double> input) {
@@ -29,6 +30,11 @@ public class Sine extends Expression<Double> {
 	@Override
 	public String getExpression(LanguageOperations lang) {
 		return "sin(" + getChildren().get(0).getExpression(lang) + ")";
+	}
+
+	@Override
+	public OptionalInt upperBound() {
+		return OptionalInt.of(1);
 	}
 
 	@Override

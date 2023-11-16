@@ -18,10 +18,17 @@ package io.almostrealism.expression;
 
 import io.almostrealism.lang.LanguageOperations;
 
+import java.util.OptionalInt;
+
 public class MinimumValue extends StaticReference<Double> {
 
 	public MinimumValue() {
 		super(Double.class, null);
+	}
+
+	@Override
+	public OptionalInt upperBound() {
+		return OptionalInt.of(0);
 	}
 
 	@Override

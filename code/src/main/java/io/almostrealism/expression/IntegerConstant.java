@@ -34,6 +34,11 @@ public class IntegerConstant extends Constant<Integer> {
 	}
 
 	@Override
+	public OptionalInt upperBound() {
+		return OptionalInt.of(value);
+	}
+
+	@Override
 	public String getExpression(LanguageOperations lang) {
 		return String.valueOf(value);
 	}

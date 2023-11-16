@@ -19,7 +19,7 @@ package io.almostrealism.expression;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.OptionalDouble;
-import java.util.function.DoubleFunction;
+import java.util.OptionalInt;
 
 public class DoubleConstant extends Constant<Double> {
 	private double value;
@@ -32,6 +32,11 @@ public class DoubleConstant extends Constant<Double> {
 	@Override
 	public OptionalDouble doubleValue() {
 		return OptionalDouble.of(value);
+	}
+
+	@Override
+	public OptionalInt upperBound() {
+		return OptionalInt.of((int) Math.ceil(value));
 	}
 
 	@Override

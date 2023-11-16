@@ -19,6 +19,7 @@ package io.almostrealism.expression;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
+import java.util.OptionalInt;
 
 public class Exp extends Expression<Double> {
 	public Exp(Expression<Double> input) {
@@ -32,6 +33,16 @@ public class Exp extends Expression<Double> {
 
 	@Override
 	public String getWrappedExpression(LanguageOperations lang) { return getExpression(lang); }
+
+	@Override
+	public OptionalInt upperBound() {
+		OptionalInt v = getChildren().get(0).upperBound();
+		if (v.isPresent()) {
+			return OptionalInt.of((int) Math.ceil(Math.exp(v.getAsInt())));
+		}
+
+		return OptionalInt.empty();
+	}
 
 	@Override
 	public Expression<Double> generate(List<Expression<?>> children) {

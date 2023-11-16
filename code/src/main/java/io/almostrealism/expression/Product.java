@@ -21,6 +21,7 @@ import io.almostrealism.collect.TraversalPolicy;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.OptionalInt;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -38,6 +39,15 @@ public class Product<T extends Number> extends NAryExpression<T> {
 
 	public Product(Expression<Double>... values) {
 		super((Class<T>) type(List.of(values)), "*", values);
+	}
+
+	@Override
+	public OptionalInt upperBound() {
+		List<OptionalInt> values = getChildren().stream()
+				.map(e -> e.upperBound()).filter(o -> o.isPresent())
+				.collect(Collectors.toList());
+		if (values.size() != getChildren().size()) return OptionalInt.empty();
+		return OptionalInt.of(values.stream().map(o -> o.getAsInt()).reduce(1, (a, b) -> a * b));
 	}
 
 	@Override

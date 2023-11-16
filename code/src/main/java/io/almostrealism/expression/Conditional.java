@@ -35,6 +35,17 @@ public class Conditional extends Expression<Double> {
 	}
 
 	@Override
+	public OptionalInt upperBound() {
+		OptionalInt l = getChildren().get(1).upperBound();
+		OptionalInt r = getChildren().get(2).upperBound();
+		if (l.isPresent() && r.isPresent()) {
+			return OptionalInt.of(Math.max(l.getAsInt(), r.getAsInt()));
+		}
+
+		return OptionalInt.empty();
+	}
+
+	@Override
 	public Expression simplify() {
 		Expression<Boolean> condition = (Expression<Boolean>) getChildren().get(0).simplify();
 		Expression<Double> positive = (Expression<Double>) getChildren().get(1).simplify();

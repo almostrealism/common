@@ -18,6 +18,8 @@ package io.almostrealism.expression;
 
 import io.almostrealism.lang.LanguageOperations;
 
+import java.util.OptionalInt;
+
 public class Epsilon extends StaticReference<Double> {
 
 	public Epsilon() {
@@ -27,5 +29,10 @@ public class Epsilon extends StaticReference<Double> {
 	@Override
 	public String getExpression(LanguageOperations lang) {
 		return lang.getPrecision().stringForDouble(lang.getPrecision().epsilon());
+	}
+
+	@Override
+	public OptionalInt upperBound() {
+		return OptionalInt.of(1);
 	}
 }

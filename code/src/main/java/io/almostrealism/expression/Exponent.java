@@ -19,6 +19,7 @@ package io.almostrealism.expression;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
+import java.util.OptionalInt;
 
 public class Exponent extends Expression<Double> {
 	public Exponent(Expression<Double> base, Expression<Double> exponent) {
@@ -34,6 +35,17 @@ public class Exponent extends Expression<Double> {
 
 	@Override
 	public String getWrappedExpression(LanguageOperations lang) { return getExpression(lang); }
+
+	@Override
+	public OptionalInt upperBound() {
+		OptionalInt l = getChildren().get(0).upperBound();
+		OptionalInt r = getChildren().get(1).upperBound();
+		if (l.isPresent() && r.isPresent()) {
+			return OptionalInt.of((int) Math.pow(l.getAsInt(), r.getAsInt()));
+		}
+
+		return OptionalInt.empty();
+	}
 
 	@Override
 	public Expression<Double> generate(List<Expression<?>> children) {

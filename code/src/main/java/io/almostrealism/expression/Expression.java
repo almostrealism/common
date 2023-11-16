@@ -91,18 +91,26 @@ public abstract class Expression<T> implements Tree<Expression<?>> {
 
 	public boolean isKernelValue() { return false; }
 
+	public OptionalInt kernelMax() {
+		return OptionalInt.empty();
+	}
+
+	public OptionalInt upperBound() {
+		OptionalInt i = intValue();
+		if (i.isPresent()) return i;
+
+		OptionalDouble d = doubleValue();
+		if (d.isPresent()) return OptionalInt.of((int) Math.ceil(d.getAsDouble()));
+
+		return OptionalInt.empty();
+	}
+
 	public Number kernelValue(int kernelIndex) {
 		throw new UnsupportedOperationException();
 	}
 
-	public int[] kernelSeq(int len) {
-		Expression exp = toInt().getSimplified();
-
-		if (!(exp.kernelValue(0) instanceof Integer)) {
-			throw new UnsupportedOperationException();
-		}
-
-		return IntStream.range(0, len).map(i -> exp.kernelValue(i).intValue()).toArray();
+	public Number[] kernelSeq(int len) {
+		return IntStream.range(0, len).mapToObj(this::kernelValue).toArray(Number[]::new);
 	}
 
 	public Expression<?> getSimplified() {

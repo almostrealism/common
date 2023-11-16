@@ -19,6 +19,7 @@ package io.almostrealism.expression;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
+import java.util.OptionalInt;
 
 public class Max extends Expression<Double> {
 	public Max(Expression<Double> a, Expression<Double> b) {
@@ -30,6 +31,17 @@ public class Max extends Expression<Double> {
 		return lang.max(
 				getChildren().get(0).getExpression(lang),
 				getChildren().get(1).getExpression(lang));
+	}
+
+	@Override
+	public OptionalInt upperBound() {
+		OptionalInt l = getChildren().get(0).upperBound();
+		OptionalInt r = getChildren().get(1).upperBound();
+		if (l.isPresent() && r.isPresent()) {
+			return OptionalInt.of(Math.max(l.getAsInt(), r.getAsInt()));
+		}
+
+		return OptionalInt.empty();
 	}
 
 	@Override
