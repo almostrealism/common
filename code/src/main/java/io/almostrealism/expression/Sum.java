@@ -18,8 +18,10 @@ package io.almostrealism.expression;
 
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.kernel.KernelSeries;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.OptionalInt;
 import java.util.function.Function;
@@ -49,6 +51,29 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 		return OptionalInt.of(values.stream().map(o -> o.getAsInt()).reduce(0, (a, b) -> a + b));
 	}
 
+	@Override
+	public KernelSeries kernelSeries() {
+		List<KernelSeries> children =
+				getChildren().stream().map(e -> e.kernelSeries()).collect(Collectors.toList());
+
+		if (children.stream().anyMatch(k -> !k.getPeriod().isPresent())) {
+			// If any of the children are not periodic, then the sum cannot be periodic
+			List<OptionalInt> scales = children.stream()
+					.map(k -> k.getScale())
+					.filter(o -> o.isPresent())
+					.collect(Collectors.toList());
+			if (scales.isEmpty()) return KernelSeries.infinite();
+			if (scales.size() == 1) return KernelSeries.infinite(scales.get(0).getAsInt());
+			return KernelSeries.infinite(scales.stream()
+					.max(Comparator.comparing(a -> Integer.valueOf(a.getAsInt())))
+					.get().getAsInt());
+		} else {
+			// If all of the children are periodic, just return a periodic series that is
+			// compatible with all of the periods
+			return KernelSeries.periodic(children.stream()
+					.map(k -> k.getPeriod().getAsInt()).collect(Collectors.toList()));
+		}
+	}
 	@Override
 	public Expression<T> generate(List<Expression<?>> children) {
 		return new Sum<>(children.toArray(new Expression[0]));

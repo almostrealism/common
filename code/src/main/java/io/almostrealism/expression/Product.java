@@ -18,14 +18,15 @@ package io.almostrealism.expression;
 
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.kernel.KernelSeries;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.OptionalInt;
 import java.util.function.Function;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public class Product<T extends Number> extends NAryExpression<T> {
@@ -39,6 +40,22 @@ public class Product<T extends Number> extends NAryExpression<T> {
 
 	public Product(Expression<Double>... values) {
 		super((Class<T>) type(List.of(values)), "*", values);
+	}
+
+	@Override
+	public KernelSeries kernelSeries() {
+		List<KernelSeries> children =
+				getChildren().stream().map(e -> e.kernelSeries()).collect(Collectors.toList());
+
+		if (children.stream().anyMatch(k -> !k.getPeriod().isPresent())) {
+			// If any of the children are not periodic, then the product cannot be periodic
+			return KernelSeries.product(children);
+		} else {
+			// If all of the children are periodic, just return the one with the largest period
+			return children.stream()
+					.max(Comparator.comparing(k -> k.getPeriod().getAsInt()))
+					.get();
+		}
 	}
 
 	@Override

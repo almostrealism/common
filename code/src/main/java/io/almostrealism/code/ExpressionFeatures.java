@@ -25,6 +25,7 @@ import io.almostrealism.expression.Exp;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Greater;
 import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.expression.MinimumValue;
 
 public interface ExpressionFeatures {
@@ -52,6 +53,8 @@ public interface ExpressionFeatures {
 	default Epsilon epsilon() { return new Epsilon(); }
 
 	default MinimumValue minValue() { return new MinimumValue(); }
+
+	default KernelIndex kernel() { return new KernelIndex(); }
 
 	default Greater greater(Expression<?> left, Expression<?> right, boolean includeEqual) {
 		return new Greater(left, right, includeEqual);

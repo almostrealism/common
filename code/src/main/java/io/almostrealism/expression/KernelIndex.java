@@ -16,6 +16,7 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.lang.LanguageOperations;
 
 public class KernelIndex extends StaticReference<Integer> {
@@ -39,6 +40,11 @@ public class KernelIndex extends StaticReference<Integer> {
 
 	@Override
 	public boolean isKernelValue() { return true; }
+
+	@Override
+	public KernelSeries kernelSeries() {
+		return KernelSeries.infinite(1);
+	}
 
 	@Override
 	public Number kernelValue(int kernelIndex) {

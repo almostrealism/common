@@ -18,6 +18,7 @@ package io.almostrealism.expression;
 
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
 import io.almostrealism.relation.Tree;
@@ -34,7 +35,6 @@ import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.Set;
 import java.util.function.Function;
-import java.util.function.IntFunction;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -91,8 +91,8 @@ public abstract class Expression<T> implements Tree<Expression<?>> {
 
 	public boolean isKernelValue() { return false; }
 
-	public OptionalInt kernelMax() {
-		return OptionalInt.empty();
+	public KernelSeries kernelSeries() {
+		return KernelSeries.infinite();
 	}
 
 	public OptionalInt upperBound() {

@@ -16,14 +16,17 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.OptionalDouble;
 import java.util.OptionalInt;
 
 public class Mod<T extends Number> extends Expression<T> {
 	public static boolean enableKernelSimplification = true;
+	public static boolean enableKernelWarnings = false;
 
 	private boolean fp;
 
@@ -60,6 +63,18 @@ public class Mod<T extends Number> extends Expression<T> {
 		}
 
 		return super.intValue();
+	}
+
+	@Override
+	public KernelSeries kernelSeries() {
+		KernelSeries input = getChildren().get(0).kernelSeries();
+		OptionalDouble mod = getChildren().get(1).doubleValue();
+
+		if (mod.isPresent() && mod.getAsDouble() == Math.floor(mod.getAsDouble())) {
+			return input.loop((int) mod.getAsDouble());
+		}
+
+		return KernelSeries.infinite();
 	}
 
 	@Override
@@ -103,15 +118,23 @@ public class Mod<T extends Number> extends Expression<T> {
 			if (m == 1) {
 				return (Expression) new IntegerConstant(0);
 			} else if (enableKernelSimplification && input.isKernelValue()) {
-				OptionalInt limit = input.kernelMax();
+				OptionalInt limit = input.kernelSeries().loop(m).getPeriod();
 
 				if (limit.isPresent()) {
-					Number values[] = input.kernelSeq(limit.getAsInt());
+					if (limit.getAsInt() > 10000) {
+						if (enableKernelWarnings)
+							System.out.println("WARN: Kernel series period is very large");
+					} else {
+						Number values[] = input.kernelSeq(limit.getAsInt());
 
-					if (Arrays.stream(values).allMatch(i -> i instanceof Integer) &&
-							Arrays.stream(values).mapToInt(i -> i.intValue() % m).distinct().count() == 1) {
-						return new IntegerConstant(values[0].intValue() % m);
+						if (Arrays.stream(values).allMatch(i -> i instanceof Integer) &&
+								Arrays.stream(values).mapToInt(i -> i.intValue() % m).distinct().count() == 1) {
+							return new IntegerConstant(values[0].intValue() % m);
+						}
 					}
+				} else {
+					if (enableKernelWarnings)
+						System.out.println("WARN: Kernel series has no period");
 				}
 			}
 		} else if (input.doubleValue().isPresent()) {

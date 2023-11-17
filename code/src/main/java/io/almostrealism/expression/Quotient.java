@@ -16,16 +16,32 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.KernelSeries;
+import io.almostrealism.relation.Series;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.OptionalInt;
 import java.util.stream.Collectors;
 
 public class Quotient<T extends Number> extends NAryExpression<T> {
-	public static boolean enableKernelSimplification = true;
-
 	public Quotient(Expression<Double>... values) {
 		super((Class<T>) type(values), "/", values);
+	}
+
+	@Override
+	public KernelSeries kernelSeries() {
+		if (getChildren().size() > 2)
+			throw new UnsupportedOperationException();
+
+		KernelSeries numerator = getChildren().get(0).kernelSeries();
+		OptionalInt denominator = getChildren().get(1).intValue();
+
+		if (denominator.isPresent()) {
+			return numerator.scale(denominator.getAsInt());
+		}
+
+		return  KernelSeries.infinite();
 	}
 
 	@Override
@@ -40,6 +56,21 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		}
 
 		return OptionalInt.empty();
+	}
+
+	@Override
+	public Number kernelValue(int kernelIndex) {
+		if (getChildren().size() > 2)
+			throw new UnsupportedOperationException();
+
+		Number numerator = getChildren().get(0).kernelValue(kernelIndex);
+		Number denominator = getChildren().get(1).kernelValue(kernelIndex);
+
+		if (numerator instanceof Integer && denominator instanceof Integer) {
+			return ((Integer) numerator) / ((Integer) denominator);
+		} else {
+			return numerator.doubleValue() / denominator.doubleValue();
+		}
 	}
 
 	@Override
@@ -100,20 +131,5 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 		}
 
 		return generate(children);
-	}
-
-	@Override
-	public Number kernelValue(int kernelIndex) {
-		if (getChildren().size() > 2)
-			throw new UnsupportedOperationException();
-
-		Number numerator = getChildren().get(0).kernelValue(kernelIndex);
-		Number denominator = getChildren().get(1).kernelValue(kernelIndex);
-
-		if (numerator instanceof Integer && denominator instanceof Integer) {
-			return ((Integer) numerator) / ((Integer) denominator);
-		} else {
-			return numerator.doubleValue() / denominator.doubleValue();
-		}
 	}
 }

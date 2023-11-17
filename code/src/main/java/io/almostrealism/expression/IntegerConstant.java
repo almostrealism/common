@@ -16,6 +16,7 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.OptionalInt;
@@ -29,25 +30,24 @@ public class IntegerConstant extends Constant<Integer> {
 	}
 
 	@Override
-	public OptionalInt intValue() {
-		return OptionalInt.of(value);
-	}
-
-	@Override
-	public OptionalInt upperBound() {
-		return OptionalInt.of(value);
-	}
-
-	@Override
 	public String getExpression(LanguageOperations lang) {
 		return String.valueOf(value);
 	}
 
 	@Override
+	public OptionalInt intValue() {
+		return OptionalInt.of(value);
+	}
+
+	@Override
+	public OptionalInt upperBound() { return OptionalInt.of(value); }
+
+	@Override
 	public boolean isKernelValue() { return true; }
 
 	@Override
-	public Number kernelValue(int kernelIndex) {
-		return value;
-	}
+	public KernelSeries kernelSeries() { return KernelSeries.constant(value); }
+
+	@Override
+	public Number kernelValue(int kernelIndex) { return value; }
 }

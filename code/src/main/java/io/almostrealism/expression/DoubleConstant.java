@@ -16,6 +16,7 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.OptionalDouble;
@@ -30,23 +31,28 @@ public class DoubleConstant extends Constant<Double> {
 	}
 
 	@Override
+	public String getExpression(LanguageOperations lang) { return lang.getPrecision().stringForDouble(value); }
+
+	@Override
 	public OptionalDouble doubleValue() {
 		return OptionalDouble.of(value);
 	}
 
 	@Override
-	public OptionalInt upperBound() {
-		return OptionalInt.of((int) Math.ceil(value));
-	}
-
-	@Override
-	public String getExpression(LanguageOperations lang) { return lang.getPrecision().stringForDouble(value); }
-
-	@Override
 	public boolean isKernelValue() { return true; }
+
+	@Override
+	public KernelSeries kernelSeries() {
+		return KernelSeries.constant(value);
+	}
 
 	@Override
 	public Number kernelValue(int kernelIndex) {
 		return value;
+	}
+
+	@Override
+	public OptionalInt upperBound() {
+		return OptionalInt.of((int) Math.ceil(value));
 	}
 }

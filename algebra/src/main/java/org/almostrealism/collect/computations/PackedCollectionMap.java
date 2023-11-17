@@ -92,7 +92,10 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 			Expression index = new KernelIndex();
 			if (getMemLength() > 1) index = index.multiply(getMemLength()).add(i);
 
+			long start = System.currentTimeMillis();
+			System.out.println("PackedCollectionMap: Obtaining value...");
 			Expression<Double> value = enableAbsoluteValueAt ? getValueAt(index) : null;
+			System.out.println("PackedCollectionMap: Retrieved value in " + (System.currentTimeMillis() - start) / 1000 + "s");
 
 			if (value == null && mapped instanceof OperationAdapter) {
 				OperationAdapter<?> op = (OperationAdapter) mapped;
@@ -103,7 +106,10 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 
 			if (value == null) throw new UnsupportedOperationException();
 
+			start = System.currentTimeMillis();
+			System.out.println("PackedCollectionMap: Obtaining simplified value...");
 			scope.getVariables().add(output.ref(i).assign(value.getSimplified()));
+			System.out.println("PackedCollectionMap: Retrieved simplified value in " + (System.currentTimeMillis() - start) / 1000 + "s");
 		}
 
 		return scope;

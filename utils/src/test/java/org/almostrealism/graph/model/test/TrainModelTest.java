@@ -16,14 +16,16 @@
 
 package org.almostrealism.graph.model.test;
 
+import io.almostrealism.code.ComputeRequirement;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.test.KernelAssertions;
 import org.almostrealism.hardware.HardwareOperator;
-import org.almostrealism.hardware.cl.CLOperator;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.DefaultCellularLayer;
+import org.almostrealism.layers.LayerFeatures;
+import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
@@ -37,6 +39,13 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	private int w = 10;
 	private int h = 10;
 	private TraversalPolicy inputShape = shape(h, w);
+
+	public CellularLayer convolution2d(TraversalPolicy inputShape, int size, int filterCount, ComputeRequirement... requirements) {
+		if (!LayerFeatures.enableLegacyConvLayer && inputShape.getTotalSize() > 16)
+			throw new UnsupportedOperationException();
+
+		return TestFeatures.super.convolution2d(inputShape, size, filterCount, requirements);
+	}
 
 	@Test
 	public void dense() {
@@ -225,6 +234,16 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	}
 
 	@Test
+	public void trainVerySmall() {
+		if (skipLongTests) return;
+
+		Tensor<Double> t = tensor(shape(4, 4));
+		PackedCollection<?> input = t.pack();
+		train(input, model(4, 4, 3, 2, 10));
+	}
+
+
+	@Test
 	public void trainSmall() {
 		Tensor<Double> t = tensor(shape(10, 10));
 		PackedCollection<?> input = t.pack();
@@ -259,18 +278,24 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 
 	protected void train(PackedCollection<?> input, Model model) {
 		long start = System.currentTimeMillis();
-		model.compile().forward(input);
+		CompiledModel compiled = model.compile();
+
+		compiled.forward(input);
 		System.out.println("TrainModelTest: Input Size = " + input.getShape() +
+				"\t | Time = " + (System.currentTimeMillis() - start) / 1000 + "s");
+
+		compiled.backward(rand(model.lastBlock().getOutputShape()).get().evaluate());
+		System.out.println("TrainModelTest: \t\tbackprop\t\t" +
 				" | Time = " + (System.currentTimeMillis() - start) / 1000 + "s");
 	}
 
 	protected Model model(int r, int c, int convSize, int convFilters, int denseSize) {
 		Model model = new Model(shape(r, c));
 		model.addLayer(convolution2d(convSize, convFilters));
-		model.addLayer(pool2d(2));
-		model.addBlock(flatten());
-		model.addLayer(dense(denseSize));
-		model.addLayer(softmax());
+//		model.addLayer(pool2d(2));
+//		model.addBlock(flatten());
+//		model.addLayer(dense(denseSize));
+//		model.addLayer(softmax());
 		return model;
 	}
 }
