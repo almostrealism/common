@@ -17,11 +17,13 @@
 package org.almostrealism.graph.model.test;
 
 import io.almostrealism.code.ComputeRequirement;
+import io.almostrealism.kernel.KernelSeries;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.test.KernelAssertions;
 import org.almostrealism.hardware.HardwareOperator;
+import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.DefaultCellularLayer;
 import org.almostrealism.layers.LayerFeatures;
@@ -277,16 +279,27 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	}
 
 	protected void train(PackedCollection<?> input, Model model) {
-		long start = System.currentTimeMillis();
-		CompiledModel compiled = model.compile();
+		int maxPeriod = KernelSeries.maximumPeriod;
+		boolean enableLargeExpressionMonitoring = Assignment.enableLargeExpressionMonitoring;
 
-		compiled.forward(input);
-		System.out.println("TrainModelTest: Input Size = " + input.getShape() +
-				"\t | Time = " + (System.currentTimeMillis() - start) / 1000 + "s");
+		try {
+			KernelSeries.maximumPeriod = 400;
+			Assignment.enableLargeExpressionMonitoring = true;
 
-		compiled.backward(rand(model.lastBlock().getOutputShape()).get().evaluate());
-		System.out.println("TrainModelTest: \t\tbackprop\t\t" +
-				" | Time = " + (System.currentTimeMillis() - start) / 1000 + "s");
+			long start = System.currentTimeMillis();
+			CompiledModel compiled = model.compile();
+
+			compiled.forward(input);
+			System.out.println("TrainModelTest: Input Size = " + input.getShape() +
+					"\t | Time = " + (System.currentTimeMillis() - start) / 1000 + "s");
+
+			compiled.backward(rand(model.lastBlock().getOutputShape()).get().evaluate());
+			System.out.println("TrainModelTest: \t\tbackprop\t\t" +
+					" | Time = " + (System.currentTimeMillis() - start) / 1000 + "s");
+		} finally {
+			KernelSeries.maximumPeriod = maxPeriod;
+			Assignment.enableLargeExpressionMonitoring = enableLargeExpressionMonitoring;
+		}
 	}
 
 	protected Model model(int r, int c, int convSize, int convFilters, int denseSize) {

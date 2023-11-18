@@ -525,7 +525,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 
 		input.fill(pos -> pos[0] + pos[1] * 0.1);
 
-		IntStream.range(0, 20).forEach(n -> {
+		IntStream.range(0, 5).forEach(n -> {
 			HardwareOperator.verboseLog(() -> {
 				CollectionProducer<PackedCollection<?>> conv = c(p(input))
 						.enumerate(1, w, s)

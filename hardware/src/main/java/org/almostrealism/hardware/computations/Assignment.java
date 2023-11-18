@@ -20,6 +20,7 @@ import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.KernelIndex;
+import io.almostrealism.lang.LanguageOperationsStub;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Process;
 import io.almostrealism.scope.ArrayVariable;
@@ -31,11 +32,15 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.OperationComputationAdapter;
 import org.almostrealism.hardware.MemoryData;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.function.Supplier;
 
 public class Assignment<T extends MemoryData> extends OperationComputationAdapter<T> {
 	public static boolean enableRelative = !Hardware.enableKernelOps;
+	public static boolean enableLargeExpressionMonitoring = false;
 
 	private final int memLength;
 
@@ -92,6 +97,19 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 				} else {
 					v = new Variable(out.getValueAt(index).getSimpleExpression(getLanguage()),
 							false, value.getSimplified(), output.getRootDelegate());
+				}
+
+				if (enableLargeExpressionMonitoring) {
+					String e = v.getExpression().getSimpleExpression(new LanguageOperationsStub());
+					if (e.length() > 5000) {
+						try {
+							Files.writeString(Path.of("large_expression.txt"), e);
+						} catch (IOException ex) {
+							throw new RuntimeException(ex);
+						}
+
+						System.out.println("Wrote large expression to large_expression.txt");
+					}
 				}
 
 				scope.getVariables().add(v);

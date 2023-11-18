@@ -22,6 +22,8 @@ import java.util.List;
 import java.util.OptionalInt;
 
 public class KernelSeries implements Series {
+	public static int maximumPeriod = 0;
+
 	private OptionalInt period;
 	private OptionalInt scale;
 	private int inverseScale;
@@ -35,6 +37,14 @@ public class KernelSeries implements Series {
 	}
 
 	protected KernelSeries(OptionalInt period, OptionalInt scale, int inverseScale) {
+		if (period.isPresent() && period.getAsInt() < 0) {
+			throw new IllegalArgumentException("Period must be positive");
+		}
+
+		if (scale.isPresent() && scale.getAsInt() < 0) {
+			throw new IllegalArgumentException("Period must be positive");
+		}
+
 		this.period = period;
 		this.scale = scale;
 		this.inverseScale = inverseScale;
@@ -44,19 +54,23 @@ public class KernelSeries implements Series {
 	public boolean isFinite() { return false; }
 
 	@Override
-	public OptionalInt getPeriod() { return period; }
+	public OptionalInt getPeriod() {
+		if (maximumPeriod > 0 && period.isPresent() && period.getAsInt() > maximumPeriod) {
+			return OptionalInt.of(maximumPeriod);
+		}
+
+		return period;
+	}
 
 	public OptionalInt getScale() { return scale; }
 
 	public KernelSeries scale(int scale) {
 		if (scale % inverseScale == 0) {
-			return new KernelSeries(
-					getPeriod().isPresent() ? OptionalInt.of(getPeriod().getAsInt() * scale / inverseScale) : OptionalInt.empty(),
-					getScale().isPresent() ? OptionalInt.of(getScale().getAsInt() * scale / inverseScale) : OptionalInt.empty());
+			return new KernelSeries(period,
+					getScale().isPresent() ? OptionalInt.of(product(getScale().getAsInt(), scale / inverseScale)) : OptionalInt.empty());
 		} else {
-			return new KernelSeries(
-					getPeriod().isPresent() ? OptionalInt.of(getPeriod().getAsInt() * scale) : OptionalInt.empty(),
-					getScale().isPresent() ? OptionalInt.of(getScale().getAsInt() * scale) : OptionalInt.empty(),
+			return new KernelSeries(period,
+					getScale().isPresent() ? OptionalInt.of(product(getScale().getAsInt(), scale)) : OptionalInt.empty(),
 					inverseScale);
 		}
 	}
@@ -71,16 +85,14 @@ public class KernelSeries implements Series {
 			inverseScale = 1;
 		}
 
-		if (getPeriod().isPresent()) {
+		if (this.period.isPresent()) {
 			return new KernelSeries(
-					OptionalInt.of(getPeriod().getAsInt() * period),
-					getScale().isPresent() ? OptionalInt.of(getScale().getAsInt() * period) : OptionalInt.empty(),
-					inverseScale);
+					OptionalInt.of(product(this.period.getAsInt(), period)),
+					getScale(), inverseScale);
 		} else {
 			return new KernelSeries(
-					getScale().isPresent() ? OptionalInt.of(getScale().getAsInt() * period) : OptionalInt.empty(),
-					getScale().isPresent() ? OptionalInt.of(getScale().getAsInt() * period) : OptionalInt.empty(),
-					inverseScale);
+					getScale().isPresent() ? OptionalInt.of(product(getScale().getAsInt(), period)) : OptionalInt.empty(),
+					getScale(), inverseScale);
 		}
 	}
 
@@ -95,13 +107,15 @@ public class KernelSeries implements Series {
 	public static KernelSeries constant(double value) {
 		value = Math.abs(value);
 
-		if (value < 1.0) {
-			return new KernelSeries(OptionalInt.of(1), OptionalInt.of((int) Math.ceil(1.0 / value)));
-		} else if (value == Math.floor(value)) {
-			return new KernelSeries(OptionalInt.of(1), OptionalInt.of(1), (int) value);
-		} else {
-			return new KernelSeries(OptionalInt.of(1), OptionalInt.of(1));
+		if (value != 0.0) {
+			if (value < 1.0) {
+				return new KernelSeries(OptionalInt.of(1), OptionalInt.of((int) Math.ceil(1.0 / value)));
+			} else if (value == Math.floor(value)) {
+				return new KernelSeries(OptionalInt.of(1), OptionalInt.of(1), (int) value);
+			}
 		}
+
+		return new KernelSeries(OptionalInt.of(1), OptionalInt.of(1));
 	}
 
 	public static KernelSeries periodic(List<Integer> periods) {
@@ -126,5 +140,10 @@ public class KernelSeries implements Series {
 		} else {
 			return new KernelSeries(OptionalInt.empty(), OptionalInt.of(scale), inverseScale);
 		}
+	}
+
+	private static int product(long a, long b) {
+		long r = a * b;
+		return r > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) r;
 	}
 }

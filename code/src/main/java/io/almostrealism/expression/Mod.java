@@ -17,6 +17,7 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.kernel.KernelSeries;
+import io.almostrealism.kernel.KernelSeriesMatcher;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.Arrays;
@@ -121,6 +122,27 @@ public class Mod<T extends Number> extends Expression<T> {
 				OptionalInt limit = input.kernelSeries().loop(m).getPeriod();
 
 				if (limit.isPresent()) {
+					if (limit.getAsInt() > 2048) {
+						if (enableKernelWarnings)
+							System.out.println("WARN: Kernel series period is very large");
+					} else {
+						List<Number> distinct = input.imod(m).getDistinctKernelValues(limit.getAsInt());
+
+						if (distinct != null && distinct.size() == 1) {
+							if (distinct.get(0) instanceof Integer) {
+								return new IntegerConstant(distinct.get(0).intValue());
+							} else {
+								return new DoubleConstant(distinct.get(0).doubleValue());
+							}
+						}
+
+						return KernelSeriesMatcher.simplify(input.imod(m), m);
+					}
+				}
+			} else if (input.isKernelValue()) {
+				OptionalInt limit = input.kernelSeries().loop(m).getPeriod();
+
+				if (limit.isPresent()) {
 					if (limit.getAsInt() > 10000) {
 						if (enableKernelWarnings)
 							System.out.println("WARN: Kernel series period is very large");
@@ -132,9 +154,6 @@ public class Mod<T extends Number> extends Expression<T> {
 							return new IntegerConstant(values[0].intValue() % m);
 						}
 					}
-				} else {
-					if (enableKernelWarnings)
-						System.out.println("WARN: Kernel series has no period");
 				}
 			}
 		} else if (input.doubleValue().isPresent()) {

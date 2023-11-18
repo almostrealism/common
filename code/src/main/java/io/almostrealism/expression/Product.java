@@ -135,8 +135,14 @@ public class Product<T extends Number> extends NAryExpression<T> {
 				.map(d -> d.getAsDouble())
 				.collect(Collectors.toList());
 
-		if (values.size() <= 1) {
+		if (values.size() <= 0) {
 			return generate(children);
+		} else if (values.size() == 1) {
+			if (values.get(0).doubleValue() == 0.0) {
+				return getType() == Integer.class ? new IntegerConstant(0) : new DoubleConstant(0.0);
+			} else {
+				return generate(children);
+			}
 		}
 
 		children = children.stream()

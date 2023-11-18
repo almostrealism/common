@@ -26,6 +26,7 @@ import io.almostrealism.scope.Variable;
 import org.almostrealism.io.SystemUtils;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -95,6 +96,30 @@ public abstract class Expression<T> implements Tree<Expression<?>> {
 		return KernelSeries.infinite();
 	}
 
+	public List<Number> getDistinctKernelValues(int kernelMax) {
+		if (!isKernelValue()) return null;
+
+		return Arrays.stream(kernelSeq(kernelMax)).distinct().collect(Collectors.toList());
+	}
+
+	public boolean kernelEquivalent(Expression<?> exp, int kernelMax) {
+		if (!isKernelValue()) return false;
+		if (!exp.isKernelValue()) return false;
+
+		Number values[] = kernelSeq(kernelMax);
+		Number comp[] = exp.kernelSeq(kernelMax);
+
+		if (!Arrays.stream(values).allMatch(i -> i instanceof Integer)) return false;
+		if (!Arrays.stream(comp).allMatch(i -> i instanceof Integer)) return false;
+
+		for (int i = 0; i < kernelMax; i++) {
+			if (!values[i].equals(comp[i]))
+				return false;
+		}
+
+		return true;
+	}
+
 	public OptionalInt upperBound() {
 		OptionalInt i = intValue();
 		if (i.isPresent()) return i;
@@ -142,13 +167,27 @@ public abstract class Expression<T> implements Tree<Expression<?>> {
 	}
 
 	public String getSimpleExpression(LanguageOperations lang) {
-		return Optional.ofNullable(getSimplified()).map(e ->e.getExpression(lang)).orElse(null);
+		return Optional.ofNullable(getSimplified())
+				.map(e -> e.getExpression(lang)).orElse(null);
 	}
 
 	public abstract String getExpression(LanguageOperations lang);
 
 	public String getWrappedExpression(LanguageOperations lang) {
 		return "(" + getExpression(lang) + ")";
+	}
+
+	public List<Expression> find(String text) {
+		List<Expression> found = new ArrayList<>();
+		for (Expression e : getChildren()) {
+			found.addAll(e.find(text));
+		}
+
+		if (found.isEmpty() && getExpression(new LanguageOperationsStub()).contains(text)) {
+			found.add(this);
+		}
+
+		return found;
 	}
 
 	public List<Variable<?, ?>> getDependencies() { return dependencies; }

@@ -19,7 +19,9 @@ package io.almostrealism.expression.test;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.kernel.KernelSeries;
+import io.almostrealism.kernel.KernelSeriesMatcher;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
 import org.junit.Assert;
@@ -124,6 +126,83 @@ public class KernelSeriesTests implements ExpressionFeatures {
 				.imod(36);
 
 		validateSeries(p);
+	}
+
+	@Test
+	public void productQuotientSumEquals() {
+		for (int kernel0 = 0; kernel0 < 1800; kernel0++) {
+			// int result = (((((((kernel0 * 8) % (144)) / 8) + (((kernel0 * 8) / 144) * 144)) % (18)) == (0)) ? (1) : (0));
+			int result = ((((kernel0 * 8) % (144)) / 8) + (((kernel0 * 8) / 144) * 144)) % (18);
+			int simple = kernel0 % 18;
+			if (kernel0 % 100 == 0) System.out.println(kernel0 + " " + result);
+			Assert.assertEquals(result, simple);
+		}
+
+		for (int kernel0 = 0; kernel0 < 100; kernel0++) {
+			int global_id = kernel0;
+			int result = ((((((((((((((((((((((((global_id * 8) + 1) % (144)) / 8) + ((((global_id * 8) + 1) / 144) * 144) + 18) / 18) * 9) + 4) / 9) * 9) + 4) / 18) * 9) + 4) / 9) * 9) + 4) / 36) * 36) + 4) % (24)) / 12) + 5 + ((((((((((((((((((((((global_id * 8) + 1) % (144)) / 8) + ((((global_id * 8) + 1) / 144) * 144) + 18) / 18) * 9) + 4) / 9) * 9) + 4) / 18) * 9) + 4) / 9) * 9) + 4) / 36) * 36) + 4) / 24) * 24)) % (16));
+			System.out.println(kernel0 + " " + result);
+		}
+	}
+
+	@Test
+	public void productModAndQuotientSum() {
+		// ((((kernel0 * 8) % (144)) / 8) + (((kernel0 * 8) / 144) * 144)) % (18);
+		Expression a = kernel().multiply(8)
+				.imod(144)
+				.divide(8);
+		Expression b = kernel().multiply(8).divide(144).multiply(144);
+		Expression c = a.add(b).imod(18);
+		validateSeries(c);
+
+		Expression e = KernelSeriesMatcher.simplify(c, 18);
+		Assert.assertEquals("(kernel0) % (18)", e.getExpression(new LanguageOperationsStub()));
+	}
+
+	@Test
+	public void largeSum() {
+		// ((((((((((((((((((((((((kernel0 * 8) + 1) % (144)) / 8) + ((((kernel0 * 8) + 1) / 144) * 144) + 18) / 18) * 9) + 4) / 9) * 9) + 4) / 18) * 9) + 4) / 9) * 9) + 4) / 36) * 36) + 4) % (24)) / 12) + 5 + ((((((((((((((((((((((kernel0 * 8) + 1) % (144)) / 8) + ((((kernel0 * 8) + 1) / 144) * 144) + 18) / 18) * 9) + 4) / 9) * 9) + 4) / 18) * 9) + 4) / 9) * 9) + 4) / 36) * 36) + 4) / 24) * 24)) % (16))
+		// (((((((((kernel0 * 8) + 1) % (144)) / 8) + ((((((((((((((((((((kernel0 * 8) + 1) / 144) * 144) + 18) / 18) * 9) + 4) / 9) * 9) + 4) / 18) * 9) + 4) / 9) * 9) + 4) / 36) * 36) + 4)) % (24)) / 12) + 5) + (((((((kernel0 * 8) + 1) % (144)) / 8) + ((((((((((((((((((((kernel0 * 8) + 1) / 144) * 144) + 18) / 18) * 9) + 4) / 9) * 9) + 4) / 18) * 9) + 4) / 9) * 9) + 4) / 36) * 36) + 4)) / 24) * 24)) % (16)
+		Expression p = kernel().multiply(8)
+				.add(1)
+				.imod(144)
+				.divide(8)
+				.add(kernel().multiply(8).add(1).divide(144).multiply(144).add(18).divide(18).multiply(9).add(4).divide(9).multiply(9).add(4).divide(18).multiply(9).add(4).divide(9).multiply(9).add(4).divide(36).multiply(36).add(4))
+				.imod(24)
+				.divide(12)
+				.add(5)
+				.add(kernel().multiply(8).add(1).imod(144).divide(8).add(kernel().multiply(8).add(1).divide(144).multiply(144).add(18).divide(18).multiply(9).add(4).divide(9).multiply(9).add(4).divide(18).multiply(9).add(4).divide(9).multiply(9).add(4).divide(36).multiply(36).add(4)).divide(24).multiply(24))
+				.imod(16);
+		System.out.println(p.getExpression(new LanguageOperationsStub()));
+		validateSeries(p);
+	}
+
+	@Test
+	public void simpleSum() {
+		KernelSeries series = e(0).kernelSeries();
+		Assert.assertEquals(1, series.getScale().getAsInt());
+
+		series = kernel().add(0).kernelSeries();
+		Assert.assertEquals(1, series.getScale().getAsInt());
+
+		series = kernel().divide(1).multiply(8).add(0).kernelSeries();
+	}
+
+	@Test
+	public void simpleMod() {
+		KernelSeries series = kernel().imod(10).kernelSeries();
+		Assert.assertEquals(10, series.getPeriod().getAsInt());
+		Assert.assertEquals(1, series.getScale().getAsInt());
+
+		series = kernel().imod(10).divide(5).kernelSeries();
+		Assert.assertEquals(10, series.getPeriod().getAsInt());
+		Assert.assertEquals(5, series.getScale().getAsInt());
+
+		validateSeries(kernel().imod(10).divide(5));
+		validateSeries(kernel().imod(10).divide(5).multiply(2));
+		validateSeries(kernel().imod(10).divide(5).imod(2));
+		validateSeries(kernel().imod(10).divide(5).imod(3));
+		validateSeries(kernel().imod(10).multiply(5).imod(3));
 	}
 
 	protected void validateSeries(Expression exp) {
