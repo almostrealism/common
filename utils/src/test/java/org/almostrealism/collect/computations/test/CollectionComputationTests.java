@@ -33,7 +33,6 @@ import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.PassThroughProducer;
-import org.almostrealism.hardware.cl.CLOperator;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
@@ -47,7 +46,7 @@ public class CollectionComputationTests implements TestFeatures {
 
 	@Test
 	public void integers() {
-		CLOperator.verboseLog(() -> {
+		HardwareOperator.verboseLog(() -> {
 			PackedCollection<?> result = integers(10, 100).get().evaluate();
 			assertEquals(14, result.toDouble(4));
 		});
@@ -55,11 +54,31 @@ public class CollectionComputationTests implements TestFeatures {
 
 	@Test
 	public void index() {
+		PackedCollection<?> x = pack(1, 1, 1, 2, 2, 2);
+		PackedCollection<?> y = pack(0, 1, 2, 0, 1, 2);
+		PackedCollection<?> result = new PackedCollection<>(shape(6));
+
+		HardwareOperator.verboseLog(() -> {
+			CollectionProducer<PackedCollection<?>> value = index(shape(3, 5), p(x), p(y));
+			value.into(result).evaluate();
+		});
+
+		System.out.println(result.toArrayString());
+		assertEquals(5.0, result.toDouble(0));
+		assertEquals(6.0, result.toDouble(1));
+		assertEquals(7.0, result.toDouble(2));
+		assertEquals(10.0, result.toDouble(3));
+		assertEquals(11.0, result.toDouble(4));
+		assertEquals(12.0, result.toDouble(5));
+	}
+
+	@Test
+	public void integersIndex() {
 		int len = 10000;
 		PackedCollection<?> in = tensor(shape(len, 1)).pack();
 		PackedCollection<?> result = new PackedCollection<>(shape(len, 1).traverse(1));
 
-		CLOperator.verboseLog(() -> {
+		HardwareOperator.verboseLog(() -> {
 			CollectionProducer<PackedCollection<?>> product = c(p(in), integers(0, len)).traverseEach().multiply(c(2.0));
 			product.get().into(result).evaluate();
 		});
@@ -69,8 +88,29 @@ public class CollectionComputationTests implements TestFeatures {
 	}
 
 	@Test
+	public void integersIndex2d() {
+		int len = 10;
+		PackedCollection<?> in = tensor(shape(2, len, 1)).pack();
+		PackedCollection<?> result = new PackedCollection<>(shape(2));
+
+		HardwareOperator.verboseLog(() -> {
+			CollectionProducer<PackedCollection<?>> value = c(p(in),
+																shape(2, len, 1),
+																c(0, 1),
+																c(4, 8),
+																c(0, 0));
+			CollectionProducer<PackedCollection<?>> product = value.multiply(c(2.0));
+			product.get().into(result).evaluate();
+		});
+
+		System.out.println(result.toArrayString());
+		assertEquals(8.0, result.toDouble(0));
+		assertEquals(18.0, result.toDouble(1));
+	}
+
+	@Test
 	public void multiply() {
-		CLOperator.verboseLog(() -> {
+		HardwareOperator.verboseLog(() -> {
 			PackedCollection<?> testInput = new PackedCollection<>(1);
 			testInput.setMem(0, 9.0);
 			PackedCollection<?> result = c(3).multiply(p(testInput)).get().evaluate();
@@ -270,7 +310,7 @@ public class CollectionComputationTests implements TestFeatures {
 		CollectionProducer<PackedCollection<?>> max = new PackedCollectionMax(p(series.traverse(0)));
 		CollectionProducer<PackedCollection<?>> auto = max._greaterThan(c(0.0), c(0.8).divide(max), c(1.0));
 
-		CLOperator.verboseLog(() -> {
+		HardwareOperator.verboseLog(() -> {
 			OperationList op = new OperationList("greaterThanMax");
 			op.add(a(1, p(dest), auto));
 			op.get().run();

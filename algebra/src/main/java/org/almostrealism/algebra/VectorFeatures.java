@@ -71,7 +71,7 @@ public interface VectorFeatures extends CollectionFeatures, HardwareFeatures {
 		return (ExpressionComputation<Vector>) new ExpressionComputation<Vector>(expression, bank).setPostprocessor(Vector.postprocessor());
 	}
 
-	default ExpressionComputation<Vector> vector(CollectionProducerComputation<?> value) {
+	default ExpressionComputation<Vector> vector(Producer<?> value) {
 		if (value instanceof ExpressionComputation) {
 			if (((ExpressionComputation) value).expression().size() != 3)
 				throw new IllegalArgumentException();
@@ -118,6 +118,7 @@ public interface VectorFeatures extends CollectionFeatures, HardwareFeatures {
 				(Supplier) v).setPostprocessor(Scalar.postprocessor());
 	}
 
+	@Deprecated
 	default ExpressionComputation<Scalar> dotProduct(Supplier<Evaluable<? extends Vector>> a, Supplier<Evaluable<? extends Vector>> b) {
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> comp = new ArrayList<>();
 		comp.add(args -> new Sum(
@@ -148,19 +149,34 @@ public interface VectorFeatures extends CollectionFeatures, HardwareFeatures {
 		return vector(multiply(a, vector(b, b, b)));
 	}
 
+	@Deprecated
 	default CollectionProducer<Scalar> length(Supplier<Evaluable<? extends Vector>> v) {
 		return x(v).pow(c(2.0)).add(y(v).pow(c(2.0))).add(z(v).pow(c(2.0))).pow(c(0.5));
 	}
 
+	@Deprecated
 	default CollectionProducer<Scalar> lengthSq(Supplier<Evaluable<? extends Vector>> v) {
 		return x(v).pow(c(2.0)).add(y(v).pow(c(2.0))).add(z(v).pow(c(2.0)));
 	}
 
+	@Deprecated
 	default ExpressionComputation<Vector> normalize(Supplier<Evaluable<? extends Vector>> p) {
 		Producer<Scalar> oneOverLength = pow(length(p), ScalarFeatures.minusOne());
 		return vector(x(p).multiply(oneOverLength),
 				y(p).multiply(oneOverLength),
 				z(p).multiply(oneOverLength));
+	}
+
+	default <T extends PackedCollection<?>>CollectionProducerComputationBase<T, T> _length(Producer<T> value) {
+		return sqrt(_lengthSq(value));
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> _lengthSq(Producer<T> value) {
+		return multiply(value, value).sum();
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> _normalize(Producer<T> value) {
+		return multiply(value, _length(value).pow(-1.0));
 	}
 
 	static VectorFeatures getInstance() {

@@ -43,4 +43,12 @@ public interface Process<P extends Process<?, ?>, T> extends Node, Supplier<T>, 
 			}
 		};
 	}
+
+	static <T, P extends Supplier<T>> Supplier<T> optimized(P process) {
+		if (process instanceof Process) {
+			return ((Process<?, T>) process).optimize();
+		} else {
+			return process;
+		}
+	}
 }

@@ -24,7 +24,6 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.bool.AcceleratedConditionalStatementCollection;
 import org.almostrealism.bool.GreaterThanCollection;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
-import org.almostrealism.collect.computations.ExpressionComputation;
 
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -130,6 +129,10 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 		return divide((Producer) this, value);
 	}
 
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> sqrt() {
+		return sqrt((Producer) this);
+	}
+
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> pow(double value) {
 		return pow((Producer) this, c(value));
 	}
@@ -156,6 +159,15 @@ public interface CollectionProducer<T extends Shape<?>> extends CollectionProduc
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> max() {
 		return max((Producer) this);
+	}
+
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> mod(Producer<T> mod) {
+		return mod((Producer) this, (Producer) mod);
+	}
+
+	@Deprecated
+	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> relativeMod(Producer<T> mod) {
+		return relativeMod((Producer) this, (Producer) mod);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> sum(int axis) {
