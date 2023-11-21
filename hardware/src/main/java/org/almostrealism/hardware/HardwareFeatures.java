@@ -78,6 +78,15 @@ public interface HardwareFeatures {
 		}
 	}
 
+	default Supplier<Runnable> loop(Supplier<Runnable> c, int iterations) {
+		if (!(c instanceof Computation) || (c instanceof OperationList && !((OperationList) c).isComputation())) {
+			Runnable r = c.get();
+			return () -> () -> IntStream.range(0, iterations).forEach(i -> r.run());
+		} else {
+			return new Loop((Computation) c, iterations);
+		}
+	}
+
 	default Supplier<Runnable> loop(Computation<Void> c, int iterations) {
 		if (c instanceof OperationList && !((OperationList) c).isComputation()) {
 			Runnable r = ((OperationList) c).get();

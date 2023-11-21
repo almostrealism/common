@@ -35,6 +35,8 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class TemporalRunner implements Setup, Temporal, OperationComputation<Void>, HardwareFeatures {
+	public static boolean enableOptimization = true;
+
 	private Supplier<Runnable> setup, run;
 	private Runnable s, r;
 
@@ -43,7 +45,13 @@ public class TemporalRunner implements Setup, Temporal, OperationComputation<Voi
 	}
 
 	public TemporalRunner(Supplier<Runnable> setup, Supplier<Runnable> tick, int iter) {
-		this.run = loop((Computation<Void>) tick, iter);
+		if (enableOptimization) {
+			// if (tick instanceof OperationList) tick = ((OperationList) tick).flatten();
+			this.run = loop(Process.optimized(tick), iter);
+		} else {
+			this.run = loop(tick, iter);
+		}
+
 		this.setup = setup;
 	}
 

@@ -18,12 +18,15 @@ package org.almostrealism.hardware.computations;
 
 import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Computation;
+import io.almostrealism.relation.Process;
 import io.almostrealism.scope.HybridScope;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.relation.Countable;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeInputManager;
 import org.almostrealism.hardware.OperationComputationAdapter;
+
+import java.util.Collection;
 
 // TODO  Should extend Repeated
 public class Loop extends OperationComputationAdapter<Void> {
@@ -72,7 +75,6 @@ public class Loop extends OperationComputationAdapter<Void> {
 		});
 
 		scope.getExplicit().setWriter(w -> {
-			StringBuilder code = new StringBuilder();
 			w.println("for (int " + i + " = 0; " + i + " < " + iterations + "; " + i + "++) {\n");
 			atomScope.write(w);
 			w.println("}\n");

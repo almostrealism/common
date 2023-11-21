@@ -18,12 +18,16 @@ package org.almostrealism.hardware.test;
 
 import io.almostrealism.code.OperationProfile;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.relation.ParallelProcess;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationList;
+import org.almostrealism.hardware.computations.Loop;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
+
+import java.util.function.Supplier;
 
 public class OperationOptimizationTests implements TestFeatures {
 	@Test
@@ -60,5 +64,19 @@ public class OperationOptimizationTests implements TestFeatures {
 				}
 			}
 		}
+	}
+
+	@Test
+	public void matmulLoop() {
+		int dim = 256;
+		PackedCollection<?> in = new PackedCollection<>(shape(dim));
+		PackedCollection<?> matrix = new PackedCollection<>(shape(dim, dim));
+		PackedCollection<?> out = new PackedCollection<>(shape(dim));
+
+		in.fill(pos -> Math.random());
+		matrix.fill(pos -> Math.random());
+
+		Supplier<Runnable> loop = lp(a(each(p(out)), matmul(p(matrix), p(in))), 10);
+		System.out.println(ParallelProcess.count(loop));
 	}
 }
