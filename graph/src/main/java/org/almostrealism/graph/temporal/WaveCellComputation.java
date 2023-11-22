@@ -16,6 +16,7 @@
 
 package org.almostrealism.graph.temporal;
 
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.HybridScope;
@@ -40,6 +41,10 @@ public abstract class WaveCellComputation extends OperationComputationAdapter<Pa
 				(Supplier) data.getWaveCount(),
 				(Supplier) data.getAmplitude(),
 				(Supplier) data.getDuration());
+	}
+
+	protected WaveCellComputation(Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
+		super(arguments);
 	}
 
 	public ArrayVariable getOutput() { return getArgument(0, 2); }

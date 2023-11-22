@@ -154,7 +154,7 @@ public class CodeFeaturesTests implements TestFeatures {
 	public void loop1() {
 		Scalar value = new Scalar(1.0);
 		Scalar dest = new Scalar(0.0);
-		Supplier<Runnable> s = loop(a(1, p(dest), add(v(1),p(value)).divide(v(2.0))), 2);
+		Supplier<Runnable> s = loop((Supplier<Runnable>) a(1, p(dest), add(v(1),p(value)).divide(v(2.0))), 2);
 		value.setValue(2);
 
 		Runnable r = s.get();
@@ -171,7 +171,7 @@ public class CodeFeaturesTests implements TestFeatures {
 	@Test
 	public void loop2() {
 		Scalar dest = new Scalar(0.0);
-		Supplier<Runnable> s = loop(a(1, p(dest), add(v(1.0), p(dest))), 3);
+		Supplier<Runnable> s = loop((Supplier<Runnable>) a(1, p(dest), add(v(1.0), p(dest))), 3);
 		Runnable r = s.get();
 
 		r.run();

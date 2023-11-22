@@ -24,4 +24,12 @@ public interface OperationInfo {
 	default List<ComputeRequirement> getComputeRequirements() {
 		return null;
 	}
+
+	static <T> String display(T value) {
+		if (value instanceof OperationInfo) {
+			return ((OperationInfo) value).getMetadata().getShortDescription();
+		} else {
+			return String.valueOf(value);
+		}
+	}
 }

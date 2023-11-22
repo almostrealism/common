@@ -51,4 +51,12 @@ public interface Process<P extends Process<?, ?>, T> extends Node, Supplier<T>, 
 			return process;
 		}
 	}
+
+	static <T, P extends Supplier<T>> Supplier<T> isolated(P process) {
+		if (process instanceof Process) {
+			return ((Process<?, T>) process).isolate();
+		} else {
+			return Process.of(process);
+		}
+	}
 }

@@ -17,6 +17,9 @@
 package org.almostrealism.time.computations;
 
 import io.almostrealism.code.Precision;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Process;
 import io.almostrealism.scope.HybridScope;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.StaticReference;
@@ -29,7 +32,9 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.time.CursorPair;
 
+import java.util.List;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 public class AcceleratedTimeSeriesPurge extends OperationComputationAdapter<PackedCollection<?>> {
 	private double wavelength;
@@ -37,6 +42,16 @@ public class AcceleratedTimeSeriesPurge extends OperationComputationAdapter<Pack
 	public AcceleratedTimeSeriesPurge(Producer<AcceleratedTimeSeries> series, Producer<CursorPair> cursors, double frequency) {
 		super(new Producer[] { series, cursors, () -> new Provider<>(new Scalar()) });
 		this.wavelength = 1.0 / frequency;
+	}
+
+	private AcceleratedTimeSeriesPurge(double wavelength, Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
+		super(arguments);
+		this.wavelength = wavelength;
+	}
+
+	@Override
+	public ParallelProcess<Process<?, ?>, Runnable> generate(List<Process<?, ?>> children) {
+		return new AcceleratedTimeSeriesPurge(wavelength, children.toArray(Supplier[]::new));
 	}
 
 	@Override

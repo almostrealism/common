@@ -16,6 +16,9 @@
 
 package org.almostrealism.time.computations;
 
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Process;
 import io.almostrealism.scope.HybridScope;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.IntegerConstant;
@@ -33,12 +36,23 @@ import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.time.CursorPair;
 
+import java.util.List;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 
 @Deprecated
 public class AcceleratedTimeSeriesValueAt extends CollectionProducerComputationBase<PackedCollection<?>, Scalar> {
 	public AcceleratedTimeSeriesValueAt(Producer<AcceleratedTimeSeries> series, Producer<CursorPair> cursors) {
 		super(new TraversalPolicy(2).traverse(0), new Producer[] { series, cursors });
+	}
+
+	private AcceleratedTimeSeriesValueAt(Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
+		super(new TraversalPolicy(2).traverse(0), arguments);
+	}
+
+	@Override
+	public ParallelProcess<Process<?, ?>, Evaluable<? extends Scalar>> generate(List<Process<?, ?>> children) {
+		return new AcceleratedTimeSeriesValueAt(children.stream().skip(1).toArray(Supplier[]::new));
 	}
 
 	@Override

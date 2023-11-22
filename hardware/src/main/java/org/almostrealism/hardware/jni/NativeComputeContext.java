@@ -26,8 +26,13 @@ import org.almostrealism.hardware.ctx.AbstractComputeContext;
 import org.almostrealism.hardware.metal.MetalJNIMemoryAccessor;
 import org.almostrealism.hardware.metal.MetalMemoryProvider;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
 public class NativeComputeContext extends AbstractComputeContext<NativeDataContext> {
 	public static boolean enableVerbose = false;
+	public static boolean enableLargeScopeMonitoring = false;
 	protected static long totalInvocations = 0;
 
 	private NativeCompiler compiler;
@@ -60,6 +65,19 @@ public class NativeComputeContext extends AbstractComputeContext<NativeDataConte
 
 		StringBuffer buf = new StringBuffer();
 		buf.append(new ScopeEncoder(pw -> new CJNIPrintWriter(pw, target.getFunctionName(), getLanguage(), accessor), Accessibility.EXTERNAL).apply(scope));
+
+		if (enableLargeScopeMonitoring) {
+			if (buf.length() > 240000) {
+				try {
+					Files.writeString(Path.of("large_scope.txt"), buf.toString());
+				} catch (IOException ex) {
+					throw new RuntimeException(ex);
+				}
+
+				System.out.println("Wrote large Scope to large_scope.txt");
+			}
+		}
+
 		getNativeCompiler().compile(target, buf.toString());
 		return target;
 	}

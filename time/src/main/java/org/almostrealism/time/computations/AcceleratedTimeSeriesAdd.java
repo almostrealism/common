@@ -16,6 +16,9 @@
 
 package org.almostrealism.time.computations;
 
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Process;
 import io.almostrealism.scope.HybridScope;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.Scope;
@@ -24,12 +27,22 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.time.AcceleratedTimeSeries;
 import org.almostrealism.time.TemporalScalar;
 
+import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 public class AcceleratedTimeSeriesAdd extends OperationComputationAdapter<AcceleratedTimeSeries> {
 	public AcceleratedTimeSeriesAdd(Producer<AcceleratedTimeSeries> series, Producer<TemporalScalar> addition) {
 		super(new Supplier[] { series, addition } );
+	}
+
+	private AcceleratedTimeSeriesAdd(Supplier<Evaluable<? extends AcceleratedTimeSeries>>... arguments) {
+		super(arguments);
+	}
+
+	@Override
+	public ParallelProcess<Process<?, ?>, Runnable> generate(List<Process<?, ?>> children) {
+		return new AcceleratedTimeSeriesAdd(children.toArray(Supplier[]::new));
 	}
 
 	@Override

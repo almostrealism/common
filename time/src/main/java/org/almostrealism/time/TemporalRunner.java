@@ -20,6 +20,8 @@ import io.almostrealism.code.ArgumentMap;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.code.OperationComputation;
+import io.almostrealism.code.OperationInfo;
+import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.code.ScopeInputManager;
@@ -36,6 +38,7 @@ import java.util.stream.Stream;
 
 public class TemporalRunner implements Setup, Temporal, OperationComputation<Void>, HardwareFeatures {
 	public static boolean enableOptimization = true;
+	public static boolean enableIsolation = false;
 
 	private Supplier<Runnable> setup, run;
 	private Runnable s, r;
@@ -45,13 +48,19 @@ public class TemporalRunner implements Setup, Temporal, OperationComputation<Voi
 	}
 
 	public TemporalRunner(Supplier<Runnable> setup, Supplier<Runnable> tick, int iter) {
-		if (enableOptimization) {
-			// if (tick instanceof OperationList) tick = ((OperationList) tick).flatten();
-			this.run = loop(Process.optimized(tick), iter);
-		} else {
-			this.run = loop(tick, iter);
+		if (tick instanceof OperationList) {
+			tick = ((OperationList) tick).flatten();
 		}
 
+		if (enableOptimization) {
+			tick = Process.optimized(tick);
+		}
+
+		if (enableIsolation) {
+			tick = Process.isolated(tick);
+		}
+
+		this.run = loop(tick, iter);
 		this.setup = setup;
 	}
 

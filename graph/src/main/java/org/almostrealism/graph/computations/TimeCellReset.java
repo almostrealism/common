@@ -18,6 +18,9 @@ package org.almostrealism.graph.computations;
 
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Process;
 import io.almostrealism.scope.HybridScope;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.relation.Producer;
@@ -28,6 +31,7 @@ import org.almostrealism.algebra.Pair;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.OperationComputationAdapter;
 
+import java.util.List;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -40,8 +44,18 @@ public class TimeCellReset extends OperationComputationAdapter<PackedCollection<
 		len = resets.getMemLength();
 	}
 
+	private TimeCellReset(int len, Supplier<Evaluable<? extends PackedCollection<?>>>... arguments) {
+		super(arguments);
+		this.len = len;
+	}
+
 	public ArrayVariable getTime() { return getArgument(0, 2); }
 	public ArrayVariable getResets() { return getArgument(1); }
+
+	@Override
+	public ParallelProcess<Process<?, ?>, Runnable> generate(List<Process<?, ?>> children) {
+		return new TimeCellReset(len, children.toArray(Supplier[]::new));
+	}
 
 	@Override
 	public Scope getScope() { return scope; }

@@ -35,8 +35,12 @@ public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, 
 
 		children = children.stream().map(Process::optimize).collect(Collectors.toList());
 
-		long p = children.stream().mapToInt(ParallelProcess::count).distinct().count();
-		long tot = children.stream().mapToInt(ParallelProcess::count).distinct().sum();
+		long p = children.stream()
+					.mapToInt(ParallelProcess::count)
+					.filter(v -> v != 0).distinct().count();
+		long tot = children.stream()
+					.mapToInt(ParallelProcess::count)
+					.distinct().sum();
 		if (p <= 1 && tot == getCount()) {
 			return generate(children.stream().map(c -> (P) c).collect(Collectors.toList()));
 		} else if (!enableStrictIsolation && getCount() > tot) {

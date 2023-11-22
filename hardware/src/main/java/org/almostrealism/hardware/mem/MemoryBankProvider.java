@@ -42,7 +42,7 @@ public class MemoryBankProvider<T extends MemoryData> implements IntFunction<Mem
 		}
 
 		if (Hardware.enableVerbose)
-			System.out.println("MemoryBankProvider: Creating a new MemoryBank");
+			System.out.println("MemoryBankProvider: Creating a new MemoryBank with size " + size);
 
 		last = supplier.apply(size);
 		lastSize = size;
