@@ -37,18 +37,18 @@ import io.almostrealism.code.SupplierArgumentMap;
 import io.almostrealism.scope.Variable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
-import io.almostrealism.collect.Shape;
 import org.almostrealism.hardware.computations.HardwareEvaluable;
+import org.almostrealism.hardware.jni.NativeExecution;
 import org.almostrealism.hardware.mem.Bytes;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
-import org.almostrealism.hardware.mem.MemoryDataDestination;
 import org.almostrealism.io.SystemUtils;
 import org.jocl.CLException;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
@@ -62,6 +62,12 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	public static final boolean enableArgumentMapping = true;
 	public static boolean enableArgumentKernelSize = true;
 	public static boolean enableKernelSizeWarnings = SystemUtils.isEnabled("AR_HARDWARE_KERNEL_SIZE_WARNINGS").orElse(true);
+
+	public static double retrieveOperatorTime, processArgumentsTime, acceptTime;
+	public static double processKernelSizeTime1, processKernelSizeTime2, processKernelSizeTime3;
+	public static double createKernelDestinationTime, evaluateKernelTime, evaluateTime;
+	public static Map<String, Double> kernelCreateTimes = Collections.synchronizedMap(new HashMap<>());
+	public static Map<String, Double> nonKernelEvalTimes = Collections.synchronizedMap(new HashMap<>());
 
 	private static final ThreadLocal<Semaphore> semaphores = new ThreadLocal<>();
 	private static final ThreadLocal<CreatedMemoryData> created = new ThreadLocal<>();
@@ -214,7 +220,10 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			compile();
 		}
 
+		long start = System.nanoTime();
+
 		Execution operator = getOperator();
+		retrieveOperatorTime += sec(System.nanoTime() - start); start = System.nanoTime();
 
 		if (operator instanceof KernelWork == false) {
 			throw new UnsupportedOperationException();
@@ -225,6 +234,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		MemoryData input[] = Stream.of(process.getArguments()).toArray(MemoryData[]::new);
 		((KernelWork) operator).setGlobalWorkOffset(0);
 		((KernelWork) operator).setGlobalWorkSize(process.getKernelSize());
+		processArgumentsTime += sec(System.nanoTime() - start); start = System.nanoTime();
 
 		if (enableKernelLog) System.out.println("AcceleratedOperation: Evaluating " + getName() + " kernel...");
 
@@ -238,6 +248,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		}
 
 		Semaphore semaphore = operator.accept(input, semaphores.get());
+		acceptTime += sec(System.nanoTime() - start); start = System.nanoTime();
 		process.setSemaphore(semaphore);
 		semaphores.set(semaphore);
 
@@ -283,6 +294,8 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	}
 
 	protected AcceleratedProcessDetails processKernelArgs(MemoryBank output, Object args[]) {
+		long start = System.nanoTime();
+
 		int kernelSize;
 
 		if (!isKernel()) {
@@ -304,6 +317,9 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				Collections.singletonMap((ArrayVariable<? extends T>) getOutputVariable(), output);
 
 		MemoryData kernelArgs[] = new MemoryData[arguments.size()];
+		Evaluable kernelArgEvaluables[] = new Evaluable[arguments.size()];
+
+		processKernelSizeTime1 += sec(System.nanoTime() - start); start = System.nanoTime();
 
 		/*
 		 * In the first pass, kernel size is inferred from Producer arguments that
@@ -332,29 +348,10 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			}
 		}
 
-		List<Integer> sizes = new ArrayList<>();
-
-//		if (this instanceof Countable)
-//			sizes.add(((Countable) this).getCount());
+		processKernelSizeTime2 += sec(System.nanoTime() - start); start = System.nanoTime();
 
 		/*
 		 * In the second pass, kernel size is inferred from Producer arguments
-		 * that actually implement Shape. If an input to the operation declares
-		 * the kernel dimension for what it will produce, it is known ahead of
-		 * time what the expected kernel size is.
-		 */
-		i: for (int i = 0; i < arguments.size(); i++) {
-			if (kernelArgs[i] != null) continue i;
-
-			Supplier p = arguments.get(i).getProducer();
-
-			if (p instanceof MemoryDataDestination && ((MemoryDataDestination) p).getDelegate() instanceof Shape) {
-				sizes.add(((Shape) ((MemoryDataDestination) p).getDelegate()).getShape().getCount());
-			}
-		}
-
-		/*
-		 * In the third pass, kernel size is inferred from Producer arguments
 		 * that do not support kernel evaluation. Given that there is no way
 		 * to specify kernel parameters for these arguments, it is safe to
 		 * assume that the desired kernel parameters must be compatible with
@@ -363,53 +360,23 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		i: for (int i = 0; i < arguments.size(); i++) {
 			if (kernelArgs[i] != null) continue i;
 
-			Evaluable<T> c = (Evaluable<T>) ProducerCache.getEvaluableForSupplier(arguments.get(i).getProducer());
-			if (c == null) {
+			kernelArgEvaluables[i] = ProducerCache.getEvaluableForSupplier(arguments.get(i).getProducer());
+			if (kernelArgEvaluables[i] == null) {
 				throw new UnsupportedOperationException();
 			}
 
-			if (!(c instanceof KernelizedEvaluable) ||
-					(c instanceof HardwareEvaluable && !((HardwareEvaluable) c).isKernel())) {
-				Object o = c.evaluate(args);
+			if (!(kernelArgEvaluables[i] instanceof KernelizedEvaluable) ||
+					(kernelArgEvaluables[i] instanceof HardwareEvaluable && !((HardwareEvaluable) kernelArgEvaluables[i]).isKernel())) {
+				long s = System.nanoTime();
+				Object o = kernelArgEvaluables[i].evaluate(args);
 				if (!(o instanceof MemoryData))
 					throw new IllegalArgumentException();
 
 				kernelArgs[i] = (MemoryData) o;
 
-				if (kernelArgs[i] instanceof MemoryBank) {
-					sizes.add(((MemoryBank<?>) kernelArgs[i]).getCount());
-				}
+				nonKernelEvalTimes.merge(kernelArgEvaluables[i].getClass().getName(), sec(System.nanoTime() - s), (a, b) -> a + b);
 			}
 		}
-
-		/*
-		 * If there is only one size, it can be used as the kernel size.
-		 */
-//		if (kernelSize < 0 && sizes.size() == 1) {
-//			kernelSize = sizes.get(0);
-//		}
-
-		/*
-		 * If there are multiple sizes, but they are all the same,
-		 * that can be used as the kernel size.
-		 */
-//		k: if (kernelSize < 0 && sizes.size() > 1) {
-//			int sharedSize = sizes.get(0);
-//			for (int i = 1; i < sizes.size(); i++) {
-//				if (sharedSize != sizes.get(i)) {
-//					break k;
-//				}
-//			}
-//
-//			kernelSize = sharedSize;
-//		}
-
-		/*
-		 * Otherwise, a kernel size compatible with all sizes may be inferred.
-		 */
-//		if (kernelSize < 0 && sizes.size() > 0) {
-//			kernelSize = KernelSupport.inferKernelSize(sizes.stream().mapToInt(i -> i).toArray());
-//		}
 
 		/*
 		 * If the kernel size is still not known, the kernel size will be 1.
@@ -420,6 +387,12 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			kernelSize = 1;
 		}
 
+		processKernelSizeTime3 += sec(System.nanoTime() - start); start = System.nanoTime();
+
+		MemoryData[] memoryDataArgs = null;
+		boolean allMemoryData = args.length <= 0 || Stream.of(args).filter(a -> !(a instanceof MemoryData)).findAny().isEmpty();
+		if (allMemoryData) memoryDataArgs = Stream.of(args).map(MemoryData.class::cast).toArray(MemoryData[]::new);
+
 		/*
 		 * In the final pass, kernel arguments are evaluated in a way that ensures the
 		 * result is compatible with the kernel size inferred in the first and second
@@ -428,28 +401,32 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		i: for (int i = 0; i < arguments.size(); i++) {
 			if (kernelArgs[i] != null) continue i;
 
-			Evaluable<T> c = (Evaluable<T>) ProducerCache.getEvaluableForSupplier(arguments.get(i).getProducer());
+			if (kernelArgEvaluables[i] instanceof KernelizedEvaluable && allMemoryData) {
+				kernelArgs[i] = (MemoryData) kernelArgEvaluables[i].createDestination(kernelSize);
 
-			if (c instanceof ProducerArgumentReference) {
-				throw new UnsupportedOperationException("ProducerArgumentReference not detected by first pass");
-//				System.out.println("WARN: ProducerArgumentReference not detected by first pass");
-//				int argIndex = ((ProducerArgumentReference) c).getReferencedArgumentIndex();
-//				kernelArgs[i] = (MemoryData) args[argIndex];
-			} else if (c instanceof KernelizedEvaluable && Stream.of(args).filter(a -> !(a instanceof MemoryData)).findAny().isEmpty()) {
-				KernelizedEvaluable kp = (KernelizedEvaluable) c;
-				kernelArgs[i] = (MemoryData) kp.createDestination(kernelSize);
+				double time = sec(System.nanoTime() - start); start = System.nanoTime();
+				kernelCreateTimes.merge(kernelArgEvaluables[i].getClass().getName(), time, (a, b) -> a + b);
+				createKernelDestinationTime += time;
+
 				if (created.get() != null)
 					created.get().add(kernelArgs[i]);
 
-				kp.into(kernelArgs[i]).evaluate(Stream.of(args).map(MemoryData.class::cast).toArray(MemoryData[]::new));
+				kernelArgEvaluables[i].into(kernelArgs[i]).evaluate(memoryDataArgs);
+
+				evaluateKernelTime += sec(System.nanoTime() - start); start = System.nanoTime();
 			} else {
-				kernelArgs[i] = c.evaluate(args);
+				kernelArgs[i] = (MemoryData) kernelArgEvaluables[i].evaluate(args);
+				evaluateTime += sec(System.nanoTime() - start); start = System.nanoTime();
 			}
 		}
 
 		return new AcceleratedProcessDetails(kernelArgs,
 				getComputeContext().getDataContext().getKernelMemoryProvider(),
 				this::createAggregatedInput, kernelSize);
+	}
+
+	private double sec(long nanos) {
+		return nanos / 1e9;
 	}
 
 	public boolean isKernel() { return kernel; }
@@ -502,5 +479,29 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		} finally {
 			data.destroy();
 		}
+	}
+
+	public static void printTimes() {
+		System.out.println("AcceleratedOperation: " +
+				((long) AcceleratedOperation.retrieveOperatorTime) + "sec (operator), " +
+				((long) AcceleratedOperation.processArgumentsTime) + "sec (process), " +
+				((long) AcceleratedOperation.acceptTime) + "sec (accept)");
+		System.out.println("AcceleratedOperation Process Init: " +
+				((long) AcceleratedOperation.processKernelSizeTime1) + "sec (size), " +
+				((long) AcceleratedOperation.processKernelSizeTime2) + "sec (size), " +
+				((long) AcceleratedOperation.processKernelSizeTime3) + "sec (size)");
+		System.out.println("AcceleratedOperation Process Body: " +
+				((long) AcceleratedOperation.createKernelDestinationTime) + "sec (create), " +
+				((long) AcceleratedOperation.evaluateKernelTime) + "sec (evaluate kernel), " +
+				((long) AcceleratedOperation.evaluateTime) + "sec (evaluate)");
+		System.out.println("AcceleratedOperation Accept: " +
+				((long) HardwareOperator.prepareArgumentsTime) + "sec (prepare), " +
+				((long) HardwareOperator.computeDimMasksTime) + "sec (masks), " +
+				((long) NativeExecution.dimMaskTime) + "sec (masks)");
+
+		AcceleratedOperation.kernelCreateTimes.forEach((k, v) ->
+				System.out.println("AcceleratedOperation: " + k + " - " + v.longValue() + "sec (create)"));
+		AcceleratedOperation.nonKernelEvalTimes.forEach((k, v) ->
+				System.out.println("AcceleratedOperation: " + k + " - " + v.longValue() + "sec (evaluate)"));
 	}
 }

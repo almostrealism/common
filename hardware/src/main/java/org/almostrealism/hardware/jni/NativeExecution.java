@@ -35,6 +35,8 @@ import java.util.stream.IntStream;
 public class NativeExecution extends HardwareOperator {
 	private static ExecutorService executor = Executors.newFixedThreadPool(20);
 
+	public static double dimMaskTime;
+
 	private NativeInstructionSet inst;
 	private int argCount;
 
@@ -70,11 +72,13 @@ public class NativeExecution extends HardwareOperator {
 		MemoryData data[] = prepareArguments(argCount, args);
 		int dimMasks[] = computeDimensionMasks(data);
 
+		long s = System.nanoTime();
 		if (enableDimensionMasks) {
 			dim0 = IntStream.range(0, getArgCount()).map(i -> data[i].getAtomicMemLength() * dimMasks[i]).toArray();
 		} else {
 			dim0 = IntStream.range(0, getArgCount()).map(i -> data[i].getAtomicMemLength()).toArray();
 		}
+		dimMaskTime += (System.nanoTime() - s) / 1e9;
 
 		if (getGlobalWorkSize() > Integer.MAX_VALUE) {
 			throw new UnsupportedOperationException();

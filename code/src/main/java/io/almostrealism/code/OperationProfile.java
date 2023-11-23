@@ -16,27 +16,40 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.uml.Named;
+
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Map;
 
-public class OperationProfile {
+public class OperationProfile implements Named {
+	private String name;
 	private Map<String, Long> totalTime;
 	private Map<String, Integer> count;
 
 	public OperationProfile() {
-		totalTime = new HashMap<>();
-		count = new HashMap<>();
+		this("default");
+	}
+
+	public OperationProfile(String name) {
+		this.name = name;
+		this.totalTime = new HashMap<>();
+		this.count = new HashMap<>();
+	}
+
+	@Override
+	public String getName() {
+		return name;
 	}
 
 	public void print() {
-		System.out.println("Operation Profile:");
 		double all = totalTime.values().stream().mapToLong(Long::longValue).sum();
+		System.out.println("Operation Profile (" + getName() + " - " + (all / 1000) + " seconds):");
 
 		totalTime.entrySet().stream()
 				.sorted(Comparator.comparing((Map.Entry<String, Long> ent) -> ent.getValue()).reversed())
 				.forEachOrdered(entry -> {
-			System.out.println(entry.getKey() + ": " + count.get(entry.getKey()) + " - " +
+			System.out.println("\t" + entry.getKey() + ": " + count.get(entry.getKey()) + " - " +
 					entry.getValue() + "ms (" + (int) (100 * entry.getValue() / all) + "%)");
 		});
 	}

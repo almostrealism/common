@@ -35,6 +35,6 @@ public class CollectionCachedStateCell extends CachedStateCell<PackedCollection<
 
 	@Override
 	public Supplier<Runnable> reset(Supplier<Evaluable<? extends PackedCollection<?>>> out) {
-		return a(1, out, PackedCollection.blank(1));
+		return a(1, out, c(0));
 	}
 }

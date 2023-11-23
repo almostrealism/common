@@ -55,12 +55,14 @@ public class ProducerCache {
 	 * returned by this method if it is called again.
 	 */
 	public static <T> Evaluable<? extends T> getEvaluableForSupplier(Supplier<Evaluable<? extends T>> producer) {
-		if (enableEvaluableCache && !getEvaluableCache().containsKey(producer)) {
-			getEvaluableCache().put(producer, producer.get());
-			Heap.addOperation(producer);
+		if (enableEvaluableCache) {
+			return getEvaluableCache().computeIfAbsent(producer, p -> {
+				Heap.addOperation(p);
+				return (Evaluable) p.get();
+			});
+		} else {
+			return producer.get();
 		}
-
-		return enableEvaluableCache ? getEvaluableCache().get(producer) : producer.get();
 	}
 
 	public static <T> void purgeEvaluableCache(Supplier<Evaluable<? extends T>> producer) {

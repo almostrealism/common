@@ -45,6 +45,7 @@ public abstract class OperationAdapter<T> implements NameProvider, OperationInfo
 
 	private List<Supplier<Evaluable<? extends T>>> inputs;
 	private List<Argument<? extends T>> arguments;
+	private boolean sortedArguments;
 
 	private Map<Supplier<Evaluable>, List<Variable<?, ?>>> variables;
 	private List<Supplier<Evaluable>> variableOrder;
@@ -99,7 +100,11 @@ public abstract class OperationAdapter<T> implements NameProvider, OperationInfo
 	}
 
 	public synchronized List<Argument<? extends T>> getArguments() {
-		Scope.sortArguments(arguments);
+		if (!sortedArguments) {
+			Scope.sortArguments(arguments);
+			sortedArguments = true;
+		}
+
 		return arguments;
 	}
 

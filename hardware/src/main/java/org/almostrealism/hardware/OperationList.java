@@ -66,6 +66,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 
 	private boolean enableCompilation;
 	private String functionName;
+	private Integer count;
 
 	private OperationMetadata metadata;
 	private List<ComputeRequirement> requirements;
@@ -111,13 +112,17 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 
 	@Override
 	public int getCount() {
-		if (isEmpty()) return 0;
-
-		if (isUniform() && get(0) instanceof Countable) {
-			return ((Countable) get(0)).getCount();
+		if (count == null) {
+			if (isEmpty()) {
+				count = 0;
+			} else if (isUniform() && get(0) instanceof Countable) {
+				count = ((Countable) get(0)).getCount();
+			} else {
+				count = 1;
+			}
 		}
 
-		return 1;
+		return count;
 	}
 
 	@Override
@@ -255,6 +260,8 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 					}
 				})
 				.collect(OperationList.collector());
+		flat.metadata = metadata;
+		flat.enableCompilation = enableCompilation;
 		flat.setComputeRequirements(getComputeRequirements());
 		return flat;
 	}
@@ -297,6 +304,80 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 		stream().map(o -> o instanceof OperationList ? (OperationList) o : null)
 				.filter(Objects::nonNull)
 				.forEach(OperationList::destroy);
+	}
+
+	@Override
+	public Supplier<Runnable> set(int index, Supplier<Runnable> element) {
+		count = null;
+		return super.set(index, element);
+	}
+
+	@Override
+	public boolean add(Supplier<Runnable> runnableSupplier) {
+		count = null;
+		return super.add(runnableSupplier);
+	}
+
+	@Override
+	public void add(int index, Supplier<Runnable> element) {
+		count = null;
+		super.add(index, element);
+	}
+
+	@Override
+	public Supplier<Runnable> remove(int index) {
+		count = null;
+		return super.remove(index);
+	}
+
+	@Override
+	public boolean remove(Object o) {
+		count = null;
+		return super.remove(o);
+	}
+
+	@Override
+	public void clear() {
+		count = null;
+		super.clear();
+	}
+
+	@Override
+	public boolean addAll(Collection<? extends Supplier<Runnable>> c) {
+		count = null;
+		return super.addAll(c);
+	}
+
+	@Override
+	public boolean addAll(int index, Collection<? extends Supplier<Runnable>> c) {
+		count = null;
+		return super.addAll(index, c);
+	}
+
+	@Override
+	protected void removeRange(int fromIndex, int toIndex) {
+		count = null;
+		super.removeRange(fromIndex, toIndex);
+	}
+
+	@Override
+	public boolean removeAll(Collection<?> c) {
+		if (super.removeAll(c)) {
+			count = null;
+			return true;
+		} else {
+			return false;
+		}
+	}
+
+	@Override
+	public boolean retainAll(Collection<?> c) {
+		if (super.retainAll(c)) {
+			count = null;
+			return true;
+		} else {
+			return false;
+		}
 	}
 
 	public static Collector<Supplier<Runnable>, ?, OperationList> collector() {

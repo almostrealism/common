@@ -19,8 +19,10 @@ package org.almostrealism.hardware.test;
 import io.almostrealism.code.OperationProfile;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Process;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
+import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.computations.Loop;
 import org.almostrealism.io.SystemUtils;
@@ -78,5 +80,34 @@ public class OperationOptimizationTests implements TestFeatures {
 
 		Supplier<Runnable> loop = lp(a(each(p(out)), matmul(p(matrix), p(in))), 10);
 		System.out.println(ParallelProcess.count(loop));
+	}
+
+	@Test
+	public void matmulLoopComparison() {
+		if (skipLongTests) return;
+
+		int itr = 10000000;
+		int dim = 64;
+		PackedCollection<?> in = new PackedCollection<>(shape(dim));
+		PackedCollection<?> matrix = new PackedCollection<>(shape(dim, dim));
+		PackedCollection<?> out = new PackedCollection<>(shape(dim));
+
+		in.fill(pos -> Math.random());
+		matrix.fill(pos -> Math.random());
+
+		System.out.println("Running native loop...");
+		profile(lp(a(p(in), matmul(p(matrix), p(in))), itr));
+		System.out.println();
+
+		System.out.println("Running Java loop...");
+		profile(loop(Process.isolated(a(p(in), matmul(p(matrix), p(in)))), itr));
+	}
+
+	private void profile(Supplier<Runnable> r) {
+		OperationProfile profiles = new OperationProfile();
+		OperationList op = new OperationList("Profiler", false);
+		op.add(r);
+		op.get(profiles).run();
+		profiles.print();
 	}
 }

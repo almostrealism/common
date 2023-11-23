@@ -36,6 +36,8 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 	public static boolean enableDimensionMasks = true;
 	public static boolean enableAtomicDimensionMasks = true;
 
+	public static double prepareArgumentsTime, computeDimMasksTime;
+
 	public static OperationProfile profile;
 
 	private long globalWorkSize = 1;
@@ -59,6 +61,8 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 	protected abstract int getArgCount();
 
 	protected MemoryData[] prepareArguments(int argCount, Object[] args) {
+		long start = System.nanoTime();
+
 		MemoryData data[] = new MemoryData[argCount];
 
 		for (int i = 0; i < argCount; i++) {
@@ -76,6 +80,7 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 			reassignMemory(data[i]);
 		}
 
+		prepareArgumentsTime += (System.nanoTime() - start) / 1e9;
 		return data;
 	}
 
@@ -112,39 +117,45 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 	}
 
 	protected int[] computeDimensionMasks(Object args[]) {
-		int sizes[] = new int[args.length];
+		long start = System.nanoTime();
 
-		for (int i = 0; i < getArgCount(); i++) {
-			if (args[i] == null) {
-				throw new NullPointerException("argument " + i + " to function " + getName());
+		try {
+			int sizes[] = new int[args.length];
+
+			for (int i = 0; i < getArgCount(); i++) {
+				if (args[i] == null) {
+					throw new NullPointerException("argument " + i + " to function " + getName());
+				}
+
+				if (!(args[i] instanceof MemoryData)) {
+					throw new IllegalArgumentException("argument " + i + " (" +
+							args[i].getClass().getSimpleName() + ") to function " +
+							getName() + " is not a MemoryData");
+				}
+
+				if (args[i] instanceof MemoryBank) {
+					sizes[i] = ((MemoryBank) args[i]).getCount();
+				} else if (args[i] instanceof Bytes) {
+					sizes[i] = ((Bytes) args[i]).getCount();
+				} else {
+					sizes[i] = ((MemoryData) args[i]).getMemLength();
+				}
 			}
 
-			if (!(args[i] instanceof MemoryData)) {
-				throw new IllegalArgumentException("argument " + i + " (" +
-						args[i].getClass().getSimpleName() + ") to function " +
-						getName() + " is not a MemoryData");
-			}
-
-			if (args[i] instanceof MemoryBank) {
-				sizes[i] = ((MemoryBank) args[i]).getCount();
-			} else if (args[i] instanceof Bytes) {
-				sizes[i] = ((Bytes) args[i]).getCount();
+			if (enableAtomicDimensionMasks && getGlobalWorkSize() == 1) {
+				return IntStream.range(0, getArgCount()).map(i -> 0).toArray();
 			} else {
-				sizes[i] = ((MemoryData) args[i]).getMemLength();
-			}
-		}
+				if (getGlobalWorkSize() > Integer.MAX_VALUE) {
+					// Is it though?
+					throw new IllegalArgumentException("globalWorkSize is too large");
+				}
 
-		if (enableAtomicDimensionMasks && getGlobalWorkSize() == 1) {
-			return IntStream.range(0, getArgCount()).map(i -> 0).toArray();
-		} else {
-			if (getGlobalWorkSize() > Integer.MAX_VALUE) {
-				// Is it though?
-				throw new IllegalArgumentException("globalWorkSize is too large");
+				return IntStream.range(0, sizes.length)
+						.map(i -> (sizes[i] >= getGlobalWorkSize() && sizes[i] % getGlobalWorkSize() == 0) ? 1 : 0)
+						.toArray();
 			}
-
-			return IntStream.range(0, sizes.length)
-					.map(i -> (sizes[i] >= getGlobalWorkSize() && sizes[i] % getGlobalWorkSize() == 0) ? 1 : 0)
-					.toArray();
+		} finally {
+			computeDimMasksTime += (System.nanoTime() - start) / 1e9;
 		}
 	}
 
