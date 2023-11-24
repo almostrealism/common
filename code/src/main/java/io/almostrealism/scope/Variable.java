@@ -21,6 +21,7 @@ import io.almostrealism.expression.ArraySize;
 import io.almostrealism.expression.Constant;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
@@ -49,6 +50,7 @@ public class Variable<T, V extends Variable<T, ?>> implements Statement, Nameabl
 	private boolean declaration;
 	private int sortHint;
 
+	private Expression<T> destination;
 	private Expression<T> expression;
 
 	private Supplier<Evaluable<? extends T>> originalProducer;
@@ -68,10 +70,17 @@ public class Variable<T, V extends Variable<T, ?>> implements Statement, Nameabl
 		this(name, declaration, expression, (V) null);
 	}
 
+	@Deprecated
 	public Variable(String name, boolean declaration, Expression<T> expression, V delegate) {
 		this(name, expression);
 		this.declaration = declaration;
 		this.delegate = delegate;
+	}
+
+	public Variable(Expression destination, boolean declaration, Expression<T> expression) {
+		this(null, expression);
+		this.destination = destination;
+		this.declaration = declaration;
 	}
 
 	public Variable(String name, T value) {
@@ -103,13 +112,26 @@ public class Variable<T, V extends Variable<T, ?>> implements Statement, Nameabl
 	public void setName(String n) { this.name = n; }
 
 	@Override
-	public String getName() { return this.name; }
+	public String getName() {
+		return this.name == null ? destination.getSimpleExpression(null) : this.name;
+	}
 
 	public void setPhysicalScope(PhysicalScope physicalScope) { this.physicalScope = physicalScope; }
 	public PhysicalScope getPhysicalScope() { return physicalScope; }
 
 	@Override
-	public V getDelegate() { return delegate; }
+	public V getDelegate() {
+		if (delegate != null) {
+			return delegate;
+		}
+
+		if (destination instanceof InstanceReference) {
+			return (V) ((InstanceReference<T>) destination).getReferent().getDelegate();
+		}
+
+		return null;
+	}
+
 	public void setDelegate(V delegate) { this.delegate = delegate; }
 
 	public boolean isDeclaration() { return declaration; }
@@ -164,6 +186,7 @@ public class Variable<T, V extends Variable<T, ?>> implements Statement, Nameabl
 	public List<Variable<?, ?>> getDependencies() {
 		List<Variable<?, ?>> deps = new ArrayList<>();
 		if (delegate != null) deps.add(delegate);
+		if (destination != null) deps.addAll(destination.getDependencies());
 		deps.addAll(getExpressionDependencies());
 		return deps;
 	}

@@ -29,6 +29,7 @@ import io.almostrealism.collect.Shape;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.CollectionProducerComputation;
+import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.KernelSupport;
 import org.almostrealism.hardware.computations.HardwareEvaluable;
 
@@ -73,11 +74,6 @@ public class ReshapeProducer<T extends Shape<T>>
 	public Collection<Process<?, ?>> getChildren() {
 		return producer instanceof Process ? List.of((Process) producer) : Collections.emptyList();
 	}
-
-//	@Override
-//	public ParallelProcess<Process<?, ?>, Evaluable<? extends T>> optimize() {
-//		return producer instanceof Process ? generate(List.of(((Process<?, ?>) producer).optimize())) : this;
-//	}
 
 	@Override
 	public ParallelProcess<Process<?, ?>, Evaluable<? extends T>> generate(List<Process<?, ?>> children) {
@@ -161,19 +157,21 @@ public class ReshapeProducer<T extends Shape<T>>
 	@Override
 	public Evaluable<T> get() {
 		if (enableHardwareEvaluable) {
-			HardwareEvaluable<T> ev = new HardwareEvaluable<T>(producer::get, null, null, false);
+			HardwareEvaluable<T> ev = new HardwareEvaluable<>(producer::get, null, null, false);
 			ev.setShortCircuit(args -> {
-				Shape out = ev.getKernel().evaluate(args);
+				long start = System.nanoTime();
+				Shape<T> out = ev.getKernel().evaluate(args);
+				AcceleratedOperation.wrappedEvalTimes.merge(producer.getClass().getName(), (System.nanoTime() - start) / 1e9, (a, b) -> a + b);
 
 				if (shape == null) {
-					return ev.getKernel().evaluate(args).reshape(out.getShape().traverse(traversalAxis));
+					return out.reshape(out.getShape().traverse(traversalAxis));
 				} else {
-					return ev.getKernel().evaluate(args).reshape(shape);
+					return out.reshape(shape);
 				}
 			});
 			return ev;
 		} else {
-			return new Evaluable<T>() {
+			return new Evaluable<>() {
 				private Evaluable<T> eval;
 
 				@Override
@@ -182,12 +180,12 @@ public class ReshapeProducer<T extends Shape<T>>
 						eval = producer.get();
 					}
 
-					Shape out = eval.evaluate(args);
+					Shape<T> out = eval.evaluate(args);
 
 					if (shape == null) {
-						return eval.evaluate(args).reshape(out.getShape().traverse(traversalAxis));
+						return out.reshape(out.getShape().traverse(traversalAxis));
 					} else {
-						return eval.evaluate(args).reshape(shape);
+						return out.reshape(shape);
 					}
 				}
 			};

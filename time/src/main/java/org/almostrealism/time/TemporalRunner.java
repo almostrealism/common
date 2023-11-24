@@ -37,7 +37,8 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class TemporalRunner implements Setup, Temporal, OperationComputation<Void>, HardwareFeatures {
-	public static boolean enableOptimization = true;
+	public static boolean enableFlatten = true;
+	public static boolean enableOptimization = false;
 	public static boolean enableIsolation = false;
 
 	private Supplier<Runnable> setup, run;
@@ -48,7 +49,7 @@ public class TemporalRunner implements Setup, Temporal, OperationComputation<Voi
 	}
 
 	public TemporalRunner(Supplier<Runnable> setup, Supplier<Runnable> tick, int iter) {
-		if (tick instanceof OperationList) {
+		if (enableFlatten && tick instanceof OperationList) {
 			tick = ((OperationList) tick).flatten();
 		}
 

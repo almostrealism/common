@@ -95,8 +95,11 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 				if (out == null) {
 					v = output.ref(i).assign(value.getSimplified());
 				} else {
-					v = new Variable(out.getValueAt(index).getSimpleExpression(getLanguage()),
-							false, value.getSimplified(), output.getRootDelegate());
+					Expression o = out.getValueAt(index);
+					v = o.assign(value.getSimplified());
+
+//					v = new Variable(out.getValueAt(index).getSimpleExpression(getLanguage()),
+//							false, value.getSimplified(), output.getRootDelegate());
 				}
 
 				if (enableLargeExpressionMonitoring) {

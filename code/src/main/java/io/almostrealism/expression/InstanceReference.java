@@ -67,7 +67,7 @@ public class InstanceReference<T> extends Expression<T> implements ExpressionFea
 
 	@Override
 	public Variable assign(Expression exp) {
-		return new Variable(getSimpleExpression(null), false, exp, getReferent().getDelegate());
+		return new Variable(this, false, exp);
 	}
 
 	@Override

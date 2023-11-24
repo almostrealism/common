@@ -33,6 +33,7 @@ import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.PassThroughProducer;
+import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
@@ -106,6 +107,33 @@ public class CollectionComputationTests implements TestFeatures {
 		System.out.println(result.toArrayString());
 		assertEquals(8.0, result.toDouble(0));
 		assertEquals(18.0, result.toDouble(1));
+	}
+
+	@Test
+	public void integersIndexAssignment() {
+		int count = 6;
+		int size = 10;
+
+		PackedCollection<?> buffer = new PackedCollection<>(shape(count, size)).fill(0.0);
+		PackedCollection<?> bufferIndices = new PackedCollection<>(shape(count)).fill(1, 2, 3);
+		PackedCollection<?> value = new PackedCollection<>(shape(count)).fill(pos -> 1 + Math.random());
+		Assignment c = a(
+					traverse(0, c(p(buffer), shape(buffer), integers(0, count), traverseEach(p(bufferIndices)))),
+					p(value));
+
+		HardwareOperator.verboseLog(() -> {
+			c.get().run();
+		});
+
+		for (int i = 0; i < count; i++) {
+			for (int j = 0; j < size; j++) {
+				if (j == (int) bufferIndices.valueAt(i)) {
+					assertEquals(value.toDouble(i), buffer.valueAt(i, j));
+				} else {
+					assertEquals(0.0, buffer.valueAt(i, j));
+				}
+			}
+		}
 	}
 
 	@Test

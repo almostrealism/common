@@ -23,6 +23,7 @@ import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.HardwareOperator;
+import org.almostrealism.hardware.ProcessDetailsFactory;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Assert;
 import org.junit.Test;
@@ -194,10 +195,10 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void matmul2() {
-		boolean enableArgumentKernelSize = AcceleratedOperation.enableArgumentKernelSize;
+		boolean enableArgumentKernelSize = ProcessDetailsFactory.enableArgumentKernelSize;
 
 		try {
-			AcceleratedOperation.enableArgumentKernelSize = false;
+			ProcessDetailsFactory.enableArgumentKernelSize = false;
 
 			int count = 1;
 			int dim = 2;
@@ -228,7 +229,7 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 				assertEquals(3.0, dout.toDouble(7));
 			});
 		} finally {
-			AcceleratedOperation.enableArgumentKernelSize = enableArgumentKernelSize;
+			ProcessDetailsFactory.enableArgumentKernelSize = enableArgumentKernelSize;
 		}
 	}
 
