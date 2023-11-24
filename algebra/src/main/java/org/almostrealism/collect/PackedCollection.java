@@ -131,6 +131,11 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 		return IntStream.range(0, getCount()).mapToObj(this::get);
 	}
 
+	public PackedCollection<T> fill(double... value) {
+		IntStream.range(0, getMemLength()).forEach(i -> setMem(i, value[i % value.length]));
+		return this;
+	}
+
 	public PackedCollection<T> fill(Function<int[], Double> f) {
 		getShape().stream().forEach(pos -> setMem(getShape().index(pos), f.apply(pos)));
 		return this;

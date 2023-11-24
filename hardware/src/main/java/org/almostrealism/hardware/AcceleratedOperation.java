@@ -374,7 +374,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 				kernelArgs[i] = (MemoryData) o;
 
-				nonKernelEvalTimes.merge(kernelArgEvaluables[i].getClass().getName(), sec(System.nanoTime() - s), (a, b) -> a + b);
+				nonKernelEvalTimes.merge(arguments.get(i).getProducer().getClass().getName(), sec(System.nanoTime() - s), (a, b) -> a + b);
 			}
 		}
 
