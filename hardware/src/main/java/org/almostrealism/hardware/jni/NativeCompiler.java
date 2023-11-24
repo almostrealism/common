@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -52,26 +52,16 @@ public class NativeCompiler {
 
 	private Precision precision;
 
-	private String libExecutable, exeExecutable;
-	private final String libCompiler, exeCompiler;
+	private CompilerCommandProvider commandProvider;
 	private final String libDir;
 	private final String libFormat;
 	private final String dataDir;
 
 	private final String header;
 
-	public NativeCompiler(Precision precision, String libCompiler, String exeCompiler, String libDir, String libFormat, String dataDir, boolean cl) {
-		if (libCompiler != null) {
-			this.libExecutable = libCompiler.contains(".") ? libCompiler.substring(libCompiler.lastIndexOf(".") + 1) : null;
-		}
-
-		if (exeCompiler != null) {
-			this.exeExecutable = exeCompiler.contains(".") ? exeCompiler.substring(exeCompiler.lastIndexOf(".") + 1) : null;
-		}
-
+	public NativeCompiler(Precision precision, CompilerCommandProvider commandProvider, String libDir, String libFormat, String dataDir, boolean cl) {
+		this.commandProvider = commandProvider;
 		this.precision = precision;
-		this.libCompiler = libCompiler;
-		this.exeCompiler = exeCompiler;
 		this.libDir = libDir;
 		this.libFormat = libFormat;
 		this.dataDir = dataDir;
@@ -102,16 +92,6 @@ public class NativeCompiler {
 		return data;
 	}
 
-	protected String getExecutable(boolean lib) {
-		if (lib) {
-			if (libExecutable != null) return libExecutable;
-			return libCompiler;
-		} else {
-			if (exeExecutable != null) return exeExecutable;
-			return exeCompiler;
-		}
-	}
-
 	protected String getInputFile(String name) {
 		return libDir + "/" + name + ".c";
 	}
@@ -124,23 +104,8 @@ public class NativeCompiler {
 		}
 	}
 
-	protected List<String> getArguments(String name, boolean lib) {
-		List<String> command = new ArrayList<>();
-		if (lib) {
-			if (libExecutable != null) command.add(libCompiler);
-		} else {
-			if (exeExecutable != null) command.add(exeCompiler);
-		}
-		command.add(getInputFile(name));
-		command.add(getOutputFile(name, lib));
-		return command;
-	}
-
 	protected List<String> getCommand(String name, boolean lib) {
-		List<String> command = new ArrayList<>();
-		command.add(getExecutable(lib));
-		command.addAll(getArguments(name, lib));
-		return command;
+		return commandProvider.getCommand(getInputFile(name), getOutputFile(name, lib), lib);
 	}
 
 	public synchronized BaseGeneratedOperation reserveLibraryTarget() {
@@ -208,7 +173,6 @@ public class NativeCompiler {
 
 			String libCompiler = System.getProperty("AR_HARDWARE_NATIVE_COMPILER");
 			if (libCompiler == null) libCompiler = System.getenv("AR_HARDWARE_NATIVE_COMPILER");
-			if (libCompiler == null) libCompiler = "gcc.sh";
 
 			String exeCompiler = System.getProperty("AR_HARDWARE_EXTERNAL_COMPILER");
 			if (exeCompiler == null) exeCompiler = System.getenv("AR_HARDWARE_EXTERNAL_COMPILER");
@@ -221,13 +185,24 @@ public class NativeCompiler {
 				if (!ld.exists()) ld.mkdir();
 			}
 
-			String exec = System.getProperty("AR_HARDWARE_NATIVE_EXECUTION");
-			if (exec == null) exec = System.getenv("AR_HARDWARE_NATIVE_EXECUTION");
-
 			String data = System.getProperty("AR_HARDWARE_DATA");
 			if (data == null) data = System.getenv("AR_HARDWARE_DATA");
 
-			return new NativeCompiler(precision, libCompiler, exeCompiler, libDir, libFormat, data, cl);
+			CompilerCommandProvider commandProvider;
+
+			if (libCompiler == null) {
+				commandProvider = new GCC();
+			} else if (libCompiler.endsWith("gcc")) {
+				commandProvider = new GCC(libCompiler);
+			} else if (libCompiler.endsWith("clang")) {
+				throw new UnsupportedOperationException();
+			} else if (libCompiler.endsWith("icc")) {
+				throw new UnsupportedOperationException();
+			} else {
+				commandProvider = new DefaultCompilerCommandProvider(libCompiler, exeCompiler);
+			}
+
+			return new NativeCompiler(precision, commandProvider, libDir, libFormat, data, cl);
 		};
 	}
 }
