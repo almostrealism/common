@@ -20,7 +20,6 @@ import io.almostrealism.code.Computation;
 import io.almostrealism.code.Precision;
 import io.almostrealism.relation.Factory;
 import org.almostrealism.generated.BaseGeneratedOperation;
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.io.SystemUtils;
 
@@ -30,9 +29,8 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.lang.reflect.InvocationTargetException;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
+import java.util.function.Consumer;
 
 public class NativeCompiler {
 	public static boolean enableVerbose = false;
@@ -52,15 +50,16 @@ public class NativeCompiler {
 
 	private Precision precision;
 
-	private CompilerCommandProvider commandProvider;
+	private LinkedLibraryGenerator libraryGenerator;
 	private final String libDir;
 	private final String libFormat;
 	private final String dataDir;
 
 	private final String header;
 
-	public NativeCompiler(Precision precision, CompilerCommandProvider commandProvider, String libDir, String libFormat, String dataDir, boolean cl) {
-		this.commandProvider = commandProvider;
+	public NativeCompiler(Precision precision, LinkedLibraryGenerator libraryGenerator,
+						  String libDir, String libFormat, String dataDir, boolean cl) {
+		this.libraryGenerator = libraryGenerator;
 		this.precision = precision;
 		this.libDir = libDir;
 		this.libFormat = libFormat;
@@ -104,10 +103,6 @@ public class NativeCompiler {
 		}
 	}
 
-	protected List<String> getCommand(String name, boolean lib) {
-		return commandProvider.getCommand(getInputFile(name), getOutputFile(name, lib), lib);
-	}
-
 	public synchronized BaseGeneratedOperation reserveLibraryTarget() {
 		try {
 			BaseGeneratedOperation gen = (BaseGeneratedOperation)
@@ -143,16 +138,7 @@ public class NativeCompiler {
 			throw new HardwareException(e.getMessage(), new UnsupportedOperationException(e));
 		}
 
-		try {
-			Process process = new ProcessBuilder(getCommand(name, lib)).inheritIO().start();
-			process.waitFor();
-
-			if (process.exitValue() != 0) {
-				throw new HardwareException("Native compiler failure (" + process.exitValue() + ") on " + name);
-			}
-		} catch (IOException | InterruptedException e) {
-			throw new HardwareException(e.getMessage(), new UnsupportedOperationException(e));
-		}
+		libraryGenerator.generateLibrary(getInputFile(name), getOutputFile(name, lib), runner(name));
 
 		if (enableVerbose) System.out.println("NativeCompiler: Native code compiled for " + name);
 		return name;
@@ -165,44 +151,68 @@ public class NativeCompiler {
 		if (enableVerbose) System.out.println("NativeCompiler: Loaded native library " + name);
 	}
 
+	protected Consumer<List<String>> runner(String name) {
+		return command -> {
+			try {
+				Process process = new ProcessBuilder(command).inheritIO().start();
+				process.waitFor();
+
+				if (process.exitValue() != 0) {
+					throw new HardwareException("Native compiler failure (" + process.exitValue() + ") on " + name);
+				}
+			} catch (IOException | InterruptedException e) {
+				throw new HardwareException(e.getMessage(), new UnsupportedOperationException(e));
+			}
+		};
+	}
+
 	public static Factory<NativeCompiler> factory(Precision precision, boolean cl) {
 		return () -> {
 			String libFormat = System.getProperty("AR_HARDWARE_LIB_FORMAT");
 			if (libFormat == null) libFormat = System.getenv("AR_HARDWARE_LIB_FORMAT");
 			if (libFormat == null) libFormat = SystemUtils.isAarch64() ? "lib%NAME%.dylib" : "lib%NAME%.so";
 
-			String libCompiler = System.getProperty("AR_HARDWARE_NATIVE_COMPILER");
-			if (libCompiler == null) libCompiler = System.getenv("AR_HARDWARE_NATIVE_COMPILER");
+			String libCompiler = SystemUtils.getProperty("AR_HARDWARE_NATIVE_COMPILER");
+			String libLinker = SystemUtils.getProperty("AR_HARDWARE_NATIVE_LINKER");
+			String exeCompiler = SystemUtils.getProperty("AR_HARDWARE_EXTERNAL_COMPILER");
+			String libDir = SystemUtils.getProperty("AR_HARDWARE_NATIVE_LIBS");
+			String data = SystemUtils.getProperty("AR_HARDWARE_DATA");
 
-			String exeCompiler = System.getProperty("AR_HARDWARE_EXTERNAL_COMPILER");
-			if (exeCompiler == null) exeCompiler = System.getenv("AR_HARDWARE_EXTERNAL_COMPILER");
+			boolean appBundle = libCompiler != null && libCompiler.contains("Contents/MacOS");
 
-			String libDir = System.getProperty("AR_HARDWARE_NATIVE_LIBS");
-			if (libDir == null) libDir = System.getenv("AR_HARDWARE_NATIVE_LIBS");
 			if (libDir == null && SystemUtils.isMacOS()) {
-				libDir = System.getProperty("user.home") + "/Library/Java/Extensions";
+				if (appBundle) {
+					libDir = "Extensions";
+				} else {
+					libDir = System.getProperty("user.home") + "/Library/Java/Extensions";
+				}
+
 				File ld = new File(libDir);
 				if (!ld.exists()) ld.mkdir();
 			}
 
-			String data = System.getProperty("AR_HARDWARE_DATA");
-			if (data == null) data = System.getenv("AR_HARDWARE_DATA");
-
 			CompilerCommandProvider commandProvider;
 
 			if (libCompiler == null) {
-				commandProvider = new GCC();
-			} else if (libCompiler.endsWith("gcc")) {
-				commandProvider = new GCC(libCompiler);
-			} else if (libCompiler.endsWith("clang")) {
-				throw new UnsupportedOperationException();
+				commandProvider = new Clang();
+			} else if (libCompiler.endsWith("gcc") || libCompiler.endsWith("clang")) {
+				commandProvider = new Clang(libCompiler, appBundle);
 			} else if (libCompiler.endsWith("icc")) {
 				throw new UnsupportedOperationException();
 			} else {
 				commandProvider = new DefaultCompilerCommandProvider(libCompiler, exeCompiler);
 			}
 
-			return new NativeCompiler(precision, commandProvider, libDir, libFormat, data, cl);
+			if (libLinker != null) {
+				if (commandProvider instanceof Clang) {
+					((Clang) commandProvider).setLinker(libLinker);
+				} else {
+					throw new UnsupportedOperationException("Cannot set linker for " + commandProvider.getClass().getName());
+				}
+			}
+
+			return new NativeCompiler(precision, new DefaultLinkedLibraryGenerator(commandProvider),
+										libDir, libFormat, data, cl);
 		};
 	}
 }
