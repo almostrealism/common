@@ -55,6 +55,11 @@ public class NativeExecution extends HardwareOperator {
 	public OperationMetadata getMetadata() { return inst.getMetadata(); }
 
 	@Override
+	public boolean isGPU() {
+		return !inst.getComputeContext().isCPU();
+	}
+
+	@Override
 	protected int getArgCount() { return argCount; }
 
 	@Override

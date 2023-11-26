@@ -16,9 +16,14 @@
 
 package org.almostrealism.io;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.Consumer;
+
 public class Console {
 	public static boolean systemOutEnabled = true;
-	
+
+	private List<Consumer<String>> listeners = new ArrayList<>();
 	private StringBuffer data = new StringBuffer();
 	private StringBuffer lastLine = new StringBuffer();
 	private boolean resetLastLine = false;
@@ -26,7 +31,7 @@ public class Console {
 	public void print(String s) {
 		if (resetLastLine) lastLine = new StringBuffer();
 		
-		data.append(s);
+		append(s);
 		lastLine.append(s);
 		
 		if (systemOutEnabled)
@@ -36,8 +41,8 @@ public class Console {
 	public void println(String s) {
 		if (resetLastLine) lastLine = new StringBuffer();
 		
-		data.append(s);
-		data.append("\n");
+		append(s);
+		append("\n");
 		
 		lastLine.append(s);
 		resetLastLine = true;
@@ -57,6 +62,22 @@ public class Console {
 	}
 	
 	public String lastLine() { return lastLine.toString(); }
+
+	protected void append(String s) {
+		data.append(s);
+
+		for (Consumer<String> listener : listeners) {
+			try {
+				listener.accept(s);
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+		}
+	}
+
+	public void addListener(Consumer<String> listener) {
+		listeners.add(listener);
+	}
 
 	public static void warn(String message, Throwable ex) {
 		System.out.println("WARN: " + message);

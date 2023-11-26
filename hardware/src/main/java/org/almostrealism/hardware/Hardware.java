@@ -102,7 +102,9 @@ public final class Hardware {
 			throw new IllegalStateException("Unknown driver " + driver);
 		}
 
-		if (requirements.size() == 1 && requirements.contains(ComputeRequirement.MTL)) {
+		boolean metal = SystemUtils.isEnabled("AR_OPTIMIZE_FOR_METAL").orElse(requirements.size() == 1);
+
+		if (metal && requirements.contains(ComputeRequirement.MTL)) {
 			KernelPreferences.optimizeForMetal();
 		}
 

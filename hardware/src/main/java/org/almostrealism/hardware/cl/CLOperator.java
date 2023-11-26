@@ -75,6 +75,15 @@ public class CLOperator extends HardwareOperator {
 	public OperationMetadata getMetadata() { return prog.getMetadata(); }
 
 	@Override
+	public boolean isGPU() {
+		if (context.getClQueue() == context.getKernelClQueue()) {
+			return !context.isCPU();
+		}
+
+		return context.getClQueue(getGlobalWorkSize() > 1) == context.getKernelClQueue();
+	}
+
+	@Override
 	protected int getArgCount() { return argCount; }
 
 	@Override

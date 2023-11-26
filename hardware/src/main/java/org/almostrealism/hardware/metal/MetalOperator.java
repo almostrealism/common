@@ -62,6 +62,11 @@ public class MetalOperator extends HardwareOperator {
 	public OperationMetadata getMetadata() { return prog.getMetadata(); }
 
 	@Override
+	public boolean isGPU() {
+		return !context.isCPU();
+	}
+
+	@Override
 	protected int getArgCount() { return argCount; }
 
 	@Override

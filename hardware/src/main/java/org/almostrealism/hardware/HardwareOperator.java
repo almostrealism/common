@@ -39,6 +39,7 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 	public static double prepareArgumentsTime, computeDimMasksTime;
 
 	public static OperationProfile profile;
+	public static long cpuOpCount, gpuOpCount;
 
 	private long globalWorkSize = 1;
 	private long globalWorkOffset;
@@ -53,6 +54,7 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 	@Override
 	public void setGlobalWorkOffset(long globalWorkOffset) { this.globalWorkOffset = globalWorkOffset; }
 
+	public abstract boolean isGPU();
 
 	public abstract List<MemoryProvider<? extends Memory>> getSupportedMemory();
 
@@ -112,7 +114,7 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 					Memory mem = supported.get(0).reallocate(root.getMem(), root.getOffset(), root.getMemLength());
 					root.reassign(mem);
 					provider.deallocate(root.getMemLength(), originalMem);
-				}));
+				}), false);
 
 	}
 
@@ -160,12 +162,24 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 	}
 
 	protected void recordDuration(Runnable r) {
+		recordDuration(r, true);
+	}
+
+	protected void recordDuration(Runnable r, boolean countOp) {
 		if (profile == null) {
 			r.run();
 		} else if (r instanceof OperationInfo) {
 			profile.recordDuration(r);
 		} else {
 			profile.recordDuration(OperationWithInfo.RunnableWithInfo.of(getMetadata(), r));
+		}
+
+		if (countOp) {
+			if (isGPU()) {
+				gpuOpCount++;
+			} else {
+				cpuOpCount++;
+			}
 		}
 	}
 

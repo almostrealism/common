@@ -38,20 +38,24 @@ public class OperationProfile implements Named {
 	}
 
 	@Override
-	public String getName() {
-		return name;
-	}
+	public String getName() { return name; }
 
-	public void print() {
+	public void print() { System.out.println(summary()); }
+
+	public String summary() {
+		StringBuilder builder = new StringBuilder();
+
 		double all = totalTime.values().stream().mapToLong(Long::longValue).sum();
-		System.out.println("Operation Profile (" + getName() + " - " + (all / 1000) + " seconds):");
+		builder.append("Operation Profile (" + getName() + " - " + (all / 1000) + " seconds):\n");
 
 		totalTime.entrySet().stream()
 				.sorted(Comparator.comparing((Map.Entry<String, Long> ent) -> ent.getValue()).reversed())
 				.forEachOrdered(entry -> {
-			System.out.println("\t" + entry.getKey() + ": " + count.get(entry.getKey()) + " - " +
-					entry.getValue() + "ms (" + (int) (100 * entry.getValue() / all) + "%)");
+			builder.append("\t" + entry.getKey() + ": " + count.get(entry.getKey()) + " - " +
+					entry.getValue() + "ms (" + (int) (100 * entry.getValue() / all) + "%)\n");
 		});
+
+		return builder.toString();
 	}
 
 	public void recordDuration(Runnable r) {
