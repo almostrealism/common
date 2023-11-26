@@ -22,12 +22,13 @@ import io.almostrealism.relation.Producer;
 import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.hardware.computations.Loop;
 import org.almostrealism.hardware.mem.MemoryDataCopy;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.Optional;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
-public interface HardwareFeatures {
+public interface HardwareFeatures extends ConsoleFeatures {
 	boolean enableAssignmentCopy = false;
 
 	default Runnable compileRunnable(Computation<Void> c) {

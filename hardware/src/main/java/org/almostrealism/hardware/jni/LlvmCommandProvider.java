@@ -16,26 +16,31 @@
 
 package org.almostrealism.hardware.jni;
 
+import org.almostrealism.io.SystemUtils;
+
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
 
 public abstract class LlvmCommandProvider implements CompilerCommandProvider {
+	private static String includePath = SystemUtils.getProperty("AR_HARDWARE_NATIVE_INCLUDES", "Contents/Resources/include");
+	private static String libPath = SystemUtils.getProperty("AR_HARDWARE_NATIVE_LIBS", "Contents/Resources/lib");
+
 	private String path, cmd;
 	private List<String> includes;
-	private boolean appBundle;
+	private boolean localToolchain;
 
-	public LlvmCommandProvider(String path, String command, boolean appBundle) {
-		this.path = appBundle ? new File(path).getAbsolutePath() : path;
+	public LlvmCommandProvider(String path, String command, boolean localToolchain) {
+		this.path = localToolchain ? path : new File(path).getAbsolutePath();
 		this.cmd = command;
-		this.appBundle = appBundle;
+		this.localToolchain = localToolchain;
 	}
 
 	protected void init() {
 		includes = new ArrayList<>();
 
-		if (appBundle) {
-			includes.add("-IContents/Resources/include");
+		if (!localToolchain) {
+			includes.add("-I" + includePath);
 		}
 
 		String baseInclude = System.getProperty("java.home") + "/include";
@@ -47,8 +52,8 @@ public abstract class LlvmCommandProvider implements CompilerCommandProvider {
 			}
 		}
 
-		if (appBundle) {
-			includes.add("-LContents/Resources/lib");
+		if (!localToolchain) {
+			includes.add("-L" + libPath);
 		}
 	}
 
@@ -61,7 +66,7 @@ public abstract class LlvmCommandProvider implements CompilerCommandProvider {
 		List<String> command = new ArrayList<>();
 		command.add(path);
 		addLinker(command);
-		if (appBundle) command.add("-w");
+		if (!localToolchain) command.add("-w");
 		command.addAll(includes);
 		command.add("-" + cmd);
 		command.add(inputFile);

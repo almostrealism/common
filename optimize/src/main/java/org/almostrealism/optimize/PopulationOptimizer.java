@@ -44,7 +44,7 @@ import org.almostrealism.CodeFeatures;
 public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore> implements Generated<Supplier<Genome<G>>, PopulationOptimizer>, CodeFeatures {
 	public static int THREADS = 1;
 
-	public static Console console = new Console();
+	public static Console console = Console.root().child();
 
 	public static boolean enableVerbose = false;
 	public static boolean enableDisplayGenomes = false;
@@ -121,9 +121,9 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 		return generator;
 	}
 
-	public double getAverageScore() { return scoring.getAverageScore(); }
+	public double getAverageScore() { return scoring == null ? 0.0 : scoring.getAverageScore(); }
 
-	public double getMaxScore() { return scoring.getMaxScore(); }
+	public double getMaxScore() { return scoring == null ? 0.0 : scoring.getMaxScore(); }
 
 	public void iterate() {
 		long start = System.currentTimeMillis();

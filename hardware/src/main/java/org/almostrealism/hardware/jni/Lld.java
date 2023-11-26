@@ -19,10 +19,10 @@ package org.almostrealism.hardware.jni;
 public class Lld extends LlvmCommandProvider {
 
 	public Lld() {
-		this("lld", false);
+		this("lld", true);
 	}
 
-	public Lld(String path, boolean appBundle) {
-		super(path, "dynamiclib", appBundle);
+	public Lld(String path, boolean localToolchain) {
+		super(path, "dynamiclib", localToolchain);
 	}
 }

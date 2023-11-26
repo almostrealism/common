@@ -23,11 +23,11 @@ public class Clang extends LlvmCommandProvider {
 	private String linker;
 
 	public Clang() {
-		this("gcc", false);
+		this("gcc", true);
 	}
 
-	public Clang(String path, boolean appBundle) {
-		super(path, "dynamiclib", appBundle);
+	public Clang(String path, boolean localToolchain) {
+		super(path, "dynamiclib", localToolchain);
 	}
 
 	public String getLinker() {

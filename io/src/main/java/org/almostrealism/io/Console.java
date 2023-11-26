@@ -1,5 +1,5 @@
 /*
- * Copyright 2016 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,12 +21,20 @@ import java.util.List;
 import java.util.function.Consumer;
 
 public class Console {
+	public static Console root = new Console();
 	public static boolean systemOutEnabled = true;
 
+	private Console parent;
 	private List<Consumer<String>> listeners = new ArrayList<>();
 	private StringBuffer data = new StringBuffer();
 	private StringBuffer lastLine = new StringBuffer();
 	private boolean resetLastLine = false;
+
+	protected Console() { this(null); }
+
+	protected Console(Console parent) {
+		this.parent = parent;
+	}
 	
 	public void print(String s) {
 		if (resetLastLine) lastLine = new StringBuffer();
@@ -34,8 +42,11 @@ public class Console {
 		append(s);
 		lastLine.append(s);
 		
-		if (systemOutEnabled)
-			System.out.print(s);
+		if (parent == null) {
+			if (systemOutEnabled) System.out.print(s);
+		} else {
+			parent.print(s);
+		}
 	}
 	
 	public void println(String s) {
@@ -47,18 +58,24 @@ public class Console {
 		lastLine.append(s);
 		resetLastLine = true;
 		
-		if (systemOutEnabled)
-			System.out.println(s);
+		if (parent == null) {
+			if (systemOutEnabled) System.out.println(s);
+		} else {
+			parent.println(s);
+		}
 	}
 	
 	public void println() {
 		if (resetLastLine) lastLine = new StringBuffer();
 		
-		data.append("\n");
+		append("\n");
 		resetLastLine = true;
 		
-		if (systemOutEnabled)
-			System.out.println();
+		if (parent == null) {
+			if (systemOutEnabled) System.out.println();
+		} else {
+			parent.println();
+		}
 	}
 	
 	public String lastLine() { return lastLine.toString(); }
@@ -79,8 +96,16 @@ public class Console {
 		listeners.add(listener);
 	}
 
-	public static void warn(String message, Throwable ex) {
-		System.out.println("WARN: " + message);
+	public void warn(String message, Throwable ex) {
+		println("WARN: " + message);
 		if (ex != null) ex.printStackTrace();
+	}
+
+	public Console child() {
+		return new Console(this);
+	}
+
+	public static Console root() {
+		return root;
 	}
 }

@@ -91,7 +91,7 @@ public class CLOperatorSources {
 				buf.append(line); buf.append("\n");
 			}
 		} catch (IOException e) {
-			Console.warn("Unable to load kernel program source", e);
+			Console.root().warn("Unable to load kernel program source", e);
 		}
 
 		return buf.toString();

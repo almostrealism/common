@@ -175,16 +175,16 @@ public class NativeCompiler {
 			String libCompiler = SystemUtils.getProperty("AR_HARDWARE_NATIVE_COMPILER");
 			String libLinker = SystemUtils.getProperty("AR_HARDWARE_NATIVE_LINKER");
 			String exeCompiler = SystemUtils.getProperty("AR_HARDWARE_EXTERNAL_COMPILER");
-			String libDir = SystemUtils.getProperty("AR_HARDWARE_NATIVE_LIBS");
+			String libDir = SystemUtils.getProperty("AR_HARDWARE_LIBS");
 			String data = SystemUtils.getProperty("AR_HARDWARE_DATA");
 
-			boolean appBundle = libCompiler != null && libCompiler.contains("Contents/MacOS");
+			boolean localToolchain = libCompiler == null || !libCompiler.contains("/");
 
 			if (libDir == null && SystemUtils.isMacOS()) {
-				if (appBundle) {
-					libDir = "Extensions";
-				} else {
+				if (localToolchain) {
 					libDir = System.getProperty("user.home") + "/Library/Java/Extensions";
+				} else {
+					libDir = "Extensions";
 				}
 
 				File ld = new File(libDir);
@@ -196,7 +196,7 @@ public class NativeCompiler {
 			if (libCompiler == null) {
 				commandProvider = new Clang();
 			} else if (libCompiler.endsWith("gcc") || libCompiler.endsWith("clang")) {
-				commandProvider = new Clang(libCompiler, appBundle);
+				commandProvider = new Clang(libCompiler, localToolchain);
 			} else if (libCompiler.endsWith("icc")) {
 				throw new UnsupportedOperationException();
 			} else {
