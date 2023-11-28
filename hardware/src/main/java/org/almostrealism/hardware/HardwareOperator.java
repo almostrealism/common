@@ -39,7 +39,9 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 	public static double prepareArgumentsTime, computeDimMasksTime;
 
 	public static OperationProfile profile;
+	public static long cpuCompileCount, gpuCompileCount;
 	public static long cpuOpCount, gpuOpCount;
+	public static long cpuOpTime, gpuOpTime;
 
 	private long globalWorkSize = 1;
 	private long globalWorkOffset;
@@ -166,20 +168,32 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 	}
 
 	protected void recordDuration(Runnable r, boolean countOp) {
+		long duration = -1;
+
 		if (profile == null) {
 			r.run();
 		} else if (r instanceof OperationInfo) {
-			profile.recordDuration(r);
+			duration = profile.recordDuration(r);
 		} else {
-			profile.recordDuration(OperationWithInfo.RunnableWithInfo.of(getMetadata(), r));
+			duration = profile.recordDuration(OperationWithInfo.RunnableWithInfo.of(getMetadata(), r));
 		}
 
-		if (countOp) {
+		if (countOp && duration > 0) {
 			if (isGPU()) {
 				gpuOpCount++;
+				gpuOpTime += duration;
 			} else {
 				cpuOpCount++;
+				cpuOpTime += duration;
 			}
+		}
+	}
+
+	public static void recordCompilation(boolean gpu) {
+		if (gpu) {
+			gpuCompileCount++;
+		} else {
+			cpuCompileCount++;
 		}
 	}
 

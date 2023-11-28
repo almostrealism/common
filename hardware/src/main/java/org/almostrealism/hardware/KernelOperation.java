@@ -24,6 +24,7 @@ import java.util.function.Supplier;
 @Deprecated
 public class KernelOperation<T extends MemoryData> implements Supplier<Runnable> {
 	private Producer<T> producer;
+	private Evaluable<T> evaluable;
 	private MemoryBank destination;
 	private MemoryData arguments[];
 
@@ -33,9 +34,15 @@ public class KernelOperation<T extends MemoryData> implements Supplier<Runnable>
 		this.arguments = arguments;
 	}
 
+	public KernelOperation(Evaluable<T> evaluable, MemoryBank destination, MemoryData... arguments) {
+		this.evaluable = evaluable;
+		this.destination = destination;
+		this.arguments = arguments;
+	}
+
 	@Override
 	public Runnable get() {
-		Evaluable<T> ev = producer.get();
+		Evaluable<T> ev = evaluable == null ? producer.get() : evaluable;
 		return () -> ev.into(destination).evaluate(arguments);
 	}
 }

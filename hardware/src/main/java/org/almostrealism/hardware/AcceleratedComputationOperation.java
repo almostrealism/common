@@ -166,6 +166,7 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	public synchronized Execution getOperator() {
 		if (operators == null || operators.isDestroyed()) {
 			operators = getComputeContext().deliver(scope);
+			HardwareOperator.recordCompilation(!getComputeContext().isCPU());
 		}
 
 		return operators.get(getFunctionName(), getArgsCount());

@@ -21,6 +21,8 @@ import io.almostrealism.uml.Multiple;
 import org.almostrealism.hardware.DestinationEvaluable;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryBank;
+import org.almostrealism.hardware.ctx.ContextSpecific;
+import org.almostrealism.hardware.ctx.DefaultContextSpecific;
 
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
@@ -47,7 +49,7 @@ public class HardwareEvaluable<T> implements Evaluable<T>,
 	private Evaluable<T> shortCircuit;
 
 	private boolean isKernel;
-	private Evaluable<T> kernel;
+	private ContextSpecific<Evaluable<T>> kernel;
 
 	private Consumer<MemoryBank<?>> destinationValidation;
 
@@ -58,6 +60,7 @@ public class HardwareEvaluable<T> implements Evaluable<T>,
 		this.destination = destination;
 		this.shortCircuit = shortCircuit;
 		this.isKernel = kernel;
+		this.kernel = new DefaultContextSpecific<>(() -> ev.get());
 	}
 
 	public void setEvaluable(Supplier<Evaluable<T>> ev) { this.ev = ev; }
@@ -98,29 +101,23 @@ public class HardwareEvaluable<T> implements Evaluable<T>,
 			destinationValidation.accept(destination);
 		}
 
-		return new DestinationEvaluable<>((Evaluable) getKernel(), destination);
+		return new DestinationEvaluable<>((Evaluable) getKernel().getValue(), destination);
 	}
 
-	public Evaluable<T> getKernel() {
-		if (kernel == null) {
-			kernel = ev.get();
-		}
-
-		return kernel;
-	}
+	public ContextSpecific<Evaluable<T>> getKernel() { return kernel; }
 
 	@Override
 	public Multiple<T> createDestination(int size) {
-		return destination == null ? getKernel().createDestination(size) : destination.apply(size);
+		return destination == null ? getKernel().getValue().createDestination(size) : destination.apply(size);
 	}
 
 	@Override
 	public T evaluate(Object... args) {
-		return shortCircuit == null ? getKernel().evaluate(args) : shortCircuit.evaluate(args);
+		return shortCircuit == null ? getKernel().getValue().evaluate(args) : shortCircuit.evaluate(args);
 	}
 
 	@Override
 	public int getArgsCount() {
-		return ((KernelizedEvaluable) getKernel()).getArgsCount();
+		return ((KernelizedEvaluable) getKernel().getValue()).getArgsCount();
 	}
 }

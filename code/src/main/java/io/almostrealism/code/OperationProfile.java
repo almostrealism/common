@@ -18,6 +18,7 @@ package io.almostrealism.code;
 
 import io.almostrealism.uml.Named;
 
+import java.text.DecimalFormat;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Map;
@@ -26,6 +27,7 @@ public class OperationProfile implements Named {
 	private String name;
 	private Map<String, Long> totalTime;
 	private Map<String, Integer> count;
+	private DecimalFormat format;
 
 	public OperationProfile() {
 		this("default");
@@ -35,6 +37,7 @@ public class OperationProfile implements Named {
 		this.name = name;
 		this.totalTime = new HashMap<>();
 		this.count = new HashMap<>();
+		this.format = new DecimalFormat("##0.0#");
 	}
 
 	@Override
@@ -48,17 +51,21 @@ public class OperationProfile implements Named {
 		double all = totalTime.values().stream().mapToLong(Long::longValue).sum();
 		builder.append("Operation Profile (" + getName() + " - " + (all / 1000) + " seconds):\n");
 
+		String form = "\t%s: %d [%ss tot | %ss avg] %d%%\n";
+
 		totalTime.entrySet().stream()
 				.sorted(Comparator.comparing((Map.Entry<String, Long> ent) -> ent.getValue()).reversed())
 				.forEachOrdered(entry -> {
-			builder.append("\t" + entry.getKey() + ": " + count.get(entry.getKey()) + " - " +
-					entry.getValue() + "ms (" + (int) (100 * entry.getValue() / all) + "%)\n");
+					builder.append(String.format(form, entry.getKey(), count.get(entry.getKey()),
+							format.format(entry.getValue() / 1000.0),
+							format.format(entry.getValue() / (count.get(entry.getKey()) * 1000.0)),
+							(int) (100 * entry.getValue() / all)));
 		});
 
 		return builder.toString();
 	}
 
-	public void recordDuration(Runnable r) {
+	public long recordDuration(Runnable r) {
 		long start = System.currentTimeMillis(); // System.nanoTime();
 		r.run();
 		long end = System.currentTimeMillis(); // System.nanoTime();
@@ -77,6 +84,7 @@ public class OperationProfile implements Named {
 		}
 
 		recordDuration(metadata, end - start);
+		return end - start;
 	}
 
 	public void recordDuration(OperationMetadata metadata, long duration) {

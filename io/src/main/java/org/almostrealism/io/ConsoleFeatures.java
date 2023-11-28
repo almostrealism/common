@@ -22,14 +22,18 @@ public interface ConsoleFeatures {
 	}
 
 	default void log(String message) {
-		Console.root().println(formatMessage(message));
+		console().println(formatMessage(message));
 	}
 
 	default void warn(String message) {
-		Console.root().warn(formatMessage(message), null);
+		console().warn(formatMessage(message), null);
 	}
 
 	default void warn(String message, Throwable ex) {
-		Console.root().warn(formatMessage(message), ex);
+		console().warn(formatMessage(message), ex);
+	}
+
+	default Console console() {
+		return Console.root();
 	}
 }
