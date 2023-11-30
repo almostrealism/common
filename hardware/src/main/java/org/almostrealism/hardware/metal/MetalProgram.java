@@ -19,6 +19,7 @@ package org.almostrealism.hardware.metal;
 import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
 import org.almostrealism.hardware.HardwareException;
+import org.almostrealism.hardware.ctx.GlobalContextDebugFlags;
 
 public class MetalProgram implements OperationInfo {
 	private final OperationMetadata metadata;
@@ -41,6 +42,10 @@ public class MetalProgram implements OperationInfo {
 	public MTLFunction getFunction() { return function; }
 
 	public void compile() {
+		if (GlobalContextDebugFlags.gate) {
+			System.out.println("!");
+		}
+
 		function = device.newFunction(func, src);
 		if (function.getNativePointer() == 0)
 			throw new HardwareException("Failed to compile " + func);

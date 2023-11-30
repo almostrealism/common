@@ -11,4 +11,11 @@
 
 	<artifactId>ar-io</artifactId>
 
+	<dependencies>
+		<dependency>
+			<groupId>org.almostrealism</groupId>
+			<artifactId>ar-uml</artifactId>
+			<version>0.60</version>
+		</dependency>
+	</dependencies>
 </project>

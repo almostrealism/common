@@ -17,16 +17,20 @@
 package io.almostrealism.code;
 
 import io.almostrealism.uml.Named;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.TimingMetric;
 
 import java.text.DecimalFormat;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Map;
 
-public class OperationProfile implements Named {
+public class OperationProfile implements Named, ConsoleFeatures {
+	public static long id = 0;
+
 	private String name;
-	private Map<String, Long> totalTime;
-	private Map<String, Integer> count;
+	private TimingMetric metric;
 	private DecimalFormat format;
 
 	public OperationProfile() {
@@ -35,30 +39,31 @@ public class OperationProfile implements Named {
 
 	public OperationProfile(String name) {
 		this.name = name;
-		this.totalTime = new HashMap<>();
-		this.count = new HashMap<>();
-		this.format = new DecimalFormat("##0.0#");
+		this.metric = console().metric(name + "_prof" + id++);
+		this.format = new DecimalFormat("##0.00#");
 	}
 
 	@Override
 	public String getName() { return name; }
 
-	public void print() { System.out.println(summary()); }
+	public TimingMetric getMetric() { return metric; }
+
+	public void print() { log(summary()); }
 
 	public String summary() {
 		StringBuilder builder = new StringBuilder();
 
-		double all = totalTime.values().stream().mapToLong(Long::longValue).sum();
-		builder.append("Operation Profile (" + getName() + " - " + (all / 1000) + " seconds):\n");
+		double all = metric.getEntries().values().stream().mapToDouble(Double::doubleValue).sum();
+		builder.append("Operation Profile (" + getName() + " - " + format.format(all) + " seconds):\n");
 
 		String form = "\t%s: %d [%ss tot | %ss avg] %d%%\n";
 
-		totalTime.entrySet().stream()
-				.sorted(Comparator.comparing((Map.Entry<String, Long> ent) -> ent.getValue()).reversed())
+		metric.getEntries().entrySet().stream()
+				.sorted(Comparator.comparing((Map.Entry<String, Double> ent) -> ent.getValue()).reversed())
 				.forEachOrdered(entry -> {
-					builder.append(String.format(form, entry.getKey(), count.get(entry.getKey()),
-							format.format(entry.getValue() / 1000.0),
-							format.format(entry.getValue() / (count.get(entry.getKey()) * 1000.0)),
+					builder.append(String.format(form, entry.getKey(), metric.getCounts().get(entry.getKey()),
+							format.format(entry.getValue()),
+							format.format(entry.getValue() / metric.getCounts().get(entry.getKey())),
 							(int) (100 * entry.getValue() / all)));
 		});
 
@@ -66,9 +71,9 @@ public class OperationProfile implements Named {
 	}
 
 	public long recordDuration(Runnable r) {
-		long start = System.currentTimeMillis(); // System.nanoTime();
+		long start = System.nanoTime();
 		r.run();
-		long end = System.currentTimeMillis(); // System.nanoTime();
+		long end = System.nanoTime();
 
 		OperationMetadata metadata = null;
 		if (r instanceof OperationInfo) {
@@ -87,16 +92,14 @@ public class OperationProfile implements Named {
 		return end - start;
 	}
 
-	public void recordDuration(OperationMetadata metadata, long duration) {
+	protected void recordDuration(OperationMetadata metadata, long nanos) {
 		String key = metadata.getShortDescription();
 		if (key == null) key = "<unknown>";
-
-		totalTime.put(key, totalTime.getOrDefault(metadata.getShortDescription(), 0L) + duration);
-		count.put(key, count.getOrDefault(metadata.getShortDescription(), 0) + 1);
+		metric.addEntry(key, nanos);
 	}
 
-	public void clear() {
-		totalTime.clear();
-		count.clear();
-	}
+	public void clear() { metric.clear(); }
+
+	@Override
+	public Console console() { return Computation.console; }
 }

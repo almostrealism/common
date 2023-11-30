@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware;
 
+import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.Execution;
 import io.almostrealism.lang.LanguageOperations;
@@ -37,14 +38,13 @@ import org.almostrealism.hardware.jni.NativeExecution;
 import org.almostrealism.hardware.mem.Bytes;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.TimingMetric;
 import org.jocl.CLException;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -54,13 +54,17 @@ import java.util.stream.Stream;
 public abstract class AcceleratedOperation<T extends MemoryData> extends OperationAdapter<T> implements Runnable,
 														KernelizedOperation, ScopeLifecycle, ComputerFeatures {
 	public static final boolean enableArgumentMapping = true;
+	public static Console console = Computation.console.child();
 
-	public static double retrieveOperatorTime, processArgumentsTime, acceptTime;
-	public static double processTime;
-	public static double createKernelDestinationTime, evaluateKernelTime, evaluateTime;
-	public static Map<String, Double> kernelCreateTimes = Collections.synchronizedMap(new HashMap<>());
-	public static Map<String, Double> nonKernelEvalTimes = Collections.synchronizedMap(new HashMap<>());
-	public static Map<String, Double> wrappedEvalTimes = Collections.synchronizedMap(new HashMap<>());
+	public static TimingMetric retrieveOperatorMetric = new TimingMetric("retrieveOperator");
+	public static TimingMetric processArgumentsMetric = new TimingMetric("processArguments");
+	public static TimingMetric acceptMetric = new TimingMetric("accept");
+	public static TimingMetric processMetric = new TimingMetric("process");
+	public static TimingMetric evaluateKernelMetric = new TimingMetric("evaluateKernel");
+	public static TimingMetric evaluateMetric = new TimingMetric("evaluate");
+	public static TimingMetric kernelCreateMetric = new TimingMetric("kernelCreate");
+	public static TimingMetric nonKernelEvalMetric = new TimingMetric("nonKernelEval");
+	public static TimingMetric wrappedEvalMetric = new TimingMetric("wrappedEval");
 
 	private static final ThreadLocal<Semaphore> semaphores = new ThreadLocal<>();
 	private static final ThreadLocal<CreatedMemoryData> created = new ThreadLocal<>();
@@ -210,14 +214,14 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 	protected synchronized AcceleratedProcessDetails apply(MemoryBank output, Object[] args) {
 		if (getArguments() == null) {
-			System.out.println("WARN: " + getName() + " was not compiled ahead of time");
+			warn(getName() + " was not compiled ahead of time");
 			compile();
 		}
 
 		long start = System.nanoTime();
 
 		Execution operator = getOperator();
-		retrieveOperatorTime += sec(System.nanoTime() - start); start = System.nanoTime();
+		retrieveOperatorMetric.addEntry(System.nanoTime() - start); start = System.nanoTime();
 
 		if (operator instanceof KernelWork == false) {
 			throw new UnsupportedOperationException();
@@ -230,14 +234,14 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 					this::createAggregatedInput);
 		}
 
-		if (enableKernelLog) System.out.println("AcceleratedOperation: Preparing " + getName() + " kernel...");
+		if (enableKernelLog) log("Preparing " + getName() + " kernel...");
 		AcceleratedProcessDetails process = detailsFactory.init(output, args).construct();
 		MemoryData input[] = Stream.of(process.getArguments()).toArray(MemoryData[]::new);
 		((KernelWork) operator).setGlobalWorkOffset(0);
 		((KernelWork) operator).setGlobalWorkSize(process.getKernelSize());
-		processArgumentsTime += sec(System.nanoTime() - start); start = System.nanoTime();
+		processArgumentsMetric.addEntry(System.nanoTime() - start); start = System.nanoTime();
 
-		if (enableKernelLog) System.out.println("AcceleratedOperation: Evaluating " + getName() + " kernel...");
+		if (enableKernelLog) log("Evaluating " + getName() + " kernel...");
 
 		boolean processing = !process.isEmpty();
 		if (preOp != null && !preOp.isEmpty()) processing = true;
@@ -249,7 +253,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		}
 
 		Semaphore semaphore = operator.accept(input, semaphores.get());
-		acceptTime += sec(System.nanoTime() - start); start = System.nanoTime();
+		acceptMetric.addEntry(System.nanoTime() - start); start = System.nanoTime();
 		process.setSemaphore(semaphore);
 		semaphores.set(semaphore);
 
@@ -294,6 +298,9 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		postOp = null;
 	}
 
+	@Override
+	public Console console() { return console; }
+
 	public static Semaphore getSemaphore() { return semaphores.get(); }
 
 	public static void waitFor() {
@@ -332,27 +339,27 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	}
 
 	public static void printTimes() {
-		System.out.println("AcceleratedOperation: " +
-				((long) AcceleratedOperation.retrieveOperatorTime) + "sec (operator), " +
-				((long) AcceleratedOperation.processArgumentsTime) + "sec (process), " +
-				((long) AcceleratedOperation.acceptTime) + "sec (accept)");
-		System.out.println("AcceleratedOperation Process Init: " +
+		console.println("AcceleratedOperation: " +
+				((long) AcceleratedOperation.retrieveOperatorMetric.getTotalSeconds()) + "sec (operator), " +
+				((long) AcceleratedOperation.processArgumentsMetric.getTotalSeconds()) + "sec (process), " +
+				((long) AcceleratedOperation.acceptMetric.getTotalSeconds()) + "sec (accept)");
+		console.println("AcceleratedOperation Process Init: " +
 				((long) ProcessDetailsFactory.initTime) + "sec (init), " +
-				((long) AcceleratedOperation.processTime) + "sec (process)");
-		System.out.println("AcceleratedOperation Process Body: " +
-				((long) AcceleratedOperation.createKernelDestinationTime) + "sec (create), " +
-				((long) AcceleratedOperation.evaluateKernelTime) + "sec (evaluate kernel), " +
-				((long) AcceleratedOperation.evaluateTime) + "sec (evaluate)");
-		System.out.println("AcceleratedOperation Accept: " +
-				((long) HardwareOperator.prepareArgumentsTime) + "sec (prepare), " +
-				((long) HardwareOperator.computeDimMasksTime) + "sec (masks), " +
-				((long) NativeExecution.dimMaskTime) + "sec (masks)");
+				((long) AcceleratedOperation.processMetric.getTotalSeconds()) + "sec (process)");
+		console.println("AcceleratedOperation Process Body: " +
+				((long) AcceleratedOperation.kernelCreateMetric.getTotalSeconds()) + "sec (create), " +
+				((long) AcceleratedOperation.evaluateKernelMetric.getTotalSeconds()) + "sec (evaluate kernel), " +
+				((long) AcceleratedOperation.evaluateMetric.getTotalSeconds()) + "sec (evaluate)");
+		console.println("AcceleratedOperation Accept: " +
+				((long) HardwareOperator.prepareArgumentsMetric.getTotalSeconds()) + "sec (prepare), " +
+				((long) HardwareOperator.computeDimMasksMetric.getTotalSeconds()) + "sec (masks), " +
+				((long) NativeExecution.dimMaskMetric.getTotalSeconds()) + "sec (masks)");
 
-		AcceleratedOperation.kernelCreateTimes.forEach((k, v) ->
-				System.out.println("AcceleratedOperation: " + k + " - " + v.longValue() + "sec (create)"));
-		AcceleratedOperation.nonKernelEvalTimes.forEach((k, v) ->
-				System.out.println("AcceleratedOperation: " + k + " - " + v.longValue() + "sec (evaluate)"));
-		AcceleratedOperation.wrappedEvalTimes.forEach((k, v) ->
-				System.out.println("AcceleratedOperation: " + k + " - " + v.longValue() + "sec (wrapped evaluate)"));
+		AcceleratedOperation.kernelCreateMetric.getEntries().forEach((k, v) ->
+				console.println("AcceleratedOperation: " + k + " - " + v.longValue() + "sec (create)"));
+		AcceleratedOperation.nonKernelEvalMetric.getEntries().forEach((k, v) ->
+				console.println("AcceleratedOperation: " + k + " - " + v.longValue() + "sec (evaluate)"));
+		AcceleratedOperation.wrappedEvalMetric.getEntries().forEach((k, v) ->
+				console.println("AcceleratedOperation: " + k + " - " + v.longValue() + "sec (wrapped evaluate)"));
 	}
 }

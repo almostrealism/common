@@ -47,6 +47,10 @@ public class MTLDevice extends MTLObject {
 		return new MTLFunction(MTL.createFunction(getNativePointer(), func, src));
 	}
 
+	public MTLBuffer newIntBuffer32(long len) {
+		return new MTLBuffer(Precision.FP32, MTL.createIntBuffer32(getNativePointer(), len));
+	}
+
 	public MTLBuffer newIntBuffer32(int values[]) {
 		return new MTLBuffer(Precision.FP32, MTL.createIntBuffer32(getNativePointer(), values));
 	}

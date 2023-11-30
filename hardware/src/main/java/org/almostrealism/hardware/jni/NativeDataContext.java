@@ -35,7 +35,7 @@ import java.util.concurrent.Callable;
 public class NativeDataContext implements DataContext<MemoryData> {
 	private static boolean external = SystemUtils.getProperty("AR_HARDWARE_NATIVE_EXECUTION", "").equalsIgnoreCase("external");
 
-	private final boolean isExternal, isNativeMem;
+	private final boolean isExternal, isClMemory;
 	private final long maxReservation;
 
 	private NativeCompiler compiler;
@@ -46,21 +46,25 @@ public class NativeDataContext implements DataContext<MemoryData> {
 	private Precision precision;
 	private ComputeContext<MemoryData> context;
 
-	public NativeDataContext(String name, Precision precision, boolean isNativeMem, long maxReservation) {
+	public NativeDataContext(String name, Precision precision, long maxReservation) {
+		this(name, precision, maxReservation, false);
+	}
+
+	public NativeDataContext(String name, Precision precision, long maxReservation, boolean clMemory) {
 		this.name = name;
 		this.precision = precision;
-		this.isNativeMem = isNativeMem;
 		this.isExternal = external;
 		this.maxReservation = maxReservation;
+		this.isClMemory = clMemory;
 	}
 
 	@Override
 	public void init() {
 		if (context != null) return;
-		compiler = NativeCompiler.factory(getPrecision(), !isNativeMem).construct();
+		compiler = NativeCompiler.factory(getPrecision(), isClMemory).construct();
 
 		if (ram == null) {
-			ram = isNativeMem ? new NativeMemoryProvider(compiler, maxReservation * getPrecision().bytes()) : new JVMMemoryProvider();
+			ram = new NativeMemoryProvider(compiler, maxReservation * getPrecision().bytes());
 		}
 
 		context = isExternal ? new ExternalComputeContext(this, compiler) : new NativeComputeContext(this, compiler);

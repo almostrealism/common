@@ -17,7 +17,10 @@
 package org.almostrealism.io;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 
 public class Console {
@@ -29,6 +32,8 @@ public class Console {
 	private StringBuffer data = new StringBuffer();
 	private StringBuffer lastLine = new StringBuffer();
 	private boolean resetLastLine = false;
+
+	private Map<String, TimingMetric> metrics = Collections.synchronizedMap(new HashMap<>());
 
 	protected Console() { this(null); }
 
@@ -96,9 +101,21 @@ public class Console {
 		listeners.add(listener);
 	}
 
+	public void warn(String message) { warn(message, null); }
+
 	public void warn(String message, Throwable ex) {
 		println("WARN: " + message);
 		if (ex != null) ex.printStackTrace();
+	}
+
+	public TimingMetric metric(String name) {
+		if (metrics.containsKey(name)) {
+			return metrics.get(name);
+		}
+
+		TimingMetric metric = new TimingMetric(name);
+		metrics.put(name, metric);
+		return metric;
 	}
 
 	public Console child() {

@@ -161,7 +161,7 @@ public class ReshapeProducer<T extends Shape<T>>
 			ev.setShortCircuit(args -> {
 				long start = System.nanoTime();
 				Shape<T> out = ev.getKernel().getValue().evaluate(args);
-				AcceleratedOperation.wrappedEvalTimes.merge(producer.getClass().getName(), (System.nanoTime() - start) / 1e9, (a, b) -> a + b);
+				AcceleratedOperation.wrappedEvalMetric.addEntry(producer, System.nanoTime() - start);
 
 				if (shape == null) {
 					return out.reshape(out.getShape().traverse(traversalAxis));

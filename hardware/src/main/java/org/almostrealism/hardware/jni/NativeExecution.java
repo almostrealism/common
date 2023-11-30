@@ -20,9 +20,11 @@ import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.Semaphore;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.jvm.JVMMemoryProvider;
+import org.almostrealism.io.TimingMetric;
 
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
@@ -35,7 +37,7 @@ import java.util.stream.IntStream;
 public class NativeExecution extends HardwareOperator {
 	private static ExecutorService executor = Executors.newFixedThreadPool(20);
 
-	public static double dimMaskTime;
+	public static TimingMetric dimMaskMetric = Hardware.console.metric("dimMask");
 
 	private NativeInstructionSet inst;
 	private int argCount;
@@ -83,7 +85,7 @@ public class NativeExecution extends HardwareOperator {
 		} else {
 			dim0 = IntStream.range(0, getArgCount()).map(i -> data[i].getAtomicMemLength()).toArray();
 		}
-		dimMaskTime += (System.nanoTime() - s) / 1e9;
+		dimMaskMetric.addEntry(System.nanoTime() - s);
 
 		if (getGlobalWorkSize() > Integer.MAX_VALUE) {
 			throw new UnsupportedOperationException();

@@ -186,11 +186,11 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 
 				kernelArgs[i] = (MemoryData) o;
 
-				AcceleratedOperation.nonKernelEvalTimes.merge(arguments.get(i).getProducer().getClass().getName(), sec(System.nanoTime() - s), (a, b) -> a + b);
+				AcceleratedOperation.nonKernelEvalMetric.addEntry(arguments.get(i).getProducer(), System.nanoTime() - s);
 			}
 		}
 
-		AcceleratedOperation.processTime += sec(System.nanoTime() - start); start = System.nanoTime();
+		AcceleratedOperation.processMetric.addEntry(System.nanoTime() - start); start = System.nanoTime();
 
 		/*
 		 * In the final pass, kernel arguments are evaluated in a way that ensures the
@@ -202,19 +202,18 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			if (kernelArgEvaluables[i] instanceof KernelizedEvaluable && allMemoryData) {
 				kernelArgs[i] = (MemoryData) kernelArgEvaluables[i].createDestination(kernelSize);
 
-				double time = sec(System.nanoTime() - start); start = System.nanoTime();
-				AcceleratedOperation.kernelCreateTimes.merge(kernelArgEvaluables[i].getClass().getName(), time, (a, b) -> a + b);
-				AcceleratedOperation.createKernelDestinationTime += time;
+				long time = System.nanoTime() - start; start = System.nanoTime();
+				AcceleratedOperation.kernelCreateMetric.addEntry(kernelArgEvaluables[i], time);
 
 				if (created.get() != null)
 					created.get().add(kernelArgs[i]);
 
 				kernelArgEvaluables[i].into(kernelArgs[i]).evaluate(memoryDataArgs);
 
-				AcceleratedOperation.evaluateKernelTime += sec(System.nanoTime() - start); start = System.nanoTime();
+				AcceleratedOperation.evaluateKernelMetric.addEntry(System.nanoTime() - start); start = System.nanoTime();
 			} else {
 				kernelArgs[i] = (MemoryData) kernelArgEvaluables[i].evaluate(args);
-				AcceleratedOperation.evaluateTime += sec(System.nanoTime() - start); start = System.nanoTime();
+				AcceleratedOperation.evaluateMetric.addEntry(System.nanoTime() - start); start = System.nanoTime();
 			}
 		}
 

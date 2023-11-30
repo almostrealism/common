@@ -22,6 +22,8 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import io.almostrealism.code.Precision;
 import org.almostrealism.hardware.RAM;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
 import org.jocl.CL;
 import org.jocl.CLException;
@@ -36,12 +38,12 @@ import java.util.List;
 import java.util.Optional;
 import java.util.stream.IntStream;
 
-public class CLMemoryProvider implements MemoryProvider<RAM> {
+public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 	public static boolean enableLargeAllocationLogging = false;
 	public static boolean enableWarnings = SystemUtils.isEnabled("AR_HARDWARE_MEMORY_WARNINGS").orElse(true);
 
 	public enum Location {
-		HOST, DEVICE, HEAP
+		HOST, DEVICE, HEAP, DELEGATE
 	}
 
 	private final Location location;
@@ -62,7 +64,7 @@ public class CLMemoryProvider implements MemoryProvider<RAM> {
 		this.numberSize = numberSize;
 		this.memoryMax = memoryMax;
 		this.location = location;
-		if (location == Location.HEAP) heap = new HashMap<>();
+		if (location == Location.HEAP || location == Location.DELEGATE) heap = new HashMap<>();
 		this.allocated = new ArrayList<>();
 		this.deallocating = new ArrayList<>();
 	}
@@ -77,7 +79,7 @@ public class CLMemoryProvider implements MemoryProvider<RAM> {
 	@Override
 	public CLMemory allocate(int size) {
 		if (enableLargeAllocationLogging && size > (10 * 1024 * 1024)) {
-			System.out.println("CLMemoryProvider: Allocating " + (numberSize * (long) size) / 1024 / 1024 + "mb");
+			log("Allocating " + (numberSize * (long) size) / 1024 / 1024 + "mb");
 		}
 
 		try {
@@ -126,6 +128,9 @@ public class CLMemoryProvider implements MemoryProvider<RAM> {
 
 		if (location == Location.HEAP && len < Integer.MAX_VALUE / getNumberSize()) {
 			hostPtr = PointerAndObject.forLength(getNumberSize(), len);
+			ptrFlag = CL.CL_MEM_USE_HOST_PTR;
+		} else if (location == Location.DELEGATE) {
+			hostPtr = PointerAndObject.of(context.getDelegateMemoryProvider().allocate(len));
 			ptrFlag = CL.CL_MEM_USE_HOST_PTR;
 		} else if (location == Location.HOST) {
 			ptrFlag = CL.CL_MEM_ALLOC_HOST_PTR;
@@ -324,4 +329,7 @@ public class CLMemoryProvider implements MemoryProvider<RAM> {
 		// available.forEach(mem -> deallocate(0, mem));
 		allocated = null;
 	}
+
+	@Override
+	public Console console() { return Hardware.console; }
 }

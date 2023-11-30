@@ -16,6 +16,7 @@
 
 package org.almostrealism.collect;
 
+import io.almostrealism.code.Computation;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.CollectionProducerBase;
@@ -62,6 +63,8 @@ import org.almostrealism.collect.computations.TraversableExpressionComputation;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryDataComputation;
 import org.almostrealism.hardware.computations.Assignment;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.List;
 import java.util.function.BiFunction;
@@ -74,6 +77,8 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	boolean enableShapelessWarning = false;
 	boolean enableTraversableIntegers = true;
 
+	Console console = Computation.console.child();
+
 	default TraversalPolicy shape(int... dims) { return new TraversalPolicy(dims); }
 
 	default TraversalPolicy shape(Supplier s) {
@@ -81,7 +86,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 			return ((Shape) s).getShape();
 		} else {
 			if (enableShapelessWarning) {
-				System.out.println("WARN: " + s.getClass() + " does not have a Shape");
+				console.warn(s.getClass() + " does not have a Shape");
 			}
 
 			return shape(1);

@@ -30,7 +30,9 @@ import org.almostrealism.hardware.ctx.ContextListener;
 import org.almostrealism.hardware.external.ExternalComputeContext;
 import org.almostrealism.hardware.jni.NativeDataContext;
 import org.almostrealism.hardware.metal.MetalDataContext;
+import org.almostrealism.io.Console;
 import org.almostrealism.io.SystemUtils;
+import org.almostrealism.nio.NativeBufferMemoryProvider;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -41,6 +43,8 @@ public final class Hardware {
 	public static boolean enableVerbose = false;
 	public static final boolean enableMultiThreading = true;
 	public static boolean enableKernelOps;
+
+	public static Console console = Console.root().child();
 
 	protected static final int MEMORY_SCALE;
 
@@ -57,8 +61,7 @@ public final class Hardware {
 		if (memScale == null) memScale = System.getenv("AR_HARDWARE_MEMORY_SCALE");
 		MEMORY_SCALE = Optional.ofNullable(memScale).map(Integer::parseInt).orElse(4);
 
-		String memLocation = System.getProperty("AR_HARDWARE_MEMORY_LOCATION");
-		if (memLocation == null) memLocation = System.getenv("AR_HARDWARE_MEMORY_LOCATION");
+		String memLocation = SystemUtils.getProperty("AR_HARDWARE_MEMORY_LOCATION");
 		Location location = Location.DEVICE;
 		if ("heap".equalsIgnoreCase(memLocation)) {
 			location = Location.HEAP;
@@ -66,40 +69,47 @@ public final class Hardware {
 			location = Location.HOST;
 		}
 
+		boolean nioMem = SystemUtils.isEnabled("AR_HARDWARE_NIO_MEMORY").orElse(false);
+		if (nioMem) {
+			if (memLocation != null && location != Location.DELEGATE) {
+				throw new IllegalArgumentException("Cannot use location " + memLocation + " with NIO memory");
+			}
+
+			location = Location.DELEGATE;
+		}
+
 		String opDepth = System.getProperty("AR_HARDWARE_MAX_DEPTH");
 		if (opDepth == null) opDepth = System.getenv("AR_HARDWARE_MAX_DEPTH");
 		if (opDepth != null) OperationList.setMaxDepth(Integer.parseInt(opDepth));
 
-		String driver = System.getProperty("AR_HARDWARE_DRIVER");
-		if (driver == null) driver = System.getenv("AR_HARDWARE_DRIVER");
-		if (driver == null) driver = "*";
-
-		boolean nativeMemory = SystemUtils.isEnabled("AR_HARDWARE_NATIVE_MEMORY").orElse(true);
+		String drivers[] = SystemUtils.getProperty("AR_HARDWARE_DRIVER", "*").split(",");
 
 		List<ComputeRequirement> requirements = new ArrayList<>();
 
-		if ("cl".equalsIgnoreCase(driver)) {
-			requirements.add(ComputeRequirement.CL);
-		} else if ("mtl".equalsIgnoreCase(driver)) {
-			requirements.add(ComputeRequirement.MTL);
-		} else if ("native".equalsIgnoreCase(driver)) {
-			requirements.add(ComputeRequirement.JNI);
-		} else if ("cpu".equalsIgnoreCase(driver)) {
-			requirements.add(ComputeRequirement.CPU);
-		} else if ("gpu".equalsIgnoreCase(driver)) {
-			requirements.add(ComputeRequirement.GPU);
-		} else if ("*".equalsIgnoreCase(driver)) {
-			if (aarch) {
-				requirements.add(ComputeRequirement.JNI);
+		for (String driver : drivers) {
+			if ("cl".equalsIgnoreCase(driver)) {
+				requirements.add(ComputeRequirement.CL);
+			} else if ("mtl".equalsIgnoreCase(driver)) {
 				requirements.add(ComputeRequirement.MTL);
-				requirements.add(ComputeRequirement.CL);
-			} else {
-				requirements.add(ComputeRequirement.CL);
-				if (!SystemUtils.isMacOS())
+			} else if ("native".equalsIgnoreCase(driver)) {
+				requirements.add(ComputeRequirement.JNI);
+			} else if ("cpu".equalsIgnoreCase(driver)) {
+				requirements.add(ComputeRequirement.CPU);
+			} else if ("gpu".equalsIgnoreCase(driver)) {
+				requirements.add(ComputeRequirement.GPU);
+			} else if ("*".equalsIgnoreCase(driver)) {
+				if (aarch) {
 					requirements.add(ComputeRequirement.JNI);
+					requirements.add(ComputeRequirement.MTL);
+					requirements.add(ComputeRequirement.CL);
+				} else {
+					requirements.add(ComputeRequirement.CL);
+					if (!SystemUtils.isMacOS())
+						requirements.add(ComputeRequirement.JNI);
+				}
+			} else {
+				throw new IllegalStateException("Unknown driver " + driver);
 			}
-		} else {
-			throw new IllegalStateException("Unknown driver " + driver);
 		}
 
 		boolean metal = SystemUtils.isEnabled("AR_OPTIMIZE_FOR_METAL").orElse(requirements.size() == 1);
@@ -108,15 +118,14 @@ public final class Hardware {
 			KernelPreferences.optimizeForMetal();
 		}
 
-		local = new Hardware(requirements, nativeMemory, location);
+		local = new Hardware(requirements, location, nioMem);
 	}
 
 	private final String name;
-
-	private final boolean nativeMemory;
 	private final boolean memVolatile;
 	private long maxReservation;
 	private Location location;
+	private NativeBufferMemoryProvider nioMemory;
 
 	private DefaultComputer computer;
 	private List<DataContext<MemoryData>> contexts;
@@ -124,22 +133,27 @@ public final class Hardware {
 	private ThreadLocal<ComputeContext<MemoryData>> explicitComputeCtx = new ThreadLocal<>();
 	private List<ContextListener> contextListeners;
 
-	private Hardware(List<ComputeRequirement> type, boolean nativeMemory,
-					 Location location) {
-		this("local", type, nativeMemory, location);
+	private Hardware(List<ComputeRequirement> type, Location location, boolean nioMemory) {
+		this("local", type, location, nioMemory);
 	}
 
-	private Hardware(String name, List<ComputeRequirement> reqs, boolean nativeMemory,
-					 Location location) {
+	private Hardware(String name, List<ComputeRequirement> reqs, Location location, boolean nioMemory) {
 		this.name = name;
 		this.maxReservation = (long) Math.pow(2, getMemoryScale()) * 64L * 1000L * 1000L;
 		this.location = location;
-		this.nativeMemory = nativeMemory;
 		this.memVolatile = location == Location.HEAP;
 		this.contextListeners = new ArrayList<>();
 		this.contexts = new ArrayList<>();
 
-		int count = processRequirements(reqs);
+		int count;
+
+		if (nioMemory) {
+			this.nioMemory = new NativeBufferMemoryProvider(Precision.FP32, Precision.FP32.bytes() * maxReservation);
+			count = processRequirements(reqs, Precision.FP32);
+		} else {
+			count = processRequirements(reqs);
+		}
+
 		if (count > 0) {
 			this.computer = new DefaultComputer(this);
 		}
@@ -166,7 +180,7 @@ public final class Hardware {
 
 		List<ComputeRequirement> done = new ArrayList<>();
 
-		MemoryProvider<? extends Memory> provider = null;
+		MemoryProvider<? extends Memory> provider = nioMemory;
 
 		r: for (ComputeRequirement type : requirements) {
 			if (type == ComputeRequirement.CPU) {
@@ -182,11 +196,12 @@ public final class Hardware {
 
 			if (type == ComputeRequirement.CL) {
 				ctx = new CLDataContext("CL", this.maxReservation, getOffHeapSize(type), this.location);
+				((CLDataContext) ctx).setDelegateMemoryProvider(nioMemory);
 				locationUsed = true;
 			} else if (type == ComputeRequirement.MTL) {
 				ctx = new MetalDataContext("MTL", this.maxReservation, getOffHeapSize(type));
 			} else {
-				ctx = new NativeDataContext("JNI", precision, isNativeMemory(), this.maxReservation);
+				ctx = new NativeDataContext("JNI", precision, this.maxReservation);
 			}
 
 			if (locationUsed) {
@@ -255,7 +270,7 @@ public final class Hardware {
 		} else if (dc instanceof MetalDataContext) {
 			next = new MetalDataContext("MTL", maxReservation, getOffHeapSize(ComputeRequirement.MTL));
 		} else if (dc instanceof NativeDataContext) {
-			next = new NativeDataContext("JNI", getDataContext().getPrecision(), isNativeMemory(), maxReservation);
+			next = new NativeDataContext("JNI", getDataContext().getPrecision(), maxReservation);
 		} else {
 			return null;
 		}
@@ -298,8 +313,6 @@ public final class Hardware {
 				})
 				.orElseThrow(() -> new RuntimeException("No DataContext meets the provided ComputeRequirements"));
 	}
-
-	public boolean isNativeMemory() { return nativeMemory; }
 
 	public boolean isMemoryVolatile() { return memVolatile; }
 

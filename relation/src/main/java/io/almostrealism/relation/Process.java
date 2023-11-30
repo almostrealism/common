@@ -21,6 +21,7 @@ import java.util.Collections;
 import java.util.function.Supplier;
 
 public interface Process<P extends Process<?, ?>, T> extends Node, Supplier<T>, Tree<P> {
+
 	default Process<P, T> optimize() {
 		return this;
 	}

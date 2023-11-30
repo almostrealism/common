@@ -44,6 +44,9 @@ public class MetalOperator extends HardwareOperator {
 	private final int argCount;
 
 	private MTLComputePipelineState kernel;
+	private MTLBuffer offset;
+	private MTLBuffer size;
+	private MTLBuffer dim0;
 
 	public MetalOperator(MetalComputeContext context, MetalProgram program, String name, int argCount) {
 		this.context = context;
@@ -109,6 +112,9 @@ public class MetalOperator extends HardwareOperator {
 	public synchronized Semaphore accept(Object[] args, Semaphore dependsOn) {
 		if (kernel == null) {
 			kernel = prog.newComputePipelineState();
+			offset = prog.getDevice().newIntBuffer32(argCount);
+			size = prog.getDevice().newIntBuffer32(argCount);
+			dim0 = prog.getDevice().newIntBuffer32(argCount);
 		}
 
 		long id = totalInvocations++;
@@ -138,22 +144,18 @@ public class MetalOperator extends HardwareOperator {
 					encoder.setBuffer(index++, ((MetalMemory) data[i].getMem()).getMem()); // Buffer
 				}
 
-				// TODO  Set offset, size, and dim0 buffers
-
 				int offsetValues[] = IntStream.range(0, argCount).map(i -> data[i].getOffset()).toArray();
-				MTLBuffer offset = prog.getDevice().newIntBuffer32(offsetValues);
+				offset.setContents(offsetValues);
 
 				int sizeValues[] = IntStream.range(0, argCount).map(i -> data[i].getAtomicMemLength()).toArray();
-				MTLBuffer size = prog.getDevice().newIntBuffer32(sizeValues);
-
-				MTLBuffer dim0;
+				size.setContents(sizeValues);
 
 				if (enableDimensionMasks) {
 					int dim0Values[] = IntStream.range(0, argCount).map(i -> data[i].getAtomicMemLength() * dimMasks[i]).toArray();
-					dim0 = prog.getDevice().newIntBuffer32(dim0Values);
+					dim0.setContents(dim0Values);
 				} else {
 					int dim0Values[] = IntStream.range(0, argCount).map(i -> data[i].getAtomicMemLength()).toArray();
-					dim0 = prog.getDevice().newIntBuffer32(dim0Values);
+					dim0.setContents(dim0Values);
 				}
 
 				encoder.setBuffer(index++, offset);
@@ -181,10 +183,6 @@ public class MetalOperator extends HardwareOperator {
 
 				cmdBuf.commit();
 				cmdBuf.waitUntilCompleted();
-
-				offset.release();
-				size.release();
-				dim0.release();
 			});
 		});
 

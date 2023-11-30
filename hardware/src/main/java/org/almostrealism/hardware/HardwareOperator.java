@@ -26,6 +26,7 @@ import io.almostrealism.code.OperationWithInfo;
 import io.almostrealism.uml.Named;
 import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.mem.Bytes;
+import org.almostrealism.io.TimingMetric;
 
 import java.util.List;
 import java.util.stream.IntStream;
@@ -36,7 +37,8 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 	public static boolean enableDimensionMasks = true;
 	public static boolean enableAtomicDimensionMasks = true;
 
-	public static double prepareArgumentsTime, computeDimMasksTime;
+	public static TimingMetric prepareArgumentsMetric = Hardware.console.metric("prepareArguments");
+	public static TimingMetric computeDimMasksMetric = Hardware.console.metric("computeDimMasks");
 
 	public static OperationProfile profile;
 	public static long cpuCompileCount, gpuCompileCount;
@@ -84,7 +86,7 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 			reassignMemory(data[i]);
 		}
 
-		prepareArgumentsTime += (System.nanoTime() - start) / 1e9;
+		prepareArgumentsMetric.addEntry(System.nanoTime() - start);
 		return data;
 	}
 
@@ -159,7 +161,7 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 						.toArray();
 			}
 		} finally {
-			computeDimMasksTime += (System.nanoTime() - start) / 1e9;
+			computeDimMasksMetric.addEntry(System.nanoTime() - start);
 		}
 	}
 

@@ -16,7 +16,11 @@
 
 package org.almostrealism.hardware.metal;
 
-public abstract class MTLObject {
+import org.almostrealism.hardware.Hardware;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
+
+public abstract class MTLObject implements ConsoleFeatures {
 	private long nativePointer;
 
 	public MTLObject(long nativePointer) {
@@ -25,5 +29,10 @@ public abstract class MTLObject {
 
 	public long getNativePointer() {
 		return nativePointer;
+	}
+
+	@Override
+	public Console console() {
+		return Hardware.console;
 	}
 }

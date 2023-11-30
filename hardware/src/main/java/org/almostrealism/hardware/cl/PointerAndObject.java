@@ -16,6 +16,8 @@
 
 package org.almostrealism.hardware.cl;
 
+import org.almostrealism.hardware.RAM;
+import org.almostrealism.nio.NativeBuffer;
 import org.jocl.Pointer;
 
 public class PointerAndObject<T> {
@@ -30,6 +32,14 @@ public class PointerAndObject<T> {
 	public T getObject() { return obj; }
 
 	public Pointer getPointer() { return ptr; }
+
+	public static PointerAndObject<RAM> of(RAM ram) {
+		if (!(ram instanceof NativeBuffer)) {
+			throw new UnsupportedOperationException();
+		}
+
+		return new PointerAndObject<>(ram, Pointer.to(((NativeBuffer) ram).getBuffer()));
+	}
 
 	public static PointerAndObject<double[]> of(double d[]) {
 		return new PointerAndObject<>(d, Pointer.to(d));

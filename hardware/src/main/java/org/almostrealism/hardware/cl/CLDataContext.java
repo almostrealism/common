@@ -62,6 +62,7 @@ public class CLDataContext implements DataContext<MemoryData> {
 
 	private MemoryProvider<RAM> mainRam;
 	private MemoryProvider<Memory> altRam;
+	private MemoryProvider<? extends RAM> delegateMemory;
 
 	private ThreadLocal<ComputeContext<MemoryData>> computeContext;
 	private ThreadLocal<IntFunction<MemoryProvider<?>>> memoryProvider;
@@ -240,6 +241,14 @@ public class CLDataContext implements DataContext<MemoryData> {
 		} else {
 			return supply.apply(size);
 		}
+	}
+
+	public void setDelegateMemoryProvider(MemoryProvider<? extends RAM> delegate) {
+		this.delegateMemory = delegate;
+	}
+
+	public MemoryProvider<? extends RAM> getDelegateMemoryProvider() {
+		return delegateMemory;
 	}
 
 	public ComputeContext<MemoryData> getComputeContext() {
