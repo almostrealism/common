@@ -139,13 +139,14 @@ public class MetalDataContext implements DataContext<MemoryData> {
 		}
 	}
 
-	public ComputeContext<MemoryData> getComputeContext() {
+	@Override
+	public List<ComputeContext<MemoryData>> getComputeContexts() {
 		if (computeContext.get() == null) {
 			if (Hardware.enableVerbose) System.out.println("INFO: No explicit ComputeContext for " + Thread.currentThread().getName());
 			computeContext.set(createContext());
 		}
 
-		return computeContext.get();
+		return List.of(computeContext.get());
 	}
 
 	public <T> T computeContext(Callable<T> exec, ComputeRequirement... expectations) {

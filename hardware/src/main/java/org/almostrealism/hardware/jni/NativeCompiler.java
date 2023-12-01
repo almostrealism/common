@@ -20,7 +20,10 @@ import io.almostrealism.code.Computation;
 import io.almostrealism.code.Precision;
 import io.almostrealism.relation.Factory;
 import org.almostrealism.generated.BaseGeneratedOperation;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
 
 import java.io.BufferedWriter;
@@ -29,10 +32,11 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.lang.reflect.InvocationTargetException;
+import java.util.Arrays;
 import java.util.List;
 import java.util.function.Consumer;
 
-public class NativeCompiler {
+public class NativeCompiler implements ConsoleFeatures {
 	public static boolean enableVerbose = false;
 
 	public static final String LIB_NAME_REPLACE = "%NAME%";
@@ -125,9 +129,7 @@ public class NativeCompiler {
 
 	public String compile(String name, String code, boolean lib) {
 		if (enableVerbose) {
-			System.out.println("NativeCompiler: Compiling native code for " + name);
-			System.out.println("Source: ");
-			System.out.println(code);
+			log("Compiling native code for " + name + "\nSource:\n" + code);
 		}
 
 		try (FileOutputStream out = new FileOutputStream(getInputFile(name));
@@ -140,15 +142,15 @@ public class NativeCompiler {
 
 		libraryGenerator.generateLibrary(getInputFile(name), getOutputFile(name, lib), runner(name));
 
-		if (enableVerbose) System.out.println("NativeCompiler: Native code compiled for " + name);
+		if (enableVerbose) log("Native code compiled for " + name);
 		return name;
 	}
 
 	public void compileAndLoad(Class target, String code) {
 		String name = compile(target, code);
-		if (enableVerbose) System.out.println("NativeCompiler: Loading native library " + name);
+		if (enableVerbose) log("Loading native library " + name);
 		System.loadLibrary(name);
-		if (enableVerbose) System.out.println("NativeCompiler: Loaded native library " + name);
+		if (enableVerbose) log("Loaded native library " + name);
 	}
 
 	protected Consumer<List<String>> runner(String name) {
@@ -158,6 +160,10 @@ public class NativeCompiler {
 				process.waitFor();
 
 				if (process.exitValue() != 0) {
+					if (enableVerbose) {
+						log(Arrays.toString(command.toArray()));
+					}
+
 					throw new HardwareException("Native compiler failure (" + process.exitValue() + ") on " + name);
 				}
 			} catch (IOException | InterruptedException e) {
@@ -215,4 +221,7 @@ public class NativeCompiler {
 										libDir, libFormat, data, cl);
 		};
 	}
+
+	@Override
+	public Console console() { return Hardware.console; }
 }

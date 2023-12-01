@@ -16,36 +16,24 @@
 
 package org.almostrealism.hardware.cl;
 
-import io.almostrealism.code.Accessibility;
 import io.almostrealism.code.Precision;
-import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.c.CJNILanguageOperations;
-
-import java.util.List;
-import java.util.function.Consumer;
+import org.jocl.cl_event;
 
 public class CLJNILanguageOperations extends CJNILanguageOperations {
 	public CLJNILanguageOperations(Precision precision) {
 		super(precision);
+		getLibraryMethods().add("clEnqueueWriteBuffer");
+		getLibraryMethods().add("clEnqueueReadBuffer");
+		getLibraryMethods().add("clWaitForEvents");
 	}
 
 	@Override
 	public String nameForType(Class<?> type) {
-		if (type == Integer.class || type == int[].class) {
-			return "jint";
-		} else if (type == Long.class || type == long[].class) {
-			return "jlong";
-		} else {
-			return super.nameForType(type);
+		if (type == cl_event.class) {
+			return "cl_event";
 		}
-	}
 
-	@Override
-	public void renderArguments(List<ArrayVariable<?>> arguments, Consumer<String> out, Accessibility access) {
-		if (access == Accessibility.EXTERNAL) {
-			out.accept("JNIEnv *env, jobject obj, jlong commandQueue, jlongArray arg, jintArray offset, jintArray size, jint count");
-		} else {
-			super.renderArguments(arguments, out, access);
-		}
+		return super.nameForType(type);
 	}
 }

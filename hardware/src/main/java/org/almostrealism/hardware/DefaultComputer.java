@@ -47,8 +47,24 @@ public class DefaultComputer implements Computer<MemoryData> {
 	public ComputeContext<MemoryData> getContext(Computation<?> c) {
 		int count = ParallelProcess.count(c);
 		boolean fixed = ParallelProcess.isFixedCount(c);
-		return hardware.getComputeContext(fixed && count == 1, !fixed || count > 128,
-				getActiveRequirements().toArray(ComputeRequirement[]::new));
+		boolean accelerator = !fixed || count > 128;
+		List<ComputeContext<MemoryData>> contexts = hardware
+				.getComputeContexts(fixed && count == 1, accelerator,
+					getActiveRequirements().toArray(ComputeRequirement[]::new));
+		if (contexts.isEmpty()) throw new RuntimeException("No compute contexts available");
+		if (contexts.size() == 1) return contexts.get(0);
+
+		if (accelerator) {
+			return contexts.stream()
+					.filter(cc -> !cc.isCPU())
+					.findFirst()
+					.orElse(contexts.get(0));
+		} else {
+			return contexts.stream()
+					.filter(cc -> cc.isCPU())
+					.findFirst()
+					.orElse(contexts.get(0));
+		}
 	}
 
 	public List<ComputeRequirement> getActiveRequirements() {

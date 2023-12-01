@@ -34,7 +34,6 @@ import java.io.PrintStream;
 import java.util.List;
 import java.util.Map;
 import java.util.Stack;
-import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public class CPrintWriter extends CodePrintWriterAdapter {
@@ -212,11 +211,15 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 		}
 	}
 
-	protected void log() {
+	protected void printLog() {
 		if (verbose) {
 			println("if (commandQueue > 0)", false);
 			printf("Reached %i", String.valueOf(logCount++));
 		}
+	}
+
+	protected void printLog(String message) {
+		println("printf(\"" + message + "\\n\");", false);
 	}
 
 	protected void printf(String format, String arg) { printf(format, arg, true); }

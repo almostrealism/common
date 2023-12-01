@@ -112,6 +112,11 @@ public final class Hardware {
 			}
 		}
 
+		Optional<Boolean> sharedMem = SystemUtils.isEnabled("AR_HARDWARE_SHARED_MEMORY");
+		if (sharedMem.isPresent()) {
+			KernelPreferences.enableSharedMemory = sharedMem.get();
+		}
+
 		boolean metal = SystemUtils.isEnabled("AR_OPTIMIZE_FOR_METAL").orElse(requirements.size() == 1);
 
 		if (metal && requirements.contains(ComputeRequirement.MTL)) {
@@ -180,7 +185,7 @@ public final class Hardware {
 
 		List<ComputeRequirement> done = new ArrayList<>();
 
-		MemoryProvider<? extends Memory> provider = nioMemory;
+		MemoryProvider<? extends Memory> provider = null;
 
 		r: for (ComputeRequirement type : requirements) {
 			if (type == ComputeRequirement.CPU) {
@@ -205,10 +210,12 @@ public final class Hardware {
 			}
 
 			if (locationUsed) {
-				if (location == CLMemoryProvider.Location.HEAP)
-					System.out.println("Hardware[" + getName() + "]: Heap RAM enabled");
-				if (location == CLMemoryProvider.Location.HOST)
-					System.out.println("Hardware[" + getName() + "]: Host RAM enabled");
+				if (location == Location.HEAP)
+					System.out.println("Hardware[" + ctx.getName() + "]: Heap RAM enabled");
+				if (location == Location.HOST)
+					System.out.println("Hardware[" + ctx.getName() + "]: Host RAM enabled");
+				if (location == Location.DELEGATE)
+					System.out.println("Hardware[" + ctx.getName() + "]: Delagate RAM enabled");
 			}
 
 			done.add(type);
@@ -217,12 +224,20 @@ public final class Hardware {
 			System.out.println("Hardware[" + ctx.getName() + "]: Max RAM is " +
 					ctx.getPrecision().bytes() * maxReservation / 1000000 + " Megabytes");
 
-			if (KernelPreferences.enableSharedMemory && provider == null && ctx instanceof MetalDataContext) {
-				provider = ((MetalDataContext) ctx).getMemoryProvider();
+			if (KernelPreferences.enableSharedMemory && provider == null) {
+				if (ctx instanceof MetalDataContext) {
+					provider = ((MetalDataContext) ctx).getMemoryProvider();
+				} else if (ctx instanceof CLDataContext) {
+					provider = ((CLDataContext) ctx).getMemoryProvider();
+				}
 			}
 
 			contexts.add(ctx);
 			contextListeners.forEach(l -> l.contextStarted(ctx));
+		}
+
+		if (provider == null && nioMemory != null) {
+			provider = nioMemory;
 		}
 
 		if (provider != null) {
@@ -335,6 +350,10 @@ public final class Hardware {
 		return getDataContext(false, false);
 	}
 
+	public DataContext<MemoryData> getDataContext(ComputeRequirement... requirements) {
+		return getDataContext(false, false, requirements);
+	}
+
 	public DataContext<MemoryData> getDataContext(boolean sequential, boolean accelerator, ComputeRequirement... requirements) {
 		ComputeContext<MemoryData> cc = explicitComputeCtx.get();
 		DataContext<MemoryData> ctx = cc == null ? explicitDataCtx.get() : cc.getDataContext();
@@ -389,15 +408,15 @@ public final class Hardware {
 	}
 
 	public ComputeContext<MemoryData> getComputeContext() {
-		return getComputeContext(false, false);
+		return getComputeContexts(false, false).get(0);
 	}
 
 	public ComputeContext<MemoryData> getComputeContext(ComputeRequirement... requirements) {
-		return getComputeContext(false, false, requirements);
+		return getComputeContexts(false, false, requirements).get(0);
 	}
 
-	public ComputeContext<MemoryData> getComputeContext(boolean sequential, boolean accelerator, ComputeRequirement... requirements) {
-		return Optional.ofNullable(getDataContext(sequential, accelerator, requirements)).map(dc -> dc.getComputeContext())
+	public List<ComputeContext<MemoryData>> getComputeContexts(boolean sequential, boolean accelerator, ComputeRequirement... requirements) {
+		return Optional.ofNullable(getDataContext(sequential, accelerator, requirements)).map(dc -> dc.getComputeContexts())
 				.orElseThrow(() -> new RuntimeException("No available data context"));
 	}
 

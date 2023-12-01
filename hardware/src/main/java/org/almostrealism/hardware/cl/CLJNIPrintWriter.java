@@ -16,7 +16,6 @@
 
 package org.almostrealism.hardware.cl;
 
-import io.almostrealism.code.Precision;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.ArrayVariable;
@@ -25,6 +24,7 @@ import io.almostrealism.scope.Variable;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
 import org.almostrealism.hardware.jni.CJNIPrintWriter;
+import org.almostrealism.hardware.jni.DefaultJNIMemoryAccessor;
 import org.almostrealism.io.PrintWriter;
 import org.jocl.cl_command_queue;
 import org.jocl.cl_event;
@@ -35,7 +35,7 @@ import java.util.stream.IntStream;
 
 public class CLJNIPrintWriter extends CJNIPrintWriter {
 	public CLJNIPrintWriter(PrintWriter p, String topLevelMethodName, LanguageOperations lang) {
-		super(p, topLevelMethodName, lang, null);
+		super(p, topLevelMethodName, lang, new DefaultJNIMemoryAccessor());
 		enableWarnOnExplictParams = false;
 	}
 
@@ -44,6 +44,9 @@ public class CLJNIPrintWriter extends CJNIPrintWriter {
 		println(new Variable<>("*argArr", new StaticReference<>(long[].class, "(*env)->GetLongArrayElements(env, arg, 0)")));
 		println(new Variable<>("*offsetArr", new StaticReference<>(int[].class, "(*env)->GetIntArrayElements(env, offset, 0)")));
 		println(new Variable<>("*sizeArr", new StaticReference<>(int[].class, "(*env)->GetIntArrayElements(env, size, 0)")));
+		println(new Variable<>("*dim0Arr", new StaticReference<>(int[].class, "(*env)->GetIntArrayElements(env, dim0, 0)")));
+
+		printLog("Retrieved array elements");
 
 		String numberType = getLanguage().getPrecision().typeName();
 		int numberSize = getLanguage().getPrecision().bytes();
@@ -60,6 +63,13 @@ public class CLJNIPrintWriter extends CJNIPrintWriter {
 				.mapToObj(i -> new Variable<>(arguments.get(i).getName() + "Size",
 						new StaticReference<>(Integer.class, "sizeArr[" + i + "]")))
 				.forEach(this::println);
+		IntStream.range(0, arguments.size())
+				.mapToObj(i -> new Variable<>(arguments.get(i).getName() + "Dim0",
+						new StaticReference<>(Integer.class, "dim0Arr[" + i + "]")))
+				.forEach(this::println);
+
+		printf("commandQueue: %ld", "commandQueue");
+
 		println(new Variable("*nativeEventWaitList", new StaticReference<>(cl_event.class, "NULL")));
 		println(new Variable("*nativeEventPointer", new StaticReference<>(cl_event.class, "NULL")));
 		IntStream.range(0, arguments.size())
@@ -69,10 +79,15 @@ public class CLJNIPrintWriter extends CJNIPrintWriter {
 
 	@Override
 	protected void renderArgumentWrites(List<ArrayVariable<?>> arguments) {
+		printLog("Writing args");
 		IntStream.range(0, arguments.size())
 				.mapToObj(i -> clEnqueueBuffer(i, arguments.get(i), true))
 				.forEach(super::println);
-		arguments.forEach(arg -> println("free(" + arg.getName() + ");"));
+		printLog("Wrote args");
+		arguments.forEach(arg -> {
+			println("free(" + arg.getName() + ");");
+			printLog("Freed " + arg.getName());
+		});
 		super.renderArgumentWrites(arguments);
 	}
 

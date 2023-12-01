@@ -64,7 +64,7 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 		StringBuilder buf = new StringBuilder();
 		buf.append(method.getName());
 		buf.append("(");
-		renderParameters(method.getArguments(), buf::append);
+		renderParameters(method.getName(), method.getArguments(), buf::append);
 		buf.append(");");
 		return buf.toString();
 	}
@@ -81,7 +81,7 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 		}
 	}
 
-	protected void renderParameters(List<Expression> parameters, Consumer<String> out) {
+	protected void renderParameters(String methodName, List<Expression> parameters, Consumer<String> out) {
 		Optional<Expression> explicit = parameters.stream().filter(exp -> !(exp instanceof InstanceReference)).findFirst();
 		if (explicit.isPresent()) {
 			if (enableWarnOnExplictParams) {

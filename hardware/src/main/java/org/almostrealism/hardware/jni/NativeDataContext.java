@@ -100,13 +100,14 @@ public class NativeDataContext implements DataContext<MemoryData> {
 	@Override
 	public MemoryProvider<? extends Memory> getKernelMemoryProvider() { return getMemoryProvider(); }
 
-	public ComputeContext<MemoryData> getComputeContext() {
+	@Override
+	public List<ComputeContext<MemoryData>> getComputeContexts() {
 		if (context == null) {
 			if (Hardware.enableVerbose) System.out.println("INFO: No explicit ComputeContext for " + Thread.currentThread().getName());
 			context = new NativeComputeContext(this, getNativeCompiler());
 		}
 
-		return context;
+		return List.of(context);
 	}
 
 	@Override

@@ -35,6 +35,7 @@ import org.jocl.cl_context_properties;
 import org.jocl.cl_device_id;
 import org.jocl.cl_platform_id;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Callable;
@@ -64,7 +65,7 @@ public class CLDataContext implements DataContext<MemoryData> {
 	private MemoryProvider<Memory> altRam;
 	private MemoryProvider<? extends RAM> delegateMemory;
 
-	private ThreadLocal<ComputeContext<MemoryData>> computeContext;
+	private ThreadLocal<List<ComputeContext<MemoryData>>> computeContexts;
 	private ThreadLocal<IntFunction<MemoryProvider<?>>> memoryProvider;
 
 	private Runnable start;
@@ -74,7 +75,7 @@ public class CLDataContext implements DataContext<MemoryData> {
 		this.maxReservation = maxReservation;
 		this.offHeapSize = offHeapSize;
 		this.location = location;
-		this.computeContext = new ThreadLocal<>();
+		this.computeContexts = ThreadLocal.withInitial(ArrayList::new);
 		this.memoryProvider = new ThreadLocal<>();
 	}
 
@@ -251,18 +252,23 @@ public class CLDataContext implements DataContext<MemoryData> {
 		return delegateMemory;
 	}
 
-	public ComputeContext<MemoryData> getComputeContext() {
-		if (computeContext.get() == null) {
+	@Override
+	public List<ComputeContext<MemoryData>> getComputeContexts() {
+		if (computeContexts.get().isEmpty()) {
 			if (Hardware.enableVerbose) System.out.println("INFO: No explicit ComputeContext for " + Thread.currentThread().getName());
-			computeContext.set(createContext());
+			computeContexts.get().add(createContext());
+
+			if (location == CLMemoryProvider.Location.DELEGATE || SystemUtils.isEnabled("AR_HARDWARE_CL_NATIVE").orElse(false)) {
+				computeContexts.get().add(createContext(ComputeRequirement.C));
+			}
 		}
 
-		return computeContext.get();
+		return computeContexts.get();
 	}
 
 	public <T> T computeContext(Callable<T> exec, ComputeRequirement... expectations) {
-		ComputeContext current = computeContext.get();
-		ComputeContext next = createContext(expectations);
+		List<ComputeContext<MemoryData>> current = computeContexts.get();
+		List<ComputeContext<MemoryData>> next = List.of(createContext(expectations));
 
 		String ccName = next.toString();
 		if (ccName.contains(".")) {
@@ -271,7 +277,7 @@ public class CLDataContext implements DataContext<MemoryData> {
 
 		try {
 			if (Hardware.enableVerbose) System.out.println("Hardware[" + getName() + "]: Start " + ccName);
-			computeContext.set(next);
+			computeContexts.set(next);
 			return exec.call();
 		} catch (RuntimeException e) {
 			throw e;
@@ -279,9 +285,9 @@ public class CLDataContext implements DataContext<MemoryData> {
 			throw new RuntimeException(e);
 		} finally {
 			if (Hardware.enableVerbose) System.out.println("Hardware[" + getName() + "]: End " + ccName);
-			next.destroy();
+			next.get(0).destroy();
 			if (Hardware.enableVerbose) System.out.println("Hardware[" + getName() + "]: Destroyed " + ccName);
-			computeContext.set(current);
+			computeContexts.set(current);
 		}
 	}
 
@@ -305,9 +311,9 @@ public class CLDataContext implements DataContext<MemoryData> {
 	@Override
 	public void destroy() {
 		// TODO  Destroy any other compute contexts
-		if (computeContext.get() != null) {
-			computeContext.get().destroy();
-			computeContext.remove();
+		if (computeContexts.get() != null) {
+			computeContexts.get().forEach(cc -> cc.destroy());
+			computeContexts.remove();
 		}
 
 		if (mainRam != null) mainRam.destroy();

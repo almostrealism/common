@@ -39,8 +39,8 @@ public class MetalLanguageOperations extends CLanguageOperations {
 	}
 
 	@Override
-	protected void renderParameters(List<Expression> parameters, Consumer<String> out) {
-		super.renderParameters(parameters, out);
+	protected void renderParameters(String methodName, List<Expression> parameters, Consumer<String> out) {
+		super.renderParameters(methodName, parameters, out);
 		out.accept(", global_id, global_count");
 	}
 

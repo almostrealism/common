@@ -26,7 +26,11 @@ public interface DataContext<MEM> extends Named {
 
 	void init();
 
-	ComputeContext<MEM> getComputeContext();
+	default ComputeContext<MEM> getComputeContext() {
+		return getComputeContexts().get(0);
+	}
+
+	List<ComputeContext<MEM>> getComputeContexts();
 
 	List<MemoryProvider<? extends Memory>> getMemoryProviders();
 

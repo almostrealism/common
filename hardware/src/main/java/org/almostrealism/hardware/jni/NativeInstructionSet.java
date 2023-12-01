@@ -17,6 +17,7 @@
 package org.almostrealism.hardware.jni;
 
 import io.almostrealism.code.ComputeContext;
+import io.almostrealism.code.DataContext;
 import io.almostrealism.code.Execution;
 import io.almostrealism.code.InstructionSet;
 import io.almostrealism.code.OperationMetadata;
@@ -25,6 +26,7 @@ import org.almostrealism.hardware.RAM;
 import org.almostrealism.hardware.cl.CLComputeContext;
 import org.jocl.cl_command_queue;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
 
@@ -77,10 +79,14 @@ public interface NativeInstructionSet extends InstructionSet {
 
 	default void apply(RAM args[], int offsets[], int sizes[], int dim0[], int globalId) {
 		apply(Optional.ofNullable(getComputeContext())
+					.map(ComputeContext::getDataContext)
+					.map(DataContext::getComputeContexts)
+					.stream()
+					.flatMap(List::stream)
 					.filter(CLComputeContext.class::isInstance)
 					.map(CLComputeContext.class::cast)
 					.map(CLComputeContext::getClQueue)
-					.map(cl_command_queue::getNativePointer).orElse(-1L),
+					.map(cl_command_queue::getNativePointer).findFirst().orElse(-1L),
 				args, offsets, sizes, dim0, globalId);
 	}
 

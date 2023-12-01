@@ -66,8 +66,16 @@ public abstract class LlvmCommandProvider implements CompilerCommandProvider {
 		List<String> command = new ArrayList<>();
 		command.add(path);
 		addLinker(command);
+
 		if (!localToolchain) command.add("-w");
+
+		if (SystemUtils.isMacOS()) {
+			command.add("-framework");
+			command.add("OpenCL");
+		}
+
 		command.addAll(includes);
+
 		command.add("-" + cmd);
 		command.add(inputFile);
 		command.add("-o");

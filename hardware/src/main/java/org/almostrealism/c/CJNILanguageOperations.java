@@ -21,13 +21,19 @@ import io.almostrealism.code.Precision;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.scope.ArrayVariable;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
 public class CJNILanguageOperations extends CLanguageOperations {
+	private List<String> libraryMethods;
+
 	public CJNILanguageOperations(Precision precision) {
 		super(precision, true, true);
+		this.libraryMethods = new ArrayList<>();
 	}
+
+	protected List<String> getLibraryMethods() { return libraryMethods; }
 
 	@Override
 	public String pow(String a, String b) {
@@ -75,8 +81,8 @@ public class CJNILanguageOperations extends CLanguageOperations {
 	}
 
 	@Override
-	protected void renderParameters(List<Expression> parameters, Consumer<String> out) {
-		super.renderParameters(parameters, out);
-		out.accept(", global_id");
+	protected void renderParameters(String methodName, List<Expression> parameters, Consumer<String> out) {
+		super.renderParameters(methodName, parameters, out);
+		if (!getLibraryMethods().contains(methodName)) out.accept(", global_id");
 	}
 }
