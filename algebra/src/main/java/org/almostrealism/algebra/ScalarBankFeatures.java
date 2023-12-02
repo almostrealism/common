@@ -24,6 +24,7 @@ import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.hardware.Input;
+import org.almostrealism.io.SystemUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -32,6 +33,8 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public interface ScalarBankFeatures extends ScalarFeatures {
+	boolean enableDeprecated = !SystemUtils.isEnabled("AR_HARDWARE_CL_NATIVE").orElse(false);
+
 	default ExpressionComputation<PackedCollection<Scalar>> value(PackedCollection<Scalar> value) {
 		return ExpressionComputation.fixed(value, Scalar.scalarBankPostprocessor());
 	}
@@ -39,6 +42,8 @@ public interface ScalarBankFeatures extends ScalarFeatures {
 	@Deprecated
 	default ExpressionComputation<PackedCollection<Scalar>> scalarBankAdd(int count, Producer<PackedCollection<Scalar>> input,
 						  						Supplier<Evaluable<? extends Scalar>> value) {
+		if (!enableDeprecated) throw new UnsupportedOperationException();
+
 		List<Function<List<ArrayVariable<Double>>, Expression<Double>>> expression = new ArrayList<>();
 		IntStream.range(0, 2 * count).forEach(i ->
 				expression.add(args -> i % 2 == 0 ?

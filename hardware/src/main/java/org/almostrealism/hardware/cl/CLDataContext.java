@@ -43,6 +43,8 @@ import java.util.function.IntFunction;
 import java.util.stream.Stream;
 
 public class CLDataContext implements DataContext<MemoryData> {
+	public static boolean enableClNative = SystemUtils.isEnabled("AR_HARDWARE_CL_NATIVE").orElse(false);
+
 	private final String name;
 	private final long maxReservation;
 	private final int offHeapSize;
@@ -258,7 +260,7 @@ public class CLDataContext implements DataContext<MemoryData> {
 			if (Hardware.enableVerbose) System.out.println("INFO: No explicit ComputeContext for " + Thread.currentThread().getName());
 			computeContexts.get().add(createContext());
 
-			if (location == CLMemoryProvider.Location.DELEGATE || SystemUtils.isEnabled("AR_HARDWARE_CL_NATIVE").orElse(false)) {
+			if (enableClNative) {
 				computeContexts.get().add(createContext(ComputeRequirement.C));
 			}
 		}

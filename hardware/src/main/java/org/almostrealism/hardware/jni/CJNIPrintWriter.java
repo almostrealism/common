@@ -59,9 +59,14 @@ public class CJNIPrintWriter extends CPrintWriter {
 	protected void renderArgumentWrites(List<ArrayVariable<?>> arguments) {
 		super.renderArgumentWrites(arguments);
 
-		println("free(argArr);");
-		println("free(offsetArr);");
-		println("free(sizeArr);");
-		println("free(dim0Arr);");
+		println("(*env)->ReleaseLongArrayElements(env, arg, argArr, 0);");
+		println("(*env)->ReleaseIntArrayElements(env, offset, offsetArr, 0);");
+		println("(*env)->ReleaseIntArrayElements(env, size, sizeArr, 0);");
+		println("(*env)->ReleaseIntArrayElements(env, dim0, dim0Arr, 0);");
+
+//		println("free(argArr);");
+//		println("free(offsetArr);");
+//		println("free(sizeArr);");
+//		println("free(dim0Arr);");
 	}
 }

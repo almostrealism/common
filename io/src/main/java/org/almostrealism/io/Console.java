@@ -16,6 +16,7 @@
 
 package org.almostrealism.io;
 
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -29,6 +30,8 @@ public class Console {
 
 	private Console parent;
 	private List<Consumer<String>> listeners = new ArrayList<>();
+
+	private DateTimeFormatter format;
 	private StringBuffer data = new StringBuffer();
 	private StringBuffer lastLine = new StringBuffer();
 	private boolean resetLastLine = false;
@@ -39,6 +42,7 @@ public class Console {
 
 	protected Console(Console parent) {
 		this.parent = parent;
+		this.format = DateTimeFormatter.ofPattern("HH:mm.ss");
 	}
 	
 	public void print(String s) {
@@ -56,7 +60,8 @@ public class Console {
 	
 	public void println(String s) {
 		if (resetLastLine) lastLine = new StringBuffer();
-		
+
+		append("[" + format.format(java.time.LocalTime.now()) + "] ");
 		append(s);
 		append("\n");
 		

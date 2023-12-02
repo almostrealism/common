@@ -39,4 +39,9 @@ public class NativeBuffer extends RAM {
 	public long getContentPointer() { return NIO.pointerForBuffer(buffer); }
 
 	public Buffer getBuffer() { return buffer; }
+
+	@Override
+	public long getSize() {
+		return provider.getNumberSize() * (long) buffer.capacity();
+	}
 }

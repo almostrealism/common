@@ -24,6 +24,8 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
 import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.mem.Heap;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -33,7 +35,7 @@ import java.util.Optional;
 import java.util.Stack;
 import java.util.function.Function;
 
-public class DefaultComputer implements Computer<MemoryData> {
+public class DefaultComputer implements Computer<MemoryData>, ConsoleFeatures {
 	private Hardware hardware;
 
 	private ThreadLocal<Stack<List<ComputeRequirement>>> requirements;
@@ -47,14 +49,15 @@ public class DefaultComputer implements Computer<MemoryData> {
 	public ComputeContext<MemoryData> getContext(Computation<?> c) {
 		int count = ParallelProcess.count(c);
 		boolean fixed = ParallelProcess.isFixedCount(c);
+		boolean sequential = fixed && count == 1;
 		boolean accelerator = !fixed || count > 128;
 		List<ComputeContext<MemoryData>> contexts = hardware
-				.getComputeContexts(fixed && count == 1, accelerator,
+				.getComputeContexts(sequential, accelerator,
 					getActiveRequirements().toArray(ComputeRequirement[]::new));
 		if (contexts.isEmpty()) throw new RuntimeException("No compute contexts available");
 		if (contexts.size() == 1) return contexts.get(0);
 
-		if (accelerator) {
+		if (!fixed || count > 1) {
 			return contexts.stream()
 					.filter(cc -> !cc.isCPU())
 					.findFirst()
@@ -115,4 +118,7 @@ public class DefaultComputer implements Computer<MemoryData> {
 			return Optional.empty();
 		}
 	}
+
+	@Override
+	public Console console() { return Hardware.console; }
 }

@@ -35,6 +35,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public class NativeExecution extends HardwareOperator {
+	public static boolean enableExecutor = true;
 	private static ExecutorService executor = Executors.newFixedThreadPool(20);
 
 	public static TimingMetric dimMaskMetric = Hardware.console.metric("dimMask");
@@ -95,28 +96,36 @@ public class NativeExecution extends HardwareOperator {
 
 		CountDownLatch latch = new CountDownLatch(size);
 
-		long start = System.currentTimeMillis();
+		if (enableExecutor) {
+			recordDuration(() -> {
+				IntStream.range(0, size).parallel()
+						.mapToObj(id ->
+								executor.submit(() -> {
+									try {
+										inst.apply(getGlobalWorkOffset() + id, dim0, data);
+									} finally {
+										latch.countDown();
+									}
+								}))
+						.collect(Collectors.toList());
 
-		recordDuration(() -> {
-					IntStream.range(0, size).parallel()
-							.mapToObj(id ->
-									executor.submit(() -> {
-										try {
-											inst.apply(getGlobalWorkOffset() + id, dim0, data);
-										} finally {
-											latch.countDown();
-										}
-									}))
-							.collect(Collectors.toList());
+				try {
+					latch.await();
+				} catch (InterruptedException e) {
+					throw new RuntimeException(e);
+				}
+			});
 
-					try {
-						latch.await();
-					} catch (InterruptedException e) {
-						throw new RuntimeException(e);
-					}
-				});
+			// TODO  The latch should be turned into a Semaphore and returned
+			return null;
+		} else {
+			recordDuration(() -> {
+				for (int i = 0; i < size; i++) {
+					inst.apply(getGlobalWorkOffset() + i, dim0, data);
+				}
+			});
 
-		// TODO  The latch should be turned into a Semaphore and returned
-		return null;
+			return null;
+		}
 	}
 }

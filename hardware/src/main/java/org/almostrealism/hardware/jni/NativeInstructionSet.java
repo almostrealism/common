@@ -21,16 +21,20 @@ import io.almostrealism.code.DataContext;
 import io.almostrealism.code.Execution;
 import io.almostrealism.code.InstructionSet;
 import io.almostrealism.code.OperationMetadata;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.RAM;
 import org.almostrealism.hardware.cl.CLComputeContext;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 import org.jocl.cl_command_queue;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
 
-public interface NativeInstructionSet extends InstructionSet {
+public interface NativeInstructionSet extends InstructionSet, ConsoleFeatures {
 	default String getFunctionName() {
 		return "Java_" +
 				getClass().getName().replaceAll("\\.", "_") +
@@ -78,6 +82,18 @@ public interface NativeInstructionSet extends InstructionSet {
 	}
 
 	default void apply(RAM args[], int offsets[], int sizes[], int dim0[], int globalId) {
+		int bytes = getComputeContext().getDataContext().getPrecision().bytes();
+
+		for (int i = 0; i < args.length; i++) {
+			if (args[i] == null) {
+				throw new NullPointerException("Argument " + i + " is null");
+			}
+
+			if (bytes * (globalId * dim0[i] + offsets[i]) > args[i].getSize()) {
+				throw new IllegalArgumentException("Positions in argument " + i + " will run beyond its size");
+			}
+		}
+
 		apply(Optional.ofNullable(getComputeContext())
 					.map(ComputeContext::getDataContext)
 					.map(DataContext::getComputeContexts)
@@ -97,4 +113,7 @@ public interface NativeInstructionSet extends InstructionSet {
 	}
 
 	void apply(long commandQueue, long[] arg, int[] offset, int[] size, int[] dim0, int count, int globalId);
+
+	@Override
+	default Console console() { return Hardware.console; }
 }

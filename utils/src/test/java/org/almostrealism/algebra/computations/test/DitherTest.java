@@ -16,20 +16,24 @@
 
 package org.almostrealism.algebra.computations.test;
 
+import io.almostrealism.relation.ParallelProcess;
 import org.almostrealism.algebra.Scalar;
-import org.almostrealism.algebra.ScalarBankProducerBase;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.ExpressionComputation;
 import org.almostrealism.util.TestFeatures;
+import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.Arrays;
 import java.util.stream.IntStream;
 
 public class DitherTest implements TestFeatures {
+	boolean enableCountAssertions = false;
+
 	@Test
 	public void dither() {
 		ExpressionComputation<PackedCollection<Scalar>> dither = dither(200, v(400, 0), v(Scalar.shape(), 1));
+ 		if (enableCountAssertions) Assert.assertFalse(ParallelProcess.isFixedCount(dither));
 		PackedCollection<Scalar> result = dither.get().evaluate(Scalar.scalarBank(200), new Scalar(1.0));
 		assertNotEquals(0.0, result.get(20));
 	}

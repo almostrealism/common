@@ -38,7 +38,7 @@ public interface MemoryProvider<T extends Memory> {
 	}
 
 	default double[] toArray(T mem, int offset, int length) {
-		int attempt = 5;
+		int attempt = 1; //5;
 
 		return IntStream.range(0, attempt).mapToObj(i -> {
 			double d[] = new double[length];

@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware.jni;
 
+import org.almostrealism.hardware.cl.CLDataContext;
 import org.almostrealism.io.SystemUtils;
 
 import java.io.File;
@@ -69,7 +70,7 @@ public abstract class LlvmCommandProvider implements CompilerCommandProvider {
 
 		if (!localToolchain) command.add("-w");
 
-		if (SystemUtils.isMacOS()) {
+		if (CLDataContext.enableClNative) {
 			command.add("-framework");
 			command.add("OpenCL");
 		}

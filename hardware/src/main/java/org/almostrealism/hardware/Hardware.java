@@ -78,8 +78,7 @@ public final class Hardware {
 			location = Location.DELEGATE;
 		}
 
-		String opDepth = System.getProperty("AR_HARDWARE_MAX_DEPTH");
-		if (opDepth == null) opDepth = System.getenv("AR_HARDWARE_MAX_DEPTH");
+		String opDepth = SystemUtils.getProperty("AR_HARDWARE_MAX_DEPTH");
 		if (opDepth != null) OperationList.setMaxDepth(Integer.parseInt(opDepth));
 
 		String drivers[] = SystemUtils.getProperty("AR_HARDWARE_DRIVER", "*").split(",");
@@ -215,7 +214,7 @@ public final class Hardware {
 				if (location == Location.HOST)
 					System.out.println("Hardware[" + ctx.getName() + "]: Host RAM enabled");
 				if (location == Location.DELEGATE)
-					System.out.println("Hardware[" + ctx.getName() + "]: Delagate RAM enabled");
+					System.out.println("Hardware[" + ctx.getName() + "]: Delegate RAM enabled");
 			}
 
 			done.add(type);

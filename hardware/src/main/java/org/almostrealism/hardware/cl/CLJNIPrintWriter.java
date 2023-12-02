@@ -46,8 +46,6 @@ public class CLJNIPrintWriter extends CJNIPrintWriter {
 		println(new Variable<>("*sizeArr", new StaticReference<>(int[].class, "(*env)->GetIntArrayElements(env, size, 0)")));
 		println(new Variable<>("*dim0Arr", new StaticReference<>(int[].class, "(*env)->GetIntArrayElements(env, dim0, 0)")));
 
-		printLog("Retrieved array elements");
-
 		String numberType = getLanguage().getPrecision().typeName();
 		int numberSize = getLanguage().getPrecision().bytes();
 
@@ -68,7 +66,9 @@ public class CLJNIPrintWriter extends CJNIPrintWriter {
 						new StaticReference<>(Integer.class, "dim0Arr[" + i + "]")))
 				.forEach(this::println);
 
-		printf("commandQueue: %ld", "commandQueue");
+//		for (int i = 0; i < arguments.size(); i++) {
+//			printf(arguments.get(i).getName() + "Dim0 = %i", arguments.get(i).getName() + "Dim0");
+//		}
 
 		println(new Variable("*nativeEventWaitList", new StaticReference<>(cl_event.class, "NULL")));
 		println(new Variable("*nativeEventPointer", new StaticReference<>(cl_event.class, "NULL")));
@@ -79,15 +79,11 @@ public class CLJNIPrintWriter extends CJNIPrintWriter {
 
 	@Override
 	protected void renderArgumentWrites(List<ArrayVariable<?>> arguments) {
-		printLog("Writing args");
 		IntStream.range(0, arguments.size())
 				.mapToObj(i -> clEnqueueBuffer(i, arguments.get(i), true))
-				.forEach(super::println);
-		printLog("Wrote args");
-		arguments.forEach(arg -> {
-			println("free(" + arg.getName() + ");");
-			printLog("Freed " + arg.getName());
-		});
+				.forEach(this::println);
+
+		arguments.forEach(arg -> println("free(" + arg.getName() + ");"));
 		super.renderArgumentWrites(arguments);
 	}
 

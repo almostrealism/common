@@ -28,9 +28,13 @@ import java.nio.DoubleBuffer;
 import java.nio.FloatBuffer;
 import java.nio.ShortBuffer;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class NativeBufferMemoryProvider implements MemoryProvider<NativeBuffer> {
+	private static Map<Class, NativeBufferWriter> writeAdapters = new HashMap<>();
+
 	private final Precision precision;
 	private final long memoryMax;
 	private long memoryUsed;
@@ -70,9 +74,28 @@ public class NativeBufferMemoryProvider implements MemoryProvider<NativeBuffer> 
 	public synchronized void setMem(NativeBuffer mem, int offset, Memory source, int srcOffset, int length) {
 		if (!allocated.contains(mem))
 			throw new HardwareException(mem + " not available");
-		double value[] = new double[length];
-		source.getProvider().getMem(source, srcOffset, value, 0, length);
-		setMem(mem, offset, value, 0, length);
+
+		if (source instanceof NativeBuffer) {
+			NativeBuffer sourceBuffer = (NativeBuffer) source;
+			if (mem.getBuffer() instanceof DoubleBuffer && sourceBuffer.getBuffer() instanceof DoubleBuffer) {
+				DoubleBuffer buffer = (DoubleBuffer) mem.getBuffer();
+				buffer.put(offset, (DoubleBuffer) sourceBuffer.getBuffer(), srcOffset, length);
+			} else if (mem.getBuffer() instanceof FloatBuffer && sourceBuffer.getBuffer() instanceof FloatBuffer) {
+				FloatBuffer buffer = (FloatBuffer) mem.getBuffer();
+				buffer.put(offset, (FloatBuffer) sourceBuffer.getBuffer(), srcOffset, length);
+			} else if (mem.getBuffer() instanceof ShortBuffer && sourceBuffer.getBuffer() instanceof ShortBuffer) {
+				ShortBuffer buffer = (ShortBuffer) mem.getBuffer();
+				buffer.put(offset, (ShortBuffer) sourceBuffer.getBuffer(), srcOffset, length);
+			} else {
+				throw new HardwareException("Unsupported precision");
+			}
+		} else if (writeAdapters.containsKey(source.getClass())) {
+			writeAdapters.get(source.getClass()).setMem(mem, offset, source, srcOffset, length);
+		} else {
+			double value[] = new double[length];
+			source.getProvider().getMem(source, srcOffset, value, 0, length);
+			setMem(mem, offset, value, 0, length);
+		}
 	}
 
 	@Override
@@ -181,5 +204,9 @@ public class NativeBufferMemoryProvider implements MemoryProvider<NativeBuffer> 
 		} else {
 			throw new HardwareException("Unsupported precision");
 		}
+	}
+
+	public static <T extends Memory> void registerAdapter(Class<T> cls, NativeBufferWriter<T> writer) {
+		writeAdapters.put(cls, writer);
 	}
 }

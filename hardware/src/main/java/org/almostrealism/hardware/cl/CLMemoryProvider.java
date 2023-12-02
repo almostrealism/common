@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -25,6 +25,8 @@ import org.almostrealism.hardware.RAM;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
+import org.almostrealism.nio.NativeBuffer;
+import org.almostrealism.nio.NativeBufferMemoryProvider;
 import org.jocl.CL;
 import org.jocl.CLException;
 import org.jocl.Pointer;
@@ -39,8 +41,26 @@ import java.util.Optional;
 import java.util.stream.IntStream;
 
 public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
+	public static boolean enableDirectReallocation = true;
 	public static boolean enableLargeAllocationLogging = false;
 	public static boolean enableWarnings = SystemUtils.isEnabled("AR_HARDWARE_MEMORY_WARNINGS").orElse(true);
+
+	static {
+		NativeBufferMemoryProvider.registerAdapter(CLMemory.class,
+				(mem, offset, source, srcOffset, length) -> {
+					if (mem.getProvider().getNumberSize() != source.getProvider().getNumberSize()) {
+						throw new UnsupportedOperationException();
+					}
+
+					Pointer dst = Pointer.to(mem.getBuffer()).withByteOffset(0);
+					cl_event event = new cl_event();
+					CL.clEnqueueReadBuffer(source.getProvider().queue, source.getMem(),
+							CL.CL_TRUE, (long) srcOffset * source.getProvider().getNumberSize(),
+							(long) length *  source.getProvider().getNumberSize(), dst, 0,
+							null, event);
+					processEvent(event);
+				});
+	}
 
 	public enum Location {
 		HOST, DEVICE, HEAP, DELEGATE
@@ -64,7 +84,7 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 		this.numberSize = numberSize;
 		this.memoryMax = memoryMax;
 		this.location = location;
-		if (location == Location.HEAP || location == Location.DELEGATE) heap = new HashMap<>();
+		this.heap = new HashMap<>();
 		this.allocated = new ArrayList<>();
 		this.deallocating = new ArrayList<>();
 	}
@@ -78,12 +98,16 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 
 	@Override
 	public CLMemory allocate(int size) {
+		return allocate(size, null);
+	}
+
+	public CLMemory allocate(int size, NativeBuffer src) {
 		if (enableLargeAllocationLogging && size > (10 * 1024 * 1024)) {
 			log("Allocating " + (numberSize * (long) size) / 1024 / 1024 + "mb");
 		}
 
 		try {
-			CLMemory mem = new CLMemory(this, buffer(size), numberSize * (long) size);
+			CLMemory mem = new CLMemory(this, buffer(size, src), numberSize * (long) size);
 			allocated.add(mem);
 			return mem;
 		} catch (CLException e) {
@@ -116,7 +140,19 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 		}
 	}
 
-	protected cl_mem buffer(int len) {
+	@Override
+	public RAM reallocate(Memory mem, int offset, int length) {
+		if (enableDirectReallocation && mem instanceof NativeBuffer) {
+			RAM newMem = allocate(length, (NativeBuffer) mem);
+			return newMem;
+		} else {
+			RAM newMem = allocate(length);
+			setMem(newMem, 0, mem, offset, length);
+			return newMem;
+		}
+	}
+
+	protected cl_mem buffer(int len, NativeBuffer src) {
 		long sizeOf = (long) len * getNumberSize();
 
 		if (memoryUsed + sizeOf > memoryMax) {
@@ -126,7 +162,14 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 		PointerAndObject<?> hostPtr = null;
 		long ptrFlag = 0;
 
-		if (location == Location.HEAP && len < Integer.MAX_VALUE / getNumberSize()) {
+		if (src != null) {
+			if (src.getProvider().getNumberSize() != getNumberSize()) {
+				throw new UnsupportedOperationException();
+			}
+
+			hostPtr = PointerAndObject.of(src);
+			ptrFlag = CL.CL_MEM_USE_HOST_PTR;
+		} else if (location == Location.HEAP && len < Integer.MAX_VALUE / getNumberSize()) {
 			hostPtr = PointerAndObject.forLength(getNumberSize(), len);
 			ptrFlag = CL.CL_MEM_USE_HOST_PTR;
 		} else if (location == Location.DELEGATE) {
@@ -205,24 +248,43 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 	@Override
 	public void setMem(RAM ram, int offset, Memory srcRam, int srcOffset, int length) {
 		if (!(ram instanceof CLMemory)) throw new IllegalArgumentException();
-		if (!(srcRam instanceof CLMemory)) {
-			// TODO  Native code can be used here, for some types of srcRam
-			setMem(ram, offset, srcRam.toArray(srcOffset, length), 0, length);
-			return;
-		}
 
 		CLMemory mem = (CLMemory) ram;
-		CLMemory src = (CLMemory) srcRam;
 
-		try {
-			cl_event event = new cl_event();
-			CL.clEnqueueCopyBuffer(queue, src.getMem(), mem.getMem(),
+		if (srcRam instanceof CLMemory) {
+			CLMemory src = (CLMemory) srcRam;
+
+			try {
+				cl_event event = new cl_event();
+				CL.clEnqueueCopyBuffer(queue, src.getMem(), mem.getMem(),
 						(long) srcOffset * getNumberSize(),
 						(long) offset * getNumberSize(), (long) length * getNumberSize(),
 						0, null, event);
-			processEvent(event);
-		} catch (CLException e) {
-			throw CLExceptionProcessor.process(e, this, srcOffset, offset, length);
+				processEvent(event);
+			} catch (CLException e) {
+				throw CLExceptionProcessor.process(e, this, srcOffset, offset, length);
+			}
+		} else if (srcRam instanceof NativeBuffer) {
+			if (srcRam.getProvider().getNumberSize() != getNumberSize()) {
+				warn("Unable to copy memory directly due to precision difference");
+				setMem(ram, offset, srcRam.toArray(srcOffset, length), 0, length);
+				return;
+			}
+
+			try {
+				Pointer src = Pointer.to(((NativeBuffer) srcRam).getBuffer()).withByteOffset(0);
+				cl_event event = new cl_event();
+				CL.clEnqueueWriteBuffer(queue, mem.getMem(), CL.CL_TRUE,
+						(long) offset * getNumberSize(), (long) length * getNumberSize(),
+						src, 0, null, event);
+				processEvent(event);
+			} catch (CLException e) {
+				throw CLExceptionProcessor.process(e, this, srcOffset, offset, length);
+			}
+		} else {
+			// TODO  There should still be some way to use clEnqueueWriteBuffer for cases
+			// TODO  where all we have is the long value returned by RAM::getContentPointer
+			setMem(ram, offset, srcRam.toArray(srcOffset, length), 0, length);
 		}
 	}
 
@@ -312,7 +374,7 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 		}
 	}
 
-	private void processEvent(cl_event event) {
+	private static void processEvent(cl_event event) {
 		CL.clWaitForEvents(1, new cl_event[] { event });
 		CL.clReleaseEvent(event);
 	}
