@@ -46,7 +46,8 @@ public class Console {
 	}
 	
 	public void print(String s) {
-		if (resetLastLine) lastLine = new StringBuffer();
+		String orig = s;
+		s = prep(s);
 		
 		append(s);
 		lastLine.append(s);
@@ -54,14 +55,14 @@ public class Console {
 		if (parent == null) {
 			if (systemOutEnabled) System.out.print(s);
 		} else {
-			parent.print(s);
+			parent.print(orig);
 		}
 	}
 	
 	public void println(String s) {
-		if (resetLastLine) lastLine = new StringBuffer();
+		String orig = s;
+		s = prep(s);
 
-		append("[" + format.format(java.time.LocalTime.now()) + "] ");
 		append(s);
 		append("\n");
 		
@@ -71,12 +72,14 @@ public class Console {
 		if (parent == null) {
 			if (systemOutEnabled) System.out.println(s);
 		} else {
-			parent.println(s);
+			parent.println(orig);
 		}
 	}
 	
 	public void println() {
-		if (resetLastLine) lastLine = new StringBuffer();
+		if (resetLastLine) {
+			lastLine = new StringBuffer();
+		}
 		
 		append("\n");
 		resetLastLine = true;
@@ -100,6 +103,20 @@ public class Console {
 				e.printStackTrace();
 			}
 		}
+	}
+
+	protected String pre() {
+		return "[" + format.format(java.time.LocalTime.now()) + "] ";
+	}
+
+	protected String prep(String s) {
+		if (resetLastLine) {
+			lastLine = new StringBuffer();
+			s = pre() + s;
+			resetLastLine = false;
+		}
+
+		return s;
 	}
 
 	public void addListener(Consumer<String> listener) {

@@ -25,6 +25,7 @@ import org.almostrealism.hardware.RAM;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
+import org.almostrealism.io.TimingMetric;
 import org.almostrealism.nio.NativeBuffer;
 import org.almostrealism.nio.NativeBufferMemoryProvider;
 import org.jocl.CL;
@@ -45,6 +46,9 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 	public static boolean enableLargeAllocationLogging = false;
 	public static boolean enableWarnings = SystemUtils.isEnabled("AR_HARDWARE_MEMORY_WARNINGS").orElse(true);
 
+	public static TimingMetric setContentsTime = Hardware.console.metric("setContentsCl");
+	public static TimingMetric getContentsTime = Hardware.console.metric("getContentsCl");
+
 	static {
 		NativeBufferMemoryProvider.registerAdapter(CLMemory.class,
 				(mem, offset, source, srcOffset, length) -> {
@@ -60,6 +64,23 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 							null, event);
 					processEvent(event);
 				});
+
+		NativeBufferMemoryProvider.registerAdapter(CLMemory.class, (mem, offset, length) -> {
+			if (mem.getProvider().heap.containsKey(mem.getMem())) {
+				Object obj = mem.getProvider().heap.get(mem.getMem()).getObject();
+
+				if (obj instanceof NativeBuffer) {
+					NativeBuffer src = (NativeBuffer) obj;
+					src.addDeallocationListener(nativeBuffer -> mem.getProvider().heapRemove(mem.getMem()));
+
+					if (src.getSize() == length * mem.getProvider().getNumberSize()) {
+						return src;
+					}
+				}
+			}
+
+			throw new UnsupportedOperationException();
+		});
 	}
 
 	public enum Location {
@@ -75,6 +96,7 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 	private long memoryUsed;
 
 	private HashMap<cl_mem, PointerAndObject<?>> heap;
+	private HashMap<PointerAndObject<?>, cl_mem> reverseHeap;
 	private List<CLMemory> allocated;
 	private List<RAM> deallocating;
 
@@ -85,9 +107,13 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 		this.memoryMax = memoryMax;
 		this.location = location;
 		this.heap = new HashMap<>();
+		this.reverseHeap = new HashMap<>();
 		this.allocated = new ArrayList<>();
 		this.deallocating = new ArrayList<>();
 	}
+
+	@Override
+	public String getName() { return context.getName(); }
 
 	@Override
 	public int getNumberSize() { return numberSize; }
@@ -128,7 +154,7 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 				throw new IllegalArgumentException();
 			CLMemory mem = (CLMemory) ram;
 
-			if (heap != null) heap.remove(mem.getMem());
+			heapRemove(mem.getMem());
 			CL.clReleaseMemObject(mem.getMem());
 			memoryUsed = memoryUsed - (long) size * getNumberSize();
 
@@ -168,6 +194,11 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 			}
 
 			hostPtr = PointerAndObject.of(src);
+			if (reverseHeap.containsKey(hostPtr)) {
+				((NativeBufferMemoryProvider) src.getProvider()).remove(src);
+				return reverseHeap.get(hostPtr);
+			}
+
 			ptrFlag = CL.CL_MEM_USE_HOST_PTR;
 		} else if (location == Location.HEAP && len < Integer.MAX_VALUE / getNumberSize()) {
 			hostPtr = PointerAndObject.forLength(getNumberSize(), len);
@@ -185,7 +216,7 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 
 		memoryUsed = memoryUsed + sizeOf;
 
-		if (hostPtr != null) this.heap.put(mem, hostPtr);
+		if (hostPtr != null) heapAdd(mem, hostPtr);
 		return mem;
 	}
 
@@ -193,6 +224,8 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 	public void setMem(RAM ram, int offset, float[] source, int srcOffset, int length) {
 		if (!(ram instanceof CLMemory)) throw new IllegalArgumentException();
 		CLMemory mem = (CLMemory) ram;
+
+		long start = System.nanoTime();
 
 		try {
 			if (context.getPrecision() == Precision.FP64) {
@@ -214,6 +247,8 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 			}
 		} catch (CLException e) {
 			throw CLExceptionProcessor.process(e, this, srcOffset, offset, length);
+		} finally {
+			setContentsTime.addEntry(System.nanoTime() - start);
 		}
 	}
 
@@ -221,6 +256,8 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 	public void setMem(RAM ram, int offset, double[] source, int srcOffset, int length) {
 		if (!(ram instanceof CLMemory)) throw new IllegalArgumentException();
 		CLMemory mem = (CLMemory) ram;
+
+		long start = System.nanoTime();
 
 		try {
 			if (context.getPrecision() == Precision.FP64) {
@@ -242,6 +279,8 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 			}
 		} catch (CLException e) {
 			throw CLExceptionProcessor.process(e, this, srcOffset, offset, length);
+		} finally {
+			setContentsTime.addEntry(System.nanoTime() - start);
 		}
 	}
 
@@ -250,6 +289,8 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 		if (!(ram instanceof CLMemory)) throw new IllegalArgumentException();
 
 		CLMemory mem = (CLMemory) ram;
+
+		long start = System.nanoTime();
 
 		if (srcRam instanceof CLMemory) {
 			CLMemory src = (CLMemory) srcRam;
@@ -263,6 +304,8 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 				processEvent(event);
 			} catch (CLException e) {
 				throw CLExceptionProcessor.process(e, this, srcOffset, offset, length);
+			} finally {
+				setContentsTime.addEntry(System.nanoTime() - start);
 			}
 		} else if (srcRam instanceof NativeBuffer) {
 			if (srcRam.getProvider().getNumberSize() != getNumberSize()) {
@@ -280,6 +323,8 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 				processEvent(event);
 			} catch (CLException e) {
 				throw CLExceptionProcessor.process(e, this, srcOffset, offset, length);
+			} finally {
+				setContentsTime.addEntry(System.nanoTime() - start);
 			}
 		} else {
 			// TODO  There should still be some way to use clEnqueueWriteBuffer for cases
@@ -295,6 +340,8 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 	}
 
 	private void getMem(CLMemory mem, int sOffset, float out[], int oOffset, int length, int retries) {
+		long start = System.nanoTime();
+
 		try {
 			IntStream.range(0, retries).mapToObj(r -> getHeapData(mem)).forEach(heapObj -> {
 				if (heapObj instanceof float[]) {
@@ -328,6 +375,8 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 			});
 		} catch (CLException e) {
 			throw CLExceptionProcessor.process(e, this, sOffset, oOffset, length);
+		} finally {
+			getContentsTime.addEntry(System.nanoTime() - start);
 		}
 	}
 
@@ -338,6 +387,8 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 	}
 
 	private void getMem(CLMemory mem, int sOffset, double out[], int oOffset, int length, int retries) {
+		long start = System.nanoTime();
+
 		try {
 			IntStream.range(0, retries).mapToObj(r -> getHeapData(mem)).forEach(heapObj -> {
 				if (heapObj instanceof float[]) {
@@ -371,12 +422,39 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 			});
 		} catch (CLException e) {
 			throw CLExceptionProcessor.process(e, this, sOffset, oOffset, length);
+		} finally {
+			getContentsTime.addEntry(System.nanoTime() - start);
 		}
 	}
 
 	private static void processEvent(cl_event event) {
 		CL.clWaitForEvents(1, new cl_event[] { event });
 		CL.clReleaseEvent(event);
+	}
+
+	private void heapAdd(cl_mem mem, PointerAndObject<?> ptr) {
+		if (heap == null) heap = new HashMap<>();
+		if (reverseHeap == null) reverseHeap = new HashMap<>();
+		heap.put(mem, ptr);
+		reverseHeap.put(ptr, mem);
+	}
+
+	private void heapRemove(PointerAndObject<?> ptr) {
+		if (heap == null) return;
+		if (reverseHeap == null) return;
+		cl_mem mem = reverseHeap.get(ptr);
+		if (mem == null) return;
+		heap.remove(mem);
+		reverseHeap.remove(ptr);
+	}
+
+	private void heapRemove(cl_mem mem) {
+		if (heap == null) return;
+		if (reverseHeap == null) return;
+		PointerAndObject<?> ptr = heap.get(mem);
+		if (ptr == null) return;
+		heap.remove(mem);
+		reverseHeap.remove(ptr);
 	}
 
 	private Object getHeapData(CLMemory mem) {

@@ -16,11 +16,13 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.uml.Named;
+
 import java.util.stream.Collectors;
 import java.util.stream.DoubleStream;
 import java.util.stream.IntStream;
 
-public interface MemoryProvider<T extends Memory> {
+public interface MemoryProvider<T extends Memory> extends Named {
 	int getNumberSize();
 
 	T allocate(int size);

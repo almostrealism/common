@@ -58,4 +58,18 @@ public class PointerAndObject<T> {
 			throw new IllegalArgumentException(String.valueOf(len));
 		}
 	}
+
+	@Override
+	public int hashCode() {
+		return obj.hashCode();
+	}
+
+	@Override
+	public boolean equals(Object o) {
+		if (o instanceof PointerAndObject) {
+			return obj.equals(((PointerAndObject) o).obj);
+		} else {
+			return false;
+		}
+	}
 }

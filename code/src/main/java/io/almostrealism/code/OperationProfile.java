@@ -56,14 +56,14 @@ public class OperationProfile implements Named, ConsoleFeatures {
 		double all = metric.getEntries().values().stream().mapToDouble(Double::doubleValue).sum();
 		builder.append("Operation Profile (" + getName() + " - " + format.format(all) + " seconds):\n");
 
-		String form = "\t%s: %d [%ss tot | %ss avg] %d%%\n";
+		String form = "\t%s: %d [%ss tot | %sms avg] %d%%\n";
 
 		metric.getEntries().entrySet().stream()
 				.sorted(Comparator.comparing((Map.Entry<String, Double> ent) -> ent.getValue()).reversed())
 				.forEachOrdered(entry -> {
 					builder.append(String.format(form, entry.getKey(), metric.getCounts().get(entry.getKey()),
 							format.format(entry.getValue()),
-							format.format(entry.getValue() / metric.getCounts().get(entry.getKey())),
+							format.format(1000 * entry.getValue() / metric.getCounts().get(entry.getKey())),
 							(int) (100 * entry.getValue() / all)));
 		});
 

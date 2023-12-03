@@ -103,7 +103,13 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 			return;
 		}
 
-		recordDuration(new OperationWithInfo.RunnableWithInfo(new OperationMetadata("reassignMemory", "Reassign Memory"),
+		String from = provider.getName();
+		String to = supported.get(0).getName();
+		OperationMetadata metadata =
+				new OperationMetadata("reassignMemory_" + from + "_" + to,
+				"Reassign Memory " + from + " -> " + to);
+
+		recordDuration(new OperationWithInfo.RunnableWithInfo(metadata,
 				() -> {
 					// Memory is not supported by the operation,
 					// and the entire reservation that it is part

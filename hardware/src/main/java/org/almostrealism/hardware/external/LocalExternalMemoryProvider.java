@@ -42,6 +42,9 @@ public class LocalExternalMemoryProvider implements MemoryProvider<Memory> {
 	}
 
 	@Override
+	public String getName() { return "DISK"; }
+
+	@Override
 	public int getNumberSize() { return 8; }
 
 	@Override

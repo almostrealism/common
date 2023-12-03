@@ -216,7 +216,7 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 
 			scoring = new HealthScoring(pop.size());
 
-			console.print("[" + Instant.now() + "] Calculating health");
+			console.print("Calculating health");
 			if (enableVerbose) {
 				console.println("...");
 			} else {
@@ -236,7 +236,7 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 
 					if (enableVerbose) {
 						console.println();
-						console.println("[" + Instant.now().toString() + "] Health of Network " + fi + " is " + percent(h.getScore()));
+						console.println("Health of Network " + fi + " is " + percent(h.getScore()));
 					} else {
 						console.print(".");
 					}
@@ -264,7 +264,7 @@ public class PopulationOptimizer<G, T, O extends Temporal, S extends HealthScore
 
 			if (!enableVerbose) console.println();
 
-			console.println("[" + Instant.now().toString() + "] Average health for this round is " +
+			console.println("Average health for this round is " +
 					percent(scoring.getAverageScore()) + ", max " + percent(scoring.getMaxScore()));
 			TreeSet<Genome<G>> sorted = new TreeSet<>((g1, g2) -> {
 				double h1 = healthTable.get(g1);

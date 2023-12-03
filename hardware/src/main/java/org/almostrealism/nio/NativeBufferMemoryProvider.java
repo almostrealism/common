@@ -33,6 +33,7 @@ import java.util.List;
 import java.util.Map;
 
 public class NativeBufferMemoryProvider implements MemoryProvider<NativeBuffer> {
+	private static Map<Class, NativeBufferAllocator> allocationAdapters = new HashMap<>();
 	private static Map<Class, NativeBufferWriter> writeAdapters = new HashMap<>();
 
 	private final Precision precision;
@@ -46,6 +47,9 @@ public class NativeBufferMemoryProvider implements MemoryProvider<NativeBuffer> 
 		this.memoryMax = memoryMax;
 		this.allocated = new ArrayList<>();
 	}
+
+	@Override
+	public String getName() { return "NIO"; }
 
 	@Override
 	public int getNumberSize() { return precision.bytes(); }
@@ -68,6 +72,22 @@ public class NativeBufferMemoryProvider implements MemoryProvider<NativeBuffer> 
 
 		memoryUsed -= (long) size * getNumberSize();
 		allocated.remove(mem);
+		mem.getDeallocationListeners().forEach(l -> l.accept(mem));
+	}
+
+	public synchronized boolean remove(NativeBuffer mem) {
+		return allocated.remove(mem);
+	}
+
+	@Override
+	public NativeBuffer reallocate(Memory mem, int offset, int length) {
+		if (allocationAdapters.containsKey(mem.getClass())) {
+			return allocationAdapters.get(mem.getClass()).allocate(mem, offset, length);
+		} else {
+			NativeBuffer newMem = allocate(length);
+			setMem(newMem, 0, mem, offset, length);
+			return newMem;
+		}
 	}
 
 	@Override
@@ -204,6 +224,10 @@ public class NativeBufferMemoryProvider implements MemoryProvider<NativeBuffer> 
 		} else {
 			throw new HardwareException("Unsupported precision");
 		}
+	}
+
+	public static <T extends Memory> void registerAdapter(Class<T> cls, NativeBufferAllocator<T> allocator) {
+		allocationAdapters.put(cls, allocator);
 	}
 
 	public static <T extends Memory> void registerAdapter(Class<T> cls, NativeBufferWriter<T> writer) {

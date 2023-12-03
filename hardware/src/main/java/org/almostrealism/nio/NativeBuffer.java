@@ -20,16 +20,21 @@ import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.hardware.RAM;
 
 import java.nio.Buffer;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.Consumer;
 
 public class NativeBuffer extends RAM {
 	private NativeBufferMemoryProvider provider;
 	private Buffer buffer;
+	private List<Consumer<NativeBuffer>> deallocationListeners;
 
 	protected NativeBuffer(NativeBufferMemoryProvider provider, Buffer buffer) {
 		if (!buffer.isDirect())
 			throw new UnsupportedOperationException();
 		this.provider = provider;
 		this.buffer = buffer;
+		this.deallocationListeners = new ArrayList<>();
 	}
 
 	@Override
@@ -43,5 +48,13 @@ public class NativeBuffer extends RAM {
 	@Override
 	public long getSize() {
 		return provider.getNumberSize() * (long) buffer.capacity();
+	}
+
+	public void addDeallocationListener(Consumer<NativeBuffer> listener) {
+		deallocationListeners.add(listener);
+	}
+
+	public List<Consumer<NativeBuffer>> getDeallocationListeners() {
+		return deallocationListeners;
 	}
 }

@@ -45,6 +45,9 @@ public class NativeMemoryProvider implements MemoryProvider<RAM> {
 	}
 
 	@Override
+	public String getName() { return "JNI"; }
+
+	@Override
 	public int getNumberSize() { return compiler.getPrecision().bytes(); }
 
 	public NativeCompiler getNativeCompiler() { return compiler; }

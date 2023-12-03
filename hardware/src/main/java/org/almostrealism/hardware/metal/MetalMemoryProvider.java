@@ -51,6 +51,9 @@ public class MetalMemoryProvider implements MemoryProvider<RAM> {
 	}
 
 	@Override
+	public String getName() { return context.getName(); }
+
+	@Override
 	public int getNumberSize() { return numberSize; }
 
 	public long getAllocatedMemory() { return memoryUsed; }
