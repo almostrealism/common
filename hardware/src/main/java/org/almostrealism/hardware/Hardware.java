@@ -41,7 +41,6 @@ import java.util.concurrent.Callable;
 
 public final class Hardware {
 	public static boolean enableVerbose = false;
-	public static final boolean enableMultiThreading = true;
 	public static boolean enableKernelOps;
 
 	public static Console console = Console.root().child();
@@ -87,6 +86,7 @@ public final class Hardware {
 
 		for (String driver : drivers) {
 			if ("cl".equalsIgnoreCase(driver)) {
+				KernelPreferences.requireUniformPrecision = true;
 				requirements.add(ComputeRequirement.CL);
 			} else if ("mtl".equalsIgnoreCase(driver)) {
 				requirements.add(ComputeRequirement.MTL);
@@ -109,17 +109,6 @@ public final class Hardware {
 			} else {
 				throw new IllegalStateException("Unknown driver " + driver);
 			}
-		}
-
-		Optional<Boolean> sharedMem = SystemUtils.isEnabled("AR_HARDWARE_SHARED_MEMORY");
-		if (sharedMem.isPresent()) {
-			KernelPreferences.enableSharedMemory = sharedMem.get();
-		}
-
-		boolean metal = SystemUtils.isEnabled("AR_OPTIMIZE_FOR_METAL").orElse(requirements.size() == 1);
-
-		if (metal && requirements.contains(ComputeRequirement.MTL)) {
-			KernelPreferences.optimizeForMetal();
 		}
 
 		local = new Hardware(requirements, location, nioMem);
@@ -166,7 +155,7 @@ public final class Hardware {
 	private int processRequirements(List<ComputeRequirement> requirements) {
 		Precision precision = Precision.FP64;
 
-		if (KernelPreferences.enableSharedMemory) {
+		if (KernelPreferences.enableSharedMemory || KernelPreferences.requireUniformPrecision) {
 			for (ComputeRequirement r : requirements) {
 				if (r.getMaximumPrecision().bytes() < precision.bytes()) {
 					precision = r.getMaximumPrecision();
@@ -345,11 +334,11 @@ public final class Hardware {
 		}
 	}
 
-	public DataContext<MemoryData> getDataContext() {
-		return getDataContext(false, false);
-	}
-
 	public DataContext<MemoryData> getDataContext(ComputeRequirement... requirements) {
+		if (requirements.length == 0 && explicitComputeCtx.get() == null) {
+			return contexts.get(0);
+		}
+
 		return getDataContext(false, false, requirements);
 	}
 
@@ -420,6 +409,13 @@ public final class Hardware {
 	}
 
 	public MemoryProvider<? extends Memory> getMemoryProvider(int size) {
+		long total = size;
+		total *= getPrecision().bytes();
+
+		if (total > Integer.MAX_VALUE) {
+			throw new UnsupportedOperationException("It is not possible to allocate " + total + " bytes of memory at once");
+		}
+
 		return Optional.ofNullable(getDataContext()).map(dc -> dc.getMemoryProvider(size))
 				.orElseThrow(() -> new RuntimeException("No available data context"));
 	}

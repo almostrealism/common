@@ -82,12 +82,13 @@ public class NativeBufferMemoryProvider implements MemoryProvider<NativeBuffer> 
 	@Override
 	public NativeBuffer reallocate(Memory mem, int offset, int length) {
 		if (allocationAdapters.containsKey(mem.getClass())) {
-			return allocationAdapters.get(mem.getClass()).allocate(mem, offset, length);
-		} else {
-			NativeBuffer newMem = allocate(length);
-			setMem(newMem, 0, mem, offset, length);
-			return newMem;
+			NativeBuffer buf = allocationAdapters.get(mem.getClass()).allocate(mem, offset, length);
+			if (buf != null) return buf;
 		}
+
+		NativeBuffer newMem = allocate(length);
+		setMem(newMem, 0, mem, offset, length);
+		return newMem;
 	}
 
 	@Override

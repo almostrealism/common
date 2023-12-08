@@ -18,14 +18,18 @@ package org.almostrealism.c;
 
 import io.almostrealism.code.Memory;
 import io.almostrealism.code.MemoryProvider;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.RAM;
 import org.almostrealism.hardware.jni.NativeCompiler;
+import org.almostrealism.io.TimingMetric;
 
 import java.util.ArrayList;
 import java.util.List;
 
 public class NativeMemoryProvider implements MemoryProvider<RAM> {
+	public static TimingMetric ioTime = Hardware.console.metric("nativeIO");
+
 	private NativeCompiler compiler;
 
 	private Malloc malloc;
@@ -91,7 +95,13 @@ public class NativeMemoryProvider implements MemoryProvider<RAM> {
 		if (!allocated.contains(mem))
 			throw new HardwareException(mem + " not available");
 		if (write == null) write = new NativeWrite(getNativeCompiler());
-		write.apply((NativeMemory) mem, offset, source, srcOffset, length);
+
+		long start = System.nanoTime();
+		try {
+			write.apply((NativeMemory) mem, offset, source, srcOffset, length);
+		} finally {
+			ioTime.addEntry("setMem", System.nanoTime() - start);
+		}
 	}
 
 	@Override
@@ -99,7 +109,14 @@ public class NativeMemoryProvider implements MemoryProvider<RAM> {
 		if (!allocated.contains(mem))
 			throw new HardwareException(mem + " not available");
 		if (read == null) read = new NativeRead(getNativeCompiler());
-		read.apply((NativeMemory) mem, sOffset, out, oOffset, length);
+
+		long start = System.nanoTime();
+
+		try {
+			read.apply((NativeMemory) mem, sOffset, out, oOffset, length);
+		} finally {
+			ioTime.addEntry("getMem", System.nanoTime() - start);
+		}
 	}
 
 	@Override

@@ -72,7 +72,7 @@ public class ExternalComputeContext extends AbstractComputeContext {
 	public InstructionSet deliver(Scope scope) {
 		NativeInstructionSet inst = getNativeCompiler().reserveLibraryTarget();
 		inst.setComputeContext(this);
-		inst.setMetadata(scope.getMetadata());
+		inst.setMetadata(scope.getMetadata().withContextName(getDataContext().getName()));
 
 		StringBuffer buf = new StringBuffer();
 		buf.append(new ScopeEncoder(pw -> new CPrintWriter(pw, "apply", getLanguage().getPrecision(), true), Accessibility.EXTERNAL).apply(scope));

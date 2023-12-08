@@ -46,8 +46,9 @@ public class NativeRead extends BaseNative {
 					"\tfloat* input = (float *) arg;\n" +
 					"\tjdoubleArray output = (*env)->NewDoubleArray(env, (jsize) len);\n" +
 					"\tfor (int i = 0; i < len; i++) {\n" +
-					"\t\t(*env)->SetDoubleArrayRegion(env, output, i, 1, (const jdouble*)&input[offset + i]);\n" +
-					"\t}\n" +
+					"\t\tjdouble value = (jdouble) input[offset + i];\n" +
+					"\t\t(*env)->SetDoubleArrayRegion(env, output, i, 1, &value);\n" +
+					"\t}" +
 					"return output;\n" +
 					"}\n";
 		}

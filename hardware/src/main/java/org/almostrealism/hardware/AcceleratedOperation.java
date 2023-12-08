@@ -34,6 +34,7 @@ import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.code.SupplierArgumentMap;
 import io.almostrealism.relation.Evaluable;
+import org.almostrealism.c.NativeMemoryProvider;
 import org.almostrealism.hardware.jni.NativeExecution;
 import org.almostrealism.hardware.mem.Bytes;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
@@ -147,7 +148,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 					throw new UnsupportedOperationException("Redundant call to prepareScope");
 				}
 
-				argumentMap = MemoryDataArgumentMap.create(getComputeContext(), isAggregatedInput() ? i -> createAggregatedInput(i, i) : null, isKernel());
+				argumentMap = MemoryDataArgumentMap.create(getComputeContext(), getMetadata(), isAggregatedInput() ? i -> createAggregatedInput(i, i) : null, isKernel());
 				preOp = ((MemoryDataArgumentMap) argumentMap).getPrepareData();
 				postOp = ((MemoryDataArgumentMap) argumentMap).getPostprocessData();
 			}
@@ -339,6 +340,9 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	}
 
 	public static void printTimes() {
+		console.println("AcceleratedOperation: " +
+				NativeMemoryProvider.ioTime.getEntries().get("getMem") + "sec (read native), " +
+				NativeMemoryProvider.ioTime.getEntries().get("setMem") + "sec (write native)");
 		console.println("AcceleratedOperation: " +
 				((long) AcceleratedOperation.retrieveOperatorMetric.getTotalSeconds()) + "sec (operator), " +
 				((long) AcceleratedOperation.processArgumentsMetric.getTotalSeconds()) + "sec (process), " +

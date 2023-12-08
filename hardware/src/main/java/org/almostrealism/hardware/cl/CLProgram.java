@@ -32,7 +32,9 @@ public class CLProgram implements OperationInfo {
 	private CLProgram(CLComputeContext ctx, cl_program prog, OperationMetadata metadata, String src) {
 		this.ctx = ctx;
 		this.prog = prog;
-		this.metadata = metadata;
+		this.metadata = (metadata == null ?
+				new OperationMetadata(null, null) : metadata)
+					.withContextName(ctx.getDataContext().getName());
 		this.src = src;
 	}
 

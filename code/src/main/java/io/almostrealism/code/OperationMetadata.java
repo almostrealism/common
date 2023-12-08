@@ -21,6 +21,8 @@ import java.util.List;
 
 public class OperationMetadata {
 	private String displayName, shortDescription, longDescription;
+	private String contextName;
+
 	private List<OperationMetadata> children;
 
 	private OperationMetadata() { children = new ArrayList<>(); }
@@ -32,6 +34,8 @@ public class OperationMetadata {
 			setDisplayName(from.getDisplayName());
 			setShortDescription(from.getShortDescription());
 			setLongDescription(from.getLongDescription());
+			setContextName(from.getContextName());
+			setChildren(from.getChildren());
 		}
 	}
 
@@ -45,35 +49,30 @@ public class OperationMetadata {
 		}
 	}
 
-	public String getDisplayName() {
-		return displayName;
+	public String getDisplayName() { return displayName; }
+	public void setDisplayName(String displayName) { this.displayName = displayName; }
+
+	public String getShortDescription() { return shortDescription; }
+	public void setShortDescription(String description) { this.shortDescription = description; }
+
+	public String getLongDescription() { return longDescription; }
+	public void setLongDescription(String longDescription) { this.longDescription = longDescription; }
+
+	public String getContextName() { return contextName; }
+	public void setContextName(String contextName) { this.contextName = contextName; }
+
+	public List<OperationMetadata> getChildren() { return children; }
+	public void setChildren(List<OperationMetadata> children) { this.children = children; }
+
+	public OperationMetadata withContextName(String contextName) {
+		OperationMetadata metadata = new OperationMetadata(this);
+		metadata.setContextName(contextName);
+		return metadata;
 	}
 
-	public void setDisplayName(String displayName) {
-		this.displayName = displayName;
-	}
-
-	public String getShortDescription() {
-		return shortDescription;
-	}
-
-	public void setShortDescription(String description) {
-		this.shortDescription = description;
-	}
-
-	public String getLongDescription() {
-		return longDescription;
-	}
-
-	public void setLongDescription(String longDescription) {
-		this.longDescription = longDescription;
-	}
-
-	public List<OperationMetadata> getChildren() {
-		return children;
-	}
-
-	public void setChildren(List<OperationMetadata> children) {
-		this.children = children;
+	public OperationMetadata appendShortDescription(String desc) {
+		OperationMetadata metadata = new OperationMetadata(this);
+		metadata.setShortDescription(metadata.getShortDescription() + desc);
+		return metadata;
 	}
 }

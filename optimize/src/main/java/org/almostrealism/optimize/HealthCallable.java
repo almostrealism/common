@@ -19,13 +19,19 @@ package org.almostrealism.optimize;
 import io.almostrealism.code.ComputeRequirement;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.hardware.mem.Heap;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.time.Temporal;
 
+import java.util.Arrays;
 import java.util.concurrent.Callable;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-public class HealthCallable<T extends Temporal, S extends HealthScore> implements Callable<S>, CodeFeatures {
+public class HealthCallable<T extends Temporal, S extends HealthScore> implements Callable<S>, CodeFeatures, ConsoleFeatures {
+	public static Console console = Console.root().child();
+	public static boolean enableVerbose = false;
+
 	public static ComputeRequirement computeRequirements[] = {};
 
 	private HealthComputation<T, S> health;
@@ -51,15 +57,17 @@ public class HealthCallable<T extends Temporal, S extends HealthScore> implement
 	@Override
 	public S call() throws Exception {
 		Callable<S> call = () -> {
-			S health = null;
+			S healthResult = null;
 
 			try {
 				this.health.setTarget(target.get());
-				health = this.health.computeHealth();
-				scoring.pushScore(health);
+				if (enableVerbose) log("Running " + this.health.getClass().getSimpleName());
+				healthResult = this.health.computeHealth();
+				if (enableVerbose)  log("Completed " + this.health.getClass().getSimpleName());
+				scoring.pushScore(healthResult);
 
 				if (healthListener != null) {
-					healthListener.accept(health);
+					healthListener.accept(healthResult);
 				}
 			} catch (Exception e) {
 				e.printStackTrace();
@@ -69,11 +77,16 @@ public class HealthCallable<T extends Temporal, S extends HealthScore> implement
 				this.cleanup.run();
 			}
 
-			return health;
+			return healthResult;
 		};
 
 		if (heap != null) {
 			call = heap.wrap(call);
+		}
+
+		if (enableVerbose) {
+			log(computeRequirements == null ?
+					"No compute requirements" : "Compute requirements: " + Arrays.toString(computeRequirements));
 		}
 
 		if (computeRequirements == null || computeRequirements.length <= 0) {
@@ -82,6 +95,9 @@ public class HealthCallable<T extends Temporal, S extends HealthScore> implement
 			return cc(call, computeRequirements);
 		}
 	}
+
+	@Override
+	public Console console() { return console; }
 
 	public static void setComputeRequirements(ComputeRequirement... expectations) {
 		computeRequirements = expectations;

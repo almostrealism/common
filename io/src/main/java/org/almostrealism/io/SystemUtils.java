@@ -17,6 +17,7 @@
 package org.almostrealism.io;
 
 import java.util.Optional;
+import java.util.OptionalInt;
 
 public class SystemUtils {
 	private SystemUtils() { }
@@ -45,6 +46,20 @@ public class SystemUtils {
 		}
 
 		return value;
+	}
+
+	public static OptionalInt getInt(String key) {
+		String value = getProperty(key);
+		if (value == null) {
+			return OptionalInt.empty();
+		}
+
+		try {
+			return OptionalInt.of(Integer.parseInt(value));
+		} catch (NumberFormatException e) {
+			Console.root().warn("Invalid value for " + key + ": " + value);
+			return OptionalInt.empty();
+		}
 	}
 
 	public static Optional<Boolean> isEnabled(String key) {

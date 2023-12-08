@@ -53,7 +53,7 @@ public class NativeComputeContext extends AbstractComputeContext<NativeDataConte
 	public InstructionSet deliver(Scope scope) {
 		NativeInstructionSet target = getNativeCompiler().reserveLibraryTarget();
 		target.setComputeContext(this);
-		target.setMetadata(scope.getMetadata());
+		target.setMetadata(scope.getMetadata().withContextName(getDataContext().getName()));
 
 		JNIMemoryAccessor accessor;
 

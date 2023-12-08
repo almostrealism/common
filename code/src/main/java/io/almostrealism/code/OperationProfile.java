@@ -92,9 +92,10 @@ public class OperationProfile implements Named, ConsoleFeatures {
 		return end - start;
 	}
 
-	protected void recordDuration(OperationMetadata metadata, long nanos) {
+	public void recordDuration(OperationMetadata metadata, long nanos) {
 		String key = metadata.getShortDescription();
 		if (key == null) key = "<unknown>";
+		if (metadata.getContextName() != null) key += " [" + metadata.getContextName() + "]";
 		metric.addEntry(key, nanos);
 	}
 

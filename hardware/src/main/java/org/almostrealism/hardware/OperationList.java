@@ -69,6 +69,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 	private Integer count;
 
 	private OperationMetadata metadata;
+	private OperationProfile profile;
 	private List<ComputeRequirement> requirements;
 
 	public OperationList() { this(null); }
@@ -89,6 +90,9 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 
 	@Override
 	public OperationMetadata getMetadata() { return metadata; }
+
+	public OperationProfile getProfile() { return profile; }
+	public void setProfile(OperationProfile profile) { this.profile = profile; }
 
 	public void setComputeRequirements(List<ComputeRequirement> requirements) { this.requirements = requirements; }
 
@@ -127,7 +131,7 @@ public class OperationList extends ArrayList<Supplier<Runnable>>
 
 	@Override
 	public Runnable get() {
-		return get(null);
+		return get(getProfile());
 	}
 
 	public Runnable get(OperationProfile profiles) {

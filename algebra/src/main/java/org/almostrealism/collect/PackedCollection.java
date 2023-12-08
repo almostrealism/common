@@ -132,12 +132,15 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 	}
 
 	public PackedCollection<T> fill(double... value) {
-		IntStream.range(0, getMemLength()).forEach(i -> setMem(i, value[i % value.length]));
+		double data[] = IntStream.range(0, getMemLength()).mapToDouble(i -> value[i % value.length]).toArray();
+		setMem(0, data);
 		return this;
 	}
 
 	public PackedCollection<T> fill(Function<int[], Double> f) {
-		getShape().stream().forEach(pos -> setMem(getShape().index(pos), f.apply(pos)));
+		double data[] = new double[getMemLength()];
+		getShape().stream().forEach(pos -> data[getShape().index(pos)] = f.apply(pos));
+		setMem(0, data);
 		return this;
 	}
 

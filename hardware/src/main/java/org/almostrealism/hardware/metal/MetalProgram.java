@@ -28,9 +28,11 @@ public class MetalProgram implements OperationInfo {
 
 	private MTLFunction function;
 
-	public MetalProgram(MTLDevice device, OperationMetadata metadata, String func, String src) {
-		this.device = device;
-		this.metadata = metadata;
+	public MetalProgram(MetalComputeContext ctx, OperationMetadata metadata, String func, String src) {
+		this.device = ctx.getMtlDevice();
+		this.metadata = (metadata == null ?
+				new OperationMetadata(null, null) : metadata)
+				.withContextName(ctx.getDataContext().getName());
 		this.func = func;
 		this.src = src;
 	}
@@ -61,6 +63,6 @@ public class MetalProgram implements OperationInfo {
 	}
 
 	public static MetalProgram create(MetalComputeContext ctx, OperationMetadata metadata, String func, String src) {
-		return new MetalProgram(ctx.getMtlDevice(), metadata, func, src);
+		return new MetalProgram(ctx, metadata, func, src);
 	}
 }

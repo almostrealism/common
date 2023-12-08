@@ -30,8 +30,7 @@ import java.nio.IntBuffer;
 public class MTLBuffer extends MTLObject {
 	private Precision precision;
 
-	public static TimingMetric setContentsTime = Hardware.console.metric("setContentsMetal");
-	public static TimingMetric getContentsTime = Hardware.console.metric("getContentsMetal");
+	public static TimingMetric ioTime = Hardware.console.metric("metalIO");
 
 	public MTLBuffer(Precision precision, long nativePointer) {
 		super(nativePointer);
@@ -57,7 +56,7 @@ public class MTLBuffer extends MTLObject {
 			buf.put(values);
 			MTL.setIntBufferContents32(getNativePointer(), buf, 0, values.length);
 		} finally {
-			setContentsTime.addEntry(System.nanoTime() - start);
+			ioTime.addEntry("setContents", System.nanoTime() - start);
 		}
 	}
 
@@ -67,7 +66,7 @@ public class MTLBuffer extends MTLObject {
 		try {
 			MTL.setIntBufferContents32(getNativePointer(), buf, offset, length);
 		} finally {
-			setContentsTime.addEntry(System.nanoTime() - start);
+			ioTime.addEntry("setContents", System.nanoTime() - start);
 		}
 	}
 
@@ -81,7 +80,7 @@ public class MTLBuffer extends MTLObject {
 				MTL.setBufferContents32(getNativePointer(), buf, offset, length);
 			}
 		} finally {
-			setContentsTime.addEntry(System.nanoTime() - start);
+			ioTime.addEntry("setContents", System.nanoTime() - start);
 		}
 	}
 
@@ -91,7 +90,7 @@ public class MTLBuffer extends MTLObject {
 		try {
 			MTL.getBufferContents32(getNativePointer(), buf, offset, length);
 		} finally {
-			getContentsTime.addEntry(System.nanoTime() - start);
+			ioTime.addEntry("getContents", System.nanoTime() - start);
 		}
 	}
 

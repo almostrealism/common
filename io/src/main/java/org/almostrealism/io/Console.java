@@ -33,8 +33,8 @@ public class Console {
 
 	private DateTimeFormatter format;
 	private StringBuffer data = new StringBuffer();
-	private StringBuffer lastLine = new StringBuffer();
-	private boolean resetLastLine = false;
+	private StringBuffer lastLine;
+	private boolean resetLastLine;
 
 	private Map<String, TimingMetric> metrics = Collections.synchronizedMap(new HashMap<>());
 
@@ -43,6 +43,7 @@ public class Console {
 	protected Console(Console parent) {
 		this.parent = parent;
 		this.format = DateTimeFormatter.ofPattern("HH:mm.ss");
+		this.resetLastLine = true;
 	}
 	
 	public void print(String s) {

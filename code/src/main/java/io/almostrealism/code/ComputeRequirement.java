@@ -16,6 +16,8 @@
 
 package io.almostrealism.code;
 
+import org.almostrealism.io.SystemUtils;
+
 public enum ComputeRequirement {
 	CPU, GPU, FPGA, C, CL, MTL, JNI, EXTERNAL, PROFILING;
 
@@ -30,7 +32,7 @@ public enum ComputeRequirement {
 			case C:
 				return Precision.FP64;
 			case CL:
-				return Precision.FP64;
+				return SystemUtils.isAarch64() ? Precision.FP32 : Precision.FP64;
 			case MTL:
 				return Precision.FP32;
 			case JNI:

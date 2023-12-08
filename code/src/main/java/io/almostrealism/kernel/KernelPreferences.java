@@ -16,11 +16,27 @@
 
 package io.almostrealism.kernel;
 
+import org.almostrealism.io.SystemUtils;
+
+import java.util.Optional;
+
 public class KernelPreferences {
+	public static boolean requireUniformPrecision = false;
 	public static boolean enableSharedMemory = false;
 
-	private static boolean preferLoops = false;
-	private static boolean enableSubdivision = true;
+	private static boolean preferLoops;
+	private static boolean enableSubdivision;
+
+	static {
+		boolean loops = SystemUtils.isEnabled("AR_HARDWARE_PREFER_LOOPS").orElse(false);
+		preferLoops = loops;
+		enableSubdivision = !loops;
+
+		Optional<Boolean> sharedMem = SystemUtils.isEnabled("AR_HARDWARE_SHARED_MEMORY");
+		if (sharedMem.isPresent()) {
+			KernelPreferences.enableSharedMemory = sharedMem.get();
+		}
+	}
 
 	public static int getWorkSubdivisionMinimum() {
 		return 512;
@@ -38,8 +54,8 @@ public class KernelPreferences {
 
 	public static boolean isEnableSubdivision() { return enableSubdivision; }
 
+	@Deprecated
 	public static void optimizeForMetal() {
-		KernelPreferences.enableSharedMemory = true;
 		KernelPreferences.setPreferLoops(true);
 		KernelPreferences.setEnableSubdivision(false);
 	}

@@ -46,8 +46,7 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 	public static boolean enableLargeAllocationLogging = false;
 	public static boolean enableWarnings = SystemUtils.isEnabled("AR_HARDWARE_MEMORY_WARNINGS").orElse(true);
 
-	public static TimingMetric setContentsTime = Hardware.console.metric("setContentsCl");
-	public static TimingMetric getContentsTime = Hardware.console.metric("getContentsCl");
+	public static TimingMetric ioTime = Hardware.console.metric("clIO");
 
 	static {
 		NativeBufferMemoryProvider.registerAdapter(CLMemory.class,
@@ -75,11 +74,17 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 
 					if (src.getSize() == length * mem.getProvider().getNumberSize()) {
 						return src;
+					} else {
+						Hardware.console.warn("Heap item is not the same size as the desired NativeBuffer");
 					}
+				} else {
+					Hardware.console.warn("Heap item " + obj + " is not a NativeBuffer");
 				}
+			} else {
+				Hardware.console.warn("Heap does not contain " + mem.getMem());
 			}
 
-			throw new UnsupportedOperationException();
+			return null;
 		});
 	}
 
@@ -179,7 +184,12 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 	}
 
 	protected cl_mem buffer(int len, NativeBuffer src) {
+		if (len <= 0) throw new IllegalArgumentException();
+
 		long sizeOf = (long) len * getNumberSize();
+		if (sizeOf > Integer.MAX_VALUE) {
+			throw new UnsupportedOperationException("It is not possible to allocate " + sizeOf + " bytes of memory at once");
+		}
 
 		if (memoryUsed + sizeOf > memoryMax) {
 			throw new HardwareException("Memory Max Reached");
@@ -248,7 +258,7 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 		} catch (CLException e) {
 			throw CLExceptionProcessor.process(e, this, srcOffset, offset, length);
 		} finally {
-			setContentsTime.addEntry(System.nanoTime() - start);
+			ioTime.addEntry("setMem", System.nanoTime() - start);
 		}
 	}
 
@@ -280,7 +290,7 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 		} catch (CLException e) {
 			throw CLExceptionProcessor.process(e, this, srcOffset, offset, length);
 		} finally {
-			setContentsTime.addEntry(System.nanoTime() - start);
+			ioTime.addEntry("setMem", System.nanoTime() - start);
 		}
 	}
 
@@ -305,7 +315,7 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 			} catch (CLException e) {
 				throw CLExceptionProcessor.process(e, this, srcOffset, offset, length);
 			} finally {
-				setContentsTime.addEntry(System.nanoTime() - start);
+				ioTime.addEntry("setMem", System.nanoTime() - start);
 			}
 		} else if (srcRam instanceof NativeBuffer) {
 			if (srcRam.getProvider().getNumberSize() != getNumberSize()) {
@@ -324,7 +334,7 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 			} catch (CLException e) {
 				throw CLExceptionProcessor.process(e, this, srcOffset, offset, length);
 			} finally {
-				setContentsTime.addEntry(System.nanoTime() - start);
+				ioTime.addEntry("setMem", System.nanoTime() - start);
 			}
 		} else {
 			// TODO  There should still be some way to use clEnqueueWriteBuffer for cases
@@ -376,7 +386,7 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 		} catch (CLException e) {
 			throw CLExceptionProcessor.process(e, this, sOffset, oOffset, length);
 		} finally {
-			getContentsTime.addEntry(System.nanoTime() - start);
+			ioTime.addEntry("getMem", System.nanoTime() - start);
 		}
 	}
 
@@ -423,7 +433,7 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 		} catch (CLException e) {
 			throw CLExceptionProcessor.process(e, this, sOffset, oOffset, length);
 		} finally {
-			getContentsTime.addEntry(System.nanoTime() - start);
+			ioTime.addEntry("getMem", System.nanoTime() - start);
 		}
 	}
 
@@ -458,7 +468,8 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 	}
 
 	private Object getHeapData(CLMemory mem) {
-		if (heap != null) return heap.get(mem.getMem()).getObject();
+		if (heap != null)
+			return Optional.ofNullable(heap.get(mem.getMem())).map(PointerAndObject::getObject).orElse(null);
 		return null;
 	}
 
