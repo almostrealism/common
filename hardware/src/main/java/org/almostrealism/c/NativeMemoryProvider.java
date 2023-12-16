@@ -28,7 +28,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class NativeMemoryProvider implements MemoryProvider<RAM> {
-	public static TimingMetric ioTime = Hardware.console.metric("nativeIO");
+	public static TimingMetric ioTime = Hardware.console.timing("nativeIO");
 
 	private NativeCompiler compiler;
 

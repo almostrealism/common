@@ -30,7 +30,7 @@ import java.nio.IntBuffer;
 public class MTLBuffer extends MTLObject {
 	private Precision precision;
 
-	public static TimingMetric ioTime = Hardware.console.metric("metalIO");
+	public static TimingMetric ioTime = Hardware.console.timing("metalIO");
 
 	public MTLBuffer(Precision precision, long nativePointer) {
 		super(nativePointer);

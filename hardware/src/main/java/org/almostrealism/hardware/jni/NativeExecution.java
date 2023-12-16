@@ -38,7 +38,7 @@ public class NativeExecution extends HardwareOperator {
 	public static boolean enableExecutor = true;
 	private static ExecutorService executor = Executors.newFixedThreadPool(20);
 
-	public static TimingMetric dimMaskMetric = Hardware.console.metric("dimMask");
+	public static TimingMetric dimMaskMetric = Hardware.console.timing("dimMask");
 
 	private NativeInstructionSet inst;
 	private int argCount;

@@ -36,7 +36,7 @@ public class Console {
 	private StringBuffer lastLine;
 	private boolean resetLastLine;
 
-	private Map<String, TimingMetric> metrics = Collections.synchronizedMap(new HashMap<>());
+	private Map<String, MetricBase> metrics = Collections.synchronizedMap(new HashMap<>());
 
 	protected Console() { this(null); }
 
@@ -131,9 +131,19 @@ public class Console {
 		if (ex != null) ex.printStackTrace();
 	}
 
-	public TimingMetric metric(String name) {
+	public DistributionMetric distribution(String name, double scale) {
 		if (metrics.containsKey(name)) {
-			return metrics.get(name);
+			return (DistributionMetric) metrics.get(name);
+		}
+
+		DistributionMetric metric = new DistributionMetric(name, scale);
+		metrics.put(name, metric);
+		return metric;
+	}
+
+	public TimingMetric timing(String name) {
+		if (metrics.containsKey(name)) {
+			return (TimingMetric) metrics.get(name);
 		}
 
 		TimingMetric metric = new TimingMetric(name);
