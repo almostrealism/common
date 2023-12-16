@@ -344,20 +344,20 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 				NativeMemoryProvider.ioTime.getEntries().get("getMem") + "sec (read native), " +
 				NativeMemoryProvider.ioTime.getEntries().get("setMem") + "sec (write native)");
 		console.println("AcceleratedOperation: " +
-				((long) AcceleratedOperation.retrieveOperatorMetric.getTotalSeconds()) + "sec (operator), " +
-				((long) AcceleratedOperation.processArgumentsMetric.getTotalSeconds()) + "sec (process), " +
-				((long) AcceleratedOperation.acceptMetric.getTotalSeconds()) + "sec (accept)");
+				((long) AcceleratedOperation.retrieveOperatorMetric.getTotal()) + "sec (operator), " +
+				((long) AcceleratedOperation.processArgumentsMetric.getTotal()) + "sec (process), " +
+				((long) AcceleratedOperation.acceptMetric.getTotal()) + "sec (accept)");
 		console.println("AcceleratedOperation Process Init: " +
 				((long) ProcessDetailsFactory.initTime) + "sec (init), " +
-				((long) AcceleratedOperation.processMetric.getTotalSeconds()) + "sec (process)");
+				((long) AcceleratedOperation.processMetric.getTotal()) + "sec (process)");
 		console.println("AcceleratedOperation Process Body: " +
-				((long) AcceleratedOperation.kernelCreateMetric.getTotalSeconds()) + "sec (create), " +
-				((long) AcceleratedOperation.evaluateKernelMetric.getTotalSeconds()) + "sec (evaluate kernel), " +
-				((long) AcceleratedOperation.evaluateMetric.getTotalSeconds()) + "sec (evaluate)");
+				((long) AcceleratedOperation.kernelCreateMetric.getTotal()) + "sec (create), " +
+				((long) AcceleratedOperation.evaluateKernelMetric.getTotal()) + "sec (evaluate kernel), " +
+				((long) AcceleratedOperation.evaluateMetric.getTotal()) + "sec (evaluate)");
 		console.println("AcceleratedOperation Accept: " +
-				((long) HardwareOperator.prepareArgumentsMetric.getTotalSeconds()) + "sec (prepare), " +
-				((long) HardwareOperator.computeDimMasksMetric.getTotalSeconds()) + "sec (masks), " +
-				((long) NativeExecution.dimMaskMetric.getTotalSeconds()) + "sec (masks)");
+				((long) HardwareOperator.prepareArgumentsMetric.getTotal()) + "sec (prepare), " +
+				((long) HardwareOperator.computeDimMasksMetric.getTotal()) + "sec (masks), " +
+				((long) NativeExecution.dimMaskMetric.getTotal()) + "sec (masks)");
 
 		AcceleratedOperation.kernelCreateMetric.getEntries().forEach((k, v) ->
 				console.println("AcceleratedOperation: " + k + " - " + v.longValue() + "sec (create)"));

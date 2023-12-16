@@ -16,7 +16,19 @@
 
 package org.almostrealism.io;
 
-public class TimingMetric extends DistributionMetric {
+public class DistributionMetric extends MetricBase {
+	private double scale;
 
-	public TimingMetric(String name) { super(name, 1e9); }
+	public DistributionMetric(String name, double scale) {
+		super(name);
+		this.scale = scale;
+	}
+
+	public void addEntry(long value) {
+		addEntry(null, value);
+	}
+
+	public <T> void addEntry(T entry, long value) {
+		addEntry(entry, value / scale);
+	}
 }

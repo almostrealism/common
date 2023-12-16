@@ -37,8 +37,8 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 	public static boolean enableDimensionMasks = true;
 	public static boolean enableAtomicDimensionMasks = true;
 
-	public static TimingMetric prepareArgumentsMetric = Hardware.console.metric("prepareArguments");
-	public static TimingMetric computeDimMasksMetric = Hardware.console.metric("computeDimMasks");
+	public static TimingMetric prepareArgumentsMetric = Hardware.console.timing("prepareArguments");
+	public static TimingMetric computeDimMasksMetric = Hardware.console.timing("computeDimMasks");
 
 	public static OperationProfile profile;
 	public static long cpuCompileCount, gpuCompileCount;

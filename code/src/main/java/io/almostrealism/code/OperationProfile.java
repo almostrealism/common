@@ -23,7 +23,6 @@ import org.almostrealism.io.TimingMetric;
 
 import java.text.DecimalFormat;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.Map;
 
 public class OperationProfile implements Named, ConsoleFeatures {
@@ -39,7 +38,7 @@ public class OperationProfile implements Named, ConsoleFeatures {
 
 	public OperationProfile(String name) {
 		this.name = name;
-		this.metric = console().metric(name + "_prof" + id++);
+		this.metric = console().timing(name + "_prof" + id++);
 		this.format = new DecimalFormat("##0.00#");
 	}
 

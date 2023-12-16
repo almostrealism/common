@@ -22,8 +22,10 @@ import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import io.almostrealism.code.Precision;
 import org.almostrealism.hardware.RAM;
+import org.almostrealism.hardware.ctx.GlobalContextDebugFlags;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.DistributionMetric;
 import org.almostrealism.io.SystemUtils;
 import org.almostrealism.io.TimingMetric;
 import org.almostrealism.nio.NativeBuffer;
@@ -46,7 +48,9 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 	public static boolean enableLargeAllocationLogging = false;
 	public static boolean enableWarnings = SystemUtils.isEnabled("AR_HARDWARE_MEMORY_WARNINGS").orElse(true);
 
-	public static TimingMetric ioTime = Hardware.console.metric("clIO");
+	public static DistributionMetric allocationSizes = Hardware.console.distribution("clAllocationSizes", 1024 * 1024);
+	public static DistributionMetric deallocationSizes = Hardware.console.distribution("clDeallocationSizes", 1024 * 1024);
+	public static TimingMetric ioTime = Hardware.console.timing("clIO");
 
 	static {
 		NativeBufferMemoryProvider.registerAdapter(CLMemory.class,
@@ -138,8 +142,10 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 		}
 
 		try {
-			CLMemory mem = new CLMemory(this, buffer(size, src), numberSize * (long) size);
+			long s = numberSize * (long) size;
+			CLMemory mem = new CLMemory(this, buffer(size, src), s);
 			allocated.add(mem);
+			allocationSizes.addEntry(s);
 			return mem;
 		} catch (CLException e) {
 			throw new HardwareException(e, (long) size * getNumberSize());
@@ -151,6 +157,10 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 		synchronized (deallocating) {
 			if (deallocating.contains(ram)) return;
 			deallocating.add(ram);
+		}
+
+		if (GlobalContextDebugFlags.gate) {
+			System.out.println("!");
 		}
 
 		try {
@@ -168,6 +178,7 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 			}
 		} finally {
 			deallocating.remove(ram);
+			deallocationSizes.addEntry((long) size * getNumberSize());
 		}
 	}
 
