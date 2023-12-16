@@ -93,10 +93,10 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 				TraversableExpression out = TraversableExpression.traverse(output);
 
 				if (out == null) {
-					v = output.ref(i).assign(value.getSimplified());
+					v = output.ref(i).assign(value);
 				} else {
 					Expression o = out.getValueAt(index);
-					v = o.assign(value.getSimplified());
+					v = o.assign(value);
 
 //					v = new Variable(out.getValueAt(index).getSimpleExpression(getLanguage()),
 //							false, value.getSimplified(), output.getRootDelegate());
@@ -106,7 +106,7 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 					String e = v.getExpression().getSimpleExpression(new LanguageOperationsStub());
 					if (e.length() > 5000) {
 						try {
-							Files.writeString(Path.of("large_expression.txt"), e);
+							Files.writeString(Path.of("results/large_expression.txt"), e);
 						} catch (IOException ex) {
 							throw new RuntimeException(ex);
 						}

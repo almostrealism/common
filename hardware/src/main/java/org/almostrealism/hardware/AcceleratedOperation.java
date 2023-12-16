@@ -81,7 +81,8 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	private OperationList postOp;
 
 	@SafeVarargs
-	protected AcceleratedOperation(ComputeContext<MemoryData> context, boolean kernel, Supplier<Evaluable<? extends T>>... args) {
+	protected AcceleratedOperation(ComputeContext<MemoryData> context, boolean kernel,
+								   Supplier<Evaluable<? extends T>>... args) {
 		super(args);
 		setArgumentMapping(true);
 		this.context = context;
@@ -90,7 +91,8 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	}
 
 	@SafeVarargs
-	public AcceleratedOperation(ComputeContext<MemoryData> context, String function, boolean kernel, Supplier<Evaluable<? extends T>>... args) {
+	public AcceleratedOperation(ComputeContext<MemoryData> context, String function, boolean kernel,
+								Supplier<Evaluable<? extends T>>... args) {
 		this(context, kernel, args);
 		setFunctionName(function);
 	}

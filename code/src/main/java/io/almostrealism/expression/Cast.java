@@ -17,6 +17,7 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.kernel.KernelSeries;
+import io.almostrealism.kernel.KernelSeriesProvider;
 
 import java.util.List;
 import java.util.OptionalDouble;
@@ -80,8 +81,8 @@ public class Cast<T> extends UnaryExpression<T> {
 	}
 
 	@Override
-	public Expression<T> simplify() {
-		Expression<T> flat = super.simplify();
+	public Expression<T> simplify(KernelSeriesProvider provider) {
+		Expression<T> flat = super.simplify(provider);
 		if (!(flat instanceof Cast)) return flat;
 
 		OptionalDouble d = flat.getChildren().get(0).doubleValue();

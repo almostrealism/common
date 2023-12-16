@@ -14,9 +14,9 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.code;
+package io.almostrealism.kernel;
 
-import io.almostrealism.kernel.KernelStructure;
+import io.almostrealism.relation.Tree;
 
-public interface Statement<T extends KernelStructure> extends KernelStructure<T> {
+public interface KernelTree<T extends KernelTree> extends Tree<T>, KernelStructure<T> {
 }

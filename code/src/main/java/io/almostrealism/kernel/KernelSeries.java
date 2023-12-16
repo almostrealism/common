@@ -134,12 +134,14 @@ public class KernelSeries implements Series {
 				.map(k -> k.inverseScale)
 				.reduce(1, (a, b) -> a * b);
 
-		if (scale % inverseScale == 0) {
-			scale = scale / inverseScale;
-			return new KernelSeries(OptionalInt.empty(), OptionalInt.of((int) Math.ceil(scale)));
-		} else {
-			return new KernelSeries(OptionalInt.empty(), OptionalInt.of(scale), inverseScale);
-		}
+//		if (scale % inverseScale == 0) {
+//			scale = scale / inverseScale;
+//			return new KernelSeries(OptionalInt.empty(), OptionalInt.of((int) Math.ceil(scale)));
+//		} else {
+//			return new KernelSeries(OptionalInt.empty(), OptionalInt.of(scale), inverseScale);
+//		}
+
+		return new KernelSeries(OptionalInt.empty(), OptionalInt.of(scale), inverseScale);
 	}
 
 	private static int product(long a, long b) {

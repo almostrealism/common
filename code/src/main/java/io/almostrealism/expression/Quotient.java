@@ -17,7 +17,7 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.kernel.KernelSeries;
-import io.almostrealism.relation.Series;
+import io.almostrealism.kernel.KernelSeriesProvider;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -79,8 +79,8 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public Expression simplify() {
-		Expression<?> flat = super.simplify();
+	public Expression simplify(KernelSeriesProvider provider) {
+		Expression<?> flat = super.simplify(provider);
 		if (!enableSimplification) return flat;
 		if (!(flat instanceof Quotient)) return flat;
 

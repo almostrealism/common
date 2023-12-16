@@ -25,6 +25,9 @@ import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.code.Statement;
+import io.almostrealism.kernel.KernelSeriesProvider;
+import io.almostrealism.kernel.KernelStructure;
+import io.almostrealism.kernel.KernelTree;
 import io.almostrealism.relation.Tree;
 import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.expression.Expression;
@@ -54,14 +57,14 @@ import java.util.stream.IntStream;
  *
  * @param <T>  The type of the value returned by this {@link Scope}.
  */
-public class Scope<T> extends ArrayList<Scope<T>> implements Tree<Scope<T>>, OperationInfo, Nameable {
+public class Scope<T> extends ArrayList<Scope<T>> implements KernelTree<Scope<T>>, OperationInfo, Nameable {
 	public static final boolean enableInlining = true;
 
 	private String name;
 	private OperationMetadata metadata;
 	private List<ComputeRequirement> requirements;
 
-	private final List<Statement> statements;
+	private final List<Statement<?>> statements;
 	private final List<Variable<?, ?>> variables;
 	private final List<Method> methods;
 	private final List<Metric> metrics;
@@ -125,7 +128,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Tree<Scope<T>>, Ope
 	public List<ComputeRequirement> getComputeRequirements() { return requirements; }
 	public void setComputeRequirements(List<ComputeRequirement> requirements) { this.requirements = requirements; }
 
-	public List<Statement> getStatements() { return statements; }
+	public List<Statement<?>> getStatements() { return statements; }
 
 	/** @return  The {@link Variable}s in this {@link Scope}. */
 	public List<Variable<?, ?>> getVariables() { return variables; }
@@ -411,6 +414,21 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Tree<Scope<T>>, Ope
 		for (Scope s : getChildren()) { s.write(w); }
 		for (Metric m : getMetrics()) { w.println(m); }
 		w.flush();
+	}
+
+	@Override
+	public Scope<T> simplify(KernelSeriesProvider provider) {
+		Scope<T> scope = new Scope<>(getName(), getMetadata());
+		scope.getMethods().addAll(getMethods()
+				.stream().map(m -> m.simplify(provider)).collect(Collectors.toList()));
+		scope.getStatements().addAll((List) getStatements()
+				.stream().map(s -> s.simplify(provider)).collect(Collectors.toList()));
+		scope.getVariables().addAll(getVariables()
+				.stream().map(v -> v.simplify(provider)).collect(Collectors.toList()));
+		scope.getChildren().addAll(getChildren()
+				.stream().map(s -> s.simplify(provider)).collect(Collectors.toList()));
+		scope.getMetrics().addAll(getMetrics());
+		return scope;
 	}
 
 	@Deprecated

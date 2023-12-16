@@ -56,7 +56,7 @@ public abstract class KernelProducerComputationAdapter<I extends PackedCollectio
 			Expression index = new KernelIndex();
 			if (getMemLength() > 1) index = index.multiply(getMemLength()).add(i);
 
-			scope.getVariables().add(output.ref(i).assign(getValueAt(index).getSimplified()));
+			scope.getVariables().add(output.ref(i).assign(getValueAt(index)));
 		}
 
 		return scope;

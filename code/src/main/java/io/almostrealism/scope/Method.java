@@ -16,6 +16,7 @@
 
 package io.almostrealism.scope;
 
+import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.code.Statement;
 import io.almostrealism.expression.Expression;
@@ -30,7 +31,7 @@ import java.util.List;
  * 
  * T is the type of the return value of the method.
  */
-public class Method<T> extends Expression<T> implements Statement, Nameable {
+public class Method<T> extends Expression<T> implements Statement<Expression<?>>, Nameable {
 	private String member, name;
 	private List<Expression<?>> arguments;
 
@@ -87,6 +88,11 @@ public class Method<T> extends Expression<T> implements Statement, Nameable {
 	public String getMember() { return this.member; }
 
 	public List<Expression<?>> getArguments() { return arguments; }
+
+	@Override
+	public Method<T> simplify(KernelSeriesProvider provider) {
+		throw new UnsupportedOperationException();
+	}
 
 	@Override
 	public Expression<T> generate(List<Expression<?>> children) {

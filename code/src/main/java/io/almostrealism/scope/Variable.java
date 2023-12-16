@@ -23,6 +23,9 @@ import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.expression.IntegerConstant;
+import io.almostrealism.kernel.KernelSeriesProvider;
+import io.almostrealism.kernel.KernelStructure;
+import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Generated;
@@ -31,6 +34,7 @@ import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.ProducerWithRank;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.relation.Sortable;
+import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -44,8 +48,9 @@ import java.util.function.Supplier;
  *
  * @param <T>  Type of the underlying data.
  */
-public class Variable<T, V extends Variable<T, ?>> implements Statement, Nameable, Sortable, Delegated<V> {
+public class Variable<T, V extends Variable<T, ?>> implements Statement<Variable<T, ?>>, Nameable, Sortable, Delegated<V>, ConsoleFeatures {
 	private String name;
+	private LanguageOperations lang;
 	private PhysicalScope physicalScope;
 	private boolean declaration;
 	private int sortHint;
@@ -77,8 +82,9 @@ public class Variable<T, V extends Variable<T, ?>> implements Statement, Nameabl
 		this.delegate = delegate;
 	}
 
-	public Variable(Expression destination, boolean declaration, Expression<T> expression) {
+	public Variable(LanguageOperations lang, Expression destination, boolean declaration, Expression<T> expression) {
 		this(null, expression);
+		this.lang = lang;
 		this.destination = destination;
 		this.declaration = declaration;
 	}
@@ -113,8 +119,11 @@ public class Variable<T, V extends Variable<T, ?>> implements Statement, Nameabl
 
 	@Override
 	public String getName() {
-		return this.name == null ? destination.getSimpleExpression(null) : this.name;
+		return this.name == null ? destination.getSimpleExpression(getLanguage()) : this.name;
 	}
+
+	public LanguageOperations getLanguage() { return lang; }
+	public void setLanguage(LanguageOperations lang) { this.lang = lang; }
 
 	public void setPhysicalScope(PhysicalScope physicalScope) { this.physicalScope = physicalScope; }
 	public PhysicalScope getPhysicalScope() { return physicalScope; }
@@ -145,6 +154,12 @@ public class Variable<T, V extends Variable<T, ?>> implements Statement, Nameabl
 
 	@Override
 	public int getSortHint() { return sortHint; }
+
+	public Expression<Integer> getArraySize() {
+		if (getExpression() == null) return null;
+		if (getExpression().getArraySize() <= 0) return null;
+		return new IntegerConstant(getExpression().getArraySize());
+	}
 
 	protected void setProducer(Supplier<Evaluable<? extends T>> producer) {
 		this.producer = producer;
@@ -195,10 +210,14 @@ public class Variable<T, V extends Variable<T, ?>> implements Statement, Nameabl
 		return Optional.ofNullable(getExpression()).map(Expression::getDependencies).orElse(Collections.emptyList());
 	}
 
-	public Expression<Integer> getArraySize() {
-		if (getExpression() == null) return null;
-		if (getExpression().getArraySize() <= 0) return null;
-		return new IntegerConstant(getExpression().getArraySize());
+	@Override
+	public Variable<T, ?> simplify(KernelSeriesProvider provider) {
+		if (destination == null) {
+			warn("Variable has no destination");
+			return this;
+		}
+
+		return new Variable<>(getLanguage(), destination.simplify(provider), declaration, expression.simplify(provider));
 	}
 
 	@Override

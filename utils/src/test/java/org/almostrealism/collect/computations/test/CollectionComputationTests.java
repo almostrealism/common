@@ -19,6 +19,8 @@ package org.almostrealism.collect.computations.test;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Evaluable;
+import io.almostrealism.relation.Operation;
+import io.almostrealism.relation.Process;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.ArrayVariable;
@@ -111,24 +113,77 @@ public class CollectionComputationTests implements TestFeatures {
 
 	@Test
 	public void integersIndexAssignment() {
+		integersIndexAssignment(false);
+	}
+
+	@Test
+	public void integersIndexAssignmentOptimized() {
+		integersIndexAssignment(true);
+	}
+
+	public void integersIndexAssignment(boolean optimize) {
 		int count = 6;
 		int size = 10;
 
 		PackedCollection<?> buffer = new PackedCollection<>(shape(count, size)).fill(0.0);
 		PackedCollection<?> bufferIndices = new PackedCollection<>(shape(count)).fill(1, 2, 3);
 		PackedCollection<?> value = new PackedCollection<>(shape(count)).fill(pos -> 1 + Math.random());
-		Assignment c = a(
+		Assignment<?> c = a(
 					traverse(0, c(p(buffer), shape(buffer), integers(0, count), traverseEach(p(bufferIndices)))),
 					p(value));
 
 		HardwareOperator.verboseLog(() -> {
-			c.get().run();
+			if (optimize) {
+				Operation.optimized(c).get().run();
+			} else {
+				c.get().run();
+			}
 		});
 
 		for (int i = 0; i < count; i++) {
 			for (int j = 0; j < size; j++) {
 				if (j == (int) bufferIndices.valueAt(i)) {
 					assertEquals(value.toDouble(i), buffer.valueAt(i, j));
+				} else {
+					assertEquals(0.0, buffer.valueAt(i, j));
+				}
+			}
+		}
+	}
+
+	@Test
+	public void integersIndexAssignmentOperation() {
+		int count = 3;
+		int size = 10;
+
+		PackedCollection<?> gain = pack(0.5);
+		PackedCollection<?> input = new Scalar(3.0);
+		PackedCollection<?> in = pack(2.0, 7.0, 5.0);
+		PackedCollection<?> out = pack(0.0, 0.0, 0.0);
+		PackedCollection<?> feedback = empty(shape(count, count))
+								.fill(pos -> pos[0] == pos[1] ? 1.0 : 0.0);
+
+		PackedCollection<?> buffer = new PackedCollection<>(shape(count, size)).fill(0.0);
+		PackedCollection<?> bufferIndices = pack(1, 2, 5);
+
+		OperationList op = new OperationList("Integers Index Assignment");
+		op.add(a(
+				p(out),
+				matmul(p(feedback), p(in)).add(c(p(input), 0).mul(p(gain)).repeat(count))));
+		op.add(a(
+				traverse(0, c(p(buffer), shape(buffer), integers(0, count), traverseEach(p(bufferIndices)))),
+				p(out)).isolate());
+
+		HardwareOperator.verboseLog(() -> {
+			op.get().run();
+		});
+
+		for (int i = 0; i < count; i++) {
+			for (int j = 0; j < size; j++) {
+				if (j == (int) bufferIndices.valueAt(i)) {
+					assertEquals(in.toDouble(i) +
+									input.toDouble(0) * gain.toDouble(0),
+								buffer.valueAt(i, j));
 				} else {
 					assertEquals(0.0, buffer.valueAt(i, j));
 				}

@@ -160,7 +160,79 @@ public class KernelSeriesTests implements ExpressionFeatures {
 	}
 
 	@Test
-	public void largeSum() {
+	public void divideMultiply1() {
+		Expression p = kernel()
+				.divide(4)
+				.multiply(2)
+				.imod(5);
+		validateSeries(p);
+	}
+
+	@Test
+	public void divideMultiply2() {
+		Expression p = kernel()
+				.divide(144)
+				.divide(36)
+				.multiply(36)
+				.imod(24);
+		validateSeries(p);
+	}
+
+	// @Test
+	public void largeSum2() {
+		Expression p = kernel().multiply(8)
+				.divide(144)
+				.multiply(9)
+				.add(4)
+				.divide(9)
+				.multiply(9)
+				.add(4)
+				.divide(18)
+				.multiply(9)
+				.add(4)
+				.divide(36)
+				.multiply(36)
+				.imod(24);
+		validateSeries(p);
+	}
+
+	// @Test
+	public void largeSum3() {
+		Expression p = kernel().multiply(8).add(1).divide(144)
+								.multiply(144).add(18).divide(18)
+								.multiply(9).add(4).divide(9)
+								.multiply(9).add(4).divide(18)
+								.multiply(9).add(4).divide(36)
+								.multiply(36)
+								.imod(24);
+		validateSeries(p);
+	}
+
+	// @Test
+	public void largeSum4() {
+		Expression p = kernel().multiply(8)
+				.add(1)
+				.imod(144)
+				.divide(8)
+				.add(kernel().multiply(8).add(1).divide(144).multiply(144).add(18).divide(18).multiply(9).add(4).divide(9).multiply(9).add(4).divide(18).multiply(9).add(4).divide(9).multiply(9).add(4).divide(36).multiply(36))
+				.imod(24);
+		validateSeries(p);
+	}
+
+	// @Test
+	public void largeSum5() {
+		Expression p = kernel().multiply(8)
+				.add(1)
+				.imod(144)
+				.divide(8)
+				.add(kernel().multiply(8).add(1).divide(144).multiply(144).add(18).divide(18).multiply(9).add(4).divide(9).multiply(9).add(4).divide(18).multiply(9).add(4).divide(9).multiply(9).add(4).divide(36).multiply(36).add(4))
+				.imod(24)
+				.divide(12);
+		validateSeries(p);
+	}
+
+	// @Test
+	public void largeSum6() {
 		// ((((((((((((((((((((((((kernel0 * 8) + 1) % (144)) / 8) + ((((kernel0 * 8) + 1) / 144) * 144) + 18) / 18) * 9) + 4) / 9) * 9) + 4) / 18) * 9) + 4) / 9) * 9) + 4) / 36) * 36) + 4) % (24)) / 12) + 5 + ((((((((((((((((((((((kernel0 * 8) + 1) % (144)) / 8) + ((((kernel0 * 8) + 1) / 144) * 144) + 18) / 18) * 9) + 4) / 9) * 9) + 4) / 18) * 9) + 4) / 9) * 9) + 4) / 36) * 36) + 4) / 24) * 24)) % (16))
 		// (((((((((kernel0 * 8) + 1) % (144)) / 8) + ((((((((((((((((((((kernel0 * 8) + 1) / 144) * 144) + 18) / 18) * 9) + 4) / 9) * 9) + 4) / 18) * 9) + 4) / 9) * 9) + 4) / 36) * 36) + 4)) % (24)) / 12) + 5) + (((((((kernel0 * 8) + 1) % (144)) / 8) + ((((((((((((((((((((kernel0 * 8) + 1) / 144) * 144) + 18) / 18) * 9) + 4) / 9) * 9) + 4) / 18) * 9) + 4) / 9) * 9) + 4) / 36) * 36) + 4)) / 24) * 24)) % (16)
 		Expression p = kernel().multiply(8)

@@ -108,7 +108,7 @@ public class PackedCollectionMap<T extends PackedCollection<?>>
 
 			// start = System.currentTimeMillis();
 			// System.out.println("PackedCollectionMap: Obtaining simplified value...");
-			scope.getVariables().add(output.ref(i).assign(value.getSimplified()));
+			scope.getVariables().add(output.ref(i).assign(value));
 			// System.out.println("PackedCollectionMap: Retrieved simplified value in " + (System.currentTimeMillis() - start) / 1000 + "s");
 		}
 

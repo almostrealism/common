@@ -19,10 +19,13 @@ package io.almostrealism.expression;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.kernel.KernelSeries;
+import io.almostrealism.kernel.KernelSeriesProvider;
+import io.almostrealism.kernel.KernelTree;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
 import io.almostrealism.relation.Tree;
 import io.almostrealism.scope.Variable;
+import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
 
 import java.util.ArrayList;
@@ -40,7 +43,7 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-public abstract class Expression<T> implements Tree<Expression<?>> {
+public abstract class Expression<T> implements KernelTree<Expression<?>>, ConsoleFeatures {
 	public static boolean enableSimplification = true;
 	public static boolean enableWarnings = SystemUtils.isEnabled("AR_CODE_EXPRESSION_WARNINGS").orElse(true);
 
@@ -148,11 +151,11 @@ public abstract class Expression<T> implements Tree<Expression<?>> {
 
 		LanguageOperations lang = new LanguageOperationsStub();
 
-		Expression<?> simplified = simplify();
+		Expression<?> simplified = simplify(null);
 		String exp = simplified.getExpression(lang);
 
 		w: while (true) {
-			Expression<?> next = simplified.simplify();
+			Expression<?> next = simplified.simplify(null);
 			String nextExp = next.getExpression(lang);
 
 			if (nextExp.equals(exp)) {
@@ -277,8 +280,22 @@ public abstract class Expression<T> implements Tree<Expression<?>> {
 
 	public List<Expression<?>> flatten() { return getChildren(); }
 
-	public Expression<T> simplify() {
-		return generate(getChildren().stream().map(Expression::simplify).collect(Collectors.toList()));
+	@Override
+	public Expression<T> simplify(KernelSeriesProvider provider) {
+		List<Expression<?>> children = getChildren();
+
+		if (children.size() <= 0) {
+			return this;
+		} else if (children.size() > 1) {
+			return generate(getChildren().stream().map((Expression<?> expression) -> expression.simplify(provider)).collect(Collectors.toList()));
+		}
+
+		Expression<?> child = children.get(0).simplify(provider);
+		if (provider != null && child.isKernelValue()) {
+			child = provider.getSeries(child).simplify(null);
+		}
+
+		return generate(List.of(child));
 	}
 
 	@Override

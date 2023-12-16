@@ -14,9 +14,8 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.code;
+package io.almostrealism.kernel;
 
-import io.almostrealism.kernel.KernelStructure;
-
-public interface Statement<T extends KernelStructure> extends KernelStructure<T> {
+public interface KernelStructure<T extends KernelStructure> {
+	T simplify(KernelSeriesProvider provider);
 }

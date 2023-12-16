@@ -16,6 +16,7 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
@@ -46,10 +47,10 @@ public class Conditional extends Expression<Double> {
 	}
 
 	@Override
-	public Expression simplify() {
-		Expression<Boolean> condition = (Expression<Boolean>) getChildren().get(0).simplify();
-		Expression<Double> positive = (Expression<Double>) getChildren().get(1).simplify();
-		Expression<Double> negative = (Expression<Double>) getChildren().get(2).simplify();
+	public Expression simplify(KernelSeriesProvider provider) {
+		Expression<Boolean> condition = (Expression<Boolean>) getChildren().get(0).simplify(provider);
+		Expression<Double> positive = (Expression<Double>) getChildren().get(1).simplify(provider);
+		Expression<Double> negative = (Expression<Double>) getChildren().get(2).simplify(provider);
 
 		Optional<Boolean> cond = condition.booleanValue();
 		if (cond.isPresent()) {

@@ -33,8 +33,10 @@ import org.almostrealism.hardware.mem.MemoryDataAdapter;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
+import java.util.function.DoubleSupplier;
 import java.util.function.Function;
 import java.util.function.IntFunction;
+import java.util.function.Supplier;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
@@ -133,6 +135,12 @@ public class PackedCollection<T extends MemoryData> extends MemoryDataAdapter im
 
 	public PackedCollection<T> fill(double... value) {
 		double data[] = IntStream.range(0, getMemLength()).mapToDouble(i -> value[i % value.length]).toArray();
+		setMem(0, data);
+		return this;
+	}
+
+	public PackedCollection<T> fill(DoubleSupplier values) {
+		double data[] = IntStream.range(0, getMemLength()).mapToDouble(i -> values.getAsDouble()).toArray();
 		setMem(0, data);
 		return this;
 	}

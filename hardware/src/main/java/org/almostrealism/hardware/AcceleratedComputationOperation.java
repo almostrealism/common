@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -26,11 +26,15 @@ import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.relation.Countable;
+import io.almostrealism.relation.ParallelProcess;
+import io.almostrealism.relation.Provider;
 import io.almostrealism.uml.Named;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
+import org.almostrealism.hardware.kernel.KernelSeriesCache;
+import org.almostrealism.hardware.mem.MemoryDataCacheManager;
 
 import java.util.List;
 
@@ -38,6 +42,8 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	public static boolean enableOperationInputAggregation = true;
 
 	private Computation<T> computation;
+	private KernelSeriesCache kernelSeriesCache;
+
 	private Scope<T> scope;
 	private Variable outputVariable;
 
@@ -116,6 +122,9 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	public void prepareScope(ScopeInputManager manager) {
 		super.prepareScope(manager);
 		getComputation().prepareScope(manager);
+
+		this.kernelSeriesCache = KernelSeriesCache.create(getComputation(),
+				data -> manager.argumentForInput(this).apply(() -> new Provider<>(data)));
 	}
 
 	@Override
@@ -145,7 +154,7 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	public synchronized Scope<T> compile(Variable<T, ?> outputVariable) {
 		Computation<T> c = getComputation();
 		if (outputVariable != null) c.setOutputVariable(outputVariable);
-		scope = c.getScope();
+		scope = c.getScope().simplify(kernelSeriesCache);
 		scope.convertArgumentsToRequiredScopes();
 		postCompile();
 		return scope;

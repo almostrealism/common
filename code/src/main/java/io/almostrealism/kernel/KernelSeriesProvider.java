@@ -14,9 +14,10 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.code;
+package io.almostrealism.kernel;
 
-import io.almostrealism.kernel.KernelStructure;
+import io.almostrealism.expression.Expression;
 
-public interface Statement<T extends KernelStructure> extends KernelStructure<T> {
+public interface KernelSeriesProvider {
+	Expression getSeries(Expression exp);
 }

@@ -16,6 +16,7 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
@@ -57,8 +58,8 @@ public class Exponent extends Expression<Double> {
 	}
 
 	@Override
-	public Expression<Double> simplify() {
-		Expression<?> flat = super.simplify();
+	public Expression<Double> simplify(KernelSeriesProvider provider) {
+		Expression<?> flat = super.simplify(provider);
 		if (!(flat instanceof Exponent)) return (Expression<Double>) flat;
 
 		Expression base = flat.getChildren().get(0);

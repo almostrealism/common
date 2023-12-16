@@ -37,6 +37,14 @@ public interface Operation extends Process<Process<?, ?>, Runnable>, Supplier<Ru
 		};
 	}
 
+	static <P extends Supplier<Runnable>> Supplier<Runnable> optimized(P process) {
+		if (process instanceof Process) {
+			return ((Process<?, Runnable>) process).optimize();
+		} else {
+			return process;
+		}
+	}
+
 	class IsolatedProcess implements Process<Process<?, ?>, Runnable> {
 		private Operation op;
 

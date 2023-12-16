@@ -18,7 +18,6 @@ package io.almostrealism.scope;
 
 import io.almostrealism.code.Array;
 import io.almostrealism.lang.LanguageOperations;
-import io.almostrealism.expression.Constant;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.collect.TraversableExpression;
@@ -30,11 +29,9 @@ import io.almostrealism.relation.Evaluable;
 
 import java.util.Collections;
 import java.util.List;
-import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
 public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements Array<T, ArrayVariable<T>> {
-	private final LanguageOperations lang;
 	private final NameProvider names;
 
 	private int delegateOffset;
@@ -43,7 +40,7 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 
 	public ArrayVariable(LanguageOperations lang, NameProvider np, String name, Expression<Integer> arraySize) {
 		super(name, true, (Expression) null);
-		this.lang = lang;
+		setLanguage(lang);
 		this.names = np;
 		setArraySize(arraySize);
 	}
@@ -54,11 +51,9 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 
 	public ArrayVariable(LanguageOperations lang, NameProvider np, String name, PhysicalScope scope, Class<T> type, Supplier<Evaluable<? extends T>> p) {
 		super(name, scope, type, p);
-		this.lang = lang;
+		setLanguage(lang);
 		this.names = np;
 	}
-
-	public LanguageOperations getLanguage() { return lang; }
 
 	public void setArraySize(Expression<Integer> arraySize) { this.arraySize = arraySize; }
 
@@ -105,7 +100,7 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 			return v;
 		}
 
-		return (Expression) reference(names.getArrayPosition(lang, this, new IntegerConstant(index), 0), false);
+		return (Expression) reference(names.getArrayPosition(getLanguage(), this, new IntegerConstant(index), 0), false);
 	}
 
 	@Override
@@ -125,7 +120,7 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 			((InstanceReference) v).getReferent().setOriginalProducer(getOriginalProducer());
 			return v;
 		} else {
-			return reference(names.getArrayPosition(lang, this, pos, 0), false);
+			return reference(names.getArrayPosition(getLanguage(), this, pos, 0), false);
 		}
 	}
 

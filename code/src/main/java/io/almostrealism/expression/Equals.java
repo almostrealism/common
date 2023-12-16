@@ -16,6 +16,7 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
@@ -32,9 +33,9 @@ public class Equals extends Expression<Boolean> {
 	}
 
 	@Override
-	public Expression<Boolean> simplify() {
-		Expression<?> left = getChildren().get(0).simplify();
-		Expression<?> right = getChildren().get(1).simplify();
+	public Expression<Boolean> simplify(KernelSeriesProvider provider) {
+		Expression<?> left = getChildren().get(0).simplify(provider);
+		Expression<?> right = getChildren().get(1).simplify(provider);
 
 		OptionalInt li = left.intValue();
 		OptionalInt ri = right.intValue();

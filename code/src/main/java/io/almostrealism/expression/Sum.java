@@ -19,6 +19,7 @@ package io.almostrealism.expression;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.kernel.KernelSeries;
+import io.almostrealism.kernel.KernelSeriesProvider;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -105,8 +106,8 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public Expression simplify() {
-		List<Expression<?>> children = super.simplify().flatten().stream()
+	public Expression simplify(KernelSeriesProvider provider) {
+		List<Expression<?>> children = super.simplify(provider).flatten().stream()
 				.filter(e -> !removeIdentities || e.doubleValue().orElse(-1) != 0.0)
 				.collect(Collectors.toList());
 

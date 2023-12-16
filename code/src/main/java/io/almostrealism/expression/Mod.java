@@ -18,6 +18,7 @@ package io.almostrealism.expression;
 
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelSeriesMatcher;
+import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.Arrays;
@@ -93,8 +94,8 @@ public class Mod<T extends Number> extends Expression<T> {
 	}
 
 	@Override
-	public Expression simplify() {
-		Expression<?> flat = super.simplify();
+	public Expression simplify(KernelSeriesProvider provider) {
+		Expression<?> flat = super.simplify(provider);
 		if (!enableSimplification) return (Expression<Double>) flat;
 		if (!(flat instanceof Mod)) return (Expression<Double>) flat;
 

@@ -123,6 +123,10 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return PackedCollection.of(values);
 	}
 
+	default PackedCollection<?> empty(TraversalPolicy shape) {
+		return new PackedCollection<>(shape);
+	}
+
 	default <T> Producer<T> p(T value) {
 		if (value instanceof Producer) {
 			throw new IllegalArgumentException();
