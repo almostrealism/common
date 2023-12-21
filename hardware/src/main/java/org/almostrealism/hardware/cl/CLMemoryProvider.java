@@ -159,10 +159,6 @@ public class CLMemoryProvider implements MemoryProvider<RAM>, ConsoleFeatures {
 			deallocating.add(ram);
 		}
 
-		if (GlobalContextDebugFlags.gate) {
-			System.out.println("!");
-		}
-
 		try {
 			if (!(ram instanceof CLMemory)) throw new IllegalArgumentException();
 			if (ram.getProvider() != this)

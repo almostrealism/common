@@ -17,6 +17,7 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.Memory;
+import io.almostrealism.code.MemoryProvider;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
@@ -32,6 +33,10 @@ import java.util.Arrays;
 public interface MemoryData extends TraversableExpression<Double>, Delegated<MemoryData>, Node {
 
 	Memory getMem();
+
+	default void reallocate(MemoryProvider<?> provider) {
+		reassign(provider.reallocate(getMem(), getOffset(), getMemLength()));
+	}
 
 	void reassign(Memory mem);
 

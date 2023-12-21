@@ -17,19 +17,27 @@
 package org.almostrealism.hardware.mem;
 
 import io.almostrealism.code.Memory;
+import io.almostrealism.code.MemoryProvider;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.MemoryData;
-import org.almostrealism.hardware.PooledMem;
-import org.almostrealism.hardware.RAM;
+
+import java.util.HashMap;
+import java.util.Map;
 
 public abstract class MemoryDataAdapter implements MemoryData {
+	public static boolean enableMemVersions = true;
+
 	private Memory mem;
+	private Map<MemoryProvider, Memory> memVersions;
 
 	private MemoryData delegateMem;
 	private int delegateMemOffset;
 
 	protected void init() {
+		if (enableMemVersions)
+			memVersions = new HashMap<>();
+
 		if (getDelegate() == null) {
 			Heap heap = getDefaultDelegate();
 
@@ -57,9 +65,28 @@ public abstract class MemoryDataAdapter implements MemoryData {
 	public int getDelegateOffset() { return delegateMemOffset; }
 
 	@Override
+	public void reallocate(MemoryProvider<?> provider) {
+		if (getOffset() != 0) {
+			throw new HardwareException("Cannot reallocate memory with non-zero offset");
+		} if (memVersions == null || !memVersions.containsKey(provider)) {
+			MemoryData.super.reallocate(provider);
+		} else {
+			Memory mem = memVersions.get(provider);
+			mem.getProvider().setMem(mem, 0, this.mem, 0, getMemLength());
+			reassign(mem);
+		}
+	}
+
+	@Override
 	public void reassign(Memory mem) {
 		if (delegateMem != null || mem == null) {
 			throw new HardwareException("Only root memory can be reassigned");
+		}
+
+		if (memVersions == null) {
+			this.mem.getProvider().deallocate(getMemLength(), this.mem);
+		} else {
+			memVersions.put(this.mem.getProvider(), this.mem);
 		}
 
 		this.mem = mem;
