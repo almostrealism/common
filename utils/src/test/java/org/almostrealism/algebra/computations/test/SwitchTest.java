@@ -21,6 +21,8 @@ import io.almostrealism.code.ProducerComputation;
 import io.almostrealism.relation.Producer;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.hardware.DynamicAcceleratedOperation;
+import org.almostrealism.hardware.Hardware;
+import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.util.TestFeatures;
 import org.junit.Test;
@@ -47,8 +49,10 @@ public class SwitchTest implements TestFeatures {
 
 		Switch choice = choice(output, decision, new Scalar(1.0));
 
-		DynamicAcceleratedOperation op = (DynamicAcceleratedOperation) choice.get();
-		op.run();
+		HardwareOperator.verboseLog(() -> {
+			DynamicAcceleratedOperation op = (DynamicAcceleratedOperation) choice.get();
+			op.run();
+		});
 
 		System.out.println("chosen = " + output.getValue());
 		assertEquals(new Scalar(4.0), output);
@@ -66,8 +70,10 @@ public class SwitchTest implements TestFeatures {
 		list.add(choice(output1, decision1, new Scalar(1.0)));
 		list.add(choice(output2, decision2, new Scalar(1.0)));
 
-		DynamicAcceleratedOperation op = (DynamicAcceleratedOperation) list.get();
-		op.run();
+		HardwareOperator.verboseLog(() -> {
+			DynamicAcceleratedOperation op = (DynamicAcceleratedOperation) list.get();
+			op.run();
+		});
 
 		System.out.println("first choice = " + output1.getValue());
 		System.out.println("second choice = " + output2.getValue());

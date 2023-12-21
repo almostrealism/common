@@ -48,9 +48,12 @@ public class Conditional extends Expression<Double> {
 
 	@Override
 	public Expression simplify(KernelSeriesProvider provider) {
-		Expression<Boolean> condition = (Expression<Boolean>) getChildren().get(0).simplify(provider);
-		Expression<Double> positive = (Expression<Double>) getChildren().get(1).simplify(provider);
-		Expression<Double> negative = (Expression<Double>) getChildren().get(2).simplify(provider);
+		Expression<?> flat = super.simplify(provider);
+		if (!(flat instanceof Conditional)) return flat;
+
+		Expression<Boolean> condition = (Expression<Boolean>) flat.getChildren().get(0);
+		Expression<Double> positive = (Expression<Double>) flat.getChildren().get(1);
+		Expression<Double> negative = (Expression<Double>) flat.getChildren().get(2);
 
 		Optional<Boolean> cond = condition.booleanValue();
 		if (cond.isPresent()) {

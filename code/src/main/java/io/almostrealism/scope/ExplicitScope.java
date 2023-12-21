@@ -26,9 +26,9 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+@Deprecated
 public class ExplicitScope<T> extends Scope<T> {
 	private StringBuffer code;
-	private Function<LanguageOperations, String> codeGenerator;
 	private Consumer<CodePrintWriter> writer;
 	private List<Argument<?>> arguments;
 
@@ -49,10 +49,6 @@ public class ExplicitScope<T> extends Scope<T> {
 
 	public void setWriter(Consumer<CodePrintWriter> writer) {
 		this.writer = writer;
-	}
-
-	public void setSource(Function<LanguageOperations, String> source) {
-		this.codeGenerator = source;
 	}
 
 	public void setArguments(List<Argument<?>> arguments) { this.arguments = arguments; }
@@ -90,10 +86,6 @@ public class ExplicitScope<T> extends Scope<T> {
 			return;
 		}
 
-		if (codeGenerator == null) {
-			w.println(code.toString());
-		} else {
-			w.println(codeGenerator.apply(w.getLanguage()));
-		}
+		w.println(code.toString());
 	}
 }

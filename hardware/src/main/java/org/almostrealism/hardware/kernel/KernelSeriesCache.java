@@ -21,6 +21,7 @@ import io.almostrealism.code.Computation;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.KernelIndex;
+import io.almostrealism.kernel.KernelSeriesMatcher;
 import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.scope.ArrayVariable;
@@ -36,6 +37,7 @@ import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Function;
+import java.util.stream.DoubleStream;
 import java.util.stream.Stream;
 
 public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatures, ConsoleFeatures {
@@ -67,6 +69,13 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 		boolean isInt = exp.getType() == Integer.class;
 
 		double seq[] = Stream.of(exp.kernelSeq(count)).mapToDouble(Number::doubleValue).toArray();
+		double distinct[] = DoubleStream.of(seq).distinct().toArray();
+		if (distinct.length == 1)
+			return isInt ? e((int) distinct[0]) : e(distinct[0]);
+
+		Expression match = KernelSeriesMatcher.match(exp, count);
+		if (match != null) return match;
+
 		String sig = signature(seq);
 
 		if (!cache.containsKey(sig)) {

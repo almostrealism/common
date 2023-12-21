@@ -27,7 +27,8 @@ import java.util.OptionalDouble;
 import java.util.OptionalInt;
 
 public class Mod<T extends Number> extends Expression<T> {
-	public static boolean enableKernelSimplification = true;
+	public static boolean enableKernelSimplification = false;
+	public static boolean enableKernelConstantReplacement = false;
 	public static boolean enableKernelWarnings = false;
 
 	private boolean fp;
@@ -140,7 +141,7 @@ public class Mod<T extends Number> extends Expression<T> {
 						return KernelSeriesMatcher.simplify(input.imod(m), m);
 					}
 				}
-			} else if (input.isKernelValue()) {
+			} else if (enableKernelConstantReplacement && input.isKernelValue()) {
 				OptionalInt limit = input.kernelSeries().loop(m).getPeriod();
 
 				if (limit.isPresent()) {

@@ -53,10 +53,4 @@ public class KernelPreferences {
 	}
 
 	public static boolean isEnableSubdivision() { return enableSubdivision; }
-
-	@Deprecated
-	public static void optimizeForMetal() {
-		KernelPreferences.setPreferLoops(true);
-		KernelPreferences.setEnableSubdivision(false);
-	}
 }

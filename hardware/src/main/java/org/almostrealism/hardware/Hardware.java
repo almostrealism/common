@@ -106,6 +106,10 @@ public final class Hardware {
 					if (!SystemUtils.isMacOS())
 						requirements.add(ComputeRequirement.JNI);
 				}
+
+				if (drivers.length <= 1 && requirements.contains(ComputeRequirement.MTL)) {
+					KernelPreferences.enableSharedMemory = true;
+				}
 			} else {
 				throw new IllegalStateException("Unknown driver " + driver);
 			}

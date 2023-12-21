@@ -53,6 +53,8 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 	private List<Variable<?, ?>> dependencies = new ArrayList<>();
 	private List<Expression<?>> children = new ArrayList<>();
 
+	private Number[] latestKernelSeq;
+
 	public Expression(Class<T> type) {
 		setType(type);
 	}
@@ -138,7 +140,13 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 	}
 
 	public Number[] kernelSeq(int len) {
-		return IntStream.range(0, len).mapToObj(this::kernelValue).toArray(Number[]::new);
+		if (latestKernelSeq != null && latestKernelSeq.length >= len) {
+			return Arrays.copyOf(latestKernelSeq, len);
+		} else {
+			Number seq[] = IntStream.range(0, len).mapToObj(this::kernelValue).toArray(Number[]::new);
+			latestKernelSeq = seq;
+			return seq;
+		}
 	}
 
 	public Expression<?> getSimplified() {
@@ -286,17 +294,24 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 
 		if (children.size() <= 0) {
 			return this;
-		} else if (children.size() > 1) {
+		} else if (!isSeriesSimplificationTarget()) {
 			return generate(getChildren().stream().map((Expression<?> expression) -> expression.simplify(provider)).collect(Collectors.toList()));
 		}
 
-		Expression<?> child = children.get(0).simplify(provider);
-		if (provider != null && child.isKernelValue()) {
-			child = provider.getSeries(child).simplify(null);
+		Expression simplified[] = new Expression[children.size()];
+
+		for (int i = 0; i < simplified.length; i++) {
+			simplified[i] = children.get(i).simplify(provider);
+
+			if (provider != null && simplified[i].isKernelValue()) {
+				simplified[i] = provider.getSeries(simplified[i]).getSimplified();
+			}
 		}
 
-		return generate(List.of(child));
+		return generate(List.of(simplified));
 	}
+
+	public boolean isSeriesSimplificationTarget() { return getType() == Boolean.class; }
 
 	@Override
 	public boolean equals(Object obj) {

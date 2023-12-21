@@ -24,12 +24,14 @@ import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.OperationList;
 import org.almostrealism.hardware.cl.CLOperator;
+import org.almostrealism.io.Console;
 
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSettings {
+	Console console = Console.root.child();
 
 	default void print(int rows, int colWidth, PackedCollection<?> value) {
 		for (int i = 0; i < rows; i++) {
@@ -141,4 +143,7 @@ public interface TestFeatures extends CodeFeatures, TensorTestFeatures, TestSett
 			});
 		}
 	}
+
+	@Override
+	default Console console() { return console; }
 }

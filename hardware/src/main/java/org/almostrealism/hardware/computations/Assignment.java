@@ -97,22 +97,6 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 				} else {
 					Expression o = out.getValueAt(index);
 					v = o.assign(value);
-
-//					v = new Variable(out.getValueAt(index).getSimpleExpression(getLanguage()),
-//							false, value.getSimplified(), output.getRootDelegate());
-				}
-
-				if (enableLargeExpressionMonitoring) {
-					String e = v.getExpression().getSimpleExpression(new LanguageOperationsStub());
-					if (e.length() > 5000) {
-						try {
-							Files.writeString(Path.of("results/large_expression.txt"), e);
-						} catch (IOException ex) {
-							throw new RuntimeException(ex);
-						}
-
-						System.out.println("Wrote large expression to large_expression.txt");
-					}
 				}
 
 				scope.getVariables().add(v);

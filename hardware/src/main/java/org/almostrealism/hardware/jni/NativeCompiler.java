@@ -32,12 +32,15 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.lang.reflect.InvocationTargetException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Consumer;
 
 public class NativeCompiler implements ConsoleFeatures {
 	public static boolean enableVerbose = false;
+	public static boolean enableLargeInstructionSetMonitoring = true;
 
 	public static final String LIB_NAME_REPLACE = "%NAME%";
 
@@ -147,6 +150,16 @@ public class NativeCompiler implements ConsoleFeatures {
 	}
 
 	public void compileAndLoad(Class target, String code) {
+		if (enableLargeInstructionSetMonitoring && code.length() > 250000) {
+			try {
+				Files.writeString(Path.of("results/large_instruction_set.c"), code);
+			} catch (IOException ex) {
+				throw new RuntimeException(ex);
+			}
+
+			System.out.println("Wrote large_instruction_set.c");
+		}
+
 		String name = compile(target, code);
 		if (enableVerbose) log("Loading native library " + name);
 		System.loadLibrary(name);

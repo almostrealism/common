@@ -63,7 +63,7 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures, Hardwa
 
 //		dc(() -> {
 			for (int i = 0; i < 2; i++) {
-				cc(() -> {
+//				cc(() -> {
 					CursorPair cursors = cursors(3.2);
 					AcceleratedTimeSeries series = series();
 					Assert.assertEquals(5, series.getLength());
@@ -75,7 +75,7 @@ public class AcceleratedTimeSeriesOperationsTest implements CodeFeatures, Hardwa
 
 					Assert.assertEquals(3, series.getLength());
 					valueAtAssertions(series);
-				}, ComputeRequirement.CL);
+//				}, ComputeRequirement.CL);
 			}
 //		});
 	}

@@ -28,6 +28,7 @@ import io.almostrealism.code.Statement;
 import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.kernel.KernelStructure;
 import io.almostrealism.kernel.KernelTree;
+import io.almostrealism.relation.Parent;
 import io.almostrealism.relation.Tree;
 import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.expression.Expression;
@@ -279,7 +280,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements KernelTree<Scope<T>
 					Variable<?, ?> var = arg.getVariable();
 
 					// Argument references may be Computations, but they cannot
-					// by converted to required scopes because they refer directly
+					// be converted to required scopes because they refer directly
 					// to data passed into evaluation of the compiled Scope
 					if (var.getProducer() instanceof ProducerArgumentReference) {
 						return Collections.singletonList(arg);
@@ -331,7 +332,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements KernelTree<Scope<T>
 					// If the computation produces a Scope that was already
 					// converted by a child scope, skip over it
 					if (convertedScopes.contains(s.getName())) {
-						return Collections.emptyList();
+						return Collections.singletonList(arg);
 					}
 
 					// Recursively convert the required Scope's arguments
@@ -418,16 +419,24 @@ public class Scope<T> extends ArrayList<Scope<T>> implements KernelTree<Scope<T>
 
 	@Override
 	public Scope<T> simplify(KernelSeriesProvider provider) {
-		Scope<T> scope = new Scope<>(getName(), getMetadata());
+		Scope<T> scope = (Scope<T>) generate(getChildren()
+						.stream().map(s -> s.simplify(provider)).collect(Collectors.toList()));
+		scope.getRequiredScopes().addAll(getRequiredScopes()
+				.stream().map(s -> s.simplify(provider)).collect(Collectors.toList()));
 		scope.getMethods().addAll(getMethods()
 				.stream().map(m -> m.simplify(provider)).collect(Collectors.toList()));
 		scope.getStatements().addAll((List) getStatements()
 				.stream().map(s -> s.simplify(provider)).collect(Collectors.toList()));
 		scope.getVariables().addAll(getVariables()
 				.stream().map(v -> v.simplify(provider)).collect(Collectors.toList()));
-		scope.getChildren().addAll(getChildren()
-				.stream().map(s -> s.simplify(provider)).collect(Collectors.toList()));
 		scope.getMetrics().addAll(getMetrics());
+		return scope;
+	}
+
+	@Override
+	public Parent<Scope<T>> generate(List<Scope<T>> children) {
+		Scope<T> scope = new Scope<>(getName(), getMetadata());
+		scope.getChildren().addAll(children);
 		return scope;
 	}
 

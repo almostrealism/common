@@ -34,8 +34,11 @@ public class Equals extends Expression<Boolean> {
 
 	@Override
 	public Expression<Boolean> simplify(KernelSeriesProvider provider) {
-		Expression<?> left = getChildren().get(0).simplify(provider);
-		Expression<?> right = getChildren().get(1).simplify(provider);
+		Expression<?> flat = super.simplify(provider);
+		if (!(flat instanceof Equals)) return (Expression<Boolean>) flat;
+
+		Expression<?> left = flat.getChildren().get(0);
+		Expression<?> right = flat.getChildren().get(1);
 
 		OptionalInt li = left.intValue();
 		OptionalInt ri = right.intValue();

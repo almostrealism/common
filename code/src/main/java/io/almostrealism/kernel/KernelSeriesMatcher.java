@@ -31,6 +31,16 @@ public class KernelSeriesMatcher {
 		commonSeries.add(new KernelIndex());
 	}
 
+	public static Expression match(Expression e, int len) {
+		for (int i = 0; i < commonSeries.size(); i++) {
+			if (e.kernelEquivalent(commonSeries.get(i), len)) {
+				return commonSeries.get(i);
+			}
+		}
+
+		return null;
+	}
+
 	public static Expression simplify(Expression e, int mod) {
 		OptionalInt period = e.kernelSeries().getPeriod();
 		if (!period.isPresent()) return e;

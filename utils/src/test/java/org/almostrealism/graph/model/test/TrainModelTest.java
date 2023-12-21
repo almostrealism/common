@@ -43,7 +43,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	private TraversalPolicy inputShape = shape(h, w);
 
 	public CellularLayer convolution2d(TraversalPolicy inputShape, int size, int filterCount, ComputeRequirement... requirements) {
-		if (!LayerFeatures.enableLegacyConvLayer && inputShape.getTotalSize() > 16)
+		if (skipLongTests && !LayerFeatures.enableLegacyConvLayer && inputShape.getTotalSize() > 16)
 			throw new UnsupportedOperationException();
 
 		return TestFeatures.super.convolution2d(inputShape, size, filterCount, requirements);
@@ -284,17 +284,19 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 
 		try {
 			KernelSeries.maximumPeriod = 400;
-			Assignment.enableLargeExpressionMonitoring = true;
+			// Assignment.enableLargeExpressionMonitoring = true;
 
 			long start = System.currentTimeMillis();
+			log("Compiling model...");
 			CompiledModel compiled = model.compile();
+			log("Compiled model");
 
 			compiled.forward(input);
-			System.out.println("TrainModelTest: Input Size = " + input.getShape() +
+			log("Input Size = " + input.getShape() +
 					"\t | Time = " + (System.currentTimeMillis() - start) / 1000 + "s");
 
 			compiled.backward(rand(model.lastBlock().getOutputShape()).get().evaluate());
-			System.out.println("TrainModelTest: \t\tbackprop\t\t" +
+			log("\t\tbackprop\t\t" +
 					" | Time = " + (System.currentTimeMillis() - start) / 1000 + "s");
 		} finally {
 			KernelSeries.maximumPeriod = maxPeriod;

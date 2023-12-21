@@ -20,6 +20,7 @@ import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.mem.Heap;
 
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.Map;
 import java.util.function.Supplier;
 
@@ -79,7 +80,7 @@ public class ProducerCache {
 
 	private static Map<Supplier, Evaluable> getEvaluableCache() {
 		if (evaluableCache.get() == null) {
-			evaluableCache.set(new HashMap<>());
+			evaluableCache.set(new IdentityHashMap<>());
 		}
 
 		return evaluableCache.get();

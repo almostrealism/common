@@ -58,6 +58,8 @@ public class InstanceReference<T> extends Expression<T> implements ExpressionFea
 	public Variable<T, ?> getReferent() { return var; }
 	public Expression<?> getIndex() { return index; }
 
+	public boolean isSeriesSimplificationTarget() { return true; }
+
 	@Override
 	public String getExpression(LanguageOperations lang) {
 		if (var instanceof ArrayVariable) {

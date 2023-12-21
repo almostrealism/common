@@ -1,5 +1,8 @@
 .DS_Store
 **/.DS_Store
+
 /**/target/
 **/*.versionsBackup
+
 /utils/data/**
+/utils/results/**
