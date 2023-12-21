@@ -115,15 +115,12 @@ public abstract class HardwareOperator implements Execution, KernelWork, Operati
 					// and the entire reservation that it is part
 					// of will have to be reallocated
 					MemoryData root = data.getRootDelegate();
-					Memory originalMem = root.getMem();
 					int size = root.getMemLength() * provider.getNumberSize();
 
 					if (enableVerboseLog)
 						System.out.println("Hardware[" + getHardwareName() + "]: Reallocating " + size + " bytes");
 
-					Memory mem = supported.get(0).reallocate(root.getMem(), root.getOffset(), root.getMemLength());
-					root.reassign(mem);
-					provider.deallocate(root.getMemLength(), originalMem);
+					root.reallocate(supported.get(0));
 				}), false);
 
 	}
