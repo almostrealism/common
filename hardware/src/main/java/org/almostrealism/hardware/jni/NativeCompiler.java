@@ -54,6 +54,7 @@ public class NativeCompiler implements ConsoleFeatures {
 
 	private static int runnableCount;
 	private static int dataCount;
+	private static int monitorOutputCount;
 
 	private Precision precision;
 
@@ -151,13 +152,15 @@ public class NativeCompiler implements ConsoleFeatures {
 
 	public void compileAndLoad(Class target, String code) {
 		if (enableLargeInstructionSetMonitoring && code.length() > 250000) {
+			String name = "large_jni_instruction_set_" + (monitorOutputCount++) + ".c";
+
 			try {
-				Files.writeString(Path.of("results/large_instruction_set.c"), code);
+				Files.writeString(Path.of("results/" + name), code);
 			} catch (IOException ex) {
 				throw new RuntimeException(ex);
 			}
 
-			System.out.println("Wrote large_instruction_set.c");
+			log("Wrote " + name);
 		}
 
 		String name = compile(target, code);

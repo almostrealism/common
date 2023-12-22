@@ -107,24 +107,6 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 		return Arrays.stream(kernelSeq(kernelMax)).distinct().collect(Collectors.toList());
 	}
 
-	public boolean kernelEquivalent(Expression<?> exp, int kernelMax) {
-		if (!isKernelValue()) return false;
-		if (!exp.isKernelValue()) return false;
-
-		Number values[] = kernelSeq(kernelMax);
-		Number comp[] = exp.kernelSeq(kernelMax);
-
-		if (!Arrays.stream(values).allMatch(i -> i instanceof Integer)) return false;
-		if (!Arrays.stream(comp).allMatch(i -> i instanceof Integer)) return false;
-
-		for (int i = 0; i < kernelMax; i++) {
-			if (!values[i].equals(comp[i]))
-				return false;
-		}
-
-		return true;
-	}
-
 	public OptionalInt upperBound() {
 		OptionalInt i = intValue();
 		if (i.isPresent()) return i;
@@ -226,7 +208,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 	public Difference subtract(Expression<Double> operand) { return new Difference((Expression) this, operand); }
 
 	public Product multiply(int operand) { return new Product((Expression) this, (Expression) new IntegerConstant(operand)); }
-	public Product multiply(Expression<Double> operand) { return new Product((Expression) this, operand); }
+	public Product multiply(Expression<? extends Number> operand) { return new Product((Expression) this, (Expression) operand); }
 
 	public Quotient divide(int operand) { return new Quotient((Expression) this, (Expression) new IntegerConstant(operand)); }
 	public Quotient divide(Expression<?> operand) { return new Quotient((Expression) this, (Expression) operand); }
@@ -286,6 +268,11 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 		throw new UnsupportedOperationException();
 	}
 
+	protected Expression<T> populate(Expression<?> oldExpression) {
+		this.latestKernelSeq = oldExpression.latestKernelSeq;
+		return this;
+	}
+
 	public List<Expression<?>> flatten() { return getChildren(); }
 
 	@Override
@@ -295,7 +282,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 		if (children.size() <= 0) {
 			return this;
 		} else if (!isSeriesSimplificationTarget()) {
-			return generate(getChildren().stream().map((Expression<?> expression) -> expression.simplify(provider)).collect(Collectors.toList()));
+			return generate(getChildren().stream().map((Expression<?> expression) -> expression.simplify(provider)).collect(Collectors.toList())).populate(this);
 		}
 
 		Expression simplified[] = new Expression[children.size()];

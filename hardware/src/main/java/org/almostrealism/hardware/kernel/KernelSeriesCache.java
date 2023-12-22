@@ -42,7 +42,7 @@ import java.util.stream.Stream;
 
 public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatures, ConsoleFeatures {
 	public static boolean enableCache = true;
-	public static int defaultMaxEntries = 100;
+	public static int defaultMaxEntries = 256;
 
 	private int count;
 	private boolean fixed;
@@ -69,11 +69,8 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 		boolean isInt = exp.getType() == Integer.class;
 
 		double seq[] = Stream.of(exp.kernelSeq(count)).mapToDouble(Number::doubleValue).toArray();
-		double distinct[] = DoubleStream.of(seq).distinct().toArray();
-		if (distinct.length == 1)
-			return isInt ? e((int) distinct[0]) : e(distinct[0]);
 
-		Expression match = KernelSeriesMatcher.match(exp, count);
+		Expression match = KernelSeriesMatcher.match(seq, isInt);
 		if (match != null) return match;
 
 		String sig = signature(seq);

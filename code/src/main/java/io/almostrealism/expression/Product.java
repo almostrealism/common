@@ -137,12 +137,12 @@ public class Product<T extends Number> extends NAryExpression<T> {
 				.collect(Collectors.toList());
 
 		if (values.size() <= 0) {
-			return generate(children);
+			return generate(children).populate(this);
 		} else if (values.size() == 1) {
 			if (values.get(0).doubleValue() == 0.0) {
 				return getType() == Integer.class ? new IntegerConstant(0) : new DoubleConstant(0.0);
 			} else {
-				return generate(children);
+				return generate(children).populate(this);
 			}
 		}
 
@@ -158,13 +158,13 @@ public class Product<T extends Number> extends NAryExpression<T> {
 			if (children.isEmpty())
 				return getType() == Integer.class ? new IntegerConstant(1) : new DoubleConstant(1.0);
 			if (children.size() == 1) return (Expression<Double>) children.get(0);
-			return generate(children);
+			return generate(children).populate(this);
 		} else {
 			List<Expression<?>> newChildren = new ArrayList<>();
 			newChildren.addAll(children);
 			newChildren.add(getType() == Integer.class ? new IntegerConstant((int) product) : new DoubleConstant(product));
 			if (newChildren.size() == 1) return (Expression<Double>) newChildren.get(0);
-			return generate(newChildren);
+			return generate(newChildren).populate(this);
 		}
 	}
 

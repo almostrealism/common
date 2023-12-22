@@ -18,10 +18,21 @@ package org.almostrealism.hardware.metal;
 
 import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
+import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.ctx.GlobalContextDebugFlags;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.ConsoleFeatures;
 
-public class MetalProgram implements OperationInfo {
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+public class MetalProgram implements OperationInfo, ConsoleFeatures {
+	public static boolean enableLargeProgramMonitoring = true;
+
+	private static int monitorOutputCount;
+
 	private final OperationMetadata metadata;
 	private final MTLDevice device;
 	private final String func, src;
@@ -44,8 +55,16 @@ public class MetalProgram implements OperationInfo {
 	public MTLFunction getFunction() { return function; }
 
 	public void compile() {
-		if (GlobalContextDebugFlags.gate) {
-			System.out.println("!");
+		if (enableLargeProgramMonitoring && src.length() > 5000) {
+			String name = "large_mtl_instruction_set_" + (monitorOutputCount++) + ".c";
+
+			try {
+				Files.writeString(Path.of("results/" + name), src);
+			} catch (IOException ex) {
+				throw new RuntimeException(ex);
+			}
+
+			log("Wrote " + name);
 		}
 
 		function = device.newFunction(func, src);
@@ -61,6 +80,9 @@ public class MetalProgram implements OperationInfo {
 		function.release();
 		function = null;
 	}
+
+	@Override
+	public Console console() { return Hardware.console; }
 
 	public static MetalProgram create(MetalComputeContext ctx, OperationMetadata metadata, String func, String src) {
 		return new MetalProgram(ctx, metadata, func, src);

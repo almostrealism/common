@@ -130,6 +130,6 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 			children = newChildren;
 		}
 
-		return generate(children);
+		return generate(children).populate(this);
 	}
 }

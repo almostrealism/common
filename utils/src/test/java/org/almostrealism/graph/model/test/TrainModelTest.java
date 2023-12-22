@@ -247,9 +247,11 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 
 	@Test
 	public void trainSmall() {
-		Tensor<Double> t = tensor(shape(10, 10));
+		if (skipLongTests) return;
+
+		Tensor<Double> t = tensor(shape(16, 16));
 		PackedCollection<?> input = t.pack();
-		train(input, model(10, 10, 3, 8, 10));
+		train(input, model(16, 16, 3, 8, 10));
 	}
 
 	@Test
@@ -279,38 +281,39 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	}
 
 	protected void train(PackedCollection<?> input, Model model) {
-		int maxPeriod = KernelSeries.maximumPeriod;
-		boolean enableLargeExpressionMonitoring = Assignment.enableLargeExpressionMonitoring;
+		long start = System.currentTimeMillis();
+		log("Compiling model...");
+		CompiledModel compiled = model.compile();
+		log("Compiled model");
 
-		try {
-			KernelSeries.maximumPeriod = 400;
-			// Assignment.enableLargeExpressionMonitoring = true;
+		int count = 100 * 1000;
 
-			long start = System.currentTimeMillis();
-			log("Compiling model...");
-			CompiledModel compiled = model.compile();
-			log("Compiled model");
+		for (int i = 0; i < count; i++) {
+			input.fill(pos -> 0.5 + 0.5 * Math.random());
 
 			compiled.forward(input);
-			log("Input Size = " + input.getShape() +
-					"\t | Time = " + (System.currentTimeMillis() - start) / 1000 + "s");
+
+			if (i % 1000 == 0) {
+				log("Input Size = " + input.getShape() +
+						"\t | Time = " + (System.currentTimeMillis() - start) / 1000 + "s");
+			}
 
 			compiled.backward(rand(model.lastBlock().getOutputShape()).get().evaluate());
-			log("\t\tbackprop\t\t" +
-					" | Time = " + (System.currentTimeMillis() - start) / 1000 + "s");
-		} finally {
-			KernelSeries.maximumPeriod = maxPeriod;
-			Assignment.enableLargeExpressionMonitoring = enableLargeExpressionMonitoring;
+
+			if (i % 1000 == 0) {
+				log("\t\tbackprop\t\t" +
+						" | Time = " + (System.currentTimeMillis() - start) / 1000 + "s");
+			}
 		}
 	}
 
 	protected Model model(int r, int c, int convSize, int convFilters, int denseSize) {
 		Model model = new Model(shape(r, c));
 		model.addLayer(convolution2d(convSize, convFilters));
-//		model.addLayer(pool2d(2));
-//		model.addBlock(flatten());
-//		model.addLayer(dense(denseSize));
-//		model.addLayer(softmax());
+		model.addLayer(pool2d(2));
+		model.addBlock(flatten());
+		model.addLayer(dense(denseSize));
+		model.addLayer(softmax());
 		return model;
 	}
 }

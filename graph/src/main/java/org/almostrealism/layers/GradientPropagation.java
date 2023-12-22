@@ -97,7 +97,7 @@ public class GradientPropagation implements Propagation, CodeFeatures {
 			log("Compiling weight update...");
 			Runnable wua = weightUpdateAssignment.get();
 			log("Compiled weight update in " +
-					(System.currentTimeMillis() - start) / 1000 + "s");
+					(System.currentTimeMillis() - start) / 60000 + "m");
 
 			return () -> {
 				inputGrad.into(gradIn).evaluate();
