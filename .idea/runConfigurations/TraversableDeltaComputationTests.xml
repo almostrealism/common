@@ -1,0 +1,11 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="TraversableDeltaComputationTests" type="JUnit" factoryName="JUnit" folderName="Algebra">
+    <module name="ar-utils" />
+    <option name="PACKAGE_NAME" value="org.almostrealism.collect.computations.test" />
+    <option name="MAIN_CLASS_NAME" value="org.almostrealism.collect.computations.test.TraversableDeltaComputationTests" />
+    <option name="METHOD_NAME" value="matmulEnumerateProduct" />
+    <option name="TEST_OBJECT" value="class" />
+    <option name="WORKING_DIRECTORY" value="$MODULE_DIR$" />
+    <method v="2" />
+  </configuration>
+</component>
