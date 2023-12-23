@@ -38,8 +38,6 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 	public static boolean enableArgumentKernelSize = true;
 	public static boolean enableKernelSizeWarnings = SystemUtils.isEnabled("AR_HARDWARE_KERNEL_SIZE_WARNINGS").orElse(true);
 
-	public static double initTime;
-
 	private boolean kernel;
 	private boolean fixedCount;
 	private int count;
@@ -160,13 +158,10 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			}
 		}
 
-		initTime += sec(System.nanoTime() - start);
 		return this;
 	}
 
 	public AcceleratedProcessDetails construct() {
-		long start = System.nanoTime();
-
 		MemoryData kernelArgs[] = new MemoryData[arguments.size()];
 
 		for (int i = 0; i < kernelArgs.length; i++) {
@@ -190,7 +185,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 			}
 		}
 
-		AcceleratedOperation.processMetric.addEntry(System.nanoTime() - start); start = System.nanoTime();
+		long start = System.nanoTime();
 
 		/*
 		 * In the final pass, kernel arguments are evaluated in a way that ensures the

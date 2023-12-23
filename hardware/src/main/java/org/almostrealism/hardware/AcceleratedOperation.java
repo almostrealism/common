@@ -35,10 +35,12 @@ import io.almostrealism.code.ScopeLifecycle;
 import io.almostrealism.code.SupplierArgumentMap;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.c.NativeMemoryProvider;
+import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.jni.NativeExecution;
 import org.almostrealism.hardware.mem.Bytes;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
+import org.almostrealism.hardware.metal.MetalProgram;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.TimingMetric;
 import org.jocl.CLException;
@@ -60,7 +62,6 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	public static TimingMetric retrieveOperatorMetric = new TimingMetric("retrieveOperator");
 	public static TimingMetric processArgumentsMetric = new TimingMetric("processArguments");
 	public static TimingMetric acceptMetric = new TimingMetric("accept");
-	public static TimingMetric processMetric = new TimingMetric("process");
 	public static TimingMetric evaluateKernelMetric = new TimingMetric("evaluateKernel");
 	public static TimingMetric evaluateMetric = new TimingMetric("evaluate");
 	public static TimingMetric kernelCreateMetric = new TimingMetric("kernelCreate");
@@ -342,16 +343,25 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	}
 
 	public static void printTimes() {
+		// Memory access
 		console.println("AcceleratedOperation: " +
 				NativeMemoryProvider.ioTime.getEntries().get("getMem") + "sec (read native), " +
 				NativeMemoryProvider.ioTime.getEntries().get("setMem") + "sec (write native)");
+
+		// Compilation
+		console.println("AcceleratedOperation: Retrieve operator total - " +
+				((long) AcceleratedOperation.retrieveOperatorMetric.getTotal()) + "sec");
+		console.println("AcceleratedOperation: Scope simplify - " +
+				((long) Scope.simplifyTime.getTotal()) + "sec");
+		console.println("AcceleratedOperation: JNI Compile - " +
+				((long) NativeCompiler.compileTime.getTotal()) + "sec");
+		console.println("AcceleratedOperation: MTL Compile - " +
+				((long) MetalProgram.compileTime.getTotal()) + "sec");
+
+		// Runtime
 		console.println("AcceleratedOperation: " +
-				((long) AcceleratedOperation.retrieveOperatorMetric.getTotal()) + "sec (operator), " +
 				((long) AcceleratedOperation.processArgumentsMetric.getTotal()) + "sec (process), " +
 				((long) AcceleratedOperation.acceptMetric.getTotal()) + "sec (accept)");
-		console.println("AcceleratedOperation Process Init: " +
-				((long) ProcessDetailsFactory.initTime) + "sec (init), " +
-				((long) AcceleratedOperation.processMetric.getTotal()) + "sec (process)");
 		console.println("AcceleratedOperation Process Body: " +
 				((long) AcceleratedOperation.kernelCreateMetric.getTotal()) + "sec (create), " +
 				((long) AcceleratedOperation.evaluateKernelMetric.getTotal()) + "sec (evaluate kernel), " +

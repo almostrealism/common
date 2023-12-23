@@ -23,6 +23,7 @@ import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.hardware.ctx.GlobalContextDebugFlags;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
+import org.almostrealism.io.TimingMetric;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -31,6 +32,8 @@ import java.nio.file.Path;
 public class MetalProgram implements OperationInfo, ConsoleFeatures {
 	public static boolean enableProgramMonitoring = false;
 	public static boolean enableLargeProgramMonitoring = false;
+
+	public static TimingMetric compileTime = Hardware.console.timing("mtlCompile");
 
 	private static int monitorOutputCount;
 
@@ -68,9 +71,15 @@ public class MetalProgram implements OperationInfo, ConsoleFeatures {
 			log("Wrote " + name);
 		}
 
-		function = device.newFunction(func, src);
-		if (function.getNativePointer() == 0)
-			throw new HardwareException("Failed to compile " + func);
+		long start = System.nanoTime();
+
+		try {
+			function = device.newFunction(func, src);
+			if (function.getNativePointer() == 0)
+				throw new HardwareException("Failed to compile " + func);
+		} finally {
+			compileTime.addEntry(System.nanoTime() - start);
+		}
 	}
 
 	public MTLComputePipelineState newComputePipelineState() {

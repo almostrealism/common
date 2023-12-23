@@ -16,6 +16,7 @@
 
 package org.almostrealism.model;
 
+import io.almostrealism.code.OperationProfile;
 import io.almostrealism.cycle.Setup;
 import io.almostrealism.relation.ParallelProcess;
 import org.almostrealism.CodeFeatures;
@@ -129,5 +130,9 @@ public class Model implements Setup, CodeFeatures {
 
 	public CompiledModel compile() {
 		return CompiledModel.compile(this);
+	}
+
+	public CompiledModel compile(OperationProfile profile) {
+		return CompiledModel.compile(this, profile);
 	}
 }

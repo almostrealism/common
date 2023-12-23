@@ -40,6 +40,8 @@ import io.almostrealism.relation.Evaluable;
 import io.almostrealism.uml.Named;
 import io.almostrealism.uml.Nameable;
 import io.almostrealism.relation.Sortable;
+import org.almostrealism.io.Console;
+import org.almostrealism.io.TimingMetric;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -60,6 +62,9 @@ import java.util.stream.IntStream;
  */
 public class Scope<T> extends ArrayList<Scope<T>> implements KernelTree<Scope<T>>, OperationInfo, Nameable {
 	public static final boolean enableInlining = true;
+	public static final Console console = Console.root().child();
+
+	public static TimingMetric simplifyTime = console.timing("simplify");
 
 	private String name;
 	private OperationMetadata metadata;
@@ -419,18 +424,24 @@ public class Scope<T> extends ArrayList<Scope<T>> implements KernelTree<Scope<T>
 
 	@Override
 	public Scope<T> simplify(KernelSeriesProvider provider) {
-		Scope<T> scope = (Scope<T>) generate(getChildren()
-						.stream().map(s -> s.simplify(provider)).collect(Collectors.toList()));
-		scope.getRequiredScopes().addAll(getRequiredScopes()
-				.stream().map(s -> s.simplify(provider)).collect(Collectors.toList()));
-		scope.getMethods().addAll(getMethods()
-				.stream().map(m -> m.simplify(provider)).collect(Collectors.toList()));
-		scope.getStatements().addAll((List) getStatements()
-				.stream().map(s -> s.simplify(provider)).collect(Collectors.toList()));
-		scope.getVariables().addAll(getVariables()
-				.stream().map(v -> v.simplify(provider)).collect(Collectors.toList()));
-		scope.getMetrics().addAll(getMetrics());
-		return scope;
+		long start = System.nanoTime();
+
+		try {
+			Scope<T> scope = (Scope<T>) generate(getChildren()
+					.stream().map(s -> s.simplify(provider)).collect(Collectors.toList()));
+			scope.getRequiredScopes().addAll(getRequiredScopes()
+					.stream().map(s -> s.simplify(provider)).collect(Collectors.toList()));
+			scope.getMethods().addAll(getMethods()
+					.stream().map(m -> m.simplify(provider)).collect(Collectors.toList()));
+			scope.getStatements().addAll((List) getStatements()
+					.stream().map(s -> s.simplify(provider)).collect(Collectors.toList()));
+			scope.getVariables().addAll(getVariables()
+					.stream().map(v -> v.simplify(provider)).collect(Collectors.toList()));
+			scope.getMetrics().addAll(getMetrics());
+			return scope;
+		} finally {
+			simplifyTime.addEntry(System.nanoTime() - start);
+		}
 	}
 
 	@Override

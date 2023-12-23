@@ -25,6 +25,7 @@ import org.almostrealism.hardware.HardwareException;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.ConsoleFeatures;
 import org.almostrealism.io.SystemUtils;
+import org.almostrealism.io.TimingMetric;
 
 import java.io.BufferedWriter;
 import java.io.File;
@@ -42,6 +43,8 @@ public class NativeCompiler implements ConsoleFeatures {
 	public static boolean enableVerbose = false;
 	public static boolean enableInstructionSetMonitoring = false;
 	public static boolean enableLargeInstructionSetMonitoring = false;
+
+	public static TimingMetric compileTime = Hardware.console.timing("jniCompile");
 
 	public static final String LIB_NAME_REPLACE = "%NAME%";
 
@@ -164,10 +167,16 @@ public class NativeCompiler implements ConsoleFeatures {
 			log("Wrote " + name);
 		}
 
-		String name = compile(target, code);
-		if (enableVerbose) log("Loading native library " + name);
-		System.loadLibrary(name);
-		if (enableVerbose) log("Loaded native library " + name);
+		long start = System.nanoTime();
+
+		try {
+			String name = compile(target, code);
+			if (enableVerbose) log("Loading native library " + name);
+			System.loadLibrary(name);
+			if (enableVerbose) log("Loaded native library " + name);
+		} finally {
+			compileTime.addEntry(System.nanoTime() - start);
+		}
 	}
 
 	protected Consumer<List<String>> runner(String name) {

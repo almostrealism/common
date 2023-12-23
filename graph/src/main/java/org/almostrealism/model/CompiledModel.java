@@ -1,11 +1,13 @@
 package org.almostrealism.model;
 
+import io.almostrealism.code.OperationProfile;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.ParallelProcess;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.Ops;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.collect.computations.DynamicCollectionProducer;
+import org.almostrealism.hardware.OperationList;
 
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -46,6 +48,10 @@ public class CompiledModel implements CodeFeatures {
 	}
 
 	public static CompiledModel compile(Model model) {
+		return compile(model, null);
+	}
+
+	public static CompiledModel compile(Model model, OperationProfile profile) {
 		model.setup().get().run();
 
 		InputManager in = new InputManager(model.firstBlock().getInputShape());
@@ -60,10 +66,15 @@ public class CompiledModel implements CodeFeatures {
 				Ops.o().copy("Model Backward Output", out, Ops.o().p(gradOut), gradOut.getMemLength()));
 
 		ParallelProcess<?, Runnable> p = (ParallelProcess<?, Runnable>) model.forward().push(in.get());
+		if (p instanceof OperationList) p = ((OperationList) p).flatten();
 		p = p.optimize();
 
 		ParallelProcess<?, Runnable> q = (ParallelProcess<?, Runnable>) model.backward().push(grad.get());
+		if (q instanceof OperationList) q = ((OperationList) q).flatten();
 		q = q.optimize();
+
+		if (p instanceof OperationList) ((OperationList) p).setProfile(profile);
+		if (q instanceof OperationList) ((OperationList) q).setProfile(profile);
 
 		return new CompiledModel(in, () -> output, p.get(), grad, () -> gradOut, q.get());
 	}

@@ -17,13 +17,16 @@
 package org.almostrealism.graph.model.test;
 
 import io.almostrealism.code.ComputeRequirement;
+import io.almostrealism.code.OperationProfile;
 import io.almostrealism.kernel.KernelSeries;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.collect.computations.test.KernelAssertions;
+import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.computations.Assignment;
+import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.DefaultCellularLayer;
 import org.almostrealism.layers.LayerFeatures;
@@ -281,9 +284,13 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	}
 
 	protected void train(PackedCollection<?> input, Model model) {
+		HardwareOperator.profile = new OperationProfile("HardwareOperator");
+
+		OperationProfile profile = new OperationProfile("Model");
+
 		long start = System.currentTimeMillis();
 		log("Compiling model...");
-		CompiledModel compiled = model.compile();
+		CompiledModel compiled = model.compile(profile);
 		log("Compiled model");
 
 		int count = 100 * 1000;
@@ -295,16 +302,20 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 
 			if (i % 1000 == 0) {
 				log("Input Size = " + input.getShape() +
-						"\t | Time = " + (System.currentTimeMillis() - start) / 1000 + "s");
+						"\t | Time = " + (System.currentTimeMillis() - start) / 60000 + "m");
 			}
 
 			compiled.backward(rand(model.lastBlock().getOutputShape()).get().evaluate());
 
 			if (i % 1000 == 0) {
 				log("\t\tbackprop\t\t" +
-						" | Time = " + (System.currentTimeMillis() - start) / 1000 + "s");
+						" | Time = " + (System.currentTimeMillis() - start) / 60000 + "m");
 			}
 		}
+
+		profile.print();
+		HardwareOperator.profile.print();
+		AcceleratedOperation.printTimes();
 	}
 
 	protected Model model(int r, int c, int convSize, int convFilters, int denseSize) {

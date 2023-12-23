@@ -22,7 +22,7 @@ import io.almostrealism.scope.Variable;
 import org.almostrealism.io.Console;
 
 public interface Computation<T> extends ScopeLifecycle, OutputSupport {
-	Console console = Console.root().child();
+	Console console = Scope.console.child();
 
 	/**
 	 * Return a {@link Scope} containing the {@link Variable}s
