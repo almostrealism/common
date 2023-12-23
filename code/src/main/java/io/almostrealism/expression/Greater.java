@@ -23,7 +23,7 @@ import java.util.List;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 
-public class Greater extends Expression<Boolean> {
+public class Greater extends Comparison {
 	private boolean orEqual;
 
 	public Greater(Expression<?> left, Expression<?> right) {
@@ -31,7 +31,7 @@ public class Greater extends Expression<Boolean> {
 	}
 
 	public Greater(Expression<?> left, Expression<?> right, boolean orEqual) {
-		super(Boolean.class, left, right);
+		super(left, right);
 		this.orEqual = orEqual;
 	}
 
@@ -45,31 +45,10 @@ public class Greater extends Expression<Boolean> {
 	}
 
 	@Override
-	public Expression<Boolean> simplify(KernelSeriesProvider provider) {
-		Expression<?> left = getChildren().get(0).simplify(provider);
-		Expression<?> right = getChildren().get(1).simplify(provider);
-
-		OptionalInt li = left.intValue();
-		OptionalInt ri = right.intValue();
-		if (li.isPresent() && ri.isPresent()) {
-			if (orEqual) {
-				return new BooleanConstant(li.getAsInt() >= ri.getAsInt());
-			} else {
-				return new BooleanConstant(li.getAsInt() > ri.getAsInt());
-			}
-		}
-
-		OptionalDouble ld = left.doubleValue();
-		OptionalDouble rd = right.doubleValue();
-		if (ld.isPresent() && rd.isPresent()) {
-			if (orEqual) {
-				return new BooleanConstant(ld.getAsDouble() >= rd.getAsDouble());
-			} else {
-				return new BooleanConstant(ld.getAsDouble() > rd.getAsDouble());
-			}
-		}
-
-		return new Greater(left, right);
+	protected boolean compare(Number left, Number right) {
+		return orEqual ?
+				(left.doubleValue() >= right.doubleValue()) :
+				(left.doubleValue() > right.doubleValue());
 	}
 
 	@Override

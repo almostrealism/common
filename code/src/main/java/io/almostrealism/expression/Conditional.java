@@ -25,6 +25,8 @@ import java.util.OptionalDouble;
 import java.util.OptionalInt;
 
 public class Conditional extends Expression<Double> {
+	public static boolean enableKernelSimplification = true;
+
 	public Conditional(Expression<Boolean> condition, Expression<Double> positive, Expression<Double> negative) {
 		super(Double.class, condition, positive, negative);
 	}
@@ -73,6 +75,16 @@ public class Conditional extends Expression<Double> {
 		OptionalDouble rd = negative.doubleValue();
 		if (ld.isPresent() && rd.isPresent() && ld.getAsDouble() == rd.getAsDouble())
 			return new DoubleConstant(ld.getAsDouble());
+
+		if (enableKernelSimplification && provider != null) {
+			OptionalInt max = provider.getMaximumLength();
+			int seq[] = max.isPresent() ? condition.booleanSeq(max.getAsInt()) : null;
+			Expression exp = seq == null ? null : provider.getSeries(seq);
+
+			if (exp != null) {
+				return exp.multiply(positive).add(exp.add(1).imod(2).multiply(negative));
+			}
+		}
 
 		return new Conditional(condition, positive, negative);
 	}

@@ -29,7 +29,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 public class MetalProgram implements OperationInfo, ConsoleFeatures {
-	public static boolean enableLargeProgramMonitoring = true;
+	public static boolean enableProgramMonitoring = false;
+	public static boolean enableLargeProgramMonitoring = false;
 
 	private static int monitorOutputCount;
 
@@ -55,8 +56,8 @@ public class MetalProgram implements OperationInfo, ConsoleFeatures {
 	public MTLFunction getFunction() { return function; }
 
 	public void compile() {
-		if (enableLargeProgramMonitoring && src.length() > 5000) {
-			String name = "large_mtl_instruction_set_" + (monitorOutputCount++) + ".c";
+		if (enableProgramMonitoring || (enableLargeProgramMonitoring && src.length() > 10000)) {
+			String name = "mtl_instruction_set_" + (monitorOutputCount++) + ".c";
 
 			try {
 				Files.writeString(Path.of("results/" + name), src);

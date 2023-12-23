@@ -91,22 +91,30 @@ public class ExpressionSimplificationTests implements ExpressionFeatures {
 
 	@Test
 	public void kernelModProduct() {
-		boolean temp = false;
+		boolean enableSimplify = Mod.enableKernelSimplification;
 
-		if (temp) {
-			// TODO  Remove - this is just for reference
-			int kernel0 = 1;
-			int result = (((kernel0 * 4) % (8)) % (4));
-			result = (((((kernel0 * 4) % (8)) % (4)) + (-(((kernel0 * 4) % (8)) % (4))) + (((kernel0 * 4) % (8)) / 4) + ((((kernel0 * 4) % (8)) % (4)) * 2) + (((kernel0 * 4) / 8) * 8)) / 2) % (4);
+		try {
+			Mod.enableKernelSimplification = true;
+
+			boolean temp = false;
+
+			if (temp) {
+				// TODO  Remove - this is just for reference
+				int kernel0 = 1;
+				int result = (((kernel0 * 4) % (8)) % (4));
+				result = (((((kernel0 * 4) % (8)) % (4)) + (-(((kernel0 * 4) % (8)) % (4))) + (((kernel0 * 4) % (8)) / 4) + ((((kernel0 * 4) % (8)) % (4)) * 2) + (((kernel0 * 4) / 8) * 8)) / 2) % (4);
+			}
+
+			Expression kernel0 = new KernelIndex();
+			Expression result = kernel0.multiply(e(4)).imod(e(8)).imod(e(4));
+			System.out.println(Arrays.toString(result.kernelSeq(4)));
+			Assert.assertTrue(result.isKernelValue());
+
+			String simple = result.getSimpleExpression(lang);
+			System.out.println(simple);
+			Assert.assertEquals("0", simple);
+		} finally {
+			Mod.enableKernelSimplification = enableSimplify;
 		}
-
-		Expression kernel0 = new KernelIndex();
-		Expression result = kernel0.multiply(e(4)).imod(e(8)).imod(e(4));
-		System.out.println(Arrays.toString(result.kernelSeq(4)));
-		Assert.assertTrue(result.isKernelValue());
-
-		String simple = result.getSimpleExpression(lang);
-		System.out.println(simple);
-		Assert.assertEquals("0", simple);
 	}
 }

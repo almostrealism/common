@@ -131,6 +131,8 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 		}
 	}
 
+	public int[] booleanSeq(int len) { return null; }
+
 	public Expression<?> getSimplified() {
 		if (!enableSimplification) return this;
 

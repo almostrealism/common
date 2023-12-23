@@ -34,6 +34,16 @@ import java.util.stream.IntStream;
 
 public class TraversableDeltaComputationTests implements TestFeatures {
 	@Test
+	public void polynomial0() {
+		// x + 1
+		CollectionProducer<PackedCollection<?>> c = x().add(1);
+
+		// dy = f'(x)
+		Evaluable<PackedCollection<?>> dy = c.delta(x()).get();
+		PackedCollection<?> out = dy.evaluate(pack(1, 2, 3, 4, 5).traverseEach());
+	}
+
+	@Test
 	public void polynomial1() {
 		// x^2 + 3x + 1
 		CollectionProducer<PackedCollection<?>> c = x().sq().add(x().mul(3)).add(1);
@@ -195,6 +205,42 @@ public class TraversableDeltaComputationTests implements TestFeatures {
 
 	@Test
 	public void matmul2() {
+		int dim = 10;
+
+		PackedCollection<?> v = pack(IntStream.range(2, 2 + dim).boxed()
+				.mapToDouble(Double::valueOf).toArray())
+				.reshape(dim);
+		PackedCollection<?> w = empty(shape(dim, dim))
+				.fill(1, 2, 3, 4)
+				.reshape(shape(dim, dim));
+
+		// x0 * w0 + x1 * w1,  x0 * w2 + x1 * w3
+		// x0 * 4 + x1 * -3,  x0 * 2 + x1 * 1.5
+		// 2 * 4 + 3 * -3, 2 * 2 + 3 * 1.5
+		CollectionProducer<PackedCollection<?>> c = matmul(p(w), p(v));
+		System.out.println("c: " + shape(c).toStringDetail());
+		System.out.println("v: " + shape(v).toStringDetail());
+
+		// y = f(x)
+		Evaluable<PackedCollection<?>> y = c.get();
+		PackedCollection<?> out = y.evaluate();
+		System.out.println(Arrays.toString(out.toArray(0, dim)));
+		// assertEquals(8.5, out.toDouble(1));
+
+		HardwareOperator.verboseLog(() -> {
+			// dy0/dw = x0, x1, 0,  0
+			// dy1/dw = 0,  0,  x0, x1
+			Evaluable<PackedCollection<?>> dy = c.delta(p(w)).get();
+			PackedCollection<?> dout = dy.evaluate();
+			System.out.println(Arrays.toString(dout.toArray(0, dout.getMemLength())));
+			Assert.assertEquals(dout.getMemLength(), out.getMemLength() * w.getMemLength());
+			// assertEquals(0.0, dout.toDouble(5));
+			// assertEquals(3.0, dout.toDouble(7));
+		});
+	}
+
+	@Test
+	public void matmul3() {
 		boolean enableArgumentKernelSize = ProcessDetailsFactory.enableArgumentKernelSize;
 
 		try {

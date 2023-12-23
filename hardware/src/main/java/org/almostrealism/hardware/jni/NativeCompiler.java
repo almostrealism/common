@@ -40,7 +40,8 @@ import java.util.function.Consumer;
 
 public class NativeCompiler implements ConsoleFeatures {
 	public static boolean enableVerbose = false;
-	public static boolean enableLargeInstructionSetMonitoring = true;
+	public static boolean enableInstructionSetMonitoring = false;
+	public static boolean enableLargeInstructionSetMonitoring = false;
 
 	public static final String LIB_NAME_REPLACE = "%NAME%";
 
@@ -151,8 +152,8 @@ public class NativeCompiler implements ConsoleFeatures {
 	}
 
 	public void compileAndLoad(Class target, String code) {
-		if (enableLargeInstructionSetMonitoring && code.length() > 250000) {
-			String name = "large_jni_instruction_set_" + (monitorOutputCount++) + ".c";
+		if (enableInstructionSetMonitoring || (enableLargeInstructionSetMonitoring && code.length() > 50000)) {
+			String name = "jni_instruction_set_" + (monitorOutputCount++) + ".c";
 
 			try {
 				Files.writeString(Path.of("results/" + name), code);

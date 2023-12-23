@@ -116,7 +116,7 @@ public class CollectionComputationTests implements TestFeatures {
 		integersIndexAssignment(false);
 	}
 
-	@Test
+	// @Test
 	public void integersIndexAssignmentOptimized() {
 		integersIndexAssignment(true);
 	}

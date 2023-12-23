@@ -22,6 +22,7 @@ import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.Product;
 import io.almostrealism.expression.Sum;
 
+import java.util.List;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Predicate;
@@ -63,12 +64,12 @@ public interface CollectionExpression extends TraversableExpression<Double> {
 		throw new UnsupportedOperationException();
 	}
 
-	static CollectionExpression sum(TraversalPolicy shape, Stream<CollectionExpression> operands) {
-		return create(shape, idx -> new Sum<>(operands.map(o -> o.getValueAt(idx))));
+	static CollectionExpression sum(TraversalPolicy shape, List<CollectionExpression> operands) {
+		return create(shape, idx -> new Sum<>(operands.stream().map(o -> o.getValueAt(idx))));
 	}
 
-	static CollectionExpression product(TraversalPolicy shape, Stream<CollectionExpression> operands) {
-		return create(shape, idx -> new Product<>(operands.map(o -> o.getValueAt(idx))));
+	static CollectionExpression product(TraversalPolicy shape, List<CollectionExpression> operands) {
+		return create(shape, idx -> new Product<>(operands.stream().map(o -> o.getValueAt(idx))));
 	}
 
 	static CollectionExpression zeros(TraversalPolicy shape) {

@@ -16,16 +16,13 @@
 
 package io.almostrealism.expression;
 
-import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
-import java.util.OptionalDouble;
-import java.util.OptionalInt;
 
-public class Equals extends Expression<Boolean> {
+public class Equals extends Comparison {
 	public Equals(Expression<?> left, Expression<?> right) {
-		super(Boolean.class, left, right);
+		super(left, right);
 	}
 
 	public String getExpression(LanguageOperations lang) {
@@ -33,24 +30,8 @@ public class Equals extends Expression<Boolean> {
 	}
 
 	@Override
-	public Expression<Boolean> simplify(KernelSeriesProvider provider) {
-		Expression<?> flat = super.simplify(provider);
-		if (!(flat instanceof Equals)) return (Expression<Boolean>) flat;
-
-		Expression<?> left = flat.getChildren().get(0);
-		Expression<?> right = flat.getChildren().get(1);
-
-		OptionalInt li = left.intValue();
-		OptionalInt ri = right.intValue();
-		if (li.isPresent() && ri.isPresent())
-			return new BooleanConstant(li.getAsInt() == ri.getAsInt());
-
-		OptionalDouble ld = left.doubleValue();
-		OptionalDouble rd = right.doubleValue();
-		if (ld.isPresent() && rd.isPresent())
-			return new BooleanConstant(ld.getAsDouble() == rd.getAsDouble());
-
-		return new Equals(left, right);
+	protected boolean compare(Number left, Number right) {
+		return left.doubleValue() == right.doubleValue();
 	}
 
 	@Override

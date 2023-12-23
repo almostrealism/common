@@ -17,7 +17,34 @@
 package io.almostrealism.kernel;
 
 import io.almostrealism.expression.Expression;
+import io.almostrealism.expression.KernelIndex;
+
+import java.util.OptionalInt;
+import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 public interface KernelSeriesProvider {
-	Expression getSeries(Expression exp);
+	default Expression getSeries(Expression exp) {
+		if (exp instanceof KernelIndex || exp.doubleValue().isPresent() || !exp.isKernelValue()) return exp;
+
+		OptionalInt len = getMaximumLength();
+		if (!len.isPresent()) return exp;
+
+		Expression result = getSeries(
+				Stream.of(exp.kernelSeq(len.getAsInt())).mapToDouble(Number::doubleValue).toArray(),
+				exp.getType() == Integer.class);
+		return result == null ? exp : result;
+	}
+
+	default Expression getSeries(int values[]) {
+		return getSeries(IntStream.of(values).mapToDouble(i -> i).toArray(), true);
+	}
+
+	default Expression getSeries(double values[]) {
+		return getSeries(values, false);
+	}
+
+	Expression getSeries(double values[], boolean isInt);
+
+	OptionalInt getMaximumLength();
 }

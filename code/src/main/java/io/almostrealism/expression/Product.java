@@ -78,7 +78,6 @@ public class Product<T extends Number> extends NAryExpression<T> {
 		List<Expression<?>> operands = getChildren();
 		List<CollectionExpression> sum = new ArrayList<>();
 
-
 		for (int i = 0; i < operands.size(); i++) {
 			List<CollectionExpression> product = new ArrayList<>();
 
@@ -87,16 +86,15 @@ public class Product<T extends Number> extends NAryExpression<T> {
 				product.add(op);
 			}
 
-			sum.add(CollectionExpression.product(shape, product.stream()));
+			sum.add(CollectionExpression.product(shape, product));
 		}
-
 
 		if (sum.isEmpty()) {
 			return CollectionExpression.zeros(shape);
 		} else if (sum.size() == 1) {
 			return sum.get(0);
 		} else {
-			return CollectionExpression.sum(shape, sum.stream());
+			return CollectionExpression.sum(shape, sum);
 		}
 	}
 

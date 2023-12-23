@@ -82,7 +82,8 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 
 	@Override
 	public CollectionExpression delta(TraversalPolicy shape, Function<Expression, Predicate<Expression>> target) {
-		return CollectionExpression.sum(shape, getChildren().stream().map(e -> e.delta(shape, target)));
+		return CollectionExpression.sum(shape,
+				getChildren().stream().map(e -> e.delta(shape, target)).collect(Collectors.toList()));
 	}
 
 	@Override
@@ -111,8 +112,10 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 				.filter(e -> !removeIdentities || e.doubleValue().orElse(-1) != 0.0)
 				.collect(Collectors.toList());
 
-		if (children.size() == 1) return (Expression<Double>) children.get(0);
-		if (children.size() == 0) return (Expression<Double>) getChildren().iterator().next();
+		if (children.size() == 1) return children.get(0);
+		if (children.size() == 0) {
+			return getType() == Integer.class ? new IntegerConstant(0) : new DoubleConstant(0.0);
+		}
 
 		List<Double> values = children.stream()
 				.map(Expression::doubleValue)

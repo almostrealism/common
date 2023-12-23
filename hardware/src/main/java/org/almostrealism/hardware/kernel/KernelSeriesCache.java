@@ -36,6 +36,7 @@ import java.nio.DoubleBuffer;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.OptionalInt;
 import java.util.function.Function;
 import java.util.stream.DoubleStream;
 import java.util.stream.Stream;
@@ -62,13 +63,13 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 	}
 
 	@Override
-	public Expression getSeries(Expression exp) {
-		if (exp instanceof KernelIndex || exp.doubleValue().isPresent()) return exp;
-		if (!enableCache || !fixed || !exp.isKernelValue()) return exp;
+	public OptionalInt getMaximumLength() {
+		return fixed ? OptionalInt.of(count) : OptionalInt.empty();
+	}
 
-		boolean isInt = exp.getType() == Integer.class;
-
-		double seq[] = Stream.of(exp.kernelSeq(count)).mapToDouble(Number::doubleValue).toArray();
+	@Override
+	public Expression getSeries(double[] seq, boolean isInt) {
+		if (!enableCache) return null;
 
 		Expression match = KernelSeriesMatcher.match(seq, isInt);
 		if (match != null) return match;
@@ -78,7 +79,7 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 		if (!cache.containsKey(sig)) {
 			if (cache.size() >= cacheManager.getMaxEntries()) {
 				warn("Cache is full");
-				return exp;
+				return null;
 			}
 
 			int index = cache.size();
