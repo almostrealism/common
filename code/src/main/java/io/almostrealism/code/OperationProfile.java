@@ -53,7 +53,12 @@ public class OperationProfile implements Named, ConsoleFeatures {
 		StringBuilder builder = new StringBuilder();
 
 		double all = metric.getEntries().values().stream().mapToDouble(Double::doubleValue).sum();
-		builder.append("Operation Profile (" + getName() + " - " + format.format(all) + " seconds):\n");
+
+		if (all > 90) {
+			builder.append(getName() + " - " + format.format(all / 60.0) + " minutes:\n");
+		} else {
+			builder.append(getName() + " - " + format.format(all) + " seconds:\n");
+		}
 
 		String form = "\t%s: %d [%ss tot | %sms avg] %d%%\n";
 

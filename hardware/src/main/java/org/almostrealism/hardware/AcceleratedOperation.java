@@ -40,6 +40,8 @@ import org.almostrealism.hardware.jni.NativeExecution;
 import org.almostrealism.hardware.mem.Bytes;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
+import org.almostrealism.hardware.metal.MTLBuffer;
+import org.almostrealism.hardware.metal.MetalMemoryProvider;
 import org.almostrealism.hardware.metal.MetalProgram;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.TimingMetric;
@@ -344,9 +346,17 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 
 	public static void printTimes() {
 		// Memory access
-		console.println("AcceleratedOperation: " +
-				NativeMemoryProvider.ioTime.getEntries().get("getMem") + "sec (read native), " +
-				NativeMemoryProvider.ioTime.getEntries().get("setMem") + "sec (write native)");
+		if (!NativeMemoryProvider.ioTime.getEntries().isEmpty()) {
+			console.println("AcceleratedOperation: " +
+					NativeMemoryProvider.ioTime.getEntries().get("getMem") + "sec (read native), " +
+					NativeMemoryProvider.ioTime.getEntries().get("setMem") + "sec (write native)");
+		}
+
+		if (!MTLBuffer.ioTime.getEntries().isEmpty()) {
+			console.println("AcceleratedOperation: " +
+					MTLBuffer.ioTime.getEntries().get("getContents") + "sec (read mtl), " +
+					MTLBuffer.ioTime.getEntries().get("setContents") + "sec (write mtl)");
+		}
 
 		// Compilation
 		console.println("AcceleratedOperation: Retrieve operator total - " +

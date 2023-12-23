@@ -53,6 +53,8 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 	private List<Variable<?, ?>> dependencies = new ArrayList<>();
 	private List<Expression<?>> children = new ArrayList<>();
 
+	private boolean isSimple;
+	private KernelSeriesProvider seriesProvider;
 	private Number[] latestKernelSeq;
 
 	public Expression(Class<T> type) {
@@ -135,6 +137,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 
 	public Expression<?> getSimplified() {
 		if (!enableSimplification) return this;
+		if (isSimple) return this;
 
 		if (getClass() == Expression.class) {
 			if (enableWarnings) System.out.println("WARN: Unable to retrieve simplified expression");
@@ -158,6 +161,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 			exp = nextExp;
 		}
 
+		simplified.isSimple = true;
 		return simplified;
 	}
 
@@ -285,6 +289,8 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 			return this;
 		} else if (!isSeriesSimplificationTarget()) {
 			return generate(getChildren().stream().map((Expression<?> expression) -> expression.simplify(provider)).collect(Collectors.toList())).populate(this);
+		} else if (seriesProvider != null && seriesProvider == provider) {
+			return (Expression) getSimplified();
 		}
 
 		Expression simplified[] = new Expression[children.size()];
@@ -297,7 +303,9 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 			}
 		}
 
-		return generate(List.of(simplified));
+		Expression<T> simple = generate(List.of(simplified)).populate(this);
+		simple.seriesProvider = provider;
+		return simple;
 	}
 
 	public boolean isSeriesSimplificationTarget() { return getType() == Boolean.class; }

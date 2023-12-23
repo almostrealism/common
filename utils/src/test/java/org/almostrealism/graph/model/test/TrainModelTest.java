@@ -242,9 +242,10 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	public void trainVerySmall() {
 		if (skipLongTests) return;
 
-		Tensor<Double> t = tensor(shape(4, 4));
+		int dim = 4;
+		Tensor<Double> t = tensor(shape(dim, dim));
 		PackedCollection<?> input = t.pack();
-		train(input, model(4, 4, 3, 2, 10));
+		train(input, model(dim, dim, 3, 2, 10));
 	}
 
 
@@ -252,9 +253,10 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	public void trainSmall() {
 		if (skipLongTests) return;
 
-		Tensor<Double> t = tensor(shape(16, 16));
+		int dim = 16;
+		Tensor<Double> t = tensor(shape(dim, dim));
 		PackedCollection<?> input = t.pack();
-		train(input, model(16, 16, 3, 8, 10));
+		train(input, model(dim, dim, 3, 8, 10));
 	}
 
 	@Test
@@ -285,13 +287,9 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 
 	protected void train(PackedCollection<?> input, Model model) {
 		HardwareOperator.profile = new OperationProfile("HardwareOperator");
-
 		OperationProfile profile = new OperationProfile("Model");
-
-		long start = System.currentTimeMillis();
-		log("Compiling model...");
 		CompiledModel compiled = model.compile(profile);
-		log("Compiled model");
+		log("Model compiled");
 
 		int count = 100 * 1000;
 
@@ -302,14 +300,14 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 
 			if (i % 1000 == 0) {
 				log("Input Size = " + input.getShape() +
-						"\t | Time = " + (System.currentTimeMillis() - start) / 60000 + "m");
+						"\t | epoch = " + i / 1000);
 			}
 
 			compiled.backward(rand(model.lastBlock().getOutputShape()).get().evaluate());
 
 			if (i % 1000 == 0) {
 				log("\t\tbackprop\t\t" +
-						" | Time = " + (System.currentTimeMillis() - start) / 60000 + "m");
+						" | epoch = " + i / 1000);
 			}
 		}
 

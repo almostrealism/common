@@ -92,12 +92,7 @@ public class GradientPropagation implements Propagation, CodeFeatures {
 		op.add(() -> {
 			Evaluable<PackedCollection<?>> grad = deltaOutDeltaIn.get();
 			Evaluable<PackedCollection<?>> inputGrad = gradient.get();
-
-			long start = System.currentTimeMillis();
-			log("Compiling weight update...");
 			Runnable wua = weightUpdateAssignment.get();
-			log("Compiled weight update in " +
-					(System.currentTimeMillis() - start) / 60000 + "m");
 
 			return () -> {
 				inputGrad.into(gradIn).evaluate();
