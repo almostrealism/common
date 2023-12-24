@@ -213,7 +213,7 @@ public class Variable<T, V extends Variable<T, ?>> implements Statement<Variable
 	@Override
 	public Variable<T, ?> simplify(KernelSeriesProvider provider) {
 		if (destination == null) {
-			warn("Variable has no destination");
+			if (Expression.enableWarnings) warn("Variable has no destination");
 			return this;
 		}
 

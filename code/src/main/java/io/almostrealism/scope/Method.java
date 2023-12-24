@@ -91,7 +91,7 @@ public class Method<T> extends Expression<T> implements Statement<Expression<?>>
 
 	@Override
 	public Method<T> simplify(KernelSeriesProvider provider) {
-		throw new UnsupportedOperationException();
+		return (Method<T>) super.simplify(provider);
 	}
 
 	@Override
