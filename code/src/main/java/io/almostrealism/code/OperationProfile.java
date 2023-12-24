@@ -30,7 +30,6 @@ public class OperationProfile implements Named, ConsoleFeatures {
 
 	private String name;
 	private TimingMetric metric;
-	private DecimalFormat format;
 
 	public OperationProfile() {
 		this("default");
@@ -39,7 +38,6 @@ public class OperationProfile implements Named, ConsoleFeatures {
 	public OperationProfile(String name) {
 		this.name = name;
 		this.metric = console().timing(name + "_prof" + id++);
-		this.format = new DecimalFormat("##0.00#");
 	}
 
 	@Override
@@ -49,30 +47,7 @@ public class OperationProfile implements Named, ConsoleFeatures {
 
 	public void print() { log(summary()); }
 
-	public String summary() {
-		StringBuilder builder = new StringBuilder();
-
-		double all = metric.getEntries().values().stream().mapToDouble(Double::doubleValue).sum();
-
-		if (all > 90) {
-			builder.append(getName() + " - " + format.format(all / 60.0) + " minutes:\n");
-		} else {
-			builder.append(getName() + " - " + format.format(all) + " seconds:\n");
-		}
-
-		String form = "\t%s: %d [%ss tot | %sms avg] %d%%\n";
-
-		metric.getEntries().entrySet().stream()
-				.sorted(Comparator.comparing((Map.Entry<String, Double> ent) -> ent.getValue()).reversed())
-				.forEachOrdered(entry -> {
-					builder.append(String.format(form, entry.getKey(), metric.getCounts().get(entry.getKey()),
-							format.format(entry.getValue()),
-							format.format(1000 * entry.getValue() / metric.getCounts().get(entry.getKey())),
-							(int) (100 * entry.getValue() / all)));
-		});
-
-		return builder.toString();
-	}
+	public String summary() { return metric.summary(getName()); }
 
 	public long recordDuration(Runnable r) {
 		long start = System.nanoTime();

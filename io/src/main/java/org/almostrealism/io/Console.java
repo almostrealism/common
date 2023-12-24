@@ -30,6 +30,7 @@ public class Console {
 
 	private Console parent;
 	private List<Consumer<String>> listeners = new ArrayList<>();
+	private boolean flag;
 
 	private DateTimeFormatter format;
 	private StringBuffer data = new StringBuffer();
@@ -131,12 +132,17 @@ public class Console {
 		if (ex != null) ex.printStackTrace();
 	}
 
+	public DistributionMetric distribution(String name) {
+		return distribution(name, 1.0);
+	}
+
 	public DistributionMetric distribution(String name, double scale) {
 		if (metrics.containsKey(name)) {
 			return (DistributionMetric) metrics.get(name);
 		}
 
 		DistributionMetric metric = new DistributionMetric(name, scale);
+		metric.setConsole(this);
 		metrics.put(name, metric);
 		return metric;
 	}
@@ -147,9 +153,14 @@ public class Console {
 		}
 
 		TimingMetric metric = new TimingMetric(name);
+		metric.setConsole(this);
 		metrics.put(name, metric);
 		return metric;
 	}
+
+	public void flag() { this.flag = true; }
+	public boolean clearFlag() { boolean f = this.flag; this.flag = false; return f; }
+	public boolean checkFlag() { return this.flag; }
 
 	public Console child() {
 		return new Console(this);

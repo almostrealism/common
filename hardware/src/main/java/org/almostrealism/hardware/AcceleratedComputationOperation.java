@@ -26,7 +26,6 @@ import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.relation.Countable;
-import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.uml.Named;
 import io.almostrealism.scope.ArrayVariable;
@@ -34,7 +33,7 @@ import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 import org.almostrealism.hardware.kernel.KernelSeriesCache;
-import org.almostrealism.hardware.mem.MemoryDataCacheManager;
+import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 
 import java.util.List;
 
@@ -179,6 +178,17 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 		}
 
 		return operators.get(getFunctionName(), getArgsCount());
+	}
+
+	@Override
+	protected AcceleratedProcessDetails getProcessDetails(MemoryBank output, Object[] args) {
+		AcceleratedProcessDetails process = super.getProcessDetails(output, args);
+		if (kernelSeriesCache.getMaximumLength().isPresent() && process.getKernelSize() !=
+				kernelSeriesCache.getMaximumLength().getAsInt()) {
+			throw new UnsupportedOperationException();
+		}
+
+		return process;
 	}
 
 	@Override

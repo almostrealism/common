@@ -16,7 +16,46 @@
 
 package org.almostrealism.io;
 
-public class TimingMetric extends DistributionMetric {
+import java.text.DecimalFormat;
+import java.util.Comparator;
+import java.util.Map;
 
-	public TimingMetric(String name) { super(name, 1e9); }
+public class TimingMetric extends DistributionMetric {
+	private DecimalFormat format;
+
+	public TimingMetric(String name) {
+		super(name, 1e9);
+		this.format = new DecimalFormat("##0.00#");
+	}
+
+	@Override
+	public String summary(String displayName) {
+		StringBuilder builder = new StringBuilder();
+
+		double all = getTotal();
+		// getEntries().values().stream().mapToDouble(Double::doubleValue).sum();
+
+		if (all > 90) {
+			builder.append(displayName + " - " + format.format(all / 60.0) + " minutes");
+		} else {
+			builder.append(displayName + " - " + format.format(all) + " seconds");
+		}
+
+		if (getEntries().isEmpty()) return builder.toString();
+
+		builder.append(":\n");
+
+		String form = "\t%s: %d [%ss tot | %sms avg] %d%%\n";
+
+		getEntries().entrySet().stream()
+				.sorted(Comparator.comparing((Map.Entry<String, Double> ent) -> ent.getValue()).reversed())
+				.forEachOrdered(entry -> {
+					builder.append(String.format(form, entry.getKey(), getCounts().get(entry.getKey()),
+							format.format(entry.getValue()),
+							format.format(1000 * entry.getValue() / getCounts().get(entry.getKey())),
+							(int) (100 * entry.getValue() / all)));
+				});
+
+		return builder.toString();
+	}
 }

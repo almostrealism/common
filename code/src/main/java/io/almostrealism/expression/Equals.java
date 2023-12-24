@@ -19,6 +19,8 @@ package io.almostrealism.expression;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
+import java.util.OptionalDouble;
+import java.util.OptionalInt;
 
 public class Equals extends Comparison {
 	public Equals(Expression<?> left, Expression<?> right) {
@@ -32,6 +34,31 @@ public class Equals extends Comparison {
 	@Override
 	protected boolean compare(Number left, Number right) {
 		return left.doubleValue() == right.doubleValue();
+	}
+
+	@Override
+	protected int[] checkSingle(Expression left, Expression right, int len) {
+		if (left instanceof KernelIndex) {
+			OptionalInt i = right.intValue();
+			OptionalDouble d = right.doubleValue();
+
+			if (i.isPresent()) {
+				int val = i.getAsInt();
+				if (val >= 0 && val < len) {
+					int seq[] = new int[len];
+					seq[val] = 1;
+					return seq;
+				}
+			} else if (d.isPresent()) {
+				double val = d.getAsDouble();
+				if (val == Math.floor(val)) {
+					int seq[] = new int[len];
+					seq[(int) val] = 1;
+				}
+			}
+		}
+
+		return null;
 	}
 
 	@Override

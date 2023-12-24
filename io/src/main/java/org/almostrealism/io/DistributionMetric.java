@@ -16,6 +16,9 @@
 
 package org.almostrealism.io;
 
+import java.util.Comparator;
+import java.util.Map;
+
 public class DistributionMetric extends MetricBase {
 	private double scale;
 
@@ -30,5 +33,36 @@ public class DistributionMetric extends MetricBase {
 
 	public <T> void addEntry(T entry, long value) {
 		addEntry(entry, value / scale);
+	}
+
+	@Override
+	public void print() { log(summary()); }
+
+	public String summary() { return summary(getName()); }
+
+	public String summary(String displayName) {
+		StringBuilder builder = new StringBuilder();
+
+		double all = getTotal();
+
+		builder.append(displayName + " - " + (long) all + " total");
+
+		if (getEntries().isEmpty()) return builder.toString();
+
+		builder.append(":\n");
+
+//		String form = "\t%s: %d [%s tot | %s avg] %d%%\n";
+		String form = "\t%s: %d | %d%%\n";
+
+		getEntries().entrySet().stream()
+				.sorted(Comparator.comparing((Map.Entry<String, Double> ent) -> ent.getValue()).reversed())
+				.forEachOrdered(entry -> {
+					builder.append(String.format(form, entry.getKey(), getCounts().get(entry.getKey()),
+//									entry.getValue().longValue(),
+//									entry.getValue() / getCounts().get(entry.getKey())),
+							(int) (100 * entry.getValue() / all)));
+				});
+
+		return builder.toString();
 	}
 }

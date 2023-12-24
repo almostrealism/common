@@ -72,24 +72,28 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	}
 
 	protected MemoryBank<?> createDestination(int len) {
-		int count = len / getShape().getCount();
-
 		TraversalPolicy shape;
 
-		// When kernel length is less than, or identical to the output count, an
-		// assumption is made that the intended shape is the original shape.
-		// This is a bit of a hack, but it's by far the simplest solution
-		// available
-		if (count == 0 || len == getShape().getCount()) {
-			// It is not necessary to prepend a (usually) unnecessary dimension
+		if (isFixedCount()) {
 			shape = getShape();
 		} else {
-			shape = getShape().prependDimension(count);
-		}
+			int count = len / getShape().getCount();
 
-		if (enableDestinationLogging) {
-			System.out.println("CollectionProducerComputationBase: createKernelDestination(" + len +
-								"): " + shape + "[" + shape.getTraversalAxis() + "]");
+			// When kernel length is less than, or identical to the output count, an
+			// assumption is made that the intended shape is the original shape.
+			// This is a bit of a hack, but it's by far the simplest solution
+			// available
+			if (count == 0 || len == getShape().getCount()) {
+				// It is not necessary to prepend a (usually) unnecessary dimension
+				shape = getShape();
+			} else {
+				shape = getShape().prependDimension(count);
+			}
+
+			if (enableDestinationLogging) {
+				log("createDestination(" + len +
+						"): " + shape + "[" + shape.getTraversalAxis() + "]");
+			}
 		}
 
 		return new PackedCollection<>(shape);
@@ -106,8 +110,15 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	}
 
 	@Override
-	public int getCount() { return getShape().getCount(); }
+	public int getCount() {
+		return getShape().getCount();
+	}
 
+	@Override
+	public boolean isFixedCount() {
+		if (!super.isFixedCount()) return false;
+		return getShape().getTotalSize() != 1;
+	}
 
 	@Override
 	public Process<Process<?, ?>, Evaluable<? extends O>> isolate() {

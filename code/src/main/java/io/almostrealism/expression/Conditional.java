@@ -82,7 +82,13 @@ public class Conditional extends Expression<Double> {
 			Expression exp = seq == null ? null : provider.getSeries(seq);
 
 			if (exp != null) {
-				return exp.multiply(positive).add(exp.add(1).imod(2).multiply(negative));
+				if (rd.isPresent() && rd.getAsDouble() == 0) {
+					return exp.multiply(positive);
+				} else if (ld.isPresent() && ld.getAsDouble() == 0) {
+					return exp.add(1).imod(2).multiply(negative);
+				} else {
+					return exp.multiply(positive).add(exp.add(1).imod(2).multiply(negative));
+				}
 			}
 		}
 

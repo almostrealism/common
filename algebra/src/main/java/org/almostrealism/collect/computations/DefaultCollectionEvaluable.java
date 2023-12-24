@@ -17,6 +17,7 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.code.ComputeContext;
+import io.almostrealism.relation.ParallelProcess;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
@@ -47,21 +48,25 @@ public class DefaultCollectionEvaluable<T extends PackedCollection> extends Acce
 
 	@Override
 	public T createDestination(int len) {
-//		return (MemoryBank) new PackedCollection(shape.prependDimension(size));
-
-		int count = len / this.shape.getCount();
-
 		TraversalPolicy shape;
 
-		// When kernel length is less than, or identical to the output count, an
-		// assumption is made that the intended shape is the original shape.
-		// This is a bit of a hack, but it's by far the simplest solution
-		// available
-		if (count == 0 || len == this.shape.getCount()) {
-			// It is not necessary to prepend a (usually) unnecessary dimension
+		if (ParallelProcess.isFixedCount(getComputation())) {
 			shape = this.shape;
 		} else {
-			shape = this.shape.prependDimension(count);
+			int count = len / this.shape.getCount();
+
+			// When kernel length is less than, or identical to the output count, an
+			// assumption is made that the intended shape is the original shape.
+			// The same assumption is made if the kernel length is not a multiple of
+			// the output count.
+			// This is a bit of a hack, but it's by far the simplest solution
+			// available
+			if (count == 0 || len == this.shape.getCount() || len % this.shape.getCount() != 0) {
+				// It is not necessary to prepend a (usually) unnecessary dimension
+				shape = this.shape;
+			} else {
+				shape = this.shape.prependDimension(count);
+			}
 		}
 
 		return (T) new PackedCollection<>(shape);

@@ -26,10 +26,8 @@ import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.code.Statement;
 import io.almostrealism.kernel.KernelSeriesProvider;
-import io.almostrealism.kernel.KernelStructure;
 import io.almostrealism.kernel.KernelTree;
 import io.almostrealism.relation.Parent;
-import io.almostrealism.relation.Tree;
 import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
@@ -64,7 +62,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements KernelTree<Scope<T>
 	public static final boolean enableInlining = true;
 	public static final Console console = Console.root().child();
 
-	public static TimingMetric simplifyTime = console.timing("simplify");
+	public static TimingMetric timing = console.timing("scope");
 
 	private String name;
 	private OperationMetadata metadata;
@@ -424,24 +422,27 @@ public class Scope<T> extends ArrayList<Scope<T>> implements KernelTree<Scope<T>
 
 	@Override
 	public Scope<T> simplify(KernelSeriesProvider provider) {
-		long start = System.nanoTime();
+		Scope<T> scope = (Scope<T>) generate(getChildren()
+				.stream().map(s -> s.simplify(provider)).collect(Collectors.toList()));
 
-		try {
-			Scope<T> scope = (Scope<T>) generate(getChildren()
-					.stream().map(s -> s.simplify(provider)).collect(Collectors.toList()));
-			scope.getRequiredScopes().addAll(getRequiredScopes()
-					.stream().map(s -> s.simplify(provider)).collect(Collectors.toList()));
-			scope.getMethods().addAll(getMethods()
-					.stream().map(m -> m.simplify(provider)).collect(Collectors.toList()));
-			scope.getStatements().addAll((List) getStatements()
-					.stream().map(s -> s.simplify(provider)).collect(Collectors.toList()));
-			scope.getVariables().addAll(getVariables()
-					.stream().map(v -> v.simplify(provider)).collect(Collectors.toList()));
-			scope.getMetrics().addAll(getMetrics());
-			return scope;
-		} finally {
-			simplifyTime.addEntry(System.nanoTime() - start);
-		}
+		scope.getRequiredScopes().addAll(getRequiredScopes()
+				.stream().map(s -> s.simplify(provider)).collect(Collectors.toList()));
+
+		long start = System.nanoTime();
+		scope.getMethods().addAll(getMethods()
+				.stream().map(m -> m.simplify(provider)).collect(Collectors.toList()));
+		timing.addEntry("methodsSimplify", System.nanoTime() - start); start = System.nanoTime();
+
+		scope.getStatements().addAll((List) getStatements()
+				.stream().map(s -> s.simplify(provider)).collect(Collectors.toList()));
+		timing.addEntry("statementsSimplify", System.nanoTime() - start); start = System.nanoTime();
+
+		scope.getVariables().addAll(getVariables()
+				.stream().map(v -> v.simplify(provider)).collect(Collectors.toList()));
+		timing.addEntry("variablesSimplify", System.nanoTime() - start); start = System.nanoTime();
+
+		scope.getMetrics().addAll(getMetrics());
+		return scope;
 	}
 
 	@Override

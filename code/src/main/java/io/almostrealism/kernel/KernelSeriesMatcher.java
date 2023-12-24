@@ -21,6 +21,8 @@ import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.KernelIndex;
+import io.almostrealism.scope.Scope;
+import org.almostrealism.io.TimingMetric;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -37,29 +39,35 @@ public class KernelSeriesMatcher implements ExpressionFeatures {
 	}
 
 	public static Expression match(double seq[], boolean isInt) {
-		double distinct[] = DoubleStream.of(seq).distinct().toArray();
-		if (distinct.length == 1)
-			return isInt ? new IntegerConstant((int) distinct[0]) : new DoubleConstant(distinct[0]);
+		long start = System.nanoTime();
 
-		double initial = seq[0];
-		double delta = seq[1] - seq[0];
-		boolean isArithmetic = true;
-		for (int i = 2; i < seq.length; i++) {
-			if (seq[i] - seq[i - 1] != delta) {
-				isArithmetic = false;
-				break;
+		try {
+			double distinct[] = DoubleStream.of(seq).distinct().toArray();
+			if (distinct.length == 1)
+				return isInt ? new IntegerConstant((int) distinct[0]) : new DoubleConstant(distinct[0]);
+
+			double initial = seq[0];
+			double delta = seq[1] - seq[0];
+			boolean isArithmetic = true;
+			for (int i = 2; i < seq.length; i++) {
+				if (seq[i] - seq[i - 1] != delta) {
+					isArithmetic = false;
+					break;
+				}
 			}
-		}
 
-		if (isArithmetic) {
-			if (isInt) {
-				return new KernelIndex().multiply(new IntegerConstant((int) delta)).add(new IntegerConstant((int) initial));
-			} else {
-				return new KernelIndex().multiply(new DoubleConstant(delta)).add(new DoubleConstant(initial));
+			if (isArithmetic) {
+				if (isInt) {
+					return new KernelIndex().multiply(new IntegerConstant((int) delta)).add(new IntegerConstant((int) initial));
+				} else {
+					return new KernelIndex().multiply(new DoubleConstant(delta)).add(new DoubleConstant(initial));
+				}
 			}
-		}
 
-		return match(DoubleStream.of(seq).boxed().toArray(Number[]::new));
+			return match(DoubleStream.of(seq).boxed().toArray(Number[]::new));
+		} finally {
+			KernelSeriesProvider.timing.addEntry("match", System.nanoTime() - start);
+		}
 	}
 
 	public static Expression match(Number seq[]) {

@@ -71,6 +71,11 @@ public class ReshapeProducer<T extends Shape<T>>
 	public int getCount() { return getShape().getCount(); }
 
 	@Override
+	public boolean isFixedCount() {
+		return ParallelProcess.isFixedCount(producer);
+	}
+
+	@Override
 	public Collection<Process<?, ?>> getChildren() {
 		return producer instanceof Process ? List.of((Process) producer) : Collections.emptyList();
 	}

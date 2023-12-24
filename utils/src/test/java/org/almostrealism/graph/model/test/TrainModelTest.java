@@ -19,6 +19,7 @@ package org.almostrealism.graph.model.test;
 import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.code.OperationProfile;
 import io.almostrealism.kernel.KernelSeries;
+import io.almostrealism.scope.Scope;
 import org.almostrealism.algebra.Tensor;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
@@ -26,6 +27,7 @@ import org.almostrealism.collect.computations.test.KernelAssertions;
 import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.computations.Assignment;
+import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.DefaultCellularLayer;
@@ -54,6 +56,8 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 
 	@Test
 	public void dense() {
+		if (skipLongTests) return;
+
 		int size = 30;
 		int nodes = 10;
 
@@ -116,6 +120,8 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 
 	@Test
 	public void conv() {
+		if (skipLongTests) return;
+
 		Model model = new Model(inputShape);
 		CellularLayer conv = convolution2d(inputShape, convSize, 8);
 
@@ -153,6 +159,8 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 
 	@Test
 	public void pool() {
+		if (skipLongTests) return;
+
 		CellularLayer conv = convolution2d(inputShape, convSize, 8);
 		TraversalPolicy inputShape = conv.getOutputShape();
 
@@ -173,6 +181,8 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 
 	@Test
 	public void convPool() {
+		if (skipLongTests) return;
+
 		Model model = new Model(inputShape);
 		CellularLayer conv = convolution2d(inputShape, convSize, 8);
 		CellularLayer pool = pool2d(conv.getOutputShape(), poolSize);
@@ -253,10 +263,13 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	public void trainSmall() {
 		if (skipLongTests) return;
 
-		int dim = 16;
+		NativeCompiler.enableInstructionSetMonitoring = true;
+
+		int dim = 8; // 16;
+		int filters = 6; // 8;
 		Tensor<Double> t = tensor(shape(dim, dim));
 		PackedCollection<?> input = t.pack();
-		train(input, model(dim, dim, 3, 8, 10));
+		train(input, model(dim, dim, 3, filters, 10));
 	}
 
 	@Test
@@ -291,6 +304,8 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		CompiledModel compiled = model.compile(profile);
 		log("Model compiled");
 
+		// Scope.console.flag();
+
 		int count = 100 * 1000;
 
 		for (int i = 0; i < count; i++) {
@@ -323,6 +338,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		model.addBlock(flatten());
 		model.addLayer(dense(denseSize));
 		model.addLayer(softmax());
+		log("Created model");
 		return model;
 	}
 }

@@ -20,6 +20,7 @@ import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.expression.KernelIndex;
+import io.almostrealism.expression.Mod;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelSeriesMatcher;
 import io.almostrealism.lang.LanguageOperations;
@@ -100,32 +101,40 @@ public class KernelSeriesTests implements ExpressionFeatures {
 	// (((((((((((kernel0 * 8) % (144)) / 8) + (((kernel0 * 8) / 144) * 144)) / 18) * 9) / 9) * 9) / 18) * 9) / 9) * 9
 	@Test
 	public void productQuotientSumSimplify() {
-		Expression a = kernel().multiply(8)
-				.imod(144)
-				.divide(8);
-		a.kernelSeries();
+		boolean enableSimplify = Mod.enableKernelSimplification;
 
-		Expression b = kernel().multiply(8).divide(144).multiply(144);
-		Expression c = a.add(b);
-		Expression e = c.divide(18).multiply(9).imod(9).getSimplified();
-		Assert.assertTrue(e instanceof IntegerConstant);
-		Assert.assertEquals(0, e.intValue().getAsInt());
+		try {
+			Mod.enableKernelSimplification = true;
 
-		Expression p = kernel().multiply(8)
-				.imod(144)
-				.divide(8)
-				.add(kernel().multiply(8).divide(144).multiply(144))
-				.divide(18)
-				.multiply(9)
-				.divide(9)
-				.multiply(9)
-				.divide(18)
-				.multiply(9)
-				.divide(9)
-				.multiply(9)
-				.imod(36);
+			Expression a = kernel().multiply(8)
+					.imod(144)
+					.divide(8);
+			a.kernelSeries();
 
-		validateSeries(p);
+			Expression b = kernel().multiply(8).divide(144).multiply(144);
+			Expression c = a.add(b);
+			Expression e = c.divide(18).multiply(9).imod(9).getSimplified();
+			Assert.assertTrue(e instanceof IntegerConstant);
+			Assert.assertEquals(0, e.intValue().getAsInt());
+
+			Expression p = kernel().multiply(8)
+					.imod(144)
+					.divide(8)
+					.add(kernel().multiply(8).divide(144).multiply(144))
+					.divide(18)
+					.multiply(9)
+					.divide(9)
+					.multiply(9)
+					.divide(18)
+					.multiply(9)
+					.divide(9)
+					.multiply(9)
+					.imod(36);
+
+			validateSeries(p);
+		} finally {
+			Mod.enableKernelSimplification = enableSimplify;
+		}
 	}
 
 	@Test

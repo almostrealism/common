@@ -71,6 +71,8 @@ public class PropagationTests implements TestFeatures {
 
 	@Test
 	public void denseBackwards() {
+		if (skipLongTests) return;
+
 		int size = 12;
 		int nodes = 5;
 

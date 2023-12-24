@@ -92,10 +92,16 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 	}
 
 	public String signature(double[] values) {
-		ByteBuffer byteBuffer = ByteBuffer.allocate(Double.SIZE / Byte.SIZE * values.length);
-		DoubleBuffer doubleBuffer = byteBuffer.asDoubleBuffer();
-		doubleBuffer.put(values);
-		return encoder.encodeToString(byteBuffer.array());
+		long start = System.nanoTime();
+
+		try {
+			ByteBuffer byteBuffer = ByteBuffer.allocate(Double.SIZE / Byte.SIZE * values.length);
+			DoubleBuffer doubleBuffer = byteBuffer.asDoubleBuffer();
+			doubleBuffer.put(values);
+			return encoder.encodeToString(byteBuffer.array());
+		} finally {
+			KernelSeriesProvider.timing.addEntry("signature", System.nanoTime() - start);
+		}
 	}
 
 	@Override

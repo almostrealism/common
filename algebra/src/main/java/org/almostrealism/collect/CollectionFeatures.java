@@ -194,6 +194,21 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	}
 
 	default <T extends MemoryData> Assignment<T> a(Producer<T> result, Producer<T> value) {
+		TraversalPolicy resultShape = shape(result);
+		TraversalPolicy valueShape = shape(value);
+
+		if (resultShape.getSize() != valueShape.getSize()) {
+			int axis = compatibleAxis(resultShape, valueShape);
+			if (axis == -1) {
+				throw new IllegalArgumentException();
+			} else if (axis < resultShape.getTraversalAxis()) {
+				console.warn("Assignment destination (" + resultShape.getCount() +
+						") adjusted to match source (" + valueShape.getCount() + ")");
+			}
+
+			return a(traverse(axis, (Producer) result), value);
+		}
+
 		return new Assignment<>(shape(result).getSize(), result, value);
 	}
 
@@ -325,6 +340,16 @@ public interface CollectionFeatures extends ExpressionFeatures {
 
 					return kernel.apply(vars, pos);
 				}), arguments);
+	}
+
+	default int compatibleAxis(TraversalPolicy shape, TraversalPolicy target) {
+		for (int i = 0; i < shape.getDimensions() + 1; i++) {
+			if (shape.size(i) == target.getSize()) {
+				return i;
+			}
+		}
+
+		return -1;
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> traverse(int axis, Producer<T> producer) {

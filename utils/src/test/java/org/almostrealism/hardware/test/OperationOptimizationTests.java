@@ -49,7 +49,7 @@ public class OperationOptimizationTests implements TestFeatures {
 		CollectionProducer<PackedCollection<?>> v =
 				c(p(values)).reshape(shape(seqLength, dim))
 				.enumerate(1, 1)
-				.reshape(shape(heads, headSize, seqLength));
+				.reshape(shape(heads, headSize, seqLength).traverseEach());
 
 		OperationProfile profiles = new OperationProfile();
 

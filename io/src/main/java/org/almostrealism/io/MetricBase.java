@@ -23,13 +23,14 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
-public abstract class MetricBase implements Named {
+public abstract class MetricBase implements Named, ConsoleFeatures {
 	public static long startingTime = Instant.now().getEpochSecond();
 
 	/** 10 minutes */
 	public static long intervalRate = 600;
 
 	private final String name;
+	private Console console;
 
 	protected Map<String, Double> entries;
 	protected Map<String, Integer> counts;
@@ -52,6 +53,8 @@ public abstract class MetricBase implements Named {
 	public long getCount() { return count; }
 	public double getTotal() { return total; }
 
+	public void setConsole(Console console) { this.console = console; }
+
 	public void addEntry(double value) {
 		addEntry(null, value);
 	}
@@ -59,14 +62,9 @@ public abstract class MetricBase implements Named {
 	public <T> void addEntry(T entry, double value) {
 		long interval = getCurrentInterval();
 
-		if (entry instanceof String) {
-			entries.merge((String) entry, value, Double::sum);
-			counts.merge((String) entry, 1, Integer::sum);
-		} else if (entry != null) {
-			String className = entry.getClass().getName();
-			entries.merge(className, value, Double::sum);
-			counts.merge(className, 1, Integer::sum);
-		}
+		String name = entry instanceof String ? (String) entry : Named.nameOf(entry);
+		entries.merge(name, value, Double::sum);
+		counts.merge(name, 1, Integer::sum);
 
 		total += value;
 		count++;
@@ -91,6 +89,14 @@ public abstract class MetricBase implements Named {
 		long currentTime = Instant.now().getEpochSecond() - startingTime;
 		return currentTime / intervalRate;
 	}
+
+	public void print() {
+		getEntries().forEach((k, v) ->
+				log(k + " - " + v.longValue()));
+	}
+
+	@Override
+	public Console console() { return console; }
 
 	public void clear() {
 		count = 0;

@@ -18,22 +18,35 @@ package io.almostrealism.kernel;
 
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.KernelIndex;
+import io.almostrealism.lang.LanguageOperationsStub;
+import io.almostrealism.scope.Scope;
+import org.almostrealism.io.TimingMetric;
 
 import java.util.OptionalInt;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
 public interface KernelSeriesProvider {
+	TimingMetric timing = Scope.console.timing("kernelSeries");
+
 	default Expression getSeries(Expression exp) {
 		if (exp instanceof KernelIndex || exp.doubleValue().isPresent() || !exp.isKernelValue()) return exp;
 
 		OptionalInt len = getMaximumLength();
 		if (!len.isPresent()) return exp;
 
-		Expression result = getSeries(
-				Stream.of(exp.kernelSeq(len.getAsInt())).mapToDouble(Number::doubleValue).toArray(),
-				exp.getType() == Integer.class);
-		return result == null ? exp : result;
+		long start = System.nanoTime();
+
+		Expression result = null;
+
+		try {
+			result = getSeries(
+					Stream.of(exp.kernelSeq(len.getAsInt())).mapToDouble(Number::doubleValue).toArray(),
+					exp.getType() == Integer.class);
+			return result == null ? exp : result;
+		} finally {
+			timing.addEntry(exp.countNodes() + "-" + (result != null), System.nanoTime() - start);
+		}
 	}
 
 	default Expression getSeries(int values[]) {

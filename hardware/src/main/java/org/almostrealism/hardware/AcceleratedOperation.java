@@ -19,6 +19,8 @@ package org.almostrealism.hardware;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.Execution;
+import io.almostrealism.kernel.KernelSeriesMatcher;
+import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.code.Semaphore;
 import io.almostrealism.expression.Expression;
@@ -41,7 +43,6 @@ import org.almostrealism.hardware.mem.Bytes;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 import org.almostrealism.hardware.metal.MTLBuffer;
-import org.almostrealism.hardware.metal.MetalMemoryProvider;
 import org.almostrealism.hardware.metal.MetalProgram;
 import org.almostrealism.io.Console;
 import org.almostrealism.io.TimingMetric;
@@ -61,14 +62,14 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	public static final boolean enableArgumentMapping = true;
 	public static Console console = Computation.console.child();
 
-	public static TimingMetric retrieveOperatorMetric = new TimingMetric("retrieveOperator");
-	public static TimingMetric processArgumentsMetric = new TimingMetric("processArguments");
-	public static TimingMetric acceptMetric = new TimingMetric("accept");
-	public static TimingMetric evaluateKernelMetric = new TimingMetric("evaluateKernel");
-	public static TimingMetric evaluateMetric = new TimingMetric("evaluate");
-	public static TimingMetric kernelCreateMetric = new TimingMetric("kernelCreate");
-	public static TimingMetric nonKernelEvalMetric = new TimingMetric("nonKernelEval");
-	public static TimingMetric wrappedEvalMetric = new TimingMetric("wrappedEval");
+	public static TimingMetric retrieveOperatorMetric = console.timing("retrieveOperator");
+	public static TimingMetric processArgumentsMetric =  console.timing("processArguments");
+	public static TimingMetric acceptMetric = console.timing("accept");
+	public static TimingMetric evaluateKernelMetric = console.timing("evaluateKernel");
+	public static TimingMetric evaluateMetric = console.timing("evaluate");
+	public static TimingMetric kernelCreateMetric = console.timing("kernelCreate");
+	public static TimingMetric nonKernelEvalMetric = console.timing("nonKernelEval");
+	public static TimingMetric wrappedEvalMetric = console.timing("wrappedEval");
 
 	private static final ThreadLocal<Semaphore> semaphores = new ThreadLocal<>();
 	private static final ThreadLocal<CreatedMemoryData> created = new ThreadLocal<>();
@@ -218,6 +219,21 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		}
 	}
 
+	protected ProcessDetailsFactory getDetailsFactory() {
+		if (detailsFactory == null) {
+			detailsFactory = new ProcessDetailsFactory<>(isKernel(), isFixedCount(), getCount(),
+					getArgumentVariables(), getOutputVariable(), created,
+					getComputeContext().getDataContext().getKernelMemoryProvider(),
+					this::createAggregatedInput);
+		}
+
+		return detailsFactory;
+	}
+
+	protected AcceleratedProcessDetails getProcessDetails(MemoryBank output, Object[] args) {
+		return getDetailsFactory().init(output, args).construct();
+	}
+
 	protected synchronized AcceleratedProcessDetails apply(MemoryBank output, Object[] args) {
 		if (getArguments() == null) {
 			warn(getName() + " was not compiled ahead of time");
@@ -241,7 +257,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 		}
 
 		if (enableKernelLog) log("Preparing " + getName() + " kernel...");
-		AcceleratedProcessDetails process = detailsFactory.init(output, args).construct();
+		AcceleratedProcessDetails process = getProcessDetails(output, args);
 		MemoryData input[] = Stream.of(process.getArguments()).toArray(MemoryData[]::new);
 		((KernelWork) operator).setGlobalWorkOffset(0);
 		((KernelWork) operator).setGlobalWorkSize(process.getKernelSize());
@@ -345,47 +361,50 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 	}
 
 	public static void printTimes() {
-		// Memory access
-		if (!NativeMemoryProvider.ioTime.getEntries().isEmpty()) {
-			console.println("AcceleratedOperation: " +
-					NativeMemoryProvider.ioTime.getEntries().get("getMem") + "sec (read native), " +
-					NativeMemoryProvider.ioTime.getEntries().get("setMem") + "sec (write native)");
+		printTimes(false);
+	}
+
+	public static void printTimes(boolean verbose) {
+		if (verbose) {
+			// Memory access
+			if (!NativeMemoryProvider.ioTime.getEntries().isEmpty()) {
+				NativeMemoryProvider.ioTime.print();
+			}
+
+			if (!MTLBuffer.ioTime.getEntries().isEmpty()) {
+				MTLBuffer.ioTime.print();
+			}
 		}
 
-		if (!MTLBuffer.ioTime.getEntries().isEmpty()) {
+		Expression.timing.print();
+		Expression.distribution.print();
+		KernelSeriesProvider.timing.print();
+
+		if (verbose) {
+			// Compilation
+			console.println("AcceleratedOperation: Retrieve operator total - " +
+					((long) AcceleratedOperation.retrieveOperatorMetric.getTotal()) + "sec");
+			console.println("AcceleratedOperation: JNI Compile - " +
+					((long) NativeCompiler.compileTime.getTotal()) + "sec");
+			console.println("AcceleratedOperation: MTL Compile - " +
+					((long) MetalProgram.compileTime.getTotal()) + "sec");
+
+			// Runtime
 			console.println("AcceleratedOperation: " +
-					MTLBuffer.ioTime.getEntries().get("getContents") + "sec (read mtl), " +
-					MTLBuffer.ioTime.getEntries().get("setContents") + "sec (write mtl)");
+					((long) AcceleratedOperation.processArgumentsMetric.getTotal()) + "sec (process), " +
+					((long) AcceleratedOperation.acceptMetric.getTotal()) + "sec (accept)");
+			console.println("AcceleratedOperation Process Body: " +
+					((long) AcceleratedOperation.kernelCreateMetric.getTotal()) + "sec (create), " +
+					((long) AcceleratedOperation.evaluateKernelMetric.getTotal()) + "sec (evaluate kernel), " +
+					((long) AcceleratedOperation.evaluateMetric.getTotal()) + "sec (evaluate)");
+
+			HardwareOperator.prepareArgumentsMetric.print();
+			HardwareOperator.computeDimMasksMetric.print();
+			NativeExecution.dimMaskMetric.print();
+
+			AcceleratedOperation.kernelCreateMetric.print();
+			AcceleratedOperation.nonKernelEvalMetric.print();
+			AcceleratedOperation.wrappedEvalMetric.print();
 		}
-
-		// Compilation
-		console.println("AcceleratedOperation: Retrieve operator total - " +
-				((long) AcceleratedOperation.retrieveOperatorMetric.getTotal()) + "sec");
-		console.println("AcceleratedOperation: Scope simplify - " +
-				((long) Scope.simplifyTime.getTotal()) + "sec");
-		console.println("AcceleratedOperation: JNI Compile - " +
-				((long) NativeCompiler.compileTime.getTotal()) + "sec");
-		console.println("AcceleratedOperation: MTL Compile - " +
-				((long) MetalProgram.compileTime.getTotal()) + "sec");
-
-		// Runtime
-		console.println("AcceleratedOperation: " +
-				((long) AcceleratedOperation.processArgumentsMetric.getTotal()) + "sec (process), " +
-				((long) AcceleratedOperation.acceptMetric.getTotal()) + "sec (accept)");
-		console.println("AcceleratedOperation Process Body: " +
-				((long) AcceleratedOperation.kernelCreateMetric.getTotal()) + "sec (create), " +
-				((long) AcceleratedOperation.evaluateKernelMetric.getTotal()) + "sec (evaluate kernel), " +
-				((long) AcceleratedOperation.evaluateMetric.getTotal()) + "sec (evaluate)");
-		console.println("AcceleratedOperation Accept: " +
-				((long) HardwareOperator.prepareArgumentsMetric.getTotal()) + "sec (prepare), " +
-				((long) HardwareOperator.computeDimMasksMetric.getTotal()) + "sec (masks), " +
-				((long) NativeExecution.dimMaskMetric.getTotal()) + "sec (masks)");
-
-		AcceleratedOperation.kernelCreateMetric.getEntries().forEach((k, v) ->
-				console.println("AcceleratedOperation: " + k + " - " + v.longValue() + "sec (create)"));
-		AcceleratedOperation.nonKernelEvalMetric.getEntries().forEach((k, v) ->
-				console.println("AcceleratedOperation: " + k + " - " + v.longValue() + "sec (evaluate)"));
-		AcceleratedOperation.wrappedEvalMetric.getEntries().forEach((k, v) ->
-				console.println("AcceleratedOperation: " + k + " - " + v.longValue() + "sec (wrapped evaluate)"));
 	}
 }

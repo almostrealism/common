@@ -36,6 +36,6 @@ public interface Tree<T extends Tree> extends Graph<T>, NodeGroup<T>, Parent<T>,
 
 	@Override
 	default int countNodes() {
-		throw new UnsupportedOperationException();
+		return 1 + getChildren().stream().mapToInt(Tree::countNodes).sum();
 	}
 }

@@ -19,6 +19,7 @@ package org.almostrealism.layers;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import io.almostrealism.uml.Nameable;
 import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.CollectionProducer;
 import org.almostrealism.collect.PackedCollection;
@@ -29,10 +30,13 @@ import io.almostrealism.relation.Factor;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 
-public class GradientPropagation implements Propagation, CodeFeatures {
+public class GradientPropagation implements Propagation, Nameable, CodeFeatures {
+	public static boolean enableDiagnostic = true;
+
 	private final Factor<PackedCollection<?>> operator;
 	private final Producer<PackedCollection<?>>[] weights;
 
+	private String name;
 
 	public GradientPropagation(Factor<PackedCollection<?>> operator,
 							   Stream<Producer<PackedCollection<?>>> weights) {
@@ -45,6 +49,12 @@ public class GradientPropagation implements Propagation, CodeFeatures {
 		this.operator = operator;
 		this.weights = weights;
 	}
+
+	@Override
+	public String getName() { return name; }
+
+	@Override
+	public void setName(String name) { this.name = name; }
 
 	@Override
 	public Supplier<Runnable> propagate(Producer<PackedCollection<?>> learningRate,
@@ -84,22 +94,28 @@ public class GradientPropagation implements Propagation, CodeFeatures {
 				.each();
 
 		weightUpdateAssignment =
-				a(each(weightFlat),
+				a(getName() + " \u0394 weights", each(weightFlat),
 						subtract(each(weightFlat), multiply(learningRate, deltaOutDeltaWeight)));
 
 		OperationList op = new OperationList("Gradient Propagation");
 
-		op.add(() -> {
-			Evaluable<PackedCollection<?>> grad = deltaOutDeltaIn.get();
-			Evaluable<PackedCollection<?>> inputGrad = gradient.get();
-			Runnable wua = weightUpdateAssignment.get();
+		if (enableDiagnostic) {
+			op.add(() -> {
+				Evaluable<PackedCollection<?>> grad = deltaOutDeltaIn.get();
+				Evaluable<PackedCollection<?>> inputGrad = gradient.get();
+				Runnable wua = weightUpdateAssignment.get();
 
-			return () -> {
-				inputGrad.into(gradIn).evaluate();
-				grad.into(gradOut).evaluate();
-				wua.run();
-			};
-		});
+				return () -> {
+					inputGrad.into(gradIn).evaluate();
+					grad.into(gradOut).evaluate();
+					wua.run();
+				};
+			});
+		} else {
+			op.add(a(getName() + " \u03B4Out/\u03B4In", traverseEach(p(gradOut)), deltaOutDeltaIn));
+			op.add(weightUpdateAssignment);
+		}
+
 		if (next != null) op.add(next.push(p(gradOut)));
 
 		return op;
