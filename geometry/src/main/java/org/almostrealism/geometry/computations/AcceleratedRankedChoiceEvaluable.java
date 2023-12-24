@@ -44,7 +44,6 @@ import java.util.stream.IntStream;
 
 public class AcceleratedRankedChoiceEvaluable<T extends MemoryData> extends DynamicAcceleratedEvaluable<T, T> implements DimensionAware {
 	public static final boolean enableCompaction = true;
-	public static final boolean enableOpenClKernelWorkaround = true;
 
 	private int memLength;
 	private int valueCount;
@@ -100,35 +99,6 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData> extends Dyna
 		if (getDefaultValue().getProducer() instanceof DimensionAware) {
 			((DimensionAware) getDefaultValue().getProducer()).setDimensions(width, height, ssw, ssh);
 		}
-	}
-
-	public String getBody(Variable<MemoryData, ?> outputVariable, LanguageOperations lang) {
-		StringBuilder buf = new StringBuilder();
-
-		// if (enableOpenClKernelWorkaround) buf.append("printf(\"Starting method...\\n\");\n");
-
-		List<Variable<?, ?>> variables = new ArrayList<>();
-		writeVariables(buf::append, variables, null);
-		variables.addAll(getVariables());
-
-		writeInputAssignments(buf::append, variables, lang);
-		buf.append("highestRankLocal(");
-		buf.append(getHighestRankResultVariable().getName());
-		buf.append(", ");
-		buf.append(getHighestRankInputVariable().getName());
-		buf.append(", ");
-		buf.append(getHighestRankConfVariable().getName());
-		buf.append(", 0, 0, 0, 2, 2, 2);\n");
-		if (enableOpenClKernelWorkaround) {
-//			writeHighestRank(buf::append);
-//			buf.append("printf(\"rank = %f, choice = %f\\n\", " +
-//					getHighestRankResultVariable().getName() + "[0], " +
-//					getHighestRankResultVariable().getName() + "[1]);\n");
-			buf.append("printf(\"\");\n");
-		}
-		writeOutputAssignments(buf::append, variables);
-
-		return buf.toString();
 	}
 
 	protected void writeInputAssignments(Consumer<String> output, List<Variable<?, ?>> existingVariables, LanguageOperations lang) {

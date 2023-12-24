@@ -16,6 +16,7 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.kernel.KernelSeries;
@@ -214,8 +215,8 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 
 		return null;
 	}
-	public Variable assign(Expression exp) {
-		// return new Variable(getSimpleExpression(), false, exp);
+
+	public ExpressionAssignment<T> assign(Expression exp) {
 		throw new UnsupportedOperationException();
 	}
 

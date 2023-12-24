@@ -17,7 +17,9 @@
 package org.almostrealism.c;
 
 import io.almostrealism.code.Accessibility;
+import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.Precision;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.scope.ArrayVariable;
@@ -33,6 +35,7 @@ import java.io.OutputStream;
 import java.io.PrintStream;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Stack;
 import java.util.stream.IntStream;
 
@@ -125,15 +128,15 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 	protected void renderArgumentReads(List<ArrayVariable<?>> arguments) {
 		if (((CLanguageOperations) language).isEnableArgumentDetailReads()) {
 			IntStream.range(0, arguments.size())
-					.mapToObj(i -> new Variable<>(arguments.get(i).getName() + "Offset",
+					.mapToObj(i -> new ExpressionAssignment(true, new StaticReference(Integer.class, arguments.get(i).getName() + "Offset"),
 							new StaticReference<>(Integer.class, "(int) offsetArr[" + i + "]")))
 					.forEach(this::println);
 			IntStream.range(0, arguments.size())
-					.mapToObj(i -> new Variable<>(arguments.get(i).getName() + "Size",
+					.mapToObj(i -> new ExpressionAssignment(true, new StaticReference(Integer.class, arguments.get(i).getName() + "Size"),
 							new StaticReference<>(Integer.class, "(int) sizeArr[" + i + "]")))
 					.forEach(this::println);
 			IntStream.range(0, arguments.size())
-					.mapToObj(i -> new Variable<>(arguments.get(i).getName() + "Dim0",
+					.mapToObj(i -> new ExpressionAssignment(true, new StaticReference(Integer.class, arguments.get(i).getName() + "Dim0"),
 							new StaticReference<>(Integer.class, "(int) dim0Arr[" + i + "]")))
 					.forEach(this::println);
 		}
@@ -157,32 +160,11 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 	}
 
 	@Override
-	public void println(Variable<?, ?> variable) {
+	public void println(ExpressionAssignment<?> variable) {
 		if (variable.isDeclaration()) {
-			if (variable.getProducer() == null) {
-				if (variable.getExpression() == null || variable.getExpression().isNull()) {
-					if (variable.getArraySize() == null) {
-						println(annotationForVariable(variable) + typePrefix(variable.getType()) +
-										variable.getName() + ";");
-					} else {
-						println(annotationForVariable(variable) + typePrefix(variable.getType()) +
-								variable.getName() + "[" + variable.getArraySize().getSimpleExpression(getLanguage()) + "];");
-					}
-				} else {
-					println(annotationForVariable(variable) + typePrefix(variable.getType()) + variable.getName() +
-									" = " + variable.getExpression().getSimpleExpression(getLanguage()) + ";");
-				}
-			} else {
-				println(annotationForVariable(variable) + typePrefix(variable.getType()) + variable.getName() +
-								" = " + encode(variable.getExpression()) + ";");
-			}
+			println(annotationForAssignment(variable) + variable.getStatement(getLanguage()) + ";");
 		} else {
-			if (variable.getExpression() == null) {
-				// println(variable.getName() + " = null;");
-			} else {
-				println(variable.getName() + " = " +
-								encode(variable.getExpression()) + ";");
-			}
+			println(variable.getStatement(getLanguage()) + ";");
 		}
 	}
 
@@ -228,9 +210,10 @@ public class CPrintWriter extends CodePrintWriterAdapter {
 		println("printf(\"" + format + (newLine ? "\\n\", " : "\", ") + arg + ");", false);
 	}
 
-	protected String annotationForVariable(Variable<?, ?> var) {
-		if (language.annotationForPhysicalScope(var.getPhysicalScope()) != null) {
-			return language.annotationForPhysicalScope(var.getPhysicalScope()) + " ";
+	protected String annotationForAssignment(ExpressionAssignment<?> assignment) {
+		PhysicalScope scope = assignment.getPhysicalScope();
+		if (language.annotationForPhysicalScope(scope) != null) {
+			return language.annotationForPhysicalScope(scope) + " ";
 		}
 
 		return "";

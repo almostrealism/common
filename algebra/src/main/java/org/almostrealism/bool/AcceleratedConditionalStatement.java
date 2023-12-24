@@ -16,6 +16,7 @@
 
 package org.almostrealism.bool;
 
+import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.OutputSupport;
@@ -35,7 +36,7 @@ public interface AcceleratedConditionalStatement<T extends MemoryData> extends P
 
 	List<Supplier<Evaluable<? extends MemoryData>>> getInputs();
 	List<Argument<? extends MemoryData>> getArguments();
-	List<Variable<?, ?>> getVariables();
+	List<ExpressionAssignment<?>> getVariables();
 
 	List<ArrayVariable<Scalar>> getOperands();
 

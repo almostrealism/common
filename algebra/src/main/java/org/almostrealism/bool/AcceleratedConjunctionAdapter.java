@@ -16,6 +16,7 @@
 
 package org.almostrealism.bool;
 
+import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.scope.Argument;
 import io.almostrealism.scope.Argument.Expectation;
 import io.almostrealism.code.ArgumentMap;
@@ -137,8 +138,8 @@ public abstract class AcceleratedConjunctionAdapter<T extends PackedCollection<?
 	}
 
 	@Override
-	public List<Variable<?, ?>> getVariables() {
-		List<Variable<?, ?>> all = new ArrayList<>();
+	public List<ExpressionAssignment<?>> getVariables() {
+		List<ExpressionAssignment<?>> all = new ArrayList<>();
 		all.addAll(super.getVariables());
 		conjuncts.stream()
 				.map(AcceleratedConditionalStatement::getVariables)

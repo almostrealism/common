@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware.jni;
 
+import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.ArrayVariable;
@@ -42,10 +43,18 @@ public class CJNIPrintWriter extends CPrintWriter {
 	}
 
 	protected void renderArgumentReads(List<ArrayVariable<?>> arguments) {
-		println(new Variable<>("*argArr", new StaticReference<>(long[].class, "(*env)->GetLongArrayElements(env, arg, 0)")));
-		println(new Variable<>("*offsetArr", new StaticReference<>(int[].class, "(*env)->GetIntArrayElements(env, offset, 0)")));
-		println(new Variable<>("*sizeArr", new StaticReference<>(int[].class, "(*env)->GetIntArrayElements(env, size, 0)")));
-		println(new Variable<>("*dim0Arr", new StaticReference<>(int[].class, "(*env)->GetIntArrayElements(env, dim0, 0)")));
+		println(new ExpressionAssignment<long[]>(true,
+				new StaticReference(long[].class, "*argArr"),
+				new StaticReference<>(long[].class, "(*env)->GetLongArrayElements(env, arg, 0)")));
+		println(new ExpressionAssignment<int[]>(true,
+				new StaticReference(int[].class, "*offsetArr"),
+				new StaticReference<>(int[].class, "(*env)->GetIntArrayElements(env, offset, 0)")));
+		println(new ExpressionAssignment<int[]>(true,
+				new StaticReference(int[].class, "*sizeArr"),
+				new StaticReference<>(int[].class, "(*env)->GetIntArrayElements(env, size, 0)")));
+		println(new ExpressionAssignment<int[]>(true,
+				new StaticReference(int[].class, "*dim0Arr"),
+				new StaticReference<>(int[].class, "(*env)->GetIntArrayElements(env, dim0, 0)")));
 
 		super.renderArgumentReads(arguments);
 	}

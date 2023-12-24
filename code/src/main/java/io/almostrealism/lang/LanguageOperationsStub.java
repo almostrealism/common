@@ -45,6 +45,20 @@ public class LanguageOperationsStub implements LanguageOperations {
 	}
 
 	@Override
+	public String declaration(Class type, String destination, String expression) {
+		if (type == null) {
+			return assignment(destination, expression);
+		}
+
+		return nameForType(type) + " " + destination + " = " + expression;
+	}
+
+	@Override
+	public String assignment(String destination, String expression) {
+		return destination + " = " + expression;
+	}
+
+	@Override
 	public String annotationForPhysicalScope(PhysicalScope scope) {
 		return "none";
 	}

@@ -16,7 +16,6 @@
 
 package io.almostrealism.scope;
 
-import io.almostrealism.code.Statement;
 import io.almostrealism.expression.ArraySize;
 import io.almostrealism.expression.Constant;
 import io.almostrealism.code.PhysicalScope;
@@ -24,7 +23,6 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.expression.IntegerConstant;
 import io.almostrealism.kernel.KernelSeriesProvider;
-import io.almostrealism.kernel.KernelStructure;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
@@ -48,7 +46,7 @@ import java.util.function.Supplier;
  *
  * @param <T>  Type of the underlying data.
  */
-public class Variable<T, V extends Variable<T, ?>> implements Statement<Variable<T, ?>>, Nameable, Sortable, Delegated<V>, ConsoleFeatures {
+public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable, Delegated<V>, ConsoleFeatures {
 	private String name;
 	private LanguageOperations lang;
 	private PhysicalScope physicalScope;
@@ -62,10 +60,6 @@ public class Variable<T, V extends Variable<T, ?>> implements Statement<Variable
 	private Supplier<Evaluable<? extends T>> producer;
 
 	private V delegate;
-
-	public Variable(String name) {
-		this(name, (Expression<T>) null);
-	}
 
 	public Variable(String name, Expression<T> expression) {
 		this(name, true, expression, (Supplier<Evaluable<? extends T>>) null);
@@ -208,16 +202,6 @@ public class Variable<T, V extends Variable<T, ?>> implements Statement<Variable
 
 	protected List<Variable<?, ?>> getExpressionDependencies() {
 		return Optional.ofNullable(getExpression()).map(Expression::getDependencies).orElse(Collections.emptyList());
-	}
-
-	@Override
-	public Variable<T, ?> simplify(KernelSeriesProvider provider) {
-		if (destination == null) {
-			if (Expression.enableWarnings) warn("Variable has no destination");
-			return this;
-		}
-
-		return new Variable<>(getLanguage(), destination.simplify(provider), declaration, expression.simplify(provider));
 	}
 
 	@Override

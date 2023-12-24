@@ -71,7 +71,7 @@ public abstract class DynamicAcceleratedEvaluable<I extends MemoryData, O extend
 
 			out.accept(lang.getPrecision().typeName());
 			out.accept(" ");
-			out.accept(var.getName());
+			out.accept(var.getDestination().getSimpleExpression(lang));
 
 			if (var.getExpression().isNull()) {
 				if (var.getArraySize() != null) {

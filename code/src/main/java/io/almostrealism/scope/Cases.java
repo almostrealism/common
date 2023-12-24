@@ -17,6 +17,7 @@
 package io.almostrealism.scope;
 
 import io.almostrealism.code.CodePrintWriter;
+import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.Statement;
 import io.almostrealism.expression.Expression;
@@ -62,7 +63,7 @@ public class Cases<T> extends Scope<T> {
 		w.renderMetadata(getMetadata());
 		for (Method m : getMethods()) { w.println(m); }
 		for (Statement s : getStatements()) { w.println(s); }
-		for (Variable v : getVariables()) { w.println(v); }
+		for (ExpressionAssignment<?> v : getVariables()) { w.println(v); }
 
 		for (int i = 0; i < getConditions().size(); i++) {
 			String pre = i > 0 ? "else if (" : "if (";

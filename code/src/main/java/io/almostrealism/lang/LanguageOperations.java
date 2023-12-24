@@ -30,6 +30,10 @@ public interface LanguageOperations {
 
 	String kernelIndex(int index);
 
+	String declaration(Class type, String destination, String expression);
+
+	String assignment(String destination, String expression);
+
 	String annotationForPhysicalScope(PhysicalScope scope);
 
 	String nameForType(Class<?> type);

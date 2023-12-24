@@ -17,6 +17,7 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.CodePrintWriterAdapter;
+import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.scope.Method;
 import io.almostrealism.scope.Variable;
 import org.almostrealism.io.PrintWriter;
@@ -27,7 +28,7 @@ public class VerbatimCodePrintWriter extends CodePrintWriterAdapter {
 	}
 
 	@Override
-	public void println(Variable<?, ?> v) {
+	public void println(ExpressionAssignment<?> v) {
 		throw new UnsupportedOperationException();
 	}
 

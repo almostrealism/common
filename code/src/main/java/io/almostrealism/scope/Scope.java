@@ -20,6 +20,7 @@ import io.almostrealism.code.Array;
 import io.almostrealism.code.CodePrintWriter;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeRequirement;
+import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
@@ -69,7 +70,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements KernelTree<Scope<T>
 	private List<ComputeRequirement> requirements;
 
 	private final List<Statement<?>> statements;
-	private final List<Variable<?, ?>> variables;
+	private final List<ExpressionAssignment<?>> variables;
 	private final List<Method> methods;
 	private final List<Metric> metrics;
 	private final List<Scope> required;
@@ -134,8 +135,8 @@ public class Scope<T> extends ArrayList<Scope<T>> implements KernelTree<Scope<T>
 
 	public List<Statement<?>> getStatements() { return statements; }
 
-	/** @return  The {@link Variable}s in this {@link Scope}. */
-	public List<Variable<?, ?>> getVariables() { return variables; }
+	/** @return  The {@link ExpressionAssignment}s in this {@link Scope}. */
+	public List<ExpressionAssignment<?>> getVariables() { return variables; }
 
 	/** @return  The {@link Method}s in this {@link Scope}. */
 	public List<Method> getMethods() { return methods; }
@@ -217,7 +218,8 @@ public class Scope<T> extends ArrayList<Scope<T>> implements KernelTree<Scope<T>
 		List<Argument<?>> args = new ArrayList<>();
 
 		if (arguments == null) {
-			args.addAll(extractArgumentDependencies(variables));
+			args.addAll(extractArgumentDependencies(variables
+					.stream().flatMap(e -> e.getDependencies().stream()).collect(Collectors.toList())));
 			sortArguments(args);
 
 			this.stream()
@@ -414,7 +416,7 @@ public class Scope<T> extends ArrayList<Scope<T>> implements KernelTree<Scope<T>
 		w.renderMetadata(getMetadata());
 		for (Method m : getMethods()) { w.println(m); }
 		for (Statement s : getStatements()) { w.println(s); }
-		for (Variable v : getVariables()) { w.println(v); }
+		for (ExpressionAssignment<?> v : getVariables()) { w.println(v); }
 		for (Scope s : getChildren()) { s.write(w); }
 		for (Metric m : getMetrics()) { w.println(m); }
 		w.flush();

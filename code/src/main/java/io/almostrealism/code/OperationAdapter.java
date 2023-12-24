@@ -16,6 +16,7 @@
 
 package io.almostrealism.code;
 
+import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.uml.Named;
@@ -47,9 +48,10 @@ public abstract class OperationAdapter<T> implements NameProvider, OperationInfo
 	private List<Argument<? extends T>> arguments;
 	private boolean sortedArguments;
 
-	private Map<Supplier<Evaluable>, List<Variable<?, ?>>> variables;
-	private List<Supplier<Evaluable>> variableOrder;
-	private List<String> variableNames;
+//	private Map<Supplier<Evaluable>, List<ExpressionAssignment<?>>> variables;
+//	private List<Supplier<Evaluable>> variableOrder;
+//	private List<String> variableNames;
+	List<ExpressionAssignment<?>> variables;
 	private OperationMetadata metadata;
 
 	@SafeVarargs
@@ -168,58 +170,45 @@ public abstract class OperationAdapter<T> implements NameProvider, OperationInfo
 				.forEach(OperationAdapter::postCompile);
 	}
 
-	public void addVariable(Variable v) {
-		if (v instanceof ArrayVariable && v.getDelegate() != null) {
-			throw new IllegalArgumentException("Provided variable delegates to another variable");
-		}
-
-		List<Variable<?, ?>> existing = variables.computeIfAbsent(v.getProducer(), k -> new ArrayList<>());
-
-		if (!variableNames.contains(v.getName())) {
-			variableNames.add(v.getName());
-
-			if (!existing.contains(v)) existing.add(v);
-			if (!variableOrder.contains(v.getProducer())) variableOrder.add(v.getProducer());
-		} else if (containsVariable(v)) {
-			if (!existing.contains(v)) {
-				System.out.println("Variable name was already used with a different producer");
-			}
-		} else {
-			System.out.println("WARN: Variable name was reused");
-		}
+	public void addVariable(Variable<?, ?> v) {
+		addVariable(new InstanceReference<>(v).assign(null));
 	}
 
-	public boolean containsVariable(Variable v) {
+	public void addVariable(ExpressionAssignment<?> v) {
+		variables.add(v);
+//		List<Variable<?, ?>> existing = variables.computeIfAbsent(v.getProducer(), k -> new ArrayList<>());
+//
+//		if (!variableNames.contains(v.getName())) {
+//			variableNames.add(v.getName());
+//
+//			if (!existing.contains(v)) existing.add(v);
+//			if (!variableOrder.contains(v.getProducer())) variableOrder.add(v.getProducer());
+//		} else if (containsVariable(v)) {
+//			if (!existing.contains(v)) {
+//				System.out.println("Variable name was already used with a different producer");
+//			}
+//		} else {
+//			System.out.println("WARN: Variable name was reused");
+//		}
+	}
+
+	public boolean containsVariable(ExpressionAssignment<?> v) {
 		return getVariables().contains(v);
 	}
 
-	public List<Variable<?, ?>> getVariables() {
-		return variableOrder.stream()
-				.map(variables::get)
-				.flatMap(List::stream)
-				.collect(Collectors.toList());
-	}
-
-	public void absorbVariables(Supplier peer) {
-		if (peer instanceof OperationAdapter) {
-			absorbVariables((OperationAdapter) peer);
-		} else if (peer.get() instanceof Provider) {
-			// Providers do not have variables to absorb
-		} else if (peer instanceof Delegated) {
-			absorbVariables((Supplier) ((Delegated) peer).getDelegate());
-		} else {
-			throw new IllegalArgumentException(peer + " is not a OperationAdapter");
-		}
-	}
-
-	public void absorbVariables(OperationAdapter peer) {
-		if (peer != null) peer.getVariables().forEach(v -> addVariable((Variable) v));
+	public List<ExpressionAssignment<?>> getVariables() {
+//		return variableOrder.stream()
+//				.map(variables::get)
+//				.flatMap(List::stream)
+//				.collect(Collectors.toList());
+		return variables;
 	}
 
 	public void purgeVariables() {
-		this.variables = new HashMap<>();
-		this.variableOrder = new ArrayList<>();
-		this.variableNames = new ArrayList<>();
+		this.variables = new ArrayList<>();
+//		this.variables = new HashMap<>();
+//		this.variableOrder = new ArrayList<>();
+//		this.variableNames = new ArrayList<>();
 	}
 
 	@Deprecated

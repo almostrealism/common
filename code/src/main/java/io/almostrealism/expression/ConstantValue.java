@@ -14,11 +14,12 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.code;
+package io.almostrealism.expression;
 
-import io.almostrealism.kernel.KernelStructure;
-import io.almostrealism.lang.LanguageOperations;
+public class ConstantValue<T> extends Constant<T> {
+	private T value;
 
-public interface Statement<T extends KernelStructure> extends KernelStructure<T> {
-	String getStatement(LanguageOperations lang);
+	public ConstantValue(Class<T> type, T value) {
+		super(type);
+	}
 }

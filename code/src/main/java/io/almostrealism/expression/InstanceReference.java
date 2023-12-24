@@ -17,6 +17,7 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.code.CodePrintWriter;
+import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversalPolicy;
@@ -82,8 +83,8 @@ public class InstanceReference<T> extends Expression<T> implements ExpressionFea
 	public String getWrappedExpression(LanguageOperations lang) { return getExpression(lang); }
 
 	@Override
-	public Variable assign(Expression exp) {
-		return new Variable(var.getLanguage(), this, false, exp);
+	public ExpressionAssignment<T> assign(Expression exp) {
+		return new ExpressionAssignment<>(this, exp);
 	}
 
 	@Override

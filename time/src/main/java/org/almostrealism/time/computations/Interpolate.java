@@ -16,6 +16,7 @@
 
 package org.almostrealism.time.computations;
 
+import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.scope.HybridScope;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.expression.Exponent;
@@ -72,16 +73,16 @@ public class Interpolate extends CollectionProducerComputationBase<PackedCollect
 		String t1 = getVariableName(8);
 		String t2 = getVariableName(9);
 
-		scope.getVariables().add(new Variable<>(idx.getSimpleExpression(getLanguage()), e(-1)));
-		scope.getVariables().add(new Variable<>(left.getSimpleExpression(getLanguage()), e(-1)));
-		scope.getVariables().add(new Variable<>(right.getSimpleExpression(getLanguage()), e(-1)));
-		scope.getVariables().add(new Variable<>(leftO.getSimpleExpression(getLanguage()), e(-1)));
-		scope.getVariables().add(new Variable<>(rightO.getSimpleExpression(getLanguage()), e(-1)));
-		scope.getVariables().add(new Variable<>(bi.getSimpleExpression(getLanguage()), e(-1.0)));
-		scope.getVariables().add(new Variable<>(v1, e(0.0)));
-		scope.getVariables().add(new Variable<>(v2, e(0.0)));
-		scope.getVariables().add(new Variable<>(t1, e(0.0)));
-		scope.getVariables().add(new Variable<>(t2, e(0.0)));
+		scope.getVariables().add(new ExpressionAssignment(true, idx, e(-1)));
+		scope.getVariables().add(new ExpressionAssignment(true, left, e(-1)));
+		scope.getVariables().add(new ExpressionAssignment(true, right, e(-1)));
+		scope.getVariables().add(new ExpressionAssignment(true, leftO, e(-1)));
+		scope.getVariables().add(new ExpressionAssignment(true, rightO, e(-1)));
+		scope.getVariables().add(new ExpressionAssignment(true, bi, e(-1.0)));
+		scope.getVariables().add(new ExpressionAssignment(true, new StaticReference(Double.class, v1), e(0.0)));
+		scope.getVariables().add(new ExpressionAssignment(true, new StaticReference(Double.class, v2), e(0.0)));
+		scope.getVariables().add(new ExpressionAssignment(true, new StaticReference(Double.class, t1), e(0.0)));
+		scope.getVariables().add(new ExpressionAssignment(true, new StaticReference(Double.class, t2), e(0.0)));
 
 		String res = getArgument(0).ref(0).getSimpleExpression(getLanguage());
 		String start = "0";

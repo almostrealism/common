@@ -21,6 +21,7 @@ import io.almostrealism.code.Computation;
 import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.ComputeRequirement;
 import io.almostrealism.code.Execution;
+import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
@@ -93,7 +94,7 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	@Override
-	public void addVariable(Variable v) {
+	public void addVariable(ExpressionAssignment<?> v) {
 		if (v.getProducer() == null) {
 			throw new IllegalArgumentException("Producer must be provided for variable");
 		}
@@ -102,7 +103,7 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	}
 
 	@Override
-	public List<Variable<?, ?>> getVariables() {
+	public List<ExpressionAssignment<?>> getVariables() {
 		return ((OperationAdapter) getComputation()).getVariables();
 	}
 

@@ -16,6 +16,7 @@
 
 package org.almostrealism.bool;
 
+import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.code.ProducerComputationBase;
@@ -117,21 +118,18 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCol
 
 		ArrayVariable<?> outputVariable = (ArrayVariable<?>) getOutputVariable();
 		List<Variable<?, ?>> vars = new ArrayList<>();
-
-		Variable<?, ?> condition = new Variable<>("", getCondition());
-		vars.add(condition);
+		vars.addAll(getCondition().getDependencies());
 
 		scope.code().accept("if (");
-		scope.code().accept(condition.getExpression().getSimpleExpression(getLanguage()));
+		scope.code().accept(getCondition().getSimpleExpression(getLanguage()));
 		scope.code().accept(") {\n");
 
 		for (int i = 0; i < getMemLength(); i++) {
-			// Variable<?, ?> var = new Variable(outputVariable.valueAt(i).getSimpleExpression(), getTrueValueExpression().apply(i), outputVariable);
-			Variable<?, ?> var = outputVariable.ref(i).assign(getTrueValueExpression().apply(i));
-			vars.add(var);
+			ExpressionAssignment<?> var = outputVariable.ref(i).assign(getTrueValueExpression().apply(i));
+			vars.addAll(var.getDependencies());
 
 			scope.code().accept("\t");
-			scope.code().accept(var.getName());
+			scope.code().accept(var.getDestination().getSimpleExpression(getLanguage()));
 			scope.code().accept(" = ");
 			scope.code().accept(var.getExpression().getSimpleExpression(getLanguage()));
 			scope.code().accept(";\n");
@@ -140,12 +138,11 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCol
 		scope.code().accept("} else {\n");
 
 		for (int i = 0; i < getMemLength(); i++) {
-			// Variable<?, ?> var = new Variable(outputVariable.valueAt(i).getSimpleExpression(), getFalseValueExpression().apply(i), outputVariable);
-			Variable<?, ?> var = outputVariable.ref(i).assign(getFalseValueExpression().apply(i));
-			vars.add(var);
+			ExpressionAssignment<?> var = outputVariable.ref(i).assign(getFalseValueExpression().apply(i));
+			vars.addAll(var.getDependencies());
 
 			scope.code().accept("\t");
-			scope.code().accept(var.getName());
+			scope.code().accept(var.getDestination().getSimpleExpression(getLanguage()));
 			scope.code().accept(" = ");
 			scope.code().accept(var.getExpression().getSimpleExpression(getLanguage()));
 			scope.code().accept(";\n");

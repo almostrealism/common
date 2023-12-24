@@ -17,6 +17,7 @@
 package org.almostrealism.hardware.computations;
 
 import io.almostrealism.code.ArgumentMap;
+import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.collect.TraversableExpression;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.KernelIndex;
@@ -89,7 +90,7 @@ public class Assignment<T extends MemoryData> extends OperationComputationAdapte
 					throw new UnsupportedOperationException();
 				}
 
-				Variable v;
+				ExpressionAssignment<?> v;
 				TraversableExpression out = TraversableExpression.traverse(output);
 
 				if (out == null) {

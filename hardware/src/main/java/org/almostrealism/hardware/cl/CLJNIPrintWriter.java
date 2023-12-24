@@ -16,6 +16,7 @@
 
 package org.almostrealism.hardware.cl;
 
+import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.ArrayVariable;
@@ -41,28 +42,43 @@ public class CLJNIPrintWriter extends CJNIPrintWriter {
 
 	@Override
 	protected void renderArgumentReads(List<ArrayVariable<?>> arguments) {
-		println(new Variable<>("*argArr", new StaticReference<>(long[].class, "(*env)->GetLongArrayElements(env, arg, 0)")));
-		println(new Variable<>("*offsetArr", new StaticReference<>(int[].class, "(*env)->GetIntArrayElements(env, offset, 0)")));
-		println(new Variable<>("*sizeArr", new StaticReference<>(int[].class, "(*env)->GetIntArrayElements(env, size, 0)")));
-		println(new Variable<>("*dim0Arr", new StaticReference<>(int[].class, "(*env)->GetIntArrayElements(env, dim0, 0)")));
+		println(new ExpressionAssignment<long[]>(true,
+				new StaticReference(long[].class, "*argArr"),
+				new StaticReference<>(long[].class, "(*env)->GetLongArrayElements(env, arg, 0)")));
+		println(new ExpressionAssignment<int[]>(true,
+				new StaticReference(int[].class, "*offsetArr"),
+				new StaticReference<>(int[].class, "(*env)->GetIntArrayElements(env, offset, 0)")));
+		println(new ExpressionAssignment<int[]>(true,
+				new StaticReference(int[].class, "*sizeArr"),
+				new StaticReference<>(int[].class, "(*env)->GetIntArrayElements(env, size, 0)")));
+		println(new ExpressionAssignment<int[]>(true,
+				new StaticReference(int[].class, "*dim0Arr"),
+				new StaticReference<>(int[].class, "(*env)->GetIntArrayElements(env, dim0, 0)")));
 
 		String numberType = getLanguage().getPrecision().typeName();
 		int numberSize = getLanguage().getPrecision().bytes();
 
 		IntStream.range(0, arguments.size())
-				.mapToObj(i -> new Variable("*" + arguments.get(i).getName(),
-						new StaticReference(Double.class, "(" + numberType + "*) malloc("
+				.mapToObj(i ->
+						new ExpressionAssignment(
+								new StaticReference<>(Double.class, "*" + arguments.get(i).getName()),
+								new StaticReference<>(Double.class, "(" + numberType + "*) malloc("
 											+ numberSize + " * sizeArr[" + i + "])")))
 				.forEach(this::println);
-		arguments.stream().map(argument -> new Variable<>(argument.getName() + "Offset",
-				new StaticReference<>(Integer.class, "0")))
+		arguments.stream().map(argument ->
+						new ExpressionAssignment(
+								new StaticReference<>(Integer.class, argument.getName() + "Offset"),
+								new StaticReference<>(Integer.class, "0")))
 				.forEach(this::println);
 		IntStream.range(0, arguments.size())
-				.mapToObj(i -> new Variable<>(arguments.get(i).getName() + "Size",
-						new StaticReference<>(Integer.class, "sizeArr[" + i + "]")))
+				.mapToObj(i ->
+						new ExpressionAssignment(
+								new StaticReference(Integer.class, arguments.get(i).getName() + "Size"),
+								new StaticReference<>(Integer.class, "sizeArr[" + i + "]")))
 				.forEach(this::println);
 		IntStream.range(0, arguments.size())
-				.mapToObj(i -> new Variable<>(arguments.get(i).getName() + "Dim0",
+				.mapToObj(i -> new ExpressionAssignment(
+						new StaticReference(Integer.class, arguments.get(i).getName() + "Dim0"),
 						new StaticReference<>(Integer.class, "dim0Arr[" + i + "]")))
 				.forEach(this::println);
 
@@ -70,8 +86,12 @@ public class CLJNIPrintWriter extends CJNIPrintWriter {
 //			printf(arguments.get(i).getName() + "Dim0 = %i", arguments.get(i).getName() + "Dim0");
 //		}
 
-		println(new Variable("*nativeEventWaitList", new StaticReference<>(cl_event.class, "NULL")));
-		println(new Variable("*nativeEventPointer", new StaticReference<>(cl_event.class, "NULL")));
+		println(new ExpressionAssignment(
+				new StaticReference(cl_event.class, "*nativeEventWaitList"),
+				new StaticReference<>(cl_event.class, "NULL")));
+		println(new ExpressionAssignment(
+				new StaticReference(cl_event.class, "*nativeEventPointer"),
+				new StaticReference<>(cl_event.class, "NULL")));
 		IntStream.range(0, arguments.size())
 				.mapToObj(i -> clEnqueueBuffer(i, arguments.get(i), false))
 				.forEach(super::println);

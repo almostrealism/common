@@ -50,8 +50,8 @@ public interface CodePrintWriter {
 	default void println(Statement s) {
 		if (s instanceof Method) {
 			println((Method<?>) s);
-		} else if (s instanceof Variable) {
-			println((Variable<?, ?>) s);
+		} else if (s instanceof ExpressionAssignment) {
+			println((ExpressionAssignment) s);
 		} else {
 			throw new IllegalArgumentException();
 		}
@@ -63,7 +63,7 @@ public interface CodePrintWriter {
 	 *
 	 * @param v  Variable to print.
 	 */
-	void println(Variable<?, ?> v);
+	void println(ExpressionAssignment<?> v);
 
 	/**
 	 * Write a call to the function represented by the specified {@link Method}.

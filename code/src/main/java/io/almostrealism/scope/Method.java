@@ -80,6 +80,9 @@ public class Method<T> extends Expression<T> implements Statement<Expression<?>>
 	}
 
 	@Override
+	public String getStatement(LanguageOperations lang) { return getExpression(lang); }
+
+	@Override
 	public void setName(String n) { this.name = n; }
 	@Override
 	public String getName() { return name; }

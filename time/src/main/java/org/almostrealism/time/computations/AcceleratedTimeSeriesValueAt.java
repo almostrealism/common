@@ -16,6 +16,7 @@
 
 package org.almostrealism.time.computations;
 
+import io.almostrealism.code.ExpressionAssignment;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Process;
@@ -61,8 +62,7 @@ public class AcceleratedTimeSeriesValueAt extends CollectionProducerComputationB
 
 		ArrayVariable<?> outputVariable = (ArrayVariable) getOutputVariable();
 
-		scope.getVariables().add(new Variable(outputVariable.valueAt(1).getSimpleExpression(getLanguage()),
-				false, new DoubleConstant(1.0), outputVariable.getRootDelegate()));
+		scope.getVariables().add(outputVariable.valueAt(1).assign(e(1.0)));
 
 		Expression i = new StaticReference(Integer.class, "i");
 		Expression left = new StaticReference(Integer.class, getVariableName(0));
@@ -72,12 +72,12 @@ public class AcceleratedTimeSeriesValueAt extends CollectionProducerComputationB
 		String t1 = getVariableName(4);
 		String t2 = getVariableName(5);
 
-		scope.getVariables().add(new Variable<>(left.getSimpleExpression(getLanguage()), new IntegerConstant(-1)));
-		scope.getVariables().add(new Variable<>(right.getSimpleExpression(getLanguage()), new IntegerConstant(-1)));
-		scope.getVariables().add(new Variable<>(v1, new DoubleConstant(0.0)));
-		scope.getVariables().add(new Variable<>(v2, new DoubleConstant(0.0)));
-		scope.getVariables().add(new Variable<>(t1, new DoubleConstant(0.0)));
-		scope.getVariables().add(new Variable<>(t2, new DoubleConstant(0.0)));
+		scope.getVariables().add(new ExpressionAssignment(true, left, new IntegerConstant(-1)));
+		scope.getVariables().add(new ExpressionAssignment(true, right, new IntegerConstant(-1)));
+		scope.getVariables().add(new ExpressionAssignment(true, new StaticReference(Double.class, v1), new DoubleConstant(0.0)));
+		scope.getVariables().add(new ExpressionAssignment(true, new StaticReference(Double.class, v2), new DoubleConstant(0.0)));
+		scope.getVariables().add(new ExpressionAssignment(true, new StaticReference(Double.class, t1), new DoubleConstant(0.0)));
+		scope.getVariables().add(new ExpressionAssignment(true, new StaticReference(Double.class, t2), new DoubleConstant(0.0)));
 
 		String res = getArgument(0).valueAt(0).getSimpleExpression(getLanguage());
 		String bank0 = getArgument(1).valueAt(0).getSimpleExpression(getLanguage());

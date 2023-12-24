@@ -60,6 +60,20 @@ public abstract class DefaultLanguageOperations implements LanguageOperations {
 	}
 
 	@Override
+	public String declaration(Class type, String destination, String expression) {
+		if (type == null) {
+			return assignment(destination, expression);
+		}
+
+		return nameForType(type) + " " + destination + " = " + expression;
+	}
+
+	@Override
+	public String assignment(String destination, String expression) {
+		return destination + " = " + expression;
+	}
+
+	@Override
 	public String renderMethod(Method method) {
 		StringBuilder buf = new StringBuilder();
 		buf.append(method.getName());
