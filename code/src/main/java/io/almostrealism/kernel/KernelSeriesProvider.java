@@ -50,7 +50,16 @@ public interface KernelSeriesProvider {
 	}
 
 	default Expression getSeries(int values[]) {
-		return getSeries(IntStream.of(values).mapToDouble(i -> i).toArray(), true);
+		long start = System.nanoTime();
+
+		Expression result = null;
+
+		try {
+			result = getSeries(IntStream.of(values).mapToDouble(i -> i).toArray(), true);
+			return result;
+		} finally {
+			timing.addEntry("int" + values.length + "-" + (result != null), System.nanoTime() - start);
+		}
 	}
 
 	default Expression getSeries(double values[]) {
