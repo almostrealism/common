@@ -35,18 +35,6 @@ public abstract class TraversableProducerComputationBase<I extends PackedCollect
 		extends CollectionProducerComputationBase<I, O>
 		implements TraversableExpression<Double> {
 
-	/**
-	 * If set to true, then {@link #convertToVariableRef()} can be used
-	 * to take the {@link Expression} from {@link #getValueAt(Expression)} to
-	 * a local variable in the rendered code. This can prevent
-	 * {@link Expression}s from growing too large during compaction, when
-	 * values are repeatedly embedded to form bigger and bigger
-	 * {@link Expression}s.
-	 */
-	public static final boolean enableVariableRefConversion = false;
-
-	private IntFunction<InstanceReference> variableRef;
-
 	protected TraversableProducerComputationBase() { }
 
 	public TraversableProducerComputationBase(TraversalPolicy outputShape, Supplier<Evaluable<? extends I>>... arguments) {
@@ -68,8 +56,6 @@ public abstract class TraversableProducerComputationBase<I extends PackedCollect
 	public Scope<O> getScope() {
 		Scope<O> scope = super.getScope();
 
-		if (isVariableRef()) throw new UnsupportedOperationException();
-
 		ArrayVariable<Double> output = (ArrayVariable<Double>) getOutputVariable();
 
 		for (int i = 0; i < getMemLength(); i++) {
@@ -82,20 +68,5 @@ public abstract class TraversableProducerComputationBase<I extends PackedCollect
 	@Override
 	public Expression<Double> getValue(Expression... pos) {
 		return getValueAt(getShape().index(pos));
-	}
-
-	public boolean isVariableRef() { return variableRef != null;}
-
-	public void convertToVariableRef() {
-		if (enableVariableRefConversion && variableRef == null) {
-			IntStream.range(0, getMemLength())
-					.mapToObj(variableForIndex())
-					.forEach(this::addVariable);
-			variableRef = i -> new InstanceReference(getVariable(i));
-		}
-	}
-
-	protected IntFunction<Variable<Double, ?>> variableForIndex() {
-		return i -> new Variable(getVariableName(i), true, getValueAt(e(i)), this);
 	}
 }

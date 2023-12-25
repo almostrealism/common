@@ -16,13 +16,10 @@
 
 package io.almostrealism.scope;
 
-import io.almostrealism.expression.ArraySize;
 import io.almostrealism.expression.Constant;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.InstanceReference;
 import io.almostrealism.expression.IntegerConstant;
-import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
@@ -50,10 +47,8 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 	private String name;
 	private LanguageOperations lang;
 	private PhysicalScope physicalScope;
-	private boolean declaration;
 	private int sortHint;
 
-	private Expression<T> destination;
 	private Expression<T> expression;
 
 	private Supplier<Evaluable<? extends T>> originalProducer;
@@ -61,51 +56,11 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 
 	private V delegate;
 
-	public Variable(String name, Expression<T> expression) {
-		this(name, true, expression, (Supplier<Evaluable<? extends T>>) null);
-	}
-
-	public Variable(String name, boolean declaration, Expression<T> expression) {
-		this(name, declaration, expression, (V) null);
-	}
-
-	@Deprecated
-	public Variable(String name, boolean declaration, Expression<T> expression, V delegate) {
-		this(name, expression);
-		this.declaration = declaration;
-		this.delegate = delegate;
-	}
-
-	public Variable(LanguageOperations lang, Expression destination, boolean declaration, Expression<T> expression) {
-		this(null, expression);
-		this.lang = lang;
-		this.destination = destination;
-		this.declaration = declaration;
-	}
-
-	public Variable(String name, T value) {
-		this(name, true, (Expression) null, () -> new Provider<>(value));
-	}
-
-	public Variable(String name, Class<T> type, Supplier<Evaluable<? extends T>> producer) {
-		this(name, true, new Constant<>(type), producer);
-	}
-
-	public Variable(String name, PhysicalScope scope, Class<T> type, Supplier<Evaluable<? extends T>> producer) {
-		this(name, type, producer);
-		setPhysicalScope(scope);
-	}
-
-	public Variable(String name, Supplier<Evaluable<? extends T>> producer, int arraySize, PhysicalScope scope) {
-		this(name, true, new ArraySize<>(arraySize), producer);
-		setPhysicalScope(scope);
-	}
-
-	public Variable(String name, boolean declaration, Expression<T> expression, Supplier<Evaluable<? extends T>> producer) {
+	public Variable(String name, PhysicalScope scope, Expression<T> expression, Supplier<Evaluable<? extends T>> producer) {
 		setName(name);
+		setPhysicalScope(scope);
 		setExpression(expression);
 		setOriginalProducer(producer);
-		this.declaration = declaration;
 	}
 
 	@Override
@@ -113,7 +68,7 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 
 	@Override
 	public String getName() {
-		return this.name == null ? destination.getSimpleExpression(getLanguage()) : this.name;
+		return this.name;
 	}
 
 	public LanguageOperations getLanguage() { return lang; }
@@ -128,16 +83,10 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 			return delegate;
 		}
 
-		if (destination instanceof InstanceReference) {
-			return (V) ((InstanceReference<T>) destination).getReferent().getDelegate();
-		}
-
 		return null;
 	}
 
 	public void setDelegate(V delegate) { this.delegate = delegate; }
-
-	public boolean isDeclaration() { return declaration; }
 
 	public void setExpression(Expression<T> value) { this.expression = value; }
 
@@ -195,7 +144,6 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 	public List<Variable<?, ?>> getDependencies() {
 		List<Variable<?, ?>> deps = new ArrayList<>();
 		if (delegate != null) deps.add(delegate);
-		if (destination != null) deps.addAll(destination.getDependencies());
 		deps.addAll(getExpressionDependencies());
 		return deps;
 	}

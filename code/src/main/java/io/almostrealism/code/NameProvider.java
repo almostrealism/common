@@ -38,10 +38,6 @@ public interface NameProvider {
 		return getArgument(lang, index, null);
 	}
 
-	default Variable getVariable(int index) {
-		return new Variable<>(getVariableName(index), getDefaultPhysicalScope(), Double.class, null);
-	}
-
 	default ArrayVariable getArgument(LanguageOperations lang, int index, int size) {
 		return getArgument(lang, index, new IntegerConstant(size));
 	}

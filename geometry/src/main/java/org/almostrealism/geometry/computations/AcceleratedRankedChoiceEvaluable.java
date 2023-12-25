@@ -16,6 +16,7 @@
 
 package org.almostrealism.geometry.computations;
 
+import io.almostrealism.expression.ArraySize;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.code.ScopeInputManager;
 import io.almostrealism.relation.ParallelProcess;
@@ -25,7 +26,6 @@ import io.almostrealism.scope.Variable;
 import org.almostrealism.algebra.Scalar;
 import org.almostrealism.geometry.DimensionAware;
 import org.almostrealism.hardware.DynamicAcceleratedEvaluable;
-import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryBank;
 import io.almostrealism.relation.Evaluable;
@@ -85,9 +85,9 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData> extends Dyna
 		this.ranks = getRanks();
 		this.choices = getChoices();
 		this.defaultValue = getDefaultValue();
-		addVariable(new Variable(getHighestRankResultVariable().getName(), () -> this, 2, PhysicalScope.LOCAL));
-		addVariable(new Variable(getHighestRankInputVariable().getName(), () -> this, 2 * valueCount, PhysicalScope.LOCAL));
-		addVariable(new Variable(getHighestRankConfVariable().getName(), () -> this, 2, PhysicalScope.LOCAL));
+		addVariable(new Variable(getHighestRankResultVariable(), PhysicalScope.LOCAL, new ArraySize(2), () -> this));
+		addVariable(new Variable(getHighestRankInputVariable(), PhysicalScope.LOCAL, new ArraySize(2 * valueCount), () -> this));
+		addVariable(new Variable(getHighestRankConfVariable(), PhysicalScope.LOCAL, new ArraySize(2), () -> this));
 	}
 
 	@Override
@@ -106,7 +106,7 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData> extends Dyna
 
 		IntStream.range(0, ranks.size()).forEach(i -> {
 			if (compactedRanks == null || compactedRanks[i] == null) {
-				output.accept(getHighestRankInputVariable().getName());
+				output.accept(getHighestRankInputVariable());
 				output.accept("[");
 				output.accept(String.valueOf(2 * i));
 				output.accept("] = ");
@@ -117,12 +117,12 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData> extends Dyna
 			}
 		});
 
-		output.accept(getHighestRankConfVariable().getName());
+		output.accept(getHighestRankConfVariable());
 		output.accept("[0] = ");
 		output.accept(lang.getPrecision().stringForDouble(ranks.size()));
 		output.accept(";\n");
 
-		output.accept(getHighestRankConfVariable().getName());
+		output.accept(getHighestRankConfVariable());
 		output.accept("[1] = ");
 		output.accept(lang.getPrecision().stringForDouble(e));
 		output.accept(";\n");
@@ -134,13 +134,8 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData> extends Dyna
 			output.accept("if (");
 			output.accept(lang.getPrecision().stringForDouble(i));
 			output.accept(" == ");
-			output.accept(getHighestRankResultVariable().getName());
+			output.accept(getHighestRankResultVariable());
 			output.accept("[1]) {\n");
-
-//			if (enableOpenClKernelWorkaround) {
-//				output.accept("printf(\"assigning choice " + i + "\\n\");\n");
-//			}
-
 			writeOutputAssignments(output, i, existingVariables);
 			output.accept("}");
 			output.accept(" else ");
@@ -187,14 +182,14 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData> extends Dyna
 		output.accept("__local int closestIndex;\n");
 		output.accept("closestIndex = -1;\n");
 		output.accept("for (int i = 0; i < ");
-		output.accept(getHighestRankConfVariable().getName());
+		output.accept(getHighestRankConfVariable());
 		output.accept("[0]; i++) {\n");
 		output.accept("__local double value;\n");
 		output.accept("value = ");
-		output.accept(getHighestRankInputVariable().getName());
+		output.accept(getHighestRankInputVariable());
 		output.accept("[i * 2];\n");
 		output.accept("if (value >= ");
-		output.accept(getHighestRankConfVariable().getName());
+		output.accept(getHighestRankConfVariable());
 		output.accept("[1]");
 		output.accept(") {\n");
 		output.accept("if (closestIndex == -1 || value < closest) {\n");
@@ -203,15 +198,15 @@ public class AcceleratedRankedChoiceEvaluable<T extends MemoryData> extends Dyna
 		output.accept("}\n");
 		output.accept("}\n");
 		output.accept("}\n");
-		output.accept(getHighestRankResultVariable().getName());
+		output.accept(getHighestRankResultVariable());
 		output.accept("[0] = closestIndex < 0 ? -1 : closest;\n");
-		output.accept(getHighestRankResultVariable().getName());
+		output.accept(getHighestRankResultVariable());
 		output.accept("[1] = closestIndex;\n");
 	}
 
-	protected Variable<Double, ?> getHighestRankResultVariable() { return getVariable(0); }
-	protected Variable<Double, ?> getHighestRankInputVariable() { return getVariable(1); }
-	protected Variable<Double, ?> getHighestRankConfVariable() { return getVariable(2); }
+	protected String getHighestRankResultVariable() { return getVariableName(0); }
+	protected String getHighestRankInputVariable() { return getVariableName(1); }
+	protected String getHighestRankConfVariable() { return getVariableName(2); }
 	public int getDefaultValueIndex() { return getArgumentVariables().size() - 1; }
 
 	public List<ArrayVariable<Scalar>> getRanks() { return ranks == null ? getArguments(i -> i + 1) : ranks; }
