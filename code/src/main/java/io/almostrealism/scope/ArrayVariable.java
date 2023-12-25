@@ -40,7 +40,7 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 	private boolean destroyed;
 
 	public ArrayVariable(LanguageOperations lang, NameProvider np, String name, Expression<Integer> arraySize) {
-		super(name, np.getDefaultPhysicalScope(), null, null);
+		super(name, np == null ? null : np.getDefaultPhysicalScope(), null, null);
 		setLanguage(lang);
 		this.names = np;
 		setArraySize(arraySize);
