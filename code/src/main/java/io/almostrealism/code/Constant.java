@@ -39,8 +39,9 @@ public class Constant<T> implements Operator<T> {
 
 	@Override
 	public Scope<T> getScope() {
-		Scope s = new Scope();
-		s.getVariables().add(new Variable(v.getClass().getSimpleName(), v));
+		Scope<T> s = new Scope<>();
+		// TODO  This is not correct
+		// s.getVariables().add(new Variable(v.getClass().getSimpleName(), v));
 		return s;
 	}
 }

@@ -480,9 +480,9 @@ public class Polynomial extends AbstractSurface {
 
 			@Override
 			public Scope<Scalar> getScope() {
+				Scope<Scalar> s = new Scope<>();
 				// TODO  This is not correct
-				Scope s = new Scope();
-				s.getVariables().add(new Variable("scalar", get().evaluate()));
+				// s.getVariables().add(new Variable("scalar", get().evaluate()));
 				return s;
 			}
 

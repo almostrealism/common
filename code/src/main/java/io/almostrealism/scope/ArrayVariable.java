@@ -17,6 +17,7 @@
 package io.almostrealism.scope;
 
 import io.almostrealism.code.Array;
+import io.almostrealism.expression.Constant;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.PhysicalScope;
@@ -39,7 +40,7 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 	private boolean destroyed;
 
 	public ArrayVariable(LanguageOperations lang, NameProvider np, String name, Expression<Integer> arraySize) {
-		super(name, true, (Expression) null);
+		super(name, np.getDefaultPhysicalScope(), null, null);
 		setLanguage(lang);
 		this.names = np;
 		setArraySize(arraySize);
@@ -50,7 +51,7 @@ public class ArrayVariable<T> extends Variable<T, ArrayVariable<T>> implements A
 	}
 
 	public ArrayVariable(LanguageOperations lang, NameProvider np, String name, PhysicalScope scope, Class<T> type, Supplier<Evaluable<? extends T>> p) {
-		super(name, scope, type, p);
+		super(name, scope, new Constant<>(type), p);
 		setLanguage(lang);
 		this.names = np;
 	}
