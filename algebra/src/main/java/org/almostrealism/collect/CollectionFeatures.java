@@ -64,7 +64,6 @@ import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryDataComputation;
 import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.io.Console;
-import org.almostrealism.io.ConsoleFeatures;
 
 import java.util.List;
 import java.util.function.BiFunction;
@@ -76,6 +75,7 @@ import java.util.stream.IntStream;
 public interface CollectionFeatures extends ExpressionFeatures {
 	boolean enableShapelessWarning = false;
 	boolean enableTraversableIntegers = true;
+	boolean enableAxisAlignment = false;
 
 	Console console = Computation.console.child();
 
@@ -198,7 +198,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		TraversalPolicy valueShape = shape(value);
 
 		if (resultShape.getSize() != valueShape.getSize()) {
-			int axis = compatibleAxis(resultShape, valueShape);
+			int axis = TraversalPolicy.compatibleAxis(resultShape, valueShape);
 			if (axis == -1) {
 				throw new IllegalArgumentException();
 			} else if (axis < resultShape.getTraversalAxis()) {
@@ -325,6 +325,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		return new DynamicCollectionProducer(shape, function);
 	}
 
+	@Deprecated
 	default CollectionProducerComputation<PackedCollection<?>> kernel(TraversalPolicy shape,
 																	  KernelExpression kernel,
 																	  Producer... arguments) {
@@ -342,14 +343,14 @@ public interface CollectionFeatures extends ExpressionFeatures {
 				}), arguments);
 	}
 
-	default int compatibleAxis(TraversalPolicy shape, TraversalPolicy target) {
-		for (int i = 0; i < shape.getDimensions() + 1; i++) {
-			if (shape.size(i) == target.getSize()) {
-				return i;
-			}
-		}
-
-		return -1;
+	default <T, P extends Producer<T>> Producer<T> alignTraversalAxes(
+			List<Producer<T>> producers, BiFunction<TraversalPolicy, List<Producer<T>>, P> processor) {
+		return TraversalPolicy
+				.alignTraversalAxes(
+						producers.stream().map(this::shape).collect(Collectors.toList()),
+						producers,
+						(i, p) -> traverse(i, (Producer) p),
+						processor);
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducer<T> traverse(int axis, Producer<T> producer) {
@@ -542,27 +543,34 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> multiply(
 			Producer<T> a, Producer<T> b,
 			Evaluable<T> shortCircuit) {
-		TraversalPolicy shapeA = shape(a);
-		TraversalPolicy shapeB = shape(b);
-		TraversalPolicy shape = shapeA.getTotalSize() > shapeB.getTotalSize() ? shapeA : shapeB;
-		int size = shapeA.getTotalSize() > shapeB.getTotalSize() ? shapeB.getSize() : shapeA.getSize();
+		if (enableAxisAlignment) {
+			return (CollectionProducerComputationBase) alignTraversalAxes(List.of(a, b),
+					(shape, arguments) -> new TraversableExpressionComputation(shape,
+							(BiFunction<TraversableExpression[], Expression, Expression>) (args, index) ->
+									new Product(args[1].getValueAt(index), args[2].getValueAt(index)),
+							arguments.toArray(Supplier[]::new)).setShortCircuit(shortCircuit));
+		} else {
+			TraversalPolicy shapeA = shape(a);
+			TraversalPolicy shapeB = shape(b);
+			TraversalPolicy shape = shapeA.getTotalSize() > shapeB.getTotalSize() ? shapeA : shapeB;
+			int size = shapeA.getTotalSize() > shapeB.getTotalSize() ? shapeB.getSize() : shapeA.getSize();
 
-		if (shape.getSize() != size) {
-			if (shape.getSize() != 1 && size != 1) {
-				throw new IllegalArgumentException("Cannot multiply a collection of size " + shape.getSize() +
-						" with a collection of size " + size);
-			} else {
-				// TODO This should actually just call traverseEach if the shapes don't match, but one size is = 1
-				System.out.println("WARN: Multiplying a collection of size " + shape.getSize() +
-						" with a collection of size " + size + " (will broadcast)");
+			if (shape.getSize() != size) {
+				if (shape.getSize() != 1 && size != 1) {
+					throw new IllegalArgumentException("Cannot multiply a collection of size " + shape.getSize() +
+							" with a collection of size " + size);
+				} else {
+					// TODO This should actually just call traverseEach if the shapes don't match, but one size is = 1
+					System.out.println("WARN: Multiplying a collection of size " + shape.getSize() +
+							" with a collection of size " + size + " (will broadcast)");
+				}
 			}
-		}
 
-		TraversableExpressionComputation exp = new TraversableExpressionComputation<>(shape,
-				args -> CollectionExpression.create(shape, index -> new Product(args[1].getValueAt(index), args[2].getValueAt(index))),
-				(Supplier) a, (Supplier) b);
-		exp.setShortCircuit(shortCircuit);
-		return exp;
+			return new TraversableExpressionComputation(shape,
+					(BiFunction<TraversableExpression[], Expression, Expression>) (args, index) ->
+							new Product(args[1].getValueAt(index), args[2].getValueAt(index)),
+					(Supplier) a, (Supplier) b).setShortCircuit(shortCircuit);
+		}
 	}
 
 	@Deprecated

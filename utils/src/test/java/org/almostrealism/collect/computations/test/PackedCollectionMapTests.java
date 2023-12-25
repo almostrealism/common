@@ -17,10 +17,11 @@
 package org.almostrealism.collect.computations.test;
 
 import io.almostrealism.collect.TraversalPolicy;
-import io.almostrealism.expression.Mod;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
+import org.almostrealism.collect.CollectionFeatures;
 import org.almostrealism.collect.CollectionProducer;
+import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.KernelizedEvaluable;
@@ -34,6 +35,34 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public class PackedCollectionMapTests implements TestFeatures {
+
+	@Test
+	public void map2d() {
+		if (!CollectionFeatures.enableAxisAlignment) return;
+
+		int n = 5;
+		int m = 2;
+
+		PackedCollection<?> c = empty(shape(n)).fill(Math::random);
+		PackedCollection<?> d = empty(shape(m)).fill(Math::random);
+		Supplier<CollectionProducerComputation<PackedCollection<?>>> product =
+				() -> cp(c).each().map(shape(m), v ->
+						v.mul(cp(d)));
+
+		Consumer<PackedCollection<?>> valid = output -> {
+			Assert.assertEquals(5, output.getShape().length(0));
+			Assert.assertEquals(2, output.getShape().length(1));
+
+			for (int i = 0; i < n; i++) {
+				for (int j = 0; j < m; j++) {
+					assertEquals(c.valueAt(i) * d.valueAt(j), output.valueAt(i, j));
+				}
+			}
+		};
+
+		kernelTest(product, valid);
+	}
+
 	@Test
 	public void map3d() {
 		PackedCollection<?> input = tensor(shape(8, 3, 3)).pack();
@@ -577,7 +606,7 @@ public class PackedCollectionMapTests implements TestFeatures {
 
 	@Test
 	public void enumerateRepeatMapReduceSmall() {
-		Mod.enableKernelSimplification = true;
+//		Mod.enableKernelSimplification = true;
 
 //		Known to fail
 //		int r = 8;

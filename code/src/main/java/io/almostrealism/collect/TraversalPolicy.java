@@ -24,7 +24,12 @@ import io.almostrealism.expression.Quotient;
 import io.almostrealism.expression.Sum;
 import io.almostrealism.relation.Countable;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
+import java.util.List;
+import java.util.TreeSet;
+import java.util.function.BiFunction;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
@@ -269,5 +274,39 @@ public class TraversalPolicy implements Traversable<TraversalPolicy>, Countable 
 		}
 		sb.append(")");
 		return sb.toString();
+	}
+
+	public static <T, V> T alignTraversalAxes(List<TraversalPolicy> shapes, List<V> values,
+											  BiFunction<Integer, V, V> traversalFunction,
+											  BiFunction<TraversalPolicy, List<V>, T> resultProcessor) {
+		TreeSet<TraversalPolicy> sortedShapes = new TreeSet<>(Comparator.comparing(TraversalPolicy::getSize));
+		sortedShapes.addAll(shapes);
+
+		s: for (TraversalPolicy shape : sortedShapes) {
+			int[] compatibleAxes =
+					IntStream.range(0, values.size())
+							.map(i -> compatibleAxis(shape, shapes.get(i)))
+							.filter(i -> i >= 0).toArray();
+			if (compatibleAxes.length != values.size()) continue s;
+
+			List<V> vals = new ArrayList<>();
+			for (int i = 0; i < values.size(); i++) {
+				vals.add(traversalFunction.apply(compatibleAxes[i], values.get(i)));
+			}
+
+			return resultProcessor.apply(shape, vals);
+		}
+
+		throw new IllegalArgumentException("No compatible traversal axes");
+	}
+
+	public static int compatibleAxis(TraversalPolicy shape, TraversalPolicy target) {
+		for (int i = 0; i < shape.getDimensions() + 1; i++) {
+			if (shape.size(i) == target.getSize()) {
+				return i;
+			}
+		}
+
+		return -1;
 	}
 }
