@@ -78,7 +78,7 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 
 		if (!cache.containsKey(sig)) {
 			if (cache.size() >= cacheManager.getMaxEntries()) {
-//				warn("Cache is full");
+				warn("Cache is full");
 				return null;
 			}
 
