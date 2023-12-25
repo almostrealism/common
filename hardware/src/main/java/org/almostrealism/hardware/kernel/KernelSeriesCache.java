@@ -23,6 +23,8 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.kernel.KernelSeriesMatcher;
 import io.almostrealism.kernel.KernelSeriesProvider;
+import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.lang.LanguageOperationsStub;
 import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.hardware.Hardware;
@@ -48,8 +50,10 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 	private int count;
 	private boolean fixed;
 	private MemoryDataCacheManager cacheManager;
+	private LanguageOperations lang;
 
 	private Map<String, Integer> cache = new HashMap<>();
+	private Map<String, Expression> expressions = new HashMap<>();
 	private Base64.Encoder encoder = Base64.getEncoder();
 
 	public KernelSeriesCache(int count, boolean fixed, MemoryDataCacheManager cacheManager) {
@@ -60,11 +64,23 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 		this.count = count;
 		this.fixed = fixed;
 		this.cacheManager = cacheManager;
+		this.lang = new LanguageOperationsStub();
 	}
 
 	@Override
 	public OptionalInt getMaximumLength() {
 		return fixed ? OptionalInt.of(count) : OptionalInt.empty();
+	}
+
+	@Override
+	public Expression getSeries(Expression exp) {
+		String e = exp.getExpression(lang);
+		Expression result = expressions.get(e);
+		if (result != null) return result;
+
+		result = KernelSeriesProvider.super.getSeries(exp);
+		expressions.put(e, result);
+		return result;
 	}
 
 	@Override
