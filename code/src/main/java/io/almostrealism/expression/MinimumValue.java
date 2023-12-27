@@ -16,9 +16,13 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.collect.CollectionExpression;
+import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.OptionalInt;
+import java.util.function.Function;
+import java.util.function.Predicate;
 
 public class MinimumValue extends StaticReference<Double> {
 
@@ -34,5 +38,10 @@ public class MinimumValue extends StaticReference<Double> {
 	@Override
 	public String getExpression(LanguageOperations lang) {
 		return lang.getPrecision().stringForDouble(lang.getPrecision().minValue());
+	}
+
+	@Override
+	public CollectionExpression delta(TraversalPolicy shape, Function<Expression, Predicate<Expression>> target) {
+		return CollectionExpression.zeros(shape);
 	}
 }

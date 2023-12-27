@@ -21,7 +21,7 @@ import io.almostrealism.lang.LanguageOperations;
 import java.util.List;
 import java.util.OptionalInt;
 
-public class Min extends Expression<Double> {
+public class Min extends BinaryExpression<Double> {
 	public Min(Expression<Double> a, Expression<Double> b) {
 		super(Double.class, a, b);
 	}

@@ -24,7 +24,7 @@ import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.stream.IntStream;
 
-public abstract class Comparison extends Expression<Boolean> {
+public abstract class Comparison extends BinaryExpression<Boolean> {
 	public static boolean enableKernelSimplification = false;
 
 	private int[] latestBooleanSeq;
@@ -34,9 +34,6 @@ public abstract class Comparison extends Expression<Boolean> {
 	}
 
 	protected abstract boolean compare(Number left, Number right);
-
-	public Expression<?> getLeft() { return getChildren().get(0); }
-	public Expression<?> getRight() { return getChildren().get(1); }
 
 	@Override
 	public int[] booleanSeq(int len) {

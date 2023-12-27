@@ -266,6 +266,10 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 
 	public Equals eq(Expression<?> operand) { return new Equals(this, operand); };
 	public Conjunction and(Expression<Boolean> operand) { return new Conjunction((Expression) this, operand); };
+	public Conditional conditional(Expression<?> positive, Expression<?> negative) {
+		if (getType() != Boolean.class) throw new IllegalArgumentException();
+		return Conditional.create((Expression<Boolean>) this, (Expression) positive, (Expression) negative);
+	}
 	public Greater greaterThan(Expression<?> operand) { return new Greater(this, operand); };
 	public Greater greaterThanOrEqual(Expression<?> operand) { return new Greater(this, operand, true); };
 	public Less lessThan(Expression<?> operand) { return new Less(this, operand); };

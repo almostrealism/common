@@ -72,6 +72,11 @@ public interface CollectionExpression extends TraversableExpression<Double> {
 		return create(shape, idx -> new Product<>(operands.stream().map(o -> o.getValueAt(idx))));
 	}
 
+	static CollectionExpression conditional(TraversalPolicy shape, Expression<Boolean> condition,
+											CollectionExpression positive, CollectionExpression negative) {
+		return create(shape, idx -> condition.conditional(positive.getValueAt(idx), negative.getValueAt(idx)));
+	}
+
 	static CollectionExpression zeros(TraversalPolicy shape) {
 		return create(shape, new IntegerConstant(0));
 	}
