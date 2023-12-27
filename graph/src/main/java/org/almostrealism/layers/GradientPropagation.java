@@ -94,7 +94,7 @@ public class GradientPropagation implements Propagation, Nameable, CodeFeatures 
 				.each();
 
 		weightUpdateAssignment =
-				a(getName() + " \u0394 weights", each(weightFlat),
+				a(getName() + " (\u0394 weights)", each(weightFlat),
 						subtract(each(weightFlat), multiply(learningRate, deltaOutDeltaWeight)));
 
 		OperationList op = new OperationList("Gradient Propagation");
@@ -112,7 +112,7 @@ public class GradientPropagation implements Propagation, Nameable, CodeFeatures 
 				};
 			});
 		} else {
-			op.add(a(getName() + " \u03B4Out/\u03B4In", traverseEach(p(gradOut)), deltaOutDeltaIn));
+			op.add(a(getName() + " (\u03B4Out/\u03B4In)", traverseEach(p(gradOut)), deltaOutDeltaIn));
 			op.add(weightUpdateAssignment);
 		}
 

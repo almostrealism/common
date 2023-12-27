@@ -21,6 +21,9 @@ public class Mask extends Conditional {
 		super(mask, value, (Expression) new IntegerConstant(0));
 	}
 
+	public Expression<Boolean> getMask() { return (Expression<Boolean>) getChildren().get(0); }
+	public Expression<Double> getMaskedValue() { return (Expression<Double>) getChildren().get(1); }
+
 	@Override
 	public boolean isMasked() { return true; }
 

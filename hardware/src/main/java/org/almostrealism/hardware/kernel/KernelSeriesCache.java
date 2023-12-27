@@ -20,7 +20,6 @@ package org.almostrealism.hardware.kernel;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ExpressionFeatures;
 import io.almostrealism.expression.Expression;
-import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.kernel.KernelSeriesMatcher;
 import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.lang.LanguageOperations;
@@ -40,11 +39,10 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.OptionalInt;
 import java.util.function.Function;
-import java.util.stream.DoubleStream;
-import java.util.stream.Stream;
 
 public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatures, ConsoleFeatures {
 	public static boolean enableCache = true;
+	public static boolean enableVerbose = false;
 	public static int defaultMaxEntries = 256;
 
 	private int count;
@@ -74,6 +72,10 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 
 	@Override
 	public Expression getSeries(Expression exp) {
+		if (exp.isSingleIndexMasked()) {
+			return exp;
+		}
+
 		String e = exp.getExpression(lang);
 		Expression result = expressions.get(e);
 		if (result != null) return result;
@@ -94,7 +96,8 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 
 		if (!cache.containsKey(sig)) {
 			if (cache.size() >= cacheManager.getMaxEntries()) {
-//				warn("Cache is full");
+				if (enableVerbose)
+					warn("Cache is full");
 				return null;
 			}
 

@@ -121,48 +121,88 @@ public class Product<T extends Number> extends NAryExpression<T> {
 
 	@Override
 	public Expression simplify(KernelSeriesProvider provider) {
-		List<Expression<?>> children = super.simplify(provider).flatten().stream()
-				.filter(e -> !removeIdentities || e.doubleValue().orElse(-1) != 1.0)
-				.collect(Collectors.toList());
+		List<Expression<?>> children = super.simplify(provider).flatten().stream().collect(Collectors.toList());
 
-		if (children.size() == 1) return children.get(0);
-		if (children.isEmpty()) return getType() == Integer.class ? new IntegerConstant(1) : new DoubleConstant(1.0);
+		Mask mask = children.stream()
+				.filter(e -> e instanceof Mask)
+				.map(e -> (Mask) e)
+				.findFirst()
+				.orElse(null);
 
-		List<Double> values = children.stream()
-				.map(Expression::doubleValue)
-				.filter(d -> d.isPresent())
-				.map(d -> d.getAsDouble())
-				.collect(Collectors.toList());
-
-		if (values.size() <= 0) {
-			return generate(children).populate(this);
-		} else if (values.size() == 1) {
-			if (values.get(0).doubleValue() == 0.0) {
-				return getType() == Integer.class ? new IntegerConstant(0) : new DoubleConstant(0.0);
-			} else {
-				return generate(children).populate(this);
-			}
+		if (mask != null) {
+			children = new ArrayList<>(children.stream()
+					.filter(e -> e != mask)
+					.collect(Collectors.toList()));
+			children.add(mask.getMaskedValue());
 		}
 
 		children = children.stream()
-				.filter(e -> !e.doubleValue().isPresent())
+				.filter(e -> !removeIdentities || e.doubleValue().orElse(-1) != 1.0)
 				.collect(Collectors.toList());
 
-		double product = values.stream().reduce(1.0, (a, b) -> a * b);
 
-		if (product == 0.0) {
-			return getType() == Integer.class ? new IntegerConstant(0) : new DoubleConstant(0.0);
-		} else if (product == 1.0) {
-			if (children.isEmpty())
-				return getType() == Integer.class ? new IntegerConstant(1) : new DoubleConstant(1.0);
-			if (children.size() == 1) return children.get(0);
-			return generate(children).populate(this);
+		Expression simple = null;
+
+		if (children.size() == 1) {
+			simple = children.get(0);
+		} else if (children.isEmpty()) {
+			simple = getType() == Integer.class ? new IntegerConstant(1) : new DoubleConstant(1.0);
+		}
+
+		List<Double> values = null;
+
+		if (simple == null) {
+			values = children.stream()
+					.map(Expression::doubleValue)
+					.filter(d -> d.isPresent())
+					.map(d -> d.getAsDouble())
+					.collect(Collectors.toList());
+
+			if (values.size() <= 0) {
+				simple = generate(children).populate(this);
+			} else if (values.size() == 1) {
+				if (values.get(0).doubleValue() == 0.0) {
+					return getType() == Integer.class ? new IntegerConstant(0) : new DoubleConstant(0.0);
+				} else {
+					simple = generate(children).populate(this);
+				}
+			}
+		}
+
+		if (simple == null) {
+			children = children.stream()
+					.filter(e -> !e.doubleValue().isPresent())
+					.collect(Collectors.toList());
+
+			double product = values.stream().reduce(1.0, (a, b) -> a * b);
+
+			if (product == 0.0) {
+				return getType() == Integer.class ? new IntegerConstant(0) : new DoubleConstant(0.0);
+			} else if (product == 1.0) {
+				if (children.isEmpty()) {
+					simple = getType() == Integer.class ? new IntegerConstant(1) : new DoubleConstant(1.0);
+				} else if (children.size() == 1) {
+					simple = children.get(0);
+				} else {
+					simple = generate(children).populate(this);
+				}
+			} else {
+				List<Expression<?>> newChildren = new ArrayList<>();
+				newChildren.addAll(children);
+				newChildren.add(getType() == Integer.class ? new IntegerConstant((int) product) : new DoubleConstant(product));
+
+				if (newChildren.size() == 1) {
+					simple = newChildren.get(0);
+				} else {
+					simple = generate(newChildren).populate(this);
+				}
+			}
+		}
+
+		if (mask == null) {
+			return simple;
 		} else {
-			List<Expression<?>> newChildren = new ArrayList<>();
-			newChildren.addAll(children);
-			newChildren.add(getType() == Integer.class ? new IntegerConstant((int) product) : new DoubleConstant(product));
-			if (newChildren.size() == 1) return newChildren.get(0);
-			return generate(newChildren).populate(this);
+			return new Mask(mask.getMask(), simple);
 		}
 	}
 

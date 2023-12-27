@@ -32,6 +32,17 @@ public class Equals extends Comparison {
 	}
 
 	@Override
+	public boolean isSingleIndex() {
+		if (getLeft() instanceof KernelIndex) {
+			return getRight().doubleValue().isPresent();
+		} else if (getRight() instanceof KernelIndex) {
+			return getLeft().doubleValue().isPresent();
+		}
+
+		return false;
+	}
+
+	@Override
 	protected boolean compare(Number left, Number right) {
 		return left.doubleValue() == right.doubleValue();
 	}

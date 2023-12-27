@@ -76,7 +76,7 @@ public class Conditional extends Expression<Double> {
 		if (ld.isPresent() && rd.isPresent() && ld.getAsDouble() == rd.getAsDouble())
 			return new DoubleConstant(ld.getAsDouble());
 
-		if (enableKernelSimplification && provider != null) {
+		if (enableKernelSimplification && provider != null && !flat.isSingleIndexMasked()) {
 			OptionalInt max = provider.getMaximumLength();
 			int seq[] = max.isPresent() ? condition.booleanSeq(max.getAsInt()) : null;
 			Expression exp = seq == null ? null : provider.getSeries(seq);
