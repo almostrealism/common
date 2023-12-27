@@ -125,8 +125,8 @@ public class Product<T extends Number> extends NAryExpression<T> {
 				.filter(e -> !removeIdentities || e.doubleValue().orElse(-1) != 1.0)
 				.collect(Collectors.toList());
 
-		if (children.size() == 1) return (Expression<Double>) children.get(0);
-		if (children.size() == 0) return (Expression<Double>) getChildren().iterator().next();
+		if (children.size() == 1) return children.get(0);
+		if (children.isEmpty()) return getType() == Integer.class ? new IntegerConstant(1) : new DoubleConstant(1.0);
 
 		List<Double> values = children.stream()
 				.map(Expression::doubleValue)
@@ -155,13 +155,13 @@ public class Product<T extends Number> extends NAryExpression<T> {
 		} else if (product == 1.0) {
 			if (children.isEmpty())
 				return getType() == Integer.class ? new IntegerConstant(1) : new DoubleConstant(1.0);
-			if (children.size() == 1) return (Expression<Double>) children.get(0);
+			if (children.size() == 1) return children.get(0);
 			return generate(children).populate(this);
 		} else {
 			List<Expression<?>> newChildren = new ArrayList<>();
 			newChildren.addAll(children);
 			newChildren.add(getType() == Integer.class ? new IntegerConstant((int) product) : new DoubleConstant(product));
-			if (newChildren.size() == 1) return (Expression<Double>) newChildren.get(0);
+			if (newChildren.size() == 1) return newChildren.get(0);
 			return generate(newChildren).populate(this);
 		}
 	}

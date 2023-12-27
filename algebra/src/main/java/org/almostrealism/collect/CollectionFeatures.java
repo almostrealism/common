@@ -807,7 +807,7 @@ public interface CollectionFeatures extends ExpressionFeatures {
 //			}
 
 		return new TraversableExpressionComputation<>(shape,
-				(args, index) -> new Conditional(
+				(args, index) -> conditional(
 						greater(args[1].getValueAt(index), args[2].getValueAt(index), includeEqual),
 						args[3].getValueAt(index), args[4].getValueAt(index)),
 				(Supplier) a, (Supplier) b,

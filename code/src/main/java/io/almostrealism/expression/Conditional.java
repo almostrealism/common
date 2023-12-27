@@ -27,7 +27,7 @@ import java.util.OptionalInt;
 public class Conditional extends Expression<Double> {
 	public static boolean enableKernelSimplification = true;
 
-	public Conditional(Expression<Boolean> condition, Expression<Double> positive, Expression<Double> negative) {
+	protected Conditional(Expression<Boolean> condition, Expression<Double> positive, Expression<Double> negative) {
 		super(Double.class, condition, positive, negative);
 	}
 
@@ -92,14 +92,28 @@ public class Conditional extends Expression<Double> {
 			}
 		}
 
-		return new Conditional(condition, positive, negative);
+		return Conditional.create(condition, positive, negative);
 	}
 
 	@Override
 	public Expression<Double> generate(List<Expression<?>> children) {
 		if (children.size() != 3) throw new UnsupportedOperationException();
-		return new Conditional((Expression<Boolean>) children.get(0),
+		return Conditional.create((Expression<Boolean>) children.get(0),
 				(Expression<Double>) children.get(1),
 				(Expression<Double>) children.get(2));
+	}
+
+	public static Conditional create(Expression<Boolean> condition, Expression<Double> positive, Expression<Double> negative) {
+		OptionalDouble rd = negative.doubleValue();
+		if (rd.isPresent() && rd.getAsDouble() == 0.0) {
+			return new Mask(condition, positive);
+		}
+
+		OptionalDouble ld = positive.doubleValue();
+		if (ld.isPresent() && ld.getAsDouble() == 0.0) {
+			return new Mask(condition.not(), negative);
+		}
+
+		return new Conditional(condition, positive, negative);
 	}
 }

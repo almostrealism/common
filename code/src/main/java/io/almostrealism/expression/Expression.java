@@ -24,7 +24,6 @@ import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.kernel.KernelTree;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
-import io.almostrealism.relation.Tree;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 import org.almostrealism.io.ConsoleFeatures;
@@ -96,6 +95,10 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 	public Class<T> getType() { return this.type; }
 
 	public boolean isNull() { return false; }
+	public boolean isMasked() { return false; }
+	public boolean isSingleIndex() { return false; }
+	public boolean isSingleIndexMasked() { return false; }
+	public boolean isKernelValue() { return false; }
 
 	public Optional<Boolean> booleanValue() { return Optional.empty(); }
 
@@ -104,8 +107,6 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 		OptionalInt intValue = intValue();
 		return intValue.isPresent() ? OptionalDouble.of(intValue.getAsInt()) : OptionalDouble.empty();
 	}
-
-	public boolean isKernelValue() { return false; }
 
 	public KernelSeries kernelSeries() {
 		return KernelSeries.infinite();
@@ -255,6 +256,13 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 	public Sine sin() { return new Sine((Expression) this); }
 	public Cosine cos() { return new Cosine((Expression) this); }
 	public Tangent tan() { return new Tangent((Expression) this); }
+
+	public Negation not() {
+		if (getType() != Boolean.class)
+			throw new IllegalArgumentException();
+
+		return new Negation((Expression) this);
+	}
 
 	public Equals eq(Expression<?> operand) { return new Equals(this, operand); };
 	public Conjunction and(Expression<Boolean> operand) { return new Conjunction((Expression) this, operand); };

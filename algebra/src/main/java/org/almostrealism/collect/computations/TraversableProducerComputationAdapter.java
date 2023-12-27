@@ -78,7 +78,7 @@ public abstract class TraversableProducerComputationAdapter<I extends PackedColl
 		Expression value = getValue(args, 0);
 
 		for (int j = 1; j < getMemLength(); j++) {
-			value = new Conditional(index.eq(e(j)), getValue(args, j), value);
+			value = conditional(index.eq(e(j)), getValue(args, j), value);
 		}
 
 		return value;

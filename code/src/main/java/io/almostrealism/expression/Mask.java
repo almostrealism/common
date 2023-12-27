@@ -1,5 +1,5 @@
 /*
- * Copyright 2020 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,9 +14,16 @@
  *  limitations under the License.
  */
 
-package org.almostrealism.bool;
+package io.almostrealism.expression;
 
-import io.almostrealism.relation.Evaluable;
+public class Mask extends Conditional {
+	public Mask(Expression<Boolean> mask, Expression<Double> value) {
+		super(mask, value, (Expression) new IntegerConstant(0));
+	}
 
-public interface Condition extends Evaluable<Boolean> {
+	@Override
+	public boolean isMasked() { return true; }
+
+	@Override
+	public boolean isSingleIndexMasked() { return getChildren().get(0).isSingleIndex(); }
 }
