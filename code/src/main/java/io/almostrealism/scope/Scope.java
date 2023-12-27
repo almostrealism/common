@@ -59,7 +59,7 @@ import java.util.stream.IntStream;
  *
  * @param <T>  The type of the value returned by this {@link Scope}.
  */
-public class Scope<T> extends ArrayList<Scope<T>> implements KernelTree<Scope<T>>, OperationInfo, Nameable {
+public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTree<Scope<T>>, OperationInfo, Nameable {
 	public static final boolean enableInlining = true;
 	public static final Console console = Console.root().child();
 

@@ -26,8 +26,14 @@ public class UnaryExpression<T> extends Expression<T> {
 		this.operator = operator;
 	}
 
+	protected boolean isIncludeSpace() { return true; }
+
 	@Override
 	public String getExpression(LanguageOperations lang) {
-		return operator + " " + getChildren().get(0).getWrappedExpression(lang);
+		if (isIncludeSpace()) {
+			return operator + " " + getChildren().get(0).getWrappedExpression(lang);
+		} else {
+			return operator + getChildren().get(0).getWrappedExpression(lang);
+		}
 	}
 }

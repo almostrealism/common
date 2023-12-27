@@ -18,7 +18,8 @@ package io.almostrealism.code;
 
 import io.almostrealism.kernel.KernelStructure;
 import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.scope.Fragment;
 
-public interface Statement<T extends KernelStructure> extends KernelStructure<T> {
+public interface Statement<T extends KernelStructure> extends Fragment, KernelStructure<T> {
 	String getStatement(LanguageOperations lang);
 }

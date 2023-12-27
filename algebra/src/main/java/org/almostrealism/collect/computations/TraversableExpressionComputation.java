@@ -110,7 +110,7 @@ public class TraversableExpressionComputation<T extends PackedCollection<?>>
 				Expression v = value.getValueAt(new IntegerConstant(0));
 
 				for (int j = 1; j < value.getShape().getTotalSize(); j++) {
-					v = new Conditional(index.eq(new IntegerConstant(j)), value.getValueAt(new IntegerConstant(j)), v);
+					v = Conditional.create(index.eq(new IntegerConstant(j)), value.getValueAt(new IntegerConstant(j)), v);
 				}
 
 				return v;
