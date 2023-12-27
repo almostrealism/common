@@ -17,6 +17,7 @@
 package org.almostrealism.collect.computations;
 
 import io.almostrealism.expression.KernelIndex;
+import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.HybridScope;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.collect.CollectionExpression;
@@ -37,7 +38,7 @@ import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
 public class RepeatedCollectionProducerComputation<T extends PackedCollection<?>> extends CollectionProducerComputationBase<T, T> {
-	private BiFunction<TraversableExpression[], Expression, Expression> initial;
+	protected BiFunction<TraversableExpression[], Expression, Expression> initial;
 	private BiFunction<TraversableExpression[], Expression, Expression> condition;
 	private BiFunction<TraversableExpression[], Expression, Expression> expression;
 	private int memLength;
@@ -64,6 +65,10 @@ public class RepeatedCollectionProducerComputation<T extends PackedCollection<?>
 		this.memLength = size;
 	}
 
+	protected void setExpression(BiFunction<TraversableExpression[], Expression, Expression> expression) {
+		this.expression = expression;
+	}
+
 	@Override
 	public int getMemLength() { return memLength; }
 
@@ -83,7 +88,8 @@ public class RepeatedCollectionProducerComputation<T extends PackedCollection<?>
 		Set<Variable<?, ?>> dependencies = new HashSet<>();
 
 		for (int j = 0; j < getMemLength(); j++) {
-			Expression<?> out = output.getValueRelative(e(j));
+//			Expression<?> out = output.getValueRelative(e(j));
+			Expression<?> out = ((ArrayVariable) getOutputVariable()).referenceRelative(e(j));
 			Expression<?> val = initial.apply(getTraversableArguments(index), ref.add(j));
 			scope.code().accept("\t" + out.getSimpleExpression(getLanguage()) + " = " + val.getSimpleExpression(getLanguage()) + ";\n");
 			dependencies.addAll(out.getDependencies());
@@ -93,7 +99,8 @@ public class RepeatedCollectionProducerComputation<T extends PackedCollection<?>
 		scope.code().accept("\tfor (int " + i + " = 0; " + cond + ";) {\n");
 
 		for (int j = 0; j < getMemLength(); j++) {
-			Expression<?> out = output.getValueRelative(e(j));
+//			Expression<?> out = output.getValueRelative(e(j));
+			Expression<?> out = ((ArrayVariable) getOutputVariable()).referenceRelative(e(j));
 			Expression<?> val = expression.apply(getTraversableArguments(index), ref.add(j));
 			scope.code().accept("\t\t" + out.getSimpleExpression(getLanguage()) + " = " + val.getSimpleExpression(getLanguage()) + ";\n");
 			dependencies.addAll(out.getDependencies());

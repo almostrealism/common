@@ -44,6 +44,7 @@ import java.util.function.Supplier;
 public interface LayerFeatures extends MatrixFeatures {
 	boolean ioTracking = SystemUtils.isEnabled("AR_GRAPH_IO_TRACKING").orElse(true);
 	boolean enableLegacyConvLayer = false;
+	boolean enableLegacyPoolLayer = false;
 
 	default CellularLayer layer(String name, TraversalPolicy inputShape, TraversalPolicy outputShape,
 								Cell<PackedCollection<?>> forward, Propagation backward,
@@ -56,6 +57,19 @@ public interface LayerFeatures extends MatrixFeatures {
 								Cell<PackedCollection<?>> forward, Propagation backward,
 								List<PackedCollection<?>> weights, ComputeRequirement... requirements) {
 		return layer(name, inputShape, outputShape, forward, backward, weights, new OperationList(), requirements);
+	}
+
+	default CellularLayer layer(String name, TraversalPolicy inputShape, TraversalPolicy outputShape,
+								Factor<PackedCollection<?>> operator,
+								ComputeRequirement... requirements) {
+		return layer(name, inputShape, outputShape, operator, Collections.emptyList(), requirements);
+	}
+
+	default CellularLayer layer(String name, TraversalPolicy inputShape, TraversalPolicy outputShape,
+								Factor<PackedCollection<?>> operator,
+								List<PackedCollection<?>> weights,
+								ComputeRequirement... requirements) {
+		return layer(name, inputShape, outputShape, operator, weights, new OperationList(), requirements);
 	}
 
 	default CellularLayer layer(String name, TraversalPolicy inputShape, TraversalPolicy outputShape,
@@ -168,44 +182,55 @@ public interface LayerFeatures extends MatrixFeatures {
 		return shape -> pool2d(shape, size);
 	}
 
-	default CellularLayer pool2d(TraversalPolicy inputShape, int size) {
+	default CellularLayer pool2d(TraversalPolicy inputShape, int size, ComputeRequirement... requirements) {
 		TraversalPolicy outputShape = shape(inputShape.length(0) / size, inputShape.length(1) / size, inputShape.length(2));
+		int d = outputShape.length(2);
 
-		KernelExpression backward = (i, p) -> {
-			Expression x = p.l(0).divide(size);
-			Expression y = p.l(1).divide(size);
-			Expression max = i.v(0).get(shape(size, size, 1), x.multiply(2), y.multiply(2), p.l(2)).max();
-			return conditional(max.eq(i.v(0).getValue(p)), i.v(1).get(x, y, p.l(2)), e(0));
-		};
+		if (enableLegacyPoolLayer) {
+			KernelExpression backward = (i, p) -> {
+				Expression x = p.l(0).divide(size);
+				Expression y = p.l(1).divide(size);
+				Expression max = i.v(0).get(shape(size, size, 1), x.multiply(2), y.multiply(2), p.l(2)).max();
+				return conditional(max.eq(i.v(0).getValue(p)), i.v(1).get(x, y, p.l(2)), e(0));
+			};
 
-		Propagation propagation = (lr, gradient, input, next) -> {
-			PackedCollection<?> out = new PackedCollection<>(inputShape);
+			Propagation propagation = (lr, gradient, input, next) -> {
+				PackedCollection<?> out = new PackedCollection<>(inputShape);
 
-			OperationList ops = new OperationList();
-			ops.add(kernel(inputShape, backward, input, gradient), out.traverseEach());
-			if (next != null) ops.add(next.push(p(out)));
-			return ops;
-		};
+				OperationList ops = new OperationList();
+				ops.add(kernel(inputShape, backward, input, gradient), out.traverseEach());
+				if (next != null) ops.add(next.push(p(out)));
+				return ops;
+			};
 
-		return layer("pool2d", inputShape, outputShape,
-				Cell.of((input, next) -> {
-					PackedCollection<?> output = new PackedCollection<>(outputShape);
-					int d = outputShape.length(2);
+			return layer("pool2d", inputShape, outputShape,
+					Cell.of((input, next) -> {
+						PackedCollection<?> output = new PackedCollection<>(outputShape);
 
-					OperationList ops = new OperationList();
-					Producer<PackedCollection<?>> pool = c(input).enumerate(1, size)
-									.enumerate(1, size)
-									.traverse(2)
-									.map(shape(d, 1), v ->
-											enumerate(shape(1, 1, size, size, 1), v)
-													.traverse(1).reduce(slice -> max(slice)));
+						OperationList ops = new OperationList();
+						Producer<PackedCollection<?>> pool = c(input).enumerate(1, size)
+								.enumerate(1, size)
+								.traverse(2)
+								.map(shape(d, 1), v ->
+										enumerate(shape(1, 1, size, size, 1), v)
+												.traverse(1).reduce(slice -> max(slice)));
 
-					ops.add(output.traverse(2).getShape().getSize(),
+						ops.add(output.traverse(2).getShape().getSize(),
 								pool, p(output.traverse(2)));
 
-					if (next != null) ops.add(next.push(p(output)));
-					return ops;
-				}), propagation);
+						if (next != null) ops.add(next.push(p(output)));
+						return ops;
+					}), propagation);
+		} else {
+			Factor<PackedCollection<?>> operator = input ->
+					c(input).enumerate(1, size)
+							.enumerate(1, size)
+							.traverse(2)
+							.map(shape(d, 1), v ->
+									enumerate(shape(1, 1, size, size, 1), v)
+											.traverse(1).reduce(slice -> max(slice)));
+			return layer("pool2d", inputShape, outputShape, operator, requirements);
+		}
 	}
 
 	default Function<TraversalPolicy, CellularLayer> dense(int nodes) {

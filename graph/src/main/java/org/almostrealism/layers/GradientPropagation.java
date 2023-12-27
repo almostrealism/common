@@ -16,6 +16,8 @@
 
 package org.almostrealism.layers;
 
+import io.almostrealism.code.OperationMetadata;
+import io.almostrealism.code.OperationWithInfo;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Producer;
@@ -69,14 +71,10 @@ public class GradientPropagation implements Propagation, Nameable, CodeFeatures 
 
 		int inSize = shape.getTotalSize();
 		int outSize = shape(gradient).getTotalSize();
-		int weightSize = shape(weights[0]).getTotalSize();
-		Producer<PackedCollection<?>> weightFlat = reshape(shape(weightSize), weights[0]);
 
-		Producer<PackedCollection<?>> deltaOutDeltaIn;
-		Producer<PackedCollection<?>> deltaOutDeltaWeight;
-		Supplier<Runnable> weightUpdateAssignment;
+		OperationList op = new OperationList("Gradient Propagation");
 
-		deltaOutDeltaIn = function.delta(input)
+		Producer<PackedCollection<?>> deltaOutDeltaIn = function.delta(input)
 				.reshape(outSize, inSize)
 				.traverse(1)
 				.multiply(c(gradient).reshape(outSize).traverse(1).expand(inSize))
@@ -84,40 +82,52 @@ public class GradientPropagation implements Propagation, Nameable, CodeFeatures 
 				.sum(1)
 				.reshape(shape(inSize))
 				.each();
-		deltaOutDeltaWeight = function.delta(weights[0])
-				.reshape(outSize, weightSize)
-				.traverse(1)
-				.multiply(c(gradient).reshape(outSize).traverse(1).expand(weightSize))
-				.enumerate(1, 1)
-				.sum(1)
-				.reshape(shape(weightSize))
-				.each();
-
-		weightUpdateAssignment =
-				a(getName() + " (\u0394 weights)", each(weightFlat),
-						subtract(each(weightFlat), multiply(learningRate, deltaOutDeltaWeight)));
-
-		OperationList op = new OperationList("Gradient Propagation");
 
 		if (enableDiagnostic) {
-			op.add(() -> {
+			op.add(OperationWithInfo.of(new OperationMetadata(getName() + " delta", getName() + " (\u03B4Out/\u03B4In)"), () -> {
 				Evaluable<PackedCollection<?>> grad = deltaOutDeltaIn.get();
 				Evaluable<PackedCollection<?>> inputGrad = gradient.get();
-				Runnable wua = weightUpdateAssignment.get();
 
 				return () -> {
 					inputGrad.into(gradIn).evaluate();
 					grad.into(gradOut).evaluate();
-					wua.run();
 				};
-			});
+			}));
 		} else {
 			op.add(a(getName() + " (\u03B4Out/\u03B4In)", traverseEach(p(gradOut)), deltaOutDeltaIn));
-			op.add(weightUpdateAssignment);
+		}
+
+		for (int i = 0; i < weights.length; i++) {
+			int weightSize = shape(weights[0]).getTotalSize();
+			Producer<PackedCollection<?>> weightFlat = reshape(shape(weightSize), weights[0]);
+
+			Producer<PackedCollection<?>> deltaOutDeltaWeight = function.delta(weights[0])
+					.reshape(outSize, weightSize)
+					.traverse(1)
+					.multiply(c(gradient).reshape(outSize).traverse(1).expand(weightSize))
+					.enumerate(1, 1)
+					.sum(1)
+					.reshape(shape(weightSize))
+					.each();
+
+			Supplier<Runnable> weightUpdateAssignment =
+					a(getName() + " (\u0394 weights)", each(weightFlat),
+							subtract(each(weightFlat), multiply(learningRate, deltaOutDeltaWeight)));
+
+			if (enableDiagnostic) {
+				op.add(() -> {
+					Runnable wua = weightUpdateAssignment.get();
+
+					return () -> {
+						wua.run();
+					};
+				});
+			} else {
+				op.add(weightUpdateAssignment);
+			}
 		}
 
 		if (next != null) op.add(next.push(p(gradOut)));
-
 		return op;
 	}
 }

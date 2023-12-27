@@ -47,6 +47,7 @@ import io.almostrealism.relation.Provider;
 import io.almostrealism.scope.ArrayVariable;
 import org.almostrealism.bool.GreaterThanCollection;
 import org.almostrealism.bool.LessThanCollection;
+import org.almostrealism.collect.computations.AggregatedCollectionProducerComputation;
 import org.almostrealism.collect.computations.ArrayVariableComputation;
 import org.almostrealism.collect.computations.CollectionProducerComputationBase;
 import org.almostrealism.collect.computations.CollectionProviderProducer;
@@ -74,8 +75,8 @@ import java.util.stream.IntStream;
 
 public interface CollectionFeatures extends ExpressionFeatures {
 	boolean enableShapelessWarning = false;
-	boolean enableTraversableIntegers = true;
 	boolean enableAxisAlignment = false;
+	boolean enableAggregatedComputation = !KernelPreferences.isPreferLoops();
 
 	Console console = Computation.console.child();
 
@@ -445,12 +446,8 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	default CollectionProducerComputation<PackedCollection<?>> integers(int from, int to) {
 		int len = to - from;
 
-		if (enableTraversableIntegers) {
-			return new TraversableExpressionComputation<>(shape(len).traverseEach(),
-					(args, idx) -> new Sum(new DoubleConstant((double) from), idx));
-		}
-		return new ExpressionComputation<>(shape(len).traverseEach(),
-				List.of(args -> new Sum(new DoubleConstant((double) from), new KernelIndex())));
+		return new TraversableExpressionComputation<>(shape(len).traverseEach(),
+				(args, idx) -> new Sum(new DoubleConstant((double) from), idx));
 	}
 
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> add(Producer<T> a, Producer<T> b) {
@@ -728,6 +725,13 @@ public interface CollectionFeatures extends ExpressionFeatures {
 		TraversalPolicy shape = shape(input);
 		int size = shape.getSize();
 
+		if (enableAggregatedComputation) {
+			return new AggregatedCollectionProducerComputation<>(shape.replace(shape(1)), size,
+					(args, index) -> minValue(),
+					(out, arg) -> new Max(out, arg),
+					(Supplier) input);
+		}
+
 		if (KernelPreferences.isEnableSubdivision()) {
 			CollectionProducerComputationBase<T, T> max = (CollectionProducerComputationBase<T, T>) subdivide(input, this::max);
 			if (max != null) return max;
@@ -753,6 +757,13 @@ public interface CollectionFeatures extends ExpressionFeatures {
 	default <T extends PackedCollection<?>> CollectionProducerComputationBase<T, T> sum(Producer<T> input) {
 		TraversalPolicy shape = shape(input);
 		int size = shape.getSize();
+
+		if (enableAggregatedComputation) {
+			return new AggregatedCollectionProducerComputation<>(shape.replace(shape(1)), size,
+					(args, index) -> e(0.0),
+					(out, arg) -> out.add(arg),
+					(Supplier) input);
+		}
 
 		if (KernelPreferences.isEnableSubdivision()) {
 			CollectionProducerComputationBase<T, T> sum = (CollectionProducerComputationBase<T, T>) subdivide(input, this::sum);

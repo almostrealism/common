@@ -204,18 +204,21 @@ public class CollectionComputationTests implements TestFeatures {
 	@Test
 	public void sum() {
 		PackedCollection<?> input = tensor(shape(3, 5)).pack();
-		PackedCollection<?> output = c(p(input)).sum().get().evaluate();
 
-		double expected = 0;
-		for (int i = 0; i < 3; i++) {
-			for (int j = 0; j < 5; j++) {
-				expected += input.toDouble(input.getShape().index(i, j));
+		HardwareOperator.verboseLog(() -> {
+			PackedCollection<?> output = c(p(input)).sum().get().evaluate();
+
+			double expected = 0;
+			for (int i = 0; i < 3; i++) {
+				for (int j = 0; j < 5; j++) {
+					expected += input.toDouble(input.getShape().index(i, j));
+				}
 			}
-		}
 
-		System.out.println(output.getShape());
-		System.out.println(output.toDouble(0));
-		assertEquals(expected, output.toDouble(0));
+			System.out.println(output.getShape());
+			System.out.println(output.toDouble(0));
+			assertEquals(expected, output.toDouble(0));
+		});
 	}
 
 	@Test

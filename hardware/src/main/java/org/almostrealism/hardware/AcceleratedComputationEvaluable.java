@@ -22,7 +22,7 @@ import io.almostrealism.code.Computation;
 import io.almostrealism.code.ProducerComputation;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 
-public class AcceleratedComputationEvaluable<T extends MemoryData> extends AcceleratedComputationOperation implements KernelizedEvaluable<T> {
+public class AcceleratedComputationEvaluable<T extends MemoryData> extends AcceleratedComputationOperation<T> implements KernelizedEvaluable<T> {
 	public AcceleratedComputationEvaluable(ComputeContext<MemoryData> context, Computation<T> c) {
 		this(context, c, true);
 	}
