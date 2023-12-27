@@ -38,6 +38,10 @@ public class PropagationCell implements Cell<PackedCollection<?>>, Learning, Nam
 	public PropagationCell(String name, Propagation propagation) {
 		setName(name);
 		this.propagation = propagation;
+
+		if (propagation instanceof Nameable && ((Nameable) propagation).getName() == null) {
+			((Nameable) propagation).setName(name);
+		}
 	}
 
 	@Override
