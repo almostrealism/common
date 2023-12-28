@@ -16,6 +16,10 @@
 
 package io.almostrealism.kernel;
 
-public interface KernelStructure<T extends KernelStructure> {
-	T simplify(KernelStructureContext context);
+public class NoOpKernelStructureContext implements KernelStructureContext {
+	@Override
+	public KernelSeriesProvider getSeriesProvider() { return null; }
+
+	@Override
+	public KernelTraversalProvider getTraversalProvider() { return null; }
 }

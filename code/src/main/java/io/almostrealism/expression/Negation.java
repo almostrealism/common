@@ -17,6 +17,7 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.kernel.KernelSeriesProvider;
+import io.almostrealism.kernel.KernelStructureContext;
 
 import java.util.List;
 import java.util.Optional;
@@ -42,8 +43,8 @@ public class Negation extends UnaryExpression<Boolean> {
 	}
 
 	@Override
-	public Expression<Boolean> simplify(KernelSeriesProvider provider) {
-		Expression<Boolean> e = super.simplify(provider);
+	public Expression<Boolean> simplify(KernelStructureContext context) {
+		Expression<Boolean> e = super.simplify(context);
 		if (!(e instanceof Negation)) return e;
 		
 		Optional<Boolean> c = e.getChildren().get(0).booleanValue();

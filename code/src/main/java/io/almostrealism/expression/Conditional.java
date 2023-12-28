@@ -17,6 +17,7 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.kernel.KernelSeriesProvider;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
@@ -49,8 +50,8 @@ public class Conditional extends Expression<Double> {
 	}
 
 	@Override
-	public Expression simplify(KernelSeriesProvider provider) {
-		Expression<?> flat = super.simplify(provider);
+	public Expression simplify(KernelStructureContext context) {
+		Expression<?> flat = super.simplify(context);
 		if (!(flat instanceof Conditional)) return flat;
 
 		Expression<Boolean> condition = (Expression<Boolean>) flat.getChildren().get(0);
@@ -76,10 +77,10 @@ public class Conditional extends Expression<Double> {
 		if (ld.isPresent() && rd.isPresent() && ld.getAsDouble() == rd.getAsDouble())
 			return new DoubleConstant(ld.getAsDouble());
 
-		if (enableKernelSimplification && provider != null && !flat.isSingleIndexMasked()) {
-			OptionalInt max = provider.getMaximumLength();
+		if (enableKernelSimplification && context.getSeriesProvider() != null && !flat.isSingleIndexMasked()) {
+			OptionalInt max = context.getSeriesProvider().getMaximumLength();
 			int seq[] = max.isPresent() ? condition.booleanSeq(max.getAsInt()) : null;
-			Expression exp = seq == null ? null : provider.getSeries(seq);
+			Expression exp = seq == null ? null : context.getSeriesProvider().getSeries(seq);
 
 			if (exp != null) {
 				if (rd.isPresent() && rd.getAsDouble() == 0) {

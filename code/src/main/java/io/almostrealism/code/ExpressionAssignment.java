@@ -2,6 +2,7 @@ package io.almostrealism.code;
 
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelSeriesProvider;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.Variable;
 
@@ -69,7 +70,7 @@ public class ExpressionAssignment<T> implements Statement<ExpressionAssignment<T
 	}
 
 	@Override
-	public ExpressionAssignment<T> simplify(KernelSeriesProvider provider) {
-		return new ExpressionAssignment<>(declaration, destination.simplify(provider), expression.simplify(provider));
+	public ExpressionAssignment<T> simplify(KernelStructureContext context) {
+		return new ExpressionAssignment<>(declaration, destination.simplify(context), expression.simplify(context));
 	}
 }

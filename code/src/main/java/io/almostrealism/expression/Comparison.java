@@ -17,6 +17,7 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.kernel.KernelSeriesProvider;
+import io.almostrealism.kernel.KernelStructureContext;
 
 import java.util.Arrays;
 import java.util.Objects;
@@ -68,8 +69,8 @@ public abstract class Comparison extends BinaryExpression<Boolean> {
 	}
 
 	@Override
-	public Expression<Boolean> simplify(KernelSeriesProvider provider) {
-		Expression<?> flat = super.simplify(provider);
+	public Expression<Boolean> simplify(KernelStructureContext context) {
+		Expression<?> flat = super.simplify(context);
 		if (!Objects.equals(flat.getClass(), getClass())) return (Expression<Boolean>) flat;
 
 		Expression<?> left = flat.getChildren().get(0);
@@ -85,8 +86,8 @@ public abstract class Comparison extends BinaryExpression<Boolean> {
 		if (ld.isPresent() && rd.isPresent())
 			return new BooleanConstant(compare(ld.getAsDouble(), rd.getAsDouble()));
 
-		if (enableKernelSimplification && provider != null) {
-			OptionalInt max = provider.getMaximumLength();
+		if (enableKernelSimplification && context.getSeriesProvider() != null) {
+			OptionalInt max = context.getSeriesProvider().getMaximumLength();
 
 			if (max.isPresent() && left.isKernelValue() && right.isKernelValue()) {
 				distribution.addEntry("comparisonSimplify", 1);

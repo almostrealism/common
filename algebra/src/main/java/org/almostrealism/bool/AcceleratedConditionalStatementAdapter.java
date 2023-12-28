@@ -154,8 +154,6 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCol
 		return scope;
 	}
 
-	protected boolean isCompacted() { return false; }
-
 	@Override
 	public T postProcessOutput(MemoryData output, int offset) {
 		return getPostprocessor() == null ? CollectionProducerComputation.super.postProcessOutput(output, offset) : getPostprocessor().apply(output, offset);

@@ -16,6 +16,8 @@
 
 package io.almostrealism.kernel;
 
-public interface KernelStructure<T extends KernelStructure> {
-	T simplify(KernelStructureContext context);
+import io.almostrealism.expression.Expression;
+
+public interface KernelTraversalProvider {
+	Expression<?> generateReordering(Expression<?> expression);
 }

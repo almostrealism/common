@@ -21,7 +21,9 @@ import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelSeriesProvider;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.kernel.KernelTree;
+import io.almostrealism.kernel.NoOpKernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.lang.LanguageOperationsStub;
 import io.almostrealism.scope.Scope;
@@ -108,6 +110,12 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 		return intValue.isPresent() ? OptionalDouble.of(intValue.getAsInt()) : OptionalDouble.empty();
 	}
 
+	public Expression<T> withKernel(int index) {
+		return generate(getChildren().stream()
+				.map(e -> e.withKernel(index))
+				.collect(Collectors.toList()));
+	}
+
 	public KernelSeries kernelSeries() {
 		return KernelSeries.infinite();
 	}
@@ -159,12 +167,13 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 		}
 
 		LanguageOperations lang = new LanguageOperationsStub();
+		KernelStructureContext context = new NoOpKernelStructureContext();
 
-		Expression<?> simplified = simplify(null);
+		Expression<?> simplified = simplify(context);
 		String exp = simplified.getExpression(lang);
 
 		w: while (true) {
-			Expression<?> next = simplified.simplify(null);
+			Expression<?> next = simplified.simplify(context);
 			String nextExp = next.getExpression(lang);
 
 			if (nextExp.equals(exp)) {
@@ -312,12 +321,14 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 	public List<Expression<?>> flatten() { return getChildren(); }
 
 	@Override
-	public Expression<T> simplify(KernelSeriesProvider provider) {
+	public Expression<T> simplify(KernelStructureContext context) {
+		KernelSeriesProvider provider = context.getSeriesProvider();
+
 		if ((provider == null && isSimple()) || (provider != null && provider == seriesProvider)) {
 			return this;
 		} else if (provider == null || isSeriesSimplificationChild || !isSeriesSimplificationTarget()) {
 			return generate(getChildren().stream()
-					.map((Expression<?> expression) -> expression.simplify(provider))
+					.map((Expression<?> expression) -> expression.simplify(context))
 					.collect(Collectors.toList())).populate(this);
 		}
 

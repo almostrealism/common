@@ -19,6 +19,7 @@ package io.almostrealism.expression;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelSeriesMatcher;
 import io.almostrealism.kernel.KernelSeriesProvider;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.Arrays;
@@ -26,7 +27,7 @@ import java.util.List;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 
-public class Mod<T extends Number> extends Expression<T> {
+public class Mod<T extends Number> extends BinaryExpression<T> {
 	public static boolean enableKernelSimplification = false;
 	public static boolean enableKernelConstantReplacement = false;
 	public static boolean enableKernelWarnings = false;
@@ -91,14 +92,13 @@ public class Mod<T extends Number> extends Expression<T> {
 			throw new UnsupportedOperationException();
 		}
 
-		return new Mod((Expression<Double>) children.get(0), (Expression<Double>) children.get(1), fp);
+		return new Mod(children.get(0), children.get(1), fp);
 	}
 
 	@Override
-	public Expression simplify(KernelSeriesProvider provider) {
-		Expression<?> flat = super.simplify(provider);
-		if (!enableSimplification) return (Expression<Double>) flat;
-		if (!(flat instanceof Mod)) return (Expression<Double>) flat;
+	public Expression simplify(KernelStructureContext context) {
+		Expression<?> flat = super.simplify(context);
+		if (!enableSimplification || !(flat instanceof Mod)) return flat;
 
 		Expression input = flat.getChildren().get(0);
 		Expression mod = flat.getChildren().get(1);

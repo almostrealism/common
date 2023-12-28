@@ -17,18 +17,37 @@
 package org.almostrealism.hardware;
 
 import io.almostrealism.code.ComputeContext;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ProducerComputation;
+import io.almostrealism.uml.Multiple;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 
+import java.util.function.IntFunction;
+
 public class AcceleratedComputationEvaluable<T extends MemoryData> extends AcceleratedComputationOperation<T> implements KernelizedEvaluable<T> {
+	private IntFunction<Multiple<T>> destinationFactory;
+
 	public AcceleratedComputationEvaluable(ComputeContext<MemoryData> context, Computation<T> c) {
-		this(context, c, true);
+		super(context, c, true);
 	}
 
-	public AcceleratedComputationEvaluable(ComputeContext<MemoryData> context, Computation<T> c, boolean kernel) {
-		super(context, c, kernel);
+	public IntFunction<Multiple<T>> getDestinationFactory() {
+		return destinationFactory;
+	}
+
+	public void setDestinationFactory(IntFunction<Multiple<T>> destinationFactory) {
+		this.destinationFactory = destinationFactory;
+	}
+
+	@Override
+	public Multiple<T> createDestination(int size) {
+		if (getDestinationFactory() == null) {
+			return KernelizedEvaluable.super.createDestination(size);
+		}
+
+		return getDestinationFactory().apply(size);
 	}
 
 	@Override

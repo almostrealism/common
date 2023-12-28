@@ -27,6 +27,7 @@ import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.ProducerArgumentReference;
 import io.almostrealism.code.Statement;
 import io.almostrealism.kernel.KernelSeriesProvider;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.kernel.KernelTree;
 import io.almostrealism.relation.Parent;
 import io.almostrealism.scope.Argument.Expectation;
@@ -423,25 +424,25 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 	}
 
 	@Override
-	public Scope<T> simplify(KernelSeriesProvider provider) {
+	public Scope<T> simplify(KernelStructureContext context) {
 		Scope<T> scope = (Scope<T>) generate(getChildren()
-				.stream().map(s -> s.simplify(provider)).collect(Collectors.toList()));
+				.stream().map(s -> s.simplify(context)).collect(Collectors.toList()));
 
 		scope.getRequiredScopes().addAll(getRequiredScopes()
-				.stream().map(s -> s.simplify(provider)).collect(Collectors.toList()));
+				.stream().map(s -> s.simplify(context)).collect(Collectors.toList()));
 
 		long start = System.nanoTime();
 		scope.getMethods().addAll(getMethods()
-				.stream().map(m -> m.simplify(provider)).collect(Collectors.toList()));
+				.stream().map(m -> m.simplify(context)).collect(Collectors.toList()));
 		timing.addEntry("methodsSimplify", System.nanoTime() - start); start = System.nanoTime();
 
 		scope.getStatements().addAll((List) getStatements()
-				.stream().map(s -> s.simplify(provider)).collect(Collectors.toList()));
+				.stream().map(s -> s.simplify(context)).collect(Collectors.toList()));
 		timing.addEntry("statementsSimplify", System.nanoTime() - start); start = System.nanoTime();
 
 		scope.getVariables().addAll(getVariables()
-				.stream().map(v -> v.simplify(provider)).collect(Collectors.toList()));
-		timing.addEntry("variablesSimplify", System.nanoTime() - start); start = System.nanoTime();
+				.stream().map(v -> v.simplify(context)).collect(Collectors.toList()));
+		timing.addEntry("variablesSimplify", System.nanoTime() - start);
 
 		scope.getMetrics().addAll(getMetrics());
 		return scope;

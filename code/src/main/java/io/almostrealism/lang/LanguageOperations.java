@@ -28,7 +28,7 @@ public interface LanguageOperations {
 	String min(String a, String b);
 	String max(String a, String b);
 
-	String kernelIndex(int index);
+	String kernelIndex(int axis);
 
 	String declaration(Class type, String destination, String expression);
 

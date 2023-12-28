@@ -20,6 +20,7 @@ import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelSeriesProvider;
+import io.almostrealism.kernel.KernelStructureContext;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -120,8 +121,8 @@ public class Product<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public Expression simplify(KernelSeriesProvider provider) {
-		List<Expression<?>> children = super.simplify(provider).flatten().stream().collect(Collectors.toList());
+	public Expression simplify(KernelStructureContext context) {
+		List<Expression<?>> children = super.simplify(context).flatten().stream().collect(Collectors.toList());
 
 		Mask mask = children.stream()
 				.filter(e -> e instanceof Mask)

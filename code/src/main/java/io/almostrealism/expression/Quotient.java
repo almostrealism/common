@@ -18,6 +18,7 @@ package io.almostrealism.expression;
 
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelSeriesProvider;
+import io.almostrealism.kernel.KernelStructureContext;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -79,18 +80,17 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public Expression simplify(KernelSeriesProvider provider) {
-		Expression<?> flat = super.simplify(provider);
-		if (!enableSimplification) return flat;
-		if (!(flat instanceof Quotient)) return flat;
+	public Expression simplify(KernelStructureContext context) {
+		Expression<?> flat = super.simplify(context);
+		if (!enableSimplification || !(flat instanceof Quotient)) return flat;
 
 		List<Expression<?>> children = flat.getChildren().subList(1, flat.getChildren().size()).stream()
 				.filter(e -> !removeIdentities || e.doubleValue().orElse(-1) != 1.0)
 				.collect(Collectors.toList());
 		children.add(0, flat.getChildren().get(0));
 
-		if (children.isEmpty()) return (Expression) getChildren().iterator().next();
-		if (children.size() == 1) return (Expression<Double>) children.get(0);
+		if (children.isEmpty()) return getChildren().iterator().next(); // TODO  This is wrong
+		if (children.size() == 1) return children.get(0);
 
 		if (children.get(0).intValue().isPresent()) {
 			int numerator = children.get(0).intValue().getAsInt();

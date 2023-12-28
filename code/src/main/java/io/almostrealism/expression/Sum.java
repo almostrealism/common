@@ -20,6 +20,8 @@ import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.kernel.KernelSeriesProvider;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.kernel.NoOpKernelStructureContext;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -107,14 +109,21 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public Expression simplify(KernelSeriesProvider provider) {
-		List<Expression<?>> children = super.simplify(provider).flatten().stream()
+	public Expression simplify(KernelStructureContext context) {
+		List<Expression<?>> children = super.simplify(context).flatten().stream()
 				.filter(e -> !removeIdentities || e.doubleValue().orElse(-1) != 0.0)
 				.collect(Collectors.toList());
 
 		if (children.size() == 1) return children.get(0);
 		if (children.size() == 0) {
 			return getType() == Integer.class ? new IntegerConstant(0) : new DoubleConstant(0.0);
+		}
+
+		if (context.getTraversalProvider() != null &&
+				children.stream().allMatch(e -> e.isSingleIndexMasked())) {
+			return context.getTraversalProvider()
+					.generateReordering(generate(children))
+					.populate(this);
 		}
 
 		List<Double> values = children.stream()

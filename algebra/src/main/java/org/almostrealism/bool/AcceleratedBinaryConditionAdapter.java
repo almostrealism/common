@@ -31,7 +31,6 @@ import java.util.function.Supplier;
 
 public abstract class AcceleratedBinaryConditionAdapter<T extends PackedCollection<?>> extends AcceleratedConditionalStatementAdapter<T> {
 	private String operator;
-	private Expression condition;
 
 	public AcceleratedBinaryConditionAdapter(String operator,
 											 int memLength,
@@ -47,13 +46,9 @@ public abstract class AcceleratedBinaryConditionAdapter<T extends PackedCollecti
 
 	@Override
 	public Expression getCondition() {
-		if (condition == null) {
-			return new NAryExpression(Boolean.class, operator,
-					getArgument(1).getValueRelative(0),
-					getArgument(2).getValueRelative(0));
-		} else {
-			return condition;
-		}
+		return new NAryExpression(Boolean.class, operator,
+				getArgument(1).getValueRelative(0),
+				getArgument(2).getValueRelative(0));
 	}
 
 	// TODO  Change to List<ArrayVariable<Double>>
@@ -71,7 +66,4 @@ public abstract class AcceleratedBinaryConditionAdapter<T extends PackedCollecti
 	public IntFunction<Expression<Double>> getFalseValueExpression() {
 		return i -> getArgument(4).getValueRelative(i);
 	}
-
-	@Override
-	public boolean isCompacted() { return super.isCompacted() && condition != null; }
 }

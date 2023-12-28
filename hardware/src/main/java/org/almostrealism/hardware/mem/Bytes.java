@@ -17,10 +17,10 @@
 package org.almostrealism.hardware.mem;
 
 import io.almostrealism.code.Memory;
-import io.almostrealism.relation.Countable;
+import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 
-public class Bytes extends MemoryDataAdapter implements Countable {
+public class Bytes extends MemoryDataAdapter implements MemoryBank<Bytes> {
 	private final int atomicLength;
 	private final int memLength;
 
@@ -56,6 +56,16 @@ public class Bytes extends MemoryDataAdapter implements Countable {
 		this.atomicLength = atomicLength;
 		this.memLength = memLength;
 		setDelegate(delegate, delegateOffset);
+	}
+
+	@Override
+	public void set(int index, Bytes value) {
+		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	public Bytes get(int index) {
+		return range(index * getAtomicMemLength(), getAtomicMemLength());
 	}
 
 	@Override

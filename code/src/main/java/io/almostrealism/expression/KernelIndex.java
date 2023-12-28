@@ -20,26 +20,32 @@ import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.lang.LanguageOperations;
 
 public class KernelIndex extends StaticReference<Integer> {
-	private int index;
+	private int axis;
 
 	public KernelIndex() {
 		this(0);
 	}
 
-	public KernelIndex(int index) {
+	public KernelIndex(int axis) {
 		super(Integer.class, null);
-		this.index = index;
+		this.axis = axis;
 	}
 
 	@Override
 	public String getExpression(LanguageOperations lang) {
-		return lang.kernelIndex(index);
+		return lang.kernelIndex(axis);
 	}
 
-	public int getKernelIndex() { return index; }
+	public int getKernelAxis() { return axis; }
 
 	@Override
 	public boolean isKernelValue() { return true; }
+
+	@Override
+	public Expression<Integer> withKernel(int index) {
+		if (axis != 0) throw new UnsupportedOperationException();
+		return new IntegerConstant(index);
+	}
 
 	@Override
 	public KernelSeries kernelSeries() {

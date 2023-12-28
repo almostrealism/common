@@ -22,6 +22,7 @@ import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.Statement;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelSeriesProvider;
+import io.almostrealism.kernel.KernelStructureContext;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -77,9 +78,9 @@ public class Cases<T> extends Scope<T> {
 	}
 
 	@Override
-	public Scope<T> simplify(KernelSeriesProvider provider) {
-		Cases<T> scope = (Cases<T>) super.simplify(provider);
-		scope.getConditions().addAll(getConditions().stream().map(c -> c.simplify(provider)).collect(Collectors.toList()));
+	public Scope<T> simplify(KernelStructureContext context) {
+		Cases<T> scope = (Cases<T>) super.simplify(context);
+		scope.getConditions().addAll(getConditions().stream().map(c -> c.simplify(context)).collect(Collectors.toList()));
 		return scope;
 	}
 

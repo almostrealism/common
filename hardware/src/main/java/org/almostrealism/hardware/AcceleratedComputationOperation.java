@@ -26,7 +26,11 @@ import io.almostrealism.code.NameProvider;
 import io.almostrealism.code.OperationInfo;
 import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.ScopeInputManager;
+import io.almostrealism.kernel.KernelSeriesProvider;
+import io.almostrealism.kernel.KernelStructureContext;
+import io.almostrealism.kernel.KernelTraversalProvider;
 import io.almostrealism.relation.Countable;
+import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Provider;
 import io.almostrealism.uml.Named;
 import io.almostrealism.scope.ArrayVariable;
@@ -34,15 +38,19 @@ import io.almostrealism.code.OperationAdapter;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 import org.almostrealism.hardware.kernel.KernelSeriesCache;
+import org.almostrealism.hardware.kernel.KernelTraversalOperationGenerator;
 import org.almostrealism.hardware.mem.AcceleratedProcessDetails;
 
 import java.util.List;
+import java.util.function.Supplier;
 
-public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperation<MemoryData> implements NameProvider, Countable {
+public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperation<MemoryData> implements NameProvider, KernelStructureContext, Countable {
 	public static boolean enableOperationInputAggregation = true;
 
 	private Computation<T> computation;
 	private KernelSeriesCache kernelSeriesCache;
+	private KernelTraversalOperationGenerator traversalGenerator;
+	private boolean kernelStructureSupported;
 
 	private Scope<T> scope;
 	private Variable outputVariable;
@@ -50,6 +58,7 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	public AcceleratedComputationOperation(ComputeContext<MemoryData> context, Computation<T> c, boolean kernel) {
 		super(context, kernel, new ArrayVariable[0]);
 		this.computation = c;
+		this.kernelStructureSupported = true;
 		init();
 	}
 
@@ -93,6 +102,22 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 		return super.getComputeRequirements();
 	}
 
+	public void setKernelStructureSupported(boolean supported) {
+		this.kernelStructureSupported = supported;
+	}
+
+	public boolean isKernelStructureSupported() { return kernelStructureSupported; }
+
+	@Override
+	public KernelSeriesProvider getSeriesProvider() {
+		return isKernelStructureSupported() ? kernelSeriesCache : null;
+	}
+
+	@Override
+	public KernelTraversalProvider getTraversalProvider() {
+		return isKernelStructureSupported() ? traversalGenerator : null;
+	}
+
 	@Override
 	public void addVariable(ExpressionAssignment<?> v) {
 		if (v.getProducer() == null) {
@@ -125,6 +150,8 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 
 		this.kernelSeriesCache = KernelSeriesCache.create(getComputation(),
 				data -> manager.argumentForInput(this).apply(() -> new Provider<>(data)));
+		this.traversalGenerator = KernelTraversalOperationGenerator.create(getComputation(),
+				data -> manager.argumentForInput(this).apply((Supplier<Evaluable<?>>) data));
 	}
 
 	@Override
@@ -154,7 +181,9 @@ public class AcceleratedComputationOperation<T> extends DynamicAcceleratedOperat
 	public synchronized Scope<T> compile(Variable<T, ?> outputVariable) {
 		Computation<T> c = getComputation();
 		if (outputVariable != null) c.setOutputVariable(outputVariable);
-		scope = c.getScope().simplify(kernelSeriesCache);
+
+		// TODO  Should simplify be after converting arguments to required scopes?
+		scope = c.getScope().simplify(this);
 		scope.convertArgumentsToRequiredScopes();
 		postCompile();
 		return scope;
