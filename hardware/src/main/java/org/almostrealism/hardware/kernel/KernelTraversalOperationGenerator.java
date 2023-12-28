@@ -54,6 +54,7 @@ public class KernelTraversalOperationGenerator implements KernelTraversalProvide
 	public static boolean enableGeneration = true;
 	public static boolean enableVerbose = false;
 	public static int defaultMaxEntries = 128;
+	public static int minimumChildren = 16;
 
 	private LanguageOperations lang;
 
@@ -75,6 +76,7 @@ public class KernelTraversalOperationGenerator implements KernelTraversalProvide
 	@Override
 	public Expression<?> generateReordering(Expression<?> expression) {
 		if (!enableGeneration || !fixed) return expression;
+		if (expression.getChildren().size() < minimumChildren) return expression;
 
 		String e = expression.getExpression(lang);
 		ArrayVariable<?> variable = variables.get(e);
