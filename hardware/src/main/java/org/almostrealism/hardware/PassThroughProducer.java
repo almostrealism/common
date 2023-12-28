@@ -45,12 +45,8 @@ public class PassThroughProducer<T extends MemoryData>
 		TraversableExpression<Double>,
 		Shape<PassThroughProducer<T>>,
 		ComputerFeatures  {
-	public static boolean enableDimSupport = true;
-
 	private TraversalPolicy shape;
 	private int argIndex;
-
-	private Supplier<T> destination;
 
 	public PassThroughProducer(TraversalPolicy shape, int argIndex) {
 		this();
@@ -65,7 +61,6 @@ public class PassThroughProducer<T extends MemoryData>
 	}
 
 	private PassThroughProducer() {
-		this.destination = () -> null;
 		this.setInputs(Arrays.asList(new MemoryDataDestination(this, null)));
 		init();
 	}
@@ -88,15 +83,7 @@ public class PassThroughProducer<T extends MemoryData>
 	public int getCount() { return getShape().getCount(); }
 
 	@Override
-	public boolean isFixedCount() {
-		return false; // getShape().getSize() != 1;
-	}
-
-	@Override
-	public void setDestination(Supplier<T> destination) { this.destination = destination; }
-
-	@Override
-	public Supplier<T> getDestination() { return destination; }
+	public boolean isFixedCount() { return false; }
 
 	@Override
 	public PassThroughProducer<T> traverse(int axis) {

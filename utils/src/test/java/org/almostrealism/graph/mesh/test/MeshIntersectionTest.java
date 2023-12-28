@@ -205,7 +205,7 @@ public class MeshIntersectionTest implements TestFeatures {
 	public void intersectionKernel1() {
 		PackedCollection<Scalar> distances = Scalar.scalarBank(1);
 		Producer<Ray> ray = ray(origin1, direction1);
-		data1.evaluateIntersectionKernelScalar((KernelizedEvaluable<Ray>) ray.get(), distances, new MemoryBank[0]);
+		data1.evaluateIntersectionKernelScalar(ray.get(), distances, new MemoryBank[0]);
 		System.out.println("distance = " + distances.get(0).getValue());
 		Assert.assertEquals(1.0, distances.get(0).getValue(), Math.pow(10, -10));
 	}

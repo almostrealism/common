@@ -34,13 +34,12 @@ public abstract class AcceleratedBinaryConditionAdapter<T extends PackedCollecti
 
 	public AcceleratedBinaryConditionAdapter(String operator,
 											 int memLength,
-											 Supplier<T> blankValue,
 											 IntFunction<MemoryBank<T>> kernelDestination,
 											 Supplier<Evaluable> leftOperand,
 											 Supplier<Evaluable> rightOperand,
 											 Supplier<Evaluable<? extends T>> trueValue,
 											 Supplier<Evaluable<? extends T>> falseValue) {
-		super(memLength, blankValue, kernelDestination, leftOperand, rightOperand, trueValue, falseValue);
+		super(memLength, kernelDestination, leftOperand, rightOperand, trueValue, falseValue);
 		this.operator = operator;
 	}
 

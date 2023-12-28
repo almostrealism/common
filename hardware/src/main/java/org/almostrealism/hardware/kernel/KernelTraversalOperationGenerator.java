@@ -116,12 +116,6 @@ public class KernelTraversalOperationGenerator implements KernelTraversalProvide
 		protected List<Expression> getExpressions() { return expressions; }
 
 		@Override
-		public void setDestination(Supplier<T> destination) { this.destination = destination; }
-
-		@Override
-		public Supplier<T> getDestination() { return destination; }
-
-		@Override
 		public int getMemLength() { return expressions.size(); }
 
 		@Override

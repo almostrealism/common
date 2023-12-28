@@ -28,7 +28,7 @@ public class GreaterThanRGB extends GreaterThan<RGB> {
 			Supplier rightOperand,
 			Supplier trueValue,
 			Supplier falseValue) {
-		super(3, RGB::new, RGB::bank, leftOperand, rightOperand,
+		super(3, RGB::bank, leftOperand, rightOperand,
 				trueValue, falseValue, false);
 		setPostprocessor(RGB.postprocessor());
 	}

@@ -50,12 +50,11 @@ public abstract class AcceleratedConjunctionAdapter<T extends PackedCollection<?
 
 	@SafeVarargs
 	public AcceleratedConjunctionAdapter(int memLength,
-										 Supplier<T> blankValue,
 										 IntFunction<MemoryBank<T>> kernelDestination,
 										 Supplier<Evaluable<?>> trueValue,
 										 Supplier<Evaluable<?>> falseValue,
 										 AcceleratedConditionalStatement<? extends T>... conjuncts) {
-		super(memLength, blankValue, kernelDestination);
+		super(memLength, kernelDestination);
 		this.trueValue = trueValue;
 		this.falseValue = falseValue;
 		this.conjuncts = Arrays.asList(conjuncts);

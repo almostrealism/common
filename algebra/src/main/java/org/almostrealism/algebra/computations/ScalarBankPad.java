@@ -38,19 +38,11 @@ public class ScalarBankPad extends CollectionProducerComputationBase<PackedColle
 	private final int count;
 	private final int total;
 
-	private Supplier<PackedCollection<Scalar>> destination;
-
 	public ScalarBankPad(int count, int total, Producer<PackedCollection<Scalar>> input) {
-		super(new TraversalPolicy(count, 2), (Supplier) input);
+		super(new TraversalPolicy(count, 2), input);
 		this.count = count;
 		this.total = total;
 	}
-
-	@Override
-	public void setDestination(Supplier<PackedCollection<Scalar>> destination) { this.destination = destination; }
-
-	@Override
-	public Supplier<PackedCollection<Scalar>> getDestination() { return destination; }
 
 	@Override
 	public Scope<PackedCollection<Scalar>> getScope() {

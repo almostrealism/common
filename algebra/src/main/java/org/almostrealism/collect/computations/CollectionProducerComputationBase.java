@@ -50,7 +50,6 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	public static boolean enableDestinationLogging = false;
 
 	private TraversalPolicy shape;
-	private Supplier<? extends PackedCollection> destination;
 	private BiFunction<MemoryData, Integer, O> postprocessor;
 	private Evaluable<O> shortCircuit;
 
@@ -62,7 +61,6 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 		}
 
 		this.shape = outputShape;
-		this.destination = () -> PackedCollection.factory().apply(shape.getTotalSize()).reshape(shape);
 		this.setInputs(CollectionUtils.include(new Supplier[0], new MemoryDataDestination(this, this::createDestination), arguments));
 		init();
 	}
@@ -124,12 +122,6 @@ public abstract class CollectionProducerComputationBase<I extends PackedCollecti
 	public Process<Process<?, ?>, Evaluable<? extends O>> isolate() {
 		return new CollectionProducerComputation.IsolatedProcess<>(this);
 	}
-
-	@Override
-	public void setDestination(Supplier<O> destination) { this.destination = destination; }
-
-	@Override
-	public Supplier<O> getDestination() { return (Supplier) destination; }
 
 	public BiFunction<MemoryData, Integer, O> getPostprocessor() {
 		return postprocessor;

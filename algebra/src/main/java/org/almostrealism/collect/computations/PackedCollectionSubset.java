@@ -50,7 +50,6 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 
 		this.pos = pos;
 		setShape(shape);
-		setDestination(() -> { throw new UnsupportedOperationException(); });
 		setInputs(new Destination(), (Supplier) collection);
 		init();
 	}
@@ -65,7 +64,6 @@ public class PackedCollectionSubset<T extends PackedCollection<?>>
 		}
 
 		setShape(shape);
-		setDestination(() -> { throw new UnsupportedOperationException(); });
 		setInputs(new Destination(), (Supplier) collection, (Supplier) pos);
 		init();
 	}

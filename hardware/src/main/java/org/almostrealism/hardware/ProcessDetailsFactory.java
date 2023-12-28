@@ -194,7 +194,7 @@ public class ProcessDetailsFactory<T> implements Factory<AcceleratedProcessDetai
 		i: for (int i = 0; i < arguments.size(); i++) {
 			if (kernelArgs[i] != null) continue i;
 
-			if (kernelArgEvaluables[i] instanceof KernelizedEvaluable && allMemoryData) {
+			if (kernelArgEvaluables[i] instanceof KernelizedEvaluable) {
 				kernelArgs[i] = (MemoryData) kernelArgEvaluables[i].createDestination(kernelSize);
 
 				long time = System.nanoTime() - start; start = System.nanoTime();

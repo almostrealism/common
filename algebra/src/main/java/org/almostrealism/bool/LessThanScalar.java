@@ -33,7 +33,7 @@ public class LessThanScalar extends LessThan<Scalar> {
 			Supplier leftOperand, Supplier rightOperand,
 			Supplier trueValue, Supplier falseValue,
 			boolean includeEqual) {
-		super(2, Scalar::new, Scalar::scalarBank,
+		super(2, Scalar::scalarBank,
 				leftOperand, rightOperand,
 				trueValue, falseValue,
 				includeEqual);

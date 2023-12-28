@@ -40,7 +40,7 @@ public class MemoryDataDestination<T extends MemoryData> extends DynamicProducer
 	}
 
 	public MemoryDataDestination(DestinationSupport<T> destination, IntFunction<MemoryBank<T>> kernelDestination) {
-		super(args -> destination.getDestination().get(), kernelDestination);
+		super(args -> { throw new UnsupportedOperationException(); }, kernelDestination);
 		this.destination = destination;
 		if (enableThreadLocalProvider) {
 			this.provider = new ThreadLocalContextSpecific<>(() -> new MemoryBankProvider<>(kernelDestination), MemoryBankProvider::destroy);
@@ -80,7 +80,9 @@ public class MemoryDataDestination<T extends MemoryData> extends DynamicProducer
 			}
 
 			@Override
-			public T evaluate(Object... args) { return e.evaluate(args); }
+			public T evaluate(Object... args) {
+				return createDestination(1).get(0);
+			}
 		};
 	}
 }

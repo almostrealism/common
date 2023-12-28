@@ -50,23 +50,19 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCol
 
 	private final int memLength;
 
-	private Supplier<MemoryData> destination;
-
 	private BiFunction<MemoryData, Integer, T> postprocessor;
 
-	public AcceleratedConditionalStatementAdapter(int memLength, Supplier<T> blankValue, IntFunction<MemoryBank<T>> kernelDestination) {
-		this(memLength, blankValue, kernelDestination, null, null, null, null);
+	public AcceleratedConditionalStatementAdapter(int memLength, IntFunction<MemoryBank<T>> kernelDestination) {
+		this(memLength, kernelDestination, null, null, null, null);
 	}
 
 	public AcceleratedConditionalStatementAdapter(int memLength,
-												  Supplier<T> blankValue,
 												  IntFunction<MemoryBank<T>> kernelDestination,
 												  Supplier<Evaluable> leftOperand,
 												  Supplier<Evaluable> rightOperand,
 												  Supplier<Evaluable<? extends T>> trueValue,
 												  Supplier<Evaluable<? extends T>> falseValue) {
 		this.memLength = memLength;
-		this.destination = (Supplier) blankValue;
 
 		List inputs = new ArrayList();
 		inputs.add(new MemoryDataDestination(this, kernelDestination));
@@ -92,12 +88,6 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCol
 	 */
 	@Override
 	public PhysicalScope getDefaultPhysicalScope() { return PhysicalScope.GLOBAL; }
-
-	@Override
-	public void setDestination(Supplier<MemoryData> destination) { this.destination = destination; }
-
-	@Override
-	public Supplier<MemoryData> getDestination() { return destination; }
 
 	public BiFunction<MemoryData, Integer, T> getPostprocessor() {
 		return postprocessor;

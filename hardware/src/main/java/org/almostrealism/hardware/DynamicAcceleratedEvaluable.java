@@ -33,7 +33,6 @@ import java.util.function.Supplier;
 public abstract class DynamicAcceleratedEvaluable<I extends MemoryData, O extends MemoryData>
 		extends DynamicAcceleratedOperation<MemoryData>
 		implements KernelizedEvaluable<O>, DestinationSupport<O> {
-	private Supplier<O> destination;
 
 	public DynamicAcceleratedEvaluable(ComputeContext<MemoryData> context,
 									   Supplier<O> destination,
@@ -48,8 +47,8 @@ public abstract class DynamicAcceleratedEvaluable<I extends MemoryData, O extend
 									   IntFunction<MemoryBank<O>> kernelDestination,
 									   Supplier<Evaluable<? extends I>>... inputArgs) {
 		super(context, kernel, new Supplier[0]);
-		setInputs(AcceleratedEvaluable.includeResult(new DynamicProducerForMemoryData(args ->
-				(getDestination() == null ? destination : getDestination()).get(), kernelDestination), inputArgs));
+		setInputs(AcceleratedEvaluable.includeResult(
+				new DynamicProducerForMemoryData(args -> destination.get(), kernelDestination), inputArgs));
 		init();
 	}
 
@@ -94,10 +93,4 @@ public abstract class DynamicAcceleratedEvaluable<I extends MemoryData, O extend
 
 	@Override
 	public Variable getOutputVariable() { return getArgument(null, 0); }
-
-	@Override
-	public void setDestination(Supplier<O> destination) { this.destination = destination; }
-
-	@Override
-	public Supplier<O> getDestination() { return this.destination; }
 }

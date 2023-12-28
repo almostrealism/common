@@ -33,7 +33,7 @@ public class LessThanCollection extends LessThan<PackedCollection<?>> implements
 			Supplier leftOperand, Supplier rightOperand,
 			Supplier trueValue, Supplier falseValue,
 			boolean includeEqual) {
-		super(1, () -> new PackedCollection<>(1), PackedCollection.bank(new TraversalPolicy(1)),
+		super(1, PackedCollection.bank(new TraversalPolicy(1)),
 				leftOperand, rightOperand,
 				trueValue, falseValue,
 				includeEqual);
