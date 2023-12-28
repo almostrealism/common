@@ -57,6 +57,8 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 
 	public static Function<Expression<?>, Expression<Double>> toDouble = e -> new Cast<>(Double.class, "double", e);
 
+	private static int simplifyDepth;
+
 	private Class<T> type;
 	private List<Variable<?, ?>> dependencies = new ArrayList<>();
 	private List<Expression<?>> children = new ArrayList<>();
@@ -322,30 +324,35 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 
 	@Override
 	public Expression<T> simplify(KernelStructureContext context) {
-		KernelSeriesProvider provider = context.getSeriesProvider();
+		try {
+			simplifyDepth++;
+			KernelSeriesProvider provider = context.getSeriesProvider();
 
-		if ((provider == null && isSimple()) || (provider != null && provider == seriesProvider)) {
-			return this;
-		} else if (provider == null || isSeriesSimplificationChild || !isSeriesSimplificationTarget()) {
-			return generate(getChildren().stream()
-					.map((Expression<?> expression) -> expression.simplify(context))
-					.collect(Collectors.toList())).populate(this);
-		}
-
-		Expression<?> simplified[] = new Expression[children.size()];
-
-		for (int i = 0; i < simplified.length; i++) {
-			simplified[i] = children.get(i).getSimplified();
-
-			if (simplified[i].isKernelValue()) {
-				simplified[i] = provider.getSeries(simplified[i]).getSimplified();
-				simplified[i].children().forEach(c -> c.isSeriesSimplificationChild = true);
+			if ((provider == null && isSimple()) || (provider != null && provider == seriesProvider)) {
+				return this;
+			} else if (provider == null || isSeriesSimplificationChild || !isSeriesSimplificationTarget()) {
+				return generate(getChildren().stream()
+						.map((Expression<?> expression) -> expression.simplify(context))
+						.collect(Collectors.toList())).populate(this);
 			}
-		}
 
-		Expression simple = generate(List.of(simplified)).populate(this);
-		simple.seriesProvider = provider;
-		return simple;
+			Expression<?> simplified[] = new Expression[children.size()];
+
+			for (int i = 0; i < simplified.length; i++) {
+				simplified[i] = children.get(i).getSimplified();
+
+				if (simplified[i].isKernelValue()) {
+					simplified[i] = provider.getSeries(simplified[i]).getSimplified();
+					simplified[i].children().forEach(c -> c.isSeriesSimplificationChild = true);
+				}
+			}
+
+			Expression simple = generate(List.of(simplified)).populate(this);
+			simple.seriesProvider = provider;
+			return simple;
+		} finally {
+			simplifyDepth--;
+		}
 	}
 
 	public boolean isSeriesSimplificationTarget() { return getType() == Boolean.class; }

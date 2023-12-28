@@ -33,6 +33,8 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class Sum<T extends Number> extends NAryExpression<T> {
+	private static int flattenDepth;
+
 	public Sum(Stream<Expression<? extends Number>> values) {
 		super("+", (Stream) values);
 	}
@@ -90,22 +92,28 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 
 	@Override
 	public List<Expression<?>> flatten() {
-		List<Expression<?>> flat = super.flatten();
+		try {
+			flattenDepth++;
 
-		List<Expression<?>> terms = flat.stream()
-				.filter(e -> e instanceof Sum)
-				.flatMap(e -> e.getChildren().stream())
-				.collect(Collectors.toList());
+			List<Expression<?>> flat = super.flatten();
 
-		if (terms.size() == 0) return flat;
+			List<Expression<?>> terms = flat.stream()
+					.filter(e -> e instanceof Sum)
+					.flatMap(e -> e.flatten().stream())
+					.collect(Collectors.toList());
 
-		List<Expression<?>> children = new ArrayList<>();
-		terms.forEach(children::add);
-		children.addAll(flat.stream()
-				.filter(e -> !(e instanceof Sum))
-				.collect(Collectors.toList()));
+			if (terms.size() == 0) return flat;
 
-		return children;
+			List<Expression<?>> children = new ArrayList<>();
+			terms.forEach(children::add);
+			children.addAll(flat.stream()
+					.filter(e -> !(e instanceof Sum))
+					.collect(Collectors.toList()));
+
+			return children;
+		} finally {
+			flattenDepth--;
+		}
 	}
 
 	@Override

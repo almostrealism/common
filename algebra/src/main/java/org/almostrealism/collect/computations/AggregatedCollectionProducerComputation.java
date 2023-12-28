@@ -65,6 +65,7 @@ public class AggregatedCollectionProducerComputation<T extends PackedCollection<
 
 		for (int i = 0; i < count; i++) {
 			value = expression.apply(value, args[1].getValueRelative(e(i)));
+			value = value.generate(value.flatten());
 		}
 
 		return value;
