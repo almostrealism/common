@@ -376,9 +376,11 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			}
 		}
 
-		Expression.timing.print();
-		Expression.distribution.print();
+		if (Expression.distribution.getCount() > 0)
+			Expression.distribution.print();
+
 		KernelSeriesProvider.timing.print();
+		Expression.timing.print();
 
 		if (verbose) {
 			// Compilation
