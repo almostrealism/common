@@ -105,7 +105,6 @@ public class KernelTraversalOperationGenerator implements KernelTraversalProvide
 	protected class TraversalOperation<T extends MemoryData> extends ProducerComputationBase<T, T>
 			implements MemoryDataComputation<T>, DestinationSupport<T>, ComputerFeatures {
 		private List<Expression> expressions;
-		private Supplier<T> destination;
 
 		public TraversalOperation() {
 			this.expressions = new ArrayList<>();
