@@ -27,7 +27,6 @@ import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.ComputerFeatures;
-import org.almostrealism.hardware.DestinationSupport;
 import org.almostrealism.hardware.MemoryData;
 import io.almostrealism.relation.Evaluable;
 import org.almostrealism.hardware.MemoryBank;
@@ -45,7 +44,6 @@ public abstract class AcceleratedConditionalStatementAdapter<T extends PackedCol
 											extends ProducerComputationBase<MemoryData, T>
 											implements CollectionProducerComputation<T>,
 													AcceleratedConditionalStatement<T>,
-													DestinationSupport<MemoryData>,
 													ComputerFeatures {
 
 	private final int memLength;

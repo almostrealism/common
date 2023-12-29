@@ -31,7 +31,6 @@ import org.almostrealism.collect.CollectionProducerComputation;
 import org.almostrealism.collect.PackedCollection;
 import io.almostrealism.collect.TraversalPolicy;
 import org.almostrealism.hardware.ComputerFeatures;
-import org.almostrealism.hardware.DestinationSupport;
 import org.almostrealism.hardware.MemoryBank;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryDataComputation;
@@ -45,7 +44,6 @@ import java.util.function.Supplier;
 public abstract class CollectionProducerComputationBase<I extends PackedCollection<?>, O extends PackedCollection<?>>
 												extends ProducerComputationBase<I, O>
 												implements CollectionProducerComputation<O>, MemoryDataComputation<O>,
-														DestinationSupport<O>,
 														ComputerFeatures {
 	public static boolean enableDestinationLogging = false;
 

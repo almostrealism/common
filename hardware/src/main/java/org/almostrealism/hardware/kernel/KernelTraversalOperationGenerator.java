@@ -33,7 +33,6 @@ import io.almostrealism.uml.Multiple;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.ComputerFeatures;
-import org.almostrealism.hardware.DestinationSupport;
 import org.almostrealism.hardware.Hardware;
 import org.almostrealism.hardware.MemoryData;
 import org.almostrealism.hardware.MemoryDataComputation;
@@ -47,7 +46,6 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
-import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
 public class KernelTraversalOperationGenerator implements KernelTraversalProvider, ConsoleFeatures {
@@ -103,7 +101,7 @@ public class KernelTraversalOperationGenerator implements KernelTraversalProvide
 	public Console console() { return AcceleratedOperation.console; }
 
 	protected class TraversalOperation<T extends MemoryData> extends ProducerComputationBase<T, T>
-			implements MemoryDataComputation<T>, DestinationSupport<T>, ComputerFeatures {
+			implements MemoryDataComputation<T>, ComputerFeatures {
 		private List<Expression> expressions;
 
 		public TraversalOperation() {

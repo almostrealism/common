@@ -41,7 +41,6 @@ public class PassThroughProducer<T extends MemoryData>
 		extends ProducerComputationBase<T, T>
 		implements ProducerArgumentReference,
 		MemoryDataComputation<T>,
-		DestinationSupport<T>,
 		TraversableExpression<Double>,
 		Shape<PassThroughProducer<T>>,
 		ComputerFeatures  {
