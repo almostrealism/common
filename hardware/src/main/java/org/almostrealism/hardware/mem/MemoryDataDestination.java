@@ -1,5 +1,5 @@
 /*
- * Copyright 2021 Michael Murray
+ * Copyright 2023 Michael Murray
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,6 @@ import io.almostrealism.relation.Countable;
 import io.almostrealism.relation.Delegated;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.uml.Multiple;
-import org.almostrealism.hardware.DestinationSupport;
 import org.almostrealism.hardware.DynamicProducerForMemoryData;
 import org.almostrealism.hardware.KernelizedEvaluable;
 import org.almostrealism.hardware.MemoryData;
@@ -29,36 +28,35 @@ import org.almostrealism.hardware.ctx.ThreadLocalContextSpecific;
 
 import java.util.function.IntFunction;
 
-public class MemoryDataDestination<T extends MemoryData> extends DynamicProducerForMemoryData<T> implements Delegated<DestinationSupport<T>> {
+public class MemoryDataDestination<T extends MemoryData> extends DynamicProducerForMemoryData<T> implements Delegated<Countable> {
 	public static boolean enableThreadLocalProvider = true;
 
-	private final DestinationSupport<T> destination;
+	private final Countable process;
 	private ThreadLocalContextSpecific<MemoryBankProvider<T>> provider;
 
-	public MemoryDataDestination(DestinationSupport<T> destination) {
-		this(destination, null);
-	}
-
-	public MemoryDataDestination(DestinationSupport<T> destination, IntFunction<MemoryBank<T>> kernelDestination) {
-		super(args -> { throw new UnsupportedOperationException(); }, kernelDestination);
-		this.destination = destination;
+	public MemoryDataDestination(Countable process, IntFunction<MemoryBank<T>> destination) {
+		super(args -> { throw new UnsupportedOperationException(); }, destination);
+		this.process = process;
 		if (enableThreadLocalProvider) {
-			this.provider = new ThreadLocalContextSpecific<>(() -> new MemoryBankProvider<>(kernelDestination), MemoryBankProvider::destroy);
+			this.provider = new ThreadLocalContextSpecific<>(() -> new MemoryBankProvider<>(destination), MemoryBankProvider::destroy);
 			this.provider.init();
 		}
 	}
 
 	@Override
-	public DestinationSupport<T> getDelegate() { return destination; }
+	public Countable getDelegate() { return process; }
 
 	@Override
 	public int getCount() {
-		if (destination instanceof Countable) {
-			return ((Countable) destination).getCount();
+		if (process != null) {
+			return process.getCount();
 		}
 
 		return super.getCount();
 	}
+
+	@Override
+	public boolean isFixedCount() { return true; }
 
 	@Override
 	public KernelizedEvaluable<T> get() {
