@@ -103,10 +103,12 @@ public class KernelTraversalOperationGenerator implements KernelTraversalProvide
 	protected class TraversalOperation<T extends MemoryData> extends ProducerComputationBase<T, T>
 			implements MemoryDataComputation<T>, ComputerFeatures {
 		private List<Expression> expressions;
+		private MemoryDataDestination destination;
 
 		public TraversalOperation() {
 			this.expressions = new ArrayList<>();
-			setInputs(new MemoryDataDestination(this, i -> new Bytes(expressions.size())));
+			this.destination = new MemoryDataDestination<>(this, i -> new Bytes(expressions.size()));
+			setInputs(destination);
 			init();
 		}
 
@@ -138,7 +140,7 @@ public class KernelTraversalOperationGenerator implements KernelTraversalProvide
 			ComputeContext<MemoryData> ctx = Hardware.getLocalHardware().getComputer().getContext(this);
 			AcceleratedComputationEvaluable<T> ev = new AcceleratedComputationEvaluable<>(ctx, this);
 			ev.setKernelStructureSupported(false);
-			ev.setDestinationFactory(i -> (Multiple) new Bytes(expressions.size()));
+			ev.setDestinationFactory(destination.getDestinationFactory());
 			return ev;
 		}
 	}
