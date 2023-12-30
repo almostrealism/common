@@ -26,7 +26,4 @@ public class Mask extends Conditional {
 
 	@Override
 	public boolean isMasked() { return true; }
-
-	@Override
-	public boolean isSingleIndexMasked() { return getChildren().get(0).isSingleIndex(); }
 }

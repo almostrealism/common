@@ -16,7 +16,6 @@
 
 package io.almostrealism.expression;
 
-import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 

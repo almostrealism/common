@@ -16,7 +16,6 @@
 
 package io.almostrealism.scope;
 
-import io.almostrealism.expression.Constant;
 import io.almostrealism.code.PhysicalScope;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.IntegerConstant;
@@ -56,6 +55,10 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 
 	private V delegate;
 
+	public Variable(String name) {
+		this(name, null, null, null);
+	}
+
 	public Variable(String name, PhysicalScope scope, Expression<T> expression, Supplier<Evaluable<? extends T>> producer) {
 		setName(name);
 		setPhysicalScope(scope);
@@ -88,8 +91,10 @@ public class Variable<T, V extends Variable<T, ?>> implements Nameable, Sortable
 
 	public void setDelegate(V delegate) { this.delegate = delegate; }
 
+	@Deprecated
 	public void setExpression(Expression<T> value) { this.expression = value; }
 
+	@Deprecated
 	public Expression<T> getExpression() { return expression; }
 
 	@Deprecated

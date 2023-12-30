@@ -29,6 +29,7 @@ import org.almostrealism.hardware.HardwareOperator;
 import org.almostrealism.hardware.computations.Assignment;
 import org.almostrealism.hardware.jni.NativeCompiler;
 import org.almostrealism.hardware.mem.MemoryDataArgumentMap;
+import org.almostrealism.hardware.metal.MetalProgram;
 import org.almostrealism.layers.CellularLayer;
 import org.almostrealism.layers.DefaultCellularLayer;
 import org.almostrealism.layers.LayerFeatures;
@@ -252,6 +253,9 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	public void trainVerySmall() {
 		if (skipLongTests) return;
 
+		NativeCompiler.enableInstructionSetMonitoring = true;
+		MetalProgram.enableProgramMonitoring = true;
+
 		int dim = 4;
 		Tensor<Double> t = tensor(shape(dim, dim));
 		PackedCollection<?> input = t.pack();
@@ -263,9 +267,10 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	public void trainSmall() {
 		if (skipLongTests) return;
 
-		// NativeCompiler.enableInstructionSetMonitoring = true;
+		NativeCompiler.enableLargeInstructionSetMonitoring = true;
+		MetalProgram.enableLargeProgramMonitoring = true;
 
-		int dim = 16;
+		int dim = 36;
 		int filters = 8;
 		Tensor<Double> t = tensor(shape(dim, dim));
 		PackedCollection<?> input = t.pack();

@@ -21,6 +21,7 @@ import io.almostrealism.code.ComputeContext;
 import io.almostrealism.code.Execution;
 import io.almostrealism.kernel.KernelSeriesMatcher;
 import io.almostrealism.kernel.KernelSeriesProvider;
+import io.almostrealism.kernel.KernelTraversalProvider;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.code.Semaphore;
 import io.almostrealism.expression.Expression;
@@ -380,6 +381,7 @@ public abstract class AcceleratedOperation<T extends MemoryData> extends Operati
 			Expression.distribution.print();
 
 		KernelSeriesProvider.timing.print();
+		KernelTraversalProvider.timing.print();
 		Expression.timing.print();
 
 		if (verbose) {

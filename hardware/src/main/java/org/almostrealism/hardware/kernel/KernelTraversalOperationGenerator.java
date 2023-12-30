@@ -29,7 +29,6 @@ import io.almostrealism.relation.ParallelProcess;
 import io.almostrealism.relation.Producer;
 import io.almostrealism.scope.ArrayVariable;
 import io.almostrealism.scope.Scope;
-import io.almostrealism.uml.Multiple;
 import org.almostrealism.hardware.AcceleratedComputationEvaluable;
 import org.almostrealism.hardware.AcceleratedOperation;
 import org.almostrealism.hardware.ComputerFeatures;
@@ -73,28 +72,34 @@ public class KernelTraversalOperationGenerator implements KernelTraversalProvide
 
 	@Override
 	public Expression<?> generateReordering(Expression<?> expression) {
-		if (!enableGeneration || !fixed) return expression;
-		if (expression.getChildren().size() < minimumChildren) return expression;
+		long start = System.nanoTime();
 
-		String e = expression.getExpression(lang);
-		ArrayVariable<?> variable = variables.get(e);
-		if (variable != null) return variable.referenceAbsolute(new KernelIndex());
+		try {
+			if (!enableGeneration || !fixed) return expression;
+			if (expression.getChildren().size() < minimumChildren) return expression;
 
-		if (operations.size() >= defaultMaxEntries) {
-			if (enableVerbose)
-				warn("Reached max operations");
-			return expression;
+			String e = expression.getExpression(lang);
+			ArrayVariable<?> variable = variables.get(e);
+			if (variable != null) return variable.referenceAbsolute(new KernelIndex());
+
+			if (operations.size() >= defaultMaxEntries) {
+				if (enableVerbose)
+					warn("Reached max operations");
+				return expression;
+			}
+
+			TraversalOperation<?> operation = new TraversalOperation<>();
+			IntStream.range(0, count)
+					.mapToObj(i -> expression.withKernel(i).getSimplified())
+					.forEach(operation.getExpressions()::add);
+			operations.put(e, operation);
+
+			variable = variableFactory.apply((Producer) operation.isolate());
+			variables.put(e, variable);
+			return variable.referenceAbsolute(new KernelIndex());
+		} finally {
+			timing.addEntry(String.valueOf(count), System.nanoTime() - start);
 		}
-
-		TraversalOperation<?> operation = new TraversalOperation<>();
-		IntStream.range(0, count)
-				.mapToObj(i -> expression.withKernel(i).getSimplified())
-				.forEach(operation.getExpressions()::add);
-		operations.put(e, operation);
-
-		variable = variableFactory.apply((Producer) operation.isolate());
-		variables.put(e, variable);
-		return variable.referenceAbsolute(new KernelIndex());
 	}
 
 	@Override

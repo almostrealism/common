@@ -17,7 +17,11 @@
 package io.almostrealism.kernel;
 
 import io.almostrealism.expression.Expression;
+import io.almostrealism.scope.Scope;
+import org.almostrealism.io.TimingMetric;
 
 public interface KernelTraversalProvider {
+	TimingMetric timing = Scope.console.timing("kernelTraversal");
+
 	Expression<?> generateReordering(Expression<?> expression);
 }

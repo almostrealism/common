@@ -27,6 +27,7 @@ import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.StaticReference;
 import io.almostrealism.relation.Evaluable;
 import io.almostrealism.relation.Process;
+import io.almostrealism.scope.Repeated;
 import io.almostrealism.scope.Scope;
 import io.almostrealism.scope.Variable;
 import org.almostrealism.collect.PackedCollection;
@@ -38,6 +39,8 @@ import java.util.function.BiFunction;
 import java.util.function.Supplier;
 
 public class RepeatedCollectionProducerComputation<T extends PackedCollection<?>> extends CollectionProducerComputationBase<T, T> {
+	public static boolean enableRepeatedScope = true;
+
 	protected BiFunction<TraversableExpression[], Expression, Expression> initial;
 	private BiFunction<TraversableExpression[], Expression, Expression> condition;
 	private BiFunction<TraversableExpression[], Expression, Expression> expression;
@@ -73,45 +76,82 @@ public class RepeatedCollectionProducerComputation<T extends PackedCollection<?>
 	public int getMemLength() { return memLength; }
 
 	@Override
+	public OperationMetadata getMetadata() {
+		OperationMetadata metadata = super.getMetadata();
+		if (metadata == null)
+			metadata = new OperationMetadata(getFunctionName(), "Repeated");
+		return metadata;
+	}
+
+	@Override
 	public Scope<T> getScope() {
-		HybridScope<T> scope = new HybridScope<>(this);
-		scope.setMetadata(new OperationMetadata(getFunctionName(), "Repeated"));
+		if (enableRepeatedScope) {
+			Repeated<T> scope = new Repeated<>(getFunctionName(), getMetadata());
+			scope.setInterval(e(getMemLength()));
 
-		String i = getVariablePrefix() + "_i";
-		StaticReference<Integer> ref = new StaticReference<>(Integer.class, i);
-		String cond = condition.apply(getTraversableArguments(ref), ref).getSimpleExpression(getLanguage());
+			String i = getVariablePrefix() + "_i";
+			scope.setIndex(new Variable<>(i));
 
-		Expression index = new KernelIndex().divide(e(getShape().getSize())).multiply(e(getShape().getSize()));
-		TraversableExpression output = CollectionExpression.traverse(getOutputVariable(),
-				size -> index.toInt().divide(e(getMemLength())).multiply(size));
+			StaticReference<Integer> ref = new StaticReference<>(Integer.class, i);
+			scope.setCondition(condition.apply(getTraversableArguments(ref), ref));
 
-		Set<Variable<?, ?>> dependencies = new HashSet<>();
+			Expression index = new KernelIndex().divide(e(getShape().getSize())).multiply(e(getShape().getSize()));
 
-		for (int j = 0; j < getMemLength(); j++) {
-//			Expression<?> out = output.getValueRelative(e(j));
-			Expression<?> out = ((ArrayVariable) getOutputVariable()).referenceRelative(e(j));
-			Expression<?> val = initial.apply(getTraversableArguments(index), ref.add(j));
-			scope.code().accept("\t" + out.getSimpleExpression(getLanguage()) + " = " + val.getSimpleExpression(getLanguage()) + ";\n");
-			dependencies.addAll(out.getDependencies());
-			dependencies.addAll(val.getDependencies());
+			for (int j = 0; j < getMemLength(); j++) {
+				Expression<?> out = ((ArrayVariable) getOutputVariable()).referenceRelative(e(j));
+				Expression<?> val = initial.apply(getTraversableArguments(index), ref.add(j));
+				scope.getStatements().add(out.assign(val));
+			}
+
+			Scope<T> body = new Scope<>(getFunctionName() + "_body");
+			for (int j = 0; j < getMemLength(); j++) {
+				Expression<?> out = ((ArrayVariable) getOutputVariable()).referenceRelative(e(j));
+				Expression<?> val = expression.apply(getTraversableArguments(index), ref.add(j));
+				body.getStatements().add(out.assign(val));
+			}
+
+			scope.add(body);
+			return scope;
+		} else {
+			HybridScope<T> scope = new HybridScope<>(this);
+			scope.setMetadata(getMetadata());
+
+			String i = getVariablePrefix() + "_i";
+			StaticReference<Integer> ref = new StaticReference<>(Integer.class, i);
+			String cond = condition.apply(getTraversableArguments(ref), ref).getSimpleExpression(getLanguage());
+
+			Expression index = new KernelIndex().divide(e(getShape().getSize())).multiply(e(getShape().getSize()));
+//			TraversableExpression output = CollectionExpression.traverse(getOutputVariable(),
+//					size -> index.toInt().divide(e(getMemLength())).multiply(size));
+
+			Set<Variable<?, ?>> dependencies = new HashSet<>();
+
+			for (int j = 0; j < getMemLength(); j++) {
+//				Expression<?> out = output.getValueRelative(e(j));
+				Expression<?> out = ((ArrayVariable) getOutputVariable()).referenceRelative(e(j));
+				Expression<?> val = initial.apply(getTraversableArguments(index), ref.add(j));
+				scope.code().accept("\t" + out.getSimpleExpression(getLanguage()) + " = " + val.getSimpleExpression(getLanguage()) + ";\n");
+				dependencies.addAll(out.getDependencies());
+				dependencies.addAll(val.getDependencies());
+			}
+
+			scope.code().accept("\tfor (int " + i + " = 0; " + cond + ";) {\n");
+
+			for (int j = 0; j < getMemLength(); j++) {
+//				Expression<?> out = output.getValueRelative(e(j));
+				Expression<?> out = ((ArrayVariable) getOutputVariable()).referenceRelative(e(j));
+				Expression<?> val = expression.apply(getTraversableArguments(index), ref.add(j));
+				scope.code().accept("\t\t" + out.getSimpleExpression(getLanguage()) + " = " + val.getSimpleExpression(getLanguage()) + ";\n");
+				dependencies.addAll(out.getDependencies());
+				dependencies.addAll(val.getDependencies());
+			}
+
+			scope.code().accept("\t\t" + i + " = " + i + " + " + getMemLength() + ";\n");
+			scope.code().accept("\t}\n");
+
+			scope.setDependencies(dependencies);
+			return scope;
 		}
-
-		scope.code().accept("\tfor (int " + i + " = 0; " + cond + ";) {\n");
-
-		for (int j = 0; j < getMemLength(); j++) {
-//			Expression<?> out = output.getValueRelative(e(j));
-			Expression<?> out = ((ArrayVariable) getOutputVariable()).referenceRelative(e(j));
-			Expression<?> val = expression.apply(getTraversableArguments(index), ref.add(j));
-			scope.code().accept("\t\t" + out.getSimpleExpression(getLanguage()) + " = " + val.getSimpleExpression(getLanguage()) + ";\n");
-			dependencies.addAll(out.getDependencies());
-			dependencies.addAll(val.getDependencies());
-		}
-
-		scope.code().accept("\t\t" + i + " = " + i + " + " + getMemLength() + ";\n");
-		scope.code().accept("\t}\n");
-
-		scope.setDependencies(dependencies);
-		return scope;
 	}
 
 	@Override

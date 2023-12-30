@@ -52,7 +52,14 @@ public class MemoryDataCacheManager implements ExpressionFeatures {
 
 	public static MemoryDataCacheManager create(int entrySize, int maxEntries,
 												Function<MemoryData, ArrayVariable<?>> variableFactory) {
-		Bytes data = new Bytes(entrySize * maxEntries, entrySize);
+		long total = entrySize;
+		total *= maxEntries;
+
+		if (total < 0 || total > Integer.MAX_VALUE) {
+			throw new IllegalArgumentException();
+		}
+
+		Bytes data = new Bytes((int) total, entrySize);
 		return new MemoryDataCacheManager(entrySize, data, variableFactory.apply(data));
 	}
 }

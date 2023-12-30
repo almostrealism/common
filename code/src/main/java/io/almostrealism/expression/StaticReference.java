@@ -20,6 +20,7 @@ import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.Variable;
 
 import java.util.List;
+import java.util.Objects;
 
 public class StaticReference<T> extends Expression<T> {
 	private String expression;
@@ -32,6 +33,19 @@ public class StaticReference<T> extends Expression<T> {
 	public StaticReference(Class<T> type, String expression, Variable referent) {
 		super(type, referent, null);
 		this.expression = expression;
+	}
+
+	@Override
+	public Expression<T> withValue(String name, Number value) {
+		if (!Objects.equals(name, expression)) return this;
+
+		if (value instanceof Integer) {
+			return (Expression) new IntegerConstant((Integer) value);
+		} else if (value != null) {
+			return (Expression) new DoubleConstant(value.doubleValue());
+		} else {
+			return null;
+		}
 	}
 
 	public String getExpression(LanguageOperations lang) { return expression; }

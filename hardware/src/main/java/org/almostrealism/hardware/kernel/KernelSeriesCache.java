@@ -43,6 +43,7 @@ import java.util.function.Function;
 public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatures, ConsoleFeatures {
 	public static boolean enableCache = true;
 	public static boolean enableVerbose = false;
+	public static int maxCount = 2 ^ 23;
 	public static int defaultMaxEntries = 256;
 
 	private int count;
@@ -50,8 +51,8 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 	private MemoryDataCacheManager cacheManager;
 	private LanguageOperations lang;
 
-	private Map<String, Integer> cache = new HashMap<>();
-	private Map<String, Expression> expressions = new HashMap<>();
+	private Map<String, Integer> cache;
+	private Map<String, Expression> expressions;
 	private Base64.Encoder encoder = Base64.getEncoder();
 
 	public KernelSeriesCache(int count, boolean fixed, MemoryDataCacheManager cacheManager) {
@@ -63,6 +64,8 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 		this.fixed = fixed;
 		this.cacheManager = cacheManager;
 		this.lang = new LanguageOperationsStub();
+		this.cache = cacheManager == null ? null : new HashMap<>();
+		this.expressions = new HashMap<>();
 	}
 
 	@Override
@@ -91,6 +94,7 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 
 		Expression match = KernelSeriesMatcher.match(seq, isInt);
 		if (match != null) return match;
+		if (cache == null) return null;
 
 		String sig = signature(seq);
 
@@ -130,6 +134,7 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 		int count = ParallelProcess.count(c);
 		boolean fixed = ParallelProcess.isFixedCount(c);
 		return new KernelSeriesCache(count, fixed,
-				fixed ? MemoryDataCacheManager.create(count, defaultMaxEntries, variableFactory) : null);
+				(fixed && count < maxCount) ?
+						MemoryDataCacheManager.create(count, defaultMaxEntries, variableFactory) : null);
 	}
 }

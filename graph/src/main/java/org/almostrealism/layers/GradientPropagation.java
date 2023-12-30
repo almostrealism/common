@@ -33,7 +33,9 @@ import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 public class GradientPropagation implements Propagation, Nameable, CodeFeatures {
-	public static boolean enableDiagnostic = true;
+
+	public static boolean enableDiagnosticGrad = false;
+	public static boolean enableDiagnosticWeight = true;
 
 	private final Factor<PackedCollection<?>> operator;
 	private final Producer<PackedCollection<?>>[] weights;
@@ -83,7 +85,7 @@ public class GradientPropagation implements Propagation, Nameable, CodeFeatures 
 				.reshape(shape(inSize))
 				.each();
 
-		if (enableDiagnostic) {
+		if (enableDiagnosticGrad) {
 			op.add(OperationWithInfo.of(new OperationMetadata(getName() + " delta", getName() + " (\u03B4Out/\u03B4In)"), () -> {
 				Evaluable<PackedCollection<?>> grad = deltaOutDeltaIn.get();
 				Evaluable<PackedCollection<?>> inputGrad = gradient.get();
@@ -114,14 +116,14 @@ public class GradientPropagation implements Propagation, Nameable, CodeFeatures 
 					a(getName() + " (\u0394 weights)", each(weightFlat),
 							subtract(each(weightFlat), multiply(learningRate, deltaOutDeltaWeight)));
 
-			if (enableDiagnostic) {
-				op.add(() -> {
+			if (enableDiagnosticWeight) {
+				op.add(OperationWithInfo.of(new OperationMetadata(getName() + " weights " + i, getName() + " (\u0394 weights)"),() -> {
 					Runnable wua = weightUpdateAssignment.get();
 
 					return () -> {
 						wua.run();
 					};
-				});
+				}));
 			} else {
 				op.add(weightUpdateAssignment);
 			}

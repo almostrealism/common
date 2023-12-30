@@ -48,10 +48,7 @@ public abstract class OperationAdapter<T> implements NameProvider, OperationInfo
 	private List<Argument<? extends T>> arguments;
 	private boolean sortedArguments;
 
-//	private Map<Supplier<Evaluable>, List<ExpressionAssignment<?>>> variables;
-//	private List<Supplier<Evaluable>> variableOrder;
-//	private List<String> variableNames;
-	List<ExpressionAssignment<?>> variables;
+	private List<ExpressionAssignment<?>> variables;
 	private OperationMetadata metadata;
 
 	@SafeVarargs

@@ -19,7 +19,12 @@ package io.almostrealism.code;
 import io.almostrealism.kernel.KernelStructure;
 import io.almostrealism.lang.LanguageOperations;
 import io.almostrealism.scope.Fragment;
+import io.almostrealism.scope.Variable;
+
+import java.util.List;
 
 public interface Statement<T extends KernelStructure> extends Fragment, KernelStructure<T> {
 	String getStatement(LanguageOperations lang);
+
+	List<Variable<?, ?>> getDependencies();
 }

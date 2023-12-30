@@ -101,7 +101,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 	public boolean isNull() { return false; }
 	public boolean isMasked() { return false; }
 	public boolean isSingleIndex() { return false; }
-	public boolean isSingleIndexMasked() { return false; }
+	public boolean isSingleIndexMasked() { return isMasked() && getChildren().get(0).isSingleIndex(); }
 	public boolean isKernelValue() { return false; }
 
 	public Optional<Boolean> booleanValue() { return Optional.empty(); }
@@ -110,6 +110,12 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 	public OptionalDouble doubleValue() {
 		OptionalInt intValue = intValue();
 		return intValue.isPresent() ? OptionalDouble.of(intValue.getAsInt()) : OptionalDouble.empty();
+	}
+
+	public Expression<T> withValue(String name, Number value) {
+		return generate(getChildren().stream()
+				.map(e -> e.withValue(name, value))
+				.collect(Collectors.toList()));
 	}
 
 	public Expression<T> withKernel(int index) {

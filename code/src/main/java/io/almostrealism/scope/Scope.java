@@ -219,6 +219,8 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 		List<Argument<?>> args = new ArrayList<>();
 
 		if (arguments == null) {
+			args.addAll(extractArgumentDependencies(statements
+					.stream().flatMap(e -> e.getDependencies().stream()).collect(Collectors.toList())));
 			args.addAll(extractArgumentDependencies(variables
 					.stream().flatMap(e -> e.getDependencies().stream()).collect(Collectors.toList())));
 			sortArguments(args);
@@ -338,6 +340,12 @@ public class Scope<T> extends ArrayList<Scope<T>> implements Fragment, KernelTre
 					// If the computation produces a Scope that was already
 					// converted by a child scope, skip over it
 					if (convertedScopes.contains(s.getName())) {
+						return Collections.singletonList(arg);
+					}
+
+					// If the Scope contains this Scope, it should not be
+					// recursively made into a requirement of itself
+					if (s.contains(this)) {
 						return Collections.singletonList(arg);
 					}
 
