@@ -253,13 +253,13 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	public void trainVerySmall() {
 		if (skipLongTests) return;
 
-		NativeCompiler.enableInstructionSetMonitoring = true;
-		MetalProgram.enableProgramMonitoring = true;
+		NativeCompiler.enableLargeInstructionSetMonitoring = true;
+		MetalProgram.enableLargeProgramMonitoring = true;
 
-		int dim = 4;
+		int dim = 8;
 		Tensor<Double> t = tensor(shape(dim, dim));
 		PackedCollection<?> input = t.pack();
-		train(input, model(dim, dim, 3, 2, 10));
+		train(input, model(dim, dim, 3, 4, 10));
 	}
 
 
@@ -309,31 +309,31 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		CompiledModel compiled = model.compile(profile);
 		log("Model compiled");
 
-		// Scope.console.flag();
+		try {
+			int count = 100 * 1000;
 
-		int count = 100 * 1000;
+			for (int i = 0; i < count; i++) {
+				input.fill(pos -> 0.5 + 0.5 * Math.random());
 
-		for (int i = 0; i < count; i++) {
-			input.fill(pos -> 0.5 + 0.5 * Math.random());
+				compiled.forward(input);
 
-			compiled.forward(input);
+				if (i % 1000 == 0) {
+					log("Input Size = " + input.getShape() +
+							"\t | epoch = " + i / 1000);
+				}
 
-			if (i % 1000 == 0) {
-				log("Input Size = " + input.getShape() +
-						"\t | epoch = " + i / 1000);
+				compiled.backward(rand(model.lastBlock().getOutputShape()).get().evaluate());
+
+				if (i % 1000 == 0) {
+					log("\t\tbackprop\t\t" +
+							" | epoch = " + i / 1000);
+				}
 			}
-
-			compiled.backward(rand(model.lastBlock().getOutputShape()).get().evaluate());
-
-			if (i % 1000 == 0) {
-				log("\t\tbackprop\t\t" +
-						" | epoch = " + i / 1000);
-			}
+		} finally {
+			profile.print();
+			HardwareOperator.profile.print();
+			AcceleratedOperation.printTimes();
 		}
-
-		profile.print();
-		HardwareOperator.profile.print();
-		AcceleratedOperation.printTimes();
 	}
 
 	protected Model model(int r, int c, int convSize, int convFilters, int denseSize) {
