@@ -43,7 +43,7 @@ import java.util.function.Function;
 public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatures, ConsoleFeatures {
 	public static boolean enableCache = true;
 	public static boolean enableVerbose = false;
-	public static int maxCount = 2 ^ 23;
+	public static int maxCount = (int) Math.pow(2, 23);
 	public static int defaultMaxEntries = 256;
 
 	private int count;
