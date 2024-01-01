@@ -22,7 +22,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public class Difference<T extends Number> extends NAryExpression<T> {
-	public Difference(Expression<Double>... values) {
+	public Difference(Expression<T>... values) {
 		super((Class<T>) type(List.of(values)), "-", values);
 	}
 

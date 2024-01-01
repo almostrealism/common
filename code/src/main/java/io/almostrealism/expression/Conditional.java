@@ -24,11 +24,11 @@ import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 
-public class Conditional extends Expression<Double> {
+public class Conditional<T extends Number> extends Expression<T> {
 	public static boolean enableKernelSimplification = true;
 
-	protected Conditional(Expression<Boolean> condition, Expression<Double> positive, Expression<Double> negative) {
-		super(Double.class, condition, positive, negative);
+	protected Conditional(Class<T> type, Expression<Boolean> condition, Expression<Double> positive, Expression<Double> negative) {
+		super(type, condition, positive, negative);
 	}
 
 	@Override
@@ -96,7 +96,7 @@ public class Conditional extends Expression<Double> {
 	}
 
 	@Override
-	public Expression<Double> generate(List<Expression<?>> children) {
+	public Expression<T> generate(List<Expression<?>> children) {
 		if (children.size() != 3) throw new UnsupportedOperationException();
 		return Conditional.create((Expression<Boolean>) children.get(0),
 				(Expression<Double>) children.get(1),
@@ -114,6 +114,6 @@ public class Conditional extends Expression<Double> {
 			return new Mask(condition.not(), negative);
 		}
 
-		return new Conditional(condition, positive, negative);
+		return new Conditional(Double.class, condition, positive, negative);
 	}
 }

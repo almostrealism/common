@@ -148,6 +148,14 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 		throw new UnsupportedOperationException();
 	}
 
+	public Number kernelSeqValue(int kernelIndex) {
+		if (latestKernelSeq != null && kernelIndex < latestKernelSeq.length) {
+			return latestKernelSeq[kernelIndex];
+		}
+
+		return kernelValue(kernelIndex);
+	}
+
 	public Number[] kernelSeq(int len) {
 		long start = System.nanoTime();
 
@@ -155,7 +163,7 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 			if (latestKernelSeq != null && latestKernelSeq.length >= len) {
 				return Arrays.copyOf(latestKernelSeq, len);
 			} else {
-				Number seq[] = IntStream.range(0, len).parallel().mapToObj(this::kernelValue).toArray(Number[]::new);
+				Number seq[] = IntStream.range(0, len).parallel().mapToObj(this::kernelSeqValue).toArray(Number[]::new);
 				latestKernelSeq = seq;
 				return seq;
 			}
@@ -238,11 +246,11 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 		throw new UnsupportedOperationException();
 	}
 
-	public Minus minus() { return new Minus((Expression) this); }
+	public Minus minus() { return new Minus(this); }
 
-	public Sum add(int operand) { return new Sum((Expression) this, (Expression) new IntegerConstant(operand)); }
-	public Sum add(Expression<Double> operand) { return new Sum((Expression) this, operand); }
-	public Difference subtract(Expression<Double> operand) { return new Difference((Expression) this, operand); }
+	public Sum add(int operand) { return new Sum((Expression) this, new IntegerConstant(operand)); }
+	public Sum add(Expression<? extends Number> operand) { return new Sum((Expression) this, operand); }
+	public Difference subtract(Expression<? extends Number> operand) { return new Difference((Expression) this, (Expression) operand); }
 
 	public Product multiply(int operand) { return new Product((Expression) this, (Expression) new IntegerConstant(operand)); }
 	public Product multiply(Expression<? extends Number> operand) { return new Product((Expression) this, (Expression) operand); }
@@ -361,7 +369,10 @@ public abstract class Expression<T> implements KernelTree<Expression<?>>, Consol
 		}
 	}
 
-	public boolean isSeriesSimplificationTarget() { return getType() == Boolean.class; }
+	public boolean isSeriesSimplificationTarget() {
+		// return getType() == Boolean.class;
+		return false;
+	}
 
 	@Override
 	public boolean equals(Object obj) {

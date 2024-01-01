@@ -21,6 +21,7 @@ import org.almostrealism.CodeFeatures;
 import org.almostrealism.collect.PackedCollection;
 import org.almostrealism.graph.io.CSVReceptor;
 import org.almostrealism.layers.CellularLayer;
+import org.almostrealism.layers.GradientPropagation;
 import org.almostrealism.model.CompiledModel;
 import org.almostrealism.model.Model;
 import org.almostrealism.model.SequentialBlock;

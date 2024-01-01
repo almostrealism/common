@@ -40,9 +40,14 @@ public class OperationMetadata {
 	}
 
 	public OperationMetadata(String displayName, String shortDescription) {
+		this(displayName, shortDescription, null);
+	}
+
+	public OperationMetadata(String displayName, String shortDescription, String longDescription) {
 		this();
 		setDisplayName(displayName);
 		setShortDescription(shortDescription);
+		setLongDescription(longDescription);
 
 		if (displayName == null) {
 			throw new IllegalArgumentException();

@@ -88,9 +88,12 @@ public class TraversableDeltaComputation<T extends PackedCollection<?>>
 
 	@Override
 	public TraversableDeltaComputation<T> generate(List<Process<?, ?>> children) {
-		return (TraversableDeltaComputation<T>) new TraversableDeltaComputation(getShape(), expression,
-				children.stream().skip(1).toArray(Supplier[]::new))
-				.setPostprocessor(getPostprocessor()).setShortCircuit(getShortCircuit());
+		TraversableDeltaComputation<T> result =
+				(TraversableDeltaComputation<T>) new TraversableDeltaComputation(getShape(), expression,
+					children.stream().skip(1).toArray(Supplier[]::new))
+					.setPostprocessor(getPostprocessor()).setShortCircuit(getShortCircuit());
+		dependentLifecycles.forEach(result::addDependentLifecycle);
+		return result;
 	}
 
 	@Override

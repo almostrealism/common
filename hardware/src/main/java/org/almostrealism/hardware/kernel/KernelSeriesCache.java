@@ -19,6 +19,7 @@ package org.almostrealism.hardware.kernel;
 
 import io.almostrealism.code.Computation;
 import io.almostrealism.code.ExpressionFeatures;
+import io.almostrealism.expression.DoubleConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.kernel.KernelSeriesMatcher;
 import io.almostrealism.kernel.KernelSeriesProvider;
@@ -39,12 +40,14 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.OptionalInt;
 import java.util.function.Function;
+import java.util.stream.DoubleStream;
+import java.util.stream.IntStream;
 
 public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatures, ConsoleFeatures {
 	public static boolean enableCache = true;
 	public static boolean enableVerbose = false;
 	public static int maxCount = (int) Math.pow(2, 23);
-	public static int defaultMaxEntries = 256;
+	public static int defaultMaxEntries = 16;
 
 	private int count;
 	private boolean fixed;
@@ -90,28 +93,40 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 
 	@Override
 	public Expression getSeries(double[] seq, boolean isInt) {
-		if (!enableCache) return null;
-
-		Expression match = KernelSeriesMatcher.match(seq, isInt);
-		if (match != null) return match;
-		if (cache == null) return null;
-
-		String sig = signature(seq);
-
-		if (!cache.containsKey(sig)) {
-			if (cache.size() >= cacheManager.getMaxEntries()) {
-				if (enableVerbose)
-					warn("Cache is full");
-				return null;
-			}
-
-			int index = cache.size();
-			cache.put(sig, index);
-			cacheManager.setValue(index, seq);
+		double init = seq[0];
+		if (init != 0.0) {
+			seq = DoubleStream.of(seq).map(d -> d - init).toArray();
 		}
 
-		Expression<?> result = cacheManager.reference(cache.get(sig), kernel());
-		return isInt ? result.toInt() : result;
+		Expression result = null;
+
+		r: try {
+			result = KernelSeriesMatcher.match(seq, isInt);
+			if (result != null || !enableCache || cache == null) break r;
+
+			String sig = signature(seq);
+
+			if (!cache.containsKey(sig)) {
+				if (cache.size() >= cacheManager.getMaxEntries()) {
+					if (enableVerbose)
+						warn("Cache is full");
+					return null;
+				}
+
+				int index = cache.size();
+				cache.put(sig, index);
+				cacheManager.setValue(index, seq);
+			}
+
+			result = cacheManager.reference(cache.get(sig), kernel());
+		} finally {
+			if (result != null) {
+				result = result.add(new DoubleConstant(init));
+				if (isInt) result = result.toInt();
+			}
+		}
+
+		return result;
 	}
 
 	public String signature(double[] values) {
@@ -134,7 +149,7 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 		int count = ParallelProcess.count(c);
 		boolean fixed = ParallelProcess.isFixedCount(c);
 		return new KernelSeriesCache(count, fixed,
-				(fixed && count < maxCount) ?
+				(enableCache && fixed && count < maxCount) ?
 						MemoryDataCacheManager.create(count, defaultMaxEntries, variableFactory) : null);
 	}
 }
