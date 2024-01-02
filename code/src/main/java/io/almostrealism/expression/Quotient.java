@@ -17,7 +17,6 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.kernel.KernelSeries;
-import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.kernel.KernelStructureContext;
 
 import java.util.ArrayList;
@@ -46,12 +45,12 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public OptionalInt upperBound() {
+	public OptionalInt upperBound(KernelStructureContext context) {
 		if (getChildren().size() > 2)
 			throw new UnsupportedOperationException();
 
-		OptionalInt l = getChildren().get(0).upperBound();
-		OptionalInt r = getChildren().get(1).upperBound();
+		OptionalInt l = getChildren().get(0).upperBound(context);
+		OptionalInt r = getChildren().get(1).upperBound(context);
 		if (l.isPresent() && r.isPresent()) {
 			return OptionalInt.of((int) Math.ceil(l.getAsInt() / (double) r.getAsInt()));
 		}
@@ -75,6 +74,25 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
+	public Number evaluate(Number... children) {
+		if (getType() == Integer.class) {
+			int value = children[0].intValue();
+			for (int i = 1; i < children.length; i++) {
+				value = value / children[i].intValue();
+			}
+
+			return value;
+		} else {
+			double value = children[0].doubleValue();
+			for (int i = 1; i < children.length; i++) {
+				value = value / children[i].doubleValue();
+			}
+
+			return value;
+		}
+	}
+
+	@Override
 	public Expression<T> generate(List<Expression<?>> children) {
 		return new Quotient(children.toArray(new Expression[0]));
 	}
@@ -89,7 +107,8 @@ public class Quotient<T extends Number> extends NAryExpression<T> {
 				.collect(Collectors.toList());
 		children.add(0, flat.getChildren().get(0));
 
-		if (children.isEmpty()) return getChildren().iterator().next(); // TODO  This is wrong
+		if (children.isEmpty())
+			return getChildren().iterator().next(); // TODO  This is wrong
 		if (children.size() == 1) return children.get(0);
 
 		if (children.get(0).intValue().isPresent()) {

@@ -16,6 +16,7 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
@@ -44,14 +45,19 @@ public class Ceiling extends Expression<Double> {
 	}
 
 	@Override
-	public OptionalInt upperBound() {
+	public OptionalInt upperBound(KernelStructureContext context) {
 		OptionalDouble v = doubleValue();
 		if (v.isPresent()) return OptionalInt.of((int) Math.ceil(v.getAsDouble()));
 
-		OptionalInt u = getChildren().get(0).upperBound();
+		OptionalInt u = getChildren().get(0).upperBound(context);
 		if (u.isPresent()) return OptionalInt.of((int) Math.ceil(u.getAsInt()));
 
 		return OptionalInt.empty();
+	}
+
+	@Override
+	public Number evaluate(Number... children) {
+		return Math.ceil(children[0].doubleValue());
 	}
 
 	@Override

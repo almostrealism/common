@@ -101,40 +101,32 @@ public class KernelSeriesTests implements ExpressionFeatures {
 	// (((((((((((kernel0 * 8) % (144)) / 8) + (((kernel0 * 8) / 144) * 144)) / 18) * 9) / 9) * 9) / 18) * 9) / 9) * 9
 	@Test
 	public void productQuotientSumSimplify() {
-		boolean enableSimplify = Mod.enableKernelSimplification;
+		Expression a = kernel().multiply(8)
+				.imod(144)
+				.divide(8);
+		a.kernelSeries();
 
-		try {
-			Mod.enableKernelSimplification = true;
+		Expression b = kernel().multiply(8).divide(144).multiply(144);
+		Expression c = a.add(b);
+		Expression e = c.divide(18).multiply(9).imod(9).getSimplified();
+		Assert.assertTrue(e instanceof IntegerConstant);
+		Assert.assertEquals(0, e.intValue().getAsInt());
 
-			Expression a = kernel().multiply(8)
-					.imod(144)
-					.divide(8);
-			a.kernelSeries();
+		Expression p = kernel().multiply(8)
+				.imod(144)
+				.divide(8)
+				.add(kernel().multiply(8).divide(144).multiply(144))
+				.divide(18)
+				.multiply(9)
+				.divide(9)
+				.multiply(9)
+				.divide(18)
+				.multiply(9)
+				.divide(9)
+				.multiply(9)
+				.imod(36);
 
-			Expression b = kernel().multiply(8).divide(144).multiply(144);
-			Expression c = a.add(b);
-			Expression e = c.divide(18).multiply(9).imod(9).getSimplified();
-			Assert.assertTrue(e instanceof IntegerConstant);
-			Assert.assertEquals(0, e.intValue().getAsInt());
-
-			Expression p = kernel().multiply(8)
-					.imod(144)
-					.divide(8)
-					.add(kernel().multiply(8).divide(144).multiply(144))
-					.divide(18)
-					.multiply(9)
-					.divide(9)
-					.multiply(9)
-					.divide(18)
-					.multiply(9)
-					.divide(9)
-					.multiply(9)
-					.imod(36);
-
-			validateSeries(p);
-		} finally {
-			Mod.enableKernelSimplification = enableSimplify;
-		}
+		validateSeries(p);
 	}
 
 	@Test

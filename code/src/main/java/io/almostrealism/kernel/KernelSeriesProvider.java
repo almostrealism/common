@@ -16,12 +16,14 @@
 
 package io.almostrealism.kernel;
 
+import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.KernelIndex;
 import io.almostrealism.lang.LanguageOperationsStub;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.io.TimingMetric;
 
+import java.util.OptionalDouble;
 import java.util.OptionalInt;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
@@ -30,7 +32,7 @@ public interface KernelSeriesProvider {
 	TimingMetric timing = Scope.console.timing("kernelSeries");
 
 	default Expression getSeries(Expression exp) {
-		if (exp instanceof KernelIndex || exp.doubleValue().isPresent() || !exp.isKernelValue()) return exp;
+		if (exp instanceof KernelIndex || exp.doubleValue().isPresent()) return exp;
 
 		OptionalInt len = getMaximumLength();
 		if (!len.isPresent()) return exp;
@@ -40,13 +42,27 @@ public interface KernelSeriesProvider {
 		Expression result = null;
 
 		try {
-			result = getSeries(
-					Stream.of(exp.kernelSeq(len.getAsInt())).mapToDouble(Number::doubleValue).toArray(),
-					exp.getType() == Integer.class);
-			return result == null ? exp : result;
+			if (exp.getType() == Boolean.class) {
+				int seq[] = exp.booleanSeq(len.getAsInt());
+				result = getSeries(seq);
+				if (result != null) {
+					OptionalDouble d = result.doubleValue();
+					if (d.isPresent()) {
+						return d.getAsDouble() == 1.0 ? new BooleanConstant(true) : new BooleanConstant(false);
+					} else {
+						result = result.eq(1.0);
+					}
+				}
+			} else if (exp.isKernelValue()) {
+				result = getSeries(
+						Stream.of(exp.kernelSeq(len.getAsInt())).mapToDouble(Number::doubleValue).toArray(),
+						exp.getType() == Integer.class);
+			}
 		} finally {
 			timing.addEntry(exp.countNodes() + "-" + (result != null), System.nanoTime() - start);
 		}
+
+		return result == null ? exp : result;
 	}
 
 	default Expression getSeries(int values[]) {

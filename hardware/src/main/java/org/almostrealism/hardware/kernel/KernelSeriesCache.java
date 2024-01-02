@@ -93,16 +93,16 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 
 	@Override
 	public Expression getSeries(double[] seq, boolean isInt) {
+		Expression result = KernelSeriesMatcher.match(seq, isInt);
+		if (result != null) return result;
+
 		double init = seq[0];
 		if (init != 0.0) {
 			seq = DoubleStream.of(seq).map(d -> d - init).toArray();
 		}
 
-		Expression result = null;
-
 		r: try {
-			result = KernelSeriesMatcher.match(seq, isInt);
-			if (result != null || !enableCache || cache == null) break r;
+			if (!enableCache || cache == null) break r;
 
 			String sig = signature(seq);
 
@@ -110,7 +110,7 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 				if (cache.size() >= cacheManager.getMaxEntries()) {
 					if (enableVerbose)
 						warn("Cache is full");
-					return null;
+					break r;
 				}
 
 				int index = cache.size();

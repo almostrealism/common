@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Michael Murray
+ * Copyright 2024 Michael Murray
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -14,31 +14,32 @@
  *  limitations under the License.
  */
 
-package io.almostrealism.expression;
+package io.almostrealism.util;
 
-import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.lang.LanguageOperations;
+import io.almostrealism.uml.Plural;
 
-import java.util.OptionalInt;
+import java.util.Arrays;
 
-public class Epsilon extends StaticReference<Double> {
+public class ArrayItem<T> implements Plural<T> {
+	private T[] values;
 
-	public Epsilon() {
-		super(Double.class, null);
+	public ArrayItem(T[] values) {
+		this.values = values;
 	}
 
 	@Override
-	public String getExpression(LanguageOperations lang) {
-		return lang.getPrecision().stringForDouble(lang.getPrecision().epsilon());
+	public T valueAt(int pos) { return values[pos]; }
+
+	@Override
+	public int hashCode() {
+		return Arrays.hashCode(values);
 	}
 
 	@Override
-	public OptionalInt upperBound(KernelStructureContext context) {
-		return OptionalInt.of(1);
+	public boolean equals(Object obj) {
+		if (!(obj instanceof ArrayItem)) return false;
+		return Arrays.equals(values, ((ArrayItem) obj).values);
 	}
 
-	@Override
-	public Number evaluate(Number... children) {
-		return 0.0;
-	}
+	public T[] toArray() { return values; }
 }

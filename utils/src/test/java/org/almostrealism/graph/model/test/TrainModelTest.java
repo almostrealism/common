@@ -17,6 +17,7 @@
 package org.almostrealism.graph.model.test;
 
 import io.almostrealism.code.ComputeRequirement;
+import io.almostrealism.code.OperationMetadata;
 import io.almostrealism.code.OperationProfile;
 import io.almostrealism.kernel.KernelSeries;
 import io.almostrealism.scope.Scope;
@@ -270,7 +271,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 		NativeCompiler.enableLargeInstructionSetMonitoring = true;
 		MetalProgram.enableLargeProgramMonitoring = true;
 
-		int dim = 36;
+		int dim = 50;
 		int filters = 8;
 		Tensor<Double> t = tensor(shape(dim, dim));
 		PackedCollection<?> input = t.pack();
@@ -304,7 +305,8 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	}
 
 	protected void train(PackedCollection<?> input, Model model) {
-		HardwareOperator.profile = new OperationProfile("HardwareOperator");
+		HardwareOperator.profile = new OperationProfile("HardwareOperator",
+				OperationProfile.appendContext(OperationMetadata::getDisplayName));
 		OperationProfile profile = new OperationProfile("Model");
 		CompiledModel compiled = model.compile(profile);
 		log("Model compiled");
@@ -325,7 +327,7 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 				compiled.backward(rand(model.lastBlock().getOutputShape()).get().evaluate());
 
 				if (i % 1000 == 0) {
-					log("\t\tbackprop\t\t" +
+					log("\t\tbackprop\t\t\t" +
 							" | epoch = " + i / 1000);
 				}
 			}
@@ -339,11 +341,11 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	protected Model model(int r, int c, int convSize, int convFilters, int denseSize) {
 		Model model = new Model(shape(r, c));
 		model.addLayer(convolution2d(convSize, convFilters));
-		model.addLayer(pool2d(2));
-		model.addBlock(flatten());
-		model.addLayer(dense(denseSize));
-		model.addLayer(softmax());
-		log("Created model");
+//		model.addLayer(pool2d(2));
+//		model.addBlock(flatten());
+//		model.addLayer(dense(denseSize));
+//		model.addLayer(softmax());
+		log("Created model (" + model.getBlocks().size() + " blocks)");
 		return model;
 	}
 }

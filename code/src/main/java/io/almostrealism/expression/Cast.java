@@ -82,6 +82,15 @@ public class Cast<T> extends UnaryExpression<T> {
 	}
 
 	@Override
+	public Number evaluate(Number... children) {
+		if (typeName.equals("int")) {
+			return Integer.valueOf(children[0].intValue());
+		} else {
+			return Double.valueOf(children[0].doubleValue());
+		}
+	}
+
+	@Override
 	public Expression<T> simplify(KernelStructureContext context) {
 		Expression<T> flat = super.simplify(context);
 		if (!(flat instanceof Cast)) return flat;

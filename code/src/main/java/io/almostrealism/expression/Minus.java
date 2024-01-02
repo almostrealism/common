@@ -26,12 +26,6 @@ public class Minus<T extends Number> extends UnaryExpression<T> {
 	}
 
 	@Override
-	public Expression<T> generate(List<Expression<?>> children) {
-		if (children.size() != 1)  throw new UnsupportedOperationException();
-		return new Minus(children.get(0));
-	}
-
-	@Override
 	public OptionalInt intValue() {
 		OptionalInt i = getChildren().get(0).intValue();
 		if (i.isPresent()) return OptionalInt.of(i.getAsInt() * -1);
@@ -55,5 +49,16 @@ public class Minus<T extends Number> extends UnaryExpression<T> {
 		Number v = getChildren().get(0).kernelValue(kernelIndex);
 		if (v instanceof Integer) return -1 * (Integer) v;
 		return -1.0 * (Double) v;
+	}
+
+	@Override
+	public Number evaluate(Number... children) {
+		return -1 * children[0].doubleValue();
+	}
+
+	@Override
+	public Expression<T> generate(List<Expression<?>> children) {
+		if (children.size() != 1)  throw new UnsupportedOperationException();
+		return new Minus(children.get(0));
 	}
 }

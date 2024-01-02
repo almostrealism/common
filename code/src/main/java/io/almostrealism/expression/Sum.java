@@ -19,9 +19,7 @@ package io.almostrealism.expression;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.kernel.KernelSeries;
-import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.kernel.KernelStructureContext;
-import io.almostrealism.kernel.NoOpKernelStructureContext;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -48,9 +46,9 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public OptionalInt upperBound() {
+	public OptionalInt upperBound(KernelStructureContext context) {
 		List<OptionalInt> values = getChildren().stream()
-				.map(e -> e.upperBound()).filter(o -> o.isPresent())
+				.map(e -> e.upperBound(context)).filter(o -> o.isPresent())
 				.collect(Collectors.toList());
 		if (values.size() != getChildren().size()) return OptionalInt.empty();
 		return OptionalInt.of(values.stream().map(o -> o.getAsInt()).reduce(0, (a, b) -> a + b));
@@ -79,6 +77,17 @@ public class Sum<T extends Number> extends NAryExpression<T> {
 					.map(k -> k.getPeriod().getAsInt()).collect(Collectors.toList()));
 		}
 	}
+
+	@Override
+	public Number evaluate(Number... children) {
+		double value = children[0].doubleValue();
+		for (int i = 1; i < children.length; i++) {
+			value = value + children[i].doubleValue();
+		}
+
+		return value;
+	}
+
 	@Override
 	public Expression<T> generate(List<Expression<?>> children) {
 		return new Sum<>(children.toArray(new Expression[0]));

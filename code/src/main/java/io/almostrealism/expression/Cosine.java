@@ -16,6 +16,7 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
@@ -31,8 +32,13 @@ public class Cosine extends Expression<Double> {
 	}
 
 	@Override
-	public OptionalInt upperBound() {
+	public OptionalInt upperBound(KernelStructureContext context) {
 		return OptionalInt.of(1);
+	}
+
+	@Override
+	public Number evaluate(Number... children) {
+		return Math.cos(children[0].doubleValue());
 	}
 
 	@Override

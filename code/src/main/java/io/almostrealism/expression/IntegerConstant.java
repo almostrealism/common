@@ -17,9 +17,11 @@
 package io.almostrealism.expression;
 
 import io.almostrealism.kernel.KernelSeries;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.OptionalInt;
+import java.util.stream.IntStream;
 
 public class IntegerConstant extends Constant<Integer> {
 	private int value;
@@ -40,7 +42,7 @@ public class IntegerConstant extends Constant<Integer> {
 	}
 
 	@Override
-	public OptionalInt upperBound() { return OptionalInt.of(value); }
+	public OptionalInt upperBound(KernelStructureContext context) { return OptionalInt.of(value); }
 
 	@Override
 	public boolean isKernelValue() { return true; }
@@ -50,4 +52,14 @@ public class IntegerConstant extends Constant<Integer> {
 
 	@Override
 	public Number kernelValue(int kernelIndex) { return value; }
+
+	@Override
+	public Number[] kernelSeq(int len) {
+		return IntStream.range(0, len).mapToObj(i -> value).toArray(Number[]::new);
+	}
+
+	@Override
+	public Number evaluate(Number... children) {
+		return value;
+	}
 }

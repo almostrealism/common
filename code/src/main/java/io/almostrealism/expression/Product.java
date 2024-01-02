@@ -19,7 +19,6 @@ package io.almostrealism.expression;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversalPolicy;
 import io.almostrealism.kernel.KernelSeries;
-import io.almostrealism.kernel.KernelSeriesProvider;
 import io.almostrealism.kernel.KernelStructureContext;
 
 import java.util.ArrayList;
@@ -61,12 +60,35 @@ public class Product<T extends Number> extends NAryExpression<T> {
 	}
 
 	@Override
-	public OptionalInt upperBound() {
+	public OptionalInt upperBound(KernelStructureContext context) {
 		List<OptionalInt> values = getChildren().stream()
-				.map(e -> e.upperBound()).filter(o -> o.isPresent())
+				.map(e -> e.upperBound(context)).filter(o -> o.isPresent())
 				.collect(Collectors.toList());
 		if (values.size() != getChildren().size()) return OptionalInt.empty();
 		return OptionalInt.of(values.stream().map(o -> o.getAsInt()).reduce(1, (a, b) -> a * b));
+	}
+
+	@Override
+	public Number kernelValue(int kernelIndex) {
+		List<Number> values = getChildren().stream()
+				.map(e -> e.kernelValue(kernelIndex))
+				.collect(Collectors.toList());
+
+		if (values.stream().anyMatch(v -> !(v instanceof Integer))) {
+			return values.stream().mapToDouble(v -> v.doubleValue()).reduce(1.0, (a, b) -> a * b);
+		} else {
+			return values.stream().mapToInt(v -> v.intValue()).reduce(1, (a, b) -> a * b);
+		}
+	}
+
+	@Override
+	public Number evaluate(Number... children) {
+		double value = children[0].doubleValue();
+		for (int i = 1; i < children.length; i++) {
+			value = value * children[i].doubleValue();
+		}
+
+		return value;
 	}
 
 	@Override
@@ -122,6 +144,10 @@ public class Product<T extends Number> extends NAryExpression<T> {
 
 	@Override
 	public Expression simplify(KernelStructureContext context) {
+		if (getChildren().stream().anyMatch(e -> e.doubleValue().orElse(-1) == 0)) {
+			return getType() == Integer.class ? new IntegerConstant(0) : new DoubleConstant(0.0);
+		}
+
 		List<Expression<?>> children = super.simplify(context).flatten().stream().collect(Collectors.toList());
 
 		Mask mask = children.stream()
@@ -204,19 +230,6 @@ public class Product<T extends Number> extends NAryExpression<T> {
 			return simple;
 		} else {
 			return new Mask(mask.getMask(), simple);
-		}
-	}
-
-	@Override
-	public Number kernelValue(int kernelIndex) {
-		List<Number> values = getChildren().stream()
-				.map(e -> e.kernelValue(kernelIndex))
-				.collect(Collectors.toList());
-
-		if (values.stream().anyMatch(v -> !(v instanceof Integer))) {
-			return values.stream().mapToDouble(v -> v.doubleValue()).reduce(1.0, (a, b) -> a * b);
-		} else {
-			return values.stream().mapToInt(v -> v.intValue()).reduce(1, (a, b) -> a * b);
 		}
 	}
 }

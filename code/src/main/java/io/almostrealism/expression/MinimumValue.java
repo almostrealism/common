@@ -16,8 +16,10 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.code.Precision;
 import io.almostrealism.collect.CollectionExpression;
 import io.almostrealism.collect.TraversalPolicy;
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.OptionalInt;
@@ -31,8 +33,13 @@ public class MinimumValue extends StaticReference<Double> {
 	}
 
 	@Override
-	public OptionalInt upperBound() {
+	public OptionalInt upperBound(KernelStructureContext context) {
 		return OptionalInt.of(0);
+	}
+
+	@Override
+	public Number evaluate(Number... children) {
+		return Precision.FP64.minValue();
 	}
 
 	@Override

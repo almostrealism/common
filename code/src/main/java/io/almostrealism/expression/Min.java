@@ -16,6 +16,7 @@
 
 package io.almostrealism.expression;
 
+import io.almostrealism.kernel.KernelStructureContext;
 import io.almostrealism.lang.LanguageOperations;
 
 import java.util.List;
@@ -34,14 +35,19 @@ public class Min extends BinaryExpression<Double> {
 	}
 
 	@Override
-	public OptionalInt upperBound() {
-		OptionalInt l = getChildren().get(0).upperBound();
-		OptionalInt r = getChildren().get(1).upperBound();
+	public OptionalInt upperBound(KernelStructureContext context) {
+		OptionalInt l = getChildren().get(0).upperBound(context);
+		OptionalInt r = getChildren().get(1).upperBound(context);
 		if (l.isPresent() && r.isPresent()) {
 			return OptionalInt.of(Math.min(l.getAsInt(), r.getAsInt()));
 		}
 
 		return OptionalInt.empty();
+	}
+
+	@Override
+	public Number evaluate(Number... children) {
+		return Math.min(children[0].doubleValue(), children[1].doubleValue());
 	}
 
 	@Override

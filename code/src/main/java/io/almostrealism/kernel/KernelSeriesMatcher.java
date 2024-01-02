@@ -37,7 +37,6 @@ public class KernelSeriesMatcher implements ExpressionFeatures {
 
 	static {
 		commonSeries = new ArrayList<>();
-		commonSeries.add(new KernelIndex());
 	}
 
 	public static Expression match(double seq[], boolean isInt) {
