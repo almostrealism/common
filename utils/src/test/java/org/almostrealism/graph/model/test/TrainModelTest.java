@@ -250,6 +250,19 @@ public class TrainModelTest implements TestFeatures, KernelAssertions {
 	}
 
 	@Test
+	public void trainSmallest() {
+		if (skipLongTests) return;
+
+		NativeCompiler.enableInstructionSetMonitoring = true;
+		MetalProgram.enableProgramMonitoring = true;
+
+		int dim = 3;
+		Tensor<Double> t = tensor(shape(dim, dim));
+		PackedCollection<?> input = t.pack();
+		train(input, model(dim, dim, 2, 2, 10));
+	}
+
+	@Test
 	public void trainVerySmall() {
 		if (skipLongTests) return;
 
