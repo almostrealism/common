@@ -19,12 +19,12 @@ package io.almostrealism.kernel;
 import io.almostrealism.expression.BooleanConstant;
 import io.almostrealism.expression.Expression;
 import io.almostrealism.expression.KernelIndex;
-import io.almostrealism.lang.LanguageOperationsStub;
 import io.almostrealism.scope.Scope;
 import org.almostrealism.io.TimingMetric;
 
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
+import java.util.function.IntSupplier;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 
@@ -44,7 +44,8 @@ public interface KernelSeriesProvider {
 		try {
 			if (exp.getType() == Boolean.class) {
 				int seq[] = exp.booleanSeq(len.getAsInt());
-				result = getSeries(seq);
+				result = seq == null ? null : getSeries(seq, exp::countNodes);
+
 				if (result != null) {
 					OptionalDouble d = result.doubleValue();
 					if (d.isPresent()) {
@@ -56,7 +57,7 @@ public interface KernelSeriesProvider {
 			} else if (exp.isKernelValue()) {
 				result = getSeries(
 						Stream.of(exp.kernelSeq(len.getAsInt())).mapToDouble(Number::doubleValue).toArray(),
-						exp.getType() == Integer.class);
+						exp.getType() == Integer.class, exp::countNodes);
 			}
 		} finally {
 			timing.addEntry(exp.countNodes() + "-" + (result != null), System.nanoTime() - start);
@@ -65,24 +66,26 @@ public interface KernelSeriesProvider {
 		return result == null ? exp : result;
 	}
 
-	default Expression getSeries(int values[]) {
+	default Expression getSeries(int[] values, IntSupplier nodes) {
 		long start = System.nanoTime();
+		if (values == null)
+			throw new IllegalArgumentException();
 
 		Expression result = null;
 
 		try {
-			result = getSeries(IntStream.of(values).mapToDouble(i -> i).toArray(), true);
+			result = getSeries(IntStream.of(values).mapToDouble(i -> i).toArray(), true, nodes);
 			return result;
 		} finally {
 			timing.addEntry("int" + values.length + "-" + (result != null), System.nanoTime() - start);
 		}
 	}
 
-	default Expression getSeries(double values[]) {
-		return getSeries(values, false);
+	default Expression getSeries(double[] values, IntSupplier nodes) {
+		return getSeries(values, false, nodes);
 	}
 
-	Expression getSeries(double values[], boolean isInt);
+	Expression getSeries(double[] values, boolean isInt, IntSupplier nodes);
 
 	OptionalInt getMaximumLength();
 }

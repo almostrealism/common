@@ -22,6 +22,9 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, T>, Countable {
+	int minCount = 1 << 8;
+	int maxCount = 1 << 24;
+
 	@Override
 	default ParallelProcess<P, T> generate(List<P> children) {
 		return (ParallelProcess<P, T>) Process.super.generate(children);
@@ -44,6 +47,13 @@ public interface ParallelProcess<P extends Process<?, ?>, T> extends Process<P, 
 		if (p <= 1 && tot == cn) {
 			return generate(children.stream().map(c -> (P) c).collect(Collectors.toList()));
 		} else if (cn >= max) {
+			return generate(children.stream().map(c -> (P) c).collect(Collectors.toList()));
+		} else if (max > maxCount) {
+			if (cn < minCount) {
+				System.out.println("WARN: Count " + max + " is too high to isolate, " +
+						"but the resulting process will have a count of only " + cn);
+			}
+
 			return generate(children.stream().map(c -> (P) c).collect(Collectors.toList()));
 		}
 

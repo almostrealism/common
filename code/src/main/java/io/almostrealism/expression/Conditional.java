@@ -25,7 +25,7 @@ import java.util.OptionalDouble;
 import java.util.OptionalInt;
 
 public class Conditional<T extends Number> extends Expression<T> {
-	public static boolean enableKernelSimplification = true;
+	public static boolean enableKernelSimplification = false;
 
 	protected Conditional(Class<T> type, Expression<Boolean> condition, Expression<Double> positive, Expression<Double> negative) {
 		super(type, condition, positive, negative);
@@ -85,7 +85,7 @@ public class Conditional<T extends Number> extends Expression<T> {
 			if (enableKernelSimplification) {
 				OptionalInt max = context.getKernelMaximum();
 				int seq[] = max.isPresent() ? condition.booleanSeq(max.getAsInt()) : null;
-				Expression exp = seq == null ? null : context.getSeriesProvider().getSeries(seq);
+				Expression exp = seq == null ? null : context.getSeriesProvider().getSeries(seq, condition::countNodes);
 
 				if (exp != null) {
 					if (rd.isPresent() && rd.getAsDouble() == 0) {

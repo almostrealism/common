@@ -40,14 +40,15 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.OptionalInt;
 import java.util.function.Function;
+import java.util.function.IntSupplier;
 import java.util.stream.DoubleStream;
-import java.util.stream.IntStream;
 
 public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatures, ConsoleFeatures {
 	public static boolean enableCache = true;
 	public static boolean enableVerbose = false;
-	public static int maxCount = (int) Math.pow(2, 23);
+	public static int maxCount = ParallelProcess.maxCount;
 	public static int defaultMaxEntries = 16;
+	public static int minNodeCount = 128;
 
 	private int count;
 	private boolean fixed;
@@ -71,6 +72,8 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 		this.expressions = new HashMap<>();
 	}
 
+	public boolean isComputable() { return fixed && count <= maxCount; }
+
 	@Override
 	public OptionalInt getMaximumLength() {
 		return fixed ? OptionalInt.of(count) : OptionalInt.empty();
@@ -78,7 +81,7 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 
 	@Override
 	public Expression getSeries(Expression exp) {
-		if (exp.isSingleIndexMasked()) {
+		if (!isComputable() || exp.isSingleIndexMasked()) {
 			return exp;
 		}
 
@@ -92,9 +95,11 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 	}
 
 	@Override
-	public Expression getSeries(double[] seq, boolean isInt) {
+	public Expression getSeries(double[] seq, boolean isInt, IntSupplier nodes) {
 		Expression result = KernelSeriesMatcher.match(seq, isInt);
-		if (result != null) return result;
+		if (result != null || !enableCache || cache == null || nodes.getAsInt() < minNodeCount) {
+			return result;
+		}
 
 		double init = seq[0];
 		if (init != 0.0) {
@@ -102,8 +107,6 @@ public class KernelSeriesCache implements KernelSeriesProvider, ExpressionFeatur
 		}
 
 		r: try {
-			if (!enableCache || cache == null) break r;
-
 			String sig = signature(seq);
 
 			if (!cache.containsKey(sig)) {

@@ -19,27 +19,48 @@ package io.almostrealism.util;
 import io.almostrealism.uml.Plural;
 
 import java.util.Arrays;
+import java.util.Objects;
+import java.util.function.IntFunction;
+import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 public class ArrayItem<T> implements Plural<T> {
 	private T[] values;
+	private T single;
+	private int len;
 
-	public ArrayItem(T[] values) {
-		this.values = values;
+	private IntFunction<T[]> generator;
+
+	public ArrayItem(T[] values, IntFunction<T[]> generator) {
+		if (Stream.of(values).distinct().count() == 1) {
+			this.single = values[0];
+			this.len = values.length;
+		} else {
+			this.values = values;
+		}
+
+		this.generator = generator;
 	}
 
 	@Override
-	public T valueAt(int pos) { return values[pos]; }
+	public T valueAt(int pos) { return values == null ? single : values[pos]; }
+
+
+	public T[] toArray() {
+		return values == null ? IntStream.range(0, len).mapToObj(i -> single).toArray(generator) : values;
+	}
 
 	@Override
 	public int hashCode() {
-		return Arrays.hashCode(values);
+		return values == null ? single.hashCode() : Arrays.hashCode(values);
 	}
 
 	@Override
 	public boolean equals(Object obj) {
 		if (!(obj instanceof ArrayItem)) return false;
-		return Arrays.equals(values, ((ArrayItem) obj).values);
-	}
 
-	public T[] toArray() { return values; }
+		ArrayItem it = (ArrayItem) obj;
+		if (values == null && Objects.equals(single, it.single)) return true;
+		return Arrays.equals(toArray(), it.toArray());
+	}
 }
